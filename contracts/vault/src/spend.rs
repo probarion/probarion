@@ -698,7 +698,7 @@ mod tests {
                 (vault_id(), "on_withdraw".to_string())
             ]
         );
-        // Only the two function calls: in particular no AddKey and no add_public_key on intents (I8).
+        // Only the two function calls: in particular no AddKey action and no key-registration call on intents (I8).
         assert_eq!(actions().len(), 2, "no other action may be scheduled");
         let w = call_to("ft_withdraw");
         assert_eq!((w.deposit, w.gas), (ONE_YOCTO, GAS_FT_WITHDRAW));
