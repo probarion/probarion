@@ -1,0 +1,49 @@
+{
+  "name": "@probarion/core",
+  "version": "0.1.0",
+  "description": "Probarion core: contract types, canonical hashing, signed ledger, policy engine, attestation and verifier checks. Pure TypeScript, no network.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "fixtures": "tsx test/fixtures/make-fixtures.ts",
+    "sync-code-hashes": "tsx scripts/sync-code-hashes.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/probarion/probarion.git",
+    "directory": "packages/core"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "bs58": "^6.0.0",
+    "canonicalize": "^5.1.0",
+    "viem": "^2.57.14"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

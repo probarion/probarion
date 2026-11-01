@@ -12,3 +12,5 @@ coverage/
 *.pem
 .DS_Store
 docs/mainnet-proof.json.*.tmp
+*.tsbuildinfo
+probarion-tx/
