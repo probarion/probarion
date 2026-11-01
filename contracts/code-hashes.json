@@ -1,3 +1,15 @@
 {
-  "entries": []
+  "entries": [
+    {
+      "crate": "probarion-vault",
+      "version": "0.1.0",
+      "tree": "f22a90836676f79f7be8a3a3d402702e8ac38b6d",
+      "workspace": "cf2817b5bb692d8407dc77eb3273a379c7d90aad",
+      "lock": "a62d0de2056b2f25e142f5f71900d196e2632e85",
+      "commit": "3bd8189612a43b1063745c80fd053527ef8e19f9",
+      "code_hash": "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
+      "built_with": "cargo-near 0.22.0 reproducible-wasm, sourcescan/cargo-near:0.22.0-rust-1.99.1",
+      "recorded_at": "2026-11-01"
+    }
+  ]
 }
