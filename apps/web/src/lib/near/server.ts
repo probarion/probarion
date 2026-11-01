@@ -1,6 +1,6 @@
 import "server-only";
 import { NETWORKS } from "@probarion/core";
-import { RpcClient, resolveRpcUrls } from "@probarion/sdk";
+import { RpcClient } from "@probarion/sdk";
 import { getEnv } from "@/lib/env";
 import { createVaultReader, type VaultReader } from "./reader";
 
@@ -18,7 +18,7 @@ export function getRpc(): RpcClient {
   if (rpc === null) {
     const env = getEnv();
     rpc = new RpcClient({
-      urls: resolveRpcUrls(env.NEAR_NETWORK, env.NEAR_RPC_URLS),
+      urls: env.NEAR_RPC_URLS, // loadEnv already applies the network default when the variable is unset
       maxRounds: 2,
       timeoutMs: 8_000,
     });

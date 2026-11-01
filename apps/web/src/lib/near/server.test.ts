@@ -80,10 +80,37 @@ describe("near/server", () => {
     expect(testnet.chainConsts()).toStrictEqual(NETWORKS.testnet);
   });
 
-  it("does not read the environment until it is used", async () => {
-    // Nothing is set: importing must not throw, so `next build` needs no runtime secrets.
+  it("does not call getEnv on import, only when a function is used", async () => {
     vi.resetModules();
+    const getEnv = vi.fn(() => ({
+      NEAR_NETWORK: "testnet",
+      NEAR_RPC_URLS: ["https://a.example"],
+    }));
+    vi.doMock("@/lib/env", () => ({ getEnv }));
+    try {
+      const server = await import("./server");
+      expect(getEnv).not.toHaveBeenCalled();
+      server.chainConsts();
+      expect(getEnv).toHaveBeenCalledTimes(1);
+      server.getRpc();
+      expect(getEnv).toHaveBeenCalledTimes(2);
+      // The client is cached: a second read of the environment is not needed.
+      server.getRpc();
+      expect(getEnv).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.doUnmock("@/lib/env");
+      vi.resetModules();
+    }
+  });
+
+  it("imports with an invalid environment and fails only when a function is used", async () => {
+    // Nothing valid is set: importing must not throw, so `next build` needs no runtime secrets.
+    vi.resetModules();
+    vi.stubEnv("KEY_ENCRYPTION_SECRET", "not-a-key");
+    vi.stubEnv("CRON_SECRET", "");
+    vi.stubEnv("NEAR_NETWORK", "no-such-network");
     const server = await import("./server");
-    expect(typeof server.getRpc).toBe("function");
+    expect(() => server.getRpc()).toThrow(/Invalid environment/);
+    expect(() => server.chainConsts()).toThrow(/Invalid environment/);
   });
 });

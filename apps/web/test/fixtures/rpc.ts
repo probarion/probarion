@@ -63,6 +63,13 @@ export const rpcErr =
       { status: 200 },
     );
 
+/**
+ * What a node sends for a query that failed in the target: HTTP 200 and `result.error` (a string),
+ * not a JSON-RPC error. A missing access key is answered this way.
+ */
+export const legacyErr = (text: string): Handler =>
+  rpcOk({ error: text, logs: [], block_height: 1, block_hash: "h" });
+
 export const httpStatus =
   (status: number, headers: Record<string, string> = {}): Handler =>
   () =>
@@ -127,17 +134,41 @@ export async function startChainRpc(
   return { rpc, server, chain, close: () => server.close() };
 }
 
-/**
- * The error the reader raises when the chain gives a definite answer about the target (a missing
- * account, no contract code, a missing method). Same class and fields a real read produces.
- */
-export function contractError(cause = "UNKNOWN_ACCOUNT", contractId = "v.near"): ViewError {
+/** The JSON-RPC causes the reader treats as a definite answer about the target (kind "contract"). */
+export type ContractCause =
+  | "UNKNOWN_ACCOUNT"
+  | "UNKNOWN_ACCESS_KEY"
+  | "NO_CONTRACT_CODE"
+  | "CONTRACT_EXECUTION_ERROR"
+  | "INVALID_ACCOUNT";
+
+function viewErrorWith(cause: string, contractId: string): ViewError {
   return new ViewError(contractId, "get_config", `HANDLER_ERROR: ${cause}`, {
     rpcError: { name: "HANDLER_ERROR", cause: { name: cause, info: {} }, code: -32000 },
   });
 }
 
-/** The error the reader raises when no provider answered. */
+/**
+ * The error the reader raises when the chain gives a definite answer about the target (a missing
+ * account, no contract code, a missing method). Same class and fields a real read produces;
+ * `chainErrorKind` calls it "contract".
+ */
+export function contractError(
+  cause: ContractCause = "UNKNOWN_ACCOUNT",
+  contractId = "v.near",
+): ViewError {
+  return viewErrorWith(cause, contractId);
+}
+
+/**
+ * The error the reader raises when a node answered, but not about the target (an internal error,
+ * an overloaded node). `chainErrorKind` calls it "rpc".
+ */
+export function nodeError(cause = "INTERNAL_ERROR", contractId = "v.near"): ViewError {
+  return viewErrorWith(cause, contractId);
+}
+
+/** The error the reader raises when no provider answered. `chainErrorKind` calls it "transport". */
 export function transportError(): RpcError {
   return new RpcError(
     "query: all 2 RPC endpoint(s) failed after 4 attempts (tried https://a.example, https://b.example); last error: HTTP 503",

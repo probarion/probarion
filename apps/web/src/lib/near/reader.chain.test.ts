@@ -154,6 +154,7 @@ describe("access keys", () => {
     const { reader, chain } = await start();
     expect(await reader.accessKey(SCENARIO_VAULT, TEST_KEYS.agent.publicKey)).toEqual({
       exists: true,
+      kind: "FunctionCall",
       fullAccess: false,
       allowance: "1000000000000000000000000",
       receiverId: SCENARIO_VAULT,
@@ -161,6 +162,7 @@ describe("access keys", () => {
     });
     expect(await reader.accessKey(SCENARIO_VAULT, String(chain.config.ledger_key))).toEqual({
       exists: true,
+      kind: "FunctionCall",
       fullAccess: false,
       allowance: "250000000000000000000000",
       receiverId: SCENARIO_VAULT,
@@ -171,8 +173,9 @@ describe("access keys", () => {
   it("reads a full-access key and a missing key", async () => {
     const { reader } = await start();
     const approver = await reader.accessKey(SCENARIO_APPROVER, TEST_KEYS.approver.publicKey);
-    expect(approver.fullAccess).toBe(true);
-    expect((await reader.accessKey(SCENARIO_VAULT, TEST_KEYS.other.publicKey)).exists).toBe(false);
+    expect(approver).toMatchObject({ exists: true, kind: "FullAccess", fullAccess: true });
+    const missing = await reader.accessKey(SCENARIO_VAULT, TEST_KEYS.other.publicKey);
+    expect(missing).toMatchObject({ exists: false, kind: null, fullAccess: false });
     expect((await reader.accessKey("nobody.testnet", TEST_KEYS.other.publicKey)).exists).toBe(
       false,
     );
@@ -187,6 +190,7 @@ describe("access keys", () => {
     const { reader } = await start(chain);
     expect(await reader.accessKey(SCENARIO_VAULT, TEST_KEYS.other.publicKey)).toMatchObject({
       exists: true,
+      kind: "FullAccess",
       fullAccess: true,
     });
   });

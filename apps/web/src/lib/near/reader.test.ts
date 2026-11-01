@@ -4,6 +4,8 @@ import {
   accountResult,
   contractError,
   httpStatus,
+  legacyErr,
+  nodeError,
   rpcErr,
   rpcOk,
   scriptedRpc,
@@ -17,6 +19,11 @@ const VAULT = "v.near";
 function readerWith(...args: Parameters<typeof scriptedRpc>) {
   const s = scriptedRpc(...args);
   return { reader: createVaultReader(s.rpc), ...s };
+}
+
+/** A reader whose every request is answered 503: the providers are down. */
+function downReader() {
+  return readerWith([httpStatus(503), httpStatus(503)], ["https://a.example"], { maxRounds: 2 });
 }
 
 /** The decoded view arguments of recorded call `n`. */
@@ -117,10 +124,23 @@ describe("error classification", () => {
     const noMethod = readerWith([rpcErr("CONTRACT_EXECUTION_ERROR")]);
     expect(await kindOf(noMethod.reader.getConfig(VAULT))).toBe("contract");
 
-    const down = readerWith([httpStatus(502), httpStatus(502)], ["https://a.example"], {
-      maxRounds: 2,
-    });
-    expect(await kindOf(down.reader.getConfig(VAULT))).toBe("transport");
+    expect(await kindOf(downReader().reader.getConfig(VAULT))).toBe("transport");
+  });
+
+  it.each([
+    "account x.near does not exist while viewing",
+    "contract code of account x.near has not been deployed",
+    'wasm execution failed with error: FunctionCallError(CompilationError(CodeDoesNotExist { account_id: "x.near" }))',
+    "wasm execution failed with error: MethodResolveError(MethodNotFound)",
+    "Smart contract panicked: PROBARION:Frozen",
+  ])("reads the legacy result.error %j as a contract error", async (text) => {
+    const { reader } = readerWith([legacyErr(text)]);
+    expect(await kindOf(reader.getConfig(VAULT))).toBe("contract");
+  });
+
+  it("does not read an unrecognised legacy result.error from a view as a contract error", async () => {
+    const { reader } = readerWith([legacyErr("something unexpected")]);
+    expect(await kindOf(reader.getConfig(VAULT))).toBe("rpc");
   });
 
   it("is null for errors that did not come from the chain", () => {
@@ -132,34 +152,32 @@ describe("error classification", () => {
 
   it("the fixture builders classify like real failures", async () => {
     expect(chainErrorKind(contractError())).toBe("contract");
-    expect(chainErrorKind(contractError("INTERNAL_ERROR"))).toBe("rpc");
+    expect(chainErrorKind(contractError("NO_CONTRACT_CODE"))).toBe("contract");
+    expect(chainErrorKind(nodeError())).toBe("rpc");
     expect(chainErrorKind(transportError())).toBe("transport");
+
     const real = readerWith([rpcErr("UNKNOWN_ACCOUNT")]);
     expect(await kindOf(real.reader.getConfig(VAULT))).toBe(chainErrorKind(contractError()));
+    const busy = readerWith([rpcErr("INTERNAL_ERROR", "INTERNAL_ERROR")]);
+    expect(await kindOf(busy.reader.getConfig(VAULT))).toBe(chainErrorKind(nodeError()));
+    expect(await kindOf(downReader().reader.getConfig(VAULT))).toBe(
+      chainErrorKind(transportError()),
+    );
   });
 });
 
 describe("access keys", () => {
-  it("parses a function-call key with its allowance", async () => {
-    const { reader, calls } = readerWith([
-      rpcOk({
-        nonce: 1,
-        permission: {
-          FunctionCall: {
-            allowance: "190000000000000000000000",
-            receiver_id: VAULT,
-            method_names: ["spend"],
-          },
-        },
-      }),
-    ]);
-    expect(await reader.accessKey(VAULT, "ed25519:pk")).toEqual({
-      exists: true,
-      fullAccess: false,
-      allowance: "190000000000000000000000",
-      receiverId: VAULT,
-      methodNames: ["spend"],
-    });
+  const fc = (extra: Record<string, unknown> = {}) => ({
+    receiver_id: VAULT,
+    method_names: ["spend"],
+    ...extra,
+  });
+  const keyResult = (permission: unknown) => rpcOk({ nonce: 1, permission });
+
+  it("sends a view_access_key query for the account and key", async () => {
+    const { reader, calls } = readerWith([keyResult("FullAccess")]);
+    await reader.accessKey(VAULT, "ed25519:pk");
+    expect(calls[0]?.body.method).toBe("query");
     expect(calls[0]?.body.params).toEqual({
       request_type: "view_access_key",
       finality: "final",
@@ -168,62 +186,156 @@ describe("access keys", () => {
     });
   });
 
-  it("reports a missing key, an unknown account and a full-access key", async () => {
-    const { reader } = readerWith([
-      rpcErr("UNKNOWN_ACCESS_KEY"),
-      rpcErr("UNKNOWN_ACCOUNT"),
-      rpcOk({ nonce: 1, permission: "FullAccess" }),
-    ]);
-    expect((await reader.accessKey(VAULT, "ed25519:gone")).exists).toBe(false);
-    expect((await reader.accessKey("nobody.near", "ed25519:gone")).exists).toBe(false);
-    expect(await reader.accessKey(VAULT, "ed25519:fa")).toEqual({
-      exists: true,
-      fullAccess: true,
-      allowance: null,
-      receiverId: null,
-      methodNames: [],
+  describe("reads each of the four permission variants", () => {
+    it("FunctionCall: scoped, with its allowance", async () => {
+      const { reader } = readerWith([
+        keyResult({ FunctionCall: fc({ allowance: "190000000000000000000000" }) }),
+      ]);
+      expect(await reader.accessKey(VAULT, "ed25519:pk")).toEqual({
+        exists: true,
+        kind: "FunctionCall",
+        fullAccess: false,
+        allowance: "190000000000000000000000",
+        receiverId: VAULT,
+        methodNames: ["spend"],
+      });
+    });
+
+    it("FunctionCall with a null or absent allowance is unlimited, not full access", async () => {
+      const { reader } = readerWith([
+        keyResult({ FunctionCall: fc({ allowance: null, method_names: [] }) }),
+        keyResult({ FunctionCall: fc() }),
+      ]);
+      const expected = { exists: true, kind: "FunctionCall", fullAccess: false, allowance: null };
+      expect(await reader.accessKey(VAULT, "ed25519:a")).toMatchObject({
+        ...expected,
+        methodNames: [],
+      });
+      expect(await reader.accessKey(VAULT, "ed25519:b")).toMatchObject(expected);
+    });
+
+    it("FullAccess", async () => {
+      const { reader } = readerWith([keyResult("FullAccess")]);
+      expect(await reader.accessKey(VAULT, "ed25519:fa")).toEqual({
+        exists: true,
+        kind: "FullAccess",
+        fullAccess: true,
+        allowance: null,
+        receiverId: null,
+        methodNames: [],
+      });
+    });
+
+    it("GasKeyFullAccess: full access", async () => {
+      const { reader } = readerWith([
+        keyResult({ GasKeyFullAccess: { balance: "1000", num_nonces: 2 } }),
+      ]);
+      expect(await reader.accessKey(VAULT, "ed25519:gk")).toEqual({
+        exists: true,
+        kind: "GasKeyFullAccess",
+        fullAccess: true,
+        allowance: null,
+        receiverId: null,
+        methodNames: [],
+      });
+    });
+
+    it("GasKeyFunctionCall: scoped, not full access", async () => {
+      const { reader } = readerWith([
+        keyResult({
+          GasKeyFunctionCall: fc({ allowance: "5", balance: "1000", num_nonces: 2 }),
+        }),
+      ]);
+      expect(await reader.accessKey(VAULT, "ed25519:gk")).toEqual({
+        exists: true,
+        kind: "GasKeyFunctionCall",
+        fullAccess: false,
+        allowance: "5",
+        receiverId: VAULT,
+        methodNames: ["spend"],
+      });
     });
   });
 
-  it("keeps a null allowance as unlimited, not as full access", async () => {
-    const { reader } = readerWith([
-      rpcOk({
-        nonce: 1,
-        permission: { FunctionCall: { allowance: null, receiver_id: VAULT, method_names: [] } },
-      }),
-    ]);
-    expect(await reader.accessKey(VAULT, "ed25519:pk")).toMatchObject({
-      exists: true,
-      fullAccess: false,
-      allowance: null,
-      methodNames: [],
+  describe("fails closed on a permission it cannot read", () => {
+    it.each([
+      ["a missing permission", undefined],
+      ["an unknown string", "ReadOnly"],
+      ["an unknown variant", { ReadOnly: { receiver_id: VAULT } }],
+      ["FullAccess spelled as an object", { FullAccess: {} }],
+      ["two variants at once", { FullAccess: {}, FunctionCall: fc() }],
+      ["an empty object", {}],
+      ["null", null],
+      ["an array", ["FullAccess"]],
+      ["a FunctionCall that is not an object", { FunctionCall: "x" }],
+      ["a FunctionCall without receiver_id", { FunctionCall: { method_names: [] } }],
+      ["a FunctionCall with an empty receiver_id", { FunctionCall: fc({ receiver_id: "" }) }],
+      ["a FunctionCall without method_names", { FunctionCall: { receiver_id: VAULT } }],
+      ["method_names that is not a list", { FunctionCall: fc({ method_names: "spend" }) }],
+      ["method_names with a non-string", { FunctionCall: fc({ method_names: ["spend", 1] }) }],
+      ["a numeric allowance", { FunctionCall: fc({ allowance: 5 }) }],
+      ["a non-decimal allowance", { FunctionCall: fc({ allowance: "1e24" }) }],
+      ["a negative allowance", { FunctionCall: fc({ allowance: "-1" }) }],
+      ["a GasKeyFunctionCall without method_names", { GasKeyFunctionCall: { receiver_id: VAULT } }],
+      ["a GasKeyFullAccess that is not an object", { GasKeyFullAccess: "x" }],
+    ])("rejects %s, as an rpc error and never as full access", async (_label, permission) => {
+      const { reader } = readerWith([keyResult(permission)]);
+      const error = await reader.accessKey(VAULT, "ed25519:pk").catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(RpcError);
+      expect(chainErrorKind(error)).toBe("rpc");
+    });
+
+    it("rejects an answer that is not an object", async () => {
+      const { reader } = readerWith([rpcOk("FullAccess")]);
+      expect(await kindOf(reader.accessKey(VAULT, "ed25519:pk"))).toBe("rpc");
     });
   });
 
-  it("never understates a permission it does not know", async () => {
-    const { reader } = readerWith([
-      rpcOk({
-        nonce: 1,
-        permission: {
-          GasKeyFunctionCall: { allowance: "1", receiver_id: VAULT, method_names: [] },
-        },
-      }),
-    ]);
-    expect((await reader.accessKey(VAULT, "ed25519:gk")).fullAccess).toBe(true);
-  });
-
-  it("refuses an answer without a permission instead of calling it full access", async () => {
-    const { reader } = readerWith([rpcOk({ nonce: 1 })]);
-    const error = await reader.accessKey(VAULT, "ed25519:pk").catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(RpcError);
-    expect(String(error)).toMatch(/malformed/);
-  });
-
-  it("does not turn a provider outage into a missing key", async () => {
-    const { reader } = readerWith([httpStatus(503), httpStatus(503)], ["https://a.example"], {
-      maxRounds: 2,
+  describe("a missing key", () => {
+    it("is reported for the structured UNKNOWN_ACCESS_KEY and UNKNOWN_ACCOUNT errors", async () => {
+      const { reader } = readerWith([rpcErr("UNKNOWN_ACCESS_KEY"), rpcErr("UNKNOWN_ACCOUNT")]);
+      expect(await reader.accessKey(VAULT, "ed25519:gone")).toEqual({
+        exists: false,
+        kind: null,
+        fullAccess: false,
+        allowance: null,
+        receiverId: null,
+        methodNames: [],
+      });
+      expect((await reader.accessKey("nobody.near", "ed25519:gone")).exists).toBe(false);
     });
-    expect(await kindOf(reader.accessKey(VAULT, "ed25519:pk"))).toBe("transport");
+
+    it("is reported for the answer real nodes send: HTTP 200 with result.error", async () => {
+      const { reader } = readerWith([
+        legacyErr("access key ed25519:x does not exist while viewing"),
+        legacyErr("account nobody.near does not exist while viewing"),
+      ]);
+      expect(await reader.accessKey(VAULT, "ed25519:x")).toMatchObject({
+        exists: false,
+        kind: null,
+        fullAccess: false,
+      });
+      expect((await reader.accessKey("nobody.near", "ed25519:x")).exists).toBe(false);
+    });
+
+    it("is not reported for any other result.error: that is a contract or rpc error", async () => {
+      const other = readerWith([legacyErr("access key lookup refused for policy reasons")]);
+      const error = await other.reader.accessKey(VAULT, "ed25519:x").catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ViewError);
+      expect(chainErrorKind(error)).toBe("contract");
+
+      const unwell = readerWith([legacyErr("internal error: shard is not synced")]);
+      expect(await kindOf(unwell.reader.accessKey(VAULT, "ed25519:x"))).toBe("rpc");
+    });
+
+    it("does not turn a provider outage into a missing key", async () => {
+      expect(await kindOf(downReader().reader.accessKey(VAULT, "ed25519:pk"))).toBe("transport");
+    });
+
+    it("does not turn another node error into a missing key", async () => {
+      const { reader } = readerWith([rpcErr("INTERNAL_ERROR", "INTERNAL_ERROR")]);
+      expect(await kindOf(reader.accessKey(VAULT, "ed25519:pk"))).toBe("rpc");
+    });
   });
 });
 
@@ -243,12 +355,27 @@ describe("balances", () => {
     });
   });
 
-  it("reads an Intents balance of null as zero and refuses a non-decimal one", async () => {
-    const { reader } = readerWith([rpcOk(viewBytes(null)), rpcOk(viewBytes("12.5"))]);
+  it("never reads an Intents balance as zero by default: null and non-decimals reject", async () => {
+    const { reader } = readerWith([
+      rpcOk(viewBytes(null)),
+      rpcOk(viewBytes("12.5")),
+      rpcOk(viewBytes(5)),
+      rpcOk(viewBytes("0")),
+    ]);
+    for (let i = 0; i < 3; i++) {
+      const error = await reader
+        .intentsBalance("intents.near", VAULT, "t.near")
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ViewError);
+      expect(chainErrorKind(error)).toBe("rpc");
+    }
+    // A real zero is the contract's own "0".
     expect(await reader.intentsBalance("intents.near", VAULT, "t.near")).toBe("0");
-    await expect(reader.intentsBalance("intents.near", VAULT, "t.near")).rejects.toBeInstanceOf(
-      ViewError,
-    );
+  });
+
+  it("does not hide a failed Intents balance read as zero", async () => {
+    const { reader } = downReader();
+    expect(await kindOf(reader.intentsBalance("intents.near", VAULT, "t.near"))).toBe("transport");
   });
 
   it("reads an NEP-141 balance as a decimal string and refuses anything else", async () => {
@@ -294,13 +421,27 @@ describe("account existence", () => {
     });
   });
 
-  it("does not answer false when the node fails or sends a malformed account", async () => {
-    const down = readerWith([httpStatus(503), httpStatus(503)], ["https://a.example"], {
-      maxRounds: 2,
-    });
-    expect(await kindOf(down.reader.accountExists(VAULT))).toBe("transport");
-    const garbled = readerWith([rpcOk({ nothing: true })]);
-    await expect(garbled.reader.accountExists(VAULT)).rejects.toBeInstanceOf(RpcError);
+  it("is false for the answer real nodes may send: HTTP 200 with result.error", async () => {
+    const text = "account free.vaults.probarion.near does not exist while viewing";
+    const { reader, calls } = readerWith([legacyErr(text), legacyErr(text)]);
+    expect(await reader.accountExists("free.vaults.probarion.near")).toBe(false);
+    // The SDK cannot read that answer, so the adapter looked once more at the raw result.
+    expect(calls.map((c) => c.body.params.request_type)).toEqual(["view_account", "view_account"]);
+  });
+
+  it("does not answer false for any other unreadable account answer", async () => {
+    expect(await kindOf(downReader().reader.accountExists(VAULT))).toBe("transport");
+
+    const garbled = readerWith([rpcOk({ nothing: true }), rpcOk({ nothing: true })]);
+    const error = await garbled.reader.accountExists(VAULT).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RpcError);
+    expect(chainErrorKind(error)).toBe("rpc");
+
+    const refused = readerWith([legacyErr("something else"), legacyErr("something else")]);
+    expect(await kindOf(refused.reader.accountExists(VAULT))).toBe("rpc");
+
+    const busy = readerWith([rpcErr("INTERNAL_ERROR", "INTERNAL_ERROR")]);
+    expect(await kindOf(busy.reader.accountExists(VAULT))).toBe("rpc");
   });
 });
 
