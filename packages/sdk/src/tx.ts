@@ -19,6 +19,8 @@ import {
   InvalidTransactionError,
   SignerDoesNotExistError,
   TransactionExecutionError,
+  UnknownTransactionError,
+  UnknownTransactionOrReceiptError,
 } from "near-api-js/rpc-errors";
 import {
   ConfigError,
@@ -445,6 +447,11 @@ export interface NearApiJsSenderOptions {
  * (nothing was sent). A refusal by the node is a `TxRejectedError` (or, for a vault out of NEAR,
  * an `ok: false` outcome). Anything else after the send is `TxOutcomeUnknownError`: the payment flow (Task 13) must record it with its `txHash` and must
  * never retry the call, least of all with a fresh `ref`; it reads the result with `lookup`.
+ *
+ * On `InvalidNonce` the sender signs again only after the node it just sent to confirms that it
+ * does not know the transaction it sent. If that transaction is final, its outcome is returned and
+ * nothing new is signed. If the node cannot say (a transport error, a deadline, a result that is
+ * not final), the result is `TxOutcomeUnknownError` with the previous hash.
  */
 export class NearApiJsSender implements TxSender {
   readonly accountId: string;
@@ -481,6 +488,7 @@ export class NearApiJsSender implements TxSender {
   }
 
   async functionCall(tx: FunctionCallTx): Promise<TxOutcome> {
+    const label = `${tx.methodName} transaction`;
     for (let attempt = 0; ; attempt++) {
       const provider = this.#provider();
       const signed = await this.sign(provider, tx);
@@ -493,35 +501,79 @@ export class NearApiJsSender implements TxSender {
           `${tx.methodName} transaction ${txHash}`,
         );
       } catch (error) {
-        if (error instanceof InvalidNonceError && attempt < NONCE_RETRIES) continue;
+        if (error instanceof InvalidNonceError) {
+          // The node says this nonce is stale. That is true when another transaction took it. It is
+          // also what a retried copy of THIS transaction gets after the first try landed and its
+          // answer was lost (near-api-js resends identical bytes on a 5xx or a fetch error).
+          // Signing again would then send the payment twice and report the second as a refusal, so
+          // ask the same node about the transaction just sent before signing anything new.
+          const landed = await this.settled(provider, label, txHash);
+          if (landed !== null) return landed;
+          if (attempt < NONCE_RETRIES) continue;
+        }
         if (isTypedRefusal(error)) {
           const balance = balanceRefusal(error);
           if (balance !== null) return balance;
           throw rejectionOf(tx, error);
         }
-        throw this.unknown(`${tx.methodName} transaction`, txHash, error);
+        throw this.unknown(label, txHash, error);
       }
-      return this.finish(`${tx.methodName} transaction`, txHash, raw);
+      return this.finish(label, txHash, raw);
     }
   }
 
   /** Read the final outcome of a transaction this sender signed (`txHash` from a `TxOutcomeUnknownError`). */
   async lookup(txHash: string): Promise<TxOutcome> {
-    let raw: unknown;
+    const label = "transaction";
+    const status = await this.statusOf(this.#provider(), label, txHash);
+    if (!status.known) {
+      throw this.unknown(
+        label,
+        txHash,
+        new Error(
+          "the node does not know this transaction (it may not have been delivered, or may still be in flight)",
+        ),
+      );
+    }
+    return this.finish(label, txHash, status.raw);
+  }
+
+  /**
+   * The final outcome of `txHash` if the node has it, or `null` when the node says it does not know
+   * the transaction. Any other answer (a transport error, a deadline, a result that is not final)
+   * throws `TxOutcomeUnknownError` with that hash.
+   */
+  private async settled(
+    provider: Provider,
+    label: string,
+    txHash: string,
+  ): Promise<TxOutcome | null> {
+    const status = await this.statusOf(provider, label, txHash);
+    return status.known ? this.finish(label, txHash, status.raw) : null;
+  }
+
+  /** Ask a node for the status of a transaction: its raw result, or `known: false` when it says it has no such transaction. */
+  private async statusOf(
+    provider: Provider,
+    label: string,
+    txHash: string,
+  ): Promise<{ known: true; raw: unknown } | { known: false }> {
     try {
-      raw = await withDeadline(
-        this.#provider().viewTransactionStatus({
-          txHash,
-          accountId: this.accountId,
-          waitUntil: "FINAL",
-        }),
+      const raw: unknown = await withDeadline(
+        provider.viewTransactionStatus({ txHash, accountId: this.accountId, waitUntil: "FINAL" }),
         this.#sendTimeoutMs,
         `lookup of transaction ${txHash}`,
       );
+      return { known: true, raw };
     } catch (error) {
-      throw this.unknown("transaction", txHash, error);
+      if (
+        error instanceof UnknownTransactionError ||
+        error instanceof UnknownTransactionOrReceiptError
+      ) {
+        return { known: false };
+      }
+      throw this.unknown(label, txHash, error);
     }
-    return this.finish("transaction", txHash, raw);
   }
 
   /** Build and sign. Nothing leaves the process here, so any failure is definite: `TxSendFailed`. */

@@ -278,13 +278,66 @@ describe("NearApiJsSender: the node refuses the transaction (definite, not unkno
     expect(rejected.cause).not.toBe(error);
     expect(inspect(rejected, { depth: 10 })).not.toContain("SECRET-API-KEY");
   });
+});
 
-  it("InvalidNonce: signs again with a fresh nonce and sends the new transaction", async () => {
+describe("NearApiJsSender: InvalidNonce looks up the previous transaction before signing again", () => {
+  const invalidNonce = () => new InvalidNonceError(9, 8, "", "");
+  const unknownToNode = (args: unknown) => {
+    throw new UnknownTransactionError(String((args as { txHash: string }).txHash));
+  };
+  const paid = () => ({
+    status: { SuccessValue: b64({ spend_id: 1, status: "paid" }) },
+  });
+
+  // A first try that landed, whose answer was lost, and whose retried copy of the same bytes (near-api-js
+  // resends them on a 5xx or a fetch error) was then refused with InvalidNonce, looks to the sender
+  // exactly like this: one send that throws InvalidNonce, while the node holds that very transaction.
+  it("returns the outcome of the previous transaction when it already landed, and signs nothing new", async () => {
+    const { sender, sent, statusCalls } = senderWith({
+      send: () => {
+        throw invalidNonce();
+      },
+      status: paid,
+    });
+    const out = await sender.functionCall(spendTx);
+    expect(sent).toHaveLength(1);
+    const signed = sent[0]?.signed;
+    if (signed === undefined) throw new Error("nothing sent");
+    expect(out).toMatchObject({ ok: true, value: { spend_id: 1, status: "paid" } });
+    expect(out.txHash).toBe(txHashOf(signed));
+    expect(statusCalls).toEqual([
+      { txHash: txHashOf(signed), accountId: VAULT, waitUntil: "FINAL" },
+    ]);
+  });
+
+  it("returns a landed failure the same way: it is the outcome, not a refusal and not a re-sign", async () => {
     const { sender, sent } = senderWith({
+      send: () => {
+        throw invalidNonce();
+      },
+      status: () => ({
+        status: {
+          Failure: {
+            ActionError: {
+              index: 0,
+              kind: { FunctionCallError: { ExecutionError: "PROBARION:DuplicateInvoice" } },
+            },
+          },
+        },
+      }),
+    });
+    const out = await sender.functionCall(spendTx);
+    expect(out).toMatchObject({ ok: false, code: "DuplicateInvoice" });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("signs again with a fresh nonce when the node confirms the previous transaction is unknown", async () => {
+    const { sender, sent, statusCalls } = senderWith({
       send: (_signed, call) => {
-        if (call === 1) throw new InvalidNonceError(9, 8, "", "");
+        if (call === 1) throw invalidNonce();
         return { status: { SuccessValue: "" } };
       },
+      status: unknownToNode,
     });
     const out = await sender.functionCall(spendTx);
     expect(out.ok).toBe(true);
@@ -294,11 +347,136 @@ describe("NearApiJsSender: the node refuses the transaction (definite, not unkno
     expect(first.signed.transaction.nonce).toBe(8n);
     expect(second.signed.transaction.nonce).toBe(9n);
     expect(txHashOf(first.signed)).not.toBe(txHashOf(second.signed));
+    // The lookup asked about the first transaction only; the second succeeded.
+    expect(statusCalls).toEqual([
+      { txHash: txHashOf(first.signed), accountId: VAULT, waitUntil: "FINAL" },
+    ]);
   });
 
-  it("InvalidNonce after ten fresh signatures is a refusal, not an unknown outcome", async () => {
-    const rejected = await refusal(new InvalidNonceError(9, 8, "", ""), spendTx, 11);
-    expect(rejected.kind).toBe("InvalidNonce");
+  it("looks up the latest transaction each time: unknown first, landed second", async () => {
+    let asked = 0;
+    const { sender, sent, statusCalls } = senderWith({
+      send: () => {
+        throw invalidNonce();
+      },
+      status: (args) => {
+        asked += 1;
+        if (asked === 1) return unknownToNode(args);
+        return paid();
+      },
+    });
+    const out = await sender.functionCall(spendTx);
+    expect(sent).toHaveLength(2);
+    const second = sent[1]?.signed;
+    if (second === undefined) throw new Error("expected two sends");
+    expect(out.txHash).toBe(txHashOf(second));
+    expect(statusCalls).toHaveLength(2);
+  });
+
+  it("ten stale nonces in a row end in a refusal, with a lookup after each of the eleven sends", async () => {
+    const { sender, sent, statusCalls } = senderWith({
+      send: () => {
+        throw invalidNonce();
+      },
+      status: unknownToNode,
+    });
+    const error = await caught(sender.functionCall(spendTx));
+    expect(error).toBeInstanceOf(TxRejectedError);
+    expect((error as TxRejectedError).kind).toBe("InvalidNonce");
+    expect(sent).toHaveLength(11);
+    expect(statusCalls).toHaveLength(11);
+  });
+
+  it("the last send is looked up too: a landed eleventh transaction is its outcome, not a refusal", async () => {
+    let asked = 0;
+    const { sender, sent } = senderWith({
+      send: () => {
+        throw invalidNonce();
+      },
+      status: (args) => {
+        asked += 1;
+        if (asked < 11) return unknownToNode(args);
+        return paid();
+      },
+    });
+    const out = await sender.functionCall(spendTx);
+    expect(out.ok).toBe(true);
+    expect(sent).toHaveLength(11);
+  });
+
+  it("a failing lookup is TxOutcomeUnknown with the previous hash, and nothing is signed again", async () => {
+    const { sender, sent } = senderWith({
+      send: () => {
+        throw invalidNonce();
+      },
+      status: () => {
+        throw new TypeError(`fetch failed ${SECRET_URL}`);
+      },
+    });
+    const error = await caught(sender.functionCall(spendTx));
+    expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+    expect(error).not.toBeInstanceOf(TxRejectedError);
+    const signed = sent[0]?.signed;
+    if (signed === undefined) throw new Error("nothing sent");
+    expect((error as TxOutcomeUnknownError).txHash).toBe(txHashOf(signed));
+    expect((error as TxOutcomeUnknownError).signerId).toBe(VAULT);
+    expect(sent).toHaveLength(1);
+    expect(inspect(error, { depth: 10 })).not.toContain("SECRET-API-KEY");
+  });
+
+  it("a lookup that times out is TxOutcomeUnknown with the previous hash", async () => {
+    const { sender, sent } = senderWith(
+      {
+        send: () => {
+          throw invalidNonce();
+        },
+        status: () => new Promise<never>(() => {}),
+      },
+      { sendTimeoutMs: 25 },
+    );
+    const error = await caught(sender.functionCall(spendTx));
+    expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+    const signed = sent[0]?.signed;
+    if (signed === undefined) throw new Error("nothing sent");
+    expect((error as TxOutcomeUnknownError).txHash).toBe(txHashOf(signed));
+    expect((error as TxOutcomeUnknownError).message).toContain("timed out after 25 ms");
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a previous transaction the node has but has not finished is unknown, not signed again", async () => {
+    for (const status of [{ status: "Started" }, { status: { SuccessReceiptId: "r" } }]) {
+      const { sender, sent } = senderWith({
+        send: () => {
+          throw invalidNonce();
+        },
+        status: () => status,
+      });
+      const error = await caught(sender.functionCall(spendTx));
+      expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+      expect(sent).toHaveLength(1);
+    }
+  });
+
+  it("asks the node that refused the send, not another one", async () => {
+    const refusing = fakeProvider({
+      send: () => {
+        throw invalidNonce();
+      },
+      status: paid,
+    });
+    const other = fakeProvider({ status: unknownToNode });
+    let built = 0;
+    const sender = new NearApiJsSender({
+      accountId: VAULT,
+      secretKey: agentKey.secretKey,
+      rpcUrl: "https://rpc.test",
+      createProvider: () => (built++ === 0 ? refusing.provider : other.provider),
+    });
+    const out = await sender.functionCall(spendTx);
+    expect(out.ok).toBe(true);
+    expect(refusing.statusCalls).toHaveLength(1);
+    expect(other.statusCalls).toHaveLength(0);
+    expect(other.sent).toHaveLength(0);
   });
 });
 
