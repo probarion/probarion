@@ -4,7 +4,7 @@
 
 To control cost (spec §7.2), the global code is published on **mainnet** only at the Day 10 freeze. Until then the mainnet factory serves an embedded version, so the console can create vaults from Day 8. On testnet both modes are exercised on Day 7.
 
-**OWNER** runs the testnet commands. Every mainnet command that sends a transaction is **OWNER SIGNS**. Run every command from the repo root, in Git Bash (Windows) or any Linux/macOS shell. In Git Bash, put the cargo tools on the path first: `export PATH="$HOME/.cargo/bin:$PATH"`. Signing uses `sign-with-keychain`, so no command here reads, prints or writes a private key.
+**OWNER** runs the testnet commands. Every mainnet command that sends a transaction is **OWNER SIGNS**. Run every command from the repo root, in Git Bash (Windows) or any Linux/macOS shell. In Git Bash, put the cargo tools on the path first: `export PATH="$HOME/.cargo/bin:$PATH"`. Keys are kept only in the OS keychain: `create-account ... save-to-keychain` stores each new key there, signing uses `sign-with-keychain`, and no command here prints a private key.
 
 **Protocol versions differ.** `protocol_versions` in `contracts/deployments/testnet.json` records testnet at 88 and mainnet at 86 on 2026-11-01. A testnet pass does not prove mainnet behaviour for anything that changed between the two. Check both before each deploy, and re-run the testnet part whenever either number changes (as `docs/runbooks/testnet.md` does). Global contracts work on both networks.
 
@@ -15,12 +15,15 @@ node scripts/testnet/chain.mjs protocol-version mainnet
 
 ## 0. Get the wasm files from CI
 
-A local build is never a source of code hashes (R6), and the Windows dev machine has no Docker. Both wasm files therefore come from the CI reproducible build. Pick one CI **push** run whose commit is recorded in `contracts/code-hashes.json` for both crates (`commit` of the `probarion-vault` and `probarion-factory` entries). If the two entries record different commits, download each artifact from the run of its own commit.
+A local build is never a source of code hashes (R6), and the Windows dev machine has no Docker. Both wasm files therefore come from the CI reproducible build. Pick the CI **push** run whose `headSha` is the commit recorded in `contracts/code-hashes.json` for both crates (`commit` of the `probarion-vault` and `probarion-factory` entries). `recorded-commit` prints that commit for the current source; if it prints nothing, the source is not recorded, so stop. If the two entries record different commits, download each artifact from the run of its own commit.
 
 ```bash
-gh run list --repo probarion/probarion --workflow ci --branch dev --limit 10
+node scripts/code-hash.mjs recorded-commit probarion-vault vault
+node scripts/code-hash.mjs recorded-commit probarion-factory factory
+gh run list --repo probarion/probarion --workflow ci --branch dev --limit 20 --json databaseId,headSha,event,conclusion
 gh run download <run-id> --repo probarion/probarion -n probarion-vault-wasm -D contracts/target/ci-artifact
 gh run download <run-id> --repo probarion/probarion -n probarion-factory-wasm -D contracts/target/ci-artifact
+git fetch origin   # check needs the recorded build commit in this clone
 REQUIRE_RECORDED=1 node scripts/code-hash.mjs check probarion-vault vault contracts/target/ci-artifact/probarion_vault.wasm
 REQUIRE_RECORDED=1 node scripts/code-hash.mjs check probarion-factory factory contracts/target/ci-artifact/probarion_factory.wasm
 ```
@@ -66,13 +69,14 @@ near contract call-function as-transaction "$FACTORY" create_vault \
   prepaid-gas '300.0 Tgas' attached-deposit '1 NEAR' sign-as "$OWNER_ID" network-config testnet sign-with-keychain send
 near account list-keys "smoke-global.$FACTORY" network-config testnet now
 near contract call-function as-read-only "smoke-global.$FACTORY" get_config json-args '{}' network-config testnet now
+curl -s https://rpc.testnet.fastnear.com -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"query","params":{"request_type":"view_account","finality":"optimistic","account_id":"smoke-global.vaults.probarion.testnet"}}' | grep -o '"global_contract_hash":"[^"]*"'
 ```
 
 Expected:
 - `create_vault` returns `"smoke-global.vaults.probarion.testnet"`.
 - `list-keys` shows **no keys** (I9).
 - `get_config` has `"owner": "probarion-owner.testnet"` and `"factory": "vaults.probarion.testnet"`.
-- RPC `view_account` for the vault shows `global_contract_hash` equal to `$VAULT_HASH`.
+- The `curl` prints `"global_contract_hash":"<hash>"` with `<hash>` equal to `$VAULT_HASH` (RPC `view_account` omits the field for an account that does not use global code, so no output means it does not).
 
 Embedded version (fallback). Store the wasm, then register it. A vault from this version must receive `min_deposit` (0.5 NEAR here) plus the storage of its copy of the wasm (2.49 NEAR), so the `'4 NEAR'` below is enough. The embedded version becomes the current version, so add the global version again afterwards to make global current:
 
@@ -166,7 +170,7 @@ Take the CI artifacts of the frozen commit with §0 (the controller records them
 
 Publish the global code with **one** of the two options. The publish burns 10 NEAR per 100 KB of `$VAULT_WASM`, about 25 NEAR for the current 248,501-byte wasm (24.9 NEAR). Check `ls -l "$VAULT_WASM"` and adjust the amounts if the size changed.
 
-**Option A: the factory publishes** (only if the optional Task 21 is done). The factory pays the burn from its own balance, so fund it first.
+**Option A: the factory publishes** (only if the deployed factory wasm has `publish_global`, the optional Task 21). The factory pays the burn from its own balance, so fund it first. `publish_global` publishes the wasm of the **current** version, which must be an embedded one (this is why the frozen code is stored and registered as embedded first), and it takes no arguments.
 
 **OWNER SIGNS** (moves NEAR into the factory for the burn: about 25 NEAR for the current wasm, plus 2 NEAR margin)
 ```bash
@@ -183,7 +187,7 @@ near contract call-function as-transaction "$FACTORY" publish_global json-args '
 export GLOBAL_SIGNER="$OWNER_ID" GLOBAL_RECEIVER="$FACTORY" GLOBAL_SIGNED_BY=owner
 ```
 
-**Option B: near-cli-rs publishes** (if Task 21 was skipped). `ROOT` pays the burn, so check its balance first:
+**Option B: near-cli-rs publishes** (if the deployed factory has no `publish_global`, for example because it was deployed before Task 21). `ROOT` pays the burn, so check its balance first:
 
 ```bash
 near account view-account-summary "$ROOT" network-config mainnet now
@@ -214,7 +218,15 @@ near contract call-function as-transaction "$FACTORY" create_vault \
   prepaid-gas '300.0 Tgas' attached-deposit '1 NEAR' sign-as "$OWNER_ID" network-config mainnet sign-with-keychain send
 ```
 
-Checks: `near account list-keys "demo.$FACTORY" network-config mainnet now` shows no keys. RPC `view_account` for `demo.vaults.probarion.near` shows `global_contract_hash` equal to `$VAULT_HASH`.
+Checks (free):
+
+```bash
+near account list-keys "demo.$FACTORY" network-config mainnet now
+curl -s https://rpc.mainnet.fastnear.com -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"query","params":{"request_type":"view_account","finality":"optimistic","account_id":"demo.vaults.probarion.near"}}' | grep -o '"global_contract_hash":"[^"]*"'
+echo "$VAULT_HASH"
+```
+
+Expected: no keys, and the `curl` prints `"global_contract_hash":"<hash>"` with `<hash>` equal to the `echo` line (`$VAULT_HASH`). No `curl` output means the vault does not use global code.
 
 **Claude records** (interfaces §16), in the same commit as the updated `contracts/deployments/mainnet.json` (`factory.versions`):
 

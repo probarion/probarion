@@ -56,7 +56,7 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
 - Each leg uploads both files as an artifact, `probarion-vault-wasm` or `probarion-factory-wasm`. Its run summary shows the build-info.
 - A reproducible wasm embeds the git commit it was built from (NEP-330 `source_code_snapshot`). The same source built at two commits has two code hashes, so a recorded hash is reproduced by rebuilding the recorded commit.
 - `contracts/code-hashes.json` records, per exact source (git tree of the crate, `contracts/Cargo.toml`, `contracts/Cargo.lock`), the `commit` and the `code_hash` of its reproducible build. Plan 03's verifier reads `entries[].code_hash` as `expected_code_hashes`.
-- Once the vault source is recorded, CI rebuilds the recorded commit (not HEAD) and fails on a hash mismatch. On `v*` tags it also fails if the source is not recorded. While the source is not recorded, CI warns, builds HEAD and uploads it to be recorded.
+- Once a crate's source is recorded, CI rebuilds that crate's recorded commit (not HEAD) and fails on a hash mismatch. On `v*` tags it also fails if the source is not recorded. While the source is not recorded, CI warns, builds HEAD and uploads it to be recorded.
 - Record a hash from the artifact of a CI push run. `record` refuses a wasm without its CI `build-info.json`, and a build-info whose event is not `push` (so never a local build, a pull_request run or a manual run):
 
   ```bash
@@ -68,7 +68,7 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
 
   The factory records the same way: download `-n probarion-factory-wasm` and use `probarion-factory factory <dir>/probarion_factory.wasm`.
 
-- **R9:** any change to `contracts/vault`, `contracts/Cargo.toml` or `contracts/Cargo.lock` makes the record stale. Re-record right after the push that changes them: take the artifact of that push run and run `record`. Until then CI warns "not recorded" and a `v*` tag fails.
+- **R9:** any change to `contracts/vault` or `contracts/factory` (or to `contracts/Cargo.toml` or `contracts/Cargo.lock`, which both crates share) makes that crate's record stale. Re-record right after the push that changes them: take the artifact of that push run and run `record`. Until then CI warns "not recorded" and a `v*` tag fails.
 - Every deploy uses only a CI-built reproducible wasm whose `code_hash` is in `contracts/code-hashes.json` (`check` passes). A deploy script may fall back to a local non-reproducible build only when `ALLOW_NON_REPRODUCIBLE=1` is set, with a loud warning. The testnet smoke may set it; mainnet never may.
 - Compare a deployed contract: `curl -s https://rpc.mainnet.fastnear.com -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"query","params":{"request_type":"view_account","finality":"final","account_id":"v0.probarion.near"}}' | jq -r .result.code_hash`
 

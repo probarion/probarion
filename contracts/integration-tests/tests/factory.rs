@@ -143,7 +143,7 @@ async fn a_factory_vault_has_no_keys_runs_the_stored_code_and_got_the_factory_co
 async fn a_taken_name_rolls_back_and_refunds_the_deposit() -> Result<()> {
     let env = factory_with_embedded_version().await?;
     let args = create_args("acme", env.factory_owner.id());
-    let _ = ok(
+    let first = ok(
         &env.user,
         env.factory.id(),
         "create_vault",
@@ -151,6 +151,11 @@ async fn a_taken_name_rolls_back_and_refunds_the_deposit() -> Result<()> {
         NearToken::from_near(6),
     )
     .await?;
+    assert_eq!(
+        first.json::<Option<String>>()?,
+        Some(format!("acme.{}", env.factory.id())),
+        "the first creation must succeed, or the duplicate below proves nothing"
+    );
     let user_before = env.user.view_account().await?.balance;
     let factory_before = env.factory.view_account().await?.balance;
     let duplicate = call(
@@ -169,7 +174,8 @@ async fn a_taken_name_rolls_back_and_refunds_the_deposit() -> Result<()> {
     let within = |after: NearToken, before: NearToken, margin: NearToken| {
         after.as_yoctonear() + margin.as_yoctonear() > before.as_yoctonear()
     };
-    let gas_margin = NearToken::from_millinear(500);
+    // 300 Tgas at the sandbox gas price is about 0.03 NEAR, the most the duplicate call can cost.
+    let gas_margin = NearToken::from_millinear(50);
     let factory_margin = NearToken::from_millinear(50);
     let deadline = Instant::now() + Duration::from_secs(10);
     let (user_after, factory_after) = loop {
