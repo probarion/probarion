@@ -122,6 +122,11 @@ function intentsInput(overrides: Partial<DecisionInput> = {}): DecisionInput {
   });
 }
 
+/** No model: the mandate is chosen by `purposeMatch` alone. */
+function rulesOnly(overrides: Partial<DecisionInput> = {}): DecisionInput {
+  return input({ proposal: null, attestationOk: null, ...overrides });
+}
+
 function rule(rules: RuleResult[], id: RuleId): RuleResult | undefined {
   return rules.find((r) => r.id === id);
 }
@@ -225,6 +230,55 @@ const cases: Case[] = [
     input: () => input({ daily: null }),
     verdict: "allow",
     rule: ["vault.daily_backstop", "pass"],
+  },
+  // purposeMatch skips mandates the contract refuses outright (revoked, expired, no uses or no room
+  // left) and takes the lowest live id; if none is live it falls back to the lowest id.
+  {
+    name: "rules-only: an expired id-1 mandate does not shadow a live id-2 one",
+    input: () =>
+      rulesOnly({ mandates: [mandate({ id: 1, expires_at_ns: EXPIRED }), mandate({ id: 2 })] }),
+    verdict: "allow",
+    rule: ["mandate.expired", "pass"],
+  },
+  {
+    name: "rules-only: a revoked id-1 mandate does not shadow a live id-2 one",
+    input: () =>
+      rulesOnly({ mandates: [mandate({ id: 1, status: "revoked" }), mandate({ id: 2 })] }),
+    verdict: "allow",
+    rule: ["mandate.inactive", "pass"],
+  },
+  {
+    name: "rules-only: an id-1 mandate out of uses does not shadow a live id-2 one",
+    input: () =>
+      rulesOnly({
+        mandates: [mandate({ id: 1, uses: 10, status: "exhausted" }), mandate({ id: 2 })],
+      }),
+    verdict: "allow",
+    rule: ["mandate.uses_exhausted", "pass"],
+  },
+  {
+    name: "rules-only: an id-1 mandate out of total does not shadow a live id-2 one",
+    input: () =>
+      rulesOnly({
+        mandates: [
+          mandate({ id: 1, spent: "1000000000", status: "exhausted" }),
+          mandate({ id: 2 }),
+        ],
+      }),
+    verdict: "allow",
+    rule: ["mandate.over_total", "pass"],
+  },
+  {
+    name: "rules-only: every purpose match is dead, the lowest id explains the refusal",
+    input: () =>
+      rulesOnly({
+        mandates: [
+          mandate({ id: 2, status: "revoked" }),
+          mandate({ id: 1, expires_at_ns: EXPIRED }),
+        ],
+      }),
+    verdict: "refuse",
+    rule: ["mandate.expired", "refuse"],
   },
   {
     name: "model proposes unknown mandate",
@@ -746,9 +800,101 @@ describe("decide(): one row per built-in rule", () => {
       const decision = decide(i);
       if (decision.verdict === "refuse") continue;
       expect(decision.mandate_id).toBe(
-        purposeMatch(i.mandates, i.invoice.purpose_hash)?.id ?? null,
+        purposeMatch(i.mandates, i.invoice.purpose_hash, i.now)?.id ?? null,
       );
     }
+  });
+
+  it("says plainly that the backstop was not evaluated when daily is null", () => {
+    const backstop = rule(decide(input({ daily: null })).rules, "vault.daily_backstop");
+    expect(backstop?.outcome).toBe("pass");
+    expect(backstop?.detail).toContain("not evaluated");
+    expect(backstop?.detail).toContain("daily is null");
+  });
+});
+
+describe("decide(): purpose pre-selection never lets a dead mandate shadow a live one", () => {
+  const dead: [string, Partial<MandateView>][] = [
+    ["expired", { expires_at_ns: EXPIRED }],
+    ["expiring at this instant", { expires_at_ns: NOW_NS.toString() }],
+    ["revoked", { status: "revoked" }],
+    ["out of uses", { uses: 10, status: "exhausted" }],
+    ["out of total", { spent: "1000000000", status: "exhausted" }],
+    ["reserved up to the total", { spent: "900000000", reserved: "100000000" }],
+  ];
+
+  it("chooses the live id-2 mandate over a dead id-1 one, and the contract accepts it", () => {
+    for (const [label, overrides] of dead) {
+      const i = rulesOnly({ mandates: [mandate({ id: 1, ...overrides }), mandate({ id: 2 })] });
+      expect(purposeMatch(i.mandates, P1, NOW)?.id, label).toBe(2);
+      const d = decide(i);
+      expect(d.mandate_id, label).toBe(2);
+      expect(d.verdict, label).toBe("allow");
+      assertMirrorsContract(i);
+    }
+  });
+
+  it("takes the lowest live id, whatever order the mandates arrive in", () => {
+    const ms = [mandate({ id: 3 }), mandate({ id: 2 }), mandate({ id: 1, status: "revoked" })];
+    expect(purposeMatch(ms, P1, NOW)?.id).toBe(2);
+    expect(ms.map((m) => m.id)).toEqual([3, 2, 1]); // the caller's array is not reordered
+    expect(
+      purposeMatch([mandate({ id: 1 }), mandate({ id: 2, status: "revoked" })], P1, NOW)?.id,
+    ).toBe(1);
+  });
+
+  it("falls back to the lowest-id match when none is live, so the refusal names the real reason", () => {
+    const table: [RuleId, MandateView[]][] = [
+      [
+        "mandate.expired",
+        [mandate({ id: 2, status: "revoked" }), mandate({ id: 1, expires_at_ns: EXPIRED })],
+      ],
+      [
+        "mandate.inactive",
+        [mandate({ id: 2, expires_at_ns: EXPIRED }), mandate({ id: 1, status: "revoked" })],
+      ],
+      [
+        "mandate.uses_exhausted",
+        [
+          mandate({ id: 3, expires_at_ns: EXPIRED }),
+          mandate({ id: 1, uses: 10, status: "exhausted" }),
+          mandate({ id: 2, status: "revoked" }),
+        ],
+      ],
+      [
+        "mandate.over_total",
+        [
+          mandate({ id: 2, status: "revoked" }),
+          mandate({ id: 1, spent: "1000000000", status: "exhausted" }),
+        ],
+      ],
+    ];
+    for (const [ruleId, mandates] of table) {
+      const i = rulesOnly({ mandates });
+      const d = decide(i);
+      expect(d.mandate_id, ruleId).toBe(1);
+      expect(d.verdict, ruleId).toBe("refuse");
+      expect(rule(d.rules, ruleId)?.outcome, ruleId).toBe("refuse");
+      expect(rule(d.rules, "mandate.none")?.outcome, ruleId).toBe("pass");
+      assertMirrorsContract(i);
+    }
+  });
+
+  it("returns null when no mandate has the purpose, or the invoice has none", () => {
+    expect(purposeMatch([mandate({ id: 1 })], sha256Hex("other"), NOW)).toBeNull();
+    expect(purposeMatch([mandate({ id: 1 })], null, NOW)).toBeNull();
+  });
+
+  it("still takes a trusted proposal's mandate as-is, even when it is dead", () => {
+    const i = input({
+      mandates: [mandate({ id: 1, expires_at_ns: EXPIRED }), mandate({ id: 2 })],
+      proposal: proposal({ mandate_id: 1 }),
+    });
+    const d = decide(i);
+    expect(d.mandate_id).toBe(1);
+    expect(d.verdict).toBe("refuse");
+    expect(rule(d.rules, "mandate.expired")?.outcome).toBe("refuse");
+    expect(rule(d.rules, "invoice.po_mismatch")?.outcome).toBe("refuse"); // the purpose maps to id 2
   });
 });
 
@@ -1044,11 +1190,23 @@ describe("helpers", () => {
     expect(isPositiveAmount(1)).toBe(false);
   });
 
-  it("prefers the lowest-id active mandate for a purpose", () => {
+  it("prefers the lowest-id live mandate for a purpose", () => {
     const ms = [mandate({ id: 3 }), mandate({ id: 1, status: "revoked" }), mandate({ id: 2 })];
-    expect(purposeMatch(ms, P1)?.id).toBe(2);
-    expect(purposeMatch([mandate({ id: 1, status: "revoked" })], P1)?.id).toBe(1);
-    expect(purposeMatch(ms, null)).toBeNull();
+    expect(purposeMatch(ms, P1, NOW)?.id).toBe(2);
+    expect(purposeMatch([mandate({ id: 1, status: "revoked" })], P1, NOW)?.id).toBe(1);
+    expect(purposeMatch(ms, null, NOW)).toBeNull();
+  });
+
+  it("judges expiry against the clock it is given (now >= expires_at_ns is dead)", () => {
+    const ms = [mandate({ id: 1, expires_at_ns: NOW_NS.toString() }), mandate({ id: 2 })];
+    expect(purposeMatch(ms, P1, NOW)?.id).toBe(2);
+    expect(purposeMatch(ms, P1, new Date(NOW.getTime() - 1))?.id).toBe(1);
+  });
+
+  it("treats an unreadable clock or expiry as dead, never as live", () => {
+    const ms = [mandate({ id: 1, expires_at_ns: "soon" }), mandate({ id: 2 })];
+    expect(purposeMatch(ms, P1, NOW)?.id).toBe(2);
+    expect(purposeMatch(ms, P1, new Date(Number.NaN))?.id).toBe(1); // nothing live: lowest id
   });
 
   it("explains payee contradictions", () => {

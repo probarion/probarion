@@ -44,16 +44,46 @@ function clip(text: string, max = 200): string {
   return text.length <= max ? text : `${text.slice(0, max)}…`;
 }
 
-/** The lowest-id active mandate with this purpose; if none is active, the lowest-id one (so `mandate.inactive` explains). */
+/** `now >= expires_at_ns` (checks.rs:37); null when the clock or the expiry is unreadable. */
+function hasExpired(now: Date, expiresAtNs: string): boolean | null {
+  const nowMs = now.getTime();
+  const expiresNs = toBig(expiresAtNs);
+  if (Number.isNaN(nowMs) || expiresNs === null) return null;
+  return BigInt(nowMs) * NS_PER_MS >= expiresNs;
+}
+
+/**
+ * Whether the contract could still accept a spend on this mandate at `now`: not revoked (checks.rs:34),
+ * not expired (:37), a use left (:50), and room under the total for the smallest amount, 1 (:53).
+ * Unreadable numbers count as not spendable.
+ */
+function spendable(m: MandateView, now: Date): boolean {
+  if (m.status === "revoked") return false;
+  if (hasExpired(now, m.expires_at_ns) !== false) return false;
+  if (m.uses >= m.max_uses) return false;
+  const spent = toBig(m.spent);
+  const reserved = toBig(m.reserved);
+  const total = toBig(m.max_total);
+  if (spent === null || reserved === null || total === null) return false;
+  return satAdd(satAdd(spent, reserved), 1n) <= total;
+}
+
+/**
+ * The mandate the code pre-selects for a purpose: the lowest-id one that is not revoked, not expired
+ * at `now`, has a use left and room under its total. If none qualifies it falls back to the lowest-id
+ * match, so the decision still refuses with the precise reason (inactive, expired, uses_exhausted,
+ * over_total) instead of "no mandate". A trusted `proposal.mandate_id` bypasses this.
+ */
 export function purposeMatch(
   mandates: readonly MandateView[],
   purposeHash: string | null,
+  now: Date,
 ): MandateView | null {
   if (purposeHash === null) return null;
   const matches = mandates
     .filter((m) => m.purpose_hash === purposeHash)
     .sort((a, b) => a.id - b.id);
-  return matches.find((m) => m.status === "active") ?? matches[0] ?? null;
+  return matches.find((m) => spendable(m, now)) ?? matches[0] ?? null;
 }
 
 export function describePayee(payee: Payee): string {
@@ -116,12 +146,10 @@ function identityRules(input: DecisionInput, m: MandateView, push: Push): void {
   );
 
   // Expiry comes from expires_at_ns, never from the status: `active` also covers an expired mandate.
-  const nowMs = input.now.getTime();
-  const expiresNs = toBig(m.expires_at_ns);
-  if (Number.isNaN(nowMs) || expiresNs === null) {
+  const expired = hasExpired(input.now, m.expires_at_ns);
+  if (expired === null) {
     push("mandate.expired", "refuse", "clock or mandate expiry unreadable: refused");
   } else {
-    const expired = BigInt(nowMs) * NS_PER_MS >= expiresNs;
     push(
       "mandate.expired",
       expired ? "refuse" : "pass",
@@ -250,9 +278,17 @@ function duplicateRule(input: DecisionInput, push: Push): void {
 /** OverDailyBackstop (checks.rs:63): `spent_today` is the contract's total for the UTC day of `now`. */
 function dailyRule(daily: DecisionInput["daily"], amount: bigint | null, push: Push): void {
   if (daily === null) {
-    push("vault.daily_backstop", "pass", "not checked: no daily data");
+    push(
+      "vault.daily_backstop",
+      "pass",
+      "daily backstop not evaluated: daily is null (no daily data supplied); check_spend still enforces it on-chain",
+    );
   } else if (amount === null) {
-    push("vault.daily_backstop", "pass", "not checked: invalid amount");
+    push(
+      "vault.daily_backstop",
+      "pass",
+      "daily backstop not evaluated: the invoice amount is invalid",
+    );
   } else {
     const spentToday = toBig(daily.spent_today);
     const limit = toBig(daily.backstop);
@@ -339,8 +375,15 @@ function runCustomRule(
  * Rules that mirror the vault's `check_spend` are recorded in the contract's own check order
  * (contracts/vault/src/checks.rs `Vault::evaluate`), with its operators, so the first refusing
  * mirrored rule is the code `spend` would panic with. Off-chain rules (purpose, payee, Intents
- * balance, model) sit between them. The one contract check with no counterpart is `NotAgent`:
- * `DecisionInput` has no agent registry, so the caller must pass the vault's own agent key.
+ * balance, model) sit between them.
+ *
+ * What the caller must supply, because `DecisionInput` cannot:
+ * - `agentPk` is the vault's own registered agent key. The contract's `NotAgent` (checks.rs:23) has
+ *   no counterpart here, since there is no agent registry in the input.
+ * - `daily.spent_today` is the contract's total for the UTC day of `now` (bucket `ts / DAY_NS`;
+ *   0 when the bucket is another day). `decide` takes it as given.
+ * - With `daily: null` the backstop is recorded as not evaluated and does not refuse. The SDK's
+ *   `check_spend` dry run, which runs before every `spend`, still catches `OverDailyBackstop`.
  */
 export function decide(input: DecisionInput): Decision {
   const rules: RuleResult[] = [];
@@ -375,7 +418,7 @@ export function decide(input: DecisionInput): Decision {
   }
 
   const proposedId = trusted?.mandate_id ?? null;
-  const byPurpose = purposeMatch(input.mandates, input.invoice.purpose_hash);
+  const byPurpose = purposeMatch(input.mandates, input.invoice.purpose_hash, input.now);
   const chosen =
     proposedId !== null ? (input.mandates.find((m) => m.id === proposedId) ?? null) : byPurpose;
 
