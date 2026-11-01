@@ -148,6 +148,10 @@ function checkResponseBinding(
     return fail("response_body has no choices[0].message.content text");
   let signed: string;
   try {
+    // Verification contract: extractJsonObject and parseModelProposal are frozen for ledger `v` 1. Any
+    // behavioural change (what they accept, how they normalise, the reasoning length) needs a new
+    // ledger `v`, and this check must then dispatch on the entry's `v` so old entries still verify.
+    // Versioning is not built yet; interfaces §7 records the rule.
     signed = canonicalJson(parseModelProposal(extractJsonObject(content)));
   } catch (error) {
     const reason = error instanceof Error ? error.message : "unknown error";
@@ -172,18 +176,28 @@ function checkResponseBinding(
 /**
  * Offline checks A1–A7 of interfaces §7. Online checks O1/O2 live in @probarion/sdk.
  *
- * Scope: A1–A7 prove internal consistency only. They do not prove that the TDX quote came from
- * genuine TEE hardware or that the signing key is a measured TEE key; that is O1 (online), so every
- * result carries `quote_verified: false`. A8 (request binding) needs the invoice document and is run
- * by an auditor, outside this function.
+ * Scope: A1–A7 prove internal consistency only. A7 detects post-hoc tampering with a genuine
+ * exchange, for example a swapped proposal or an edited response. Until the request check A8 runs
+ * with the invoice documents, A1–A7 do NOT prove that the request was the honest one for this
+ * invoice and position: whoever writes the ledger could send a request of their choosing and
+ * record its signed answer. A8 closes that gap; it is run by an auditor, outside this function.
+ * They also do not prove that the TDX quote came from genuine TEE hardware or that the signing key
+ * is a measured TEE key; that is O1 (online). `quote_verified` is a boolean that this function
+ * always sets to false; only the SDK's online path sets it true, after O1 verifies the DCAP quote
+ * and the measurement pin.
  *
  * `expectedNonce` comes from the caller's ledger context: it is `computeNonce` over the entry's
  * `prev_link`, `invoice_hash`, `mandate_id`, `seq` and the vault account id (ICR-1). A6 compares the
- * evidence nonce with it, which binds the model's answer to one position in one vault's ledger.
+ * evidence nonce with it. A5 and A6 therefore bind the attestation REPORT to one position in one
+ * vault's ledger; they do not bind the chat.
  *
  * `expectedProposal` is the decision entry's recorded `proposal` (ICR-2). A7 requires the proposal inside
  * the signed response body to equal it, so a ledger writer cannot record "pay" after the model said
  * "refuse". A decision with evidence must have a proposal: null fails A7.
+ *
+ * Storage: the invoice text of the REQUEST is never stored in the ledger, but `evidence.response_body`
+ * stores the full model output. It may quote invoice details, and its size is bounded only by the
+ * model's response.
  */
 export async function checkAttestation(
   evidence: AttestationEvidence,

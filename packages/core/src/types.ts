@@ -334,7 +334,10 @@ export interface AttestationCheck {
 export interface AttestationResult {
   ok: boolean;
   binding: AttestationBinding;
-  /** Always false from the offline checks: A1..A7 prove internal consistency only; the TDX quote is verified by O1 (online). */
+  /**
+   * Always false from the offline checks: A1..A7 prove internal consistency only. It is a boolean
+   * because the SDK's online path may set it true, after O1 verifies the DCAP quote and the measurement pin.
+   */
   quote_verified: boolean;
   checks: AttestationCheck[]; // always A1..A7, in order
 }

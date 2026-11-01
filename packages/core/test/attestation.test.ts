@@ -430,11 +430,14 @@ describe("A7 response binding", () => {
       expect(verdicts(r)).toEqual({ ...ALL_PASS, A7: false });
     });
 
-    // Known limit of the offline checks, kept as a test so it cannot be forgotten: when both positions
-    // hold the same proposal, the replayed chat looks exactly like a genuine one to A1-A7. Only the
-    // auditor check A8 (request_sha256 recomputed from the invoice document, which carries the nonce in
-    // its system message) can tell, and the ledger does not hold invoice text.
-    it("is NOT caught offline when the proposal is identical: that case is A8's, run by an auditor", async () => {
+    // Known limit of the offline checks, kept as a test so it cannot be forgotten. A7 detects post-hoc
+    // tampering with a genuine exchange; it does not show that the request was the honest one for this
+    // invoice and position. Whoever writes the ledger can pair a genuine chat that was asked for
+    // something else with a report fetched for this entry's nonce, and when the answer happens to
+    // equal the recorded proposal, A1-A7 cannot tell. Only the auditor check A8 (request_sha256
+    // recomputed from the invoice documents, with the nonce in the system message) can; the ledger
+    // does not hold the request's invoice text.
+    it("passes A1-A7 for a chat that was not requested for this position when its proposal is the same: only A8, run by an auditor with the invoice documents, shows the request was not the honest one", async () => {
       const chatA = await buildTestEvidence({
         ...base,
         nonce: nonceA,
