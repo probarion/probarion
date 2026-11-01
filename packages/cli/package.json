@@ -1,0 +1,46 @@
+{
+  "name": "probarion",
+  "version": "0.1.0",
+  "description": "Probarion CLI: prepare owner transactions, dry-run spends and verify a vault's ledger, anchors, attestations and keys.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "probarion": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/probarion/probarion.git",
+    "directory": "packages/cli"
+  },
+  "dependencies": {
+    "@probarion/core": "workspace:*",
+    "@probarion/sdk": "workspace:*",
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
