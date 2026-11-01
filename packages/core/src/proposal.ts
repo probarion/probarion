@@ -1,3 +1,4 @@
+import { deepFreeze } from "./freeze.js";
 import type { ModelProposal, PayeeHint } from "./types.js";
 
 /** Unicode code points, as JSON Schema `maxLength` counts them (not UTF-16 units). */
@@ -7,8 +8,11 @@ export class ProposalParseError extends Error {
   override name = "ProposalParseError";
 }
 
-/** JSON schema sent as `response_format.json_schema.schema` to NEAR AI Cloud. */
-export const MODEL_PROPOSAL_JSON_SCHEMA = {
+/**
+ * JSON schema sent as `response_format.json_schema.schema` to NEAR AI Cloud. It is part of the request
+ * bytes that check A8 rebuilds, so it is deep-frozen: nothing in the process can change it.
+ */
+export const MODEL_PROPOSAL_JSON_SCHEMA = deepFreeze({
   type: "object",
   additionalProperties: false,
   required: ["action", "mandate_id", "amount", "payee_hint", "reasoning", "confidence"],
@@ -34,7 +38,7 @@ export const MODEL_PROPOSAL_JSON_SCHEMA = {
     reasoning: { type: "string", maxLength: MAX_REASONING_CHARS },
     confidence: { type: "number", minimum: 0, maximum: 1 },
   },
-} as const;
+} as const);
 
 /**
  * Keeps the first `max` code points. A cut by UTF-16 units can split a surrogate pair and leave a lone

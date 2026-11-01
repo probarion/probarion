@@ -1,5 +1,6 @@
+import { deepFreeze } from "./freeze.js";
 import { canonicalJson, sha256Hex } from "./hash.js";
-import { isHex32 } from "./hex.js";
+import { isHex32, utf8 } from "./hex.js";
 import { MODEL_PROPOSAL_JSON_SCHEMA } from "./proposal.js";
 import type {
   Hex32,
@@ -31,6 +32,32 @@ export const PROPOSAL_SYSTEM_PROMPT = [
   "mandate_id is the id of the mandate the invoice belongs to, or null.",
   "confidence is your confidence in this proposal, from 0 to 1. Reply with JSON only, matching the schema.",
 ].join("\n");
+
+/**
+ * `max_tokens` of template v1 (ICR-3b), decided before any real decision froze the v1 bytes. It keeps a
+ * thinking model's output well under the 64 KiB cap on `response_body` (4096 tokens are about 16 KiB).
+ */
+export const PROPOSAL_MAX_TOKENS = 4096;
+
+/** A system prompt that check A8 accepts, by the sha256 of its UTF-8 bytes. `name` is what a result reports. */
+export interface KnownSystemPrompt {
+  readonly name: string;
+  readonly sha256: Hex32;
+}
+
+/** The allow-list entry for `prompt`. Plan 04 uses it for the Canary persona: `[...KNOWN_SYSTEM_PROMPT_HASHES, knownSystemPrompt("canary", CANARY_PROMPT)]`. */
+export function knownSystemPrompt(name: string, prompt: string): KnownSystemPrompt {
+  return { name, sha256: sha256Hex(prompt) };
+}
+
+/**
+ * The system prompts check A8 accepts by default (ICR-3b): `PROPOSAL_SYSTEM_PROMPT` and the published
+ * personas (none yet). The system prompt is the strongest lever over the model's answer, so a request is
+ * accepted only under a prompt the auditor knows; a caller extends the list by passing its own to A8.
+ */
+export const KNOWN_SYSTEM_PROMPT_HASHES: readonly KnownSystemPrompt[] = deepFreeze([
+  knownSystemPrompt("PROPOSAL_SYSTEM_PROMPT", PROPOSAL_SYSTEM_PROMPT),
+]);
 
 /**
  * Everything `buildProposalRequest` needs besides the model and the system prompt. `facts` accepts the
@@ -137,6 +164,7 @@ export function buildProposalRequest(
       type: "json_schema",
       json_schema: { name: "ModelProposal", schema: MODEL_PROPOSAL_JSON_SCHEMA },
     },
+    max_tokens: PROPOSAL_MAX_TOKENS,
     temperature: 0,
     stream: false,
   });
@@ -160,4 +188,147 @@ export function proposalRequestInputs(
     mandates: input.mandates.map(toProposalRequestMandate),
     invoice_text_sha256: sha256Hex(wellFormed(input.invoiceText)),
   };
+}
+
+// ---------- strict shape of request_inputs (ICR-3b) ----------
+
+/** u128 and u64 decimal strings as the contract serialises them: no sign, no leading zero, at most 39 digits. */
+const DECIMAL_RE = /^(0|[1-9][0-9]{0,38})$/;
+/** `MandateInput.label` is at most 64 bytes on chain (contracts/vault/src/mandates.rs). */
+const MAX_LABEL_BYTES = 64;
+const REQUEST_INPUTS_KEYS: readonly string[] = deepFreeze([
+  "template",
+  "model",
+  "system_prompt",
+  "facts",
+  "mandates",
+  "invoice_text_sha256",
+]);
+const FACT_KEYS: readonly string[] = deepFreeze([
+  "invoice_hash",
+  "amount",
+  "po_ref",
+  "purpose_hash",
+]);
+const MANDATE_KEYS: readonly string[] = deepFreeze([
+  "id",
+  "label",
+  "payee",
+  "purpose_hash",
+  "max_per_payment",
+  "remaining",
+  "expires_at_ns",
+  "status",
+]);
+const NEAR_PAYEE_KEYS: readonly string[] = deepFreeze(["type", "account_id"]);
+const INTENTS_PAYEE_KEYS: readonly string[] = deepFreeze(["type", "chain", "address", "asset"]);
+const MANDATE_STATUSES: readonly string[] = deepFreeze(["active", "revoked", "exhausted"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** null when `o` has exactly `keys`; otherwise what is wrong. A field the request does not carry would be unbound. */
+function keyProblem(o: Record<string, unknown>, keys: readonly string[]): string | null {
+  const extra = Object.keys(o).filter((k) => !keys.includes(k));
+  if (extra.length > 0) return `holds fields the request does not carry: ${extra.join(", ")}`;
+  const missing = keys.filter((k) => !Object.hasOwn(o, k));
+  return missing.length > 0 ? `is missing fields: ${missing.join(", ")}` : null;
+}
+
+const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+const isDecimal = (v: unknown): v is string => typeof v === "string" && DECIMAL_RE.test(v);
+
+function factsProblem(facts: unknown): string | null {
+  if (facts === null) return null;
+  const at = "request_inputs.facts";
+  if (!isRecord(facts)) return `${at} is not an object or null`;
+  const keys = keyProblem(facts, FACT_KEYS);
+  if (keys !== null) return `${at} ${keys}`;
+  if (!isHex32(facts.invoice_hash)) return `${at}.invoice_hash is not 64 lowercase hex`;
+  if (!isDecimal(facts.amount)) return `${at}.amount is not a decimal string`;
+  if (facts.po_ref !== null && typeof facts.po_ref !== "string") {
+    return `${at}.po_ref is not text or null`;
+  }
+  if (facts.purpose_hash !== null && !isHex32(facts.purpose_hash)) {
+    return `${at}.purpose_hash is not 64 lowercase hex or null`;
+  }
+  return null;
+}
+
+/** The `Payee` of interfaces §4.1: a tagged union, `near` or `intents`, with exactly its own keys. */
+function payeeProblem(payee: unknown, at: string): string | null {
+  if (!isRecord(payee)) return `${at} is not an object`;
+  if (payee.type === "near") {
+    const keys = keyProblem(payee, NEAR_PAYEE_KEYS);
+    if (keys !== null) return `${at} ${keys}`;
+    return isNonEmptyString(payee.account_id) ? null : `${at}.account_id is not an account id`;
+  }
+  if (payee.type === "intents") {
+    const keys = keyProblem(payee, INTENTS_PAYEE_KEYS);
+    if (keys !== null) return `${at} ${keys}`;
+    if (payee.chain !== "base" && payee.chain !== "solana") {
+      return `${at}.chain is not base or solana`;
+    }
+    return isNonEmptyString(payee.address) && isNonEmptyString(payee.asset)
+      ? null
+      : `${at} has a wrong-typed address or asset`;
+  }
+  return `${at}.type is neither near nor intents`;
+}
+
+function mandateProblem(m: unknown, index: number): string | null {
+  const at = `request_inputs.mandates[${index}]`;
+  if (!isRecord(m)) return `${at} is not an object`;
+  const keys = keyProblem(m, MANDATE_KEYS);
+  if (keys !== null) return `${at} ${keys}`;
+  if (typeof m.id !== "number" || !Number.isSafeInteger(m.id) || m.id < 1) {
+    return `${at}.id is not an integer >= 1`;
+  }
+  if (typeof m.label !== "string" || utf8(m.label).length > MAX_LABEL_BYTES) {
+    return `${at}.label is not text of at most ${MAX_LABEL_BYTES} bytes`;
+  }
+  const payee = payeeProblem(m.payee, `${at}.payee`);
+  if (payee !== null) return payee;
+  if (!isHex32(m.purpose_hash)) return `${at}.purpose_hash is not 64 lowercase hex`;
+  for (const field of ["max_per_payment", "remaining", "expires_at_ns"] as const) {
+    if (!isDecimal(m[field])) return `${at}.${field} is not a decimal string`;
+  }
+  if (typeof m.status !== "string" || !MANDATE_STATUSES.includes(m.status)) {
+    return `${at}.status is not active, revoked or exhausted`;
+  }
+  return null;
+}
+
+/**
+ * The strict shape of an evidence `request_inputs` (ICR-3b), checked by A8 before anything is rebuilt and by
+ * the SDK before anything is sent: exactly the six keys, the known template, a model id, a system prompt,
+ * 64-hex hashes, decimal-string amounts, `Payee` as the exact tagged union, a mandate status from the
+ * enum, and no extra keys at any level. `facts` may be null here (A8 requires it non-null separately).
+ * Evidence is read back from a ledger file, so the value can be anything. Returns null when it conforms,
+ * else the first problem. It never throws.
+ */
+export function proposalRequestInputsProblem(raw: unknown): string | null {
+  if (raw === undefined) {
+    return "request_inputs is missing: the entry carries no request evidence (ICR-3)";
+  }
+  if (!isRecord(raw)) return "request_inputs is not an object";
+  const keys = keyProblem(raw, REQUEST_INPUTS_KEYS);
+  if (keys !== null) return `request_inputs ${keys}`;
+  if (raw.template !== PROPOSAL_REQUEST_TEMPLATE) {
+    return `unsupported request template ${JSON.stringify(raw.template)} (A8 knows ${PROPOSAL_REQUEST_TEMPLATE})`;
+  }
+  if (!isNonEmptyString(raw.model)) return "request_inputs.model is not a model id";
+  if (typeof raw.system_prompt !== "string") return "request_inputs.system_prompt is not text";
+  if (!isHex32(raw.invoice_text_sha256)) {
+    return "request_inputs.invoice_text_sha256 is not 64 lowercase hex";
+  }
+  const facts = factsProblem(raw.facts);
+  if (facts !== null) return facts;
+  if (!Array.isArray(raw.mandates)) return "request_inputs.mandates is not a list";
+  for (const [index, m] of raw.mandates.entries()) {
+    const problem = mandateProblem(m, index);
+    if (problem !== null) return problem;
+  }
+  return null;
 }

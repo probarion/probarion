@@ -1,8 +1,14 @@
 import { recoverMessageAddress } from "viem";
 import { canonicalJson, sha256Hex } from "./hash.js";
 import { bytesToHex, hexToBytes, isHex32 } from "./hex.js";
+import { computeNonce, type NonceContext } from "./ledger.js";
 import { extractJsonObject, parseModelProposal } from "./proposal.js";
-import { buildProposalRequest, PROPOSAL_REQUEST_TEMPLATE } from "./proposal-request.js";
+import {
+  buildProposalRequest,
+  KNOWN_SYSTEM_PROMPT_HASHES,
+  type KnownSystemPrompt,
+  proposalRequestInputsProblem,
+} from "./proposal-request.js";
 import type {
   AttestationBinding,
   AttestationCheck,
@@ -11,9 +17,7 @@ import type {
   AttestationResult,
   Hex32,
   ModelProposal,
-  ProposalRequestFacts,
   ProposalRequestInputs,
-  ProposalRequestMandate,
 } from "./types.js";
 
 /** The TD report body starts after the 48-byte quote header (v4), or after the header plus a 6-byte body descriptor (v5). */
@@ -244,8 +248,9 @@ function checkResponseBinding(
  * exchange, for example a swapped proposal or an edited response. Until the request check A8 runs
  * with the invoice documents, A1–A7 do NOT prove that the request was the honest one for this
  * invoice and position: whoever writes the ledger could send a request of their choosing and
- * record its signed answer. A8 (`checkRequestBinding`, ICR-3) closes that gap; it is run by an
- * auditor who holds the invoice text, outside this function.
+ * record its signed answer. A8 (`checkRequestBinding`, ICR-3b) narrows that: it shows the TEE answered
+ * the standard request, under an allow-listed prompt, for the invoice text bound on chain, at this ledger
+ * position. It is run by an auditor who holds the invoice text, outside this function.
  * They also do not prove that the TDX quote came from genuine TEE hardware or that the signing key
  * is a measured TEE key; that is O1 (online). `quote_verified` is a boolean that this function
  * always sets to false; only the SDK's online path sets it true, after O1 verifies the DCAP quote
@@ -357,135 +362,55 @@ export async function checkAttestation(
   return { ok: checks.every((c) => c.pass), binding, quote_verified: false, checks };
 }
 
-// ---------- A8: request binding (ICR-3) ----------
+// ---------- A8: request binding (ICR-3, ICR-3b) ----------
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const FACT_KEYS: readonly string[] = ["invoice_hash", "amount", "po_ref", "purpose_hash"];
-const MANDATE_KEYS: readonly string[] = [
-  "id",
-  "label",
-  "payee",
-  "purpose_hash",
-  "max_per_payment",
-  "remaining",
-  "expires_at_ns",
-  "status",
-];
-const MANDATE_TEXT_KEYS: readonly string[] = [
-  "label",
-  "purpose_hash",
-  "max_per_payment",
-  "remaining",
-  "expires_at_ns",
-  "status",
-];
-
-/** null when `o` has exactly `keys`; otherwise what is wrong. A field the request does not carry would be unbound. */
-function keyProblem(o: Record<string, unknown>, keys: readonly string[]): string | null {
-  const extra = Object.keys(o).filter((k) => !keys.includes(k));
-  if (extra.length > 0) return `holds fields the request does not carry: ${extra.join(", ")}`;
-  const missing = keys.filter((k) => !Object.hasOwn(o, k));
-  return missing.length > 0 ? `is missing fields: ${missing.join(", ")}` : null;
-}
-
-function isStringOrNull(value: unknown): boolean {
-  return value === null || typeof value === "string";
-}
-
-function factsProblem(facts: unknown): string | null {
-  if (facts === null) return null;
-  if (!isRecord(facts)) return "request_inputs.facts is not an object or null";
-  const keys = keyProblem(facts, FACT_KEYS);
-  if (keys !== null) return `request_inputs.facts ${keys}`;
-  if (typeof facts.invoice_hash !== "string" || typeof facts.amount !== "string") {
-    return "request_inputs.facts has a wrong-typed invoice_hash or amount";
-  }
-  return isStringOrNull(facts.po_ref) && isStringOrNull(facts.purpose_hash)
-    ? null
-    : "request_inputs.facts has a wrong-typed po_ref or purpose_hash";
-}
-
-function mandateProblem(m: unknown, index: number): string | null {
-  const at = `request_inputs.mandates[${index}]`;
-  if (!isRecord(m)) return `${at} is not an object`;
-  const keys = keyProblem(m, MANDATE_KEYS);
-  if (keys !== null) return `${at} ${keys}`;
-  if (
-    typeof m.id !== "number" ||
-    !MANDATE_TEXT_KEYS.every((k) => typeof m[k] === "string") ||
-    !isRecord(m.payee)
-  ) {
-    return `${at} has a wrong-typed field`;
-  }
-  return null;
-}
-
-/** Shape-checks `request_inputs`, which is read back from a ledger file and so can hold anything, before it rebuilds the request. */
-function readRequestInputs(
-  raw: unknown,
-): { ok: true; inputs: ProposalRequestInputs } | { ok: false; detail: string } {
-  const bad = (detail: string): { ok: false; detail: string } => ({ ok: false, detail });
-  if (raw === undefined) {
-    return bad("request_inputs is missing: the entry carries no request evidence (ICR-3)");
-  }
-  if (!isRecord(raw)) return bad("request_inputs is not an object");
-  if (raw.template !== PROPOSAL_REQUEST_TEMPLATE) {
-    return bad(
-      `unsupported request template ${JSON.stringify(raw.template)} (A8 knows ${PROPOSAL_REQUEST_TEMPLATE})`,
-    );
-  }
-  if (typeof raw.model !== "string" || raw.model.length === 0) {
-    return bad("request_inputs.model is not a model id");
-  }
-  if (typeof raw.system_prompt !== "string") return bad("request_inputs.system_prompt is not text");
-  if (!isHex32(raw.invoice_text_sha256)) {
-    return bad("request_inputs.invoice_text_sha256 is not 64 lowercase hex");
-  }
-  const facts = factsProblem(raw.facts);
-  if (facts !== null) return bad(facts);
-  if (!Array.isArray(raw.mandates)) return bad("request_inputs.mandates is not a list");
-  for (const [index, m] of raw.mandates.entries()) {
-    const problem = mandateProblem(m, index);
-    if (problem !== null) return bad(problem);
-  }
-  return {
-    ok: true,
-    inputs: {
-      template: PROPOSAL_REQUEST_TEMPLATE,
-      model: raw.model,
-      system_prompt: raw.system_prompt,
-      facts: raw.facts as ProposalRequestFacts | null,
-      mandates: raw.mandates as ProposalRequestMandate[],
-      invoice_text_sha256: raw.invoice_text_sha256,
-    },
-  };
+export interface RequestBindingOptions {
+  /**
+   * The system prompts the auditor accepts, replacing `KNOWN_SYSTEM_PROMPT_HASHES`. Extend rather than
+   * replace the default: `[...KNOWN_SYSTEM_PROMPT_HASHES, knownSystemPrompt("canary", CANARY_PROMPT)]`.
+   */
+  systemPrompts?: readonly KnownSystemPrompt[];
 }
 
 /**
- * A8, request binding (interfaces §7, ICR-3): the auditor check that shows the chat request was the one
- * `request_inputs` describes, for the invoice text in hand and the ledger nonce. It is separate from
- * `checkAttestation` because it needs the invoice text, which the ledger never stores. It passes when
- * (1) sha256(utf8(invoiceText)) equals `request_inputs.invoice_text_sha256`; (2) the request rebuilt by
- * `buildProposalRequest` from the recorded model, system prompt, facts and mandates, the invoice text
- * and `evidence.nonce` hashes to `request_sha256`, so the signed request was byte-identical to it and its
- * `nonce:` header is `evidence.nonce`; (3) when `expectedNonce` is given (the nonce recomputed from the
- * ledger context, the same value `checkAttestation` gets), `evidence.nonce` equals it. Without
- * `expectedNonce` the request is bound to `evidence.nonce`, and A6 is what ties that to the ledger
- * position. It also requires the known template, `request_inputs.model` equal to the signed model, and
- * `facts` and `mandates` that hold exactly the fields the template carries.
+ * A8, request binding (interfaces §7, ICR-3 and ICR-3b): the auditor check that the TEE answered the
+ * standard Probarion request, under an allow-listed system prompt, for exactly this invoice text, at this
+ * ledger position. It is separate from `checkAttestation` because it needs the invoice text, which the
+ * ledger never stores, and the ledger context of the decision entry (`vault`, `prev_link`, `seq`,
+ * `invoice_hash`, `mandate_id`). It passes only when all of these hold:
  *
- * What it does not do: judge the recorded inputs. A writer who sent a persona as the system prompt, or
- * facts that never matched the chain, leaves them readable in `request_inputs` for the auditor. Like A1 to
- * A7 it does not show that the quote came from genuine TEE hardware (that is O1, online). It never
- * throws: malformed evidence fails. Without the invoice text, do not call it: A8 is then "not run".
+ *  1. `request_inputs` has the strict shape (`proposalRequestInputsProblem`): the known template, exactly
+ *     the keys of interfaces §6, 64-hex hashes, decimal-string amounts, `Payee` as the exact tagged
+ *     union, a status from the enum, `request_inputs.model === evidence.model`;
+ *  2. the nonce recomputed from `context` equals `evidence.nonce`, and the rebuilt request carries it in
+ *     its `nonce:` header;
+ *  3. `request_inputs.invoice_text_sha256 === context.invoice_hash` (the value check d ties to the
+ *     on-chain `spend.invoice_hash`) and `sha256(invoiceText) === invoice_text_sha256`;
+ *  4. `request_inputs.facts` is not null and `facts.invoice_hash === context.invoice_hash`;
+ *  5. `sha256(request_inputs.system_prompt)` is in the allow-list (`opts.systemPrompts`, default
+ *     `KNOWN_SYSTEM_PROMPT_HASHES`); the detail names the prompt that matched;
+ *  6. the request rebuilt by `buildProposalRequest` from the recorded inputs, the invoice text and the
+ *     nonce hashes to `request_sha256`, so the signed request was byte-identical to it.
+ *
+ * What it does NOT prove: that `request_inputs.facts` and `request_inputs.mandates` matched the chain at
+ * decision time. Task 14 compares `mandates` with the snapshot's immutable mandate fields, checks that the
+ * entry's `mandate_id` is among them and that `facts.amount` equals the entry's amount; the historical
+ * `remaining` and `status` cannot be checked without archival chain state. Free text that the strict shape
+ * leaves open (`label`, `po_ref`, account ids) is bound by `request_sha256` but not constrained. Prompt
+ * injection inside the invoice text itself is out of scope here: `decide()` and the contract are the
+ * defence. Like A1 to A7 it does not show that the quote came from genuine TEE hardware (that is O1,
+ * online). It never throws: malformed evidence or context fails. Without the invoice text or the context,
+ * do not call it: A8 is then "not run".
  */
 export function checkRequestBinding(
   evidence: AttestationEvidence,
   invoiceText: string,
-  expectedNonce?: Hex32,
+  context: NonceContext,
+  opts: RequestBindingOptions = {},
 ): AttestationCheck {
   const fail = (detail: string): AttestationCheck => ({ id: "A8", pass: false, detail });
   try {
@@ -493,17 +418,34 @@ export function checkRequestBinding(
     if (typeof invoiceText !== "string") {
       return fail("no invoice text to check the request against");
     }
-    const read = readRequestInputs(evidence.request_inputs);
-    if (!read.ok) return fail(read.detail);
-    const inputs = read.inputs;
+    if (!isRecord(context)) return fail("no ledger context to check the request against");
+    const problem = proposalRequestInputsProblem(evidence.request_inputs);
+    if (problem !== null) return fail(problem);
+    const inputs = evidence.request_inputs as ProposalRequestInputs;
     if (inputs.model !== evidence.model) {
       return fail("request_inputs.model differs from the model the signature covers");
     }
-    if (!isHex32(evidence.nonce)) return fail("the evidence nonce is not 64 lowercase hex");
     if (!isHex32(evidence.request_sha256)) return fail("request_sha256 is not 64 lowercase hex");
-    if (expectedNonce !== undefined && evidence.nonce !== expectedNonce) {
+
+    let nonce: Hex32;
+    try {
+      nonce = computeNonce(context);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown error";
+      return fail(`cannot recompute the nonce from the ledger context: ${reason}`);
+    }
+    if (evidence.nonce !== nonce) {
       return fail(
-        "the evidence nonce is not the ledger nonce, so the nonce header of the request is not either",
+        "the evidence nonce is not the nonce recomputed from the ledger context, so the nonce header of the request is not either",
+      );
+    }
+
+    if (!isHex32(context.invoice_hash)) {
+      return fail("the ledger context has no invoice_hash to bind the invoice text to");
+    }
+    if (inputs.invoice_text_sha256 !== context.invoice_hash) {
+      return fail(
+        "request_inputs.invoice_text_sha256 differs from the ledger invoice_hash: the model was asked about another text than the one the chain is bound to",
       );
     }
     if (sha256Hex(invoiceText) !== inputs.invoice_text_sha256) {
@@ -511,10 +453,26 @@ export function checkRequestBinding(
         "sha256(invoice text) differs from request_inputs.invoice_text_sha256: this is not the invoice the model was asked about",
       );
     }
+    if (inputs.facts === null) {
+      return fail("request_inputs.facts is null: the model was not shown the invoice facts");
+    }
+    if (inputs.facts.invoice_hash !== context.invoice_hash) {
+      return fail("request_inputs.facts.invoice_hash differs from the ledger invoice_hash");
+    }
+
+    const promptHash = sha256Hex(inputs.system_prompt);
+    const allowed = opts.systemPrompts ?? KNOWN_SYSTEM_PROMPT_HASHES;
+    const matched = allowed.find((p) => isRecord(p) && p.sha256 === promptHash);
+    if (matched === undefined) {
+      return fail(
+        `the system prompt (sha256 ${promptHash}) is not in the allow-list of system prompts; its text stays readable in request_inputs.system_prompt`,
+      );
+    }
+
     const rebuilt = sha256Hex(
       buildProposalRequest(
         inputs.model,
-        { invoiceText, nonce: evidence.nonce, facts: inputs.facts, mandates: inputs.mandates },
+        { invoiceText, nonce, facts: inputs.facts, mandates: inputs.mandates },
         inputs.system_prompt,
       ),
     );
@@ -526,8 +484,7 @@ export function checkRequestBinding(
     return {
       id: "A8",
       pass: true,
-      detail:
-        "the request rebuilt from request_inputs, the invoice text and the nonce hashes to request_sha256 and carries the ledger nonce",
+      detail: `the standard request rebuilt from request_inputs, the invoice text bound to the ledger invoice_hash and the ledger nonce hashes to request_sha256, under the allow-listed system prompt ${JSON.stringify(String(matched.name))}`,
     };
   } catch (error) {
     const reason = error instanceof Error ? error.message : "unknown error";

@@ -39,6 +39,8 @@ describe("@probarion/core root exports (plan 04 ICR 7, plan 05 ICR 3)", () => {
       "checkRequestBinding",
       "buildProposalRequest",
       "proposalRequestInputs",
+      "proposalRequestInputsProblem",
+      "knownSystemPrompt",
       "normalizeEcdsaSignature",
       "formatProviderTeeText",
       "computeBodyHash",
@@ -59,6 +61,9 @@ describe("@probarion/core root exports (plan 04 ICR 7, plan 05 ICR 3)", () => {
     expect(core.PROPOSAL_REQUEST_TEMPLATE).toBe("probarion-proposal/v1");
     expect(typeof core.PROPOSAL_SYSTEM_PROMPT).toBe("string");
     expect(typeof core.PROVIDER_TEE_TEXT_FORMAT).toBe("string");
+    expect(core.PROPOSAL_MAX_TOKENS).toBe(4096);
+    expect(core.KNOWN_SYSTEM_PROMPT_HASHES.map((p) => p.name)).toEqual(["PROPOSAL_SYSTEM_PROMPT"]);
+    expect(Object.keys(core)).not.toContain("deepFreeze"); // internal helper, not API
     expect(Array.isArray(core.KNOWN_VAULT_CODE_HASHES)).toBe(true);
     expect(core.KNOWN_VAULT_CODE_HASHES.length).toBeGreaterThan(0);
     expect(Object.keys(core.CHECK_NAMES)).toEqual(["a", "b", "c", "d", "e", "f", "g", "h", "i"]);

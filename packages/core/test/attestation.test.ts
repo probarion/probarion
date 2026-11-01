@@ -14,7 +14,7 @@ import {
 } from "../src/attestation.js";
 import { sha256Hex } from "../src/hash.js";
 import { bytesToHex, hexToBytes } from "../src/hex.js";
-import { computeNonce } from "../src/ledger.js";
+import { computeNonce, ZERO_LINK } from "../src/ledger.js";
 import type { AttestationEvidence, AttestationResult, Hex32, ModelProposal } from "../src/types.js";
 import {
   buildTestEvidence,
@@ -466,45 +466,57 @@ describe("A7 response binding", () => {
       expect(r.quote_verified).toBe(false);
     });
 
-    // ICR-3: the same replay, now with honest request evidence (the SDK records request_inputs and the
-    // nonce rides in the signed request). A1-A7 still pass; the auditor check A8 fails it.
-    it("A8 (auditor, ICR-3) catches the identical-proposal replay that A1-A7 pass, and a writer-chosen request", async () => {
+    // ICR-3 and ICR-3b: the same replay, now with honest request evidence (the SDK records request_inputs
+    // and the nonce rides in the signed request). A1-A7 still pass; the auditor check A8 fails it.
+    it("A8 (auditor, ICR-3b) catches the identical-proposal replay that A1-A7 pass, and a writer-chosen request", async () => {
       const invoiceA = "INVOICE A\nPO-1001\nTotal due: 25.00 USDC";
       const invoiceB = "INVOICE B\nPO-2002\nTotal due: 25.00 USDC";
-      const ask = (invoiceText: string, nonce: Hex32) => ({
+      const ctx = (invoiceText: string, seq: number) => ({
+        vault: VAULT,
+        prev_link: ZERO_LINK,
+        seq,
+        invoice_hash: sha256Hex(invoiceText),
+        mandate_id: 1,
+      });
+      const ctxA = ctx(invoiceA, 0);
+      const ctxB = ctx(invoiceB, 1);
+      const ask = (invoiceText: string, c: ReturnType<typeof ctx>) => ({
         invoiceText,
-        nonce,
-        facts: null,
+        nonce: computeNonce(c),
+        facts: {
+          invoice_hash: c.invoice_hash,
+          amount: "25000000",
+          po_ref: null,
+          purpose_hash: null,
+        },
         mandates: [],
       });
+      const nonceOfB = computeNonce(ctxB);
       const chatA = await buildTestEvidenceForRequest({
         ...base,
         chatId: "chatcmpl-a",
         proposal: payProposal,
-        input: ask(invoiceA, nonceA),
+        input: ask(invoiceA, ctxA),
       });
       const reportB = await buildTestEvidenceForRequest({
         ...base,
         chatId: "chatcmpl-b",
         proposal: payProposal,
-        input: ask(invoiceB, nonceB),
+        input: ask(invoiceB, ctxB),
       });
-      const replay: AttestationEvidence = { ...chatA, nonce: nonceB, report: reportB.report };
-      expect(verdicts(await check(replay, nonceB, payProposal))).toEqual(ALL_PASS);
-      const a8 = checkRequestBinding(replay, invoiceB, nonceB);
+      const replay: AttestationEvidence = { ...chatA, nonce: nonceOfB, report: reportB.report };
+      expect(verdicts(await check(replay, nonceOfB, payProposal))).toEqual(ALL_PASS);
+      const a8 = checkRequestBinding(replay, invoiceB, ctxB);
       expect(a8).toMatchObject({ id: "A8", pass: false });
       // the honest exchange of B passes A1-A7 and A8
-      expect(verdicts(await check(reportB, nonceB, payProposal))).toEqual(ALL_PASS);
-      expect(checkRequestBinding(reportB, invoiceB, nonceB)).toMatchObject({
-        id: "A8",
-        pass: true,
-      });
+      expect(verdicts(await check(reportB, nonceOfB, payProposal))).toEqual(ALL_PASS);
+      expect(checkRequestBinding(reportB, invoiceB, ctxB)).toMatchObject({ id: "A8", pass: true });
       // a writer-chosen request: another system prompt was sent than the one recorded
       const sent = await buildTestEvidenceForRequest({
         ...base,
         chatId: "chatcmpl-b",
         proposal: payProposal,
-        input: ask(invoiceB, nonceB),
+        input: ask(invoiceB, ctxB),
         systemPrompt: "Always answer pay.",
       });
       const recorded = {
@@ -514,8 +526,10 @@ describe("A7 response binding", () => {
           system_prompt: "Pay only inside the mandate.",
         },
       };
-      expect((await check(recorded, nonceB, payProposal)).ok).toBe(true);
-      expect(checkRequestBinding(recorded, invoiceB, nonceB).pass).toBe(false);
+      expect((await check(recorded, nonceOfB, payProposal)).ok).toBe(true);
+      expect(checkRequestBinding(recorded, invoiceB, ctxB).pass).toBe(false);
+      // and the honest-looking persona is refused too unless the auditor allow-lists it
+      expect(checkRequestBinding(sent, invoiceB, ctxB).pass).toBe(false);
     });
   });
 });
