@@ -873,32 +873,27 @@ export async function runChecks(s: Snapshot, opts: { now?: Date } = {}): Promise
 }
 
 /**
- * The first seq whose history is not proven, or null when no failing check names a seq.
+ * The lowest seq any failing check points to, or null when no failing check names a seq. Nothing refines it.
  *
- * Every failing check names a seq whose history it cannot prove, so the answer is the lowest of them, with one
- * refinement. Check c names the first entry of the anchor range it cannot prove (an anchor pins a whole range and
- * cannot say which entry inside it is wrong), together with the last entry of that range. When check a or b
- * names an exact entry INSIDE that range, that entry is the broken one and the rest of the range before it is
- * individually proven, so it replaces c's start. A seq that a or b name OUTSIDE c's range refines nothing: the
- * whole of c's range is still unproven, and the lowest seq wins.
+ * What each check points to: a and b the exact entry that fails (its signer, signature, hash, link or position);
+ * c the first entry of the anchor range it cannot prove (an anchor pins a whole range and cannot say which entry
+ * inside it is wrong; `lastUnprovenSeq` says where the range ends and is information only); d the decision at
+ * the end of a spend that fails to bind; e the entry whose attestation fails; h the decision whose burn fails.
+ * For d and h that seq is the decision whose chain outcome failed, not necessarily unproven ledger history.
+ * One check's seq never replaces another's: a and b only show that an entry is self-consistent, not that it is
+ * the history the anchor pinned, so an exact a or b seq inside c's range does not clear the entries of the
+ * range before it.
  */
 export function firstBrokenSeq(report: VerifyReport): number | null {
-  const named = report.checks.filter(
-    (c) => c.status === "fail" && typeof c.firstBrokenSeq === "number",
-  );
-  const seqs: number[] = [];
-  for (const c of named) {
-    if (c.id !== "c" && typeof c.firstBrokenSeq === "number") seqs.push(c.firstBrokenSeq);
+  let first: number | null = null;
+  for (const c of report.checks) {
+    if (
+      c.status === "fail" &&
+      typeof c.firstBrokenSeq === "number" &&
+      (first === null || c.firstBrokenSeq < first)
+    ) {
+      first = c.firstBrokenSeq;
+    }
   }
-  const range = named.find((c) => c.id === "c");
-  if (range !== undefined && typeof range.firstBrokenSeq === "number") {
-    const from = range.firstBrokenSeq;
-    const to = range.lastUnprovenSeq ?? from;
-    const exact = named
-      .filter((c) => c.id === "a" || c.id === "b")
-      .map((c) => c.firstBrokenSeq)
-      .filter((seq): seq is number => typeof seq === "number" && seq >= from && seq <= to);
-    seqs.push(exact.length > 0 ? Math.min(...exact) : from);
-  }
-  return seqs.length === 0 ? null : Math.min(...seqs);
+  return first;
 }

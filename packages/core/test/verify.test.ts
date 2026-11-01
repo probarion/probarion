@@ -1864,14 +1864,14 @@ describe("firstBrokenSeq", () => {
     expect(firstBrokenSeq(await runChecks(s, { now: NOW }))).toBeNull();
   });
 
-  it("is the lowest seq over the failing checks when check c names no range to refine", async () => {
+  it("is the lowest seq any failing check points to", async () => {
     const s = await makeFixtureSnapshot({ forgedSignerFromSeq: 3 });
     burnOf(s).memo = `${WITHDRAW_MEMO_PREFIX}0x000000000000000000000000000000000000dEaD`;
     const report = await runChecks(s, { now: NOW });
     expect(onlyFailing(report)).toEqual(["a", "h"]);
     expect(check(report, "a").firstBrokenSeq).toBe(3);
     expect(check(report, "h").firstBrokenSeq).toBe(2);
-    expect(firstBrokenSeq(report)).toBe(2); // h's seq 2 is not proven either
+    expect(firstBrokenSeq(report)).toBe(2); // h points at the decision at seq 2, lower than a's 3
   });
 
   it("is the lowest seq of a and b when both name one", async () => {
@@ -1892,8 +1892,8 @@ describe("firstBrokenSeq", () => {
     expect(firstBrokenSeq(report)).toBe(2);
   });
 
-  describe("check c names a range; a or b refine it only inside that range", () => {
-    it("probe 4, a fork: c names entries 2 to 3 and b names 3, inside it: 3", async () => {
+  describe("check c's range start counts, and nothing refines it", () => {
+    it("probe 4, a fork: c cannot prove entry 2 and b names 3: the lowest is 2", async () => {
       const s = fresh();
       const body = { ...structuredClone(entryOf(s, 2).body), request_id: "fork", seq: 2 };
       body.prev_link = entryOf(s, 2).link;
@@ -1905,7 +1905,30 @@ describe("firstBrokenSeq", () => {
         firstBrokenSeq: 2,
         lastUnprovenSeq: 3,
       });
-      expect(firstBrokenSeq(report)).toBe(3);
+      // The anchor does not prove entry 2 either, and a and b only say entry 2 is self-consistent.
+      expect(firstBrokenSeq(report)).toBe(2);
+    });
+
+    it("probe R1: entry 2 rewritten and re-linked consistently, then entry 3 tampered: 2, not 3", async () => {
+      // The ledger-key holder rewrote entry 2 (anchor 2 covers entries 2 to 3) and re-linked the rest, so a
+      // and b pass entry 2. Entry 3 is then tampered by one field, which a and b see. Entry 2 is just as
+      // unproven as entry 3: it no longer matches the anchored history.
+      const s = await rebuildLedger(fresh(), {
+        edit: (body, seq) => {
+          if (seq === 2) body.request_id = "rewritten-by-insider";
+        },
+      });
+      s.chain.anchors = structuredClone(valid.chain.anchors); // the chain still holds the original anchors
+      entryOf(s, 3).body.request_id = "tampered"; // one more change, without re-hashing
+      const report = await runChecks(s, { now: NOW });
+      expect(check(report, "a")).toMatchObject({ status: "fail", firstBrokenSeq: 3 });
+      expect(check(report, "b")).toMatchObject({ status: "fail", firstBrokenSeq: 3 });
+      expect(check(report, "c")).toMatchObject({
+        status: "fail",
+        firstBrokenSeq: 2,
+        lastUnprovenSeq: 3,
+      });
+      expect(firstBrokenSeq(report)).toBe(2);
     });
 
     it("probe N2b: entries 2 and 3 rewritten consistently plus a bad appended entry: 2, not 5", async () => {
@@ -1948,25 +1971,32 @@ describe("firstBrokenSeq", () => {
     });
 
     it.each([
-      ["b inside the range", [failing("c", 2, 3), failing("b", 3)], 3],
-      ["b at the start of the range", [failing("c", 2, 3), failing("b", 2)], 2],
-      ["b after the range", [failing("c", 2, 3), failing("b", 5)], 2],
-      ["a and b after the range", [failing("c", 2, 3), failing("a", 5), failing("b", 5)], 2],
-      ["a inside, b after", [failing("c", 2, 3), failing("a", 3), failing("b", 5)], 3],
-      ["a before the range", [failing("c", 2, 3), failing("a", 1)], 1],
-      ["no a or b", [failing("c", 2, 3), failing("e", 3)], 2],
-      ["d below the refined seq", [failing("c", 2, 3), failing("b", 3), failing("d", 1)], 1],
+      ["b inside c's range", [failing("c", 2, 3), failing("b", 3)], 2],
+      ["b at the start of c's range", [failing("c", 2, 3), failing("b", 2)], 2],
+      ["b after c's range", [failing("c", 2, 3), failing("b", 5)], 2],
+      ["a and b after c's range", [failing("c", 2, 3), failing("a", 5), failing("b", 5)], 2],
+      ["a inside c's range, b after", [failing("c", 2, 3), failing("a", 3), failing("b", 5)], 2],
+      ["a before c's range", [failing("c", 2, 3), failing("a", 1)], 1],
+      ["c with no a or b", [failing("c", 2, 3), failing("e", 3)], 2],
+      ["d below c's range start", [failing("c", 2, 3), failing("b", 3), failing("d", 1)], 1],
       ["a range of one entry", [failing("c", 2), failing("b", 3)], 2],
       ["a and b alone", [failing("b", 4), failing("a", 6)], 4],
-      ["a, h without c", [failing("a", 3), failing("h", 2)], 2],
-    ] as const)("%s", (_name, checks, expected) => {
+      ["a and h without c", [failing("a", 3), failing("h", 2)], 2],
+    ] as const)("is the lowest seq named: %s", (_name, checks, expected) => {
       expect(firstBrokenSeq(reportOf(...checks))).toBe(expected);
     });
 
-    it("is null when no failing check names a seq", () => {
+    it("ignores lastUnprovenSeq: it is information, not a refinement", () => {
+      expect(firstBrokenSeq(reportOf(failing("c", 2, 9), failing("b", 4)))).toBe(2);
+      expect(firstBrokenSeq(reportOf(failing("c", 2), failing("b", 4)))).toBe(2);
+    });
+
+    it("ignores passing and skipped checks, and is null when no failing check names a seq", () => {
       const noSeq: CheckResult = { id: "g", name: CHECK_NAMES.g, status: "fail", detail: "x" };
+      const passing: CheckResult = { ...failing("a", 0), status: "pass" };
       expect(firstBrokenSeq(reportOf(noSeq))).toBeNull();
       expect(firstBrokenSeq(reportOf())).toBeNull();
+      expect(firstBrokenSeq(reportOf(passing, failing("h", 4)))).toBe(4);
     });
   });
 });
