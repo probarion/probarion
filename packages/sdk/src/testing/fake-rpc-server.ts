@@ -11,7 +11,13 @@ import {
   verifyEd25519,
 } from "@probarion/core";
 import { baseEncode, decodeSignedTransaction, encodeTransaction } from "near-api-js";
-import { type FakeCallResult, type FakeChain, FakePanic, FakeRpcFault } from "./fake-chain.js";
+import {
+  type FakeCallResult,
+  type FakeChain,
+  FakePanic,
+  FakeRpcFault,
+  FakeVmError,
+} from "./fake-chain.js";
 
 export interface FakeRpcServer {
   readonly url: string;
@@ -20,6 +26,11 @@ export interface FakeRpcServer {
   readonly methods: string[];
   /** The next requests are answered with these HTTP statuses instead of being served. */
   failNext(statuses: readonly number[]): void;
+  /**
+   * The next `count` `send_tx` / `broadcast_tx_commit` requests are executed and stored, then the connection is
+   * destroyed without an answer: the sender sees a transport failure for a transaction that did run.
+   */
+  dropNextResponses(count: number): void;
   close(): Promise<void>;
 }
 
@@ -131,7 +142,8 @@ function query(chain: FakeChain, p: Record<string, unknown>): unknown {
   }
 }
 
-type Applied = { ok: true; result: FakeCallResult } | { ok: false; panic: string };
+/** A failed call carries the full `ExecutionError` text: a panic is prefixed by the contract wrapper, a VM error is not. */
+type Applied = { ok: true; result: FakeCallResult } | { ok: false; message: string };
 
 interface SentTx {
   hash: string;
@@ -190,7 +202,7 @@ function buildOutcome(chain: FakeChain, tx: SentTx, applied: Applied): Record<st
       Failure: {
         ActionError: {
           index: 0,
-          kind: { FunctionCallError: { ExecutionError: panicText(applied.panic) } },
+          kind: { FunctionCallError: { ExecutionError: applied.message } },
         },
       },
     };
@@ -302,7 +314,39 @@ function invalidTx(error: Record<string, unknown> | string, text: string): FakeR
   });
 }
 
-function sendTx(chain: FakeChain, params: unknown): unknown {
+const EARLY_LEVELS: ReadonlySet<string> = new Set(["NONE", "INCLUDED", "INCLUDED_FINAL"]);
+const EXECUTED_LEVELS: ReadonlySet<string> = new Set(["EXECUTED_OPTIMISTIC", "EXECUTED", "FINAL"]);
+
+function parseError(detail: string): FakeRpcFault {
+  return new FakeRpcFault("REQUEST_VALIDATION_ERROR", "PARSE_ERROR", detail, undefined, {
+    error_message: detail,
+  });
+}
+
+/** `wait_until` of a request; a node's default is EXECUTED_OPTIMISTIC. */
+function waitUntilOf(params: unknown): string {
+  const value = record(params).wait_until;
+  if (value === undefined) return "EXECUTED_OPTIMISTIC";
+  if (typeof value !== "string" || !(EARLY_LEVELS.has(value) || EXECUTED_LEVELS.has(value))) {
+    throw parseError(`unknown wait_until ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+function sendTx(chain: FakeChain, params: unknown, method: string): unknown {
+  // broadcast_tx_commit is send_tx with EXECUTED_OPTIMISTIC. A node answers at least as far as the level asked for;
+  // the fake executes the call at once, so it answers an executed level with the full (final) outcome. Only the
+  // levels before execution are answered early, which is what makes a sender's "not final yet" path reachable.
+  const waitUntil = method === "broadcast_tx_commit" ? "EXECUTED_OPTIMISTIC" : waitUntilOf(params);
+  const { outcome, fresh } = sendTxNow(chain, params);
+  // A transaction that was already final is answered in full whatever the level (as the live archival node did).
+  return fresh && EARLY_LEVELS.has(waitUntil) ? { final_execution_status: waitUntil } : outcome;
+}
+
+function sendTxNow(
+  chain: FakeChain,
+  params: unknown,
+): { outcome: Record<string, unknown>; fresh: boolean } {
   const base64 = Array.isArray(params)
     ? String(params[0])
     : String(record(params).signed_tx_base64);
@@ -344,6 +388,11 @@ function sendTx(chain: FakeChain, params: unknown): unknown {
   }
   if (baseEncode(Uint8Array.from(t.blockHash as ArrayLike<number>)) !== chain.blockHash)
     throw invalidTx("Expired", "Expired: the block hash is not recent");
+  // nearcore's send_tx_internal: a transaction that fails with InvalidNonce but already has an execution outcome is
+  // answered with its status. So the very same signed transaction sent again returns the stored outcome and runs
+  // nothing twice; a DIFFERENT transaction on a used nonce is still InvalidNonce (useNonce below).
+  const stored = chain.txs.get(hash);
+  if (stored !== undefined) return { outcome: stored, fresh: false };
   const deposit = BigInt(fc.deposit.toString());
   chain.useNonce(t.signerId, signerPk, Number(t.nonce), fc.methodName, t.receiverId, deposit);
   const argBytes = Uint8Array.from(fc.args as ArrayLike<number>);
@@ -370,21 +419,33 @@ function sendTx(chain: FakeChain, params: unknown): unknown {
         method: fc.methodName,
         args: decodeJson(argBytes),
         deposit,
+        gas: BigInt(fc.gas.toString()),
       }),
     };
   } catch (error) {
     if (!(error instanceof FakePanic)) throw error;
-    applied = { ok: false, panic: error.message };
+    applied = {
+      ok: false,
+      message: error instanceof FakeVmError ? error.message : panicText(error.message),
+    };
   }
   const outcome = buildOutcome(chain, sent, applied);
   chain.txs.set(hash, outcome);
-  return outcome;
+  return { outcome, fresh: true };
 }
 
 function txStatus(chain: FakeChain, params: unknown): unknown {
   const hash = Array.isArray(params) ? String(params[0]) : String(record(params).tx_hash);
+  const sender = Array.isArray(params) ? params[1] : record(params).sender_account_id;
+  if (typeof sender !== "string" || sender.length === 0) {
+    throw parseError("tx needs both tx_hash and sender_account_id");
+  }
+  waitUntilOf(params);
   const found = chain.txs.get(hash);
-  if (found === undefined) {
+  // A node finds a transaction through the shard of its SIGNER: asking for it under another account finds nothing,
+  // even when the transaction exists. (A payment tx is signed by the vault, an approval by an approver.)
+  const signer = record(found?.transaction).signer_id;
+  if (found === undefined || signer !== sender) {
     throw new FakeRpcFault(
       "HANDLER_ERROR",
       "UNKNOWN_TRANSACTION",
@@ -417,7 +478,7 @@ function dispatch(chain: FakeChain, method: string, params: unknown): unknown {
       };
     case "send_tx":
     case "broadcast_tx_commit":
-      return sendTx(chain, params);
+      return sendTx(chain, params, method);
     case "tx":
     case "EXPERIMENTAL_tx_status":
       return txStatus(chain, params);
@@ -437,6 +498,7 @@ function dispatch(chain: FakeChain, method: string, params: unknown): unknown {
 export async function startFakeRpcServer(chain: FakeChain): Promise<FakeRpcServer> {
   const methods: string[] = [];
   const failures: number[] = [];
+  let drops = 0;
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     let message: Record<string, unknown>;
@@ -455,7 +517,13 @@ export async function startFakeRpcServer(chain: FakeChain): Promise<FakeRpcServe
     }
     const id = message.id ?? null;
     try {
-      send(res, 200, { jsonrpc: "2.0", id, result: dispatch(chain, method, message.params) });
+      const result = dispatch(chain, method, message.params);
+      if (drops > 0 && (method === "send_tx" || method === "broadcast_tx_commit")) {
+        drops -= 1;
+        req.socket.destroy();
+        return;
+      }
+      send(res, 200, { jsonrpc: "2.0", id, result });
     } catch (error) {
       if (error instanceof FakeRpcFault) {
         send(res, 200, {
@@ -501,6 +569,9 @@ export async function startFakeRpcServer(chain: FakeChain): Promise<FakeRpcServe
     methods,
     failNext(statuses) {
       failures.push(...statuses);
+    },
+    dropNextResponses(count) {
+      drops += count;
     },
     close: () =>
       new Promise<void>((resolve, reject) => {

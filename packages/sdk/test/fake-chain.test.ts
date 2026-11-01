@@ -6,6 +6,9 @@ import {
   FakePanic,
   FakeRawPanic,
   FakeRpcFault,
+  FakeVmError,
+  GAS_FLOOR_INTENTS_PAYOUT,
+  GAS_FLOOR_NEAR_PAYOUT,
   SCENARIO_BASE_ADDRESS,
   SCENARIO_NEAR_PAYEE,
   SCENARIO_NOW,
@@ -13,6 +16,7 @@ import {
   type ScenarioOptions,
   TEST_KEYS,
 } from "../src/testing/index.js";
+import { SPEND_GAS } from "../src/vault-client.js";
 
 // TEST DOUBLE tests. Every expectation below is read off the Rust contract, with the file and line
 // in a comment where it is not obvious: contracts/vault/src/{checks,spend,held,anchors,keys}.rs.
@@ -46,7 +50,7 @@ function mandateOf(chain: FakeChain, id: number): MandateView {
 function spend(
   chain: FakeChain,
   request: SpendRequest,
-  over: { signerPk?: string; signerId?: string; deposit?: bigint } = {},
+  over: { signerPk?: string; signerId?: string; deposit?: bigint; gas?: bigint } = {},
 ) {
   return chain.applyFunctionCall({
     signerId: over.signerId ?? chain.vaultId,
@@ -55,6 +59,7 @@ function spend(
     method: "spend",
     args: { request },
     deposit: over.deposit ?? 0n,
+    ...(over.gas === undefined ? {} : { gas: over.gas }),
   });
 }
 
@@ -62,7 +67,7 @@ function approverCall(
   chain: FakeChain,
   method: string,
   spendId: number,
-  over: { signerId?: string; deposit?: bigint } = {},
+  over: { signerId?: string; deposit?: bigint; gas?: bigint } = {},
 ) {
   return chain.applyFunctionCall({
     signerId: over.signerId ?? approver,
@@ -71,6 +76,7 @@ function approverCall(
     method,
     args: { spend_id: spendId },
     deposit: over.deposit ?? 1n,
+    ...(over.gas === undefined ? {} : { gas: over.gas }),
   });
 }
 
@@ -457,6 +463,48 @@ describe("spend check order and boundaries (checks.rs Vault::evaluate, lines 23-
     expect(second.chain.checkSpend(probe, agent).ok).toBe(true); // 400 + 50 <= 500
   });
 
+  it("measures a ref in BYTES (validate.rs is_ref uses len()): 64 pass, 65 do not, multibyte counts bytes", () => {
+    const { chain } = scenario();
+    const code = (ref: string) => chain.checkSpend(req({ ref }), agent).code;
+    expect(code("R".repeat(64))).toBeNull();
+    expect(code("R".repeat(65))).toBe("InvalidInput");
+    expect(code("")).toBe("InvalidInput");
+    expect(code("\u00e9".repeat(32))).toBeNull(); // 32 characters, 64 bytes
+    expect(code("\u00e9".repeat(33))).toBe("InvalidInput"); // 33 characters, 66 bytes
+    expect(code("\u20ac".repeat(21))).toBeNull(); // 21 characters, 63 bytes
+    expect(code("\u20ac".repeat(22))).toBe("InvalidInput"); // 22 characters, 66 bytes
+    expect(code("\u{1F600}".repeat(16))).toBeNull(); // 16 characters (32 UTF-16 units), 64 bytes
+    expect(code("\u{1F600}".repeat(17))).toBe("InvalidInput"); // 68 bytes
+    // and spend accepts the 64-byte ref and stores it as given
+    const ref = "\u00e9".repeat(32);
+    expect(spend(chain, req({ ref })).value).toEqual({ spend_id: 1, status: "paid" });
+    expect(chain.spends[0]?.ref).toBe(ref);
+  });
+
+  it("saturates the day total as well (checks.rs:63): a huge existing total plus an amount is u128::MAX, not an overflow", () => {
+    const { chain, clock } = scenario();
+    const m = mandateOf(chain, 1);
+    chain.spends.push({
+      id: 1,
+      mandate_id: 1,
+      amount: (U128_MAX - 5n).toString(),
+      invoice_hash: "98".repeat(32),
+      ref: "BIG",
+      decision_hash: "00".repeat(32),
+      agent_pk: agent,
+      destination: m.payee,
+      status: "pending",
+      created_at_ns: clock.now.toString(),
+      held_until_ns: null,
+      memo: null,
+    });
+    const probe = req({ amount: "100", invoice_hash: "97".repeat(32), ref: "SMALL" });
+    chain.config.daily_backstop = U128_MAX.toString();
+    expect(chain.checkSpend(probe, agent)).toEqual({ ok: true, code: null, would_hold: false });
+    chain.config.daily_backstop = (U128_MAX - 1n).toString();
+    expect(chain.checkSpend(probe, agent).code).toBe("OverDailyBackstop");
+  });
+
   it("matches an independent transcription of Vault::evaluate over a deterministic grid", () => {
     // The oracle is transcribed from checks.rs:17-71 (order = lines 23-65), as packages/core/test/policy.test.ts does.
     // u128::saturating_add
@@ -465,27 +513,52 @@ describe("spend check order and boundaries (checks.rs Vault::evaluate, lines 23-
       // biome-ignore lint/complexity/useMathMinMax: bigint operands, Math.min takes numbers
       return sum > U128_MAX ? U128_MAX : sum;
     };
-    let seed = 20_261_101;
-    const pick = <T>(options: readonly T[]): T => {
-      seed = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0;
-      return options[seed % options.length] as T;
+    // mulberry32: every bit is well mixed. (An LCG's low bits cycle with a tiny period: the first version of this
+    // grid used `seed % n` and never got past the first five checks.)
+    let state = 20_261_101;
+    const random = () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
     };
+    const pick = <T>(options: readonly T[]): T =>
+      options[Math.floor(random() * options.length)] as T;
+    const times = <T>(n: number, value: T): T[] => Array.from({ length: n }, () => value);
+    const counts = new Map<string, number>();
     const mismatches: string[] = [];
-    for (let n = 0; n < 600; n++) {
+    for (let n = 0; n < 3000; n++) {
+      const other = TEST_KEYS.other.publicKey;
       const p = {
-        signer: pick([agent, TEST_KEYS.other.publicKey]),
-        mandateId: pick([1, 1, 1, 99, 0]),
-        frozen: pick([false, false, true]),
-        revoked: pick([false, false, false, true]),
-        expiryOffset: pick([-1n, 0n, 1n, 100n]),
-        mandateAgent: pick([agent, agent, agent, TEST_KEYS.other.publicKey]),
-        amount: pick(["0", "1", "25000000", "50000000", "50000001", "100000000", "100000001"]),
-        uses: pick([0, 9, 10]),
-        spentPlusReserved: pick([0n, 900_000_000n, 975_000_000n, 999_999_999n, 1_000_000_000n]),
-        dupInvoice: pick([false, false, true]),
-        dupRef: pick([false, false, true]),
-        dayTotal: pick([0n, 450_000_000n, 475_000_000n, 500_000_000n]),
-        badShape: pick([false, false, false, true]),
+        signer: pick([...times(7, agent), other]),
+        mandateId: pick([...times(9, 1), 99, 0]),
+        frozen: pick([...times(9, false), true]),
+        revoked: pick([...times(9, false), true]),
+        expiryOffset: pick([-1n, 0n, ...times(8, 1n), ...times(4, 100n)]),
+        mandateAgent: pick([...times(9, agent), other]),
+        amount: pick([
+          "0",
+          "1",
+          ...times(6, "25000000"),
+          ...times(2, "50000000"),
+          ...times(2, "50000001"),
+          "100000000",
+          "100000001",
+        ]),
+        uses: pick([...times(6, 0), 9, 9, 10, 10]),
+        spentPlusReserved: pick([
+          ...times(5, 0n),
+          900_000_000n,
+          975_000_000n,
+          975_000_000n,
+          999_999_999n,
+          1_000_000_000n,
+        ]),
+        dupInvoice: pick([...times(6, false), true]),
+        dupRef: pick([...times(6, false), true]),
+        dayTotal: pick([...times(4, 0n), 450_000_000n, 475_000_000n, 500_000_000n]),
+        badShape: pick([...times(9, false), true]),
       };
       const { chain, clock } = scenario();
       const m = mandateOf(chain, 1);
@@ -569,16 +642,42 @@ describe("spend check order and boundaries (checks.rs Vault::evaluate, lines 23-
       else expected = { code: null, hold: amount > 50_000_000n };
 
       const got = chain.checkSpend(request, p.signer);
+      counts.set(expected.code ?? "ok", (counts.get(expected.code ?? "ok") ?? 0) + 1);
       if (
         got.code !== expected.code ||
         (expected.code === null && got.would_hold !== expected.hold)
       ) {
         mismatches.push(
-          `#${n} ${JSON.stringify({ ...p, signer: p.signer === agent ? "agent" : "other", mandateAgent: p.mandateAgent === agent ? "agent" : "other" })} expected ${JSON.stringify(expected)} got ${JSON.stringify(got)}`,
+          `#${n} ${JSON.stringify({ ...p, signer: p.signer === agent ? "agent" : "other", mandateAgent: p.mandateAgent === agent ? "agent" : "other" }, (_k, v) => (typeof v === "bigint" ? v.toString() : v))} expected ${JSON.stringify(expected)} got ${JSON.stringify(got)}`,
         );
       }
     }
     expect(mismatches).toEqual([]);
+    // The grid must actually reach every check, in order, and the success path: otherwise agreement proves nothing.
+    const everyOutcome = [
+      "NotAgent",
+      "InvalidInput",
+      "Frozen",
+      "NoMandate",
+      "MandateInactive",
+      "MandateExpired",
+      "NotMandateAgent",
+      "ZeroAmount",
+      "OverPerPayment",
+      "UsesExhausted",
+      "OverMandateTotal",
+      "DuplicateInvoice",
+      "DuplicateRef",
+      "OverDailyBackstop",
+      "ok",
+    ];
+    expect([...counts.keys()].sort()).toEqual([...everyOutcome].sort());
+    for (const outcome of everyOutcome) {
+      expect(
+        counts.get(outcome) ?? 0,
+        `the grid reaches ${outcome} too rarely`,
+      ).toBeGreaterThanOrEqual(20);
+    }
   });
 
   it("answers a hooked check_spend code without looking at state", () => {
@@ -946,6 +1045,60 @@ describe("held spends (held.rs: approve, reject, expire_held)", () => {
     expect(panicCode(() => approverCall(chain, "reject", 1, { signerId: "owner.testnet" }))).toBe(
       "PROBARION:NotApprover",
     );
+  });
+
+  it("reject needs exactly one yocto, and ignores frozen (held.rs:31-41 has no frozen check)", () => {
+    const a = held();
+    expect(panicCode(() => approverCall(a.chain, "reject", 1, { deposit: 0n }))).toBe(
+      "PROBARION:RequiresOneYocto",
+    );
+    expect(panicCode(() => approverCall(a.chain, "reject", 1, { deposit: 2n }))).toBe(
+      "PROBARION:RequiresOneYocto",
+    );
+    expect(a.chain.spends[0]?.status).toBe("held");
+    a.chain.config.frozen = true;
+    expect(approverCall(a.chain, "reject", 1).vaultLogs[0]).toContain('"spend_rejected"');
+    expect(a.chain.spends[0]?.status).toBe("rejected");
+  });
+
+  it("approve pins the ORDER of its checks when two are broken at once (held.rs:9-28)", () => {
+    const code = (run: () => unknown) => panicCode(run).replace("PROBARION:", "");
+    // NotApprover before RequiresOneYocto
+    const a = held();
+    expect(
+      code(() => approverCall(a.chain, "approve", 1, { signerId: "owner.testnet", deposit: 0n })),
+    ).toBe("NotApprover");
+    // RequiresOneYocto before Frozen
+    a.chain.config.frozen = true;
+    expect(code(() => approverCall(a.chain, "approve", 1, { deposit: 0n }))).toBe(
+      "RequiresOneYocto",
+    );
+    // Frozen before NotHeld
+    expect(code(() => approverCall(a.chain, "approve", 99))).toBe("Frozen");
+    a.chain.config.frozen = false;
+    // NotHeld before HoldExpired and MandateInactive: the spend is paid, its mandate is revoked, the clock is past the hold
+    expect(approverCall(a.chain, "approve", 1).value).toMatchObject({ status: "paid" });
+    mandateOf(a.chain, 1).status = "revoked";
+    a.clock.now = heldUntil + 1n;
+    expect(code(() => approverCall(a.chain, "approve", 1))).toBe("NotHeld");
+
+    // HoldExpired before MandateInactive
+    const b = held();
+    mandateOf(b.chain, 1).status = "revoked";
+    b.clock.now = heldUntil + 1n;
+    expect(code(() => approverCall(b.chain, "approve", 1))).toBe("HoldExpired");
+
+    // MandateInactive before AssetNotAllowed, and AssetNotAllowed before the gas floor
+    const c = scenario();
+    spend(c.chain, req({ mandate_id: 2, amount: "75000000" }));
+    c.chain.config.allowed_assets = [];
+    mandateOf(c.chain, 2).status = "revoked";
+    expect(code(() => approverCall(c.chain, "approve", 1, { gas: 1n }))).toBe("MandateInactive");
+    mandateOf(c.chain, 2).status = "active";
+    expect(code(() => approverCall(c.chain, "approve", 1, { gas: 1n }))).toBe("AssetNotAllowed");
+    c.chain.config.allowed_assets = ["base-usdc.probarion.testnet"];
+    expect(() => approverCall(c.chain, "approve", 1, { gas: 1n })).toThrow(FakeVmError);
+    expect(c.chain.spends[0]?.status).toBe("held"); // nothing moved on any refusal
   });
 
   it("expire_held is open to anyone, but only after held_until_ns (held.rs:45)", () => {
@@ -1322,5 +1475,136 @@ describe("hooks and unsupported calls", () => {
       });
     expect(() => call("create_mandate")).toThrow(/FAKE_UNSUPPORTED/);
     expect(() => call("spend", "someone-else.testnet")).toThrow(FakeRpcFault);
+  });
+});
+
+describe("prepaid gas floor (contracts/vault/src/lib.rs:40-43)", () => {
+  const TGAS = 1_000_000_000_000n;
+
+  it("states the floors from the contract: 15+15 Tgas for a NEAR payout, 100+15 for an Intents payout", () => {
+    expect(GAS_FLOOR_NEAR_PAYOUT).toBe(30n * TGAS);
+    expect(GAS_FLOOR_INTENTS_PAYOUT).toBe(115n * TGAS);
+    expect(SPEND_GAS).toBeGreaterThanOrEqual(GAS_FLOOR_INTENTS_PAYOUT);
+  });
+
+  it("fails a NEAR payout below 30 Tgas with the node's ExceededPrepaidGas execution error and changes nothing", () => {
+    const { chain } = scenario();
+    const run = (gas: bigint, ref: string) => () =>
+      spend(
+        chain,
+        req({
+          ref,
+          invoice_hash: ref
+            .padEnd(64, "0")
+            .slice(0, 64)
+            .replace(/[^0-9a-f]/g, "a"),
+        }),
+        { gas },
+      );
+    expect(run(GAS_FLOOR_NEAR_PAYOUT - 1n, "ab1")).toThrow(FakeVmError);
+    expect(run(GAS_FLOOR_NEAR_PAYOUT - 1n, "ab1")).toThrow("Exceeded the prepaid gas.");
+    // It is not a contract panic: no PROBARION code in the message.
+    expect(run(1n, "ab1")).not.toThrow(/PROBARION/);
+    expect(chain.spends).toHaveLength(0);
+    expect(mandateOf(chain, 1)).toMatchObject({ reserved: "0", spent: "0", uses: 0 });
+    expect(run(GAS_FLOOR_NEAR_PAYOUT, "ab1")().value).toEqual({ spend_id: 1, status: "paid" });
+  });
+
+  it("needs 115 Tgas for an Intents payout", () => {
+    const { chain } = scenario();
+    const over = { gas: GAS_FLOOR_INTENTS_PAYOUT - 1n };
+    expect(() => spend(chain, req({ mandate_id: 2 }), over)).toThrow("Exceeded the prepaid gas.");
+    expect(chain.spends).toHaveLength(0);
+    expect(spend(chain, req({ mandate_id: 2 }), { gas: GAS_FLOOR_INTENTS_PAYOUT }).value).toEqual({
+      spend_id: 1,
+      status: "burned",
+    });
+  });
+
+  it("checks the contract's own refusals first (they cost no payout gas) and lets a held spend through with little gas", () => {
+    const { chain } = scenario();
+    expect(panicCode(() => spend(chain, req({ amount: "0" }), { gas: 1n }))).toBe(
+      "PROBARION:ZeroAmount",
+    );
+    // A held spend schedules no promise (spend.rs:23-25): only the payout at approval needs the floor.
+    expect(spend(chain, req({ amount: "75000000" }), { gas: 5n * TGAS }).value).toEqual({
+      spend_id: 1,
+      status: "held",
+    });
+    expect(() => approverCall(chain, "approve", 1, { gas: GAS_FLOOR_NEAR_PAYOUT - 1n })).toThrow(
+      FakeVmError,
+    );
+    expect(chain.spends[0]?.status).toBe("held");
+    expect(approverCall(chain, "approve", 1, { gas: GAS_FLOOR_NEAR_PAYOUT }).value).toMatchObject({
+      status: "paid",
+    });
+  });
+});
+
+describe("token views and USDC bookkeeping", () => {
+  it("answers ft_metadata and ft_balance_of for the USDC and POA contracts, so view() agrees with accountView()", () => {
+    const { chain } = scenario();
+    const usdc = chain.config.usdc;
+    const asset = chain.config.allowed_assets[0] ?? "";
+    for (const token of [usdc, asset]) {
+      expect(chain.accountView(token)).toMatchObject({ storage_usage: expect.any(Number) });
+      expect(chain.view(token, "ft_metadata", {})).toMatchObject({ spec: "ft-1.0.0", decimals: 6 });
+      expect(chain.view(token, "ft_balance_of", { account_id: "nobody.testnet" })).toBe("0");
+    }
+    expect(() => chain.view(usdc, "no_such_method", {})).toThrow(/MethodNotFound/);
+    expect(() => chain.view(usdc, "ft_balance_of", {})).toThrow(/missing field/);
+  });
+
+  it("a NEAR payout credits the payee; a tracked vault balance is debited and can run short", () => {
+    const { chain } = scenario();
+    const usdc = chain.config.usdc;
+    spend(chain, req());
+    expect(chain.view(usdc, "ft_balance_of", { account_id: SCENARIO_NEAR_PAYEE })).toBe("25000000");
+    expect(chain.ftBalances[usdc]?.[chain.vaultId]).toBeUndefined(); // untracked: never enforced
+
+    const tracked = scenario({});
+    tracked.chain.ftBalances[usdc] = { [tracked.chain.vaultId]: "30000000" };
+    spend(tracked.chain, req());
+    expect(tracked.chain.view(usdc, "ft_balance_of", { account_id: tracked.chain.vaultId })).toBe(
+      "5000000",
+    );
+    const short = spend(tracked.chain, req({ ref: "INV-2", invoice_hash: "ef".repeat(32) }));
+    expect(short.value).toEqual({ spend_id: 2, status: "failed" });
+    expect(short.receipts[0]?.failure).toMatch(/doesn't have enough balance/);
+    expect(mandateOf(tracked.chain, 1)).toMatchObject({
+      spent: "25000000",
+      reserved: "0",
+      uses: 1,
+    });
+  });
+
+  it("an account without a contract has no code to view; an unknown account does not exist", () => {
+    const { chain } = scenario();
+    expect(chain.accountView("owner.testnet")).toMatchObject({
+      code_hash: "11111111111111111111111111111111",
+    });
+    const fault = (run: () => unknown) => {
+      try {
+        run();
+      } catch (error) {
+        if (error instanceof FakeRpcFault) return error.causeName;
+      }
+      return "no fault";
+    };
+    expect(fault(() => chain.view("owner.testnet", "get_config", {}))).toBe("NO_CONTRACT_CODE");
+    expect(fault(() => chain.view("ghost.testnet", "get_config", {}))).toBe("UNKNOWN_ACCOUNT");
+  });
+
+  it("never emits a factory version 0: a vault the factory did not create has no record", () => {
+    const { chain } = scenario();
+    const factoryId = chain.factory?.id ?? "";
+    if (chain.factory === null) throw new Error("scenario has a factory");
+    chain.factory.vaultVersion = null;
+    expect(chain.view(factoryId, "vault_version", { account_id: SCENARIO_VAULT })).toBeNull();
+    expect(chain.view(factoryId, "list_vaults", { from_index: 0, limit: 10 })).toEqual([]);
+    chain.factory.vaultVersion = 1;
+    expect(chain.view(factoryId, "list_vaults", { from_index: 0, limit: 10 })).toMatchObject([
+      { version: 1 },
+    ]);
   });
 });

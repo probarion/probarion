@@ -1,20 +1,26 @@
 import type { SpendRequest } from "@probarion/core";
 import { sha256Bytes } from "@probarion/core";
 import {
+  actions,
   baseDecode,
   baseEncode,
+  createTransaction,
   encodeTransaction,
   JsonRpcProvider,
+  KeyPairSigner,
+  type KeyPairString,
   type Provider,
   type SignedTransaction,
 } from "near-api-js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ProbarionError } from "../src/errors.js";
+import { ProbarionError, TxOutcomeUnknownError } from "../src/errors.js";
 import { RpcClient } from "../src/rpc.js";
 import {
   createScenarioChain,
   type FakeChain,
   type FakeRpcServer,
+  GAS_FLOOR_INTENTS_PAYOUT,
+  GAS_FLOOR_NEAR_PAYOUT,
   SCENARIO_CODE_HASH,
   SCENARIO_VAULT,
   type ScenarioOptions,
@@ -85,6 +91,44 @@ async function rawRpc(
     body: JSON.stringify({ jsonrpc: "2.0", id: "t", method, params }),
   });
   return (await res.json()) as Record<string, unknown>;
+}
+
+/**
+ * A real sender whose provider hands every signed transaction to `sink` before sending it. `waitUntil` overrides the
+ * level the sender asks for (it always asks for FINAL), to see what a sender does with an answer given earlier.
+ */
+function recordingSender(
+  url: string,
+  secretKey: string,
+  accountId: string,
+  sink: SignedTransaction[],
+  waitUntil?: Parameters<JsonRpcProvider["sendTransactionUntil"]>[1],
+): NearApiJsSender {
+  return new NearApiJsSender({
+    accountId,
+    secretKey,
+    rpcUrl: url,
+    createProvider: (providerUrl): Provider => {
+      const inner = new JsonRpcProvider({ url: providerUrl });
+      return new Proxy(inner, {
+        get(target, prop, receiver) {
+          if (prop === "sendTransactionUntil") {
+            return (
+              signed: SignedTransaction,
+              asked: Parameters<JsonRpcProvider["sendTransactionUntil"]>[1],
+            ) => {
+              sink.push(signed);
+              return target.sendTransactionUntil(signed, waitUntil ?? asked);
+            };
+          }
+          const value = Reflect.get(target, prop, receiver) as unknown;
+          return typeof value === "function"
+            ? (value as (...a: unknown[]) => unknown).bind(target)
+            : value;
+        },
+      });
+    },
+  });
 }
 
 describe("NearApiJsSender against the fake JSON-RPC server (127.0.0.1)", () => {
@@ -437,48 +481,15 @@ describe("the stub-shape burn matches a live testnet transaction", () => {
 });
 
 describe("the fake server enforces what a node enforces before a contract runs", () => {
-  /** Records every signed transaction near-api-js hands to the provider. */
-  function recordingSender(
-    secretKey: string,
-    accountId: string,
-    sink: SignedTransaction[],
-  ): NearApiJsSender {
-    return new NearApiJsSender({
-      accountId,
-      secretKey,
-      rpcUrl: server.url,
-      createProvider: (url): Provider => {
-        const inner = new JsonRpcProvider({ url });
-        return new Proxy(inner, {
-          get(target, prop, receiver) {
-            if (prop === "sendTransactionUntil") {
-              return (
-                signed: SignedTransaction,
-                waitUntil: Parameters<JsonRpcProvider["sendTransactionUntil"]>[1],
-              ) => {
-                sink.push(signed);
-                return target.sendTransactionUntil(signed, waitUntil);
-              };
-            }
-            const value = Reflect.get(target, prop, receiver) as unknown;
-            return typeof value === "function"
-              ? (value as (...a: unknown[]) => unknown).bind(target)
-              : value;
-          },
-        });
-      },
-    });
-  }
-
   const send = (signed: SignedTransaction) =>
     rawRpc(server.url, "send_tx", {
       signed_tx_base64: Buffer.from(encodeTransaction(signed)).toString("base64"),
       wait_until: "FINAL",
     });
 
-  it("rejects a replayed transaction (the nonce was used) and a tampered signature", async () => {
+  it("answers the very same signed transaction sent again with its stored outcome, and runs nothing twice (nearcore send_tx_internal)", async () => {
     const sink: SignedTransaction[] = [];
-    const sender = recordingSender(TEST_KEYS.agent.secretKey, SCENARIO_VAULT, sink);
+    const sender = recordingSender(server.url, TEST_KEYS.agent.secretKey, SCENARIO_VAULT, sink);
     const out = await sender.functionCall({
       receiverId: SCENARIO_VAULT,
       methodName: "spend",
@@ -490,8 +501,48 @@ describe("the fake server enforces what a node enforces before a contract runs",
     const signed = sink[0];
     if (signed === undefined) throw new Error("no transaction was recorded");
 
-    const replay = await send(signed);
-    expect(JSON.stringify(replay.error)).toContain("InvalidNonce");
+    const again = await send(signed);
+    expect(again.error).toBeUndefined();
+    expect((again.result as { transaction: { hash: string } }).transaction.hash).toBe(out.txHash);
+    expect(server.chain.spends).toHaveLength(1);
+    expect(server.chain.accessKey(SCENARIO_VAULT, TEST_KEYS.agent.publicKey)?.nonce).toBe(
+      Number(signed.transaction.nonce),
+    );
+  });
+
+  it("refuses a different transaction on a used nonce (InvalidNonce) and a tampered signature (InvalidSignature)", async () => {
+    const sink: SignedTransaction[] = [];
+    const sender = recordingSender(server.url, TEST_KEYS.agent.secretKey, SCENARIO_VAULT, sink);
+    await sender.functionCall({
+      receiverId: SCENARIO_VAULT,
+      methodName: "spend",
+      args: { request },
+      gas: SPEND_GAS,
+      deposit: 0n,
+    });
+    const signed = sink[0];
+    if (signed === undefined) throw new Error("no transaction was recorded");
+
+    const t = signed.transaction;
+    const clone = createTransaction(
+      t.signerId,
+      t.publicKey,
+      t.receiverId,
+      t.nonce,
+      [
+        actions.functionCall(
+          "spend",
+          { request: { ...request, ref: "INV-2", invoice_hash: "ef".repeat(32) } },
+          SPEND_GAS,
+          0n,
+        ),
+      ],
+      t.blockHash,
+    );
+    const { signedTransaction: different } = await KeyPairSigner.fromSecretKey(
+      TEST_KEYS.agent.secretKey as KeyPairString,
+    ).signTransaction(clone);
+    expect(JSON.stringify((await send(different)).error)).toContain("InvalidNonce");
     expect(server.chain.spends).toHaveLength(1);
 
     const sig = signed.signature.ed25519Signature?.data;
@@ -504,7 +555,7 @@ describe("the fake server enforces what a node enforces before a contract runs",
 
   it("uses the transaction hash a node computes: sha256 of the unsigned transaction bytes", async () => {
     const sink: SignedTransaction[] = [];
-    const sender = recordingSender(TEST_KEYS.agent.secretKey, SCENARIO_VAULT, sink);
+    const sender = recordingSender(server.url, TEST_KEYS.agent.secretKey, SCENARIO_VAULT, sink);
     const out = await sender.functionCall({
       receiverId: SCENARIO_VAULT,
       methodName: "spend",
@@ -515,6 +566,272 @@ describe("the fake server enforces what a node enforces before a contract runs",
     const signed = sink[0];
     if (signed === undefined) throw new Error("no transaction was recorded");
     expect(out.txHash).toBe(baseEncode(sha256Bytes(encodeTransaction(signed.transaction))));
+  });
+});
+
+describe("tx lookups are routed by the SIGNER (sender_account_id), like a node's shards", () => {
+  const unknownTx = /UNKNOWN_TRANSACTION/;
+
+  it("finds a vault-signed spend only under the vault and an approval only under the approver", async () => {
+    const spent = await vault().spend({ ...request, amount: "75000000" });
+    expect(spent.result).toEqual({ spend_id: 1, status: "held" });
+    const approverSender = new NearApiJsSender({
+      accountId: "approver.testnet",
+      secretKey: TEST_KEYS.approver.secretKey,
+      rpcUrl: server.url,
+    });
+    const approved = await approverSender.functionCall({
+      receiverId: SCENARIO_VAULT,
+      methodName: "approve",
+      args: { spend_id: 1 },
+      gas: SPEND_GAS,
+      deposit: 1n,
+    });
+    const spendHash = spent.tx.txHash ?? "";
+    const approveHash = approved.txHash ?? "";
+    expect(approved.ok).toBe(true);
+
+    const rpc = new RpcClient({ urls: [server.url] });
+    await expect(rpc.txStatus(spendHash, "approver.testnet")).rejects.toThrow(unknownTx);
+    await expect(rpc.txStatus(approveHash, SCENARIO_VAULT)).rejects.toThrow(unknownTx);
+    await expect(rpc.txStatus(approveHash, "someone-else.testnet")).rejects.toThrow(unknownTx);
+    expect((await rpc.txStatus(spendHash, SCENARIO_VAULT)).transaction.signer_id).toBe(
+      SCENARIO_VAULT,
+    );
+    expect((await rpc.txStatus(approveHash, "approver.testnet")).transaction.signer_id).toBe(
+      "approver.testnet",
+    );
+  });
+
+  it("makes a collector try the vault first and then each approver, as Task 14's burn collection does", async () => {
+    await vault().spend({ ...request, amount: "75000000" });
+    const approverSender = new NearApiJsSender({
+      accountId: "approver.testnet",
+      secretKey: TEST_KEYS.approver.secretKey,
+      rpcUrl: server.url,
+    });
+    const approved = await approverSender.functionCall({
+      receiverId: SCENARIO_VAULT,
+      methodName: "approve",
+      args: { spend_id: 1 },
+      gas: SPEND_GAS,
+      deposit: 1n,
+    });
+    const rpc = new RpcClient({ urls: [server.url] });
+    const config = server.chain.config;
+    const before = server.methods.filter((m) => m === "tx").length;
+    let found: string | null = null;
+    const tried: string[] = [];
+    for (const account of [SCENARIO_VAULT, ...config.approvers]) {
+      tried.push(account);
+      try {
+        found = (await rpc.txStatus(approved.txHash ?? "", account)).transaction.signer_id;
+        break;
+      } catch (error) {
+        if (!unknownTx.test(error instanceof Error ? error.message : String(error))) throw error;
+      }
+    }
+    expect(found).toBe("approver.testnet");
+    expect(tried).toEqual([SCENARIO_VAULT, "approver.testnet"]);
+    expect(server.methods.filter((m) => m === "tx").length - before).toBe(2);
+  });
+
+  it("answers a node's error object for an unknown transaction and a parse error without sender_account_id", async () => {
+    const { tx } = await vault().spend(request);
+    const wrong = await rawRpc(server.url, "tx", {
+      tx_hash: tx.txHash,
+      sender_account_id: "approver.testnet",
+      wait_until: "FINAL",
+    });
+    expect(wrong.error).toMatchObject({
+      name: "HANDLER_ERROR",
+      cause: { name: "UNKNOWN_TRANSACTION", info: { requested_transaction_hash: tx.txHash } },
+    });
+    for (const method of ["tx", "EXPERIMENTAL_tx_status"]) {
+      const missing = await rawRpc(server.url, method, { tx_hash: tx.txHash, wait_until: "FINAL" });
+      expect(missing.error).toMatchObject({
+        name: "REQUEST_VALIDATION_ERROR",
+        cause: { name: "PARSE_ERROR" },
+      });
+      const wrongLevel = await rawRpc(server.url, method, {
+        tx_hash: tx.txHash,
+        sender_account_id: SCENARIO_VAULT,
+        wait_until: "SOON",
+      });
+      expect(wrongLevel.error).toMatchObject({ name: "REQUEST_VALIDATION_ERROR" });
+    }
+  });
+});
+
+describe("recovery after a send whose answer never arrived (TxOutcomeUnknownError, then resolveSpend)", () => {
+  /** Run `send` and return what it threw, which must be a TxOutcomeUnknownError. */
+  async function unknownOf(send: () => Promise<unknown>): Promise<TxOutcomeUnknownError> {
+    const error = await send().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+    return error as TxOutcomeUnknownError;
+  }
+
+  function client(sink: SignedTransaction[], waitUntil?: "NONE" | "INCLUDED" | "INCLUDED_FINAL") {
+    return new VaultClient(SCENARIO_VAULT, new RpcClient({ urls: [server.url] }), {
+      agent: recordingSender(
+        server.url,
+        TEST_KEYS.agent.secretKey,
+        SCENARIO_VAULT,
+        sink,
+        waitUntil,
+      ),
+    });
+  }
+
+  it("a response lost after the node stored the transaction: the hash is the client's own and resolveSpend reads the real verdict", async () => {
+    const sink: SignedTransaction[] = [];
+    const v = client(sink);
+    server.dropNextResponses(1);
+    const unknown = await unknownOf(() => v.spend(request));
+
+    // The transaction DID run: the node stored it under the hash the client computed before sending.
+    expect(server.chain.spends).toHaveLength(1);
+    const signed = sink[0];
+    if (signed === undefined) throw new Error("no transaction was recorded");
+    const clientHash = baseEncode(sha256Bytes(encodeTransaction(signed.transaction)));
+    expect(unknown.txHash).toBe(clientHash);
+    expect(unknown.signerId).toBe(SCENARIO_VAULT);
+    expect(server.chain.txs.has(clientHash)).toBe(true);
+    expect(server.methods.filter((m) => m === "send_tx")).toHaveLength(1); // it was not sent again
+
+    const resolved = await v.resolveSpend(unknown.txHash);
+    expect(resolved).toMatchObject({
+      ok: true,
+      unconfirmed: null,
+      result: { spend_id: 1, status: "paid" },
+    });
+    expect(resolved.tx.txHash).toBe(clientHash);
+    expect(server.chain.spends).toHaveLength(1); // resolving read the outcome, it did not spend again
+  });
+
+  it("recovers a held spend as held, a refused spend with its contract code, and a failed payout as ok:false", async () => {
+    const held = client([]);
+    server.dropNextResponses(1);
+    const heldUnknown = await unknownOf(() => held.spend({ ...request, amount: "75000000" }));
+    expect(await held.resolveSpend(heldUnknown.txHash)).toMatchObject({
+      ok: true,
+      result: { spend_id: 1, status: "held" },
+    });
+
+    server.chain.hooks.spendPanic = "DuplicateRef";
+    server.dropNextResponses(1);
+    const refusedUnknown = await unknownOf(() => held.spend({ ...request, ref: "INV-2" }));
+    const refused = await held.resolveSpend(refusedUnknown.txHash);
+    expect(refused).toMatchObject({ ok: false, unconfirmed: null, result: null });
+    expect(refused.tx.code).toBe("DuplicateRef");
+
+    server.chain.hooks.spendPanic = null;
+    server.chain.hooks.payoutFailure = "ft_transfer_failed";
+    server.dropNextResponses(1);
+    const failedUnknown = await unknownOf(() =>
+      held.spend({ ...request, ref: "INV-3", invoice_hash: "ef".repeat(32) }),
+    );
+    const failed = await held.resolveSpend(failedUnknown.txHash);
+    // The callback that records the failure succeeds, so the transaction is ok but the spend did not pay.
+    expect(failed.tx.ok).toBe(true);
+    expect(failed).toMatchObject({ ok: false, unconfirmed: null, result: { status: "failed" } });
+  });
+
+  it("an answer given before the transaction is final (wait_until NONE or INCLUDED) is an unknown outcome too, and the call still ran", async () => {
+    for (const level of ["NONE", "INCLUDED"] as const) {
+      const fresh = await serverFor({});
+      const sink: SignedTransaction[] = [];
+      const v = new VaultClient(SCENARIO_VAULT, new RpcClient({ urls: [fresh.url] }), {
+        agent: recordingSender(fresh.url, TEST_KEYS.agent.secretKey, SCENARIO_VAULT, sink, level),
+      });
+      const unknown = await unknownOf(() => v.spend(request));
+      expect(unknown.message).toMatch(/before the transaction was final/);
+      expect(fresh.chain.spends).toHaveLength(1);
+      // Looking the hash up asks for FINAL, which the fake already has.
+      expect(await v.resolveSpend(unknown.txHash)).toMatchObject({
+        ok: true,
+        result: { spend_id: 1, status: "paid" },
+      });
+    }
+  });
+
+  it("answers a transaction that is already final in full at every wait_until level, and rejects an unknown level", async () => {
+    const sink: SignedTransaction[] = [];
+    await recordingSender(server.url, TEST_KEYS.agent.secretKey, SCENARIO_VAULT, sink).functionCall(
+      {
+        receiverId: SCENARIO_VAULT,
+        methodName: "spend",
+        args: { request },
+        gas: SPEND_GAS,
+        deposit: 0n,
+      },
+    );
+    const signed = sink[0];
+    if (signed === undefined) throw new Error("no transaction was recorded");
+    const sendAt = async (wait_until: string) =>
+      (
+        await rawRpc(server.url, "send_tx", {
+          signed_tx_base64: Buffer.from(encodeTransaction(signed)).toString("base64"),
+          wait_until,
+        })
+      ).result as Record<string, unknown>;
+    // The tx is final already, so every level gets the full outcome.
+    for (const level of ["NONE", "INCLUDED", "EXECUTED_OPTIMISTIC", "FINAL"]) {
+      expect((await sendAt(level)).status).toBeDefined();
+    }
+    expect(
+      (await rawRpc(server.url, "send_tx", { signed_tx_base64: "AAAA", wait_until: "SOON" })).error,
+    ).toMatchObject({
+      name: "REQUEST_VALIDATION_ERROR",
+    });
+  });
+});
+
+describe("prepaid gas, through the real sender", () => {
+  const TGAS = 1_000_000_000_000n;
+
+  it("SPEND_GAS covers both payout kinds", () => {
+    expect(SPEND_GAS).toBeGreaterThanOrEqual(GAS_FLOOR_NEAR_PAYOUT);
+    expect(SPEND_GAS).toBeGreaterThanOrEqual(GAS_FLOOR_INTENTS_PAYOUT);
+  });
+
+  it("a spend with too little gas fails like a node's ExecutionError, reserves nothing, and still uses the nonce", async () => {
+    const sender = new NearApiJsSender({
+      accountId: SCENARIO_VAULT,
+      secretKey: TEST_KEYS.agent.secretKey,
+      rpcUrl: server.url,
+    });
+    const low = await sender.functionCall({
+      receiverId: SCENARIO_VAULT,
+      methodName: "spend",
+      args: { request },
+      gas: 20n * TGAS,
+      deposit: 0n,
+    });
+    expect(low).toMatchObject({ ok: false, code: null });
+    expect(low.failure).toContain("Exceeded the prepaid gas");
+    expect(server.chain.spends).toHaveLength(0);
+    expect(server.chain.mandates[0]).toMatchObject({ reserved: "0", uses: 0 });
+
+    const base = await sender.functionCall({
+      receiverId: SCENARIO_VAULT,
+      methodName: "spend",
+      args: { request: { ...request, mandate_id: 2 } },
+      gas: 100n * TGAS,
+      deposit: 0n,
+    });
+    expect(base.failure).toContain("Exceeded the prepaid gas"); // an Intents payout needs 115 Tgas
+    const enough = await sender.functionCall({
+      receiverId: SCENARIO_VAULT,
+      methodName: "spend",
+      args: { request },
+      gas: SPEND_GAS,
+      deposit: 0n,
+    });
+    expect(enough).toMatchObject({ ok: true, value: { spend_id: 1, status: "paid" } });
   });
 });
 

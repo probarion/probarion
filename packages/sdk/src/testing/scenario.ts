@@ -15,7 +15,10 @@ export const TEST_KEYS = {
   agent: generateKeyPair(sha256Bytes(utf8("probarion/test-double/agent-key"))),
   ledger: generateKeyPair(sha256Bytes(utf8("probarion/test-double/ledger-key"))),
   other: generateKeyPair(sha256Bytes(utf8("probarion/test-double/other-key"))),
-  /** The key of the scenario's approver account. It is a full-access key on `approver.testnet`, never on the vault. */
+  /**
+   * TEST DOUBLE: FullAccess; the secret is public; never add this key to a real account.
+   * It is the key of the scenario's approver account (`approver.testnet`), never a key of the vault.
+   */
   approver: generateKeyPair(sha256Bytes(utf8("probarion/test-double/approver-key"))),
 };
 

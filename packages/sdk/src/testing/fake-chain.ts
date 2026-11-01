@@ -11,8 +11,9 @@
 //   contracts/vault/src/validate.rs is_hex64, is_ref
 //   contracts/intents-stub/src/lib.rs, contracts/factory/src/lib.rs for the views
 // What it does NOT model: owner calls (create_mandate, revoke_mandate, freeze, add_agent, ...; tests set
-// `status = "revoked"`, `config.frozen`, ... directly), NEAR balances and storage staking, gas, FC key
-// allowance use, and the vault's USDC balance.
+// `status = "revoked"`, `config.frozen`, ... directly), NEAR balances and storage staking, gas burnt (only the
+// prepaid-gas FLOOR of a payout is checked), and FC key allowance use. USDC balances are tracked only for
+// accounts a test puts in `ftBalances`.
 import {
   type AccessKeyInfo,
   type AnchorView,
@@ -57,6 +58,14 @@ export class FakeRawPanic extends FakePanic {
     super("");
     this.message = message;
   }
+}
+
+/**
+ * A VM failure that is not a contract panic: the receipt fails with `ExecutionError(<message>)` and no
+ * "Smart contract panicked: " prefix (for example "Exceeded the prepaid gas.").
+ */
+export class FakeVmError extends FakeRawPanic {
+  override name = "FakeVmError";
 }
 
 /** A JSON-RPC level refusal (the node answers with an error object instead of executing). */
@@ -113,6 +122,11 @@ export interface FakeCall {
   method: string;
   args: Record<string, unknown>;
   deposit: bigint;
+  /**
+   * Prepaid gas. When set, a payout below the contract's static gas needs fails with "Exceeded the prepaid gas."
+   * (see `GAS_FLOOR_NEAR_PAYOUT`). The RPC server always sets it; a direct caller may leave it out.
+   */
+  gas?: bigint;
 }
 
 export interface FakeFactory {
@@ -152,6 +166,11 @@ export interface FakeChainInit {
   extraAccessKeys?: AccessKeyInfo[];
   factory?: FakeFactory | null;
   intents?: { publicKeys?: string[]; predecessorAuth?: boolean; balances?: Record<string, string> };
+  /**
+   * NEP-141 balances: token contract, then account, to a decimal string. A payout credits the payee here;
+   * it debits the vault, and fails with "The account doesn't have enough balance", only when the vault has an entry.
+   */
+  ftBalances?: Record<string, Record<string, string>>;
   nowNs?: () => bigint;
 }
 
@@ -162,6 +181,13 @@ export interface FakeKeyState {
 
 /** The all-ones base58 string a NEAR account without contract code reports as `code_hash`. */
 export const ZERO_CODE_HASH = "11111111111111111111111111111111";
+
+const TGAS = 1_000_000_000_000n;
+// contracts/vault/src/lib.rs:40-43. A NEAR payout schedules ft_transfer (15 Tgas) + the callback (15 Tgas);
+// an Intents payout schedules ft_withdraw (100 Tgas) + the callback (15 Tgas). nearcore fails the receipt with
+// "Exceeded the prepaid gas." when the prepaid gas cannot cover what a promise attaches.
+export const GAS_FLOOR_NEAR_PAYOUT = 30n * TGAS;
+export const GAS_FLOOR_INTENTS_PAYOUT = 115n * TGAS;
 
 const RELEASED: ReadonlySet<SpendStatus> = new Set(["failed", "rejected", "expired"]);
 const DAY_NS = 86_400_000_000_000n;
@@ -287,6 +313,7 @@ export class FakeChain {
   anchors: AnchorView[];
   factory: FakeFactory | null;
   intents: { publicKeys: string[]; predecessorAuth: boolean; balances: Record<string, string> };
+  ftBalances: Record<string, Record<string, string>>;
   readonly nowNs: () => bigint;
   readonly txs = new Map<string, Record<string, unknown>>();
   readonly hooks: {
@@ -315,6 +342,7 @@ export class FakeChain {
       predecessorAuth: init.intents?.predecessorAuth ?? true,
       balances: init.intents?.balances ?? {},
     };
+    this.ftBalances = init.ftBalances ?? {};
     this.nowNs = init.nowNs ?? (() => BigInt(Date.now()) * 1_000_000n);
     // keys.rs: add_agent grants FunctionCall { receiver: the vault, method_names: ["spend"] }, set_ledger_key
     // FunctionCall { receiver: the vault, method_names: ["anchor"] }. There are no other keys (I9).
@@ -496,7 +524,42 @@ export class FakeChain {
     if (contractId === this.config.intents) return this.intentsView(method, args);
     if (this.factory !== null && contractId === this.factory.id)
       return this.factoryView(method, args);
+    if (contractId === this.config.usdc || this.config.allowed_assets.includes(contractId)) {
+      return this.ftView(contractId, method, args);
+    }
+    if (this.knownAccount(contractId)) {
+      // An account that exists but has no contract (the owner, an approver): what a node says for any view call.
+      throw new FakeRpcFault(
+        "HANDLER_ERROR",
+        "NO_CONTRACT_CODE",
+        `contract code of account ${contractId} has not been deployed`,
+        undefined,
+        { contract_account_id: contractId, block_height: this.height, block_hash: this.blockHash },
+      );
+    }
     throw this.unknownAccount(contractId);
+  }
+
+  /** NEP-141 views of the USDC and POA token contracts: `ft_metadata` and `ft_balance_of`. */
+  private ftView(token: string, method: string, args: Record<string, unknown>): unknown {
+    switch (method) {
+      case "ft_metadata":
+        return {
+          spec: "ft-1.0.0",
+          name: "TEST DOUBLE USDC",
+          symbol: "USDC",
+          icon: null,
+          reference: null,
+          reference_hash: null,
+          decimals: 6,
+        };
+      case "ft_balance_of": {
+        const account = stringArg(args, "account_id");
+        return this.ftBalances[token]?.[account] ?? "0";
+      }
+      default:
+        throw this.methodNotFound(method);
+    }
   }
 
   private methodNotFound(method: string): FakeRpcFault {
@@ -575,15 +638,18 @@ export class FakeChain {
       case "get_config":
         return factory.config;
       case "list_vaults":
+        // A vault the factory did not create has no record, and a record always carries a 1-based version.
         return pageOf(
-          [
-            {
-              account_id: this.vaultId,
-              owner: this.config.owner,
-              version: factory.vaultVersion ?? 0,
-              created_at_ns: "0",
-            },
-          ],
+          factory.vaultVersion === null
+            ? []
+            : [
+                {
+                  account_id: this.vaultId,
+                  owner: this.config.owner,
+                  version: factory.vaultVersion,
+                  created_at_ns: "0",
+                },
+              ],
           args,
         );
       default:
@@ -717,6 +783,16 @@ export class FakeChain {
     }
   }
 
+  /**
+   * The payout promises attach static gas (lib.rs:40-43); prepaid gas below their sum fails the receipt with
+   * "Exceeded the prepaid gas." and the whole call reverts. A held spend creates no promise, so needs only its own gas.
+   */
+  private assertGas(call: FakeCall, m: MandateView): void {
+    if (call.gas === undefined) return;
+    const floor = m.payee.type === "near" ? GAS_FLOOR_NEAR_PAYOUT : GAS_FLOOR_INTENTS_PAYOUT;
+    if (call.gas < floor) throw new FakeVmError("Exceeded the prepaid gas.");
+  }
+
   private spendRecord(spendId: bigint): SpendView | undefined {
     return this.spends.find((s) => BigInt(s.id) === spendId);
   }
@@ -743,7 +819,10 @@ export class FakeChain {
     if (verdict.code !== null) throw new FakePanic(verdict.code);
     const m = this.mandate(req.mandateId);
     if (m === undefined) throw new FakePanic("NoMandate");
-    if (!verdict.hold) this.assertPayable(m);
+    if (!verdict.hold) {
+      this.assertPayable(m);
+      this.assertGas(call, m);
+    }
     const spend = this.reserve(req, m, call.signerPk, now, verdict.hold);
     const vaultLogs: string[] = [];
     if (verdict.hold) {
@@ -804,6 +883,12 @@ export class FakeChain {
   ): { step: PayoutFailure; text: string } | null {
     const hooked = this.hooks.payoutFailure;
     if (hooked !== null) return { step: hooked, text: `TEST DOUBLE: ${hooked}` };
+    if (m.payee.type === "near") {
+      const tracked = this.ftBalances[this.config.usdc]?.[this.vaultId];
+      if (tracked !== undefined && BigInt(tracked) < amount) {
+        return { step: "ft_transfer_failed", text: "The account doesn't have enough balance" };
+      }
+    }
     if (m.payee.type === "intents") {
       const balance = BigInt(this.intents.balances[`nep141:${m.payee.asset}`] ?? "0");
       // intents-stub `debit` (contracts/intents-stub/src/lib.rs): require!(current >= amount, "insufficient balance")
@@ -840,6 +925,7 @@ export class FakeChain {
     const receipts: FakeReceipt[] = [];
     if (payee.type === "near") {
       if (failure === null) {
+        this.moveUsdc(payee.account_id, amount);
         receipts.push({
           executor: this.config.usdc,
           logs: [
@@ -917,6 +1003,16 @@ export class FakeChain {
     return { result, receipts };
   }
 
+  /** ft_transfer: credits the payee, and debits the vault when its balance is tracked. */
+  private moveUsdc(payee: string, amount: bigint): void {
+    const usdc = this.config.usdc;
+    const book = this.ftBalances[usdc] ?? {};
+    this.ftBalances[usdc] = book;
+    const vaultBalance = book[this.vaultId];
+    if (vaultBalance !== undefined) book[this.vaultId] = (BigInt(vaultBalance) - amount).toString();
+    book[payee] = (BigInt(book[payee] ?? "0") + amount).toString();
+  }
+
   /** spend.rs:165-211: the reservation becomes spent, the status settles, the event names it. */
   private settle(spend: SpendView, m: MandateView, status: "paid" | "burned"): string {
     const amount = BigInt(spend.amount);
@@ -968,6 +1064,7 @@ export class FakeChain {
     const m = this.mandate(BigInt(spend.mandate_id));
     if (m === undefined || m.status === "revoked") throw new FakePanic("MandateInactive"); // held.rs:19
     this.assertPayable(m);
+    this.assertGas(call, m);
     const vaultLogs = [probarion("spend_approved", { spend_id: spend.id, by: call.signerId })];
     const payout = this.executePayout(spend, m, vaultLogs);
     return { value: payout.result, vaultLogs, receipts: payout.receipts };
