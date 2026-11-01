@@ -1,0 +1,50 @@
+{
+  "name": "@probarion/web",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "rotate-keys": "tsx scripts/rotate-keys.ts",
+    "telegram-webhook": "tsx scripts/telegram-webhook.ts"
+  },
+  "dependencies": {
+    "@defuse-protocol/one-click-sdk-typescript": "0.1.26",
+    "@hot-labs/near-connect": "0.11.4",
+    "@probarion/core": "workspace:*",
+    "@probarion/sdk": "workspace:*",
+    "@sentry/nextjs": "^11.8.0",
+    "@supabase/supabase-js": "^2.118.0",
+    "libsodium-wrappers": "0.8.4",
+    "near-api-js": "^7.3.1",
+    "next": "^16.4.2",
+    "pdf-parse": "2.4.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "resend": "^6.34.1",
+    "server-only": "^0.0.1",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
+    "@playwright/test": "^1.64.1",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "bs58": "^6.0.0",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.20.0",
+    "tweetnacl": "^1.0.3",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.7"
+  }
+}

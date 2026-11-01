@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+a {
+  text-underline-offset: 2px;
+}
+code,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

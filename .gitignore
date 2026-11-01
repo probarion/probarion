@@ -3,6 +3,7 @@ target/
 contracts/target/
 dist/
 .next/
+next-env.d.ts
 coverage/
 .env
 .env.*
