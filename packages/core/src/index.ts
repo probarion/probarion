@@ -1,4 +1,5 @@
 export * from "./attestation.js";
+export * from "./code-hashes.js";
 export * from "./constants.js";
 export * from "./hash.js";
 export * from "./hex.js";
@@ -7,3 +8,4 @@ export * from "./ledger.js";
 export * from "./policy.js";
 export * from "./proposal.js";
 export * from "./types.js";
+export * from "./verify.js";
