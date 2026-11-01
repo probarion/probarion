@@ -429,3 +429,82 @@ test("check_spend gates every spend, and the payee's balance is read before the 
   const firstSpend = runbook.indexOf('as-transaction "$VAULT" spend');
   assert.ok(balance > 0 && balance < firstSpend, "payee balance not read before the first spend");
 });
+
+test("the recorded-commit guard runs only on a checkout that is origin/dev", () => {
+  // `recorded-commit` answers for the local HEAD, so a stale checkout would approve a stale vault.
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const blocks = codeBlocks(runbook).join("\n");
+  for (const part of [
+    "git fetch origin",
+    '[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/dev)" ]',
+    'echo "OK: HEAD is origin/dev"',
+    'echo "STOP: HEAD is not origin/dev',
+  ]) {
+    assert.ok(blocks.includes(part), `missing: ${part}`);
+  }
+  assert.ok(
+    blocks.indexOf('echo "STOP: HEAD is not origin/dev') <
+      blocks.indexOf('RECORDED="$(node scripts/code-hash.mjs recorded-commit'),
+    "the checkout guard must come before recorded-commit",
+  );
+  assert.match(runbook, /`recorded-commit` answers for the local `HEAD`/);
+  assert.match(runbook, /prints `OK: HEAD is origin\/dev`/);
+});
+
+test("the vault's free NEAR is a storage runway, with the numbers measured on testnet", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  assert.ok(!/stays free for gas/.test(runbook), "the free NEAR is still called a gas reserve");
+  assert.match(runbook, /not a gas reserve/);
+  for (const fact of [
+    "`v0.probarion.testnet`",
+    "`view_state`",
+    "about 480 bytes",
+    "0.0048 NEAR",
+    "about 363 bytes",
+    "0.0036 NEAR",
+    "about 0.0005 NEAR",
+    "about 90%",
+    "about 100 payments",
+    "`LackBalanceForState`",
+    "not with a `PROBARION:` code",
+    "no method to withdraw NEAR",
+  ]) {
+    assert.ok(runbook.includes(fact), `missing: ${fact}`);
+  }
+  // The top-up command and its trigger are still the ones in step 9.
+  assert.match(runbook, /free NEAR is below 0\.2/);
+  assert.ok(runbook.includes("send-near"));
+});
+
+test("signing wording: keys are written only to the keychain or .keys/, and no command prints one", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  assert.ok(runbook.includes("sign-with-ledger"));
+  assert.ok(!runbook.includes("No command here prints or stores a private key"));
+  assert.match(runbook, /Keys are written only to the keychain.*git-ignored `\.keys\/` folder/);
+  assert.match(runbook, /no command prints one/);
+  assert.ok(runbook.includes("save-to-keychain") && runbook.includes("save-to-folder"));
+});
+
+test("the Day 4 gate lets only the Base transaction hash stay pending", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const gate = runbook.split("\n").find((line) => line.startsWith("- Day 4 gate:"));
+  assert.ok(gate, "no Day 4 gate line");
+  assert.ok(!gate.includes("all four `proof.*` fields"), "the gate still demands all four");
+  for (const part of [
+    "first_near_payment_tx",
+    "first_base_payout_tx",
+    "first_no_mandate_refusal_tx",
+    "first_base_payout_base_tx",
+    "burned, awaiting bridge",
+    "may be pending",
+    "filled when the Base transfer lands",
+    "WITHDRAW_TO:",
+  ]) {
+    assert.ok(gate.includes(part), `the gate lacks: ${part}`);
+  }
+  // Step 10 points at the gate, so the two never disagree.
+  assert.match(
+    runbook,
+    /the Day 4 gate \(step 12\) allows `proof\.first_base_payout_base_tx` to stay pending/,
+  );
+});

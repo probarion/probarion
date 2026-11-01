@@ -13,7 +13,7 @@ node scripts/testnet/chain.mjs protocol-version mainnet
 
 ## 0. One-time setup
 
-1. Tools: `cargo install near-cli-rs --version 0.30.1 --locked` (then `near --version` must print 0.30.1), Node 24, `curl` and the GitHub CLI `gh` (logged in with `gh auth login`). Git Bash ships `curl`. `jq` is not needed.
+1. Tools: near-cli-rs 0.30.1 (then `near --version` must print 0.30.1), Node 24, `curl` and the GitHub CLI `gh` (logged in with `gh auth login`). Git Bash ships `curl`. `jq` is not needed. Install near-cli-rs from the official release binary: download the archive for your platform from https://github.com/near/near-cli-rs/releases (tag v0.30.1; on Windows `near-cli-rs-x86_64-pc-windows-msvc.tar.gz`), check its sha256 against the `.sha256` file that sits next to it in the release (`sha256sum --check`), and put the `near` executable in `~/.cargo/bin`. On Windows do not use `cargo install near-cli-rs --version 0.30.1 --locked`: it fails building openssl-sys. That command works on Linux and macOS.
 2. **OWNER:** the four testnet accounts. They already exist, each with 10 test NEAR and its key in the keychain:
 
    | Variable | Account |

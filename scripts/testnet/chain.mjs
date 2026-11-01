@@ -11,6 +11,7 @@
 //   node scripts/testnet/chain.mjs full-access-keys <account>     the full-access public keys, comma separated
 //   node scripts/testnet/chain.mjs key-count <account>            the number of access keys
 //   node scripts/testnet/chain.mjs code-hash <account>            the base58 code hash of the deployed contract
+//   node scripts/testnet/chain.mjs global-code <code-hash>        published | not published (exit 0 | 1): is this code already a global contract?
 //   node scripts/testnet/chain.mjs protocol-version <testnet|mainnet>
 //   node scripts/testnet/chain.mjs public-key <key-file.json>     the public_key of a near-cli-rs key file
 //
@@ -50,6 +51,19 @@ export function fullAccessKeys(result) {
 /** True when an RPC reply says the account does not exist. */
 export function isUnknownAccount(reply) {
   return reply?.error?.cause?.name === "UNKNOWN_ACCOUNT";
+}
+
+/**
+ * "published" or "not published" for the reply to a `view_global_contract_code` query by code hash.
+ * Any other reply (an RPC error, a different hash) throws, so that a caller never reads "unknown" as
+ * "not published". A published hash answers with `result.hash`; a hash no node has seen answers
+ * with the error cause `NO_GLOBAL_CONTRACT_CODE`.
+ */
+export function globalCodeStatus(reply, hash) {
+  if (reply?.result?.hash === hash) return "published";
+  if (reply?.error?.cause?.name === "NO_GLOBAL_CONTRACT_CODE") return "not published";
+  const what = reply?.error ? JSON.stringify(reply.error) : "no error and no matching result";
+  throw new Error(`view_global_contract_code ${hash}: ${what.slice(0, 300)}`);
 }
 
 async function rpc(url, method, params) {
@@ -129,6 +143,16 @@ export async function main([cmd, ...args]) {
       if (!account) return { out: "no such account", code: 1 };
       return { out: account.code_hash, code: 0 };
     }
+    case "global-code": {
+      const hash = need(args[0], "global-code <code-hash>");
+      const reply = await rpc(accountUrl(), "query", {
+        request_type: "view_global_contract_code",
+        finality: "final",
+        code_hash: hash,
+      });
+      const status = globalCodeStatus(reply, hash);
+      return { out: status, code: status === "published" ? 0 : 1 };
+    }
     case "protocol-version": {
       const network = need(args[0], "protocol-version <testnet|mainnet>");
       if (!(network in RPC_URLS)) throw new Error(`unknown network: ${network}`);
@@ -145,7 +169,7 @@ export async function main([cmd, ...args]) {
     }
     default:
       throw new Error(
-        "usage: chain.mjs exists|balance|enough|full-access-keys|key-count|code-hash|protocol-version|public-key ...",
+        "usage: chain.mjs exists|balance|enough|full-access-keys|key-count|code-hash|global-code|protocol-version|public-key ...",
       );
   }
 }

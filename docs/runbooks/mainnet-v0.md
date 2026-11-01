@@ -9,7 +9,7 @@ The goal is three mainnet transaction hashes from a locked vault `v0.probarion.n
 
 Run every command from the repo root, in Git Bash. Put the cargo tools on the path first: `export PATH="$HOME/.cargo/bin:$PATH"`. The command shapes for creating the account, deploying, locking, `add_agent`, `create_mandate` and the agent-key `spend` are the ones that ran on testnet on 2026-11-01 (`docs/runbooks/testnet.md`, `scripts/testnet/deploy.sh` and `smoke.sh`). Testnet could not run the steps that need the real USDC, the real `intents.near` and the POA bridge (steps 4 to 6 and 10), nor the `check_spend` views and the recovery calls at the end. Amounts, gas and deposits follow `docs/runbooks/testnet.md` §5.
 
-Signing: the commands use `sign-with-keychain`. If the key is on a Ledger, replace it with `sign-with-ledger`. Agent-key spends use `sign-with-access-key-file`. No command here prints or stores a private key.
+Signing: the commands use `sign-with-keychain`. If the key is on a Ledger, replace it with `sign-with-ledger`. Agent-key spends use `sign-with-access-key-file`. Keys are written only to the keychain (step 1, `save-to-keychain`) or to the git-ignored `.keys/` folder (step 7, `save-to-folder`), and no command prints one.
 
 Recording: after each signed step, copy the `Transaction ID: …` value (or the hash from https://nearblocks.io) into the chat. Claude then does two things:
 1. writes it into `contracts/deployments/mainnet.json` at the path named in the step;
@@ -22,10 +22,10 @@ Both files are committed together in step 12, in the same commit as the work.
 - [ ] Day 3 gate passed: CI is green and the testnet smoke passed on 2026-11-01 (`docs/runbooks/testnet.md` §6). Its transaction ids are in `contracts/deployments/testnet.json`, under `smoke`.
 - [ ] Spike S1 proved, on mainnet, that a contract account can `ft_withdraw` Base POA USDC with a `WITHDRAW_TO:` memo and that the USDC arrived on Base. Run it just before Day 4, with the OWNER signing. If S1 failed, stop and use the fallback in report §8 (i).
 - [ ] `pnpm proof show` runs. Plan 05 Task 1 provides it and creates `docs/mainnet-proof.json`. Do not start step 1 without it.
-- [ ] The artifact guard in section 0.3 prints `OK: artifact is the recorded build`.
+- [ ] The checkout guard and the artifact guard in section 0.3 print `OK: HEAD is origin/dev` and `OK: artifact is the recorded build`.
 - [ ] Budget:
   - about 4 NEAR in `probarion.near`, the account that signs and funds step 1 and any top-up: 3 for the vault account, 0.5 kept for one top-up (step 9), the rest for gas. The `enough` check in step 1 asks for 3 + 0.5 plus a 0.3 gas margin;
-  - the vault account's 3 NEAR: its storage is 250,733 bytes (248,501 of them the code), which at 0.00001 NEAR per byte is 2.507 NEAR, so 3 - 2.507 = about 0.49 NEAR stays free for gas. The testnet run of the identical flow with the identical wasm (deploy, lock, `add_agent`, 2 mandates, 3 spends) ended with 0.4955 NEAR free, and its spends burned about 0.0016 NEAR of gas. The agent key's 1 NEAR allowance is a cap on its gas, not a reserve, and each mandate's storage is paid by the owner's `create_mandate` deposit. NEAR in the locked vault can never come out, while a shortfall is one plain transfer (the top-up in step 9). If the wasm size is not 248,501 bytes, redo the storage figure (1 NEAR per 100 KB);
+  - the vault account's 3 NEAR: its storage is 250,733 bytes (248,501 of them the code), which at 0.00001 NEAR per byte is 2.507 NEAR, so 3 - 2.507 = about 0.49 NEAR stays free. **That free NEAR is the vault's storage runway, not a gas reserve.** Measured on testnet `v0.probarion.testnet` with `view_state`: a paid or burned spend leaves about 480 bytes in the vault for good (the spend record 291, the invoice 117, the ref about 72), which is about 0.0048 NEAR of storage stake; a failed spend leaves about 363 bytes, about 0.0036 NEAR; and gas is only about 0.0005 NEAR per spend. So storage is about 90% of what a spend uses, none of it is ever refunded, and the vault has no method to withdraw NEAR. About 0.49 free NEAR therefore lasts about 100 payments. The testnet run of the identical flow with the identical wasm (deploy, lock, `add_agent`, 2 mandates, 3 spends) ended with 0.4955 NEAR free, and its spends burned about 0.0016 NEAR of gas. When the free NEAR runs out, spends fail with the runtime error `LackBalanceForState`, not with a `PROBARION:` code. The remedy is one plain transfer (the top-up in step 9, which is due when free NEAR is below 0.2). The agent key's 1 NEAR allowance is a cap on its gas, not a reserve, and each mandate's storage is paid by the owner's `create_mandate` deposit. NEAR in the locked vault can never come out. If the wasm size is not 248,501 bytes, redo the storage figure (1 NEAR per 100 KB);
   - about 0.5 NEAR in `$OWNER_ID` for its own deposits (0.05 NEAR per mandate, the excess refunded; 0.01 NEAR for the USDC registration) and gas;
   - about 10 native USDC in the owner wallet;
   - about 6 USDC on Base, or 6 Base POA USDC already inside the owner's own `intents.near` account.
@@ -69,10 +69,20 @@ export RPC=https://rpc.mainnet.fastnear.com
 
 Mainnet never uses a local build and never sets `ALLOW_NON_REPRODUCIBLE`. This runbook has no such switch. The wasm is the artifact `probarion-vault-wasm` of the CI push run that built the commit recorded in `contracts/code-hashes.json` (R6, R9), and it must pass `check` against that record.
 
-Find the recorded commit. `recorded-commit` prints it for the current source; if it prints nothing, the source is not recorded, so stop.
+**Precondition: this checkout is `origin/dev`.** `recorded-commit` answers for the local `HEAD`, so on a stale checkout the guard below would approve a stale vault. Fetch, then compare; the block prints `OK: HEAD is origin/dev` or `STOP`:
 
 ```bash
 git fetch origin   # check needs the recorded build commit in this clone
+if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/dev)" ]; then
+  echo "OK: HEAD is origin/dev"
+else
+  echo "STOP: HEAD is not origin/dev; update this checkout to the tip of dev, then start section 0.3 again"
+fi
+```
+
+On `STOP`, stop and tell Claude: deploy nothing. Otherwise find the recorded commit. `recorded-commit` prints it for the current source; if it prints nothing, the source is not recorded, so stop.
+
+```bash
 RECORDED="$(node scripts/code-hash.mjs recorded-commit probarion-vault vault)"
 echo "$RECORDED"
 gh run list --repo probarion/probarion --workflow ci --branch dev --limit 30 --json databaseId,headSha,event,conclusion
@@ -393,7 +403,7 @@ curl -s "$RPC" -H 'content-type: application/json' \
   | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{const a=JSON.parse(s).result;const free=BigInt(a.amount)-BigInt(a.storage_usage)*10n**19n;console.log("storage_usage",a.storage_usage,"bytes; free NEAR:",Number(free)/1e24)})'
 ```
 
-Expected: about 0.49 NEAR free. **Top-up rule:** if free NEAR is below 0.2, top the vault up with one plain transfer before you sign any spend (the vault pays each spend's prepaid gas from this balance, and a spend it cannot pay for is rejected). Check it again after step 11.
+Expected: about 0.49 NEAR free, which is the vault's runway of about 100 payments (section 0, Budget). **Top-up rule:** if free NEAR is below 0.2, top the vault up with one plain transfer before you sign any spend. The vault pays each spend's gas from this balance and keeps about 0.0048 NEAR of storage for every paid spend, and with no free NEAR left a spend fails with `LackBalanceForState`, not with a `PROBARION:` code. Check it again after step 11, and again before the vault takes any payment beyond these three.
 
 **OWNER SIGNS** (only if free NEAR is below 0.2; moves 0.5 NEAR from `probarion.near` to the vault)
 ```bash
@@ -481,7 +491,7 @@ pnpm proof add-tx --id first_base_payout --hash "$H" --signer "$VAULT" --receive
   --what "First Base payout: ft_withdraw with WITHDRAW_TO memo built from mandate 2"
 ```
 
-If nothing arrives within 30 minutes, treat the spend as "burned, awaiting bridge": do not resend, and raise it in the hackathon Discord with both tx hashes. In that case record the NEAR transaction now without `--base-tx`. When the Base transfer lands, add `pnpm proof set links.first_base_payout_base "https://basescan.org/tx/$BASE_H" --source "docs/runbooks/mainnet-v0.md step 10"`.
+If nothing arrives within 30 minutes, treat the spend as "burned, awaiting bridge": do not resend, and raise it in the hackathon Discord with both tx hashes. In that case record the NEAR transaction now without `--base-tx`; the Day 4 gate (step 12) allows `proof.first_base_payout_base_tx` to stay pending until then. When the Base transfer lands, add `pnpm proof set links.first_base_payout_base "https://basescan.org/tx/$BASE_H" --source "docs/runbooks/mainnet-v0.md step 10"`.
 
 ## 11. First `NoMandate` refusal
 
@@ -538,7 +548,7 @@ pnpm proof add-tx --id refused_no_mandate --hash "$H" --signer "$VAULT" --receiv
 
 - Claude fills `contracts/deployments/mainnet.json`, checks `pnpm proof show` lists every id above, adds the mainnet rows to `AGENTS.md`, and commits everything in one commit: `git add contracts/deployments/mainnet.json docs/mainnet-proof.json AGENTS.md`.
 - The three Day 4 spends carry pre-ledger decision hashes: the sha256 of `docs/evidence/v0-decision-*.json`. Plan 03's verifier lists them in `Snapshot.pre_ledger_decision_hashes`, and check (d) reports them as "pre-ledger (documented)".
-- Day 4 gate: all four `proof.*` fields in `contracts/deployments/mainnet.json` are non-null, and the Base payout's `ft_burn` memo equals `WITHDRAW_TO:` plus the mandate's address.
+- Day 4 gate: `proof.first_near_payment_tx`, `proof.first_base_payout_tx` and `proof.first_no_mandate_refusal_tx` in `contracts/deployments/mainnet.json` are non-null, and so is `proof.first_base_payout_base_tx`, with one exception: if step 10 ended as "burned, awaiting bridge", that one field (`first_base_payout_base_tx`) may be pending and is filled when the Base transfer lands. The Base payout's `ft_burn` memo equals `WITHDRAW_TO:` plus the mandate's address.
 - **OWNER:** publish the build-in-public post with the three nearblocks links.
 
 ## If anything looks wrong
