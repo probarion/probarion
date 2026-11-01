@@ -248,10 +248,28 @@ function decisionsByHash(s: Snapshot): Map<string, LedgerEntry> {
   return map;
 }
 
-/** Check d: every on-chain spend's decision_hash is the body_hash of an allow or hold decision in the ledger. */
+/**
+ * Check d (ICR-4): every on-chain spend whose `decision_hash` is not in `pre_ledger_decision_hashes` is bound to
+ * exactly one allow decision. Its `decision_hash` must be the `body_hash` of a `decision` entry in the ledger
+ * and that entry must:
+ *  - have the verdict `allow`, or `hold` only when the spend went through `held`. The snapshot has no status
+ *    history, but `held_until_ns` says it: the contract's `reserve` sets it only for a spend it holds and nothing
+ *    clears it, so it is non-null for a spend that was held, whether it was then approved and paid out, rejected,
+ *    expired or is still held. A hold decision without it means the spend moved with no approver. An `allow`
+ *    decision is accepted for a held spend too: the approval threshold (`approval_above`) is the contract's own
+ *    and the policy engine has no such rule;
+ *  - carry the spend's `invoice_hash`, `mandate_id` and `amount`;
+ *  - be referenced by no other spend: a decision authorises exactly one spend. The contract checks only that
+ *    `decision_hash` is 64 hex and never de-duplicates it, so without this an agent key could reuse one allow
+ *    decision for any number of spends.
+ * Spends documented as pre-ledger (Day-4 v0, before the ledger existed) are exempt from all of it and reported.
+ *
+ * Not proved: that `decide()` would give that verdict for those inputs (the verifier does not re-run the policy).
+ */
 export function checkSpendsHaveDecisions(s: Snapshot): CheckResult {
   const decisions = decisionsByHash(s);
   const preLedger = new Set(s.pre_ledger_decision_hashes ?? []);
+  const claimedBy = new Map<string, number>(); // decision body_hash -> the first spend that references it
   let documented = 0;
   for (const spend of [...s.chain.spends].sort((x, y) => x.id - y.id)) {
     const decision = decisions.get(spend.decision_hash);
@@ -265,18 +283,48 @@ export function checkSpendsHaveDecisions(s: Snapshot): CheckResult {
         `spend ${spend.id} has decision_hash ${spend.decision_hash}, which is not a decision in the ledger`,
       );
     }
-    if (decision.body.verdict !== "allow" && decision.body.verdict !== "hold") {
+    const { seq, verdict } = decision.body;
+    if (verdict !== "allow" && verdict !== "hold") {
       return fail(
         "d",
-        `spend ${spend.id} points to decision seq ${decision.body.seq} with verdict ${String(decision.body.verdict)}`,
-        decision.body.seq,
+        `spend ${spend.id} points to decision seq ${seq} with verdict ${String(verdict)}`,
+        seq,
       );
     }
+    if (verdict === "hold" && (spend.held_until_ns === null || spend.held_until_ns === undefined)) {
+      return fail(
+        "d",
+        `spend ${spend.id} points to the hold decision seq ${seq} but never went through held (held_until_ns is null): no approver was involved`,
+        seq,
+      );
+    }
+    const differs: string[] = [];
+    for (const field of ["invoice_hash", "mandate_id", "amount"] as const) {
+      if (spend[field] !== decision.body[field]) {
+        differs.push(`${field} ${String(spend[field])} vs ${String(decision.body[field])}`);
+      }
+    }
+    if (differs.length > 0) {
+      return fail(
+        "d",
+        `spend ${spend.id} does not match its decision seq ${seq} (spend vs decision): ${differs.join("; ")}`,
+        seq,
+      );
+    }
+    const first = claimedBy.get(decision.body_hash);
+    if (first !== undefined) {
+      return fail(
+        "d",
+        `spends ${first} and ${spend.id} both reference decision seq ${seq}: a decision authorises exactly one spend`,
+        seq,
+      );
+    }
+    claimedBy.set(decision.body_hash, spend.id);
   }
   const note = documented > 0 ? `; ${documented} pre-ledger (documented) in docs/evidence` : "";
   return pass(
     "d",
-    `${s.chain.spends.length - documented} on-chain spends map to allow or hold decisions${note}`,
+    `${s.chain.spends.length - documented} on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount)${note}`,
   );
 }
 

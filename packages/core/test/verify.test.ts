@@ -94,13 +94,16 @@ function accessKeyOf(s: Snapshot, index: number) {
   return { key: found, permission: found.permission };
 }
 
-/** Changes exactly one character of the serialised entry: the first digit of body.amount. */
-function tamperOneByte(entry: LedgerEntry): LedgerEntry {
+/**
+ * Changes exactly one character of the serialised entry: the first character of the first string value of
+ * `field`. A digit becomes the next digit (9 becomes 8), any other character becomes "X".
+ */
+function tamperOneByte(entry: LedgerEntry, field: string = "amount"): LedgerEntry {
   const json = JSON.stringify(entry);
-  const marker = '"amount":"';
+  const marker = `"${field}":"`;
   const at = json.indexOf(marker) + marker.length;
-  const digit = json.charAt(at);
-  const replacement = digit === "9" ? "8" : String(Number(digit) + 1);
+  const char = json.charAt(at);
+  const replacement = /[0-9]/.test(char) ? (char === "9" ? "8" : String(Number(char) + 1)) : "X";
   return JSON.parse(`${json.slice(0, at)}${replacement}${json.slice(at + 1)}`) as LedgerEntry;
 }
 
@@ -458,6 +461,19 @@ describe("check b: body_hash and link recompute, and prev_link chains", () => {
     const s = fresh();
     s.ledger[2] = tamperOneByte(entryOf(s, 2));
     const report = await runChecks(s, { now: NOW });
+    // The byte is in the decision's amount: b catches it, and since ICR-4 d also sees that the spend no
+    // longer matches the decision. The first broken seq is the tampered entry for both.
+    expect(onlyFailing(report)).toEqual(["b", "d"]);
+    expect(check(report, "b").firstBrokenSeq).toBe(2);
+    expect(check(report, "d").firstBrokenSeq).toBe(2);
+    expect(firstBrokenSeq(report)).toBe(2);
+  });
+
+  it("fails at the tampered seq when one byte changes that no spend refers to: only b sees it", async () => {
+    const s = fresh();
+    s.ledger[2] = tamperOneByte(entryOf(s, 2), "request_id");
+    expect(entryOf(s, 2).body.request_id).toBe("Xixture-req-1");
+    const report = await runChecks(s, { now: NOW });
     expect(onlyFailing(report)).toEqual(["b"]);
     expect(check(report, "b").firstBrokenSeq).toBe(2);
     expect(firstBrokenSeq(report)).toBe(2);
@@ -643,7 +659,7 @@ describe("check c: anchors", () => {
   });
 });
 
-describe("check d: every on-chain spend has an allow or hold decision in the ledger", () => {
+describe("check d: every on-chain spend is bound to exactly one allow decision in the ledger", () => {
   it("fails for a spend with an unknown decision_hash", async () => {
     const s = fresh();
     spendOf(s, 0).decision_hash = "a".repeat(64);
@@ -694,14 +710,164 @@ describe("check d: every on-chain spend has an allow or hold decision in the led
     expect(check(report, "d").detail).toContain("not a decision in the ledger");
   });
 
-  it("accepts a spend whose decision was a hold", async () => {
-    const s = await rebuildLedger(fresh(), {
-      edit: (body, seq) => {
-        if (seq === 2) body.verdict = "hold";
-      },
+  describe("ICR-4: a spend is bound to its decision, and a decision to one spend", () => {
+    /** The time a held spend's hold runs out: the contract sets held_until_ns when it holds a spend. */
+    const HELD_UNTIL_NS = "1793873420000000000";
+
+    function withHoldDecision(): Promise<Snapshot> {
+      return rebuildLedger(fresh(), {
+        edit: (body, seq) => {
+          if (seq === 2) body.verdict = "hold";
+        },
+      });
+    }
+
+    it("accepts a hold decision for a spend that went through held (approved, then burned)", async () => {
+      const s = await withHoldDecision();
+      spendOf(s, 1).held_until_ns = HELD_UNTIL_NS; // status stays "burned": held, approved, paid out
+      const report = await runChecks(s, { now: NOW });
+      expect(report.ok).toBe(true);
+      expect(check(report, "d").status).toBe("pass");
     });
-    const report = await runChecks(s, { now: NOW });
-    expect(report.ok).toBe(true);
+
+    it("accepts a hold decision for a spend that is still held, rejected or expired", async () => {
+      for (const status of ["held", "rejected", "expired"] as const) {
+        const s = await withHoldDecision();
+        spendOf(s, 1).held_until_ns = HELD_UNTIL_NS;
+        spendOf(s, 1).status = status;
+        s.chain.burns = []; // only a burned spend needs a burn pair (check h)
+        expect(check(await runChecks(s, { now: NOW }), "d").status, status).toBe("pass");
+      }
+    });
+
+    it("fails a hold decision for a spend that never went through held: no approver was involved", async () => {
+      const s = await withHoldDecision();
+      expect(spendOf(s, 1).held_until_ns).toBeNull();
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["d"]);
+      expect(check(report, "d").firstBrokenSeq).toBe(2);
+      expect(check(report, "d").detail).toContain("never went through held");
+    });
+
+    it("accepts an allow decision for a spend the contract held (the threshold is the contract's own)", async () => {
+      const s = fresh();
+      spendOf(s, 0).held_until_ns = HELD_UNTIL_NS;
+      expect((await runChecks(s, { now: NOW })).ok).toBe(true);
+    });
+
+    it("fails a spend whose decision was a refuse, even when invoice, mandate and amount match", async () => {
+      const s = await rebuildLedger(fresh(), {
+        edit: (body, seq) => {
+          if (seq === 2) body.verdict = "refuse";
+        },
+      });
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["d"]);
+      expect(check(report, "d").firstBrokenSeq).toBe(2);
+      expect(check(report, "d").detail).toContain("verdict refuse");
+    });
+
+    it("fails a spend whose amount differs from its decision's", async () => {
+      const s = fresh();
+      spendOf(s, 0).amount = "25000001";
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["d"]);
+      expect(check(report, "d").firstBrokenSeq).toBe(0);
+      expect(check(report, "d").detail).toContain("amount 25000001 vs 25000000");
+    });
+
+    it("fails a spend whose invoice_hash differs from its decision's", async () => {
+      const s = fresh();
+      spendOf(s, 0).invoice_hash = sha256Hex("another invoice");
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["d"]);
+      expect(check(report, "d").firstBrokenSeq).toBe(0);
+      expect(check(report, "d").detail).toContain("invoice_hash");
+    });
+
+    it("fails a spend whose mandate_id differs from its decision's", async () => {
+      const s = fresh();
+      spendOf(s, 0).mandate_id = 2;
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["d"]);
+      expect(check(report, "d").firstBrokenSeq).toBe(0);
+      expect(check(report, "d").detail).toContain("mandate_id 2 vs 1");
+    });
+
+    it("names every field that differs", async () => {
+      const s = fresh();
+      Object.assign(spendOf(s, 0), { amount: "1", mandate_id: 2, invoice_hash: "c".repeat(64) });
+      const detail = check(await runChecks(s, { now: NOW }), "d").detail;
+      for (const field of ["invoice_hash", "mandate_id", "amount"]) expect(detail).toContain(field);
+    });
+
+    it("fails a spend sent for a decision that recorded no amount", async () => {
+      const s = await rebuildLedger(fresh(), {
+        edit: (body, seq) => {
+          if (seq === 2) body.amount = null;
+        },
+      });
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["d"]);
+      expect(check(report, "d").firstBrokenSeq).toBe(2);
+      expect(check(report, "d").detail).toContain("amount 40000000 vs null");
+    });
+
+    it("fails two spends that reference one decision, naming both", async () => {
+      // The contract does not de-duplicate decision_hash. This second spend equals the first in invoice,
+      // mandate and amount, so only the one-spend-per-decision rule can stop it.
+      const s = fresh();
+      s.chain.spends.push({ ...structuredClone(spendOf(s, 0)), id: 3 });
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["d"]);
+      expect(check(report, "d").firstBrokenSeq).toBe(0);
+      expect(check(report, "d").detail).toContain("spends 1 and 3");
+      expect(check(report, "d").detail).toContain("exactly one spend");
+    });
+
+    it("fails a second spend for another invoice that reuses an allow decision", async () => {
+      const s = fresh();
+      s.chain.spends.push({
+        ...structuredClone(spendOf(s, 0)),
+        id: 3,
+        invoice_hash: sha256Hex("a different invoice"),
+        ref: "FIX-REUSE",
+      });
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["d"]);
+      expect(check(report, "d").detail).toContain("spend 3");
+      expect(check(report, "d").detail).toContain("invoice_hash");
+    });
+
+    it("judges spends in id order, whatever order the snapshot lists them in", async () => {
+      const s = fresh();
+      s.chain.spends.push({ ...structuredClone(spendOf(s, 0)), id: 3 });
+      s.chain.spends.reverse();
+      expect(check(await runChecks(s, { now: NOW }), "d").detail).toContain("spends 1 and 3");
+    });
+
+    it("keeps the pre-ledger exemption: documented spends need no decision, binding or uniqueness", async () => {
+      const s = fresh();
+      const v0Decision = sha256Hex('{"kind":"v0-manual-decision","mandate_id":1}');
+      spendOf(s, 0).decision_hash = v0Decision;
+      s.chain.spends.push({
+        ...structuredClone(spendOf(s, 0)),
+        id: 3,
+        amount: "7",
+        invoice_hash: sha256Hex("another v0 invoice"),
+      });
+      s.pre_ledger_decision_hashes = [v0Decision];
+      const report = await runChecks(s, { now: NOW });
+      expect(report.ok).toBe(true);
+      expect(check(report, "d").detail).toContain("2 pre-ledger (documented)");
+    });
+
+    it("applies the rules to a spend whose hash is both in the ledger and documented as pre-ledger", async () => {
+      const s = fresh();
+      spendOf(s, 0).amount = "25000001";
+      s.pre_ledger_decision_hashes = [spendOf(s, 0).decision_hash];
+      expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["d"]);
+    });
   });
 });
 
