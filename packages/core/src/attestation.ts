@@ -390,7 +390,8 @@ export interface RequestBindingOptions {
  *     its `nonce:` header;
  *  3. `request_inputs.invoice_text_sha256 === context.invoice_hash` (the value check d ties to the
  *     on-chain `spend.invoice_hash`) and `sha256(invoiceText) === invoice_text_sha256`;
- *  4. `request_inputs.facts` is not null and `facts.invoice_hash === context.invoice_hash`;
+ *  4. `request_inputs.facts` is not null, `facts.invoice_hash === context.invoice_hash`, and
+ *     `facts.po_ref` is null or occurs in the invoice text byte for byte, as a substring (ICR-3c);
  *  5. `sha256(request_inputs.system_prompt)` is in the allow-list (`opts.systemPrompts`, default
  *     `KNOWN_SYSTEM_PROMPT_HASHES`); the detail names the prompt that matched;
  *  6. the request rebuilt by `buildProposalRequest` from the recorded inputs, the invoice text and the
@@ -399,10 +400,11 @@ export interface RequestBindingOptions {
  * What it does NOT prove: that `request_inputs.facts` and `request_inputs.mandates` matched the chain at
  * decision time. Task 14 compares `mandates` with the snapshot's immutable mandate fields, checks that the
  * entry's `mandate_id` is among them and that `facts.amount` equals the entry's amount; the historical
- * `remaining` and `status` cannot be checked without archival chain state. Free text that the strict shape
- * leaves open (`label`, `po_ref`, account ids) is bound by `request_sha256` but not constrained. Prompt
- * injection inside the invoice text itself is out of scope here: `decide()` and the contract are the
- * defence. Like A1 to A7 it does not show that the quote came from genuine TEE hardware (that is O1,
+ * `remaining` and `status` cannot be checked without archival chain state. The free text that the strict
+ * shape leaves open is held in place elsewhere: `po_ref` by check 4 (a substring of the invoice text), and
+ * `label` and the account ids and addresses of a `payee` by their immutability on chain, which Task 14's
+ * match against the snapshot covers. Prompt injection inside the invoice text itself is out of scope here:
+ * `decide()` and the contract are the defence. Like A1 to A7 it does not show that the quote came from genuine TEE hardware (that is O1,
  * online). It never throws: malformed evidence or context fails. Without the invoice text or the context,
  * do not call it: A8 is then "not run".
  */
@@ -458,6 +460,12 @@ export function checkRequestBinding(
     }
     if (inputs.facts.invoice_hash !== context.invoice_hash) {
       return fail("request_inputs.facts.invoice_hash differs from the ledger invoice_hash");
+    }
+    // ICR-3c: the auditor holds the text, so a po_ref that is not in it was not extracted from it.
+    if (inputs.facts.po_ref !== null && !invoiceText.includes(inputs.facts.po_ref)) {
+      return fail(
+        "request_inputs.facts.po_ref does not occur verbatim in the invoice text: it was not extracted from it",
+      );
     }
 
     const promptHash = sha256Hex(inputs.system_prompt);

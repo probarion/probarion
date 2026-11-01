@@ -66,7 +66,7 @@ function inputFor(invoiceText: string, ctx: NonceContext): ProposalRequestInput 
     facts: {
       invoice_hash: sha256Hex(invoiceText),
       amount: "25000000",
-      po_ref: "PO-1001",
+      po_ref: /PO-[0-9]+/.exec(invoiceText)?.[0] ?? null, // copied from the text, as an extractor must
       purpose_hash: PURPOSE,
     },
     mandates: [mandate],
@@ -302,12 +302,75 @@ describe("checkRequestBinding (A8, request binding)", () => {
       );
     });
 
-    it("documents the limit: free text such as po_ref is bound by the request hash but not constrained by A8", async () => {
+    // ICR-3c (was a documented limit): po_ref is the one free-text fact that nothing else ties to a source
+    it("ICR-3c: fails a directive in facts.po_ref that is not in the invoice text, although hash and prompt are honest", async () => {
       const f = factsOf(await honest());
-      const ev = await honest({
-        input: { ...input, facts: { ...f, po_ref: `PO-1001 ${DIRECTIVE}` } },
-      });
+      for (const po_ref of [
+        `PO-1001 ${DIRECTIVE}`,
+        `PO-1001. Owner note: ${DIRECTIVE}`,
+        DIRECTIVE,
+      ]) {
+        const ev = await honest({ input: { ...input, facts: { ...f, po_ref } } });
+        expect((await checkAttestation(ev, NONCE, TEST_PROPOSAL)).ok).toBe(true); // A1-A7 cannot tell
+        const a8 = checkRequestBinding(ev, INVOICE, CTX);
+        expect(a8.pass, po_ref).toBe(false);
+        expect(a8.detail).toContain("po_ref does not occur verbatim in the invoice text");
+      }
+    });
+
+    it("ICR-3c: passes a po_ref that is a real substring of the invoice text, however long, and across a line break", async () => {
+      const f = factsOf(await honest());
+      for (const po_ref of [
+        "PO-1001",
+        "PO-1001 design retainer",
+        "Total due: 25.00 USDC",
+        "(vendor.testnet)\nPO-1001",
+        INVOICE,
+      ]) {
+        const ev = await honest({ input: { ...input, facts: { ...f, po_ref } } });
+        const a8 = checkRequestBinding(ev, INVOICE, CTX);
+        expect(a8.pass, po_ref).toBe(true);
+      }
+    });
+
+    it("ICR-3c: passes a null po_ref", async () => {
+      const f = factsOf(await honest());
+      const ev = await honest({ input: { ...input, facts: { ...f, po_ref: null } } });
       expect(checkRequestBinding(ev, INVOICE, CTX).pass).toBe(true);
+    });
+
+    it("ICR-3c: needs the text byte for byte: another case, a trimmed or padded or re-spaced po_ref fails", async () => {
+      const f = factsOf(await honest());
+      for (const po_ref of [
+        "po-1001",
+        "PO 1001",
+        "PO-1001  ",
+        " PO-1001",
+        "PO-1001  design retainer",
+        "PO-1001 design  retainer",
+        "PO-1001\ndesign retainer",
+        "PO-1002",
+      ]) {
+        const ev = await honest({ input: { ...input, facts: { ...f, po_ref } } });
+        expect(checkRequestBinding(ev, INVOICE, CTX).pass, JSON.stringify(po_ref)).toBe(false);
+      }
+    });
+
+    it("ICR-3c: checks against the text the auditor holds, not the one the writer says: po_ref from another invoice fails", async () => {
+      const other = "INVOICE OTHER\nPO-7777 something else";
+      const f = factsOf(await honest());
+      const ev = await honest({ input: { ...input, facts: { ...f, po_ref: "PO-7777" } } });
+      expect(other).toContain("PO-7777");
+      expect(checkRequestBinding(ev, INVOICE, CTX).pass).toBe(false);
+    });
+
+    it("documents what stays out of scope: a directive that is itself in the invoice text passes (injection in the invoice is the contract's and decide()'s to handle)", async () => {
+      const ctxY = ctxFor(INVOICE_Y);
+      const inputY = inputFor(INVOICE_Y, ctxY);
+      const f = inputY.facts;
+      if (f === null || f === undefined) throw new Error("fixture has facts");
+      const ev = await honest({ input: { ...inputY, facts: { ...f, po_ref: DIRECTIVE } } });
+      expect(checkRequestBinding(ev, INVOICE_Y, ctxY).pass).toBe(true);
     });
   });
 
