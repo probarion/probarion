@@ -1,0 +1,4 @@
+# Fake test values, not secrets: log.test.ts built them as literals in dedca42 and b82c579 replaced
+# them with run-time strings. Only these two exact findings in that one commit are ignored.
+dedca42d446c64ec82c127bf502f8f5cfebc23ac:apps/web/src/lib/log.test.ts:generic-api-key:396
+dedca42d446c64ec82c127bf502f8f5cfebc23ac:apps/web/src/lib/log.test.ts:generic-api-key:397
