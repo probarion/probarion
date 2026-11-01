@@ -318,10 +318,11 @@ export interface PayeeHint { near_account?: string; chain?: "base" | "solana"; a
 export interface AttestationEvidence {
   provider: "near-ai-cloud";
   model: string;
-  chat_id: string;
+  chat_id: string;          // the completion's `id`; A7 compares it with the `id` inside response_body
   nonce: Hex32;
-  request_sha256: Hex32;
+  request_sha256: Hex32;    // sha256 of the exact chat request body; the auditor check A8 recomputes it (section 7)
   response_sha256: Hex32;
+  response_body: string;    // ICR-2: the exact UTF-8 text of the chat-completion HTTP response body as received; sha256(utf8(response_body)) === response_sha256 (A7)
   signature: { text: string; signature: string; signing_address: string; signing_algo: "ecdsa" };
   report: { signing_address: string; signing_algo: "ecdsa"; request_nonce: Hex32; report_data: string /* 128 hex, EXTRACTED from intel_quote (see §7) */; intel_quote: string; nvidia_payload: string | null; event_log: unknown | null } | null; // exactly one signer-matched attestation candidate, else null
   fetched_at: string; // ISO-8601
@@ -374,7 +375,7 @@ Why the vault is in the preimage: the first decision of every vault has `prev_li
 
 ## 7. Attestation checks (offline, in `@probarion/core/attestation`)
 
-Given an `AttestationEvidence` and the expected nonce:
+Given an `AttestationEvidence`, the expected nonce (recomputed from the ledger context) and the decision entry's recorded `proposal`:
 
 **Fetching (from spike S2):** `GET /v1/attestation/report?model=<id>&signing_algo=ecdsa&nonce=<64 hex>&provider=near&include_tls_fingerprint=false` with header `x-no-aliasing: true`. The docs say the JSON does **not** return `report_data`; it must be read from the TDX quote: `report_data` = TD report body bytes `[520, 584)`, where the body starts at quote byte offset 48 (quote v4) or 54 (quote v5). From the candidates returned, keep exactly the one whose signing address matches the response signature; if not exactly one, set `report: null`, mark `decided_by` normally, and check `e` reports the entry as unattested.
 
@@ -387,8 +388,17 @@ Given an `AttestationEvidence` and the expected nonce:
 | A4 | `report_data` bytes 0–31 hold the 20-byte address left-aligned, zero-padded. If they instead hold `sha256(signer \|\| tls_fingerprint)`, mark `binding: "tls"` and pass A4 only online |
 | A5 | `report_data` bytes 32–63 equal `nonce` |
 | A6 | `nonce` equals the recomputed nonce from the ledger context (`prev_link`, `invoice_hash`, `mandate_id`, `seq` and the vault account id) |
+| A7 | Response binding (ICR-2). All three hold: (1) `sha256Hex(utf8(response_body)) === response_sha256`; (2) `JSON.parse(response_body).id === chat_id`; (3) the proposal parsed from `choices[0].message.content` with `extractJsonObject` and `parseModelProposal` equals the decision entry's recorded `proposal` by `canonicalJson`. With no recorded proposal (`null`), A7 fails with "no recorded proposal to bind": a decision entry with evidence must have a proposal |
 
-Online-only checks (O1 TDX quote via DCAP, O2 NVIDIA NRAS) are **optional**, run behind `--online`, and may use `@nearai/inference-sdk`.
+The checks run in the order A1 to A7 and every check always runs: a failed check never skips a later one, so a result always lists all seven.
+
+**Response binding (ICR-2, A7).** A1 to A6 alone do not tie the recorded proposal to what the model said. The evidence held only `response_sha256`, and the check never saw the entry's `proposal`, so whoever writes the ledger could record `pay` after the model answered `refuse`. The evidence therefore carries `response_body`, the exact UTF-8 text of the chat-completion HTTP response body as received, and `response_sha256` is the hash of those same bytes. A1 ties the signed text to `response_sha256`, A7 ties `response_sha256` to the body, the body's `id` to `chat_id`, and the proposal inside the body to the proposal in the entry. The `chat_id` field is the evidence's existing chat id; no field is added for it.
+
+**Request binding (A8, auditor).** The chat request carries no nonce of its own, so a genuine chat signature and response from another position or another vault can be paired with a report fetched for this entry's nonce. A7 catches that whenever the replayed response's proposal differs from the entry's recorded proposal. It cannot catch an identical proposal at a different position. That gap is closed by the request, not by the response. `buildProposalRequest` (plan 03 Task 11) builds the chat request deterministically and puts the nonce in the system message; `request_sha256` is the hash of that request body. The optional auditor check **A8** rebuilds the request from the invoice document plus the recorded inputs and compares its sha256 with `request_sha256`. A8 is not part of `checkAttestation`; it is implemented later (plan 03 Task 7/14). The invoice text is never stored in the ledger, for privacy, so only an auditor who holds the invoice documents can run A8. Without them, the binding of a chat to its ledger position rests on A8 being run by an auditor; offline A1 to A7 do not prove it.
+
+**What the offline checks prove.** A1 to A7 prove internal consistency only: the evidence agrees with itself, with the recorded proposal and with the ledger position. They do not prove that the quote came from genuine TEE hardware or that the signing key belongs to a measured TEE. That needs O1 online: the DCAP verification of the TDX quote plus measurement pinning. Every `checkAttestation` result therefore carries `quote_verified: false`.
+
+Online-only checks (O1 TDX quote via DCAP plus measurement pinning, O2 NVIDIA NRAS) are **optional**, run behind `--online`, and may use `@nearai/inference-sdk`.
 
 ## 8. Policy engine (`@probarion/core/policy`)
 
@@ -482,7 +492,7 @@ export function runChecks(s: Snapshot, opts?: { now?: Date }): Promise<VerifyRep
 // Snapshot also carries pre_ledger_decision_hashes: Hex32[] (Day-4 v0 spends recorded in docs/evidence/ before the ledger existed); check d reports them as "pre-ledger (documented)", not fail.
 // Check a (v2): entries in each anchor range (prev.count, anchor.count] must be signed by that anchor's ledger_key; entries after the last anchor by config.ledger_key.
 // Check h uses NEAR_ARCHIVAL_RPC_URLS for tx lookups older than about 2.5 days.
-// @probarion/core also exports KNOWN_VAULT_CODE_HASHES (from contracts/code-hashes.json) for non-factory vaults, and checkAttestation(evidence, nonce): Promise<{ ok; binding; checks: { id: "A1".."A6"; pass; detail }[] }>. A3 requires signing_algo "ecdsa"; A5 requires report.request_nonce == nonce.
+// @probarion/core also exports KNOWN_VAULT_CODE_HASHES (from contracts/code-hashes.json) for non-factory vaults, and checkAttestation(evidence, nonce, proposal: ModelProposal | null): Promise<{ ok; binding; quote_verified: false; checks: { id: "A1".."A7"; pass; detail }[] }>. A3 requires signing_algo "ecdsa"; A5 requires report.request_nonce == nonce; A7 binds response_body to response_sha256, chat_id and the entry's proposal (ICR-2); quote_verified is always false offline.
 ```
 
 | Check | Name | Passes when |
@@ -491,7 +501,7 @@ export function runChecks(s: Snapshot, opts?: { now?: Date }): Promise<VerifyRep
 | b | `hash-links` | Every `body_hash` and `link` recomputes, and `prev_link` chains |
 | c | `anchors` | For every anchor, `root == ledger[count-1].link` |
 | d | `spends-have-decisions` | Every on-chain spend's `decision_hash` is the `body_hash` of a `decision` entry with verdict `allow` or `hold` |
-| e | `attestations` | Every entry with `evidence` passes A1–A6; entries with `decided_by = "rules-only"` are reported, not failed |
+| e | `attestations` | Every entry with `evidence` passes A1–A7, with the entry's own `proposal` as the expected proposal (an entry with evidence but no proposal fails A7); entries with `decided_by = "rules-only"` are reported, not failed. The report says the TDX quote was not verified offline |
 | f | `vault-locked` | No FullAccess key, and `code_hash` ∈ `expected_code_hashes` |
 | g | `intents-keys` | `intents_public_keys` is empty and `intents_predecessor_auth` is true |
 | h | `burn-memos` | Every Burned spend has a matched burn pair in its tx: POA token `ft_burn` (owner_id `intents.near`) with memo == `WITHDRAW_TO:` + destination.address, and `intents.near` `mt_burn` with owner_id == vault and amount == spend amount |
@@ -619,3 +629,4 @@ The owning plan adds the marker in the same task that writes the proving test. P
 - 2026-10-21: accepted plan 05 ICR-16 (claim ID ONE-YOCTO, owned by plan 02) and ICR-17 (Probarion.anchors.latest()).
 - 2026-10-21: recorded plan 03 additions: the extra CLI printers, `verify --evidence`, and the default archival RPC URLs. Interfaces v2 is final for execution.
 - 2026-11-01: ICR-1 from the plan 03 Task 3 review: bound the §6 ledger nonce to the vault. Why: the seq-0 nonce was not bound to a vault (every vault's first decision has `prev_link` = 0x00*32 and `seq` = 0, and mandate ids restart at 1), so NEAR AI evidence from one vault's seq-0 decision could be reused in another vault. What: `u32be(len) || utf8(vault)` is appended to the nonce preimage for every `seq`; A6 recomputes with the vault. `computeNonce` takes `vault`.
+- 2026-11-01: ICR-2 from the plan 03 Task 5 review: bind the model response and the recorded proposal (A7) and document request binding (A8). Why: a probe passed A1 to A6 for two attacks. (1) Proposal swap: the check never saw the entry's proposal and the evidence held only `response_sha256`, so whoever writes the ledger could record `pay` after the model said `refuse`. (2) Replay: a chat signature from vault A combined with a report fetched for vault B's nonce passed, because the chat request carries no nonce. What: `AttestationEvidence.response_body` (new, the exact response text as received); check A7 (response hash, chat id, proposal equality by `canonicalJson`); `checkAttestation(evidence, nonce, proposal)`; `quote_verified: false` on every offline result; the optional auditor check A8 (`request_sha256` recomputed from the invoice document and the recorded inputs, plan 03 Task 7/14); check e runs A1 to A7. Limit, stated plainly: offline A1 to A7 prove internal consistency only (genuine TEE needs O1 online), and the binding of a chat to its ledger position rests on A8 being run by an auditor who holds the invoice documents.
