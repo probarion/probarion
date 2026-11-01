@@ -9,9 +9,11 @@ use near_sdk::{env, near, AccountId, BorshStorageKey, Gas, NearToken, PanicOnDef
 pub mod errors;
 pub mod events;
 pub mod ext;
+mod mandates;
 #[cfg(test)]
 mod test_utils;
 pub mod types;
+pub mod validate;
 
 pub use errors::{fail, require_one_yocto, ErrorCode};
 pub use events::VaultEvent;

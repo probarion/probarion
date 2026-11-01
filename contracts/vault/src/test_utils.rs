@@ -219,3 +219,46 @@ pub fn actions() -> Vec<(AccountId, MockAction)> {
         })
         .collect()
 }
+
+pub fn near_input() -> MandateInput {
+    MandateInput {
+        payee: Payee::Near {
+            account_id: payee(),
+        },
+        purpose_hash: hex(0xaa),
+        max_per_payment: U128(100 * USDC),
+        max_total: U128(1_000 * USDC),
+        max_uses: 10,
+        expires_at_ns: U64(T0 + 30 * DAY_NS),
+        approval_above: U128(100 * USDC),
+        agent_pk: agent_pk(),
+        label: "acme hosting".to_string(),
+    }
+}
+pub fn base_input() -> MandateInput {
+    MandateInput {
+        payee: Payee::Intents {
+            chain: Chain::Base,
+            address: EVM_ADDR.to_string(),
+            asset: base_asset(),
+        },
+        label: "base contractor".to_string(),
+        ..near_input()
+    }
+}
+pub fn sol_input() -> MandateInput {
+    MandateInput {
+        payee: Payee::Intents {
+            chain: Chain::Solana,
+            address: SOL_ADDR.to_string(),
+            asset: sol_asset(),
+        },
+        label: "solana contractor".to_string(),
+        ..near_input()
+    }
+}
+/// Owner creates `input` with 1 NEAR attached; returns the mandate id.
+pub fn create(v: &mut Vault, input: MandateInput) -> u64 {
+    as_owner(NearToken::from_near(1));
+    v.create_mandate(input)
+}
