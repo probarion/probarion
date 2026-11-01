@@ -54,5 +54,25 @@ jobs:
         with:
           workspaces: contracts
       - run: cargo fmt --manifest-path contracts/Cargo.toml --all -- --check
-      - run: cargo clippy --manifest-path contracts/Cargo.toml --workspace --all-targets -- -D warnings
-      - run: cargo test --manifest-path contracts/Cargo.toml --workspace
+      - run: cargo clippy --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests --all-targets -- -D warnings
+      - run: cargo test --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests
+
+  sandbox:
+    name: Sandbox integration tests
+    needs: rust-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.1
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+      - name: Install cargo-near 0.22.0
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/download/cargo-near-v0.22.0/cargo-near-installer.sh | sh
+      - run: bash scripts/build-contracts.sh
+      - run: cargo clippy --manifest-path contracts/Cargo.toml -p integration-tests --all-targets -- -D warnings
+      - run: cargo test --manifest-path contracts/Cargo.toml -p integration-tests -- --test-threads=2

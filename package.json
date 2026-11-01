@@ -10,7 +10,7 @@
   },
   "scripts": {
     "verify": "pnpm run verify:rust && pnpm run verify:ts",
-    "verify:rust": "cargo test --manifest-path contracts/Cargo.toml --workspace",
+    "verify:rust": "cargo test --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests",
     "verify:ts": "pnpm run lint && pnpm run typecheck && pnpm run test",
     "verify:full": "pnpm run verify && pnpm run contracts:build && pnpm run test:sandbox",
     "contracts:build": "bash scripts/build-contracts.sh",
