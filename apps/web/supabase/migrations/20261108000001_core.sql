@@ -7,6 +7,21 @@
 alter default privileges revoke execute on functions from public;
 alter default privileges in schema public revoke execute on functions from anon, authenticated;
 
+-- Same idea for tables, views and sequences created by any LATER migration: Supabase's default privileges give
+-- anon/authenticated/service_role everything on them. anon (the public key) starts with nothing, and authenticated
+-- starts read-only: no write, TRUNCATE, TRIGGER, REFERENCES or MAINTAIN. A later migration grants SELECT explicitly,
+-- behind RLS. rls-assert.sql fails the build if an object slips through.
+alter default privileges in schema public revoke all on tables from anon;
+alter default privileges in schema public revoke all on sequences from anon, authenticated;
+alter default privileges in schema public revoke insert, update, delete, truncate, trigger, references
+  on tables from authenticated;
+-- MAINTAIN (VACUUM, ANALYZE, REINDEX, CLUSTER, LOCK, REFRESH MATERIALIZED VIEW) exists from PostgreSQL 17.
+do $$ begin
+  if current_setting('server_version_num')::int >= 170000 then
+    execute 'alter default privileges in schema public revoke maintain on tables from authenticated';
+  end if;
+end $$;
+
 create or replace function public.pb_current_account() returns text
 language sql stable
 set search_path = public, pg_temp
@@ -94,6 +109,9 @@ create table public.invoices (
   created_at timestamptz not null default now(),
   decided_at timestamptz,
   unique (tenant_id, ref),
+  -- TODO(R18, owned by plan 04 Task 13 and its settings/UI copy): in zero-retention mode (`retained = false`) the
+  -- constraint below still allows `filename`, and a file name can carry details. R18 drops `filename` when nothing is
+  -- retained; Task 13 adds `and filename is null` to the `not retained` branch in a new migration.
   constraint invoices_retention check (
     (retained and content_ciphertext is not null and content_nonce is not null)
     or (not retained and content_ciphertext is null and content_nonce is null and facts is null)
@@ -268,20 +286,37 @@ create policy alerts_sent_member_read on public.alerts_sent for select to authen
 );
 -- canary_attempts, metrics_daily, pilots, rate_limits: no policies (deny); public data goes through public_* RPCs.
 
--- Privileges: Supabase grants ALL on new tables to anon/authenticated by default. Narrow them.
+-- Privileges: Supabase grants ALL on these tables to anon/authenticated/service_role by default. anon keeps nothing.
+-- authenticated starts from nothing too and gets an explicit SELECT on the tenant tables, always behind RLS. The four
+-- global tables (canary_attempts, metrics_daily, pilots, rate_limits) get no authenticated grant at all.
 revoke all on all tables in schema public from anon;
-revoke insert, update, delete, truncate, references, trigger on all tables in schema public from authenticated;
-revoke select on public.agent_keys, public.invoices from authenticated;
+revoke all on all tables in schema public from authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+grant select on public.tenants, public.tenant_members, public.ledger_entries, public.vault_events, public.alerts_sent
+  to authenticated;
+-- Column grants: the secrets (ciphertexts, nonces, alert link codes and targets) are never selectable by a member.
 grant select (id, tenant_id, purpose, public_key, key_version, label, status, created_by, created_at, activated_at, revoked_at)
   on public.agent_keys to authenticated;
 grant select (id, tenant_id, invoice_hash, ref, filename, media_type, retained, facts, status, outcome, error, request_id,
   model_prompt_tokens, model_completion_tokens, created_by, created_at, decided_at)
   on public.invoices to authenticated;
-revoke all on all sequences in schema public from anon, authenticated;
+-- `link_code` is the secret that confirms a subscription, and `target` is an email address or Telegram chat id. The console
+-- reads both only through the service role (alert_subscriptions_list, Task 21), never as `authenticated`, so neither is
+-- granted. A later migration can add `target` here if a direct member read of it is ever needed.
+grant select (id, tenant_id, channel, kinds, verified_at, active, created_by, created_at)
+  on public.alert_subscriptions to authenticated;
 
 -- F29: the ledger stays append-only even for the service key. The row trigger blocks UPDATE and DELETE but not
 -- TRUNCATE, and a role holding TRIGGER could add triggers on the table. No Supabase role keeps either privilege.
 revoke truncate, trigger on public.ledger_entries from public, anon, authenticated, service_role;
+
+-- MAINTAIN (PostgreSQL 17+) lets a role VACUUM, REINDEX, CLUSTER or LOCK a table. `revoke all` above took it from
+-- authenticated; the service key does not need it either.
+do $$ begin
+  if current_setting('server_version_num')::int >= 170000 then
+    execute 'revoke maintain on all tables in schema public from service_role';
+  end if;
+end $$;
 
 revoke execute on function public.pb_is_member(uuid) from public, anon;
 grant execute on function public.pb_is_member(uuid) to authenticated, service_role;
