@@ -9,7 +9,7 @@
     "pnpm": ">=10 <11"
   },
   "scripts": {
-    "verify": "pnpm run verify:rust && pnpm run verify:ts",
+    "verify": "pnpm run verify:rust && pnpm run verify:ts && pnpm verify:launch",
     "verify:rust": "cargo test --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests",
     "verify:ts": "pnpm run lint && pnpm run typecheck && pnpm run test",
     "verify:full": "pnpm run verify && pnpm run contracts:build && pnpm run test:sandbox",
@@ -19,9 +19,17 @@
     "test": "node --test \"scripts/**/*.test.mjs\" && pnpm -r --if-present run test",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "typecheck": "pnpm -r --if-present run typecheck"
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "proof": "tsx scripts/proof.ts",
+    "test:scripts": "vitest run --root scripts",
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json",
+    "verify:launch": "pnpm typecheck:scripts && pnpm test:scripts"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.2.0"
+    "@biomejs/biome": "^2.2.0",
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }
