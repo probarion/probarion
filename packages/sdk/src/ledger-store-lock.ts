@@ -3,9 +3,9 @@
 //
 // Taking the lock
 //   - The lock is `<ledger>.lock`. It is PUBLISHED, not created: the full record `{ pid, thread, host, token,
-//     at }` is written to `<lock>.<token>.tmp` first, then `link(tmp, lock)` gives it its name in one atomic
-//     step (EEXIST = somebody holds it), and the tmp name is unlinked. So a lock that exists is always
-//     complete: it is never empty and never half written.
+//     at }` is written to `<lock>.<token>.tmp` and synced to disk first, then `link(tmp, lock)` gives it its
+//     name in one atomic step (EEXIST = somebody holds it), and the tmp name is unlinked. So a lock that
+//     exists is always complete, even across a power cut: it is never empty and never half written.
 //   - A file system without hard links (FAT, exFAT, some network shares) cannot do this. That is an error
 //     that says so; there is no fallback to a non-atomic create, which is exactly the race this avoids.
 //   - A lock file that is empty, not JSON or not a lock record is therefore corruption, not a lock being
@@ -156,12 +156,17 @@ function newInfo(token: string): LockInfo {
   };
 }
 
-/** Writes the whole record under a temporary name next to `target`. Returns that name. */
+/**
+ * Writes the whole record under a temporary name next to `target` and syncs it to disk. Returns that name.
+ * The sync comes BEFORE the link: otherwise a power cut right after the link could leave a lock whose name
+ * is on disk and whose content is not, i.e. an empty lock, which is never removed automatically.
+ */
 async function writeTmp(target: string, info: LockInfo): Promise<string> {
   const tmp = `${target}.${info.token}.tmp`;
   const handle = await open(tmp, "wx");
   try {
     await handle.writeFile(JSON.stringify(info));
+    await handle.sync();
   } catch (error) {
     await handle.close().catch(() => undefined);
     await unlink(tmp).catch(() => undefined);
@@ -177,10 +182,11 @@ async function dropTmp(tmp: string): Promise<void> {
 
 function noHardLinks(target: string, code: string): LedgerError {
   return new LedgerError(
-    `${displayPath(target)}: cannot publish the ledger lock: this file system refused a hard link (${code}). ` +
+    `${displayPath(target)}: cannot publish the ledger lock: the file system refused a hard link (${code}): ` +
+      "no hard links, or access denied (EACCES), for example by SELinux or an ACL. " +
       "The lock is published with a hard link so that it is never visible half written, and there is no " +
       "weaker fallback. Keep the ledger on a local disk whose file system supports hard links " +
-      "(NTFS, ext4, APFS), not on FAT, exFAT or a network share.",
+      "(NTFS, ext4, APFS), not on FAT, exFAT or a network share, and check the directory's permissions.",
   );
 }
 
@@ -197,22 +203,27 @@ async function nameIsInUse(target: string): Promise<boolean> {
 
 /** Atomically gives `tmp`'s content the name `target`. False when the name is taken. */
 async function linkInto(target: string, tmp: string): Promise<boolean> {
-  try {
-    await link(tmp, target);
-    return true;
-  } catch (error) {
-    const code = errorCode(error);
-    if (code === "EEXIST" || code === "EBUSY") return false;
-    if (code === "EPERM" || code === "EACCES") {
-      // Windows answers like this for a name that is being deleted; a file system without hard links
-      // answers like this for every link. Told apart by whether the name is in use.
-      if (await nameIsInUse(target)) return false;
-      throw noHardLinks(target, code);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await link(tmp, target);
+      return true;
+    } catch (error) {
+      const code = errorCode(error);
+      if (code === "EEXIST" || code === "EBUSY") return false;
+      if (code === "EPERM" || code === "EACCES") {
+        // Windows answers like this for a name that is being deleted; a file system without hard links
+        // (or a security rule that denies the link) answers like this for every link. Told apart by
+        // whether the name is in use. The name can also be deleted between link's answer and our look at
+        // it, which would look like "not in use" for a link that was only too early: so one more try.
+        if (await nameIsInUse(target)) return false;
+        if (attempt === 0) continue;
+        throw noHardLinks(target, code);
+      }
+      if (code === "ENOTSUP" || code === "EOPNOTSUPP" || code === "EXDEV" || code === "ENOSYS") {
+        throw noHardLinks(target, code);
+      }
+      throw error;
     }
-    if (code === "ENOTSUP" || code === "EOPNOTSUPP" || code === "EXDEV" || code === "ENOSYS") {
-      throw noHardLinks(target, code);
-    }
-    throw error;
   }
 }
 
@@ -313,9 +324,10 @@ async function acquire(
       const seen = await probe(lockPath);
       if (seen.kind === "corrupt") throw corruptError(lockPath);
       let blocker: Blocker = { by: "lock", seen };
-      if (seen.kind === "gone") {
-        if (Date.now() < deadline) continue; // released since we looked: try again at once
-      } else if (seen.kind === "held" && isStale(seen.info)) {
+      // "gone" (the lock was released since link said the name was taken, or link said busy while there is
+      // no lock, as it does while antivirus holds the temporary file) takes the normal backoff below, so
+      // it is never a tight loop; it is still bounded by the deadline.
+      if (seen.kind === "held" && isStale(seen.info)) {
         await step("stale-seen");
         const outcome = await breakStale(lockPath, seen.info, step);
         if ((outcome === "removed" || outcome === "changed") && Date.now() < deadline) continue;

@@ -2,14 +2,16 @@
 // that fails while releasing, a directory that cannot be synced, a write that fails half way. They need
 // node:fs/promises to fail on command, so this file mocks it (each function still calls the real one
 // unless a test says otherwise).
+import { spawnSync } from "node:child_process";
 import * as fsp from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { threadId } from "node:worker_threads";
 import { createEd25519Signer, sha256Hex } from "@probarion/core";
 import { afterAll, afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { LedgerError } from "../src/errors.js";
 import { FileLedgerStore, type LedgerAppendBody } from "../src/ledger-store.js";
+import { withoutNamespacePrefix } from "../src/ledger-store-fs.js";
 import { displayPath, withFileLock } from "../src/ledger-store-lock.js";
 import { TEST_KEYS } from "../src/testing/index.js";
 
@@ -236,6 +238,62 @@ describe("withFileLock: a file system that cannot publish a lock atomically", ()
     expect(error?.message).not.toMatch(/hard links/);
   });
 
+  it("says what else EPERM or EACCES can mean: no hard links, or access denied", async () => {
+    const lockPath = join(await tempDir(), "x.lock");
+    fns.link.mockImplementation(async () => {
+      throw errno("EACCES");
+    });
+    const error = await withFileLock(lockPath, async () => "ran", { timeoutMs: 2000 }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error?.message).toMatch(/no hard links, or access denied \(EACCES\)/);
+    expect(error?.message).toMatch(/SELinux|ACL/);
+  });
+
+  it.each(["EPERM", "EACCES"])(
+    "%s with no lock in the way gets one more try before it is called a missing feature",
+    async (code) => {
+      // The name may have been deleted between link's answer and our look at it.
+      const lockPath = join(await tempDir(), "x.lock");
+      fns.link.mockImplementationOnce(async () => {
+        throw errno(code);
+      });
+      expect(await withFileLock(lockPath, async () => "ran", { timeoutMs: 2000 })).toBe("ran");
+      expect(fns.link).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("gives up after that one retry, not after many", async () => {
+    const lockPath = join(await tempDir(), "x.lock");
+    fns.link.mockImplementation(async () => {
+      throw errno("EPERM");
+    });
+    await expect(withFileLock(lockPath, async () => "ran", { timeoutMs: 2000 })).rejects.toThrow(
+      /hard links/,
+    );
+    expect(fns.link).toHaveBeenCalledTimes(2);
+  });
+
+  it("backs off when link keeps saying busy for a name that is not there (no tight loop)", async () => {
+    // Antivirus holding the temporary file makes link answer EBUSY while no lock exists to read.
+    const lockPath = join(await tempDir(), "x.lock");
+    fns.link.mockImplementation(async () => {
+      throw errno("EBUSY");
+    });
+    const started = Date.now();
+    const error = await withFileLock(lockPath, async () => "ran", { timeoutMs: 250 }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error?.message).toMatch(/could not take the ledger lock/);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(200); // still bounded by the deadline, not before it
+    // 2, 4, 8, ... 100 ms between tries is a dozen or so tries in 250 ms; a loop with no sleep is thousands.
+    expect(fns.link.mock.calls.length).toBeLessThan(40);
+  });
+
   it("an unexpected link error (disk full) is thrown as it is", async () => {
     const lockPath = join(await tempDir(), "x.lock");
     fns.link.mockImplementation(async () => {
@@ -244,6 +302,43 @@ describe("withFileLock: a file system that cannot publish a lock atomically", ()
     await expect(
       withFileLock(lockPath, async () => "ran", { timeoutMs: 2000 }),
     ).rejects.toMatchObject({ code: "ENOSPC" });
+  });
+});
+
+describe("withFileLock: the record is on disk before it is linked into place", () => {
+  it("syncs the temporary file before link(), for the lock and for the break mutex", async () => {
+    // A power cut after the link but before the data reached the disk would leave a lock that exists and
+    // is empty. Empty locks are never removed automatically, so that would need a manual delete.
+    const dir = await tempDir();
+    const lockPath = join(dir, "x.lock");
+    const dead = spawnSync(process.execPath, ["-e", "0"]).pid;
+    // A stale lock, so that this acquire publishes the break mutex as well as its own lock.
+    await real.writeFile(lockPath, liveLock({ pid: dead, thread: 0, token: "stale-L0" }));
+    const events: string[] = [];
+    fns.open.mockImplementation(async (path: unknown, flags?: unknown, ...rest: unknown[]) => {
+      const handle = (await (real.open as AnyFn)(path, flags, ...rest)) as fsp.FileHandle;
+      if (typeof path === "string" && path.endsWith(".tmp")) {
+        const kind = basename(path).startsWith("x.lock.break.") ? "break" : "lock";
+        const sync = handle.sync.bind(handle);
+        handle.sync = async () => {
+          events.push(`sync ${kind} tmp`);
+          return sync();
+        };
+      }
+      return handle;
+    });
+    fns.link.mockImplementation(async (from: unknown, to: unknown) => {
+      events.push(`link ${basename(String(to))}`);
+      return (real.link as AnyFn)(from, to);
+    });
+    expect(await withFileLock(lockPath, async () => "ran", { timeoutMs: 5000 })).toBe("ran");
+    expect(events).toEqual([
+      "sync lock tmp", // our record is durable before we try to name it
+      "link x.lock", // taken: the stale lock is there
+      "sync break tmp",
+      "link x.lock.break",
+      "link x.lock", // the stale lock is gone: this one succeeds
+    ]);
   });
 });
 
@@ -276,6 +371,13 @@ describe("FileLedgerStore: directory durability", () => {
     expect(seen.synced.filter((path) => path === dir)).toHaveLength(1);
   });
 
+  it("withoutNamespacePrefix drops the Windows \\\\?\\ prefix and nothing else", () => {
+    expect(withoutNamespacePrefix(String.raw`\\?\C:\Users\x\a`)).toBe(String.raw`C:\Users\x\a`);
+    expect(withoutNamespacePrefix(String.raw`\\?\UNC\srv\share\a`)).toBe(String.raw`\\srv\share\a`);
+    expect(withoutNamespacePrefix(String.raw`C:\plain`)).toBe(String.raw`C:\plain`);
+    expect(withoutNamespacePrefix("/posix/path")).toBe("/posix/path");
+  });
+
   it("syncs the parent of every directory it had to create", async () => {
     const base = await tempDir();
     const a = join(base, "a");
@@ -283,8 +385,10 @@ describe("FileLedgerStore: directory durability", () => {
     const store = new FileLedgerStore(join(b, "ledger.jsonl"));
     const seen = watchDirectories();
     await store.append(body(0), sign);
-    // base holds a, a holds b, b holds the ledger file.
-    expect(seen.synced).toEqual(expect.arrayContaining([base, a, b]));
+    // base holds a, a holds b, b holds the ledger file: exactly these, and no ancestor above base. (On
+    // Windows `mkdir` reports the first directory it made as `\\?\C:\...`; a stop test that did not
+    // allow for that walked up to the drive root.)
+    expect(seen.synced).toEqual([a, base, b]);
     // Nothing new is created by the next append, so no directory is synced again.
     const before = seen.synced.length;
     await store.append(body(1), sign);
