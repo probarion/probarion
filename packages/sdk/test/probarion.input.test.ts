@@ -1,16 +1,31 @@
 // Input checks that run before any write (ICR-6, ICR-3b, ICR-3c), hashInvoice, and the chain-context helpers.
-import { checkRequestBinding, type SpendView, sha256Hex, utf8 } from "@probarion/core";
+import {
+  checkRequestBinding,
+  computeNonce,
+  type SpendView,
+  sha256Hex,
+  utf8,
+  ZERO_LINK,
+} from "@probarion/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { liveInvoiceHashes, spentToday, usedRefs } from "../src/context.js";
 import { ProbarionError } from "../src/errors.js";
+import { NearAiProposer } from "../src/nearai.js";
 import { DEFAULT_LEDGER_PATH, hashInvoice, Probarion } from "../src/probarion.js";
 import {
+  createFakeNearAi,
   createScenarioChain,
+  FAKE_NEARAI_BASE_URL,
   type FakeRpcServer,
+  SCENARIO_PURPOSE_BASE,
+  SCENARIO_PURPOSE_NEAR,
   SCENARIO_VAULT,
   startFakeRpcServer,
 } from "../src/testing/index.js";
 import {
+  gullibleModel,
+  NEARAI_KEY,
+  NOW,
   nearInvoice,
   nonceContextOf,
   parseUserMessage,
@@ -282,6 +297,136 @@ describe("requestSpend() rejects malformed input with InvalidInput before any wr
     expect(decision?.body).toMatchObject({ decided_by: "rules-only", evidence: null, proposal });
     expect(decision?.body.rules.map((r) => r.id)).toContain("model.attestation_invalid");
     expect(warnings.join(" ")).toMatch(/evidence is not used/);
+  });
+});
+
+describe("requestSpend() caller evidence must be made for this spend (T13-R1 item 3)", () => {
+  const TEXT_EV = "Invoice EV-1: 10.00 USDC";
+  const AMOUNT = "10000000";
+
+  /** Real evidence from the fake NEAR AI for the first ledger position (seq 0) of mandate 1, unless changed. */
+  async function evidenceFor(
+    change: { amount?: string; purpose?: string | null; mandates?: number[] } = {},
+  ) {
+    const nearai = createFakeNearAi({ respond: gullibleModel });
+    const proposer = new NearAiProposer({
+      apiKey: NEARAI_KEY,
+      baseUrl: FAKE_NEARAI_BASE_URL,
+      fetch: nearai.fetch,
+      now: () => NOW,
+      sleep: async () => {},
+    });
+    const invoiceHash = sha256Hex(TEXT_EV);
+    const ids = change.mandates ?? [1];
+    const mandates = structuredClone(server.chain.mandates.filter((m) => ids.includes(m.id)));
+    const nonce = computeNonce({
+      vault: SCENARIO_VAULT,
+      prev_link: ZERO_LINK,
+      invoice_hash: invoiceHash,
+      mandate_id: 1,
+      seq: 0,
+    });
+    const result = await proposer.propose({
+      invoiceText: TEXT_EV,
+      mandates,
+      nonce,
+      facts: {
+        invoice_hash: invoiceHash,
+        amount: change.amount ?? AMOUNT,
+        po_ref: null,
+        purpose_hash: change.purpose === undefined ? SCENARIO_PURPOSE_NEAR : change.purpose,
+        payee_hint: null,
+      },
+    });
+    return { ...result, invoiceHash };
+  }
+
+  it("keeps valid evidence made for this spend and decides model+rules", async () => {
+    const { proposal, evidence, invoiceHash } = await evidenceFor();
+    const { pb, ledger } = setup(server, { model: false });
+    const out = await pb.requestSpend({
+      mandateId: 1,
+      amount: AMOUNT,
+      invoiceHash,
+      ref: "EV-1",
+      proposal,
+      evidence,
+    });
+    expect(out).toMatchObject({ status: "paid", spendId: 1 });
+    const decision = (await ledger.all())[0];
+    expect(decision?.body).toMatchObject({ decided_by: "model+rules", verdict: "allow" });
+    expect(decision?.body.evidence).toEqual(evidence);
+  });
+
+  const mismatches: [string, () => Promise<Record<string, unknown>>][] = [
+    [
+      "evidence for another amount",
+      async () => {
+        const e = await evidenceFor({ amount: "20000000" });
+        return { proposal: e.proposal, evidence: e.evidence, invoiceHash: e.invoiceHash };
+      },
+    ],
+    [
+      "evidence showing another purpose",
+      async () => {
+        const e = await evidenceFor({ purpose: SCENARIO_PURPOSE_BASE });
+        return { proposal: e.proposal, evidence: e.evidence, invoiceHash: e.invoiceHash };
+      },
+    ],
+    [
+      "evidence showing another mandate",
+      async () => {
+        const e = await evidenceFor({ mandates: [2] });
+        return { proposal: e.proposal, evidence: e.evidence, invoiceHash: e.invoiceHash };
+      },
+    ],
+    [
+      "evidence showing two mandates",
+      async () => {
+        const e = await evidenceFor({ mandates: [1, 2] });
+        return { proposal: e.proposal, evidence: e.evidence, invoiceHash: e.invoiceHash };
+      },
+    ],
+    [
+      "evidence whose mandate label was edited",
+      async () => {
+        const e = await evidenceFor();
+        const evidence = structuredClone(e.evidence);
+        const shown = evidence.request_inputs?.mandates[0];
+        if (shown === undefined) throw new Error("no mandate shown");
+        shown.label = "TEST DOUBLE another label";
+        return { proposal: e.proposal, evidence, invoiceHash: e.invoiceHash };
+      },
+    ],
+    [
+      "evidence for a mandate that does not exist",
+      async () => {
+        const e = await evidenceFor({ purpose: null });
+        return {
+          proposal: e.proposal,
+          evidence: e.evidence,
+          invoiceHash: e.invoiceHash,
+          mandateId: 7,
+        };
+      },
+    ],
+  ];
+
+  it.each(mismatches)("throws InvalidInput before any write for %s", async (_name, make) => {
+    const fields = await make();
+    const { pb, ledger } = setup(server, { model: false });
+    const error = await pb
+      .requestSpend({ mandateId: 1, amount: AMOUNT, ref: "EV-1", ...fields } as Parameters<
+        typeof pb.requestSpend
+      >[0])
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(error).toMatchObject({ code: "InvalidInput" });
+    expect(String((error as Error).message)).toMatch(/was not made for this spend/);
+    expect(await ledger.all()).toEqual([]);
+    expect(spendTxs(server)).toEqual([]);
   });
 });
 

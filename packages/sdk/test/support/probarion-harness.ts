@@ -99,6 +99,8 @@ export interface SetupOptions {
   agentSender?: (real: TxSender) => TxSender;
   /** Wraps the real ledger sender. */
   ledgerSender?: (real: TxSender) => TxSender;
+  /** Pass no logger, so the instance uses its default (console.warn). */
+  consoleLogger?: boolean;
 }
 
 export function realSender(server: FakeRpcServer, secretKey: string): NearApiJsSender {
@@ -123,9 +125,9 @@ export function setup(server: FakeRpcServer, opts: SetupOptions = {}) {
         })
       : null,
     now: () => NOW,
-    logger: { warn: (message) => warnings.push(message) },
     expectedCodeHashes: [SCENARIO_CODE_HASH],
   };
+  if (opts.consoleLogger !== true) deps.logger = { warn: (message) => warnings.push(message) };
   if (opts.agentSender !== undefined) {
     deps.agentSender = opts.agentSender(realSender(server, TEST_KEYS.agent.secretKey));
   }

@@ -244,17 +244,15 @@ describe("Probarion.process (fake chain over JSON-RPC + fake NEAR AI)", () => {
   });
 
   it("maps a spend panic to refused_by_contract with the bare code and the tx hash", async () => {
-    server.chain.hooks.spendPanic = "DuplicateRef";
+    // A panic that check_spend did not foresee (the vault was frozen between the dry run and the spend).
+    // DuplicateRef / DuplicateInvoice are looked up by ref instead: see probarion.outcomes.test.ts.
+    server.chain.hooks.spendPanic = "Frozen";
     const { pb, ledger } = setup(server);
     const out = await pb.process(nearInvoice("Invoice INV-1 for PO-1001", "INV-1"));
-    expect(out).toMatchObject({
-      status: "refused_by_contract",
-      code: "DuplicateRef",
-      spendId: null,
-    });
+    expect(out).toMatchObject({ status: "refused_by_contract", code: "Frozen", spendId: null });
     expect(spendTxs(server)).toEqual([out.txHash]);
     expect((await ledger.all())[1]?.body.contract).toEqual({
-      code: "DuplicateRef",
+      code: "Frozen",
       status: "refused",
       tx_hash: out.txHash,
       spend_id: null,

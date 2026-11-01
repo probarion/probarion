@@ -1,24 +1,47 @@
 // The money path's outcome model (task-13 carries C2, C3): every SpendOutcomeStatus, the sender errors, the
 // never-retry rule for unknown outcomes, the by-ref lookup after DuplicateRef/DuplicateInvoice, dedupe of a
 // double call, and anchoring that fails and is retried.
-import { computeNonce, sha256Hex } from "@probarion/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  checkAttestations,
+  computeNonce,
+  createEd25519Signer,
+  type Snapshot,
+  type SpendRequest,
+  type SpendView,
+  sha256Hex,
+} from "@probarion/core";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ConfigError,
   ProbarionError,
   TxOutcomeUnknownError,
   TxRejectedError,
 } from "../src/errors.js";
-import { InMemoryLedgerStore, type LedgerStore } from "../src/ledger-store.js";
+import {
+  FileLedgerStore,
+  InMemoryLedgerStore,
+  LedgerConflictError,
+  type LedgerStore,
+} from "../src/ledger-store.js";
 import type { SpendOutcome } from "../src/probarion.js";
 import {
   createScenarioChain,
   type FakeRpcServer,
+  SCENARIO_NEAR_PAYEE,
+  SCENARIO_NOW,
   SCENARIO_VAULT,
   startFakeRpcServer,
   TEST_KEYS,
 } from "../src/testing/index.js";
-import { OUT_OF_GAS_NEAR_DETAIL, OUT_OF_NEAR_DETAIL, type TxOutcome } from "../src/tx.js";
+import {
+  type FunctionCallTx,
+  OUT_OF_GAS_NEAR_DETAIL,
+  OUT_OF_NEAR_DETAIL,
+  type TxOutcome,
+} from "../src/tx.js";
 import {
   baseInvoice,
   FailingLedgerStore,
@@ -38,6 +61,18 @@ beforeEach(async () => {
 afterEach(async () => {
   await server.close();
 });
+
+const tempDirs: string[] = [];
+
+afterAll(async () => {
+  for (const dir of tempDirs) await rm(dir, { recursive: true, force: true });
+});
+
+async function tempLedgerPath(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "probarion-race-"));
+  tempDirs.push(dir);
+  return join(dir, "ledger.jsonl");
+}
 
 const failedTx = (fields: Partial<TxOutcome>): TxOutcome => ({
   txHash: null,
@@ -261,17 +296,34 @@ describe("spend outcomes", () => {
       if (warning !== null) expect(warnings.join(" ")).toMatch(warning);
     },
   );
-
-  it("a ConfigError from the sender is thrown, not recorded as an outcome", async () => {
-    const { pb } = setup(server, {
-      agentSender: (real) =>
-        scriptedSender(real, () => Promise.reject(new ConfigError("TEST DOUBLE: no key"))).sender,
-    });
-    await expect(pb.process(INVOICE())).rejects.toThrow(ConfigError);
-  });
 });
 
-describe("DuplicateRef / DuplicateInvoice: look the spend up by ref (C2 d)", () => {
+describe("DuplicateRef / DuplicateInvoice: look the spend up by ref (C2 d, T13-R1 items 1 and 8)", () => {
+  /** Puts a spend for `request` on the fake chain, as the first copy of a re-signed spend would have. */
+  function landCopy(request: SpendRequest, status: SpendView["status"], ref = request.ref): number {
+    const id = server.chain.spends.length + 1;
+    server.chain.spends.push({
+      id,
+      mandate_id: request.mandate_id,
+      amount: request.amount,
+      invoice_hash: request.invoice_hash,
+      ref,
+      decision_hash: request.decision_hash,
+      agent_pk: TEST_KEYS.agent.publicKey,
+      destination: { type: "near", account_id: SCENARIO_NEAR_PAYEE },
+      status,
+      created_at_ns: SCENARIO_NOW.toString(),
+      held_until_ns: null,
+      memo: null,
+    });
+    return id;
+  }
+
+  const duplicate = (code: "DuplicateRef" | "DuplicateInvoice", txHash = "DUP-TX") =>
+    failedTx({ txHash, code, failure: `PROBARION:${code}` });
+
+  const requestOf = (tx: FunctionCallTx) => tx.args.request as SpendRequest;
+
   it("DuplicateInvoice on a re-signed copy of our own spend is that paid spend", async () => {
     let answered: string | null = null;
     const { pb, ledger } = setup(server, {
@@ -292,12 +344,21 @@ describe("DuplicateRef / DuplicateInvoice: look the spend up by ref (C2 d)", () 
     expect(out).toMatchObject({ status: "paid", spendId: 1, code: null, txHash: null });
     expect(server.chain.spends).toHaveLength(1);
     expect(spendTxs(server)).toHaveLength(2);
-    expect((await ledger.all())[1]?.body.contract).toEqual({
-      code: "DuplicateInvoice",
+    const payment = (await ledger.all())[1];
+    // Item 8: a success records no contract code; the duplicate answer goes into a rule detail.
+    expect(payment?.body.contract).toEqual({
+      code: null,
       tx_hash: answered,
       spend_id: 1,
       status: "paid",
     });
+    expect(payment?.body.rules).toEqual([
+      {
+        id: "invoice.duplicate",
+        outcome: "pass",
+        detail: expect.stringContaining("PROBARION:DuplicateInvoice"),
+      },
+    ]);
   });
 
   it("DuplicateRef on our own first send is our spend; a burn found this way has no burn tx hash", async () => {
@@ -305,37 +366,139 @@ describe("DuplicateRef / DuplicateInvoice: look the spend up by ref (C2 d)", () 
       agentSender: (real) =>
         scriptedSender(real, async (tx) => {
           await real.functionCall(tx);
-          return failedTx({
-            txHash: "RESIGNED-TX",
-            code: "DuplicateRef",
-            failure: "PROBARION:DuplicateRef",
-          });
+          return duplicate("DuplicateRef", "RESIGNED-TX");
         }).sender,
     });
     const out = await pb.process(baseInvoice("Invoice B-1: 25.00 USDC for PO-2002", "B-1"));
-    expect(out).toMatchObject({ status: "burned", spendId: 1, txHash: null });
+    expect(out).toMatchObject({ status: "burned", spendId: 1, txHash: null, code: null });
     const payment = (await ledger.all())[1];
     expect(payment?.body.contract).toEqual({
-      code: "DuplicateRef",
+      code: null,
       tx_hash: "RESIGNED-TX",
       spend_id: 1,
       status: "burned",
     });
+    expect(payment?.body.rules[0]?.detail).toContain("PROBARION:DuplicateRef");
     expect(payment?.body.settlement).toEqual({ chain: "base", tx_hash: null, burn_tx_hash: null });
   });
 
-  it("DuplicateRef with no spend of ours is the contract's refusal", async () => {
+  it("a pending spend of ours found by ref is unconfirmed", async () => {
+    let id = 0;
+    const { pb, ledger } = setup(server, {
+      agentSender: (real) =>
+        scriptedSender(real, async (tx) => {
+          id = landCopy(requestOf(tx), "pending");
+          return duplicate("DuplicateInvoice");
+        }).sender,
+    });
+    const out = await pb.process(INVOICE());
+    expect(out).toMatchObject({ status: "unconfirmed", spendId: id, code: "pending" });
+    expect((await ledger.all())[1]?.body.contract).toEqual({
+      code: "DuplicateInvoice",
+      tx_hash: "DUP-TX",
+      spend_id: id,
+      status: "unknown",
+    });
+  });
+
+  it("a released spend of ours found by ref is failed", async () => {
+    let id = 0;
+    const { pb, ledger } = setup(server, {
+      agentSender: (real) =>
+        scriptedSender(real, async (tx) => {
+          id = landCopy(requestOf(tx), "failed");
+          return duplicate("DuplicateRef");
+        }).sender,
+    });
+    const out = await pb.process(INVOICE());
+    expect(out).toMatchObject({ status: "failed", spendId: id, code: "failed", txHash: null });
+    expect((await ledger.all())[1]?.body.contract).toEqual({
+      code: "DuplicateRef",
+      tx_hash: "DUP-TX",
+      spend_id: id,
+      status: "failed",
+    });
+  });
+
+  it.each(["DuplicateRef", "DuplicateInvoice"] as const)(
+    "%s with nothing holding it (the RPC is a block behind) is unconfirmed, not a refusal",
+    async (code) => {
+      const { pb, ledger } = setup(server, {
+        agentSender: (real) => scriptedSender(real, async () => duplicate(code)).sender,
+      });
+      const out = await pb.process(INVOICE());
+      expect(out).toMatchObject({ status: "unconfirmed", code, txHash: "DUP-TX", spendId: null });
+      expect((await ledger.all())[1]?.body.contract).toEqual({
+        code,
+        tx_hash: "DUP-TX",
+        spend_id: null,
+        status: "unknown",
+      });
+    },
+  );
+
+  it("the contract's own DuplicateRef panic with nothing holding the ref is unconfirmed too", async () => {
+    server.chain.hooks.spendPanic = "DuplicateRef";
+    const { pb } = setup(server);
+    const out = await pb.process(INVOICE());
+    expect(out).toMatchObject({ status: "unconfirmed", code: "DuplicateRef" });
+    expect(spendTxs(server)).toEqual([out.txHash]);
+  });
+
+  it("DuplicateInvoice whose only holder is released is unconfirmed (a released spend frees its invoice)", async () => {
     const { pb } = setup(server, {
       agentSender: (real) =>
-        scriptedSender(real, async () =>
-          failedTx({ txHash: "DUP-TX", code: "DuplicateRef", failure: "PROBARION:DuplicateRef" }),
-        ).sender,
+        scriptedSender(real, async (tx) => {
+          const other = { ...requestOf(tx), decision_hash: "ee".repeat(32) };
+          landCopy(other, "failed", "OTHER-REF");
+          return duplicate("DuplicateInvoice");
+        }).sender,
+    });
+    expect(await pb.process(INVOICE())).toMatchObject({
+      status: "unconfirmed",
+      code: "DuplicateInvoice",
+    });
+  });
+
+  it("DuplicateRef held by another decision's spend is the contract's refusal", async () => {
+    const { pb, ledger } = setup(server, {
+      agentSender: (real) =>
+        scriptedSender(real, async (tx) => {
+          // Another writer's spend uses the same ref for another invoice.
+          const other = {
+            ...requestOf(tx),
+            decision_hash: "ee".repeat(32),
+            invoice_hash: "dd".repeat(32),
+          };
+          landCopy(other, "paid");
+          return duplicate("DuplicateRef");
+        }).sender,
     });
     const out = await pb.process(INVOICE());
     expect(out).toMatchObject({
       status: "refused_by_contract",
       code: "DuplicateRef",
       txHash: "DUP-TX",
+    });
+    expect((await ledger.all())[1]?.body.contract).toEqual({
+      code: "DuplicateRef",
+      tx_hash: "DUP-TX",
+      spend_id: null,
+      status: "refused",
+    });
+  });
+
+  it("DuplicateInvoice held live by another decision's spend is the contract's refusal", async () => {
+    const { pb } = setup(server, {
+      agentSender: (real) =>
+        scriptedSender(real, async (tx) => {
+          landCopy({ ...requestOf(tx), decision_hash: "ee".repeat(32) }, "held", "OTHER-REF");
+          return duplicate("DuplicateInvoice");
+        }).sender,
+    });
+    expect(await pb.process(INVOICE())).toMatchObject({
+      status: "refused_by_contract",
+      code: "DuplicateInvoice",
     });
   });
 
@@ -344,11 +507,7 @@ describe("DuplicateRef / DuplicateInvoice: look the spend up by ref (C2 d)", () 
       agentSender: (real) =>
         scriptedSender(real, async () => {
           server.failNext([503, 503, 503]); // the by-ref lookup that follows gets no answer
-          return failedTx({
-            txHash: "DUP-TX",
-            code: "DuplicateRef",
-            failure: "PROBARION:DuplicateRef",
-          });
+          return duplicate("DuplicateRef");
         }).sender,
     });
     const out = await pb.process(INVOICE());
@@ -461,14 +620,59 @@ describe("anchoring", () => {
     expect(server.chain.anchors.at(-1)).toMatchObject({ seq: 3, count: 4 });
     expect(typeof out.anchorTxHash).toBe("string");
   });
+
+  it("after BadSeq, a chain anchored past this ledger is the fork warning, not an anchor", async () => {
+    const { pb, ledger, warnings } = setup(server);
+    await pb.process(INVOICE());
+    const entries = await ledger.all();
+    server.chain.anchors.push({
+      seq: 2,
+      root: entries[1]?.link ?? "",
+      count: 10, // another writer's ledger, longer than this one
+      at_ns: "1",
+      ledger_key: TEST_KEYS.ledger.publicKey,
+    });
+    const out = await pb.process(nearInvoice("Invoice INV-2 for PO-1001", "INV-2"));
+    expect(out.anchorTxHash).toBeNull();
+    expect(server.chain.anchors).toHaveLength(2);
+    expect(warnings.join(" ")).toMatch(
+      /covers 10 entries but this ledger holds 4.*LEDGER_FORK_RISK/,
+    );
+  });
 });
 
 describe("ledger safety", () => {
-  it("a payment entry that cannot be written does not hide a spend that went through", async () => {
+  it("a payment entry that cannot be written does not hide a spend that went through (ledgerComplete: false)", async () => {
     const { pb, warnings } = setup(server, { ledger: new FailingLedgerStore(2) });
     const out = await pb.process(INVOICE());
-    expect(out).toMatchObject({ status: "paid", spendId: 1, ledgerSeq: 0 });
+    expect(out).toMatchObject({ status: "paid", spendId: 1, ledgerSeq: 0, ledgerComplete: false });
     expect(warnings.join(" ")).toMatch(/payment entry could not be written/);
+  });
+
+  it("a complete cycle carries no ledgerComplete field", async () => {
+    const { pb } = setup(server);
+    expect("ledgerComplete" in (await pb.process(INVOICE()))).toBe(false);
+  });
+
+  it("warns as one structured JSON line on console.warn when no logger is given", async () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { pb } = setup(server, { ledger: new FailingLedgerStore(2), consoleLogger: true });
+      expect((await pb.process(INVOICE())).ledgerComplete).toBe(false);
+      const lines = spy.mock.calls.map(
+        (call) => JSON.parse(String(call[0])) as Record<string, unknown>,
+      );
+      expect(lines).toContainEqual(
+        expect.objectContaining({
+          level: "warn",
+          source: "@probarion/sdk",
+          vault: SCENARIO_VAULT,
+          message: expect.stringContaining("payment entry could not be written"),
+        }),
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("refuses to write entries the vault's ledger key would not cover", async () => {
@@ -480,48 +684,231 @@ describe("ledger safety", () => {
     expect(spendTxs(server)).toEqual([]);
   });
 
-  it("refuses to decide when the ledger moved under the cycle (another writer)", async () => {
+  it("a lost compare-and-append race writes nothing and sends nothing", async () => {
     const ledger = new InMemoryLedgerStore();
     const { pb: other } = setup(server, { model: false, ledger });
     let first = true;
     const racing: LedgerStore = {
-      head: async () => {
-        const head = await ledger.head();
+      head: () => ledger.head(),
+      // Another writer appends right after this cycle read the ledger.
+      all: async () => {
+        const entries = await ledger.all();
         if (first) {
           first = false;
-          // Another writer appends right after this cycle read the head.
           await other.process(nearInvoice("Invoice INV-9 for PO-1001", "INV-9"));
         }
-        return head;
+        return entries;
       },
-      append: (body, sign) => ledger.append(body, sign),
-      all: () => ledger.all(),
+      append: (body, sign, opts) => ledger.append(body, sign, opts),
     };
     const { pb } = setup(server, { model: false, ledger: racing });
-    await expect(pb.process(INVOICE())).rejects.toThrow(/ledger moved/);
+    const error = await pb.process(INVOICE()).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(LedgerConflictError);
+    expect(String((error as Error).message)).toMatch(
+      /ledger moved since this decision was attested; retry/,
+    );
+    expect((await ledger.all()).map((e) => e.body.invoice_hash)).toEqual([
+      sha256Hex("Invoice INV-9 for PO-1001"),
+      sha256Hex("Invoice INV-9 for PO-1001"),
+    ]);
     expect(server.chain.spends.map((s) => s.ref)).toEqual(["INV-9"]);
   });
 
-  it("sends no spend when another writer appended between the head check and the decision append", async () => {
+  it("a store that ignores expect is caught after the append: no spend is sent", async () => {
     const ledger = new InMemoryLedgerStore();
     const { pb: other } = setup(server, { model: false, ledger });
     let raced = false;
-    const racing: LedgerStore = {
+    const ignoring: LedgerStore = {
       head: () => ledger.head(),
+      all: () => ledger.all(),
       append: async (body, sign) => {
         if (!raced) {
           raced = true;
-          // The other process wins the file lock first: this decision lands after its entries.
           await other.process(nearInvoice("Invoice INV-9 for PO-1001", "INV-9"));
         }
-        return ledger.append(body, sign);
+        return ledger.append(body, sign); // drops `expect`, as a store written before it existed would
       },
-      all: () => ledger.all(),
     };
-    const { pb } = setup(server, { model: false, ledger: racing });
-    await expect(pb.process(INVOICE())).rejects.toThrow(/another writer appended/);
+    const { pb } = setup(server, { model: false, ledger: ignoring });
+    await expect(pb.process(INVOICE())).rejects.toThrow(/did not compare-and-append/);
     expect(server.chain.spends.map((s) => s.ref)).toEqual(["INV-9"]);
     expect((await ledger.all()).map((e) => e.body.seq)).toEqual([0, 1, 2]);
+  });
+
+  it("two model-enabled writers on one ledger file: the loser leaves no entry and check e passes", async () => {
+    const path = await tempLedgerPath();
+    const a = setup(server, { ledger: new FileLedgerStore(path) });
+    const fileB = new FileLedgerStore(path);
+    let raced = false;
+    const racingB: LedgerStore = {
+      head: () => fileB.head(),
+      all: () => fileB.all(),
+      append: async (body, sign, opts) => {
+        if (!raced) {
+          raced = true;
+          // A wins the file lock: its whole cycle lands while B's attested decision waits.
+          await a.pb.process(nearInvoice("Invoice INV-A for PO-1001", "INV-A"));
+        }
+        return fileB.append(body, sign, opts);
+      },
+    };
+    const b = setup(server, { ledger: racingB });
+    await expect(
+      b.pb.process(nearInvoice("Invoice INV-B for PO-1001", "INV-B")),
+    ).rejects.toBeInstanceOf(LedgerConflictError);
+    expect(b.nearai.calls.some((c) => c.method === "POST")).toBe(true); // B's decision was attested
+
+    const entries = await new FileLedgerStore(path).all();
+    expect(entries.map((e) => [e.body.seq, e.body.kind])).toEqual([
+      [0, "decision"],
+      [1, "payment"],
+    ]);
+    expect(
+      entries.every((e) => e.body.invoice_hash === sha256Hex("Invoice INV-A for PO-1001")),
+    ).toBe(true);
+    const decision = entries[0];
+    if (decision === undefined || decision.body.evidence === null) throw new Error("no evidence");
+    expect(decision.body.evidence.nonce).toBe(computeNonce(nonceContextOf(decision)));
+    const checkE = await checkAttestations({
+      vault: SCENARIO_VAULT,
+      ledger: entries,
+    } as unknown as Snapshot);
+    expect(checkE).toMatchObject({ id: "e", status: "pass" });
+    expect(checkE.detail).toMatch(/^1 attested decisions pass/);
+    expect(server.chain.spends.map((s) => s.ref)).toEqual(["INV-A"]);
+  });
+});
+
+describe("unknown outcomes block the same invoice until resolved (T13-R1 items 5 and 6)", () => {
+  const lost = () =>
+    new TxOutcomeUnknownError("TEST DOUBLE: the answer was lost", "LOST-TX", SCENARIO_VAULT);
+
+  it("a lost tx that actually landed: the same invoice is then refused by the chain's state, never sent again", async () => {
+    let calls: unknown[] = [];
+    const { pb } = setup(server, {
+      agentSender: (real) => {
+        const scripted = scriptedSender(real, async (tx, n) => {
+          if (n > 1) return real.functionCall(tx);
+          const landed = await real.functionCall(tx);
+          throw new TxOutcomeUnknownError(
+            "TEST DOUBLE: lost after landing",
+            landed.txHash ?? "",
+            SCENARIO_VAULT,
+          );
+        });
+        calls = scripted.calls;
+        return scripted.sender;
+      },
+    });
+    const first = await pb.process(INVOICE());
+    expect(first).toMatchObject({ status: "unconfirmed", code: "TxOutcomeUnknown" });
+    expect(server.chain.spends).toMatchObject([
+      { status: "paid", decision_hash: first.decisionHash },
+    ]);
+    for (const ref of ["INV-1", "INV-1-again"]) {
+      const again = await pb.process({ ...INVOICE(), ref });
+      expect(again).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+    }
+    expect(calls).toHaveLength(1);
+    expect(server.chain.spends).toHaveLength(1);
+  });
+
+  it("an unknown payment that never landed refuses the same invoice by code until the chain shows it", async () => {
+    let calls: unknown[] = [];
+    const { pb, ledger, nearai } = setup(server, {
+      agentSender: (real) => {
+        const scripted = scriptedSender(real, (tx, n) =>
+          n === 1 ? Promise.reject(lost()) : real.functionCall(tx),
+        );
+        calls = scripted.calls;
+        return scripted.sender;
+      },
+    });
+    const first = await pb.process(INVOICE());
+    expect(first.status).toBe("unconfirmed");
+    const chats = () => nearai.calls.filter((c) => c.method === "POST").length;
+    expect(chats()).toBe(1);
+
+    const viaProcess = await pb.process({ ...INVOICE(), ref: "INV-1-b" });
+    expect(viaProcess).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+    const decision = (await ledger.all()).at(-1);
+    expect(decision?.body.rules.find((r) => r.outcome === "refuse")?.detail).toMatch(
+      /unknown outcome .*tx LOST-TX.*resolve it first/,
+    );
+    expect(chats()).toBe(1); // no model tokens for a cycle that is refused anyway
+
+    const spend = { mandateId: 1, amount: "25000000", invoiceHash: INVOICE().facts.invoice_hash };
+    for (const extra of [{ ref: "INV-1-c" }, { ref: "INV-1-d", skipPreflight: true }]) {
+      const out = await pb.requestSpend({ ...spend, ...extra });
+      expect(out).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+    }
+    expect(calls).toHaveLength(1);
+
+    // Another invoice is not blocked.
+    expect((await pb.process(nearInvoice("Invoice INV-2 for PO-1001", "INV-2"))).status).toBe(
+      "paid",
+    );
+    // Once the chain shows the first spend (here: released), the invoice is decided from the chain again.
+    server.chain.spends.push({
+      ...(server.chain.spends[0] as SpendView),
+      id: 2,
+      ref: "INV-1",
+      invoice_hash: INVOICE().facts.invoice_hash,
+      decision_hash: first.decisionHash,
+      status: "failed",
+    });
+    expect((await pb.process({ ...INVOICE(), ref: "INV-1-e" })).status).toBe("paid");
+  });
+
+  it("a later payment entry of the same decision with a known status resolves the unknown one", async () => {
+    const ledger = new InMemoryLedgerStore();
+    const { pb } = setup(server, {
+      ledger,
+      agentSender: (real) =>
+        scriptedSender(real, (tx, n) => (n === 1 ? Promise.reject(lost()) : real.functionCall(tx)))
+          .sender,
+    });
+    expect((await pb.process(INVOICE())).status).toBe("unconfirmed");
+    const unknown = (await ledger.all())[1];
+    if (unknown === undefined || unknown.body.contract === null)
+      throw new Error("no payment entry");
+    // What a resolver writes once it learns the transaction never ran.
+    await ledger.append(
+      {
+        v: 1,
+        vault: unknown.body.vault,
+        kind: "payment",
+        at: unknown.body.at,
+        request_id: unknown.body.request_id,
+        mandate_id: unknown.body.mandate_id,
+        invoice_hash: unknown.body.invoice_hash,
+        amount: unknown.body.amount,
+        proposal: null,
+        evidence: null,
+        rules: [],
+        verdict: null,
+        decided_by: null,
+        contract: { ...unknown.body.contract, status: "failed" },
+        settlement: null,
+        refs: unknown.body.refs,
+      },
+      createEd25519Signer(TEST_KEYS.ledger.secretKey),
+    );
+    expect((await pb.process({ ...INVOICE(), ref: "INV-1-r" })).status).toBe("paid");
+  });
+
+  it("a ConfigError at spend time leaves the decision written, no payment entry and nothing anchored", async () => {
+    const { pb, ledger } = setup(server, {
+      agentSender: (real) =>
+        scriptedSender(real, () => Promise.reject(new ConfigError("TEST DOUBLE: no key"))).sender,
+    });
+    await expect(pb.process(INVOICE())).rejects.toThrow(ConfigError);
+    expect((await ledger.all()).map((e) => e.body.kind)).toEqual(["decision"]);
+    expect(server.chain.anchors).toEqual([]);
+    expect(spendTxs(server)).toEqual([]);
   });
 });
 
