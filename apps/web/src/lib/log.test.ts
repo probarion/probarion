@@ -393,8 +393,8 @@ describe("redaction: values that cannot be secrets", () => {
 describe("redaction: string values are scrubbed", () => {
   // Built at run time, so no token-shaped literal sits in the source for a secret scanner.
   const TELEGRAM_TOKEN = `123456789:AAH${"x".repeat(32)}`;
-  const RPC_KEY_A = "KEYA0123456789";
-  const RPC_KEY_B = "KEYB0123456789";
+  const RPC_KEY_A = ["KEYA", "0123456789"].join("");
+  const RPC_KEY_B = ["KEYB", "0123456789"].join("");
 
   it("masks a Telegram bot token in an error string, wherever the string sits", () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", TELEGRAM_TOKEN);
