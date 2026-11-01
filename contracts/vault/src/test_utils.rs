@@ -184,6 +184,18 @@ pub fn call_to(method: &str) -> Call {
         .find(|c| c.method == method)
         .unwrap_or_else(|| panic!("no {method} call was scheduled"))
 }
+
+/// The panic text of `f`, which must refuse.
+pub fn refusal(f: impl FnOnce()) -> String {
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+        .expect_err("the call must be refused");
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+        .unwrap_or_default()
+}
+
 /// The one-yocto rule: `call`, made by `who` at `now` on a vault built by `make`, must panic with
 /// `PROBARION:RequiresOneYocto` both with 0 and with 2 yoctoNEAR attached.
 pub fn assert_requires_one_yocto(
@@ -195,13 +207,7 @@ pub fn assert_requires_one_yocto(
     for deposit in [0, 2] {
         let mut v = make();
         set_ctx(who.clone(), pk(200), yocto(deposit), now);
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| call(&mut v)));
-        let payload = outcome.expect_err("a deposit other than 1 yoctoNEAR must be refused");
-        let text = payload
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_default();
+        let text = refusal(|| call(&mut v));
         assert!(
             text.contains("PROBARION:RequiresOneYocto"),
             "{deposit} yocto: got {text:?}"

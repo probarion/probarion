@@ -20,6 +20,9 @@ impl Vault {
             Err(code) => fail(code),
         };
         let spend_id = self.reserve(request, signer_pk, now, &approved);
+        if approved.hold {
+            return PromiseOrValue::Value(self.hold(spend_id));
+        }
         PromiseOrValue::Promise(self.execute_payout(spend_id))
     }
 
@@ -97,20 +100,29 @@ impl Vault {
             r#ref: request.r#ref,
             decision_hash: request.decision_hash,
             agent_pk,
-            status: SpendStatus::Pending,
+            status: if approved.hold {
+                SpendStatus::Held
+            } else {
+                SpendStatus::Pending
+            },
             created_at_ns: now,
-            held_until_ns: None,
+            held_until_ns: approved.hold.then_some(now + self.held_ttl_ns),
             day: approved.day,
         });
         spend_id
     }
 
     /// Sends the payout for a reserved spend. The destination is read from the mandate only.
+    /// Only a Held or Pending spend still holds its reservation, so only those can be paid out:
+    /// a Paid, Burned, Failed, Rejected or Expired spend is never sent again.
     pub(crate) fn execute_payout(&mut self, spend_id: u64) -> Promise {
         let spend = self
             .spend_record(spend_id)
             .cloned()
             .unwrap_or_else(|| fail(ErrorCode::InvalidInput));
+        if !matches!(spend.status, SpendStatus::Held | SpendStatus::Pending) {
+            fail(ErrorCode::InvalidInput)
+        }
         let payee = self
             .mandate(spend.mandate_id)
             .map(|m| m.payee.clone())
@@ -620,17 +632,6 @@ mod tests {
 
     // The tests below go beyond the brief: they pin gaps the brief's tests leave open.
 
-    /// The panic text of `f`, which must refuse.
-    fn refusal(f: impl FnOnce()) -> String {
-        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-            .expect_err("the call must be refused");
-        payload
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_default()
-    }
-
     fn scheduled() -> Vec<(AccountId, String)> {
         calls()
             .into_iter()
@@ -915,6 +916,38 @@ mod tests {
         assert!(text.contains("PROBARION:InvalidInput"), "got {text:?}");
         let m = v.get_mandate(1).unwrap();
         assert_eq!((m.spent, m.reserved, m.uses), (U128(10 * USDC), U128(0), 1));
+    }
+
+    #[test]
+    fn a_settled_spend_cannot_be_paid_out_again() {
+        for (input, settle) in [
+            (
+                near_input(),
+                (|v: &mut Vault| resolve_transfer(v, 1, true)) as fn(&mut Vault) -> SpendResult,
+            ),
+            (near_input(), |v: &mut Vault| resolve_transfer(v, 1, false)),
+            (base_input(), |v: &mut Vault| {
+                resolve_withdraw(v, 1, PromiseResult::Successful(b"\"10000000\"".to_vec()))
+            }),
+        ] {
+            let (mut v, s) = pending(input);
+            let status = settle(&mut v).status;
+            assert!(matches!(
+                status,
+                SpendStatus::Paid | SpendStatus::Failed | SpendStatus::Burned
+            ));
+            let before = v.get_mandate(1).unwrap();
+            let text = refusal(|| {
+                let _ = v.execute_payout(s);
+            });
+            assert!(
+                text.contains("PROBARION:InvalidInput"),
+                "{status:?}: got {text:?}"
+            );
+            assert!(calls().is_empty(), "{status:?}: nothing may be scheduled");
+            assert_eq!(v.get_spend(s).unwrap().status, status);
+            assert_eq!(v.get_mandate(1).unwrap(), before);
+        }
     }
 
     #[test]
