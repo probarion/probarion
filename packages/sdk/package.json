@@ -1,0 +1,58 @@
+{
+  "name": "@probarion/sdk",
+  "version": "0.1.0",
+  "description": "Probarion SDK: let any agent pay on NEAR only inside owner-signed mandates, with attested decisions and a verifiable ledger.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "record:nearai": "tsx scripts/record-nearai.ts"
+  },
+  "peerDependencies": {
+    "@nearai/inference-sdk": ">=0.1.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "@nearai/inference-sdk": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/probarion/probarion.git",
+    "directory": "packages/sdk"
+  },
+  "dependencies": {
+    "@probarion/core": "workspace:*",
+    "near-api-js": "^7.4.0",
+    "viem": "^2.57.14"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
