@@ -270,3 +270,89 @@ pub fn setup_with_agent() -> Vault {
     v.add_agent(agent_pk(), U128(ONE_NEAR), "agent".to_string());
     v
 }
+
+pub fn req(mandate_id: u64, amount: u128, n: u8) -> SpendRequest {
+    SpendRequest {
+        mandate_id,
+        amount: U128(amount),
+        invoice_hash: hex(n),
+        r#ref: format!("INV-{n}"),
+        decision_hash: hex(n.wrapping_add(100)),
+    }
+}
+
+/// Like `near_input()`, but spends above 50 USDC are held for an approver.
+pub fn held_input() -> MandateInput {
+    MandateInput {
+        approval_above: U128(50 * USDC),
+        ..near_input()
+    }
+}
+
+pub struct Case {
+    pub v: Vault,
+    pub req: SpendRequest,
+    pub signer: PublicKey,
+    pub now: u64,
+}
+
+/// A request that passes every check: mandate 1 (NEAR payee), 10 USDC, invoice hex(1), ref INV-1.
+pub fn ok_case() -> Case {
+    let mut v = setup_with_agent();
+    let id = create(&mut v, near_input());
+    Case {
+        v,
+        req: req(id, 10 * USDC, 1),
+        signer: agent_pk(),
+        now: T0 + 1,
+    }
+}
+
+/// `ok_case()` changed so that exactly one check fails, with `code`.
+pub fn case(code: ErrorCode) -> Case {
+    let mut c = ok_case();
+    match code {
+        ErrorCode::NotAgent => c.signer = pk(77),
+        ErrorCode::InvalidInput => c.req.invoice_hash = "not-a-hash".to_string(),
+        ErrorCode::Frozen => c.v.frozen = true,
+        ErrorCode::NoMandate => c.req.mandate_id = 99,
+        ErrorCode::MandateInactive => {
+            as_owner(ONE_YOCTO);
+            c.v.revoke_mandate(1);
+        }
+        ErrorCode::MandateExpired => c.now = T0 + 30 * DAY_NS,
+        ErrorCode::NotMandateAgent => {
+            as_owner(ONE_YOCTO);
+            c.v.add_agent(pk(2), U128(ONE_NEAR), "second".to_string());
+            c.signer = pk(2);
+        }
+        ErrorCode::ZeroAmount => c.req.amount = U128(0),
+        ErrorCode::OverPerPayment => c.req.amount = U128(100 * USDC + 1),
+        ErrorCode::UsesExhausted => c.v.mandates.get_mut(0).unwrap().uses = 10,
+        ErrorCode::OverMandateTotal => c.v.mandates.get_mut(0).unwrap().spent = 995 * USDC,
+        ErrorCode::DuplicateInvoice => {
+            c.v.invoices.insert(hex(1), 42);
+        }
+        ErrorCode::DuplicateRef => {
+            c.v.refs.insert("INV-1".to_string());
+        }
+        ErrorCode::OverDailyBackstop => {
+            c.v.day_bucket = (T0 + 1) / DAY_NS;
+            c.v.day_total = 495 * USDC;
+        }
+        other => panic!("no spend-check case for {other:?}"),
+    }
+    c
+}
+
+/// The `check_spend` view for a case, called as the case's signer at the case's time.
+pub fn check(c: Case) -> Verdict {
+    let Case {
+        v,
+        req,
+        signer,
+        now,
+    } = c;
+    as_agent(signer.clone(), now);
+    v.check_spend(req, signer)
+}
