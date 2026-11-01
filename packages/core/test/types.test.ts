@@ -9,10 +9,12 @@ describe("contract mirror types", () => {
       "utf8",
     );
     const block = /pub const ALL: \[ErrorCode; (\d+)\] = \[([^\]]*)\];/.exec(source);
-    expect(block).not.toBeNull();
-    const [, declaredLength, body] = block as unknown as [string, string, string];
-    const rustCodes = [...body.matchAll(/ErrorCode::(\w+)/g)].map((m) => m[1]);
-    expect(rustCodes).toHaveLength(Number(declaredLength));
+    if (block === null) {
+      throw new Error("ErrorCode::ALL block not found in contracts/vault/src/errors.rs");
+    }
+    const declaredLength = Number(block[1]);
+    const rustCodes = [...(block[2] ?? "").matchAll(/ErrorCode::(\w+)/g)].map((m) => m[1]);
+    expect(rustCodes).toHaveLength(declaredLength);
     expect([...VAULT_ERROR_CODES]).toEqual(rustCodes);
   });
 
