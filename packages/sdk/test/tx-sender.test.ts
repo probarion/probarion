@@ -4,6 +4,7 @@ import { PublicKey, TypedError } from "near-api-js";
 import {
   AccessKeyNotEnoughAllowanceActionError,
   AccessKeyNotFoundActionError,
+  ActionExecutionError,
   InvalidNonceError,
   InvalidSignatureError,
   LackBalanceForStateActionError,
@@ -298,6 +299,63 @@ describe("NearApiJsSender: the node refuses the transaction (definite, not unkno
   it("InvalidNonce after ten fresh signatures is a refusal, not an unknown outcome", async () => {
     const rejected = await refusal(new InvalidNonceError(9, 8, "", ""), spendTx, 11);
     expect(rejected.kind).toBe("InvalidNonce");
+  });
+});
+
+describe("NearApiJsSender: an action that ran and then failed is not a refusal", () => {
+  const hash = "11111111111111111111111111111111";
+
+  /** A typed error that carries an action index: the transaction was included and the action ran. */
+  const executed: [string, () => Error][] = [
+    [
+      "a plain ActionExecutionError",
+      () => new ActionExecutionError("action failed", 0, hash, hash),
+    ],
+    [
+      "NotEnoughAllowance after execution",
+      () =>
+        new AccessKeyNotEnoughAllowanceActionError(
+          VAULT,
+          10n,
+          20n,
+          PublicKey.from(agentKey.publicKey),
+          0,
+          hash,
+          hash,
+        ),
+    ],
+    [
+      "LackBalanceForState after execution",
+      () => new LackBalanceForStateActionError(VAULT, 1n, 0, hash, hash),
+    ],
+  ];
+
+  it.each(executed)(
+    "%s gives TxOutcomeUnknown with the hash, not TxRejected",
+    async (_name, make) => {
+      const { sender, sent } = senderWith({
+        send: () => {
+          throw make();
+        },
+      });
+      const error = await caught(sender.functionCall(spendTx));
+      expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+      expect(error).not.toBeInstanceOf(TxRejectedError);
+      const signed = sent[0]?.signed;
+      if (signed === undefined) throw new Error("nothing sent");
+      expect((error as TxOutcomeUnknownError).txHash).toBe(txHashOf(signed));
+      expect(sent).toHaveLength(1);
+    },
+  );
+
+  it("the same errors without an action index (a validation-time refusal) stay refusals", async () => {
+    const { sender } = senderWith({
+      send: () => {
+        throw new ActionExecutionError("refused", null, hash, hash);
+      },
+    });
+    const error = await caught(sender.functionCall(spendTx));
+    expect(error).toBeInstanceOf(TxRejectedError);
   });
 });
 

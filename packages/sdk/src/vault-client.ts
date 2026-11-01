@@ -81,7 +81,13 @@ export interface SpendTxResult {
   unconfirmed: SpendUnconfirmed | null;
 }
 
-function interpretSpend(tx: TxOutcome): SpendTxResult {
+/**
+ * Read a finished `spend` transaction as a verdict. `VaultClient.spend` applies it to what the
+ * sender returns; `VaultClient.resolveSpend` applies it to an outcome recovered with `lookup`, so a
+ * recovered `failed` payout is `ok: false` and a recovered callback failure is `unconfirmed`, never
+ * a bare `tx.ok`. Any code that holds a `TxOutcome` of a spend should come through here.
+ */
+export function interpretSpend(tx: TxOutcome): SpendTxResult {
   const unconfirmed = (kind: SpendUnconfirmedKind, reason: string, result: SpendResult | null) => ({
     tx,
     result,
@@ -105,15 +111,26 @@ function interpretSpend(tx: TxOutcome): SpendTxResult {
     }
     return { tx, result, ok: false, unconfirmed: null };
   }
-  // The transaction failed. If the spend receipt itself failed, nothing changed. If it ran and a
-  // later receipt (the payout callback) failed, the payout may have gone out. A result with no
-  // receipts at all is a refusal before execution (nothing ran).
-  if (typeof tx.raw === "object" && tx.raw !== null && firstReceiptSucceeded(tx.raw) !== false) {
-    return unconfirmed(
-      "callback_failed",
-      `the spend receipt ran but the transaction failed afterwards (${tx.failure ?? "no detail"}); the payout may have gone out`,
-      null,
-    );
+  // The transaction failed. Only two cases are a definite failure (nothing changed, nothing paid):
+  //  - `raw` is null: the node refused the transaction before it ran, so there is no result at all;
+  //  - `raw` is a result whose FIRST receipt (the spend call itself) failed.
+  // Everything else is `callback_failed`, the safe direction: the spend receipt ran and a later
+  // receipt (the payout callback) failed, so the payout may have gone out; or `raw` is a result
+  // whose receipts do not say which one failed (no receipts, an unreadable status). That includes a
+  // non-null `raw` with no receipts: it is not proof that nothing ran.
+  if (typeof tx.raw === "object" && tx.raw !== null) {
+    const first = firstReceiptSucceeded(tx.raw);
+    if (first !== false) {
+      const why =
+        first === true
+          ? "the spend receipt ran but the transaction failed afterwards"
+          : "the result does not show which receipt failed";
+      return unconfirmed(
+        "callback_failed",
+        `${why} (${tx.failure ?? "no detail"}); the payout may have gone out`,
+        null,
+      );
+    }
   }
   return { tx, result: null, ok: false, unconfirmed: null };
 }
@@ -250,6 +267,21 @@ export class VaultClient {
       deposit: 0n,
     });
     return interpretSpend(tx);
+  }
+
+  /**
+   * Recover a spend whose outcome was unknown (`TxOutcomeUnknownError.txHash`): read the final
+   * outcome of that transaction through the agent sender's `lookup` and give it the same verdict
+   * `spend` gives (`ok`, `unconfirmed`). A recovered `failed` payout is `ok: false`; a recovered
+   * callback failure is `unconfirmed`. If the node still cannot say, `TxOutcomeUnknownError` is
+   * thrown again with the same hash: keep the hash and ask again later; never send the spend again.
+   */
+  async resolveSpend(txHash: string): Promise<SpendTxResult> {
+    const agent = this.sender("agent", "resolveSpend needs the agent key that signed the spend");
+    if (agent.lookup === undefined) {
+      throw new ConfigError("the agent sender cannot look up a transaction (it has no lookup)");
+    }
+    return interpretSpend(await agent.lookup(txHash));
   }
 
   /** Sends `anchor(seq, root, count)` signed by the ledger key. A failure throws a `ContractError`. */

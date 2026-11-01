@@ -37,8 +37,13 @@ export const VAULT = "acme.vaults.probarion.testnet";
 export const ROOT = "ab".repeat(32);
 export const TGAS = 1_000_000_000_000n;
 
-export function fakeSender(outcome: TxOutcome) {
+/**
+ * A sender that answers every call with `outcome`. With `lookup`, it also has `lookup(txHash)`,
+ * answered by that function (it may throw); `looked` records the hashes asked for.
+ */
+export function fakeSender(outcome: TxOutcome, lookup?: (txHash: string) => TxOutcome) {
   const sent: FunctionCallTx[] = [];
+  const looked: string[] = [];
   const sender: TxSender = {
     accountId: VAULT,
     publicKey: "ed25519:Agent",
@@ -46,8 +51,16 @@ export function fakeSender(outcome: TxOutcome) {
       sent.push(tx);
       return outcome;
     },
+    ...(lookup === undefined
+      ? {}
+      : {
+          lookup: async (txHash: string) => {
+            looked.push(txHash);
+            return lookup(txHash);
+          },
+        }),
   };
-  return { sender, sent };
+  return { sender, sent, looked };
 }
 
 export const okOutcome = (value: unknown): TxOutcome => ({

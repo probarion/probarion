@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { generateKeyPair } from "@probarion/core";
 import { describe, expect, it } from "vitest";
 import { ConfigError, ContractError, TxOutcomeUnknownError, ViewError } from "../src/errors.js";
 import { FactoryClient } from "../src/factory-client.js";
 import { IntentsClient } from "../src/intents-client.js";
 import { MAX_PAGES } from "../src/paging.js";
-import { parseTxOutcome, type TxOutcome, type TxSender } from "../src/tx.js";
+import { NearApiJsSender, parseTxOutcome, type TxOutcome, type TxSender } from "../src/tx.js";
 import { ANCHOR_GAS, isSpendResult, pageAll, SPEND_GAS, VaultClient } from "../src/vault-client.js";
 import {
   fakeSender,
@@ -16,6 +17,7 @@ import {
   VAULT,
   viewRpc,
 } from "./helpers/client-fakes.js";
+import { fakeProvider } from "./helpers/fake-provider.js";
 
 describe("VaultClient views", () => {
   it("pages list views until a short page", async () => {
@@ -375,6 +377,122 @@ describe("VaultClient.spend verdict", () => {
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(TxOutcomeUnknownError);
     expect((error as TxOutcomeUnknownError).txHash).toBe("HASH");
+  });
+});
+
+describe("VaultClient.resolveSpend (recovering an unknown outcome)", () => {
+  const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64");
+
+  const resolveWith = async (found: TxOutcome) => {
+    const { rpc } = viewRpc(() => null);
+    const { sender, looked, sent } = fakeSender(okOutcome(null), () => found);
+    const result = await new VaultClient(VAULT, rpc, { agent: sender }).resolveSpend("Recovered");
+    expect(looked).toEqual(["Recovered"]);
+    expect(sent).toHaveLength(0); // recovery never sends anything
+    return result;
+  };
+
+  it.each(["paid", "burned", "held"])("a recovered %s spend is ok", async (status) => {
+    expect(await resolveWith(okOutcome({ spend_id: 1, status }))).toMatchObject({
+      ok: true,
+      unconfirmed: null,
+    });
+  });
+
+  it.each(["failed", "rejected", "expired"])(
+    "a recovered %s spend is ok:false although the transaction succeeded",
+    async (status) => {
+      const r = await resolveWith(okOutcome({ spend_id: 1, status }));
+      expect(r.tx.ok).toBe(true);
+      expect(r).toMatchObject({ ok: false, unconfirmed: null, result: { spend_id: 1, status } });
+    },
+  );
+
+  it("a recovered pending spend or unreadable value is unconfirmed, never failed", async () => {
+    const pending = await resolveWith(okOutcome({ spend_id: 1, status: "pending" }));
+    expect(pending.unconfirmed?.kind).toBe("pending");
+    const garbage = await resolveWith(okOutcome("???"));
+    expect(garbage.unconfirmed?.kind).toBe("unreadable_value");
+  });
+
+  it("a recovered callback failure is unconfirmed; a recovered contract refusal is definite", async () => {
+    const callback = failure("Smart contract panicked: in the callback");
+    const late = parseTxOutcome(finished({ SuccessReceiptId: "r2" }, callback, callback));
+    expect((await resolveWith(late)).unconfirmed?.kind).toBe("callback_failed");
+    const refusal = failure("Smart contract panicked: PROBARION:NoMandate");
+    const refused = parseTxOutcome(finished(refusal, "Unknown", refusal));
+    expect(await resolveWith(refused)).toMatchObject({ ok: false, unconfirmed: null });
+  });
+
+  it("a lookup that is still unknown propagates TxOutcomeUnknownError with the hash", async () => {
+    const { rpc } = viewRpc(() => null);
+    const { sender } = fakeSender(okOutcome(null), (txHash) => {
+      throw new TxOutcomeUnknownError("the node cannot say yet", txHash, VAULT);
+    });
+    const error = await new VaultClient(VAULT, rpc, { agent: sender })
+      .resolveSpend("StillUnknown")
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+    expect((error as TxOutcomeUnknownError).txHash).toBe("StillUnknown");
+  });
+
+  it("needs an agent sender that can look a transaction up, and that signs as the vault", async () => {
+    const { rpc } = viewRpc(() => null);
+    await expect(new VaultClient(VAULT, rpc).resolveSpend("H")).rejects.toThrow(ConfigError);
+    const noLookup = fakeSender(okOutcome(null)).sender;
+    await expect(
+      new VaultClient(VAULT, rpc, { agent: noLookup }).resolveSpend("H"),
+    ).rejects.toThrow(/no lookup/);
+    const { sender, looked } = fakeSender(okOutcome(null), () => okOutcome(null));
+    await expect(
+      new VaultClient("other.vaults.probarion.testnet", rpc, { agent: sender }).resolveSpend("H"),
+    ).rejects.toThrow(/agent key signs as/);
+    expect(looked).toEqual([]);
+  });
+
+  describe("end to end with the real sender", () => {
+    const agentKey = generateKeyPair(Uint8Array.from({ length: 32 }, (_, i) => i + 1));
+    const make = (status: () => unknown) => {
+      const fake = fakeProvider({
+        send: () => {
+          throw new TypeError("fetch failed");
+        },
+        status,
+      });
+      const sender = new NearApiJsSender({
+        accountId: VAULT,
+        secretKey: agentKey.secretKey,
+        rpcUrl: "https://rpc.test",
+        createProvider: () => fake.provider,
+      });
+      const { rpc } = viewRpc(() => null);
+      return { vault: new VaultClient(VAULT, rpc, { agent: sender }), fake };
+    };
+
+    it("a lost answer, then a recovered failed payout, gives ok:false for that hash", async () => {
+      const { vault, fake } = make(() => ({
+        status: { SuccessValue: b64({ spend_id: 1, status: "failed" }) },
+      }));
+      const error = await vault.spend(request).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+      const hash = (error as TxOutcomeUnknownError).txHash;
+      const resolved = await vault.resolveSpend(hash);
+      expect(resolved).toMatchObject({ ok: false, unconfirmed: null, tx: { txHash: hash } });
+      expect(resolved.result).toEqual({ spend_id: 1, status: "failed" });
+      expect(fake.statusCalls).toEqual([{ txHash: hash, accountId: VAULT, waitUntil: "FINAL" }]);
+    });
+
+    it("a lost answer, then a lookup that still cannot say, keeps the same hash", async () => {
+      const { vault } = make(() => {
+        throw new Error("fetch failed again");
+      });
+      const first = (await vault.spend(request).catch((e: unknown) => e)) as TxOutcomeUnknownError;
+      const second = (await vault
+        .resolveSpend(first.txHash)
+        .catch((e: unknown) => e)) as TxOutcomeUnknownError;
+      expect(second).toBeInstanceOf(TxOutcomeUnknownError);
+      expect(second.txHash).toBe(first.txHash);
+    });
   });
 });
 

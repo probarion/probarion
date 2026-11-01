@@ -14,6 +14,7 @@ import {
 import {
   AccessKeyNotEnoughAllowanceActionError,
   AccessKeyNotFoundActionError,
+  ActionExecutionError,
   InvalidNonceError,
   InvalidTransactionError,
   SignerDoesNotExistError,
@@ -362,8 +363,16 @@ function allowanceRemedy(methodName: string): string {
   return "";
 }
 
-/** The node answered the send with a typed refusal of the transaction itself (it ran nothing). */
+/**
+ * The node answered the send with a typed refusal of the transaction itself (it ran nothing).
+ *
+ * An `ActionExecutionError` with an action index is NOT such a refusal: near-api-js builds it from
+ * an `ActionError` of a transaction that was included and whose action ran and then failed. Only the
+ * validation-time errors (a missing allowance, a removed key, a bad nonce, ...) have no index. So an
+ * indexed one is treated like any other error after the send: the outcome is unknown, with the hash.
+ */
 function isTypedRefusal(error: unknown): error is Error {
+  if (error instanceof ActionExecutionError && error.actionIndex !== null) return false;
   return error instanceof TransactionExecutionError || error instanceof InvalidTransactionError;
 }
 
