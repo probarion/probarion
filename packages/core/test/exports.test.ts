@@ -36,6 +36,11 @@ describe("@probarion/core root exports (plan 04 ICR 7, plan 05 ICR 3)", () => {
       "decide",
       "runChecks",
       "checkAttestation",
+      "checkRequestBinding",
+      "buildProposalRequest",
+      "proposalRequestInputs",
+      "normalizeEcdsaSignature",
+      "formatProviderTeeText",
       "computeBodyHash",
       "computeLink",
       "buildEntry",
@@ -51,6 +56,9 @@ describe("@probarion/core root exports (plan 04 ICR 7, plan 05 ICR 3)", () => {
     for (const name of functions) expect(typeof exported[name], name).toBe("function");
     expect(core.NETWORKS.mainnet.intents).toBe("intents.near");
     expect(core.USDC_DECIMALS).toBe(6);
+    expect(core.PROPOSAL_REQUEST_TEMPLATE).toBe("probarion-proposal/v1");
+    expect(typeof core.PROPOSAL_SYSTEM_PROMPT).toBe("string");
+    expect(typeof core.PROVIDER_TEE_TEXT_FORMAT).toBe("string");
     expect(Array.isArray(core.KNOWN_VAULT_CODE_HASHES)).toBe(true);
     expect(core.KNOWN_VAULT_CODE_HASHES.length).toBeGreaterThan(0);
     expect(Object.keys(core.CHECK_NAMES)).toEqual(["a", "b", "c", "d", "e", "f", "g", "h", "i"]);

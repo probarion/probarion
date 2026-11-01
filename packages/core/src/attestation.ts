@@ -2,6 +2,7 @@ import { recoverMessageAddress } from "viem";
 import { canonicalJson, sha256Hex } from "./hash.js";
 import { bytesToHex, hexToBytes, isHex32 } from "./hex.js";
 import { extractJsonObject, parseModelProposal } from "./proposal.js";
+import { buildProposalRequest, PROPOSAL_REQUEST_TEMPLATE } from "./proposal-request.js";
 import type {
   AttestationBinding,
   AttestationCheck,
@@ -10,6 +11,9 @@ import type {
   AttestationResult,
   Hex32,
   ModelProposal,
+  ProposalRequestFacts,
+  ProposalRequestInputs,
+  ProposalRequestMandate,
 } from "./types.js";
 
 /** The TD report body starts after the 48-byte quote header (v4), or after the header plus a 6-byte body descriptor (v5). */
@@ -71,8 +75,68 @@ export function extractReportDataFromQuote(intelQuoteHex: string): string | null
   return parseTdxQuote(intelQuoteHex)?.reportData ?? null;
 }
 
+/**
+ * The text NEAR AI's `provider_tee` signature covers, as a template: the one place that decides the A1
+ * format. A1, `expectedSignatureText`, the SDK's fake NEAR AI and the recorded fixtures all follow it.
+ * It is the format NEAR AI documents and spike S2 used. The OWNER recording of one real decision (plan 03
+ * Task 11 Step 7) confirms it; if NEAR AI really signs another text (for example without the model
+ * prefix), change this constant and nothing else.
+ */
+export const PROVIDER_TEE_TEXT_FORMAT = "{model}:{request_sha256}:{response_sha256}";
+
+/** Fills `PROVIDER_TEE_TEXT_FORMAT`. Each placeholder is replaced once; a value is never rescanned. */
+export function formatProviderTeeText(
+  model: string,
+  requestSha256: string,
+  responseSha256: string,
+): string {
+  const values: Record<string, string> = {
+    model: String(model),
+    request_sha256: String(requestSha256),
+    response_sha256: String(responseSha256),
+  };
+  return PROVIDER_TEE_TEXT_FORMAT.replace(
+    /\{(model|request_sha256|response_sha256)\}/g,
+    (_placeholder, key: string) => values[key] ?? "",
+  );
+}
+
+/** `PROVIDER_TEE_TEXT_FORMAT` with angle brackets, for check details: "<model>:<request_sha256>:<response_sha256>". */
+const TEXT_FORMAT_LABEL = PROVIDER_TEE_TEXT_FORMAT.replace(/\{(\w+)\}/g, "<$1>");
+
 export function expectedSignatureText(evidence: AttestationEvidence): string {
-  return `${evidence.model}:${evidence.request_sha256}:${evidence.response_sha256}`;
+  return formatProviderTeeText(evidence.model, evidence.request_sha256, evidence.response_sha256);
+}
+
+/**
+ * Normalises an ECDSA signature at capture (ICR-3): `0x` + r + s + v, lowercase, v in {27, 28} and low-s.
+ * A raw recovery id 0 or 1 becomes 27 or 28. A high-s signature becomes its twin (s := n - s, v flipped),
+ * which recovers to the same address, so a ledger never holds the malleable form. Never deduplicate on
+ * raw signature bytes: both twins verify. Throws a TypeError for anything that is not a 65-byte secp256k1
+ * signature (r or s outside [1, n-1], v other than 0, 1, 27 or 28).
+ */
+export function normalizeEcdsaSignature(signature: string): string {
+  const hex =
+    typeof signature === "string" && /^0[xX]/.test(signature) ? signature.slice(2) : signature;
+  if (typeof hex !== "string" || !/^[0-9a-fA-F]{130}$/.test(hex)) {
+    throw new TypeError("ECDSA signature must be 65 bytes of hex (r, s, v)");
+  }
+  const rHex = hex.slice(0, 64).toLowerCase();
+  const r = BigInt(`0x${rHex}`);
+  let s = BigInt(`0x${hex.slice(64, 128)}`);
+  let v = Number.parseInt(hex.slice(128, 130), 16);
+  if (v === 0 || v === 1) v += 27;
+  if (v !== 27 && v !== 28) {
+    throw new TypeError(`ECDSA signature has an invalid recovery byte ${v}`);
+  }
+  if (r === 0n || r >= SECP256K1_N || s === 0n || s >= SECP256K1_N) {
+    throw new TypeError("ECDSA signature has r or s outside [1, n - 1]");
+  }
+  if (s > SECP256K1_HALF_N) {
+    s = SECP256K1_N - s;
+    v = v === 27 ? 28 : 27;
+  }
+  return `0x${rHex}${s.toString(16).padStart(64, "0")}${v.toString(16)}`;
 }
 
 /**
@@ -180,7 +244,8 @@ function checkResponseBinding(
  * exchange, for example a swapped proposal or an edited response. Until the request check A8 runs
  * with the invoice documents, A1–A7 do NOT prove that the request was the honest one for this
  * invoice and position: whoever writes the ledger could send a request of their choosing and
- * record its signed answer. A8 closes that gap; it is run by an auditor, outside this function.
+ * record its signed answer. A8 (`checkRequestBinding`, ICR-3) closes that gap; it is run by an
+ * auditor who holds the invoice text, outside this function.
  * They also do not prove that the TDX quote came from genuine TEE hardware or that the signing key
  * is a measured TEE key; that is O1 (online). `quote_verified` is a boolean that this function
  * always sets to false; only the SDK's online path sets it true, after O1 verifies the DCAP quote
@@ -227,8 +292,8 @@ export async function checkAttestation(
     isHex32(evidence.request_sha256) &&
       isHex32(evidence.response_sha256) &&
       str(sig?.text) === expectedSignatureText(evidence),
-    "signature text is <model>:<request_sha256>:<response_sha256>",
-    "signature text is not <model>:<request_sha256>:<response_sha256>",
+    `signature text is ${TEXT_FORMAT_LABEL}`,
+    `signature text is not ${TEXT_FORMAT_LABEL}`,
   );
   add(
     "A2",
@@ -290,4 +355,182 @@ export async function checkAttestation(
   const a7 = checkResponseBinding(evidence, expectedProposal);
   checks.push({ id: "A7", pass: a7.pass, detail: a7.detail });
   return { ok: checks.every((c) => c.pass), binding, quote_verified: false, checks };
+}
+
+// ---------- A8: request binding (ICR-3) ----------
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const FACT_KEYS: readonly string[] = ["invoice_hash", "amount", "po_ref", "purpose_hash"];
+const MANDATE_KEYS: readonly string[] = [
+  "id",
+  "label",
+  "payee",
+  "purpose_hash",
+  "max_per_payment",
+  "remaining",
+  "expires_at_ns",
+  "status",
+];
+const MANDATE_TEXT_KEYS: readonly string[] = [
+  "label",
+  "purpose_hash",
+  "max_per_payment",
+  "remaining",
+  "expires_at_ns",
+  "status",
+];
+
+/** null when `o` has exactly `keys`; otherwise what is wrong. A field the request does not carry would be unbound. */
+function keyProblem(o: Record<string, unknown>, keys: readonly string[]): string | null {
+  const extra = Object.keys(o).filter((k) => !keys.includes(k));
+  if (extra.length > 0) return `holds fields the request does not carry: ${extra.join(", ")}`;
+  const missing = keys.filter((k) => !Object.hasOwn(o, k));
+  return missing.length > 0 ? `is missing fields: ${missing.join(", ")}` : null;
+}
+
+function isStringOrNull(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
+function factsProblem(facts: unknown): string | null {
+  if (facts === null) return null;
+  if (!isRecord(facts)) return "request_inputs.facts is not an object or null";
+  const keys = keyProblem(facts, FACT_KEYS);
+  if (keys !== null) return `request_inputs.facts ${keys}`;
+  if (typeof facts.invoice_hash !== "string" || typeof facts.amount !== "string") {
+    return "request_inputs.facts has a wrong-typed invoice_hash or amount";
+  }
+  return isStringOrNull(facts.po_ref) && isStringOrNull(facts.purpose_hash)
+    ? null
+    : "request_inputs.facts has a wrong-typed po_ref or purpose_hash";
+}
+
+function mandateProblem(m: unknown, index: number): string | null {
+  const at = `request_inputs.mandates[${index}]`;
+  if (!isRecord(m)) return `${at} is not an object`;
+  const keys = keyProblem(m, MANDATE_KEYS);
+  if (keys !== null) return `${at} ${keys}`;
+  if (
+    typeof m.id !== "number" ||
+    !MANDATE_TEXT_KEYS.every((k) => typeof m[k] === "string") ||
+    !isRecord(m.payee)
+  ) {
+    return `${at} has a wrong-typed field`;
+  }
+  return null;
+}
+
+/** Shape-checks `request_inputs`, which is read back from a ledger file and so can hold anything, before it rebuilds the request. */
+function readRequestInputs(
+  raw: unknown,
+): { ok: true; inputs: ProposalRequestInputs } | { ok: false; detail: string } {
+  const bad = (detail: string): { ok: false; detail: string } => ({ ok: false, detail });
+  if (raw === undefined) {
+    return bad("request_inputs is missing: the entry carries no request evidence (ICR-3)");
+  }
+  if (!isRecord(raw)) return bad("request_inputs is not an object");
+  if (raw.template !== PROPOSAL_REQUEST_TEMPLATE) {
+    return bad(
+      `unsupported request template ${JSON.stringify(raw.template)} (A8 knows ${PROPOSAL_REQUEST_TEMPLATE})`,
+    );
+  }
+  if (typeof raw.model !== "string" || raw.model.length === 0) {
+    return bad("request_inputs.model is not a model id");
+  }
+  if (typeof raw.system_prompt !== "string") return bad("request_inputs.system_prompt is not text");
+  if (!isHex32(raw.invoice_text_sha256)) {
+    return bad("request_inputs.invoice_text_sha256 is not 64 lowercase hex");
+  }
+  const facts = factsProblem(raw.facts);
+  if (facts !== null) return bad(facts);
+  if (!Array.isArray(raw.mandates)) return bad("request_inputs.mandates is not a list");
+  for (const [index, m] of raw.mandates.entries()) {
+    const problem = mandateProblem(m, index);
+    if (problem !== null) return bad(problem);
+  }
+  return {
+    ok: true,
+    inputs: {
+      template: PROPOSAL_REQUEST_TEMPLATE,
+      model: raw.model,
+      system_prompt: raw.system_prompt,
+      facts: raw.facts as ProposalRequestFacts | null,
+      mandates: raw.mandates as ProposalRequestMandate[],
+      invoice_text_sha256: raw.invoice_text_sha256,
+    },
+  };
+}
+
+/**
+ * A8, request binding (interfaces §7, ICR-3): the auditor check that shows the chat request was the one
+ * `request_inputs` describes, for the invoice text in hand and the ledger nonce. It is separate from
+ * `checkAttestation` because it needs the invoice text, which the ledger never stores. It passes when
+ * (1) sha256(utf8(invoiceText)) equals `request_inputs.invoice_text_sha256`; (2) the request rebuilt by
+ * `buildProposalRequest` from the recorded model, system prompt, facts and mandates, the invoice text
+ * and `evidence.nonce` hashes to `request_sha256`, so the signed request was byte-identical to it and its
+ * `nonce:` header is `evidence.nonce`; (3) when `expectedNonce` is given (the nonce recomputed from the
+ * ledger context, the same value `checkAttestation` gets), `evidence.nonce` equals it. Without
+ * `expectedNonce` the request is bound to `evidence.nonce`, and A6 is what ties that to the ledger
+ * position. It also requires the known template, `request_inputs.model` equal to the signed model, and
+ * `facts` and `mandates` that hold exactly the fields the template carries.
+ *
+ * What it does not do: judge the recorded inputs. A writer who sent a persona as the system prompt, or
+ * facts that never matched the chain, leaves them readable in `request_inputs` for the auditor. Like A1 to
+ * A7 it does not show that the quote came from genuine TEE hardware (that is O1, online). It never
+ * throws: malformed evidence fails. Without the invoice text, do not call it: A8 is then "not run".
+ */
+export function checkRequestBinding(
+  evidence: AttestationEvidence,
+  invoiceText: string,
+  expectedNonce?: Hex32,
+): AttestationCheck {
+  const fail = (detail: string): AttestationCheck => ({ id: "A8", pass: false, detail });
+  try {
+    if (!isRecord(evidence)) return fail("evidence is missing or not an object");
+    if (typeof invoiceText !== "string") {
+      return fail("no invoice text to check the request against");
+    }
+    const read = readRequestInputs(evidence.request_inputs);
+    if (!read.ok) return fail(read.detail);
+    const inputs = read.inputs;
+    if (inputs.model !== evidence.model) {
+      return fail("request_inputs.model differs from the model the signature covers");
+    }
+    if (!isHex32(evidence.nonce)) return fail("the evidence nonce is not 64 lowercase hex");
+    if (!isHex32(evidence.request_sha256)) return fail("request_sha256 is not 64 lowercase hex");
+    if (expectedNonce !== undefined && evidence.nonce !== expectedNonce) {
+      return fail(
+        "the evidence nonce is not the ledger nonce, so the nonce header of the request is not either",
+      );
+    }
+    if (sha256Hex(invoiceText) !== inputs.invoice_text_sha256) {
+      return fail(
+        "sha256(invoice text) differs from request_inputs.invoice_text_sha256: this is not the invoice the model was asked about",
+      );
+    }
+    const rebuilt = sha256Hex(
+      buildProposalRequest(
+        inputs.model,
+        { invoiceText, nonce: evidence.nonce, facts: inputs.facts, mandates: inputs.mandates },
+        inputs.system_prompt,
+      ),
+    );
+    if (rebuilt !== evidence.request_sha256) {
+      return fail(
+        `the request rebuilt from request_inputs, the invoice text and the nonce hashes to ${rebuilt}, not to request_sha256 ${evidence.request_sha256}: the chat was not asked with exactly these inputs`,
+      );
+    }
+    return {
+      id: "A8",
+      pass: true,
+      detail:
+        "the request rebuilt from request_inputs, the invoice text and the nonce hashes to request_sha256 and carries the ledger nonce",
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "unknown error";
+    return fail(`cannot rebuild the request: ${reason}`);
+  }
 }

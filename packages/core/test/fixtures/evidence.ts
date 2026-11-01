@@ -8,6 +8,11 @@ import {
 } from "../../src/attestation.js";
 import { sha256Hex } from "../../src/hash.js";
 import { bytesToHex, hexToBytes, utf8 } from "../../src/hex.js";
+import {
+  buildProposalRequest,
+  type ProposalRequestInput,
+  proposalRequestInputs,
+} from "../../src/proposal-request.js";
 import type { AttestationEvidence, Hex32, ModelProposal } from "../../src/types.js";
 import { TEST_TEE_PRIVATE_KEY } from "./keys.js";
 
@@ -133,4 +138,29 @@ export async function buildTestEvidence(o: TestEvidenceOptions): Promise<Attesta
           },
     fetched_at: o.fetchedAt,
   };
+}
+
+export interface RequestEvidenceOptions extends Omit<TestEvidenceOptions, "requestBody" | "nonce"> {
+  /** What the honest SDK passed to buildProposalRequest; its nonce is the evidence nonce. */
+  input: ProposalRequestInput;
+  /** The system prompt (default PROPOSAL_SYSTEM_PROMPT); a persona goes here. */
+  systemPrompt?: string;
+}
+
+/**
+ * Evidence of an honest exchange for plan 03 Task 11 (ICR-3): the signed request is exactly what
+ * buildProposalRequest builds from `input`, and `request_inputs` records those inputs (not the invoice text).
+ */
+export async function buildTestEvidenceForRequest(
+  o: RequestEvidenceOptions,
+): Promise<AttestationEvidence> {
+  const { input, systemPrompt, ...rest } = o;
+  const model = o.model ?? TEST_MODEL;
+  const evidence = await buildTestEvidence({
+    ...rest,
+    model,
+    nonce: input.nonce,
+    requestBody: buildProposalRequest(model, input, systemPrompt),
+  });
+  return { ...evidence, request_inputs: proposalRequestInputs(model, input, systemPrompt) };
 }

@@ -221,15 +221,59 @@ export interface PayeeHint {
   name?: string;
 }
 
+/** The four invoice facts the model is shown (interfaces §7, ICR-3). The code-extracted payee hint is not shown. */
+export interface ProposalRequestFacts {
+  invoice_hash: Hex32;
+  amount: string;
+  po_ref: string | null;
+  purpose_hash: Hex32 | null;
+}
+
+/** What the model is shown of one mandate (ICR-3); `remaining` is max_total - spent - reserved. */
+export interface ProposalRequestMandate {
+  id: number;
+  label: string;
+  payee: Payee;
+  purpose_hash: string;
+  max_per_payment: U128;
+  remaining: U128;
+  expires_at_ns: U64;
+  status: MandateStatus;
+}
+
+/**
+ * ICR-3: every input of the chat request except the invoice text, which is never stored. The auditor
+ * check A8 rebuilds the request from these and the invoice text (see `buildProposalRequest`).
+ */
+export interface ProposalRequestInputs {
+  template: "probarion-proposal/v1";
+  model: string; // equals AttestationEvidence.model
+  system_prompt: string; // the exact system message: PROPOSAL_SYSTEM_PROMPT or a persona
+  facts: ProposalRequestFacts | null;
+  mandates: ProposalRequestMandate[]; // in the order shown to the model
+  invoice_text_sha256: Hex32; // sha256(utf8(invoice text))
+}
+
 export interface AttestationEvidence {
   provider: "near-ai-cloud";
   model: string;
   chat_id: string;
   nonce: Hex32;
+  /** sha256 of the exact chat request body (UTF-8 bytes of `buildProposalRequest`'s output); the auditor check A8 recomputes it. */
   request_sha256: Hex32;
+  /**
+   * ICR-3: the inputs the request was built from, without the invoice text. The SDK writes it on every
+   * attested decision. It is optional in the type only so that evidence recorded before ICR-3 (the
+   * Task 6 fixtures) still parses; A8 fails closed when it is absent.
+   */
+  request_inputs?: ProposalRequestInputs;
   response_sha256: Hex32;
-  /** ICR-2: the exact UTF-8 text of the chat-completion HTTP response body as received; sha256(utf8(.)) === response_sha256 (A7). */
+  /**
+   * ICR-2: the exact UTF-8 text of the chat-completion HTTP response body as received; sha256(utf8(.)) === response_sha256 (A7).
+   * It may quote invoice details. ICR-3: at most 64 KiB; the SDK treats a larger response as model_unavailable.
+   */
   response_body: string;
+  /** ICR-3: stored normalized at capture, v in {27, 28} and low-s. */
   signature: { text: string; signature: string; signing_address: string; signing_algo: "ecdsa" };
   report: {
     signing_address: string;
@@ -324,7 +368,8 @@ export interface CustomRule {
 
 // ---------- Attestation (interfaces §7) ----------
 
-export type AttestationCheckId = "A1" | "A2" | "A3" | "A4" | "A5" | "A6" | "A7";
+/** A1 to A7 come from `checkAttestation`; A8 (request binding, ICR-3) from `checkRequestBinding`. */
+export type AttestationCheckId = "A1" | "A2" | "A3" | "A4" | "A5" | "A6" | "A7" | "A8";
 export type AttestationBinding = "address" | "tls" | "none";
 export interface AttestationCheck {
   id: AttestationCheckId;
@@ -339,7 +384,7 @@ export interface AttestationResult {
    * because the SDK's online path may set it true, after O1 verifies the DCAP quote and the measurement pin.
    */
   quote_verified: boolean;
-  checks: AttestationCheck[]; // always A1..A7, in order
+  checks: AttestationCheck[]; // always A1..A7, in order (A8 is a separate check)
 }
 
 // ---------- Verifier (interfaces §10) ----------

@@ -7,5 +7,6 @@ export * from "./keys.js";
 export * from "./ledger.js";
 export * from "./policy.js";
 export * from "./proposal.js";
+export * from "./proposal-request.js";
 export * from "./types.js";
 export * from "./verify.js";

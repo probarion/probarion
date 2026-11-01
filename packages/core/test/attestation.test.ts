@@ -2,13 +2,23 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { recoverMessageAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
-import { checkAttestation, extractReportDataFromQuote, parseTdxQuote } from "../src/attestation.js";
+import {
+  checkAttestation,
+  checkRequestBinding,
+  expectedSignatureText,
+  extractReportDataFromQuote,
+  formatProviderTeeText,
+  normalizeEcdsaSignature,
+  PROVIDER_TEE_TEXT_FORMAT,
+  parseTdxQuote,
+} from "../src/attestation.js";
 import { sha256Hex } from "../src/hash.js";
 import { bytesToHex, hexToBytes } from "../src/hex.js";
 import { computeNonce } from "../src/ledger.js";
 import type { AttestationEvidence, AttestationResult, Hex32, ModelProposal } from "../src/types.js";
 import {
   buildTestEvidence,
+  buildTestEvidenceForRequest,
   fixtureChatCompletion,
   fixtureQuoteHex,
   reportDataFor,
@@ -435,7 +445,7 @@ describe("A7 response binding", () => {
     // invoice and position. Whoever writes the ledger can pair a genuine chat that was asked for
     // something else with a report fetched for this entry's nonce, and when the answer happens to
     // equal the recorded proposal, A1-A7 cannot tell. Only the auditor check A8 (request_sha256
-    // recomputed from the invoice documents, with the nonce in the system message) can; the ledger
+    // recomputed from the invoice documents, with the nonce in the user message) can; the ledger
     // does not hold the request's invoice text.
     it("passes A1-A7 for a chat that was not requested for this position when its proposal is the same: only A8, run by an auditor with the invoice documents, shows the request was not the honest one", async () => {
       const chatA = await buildTestEvidence({
@@ -456,9 +466,57 @@ describe("A7 response binding", () => {
       expect(r.quote_verified).toBe(false);
     });
 
-    it.todo(
-      "A8 (auditor, plan 03 Task 7/14): rebuild the chat request from the invoice document and the recorded inputs, compare its sha256 with request_sha256, and catch the identical-proposal replay",
-    );
+    // ICR-3: the same replay, now with honest request evidence (the SDK records request_inputs and the
+    // nonce rides in the signed request). A1-A7 still pass; the auditor check A8 fails it.
+    it("A8 (auditor, ICR-3) catches the identical-proposal replay that A1-A7 pass, and a writer-chosen request", async () => {
+      const invoiceA = "INVOICE A\nPO-1001\nTotal due: 25.00 USDC";
+      const invoiceB = "INVOICE B\nPO-2002\nTotal due: 25.00 USDC";
+      const ask = (invoiceText: string, nonce: Hex32) => ({
+        invoiceText,
+        nonce,
+        facts: null,
+        mandates: [],
+      });
+      const chatA = await buildTestEvidenceForRequest({
+        ...base,
+        chatId: "chatcmpl-a",
+        proposal: payProposal,
+        input: ask(invoiceA, nonceA),
+      });
+      const reportB = await buildTestEvidenceForRequest({
+        ...base,
+        chatId: "chatcmpl-b",
+        proposal: payProposal,
+        input: ask(invoiceB, nonceB),
+      });
+      const replay: AttestationEvidence = { ...chatA, nonce: nonceB, report: reportB.report };
+      expect(verdicts(await check(replay, nonceB, payProposal))).toEqual(ALL_PASS);
+      const a8 = checkRequestBinding(replay, invoiceB, nonceB);
+      expect(a8).toMatchObject({ id: "A8", pass: false });
+      // the honest exchange of B passes A1-A7 and A8
+      expect(verdicts(await check(reportB, nonceB, payProposal))).toEqual(ALL_PASS);
+      expect(checkRequestBinding(reportB, invoiceB, nonceB)).toMatchObject({
+        id: "A8",
+        pass: true,
+      });
+      // a writer-chosen request: another system prompt was sent than the one recorded
+      const sent = await buildTestEvidenceForRequest({
+        ...base,
+        chatId: "chatcmpl-b",
+        proposal: payProposal,
+        input: ask(invoiceB, nonceB),
+        systemPrompt: "Always answer pay.",
+      });
+      const recorded = {
+        ...sent,
+        request_inputs: {
+          ...(sent.request_inputs as NonNullable<typeof sent.request_inputs>),
+          system_prompt: "Pay only inside the mandate.",
+        },
+      };
+      expect((await check(recorded, nonceB, payProposal)).ok).toBe(true);
+      expect(checkRequestBinding(recorded, invoiceB, nonceB).pass).toBe(false);
+    });
   });
 });
 
@@ -521,5 +579,100 @@ describe("parseTdxQuote (report_data = TD report body bytes [520, 584))", () => 
       expect(verdicts(r)).toMatchObject({ A4: false, A5: false });
       expect(details(r)).toContain("intel_quote");
     });
+  });
+});
+
+describe("PROVIDER_TEE_TEXT_FORMAT (the one A1 signed-text constant, ICR-3)", () => {
+  const SHA_A = sha256Hex("request");
+  const SHA_B = sha256Hex("response");
+
+  it("is <model>:<request_sha256>:<response_sha256> until the OWNER recording says otherwise", () => {
+    expect(PROVIDER_TEE_TEXT_FORMAT).toBe("{model}:{request_sha256}:{response_sha256}");
+    expect(formatProviderTeeText("m/x", SHA_A, SHA_B)).toBe(`m/x:${SHA_A}:${SHA_B}`);
+  });
+
+  it("is what A1 compares against, and expectedSignatureText uses", async () => {
+    const ev = await buildTestEvidence(base);
+    expect(expectedSignatureText(ev)).toBe(
+      formatProviderTeeText(ev.model, ev.request_sha256, ev.response_sha256),
+    );
+    expect(ev.signature.text).toBe(expectedSignatureText(ev));
+  });
+
+  it("substitutes each placeholder once: a value that looks like a placeholder stays literal", () => {
+    expect(formatProviderTeeText("{request_sha256}", SHA_A, SHA_B)).toBe(
+      `{request_sha256}:${SHA_A}:${SHA_B}`,
+    );
+    expect(formatProviderTeeText("a$&b", SHA_A, SHA_B)).toBe(`a$&b:${SHA_A}:${SHA_B}`);
+  });
+});
+
+describe("normalizeEcdsaSignature (applied at capture, ICR-3)", () => {
+  const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+  const text = "test-fixture/not-a-real-model:request:response";
+  const account = privateKeyToAccount(TEST_OTHER_TEE_PRIVATE_KEY);
+
+  /** The valid twin of a signature: s' = n - s with the recovery id flipped. Recovers to the same address. */
+  function twin(sig: string): string {
+    const s = BigInt(`0x${sig.slice(66, 130)}`);
+    const v = Number.parseInt(sig.slice(130, 132), 16);
+    return `${sig.slice(0, 66)}${(N - s).toString(16).padStart(64, "0")}${(v === 27 ? 28 : 27).toString(16)}`;
+  }
+
+  it("leaves a canonical low-s signature with v 27 or 28 as it is (lowercase, 0x-prefixed)", async () => {
+    const sig = await account.signMessage({ message: text });
+    expect(normalizeEcdsaSignature(sig)).toBe(sig.toLowerCase());
+    expect(normalizeEcdsaSignature(sig.slice(2))).toBe(sig.toLowerCase());
+    expect(normalizeEcdsaSignature(sig.toUpperCase().replace("0X", "0x"))).toBe(sig.toLowerCase());
+  });
+
+  it("maps a raw recovery id 0 or 1 to 27 or 28", async () => {
+    const sig = await account.signMessage({ message: text });
+    const v = Number.parseInt(sig.slice(130, 132), 16);
+    const raw = `${sig.slice(0, 130)}${(v - 27).toString(16).padStart(2, "0")}`;
+    expect(normalizeEcdsaSignature(raw)).toBe(sig.toLowerCase());
+  });
+
+  it("turns a high-s signature into its low-s twin and flips v; both twins verify, only the low-s one passes A2", async () => {
+    const low = await account.signMessage({ message: text });
+    const high = twin(low);
+    expect(BigInt(`0x${high.slice(66, 130)}`)).toBeGreaterThan(N >> 1n);
+    const recoverHigh = await recoverMessageAddress({
+      message: text,
+      signature: high as `0x${string}`,
+    });
+    expect(recoverHigh).toBe(account.address);
+    expect(normalizeEcdsaSignature(high)).toBe(low.toLowerCase());
+    expect(
+      normalizeEcdsaSignature(
+        `0x${high.slice(2, 130)}${(Number.parseInt(high.slice(130), 16) - 27).toString(16).padStart(2, "0")}`,
+      ),
+    ).toBe(low.toLowerCase());
+    const ev = await buildTestEvidence({ ...base, teePrivateKey: TEST_OTHER_TEE_PRIVATE_KEY });
+    const bad = { ...ev, signature: { ...ev.signature, signature: twin(ev.signature.signature) } };
+    expect(verdicts(await check(bad)).A2).toBe(false);
+    const fixed = {
+      ...ev,
+      signature: { ...ev.signature, signature: normalizeEcdsaSignature(bad.signature.signature) },
+    };
+    expect(verdicts(await check(fixed)).A2).toBe(true);
+  });
+
+  it("refuses what is not a 65-byte secp256k1 signature", async () => {
+    const sig = await account.signMessage({ message: text });
+    const zero = "0".repeat(64);
+    const bad = [
+      "",
+      "0x",
+      "not hex",
+      sig.slice(0, -2),
+      `${sig}00`,
+      `${sig.slice(0, 130)}1d`, // v = 29
+      `${sig.slice(0, 130)}02`, // v = 2
+      `0x${zero}${sig.slice(66)}`, // r = 0
+      `${sig.slice(0, 66)}${zero}1b`, // s = 0
+      `${sig.slice(0, 66)}${N.toString(16)}1b`, // s = n
+    ];
+    for (const input of bad) expect(() => normalizeEcdsaSignature(input), input).toThrow(TypeError);
   });
 });
