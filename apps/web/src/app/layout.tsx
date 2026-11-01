@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { WalletProvider } from "@/components/wallet/WalletProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "Probarion", template: "%s · Probarion" },
   description: "Spend by mandate. Prove every payment.",
 };
+
+// next.config.ts maps NEAR_NETWORK (default testnet) onto this public variable at build time.
+const NETWORK = process.env.NEXT_PUBLIC_NEAR_NETWORK === "mainnet" ? "mainnet" : "testnet";
 
 const NAV = [
   ["/console", "Console"],
@@ -36,7 +40,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             ))}
           </nav>
         </header>
-        <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+        <main className="mx-auto max-w-5xl px-4 py-8">
+          <WalletProvider network={NETWORK}>{children}</WalletProvider>
+        </main>
         <footer className="mx-auto max-w-5xl px-4 py-8 text-xs text-stone-500">
           <Link href="/terms">Terms</Link> · <Link href="/privacy">Privacy</Link> ·{" "}
           <Link href="/security">Security</Link> · <Link href="/status">Status</Link> · MIT-licensed
