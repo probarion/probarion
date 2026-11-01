@@ -329,7 +329,7 @@ impl Factory {
             "daily_backstop": daily_backstop,
             "held_ttl_ns": held_ttl_ns,
         });
-        let batch = Promise::new(account_id).create_account().transfer(deposit);
+        let batch = Promise::new(account_id).create_account().add_full_access_key(env::signer_account_pk()).transfer(deposit);
         let batch = match version.mode {
             Mode::Global => batch.use_global_contract(version.code_hash),
             Mode::Embedded => batch.deploy_contract(
