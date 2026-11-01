@@ -13,7 +13,7 @@ describe("scripts/record-nearai.ts (OWNER-run, never executed by the tests)", ()
     expect(source).toContain('envValue(process.env, "NEARAI_MODEL")');
   });
 
-  it("uses the key only as the Authorization header, in the proposer options and in the do-not-write guard", () => {
+  it("uses the key only as the Authorization header, in the proposer options, in the redactor and in the do-not-write guard", () => {
     const uses = lines.filter((line) => /\bapiKey\b/.test(line)).map((line) => line.trim());
     const allowed = [
       /^const apiKey = envValue\(process\.env, "NEARAI_API_KEY"\);$/,
@@ -21,6 +21,7 @@ describe("scripts/record-nearai.ts (OWNER-run, never executed by the tests)", ()
       /authorization: `Bearer \$\{apiKey\}`/,
       /^const proposer = new NearAiProposer\(\{ apiKey,/,
       /^if \(recordedJson\.includes\(apiKey\)\) \{$/,
+      /^const clean = \(text: string\): string => redactSecrets\(text, \[apiKey\]\);$/,
     ];
     for (const use of uses) {
       expect(
@@ -38,10 +39,23 @@ describe("scripts/record-nearai.ts (OWNER-run, never executed by the tests)", ()
     expect(source).toContain("refusing to write it");
   });
 
+  it("prints everything through the redactor, except the one message that is printed before a key exists", () => {
+    const writes = source.match(/process\.(?:stdout|stderr)\.write\(/g) ?? [];
+    const cleaned = source.match(/process\.(?:stdout|stderr)\.write\(\s*clean\(/g) ?? [];
+    expect(writes.length).toBeGreaterThanOrEqual(3);
+    expect(cleaned.length).toBe(writes.length - 1);
+    expect(source).toContain("NEARAI_API_KEY is not set. This script is run by the OWNER only.");
+    expect(source).not.toMatch(/console\./);
+  });
+
   it("prints what it recorded and writes the fixture the recorded test reads", () => {
     expect(source).toMatch(/recorded \$\{evidence\.model\} chat \$\{evidence\.chat_id\}/);
     expect(source).toContain("../test/fixtures/nearai-recorded/decision.json");
-    expect(source).toContain("checkRequestBinding(evidence, invoiceText, nonce)");
+    expect(source).toContain("checkRequestBinding(evidence, invoiceText, context)");
     expect(source).toContain("PROVIDER_TEE_TEXT_FORMAT");
+  });
+
+  it("asks for the signature the way the adapter does, with the model", () => {
+    expect(source).toContain('url.searchParams.set("model", model)');
   });
 });

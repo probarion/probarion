@@ -21,6 +21,7 @@ import {
   PROPOSAL_SYSTEM_PROMPT,
   parseModelProposal,
   proposalRequestInputs,
+  proposalRequestInputsProblem,
   sha256Hex,
   utf8,
 } from "@probarion/core";
@@ -44,6 +45,20 @@ const ERROR_BODY_PREVIEW_BYTES = 2048;
 const MAX_MODEL_PROBES = 10;
 const MAX_CATALOG_PAGES = 50;
 
+/** The four kinds of call the adapter makes, each with its own timeout. */
+export type NearAiPhase = "catalog" | "report" | "chat" | "signature";
+
+/**
+ * Per-call timeouts in milliseconds (ICR-3b round). A call covers the response headers and the body, so a
+ * server that stalls half-way is cut off too. The chat gets the longest: a thinking model can take a while.
+ */
+export const DEFAULT_NEARAI_TIMEOUTS_MS: Readonly<Record<NearAiPhase, number>> = Object.freeze({
+  catalog: 10_000,
+  report: 15_000,
+  chat: 90_000,
+  signature: 15_000,
+});
+
 /**
  * The model's answer is larger than `MAX_RESPONSE_BODY_BYTES` (ICR-3). The caller treats it like any other
  * `NearAiError`: the model is unavailable for this decision and the decision is rules-only.
@@ -55,6 +70,25 @@ export class NearAiResponseTooLargeError extends NearAiError {
     super(`chat completion is larger than ${limitBytes} bytes; the model answer is not used`);
     this.limitBytes = limitBytes;
   }
+}
+
+/**
+ * Removes anything that looks like a credential from text that may reach a log or a terminal: each of
+ * `secrets` (the configured API key), `Bearer <token>`, values of authorization / api-key style fields and
+ * `sk-...` keys. Applied to every message built from a remote response or an error.
+ */
+export function redactSecrets(text: string, secrets: readonly string[] = []): string {
+  let out = text;
+  for (const secret of secrets) {
+    if (secret.length >= 4) out = out.split(secret).join("[redacted]");
+  }
+  return out
+    .replace(
+      /\b(authorization|x-api-key|api[_-]?key|apikey|secret)(["']?\s*[:=]\s*["']?)(?:Bearer\s+)?[^\s"',;&]+/gi,
+      "$1$2[redacted]",
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]{10,}/g, "[redacted]");
 }
 
 export interface CatalogModel {
@@ -77,14 +111,21 @@ export interface NearAiProposerOptions {
   signatureRetryDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
   preferredModels?: readonly string[];
+  /** Overrides of `DEFAULT_NEARAI_TIMEOUTS_MS`, per phase; each must be a positive finite number of milliseconds. */
+  timeoutMs?: Partial<Record<NearAiPhase, number>>;
 }
 
 export interface ProposeInput {
   invoiceText: string;
   mandates: readonly MandateView[];
   nonce: Hex32;
-  /** Optional: the code's extracted facts (hash, amount, PO ref, purpose), shown to the model with the text. */
-  facts?: InvoiceFacts;
+  /**
+   * The code's extracted facts, shown to the model with the text. Required (ICR-3b): check A8 fails an entry
+   * whose `request_inputs.facts` is null. `facts.invoice_hash` must be `sha256Hex(utf8(invoiceText))`, the
+   * hash of the text the model sees (for a PDF, the extracted text), so the same value is the ledger's and
+   * the contract's `invoice_hash`.
+   */
+  facts: InvoiceFacts;
 }
 
 export interface ProposeResult {
@@ -104,6 +145,20 @@ export interface RawModelReport {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** True for the `TimeoutError` that `AbortSignal.timeout` aborts with, however fetch wrapped it. */
+function isTimeout(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if ((error as { name?: unknown }).name === "TimeoutError") return true;
+  return isTimeout((error as { cause?: unknown }).cause);
+}
+
+/** The message of an error and of its first cause, e.g. `fetch failed: connect ECONNREFUSED 10.0.0.1:443`. */
+function describe(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause instanceof Error ? error.cause.message : "";
+  return cause === "" || cause === error.message ? error.message : `${error.message}: ${cause}`;
 }
 
 /** One page of the public `GET /v1/model/list` catalog. */
@@ -214,8 +269,18 @@ async function readBody(res: Response, limit: number, truncate: boolean): Promis
   return concatBytes(...chunks);
 }
 
+/** Frees the connection of a response whose body is not read. */
+async function discard(res: Response): Promise<void> {
+  try {
+    await res.body?.cancel();
+  } catch {
+    // nothing to free
+  }
+}
+
 export class NearAiProposer {
   private readonly opts: NearAiProposerOptions;
+  private readonly timeouts: Record<NearAiPhase, number>;
   private resolved: string | null = null;
 
   constructor(opts: NearAiProposerOptions) {
@@ -223,6 +288,13 @@ export class NearAiProposer {
     if (opts.systemPrompt !== undefined && opts.systemPrompt.trim() === "") {
       throw new NearAiError("systemPrompt must not be empty; omit it to use the default prompt");
     }
+    const timeouts = { ...DEFAULT_NEARAI_TIMEOUTS_MS, ...opts.timeoutMs };
+    for (const [phase, ms] of Object.entries(timeouts)) {
+      if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) {
+        throw new NearAiError(`timeoutMs.${phase} must be a positive number of milliseconds`);
+      }
+    }
+    this.timeouts = timeouts;
     this.opts = opts;
   }
 
@@ -235,11 +307,6 @@ export class NearAiProposer {
     return (this.opts.baseUrl ?? NEARAI_BASE_URL).replace(/\/+$/, "");
   }
 
-  private request(input: string | URL, init: RequestInit): Promise<Response> {
-    const doFetch = this.opts.fetch ?? globalThis.fetch;
-    return doFetch(input, init);
-  }
-
   private headers(extra: Record<string, string> = {}): Record<string, string> {
     return { authorization: `Bearer ${this.opts.apiKey}`, accept: "application/json", ...extra };
   }
@@ -247,6 +314,72 @@ export class NearAiProposer {
   private sleep(ms: number): Promise<void> {
     if (this.opts.sleep !== undefined) return this.opts.sleep(ms);
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Text that came from a remote response or an error, with credentials removed. */
+  private redact(text: string): string {
+    return redactSecrets(text, [this.opts.apiKey]);
+  }
+
+  /**
+   * The error to keep as a `cause`: the original when it holds no credential, else a copy (same name, no
+   * stack) whose message, and the messages of its causes, are redacted. A logger that prints causes must
+   * not print the key. A JSON `SyntaxError` quotes the start of the body, which a server may have echoed.
+   */
+  private safeCause(error: unknown): unknown {
+    if (typeof error === "string") return this.redact(error);
+    if (!(error instanceof Error)) return error;
+    const message = this.redact(error.message);
+    const inner = error.cause === undefined ? undefined : this.safeCause(error.cause);
+    if (message === error.message && inner === error.cause) return error;
+    const copy =
+      error instanceof SyntaxError
+        ? new SyntaxError(message, inner === undefined ? undefined : { cause: inner })
+        : new Error(message, inner === undefined ? undefined : { cause: inner });
+    copy.name = error.name;
+    return copy;
+  }
+
+  /**
+   * One call with its phase timeout. The signal stays armed while the body is read, so every failure of the
+   * call, whether the connection, a stall in the headers or in the body, is a `NearAiError` with the cause.
+   */
+  private async call(
+    phase: NearAiPhase,
+    label: string,
+    input: string | URL,
+    init: RequestInit,
+  ): Promise<Response> {
+    const ms = this.timeouts[phase];
+    const doFetch = this.opts.fetch ?? globalThis.fetch;
+    try {
+      return await doFetch(input, { ...init, signal: AbortSignal.timeout(ms) });
+    } catch (error) {
+      throw this.failure(phase, label, error, "request");
+    }
+  }
+
+  /** The `NearAiError` for a transport failure or a failed body read: a timeout says so, anything else is redacted. */
+  private failure(phase: NearAiPhase, label: string, error: unknown, stage: string): NearAiError {
+    if (isTimeout(error)) {
+      return new NearAiError(`${label}: timed out after ${this.timeouts[phase]} ms (${stage})`, {
+        cause: this.safeCause(error),
+      });
+    }
+    return new NearAiError(`${label}: ${stage} failed (${this.redact(describe(error))})`, {
+      cause: this.safeCause(error),
+    });
+  }
+
+  private async readJson(phase: NearAiPhase, label: string, res: Response): Promise<unknown> {
+    try {
+      return await res.json();
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        throw new NearAiError(`${label}: response is not JSON`, { cause: this.safeCause(error) });
+      }
+      throw this.failure(phase, label, error, "reading the response");
+    }
   }
 
   /** The public, paginated catalog. The API key is not sent. */
@@ -257,9 +390,15 @@ export class NearAiProposer {
       const url = new URL(`${this.base}/model/list`);
       url.searchParams.set("limit", String(CATALOG_PAGE_SIZE));
       url.searchParams.set("offset", String(offset));
-      const res = await this.request(url, { headers: { accept: "application/json" } });
-      if (!res.ok) throw new NearAiError(`GET /model/list: HTTP ${res.status}`);
-      const { models, total } = parseModelCatalogPage(await res.json());
+      const label = "GET /model/list";
+      const res = await this.call("catalog", label, url, {
+        headers: { accept: "application/json" },
+      });
+      if (!res.ok) {
+        await discard(res);
+        throw new NearAiError(`${label}: HTTP ${res.status}`);
+      }
+      const { models, total } = parseModelCatalogPage(await this.readJson("catalog", label, res));
       all.push(...models);
       offset += models.length;
       if (models.length === 0 || (total !== null && offset >= total)) return all;
@@ -267,6 +406,10 @@ export class NearAiProposer {
     return all;
   }
 
+  /**
+   * The attestation candidates for `nonce`. A candidate whose `request_nonce` is not the nonce that was asked
+   * for (a stale or replayed report) is dropped at capture, so it can never be selected into the evidence.
+   */
   async fetchModelReports(model: string, nonce: Hex32): Promise<RawModelReport[]> {
     const url = new URL(`${this.base}/attestation/report`);
     url.searchParams.set("model", model);
@@ -274,9 +417,18 @@ export class NearAiProposer {
     url.searchParams.set("nonce", nonce);
     url.searchParams.set("provider", "near");
     url.searchParams.set("include_tls_fingerprint", "false");
-    const res = await this.request(url, { headers: this.headers({ "x-no-aliasing": "true" }) });
-    if (!res.ok) throw new NearAiError(`GET /attestation/report: HTTP ${res.status}`);
-    return parseModelReports(await res.json());
+    const label = "GET /attestation/report";
+    const res = await this.call("report", label, url, {
+      headers: this.headers({ "x-no-aliasing": "true" }),
+    });
+    if (!res.ok) {
+      await discard(res);
+      throw new NearAiError(`${label}: HTTP ${res.status}`);
+    }
+    const wanted = nonce.toLowerCase();
+    return parseModelReports(await this.readJson("report", label, res)).filter(
+      (r) => r.request_nonce === wanted,
+    );
   }
 
   /** NEARAI_MODEL if set, else the first eligible catalog model whose attestation probe returns NEAR evidence. */
@@ -320,25 +472,33 @@ export class NearAiProposer {
 
   /**
    * The provider_tee signature of a finished chat, normalized at capture (ICR-3): v is 27 or 28 and s is low.
-   * A short 404 window after the chat is normal, so it is retried with a bounded back-off.
+   * The request carries `model` (`/v1/signature/{chat_id}?model=<id>&signing_algo=ecdsa`), which the service
+   * may use to find the chat and which is harmless if it ignores it. A short 404 window after the chat is
+   * normal, so it is retried with a bounded back-off.
    */
-  async fetchSignature(chatId: string): Promise<AttestationEvidence["signature"]> {
+  async fetchSignature(chatId: string, model?: string): Promise<AttestationEvidence["signature"]> {
     const retries = this.opts.signatureRetries ?? 5;
     const delay = this.opts.signatureRetryDelayMs ?? 400;
+    const label = "GET /signature";
     let last = "no attempt";
     for (let attempt = 0; attempt <= retries; attempt++) {
       if (attempt > 0) await this.sleep(delay * attempt);
       const url = new URL(`${this.base}/signature/${encodeURIComponent(chatId)}`);
+      if (model !== undefined) url.searchParams.set("model", model);
       url.searchParams.set("signing_algo", "ecdsa");
-      const res = await this.request(url, { headers: this.headers() });
+      const res = await this.call("signature", label, url, { headers: this.headers() });
       if (res.status === 404) {
+        await discard(res);
         last = "HTTP 404";
         continue;
       }
-      if (!res.ok) throw new NearAiError(`GET /signature: HTTP ${res.status}`);
-      const body: unknown = await res.json();
+      if (!res.ok) {
+        await discard(res);
+        throw new NearAiError(`${label}: HTTP ${res.status}`);
+      }
+      const body = await this.readJson("signature", label, res);
       if (isRecord(body) && body.error_code !== undefined) {
-        last = `unavailable: ${String(body.message ?? body.error_code)}`;
+        last = `unavailable: ${this.redact(String(body.message ?? body.error_code))}`;
         continue;
       }
       if (
@@ -346,7 +506,9 @@ export class NearAiProposer {
         body.signature_kind !== undefined &&
         body.signature_kind !== "provider_tee"
       ) {
-        throw new NearAiError(`signature kind ${String(body.signature_kind)} is not provider_tee`);
+        throw new NearAiError(
+          `signature kind ${this.redact(String(body.signature_kind))} is not provider_tee`,
+        );
       }
       if (
         isRecord(body) &&
@@ -359,7 +521,7 @@ export class NearAiProposer {
           signature = normalizeEcdsaSignature(body.signature);
         } catch (error) {
           throw new NearAiError(
-            `GET /signature: ${error instanceof Error ? error.message : "malformed signature"}`,
+            `${label}: ${error instanceof Error ? error.message : "malformed signature"}`,
             { cause: error },
           );
         }
@@ -370,10 +532,10 @@ export class NearAiProposer {
           signing_algo: "ecdsa",
         };
       }
-      throw new NearAiError("GET /signature: malformed response");
+      throw new NearAiError(`${label}: malformed response`);
     }
     throw new NearAiError(
-      `provider_tee signature for ${chatId} unavailable after ${retries + 1} attempts (${last})`,
+      `provider_tee signature for ${this.redact(chatId)} unavailable after ${retries + 1} attempts (${last})`,
     );
   }
 
@@ -381,33 +543,42 @@ export class NearAiProposer {
    * One attested proposal. Order (report §8 (iii), interfaces §7): the attestation report for the ledger nonce,
    * then the chat, then the signature. The request is built once by core's `buildProposalRequest`; these exact
    * bytes are sent and hashed, and `evidence.request_inputs` records what they were built from (not the
-   * invoice text) so an auditor holding the invoice can run A8. Any failure throws a `NearAiError`; the caller
-   * then decides rules-only, so a response above `MAX_RESPONSE_BODY_BYTES` (64 KiB) is a failure too.
+   * invoice text) so an auditor holding the invoice can run A8. Before anything is sent the inputs are held
+   * to the shape that A8 requires (`proposalRequestInputsProblem`), so the adapter never produces evidence
+   * that A8 would refuse for its shape. Any failure throws a `NearAiError` (a transport error, a timeout, a
+   * non-JSON answer, a response above `MAX_RESPONSE_BODY_BYTES`, an invalid proposal); the caller then
+   * decides rules-only.
    */
   async propose(input: ProposeInput): Promise<ProposeResult> {
     if (!isHex32(input.nonce)) {
       throw new NearAiError("nonce must be 64 lowercase hex characters (the ledger nonce)");
     }
-    const model = await this.resolveModel();
-    const systemPrompt = this.opts.systemPrompt ?? PROPOSAL_SYSTEM_PROMPT;
-    let body: Uint8Array;
-    let requestInputs: AttestationEvidence["request_inputs"];
-    try {
-      body = utf8(buildProposalRequest(model, input, systemPrompt));
-      requestInputs = proposalRequestInputs(model, input, systemPrompt);
-    } catch (error) {
+    if (typeof input.invoiceText !== "string") {
+      throw new NearAiError("invoiceText must be the text the model is asked about");
+    }
+    if (typeof input.facts !== "object" || input.facts === null) {
+      throw new NearAiError("facts are required: the model is shown the invoice facts (ICR-3b)");
+    }
+    const invoiceHash = sha256Hex(utf8(input.invoiceText));
+    if (input.facts.invoice_hash !== invoiceHash) {
       throw new NearAiError(
-        `cannot build the proposal request: ${error instanceof Error ? error.message : String(error)}`,
-        { cause: error },
+        "facts.invoice_hash must be sha256Hex(utf8(invoiceText)), the hash of the text the model sees (ICR-3b)",
       );
     }
+    const systemPrompt = this.opts.systemPrompt ?? PROPOSAL_SYSTEM_PROMPT;
+    // Held to A8's shape before any request, with a placeholder model id (the shape check does not depend on it).
+    this.checkShape("unresolved", input, systemPrompt);
+
+    const model = await this.resolveModel();
+    const { body, requestInputs } = this.buildRequest(model, input, systemPrompt);
 
     const reports = await this.fetchModelReports(model, input.nonce);
     if (reports.length === 0) {
       throw new NearAiError(`model ${model} returned no attestation for this nonce`);
     }
 
-    const res = await this.request(`${this.base}/chat/completions`, {
+    const label = "POST /chat/completions";
+    const res = await this.call("chat", label, `${this.base}/chat/completions`, {
       method: "POST",
       headers: this.headers({
         "content-type": "application/json",
@@ -417,10 +588,21 @@ export class NearAiProposer {
       body,
     });
     if (!res.ok) {
-      const preview = new TextDecoder().decode(await readBody(res, ERROR_BODY_PREVIEW_BYTES, true));
-      throw new NearAiError(`POST /chat/completions: HTTP ${res.status}: ${preview.slice(0, 200)}`);
+      let preview = "";
+      try {
+        preview = new TextDecoder().decode(await readBody(res, ERROR_BODY_PREVIEW_BYTES, true));
+      } catch {
+        // the status is the useful part
+      }
+      throw new NearAiError(`${label}: HTTP ${res.status}: ${this.redact(preview).slice(0, 200)}`);
     }
-    const responseBytes = await readBody(res, MAX_RESPONSE_BODY_BYTES, false);
+    let responseBytes: Uint8Array;
+    try {
+      responseBytes = await readBody(res, MAX_RESPONSE_BODY_BYTES, false);
+    } catch (error) {
+      if (error instanceof NearAiResponseTooLargeError) throw error;
+      throw this.failure("chat", label, error, "reading the response");
+    }
     let responseText: string;
     try {
       // fatal + ignoreBOM: the string must re-encode to exactly the bytes that are hashed and signed.
@@ -434,8 +616,8 @@ export class NearAiProposer {
     let completion: unknown;
     try {
       completion = JSON.parse(responseText);
-    } catch {
-      throw new NearAiError("chat completion is not JSON");
+    } catch (error) {
+      throw new NearAiError("chat completion is not JSON", { cause: this.safeCause(error) });
     }
     const chatId = isRecord(completion) ? completion.id : undefined;
     const choice =
@@ -451,8 +633,8 @@ export class NearAiProposer {
       proposal = parseModelProposal(extractJsonObject(content));
     } catch (error) {
       throw new NearAiError(
-        `invalid model proposal: ${error instanceof Error ? error.message : String(error)}`,
-        { cause: error },
+        `invalid model proposal: ${this.redact(error instanceof Error ? error.message : String(error))}`,
+        { cause: this.safeCause(error) },
       );
     }
 
@@ -463,7 +645,7 @@ export class NearAiProposer {
       typeof usageRaw.completion_tokens === "number"
         ? { promptTokens: usageRaw.prompt_tokens, completionTokens: usageRaw.completion_tokens }
         : null;
-    const signature = await this.fetchSignature(chatId);
+    const signature = await this.fetchSignature(chatId, model);
     return {
       proposal,
       usage,
@@ -481,5 +663,35 @@ export class NearAiProposer {
         fetched_at: (this.opts.now ?? (() => new Date()))().toISOString(),
       },
     };
+  }
+
+  /** Builds the request bytes and the `request_inputs` record for them, or throws a `NearAiError`. */
+  private buildRequest(
+    model: string,
+    input: ProposeInput,
+    systemPrompt: string,
+  ): { body: Uint8Array; requestInputs: NonNullable<AttestationEvidence["request_inputs"]> } {
+    try {
+      return {
+        body: utf8(buildProposalRequest(model, input, systemPrompt)),
+        requestInputs: proposalRequestInputs(model, input, systemPrompt),
+      };
+    } catch (error) {
+      throw new NearAiError(
+        `cannot build the proposal request: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
+  /** Holds the inputs to the strict shape A8 requires; nothing is sent for inputs that A8 would refuse. */
+  private checkShape(model: string, input: ProposeInput, systemPrompt: string): void {
+    const { requestInputs } = this.buildRequest(model, input, systemPrompt);
+    const problem = proposalRequestInputsProblem(requestInputs);
+    if (problem !== null) {
+      throw new NearAiError(
+        `the request would not have the shape that check A8 requires: ${problem}`,
+      );
+    }
   }
 }

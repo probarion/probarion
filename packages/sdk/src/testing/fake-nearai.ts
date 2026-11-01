@@ -36,6 +36,7 @@ export interface FakeChatRequest {
   response_format?: unknown;
   temperature?: number;
   stream?: boolean;
+  max_tokens?: number;
 }
 
 /**
@@ -57,8 +58,15 @@ export interface FakeNearAiOptions {
   catalogPageSize?: number;
   attestedModels?: string[];
   duplicateReports?: boolean;
+  /**
+   * The nonce the fake puts into the report (its `request_nonce` and the quote's report_data) instead of the
+   * one that was asked for: a stale or replayed report. Receives the requested nonce.
+   */
+  reportNonce?: (requested: string) => string;
   quoteVersion?: 4 | 5;
   failChat?: number | null;
+  /** The body of the `failChat` response (default `upstream error`); a test puts a leaked credential here. */
+  failChatBody?: string;
   signature404s?: number;
   signatureStyle?: FakeSignatureStyle;
   /**
@@ -206,14 +214,15 @@ export function createFakeNearAi(opts: FakeNearAiOptions): FakeNearAi {
       if (!attested.includes(model)) {
         return json({ gateway_attestation: { note: LABEL }, model_attestations: [] });
       }
-      const reportData = `${reportSigner.address.toLowerCase().slice(2)}${"0".repeat(24)}${nonce}`;
+      const reported = opts.reportNonce?.(nonce) ?? nonce;
+      const reportData = `${reportSigner.address.toLowerCase().slice(2)}${"0".repeat(24)}${reported}`;
       const candidate = {
         signing_address: reportSigner.address.toLowerCase(),
         signing_algo: "ecdsa",
         intel_quote: fakeQuoteHex(reportData, opts.quoteVersion ?? 4),
         nvidia_payload: null,
         event_log: "[]",
-        request_nonce: nonce,
+        request_nonce: reported,
         info: { note: LABEL },
       };
       return json({
@@ -222,7 +231,9 @@ export function createFakeNearAi(opts: FakeNearAiOptions): FakeNearAi {
       });
     }
     if (method === "POST" && path === "/chat/completions") {
-      if (opts.failChat) return new Response("upstream error", { status: opts.failChat });
+      if (opts.failChat) {
+        return new Response(opts.failChatBody ?? "upstream error", { status: opts.failChat });
+      }
       if (sent === null) return json({ error: "empty request body" }, 400);
       const request = JSON.parse(new TextDecoder().decode(sent)) as FakeChatRequest;
       counter += 1;

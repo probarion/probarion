@@ -38,7 +38,7 @@ describe.skipIf(!existsSync(recorded))(
     it("passes the request binding A8 with the recorded (synthetic) invoice text", () => {
       if (rec === null) throw new Error("unreachable: the suite is skipped without the recording");
       expect(sha256Hex(rec.invoice_text)).toBe(rec.evidence.request_inputs?.invoice_text_sha256);
-      const a8 = checkRequestBinding(rec.evidence, rec.invoice_text, computeNonce(rec.context));
+      const a8 = checkRequestBinding(rec.evidence, rec.invoice_text, rec.context);
       expect(a8).toMatchObject({ id: "A8", pass: true });
     });
   },

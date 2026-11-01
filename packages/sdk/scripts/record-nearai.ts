@@ -24,7 +24,7 @@ import {
   ZERO_LINK,
 } from "@probarion/core";
 import { envValue } from "../src/env.js";
-import { NearAiProposer } from "../src/nearai.js";
+import { NearAiProposer, redactSecrets } from "../src/nearai.js";
 
 const apiKey = envValue(process.env, "NEARAI_API_KEY");
 if (apiKey === undefined) {
@@ -76,6 +76,9 @@ const nonce = computeNonce(context);
 
 const SECP256K1_HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n;
 
+/** Everything the script prints goes through this, so a credential that an error or a response echoes never reaches the terminal. */
+const clean = (text: string): string => redactSecrets(text, [apiKey]);
+
 /** The signed text with this decision's values put back as placeholders: the format string to put in core. */
 function describeSignedText(evidence: AttestationEvidence): string {
   return evidence.signature.text
@@ -87,8 +90,10 @@ function describeSignedText(evidence: AttestationEvidence): string {
 /** The provider's own encoding of the signature, which the SDK normalizes before storing. No secret is read. */
 async function probeRawSignature(
   chatId: string,
+  model: string,
 ): Promise<{ v: string | null; highS: boolean | null }> {
   const url = new URL(`${NEARAI_BASE_URL}/signature/${encodeURIComponent(chatId)}`);
+  url.searchParams.set("model", model);
   url.searchParams.set("signing_algo", "ecdsa");
   try {
     const res = await fetch(url, {
@@ -116,9 +121,9 @@ try {
     nonce,
   });
   const offline = await checkAttestation(evidence, nonce, proposal);
-  const a8 = checkRequestBinding(evidence, invoiceText, nonce);
+  const a8 = checkRequestBinding(evidence, invoiceText, context);
   const quote = evidence.report === null ? null : parseTdxQuote(evidence.report.intel_quote);
-  const rawSignature = await probeRawSignature(evidence.chat_id);
+  const rawSignature = await probeRawSignature(evidence.chat_id, evidence.model);
   const signedText = describeSignedText(evidence);
 
   const recordedJson = `${JSON.stringify(
@@ -146,30 +151,27 @@ try {
   await writeFile(out, recordedJson);
 
   const failed = offline.checks.filter((c) => !c.pass);
-  process.stdout.write(
-    [
-      `recorded ${evidence.model} chat ${evidence.chat_id}; quote v${quote?.version ?? "?"}; offline A1-A7: ${
-        offline.ok ? "PASS" : `FAIL ${failed.map((c) => `${c.id}: ${c.detail}`).join("; ")}`
-      }; A8: ${a8.pass ? "PASS" : `FAIL ${a8.detail}`}`,
-      `size: the recording is ${recordedJson.length} bytes; response_body ${evidence.response_body.length} chars`,
-      `signed text format seen: ${signedText}`,
-      `signed text format in core (PROVIDER_TEE_TEXT_FORMAT): ${PROVIDER_TEE_TEXT_FORMAT}${
-        signedText === PROVIDER_TEE_TEXT_FORMAT
-          ? " (same)"
-          : " (DIFFERENT: change that one constant)"
-      }`,
-      `provider signature encoding before normalization: v=${rawSignature.v ?? "unknown"}, ${
-        rawSignature.highS === null ? "s unknown" : rawSignature.highS ? "high-s" : "low-s"
-      }`,
-      `wrote ${fileURLToPath(out)}`,
-      "",
-    ].join("\n"),
-  );
+  const summary = [
+    `recorded ${evidence.model} chat ${evidence.chat_id}; quote v${quote?.version ?? "?"}; offline A1-A7: ${
+      offline.ok ? "PASS" : `FAIL ${failed.map((c) => `${c.id}: ${c.detail}`).join("; ")}`
+    }; A8: ${a8.pass ? "PASS" : `FAIL ${a8.detail}`}`,
+    `size: the recording is ${recordedJson.length} bytes; response_body ${evidence.response_body.length} chars`,
+    `signed text format seen: ${signedText}`,
+    `signed text format in core (PROVIDER_TEE_TEXT_FORMAT): ${PROVIDER_TEE_TEXT_FORMAT}${
+      signedText === PROVIDER_TEE_TEXT_FORMAT ? " (same)" : " (DIFFERENT: change that one constant)"
+    }`,
+    `provider signature encoding before normalization: v=${rawSignature.v ?? "unknown"}, ${
+      rawSignature.highS === null ? "s unknown" : rawSignature.highS ? "high-s" : "low-s"
+    }`,
+    `wrote ${fileURLToPath(out)}`,
+    "",
+  ].join("\n");
+  process.stdout.write(clean(summary));
   if (!offline.ok || !a8.pass) process.exitCode = 1;
 } catch (error) {
-  // NearAiError messages never include the API key (only the HTTP status and a short body preview).
+  // NearAiError messages are already redacted; clean() is the second, independent line of defence.
   process.stderr.write(
-    `recording failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    clean(`recording failed: ${error instanceof Error ? error.message : String(error)}\n`),
   );
   process.exitCode = 1;
 }
