@@ -142,6 +142,9 @@ function commitAll(repo, msg) {
   return git(repo, "rev-parse", "HEAD");
 }
 
+// The environment of a CI push run, which is the only source of recordable builds.
+const PUSH = { GITHUB_EVENT_NAME: "push", GITHUB_RUN_ID: "42" };
+
 /** What build-reproducible.sh leaves behind: the wasm and its build-info, built at the repo's HEAD. */
 function fakeBuild(repo, bytes, env = {}) {
   const out = mkdtempSync(join(tmpdir(), "code-hash-out-"));
@@ -187,7 +190,7 @@ test("buildInfo describes the commit that was built and the NEAR code_hash of th
 test("record then check: the recorded commit reproduces, a later commit is refused, a changed source is unrecorded", () => {
   const f = fixture();
   try {
-    const build1 = fakeBuild(f.repo, Buffer.from("wasm built at c1"));
+    const build1 = fakeBuild(f.repo, Buffer.from("wasm built at c1"), PUSH);
     const c1 = build1.info.commit;
 
     // bootstrapping: nothing recorded yet. Non-tag runs pass; v* tags (REQUIRE_RECORDED) fail.
@@ -255,7 +258,7 @@ test("record then check: the recorded commit reproduces, a later commit is refus
 test("record refuses a wasm that does not match its build-info, and pull_request builds", () => {
   const f = fixture();
   try {
-    const build = fakeBuild(f.repo, Buffer.from("wasm"));
+    const build = fakeBuild(f.repo, Buffer.from("wasm"), PUSH);
     writeFileSync(build.wasm, "swapped after the build");
     const swapped = run(f, ["record", "probarion-vault", "vault", build.wasm]);
     assert.equal(swapped.code, 1);
@@ -274,13 +277,92 @@ test("record refuses a wasm that does not match its build-info, and pull_request
 test("record refuses a different hash for an already recorded commit", () => {
   const f = fixture();
   try {
-    const a = fakeBuild(f.repo, Buffer.from("first"));
+    const a = fakeBuild(f.repo, Buffer.from("first"), PUSH);
     assert.equal(run(f, ["record", "probarion-vault", "vault", a.wasm]).code, 0);
-    const b = fakeBuild(f.repo, Buffer.from("second"));
+    const b = fakeBuild(f.repo, Buffer.from("second"), PUSH);
     const conflict = run(f, ["record", "probarion-vault", "vault", b.wasm]);
     assert.equal(conflict.code, 1);
     assert.match(conflict.text, /not reproducible/);
     assert.equal(entriesOf(f).length, 1);
+  } finally {
+    rmSync(f.repo, { recursive: true, force: true });
+  }
+});
+
+test("record needs the build-info of a CI push run: a bare local wasm is never a source of hashes", () => {
+  const f = fixture();
+  try {
+    const local = fakeBuild(f.repo, Buffer.from("LOCAL NON-REPRODUCIBLE"), PUSH);
+    rmSync(join(local.out, "probarion_vault.build-info.json"));
+    const refused = run(f, ["record", "probarion-vault", "vault", local.wasm]);
+    assert.equal(refused.code, 1, refused.text);
+    assert.match(refused.text, /build-info/);
+    assert.equal(entriesOf(f).length, 0);
+
+    // check keeps the HEAD fallback: without a build-info it assumes the wasm was built at HEAD.
+    const unrecorded = run(f, ["check", "probarion-vault", "vault", local.wasm]);
+    assert.equal(unrecorded.code, 0, unrecorded.text);
+    assert.match(unrecorded.text, /assuming the wasm was built at HEAD/);
+
+    const ci = fakeBuild(f.repo, Buffer.from("CI wasm"), PUSH);
+    assert.equal(run(f, ["record", "probarion-vault", "vault", ci.wasm]).code, 0);
+    const bare = fakeBuild(f.repo, Buffer.from("CI wasm"), PUSH);
+    rmSync(join(bare.out, "probarion_vault.build-info.json"));
+    const matched = run(f, ["check", "probarion-vault", "vault", bare.wasm]);
+    assert.equal(matched.code, 0, matched.text);
+    assert.match(matched.text, /matches the recorded build/);
+  } finally {
+    rmSync(f.repo, { recursive: true, force: true });
+  }
+});
+
+test("record refuses a build-info that is not from a CI push run", () => {
+  const f = fixture();
+  try {
+    const cases = [
+      ["no CI environment", {}, /null/],
+      [
+        "workflow_dispatch",
+        { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_RUN_ID: "1" },
+        /workflow_dispatch/,
+      ],
+      ["pull_request", { GITHUB_EVENT_NAME: "pull_request", GITHUB_RUN_ID: "1" }, /pull_request/],
+      ["push without a run id", { GITHUB_EVENT_NAME: "push" }, /run id/],
+    ];
+    for (const [name, env, expected] of cases) {
+      const build = fakeBuild(f.repo, Buffer.from(`wasm: ${name}`), env);
+      const refused = run(f, ["record", "probarion-vault", "vault", build.wasm]);
+      assert.equal(refused.code, 1, `${name}: ${refused.text}`);
+      assert.match(refused.text, expected, name);
+      assert.equal(entriesOf(f).length, 0, name);
+    }
+  } finally {
+    rmSync(f.repo, { recursive: true, force: true });
+  }
+});
+
+test("recorded-commit fails on an entry without a valid commit instead of printing garbage", () => {
+  const f = fixture();
+  try {
+    const { info } = fakeBuild(f.repo, Buffer.from("x"), PUSH);
+    const entry = {
+      crate: "probarion-vault",
+      tree: info.tree,
+      workspace: info.workspace,
+      lock: info.lock,
+      code_hash: "H",
+    };
+    for (const commit of [undefined, "", "not-a-commit", "abc123", "A".repeat(40)]) {
+      writeFileSync(f.db, JSON.stringify({ entries: [{ ...entry, commit }] }));
+      const r = run(f, ["recorded-commit", "probarion-vault", "vault"]);
+      assert.equal(r.code, 1, `commit ${commit}: ${r.text}`);
+      assert.match(r.text, /no valid commit/);
+      assert.doesNotMatch(r.text, /undefined/);
+    }
+    writeFileSync(f.db, JSON.stringify({ entries: [{ ...entry, commit: info.commit }] }));
+    const ok = run(f, ["recorded-commit", "probarion-vault", "vault"]);
+    assert.equal(ok.code, 0, ok.text);
+    assert.equal(ok.text, info.commit);
   } finally {
     rmSync(f.repo, { recursive: true, force: true });
   }

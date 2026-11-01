@@ -3,7 +3,7 @@
 //
 //   node scripts/code-hash.mjs hash <wasm>
 //   node scripts/code-hash.mjs info <dir> <wasm>              build-info JSON for the checkout in the cwd
-//   node scripts/code-hash.mjs record <crate> <dir> <wasm>    after a reproducible build; commit the JSON
+//   node scripts/code-hash.mjs record <crate> <dir> <wasm>    the CI artifact of a push run; commit the JSON
 //   node scripts/code-hash.mjs check <crate> <dir> <wasm>     CI; REQUIRE_RECORDED=1 on release tags
 //   node scripts/code-hash.mjs recorded-commit <crate> <dir>  the commit recorded for the current source
 //
@@ -23,7 +23,8 @@
 //
 // R9: any change to contracts/vault, contracts/Cargo.toml or contracts/Cargo.lock makes the record
 // stale. Re-record right after the push that changes them: take the artifact of that push run
-// (never a pull_request run), run `record`, commit contracts/code-hashes.json. Until then CI warns
+// (never a pull_request run), run `record`, commit contracts/code-hashes.json. `record` refuses a wasm
+// without its CI build-info (event `push`, a run id): a local build is never a source of hashes (R6). Until then CI warns
 // "not recorded" and a `v*` tag fails. Never deploy a wasm whose hash is not in the record.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -137,8 +138,12 @@ function sidecarPath(wasmPath) {
   return `${wasmPath.replace(/\.wasm$/, "")}.build-info.json`;
 }
 
-/** The hash, build commit and source keys of a wasm, from its build-info (or HEAD when it has none). */
-function builtFrom(repo, crate, dir, wasmPath, log) {
+/**
+ * The hash, build commit and source keys of a wasm, from its build-info. Without a build-info,
+ * `check` assumes the wasm was built at HEAD; `record` (requireSidecar) refuses, because a wasm with
+ * no CI build-info is a local build, and a local build is never a source of hashes (R6).
+ */
+function builtFrom(repo, crate, dir, wasmPath, log, { requireSidecar = false } = {}) {
   const hash = codeHash(readFileSync(wasmPath));
   const sidecar = sidecarPath(wasmPath);
   let info = null;
@@ -156,6 +161,11 @@ function builtFrom(repo, crate, dir, wasmPath, log) {
     if (!COMMIT.test(info.commit ?? "")) throw new Error(`${sidecar} has no valid commit`);
     commit = info.commit;
   } else {
+    if (requireSidecar) {
+      throw new Error(
+        `no ${sidecar}: record takes only the CI artifact (the wasm with its build-info.json) of a push run; a local build is never a source of hashes`,
+      );
+    }
     commit = git(repo, "rev-parse", "HEAD");
     log(`no ${sidecar}: assuming the wasm was built at HEAD (${commit})`);
   }
@@ -188,13 +198,22 @@ function run(cmd, rest, c) {
     assertDir(dir);
     const head = git(c.repo, "rev-parse", "HEAD");
     const entry = findEntry(readDb(c.db).entries, crate, sourceKey(c.repo, dir, head));
-    if (entry?.commit) c.log(entry.commit);
+    if (entry) {
+      if (!COMMIT.test(entry.commit ?? "")) {
+        throw new Error(
+          `${crate} is recorded in ${c.db} with no valid commit${entry.commit ? ` (found "${entry.commit}")` : ""}; record it again from a CI push artifact`,
+        );
+      }
+      c.log(entry.commit);
+    }
     return 0;
   }
   if ((cmd === "record" || cmd === "check") && rest.length === 3) {
     const [crate, dir, wasmPath] = rest;
     assertDir(dir);
-    const built = builtFrom(c.repo, crate, dir, wasmPath, c.log);
+    const built = builtFrom(c.repo, crate, dir, wasmPath, c.log, {
+      requireSidecar: cmd === "record",
+    });
     const db = readDb(c.db);
     if (cmd === "record") return record(c, db, crate, dir, built);
     return check(c, db, crate, built);
@@ -204,10 +223,18 @@ function run(cmd, rest, c) {
 }
 
 function record(c, db, crate, dir, built) {
-  if (built.info?.github_event === "pull_request") {
+  // The build-info comes from CI, so this guards against a mistake (a local or pull_request build),
+  // not against someone who writes a build-info by hand. The next CI run rebuilds the recorded
+  // commit, so a wrong record fails loudly.
+  const event = built.info?.github_event ?? null;
+  if (event !== "push") {
     c.err(
-      `::error::${crate}: refusing to record a pull_request build: its commit is a temporary merge commit that will not exist after the merge. Record the artifact of a push run.`,
+      `::error::${crate}: refusing to record a build whose github_event is ${event}: only the artifact of a CI push run is a source of hashes (a pull_request commit is a temporary merge commit that will not exist after the merge)`,
     );
+    return 1;
+  }
+  if (!built.info.github_run_id) {
+    c.err(`::error::${crate}: refusing to record a build-info with no GitHub run id`);
     return 1;
   }
   const plan = planRecord(db.entries, crate, built);
