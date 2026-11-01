@@ -15,6 +15,8 @@ mod tests;
 
 pub const MAX_NOTES: usize = 256;
 pub const MAX_PAGE: u64 = 100;
+/// Same cap as the vault's `MAX_ASSETS`: a vault refuses more allowed assets in its `new`.
+pub const MAX_ASSETS: usize = 10;
 const CODE_PREFIX: &[u8] = b"code:";
 pub const GAS_VAULT_NEW: Gas = Gas::from_tgas(30);
 pub const GAS_ON_VAULT_CREATED: Gas = Gas::from_tgas(15);
@@ -156,6 +158,9 @@ impl Factory {
         allowed_assets: Vec<AccountId>,
         min_deposit: U128,
     ) -> Self {
+        if allowed_assets.len() > MAX_ASSETS {
+            fail("InvalidInput")
+        }
         Self {
             owner,
             usdc,
@@ -261,6 +266,13 @@ impl Factory {
         }
     }
 
+    /// `<name>.<factory>`; `InvalidInput` when that is not a valid account id.
+    fn vault_account_id(name: &str) -> AccountId {
+        format!("{name}.{}", env::current_account_id())
+            .parse()
+            .unwrap_or_else(|_| fail("InvalidInput"))
+    }
+
     /// Global: `min_deposit`. Embedded: also the storage for the vault's copy of the code.
     fn required_deposit(&self, version: &Version) -> u128 {
         match version.mode {
@@ -296,9 +308,7 @@ impl Factory {
         if !valid_name(&name) {
             fail("InvalidInput")
         }
-        let account_id: AccountId = format!("{name}.{}", env::current_account_id())
-            .parse()
-            .unwrap_or_else(|_| fail("InvalidInput"));
+        let account_id = Self::vault_account_id(&name);
         let index = self.versions.len();
         let version = index
             .checked_sub(1)
@@ -349,19 +359,18 @@ impl Factory {
         deposit: U128,
         version: u32,
     ) -> Option<AccountId> {
-        let account_id: AccountId = format!("{name}.{}", env::current_account_id())
-            .parse()
-            .unwrap_or_else(|_| fail("InvalidInput"));
         if matches!(
             env::promise_result_checked(0, 64),
             Err(PromiseError::Failed)
         ) {
             // The batch rolled back (for example, the name was taken): give the deposit back.
+            // This comes before any parsing so that the refund cannot depend on `name`.
             Promise::new(owner)
                 .transfer(NearToken::from_yoctonear(deposit.0))
                 .detach();
             return None;
         }
+        let account_id = Self::vault_account_id(&name);
         self.vaults.push(VaultRecord {
             account_id: account_id.clone(),
             owner: owner.clone(),

@@ -332,37 +332,76 @@ fn assert_init_call(action: &MockAction) {
     }
 }
 
+/// Access keys and gas keys are both keys: a vault must start with none of either.
 fn assert_no_keys(actions: &[MockAction]) {
     assert!(
         actions.iter().all(|a| !matches!(
             a,
-            MockAction::AddKeyWithFunctionCall { .. } | MockAction::AddKeyWithFullAccess { .. }
+            MockAction::AddKeyWithFunctionCall { .. }
+                | MockAction::AddKeyWithFullAccess { .. }
+                | MockAction::AddGasKeyWithFunctionCall { .. }
+                | MockAction::AddGasKeyWithFullAccess { .. }
         )),
         "I9: the factory must never add a key to a vault"
     );
 }
 
-fn assert_callback_scheduled() {
-    assert!(actions_to("vaults.near").iter().any(|a| matches!(
-        a,
-        MockAction::FunctionCallWeight { method_name, .. } if method_name == b"on_vault_created"
-    )));
+/// The args of the one `on_vault_created` call the factory schedules on itself.
+fn callback_args() -> Value {
+    let mut calls = actions_to("vaults.near")
+        .into_iter()
+        .filter_map(|a| match a {
+            MockAction::FunctionCallWeight {
+                method_name, args, ..
+            } if method_name == b"on_vault_created" => Some(args),
+            _ => None,
+        });
+    let args = calls.next().expect("on_vault_created is scheduled");
+    assert!(calls.next().is_none(), "on_vault_created is scheduled once");
+    near_sdk::serde_json::from_slice(&args).unwrap()
+}
+
+fn assert_callback_scheduled(deposit: u128) {
+    assert_eq!(
+        callback_args(),
+        json!({"name": "acme", "owner": "alice.near", "deposit": deposit.to_string(), "version": 1})
+    );
+}
+
+fn assert_uses_global_code(action: &MockAction, base58_hash: &str) {
+    match action {
+        MockAction::UseGlobalContract { contract_id, .. } => assert_eq!(
+            near_sdk::serde_json::to_value(contract_id).unwrap(),
+            json!({ "hash": base58_hash })
+        ),
+        other => panic!("expected UseGlobalContract, got {other:?}"),
+    }
+}
+
+fn assert_transfer(action: &MockAction, yocto: u128) {
+    match action {
+        MockAction::Transfer { deposit, .. } => assert_eq!(deposit.as_yoctonear(), yocto),
+        other => panic!("expected Transfer, got {other:?}"),
+    }
+}
+
+/// The least deposit an embedded `create_vault` accepts: `min_deposit` plus the code's storage.
+fn embedded_deposit() -> u128 {
+    ONE_NEAR + WASM.len() as u128 * env::storage_byte_cost().as_yoctonear()
 }
 
 #[test]
 fn global_mode_creates_funds_uses_the_global_code_and_inits_with_no_keys() {
-    let (mut f, _) = with_version("global");
+    let (mut f, hash) = with_version("global");
     create(&mut f, "acme", ONE_NEAR);
     let actions = actions_to("acme.vaults.near");
     assert_eq!(actions.len(), 4);
     assert!(matches!(actions[0], MockAction::CreateAccount { .. }));
-    assert!(
-        matches!(&actions[1], MockAction::Transfer { deposit, .. } if deposit.as_yoctonear() == ONE_NEAR)
-    );
-    assert!(matches!(actions[2], MockAction::UseGlobalContract { .. }));
+    assert_transfer(&actions[1], ONE_NEAR);
+    assert_uses_global_code(&actions[2], &hash);
     assert_init_call(&actions[3]);
     assert_no_keys(&actions);
-    assert_callback_scheduled();
+    assert_callback_scheduled(ONE_NEAR);
 }
 
 #[test]
@@ -372,12 +411,31 @@ fn embedded_mode_deploys_the_stored_wasm_and_inits_with_no_keys() {
     let actions = actions_to("acme.vaults.near");
     assert_eq!(actions.len(), 4);
     assert!(matches!(actions[0], MockAction::CreateAccount { .. }));
+    assert_transfer(&actions[1], 2 * ONE_NEAR);
     assert!(
         matches!(&actions[2], MockAction::DeployContract { code, .. } if code.as_slice() == WASM)
     );
     assert_init_call(&actions[3]);
     assert_no_keys(&actions);
-    assert_callback_scheduled();
+    assert_callback_scheduled(2 * ONE_NEAR);
+}
+
+#[test]
+fn embedded_mode_accepts_exactly_min_deposit_plus_the_code_storage() {
+    let (mut f, _) = with_version("embedded");
+    let exact = embedded_deposit();
+    create(&mut f, "acme", exact);
+    let actions = actions_to("acme.vaults.near");
+    assert_eq!(actions.len(), 4);
+    assert_transfer(&actions[1], exact);
+    assert_callback_scheduled(exact);
+}
+
+#[test]
+#[should_panic(expected = "PROBARION:InsufficientDeposit")]
+fn embedded_mode_refuses_one_yocto_below_min_deposit_plus_the_code_storage() {
+    let (mut f, _) = with_version("embedded");
+    create(&mut f, "acme", embedded_deposit() - 1);
 }
 
 #[test]
@@ -427,6 +485,7 @@ fn a_successful_creation_is_recorded_and_emitted() {
     callback_ctx(PromiseResult::Successful(vec![]));
     let created = f.on_vault_created("acme".to_string(), user(), U128(ONE_NEAR), 1);
     assert_eq!(created, Some(acc("acme.vaults.near")));
+    assert!(get_created_receipts().is_empty(), "a success never refunds");
     assert_eq!(f.vault_version(acc("acme.vaults.near")), Some(1));
     assert_eq!(
         f.list_vaults(0, 10),
@@ -452,12 +511,66 @@ fn a_failed_creation_refunds_the_deposit_and_records_nothing() {
         f.on_vault_created("acme".to_string(), user(), U128(ONE_NEAR), 1),
         None
     );
+    assert_eq!(
+        get_created_receipts().len(),
+        1,
+        "exactly one refund receipt"
+    );
     let refund = actions_to("alice.near");
     assert!(
         matches!(&refund[..], [MockAction::Transfer { deposit, .. }] if deposit.as_yoctonear() == ONE_NEAR)
     );
     assert!(f.list_vaults(0, 10).is_empty());
     assert_eq!(f.vault_version(acc("acme.vaults.near")), None);
+}
+
+#[test]
+fn a_failed_creation_refunds_even_if_the_name_would_not_parse() {
+    let (mut f, _) = with_version("global");
+    callback_ctx(PromiseResult::Failed);
+    assert_eq!(
+        f.on_vault_created("Not A Name".to_string(), user(), U128(ONE_NEAR), 1),
+        None
+    );
+    assert_eq!(
+        get_created_receipts().len(),
+        1,
+        "exactly one refund receipt"
+    );
+    let refund = actions_to("alice.near");
+    assert!(
+        matches!(&refund[..], [MockAction::Transfer { deposit, .. }] if deposit.as_yoctonear() == ONE_NEAR)
+    );
+}
+
+fn assets(n: usize) -> Vec<AccountId> {
+    (0..n).map(|i| acc(&format!("asset{i}.near"))).collect()
+}
+
+#[test]
+fn new_accepts_ten_allowed_assets_like_the_vault() {
+    ctx(owner(), 0);
+    let f = Factory::new(
+        owner(),
+        acc("usdc.near"),
+        acc("intents.near"),
+        assets(10),
+        U128(ONE_NEAR),
+    );
+    assert_eq!(f.get_config().allowed_assets.len(), 10);
+}
+
+#[test]
+#[should_panic(expected = "PROBARION:InvalidInput")]
+fn new_refuses_more_allowed_assets_than_the_vault_accepts() {
+    ctx(owner(), 0);
+    Factory::new(
+        owner(),
+        acc("usdc.near"),
+        acc("intents.near"),
+        assets(11),
+        U128(ONE_NEAR),
+    );
 }
 
 #[test]
