@@ -14,8 +14,8 @@
 # SRC_DIR: the checkout to build. Default: this repo. CI points it at a clone of the recorded commit,
 # because the wasm embeds the commit it was built from (see scripts/code-hash.mjs).
 #
-# R9: any change to contracts/vault, contracts/Cargo.toml or contracts/Cargo.lock makes the recorded
-# hash stale. Re-record it from the CI artifact of the push that changes them.
+# R9: any change to contracts/<dir> (vault or factory), contracts/Cargo.toml or contracts/Cargo.lock
+# makes that crate's recorded hash stale. Re-record it from the CI artifact of the push that changes them.
 set -euo pipefail
 dir="$1"
 lib="$2"
