@@ -395,7 +395,7 @@ Expected: `"status": "active"`, and the `address` in the reply is the address of
 
 ## 9. First NEAR payment (2 USDC)
 
-First check that the vault has NEAR left for gas (read-only). Free NEAR is the vault's balance minus its storage stake (`storage_usage` bytes at 0.00001 NEAR per byte):
+First check that the vault has NEAR left for gas and storage (read-only; each paid spend keeps about 0.0048 NEAR of storage). Free NEAR is the vault's balance minus its storage stake (`storage_usage` bytes at 0.00001 NEAR per byte):
 
 ```bash
 curl -s "$RPC" -H 'content-type: application/json' \

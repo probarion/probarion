@@ -185,7 +185,7 @@ near contract call-function as-transaction "$FACTORY" add_version \
 Check the liquidity rule first (read-only; run it again before each later batch of vault creations). Free NEAR is the balance minus the storage stake (`storage_usage` bytes at 0.00001 NEAR per byte):
 
 ```bash
-export MIN_FLOAT_NEAR="${MIN_FLOAT_NEAR:-5}"   # the largest deposit a create_vault call will attach, in NEAR
+export MIN_FLOAT_NEAR="${MIN_FLOAT_NEAR:-5}"   # the largest deposit a create_vault call will attach, in whole NEAR (an integer)
 curl -s https://rpc.mainnet.fastnear.com -H 'content-type: application/json' \
   -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"view_account\",\"finality\":\"final\",\"account_id\":\"$FACTORY\"}}" \
   | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{const a=JSON.parse(s).result;if(!a){console.log("STOP: no view_account result: "+s.slice(0,200));return}const free=BigInt(a.amount)-BigInt(a.storage_usage)*10n**19n;const need=BigInt(process.env.MIN_FLOAT_NEAR)*10n**24n;console.log("free NEAR:",Number(free)/1e24);console.log(free>=need?"OK: the factory can refund the largest deposit":"STOP: top the factory up before creating vaults")})'
