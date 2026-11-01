@@ -24,7 +24,7 @@ impl Vault {
                 public_key.clone(),
                 allowance,
                 env::current_account_id(),
-                "spend",
+                "spend,approve",
             )
             .detach();
         VaultEvent::AgentAdded {
@@ -158,7 +158,7 @@ mod tests {
                 agent_pk(),
                 Some(yocto(ONE_NEAR)),
                 vault_id(),
-                vec!["spend".to_string()]
+                vec!["spend".to_string(), "approve".to_string()]
             )]
         );
         assert_eq!(
