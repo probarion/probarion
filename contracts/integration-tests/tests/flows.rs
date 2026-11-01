@@ -48,7 +48,7 @@ async fn a_base_payee_is_paid_by_ft_withdraw_with_the_mandate_memo() -> Result<(
     let logs = lines.join("\n");
     assert_eq!(
         outcome.json::<Value>()?,
-        json!({"spend_id": 1, "status": "burned"})
+        json!({"spend_id": 1, "status": "paid"})
     );
 
     // Both burn shapes in the same transaction (verifier check h): the intents mt_burn for the
