@@ -26,7 +26,6 @@ impl Vault {
         PromiseOrValue::Promise(self.execute_payout(spend_id))
     }
 
-    #[private]
     pub fn on_transfer(&mut self, spend_id: u64) -> SpendResult {
         if matches!(
             env::promise_result_checked(0, 64),
