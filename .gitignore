@@ -11,3 +11,4 @@ coverage/
 .probarion/
 *.pem
 .DS_Store
+docs/mainnet-proof.json.*.tmp

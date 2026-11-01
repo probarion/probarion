@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 import {
   addTx,
   emptyProof,
+  getValue,
   readProof,
   type Scalar,
   SECTIONS,
@@ -37,6 +38,9 @@ function usage(): string {
     `sections: ${SECTIONS.join(", ")}`,
   ].join("\n");
 }
+
+const NUMBER_RE = /^-?\d+(\.\d+)?$/;
+const SPEND_ID_RE = /^\d+$/;
 
 export function main(argv: string[], now: Date = new Date(), path: string = PROOF_PATH): number {
   const [command, ...rest] = argv;
@@ -77,6 +81,14 @@ export function main(argv: string[], now: Date = new Date(), path: string = PROO
         console.error(`missing --${missing.join(", --")}\n${usage()}`);
         return 2;
       }
+      const spendId = values["spend-id"];
+      if (
+        spendId !== undefined &&
+        !(SPEND_ID_RE.test(spendId) && Number.isSafeInteger(Number(spendId)))
+      ) {
+        console.error(`--spend-id must be a non-negative integer, got "${spendId}"`);
+        return 2;
+      }
       const next = addTx(
         readProof(path),
         values.id as string,
@@ -90,7 +102,7 @@ export function main(argv: string[], now: Date = new Date(), path: string = PROO
           signed_by: values["signed-by"] as SignedBy,
           expect: values.expect as "success" | "failure",
           error_code: values["error-code"] ?? null,
-          spend_id: values["spend-id"] === undefined ? null : Number(values["spend-id"]),
+          spend_id: spendId === undefined ? null : Number(spendId),
           amount_usdc: values.amount ?? null,
           base_tx: values["base-tx"] ?? null,
         },
@@ -114,9 +126,9 @@ export function main(argv: string[], now: Date = new Date(), path: string = PROO
       }
       let value: Scalar = raw;
       if (values.type === "number") {
-        value = Number(raw);
+        value = NUMBER_RE.test(raw) ? Number(raw) : Number.NaN;
         if (!Number.isFinite(value)) {
-          console.error(`not a number: ${raw}`);
+          console.error(`not a number: "${raw}" (digits with an optional minus sign and decimals)`);
           return 2;
         }
       } else if (values.type === "boolean") {
@@ -129,8 +141,12 @@ export function main(argv: string[], now: Date = new Date(), path: string = PROO
         console.error("--type must be string, number or boolean");
         return 2;
       }
-      writeProof(path, setValue(readProof(path), key, value, values.source, now));
-      console.log(`set ${key}`);
+      const before = readProof(path);
+      const previous = getValue(before, key);
+      writeProof(path, setValue(before, key, value, values.source, now));
+      console.log(
+        `set ${key} = ${String(value)}${previous === undefined ? "" : ` (was ${String(previous)})`}`,
+      );
       return 0;
     }
     if (command === "show") {

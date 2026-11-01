@@ -49,11 +49,11 @@ describe("fillMeasured", () => {
     expect(r.resolved).toBe(2);
     expect(r.unresolved).toEqual(["proof.metrics.nan"]);
   });
-  it("never prints undefined, null or NaN", () => {
-    const r = fillMeasured(
-      "{{MEASURED:proof.metrics.nul}} {{MEASURED:proof.metrics.nan}} {{MEASURED:proof.none}}",
-      sources,
-    );
-    expect(r.text).not.toMatch(/undefined|null|NaN/);
+  it("never prints undefined, null or NaN: unresolved tokens stay verbatim", () => {
+    const input =
+      "{{MEASURED:proof.metrics.nul}} {{MEASURED:proof.metrics.nan}} {{MEASURED:proof.none}}";
+    const r = fillMeasured(input, sources);
+    expect(r.text).toBe(input);
+    expect(r.resolved).toBe(0);
   });
 });

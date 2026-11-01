@@ -237,11 +237,32 @@ interface ProofCommand {
   file: string;
   line: number;
   text: string;
+  /** The whole (continuation-joined) line the command was found on. */
+  context: string;
 }
 
-function extractProofCommands(file: string, markdown: string): ProofCommand[] {
+interface RunbookScan {
+  commands: ProofCommand[];
+  exempt: ProofCommand[];
+  /** Every `pnpm proof add-tx` / `pnpm proof set` occurrence in the file, however it is written. */
+  raw: number;
+}
+
+/**
+ * Prose that names a command without being one. Listed by file and line content (not line
+ * number), so a runbook edit that moves the line does not break this and a new mention does.
+ */
+const EXEMPT_MENTIONS: readonly { file: string; contains: string }[] = [
+  { file: "mainnet-v0.md", contains: "runs the `pnpm proof add-tx …` line given in the step" },
+];
+
+/** The runbooks that call the CLI, and how many commands each must contribute at least. */
+const MIN_COMMANDS: Record<string, number> = { "factory.md": 11, "mainnet-v0.md": 13 };
+
+function scanRunbook(file: string, markdown: string): RunbookScan {
   const lines = markdown.replaceAll("\r", "").split("\n");
-  const found: ProofCommand[] = [];
+  const commands: ProofCommand[] = [];
+  const exempt: ProofCommand[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = i + 1;
     let logical = lines[i] ?? "";
@@ -251,19 +272,24 @@ function extractProofCommands(file: string, markdown: string): ProofCommand[] {
     }
     // a command at the start of a line (fenced block) or inside an inline code span
     for (const m of logical.matchAll(/(?:^\s*|`)(pnpm proof (?:add-tx|set)\b[^`]*)/g)) {
-      const text = (m[1] ?? "").trim();
-      // prose such as `pnpm proof add-tx …` names the command; it is not a command to run
-      if (/^pnpm proof (?:add-tx|set)\s*…$/.test(text)) continue;
-      found.push({ file, line, text });
+      const found: ProofCommand = { file, line, text: (m[1] ?? "").trim(), context: logical };
+      const isListedMention =
+        /^pnpm proof (?:add-tx|set)\s*…$/.test(found.text) &&
+        EXEMPT_MENTIONS.some((e) => e.file === file && logical.includes(e.contains));
+      (isListedMention ? exempt : commands).push(found);
     }
   }
-  return found;
+  const raw = (markdown.match(/pnpm proof (?:add-tx|set)\b/g) ?? []).length;
+  return { commands, exempt, raw };
 }
 
-const COMMANDS: ProofCommand[] = readdirSync(RUNBOOK_DIR)
-  .filter((f) => f.endsWith(".md"))
-  .sort()
-  .flatMap((f) => extractProofCommands(f, readFileSync(join(RUNBOOK_DIR, f), "utf8")));
+const SCANS = new Map<string, RunbookScan>(
+  readdirSync(RUNBOOK_DIR)
+    .filter((f) => f.endsWith(".md"))
+    .sort()
+    .map((f) => [f, scanRunbook(f, readFileSync(join(RUNBOOK_DIR, f), "utf8"))]),
+);
+const COMMANDS: ProofCommand[] = [...SCANS.values()].flatMap((s) => s.commands);
 
 /** Runs the CLI on a fresh, initialised proof file; returns its exit code and stderr. */
 function runOnFreshFile(argv: string[]): { code: number; stderr: string } {
@@ -320,11 +346,48 @@ describe("shell-word splitter used for the runbook lines", () => {
 });
 
 describe("pnpm proof lines in docs/runbooks", () => {
-  it("finds the commands of both runbooks", () => {
-    const files = new Set(COMMANDS.map((c) => c.file));
-    expect(files.has("factory.md")).toBe(true);
-    expect(files.has("mainnet-v0.md")).toBe(true);
-    expect(COMMANDS.length).toBeGreaterThanOrEqual(20);
+  it("finds at least the known number of commands in each runbook", () => {
+    for (const [file, min] of Object.entries(MIN_COMMANDS)) {
+      expect(SCANS.get(file)?.commands.length ?? 0, file).toBeGreaterThanOrEqual(min);
+    }
+  });
+
+  it("accounts for every `pnpm proof add-tx|set` occurrence: a command under test or a listed mention", () => {
+    for (const [file, scan] of SCANS) {
+      expect(
+        scan.commands.length + scan.exempt.length,
+        `${file}: ${scan.raw} occurrences of "pnpm proof add-tx|set" but ${scan.commands.length} extracted commands and ${scan.exempt.length} exempt mentions; ` +
+          "a command written as `$ pnpm proof …`, `- pnpm proof …`, `X=1 pnpm proof …` or `cd x && pnpm proof …` is not extracted",
+      ).toBe(scan.raw);
+    }
+  });
+
+  it("uses every listed exemption exactly once", () => {
+    const exempt = [...SCANS.values()].flatMap((s) => s.exempt);
+    expect(exempt).toHaveLength(EXEMPT_MENTIONS.length);
+  });
+
+  it("the cross-check notices commands the extractor cannot read (negative control)", () => {
+    const md = [
+      "```bash",
+      'pnpm proof set accounts.aa_bb x.near --source "s" \\',
+      "  --type string",
+      '$ pnpm proof set accounts.cc_dd x.near --source "s"',
+      "- pnpm proof set accounts.ee_ff x.near --source s",
+      "FOO=1 pnpm proof add-tx --id gg_hh",
+      "cd docs && pnpm proof set accounts.ii_jj x.near --source s",
+      "```",
+      "see `pnpm proof add-tx …` here",
+    ].join("\n");
+    const scan = scanRunbook("synthetic.md", md);
+    expect(scan.raw).toBe(6);
+    // the continued command is joined into one; the unlisted prose mention counts as a command
+    expect(scan.commands.map((c) => c.line)).toEqual([2, 9]);
+    expect(scan.commands[0]?.text).toBe(
+      'pnpm proof set accounts.aa_bb x.near --source "s"  --type string',
+    );
+    expect(scan.exempt).toHaveLength(0);
+    expect(scan.commands.length + scan.exempt.length).toBeLessThan(scan.raw);
   });
 
   it("the harness fails a command the CLI refuses (negative control)", () => {

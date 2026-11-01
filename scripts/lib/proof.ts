@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 
 export const TX_KINDS = [
   "deploy",
@@ -84,7 +84,8 @@ export interface ProofFile {
 }
 
 export const ID_RE = /^[a-z][a-z0-9_]{1,62}$/;
-export const NEAR_TX_HASH_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+// A base58 32-byte hash is 42-44 characters; 41 leaves a margin. Also used for code_hashes.
+export const NEAR_TX_HASH_RE = /^[1-9A-HJ-NP-Za-km-z]{41,44}$/;
 export const BASE_TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 export const NEAR_ACCOUNT_RE = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
 const ERROR_CODE_RE = /^[A-Z][A-Za-z]+$/;
@@ -270,6 +271,13 @@ export function setValue(
   } as ProofFile;
 }
 
+/** The current value at `<section>.<key>`, or undefined when none is recorded. */
+export function getValue(p: ProofFile, path: string): Scalar | undefined {
+  const [section, key, ...rest] = path.split(".");
+  if (rest.length > 0 || !key || !SECTIONS.includes(section as Section)) return undefined;
+  return (p[section as Section] as Record<string, Scalar>)[key];
+}
+
 function sortKeys(x: unknown): unknown {
   if (Array.isArray(x)) return x.map(sortKeys);
   if (isObject(x))
@@ -296,5 +304,18 @@ export function writeProof(path: string, p: ProofFile): void {
   const errors = validateProof(p);
   if (errors.length)
     throw new Error(`refusing to write an invalid proof file:\n- ${errors.join("\n- ")}`);
-  writeFileSync(path, serializeProof(p));
+  // Write a sibling temp file, then rename it over the target. A crash or a failed write leaves the
+  // previous file intact; a leftover *.tmp is never read (readProof only opens `path`).
+  const tmp = `${path}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, serializeProof(p));
+    renameSync(tmp, path);
+  } catch (e) {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      // best effort: the caller must see the original error, not a cleanup error
+    }
+    throw e;
+  }
 }

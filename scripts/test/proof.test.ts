@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   addTx,
   emptyProof,
+  getValue,
+  type ProofFile,
+  type Scalar,
   serializeProof,
   setValue,
   type TxEntry,
@@ -111,11 +114,77 @@ describe("mainnet-proof.json", () => {
     expect(() => setValue(p, "metrics.a.b", 1, "x", NOW)).toThrow(/<section>.<key>/);
   });
 
-  it("serialization is stable: sorted keys and a trailing newline", () => {
-    const a = serializeProof(addTx(emptyProof(NOW), "b_tx", tx(), NOW));
-    expect(a.endsWith("}\n")).toBe(true);
-    expect(a.indexOf('"accounts"')).toBeLessThan(a.indexOf('"txs"'));
-    expect(serializeProof(JSON.parse(a))).toBe(a);
+  it("serialization sorts keys at every level, whatever the insertion order", () => {
+    const txs: [string, string][] = [
+      ["a_tx", HASH],
+      ["z_tx", HASH2],
+    ];
+    const values: [string, Scalar][] = [
+      ["accounts.alpha_vault", "alpha.probarion.near"],
+      ["accounts.zeta_vault", "zeta.probarion.near"],
+      ["metrics.alpha_count", 1],
+      ["metrics.zeta_count", 2],
+    ];
+    const build = (reverse: boolean): ProofFile => {
+      let p = emptyProof(NOW);
+      for (const [id, hash] of reverse ? [...txs].reverse() : txs) {
+        p = addTx(p, id, tx({ hash }), NOW);
+      }
+      for (const [path, v] of reverse ? [...values].reverse() : values) {
+        p = setValue(p, path, v, "test", NOW);
+      }
+      return p;
+    };
+    const backwards = build(true);
+    // precondition: the in-memory insertion order really is reversed
+    expect(Object.keys(backwards.txs)).toEqual(["z_tx", "a_tx"]);
+    expect(Object.keys(backwards.metrics)).toEqual(["zeta_count", "alpha_count"]);
+
+    const out = serializeProof(backwards);
+    const parsed = JSON.parse(out);
+    const isSorted = (o: object) => Object.keys(o).join() === [...Object.keys(o)].sort().join();
+    expect(isSorted(parsed)).toBe(true); // top level
+    expect(Object.keys(parsed.txs)).toEqual(["a_tx", "z_tx"]);
+    expect(Object.keys(parsed.accounts)).toEqual(["alpha_vault", "zeta_vault"]);
+    expect(Object.keys(parsed.metrics)).toEqual(["alpha_count", "zeta_count"]);
+    expect(isSorted(parsed.txs.a_tx)).toBe(true); // inside an entry
+    expect(isSorted(parsed.sources)).toBe(true);
+    // the same data added in the opposite order serializes to the same bytes
+    expect(out).toBe(serializeProof(build(false)));
+    expect(out.endsWith("}\n")).toBe(true);
+    expect(serializeProof(parsed)).toBe(out);
+  });
+
+  it("a base58 hash has 41 to 44 characters, for tx hashes and for code hashes", () => {
+    const h = (n: number) => "A".repeat(n);
+    for (const n of [41, 42, 43, 44]) {
+      const p = addTx(emptyProof(NOW), "hash_len", tx({ hash: h(n) }), NOW);
+      expect(validateProof(p)).toEqual([]);
+      const withCode = setValue(p, "code_hashes.vault", h(n), "test", NOW);
+      expect(getValue(withCode, "code_hashes.vault")).toBe(h(n));
+    }
+    for (const n of [31, 32, 40, 45]) {
+      expect(() => addTx(emptyProof(NOW), "hash_len", tx({ hash: h(n) }), NOW)).toThrow(
+        /base58 NEAR tx hash/,
+      );
+      expect(() => setValue(emptyProof(NOW), "code_hashes.vault", h(n), "test", NOW)).toThrow(
+        /base58 code hash/,
+      );
+    }
+    // the characters base58 leaves out (0, O, I, l) are still refused at a valid length
+    for (const bad of ["0", "O", "I", "l"]) {
+      expect(() => addTx(emptyProof(NOW), "hash_len", tx({ hash: bad + h(42) }), NOW)).toThrow(
+        /base58 NEAR tx hash/,
+      );
+    }
+  });
+
+  it("getValue reads a recorded value and returns undefined otherwise", () => {
+    const p = setValue(emptyProof(NOW), "metrics.external_owners", 0, "test", NOW);
+    expect(getValue(p, "metrics.external_owners")).toBe(0);
+    expect(getValue(p, "metrics.other_count")).toBeUndefined();
+    expect(getValue(p, "secrets.k")).toBeUndefined();
+    expect(getValue(p, "metrics.a.b")).toBeUndefined();
   });
 
   it("validateProof reports a hash used twice", () => {
