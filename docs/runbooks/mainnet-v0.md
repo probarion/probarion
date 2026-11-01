@@ -132,7 +132,7 @@ Expected: a line saying the new account was created, then `Transaction ID: …`.
 echo "owner: $OWNER_ID  approver: $APPROVER_ID"
 ```
 
-The owner confirms, account by account and character by character, in their own wallet apps (the apps themselves, not a note or a message), that `$OWNER_ID` is their owner account, the one that signs every OWNER SIGNS call below with a full-access key, and that `$APPROVER_ID` is their approver account. **If either differs, do not deploy: stop and tell Claude.** This is the same pattern as the Base payee check in step 8.
+The owner confirms, account by account and character by character, in their own wallet apps (the apps themselves, not a note or a message), that `$OWNER_ID` is their owner account, the one that signs the owner's calls below (`sign-as "$OWNER_ID"`) with a full-access key, and that `$APPROVER_ID` is their approver account. **If either differs, do not deploy: stop and tell Claude.** This is the same pattern as the Base payee check in step 8.
 
 **OWNER SIGNS** (signed by the new account's own full-access key)
 ```bash
@@ -329,7 +329,7 @@ export PURPOSE="$(sha256sum docs/evidence/v0-po.txt | cut -d' ' -f1)"
 export EXPIRES=1798675200000000000   # 2026-12-31T00:00:00Z; check with: date -u -d @1798675200
 ```
 
-**The payees decide where the money goes, and a variable proves nothing about an address.** A wrong payee cannot be changed: the only fix is to revoke the mandate. So the owner checks each payee against what the contract stored. The NEAR payee (mandate 1) gets the on-chain check plus the owner's confirmation that they control that account. The Base payee (mandate 2) gets one more check: the address is compared with the wallet app twice, before the mandate is created and on the chain afterwards.
+**The payees decide where the money goes, and a variable proves nothing about an address.** A wrong payee cannot be changed: the only fix is to revoke the mandate. So the owner checks each payee against what the contract stored. The NEAR payee (mandate 1) gets the on-chain check plus the owner's confirmation that they control that account. The Base payee (mandate 2) gets one more check: the address is compared with the wallet app twice, first the value about to be sent (before the mandate is created), then the value the contract stored (on the chain afterwards).
 
 **OWNER SIGNS** (mandate 1, NEAR payee; the 0.05 NEAR covers storage and the payee's USDC registration, and the excess is refunded)
 ```bash
