@@ -140,15 +140,53 @@ export function assertChains(head: LedgerEntry | null, entry: LedgerEntry, where
   }
 }
 
-/** The one place an entry is made: both stores call this under their lock, with the head they just read. */
+/** The position an append expects to write at: the `seq` and `prev_link` of the new entry. */
+export interface AppendExpectation {
+  seq: number;
+  prev_link: Hex32;
+}
+
+export interface LedgerAppendOptions {
+  /**
+   * Compare-and-append: the store writes the entry only if the head it reads under its lock gives exactly
+   * this position, else it throws `LedgerConflictError` and writes nothing. A caller whose entry depends on
+   * its position (an attested decision: its nonce binds `seq` and `prev_link`) passes the position it used.
+   */
+  expect?: AppendExpectation;
+}
+
+/** The ledger's head is not the one an append expected (`LedgerAppendOptions.expect`). Nothing was written. */
+export class LedgerConflictError extends LedgerError {
+  override name = "LedgerConflictError";
+  readonly expected: AppendExpectation;
+  readonly actual: AppendExpectation;
+  constructor(message: string, expected: AppendExpectation, actual: AppendExpectation) {
+    super(message);
+    this.expected = { seq: expected.seq, prev_link: expected.prev_link };
+    this.actual = { seq: actual.seq, prev_link: actual.prev_link };
+  }
+}
+
+/**
+ * The one place an entry is made: both stores call this under their lock, with the head they just read.
+ * With `expect`, the head must give exactly that position (checked before anything is signed).
+ */
 export async function buildNextEntry(
   head: LedgerEntry | null,
   body: LedgerAppendBody,
   sign: LedgerSigner,
   where: string,
+  expect?: AppendExpectation,
 ): Promise<LedgerEntry> {
   assertCanChainOnto(head, body.vault, where);
   const { seq, prev_link } = nextBodyFields(head);
+  if (expect !== undefined && (expect.seq !== seq || expect.prev_link !== prev_link)) {
+    throw new LedgerConflictError(
+      `${where}: the ledger moved: this append expected to write seq ${String(expect.seq)} on prev_link ${String(expect.prev_link)}, but the head gives seq ${seq} on prev_link ${prev_link}; nothing was written`,
+      expect,
+      { seq, prev_link },
+    );
+  }
   const entry = await buildEntry(snapshotBody(body, seq, prev_link), sign);
   assertChains(head, entry, where);
   return entry;

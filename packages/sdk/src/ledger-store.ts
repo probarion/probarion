@@ -3,23 +3,42 @@ import { dirname } from "node:path";
 import type { LedgerEntry, LedgerEntryBody, LedgerSigner } from "@probarion/core";
 import { envValue } from "./env.js";
 import { LedgerError } from "./errors.js";
-import { buildNextEntry, type LedgerAppendBody } from "./ledger-store-chain.js";
+import {
+  buildNextEntry,
+  type LedgerAppendBody,
+  type LedgerAppendOptions,
+} from "./ledger-store-chain.js";
 import { errorCode, syncDirectory } from "./ledger-store-fs.js";
 import { DEFAULT_LOCK_TIMEOUT_MS, displayPath, withFileLock } from "./ledger-store-lock.js";
 import { Mutex } from "./mutex.js";
 
-export { composeBody, type LedgerAppendBody } from "./ledger-store-chain.js";
+export {
+  type AppendExpectation,
+  composeBody,
+  type LedgerAppendBody,
+  type LedgerAppendOptions,
+  LedgerConflictError,
+} from "./ledger-store-chain.js";
 
 export interface LedgerStore {
   head(): Promise<LedgerEntry | null>;
+  /**
+   * Appends one entry after the head, signed by `sign`. With `opts.expect` it is a compare-and-append: if
+   * the head read under the store's lock does not give that position, it throws `LedgerConflictError` and
+   * writes nothing. Without `opts` it appends after whatever the head is.
+   */
   append(
     body: Omit<LedgerEntryBody, "seq" | "prev_link">,
     sign: LedgerSigner,
+    opts?: LedgerAppendOptions,
   ): Promise<LedgerEntry>;
   all(): Promise<LedgerEntry[]>;
 }
 
-/** Appends are serialized, validated against the head (seq, prev_link, vault) and signed by `sign`. */
+/**
+ * Appends are serialized, validated against the head (seq, prev_link, vault) and signed by `sign`; with
+ * `opts.expect` the position is compared under the same mutex (compare-and-append).
+ */
 export class InMemoryLedgerStore implements LedgerStore {
   private readonly entries: LedgerEntry[];
   private readonly lock = new Mutex();
@@ -33,13 +52,18 @@ export class InMemoryLedgerStore implements LedgerStore {
     return last === undefined ? null : structuredClone(last);
   }
 
-  append(body: LedgerAppendBody, sign: LedgerSigner): Promise<LedgerEntry> {
+  append(
+    body: LedgerAppendBody,
+    sign: LedgerSigner,
+    opts: LedgerAppendOptions = {},
+  ): Promise<LedgerEntry> {
     return this.lock.run(async () => {
       const entry = await buildNextEntry(
         this.entries.at(-1) ?? null,
         body,
         sign,
         "the in-memory ledger",
+        opts.expect,
       );
       this.entries.push(entry);
       return structuredClone(entry);
@@ -100,6 +124,9 @@ const NEWLINE = 0x0a;
  *   newline is a whole entry and is read; the next append writes the newline first.
  * - A line that is not valid JSON, not UTF-8, or not a JSON object is a `LedgerError` naming the line.
  * - `all()` does not check the chain (that is the verifier's job); `append()` does, against the head.
+ * - `append(body, sign, { expect })` compares the head it reads under the lock with `expect` and throws
+ *   `LedgerConflictError` without writing when another writer (another process, or another store object on
+ *   the same file) got there first.
  * - A missing file is an empty ledger. Local file systems only.
  */
 export class FileLedgerStore implements LedgerStore {
@@ -143,7 +170,11 @@ export class FileLedgerStore implements LedgerStore {
     return (await this.all()).at(-1) ?? null;
   }
 
-  append(body: LedgerAppendBody, sign: LedgerSigner): Promise<LedgerEntry> {
+  append(
+    body: LedgerAppendBody,
+    sign: LedgerSigner,
+    opts: LedgerAppendOptions = {},
+  ): Promise<LedgerEntry> {
     return this.mutex.run(() =>
       withFileLock(
         this.lockPath,
@@ -152,7 +183,8 @@ export class FileLedgerStore implements LedgerStore {
           if (loaded.torn !== null) throw this.tornError(loaded.torn);
           const shown = displayPath(this.path);
           const where = loaded.headLine === null ? shown : `${shown} line ${loaded.headLine}`;
-          const entry = await buildNextEntry(loaded.entries.at(-1) ?? null, body, sign, where);
+          const head = loaded.entries.at(-1) ?? null;
+          const entry = await buildNextEntry(head, body, sign, where, opts.expect);
           await this.writeLine(loaded, JSON.stringify(entry));
           return entry;
         },
