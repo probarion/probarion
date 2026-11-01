@@ -1,0 +1,25 @@
+{
+  "network": "testnet",
+  "accounts": {
+    "root": "probarion.testnet",
+    "usdc": "usdc.probarion.testnet",
+    "base_asset": "base-usdc.probarion.testnet",
+    "solana_asset": "sol-usdc.probarion.testnet",
+    "intents_stub": "intents-stub.probarion.testnet",
+    "vault_v0": "v0.probarion.testnet",
+    "factory": "vaults.probarion.testnet"
+  },
+  "protocol_versions": {
+    "testnet": null,
+    "mainnet": null
+  },
+  "vault_v0": {
+    "code_hash": null,
+    "locked": false
+  },
+  "smoke": {
+    "near_payment_tx": null,
+    "base_burn_tx": null,
+    "no_mandate_tx": null
+  }
+}

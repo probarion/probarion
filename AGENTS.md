@@ -69,3 +69,16 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
 - **R9:** any change to `contracts/vault`, `contracts/Cargo.toml` or `contracts/Cargo.lock` makes the record stale. Re-record right after the push that changes them: take the artifact of that push run and run `record`. Until then CI warns "not recorded" and a `v*` tag fails.
 - Every deploy uses only a CI-built reproducible wasm whose `code_hash` is in `contracts/code-hashes.json` (`check` passes). A deploy script may fall back to a local non-reproducible build only when `ALLOW_NON_REPRODUCIBLE=1` is set, with a loud warning. The testnet smoke may set it; mainnet never may.
 - Compare a deployed contract: `curl -s https://rpc.mainnet.fastnear.com -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"query","params":{"request_type":"view_account","finality":"final","account_id":"v0.probarion.near"}}' | jq -r .result.code_hash`
+
+## Contracts
+
+| Network | Account | Role |
+|---|---|---|
+| testnet | `usdc.probarion.testnet` | test-ft acting as USDC |
+| testnet | `base-usdc.probarion.testnet`, `sol-usdc.probarion.testnet` | test-ft acting as the Base and Solana POA tokens |
+| testnet | `intents-stub.probarion.testnet` | intents-stub (Intents has no testnet) |
+| testnet | `v0.probarion.testnet` | vault v0, locked (no full-access key) |
+
+Deployments and transaction hashes: `contracts/deployments/`. Code hashes: `contracts/code-hashes.json`.
+
+Testnet scripts: `scripts/testnet/deploy.sh` and `smoke.sh` (OWNER runs them; `DRY_RUN=1` prints only), steps in `docs/runbooks/testnet.md`. `deploy.sh` deploys the vault only from `VAULT_WASM`, a CI reproducible artifact that passes `code-hash.mjs check`; `ALLOW_NON_REPRODUCIBLE=1` is the testnet-only escape hatch. Every call to a one-yocto method attaches `'1 yoctoNEAR'`, and `scripts/runbooks.test.mjs` lints that.
