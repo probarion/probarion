@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["test-ft", "vault"]
+members = ["test-ft", "vault", "intents-stub"]
 
 [workspace.package]
 edition = "2021"
