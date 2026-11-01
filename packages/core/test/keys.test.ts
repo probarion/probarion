@@ -1,4 +1,5 @@
 import { inspect } from "node:util";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import bs58 from "bs58";
 import { describe, expect, it } from "vitest";
 import { sha256Bytes } from "../src/hash.js";
@@ -176,7 +177,24 @@ describe("verification is strict", () => {
     expect(verifyEd25519(formatSignature(flipped), message, pair.publicKey)).toBe(false);
   });
 
-  it("rejects the S + L encoding of a valid signature", () => {
+  it("rejects the identity public key with the identity signature (the vector that tells strict from ZIP-215)", () => {
+    // Public key 0x01 || 0^31 is the identity point; signature 0x01 || 0^63 is R = identity, S = 0.
+    // Then [S]B = R + [k]A reads 0 = 0 + [k]0 whatever the message is, so noble's default ZIP-215
+    // verification accepts it for every message. verifyEd25519 runs the strict RFC 8032 rules and
+    // must not: otherwise anyone could "sign" a ledger entry as that key.
+    const identityKey = new Uint8Array(32);
+    identityKey[0] = 1;
+    const identitySig = new Uint8Array(64);
+    identitySig[0] = 1;
+    for (const msg of [new Uint8Array(0), new Uint8Array(32).fill(9), utf8("any message at all")]) {
+      expect(ed25519.verify(identitySig, msg, identityKey)).toBe(true);
+      expect(verifyEd25519(formatSignature(identitySig), msg, formatPublicKey(identityKey))).toBe(
+        false,
+      );
+    }
+  });
+
+  it("rejects the S + L encoding of a valid signature (non-canonical scalar)", () => {
     const mall = malleate(RFC_SIG);
     expect(bytesToHex(mall)).not.toBe(bytesToHex(RFC_SIG));
     expect(verifyEd25519(formatSignature(mall), message, pair.publicKey)).toBe(false);

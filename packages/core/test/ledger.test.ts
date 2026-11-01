@@ -1,11 +1,14 @@
 import { inspect } from "node:util";
+import bs58 from "bs58";
 import { describe, expect, it } from "vitest";
 import { CanonicalJsonError, sha256Bytes, sha256Hex } from "../src/hash.js";
 import { bytesToHex, concatBytes, hexToBytes, u64be, utf8 } from "../src/hex.js";
 import {
   createEd25519Signer,
+  formatPublicKey,
   formatSignature,
   generateKeyPair,
+  KeyFormatError,
   type LedgerSigner,
   parsePublicKey,
   parseSignature,
@@ -17,6 +20,7 @@ import {
   computeNonce,
   LedgerFormatError,
   NONCE_DOMAIN,
+  type NonceContext,
   nextBodyFields,
   verifyEntrySignature,
   ZERO_LINK,
@@ -26,11 +30,12 @@ import { nodeSign, nodeVerify } from "./helpers/node-ed25519.js";
 
 const KEY = generateKeyPair(sha256Bytes(utf8("probarion/test-fixture/ledger-test-key")));
 const OTHER = generateKeyPair(sha256Bytes(utf8("probarion/test-fixture/other-key")));
+const VAULT = "acme.vaults.probarion.testnet";
 
 function body(seq: number, prevLink: string): LedgerEntryBody {
   return {
     v: 1,
-    vault: "acme.vaults.probarion.testnet",
+    vault: VAULT,
     seq,
     prev_link: prevLink,
     kind: "decision",
@@ -234,6 +239,20 @@ describe("ledger hashing and signing", () => {
     );
   });
 
+  it("lets only the entry with seq 0 carry the all-zero prev_link", async () => {
+    const sign = createEd25519Signer(KEY.secretKey);
+    // seq 0 must start from zero, and nothing after it may restart the chain from zero.
+    await expect(buildEntry(body(0, ZERO_LINK), sign)).resolves.toBeDefined();
+    await expect(buildEntry(body(1, ZERO_LINK), sign)).rejects.toThrow(
+      /only the entry with seq 0 may have the all-zero prev_link/,
+    );
+    await expect(buildEntry(body(1, ZERO_LINK), sign)).rejects.toThrow(LedgerFormatError);
+    await expect(buildEntry(body(7, ZERO_LINK), sign)).rejects.toThrow(LedgerFormatError);
+    await expect(buildEntry(body(0, sha256Hex("x")), sign)).rejects.toThrow(
+      /entry with seq 0 must have the all-zero prev_link/,
+    );
+  });
+
   it("surfaces a body that cannot be canonicalised as a CanonicalJsonError", async () => {
     const sign = createEd25519Signer(KEY.secretKey);
     const broken = { ...body(0, ZERO_LINK), amount: undefined } as unknown as LedgerEntryBody;
@@ -245,7 +264,18 @@ describe("ledger hashing and signing", () => {
     const sig = formatSignature(new Uint8Array(64).fill(1));
     expect(() => computeLink("ab", hash, sig)).toThrow(LedgerFormatError);
     expect(() => computeLink(ZERO_LINK, hash.toUpperCase(), sig)).toThrow(LedgerFormatError);
-    expect(() => computeLink(ZERO_LINK, hash, "ed25519:short")).toThrow();
+    // A malformed signature is a ledger-format problem, not a leaked key-parsing error.
+    for (const badSig of [
+      "ed25519:short",
+      "ed25519:0OIl",
+      "secp256k1:abc",
+      "",
+      `ed25519:${bs58.encode(new Uint8Array(63))}`,
+      undefined as unknown as string,
+    ]) {
+      expect(() => computeLink(ZERO_LINK, hash, badSig)).toThrow(LedgerFormatError);
+      expect(() => computeLink(ZERO_LINK, hash, badSig)).not.toThrow(KeyFormatError);
+    }
     expect(computeLink(ZERO_LINK, hash, sig)).toMatch(/^[0-9a-f]{64}$/);
   });
 });
@@ -403,7 +433,7 @@ describe("what a signature covers (interfaces §6)", () => {
     );
   });
 
-  it("covers prev_link, seq and the signature through link, which feeds the next entry", async () => {
+  it("covers prev_link, body_hash and the signature through link, which feeds the next entry", async () => {
     const [first, second] = await chain(2);
     if (first === undefined || second === undefined) throw new Error("chain too short");
     // flipping any bit of the first entry's sig, hash or prev_link yields a different link
@@ -522,6 +552,21 @@ describe("tampering is caught by the checks the verifier composes", () => {
     expect(reverify(second, expected)).toBeNull();
   });
 
+  it("rejects an entry 'signed' by the identity key, which non-strict verification accepts for any hash", async () => {
+    const [entry] = await chain(1);
+    if (entry === undefined) throw new Error("no entry");
+    const identityKey = new Uint8Array(32);
+    identityKey[0] = 1;
+    const identitySig = new Uint8Array(64);
+    identitySig[0] = 1;
+    const forged: LedgerEntry = {
+      ...entry,
+      signer: formatPublicKey(identityKey),
+      sig: formatSignature(identitySig),
+    };
+    expect(verifyEntrySignature(forged)).toBe(false);
+  });
+
   it("treats a hash or signature that is not well formed as a failed signature", async () => {
     const [entry] = await chain(1);
     if (entry === undefined) throw new Error("no entry");
@@ -599,46 +644,122 @@ describe("nothing secret ends up in an entry", () => {
   });
 });
 
-describe("computeNonce (interfaces §6)", () => {
+describe("computeNonce (interfaces §6, ICR-1: bound to the vault)", () => {
   const prev = sha256Hex("prev");
   const invoice = sha256Hex("invoice");
+  const OTHER_VAULT = "other.vaults.probarion.testnet";
+  // 29 characters but 30 UTF-8 bytes, so a character count and a byte count give different prefixes.
+  const MULTIBYTE_VAULT = "café.vaults.probarion.testnet";
+  const base: NonceContext = {
+    vault: VAULT,
+    prev_link: prev,
+    invoice_hash: invoice,
+    mandate_id: 3,
+    seq: 7,
+  };
 
-  it("hashes domain || prev_link || invoice_hash || u64be(mandate_id) || u64be(seq)", () => {
-    const manual = sha256Hex(
-      concatBytes(utf8(NONCE_DOMAIN), hexToBytes(prev), hexToBytes(invoice), u64be(3), u64be(7)),
+  const u32 = (value: number): Uint8Array => {
+    const out = new Uint8Array(4);
+    new DataView(out.buffer).setUint32(0, value, false);
+    return out;
+  };
+  /** The preimage spelled out: the vault is a 4-byte big-endian byte length, then its UTF-8 bytes. */
+  const preimage = (c: NonceContext, lengthPrefix: number | "none" = utf8(c.vault).length) =>
+    concatBytes(
+      utf8(NONCE_DOMAIN),
+      hexToBytes(c.prev_link),
+      c.invoice_hash === null ? new Uint8Array(32) : hexToBytes(c.invoice_hash),
+      u64be(c.mandate_id ?? 0),
+      u64be(c.seq),
+      ...(lengthPrefix === "none" ? [] : [u32(lengthPrefix)]),
+      utf8(c.vault),
     );
-    expect(computeNonce({ prev_link: prev, invoice_hash: invoice, mandate_id: 3, seq: 7 })).toBe(
-      manual,
-    );
+
+  it("hashes domain || prev_link || invoice_hash || u64be(mandate_id) || u64be(seq) || u32be(len) || utf8(vault)", () => {
+    expect(computeNonce(base)).toBe(sha256Hex(preimage(base)));
     expect(NONCE_DOMAIN).toBe("probarion/v1");
   });
 
   it("matches known answers computed with node:crypto", () => {
-    expect(computeNonce({ prev_link: prev, invoice_hash: invoice, mandate_id: 3, seq: 7 })).toBe(
-      "7e263de451a3010d75c7fedefb55239416d09815b4b77f797d73edae998eef4f",
+    expect(computeNonce(base)).toBe(
+      "b64c84fa7a4bee55329de1a57b261233b37d9babe53e623f0ba6f038e44866cf",
     );
-    expect(computeNonce({ prev_link: prev, invoice_hash: null, mandate_id: null, seq: 0 })).toBe(
-      "be0fe0ee41c2d5e30328548ae146bc487c729764b9d82e115d9e6cda781eacd0",
+    expect(computeNonce({ ...base, invoice_hash: null, mandate_id: null, seq: 0 })).toBe(
+      "8fa624943f4d61be5152b82050f53108f32c662adfe89074b78750da91dd74bb",
     );
   });
 
   it("uses 32 zero bytes and mandate 0 for nulls", () => {
-    const manual = sha256Hex(
-      concatBytes(utf8("probarion/v1"), hexToBytes(prev), new Uint8Array(32), u64be(0), u64be(0)),
-    );
-    expect(computeNonce({ prev_link: prev, invoice_hash: null, mandate_id: null, seq: 0 })).toBe(
-      manual,
-    );
+    const nulls: NonceContext = { ...base, invoice_hash: null, mandate_id: null, seq: 0 };
+    expect(bytesToHex(preimage(nulls).slice(12 + 32, 12 + 32 + 32))).toBe("00".repeat(32));
+    expect(computeNonce(nulls)).toBe(sha256Hex(preimage(nulls)));
   });
 
-  it("changes with every input and is 64 lowercase hex", () => {
-    const base = { prev_link: prev, invoice_hash: invoice, mandate_id: 1, seq: 1 };
+  it("changes with every input, the vault included, and is 64 lowercase hex", () => {
     const nonce = computeNonce(base);
     expect(nonce).toMatch(/^[0-9a-f]{64}$/);
-    expect(computeNonce({ ...base, seq: 2 })).not.toBe(nonce);
-    expect(computeNonce({ ...base, mandate_id: 2 })).not.toBe(nonce);
+    expect(computeNonce({ ...base, seq: 8 })).not.toBe(nonce);
+    expect(computeNonce({ ...base, mandate_id: 4 })).not.toBe(nonce);
     expect(computeNonce({ ...base, invoice_hash: sha256Hex("other") })).not.toBe(nonce);
     expect(computeNonce({ ...base, prev_link: ZERO_LINK })).not.toBe(nonce);
+    expect(computeNonce({ ...base, vault: OTHER_VAULT })).not.toBe(nonce);
+  });
+
+  it("gives two vaults different nonces for an identical first decision", () => {
+    // Every vault starts at prev_link = ZERO_LINK, seq = 0, and mandate ids restart at 1, so only the
+    // vault tells two first decisions of the same invoice apart. Without it, NEAR AI evidence from
+    // one vault's public seq-0 decision would pass A5 and A6 in another vault.
+    const first = nextBodyFields(null);
+    expect(first).toEqual({ seq: 0, prev_link: ZERO_LINK });
+    const inA = computeNonce({ ...first, vault: VAULT, invoice_hash: invoice, mandate_id: 1 });
+    const inB = computeNonce({
+      ...first,
+      vault: OTHER_VAULT,
+      invoice_hash: invoice,
+      mandate_id: 1,
+    });
+    expect(inA).not.toBe(inB);
+    expect(inA).toBe("83db481ed36a1b10c6f83b4332f7b25ae1e576f021883c1a2a6e81817635cc57");
+    expect(inB).toBe("5ab46f598b5e9c78621534ec97c0230dc88c4014a20355182d51108f8bc7e832");
+  });
+
+  it("binds the vault at every seq, not only at seq 0", () => {
+    for (const seq of [0, 1, 2, 50]) {
+      const withSeq = { ...base, seq };
+      expect(computeNonce({ ...withSeq, vault: VAULT })).not.toBe(
+        computeNonce({ ...withSeq, vault: OTHER_VAULT }),
+      );
+    }
+  });
+
+  it("length-prefixes the vault with its UTF-8 byte length", () => {
+    const ctx: NonceContext = {
+      ...base,
+      prev_link: ZERO_LINK,
+      mandate_id: 1,
+      seq: 0,
+      vault: MULTIBYTE_VAULT,
+    };
+    expect(MULTIBYTE_VAULT).toHaveLength(29);
+    expect(utf8(MULTIBYTE_VAULT)).toHaveLength(30);
+    const nonce = computeNonce(ctx);
+    expect(nonce).toBe("0ca58c92f977093d08f0b03d8acd42a4e618b79ca2deb8ac36c31afa1aa1e9bb");
+    expect(nonce).toBe(sha256Hex(preimage(ctx, 30)));
+    // a character count (29) in the prefix, or no prefix at all, is a different nonce
+    expect(nonce).not.toBe(sha256Hex(preimage(ctx, 29)));
+    expect(sha256Hex(preimage(ctx, 29))).toBe(
+      "843e37bc25391a2026ff2e62de6e2f9ee8757a1a4effeaa909416ca1a27fea46",
+    );
+    expect(nonce).not.toBe(sha256Hex(preimage(ctx, "none")));
+  });
+
+  it("changes with the length of the vault id", () => {
+    const zero: NonceContext = { ...base, prev_link: ZERO_LINK, mandate_id: 1, seq: 0 };
+    const short = computeNonce({ ...zero, vault: "a" });
+    const long = computeNonce({ ...zero, vault: "aa" });
+    expect(short).not.toBe(long);
+    expect(short).toBe("6fae0c8f1c0d92a592d3e6ade912b25242ebe9c8f7c0b8b69d2b9d82ab01b712");
+    expect(long).toBe("09c5f4ad8cb2ae88bca5065c71f0a4979f7499602e2daf08f3b13b1e3077da20");
   });
 
   it("never repeats along a chain, even for the same invoice and mandate", async () => {
@@ -649,14 +770,20 @@ describe("computeNonce (interfaces §6)", () => {
     let head: LedgerEntry | null = null;
     for (let i = 0; i < 8; i++) {
       const next = nextBodyFields(head);
-      nonces.add(computeNonce({ ...next, invoice_hash: invoice, mandate_id: 1 }));
+      nonces.add(computeNonce({ ...next, vault: VAULT, invoice_hash: invoice, mandate_id: 1 }));
       head = entries[i] ?? null;
     }
     expect(nonces.size).toBe(8);
   });
 
+  it("accepts astral characters in the vault id", () => {
+    const emoji = String.fromCodePoint(0x1f600);
+    const ctx = { ...base, vault: `${emoji}.near` };
+    expect(computeNonce(ctx)).toBe(sha256Hex(preimage(ctx)));
+  });
+
   it("rejects malformed inputs with a LedgerFormatError", () => {
-    const ok = { prev_link: prev, invoice_hash: invoice, mandate_id: 1, seq: 1 };
+    const ok = { ...base, mandate_id: 1, seq: 1 };
     expect(() => computeNonce({ ...ok, prev_link: "abc" })).toThrow(LedgerFormatError);
     expect(() => computeNonce({ ...ok, prev_link: prev.toUpperCase() })).toThrow(LedgerFormatError);
     expect(() => computeNonce({ ...ok, invoice_hash: "abc" })).toThrow(LedgerFormatError);
@@ -665,6 +792,13 @@ describe("computeNonce (interfaces §6)", () => {
     expect(() => computeNonce({ ...ok, seq: Number.NaN })).toThrow(LedgerFormatError);
     expect(() => computeNonce({ ...ok, mandate_id: -1 })).toThrow(LedgerFormatError);
     expect(() => computeNonce({ ...ok, mandate_id: 2 ** 53 })).toThrow(LedgerFormatError);
+    expect(() => computeNonce({ ...ok, vault: "" })).toThrow(LedgerFormatError);
+    expect(() => computeNonce({ ...ok, vault: undefined as unknown as string })).toThrow(
+      LedgerFormatError,
+    );
+    // a lone surrogate would encode as U+FFFD, the same bytes as a real replacement character
+    const lone = String.fromCharCode(0xd800);
+    expect(() => computeNonce({ ...ok, vault: `a${lone}b` })).toThrow(LedgerFormatError);
   });
 });
 

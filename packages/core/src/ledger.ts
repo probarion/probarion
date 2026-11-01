@@ -19,9 +19,14 @@ export function computeBodyHash(body: LedgerEntryBody): Hex32 {
 export function computeLink(prevLink: Hex32, bodyHash: Hex32, sig: string): Hex32 {
   if (!isHex32(prevLink)) throw new LedgerFormatError("prev_link must be 64 lowercase hex");
   if (!isHex32(bodyHash)) throw new LedgerFormatError("body_hash must be 64 lowercase hex");
-  return bytesToHex(
-    sha256Bytes(concatBytes(hexToBytes(prevLink), hexToBytes(bodyHash), parseSignature(sig))),
-  );
+  let rawSig: Uint8Array;
+  try {
+    rawSig = parseSignature(sig);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new LedgerFormatError(`sig is malformed: ${reason}`, { cause: error });
+  }
+  return bytesToHex(sha256Bytes(concatBytes(hexToBytes(prevLink), hexToBytes(bodyHash), rawSig)));
 }
 
 export function nextBodyFields(head: LedgerEntry | null): { seq: number; prev_link: Hex32 } {
@@ -40,6 +45,9 @@ export async function buildEntry(
   if (!isHex32(body.prev_link)) throw new LedgerFormatError("prev_link must be 64 lowercase hex");
   if (body.seq === 0 && body.prev_link !== ZERO_LINK) {
     throw new LedgerFormatError("the entry with seq 0 must have the all-zero prev_link");
+  }
+  if (body.seq >= 1 && body.prev_link === ZERO_LINK) {
+    throw new LedgerFormatError("only the entry with seq 0 may have the all-zero prev_link");
   }
   const bodyHash = computeBodyHash(body);
   const { sig, signer: signerPk } = await signer(hexToBytes(bodyHash));
@@ -69,6 +77,8 @@ export function verifyEntrySignature(entry: LedgerEntry): boolean {
 }
 
 export interface NonceContext {
+  /** The vault account id, the same string as `LedgerEntryBody.vault`. */
+  vault: string;
   prev_link: Hex32;
   invoice_hash: Hex32 | null;
   mandate_id: number | null;
@@ -81,9 +91,18 @@ function assertU64(value: number, what: string): void {
   }
 }
 
+function u32be(value: number): Uint8Array {
+  const out = new Uint8Array(4);
+  new DataView(out.buffer).setUint32(0, value, false);
+  return out;
+}
+
 /**
  * nonce = sha256(utf8("probarion/v1") || prev_link || (invoice_hash ?? 32 zero bytes)
- *                || u64be(mandate_id ?? 0) || u64be(seq)); `seq` is the decision entry about to be written.
+ *                || u64be(mandate_id ?? 0) || u64be(seq) || u32be(byteLength(utf8(vault))) || utf8(vault))
+ * (interfaces §6, ICR-1). `seq` is the decision entry about to be written. The vault account id is
+ * in the preimage for every seq: the first decision of every vault has prev_link = 0 and seq = 0, so
+ * without it NEAR AI evidence from one vault's seq-0 decision would verify in another vault.
  */
 export function computeNonce(ctx: NonceContext): Hex32 {
   if (!isHex32(ctx.prev_link)) throw new LedgerFormatError("prev_link must be 64 lowercase hex");
@@ -92,6 +111,15 @@ export function computeNonce(ctx: NonceContext): Hex32 {
   }
   if (ctx.mandate_id !== null) assertU64(ctx.mandate_id, "mandate_id");
   assertU64(ctx.seq, "seq");
+  if (typeof ctx.vault !== "string" || ctx.vault.length === 0) {
+    throw new LedgerFormatError("vault must be a non-empty account id");
+  }
+  // The UTF-8 encoder silently turns a lone surrogate into the replacement character U+FFFD, so
+  // two different strings could share one nonce; canonicalJson refuses the same strings in a body.
+  if (/[\u{D800}-\u{DFFF}]/u.test(ctx.vault)) {
+    throw new LedgerFormatError("vault must be well-formed Unicode");
+  }
+  const vault = utf8(ctx.vault);
   return sha256Hex(
     concatBytes(
       utf8(NONCE_DOMAIN),
@@ -99,6 +127,8 @@ export function computeNonce(ctx: NonceContext): Hex32 {
       ctx.invoice_hash === null ? new Uint8Array(32) : hexToBytes(ctx.invoice_hash),
       u64be(ctx.mandate_id ?? 0),
       u64be(ctx.seq),
+      u32be(vault.length),
+      vault,
     ),
   );
 }
