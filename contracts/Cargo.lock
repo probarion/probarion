@@ -2656,6 +2656,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "probarion-factory"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
+]
+
+[[package]]
 name = "probarion-vault"
 version = "0.1.0"
 dependencies = [
