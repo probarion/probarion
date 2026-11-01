@@ -1,0 +1,39 @@
+{
+  "network": "mainnet",
+  "constants": {
+    "usdc": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+    "intents": "intents.near",
+    "allowed_assets": [
+      "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+      "sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"
+    ]
+  },
+  "vault_v0": {
+    "account_id": "v0.probarion.near",
+    "code_hash": null,
+    "create_tx": null,
+    "deploy_tx": null,
+    "lock_tx": null
+  },
+  "funding": {
+    "usdc_storage_tx": null,
+    "usdc_float_tx": null,
+    "intents_topup": { "method": null, "near_tx": null, "base_tx": null }
+  },
+  "setup": {
+    "add_agent_tx": null,
+    "near_mandate_tx": null,
+    "base_mandate_tx": null
+  },
+  "proof": {
+    "first_near_payment_tx": null,
+    "first_base_payout_tx": null,
+    "first_base_payout_base_tx": null,
+    "first_no_mandate_refusal_tx": null
+  },
+  "factory": {
+    "account_id": "vaults.probarion.near",
+    "deploy_tx": null,
+    "versions": []
+  }
+}

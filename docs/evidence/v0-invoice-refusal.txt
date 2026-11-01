@@ -1,0 +1,2 @@
+Invoice V0-INV-999 (mainnet proof of a refusal)
+Claims mandate 999, which does not exist. The vault must refuse with PROBARION:NoMandate.

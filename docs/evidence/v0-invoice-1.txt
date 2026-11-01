@@ -1,0 +1,4 @@
+Invoice V0-INV-1 (mainnet proof)
+Payee: the NEAR account in mandate 1.
+Amount: 2.000000 USDC (native USDC on NEAR).
+Purchase order: docs/evidence/v0-po.txt

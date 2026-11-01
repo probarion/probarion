@@ -1,0 +1,8 @@
+{
+  "kind": "v0-manual-decision",
+  "note": "Sent on purpose to show the contract refusing a spend with no mandate.",
+  "invoice_file": "docs/evidence/v0-invoice-refusal.txt",
+  "mandate_id": 999,
+  "amount": "1000000",
+  "verdict": "allow"
+}

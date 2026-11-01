@@ -1,0 +1,5 @@
+Probarion v0 purchase order (mainnet proof, 2026-11-04)
+Buyer: the Probarion owner account.
+Scope: test payouts that prove the vault on mainnet, one to a NEAR account and one to a Base
+address, both controlled by the owner.
+Cap: at most 5 USDC per payment, 20 USDC in total, 5 payments, until 2026-12-31.

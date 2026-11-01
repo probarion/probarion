@@ -1,0 +1,8 @@
+{
+  "kind": "v0-manual-decision",
+  "note": "Made by the owner on Day 4, before the signed ledger (plan 03) existed.",
+  "invoice_file": "docs/evidence/v0-invoice-1.txt",
+  "mandate_id": 1,
+  "amount": "2000000",
+  "verdict": "allow"
+}

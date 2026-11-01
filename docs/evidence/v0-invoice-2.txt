@@ -1,0 +1,4 @@
+Invoice V0-INV-2 (mainnet proof)
+Payee: the Base address in mandate 2.
+Amount: 2.000000 USDC, paid as USDC on Base through NEAR Intents (POA burn).
+Purchase order: docs/evidence/v0-po.txt
