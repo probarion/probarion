@@ -78,9 +78,16 @@ jobs:
       - run: cargo test --manifest-path contracts/Cargo.toml -p integration-tests -- --test-threads=2
 
   reproducible:
-    name: Reproducible build and code hash
+    name: Reproducible build and code hash (${{ matrix.dir }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # One leg per crate: each crate is picked, built, uploaded and compared on its own.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { crate: probarion-vault, dir: vault, lib: probarion_vault }
+          - { crate: probarion-factory, dir: factory, lib: probarion_factory }
     steps:
       # Full history: cargo-near clones this checkout with libgit2, and the job may need an older commit.
       - uses: actions/checkout@v4
@@ -96,48 +103,48 @@ jobs:
       - name: Install cargo-near 0.22.0
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/download/cargo-near-v0.22.0/cargo-near-installer.sh | sh
       # A reproducible wasm embeds the commit it was built from (NEP-330 source_code_snapshot), so a
-      # recorded hash is reproduced only by rebuilding the recorded commit. If the current source is
-      # recorded, rebuild that commit and compare; otherwise build this commit and upload it, and
-      # record that artifact (scripts/code-hash.mjs record).
+      # recorded hash is reproduced only by rebuilding the recorded commit. If the crate's current
+      # source is recorded, rebuild that commit and compare; otherwise build this commit and upload
+      # it, and record that artifact (scripts/code-hash.mjs record).
       - name: Choose the commit to build
         id: pick
         run: |
-          recorded="$(node scripts/code-hash.mjs recorded-commit probarion-vault vault)"
+          recorded="$(node scripts/code-hash.mjs recorded-commit ${{ matrix.crate }} ${{ matrix.dir }})"
           if [ -n "$recorded" ]; then
-            echo "probarion-vault is recorded at $recorded: rebuilding that commit"
+            echo "${{ matrix.crate }} is recorded at $recorded: rebuilding that commit"
             git clone --quiet --no-checkout "$GITHUB_WORKSPACE" "$RUNNER_TEMP/recorded"
             git -C "$RUNNER_TEMP/recorded" checkout --quiet --detach "$recorded" \
               || { echo "::error::recorded commit $recorded is not in the history of this checkout"; exit 1; }
             echo "src=$RUNNER_TEMP/recorded" >> "$GITHUB_OUTPUT"
           else
-            echo "probarion-vault is not recorded for this source: building HEAD"
+            echo "${{ matrix.crate }} is not recorded for this source: building HEAD"
             echo "src=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
           fi
-      - name: Build the vault in Docker
+      - name: Build ${{ matrix.crate }} in Docker
         env:
           SRC_DIR: ${{ steps.pick.outputs.src }}
-        run: bash scripts/build-reproducible.sh vault probarion_vault
+        run: bash scripts/build-reproducible.sh ${{ matrix.dir }} ${{ matrix.lib }}
       - name: Summary
         env:
-          OUT: ${{ steps.pick.outputs.src }}/contracts/target/reproducible/vault
+          OUT: ${{ steps.pick.outputs.src }}/contracts/target/reproducible/${{ matrix.dir }}
         run: |
           {
-            echo "### probarion-vault reproducible build"
+            echo "### ${{ matrix.crate }} reproducible build"
             echo '```json'
-            cat "$OUT/probarion_vault.build-info.json"
+            cat "$OUT/${{ matrix.lib }}.build-info.json"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       # Uploaded before the comparison, so a failing comparison still leaves the wasm to inspect.
       - uses: actions/upload-artifact@v4
         with:
-          name: probarion-vault-wasm
+          name: ${{ matrix.crate }}-wasm
           path: |
-            ${{ steps.pick.outputs.src }}/contracts/target/reproducible/vault/probarion_vault.wasm
-            ${{ steps.pick.outputs.src }}/contracts/target/reproducible/vault/probarion_vault.build-info.json
+            ${{ steps.pick.outputs.src }}/contracts/target/reproducible/${{ matrix.dir }}/${{ matrix.lib }}.wasm
+            ${{ steps.pick.outputs.src }}/contracts/target/reproducible/${{ matrix.dir }}/${{ matrix.lib }}.build-info.json
           if-no-files-found: error
           retention-days: 90
       - name: Compare with contracts/code-hashes.json
         env:
-          OUT: ${{ steps.pick.outputs.src }}/contracts/target/reproducible/vault
+          OUT: ${{ steps.pick.outputs.src }}/contracts/target/reproducible/${{ matrix.dir }}
           REQUIRE_RECORDED: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
-        run: node scripts/code-hash.mjs check probarion-vault vault "$OUT/probarion_vault.wasm"
+        run: node scripts/code-hash.mjs check ${{ matrix.crate }} ${{ matrix.dir }} "$OUT/${{ matrix.lib }}.wasm"

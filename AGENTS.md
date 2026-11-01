@@ -51,9 +51,9 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
 
 ## Reproducible builds and code hashes
 
-- The reproducible build runs in CI only: job `reproducible` (ubuntu, Docker, `sourcescan/cargo-near:0.22.0-rust-1.99.1`, pinned by digest in `contracts/vault/Cargo.toml`). The local Windows build (`pnpm contracts:build`, `--no-abi`) has no Docker and is never a source of code hashes.
+- The reproducible build runs in CI only: job `reproducible` builds both crates, one matrix leg each (`vault` and `factory`; ubuntu, Docker, `sourcescan/cargo-near:0.22.0-rust-1.99.1`, pinned by digest in each crate's `Cargo.toml`). The local Windows build (`pnpm contracts:build`, `--no-abi`) has no Docker and is never a source of code hashes.
 - `bash scripts/build-reproducible.sh vault probarion_vault` is the build the job runs. It builds the committed source in Docker and writes `contracts/target/reproducible/vault/probarion_vault.wasm` plus `probarion_vault.build-info.json` (crate, commit, source keys, code_hash, sha256). It prints the NEAR code hash.
-- The job uploads both files as the artifact `probarion-vault-wasm`. Its run summary shows the build-info.
+- Each leg uploads both files as an artifact, `probarion-vault-wasm` or `probarion-factory-wasm`. Its run summary shows the build-info.
 - A reproducible wasm embeds the git commit it was built from (NEP-330 `source_code_snapshot`). The same source built at two commits has two code hashes, so a recorded hash is reproduced by rebuilding the recorded commit.
 - `contracts/code-hashes.json` records, per exact source (git tree of the crate, `contracts/Cargo.toml`, `contracts/Cargo.lock`), the `commit` and the `code_hash` of its reproducible build. Plan 03's verifier reads `entries[].code_hash` as `expected_code_hashes`.
 - Once the vault source is recorded, CI rebuilds the recorded commit (not HEAD) and fails on a hash mismatch. On `v*` tags it also fails if the source is not recorded. While the source is not recorded, CI warns, builds HEAD and uploads it to be recorded.
