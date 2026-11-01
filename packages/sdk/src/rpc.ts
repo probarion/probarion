@@ -5,6 +5,7 @@ import { ConfigError, type RpcAttempt, RpcError, ViewError } from "./errors.js";
 export interface RpcClientOptions {
   urls: readonly string[];
   fetch?: typeof fetch;
+  /** Rounds over the whole URL list before giving up: an integer from 1 to 10 (default 3). */
   maxRounds?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
@@ -39,9 +40,12 @@ export interface TxStatusResult {
 
 type Attempt =
   | { kind: "ok"; result: unknown }
-  | { kind: "retry"; message: string; retryAfterMs: number | null }
+  | { kind: "retry"; message: string; retryAfterMs: number | null; cause?: unknown }
+  // `error` is the raw JSON-RPC error object, or `null` for an HTTP-level failure that is not
+  // worth a failover (so it never turns into a ViewError).
   | { kind: "fatal"; message: string; error: unknown };
 
+const MAX_ROUNDS_LIMIT = 10;
 const EMPTY: Record<string, unknown> = {};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -70,10 +74,50 @@ function isTransientRpcError(error: unknown): boolean {
   );
 }
 
+/**
+ * Retry-After is delay-seconds or an HTTP-date. An empty, invalid, zero or already-past value is
+ * treated as absent, so the caller falls back to its own backoff and never to a zero-wait retry.
+ */
 function parseRetryAfter(value: string | null): number | null {
-  if (value === null) return null;
-  const seconds = Number(value);
-  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
+  const text = value?.trim();
+  if (text === undefined || text.length === 0) return null;
+  const ms = /^\d+(\.\d+)?$/.test(text) ? Number(text) * 1000 : Date.parse(text) - Date.now();
+  return Number.isFinite(ms) && ms > 0 ? ms : null;
+}
+
+/** Origin only: an RPC URL may carry an API key in its path, query or userinfo. */
+function redactUrl(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "<invalid url>";
+  }
+}
+
+/** Tell a refused connection, a DNS failure and a TLS failure apart: undici hides the code in `cause`. */
+function describeNetworkError(error: unknown, timeoutMs: number): string {
+  if (!(error instanceof Error)) return `network error: ${String(error)}`;
+  if (error.name === "TimeoutError" || error.name === "AbortError") {
+    return `network error: timed out after ${timeoutMs}ms`;
+  }
+  const cause: unknown = error.cause;
+  let detail: string | undefined;
+  if (isRecord(cause)) {
+    if (typeof cause.code === "string" && cause.code.length > 0) detail = cause.code;
+    else if (typeof cause.message === "string" && cause.message.length > 0) detail = cause.message;
+  }
+  return detail === undefined || detail === error.message
+    ? `network error: ${error.message}`
+    : `network error: ${error.message} (${detail})`;
+}
+
+/** Cancel an unread body so its socket is released straight away. */
+async function discardBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // nothing to release
+  }
 }
 
 export function resolveRpcUrls(
@@ -97,11 +141,18 @@ export function toAccessKeyInfo(raw: unknown): AccessKeyInfo {
   const permission = raw.access_key.permission;
   if (isRecord(permission) && isRecord(permission.FunctionCall)) {
     const fc = permission.FunctionCall;
+    if (typeof fc.receiver_id !== "string") {
+      throw new RpcError(`malformed access key ${raw.public_key}: FunctionCall.receiver_id`);
+    }
+    // An empty list means "all methods" on NEAR, so a missing or garbled list must never become [].
+    if (!Array.isArray(fc.method_names)) {
+      throw new RpcError(`malformed access key ${raw.public_key}: FunctionCall.method_names`);
+    }
     return {
       public_key: raw.public_key,
       permission: {
-        receiver_id: String(fc.receiver_id),
-        method_names: Array.isArray(fc.method_names) ? fc.method_names.map(String) : [],
+        receiver_id: fc.receiver_id,
+        method_names: fc.method_names.map(String),
         allowance:
           fc.allowance === null || fc.allowance === undefined ? null : String(fc.allowance),
       },
@@ -111,47 +162,67 @@ export function toAccessKeyInfo(raw: unknown): AccessKeyInfo {
   return { public_key: raw.public_key, permission: "FullAccess" };
 }
 
-function toOutcome(raw: unknown): ExecutionOutcomeView {
-  const rec = isRecord(raw) ? raw : EMPTY;
-  const inner = isRecord(rec.outcome) ? rec.outcome : EMPTY;
+function malformedTx(detail: string): RpcError {
+  return new RpcError(`malformed tx result: ${detail}`);
+}
+
+function toOutcome(raw: unknown, label: string): ExecutionOutcomeView {
+  if (!isRecord(raw)) throw malformedTx(`${label} is not an object`);
+  if (typeof raw.id !== "string") throw malformedTx(`${label}.id is not a string`);
+  const inner = raw.outcome;
+  if (!isRecord(inner)) throw malformedTx(`${label}.outcome is not an object`);
+  if (typeof inner.executor_id !== "string") {
+    throw malformedTx(`${label}.outcome.executor_id is not a string`);
+  }
   return {
-    id: String(rec.id ?? ""),
+    id: raw.id,
     outcome: {
       logs: Array.isArray(inner.logs) ? inner.logs.map(String) : [],
       receipt_ids: Array.isArray(inner.receipt_ids) ? inner.receipt_ids.map(String) : [],
-      executor_id: String(inner.executor_id ?? ""),
+      executor_id: inner.executor_id,
       status: inner.status ?? null,
     },
   };
 }
 
+/** Map a `tx` RPC result. A garbled 200 throws; it must never look like a valid, empty result. */
 export function toTxStatusResult(raw: unknown): TxStatusResult {
-  if (!isRecord(raw)) throw new RpcError("malformed transaction status");
-  const tx = isRecord(raw.transaction) ? raw.transaction : EMPTY;
+  if (!isRecord(raw)) throw malformedTx("not an object");
+  if (raw.status === undefined || raw.status === null) throw malformedTx("status is missing");
+  const tx = raw.transaction;
+  if (!isRecord(tx)) throw malformedTx("transaction is not an object");
+  if (typeof tx.hash !== "string") throw malformedTx("transaction.hash is not a string");
+  if (!Array.isArray(raw.receipts_outcome)) throw malformedTx("receipts_outcome is not an array");
   return {
-    status: raw.status ?? null,
+    status: raw.status,
     transaction: {
-      hash: String(tx.hash ?? ""),
+      hash: tx.hash,
       signer_id: String(tx.signer_id ?? ""),
       receiver_id: String(tx.receiver_id ?? ""),
     },
-    transaction_outcome: toOutcome(raw.transaction_outcome),
-    receipts_outcome: Array.isArray(raw.receipts_outcome)
-      ? raw.receipts_outcome.map(toOutcome)
-      : [],
+    transaction_outcome: toOutcome(raw.transaction_outcome, "transaction_outcome"),
+    receipts_outcome: raw.receipts_outcome.map((item: unknown, i: number) =>
+      toOutcome(item, `receipts_outcome[${i}]`),
+    ),
   };
 }
 
 export class RpcClient {
   private readonly opts: RpcClientOptions;
   private readonly urls: readonly string[];
+  private readonly maxRounds: number;
   private preferred = 0;
   private nextId = 0;
 
   constructor(opts: RpcClientOptions) {
     if (opts.urls.length === 0) throw new ConfigError("at least one NEAR RPC URL is required");
+    const maxRounds = opts.maxRounds ?? 3;
+    if (!Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > MAX_ROUNDS_LIMIT) {
+      throw new ConfigError(`maxRounds must be an integer from 1 to ${MAX_ROUNDS_LIMIT}`);
+    }
     this.opts = opts;
     this.urls = [...opts.urls];
+    this.maxRounds = maxRounds;
   }
 
   get currentUrl(): string {
@@ -173,44 +244,56 @@ export class RpcClient {
     const doFetch = this.opts.fetch ?? globalThis.fetch;
     const id = `probarion-${this.nextId}`;
     this.nextId += 1;
+    const timeoutMs = this.opts.timeoutMs ?? 15_000;
+    const shown = redactUrl(url);
     let response: Response;
     try {
       response = await doFetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
-        signal: AbortSignal.timeout(this.opts.timeoutMs ?? 15_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       return {
         kind: "retry",
-        message: `network error: ${error instanceof Error ? error.message : String(error)}`,
+        message: describeNetworkError(error, timeoutMs),
         retryAfterMs: null,
+        cause: error,
       };
     }
-    if (response.status === 408 || response.status === 429 || response.status >= 500) {
+    // This endpoint is struggling (408/429/5xx) or refuses us (401/403/404, for example a revoked
+    // API key or a wrong path): another endpoint may still answer, so fail over.
+    const { status } = response;
+    if (
+      status === 408 ||
+      status === 429 ||
+      status >= 500 ||
+      status === 401 ||
+      status === 403 ||
+      status === 404
+    ) {
+      await discardBody(response);
       return {
         kind: "retry",
-        message: `HTTP ${response.status}`,
+        message: `HTTP ${status}`,
         retryAfterMs: parseRetryAfter(response.headers.get("retry-after")),
       };
     }
     const text = await response.text().catch(() => "");
     if (!response.ok) {
-      return {
-        kind: "fatal",
-        message: `HTTP ${response.status}: ${text.slice(0, 200)}`,
-        error: text,
-      };
+      // Any other HTTP failure (for example 400) would repeat on every endpoint. It is a transport
+      // error, not a JSON-RPC answer, so `error` stays null and no ViewError is made from it.
+      return { kind: "fatal", message: `HTTP ${status}: ${text.slice(0, 200)}`, error: null };
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
-      return { kind: "retry", message: `non-JSON response from ${url}`, retryAfterMs: null };
+      return { kind: "retry", message: `non-JSON response from ${shown}`, retryAfterMs: null };
     }
     if (!isRecord(parsed)) {
-      return { kind: "retry", message: `unexpected response from ${url}`, retryAfterMs: null };
+      return { kind: "retry", message: `unexpected response from ${shown}`, retryAfterMs: null };
     }
     if (parsed.error !== undefined && parsed.error !== null) {
       const message = describeRpcError(parsed.error);
@@ -219,14 +302,28 @@ export class RpcClient {
         : { kind: "fatal", message, error: parsed.error };
     }
     if (!("result" in parsed)) {
-      return { kind: "retry", message: `response without result from ${url}`, retryAfterMs: null };
+      return {
+        kind: "retry",
+        message: `response without result from ${shown}`,
+        retryAfterMs: null,
+      };
     }
     return { kind: "ok", result: parsed.result };
   }
 
+  /**
+   * Send one JSON-RPC request, failing over across the configured endpoints with backoff.
+   *
+   * Safe only for read-only queries or pre-signed payloads: every retry and every failover resends
+   * identical params, so a request that is not idempotent (or whose first try did reach the node)
+   * could take effect twice. A JSON-RPC error that is not a timeout is final and thrown at once
+   * with the raw error in `rpcError`; transport failures end in an `RpcError` with `rpcError`
+   * `null`, the attempt log and the last underlying error as `cause`.
+   */
   async call<T>(method: string, params: unknown): Promise<T> {
     const attempts: RpcAttempt[] = [];
-    const total = (this.opts.maxRounds ?? 3) * this.urls.length;
+    let lastCause: unknown;
+    const total = this.maxRounds * this.urls.length;
     for (let n = 0; n < total; n++) {
       const index = (this.preferred + n) % this.urls.length;
       const url = this.urls[index];
@@ -239,12 +336,17 @@ export class RpcClient {
       if (outcome.kind === "fatal") {
         throw new RpcError(`${method}: ${outcome.message}`, attempts, outcome.error);
       }
-      attempts.push({ url, error: outcome.message });
+      attempts.push({ url: redactUrl(url), error: outcome.message });
+      lastCause = outcome.cause ?? new Error(outcome.message);
       if (n < total - 1) await this.sleep(this.delay(n, outcome.retryAfterMs));
     }
+    const tried = [...new Set(this.urls.map(redactUrl))].join(", ");
+    const last = attempts.at(-1)?.error ?? "no attempt made";
     throw new RpcError(
-      `${method}: all ${this.urls.length} RPC endpoint(s) failed after ${attempts.length} attempts`,
+      `${method}: all ${this.urls.length} RPC endpoint(s) failed after ${attempts.length} attempts (tried ${tried}); last error: ${last}`,
       attempts,
+      null,
+      { cause: lastCause },
     );
   }
 
@@ -263,17 +365,32 @@ export class RpcClient {
         args_base64: Buffer.from(JSON.stringify(args)).toString("base64"),
       });
     } catch (error) {
+      // Only a JSON-RPC error answer (a contract panic, an unknown method) is a ViewError. It keeps
+      // the attempt log and the raw error; transport failures stay plain RpcErrors.
       if (error instanceof RpcError && error.rpcError !== null) {
-        throw new ViewError(contractId, methodName, describeRpcError(error.rpcError));
+        throw new ViewError(contractId, methodName, describeRpcError(error.rpcError), {
+          attempts: error.attempts,
+          rpcError: error.rpcError,
+          cause: error,
+        });
       }
       throw error;
     }
     if (!isRecord(result)) throw new ViewError(contractId, methodName, "malformed query result");
     if (typeof result.error === "string") throw new ViewError(contractId, methodName, result.error);
     const bytes = result.result;
-    if (!Array.isArray(bytes))
+    if (!Array.isArray(bytes)) {
       throw new ViewError(contractId, methodName, "query result has no bytes");
-    const text = Buffer.from(bytes.map(Number)).toString("utf8");
+    }
+    if (!bytes.every((b) => typeof b === "number" && Number.isInteger(b) && b >= 0 && b <= 255)) {
+      throw new ViewError(contractId, methodName, "query result is not a byte array");
+    }
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(bytes as number[]));
+    } catch {
+      throw new ViewError(contractId, methodName, "query result is not valid UTF-8");
+    }
     let parsed: unknown;
     try {
       parsed = text.length === 0 ? null : JSON.parse(text);
@@ -304,17 +421,31 @@ export class RpcClient {
     if (!isRecord(result) || typeof result.code_hash !== "string") {
       throw new RpcError(`view_account ${accountId}: malformed result`);
     }
+    const { amount, locked, storage_usage: storage } = result;
+    if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
+      throw new RpcError(`view_account ${accountId}: malformed amount`);
+    }
+    if (typeof locked !== "string" || !/^\d+$/.test(locked)) {
+      throw new RpcError(`view_account ${accountId}: malformed locked`);
+    }
+    if (typeof storage !== "number" || !Number.isSafeInteger(storage) || storage < 0) {
+      throw new RpcError(`view_account ${accountId}: malformed storage_usage`);
+    }
     // R6 (NEP-591): RPC omits global_contract_hash for an account that deploys its own code.
     const globalHash = result.global_contract_hash;
-    if (globalHash !== undefined && globalHash !== null && typeof globalHash !== "string") {
+    if (
+      globalHash !== undefined &&
+      globalHash !== null &&
+      (typeof globalHash !== "string" || globalHash.length === 0)
+    ) {
       throw new RpcError(`view_account ${accountId}: malformed global_contract_hash`);
     }
     return {
-      amount: String(result.amount),
-      locked: String(result.locked),
+      amount,
+      locked,
       code_hash: result.code_hash,
       global_contract_hash: globalHash ?? null,
-      storage_usage: Number(result.storage_usage),
+      storage_usage: storage,
     };
   }
 

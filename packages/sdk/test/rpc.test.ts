@@ -1,58 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RpcError, ViewError } from "../src/errors.js";
 import { RpcClient, resolveRpcUrls } from "../src/rpc.js";
-
-type Handler = (
-  url: string,
-  body: { method: string; params: Record<string, unknown> },
-) => Response | Promise<Response>;
-
-function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json", ...headers },
-  });
-}
-
-function bytesOf(value: unknown): number[] {
-  return [...Buffer.from(JSON.stringify(value))];
-}
-
-function scripted(handlers: Handler[]) {
-  const calls: { url: string; method: string; params: Record<string, unknown> }[] = [];
-  const fetchFn: typeof fetch = async (input, init) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const body = JSON.parse(String(init?.body)) as {
-      method: string;
-      params: Record<string, unknown>;
-    };
-    calls.push({ url, method: body.method, params: body.params });
-    const handler = handlers[Math.min(calls.length - 1, handlers.length - 1)];
-    if (handler === undefined) throw new Error("no handler");
-    return handler(url, body);
-  };
-  return { fetchFn, calls };
-}
-
-function client(urls: string[], handlers: Handler[], sleeps: number[] = []) {
-  const s = scripted(handlers);
-  const rpc = new RpcClient({
-    urls,
-    fetch: s.fetchFn,
-    maxRounds: 2,
-    baseDelayMs: 100,
-    maxDelayMs: 1000,
-    sleep: async (ms) => {
-      sleeps.push(ms);
-    },
-  });
-  return { rpc, calls: s.calls, sleeps };
-}
-
-const ok =
-  (result: unknown): Handler =>
-  () =>
-    json({ jsonrpc: "2.0", id: "1", result });
+import { bytesOf, client, json, ok, scripted } from "./helpers/rpc-fakes.js";
 
 describe("RpcClient failover and backoff", () => {
   it("fails over on HTTP 429 and honours Retry-After", async () => {
