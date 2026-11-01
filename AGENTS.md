@@ -48,3 +48,24 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
 2. Never commit secrets. `.env.example` lists every variable. Real values live in `.env`, which git ignores.
 3. Names, JSON shapes, error codes and constants come from `docs/specs/2026-10-21-probarion-interfaces.md`.
 4. Test first. `pnpm verify` stays green on every commit.
+
+## Reproducible builds and code hashes
+
+- The reproducible build runs in CI only: job `reproducible` (ubuntu, Docker, `sourcescan/cargo-near:0.22.0-rust-1.99.1`, pinned by digest in `contracts/vault/Cargo.toml`). The local Windows build (`pnpm contracts:build`, `--no-abi`) has no Docker and is never a source of code hashes.
+- `bash scripts/build-reproducible.sh vault probarion_vault` is the build the job runs. It builds the committed source in Docker and writes `contracts/target/reproducible/vault/probarion_vault.wasm` plus `probarion_vault.build-info.json` (crate, commit, source keys, code_hash, sha256). It prints the NEAR code hash.
+- The job uploads both files as the artifact `probarion-vault-wasm`. Its run summary shows the build-info.
+- A reproducible wasm embeds the git commit it was built from (NEP-330 `source_code_snapshot`). The same source built at two commits has two code hashes, so a recorded hash is reproduced by rebuilding the recorded commit.
+- `contracts/code-hashes.json` records, per exact source (git tree of the crate, `contracts/Cargo.toml`, `contracts/Cargo.lock`), the `commit` and the `code_hash` of its reproducible build. Plan 03's verifier reads `entries[].code_hash` as `expected_code_hashes`.
+- Once the vault source is recorded, CI rebuilds the recorded commit (not HEAD) and fails on a hash mismatch. On `v*` tags it also fails if the source is not recorded. While the source is not recorded, CI warns, builds HEAD and uploads it to be recorded.
+- Record a hash (from a CI push run, never a pull_request run):
+
+  ```bash
+  gh run download <run-id> -n probarion-vault-wasm -D <dir>
+  node scripts/code-hash.mjs record probarion-vault vault <dir>/probarion_vault.wasm
+  node scripts/code-hash.mjs check probarion-vault vault <dir>/probarion_vault.wasm
+  git add contracts/code-hashes.json && git commit -m "chore: record probarion-vault reproducible code hash"
+  ```
+
+- **R9:** any change to `contracts/vault`, `contracts/Cargo.toml` or `contracts/Cargo.lock` makes the record stale. Re-record right after the push that changes them: take the artifact of that push run and run `record`. Until then CI warns "not recorded" and a `v*` tag fails.
+- Every deploy uses only a CI-built reproducible wasm whose `code_hash` is in `contracts/code-hashes.json` (`check` passes). A deploy script may fall back to a local non-reproducible build only when `ALLOW_NON_REPRODUCIBLE=1` is set, with a loud warning. The testnet smoke may set it; mainnet never may.
+- Compare a deployed contract: `curl -s https://rpc.mainnet.fastnear.com -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"query","params":{"request_type":"view_account","finality":"final","account_id":"v0.probarion.near"}}' | jq -r .result.code_hash`
