@@ -12,6 +12,7 @@ pub mod events;
 pub mod ext;
 mod keys;
 mod mandates;
+mod spend;
 #[cfg(test)]
 mod test_utils;
 pub mod types;

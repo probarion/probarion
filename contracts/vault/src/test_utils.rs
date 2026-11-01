@@ -356,3 +356,44 @@ pub fn check(c: Case) -> Verdict {
     as_agent(signer.clone(), now);
     v.check_spend(req, signer)
 }
+
+/// Runs `spend` exactly as the agent key would: predecessor = vault, signer = `c.signer`.
+pub fn run_spend(c: Case) {
+    let Case {
+        mut v,
+        req,
+        signer,
+        now,
+    } = c;
+    as_agent(signer, now);
+    let _ = v.spend(req);
+}
+
+/// The agent spends `amount` on `mandate_id` (invoice `hex(n)`, ref `INV-n`). Returns the spend id.
+pub fn spend_ok(v: &mut Vault, mandate_id: u64, amount: u128, n: u8, now: u64) -> u64 {
+    as_agent(agent_pk(), now);
+    let _ = v.spend(req(mandate_id, amount, n));
+    u64::from(v.spends.len())
+}
+
+/// The `ft_transfer` callback at time `now`.
+pub fn resolve_transfer_at(v: &mut Vault, spend_id: u64, ok: bool, now: u64) -> SpendResult {
+    set_ctx_with_result(
+        now,
+        if ok {
+            PromiseResult::Successful(vec![])
+        } else {
+            PromiseResult::Failed
+        },
+    );
+    v.on_transfer(spend_id)
+}
+
+pub fn resolve_transfer(v: &mut Vault, spend_id: u64, ok: bool) -> SpendResult {
+    resolve_transfer_at(v, spend_id, ok, T0 + 2)
+}
+
+pub fn resolve_withdraw(v: &mut Vault, spend_id: u64, result: PromiseResult) -> SpendResult {
+    set_ctx_with_result(T0 + 2, result);
+    v.on_withdraw(spend_id)
+}
