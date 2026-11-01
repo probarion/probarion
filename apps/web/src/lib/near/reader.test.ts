@@ -278,6 +278,30 @@ describe("access keys", () => {
       ["a negative allowance", { FunctionCall: fc({ allowance: "-1" }) }],
       ["a GasKeyFunctionCall without method_names", { GasKeyFunctionCall: { receiver_id: VAULT } }],
       ["a GasKeyFullAccess that is not an object", { GasKeyFullAccess: "x" }],
+      ["a GasKeyFullAccess without balance", { GasKeyFullAccess: { num_nonces: 1 } }],
+      ["a GasKeyFullAccess without num_nonces", { GasKeyFullAccess: { balance: "1" } }],
+      [
+        "a GasKeyFullAccess with a numeric balance",
+        { GasKeyFullAccess: { balance: 1000, num_nonces: 1 } },
+      ],
+      [
+        "a GasKeyFullAccess with a non-decimal balance",
+        { GasKeyFullAccess: { balance: "1.5", num_nonces: 1 } },
+      ],
+      [
+        "a GasKeyFullAccess with a fractional num_nonces",
+        { GasKeyFullAccess: { balance: "1", num_nonces: 1.5 } },
+      ],
+      [
+        "a GasKeyFullAccess with a negative num_nonces",
+        { GasKeyFullAccess: { balance: "1", num_nonces: -1 } },
+      ],
+      ["a GasKeyFunctionCall without balance", { GasKeyFunctionCall: fc({ num_nonces: 1 }) }],
+      ["a GasKeyFunctionCall without num_nonces", { GasKeyFunctionCall: fc({ balance: "1" }) }],
+      ["a lower-case fullaccess", "fullaccess"],
+      ["an upper-case FULLACCESS", "FULLACCESS"],
+      ["a lower-case functionCall", { functionCall: fc() }],
+      ["a lower-case gaskeyfullaccess", { gaskeyfullaccess: { balance: "1", num_nonces: 1 } }],
     ])("rejects %s, as an rpc error and never as full access", async (_label, permission) => {
       const { reader } = readerWith([keyResult(permission)]);
       const error = await reader.accessKey(VAULT, "ed25519:pk").catch((e: unknown) => e);
@@ -318,14 +342,37 @@ describe("access keys", () => {
       expect((await reader.accessKey("nobody.near", "ed25519:x")).exists).toBe(false);
     });
 
-    it("is not reported for any other result.error: that is a contract or rpc error", async () => {
-      const other = readerWith([legacyErr("access key lookup refused for policy reasons")]);
-      const error = await other.reader.accessKey(VAULT, "ed25519:x").catch((e: unknown) => e);
+    it.each([
+      "xx access key ed25519:x does not exist while viewing yy",
+      "xx access key ed25519:x does not exist while viewing",
+      "access key ed25519:x does not exist while viewing yy",
+      "Access key ed25519:x does not exist while viewing",
+      "access key ed25519:x DOES NOT EXIST while viewing",
+      "xx account nobody.near does not exist while viewing yy",
+      "Account nobody.near does not exist while viewing",
+    ])("is only reported for the exact phrase, not for %j", async (text) => {
+      const { reader } = readerWith([legacyErr(text)]);
+      const error = await reader.accessKey(VAULT, "ed25519:x").catch((e: unknown) => e);
       expect(error).toBeInstanceOf(ViewError);
-      expect(chainErrorKind(error)).toBe("contract");
+    });
 
-      const unwell = readerWith([legacyErr("internal error: shard is not synced")]);
-      expect(await kindOf(unwell.reader.accessKey(VAULT, "ed25519:x"))).toBe("rpc");
+    it.each([
+      ["a gateway's refusal", "Unauthorized: invalid API key"],
+      ["a policy text", "access key lookup refused for policy reasons"],
+      ["a node problem", "internal error: shard is not synced"],
+      ["an empty text", ""],
+    ])("does not read %s as an answer about the key: rpc", async (_label, text) => {
+      const { reader } = readerWith([legacyErr(text)]);
+      const error = await reader.accessKey(VAULT, "ed25519:x").catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ViewError);
+      expect(chainErrorKind(error)).toBe("rpc");
+    });
+
+    it("reads another recognised target phrase from view_access_key as a contract error", async () => {
+      const { reader } = readerWith([
+        legacyErr("contract code of account v.near has not been deployed"),
+      ]);
+      expect(await kindOf(reader.accessKey(VAULT, "ed25519:x"))).toBe("contract");
     });
 
     it("does not turn a provider outage into a missing key", async () => {

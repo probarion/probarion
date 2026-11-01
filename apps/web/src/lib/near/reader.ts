@@ -84,10 +84,6 @@ const CONTRACT_CAUSES: ReadonlySet<string> = new Set([
 const LEGACY_CONTRACT_ERROR =
   /wasm execution failed|Smart contract panicked|PROBARION:|has not been deployed|does not exist while viewing|MethodNotFound|CompilationError/;
 
-/** A `result.error` text that is about the node, not about the queried target. */
-const NODE_PROBLEM =
-  /internal error|timeout|timed out|unavailable|not (?:fully )?synced|too many requests|rate.?limit|overloaded/i;
-
 /** nearcore's `result.error` for a view_access_key / view_account whose target is not there. */
 const MISSING_KEY = /^access key (.*?) does not exist while viewing$/;
 const MISSING_ACCOUNT = /^account (.*?) does not exist while viewing$/;
@@ -123,11 +119,12 @@ export function chainErrorKind(error: unknown): ChainErrorKind | null {
   if (error.rpcError !== null) {
     const cause = rpcCauseName(error.rpcError);
     if (cause !== null) return CONTRACT_CAUSES.has(cause) ? "contract" : "rpc";
-    // No cause: the raw answer is a legacy `{ error: "..." }` result. It is about the target unless
-    // its text says the node itself is in trouble.
+    // No cause: the raw answer is a legacy `{ error: "..." }` result. The same direction as for a
+    // view: it is a definite answer about the target only when its text is a recognised target
+    // phrase. Anything else (an empty text, a gateway's "Unauthorized: invalid API key") says
+    // nothing about the target and stays "rpc".
     const text = legacyResultText(error.rpcError);
-    if (text !== null) return NODE_PROBLEM.test(text) ? "rpc" : "contract";
-    return "rpc";
+    return text !== null && LEGACY_CONTRACT_ERROR.test(text) ? "contract" : "rpc";
   }
   if (error instanceof ViewError) {
     // No JSON-RPC error: either the contract's panic text came back in `result.error`, or the
@@ -188,10 +185,23 @@ function scopedKey(
   };
 }
 
+/** The fields a gas key adds: `balance` (yoctoNEAR, decimal string) and `num_nonces` (a count). */
+function hasGasKeyFields(body: Record<string, unknown>): boolean {
+  const { balance, num_nonces: numNonces } = body;
+  return (
+    typeof balance === "string" &&
+    /^\d+$/.test(balance) &&
+    typeof numNonces === "number" &&
+    Number.isSafeInteger(numNonces) &&
+    numNonces >= 0
+  );
+}
+
 /**
- * Reads `AccessKeyPermissionView`, which has exactly four variants (near-api-js 7.4). Anything else,
- * and any variant whose fields are not what the type says, is null: the caller fails closed, so
- * an unknown shape is never reported as full access (or as scoped).
+ * Reads `AccessKeyPermissionView`, which has exactly four variants (near-api-js 7.4), matched by
+ * exact, case-sensitive name. Every field of every variant is checked against the type; anything
+ * else, and any variant whose fields are not what the type says, is null: the caller fails closed,
+ * so an unknown shape is never reported as full access (or as scoped).
  */
 function parsePermission(permission: unknown): AccessKeyState | null {
   if (permission === "FullAccess") return fullAccess("FullAccess");
@@ -203,10 +213,11 @@ function parsePermission(permission: unknown): AccessKeyState | null {
   if (!isRecord(body)) return null;
   switch (kind) {
     case "GasKeyFullAccess":
-      return fullAccess("GasKeyFullAccess");
+      return hasGasKeyFields(body) ? fullAccess("GasKeyFullAccess") : null;
     case "FunctionCall":
-    case "GasKeyFunctionCall":
       return scopedKey(kind, body);
+    case "GasKeyFunctionCall":
+      return hasGasKeyFields(body) ? scopedKey(kind, body) : null;
     default:
       return null;
   }
