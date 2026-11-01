@@ -17,6 +17,10 @@ pub const MAX_NOTES: usize = 256;
 pub const MAX_PAGE: u64 = 100;
 /// Same cap as the vault's `MAX_ASSETS`: a vault refuses more allowed assets in its `new`.
 pub const MAX_ASSETS: usize = 10;
+/// Mirrors the vault's `MAX_APPROVERS` (`contracts/vault/src/lib.rs`): its `new` refuses more.
+pub const MAX_APPROVERS: usize = 10;
+/// Mirrors the vault's `MAX_HELD_TTL_NS` (30 days): its `new` refuses a longer held TTL.
+pub const MAX_HELD_TTL_NS: u64 = 30 * 86_400 * 1_000_000_000;
 const CODE_PREFIX: &[u8] = b"code:";
 pub const GAS_VAULT_NEW: Gas = Gas::from_tgas(30);
 pub const GAS_ON_VAULT_CREATED: Gas = Gas::from_tgas(15);
@@ -30,6 +34,16 @@ pub fn valid_name(name: &str) -> bool {
         && b[1..]
             .iter()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_' || *c == b'-')
+}
+
+/// The vault's `new` bounds, checked before anything is created: 1 to `MAX_APPROVERS` approvers, a
+/// positive `daily_backstop`, and a `held_ttl_ns` in `1..=MAX_HELD_TTL_NS`.
+pub fn valid_vault_init(approvers: &[AccountId], daily_backstop: U128, held_ttl_ns: U64) -> bool {
+    !approvers.is_empty()
+        && approvers.len() <= MAX_APPROVERS
+        && daily_backstop.0 > 0
+        && held_ttl_ns.0 > 0
+        && held_ttl_ns.0 <= MAX_HELD_TTL_NS
 }
 
 /// Aborts with `PROBARION:<code>`. The factory reuses the vault codes NotOwner, InvalidInput
@@ -315,6 +329,13 @@ impl Factory {
         if !valid_name(&name) {
             fail("InvalidInput")
         }
+        // The vault's `new` refuses these inits. A refusal there rolls the batch back and the
+        // owner's deposit is then refunded from the factory's own balance, which may not hold it
+        // (see `on_vault_created`). So refuse here, before anything is created. A taken name is
+        // the one failure that cannot be checked from here.
+        if !valid_vault_init(&approvers, daily_backstop, held_ttl_ns) {
+            fail("InvalidInput")
+        }
         let account_id = Self::vault_account_id(&name);
         let (index, version) = self
             .current_version()
@@ -367,8 +388,12 @@ impl Factory {
             env::promise_result_checked(0, 64),
             Err(PromiseError::Failed)
         ) {
-            // The batch rolled back (for example, the name was taken): give the deposit back.
-            // This comes before any parsing so that the refund cannot depend on `name`.
+            // The batch rolled back (in practice the name was taken, because `create_vault`
+            // pre-validates the vault's init bounds): give the deposit back. The runtime's own
+            // refund of the failed transfer may land after this callback, so this transfer is paid
+            // from the factory's balance, and the factory has to keep a float above its storage
+            // stake (docs/runbooks/factory.md). This comes before any parsing so that the refund
+            // cannot depend on `name`.
             Promise::new(owner)
                 .transfer(NearToken::from_yoctonear(deposit.0))
                 .detach();

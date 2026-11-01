@@ -297,6 +297,30 @@ fn create(f: &mut Factory, name: &str, deposit: u128) {
     );
 }
 
+/// `create_vault` on a global-mode factory ("acme", 2 NEAR attached) with the given vault init
+/// bounds.
+fn create_bounded(
+    f: &mut Factory,
+    approvers: Vec<AccountId>,
+    daily_backstop: u128,
+    held_ttl_ns: u64,
+) {
+    ctx(user(), 2 * ONE_NEAR);
+    let _ = f.create_vault(
+        "acme".to_string(),
+        approvers,
+        U128(daily_backstop),
+        U64(held_ttl_ns),
+    );
+}
+
+fn approvers(n: usize) -> Vec<AccountId> {
+    (0..n).map(|i| acc(&format!("approver{i}.near"))).collect()
+}
+
+/// The vault's `MAX_HELD_TTL_NS` spelled out, so that the factory's mirror of it is pinned.
+const THIRTY_DAYS_NS: u64 = 30 * 86_400 * 1_000_000_000;
+
 /// The context of `on_vault_created`: the factory calling itself, with the batch's `result`.
 fn callback_ctx(result: PromiseResult) {
     testing_env!(
@@ -477,6 +501,57 @@ bad_name! {
     rejects_a_dot: "ac.me",
     rejects_32_characters: &"a".repeat(32),
     rejects_a_trailing_dash_that_is_not_a_valid_account: "acme-",
+}
+
+// The vault's `new` refuses these inits, which would roll the batch back and leave the refund to
+// the factory's own balance: `create_vault` has to refuse them first, before it creates anything.
+macro_rules! bad_init {
+    ($($test:ident: $approvers:expr, $backstop:expr, $ttl:expr,)*) => {$(
+        #[test]
+        #[should_panic(expected = "PROBARION:InvalidInput")]
+        fn $test() {
+            let (mut f, _) = with_version("global");
+            create_bounded(&mut f, $approvers, $backstop, $ttl);
+        }
+    )*};
+}
+
+bad_init! {
+    refuses_no_approvers: Vec::new(), 500_000_000, 3_600_000_000_000,
+    refuses_11_approvers: approvers(11), 500_000_000, 3_600_000_000_000,
+    refuses_a_zero_daily_backstop: approvers(1), 0, 3_600_000_000_000,
+    refuses_a_zero_held_ttl: approvers(1), 500_000_000, 0,
+    refuses_a_held_ttl_of_30_days_and_1_ns: approvers(1), 500_000_000, THIRTY_DAYS_NS + 1,
+    refuses_a_huge_held_ttl: approvers(1), 500_000_000, u64::MAX,
+}
+
+#[test]
+fn accepts_10_approvers_and_a_held_ttl_of_exactly_30_days() {
+    let (mut f, _) = with_version("global");
+    create_bounded(&mut f, approvers(10), 500_000_000, THIRTY_DAYS_NS);
+    let actions = actions_to("acme.vaults.near");
+    assert_eq!(actions.len(), 4, "the vault is created in full");
+    assert_no_keys(&actions);
+}
+
+#[test]
+fn accepts_the_smallest_valid_bounds() {
+    let (mut f, _) = with_version("global");
+    create_bounded(&mut f, approvers(1), 1, 1);
+    assert_eq!(actions_to("acme.vaults.near").len(), 4);
+}
+
+#[test]
+fn a_refused_init_creates_nothing() {
+    let (mut f, _) = with_version("global");
+    let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        create_bounded(&mut f, Vec::new(), 500_000_000, 3_600_000_000_000);
+    }));
+    assert!(refused.is_err(), "no approvers is refused");
+    assert!(
+        get_created_receipts().is_empty(),
+        "no receipt, so no refund to owe"
+    );
 }
 
 #[test]
