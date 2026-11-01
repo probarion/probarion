@@ -6,6 +6,7 @@ use near_sdk::json_types::{U128, U64};
 use near_sdk::store::{LookupMap, LookupSet, Vector};
 use near_sdk::{env, near, AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, PublicKey};
 
+mod admin;
 pub mod checks;
 pub mod errors;
 pub mod events;
