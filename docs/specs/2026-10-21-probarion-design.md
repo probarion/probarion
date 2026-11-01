@@ -239,7 +239,7 @@ await pb.verify({ account: "acme.vaults.probarion.near" });
 
 The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
 
-1. Compute `nonce = sha256("probarion/v1" ‖ prev_link ‖ invoice_hash ‖ mandate_id ‖ seq)`, then fetch the model's attestation report with that nonce.
+1. Compute `nonce = sha256("probarion/v1" ‖ prev_link ‖ invoice_hash ‖ mandate_id ‖ seq ‖ u32be(len) ‖ vault)` (exact byte layout: interfaces §6; the vault account id is bound in by ICR-1), then fetch the model's attestation report with that nonce.
 2. Call a **Private TEE** model on NEAR AI Cloud with `x-no-aliasing: true`. The invoice text is passed as data, and the output is structured (`pay | hold | refuse`, `mandate_id`, `amount`, `reasoning`, `confidence`). Fetch the `provider_tee` signature immediately, because its retention period is not published.
 3. Run the rules: `mandate.none`, `mandate.payee_mismatch`, `mandate.over_total`, `invoice.duplicate`, `invoice.po_mismatch`, `model.attestation_invalid`, `model.low_confidence`, `intents.balance_low`. Then call `check_spend`.
 4. Submit `spend` with the agent FC key. The contract re-checks everything.
