@@ -262,3 +262,11 @@ pub fn create(v: &mut Vault, input: MandateInput) -> u64 {
     as_owner(NearToken::from_near(1));
     v.create_mandate(input)
 }
+
+/// `setup()` plus the agent key `agent_pk()` (1 NEAR allowance).
+pub fn setup_with_agent() -> Vault {
+    let mut v = setup();
+    as_owner(ONE_YOCTO);
+    v.add_agent(agent_pk(), U128(ONE_NEAR), "agent".to_string());
+    v
+}

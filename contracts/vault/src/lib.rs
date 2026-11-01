@@ -9,6 +9,7 @@ use near_sdk::{env, near, AccountId, BorshStorageKey, Gas, NearToken, PanicOnDef
 pub mod errors;
 pub mod events;
 pub mod ext;
+mod keys;
 mod mandates;
 #[cfg(test)]
 mod test_utils;
