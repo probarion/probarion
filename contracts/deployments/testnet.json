@@ -10,16 +10,16 @@
     "factory": "vaults.probarion.testnet"
   },
   "protocol_versions": {
-    "testnet": null,
-    "mainnet": null
+    "testnet": 88,
+    "mainnet": 86
   },
   "vault_v0": {
-    "code_hash": null,
-    "locked": false
+    "code_hash": "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
+    "locked": true
   },
   "smoke": {
-    "near_payment_tx": null,
-    "base_burn_tx": null,
+    "near_payment_tx": "3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX",
+    "base_burn_tx": "3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe",
     "no_mandate_tx": null
   }
 }
