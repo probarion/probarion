@@ -3,8 +3,12 @@
 //! modify, upgrade or take funds from any vault it created. ABI: interfaces §5.
 use near_sdk::borsh::BorshSerialize;
 use near_sdk::json_types::{Base58CryptoHash, U128, U64};
+use near_sdk::serde_json::json;
 use near_sdk::store::{LookupMap, Vector};
-use near_sdk::{env, near, AccountId, BorshStorageKey, CryptoHash, PanicOnDefault};
+use near_sdk::{
+    env, near, AccountId, BorshStorageKey, CryptoHash, Gas, NearToken, PanicOnDefault, Promise,
+    PromiseError,
+};
 
 #[cfg(test)]
 mod tests;
@@ -12,6 +16,19 @@ mod tests;
 pub const MAX_NOTES: usize = 256;
 pub const MAX_PAGE: u64 = 100;
 const CODE_PREFIX: &[u8] = b"code:";
+pub const GAS_VAULT_NEW: Gas = Gas::from_tgas(30);
+pub const GAS_ON_VAULT_CREATED: Gas = Gas::from_tgas(15);
+
+/// `^[a-z0-9][a-z0-9_-]{1,30}$` (interfaces §5). NEAR account-id rules (for example, no
+/// trailing `-`) are checked when `<name>.<factory>` is parsed.
+pub fn valid_name(name: &str) -> bool {
+    let b = name.as_bytes();
+    (2..=31).contains(&b.len())
+        && (b[0].is_ascii_lowercase() || b[0].is_ascii_digit())
+        && b[1..]
+            .iter()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_' || *c == b'-')
+}
 
 /// Aborts with `PROBARION:<code>`. The factory reuses the vault codes NotOwner, InvalidInput
 /// and InsufficientDeposit.
@@ -244,6 +261,17 @@ impl Factory {
         }
     }
 
+    /// Global: `min_deposit`. Embedded: also the storage for the vault's copy of the code.
+    fn required_deposit(&self, version: &Version) -> u128 {
+        match version.mode {
+            Mode::Global => self.min_deposit,
+            Mode::Embedded => {
+                self.min_deposit
+                    + env::storage_byte_cost().as_yoctonear() * u128::from(version.code_len)
+            }
+        }
+    }
+
     pub fn internal_store_code(&mut self, code: &[u8]) -> String {
         if code.is_empty() {
             fail("InvalidInput")
@@ -251,5 +279,102 @@ impl Factory {
         let hash = env::sha256_array(code);
         env::storage_write(&code_key(&hash), code);
         Base58CryptoHash::from(hash).to_string()
+    }
+}
+
+#[near]
+impl Factory {
+    /// Creates `<name>.<factory>` for the caller (the new vault's owner). The account gets no keys (I9).
+    #[payable]
+    pub fn create_vault(
+        &mut self,
+        name: String,
+        approvers: Vec<AccountId>,
+        daily_backstop: U128,
+        held_ttl_ns: U64,
+    ) -> Promise {
+        if !valid_name(&name) {
+            fail("InvalidInput")
+        }
+        let account_id: AccountId = format!("{name}.{}", env::current_account_id())
+            .parse()
+            .unwrap_or_else(|_| fail("InvalidInput"));
+        let index = self.versions.len();
+        let version = index
+            .checked_sub(1)
+            .and_then(|i| self.versions.get(i))
+            .cloned()
+            .unwrap_or_else(|| fail("InvalidInput"));
+        let deposit = env::attached_deposit();
+        if deposit.as_yoctonear() < self.required_deposit(&version) {
+            fail("InsufficientDeposit")
+        }
+        let owner = env::predecessor_account_id();
+        let init = json!({
+            "owner": owner,
+            "approvers": approvers,
+            "usdc": self.usdc,
+            "intents": self.intents,
+            "allowed_assets": self.allowed_assets,
+            "daily_backstop": daily_backstop,
+            "held_ttl_ns": held_ttl_ns,
+        });
+        let batch = Promise::new(account_id).create_account().transfer(deposit);
+        let batch = match version.mode {
+            Mode::Global => batch.use_global_contract(version.code_hash),
+            Mode::Embedded => batch.deploy_contract(
+                env::storage_read(&code_key(&version.code_hash))
+                    .unwrap_or_else(|| fail("InvalidInput")),
+            ),
+        };
+        batch
+            .function_call(
+                "new",
+                init.to_string().into_bytes(),
+                NearToken::from_yoctonear(0),
+                GAS_VAULT_NEW,
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_ON_VAULT_CREATED)
+                    .on_vault_created(name, owner, U128(deposit.as_yoctonear()), index),
+            )
+    }
+
+    #[private]
+    pub fn on_vault_created(
+        &mut self,
+        name: String,
+        owner: AccountId,
+        deposit: U128,
+        version: u32,
+    ) -> Option<AccountId> {
+        let account_id: AccountId = format!("{name}.{}", env::current_account_id())
+            .parse()
+            .unwrap_or_else(|_| fail("InvalidInput"));
+        if matches!(
+            env::promise_result_checked(0, 64),
+            Err(PromiseError::Failed)
+        ) {
+            // The batch rolled back (for example, the name was taken): give the deposit back.
+            Promise::new(owner)
+                .transfer(NearToken::from_yoctonear(deposit.0))
+                .detach();
+            return None;
+        }
+        self.vaults.push(VaultRecord {
+            account_id: account_id.clone(),
+            owner: owner.clone(),
+            version,
+            created_at_ns: U64(env::block_timestamp()),
+        });
+        self.vault_index.insert(account_id.clone(), version);
+        FactoryEvent::VaultCreated {
+            account_id: account_id.clone(),
+            owner,
+            version,
+        }
+        .emit();
+        Some(account_id)
     }
 }
