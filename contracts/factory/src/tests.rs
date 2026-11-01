@@ -594,3 +594,64 @@ fn list_vaults_pages_through_the_created_vaults() {
     // The limit is capped at MAX_PAGE (100); with 3 records the oversized limit returns all 3.
     assert_eq!(f.list_vaults(0, 1000).len(), 3);
 }
+
+#[test]
+fn publish_global_deploys_the_current_embedded_code_as_a_global_contract() {
+    let (mut f, _) = with_version("embedded");
+    let _ = f.publish_global();
+    let actions = actions_to("vaults.near");
+    match &actions[..] {
+        [MockAction::DeployGlobalContract { code, mode, .. }] => {
+            assert_eq!(code.as_slice(), WASM);
+            // By code hash (NEP-591): immutable, and identified by the hash rather than by the
+            // factory's account id (which would let the factory replace the code later).
+            assert_eq!(
+                near_sdk::serde_json::to_value(mode).unwrap(),
+                json!("CodeHash")
+            );
+        }
+        other => panic!("expected exactly one DeployGlobalContract, got {other:?}"),
+    }
+    assert_eq!(get_created_receipts().len(), 1, "no other receipt");
+}
+
+#[test]
+#[should_panic(expected = "PROBARION:InvalidInput")]
+fn publish_global_needs_an_embedded_current_version() {
+    // The current version is the last one: an earlier embedded version does not count. The same
+    // hash is registered as global, so its wasm is still stored and only the mode refuses.
+    let (mut f, hash) = with_version("embedded");
+    f.add_version(hash, "global".to_string(), String::new());
+    let _ = f.publish_global();
+}
+
+#[test]
+#[should_panic(expected = "PROBARION:InvalidInput")]
+fn publish_global_needs_a_version() {
+    let mut f = new_factory();
+    let _ = f.publish_global();
+}
+
+#[test]
+#[should_panic(expected = "PROBARION:NotOwner")]
+fn only_the_factory_owner_publishes_global_code() {
+    let (mut f, _) = with_version("embedded");
+    ctx(user(), 1);
+    let _ = f.publish_global();
+}
+
+#[test]
+#[should_panic(expected = "PROBARION:RequiresOneYocto")]
+fn publish_global_requires_one_yocto() {
+    let (mut f, _) = with_version("embedded");
+    ctx(owner(), 0);
+    let _ = f.publish_global();
+}
+
+#[test]
+#[should_panic(expected = "PROBARION:RequiresOneYocto")]
+fn publish_global_with_two_yocto_is_refused() {
+    let (mut f, _) = with_version("embedded");
+    ctx(owner(), 2);
+    let _ = f.publish_global();
+}

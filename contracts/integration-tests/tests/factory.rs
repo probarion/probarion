@@ -1,12 +1,13 @@
-//! Sandbox proof for the factory (I9): a vault it creates has no access keys, runs exactly the code
-//! the factory stored and got the factory config. Embedded mode only: near-workspaces 0.23 has no
-//! `DeployGlobalContract` action, so global mode is proven by the unit tests and on testnet
-//! (docs/runbooks/factory.md). Build the wasm first: `bash scripts/build-contracts.sh`.
+//! Sandbox proof for the factory (I9): a vault it creates has no access keys, runs the code the
+//! factory holds and got the factory config. Embedded mode runs the wasm stored in the factory.
+//! Global mode (the primary one) uses the code the factory publishes itself with `publish_global`,
+//! because near-workspaces 0.23 has no client-side `DeployGlobalContract` action.
+//! Build the wasm first: `bash scripts/build-contracts.sh`.
 use anyhow::Result;
 use integration_tests::*;
 use near_workspaces::network::Sandbox;
 use near_workspaces::types::{Gas, NearToken};
-use near_workspaces::{Account, AccountId, Contract, Worker};
+use near_workspaces::{Account, AccountId, Contract, ContractState, CryptoHash, Worker};
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
@@ -19,6 +20,8 @@ struct FactoryEnv {
     factory: Contract,
     /// The vault wasm the factory stored.
     code: Vec<u8>,
+    /// Its base58 sha256, as `store_code` returned it.
+    hash: String,
 }
 
 async fn factory_with_embedded_version() -> Result<FactoryEnv> {
@@ -26,7 +29,8 @@ async fn factory_with_embedded_version() -> Result<FactoryEnv> {
     let root = worker.root_account()?;
     let factory_owner = subaccount(&root, "factory-owner", 20).await?;
     let user = subaccount(&root, "alice", 30).await?;
-    let factory = deploy(&root, "vaults", "probarion_factory", 30).await?;
+    // The factory also pays the global publish (about 24.9 NEAR for the 248,501-byte vault wasm).
+    let factory = deploy(&root, "vaults", "probarion_factory", 100).await?;
     let init = json!({
         "owner": factory_owner.id(),
         "usdc": "usdc.test.near",
@@ -60,6 +64,7 @@ async fn factory_with_embedded_version() -> Result<FactoryEnv> {
         user,
         factory,
         code,
+        hash,
     })
 }
 
@@ -209,5 +214,66 @@ async fn a_deposit_below_the_embedded_requirement_is_refused() -> Result<()> {
     assert!(rejection(&outcome)
         .expect("1 NEAR cannot cover the wasm storage")
         .contains("PROBARION:InsufficientDeposit"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn publish_global_lets_the_factory_create_vaults_from_the_global_code() -> Result<()> {
+    let env = factory_with_embedded_version().await?;
+    let published = env
+        .factory_owner
+        .call(env.factory.id(), "publish_global")
+        .deposit(ONE_YOCTO)
+        .gas(Gas::from_tgas(300))
+        .transact()
+        .await?;
+    assert!(published.is_success(), "{published:?}");
+    let version = json!({"code_hash": env.hash, "mode": "global", "notes": "sandbox global"});
+    let _ = ok(
+        &env.factory_owner,
+        env.factory.id(),
+        "add_version",
+        version,
+        ONE_YOCTO,
+    )
+    .await?;
+
+    let created = call(
+        &env.user,
+        env.factory.id(),
+        "create_vault",
+        create_args("acme-global", env.factory_owner.id()),
+        NearToken::from_near(2),
+    )
+    .await?;
+    assert!(created.is_success(), "{created:?}");
+    let vault_id: AccountId = format!("acme-global.{}", env.factory.id()).parse()?;
+    // A rolled-back batch still ends in a successful call that returns null, so check the id.
+    // `json` consumes the result, so this comes after the last use of `created`.
+    assert_eq!(
+        created.json::<Option<String>>()?,
+        Some(vault_id.to_string()),
+        "the global creation was rolled back"
+    );
+    assert!(
+        env.worker.view_access_keys(&vault_id).await?.is_empty(),
+        "a factory vault must have no access keys"
+    );
+    // The account uses the global code published by hash, not a copy of the wasm.
+    let state = env.worker.view_account(&vault_id).await?.contract_state;
+    assert_eq!(
+        state,
+        ContractState::GlobalHash(env.hash.parse::<CryptoHash>()?),
+        "expected a vault that uses the global code"
+    );
+    // new() ran: the vault has the caller as owner and the factory recorded.
+    let config: Value = env
+        .worker
+        .view(&vault_id, "get_config")
+        .args_json(json!({}))
+        .await?
+        .json()?;
+    assert_eq!(config["owner"], json!(env.user.id()));
+    assert_eq!(config["factory"], json!(env.factory.id()));
     Ok(())
 }

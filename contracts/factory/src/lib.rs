@@ -273,6 +273,13 @@ impl Factory {
             .unwrap_or_else(|_| fail("InvalidInput"))
     }
 
+    /// The current version (the last one registered) and its index (position + 1), if any.
+    fn current_version(&self) -> Option<(u32, Version)> {
+        let index = self.versions.len();
+        let version = index.checked_sub(1).and_then(|i| self.versions.get(i))?;
+        Some((index, version.clone()))
+    }
+
     /// Global: `min_deposit`. Embedded: also the storage for the vault's copy of the code.
     fn required_deposit(&self, version: &Version) -> u128 {
         match version.mode {
@@ -309,11 +316,8 @@ impl Factory {
             fail("InvalidInput")
         }
         let account_id = Self::vault_account_id(&name);
-        let index = self.versions.len();
-        let version = index
-            .checked_sub(1)
-            .and_then(|i| self.versions.get(i))
-            .cloned()
+        let (index, version) = self
+            .current_version()
             .unwrap_or_else(|| fail("InvalidInput"));
         let deposit = env::attached_deposit();
         if deposit.as_yoctonear() < self.required_deposit(&version) {
@@ -385,5 +389,27 @@ impl Factory {
         }
         .emit();
         Some(account_id)
+    }
+}
+
+#[near]
+impl Factory {
+    /// Optional (interfaces v2): deploys the current version's stored wasm as a global contract
+    /// identified by its code hash. The factory pays the burn from its balance (about 10 NEAR per
+    /// 100 KB). Afterwards call `add_version(<same hash>, "global", ...)` to make the global code
+    /// current.
+    #[payable]
+    pub fn publish_global(&mut self) -> Promise {
+        self.assert_owner();
+        require_one_yocto();
+        let (_, version) = self
+            .current_version()
+            .unwrap_or_else(|| fail("InvalidInput"));
+        if version.mode != Mode::Embedded {
+            fail("InvalidInput")
+        }
+        let code = env::storage_read(&code_key(&version.code_hash))
+            .unwrap_or_else(|| fail("InvalidInput"));
+        Promise::new(env::current_account_id()).deploy_global_contract(code)
     }
 }
