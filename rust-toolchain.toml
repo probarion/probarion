@@ -1,0 +1,7 @@
+[toolchain]
+# Stable Rust (interfaces §2: >= 1.93, the rust-version of near-sdk 5.29.1). Pinned to the version
+# spike S3 records, which is also the compiler in sourcescan/cargo-near:0.22.0-rust-1.99.1 (Task 15).
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

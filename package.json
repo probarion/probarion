@@ -1,0 +1,26 @@
+{
+  "name": "probarion",
+  "private": true,
+  "description": "Spend by mandate. Prove every payment.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=10 <11"
+  },
+  "scripts": {
+    "verify": "pnpm run verify:ts",
+    "verify:ts": "pnpm run lint && pnpm run typecheck && pnpm run test",
+    "verify:full": "pnpm run verify && pnpm run contracts:build && pnpm run test:sandbox",
+    "contracts:build": "bash scripts/build-contracts.sh",
+    "test:sandbox": "cargo test --manifest-path contracts/Cargo.toml -p integration-tests -- --test-threads=2",
+    "build": "pnpm -r --if-present run build",
+    "test": "node --test \"scripts/**/*.test.mjs\" && pnpm -r --if-present run test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "pnpm -r --if-present run typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0"
+  }
+}

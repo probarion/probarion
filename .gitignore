@@ -1,0 +1,13 @@
+node_modules/
+target/
+contracts/target/
+dist/
+.next/
+coverage/
+.env
+.env.*
+!.env.example
+.keys/
+.probarion/
+*.pem
+.DS_Store
