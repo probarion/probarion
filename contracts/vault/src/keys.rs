@@ -194,6 +194,40 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "PROBARION:NotOwner")]
+    fn only_the_owner_removes_agents() {
+        let mut v = setup_with_agent();
+        as_account(approver(), T0);
+        v.remove_agent(agent_pk());
+    }
+
+    #[test]
+    #[should_panic(expected = "PROBARION:NotOwner")]
+    fn remove_agent_checks_the_owner_before_the_one_yocto_check() {
+        let mut v = setup_with_agent();
+        set_ctx(approver(), pk(200), yocto(0), T0);
+        v.remove_agent(agent_pk());
+    }
+
+    #[test]
+    #[should_panic(expected = "PROBARION:NotOwner")]
+    fn set_ledger_key_checks_the_owner_before_the_one_yocto_check() {
+        let mut v = setup();
+        set_ctx(approver(), pk(200), yocto(0), T0);
+        v.set_ledger_key(ledger_pk(), U128(ONE_NEAR));
+    }
+
+    #[test]
+    #[should_panic(expected = "PROBARION:InvalidInput")]
+    fn the_ledger_key_cannot_become_an_agent_key() {
+        let mut v = setup();
+        as_owner(ONE_YOCTO);
+        v.set_ledger_key(ledger_pk(), U128(ONE_NEAR));
+        as_owner(ONE_YOCTO);
+        v.add_agent(ledger_pk(), U128(ONE_NEAR), "x".to_string());
+    }
+
+    #[test]
     #[should_panic(expected = "PROBARION:InvalidInput")]
     fn a_zero_allowance_is_refused() {
         let mut v = setup();
