@@ -136,10 +136,79 @@ describe("rotation", () => {
 
   it("gives nothing back when the old master is wrong or the row is damaged", async () => {
     const row = await rowOf(1);
-    await expect(reencryptAgentSecret(NEW, NEW, row)).rejects.toBeInstanceOf(DecryptError);
+    // OLD sealed it, so NEW as the "old master" cannot open it
+    await expect(reencryptAgentSecret(NEW, OLD, row)).rejects.toBeInstanceOf(DecryptError);
     await expect(
       reencryptAgentSecret(OLD, NEW, { ...row, secret_nonce: "AAAA" }),
     ).rejects.toBeInstanceOf(DecryptError);
+  });
+
+  describe("refuses a rotation to the same master", () => {
+    // After a leak an owner pastes the same value as OLD and NEW; every row would then be re-sealed under
+    // the leaked key and look rotated. Nothing may be returned, so no row can be written back.
+    const copy = (k: Uint8Array) => new Uint8Array(k);
+    const caught = async (p: Promise<unknown>) => {
+      try {
+        await p;
+      } catch (e) {
+        return e;
+      }
+      return null;
+    };
+
+    it("for an agent secret, by value and not only by reference", async () => {
+      const row = await rowOf(3);
+      for (const same of [OLD, copy(OLD)]) {
+        const err = await caught(reencryptAgentSecret(OLD, same, row));
+        expect(err).toBeInstanceOf(Error);
+        expect(err).not.toBeInstanceOf(DecryptError);
+        expect((err as Error).message).toMatch(/identical/);
+      }
+    });
+
+    it("for an invoice, by value and not only by reference", async () => {
+      const sealed = await sealInvoice(OLD, "t1", new TextEncoder().encode("INV-3"));
+      for (const same of [OLD, copy(OLD)]) {
+        const err = await caught(reencryptInvoice(OLD, same, "t1", sealed));
+        expect(err).toBeInstanceOf(Error);
+        expect(err).not.toBeInstanceOf(DecryptError);
+        expect((err as Error).message).toMatch(/identical/);
+      }
+    });
+
+    it("before it decrypts anything: a damaged row gets the same refusal, not a DecryptError", async () => {
+      const row = { ...(await rowOf(1)), secret_nonce: "AAAA" };
+      await expect(reencryptAgentSecret(NEW, copy(NEW), row)).rejects.toThrow(/identical/);
+    });
+
+    it("leaves no key material in the message", async () => {
+      const hexOf = (k: Uint8Array) => Buffer.from(k).toString("hex");
+      const b64Of = (k: Uint8Array) => Buffer.from(k).toString("base64");
+      const errors = [
+        await caught(reencryptAgentSecret(OLD, copy(OLD), await rowOf(1))),
+        await caught(
+          reencryptInvoice(OLD, copy(OLD), "t1", await sealInvoice(OLD, "t1", new Uint8Array(1))),
+        ),
+      ] as Error[];
+      for (const err of errors) {
+        expect(err).toBeInstanceOf(Error);
+        const all = `${err.message}|${err.name}|${err.stack ?? ""}`;
+        expect(all).not.toContain(hexOf(OLD));
+        expect(all).not.toContain(b64Of(OLD));
+      }
+    });
+
+    it("still rotates between two masters that differ in a single byte", async () => {
+      const near = copy(OLD);
+      near[31] = (near[31] ?? 0) ^ 1;
+      const row = await rowOf(1);
+      const r = await reencryptAgentSecret(OLD, near, row);
+      const rotated = { secret_ciphertext: r.ciphertext, secret_nonce: r.nonce };
+      expect(await openAgentSecret(near, rotated)).toBe(SECRET);
+      const sealed = await sealInvoice(OLD, "t1", new TextEncoder().encode("INV-4"));
+      const moved = await reencryptInvoice(OLD, near, "t1", sealed);
+      expect(new TextDecoder().decode(await openInvoice(near, "t1", moved))).toBe("INV-4");
+    });
   });
 
   it("fails closed on a new master that is not 32 bytes", async () => {
@@ -184,6 +253,6 @@ describe("invoices", () => {
     await expect(openInvoice(NEW, "t2", rotated)).rejects.toBeInstanceOf(DecryptError);
     // the wrong tenant or the wrong old master cannot rotate it
     await expect(reencryptInvoice(OLD, NEW, "t2", sealed)).rejects.toBeInstanceOf(DecryptError);
-    await expect(reencryptInvoice(NEW, NEW, "t1", sealed)).rejects.toBeInstanceOf(DecryptError);
+    await expect(reencryptInvoice(NEW, OLD, "t1", sealed)).rejects.toBeInstanceOf(DecryptError);
   });
 });

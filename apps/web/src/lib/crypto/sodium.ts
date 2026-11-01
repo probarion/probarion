@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import sodium from "libsodium-wrappers";
 
-export type SubkeyPurpose = "agent_keys" | "invoices" | "session" | "telegram" | "visitor";
+export type SubkeyPurpose =
+  | "agent_keys"
+  | "invoices"
+  | "session"
+  | "telegram"
+  | "visitor"
+  | "challenge";
 
 /** Decision D4. Changing an id invalidates every value derived from it. */
 const SUBKEY_IDS: Record<SubkeyPurpose, number> = {
@@ -10,6 +16,9 @@ const SUBKEY_IDS: Record<SubkeyPurpose, number> = {
   session: 3,
   telegram: 4,
   visitor: 5,
+  // Challenge cookies get their own subkey, so a challenge can never verify as a session even if the
+  // two payloads happen to have the same shape. Added after 1-5; those ids must never change.
+  challenge: 6,
 };
 const KDF_CONTEXT = "PROBARIO"; // exactly crypto_kdf_CONTEXTBYTES (8)
 const KEY_BYTES = 32; // the libsodium size for secretbox, auth, kdf and keyed hashing here
@@ -37,7 +46,7 @@ export async function getSodium(): Promise<typeof sodium> {
   return sodium;
 }
 
-type Base64Encoding = "base64" | "base64url";
+export type Base64Encoding = "base64" | "base64url";
 
 function encode(bytes: Uint8Array, encoding: Base64Encoding): string {
   return Buffer.from(bytes).toString(encoding);
@@ -50,8 +59,12 @@ function encode(bytes: Uint8Array, encoding: Base64Encoding): string {
  * bytes and requiring the very same string leaves exactly one accepted spelling: `encode` standard
  * padded base64 ("base64", libsodium's ORIGINAL variant) or unpadded url-safe base64 ("base64url").
  * Returns null for anything else, including a value that is not a string.
+ *
+ * Exported so that callers use this for every decode of authenticated data (for example the challenge
+ * nonce), never a bare `Buffer.from(x, "base64")`. It checks the spelling only: the caller still checks
+ * the length of what it gets back.
  */
-function decodeCanonical(value: unknown, encoding: Base64Encoding): Uint8Array | null {
+export function decodeCanonical(value: unknown, encoding: Base64Encoding): Uint8Array | null {
   if (typeof value !== "string") return null;
   const bytes = new Uint8Array(Buffer.from(value, encoding));
   return encode(bytes, encoding) === value ? bytes : null;
@@ -62,6 +75,17 @@ function requireKey(key: unknown, what = "key"): asserts key is Uint8Array {
   if (!(key instanceof Uint8Array) || key.length !== KEY_BYTES) {
     throw new Error(`${what} must be ${KEY_BYTES} bytes`);
   }
+}
+
+/**
+ * True when two keys hold the same bytes, compared in constant time. Both must be 32 bytes, so this
+ * throws (it does not return false) on a key of any other length.
+ */
+export async function sameKey(a: Uint8Array, b: Uint8Array): Promise<boolean> {
+  requireKey(a);
+  requireKey(b);
+  const s = await getSodium();
+  return s.memcmp(a, b);
 }
 
 /** The message names the variable and the rule, never the value. */

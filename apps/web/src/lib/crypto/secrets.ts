@@ -1,4 +1,12 @@
-import { DecryptError, deriveSubkey, open, type Sealed, seal, tenantInvoiceKey } from "./sodium";
+import {
+  DecryptError,
+  deriveSubkey,
+  open,
+  type Sealed,
+  sameKey,
+  seal,
+  tenantInvoiceKey,
+} from "./sodium";
 
 export const KEY_VERSION = 1;
 
@@ -43,6 +51,17 @@ export async function openInvoice(
   return open(await tenantInvoiceKey(master, tenantId), sealed);
 }
 
+/**
+ * A "rotation" to the very same master would re-seal every row under the key that was just retired.
+ * After a key leak that looks like a successful rotation while the leaked key still opens everything,
+ * so it is refused, before anything is decrypted. The message carries no key material.
+ */
+async function refuseSameMaster(oldMaster: Uint8Array, newMaster: Uint8Array): Promise<void> {
+  if (await sameKey(oldMaster, newMaster)) {
+    throw new Error("old and new master keys are identical: rotation needs a different key");
+  }
+}
+
 /** Rotation (spec §11): decrypt with the old master, encrypt with the new one, bump key_version. */
 export async function reencryptAgentSecret(
   oldMaster: Uint8Array,
@@ -54,6 +73,7 @@ export async function reencryptAgentSecret(
   if (!Number.isSafeInteger(v) || v < 1 || v >= Number.MAX_SAFE_INTEGER) {
     throw new Error("key_version must be a positive integer below 2^53 - 1");
   }
+  await refuseSameMaster(oldMaster, newMaster);
   const secret = await openAgentSecret(oldMaster, row);
   const key = await deriveSubkey(newMaster, "agent_keys");
   return { ...(await seal(key, secret)), key_version: v + 1 };
@@ -65,5 +85,6 @@ export async function reencryptInvoice(
   tenantId: string,
   sealed: Sealed,
 ): Promise<Sealed> {
+  await refuseSameMaster(oldMaster, newMaster);
   return sealInvoice(newMaster, tenantId, await openInvoice(oldMaster, tenantId, sealed));
 }

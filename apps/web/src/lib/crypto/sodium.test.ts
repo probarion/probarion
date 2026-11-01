@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   DecryptError,
+  decodeCanonical,
   deriveSubkey,
   getSodium,
   keyedHashHex,
@@ -10,6 +11,7 @@ import {
   readMacToken,
   type Sealed,
   type SubkeyPurpose,
+  sameKey,
   seal,
   sha256Hex,
   tenantInvoiceKey,
@@ -120,7 +122,14 @@ describe("deriveSubkey", () => {
     expect(hex(a1)).not.toBe(hex(MASTER));
   });
 
-  const PURPOSES: SubkeyPurpose[] = ["agent_keys", "invoices", "session", "telegram", "visitor"];
+  const PURPOSES: SubkeyPurpose[] = [
+    "agent_keys",
+    "invoices",
+    "session",
+    "telegram",
+    "visitor",
+    "challenge",
+  ];
 
   it("gives every purpose its own 32-byte subkey, different under another master", async () => {
     const mine = await Promise.all(PURPOSES.map((p) => deriveSubkey(MASTER, p)));
@@ -138,6 +147,8 @@ describe("deriveSubkey", () => {
     "5d4b80a0fbf58536",
     "000270cb289cbde9",
     "e8fd2ee27b21c2e8",
+    // id 6, added with the challenge cookie; the five above are unchanged
+    "e46799c6b8e6fa59",
   ];
 
   it("keeps the subkey ids and KDF context stable (D4)", async () => {
@@ -145,6 +156,36 @@ describe("deriveSubkey", () => {
       PURPOSES.map(async (p) => hex((await deriveSubkey(MASTER, p)).subarray(0, 8))),
     );
     expect(got).toEqual(PINNED);
+  });
+
+  it("keeps the first five ids exactly as they were when challenge (6) was added", async () => {
+    const first = await Promise.all(
+      PURPOSES.slice(0, 5).map(async (p) => hex((await deriveSubkey(MASTER, p)).subarray(0, 8))),
+    );
+    expect(first).toEqual(PINNED.slice(0, 5));
+  });
+
+  it("gives challenge its own subkey, never the session one", async () => {
+    const challenge = await deriveSubkey(MASTER, "challenge");
+    const session = await deriveSubkey(MASTER, "session");
+    expect(challenge).toHaveLength(32);
+    expect(hex(challenge)).not.toBe(hex(session));
+    expect(hex(await deriveSubkey(OTHER, "challenge"))).not.toBe(hex(challenge));
+    for (const p of PURPOSES.filter((x) => x !== "challenge")) {
+      expect(hex(await deriveSubkey(MASTER, p)), p).not.toBe(hex(challenge));
+    }
+  });
+
+  it("a challenge token never verifies as a session token, even with the same payload", async () => {
+    const challenge = await deriveSubkey(MASTER, "challenge");
+    const session = await deriveSubkey(MASTER, "session");
+    const payload = { a: "alice.near", e: 123 };
+    const c = await macToken(challenge, payload);
+    const t = await macToken(session, payload);
+    expect(c).not.toBe(t);
+    expect(await readMacToken(challenge, c)).toEqual(payload);
+    expect(await readMacToken(session, c)).toBeNull();
+    expect(await readMacToken(challenge, t)).toBeNull();
   });
 
   it("rejects a master that is not 32 bytes", async () => {
@@ -278,21 +319,40 @@ describe("seal and open", () => {
     });
 
     it("a nonce whose encoding is not canonical", async () => {
-      const { k, sealed } = await setup("hello");
+      // A fixed nonce whose standard encoding is "+///" repeated, so it holds both "+" and "/" on every
+      // run and the url-safe variant below really differs from the canonical text. Sealed with raw
+      // libsodium because `seal` always draws a random nonce.
+      const k = await deriveSubkey(MASTER, "agent_keys");
+      const s = await getSodium();
+      const fixed = Uint8Array.from({ length: 24 }, (_, i) => (i % 3 === 0 ? 0xfb : 0xff));
+      const nonce = Buffer.from(fixed).toString("base64");
+      expect(nonce).toBe("+///".repeat(8));
+      const sealed: Sealed = {
+        ciphertext: Buffer.from(s.crypto_secretbox_easy(s.from_string("hello"), fixed, k)).toString(
+          "base64",
+        ),
+        nonce,
+      };
+      // the canonical spelling opens, so every failure below is down to the spelling alone
+      expect(Buffer.from(await open(k, sealed)).toString()).toBe("hello");
       // 24 bytes encode with no padding, so build the variants around the canonical text.
       const variants = [
-        `${sealed.nonce}=`, // stray padding
-        `${sealed.nonce}\n`, // trailing newline
-        ` ${sealed.nonce}`,
-        `${sealed.nonce.slice(0, 5)}!${sealed.nonce.slice(5)}`, // junk a lenient decoder skips
-        sealed.nonce.replaceAll("+", "-").replaceAll("/", "_"), // url-safe alphabet
+        `${nonce}=`, // stray padding
+        `${nonce}\n`, // trailing newline
+        ` ${nonce}`,
+        `${nonce.slice(0, 5)}!${nonce.slice(5)}`, // junk a lenient decoder skips
+        nonce.replaceAll("+", "-").replaceAll("/", "_"), // url-safe alphabet
       ];
-      for (const nonce of variants) {
-        // Only variants that a lenient decoder would still turn into the same 24 bytes are interesting.
-        if (nonce === sealed.nonce) continue;
-        await expect(open(k, { ...sealed, nonce }), JSON.stringify(nonce)).rejects.toBeInstanceOf(
-          DecryptError,
+      for (const bad of variants) {
+        expect(bad).not.toBe(nonce);
+        // a lenient decoder would turn each of these back into the same 24 bytes
+        expect(Buffer.from(bad, "base64").equals(Buffer.from(fixed)), JSON.stringify(bad)).toBe(
+          true,
         );
+        await expect(
+          open(k, { ...sealed, nonce: bad }),
+          JSON.stringify(bad),
+        ).rejects.toBeInstanceOf(DecryptError);
       }
     });
 
@@ -566,5 +626,68 @@ describe("sha256Hex", () => {
   it("hashes bytes and strings alike, and the empty input", () => {
     expect(sha256Hex(new TextEncoder().encode("abc"))).toBe(sha256Hex("abc"));
     expect(sha256Hex("")).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  });
+});
+
+describe("decodeCanonical", () => {
+  it("returns the bytes for the one canonical spelling and null for everything else", () => {
+    const bytes = Uint8Array.from([0xfb, 0xff, 0xfe, 1, 2]);
+    const std = Buffer.from(bytes).toString("base64");
+    const url = Buffer.from(bytes).toString("base64url");
+    expect(std).toMatch(/[+/]/);
+    expect(hex(decodeCanonical(std, "base64") as Uint8Array)).toBe(hex(bytes));
+    expect(hex(decodeCanonical(url, "base64url") as Uint8Array)).toBe(hex(bytes));
+    expect(decodeCanonical("", "base64")).toHaveLength(0);
+    const bad: [unknown, "base64" | "base64url"][] = [
+      [url, "base64"], // the other alphabet and no padding
+      [std, "base64url"], // padding and the other alphabet
+      [`${std}\n`, "base64"],
+      [` ${std}`, "base64"],
+      [`${std.slice(0, 3)}!${std.slice(3)}`, "base64"],
+      [lowBitSibling(std, B64), "base64"],
+      [lowBitSibling(url, B64URL), "base64url"],
+      [url.slice(0, -2), "base64url"], // 6 characters: an impossible length, the partial group is dropped
+      [undefined, "base64"],
+      [null, "base64url"],
+      [42, "base64"],
+      [bytes, "base64"],
+    ];
+    for (const [value, encoding] of bad) {
+      expect(decodeCanonical(value, encoding), JSON.stringify(value)).toBeNull();
+    }
+  });
+
+  it("the sibling decodes to the same bytes under the lenient decoder (the test is not vacuous)", () => {
+    const url = Buffer.from([1, 2, 3, 4, 5]).toString("base64url");
+    const sibling = lowBitSibling(url, B64URL);
+    expect(sibling).not.toBe(url);
+    expect(Buffer.from(sibling, "base64url").equals(Buffer.from(url, "base64url"))).toBe(true);
+    expect(decodeCanonical(sibling, "base64url")).toBeNull();
+  });
+});
+
+describe("sameKey", () => {
+  it("compares by value, with sodium.memcmp, and sees a difference in any byte", async () => {
+    const s = await getSodium();
+    const spy = vi.spyOn(s, "memcmp");
+    try {
+      expect(await sameKey(MASTER, MASTER)).toBe(true);
+      expect(await sameKey(MASTER, new Uint8Array(MASTER))).toBe(true);
+      expect(await sameKey(MASTER, OTHER)).toBe(false);
+      for (const at of [0, 15, 31]) {
+        const near = new Uint8Array(MASTER);
+        near[at] = (near[at] ?? 0) ^ 1;
+        expect(await sameKey(MASTER, near), `byte ${at}`).toBe(false);
+      }
+      expect(spy).toHaveBeenCalledTimes(6);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("throws, rather than answering false, for a key that is not 32 bytes", async () => {
+    await expect(sameKey(new Uint8Array(31), MASTER)).rejects.toThrow(/32/);
+    await expect(sameKey(MASTER, new Uint8Array(33))).rejects.toThrow(/32/);
+    await expect(sameKey(MASTER, null as unknown as Uint8Array)).rejects.toThrow(/32/);
   });
 });
