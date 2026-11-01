@@ -96,6 +96,57 @@ describe("parseModelProposal", () => {
     expect(() => parseModelProposal(value)).toThrow(ProposalParseError);
   });
 
+  describe("a lone surrogate in any string field fails at parse time", () => {
+    // canonicalJson refuses these, so without this check the ledger write would throw instead.
+    const loneHigh = "\uD800";
+    const loneLow = "\uDE00";
+    const hint = (patch: Record<string, string>): Record<string, unknown> => ({
+      ...valid,
+      payee_hint: { ...valid.payee_hint, ...patch },
+    });
+
+    it.each([
+      ["reasoning with a lone high surrogate", { ...valid, reasoning: `bad ${loneHigh} text` }],
+      ["reasoning with a lone low surrogate", { ...valid, reasoning: `bad ${loneLow} text` }],
+      ["reasoning ending in a high surrogate", { ...valid, reasoning: `cut here \uD83D` }],
+      [
+        "reasoning with one beyond the 2000-code-point cut",
+        { ...valid, reasoning: `${"x".repeat(MAX_REASONING_CHARS)}${loneHigh}` },
+      ],
+      ["payee_hint.name", hint({ name: `Ven${loneHigh}dor` })],
+      ["payee_hint.address", hint({ address: `0x${loneLow}` })],
+      ["payee_hint.near_account", hint({ near_account: `vendor${loneHigh}.testnet` })],
+    ])("rejects %s with a ProposalParseError that names the problem", (_name, value) => {
+      expect(() => parseModelProposal(value)).toThrow(ProposalParseError);
+      expect(() => parseModelProposal(value)).toThrow(/lone surrogate/);
+    });
+
+    it("names the field in the message", () => {
+      expect(() => parseModelProposal({ ...valid, reasoning: loneHigh })).toThrow(/reasoning/);
+      expect(() => parseModelProposal(hint({ name: loneLow }))).toThrow(/payee_hint\.name/);
+    });
+
+    it("fails on the JSON escape \\ud800 that a model can emit, before any ledger write", () => {
+      const modelOutput =
+        '{"action":"hold","mandate_id":null,"amount":null,"payee_hint":null,"reasoning":"x\\ud800y","confidence":0.5}';
+      const parsed = extractJsonObject(modelOutput);
+      expect(() => canonicalJson(parsed)).toThrow(CanonicalJsonError);
+      expect(() => parseModelProposal(parsed)).toThrow(ProposalParseError);
+    });
+
+    it("accepts a valid surrogate pair in every string field, and the result canonicalises", () => {
+      const pair = "\u{1F600}";
+      const p = parseModelProposal({
+        ...valid,
+        reasoning: `ok ${pair}`,
+        payee_hint: { near_account: `a${pair}`, address: `b${pair}`, name: `c${pair}` },
+      });
+      expect(p.reasoning).toBe(`ok ${pair}`);
+      expect(p.payee_hint?.name).toBe(`c${pair}`);
+      expect(() => canonicalJson(p)).not.toThrow();
+    });
+  });
+
   it("accepts mandate 1 and null, and the JSON schema says mandate ids start at 1", () => {
     expect(parseModelProposal({ ...valid, mandate_id: 1 }).mandate_id).toBe(1);
     expect(parseModelProposal({ ...valid, mandate_id: null }).mandate_id).toBeNull();

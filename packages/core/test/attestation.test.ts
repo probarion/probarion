@@ -218,9 +218,10 @@ describe("checkAttestation (A1–A7)", () => {
   });
 });
 
-describe("A2 accepts canonical signatures only (low-s, v 27 or 28)", () => {
+describe("A2 accepts low-s signatures with v 0, 1, 27 or 28, and refuses high-s and any other v", () => {
   const N = secp256k1.Point.Fn.ORDER;
   const hex32 = (n: bigint): string => n.toString(16).padStart(64, "0");
+  const hexByte = (n: number): string => n.toString(16).padStart(2, "0");
   const parts = (signature: string): { r: string; s: bigint; v: number } => ({
     r: signature.slice(2, 66),
     s: BigInt(`0x${signature.slice(66, 130)}`),
@@ -231,17 +232,39 @@ describe("A2 accepts canonical signatures only (low-s, v 27 or 28)", () => {
     signature: { ...ev.signature, signature },
   });
 
-  it("the TEST FIXTURE signature itself is canonical, so the variants below differ only in form", async () => {
+  it("the TEST FIXTURE signature is low-s with v 27 or 28 (precondition for the variants below)", async () => {
     const ev = await buildTestEvidence(base);
     const { s, v } = parts(ev.signature.signature);
     expect(s <= N / 2n).toBe(true);
     expect([27, 28]).toContain(v);
   });
 
+  it("accepts the 0/1 spelling of v: it is the same recovery id as 27/28", async () => {
+    const ev = await buildTestEvidence(base);
+    const { r, s, v } = parts(ev.signature.signature);
+    const parity = `0x${r}${hex32(s)}${hexByte(v - 27)}`; // v 27 -> 00, v 28 -> 01
+    expect(parity).not.toBe(ev.signature.signature);
+    // the whole evidence passes with the signature spelled either way
+    expect(verdicts(await check(withSignature(ev, parity)))).toEqual(ALL_PASS);
+    expect(verdicts(await check(withSignature(ev, ev.signature.signature)))).toEqual(ALL_PASS);
+    // the same spelling without the 0x prefix
+    expect(verdicts(await check(withSignature(ev, parity.slice(2)))).A2).toBe(true);
+  });
+
+  it("the other recovery id recovers to someone else and fails, in both spellings", async () => {
+    const ev = await buildTestEvidence(base);
+    const { r, s, v } = parts(ev.signature.signature);
+    for (const wrong of [hexByte(55 - v), hexByte(28 - v)]) {
+      // 55 - 27 = 28 and 55 - 28 = 27 (the 27/28 spelling); 28 - v is the 0/1 spelling of the other id
+      const result = await check(withSignature(ev, `0x${r}${hex32(s)}${wrong}`));
+      expect(verdicts(result).A2).toBe(false);
+    }
+  });
+
   it("rejects the high-s twin (n - s, flipped v) although it recovers to the same signer", async () => {
     const ev = await buildTestEvidence(base);
     const { r, s, v } = parts(ev.signature.signature);
-    const twin = `0x${r}${hex32(N - s)}${(v === 27 ? 28 : 27).toString(16)}`;
+    const twin = `0x${r}${hex32(N - s)}${hexByte(v === 27 ? 28 : 27)}`;
     // the twin is a second, byte-different valid signature of the same text by the same key
     expect(twin).not.toBe(ev.signature.signature);
     expect(
@@ -252,26 +275,13 @@ describe("A2 accepts canonical signatures only (low-s, v 27 or 28)", () => {
     ).toBe(ev.signature.signing_address);
     const result = await check(withSignature(ev, twin));
     expect(verdicts(result)).toEqual({ ...ALL_PASS, A2: false });
-    expect(detailOf(result, "A2")).toContain("canonical");
+    expect(detailOf(result, "A2")).toContain("high-s");
+    // the twin in the 0/1 spelling is refused too
+    const twinParity = `0x${r}${hex32(N - s)}${hexByte(v === 27 ? 1 : 0)}`;
+    expect(verdicts(await check(withSignature(ev, twinParity))).A2).toBe(false);
   });
 
-  it("rejects the 0/1 parity spelling of v, which recovers to the same signer", async () => {
-    const ev = await buildTestEvidence(base);
-    const { r, s, v } = parts(ev.signature.signature);
-    const parity = `0x${r}${hex32(s)}${(v - 27).toString(16).padStart(2, "0")}`; // v 27 -> 00, v 28 -> 01
-    expect(
-      await recoverMessageAddress({
-        message: ev.signature.text,
-        signature: parity as `0x${string}`,
-      }),
-    ).toBe(ev.signature.signing_address);
-    expect(verdicts(await check(withSignature(ev, parity))).A2).toBe(false);
-    // the other parity recovers to someone else; it fails too
-    const other = `0x${r}${hex32(s)}${(28 - v).toString(16).padStart(2, "0")}`;
-    expect(verdicts(await check(withSignature(ev, other))).A2).toBe(false);
-  });
-
-  it("rejects any other v byte", async () => {
+  it("rejects every v other than 0, 1, 27 and 28 (2, 26, 29, 35, 255)", async () => {
     const ev = await buildTestEvidence(base);
     const { r, s } = parts(ev.signature.signature);
     for (const vByte of ["02", "1a", "1d", "23", "ff"]) {
@@ -280,12 +290,14 @@ describe("A2 accepts canonical signatures only (low-s, v 27 or 28)", () => {
     }
   });
 
-  it("rejects s = 0 and s above n/2 without reaching the recovery", async () => {
+  it("rejects s = 0 and s above n/2 whatever the spelling of v", async () => {
     const ev = await buildTestEvidence(base);
     const { r } = parts(ev.signature.signature);
     for (const s of [0n, N / 2n + 1n, N - 1n]) {
-      const result = await check(withSignature(ev, `0x${r}${hex32(s)}1b`));
-      expect(verdicts(result).A2).toBe(false);
+      for (const vByte of ["00", "01", "1b", "1c"]) {
+        const result = await check(withSignature(ev, `0x${r}${hex32(s)}${vByte}`));
+        expect(verdicts(result).A2).toBe(false);
+      }
     }
   });
 });

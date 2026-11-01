@@ -76,20 +76,25 @@ export function expectedSignatureText(evidence: AttestationEvidence): string {
 }
 
 /**
- * True if `signature` is a canonical EIP-191 signature (low-s, v 27 or 28) of `text` by `address`.
- * The twin (n - s, flipped v) and the v 0/1 spelling recover to the same address, so accepting them
- * would let one signed response carry several byte-different signatures.
+ * True if `signature` is a low-s EIP-191 signature of `text` by `address`. The recovery byte v may be
+ * spelled 27/28 (Ethereum) or 0/1 (raw recovery id): both encode the same recovery id and are
+ * normalised to 27/28 before recovery. Which one NEAR AI emits is not yet known (the Task 11 recording
+ * settles it), so rejecting either would risk failing every real attestation. High-s (the twin
+ * n - s) and every other v are refused.
  */
 async function recoversTo(text: string, signature: string, address: string): Promise<boolean> {
   const sig = signature.startsWith("0x") ? signature : `0x${signature}`;
   if (!SIGNATURE_RE.test(sig) || !ADDRESS_RE.test(address)) return false;
   const s = BigInt(`0x${sig.slice(66, 130)}`);
   const v = Number.parseInt(sig.slice(130, 132), 16);
-  if (s === 0n || s > SECP256K1_HALF_N || (v !== 27 && v !== 28)) return false;
+  if (s === 0n || s > SECP256K1_HALF_N || (v !== 0 && v !== 1 && v !== 27 && v !== 28)) {
+    return false;
+  }
+  const normalised = `${sig.slice(0, 130)}${(v < 27 ? v + 27 : v).toString(16)}`;
   try {
     const recovered = await recoverMessageAddress({
       message: text,
-      signature: sig as `0x${string}`,
+      signature: normalised as `0x${string}`,
     });
     return recovered.toLowerCase() === address.toLowerCase();
   } catch {
@@ -215,8 +220,8 @@ export async function checkAttestation(
     "A2",
     sig?.signing_algo === "ecdsa" &&
       (await recoversTo(str(sig.text), str(sig.signature), signingAddress)),
-    "the canonical EIP-191 signature recovers to signing_address",
-    "the EIP-191 signature is not canonical (low-s, v 27 or 28) or does not recover to signing_address",
+    "the low-s EIP-191 signature recovers to signing_address",
+    "the EIP-191 signature is high-s, has a v other than 0, 1, 27 or 28, or does not recover to signing_address",
   );
   const report = evidence.report;
   add(

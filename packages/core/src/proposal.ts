@@ -56,6 +56,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Matches only a lone surrogate: with the u flag a valid pair is one code point outside this range. */
+const LONE_SURROGATE_RE = /[\u{D800}-\u{DFFF}]/u;
+
+/**
+ * canonicalJson refuses a lone surrogate, so one that reached the ledger body would make writing the
+ * entry throw. A model answer holding one (the JSON escape \ud800) fails here, at parse time, instead.
+ */
+function assertWellFormed(text: string, field: string): void {
+  if (LONE_SURROGATE_RE.test(text)) {
+    throw new ProposalParseError(`${field} contains a lone surrogate (ill-formed Unicode)`);
+  }
+}
+
 function parseHint(value: unknown): PayeeHint | null {
   if (value === null || value === undefined) return null;
   if (!isRecord(value)) throw new ProposalParseError("payee_hint must be an object or null");
@@ -65,6 +78,7 @@ function parseHint(value: unknown): PayeeHint | null {
     if (field === undefined || field === null) continue;
     if (typeof field !== "string")
       throw new ProposalParseError(`payee_hint.${key} must be a string`);
+    assertWellFormed(field, `payee_hint.${key}`);
     hint[key] = field;
   }
   const chain = value.chain;
@@ -102,6 +116,7 @@ export function parseModelProposal(value: unknown): ModelProposal {
   }
   const reasoning = value.reasoning;
   if (typeof reasoning !== "string") throw new ProposalParseError("reasoning must be a string");
+  assertWellFormed(reasoning, "reasoning");
   const confidence = value.confidence;
   if (
     typeof confidence !== "number" ||
