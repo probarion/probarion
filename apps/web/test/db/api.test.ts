@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { type Db, DbError } from "@/lib/db/port";
 import {
   memberRole,
@@ -9,9 +9,41 @@ import {
   withLease,
 } from "@/lib/db/tenants";
 import { rateLimitOr429 } from "@/lib/http";
+import { log } from "@/lib/log";
 import { takeToken } from "@/lib/ratelimit";
 import { freshDb } from "./harness";
 import { pgliteDb } from "./pglite-db";
+
+/** What `tenant_lease` returns. `until` is the fencing token `tenant_release` must be given back. */
+interface LeaseResult {
+  acquired: boolean;
+  until: string | null;
+}
+const NOOP = () => {};
+
+interface Queryable {
+  query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
+}
+
+/**
+ * Why PUBLIC could execute `public.<signature>`, or null if it cannot. A NULL proacl is the catalog's way of saying
+ * "default privileges", and a function's built-in default IS execute for PUBLIC, so it counts as a problem; the ACL must
+ * be explicit. With the default expanded, no entry may belong to grantee 0 (PUBLIC).
+ */
+async function publicExecuteProblem(q: Queryable, signature: string): Promise<string | null> {
+  const r = await q.query<{ acl: string | null; public_exec: number }>(
+    `select p.proacl::text as acl,
+            (select count(*)::int from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+              where a.grantee = 0 and a.privilege_type = 'EXECUTE') as public_exec
+       from pg_proc p where p.oid = ('public.' || $1)::regprocedure`,
+    [signature],
+  );
+  const row = r.rows[0];
+  if (!row) return "function not found";
+  if (row.acl === null) return "proacl is NULL (the default: PUBLIC can execute)";
+  if (row.public_exec > 0) return "PUBLIC holds EXECUTE";
+  return null;
+}
 
 const INTERNAL_FUNCTIONS = [
   "rate_limit_take",
@@ -74,12 +106,31 @@ describe("api functions", () => {
         service_role: true,
       });
       // PUBLIC is not left with EXECUTE either (any other role could otherwise call it).
-      const acl = await pg.query<{ acl: string | null }>(
-        `select p.proacl::text as acl from pg_proc p where p.oid = ('public.' || $1 || '(jsonb)')::regprocedure`,
-        [fn],
-      );
-      expect(acl.rows[0]?.acl ?? "", fn).not.toMatch(/(^|[{,])=X/);
+      expect(await publicExecuteProblem(pg, `${fn}(jsonb)`), fn).toBeNull();
     }
+  });
+
+  it("the PUBLIC-execute check fails a NULL proacl and an explicit PUBLIC grant, and accepts an explicit revoke", async () => {
+    await pg.transaction(async (tx) => {
+      // Put the built-in default back (PUBLIC may execute) and drop the schema-level service_role default, so that a
+      // new function gets no ACL of its own: proacl is NULL, which the catalog reads as "default privileges".
+      await tx.exec(`
+        alter default privileges grant execute on functions to public;
+        alter default privileges in schema public revoke execute on functions from service_role;
+        create function public.acl_null(p jsonb) returns jsonb language sql as $$ select p $$;
+        create function public.acl_public(p jsonb) returns jsonb language sql as $$ select p $$;
+        grant execute on function public.acl_public(jsonb) to public;
+        create function public.acl_revoked(p jsonb) returns jsonb language sql as $$ select p $$;
+        revoke execute on function public.acl_revoked(jsonb) from public;`);
+      const nulls = await tx.query<{ n: number }>(
+        "select count(*)::int as n from pg_proc where proname = 'acl_null' and proacl is null",
+      );
+      expect(nulls.rows[0]?.n, "the probe really has a NULL proacl").toBe(1);
+      expect(await publicExecuteProblem(tx, "acl_null(jsonb)")).toMatch(/NULL/);
+      expect(await publicExecuteProblem(tx, "acl_public(jsonb)")).toMatch(/PUBLIC holds EXECUTE/);
+      expect(await publicExecuteProblem(tx, "acl_revoked(jsonb)")).toBeNull();
+      await tx.rollback();
+    });
   });
 
   it("registers a tenant with owner and approvers and keeps approvers in sync", async () => {
@@ -146,7 +197,7 @@ describe("api functions", () => {
     const acme = await memberRole(db, "acme.vaults.probarion.near", "acme.near");
     if (!acme) throw new Error("acme was registered by an earlier test");
     const tenant = acme.tenant_id;
-    const first = await db.rpc<{ acquired: boolean }>("tenant_lease", {
+    const first = await db.rpc<LeaseResult>("tenant_lease", {
       tenant_id: tenant,
       kind: "process",
       seconds: 60,
@@ -155,14 +206,14 @@ describe("api functions", () => {
     expect(await withLease(db, tenant, "process", 60, async () => "x")).toEqual({
       acquired: false,
     });
-    const later = await db.rpc<{ acquired: boolean }>("tenant_lease", {
+    const later = await db.rpc<LeaseResult>("tenant_lease", {
       tenant_id: tenant,
       kind: "process",
       seconds: 60,
       now: new Date(Date.now() + 61_000).toISOString(),
     });
     expect(later.acquired).toBe(true);
-    await db.rpc("tenant_release", { tenant_id: tenant, kind: "process" });
+    await db.rpc("tenant_release", { tenant_id: tenant, kind: "process", until: later.until });
     await expect(
       withLease(db, tenant, "process", 60, async () => {
         throw new Error("boom");
@@ -201,6 +252,7 @@ describe("api functions: edges", () => {
   beforeAll(async () => {
     pg = await freshDb();
   });
+  afterEach(() => vi.restoreAllMocks());
 
   // R8 (Task 5): an auth nonce is burned with the shared limiter, so one hit per 600 s must mean exactly once.
   it("takeToken burns a nonce: the first use passes, every replay is refused", async () => {
@@ -263,9 +315,10 @@ describe("api functions: edges", () => {
     await expect(
       db.rpc("tenant_lease", { tenant_id: id, kind: "process", seconds: -5 }),
     ).rejects.toMatchObject({ code: "invalid_input" });
-    // An unknown tenant simply does not get a lease.
+    // An unknown tenant simply does not get a lease, and so has no `until` to release.
     expect(await db.rpc("tenant_lease", { tenant_id: id, kind: "watch", seconds: 60 })).toEqual({
       acquired: false,
+      until: null,
     });
   });
 
@@ -279,7 +332,7 @@ describe("api functions: edges", () => {
       owner: "leases.near",
       approvers: [],
     });
-    const heldProcess = await db.rpc<{ acquired: boolean }>("tenant_lease", {
+    const heldProcess = await db.rpc<LeaseResult>("tenant_lease", {
       tenant_id,
       kind: "process",
       seconds: 60,
@@ -294,7 +347,7 @@ describe("api functions: edges", () => {
     expect(await withLease(db, tenant_id, "process", 60, async () => "p")).toEqual({
       acquired: false,
     });
-    await db.rpc("tenant_release", { tenant_id, kind: "process" });
+    await db.rpc("tenant_release", { tenant_id, kind: "process", until: heldProcess.until });
   });
 
   it("withLease releases after success, and a failed release changes neither the result nor the error", async () => {
@@ -316,25 +369,41 @@ describe("api functions: edges", () => {
       acquired: true,
       value: 2,
     });
+    // A database whose release call is down; it remembers each lease's `until` so the test can clean up.
+    let lastUntil: string | null = null;
     const failingRelease: Db = {
-      rpc: <T>(fn: string, p?: Record<string, unknown>) =>
-        fn === "tenant_release"
-          ? Promise.reject(new DbError("db_error", "release down"))
-          : real.rpc<T>(fn, p),
+      rpc: async <T>(fn: string, p?: Record<string, unknown>) => {
+        if (fn === "tenant_release") throw new DbError("db_error", "release down");
+        const out = await real.rpc<T>(fn, p);
+        if (fn === "tenant_lease") lastUntil = (out as LeaseResult).until;
+        return out;
+      },
     };
+    const cleanUp = () =>
+      real.rpc("tenant_release", { tenant_id, kind: "process", until: lastUntil });
+    const warn = vi.spyOn(log, "warn").mockImplementation(NOOP);
     // The work finished (a payment may have gone out), so its value must still reach the caller.
     expect(await withLease(failingRelease, tenant_id, "process", 60, async () => "paid")).toEqual({
       acquired: true,
       value: "paid",
     });
-    await real.rpc("tenant_release", { tenant_id, kind: "process" });
+    // The log line carries the error text, not just "db_error", and no secret-bearing field.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("lease.release_failed", {
+      tenant_id,
+      kind: "process",
+      code: "db_error",
+      error: "release down",
+    });
+    await cleanUp();
     // The work's own error wins over the release error.
     await expect(
       withLease(failingRelease, tenant_id, "process", 60, async () => {
         throw new Error("work failed");
       }),
     ).rejects.toThrow("work failed");
-    await real.rpc("tenant_release", { tenant_id, kind: "process" });
+    expect(warn).toHaveBeenCalledTimes(2);
+    await cleanUp();
   });
 
   it("tenant_register validates its input", async () => {
@@ -486,5 +555,249 @@ describe("api functions: edges", () => {
       zero_retention: false,
     });
     expect(await db.rpc("tenant_by_vault", { vault_id: "missing.near" })).toBeNull();
+  });
+
+  // Fix round 1 (W-T3-R1). A lease is a fence: tenant_release only clears the lease whose `until` it is given back.
+  describe("lease fencing", () => {
+    const T0 = "2026-11-08T00:00:00Z";
+    const register = (name: string) =>
+      registerTenant(pgliteDb(pg), {
+        vaultId: `${name}.vaults.probarion.near`,
+        network: "testnet",
+        kind: "external",
+        displayName: name,
+        owner: `${name}.near`,
+        approvers: [],
+      });
+
+    for (const kind of ["process", "watch"] as const) {
+      it(`a late ${kind} release cannot free the lease of the worker that took over`, async () => {
+        const db = pgliteDb(pg);
+        const { tenant_id } = await register(`fence-${kind}`);
+        const lease = (now: string, seconds: number) =>
+          db.rpc<LeaseResult>("tenant_lease", { tenant_id, kind, seconds, now });
+        const release = (until: string | null) =>
+          db.rpc<{ released: boolean }>("tenant_release", { tenant_id, kind, until });
+
+        // A takes the lease for 1 s at t0, then is slow.
+        const a = await lease(T0, 1);
+        expect(a.acquired).toBe(true);
+        expect(new Date(a.until ?? "").toISOString()).toBe("2026-11-08T00:00:01.000Z");
+        // B takes over at t0+2 s, after A's lease expired.
+        const b = await lease("2026-11-08T00:00:02Z", 60);
+        expect(b.acquired).toBe(true);
+        expect(b.until).not.toBe(a.until);
+        // A finally reaches its release: it must leave B's lease alone...
+        expect(await release(a.until)).toEqual({ released: false });
+        // ...so the next worker (the cron, at t0+3 s) is still refused while B runs.
+        expect(await lease("2026-11-08T00:00:03Z", 60)).toEqual({ acquired: false, until: null });
+        // B's own release frees it, and then the cron can take it.
+        expect(await release(b.until)).toEqual({ released: true });
+        expect((await lease("2026-11-08T00:00:03Z", 60)).acquired).toBe(true);
+      });
+    }
+
+    it("the holder's own release frees the lease, once", async () => {
+      const db = pgliteDb(pg);
+      const { tenant_id } = await register("fence-own");
+      const a = await db.rpc<LeaseResult>("tenant_lease", {
+        tenant_id,
+        kind: "process",
+        seconds: 60,
+        now: T0,
+      });
+      expect(a.acquired).toBe(true);
+      const release = () =>
+        db.rpc<{ released: boolean }>("tenant_release", {
+          tenant_id,
+          kind: "process",
+          until: a.until,
+        });
+      expect(await release()).toEqual({ released: true });
+      expect(await release()).toEqual({ released: false });
+      const again = await db.rpc<LeaseResult>("tenant_lease", {
+        tenant_id,
+        kind: "process",
+        seconds: 60,
+        now: "2026-11-08T00:00:01Z",
+      });
+      expect(again.acquired).toBe(true);
+    });
+
+    it("tenant_release is never unfenced: it needs a tenant, a kind and a readable until", async () => {
+      const db = pgliteDb(pg);
+      const id = crypto.randomUUID();
+      const until = "2026-11-08T00:00:00Z";
+      const bad: Record<string, unknown>[] = [
+        { kind: "process", until },
+        { tenant_id: id, until },
+        { tenant_id: id, kind: "nope", until },
+        { tenant_id: id, kind: "process" },
+        { tenant_id: id, kind: "process", until: null },
+        { tenant_id: id, kind: "process", until: "not a time" },
+        { tenant_id: "nope", kind: "process", until },
+      ];
+      for (const p of bad) {
+        await expect(db.rpc("tenant_release", p), JSON.stringify(p)).rejects.toMatchObject({
+          code: "invalid_input",
+        });
+      }
+      // A release for a tenant that does not exist is simply not a release.
+      expect(await db.rpc("tenant_release", { tenant_id: id, kind: "process", until })).toEqual({
+        released: false,
+      });
+    });
+
+    it("withLease whose work outlives its lease leaves the successor's lease alone, and logs it", async () => {
+      const db = pgliteDb(pg);
+      const { tenant_id } = await register("fence-withlease");
+      const warn = vi.spyOn(log, "warn").mockImplementation(NOOP);
+      let successor: LeaseResult | undefined;
+      const out = await withLease(db, tenant_id, "watch", 1, async () => {
+        // The work is slow: its 1 s lease expires and another worker takes the tenant over.
+        successor = await db.rpc<LeaseResult>("tenant_lease", {
+          tenant_id,
+          kind: "watch",
+          seconds: 60,
+          now: new Date(Date.now() + 5_000).toISOString(),
+        });
+        return "slow work done";
+      });
+      expect(out).toEqual({ acquired: true, value: "slow work done" });
+      expect(successor?.acquired).toBe(true);
+      // The successor still holds the lease after the late release...
+      const cron = await db.rpc<LeaseResult>("tenant_lease", {
+        tenant_id,
+        kind: "watch",
+        seconds: 60,
+        now: new Date(Date.now() + 6_000).toISOString(),
+      });
+      expect(cron.acquired).toBe(false);
+      // ...and the overrun is visible in the logs.
+      expect(warn).toHaveBeenCalledWith("lease.expired_before_release", {
+        tenant_id,
+        kind: "watch",
+      });
+    });
+
+    it("a normal withLease run does not report an overrun", async () => {
+      const db = pgliteDb(pg);
+      const { tenant_id } = await register("fence-quiet");
+      const warn = vi.spyOn(log, "warn").mockImplementation(NOOP);
+      expect(await withLease(db, tenant_id, "process", 60, async () => 7)).toEqual({
+        acquired: true,
+        value: 7,
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
+  it("registering the same vault again returns the same tenant: a double click, or a lost race", async () => {
+    const db = pgliteDb(pg);
+    const input = {
+      vaultId: "twice.vaults.probarion.near",
+      network: "mainnet",
+      kind: "external",
+      displayName: "Twice",
+      owner: "twice.near",
+      approvers: ["ap1.near", "ap2.near"],
+    } as const;
+    const first = await registerTenant(db, { ...input, approvers: [...input.approvers] });
+    const second = await registerTenant(db, { ...input, approvers: [...input.approvers] });
+    expect(second.tenant_id).toBe(first.tenant_id);
+    const rows = await pg.query<{ n: number }>(
+      "select count(*)::int as n from public.tenants where vault_id = $1",
+      [input.vaultId],
+    );
+    expect(rows.rows[0]?.n).toBe(1);
+    const members = await pg.query<{ account_id: string; role: string }>(
+      "select account_id, role from public.tenant_members where tenant_id = $1 order by account_id",
+      [first.tenant_id],
+    );
+    expect(members.rows).toEqual([
+      { account_id: "ap1.near", role: "approver" },
+      { account_id: "ap2.near", role: "approver" },
+      { account_id: "twice.near", role: "owner" },
+    ]);
+    // The conflict path still enforces ownership.
+    await expect(
+      registerTenant(db, { ...input, owner: "eve.near", approvers: [] }),
+    ).rejects.toMatchObject({ code: "owner_mismatch" });
+  });
+
+  it("an owner of one tenant gets nothing back for another tenant's vault", async () => {
+    const db = pgliteDb(pg);
+    const mk = (name: string) =>
+      registerTenant(db, {
+        vaultId: `${name}.vaults.probarion.near`,
+        network: "mainnet",
+        kind: "external",
+        displayName: name,
+        owner: `${name}.near`,
+        approvers: [],
+      });
+    await mk("cross-a");
+    await mk("cross-b");
+    expect(await memberRole(db, "cross-b.vaults.probarion.near", "cross-a.near")).toBeNull();
+    expect(await memberRole(db, "cross-a.vaults.probarion.near", "cross-b.near")).toBeNull();
+    expect((await memberRole(db, "cross-a.vaults.probarion.near", "cross-a.near"))?.role).toBe(
+      "owner",
+    );
+    expect((await memberTenants(db, "cross-a.near")).map((t) => t.vault_id)).toEqual([
+      "cross-a.vaults.probarion.near",
+    ]);
+  });
+
+  it("a malformed tenant id or vault id is invalid_input, not db_error", async () => {
+    const db = pgliteDb(pg);
+    const badTenantIds: unknown[] = [
+      "nope",
+      "",
+      "123",
+      123,
+      "00000000-0000-0000-0000-00000000000g",
+      "{00000000-0000-0000-0000-000000000000}",
+    ];
+    for (const tenant_id of badTenantIds) {
+      const label = JSON.stringify(tenant_id);
+      await expect(
+        db.rpc("tenant_lease", { tenant_id, kind: "process", seconds: 60 }),
+        `lease ${label}`,
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      await expect(
+        db.rpc("tenant_release", { tenant_id, kind: "process", until: "2026-11-08T00:00:00Z" }),
+        `release ${label}`,
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      await expect(
+        db.rpc("tenant_settings_set", { tenant_id, zero_retention: true }),
+        `settings ${label}`,
+      ).rejects.toMatchObject({ code: "invalid_input" });
+    }
+    await expect(setTenantSettings(db, "nope", {})).rejects.toMatchObject({
+      code: "invalid_input",
+    });
+    const base = {
+      network: "mainnet",
+      kind: "external",
+      display_name: "V",
+      owner_account: "v.near",
+    };
+    const badVaultIds = ["A.near", "x", "", "a b", "a/b", "a".repeat(65), "café.near"];
+    for (const vault_id of badVaultIds) {
+      await expect(
+        db.rpc("tenant_register", { ...base, vault_id }),
+        JSON.stringify(vault_id),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+    }
+    // Nothing was written, and the limits of the pattern (2 and 64 characters) are accepted.
+    for (const vault_id of ["ab", "a".repeat(64)]) {
+      const out = await db.rpc<{ tenant_id: string }>("tenant_register", { ...base, vault_id });
+      expect(out.tenant_id).toMatch(/^[0-9a-f-]{36}$/);
+    }
+    const written = await pg.query<{ n: number }>(
+      "select count(*)::int as n from public.tenants where vault_id = any($1)",
+      [["A.near", "x", "", "a b", "a/b", "a".repeat(65)]],
+    );
+    expect(written.rows[0]?.n).toBe(0);
   });
 });

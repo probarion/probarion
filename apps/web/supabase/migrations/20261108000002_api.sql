@@ -38,43 +38,76 @@ begin
 end $$;
 
 -- Per-tenant lease: serialises Payables / Canary cycles so the ledger never forks. A held lease expires on its own.
+--
+-- The lease is also a FENCE (W-T3-R1). `until` is the instant the lease runs out, and it is unique to this grant: a
+-- later grant starts at or after the earlier one's `until` and runs at least a second, so its `until` is always larger.
+-- tenant_release only clears the lease whose `until` it is given back. Without that, a worker that overran its lease
+-- (A) would, on finishing, clear the lease its successor (B) holds, and a third worker (C) could start while B still
+-- runs. The `until` is returned as the exact text the database wrote, to be passed back unchanged.
+--
+-- tenant_id must be a canonical uuid: anything else is invalid_input, not a cast error.
 create or replace function public.tenant_lease(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
 declare
-  v_tenant uuid := (p->>'tenant_id')::uuid;
+  v_tenant_text text := p->>'tenant_id';
   v_kind text := p->>'kind';
   v_secs integer := coalesce((p->>'seconds')::integer, 90);
   v_now timestamptz := coalesce((p->>'now')::timestamptz, now());
+  v_until timestamptz;
   v_ok boolean;
 begin
-  if v_tenant is null or v_secs < 1 then
+  if v_tenant_text is null
+     or v_tenant_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     or v_secs < 1 then
     raise exception 'invalid_input';
   end if;
+  v_until := v_now + make_interval(secs => v_secs);
   if v_kind = 'process' then
-    update public.tenants set process_lease_until = v_now + make_interval(secs => v_secs)
-      where id = v_tenant and (process_lease_until is null or process_lease_until <= v_now)
+    update public.tenants set process_lease_until = v_until
+      where id = v_tenant_text::uuid and (process_lease_until is null or process_lease_until <= v_now)
       returning true into v_ok;
   elsif v_kind = 'watch' then
-    update public.tenants set watch_lease_until = v_now + make_interval(secs => v_secs)
-      where id = v_tenant and (watch_lease_until is null or watch_lease_until <= v_now)
+    update public.tenants set watch_lease_until = v_until
+      where id = v_tenant_text::uuid and (watch_lease_until is null or watch_lease_until <= v_now)
       returning true into v_ok;
   else
     raise exception 'invalid_input';
   end if;
-  return jsonb_build_object('acquired', coalesce(v_ok, false));
+  return jsonb_build_object('acquired', coalesce(v_ok, false), 'until', case when v_ok then v_until end);
 end $$;
 
+-- Releases the lease only if it is still the one `until` names (see tenant_lease). `released` is false when the lease
+-- was already released, or has been taken over since: either way the caller must not assume it still holds anything.
+-- `until` is required. A release without it would be an unfenced "clear whatever is there", which is the bug.
 create or replace function public.tenant_release(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
+declare
+  v_tenant_text text := p->>'tenant_id';
+  v_kind text := p->>'kind';
+  v_until timestamptz;
+  v_released boolean;
 begin
-  if p->>'kind' = 'process' then
-    update public.tenants set process_lease_until = null where id = (p->>'tenant_id')::uuid;
-  elsif p->>'kind' = 'watch' then
-    update public.tenants set watch_lease_until = null where id = (p->>'tenant_id')::uuid;
-  else
+  if v_tenant_text is null
+     or v_tenant_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     or coalesce(v_kind, '') not in ('process', 'watch')
+     or (p->>'until') is null then
     raise exception 'invalid_input';
   end if;
-  return '{}'::jsonb;
+  begin
+    v_until := (p->>'until')::timestamptz;
+  exception when data_exception then
+    raise exception 'invalid_input';
+  end;
+  if v_kind = 'process' then
+    update public.tenants set process_lease_until = null
+      where id = v_tenant_text::uuid and process_lease_until = v_until
+      returning true into v_released;
+  else
+    update public.tenants set watch_lease_until = null
+      where id = v_tenant_text::uuid and watch_lease_until = v_until
+      returning true into v_released;
+  end if;
+  return jsonb_build_object('released', coalesce(v_released, false));
 end $$;
 
 -- Registers a vault (idempotent) and syncs its members: the owner is always `owner`, and the `approver` rows mirror
@@ -91,7 +124,8 @@ declare
   v_id uuid;
   v_existing_owner text;
 begin
-  if v_vault is null or v_owner is null
+  -- vault_id has the same pattern as tenants.vault_id's check, so a bad one is invalid_input, not a constraint error.
+  if v_vault is null or v_vault !~ '^[a-z0-9._-]{2,64}$' or v_owner is null
      or coalesce(p->>'network', '') not in ('mainnet', 'testnet')
      or v_kind not in ('team', 'external', 'canary')
      or jsonb_typeof(v_raw) <> 'array' then
@@ -102,12 +136,17 @@ begin
     raise exception 'invalid_input';
   end if;
   v_approvers := array(select a from jsonb_array_elements_text(v_raw) as a where a is not null);
-  select id, owner_account into v_id, v_existing_owner from public.tenants where vault_id = v_vault;
+  -- Insert first. If the vault is already registered (an earlier call, a double click, or a concurrent call that
+  -- committed first) nothing is inserted and we use the existing row, so the second call returns the same tenant
+  -- instead of failing on the unique vault_id. Either way the owner must match.
+  insert into public.tenants (vault_id, network, kind, display_name, owner_account, proof_public)
+  values (v_vault, p->>'network', v_kind, left(coalesce(p->>'display_name', ''), 80), v_owner, v_kind in ('team', 'canary'))
+  on conflict (vault_id) do nothing
+  returning id, owner_account into v_id, v_existing_owner;
   if v_id is null then
-    insert into public.tenants (vault_id, network, kind, display_name, owner_account, proof_public)
-    values (v_vault, p->>'network', v_kind, left(coalesce(p->>'display_name', ''), 80), v_owner, v_kind in ('team', 'canary'))
-    returning id into v_id;
-  elsif v_existing_owner <> v_owner then
+    select id, owner_account into v_id, v_existing_owner from public.tenants where vault_id = v_vault;
+  end if;
+  if v_existing_owner <> v_owner then
     raise exception 'owner_mismatch';
   end if;
   insert into public.tenant_members (tenant_id, account_id, role) values (v_id, v_owner, 'owner')
@@ -144,13 +183,18 @@ $$;
 create or replace function public.tenant_settings_set(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
 declare
+  v_tenant_text text := p->>'tenant_id';
   v_zero boolean;
   v_public boolean;
 begin
+  if v_tenant_text is null
+     or v_tenant_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    raise exception 'invalid_input';
+  end if;
   update public.tenants set
       zero_retention = coalesce((p->>'zero_retention')::boolean, zero_retention),
       proof_public = coalesce((p->>'proof_public')::boolean, proof_public)
-    where id = (p->>'tenant_id')::uuid
+    where id = v_tenant_text::uuid
     returning zero_retention, proof_public into v_zero, v_public;
   if v_zero is null then
     raise exception 'not_found';

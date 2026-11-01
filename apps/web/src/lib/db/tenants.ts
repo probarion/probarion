@@ -60,12 +60,21 @@ export function setTenantSettings(
   });
 }
 
+/** What `tenant_lease` answers: `until` (the fencing token) is set exactly when the lease was granted. */
+type LeaseGrant = { acquired: true; until: string } | { acquired: false; until: null };
+
 /**
  * Serialises Payables/Canary cycles per tenant so the ledger never forks (Review Focus #2).
  *
+ * The lease lasts `seconds` and then expires on its own, so a crashed worker never blocks a tenant for good.
+ * It is fenced: the grant carries an `until` timestamp, and the release only clears the lease with that exact
+ * `until`. A worker that overran its lease therefore cannot, on finishing, free the lease of the worker that
+ * took the tenant over; it logs `lease.expired_before_release` instead (the work took longer than `seconds`,
+ * so two workers may have overlapped, and `seconds` is too short for this job).
+ *
  * The lease is released afterwards, whether the work returned or threw. A failed release is logged and
- * swallowed: the lease expires on its own after `seconds`, and throwing here would hide the work's result
- * (a payment may already have gone out) or replace the work's own error.
+ * swallowed: the lease expires by itself, and throwing here would hide the work's result (a payment may
+ * already have gone out) or replace the work's own error.
  */
 export async function withLease<T>(
   db: Db,
@@ -74,19 +83,29 @@ export async function withLease<T>(
   seconds: number,
   fn: () => Promise<T>,
 ): Promise<{ acquired: false } | { acquired: true; value: T }> {
-  const lease = await db.rpc<{ acquired: boolean }>("tenant_lease", {
-    tenant_id: tenantId,
-    kind,
-    seconds,
-  });
+  const lease = await db.rpc<LeaseGrant>("tenant_lease", { tenant_id: tenantId, kind, seconds });
   if (!lease.acquired) return { acquired: false };
   try {
     return { acquired: true, value: await fn() };
   } finally {
     try {
-      await db.rpc("tenant_release", { tenant_id: tenantId, kind });
+      const done = await db.rpc<{ released: boolean }>("tenant_release", {
+        tenant_id: tenantId,
+        kind,
+        until: lease.until,
+      });
+      if (!done.released) {
+        log.warn("lease.expired_before_release", { tenant_id: tenantId, kind });
+      }
     } catch (e) {
-      log.warn("lease.release_failed", { tenant_id: tenantId, kind, code: toDbError(e).code });
+      const err = toDbError(e);
+      // "db_error" says nothing on its own, so it travels with the database's text (the logger scrubs it).
+      log.warn("lease.release_failed", {
+        tenant_id: tenantId,
+        kind,
+        code: err.code,
+        ...(err.code === "db_error" ? { error: err.message } : {}),
+      });
     }
   }
 }
