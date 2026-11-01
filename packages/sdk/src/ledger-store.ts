@@ -1,9 +1,10 @@
 import { open, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { LedgerEntry, LedgerEntryBody } from "@probarion/core";
+import type { LedgerEntry, LedgerEntryBody, LedgerSigner } from "@probarion/core";
 import { envValue } from "./env.js";
 import { LedgerError } from "./errors.js";
 import { buildNextEntry, type LedgerAppendBody } from "./ledger-store-chain.js";
+import { errorCode, syncDirectory } from "./ledger-store-fs.js";
 import { DEFAULT_LOCK_TIMEOUT_MS, displayPath, withFileLock } from "./ledger-store-lock.js";
 import { Mutex } from "./mutex.js";
 
@@ -13,7 +14,7 @@ export interface LedgerStore {
   head(): Promise<LedgerEntry | null>;
   append(
     body: Omit<LedgerEntryBody, "seq" | "prev_link">,
-    sign: (bodyHash: Uint8Array) => Promise<{ sig: string; signer: string }>,
+    sign: LedgerSigner,
   ): Promise<LedgerEntry>;
   all(): Promise<LedgerEntry[]>;
 }
@@ -32,10 +33,7 @@ export class InMemoryLedgerStore implements LedgerStore {
     return last === undefined ? null : structuredClone(last);
   }
 
-  append(
-    body: LedgerAppendBody,
-    sign: (bodyHash: Uint8Array) => Promise<{ sig: string; signer: string }>,
-  ): Promise<LedgerEntry> {
+  append(body: LedgerAppendBody, sign: LedgerSigner): Promise<LedgerEntry> {
     return this.lock.run(async () => {
       const entry = await buildNextEntry(
         this.entries.at(-1) ?? null,
@@ -84,21 +82,18 @@ interface LoadedLedger {
   torn: number | null;
 }
 
-function isNotFound(error: unknown): boolean {
-  return (
-    typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ENOENT"
-  );
-}
-
 const NEWLINE = 0x0a;
 
 /**
  * JSONL ledger: one entry per line, each line a complete `JSON.stringify(entry)` plus "\n".
  *
- * - Append is one `write` to an O_APPEND handle followed by `fsync` before the call returns, under an
- *   exclusive lock file (`<path>.lock`, see `ledger-store-lock.ts`), so two processes never interleave
- *   bytes or both extend the same head. A failed write or flush truncates the file back to its size
- *   before the attempt.
+ * - Append writes the line to an O_APPEND handle and `fsync`s it before the call returns. What keeps two
+ *   processes from interleaving bytes, or both extending the same head, is the exclusive lock file
+ *   (`<path>.lock`, see `ledger-store-lock.ts`), not the atomicity of the write: Node splits a write above
+ *   512 KiB into chunks, and an entry with attestation evidence can be that large. A failed write or flush
+ *   truncates the file back to its size before the attempt (unless the file has grown by more than this
+ *   append wrote, which means someone wrote without the lock: then it is left alone and an error says so).
+ *   A newly created file also has its directory entry synced.
  * - A crash can still leave a half line. A last line without its newline that is not valid JSON is a torn
  *   write: `all()`, `head()` and `append()` refuse it with an error naming the line. Nothing is dropped,
  *   skipped or repaired; the operator inspects the file. A last line that is valid JSON but lacks its
@@ -148,10 +143,7 @@ export class FileLedgerStore implements LedgerStore {
     return (await this.all()).at(-1) ?? null;
   }
 
-  append(
-    body: LedgerAppendBody,
-    sign: (bodyHash: Uint8Array) => Promise<{ sig: string; signer: string }>,
-  ): Promise<LedgerEntry> {
+  append(body: LedgerAppendBody, sign: LedgerSigner): Promise<LedgerEntry> {
     return this.mutex.run(() =>
       withFileLock(
         this.lockPath,
@@ -183,7 +175,7 @@ export class FileLedgerStore implements LedgerStore {
     try {
       bytes = await readFile(this.path);
     } catch (error) {
-      if (isNotFound(error)) {
+      if (errorCode(error) === "ENOENT") {
         return {
           entries: [],
           headLine: null,
@@ -256,8 +248,8 @@ export class FileLedgerStore implements LedgerStore {
 
   /** Called under the lock, with the ledger as just read. Durable when it returns. */
   private async writeLine(loaded: LoadedLedger, line: string): Promise<void> {
-    // One buffer, one write. A missing newline at the end of the file (a whole entry that lost only its
-    // terminator) is supplied here, in the same write, so two entries never end up on one line.
+    // One buffer. A missing newline at the end of the file (a whole entry that lost only its terminator)
+    // is supplied at the front of the same buffer, so two entries never end up on one line.
     const data = Buffer.from(`${loaded.endsWithNewline ? "" : "\n"}${line}\n`, "utf8");
     const handle = await open(this.path, "a");
     let failure: { error: unknown } | null = null;
@@ -268,39 +260,49 @@ export class FileLedgerStore implements LedgerStore {
       failure = { error };
     }
     await handle.close().catch(() => undefined);
-    if (failure !== null) {
-      await this.rollback(loaded.byteLength);
-      throw failure.error;
+    if (failure === null && !loaded.exists) {
+      // The file is new: until its name is in a synced directory, a power cut can lose the whole file.
+      try {
+        await syncDirectory(dirname(this.path));
+      } catch (error) {
+        failure = { error };
+      }
     }
-    if (!loaded.exists) await syncDirectory(dirname(this.path));
+    if (failure !== null) await this.rollback(loaded.byteLength, data.length, failure.error);
   }
 
-  /** Best effort. If it fails too, the half line stays and the next read reports it as torn. */
-  private async rollback(size: number): Promise<void> {
+  /**
+   * Always throws. Takes the failed append back out: truncates to the size read under the lock, unless the
+   * file is now larger than that plus what this append wrote, which only a writer that ignored the lock can
+   * cause; then the file is left alone and the error says so. If the truncation itself fails, the half line
+   * stays and the next read reports it as torn.
+   */
+  private async rollback(size: number, written: number, cause: unknown): Promise<never> {
+    let grewBy: number | null = null;
     try {
       const handle = await open(this.path, "r+");
       try {
-        await handle.truncate(size);
-        await handle.sync();
+        const { size: now } = await handle.stat();
+        if (now > size + written) {
+          grewBy = now - size;
+        } else {
+          await handle.truncate(size);
+          await handle.sync();
+        }
       } finally {
         await handle.close();
       }
     } catch {
-      // see above
+      // nothing more can be done here; see above
     }
-  }
-}
-
-/** Makes a newly created file's directory entry durable. Windows cannot open a directory: best effort. */
-async function syncDirectory(dir: string): Promise<void> {
-  try {
-    const handle = await open(dir, "r");
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
+    if (grewBy !== null) {
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      throw new LedgerError(
+        `${displayPath(this.path)}: an append failed (${reason}) and the file has grown by ${grewBy} bytes, ` +
+          `more than the ${written} this append wrote, so another process wrote to it without taking the lock. ` +
+          "Nothing was truncated. Inspect the file.",
+      );
     }
-  } catch {
-    // not supported here
+    throw cause;
   }
 }

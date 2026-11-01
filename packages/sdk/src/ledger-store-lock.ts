@@ -1,38 +1,71 @@
 // An exclusive lock file for the ledger file, so that two processes appending to one ledger never
 // interleave bytes or fork the chain (both reading the same head and both writing seq n + 1).
 //
-//   - The lock is `<ledger>.lock`, created with O_CREAT|O_EXCL (`wx`): one creator wins on NTFS and on
-//     POSIX alike. Its content is `{ pid, thread, host, token, at }`.
+// Taking the lock
+//   - The lock is `<ledger>.lock`. It is PUBLISHED, not created: the full record `{ pid, thread, host, token,
+//     at }` is written to `<lock>.<token>.tmp` first, then `link(tmp, lock)` gives it its name in one atomic
+//     step (EEXIST = somebody holds it), and the tmp name is unlinked. So a lock that exists is always
+//     complete: it is never empty and never half written.
+//   - A file system without hard links (FAT, exFAT, some network shares) cannot do this. That is an error
+//     that says so; there is no fallback to a non-atomic create, which is exactly the race this avoids.
+//   - A lock file that is empty, not JSON or not a lock record is therefore corruption, not a lock being
+//     written. It is never removed automatically, whatever its age: the error says to delete it by hand.
 //   - A waiter polls with a short backoff and gives up after `timeoutMs` with an error that names the lock
 //     file and its holder. Nothing is ever written without the lock.
-//   - A lock whose owner is provably gone is broken: same host and the pid is not running; or a lock of
-//     this very process and thread whose release failed (its token is in `leaked`); or a file that stayed
-//     empty or unparseable for more than UNREADABLE_LOCK_GRACE_MS (a process died between create and write).
-//   - A lock held by a live process, or by another host, is NEVER broken. A recycled pid therefore makes a
-//     dead owner look alive: the wait ends with an error that says to delete the lock file by hand. That is
-//     the deliberate trade: a stuck writer is loud, a forked ledger would be silent.
-//   - Stale locks are broken by renaming them aside (atomic) and checking what was moved; a lock that turns
-//     out to be a fresh one is linked back. Two recoveries racing with a third new owner in the same
-//     instant can still lose that last put-back; this needs a crashed writer AND three live processes.
-//   - Release removes the file only when it still carries this holder's token.
 //
-// The lock is advisory and cooperative: it protects against other `FileLedgerStore`s, not against an
-// editor or a shell redirect. It assumes a local file system (not NFS or SMB shared between hosts).
+// Breaking a stale lock
+//   - A lock is stale only when its owner is provably gone: same host and the pid is not running; or a lock
+//     of this very process and thread whose release failed (its token is in `leaked`).
+//   - A lock held by a live process, another thread of this process, or another host is NEVER broken. A
+//     recycled pid therefore makes a dead owner look alive: the wait ends with an error that says to delete
+//     the lock file by hand. The trade is deliberate: a stuck writer is loud, a forked ledger is silent.
+//   - Breaking is serialized by a second published file, `<lock>.break`, which holds the breaker's token.
+//     Under it the breaker re-reads the lock and unlinks it only if it is still the SAME stale token it saw;
+//     then it releases `.break` and everyone goes back to taking the lock the normal way. The lock name is
+//     never renamed aside or put back, so there is no moment at which it is vacant while a live owner exists,
+//     and a breaker that was slow to act finds the new owner's lock and leaves it alone.
+//   - A `.break` file that outlives the timeout (its breaker died inside the critical section) is also not
+//     removed automatically: the error says to delete it.
+//   - Release unlinks the lock only if it still carries this holder's token. A release that cannot read the
+//     lock (a transient error, retried) or remove it records the token in `leaked`, so the next caller in
+//     this process can break it.
+//
+// Scope
+//   - The lock is advisory and cooperative: it protects against other `FileLedgerStore`s, not against an
+//     editor or a shell redirect. It assumes a local file system, not NFS or SMB shared between hosts.
+//   - Ownership is judged by host name and pid. Containers that share a ledger directory (a bind mount)
+//     need DISTINCT hostnames, or each sees the other's pid as its own or as a dead process. And if a
+//     machine's hostname changes while a lock is held, that lock looks like another host's: it is never
+//     broken, so after a crash it has to be deleted by hand. PID namespaces beyond that are not handled.
 import { randomUUID } from "node:crypto";
-import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { link, open, readFile, rm, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { threadId } from "node:worker_threads";
 import { LedgerError } from "./errors.js";
+import { ensureDirectory, errorCode, isTransientFsError } from "./ledger-store-fs.js";
 
 export const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
-const UNREADABLE_LOCK_GRACE_MS = 5_000;
 const MAX_POLL_MS = 100;
+const RELEASE_ATTEMPTS = 5;
+
+/** The points of the protocol at which `onStep` is called (see `FileLockOptions.onStep`). */
+export type LockStep =
+  | "tmp-written" // the record is on disk under its temporary name; the lock does not exist yet
+  | "published" // this caller now holds the lock
+  | "stale-seen" // a stale lock was seen; the break mutex has not been asked for yet
+  | "break-held" // this caller holds the break mutex; the lock has not been re-read yet
+  | "break-rechecked"; // the lock was re-read under the break mutex; nothing has been removed yet
 
 export interface FileLockOptions {
   /** How long to wait for another writer before giving up. Default 10 s. */
   timeoutMs?: number;
+  /**
+   * A test seam, never set in production: awaited at each `LockStep`, so that a test can hold one caller
+   * at a precise point while another runs and force an interleaving without sleeping and hoping.
+   */
+  onStep?: (step: LockStep) => void | Promise<void>;
 }
 
 /** A path as it is printed in messages: always forward slashes (R11). */
@@ -48,32 +81,18 @@ interface LockInfo {
   at: string;
 }
 
-interface Holder {
-  /** null when the file is empty or not a lock record. */
-  info: LockInfo | null;
-  ageMs: number;
-}
+type Probe =
+  | { kind: "gone" }
+  | { kind: "held"; info: LockInfo }
+  | { kind: "corrupt" } // exists, but is not a lock record
+  | { kind: "busy" }; // exists, but could not be read right now (a transient error)
 
 /**
- * Tokens of locks this module created and then failed to remove. Only these are "leaked" locks of our own:
- * a lock of our pid whose token is not here is either live or was released a moment ago, and a waiter that
- * looked at it earlier must not mistake it for stale.
+ * Tokens of locks this module published and then failed to remove. Only these are "leaked" locks of our
+ * own: a lock of our pid whose token is not here is either live or was released a moment ago, and a waiter
+ * that looked at it earlier must not mistake it for stale.
  */
 const leaked = new Set<string>();
-
-function errorCode(error: unknown): string | undefined {
-  return typeof error === "object" && error !== null
-    ? ((error as { code?: unknown }).code as string | undefined)
-    : undefined;
-}
-
-/** Windows reports a lock file that is open, or deleted but still open elsewhere, as EPERM/EBUSY/EACCES. */
-function isTransientOnWindows(error: unknown): boolean {
-  const code = errorCode(error);
-  return (
-    process.platform === "win32" && (code === "EPERM" || code === "EBUSY" || code === "EACCES")
-  );
-}
 
 function parseInfo(text: string): LockInfo | null {
   try {
@@ -93,22 +112,22 @@ function parseInfo(text: string): LockInfo | null {
       return { pid: v.pid, thread: v.thread, host: v.host, token: v.token, at: v.at };
     }
   } catch {
-    // not JSON: an unreadable lock
+    // not JSON
   }
   return null;
 }
 
-/** null when the lock file does not exist. */
-async function readHolder(lockPath: string): Promise<Holder | null> {
+async function probe(path: string): Promise<Probe> {
+  let text: string;
   try {
-    const text = await readFile(lockPath, "utf8");
-    const { mtimeMs } = await stat(lockPath);
-    return { info: parseInfo(text), ageMs: Date.now() - mtimeMs };
+    text = await readFile(path, "utf8");
   } catch (error) {
-    if (errorCode(error) === "ENOENT") return null;
-    if (isTransientOnWindows(error)) return { info: null, ageMs: 0 };
+    if (errorCode(error) === "ENOENT") return { kind: "gone" };
+    if (isTransientFsError(error)) return { kind: "busy" };
     throw error;
   }
+  const info = parseInfo(text);
+  return info === null ? { kind: "corrupt" } : { kind: "held", info };
 }
 
 function pidIsRunning(pid: number): boolean {
@@ -121,108 +140,228 @@ function pidIsRunning(pid: number): boolean {
   }
 }
 
-function isStale(holder: Holder): boolean {
-  const { info } = holder;
-  if (info === null) return holder.ageMs > UNREADABLE_LOCK_GRACE_MS;
+function isStale(info: LockInfo): boolean {
   if (info.host !== hostname()) return false;
   if (info.pid === process.pid) return info.thread === threadId && leaked.has(info.token);
   return !pidIsRunning(info.pid);
 }
 
-/** True when the lock file was removed and the caller should try to create it again at once. */
-async function breakStale(lockPath: string, observed: Holder): Promise<boolean> {
-  const aside = `${lockPath}.${randomUUID()}.stale`;
-  try {
-    await rename(lockPath, aside);
-  } catch (error) {
-    if (errorCode(error) === "ENOENT") return true; // someone else broke it first
-    if (isTransientOnWindows(error)) return false;
-    throw error;
-  }
-  const moved = await readHolder(aside);
-  const same =
-    moved !== null &&
-    (moved.info === null
-      ? observed.info === null
-      : observed.info !== null && moved.info.token === observed.info.token);
-  if (!same) {
-    // A new owner took the lock between our look and our rename: put it back if the name is free.
-    await link(aside, lockPath).catch(() => undefined);
-  }
-  await rm(aside, { force: true }).catch(() => undefined);
-  return same;
-}
-
-async function tryCreate(lockPath: string, info: LockInfo): Promise<boolean> {
-  let handle: Awaited<ReturnType<typeof open>>;
-  try {
-    handle = await open(lockPath, "wx");
-  } catch (error) {
-    if (errorCode(error) === "EEXIST" || isTransientOnWindows(error)) return false;
-    throw error;
-  }
-  try {
-    await handle.writeFile(JSON.stringify(info));
-    await handle.close();
-  } catch (error) {
-    await handle.close().catch(() => undefined);
-    await rm(lockPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
-  return true;
-}
-
-function timeoutError(lockPath: string, timeoutMs: number, holder: Holder | null): LedgerError {
-  const who =
-    holder?.info != null
-      ? `held by pid ${holder.info.pid} on ${holder.info.host} since ${holder.info.at}`
-      : "held by an unknown owner (the lock file is empty or unreadable)";
-  return new LedgerError(
-    `${displayPath(lockPath)}: could not take the ledger lock within ${timeoutMs} ms; it is ${who}. ` +
-      "If that process is gone, delete the lock file and retry.",
-  );
-}
-
-async function acquire(lockPath: string, timeoutMs: number): Promise<string> {
-  await mkdir(dirname(lockPath), { recursive: true });
-  const token = randomUUID();
-  const info: LockInfo = {
+function newInfo(token: string): LockInfo {
+  return {
     pid: process.pid,
     thread: threadId,
     host: hostname(),
     token,
     at: new Date().toISOString(),
   };
-  const deadline = Date.now() + timeoutMs;
-  let delay = 2;
-  for (;;) {
-    if (await tryCreate(lockPath, info)) return token;
-    const holder = await readHolder(lockPath);
-    if (holder !== null && isStale(holder) && (await breakStale(lockPath, holder))) continue;
-    if (Date.now() >= deadline) throw timeoutError(lockPath, timeoutMs, holder);
-    await sleep(delay);
-    delay = Math.min(delay * 2, MAX_POLL_MS);
+}
+
+/** Writes the whole record under a temporary name next to `target`. Returns that name. */
+async function writeTmp(target: string, info: LockInfo): Promise<string> {
+  const tmp = `${target}.${info.token}.tmp`;
+  const handle = await open(tmp, "wx");
+  try {
+    await handle.writeFile(JSON.stringify(info));
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    await unlink(tmp).catch(() => undefined);
+    throw error;
+  }
+  await handle.close();
+  return tmp;
+}
+
+async function dropTmp(tmp: string): Promise<void> {
+  await unlink(tmp).catch(() => undefined);
+}
+
+function noHardLinks(target: string, code: string): LedgerError {
+  return new LedgerError(
+    `${displayPath(target)}: cannot publish the ledger lock: this file system refused a hard link (${code}). ` +
+      "The lock is published with a hard link so that it is never visible half written, and there is no " +
+      "weaker fallback. Keep the ledger on a local disk whose file system supports hard links " +
+      "(NTFS, ext4, APFS), not on FAT, exFAT or a network share.",
+  );
+}
+
+async function nameIsInUse(target: string): Promise<boolean> {
+  try {
+    await stat(target);
+    return true;
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") return false;
+    if (isTransientFsError(error)) return true;
+    throw error;
   }
 }
 
-async function release(lockPath: string, token: string): Promise<void> {
+/** Atomically gives `tmp`'s content the name `target`. False when the name is taken. */
+async function linkInto(target: string, tmp: string): Promise<boolean> {
   try {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const holder = await readHolder(lockPath);
-      if (holder?.info?.token !== token) return; // gone, or taken over: never delete someone else's lock
-      try {
-        await rm(lockPath, { force: true });
-        return;
-      } catch (error) {
-        if (!isTransientOnWindows(error)) throw error;
-        await sleep(20 * (attempt + 1));
-      }
-    }
-    leaked.add(token); // still there after every retry
+    await link(tmp, target);
+    return true;
   } catch (error) {
-    leaked.add(token);
+    const code = errorCode(error);
+    if (code === "EEXIST" || code === "EBUSY") return false;
+    if (code === "EPERM" || code === "EACCES") {
+      // Windows answers like this for a name that is being deleted; a file system without hard links
+      // answers like this for every link. Told apart by whether the name is in use.
+      if (await nameIsInUse(target)) return false;
+      throw noHardLinks(target, code);
+    }
+    if (code === "ENOTSUP" || code === "EOPNOTSUPP" || code === "EXDEV" || code === "ENOSYS") {
+      throw noHardLinks(target, code);
+    }
     throw error;
   }
+}
+
+function corruptError(lockPath: string): LedgerError {
+  return new LedgerError(
+    `${displayPath(lockPath)}: the lock file is empty or not a lock record. A held lock is published whole, ` +
+      "so this is corruption and not a lock being written; it is not removed automatically. " +
+      `If no ledger process is running, delete ${displayPath(lockPath)} and retry.`,
+  );
+}
+
+type Blocker = { by: "lock"; seen: Probe } | { by: "break" };
+
+function timeoutError(lockPath: string, timeoutMs: number, blocker: Blocker): LedgerError {
+  if (blocker.by === "break") {
+    const breakPath = displayPath(`${lockPath}.break`);
+    return new LedgerError(
+      `${breakPath}: could not take the lock-recovery mutex within ${timeoutMs} ms; a process that was ` +
+        `breaking a stale ledger lock may have died holding it. If no ledger process is running, delete ${breakPath} and retry.`,
+    );
+  }
+  const who =
+    blocker.seen.kind === "held"
+      ? `held by pid ${blocker.seen.info.pid} on ${blocker.seen.info.host} since ${blocker.seen.info.at}`
+      : "in use by an owner that could not be identified";
+  return new LedgerError(
+    `${displayPath(lockPath)}: could not take the ledger lock within ${timeoutMs} ms; it is ${who}. ` +
+      "If that process is gone, delete the lock file and retry.",
+  );
+}
+
+type BreakOutcome = "removed" | "changed" | "blocked" | "busy";
+
+/**
+ * Removes the stale lock `observed`, if it is still there, still the same, and still provably stale, while
+ * holding the break mutex. "removed" and "changed" mean: go and try to take the lock again at once.
+ */
+async function breakStale(
+  lockPath: string,
+  observed: LockInfo,
+  step: (name: LockStep) => Promise<void>,
+): Promise<BreakOutcome> {
+  const breakPath = `${lockPath}.break`;
+  const info = newInfo(randomUUID());
+  const tmp = await writeTmp(breakPath, info);
+  try {
+    if (!(await linkInto(breakPath, tmp))) return "blocked";
+    try {
+      await step("break-held");
+      const again = await probe(lockPath);
+      if (again.kind === "busy") return "busy";
+      await step("break-rechecked");
+      if (again.kind === "held" && again.info.token === observed.token && isStale(again.info)) {
+        try {
+          await rm(lockPath, { force: true });
+        } catch (error) {
+          if (isTransientFsError(error)) return "busy";
+          throw error;
+        }
+        return "removed";
+      }
+      // Gone, replaced by someone else's lock, or not a lock record at all (the caller finds that out and
+      // reports it): not ours to touch.
+      return "changed";
+    } finally {
+      await releaseOwned(breakPath, info.token).catch(() => undefined);
+    }
+  } finally {
+    await dropTmp(tmp);
+  }
+}
+
+async function acquire(
+  lockPath: string,
+  timeoutMs: number,
+  onStep: FileLockOptions["onStep"],
+): Promise<string> {
+  const step = async (name: LockStep): Promise<void> => {
+    await onStep?.(name);
+  };
+  await ensureDirectory(dirname(lockPath));
+  const info = newInfo(randomUUID());
+  const deadline = Date.now() + timeoutMs;
+  const tmp = await writeTmp(lockPath, info);
+  try {
+    await step("tmp-written");
+    let delay = 2;
+    for (;;) {
+      if (await linkInto(lockPath, tmp)) {
+        try {
+          await step("published");
+        } catch (error) {
+          await releaseOwned(lockPath, info.token).catch(() => undefined);
+          throw error;
+        }
+        return info.token;
+      }
+      const seen = await probe(lockPath);
+      if (seen.kind === "corrupt") throw corruptError(lockPath);
+      let blocker: Blocker = { by: "lock", seen };
+      if (seen.kind === "gone") {
+        if (Date.now() < deadline) continue; // released since we looked: try again at once
+      } else if (seen.kind === "held" && isStale(seen.info)) {
+        await step("stale-seen");
+        const outcome = await breakStale(lockPath, seen.info, step);
+        if ((outcome === "removed" || outcome === "changed") && Date.now() < deadline) continue;
+        if (outcome === "blocked") blocker = { by: "break" };
+      }
+      if (Date.now() >= deadline) throw timeoutError(lockPath, timeoutMs, blocker);
+      await sleep(delay);
+      delay = Math.min(delay * 2, MAX_POLL_MS);
+    }
+  } finally {
+    await dropTmp(tmp);
+  }
+}
+
+/**
+ * Removes `path` if, and only if, it still carries `token`. A transient read or remove error is retried; if
+ * it is still failing after the last try, the token is recorded as leaked (this process may then break the
+ * file when it next meets it) and nothing is thrown. Any other error is thrown, after recording the token.
+ */
+async function releaseOwned(path: string, token: string): Promise<void> {
+  for (let attempt = 0; attempt < RELEASE_ATTEMPTS; attempt++) {
+    let seen: Probe;
+    try {
+      seen = await probe(path);
+    } catch (error) {
+      leaked.add(token);
+      throw error;
+    }
+    if (seen.kind === "busy") {
+      await sleep(20 * (attempt + 1));
+      continue;
+    }
+    // Gone, or taken over, or not a record: never delete a file that is not provably ours.
+    if (seen.kind !== "held" || seen.info.token !== token) return;
+    try {
+      await rm(path, { force: true });
+      return;
+    } catch (error) {
+      if (!isTransientFsError(error)) {
+        leaked.add(token);
+        throw error;
+      }
+      await sleep(20 * (attempt + 1));
+    }
+  }
+  leaked.add(token); // still unreadable or undeletable after every retry
 }
 
 /**
@@ -234,10 +373,14 @@ export async function withFileLock<T>(
   task: () => Promise<T>,
   options: FileLockOptions = {},
 ): Promise<T> {
-  const token = await acquire(lockPath, options.timeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS);
+  const token = await acquire(
+    lockPath,
+    options.timeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS,
+    options.onStep,
+  );
   try {
     return await task();
   } finally {
-    await release(lockPath, token).catch(() => undefined);
+    await releaseOwned(lockPath, token).catch(() => undefined);
   }
 }
