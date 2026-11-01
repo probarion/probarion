@@ -7,5 +7,14 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next", "**/*.test.ts", "test", "e2e"]
+  "exclude": [
+    "node_modules",
+    ".next",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "test",
+    "e2e"
+  ]
 }

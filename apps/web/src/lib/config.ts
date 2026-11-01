@@ -1,6 +1,6 @@
-import { NETWORKS } from "@probarion/core";
+import { NETWORKS, type NetworkId } from "@probarion/core";
 
-export type Network = "mainnet" | "testnet";
+export type Network = NetworkId;
 
 export const AUTH_RECIPIENT = "probarion.xyz";
 export const SECURITY_EMAIL = "security@probarion.xyz";
@@ -18,14 +18,14 @@ export const VAULT_DEFAULTS = {
 } as const;
 
 export function explorerTxUrl(network: Network, hash: string): string {
-  return `${NETWORKS[network].explorerTx}${hash}`;
+  return `${NETWORKS[network].explorerTx}${encodeURIComponent(hash)}`;
 }
 
 export function explorerAccountUrl(network: Network, account: string): string {
-  return `${NETWORKS[network].explorerTx.replace("/txns/", "/address/")}${account}`;
+  return `${NETWORKS[network].explorerTx.replace("/txns/", "/address/")}${encodeURIComponent(account)}`;
 }
 
 export function appOrigin(src: Record<string, string | undefined> = process.env): string {
-  const prod = src.VERCEL_PROJECT_PRODUCTION_URL;
+  const prod = src.VERCEL_PROJECT_PRODUCTION_URL?.trim();
   return prod ? `https://${prod}` : "http://localhost:3000";
 }

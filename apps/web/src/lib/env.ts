@@ -1,3 +1,4 @@
+import "server-only";
 import { NETWORKS } from "@probarion/core";
 import type { Network } from "./config";
 
@@ -27,12 +28,38 @@ export interface Env {
   BETTERSTACK_HEARTBEAT_URL: string | null;
 }
 
+/** Messages name the variable (and an entry's position), never its value. */
 export class EnvError extends Error {}
 
 type Source = Record<string, string | undefined>;
 
+/** R12: an empty or whitespace-only value counts as unset. */
 const opt = (v: string | undefined): string | null =>
   v !== undefined && v.trim() !== "" ? v.trim() : null;
+
+function isHttps(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** 32 bytes as standard base64 is 43 characters and one "=". */
+const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
+
+function masterKeyProblem(value: string): string | null {
+  if (!BASE64_32_BYTES.test(value))
+    return "KEY_ENCRYPTION_SECRET must be 32 bytes encoded as base64";
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length !== 32 || bytes.toString("base64") !== value) {
+    return "KEY_ENCRYPTION_SECRET must be 32 bytes encoded as base64";
+  }
+  if (bytes.every((b) => b === bytes[0])) {
+    return "KEY_ENCRYPTION_SECRET must not be one repeated byte";
+  }
+  return null;
+}
 
 export function loadEnv(src: Source): Env {
   const problems: string[] = [];
@@ -47,17 +74,19 @@ export function loadEnv(src: Source): Env {
     problems.push("NEAR_NETWORK must be mainnet or testnet");
   const network: Network = rawNetwork === "mainnet" ? "mainnet" : "testnet";
 
-  const rpc = opt(src.NEAR_RPC_URLS)
-    ?.split(",")
+  // A list with no entries (for example ",") is unset, so the network default applies.
+  const listed = (opt(src.NEAR_RPC_URLS) ?? "")
+    .split(",")
     .map((s) => s.trim())
-    .filter(Boolean) ?? [...NETWORKS[network].rpcUrls];
-  for (const u of rpc)
-    if (!u.startsWith("https://")) problems.push(`NEAR_RPC_URLS entry must be https: ${u}`);
+    .filter(Boolean);
+  const rpc = listed.length > 0 ? listed : [...NETWORKS[network].rpcUrls];
+  rpc.forEach((u, i) => {
+    if (!isHttps(u)) problems.push(`NEAR_RPC_URLS entry ${i + 1} must be https`);
+  });
 
   const master = req("KEY_ENCRYPTION_SECRET");
-  if (master && Buffer.from(master, "base64").length !== 32) {
-    problems.push("KEY_ENCRYPTION_SECRET must be 32 bytes encoded as base64");
-  }
+  const masterProblem = master ? masterKeyProblem(master) : null;
+  if (masterProblem) problems.push(masterProblem);
   const cron = req("CRON_SECRET");
   if (cron && cron.length < 32) problems.push("CRON_SECRET must be at least 32 characters");
 
@@ -65,8 +94,13 @@ export function loadEnv(src: Source): Env {
   if (!CANARY_MODES.includes(mode as CanaryMode))
     problems.push("CANARY_MODE must be live, code-only, replay or off");
   const heartbeat = opt(src.BETTERSTACK_HEARTBEAT_URL);
-  if (heartbeat && !heartbeat.startsWith("https://"))
-    problems.push("BETTERSTACK_HEARTBEAT_URL must be https");
+  if (heartbeat && !isHttps(heartbeat)) problems.push("BETTERSTACK_HEARTBEAT_URL must be https");
+  const supabaseUrl = req("SUPABASE_URL");
+  if (supabaseUrl && !isHttps(supabaseUrl)) problems.push("SUPABASE_URL must be https");
+  const baseRpc = opt(src.BASE_RPC_URL);
+  if (baseRpc && !isHttps(baseRpc)) problems.push("BASE_RPC_URL must be https");
+  const sentryDsn = opt(src.SENTRY_DSN);
+  if (sentryDsn && !isHttps(sentryDsn)) problems.push("SENTRY_DSN must be https");
 
   const env: Env = {
     NEAR_NETWORK: network,
@@ -76,16 +110,16 @@ export function loadEnv(src: Source): Env {
     NEARAI_API_KEY: opt(src.NEARAI_API_KEY),
     NEARAI_MODEL: opt(src.NEARAI_MODEL),
     ONECLICK_JWT: opt(src.ONECLICK_JWT),
-    SUPABASE_URL: req("SUPABASE_URL"),
+    SUPABASE_URL: supabaseUrl,
     SUPABASE_SERVICE_ROLE_KEY: req("SUPABASE_SERVICE_ROLE_KEY"),
     NEXT_PUBLIC_SUPABASE_URL: req("NEXT_PUBLIC_SUPABASE_URL"),
     NEXT_PUBLIC_SUPABASE_ANON_KEY: req("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     KEY_ENCRYPTION_SECRET: master,
-    SENTRY_DSN: opt(src.SENTRY_DSN),
+    SENTRY_DSN: sentryDsn,
     TELEGRAM_BOT_TOKEN: opt(src.TELEGRAM_BOT_TOKEN),
     RESEND_API_KEY: opt(src.RESEND_API_KEY),
     CANARY_VAULT_ID: opt(src.CANARY_VAULT_ID),
-    BASE_RPC_URL: opt(src.BASE_RPC_URL),
+    BASE_RPC_URL: baseRpc,
     CRON_SECRET: cron,
     CANARY_MODE: mode as CanaryMode,
     BETTERSTACK_HEARTBEAT_URL: heartbeat,

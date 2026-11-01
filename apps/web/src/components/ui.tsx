@@ -1,4 +1,4 @@
-import { cloneElement, Fragment, isValidElement, type ReactNode, useId } from "react";
+import { cloneElement, Fragment, type ReactElement, type ReactNode, useId } from "react";
 import { explorerAccountUrl, explorerTxUrl, type Network } from "@/lib/config";
 
 export type Tone = "neutral" | "good" | "warn" | "bad" | "info";
@@ -50,9 +50,10 @@ type ControlProps = { id?: string; "aria-describedby"?: string; "aria-invalid"?:
 
 /**
  * A labelled form control. The label points at the control with `htmlFor`, and the control is its
- * sibling (not nested in the label). Pass exactly one element as `children`: it receives the
- * generated `id` (a caller-supplied `id` is kept), `aria-describedby` for the hint or error, and
- * `aria-invalid` when there is an error.
+ * sibling (not nested in the label). `children` is exactly one element: it receives the generated
+ * `id` (a caller-supplied `id` is kept), `aria-describedby` for the hint or error (added to any
+ * the element already has), and `aria-invalid` when there is an error. Only keys with a value are
+ * set, so nothing the element already carries is overwritten with `undefined`.
  */
 export function Field({
   label,
@@ -63,25 +64,21 @@ export function Field({
   label: string;
   hint?: string;
   error?: string;
-  children: ReactNode;
+  children: ReactElement<ControlProps>;
 }) {
   const uid = useId();
   const noteId = error ? `${uid}-error` : hint ? `${uid}-hint` : undefined;
-  const control =
-    isValidElement<ControlProps>(children) && children.type !== Fragment ? children : null;
-  const controlId = control?.props.id ?? uid;
+  const controlId = children.props.id ?? uid;
+  const extra: ControlProps = { id: controlId };
+  const describedBy = [children.props["aria-describedby"], noteId].filter(Boolean).join(" ");
+  if (describedBy) extra["aria-describedby"] = describedBy;
+  if (error) extra["aria-invalid"] = true;
   return (
     <div className="mb-3 block text-sm">
       <label htmlFor={controlId} className="mb-1 block font-medium">
         {label}
       </label>
-      {control
-        ? cloneElement(control, {
-            id: controlId,
-            "aria-describedby": noteId,
-            "aria-invalid": error ? true : undefined,
-          })
-        : children}
+      {children.type === Fragment ? children : cloneElement(children, extra)}
       {hint && !error ? (
         <span id={noteId} className="mt-1 block text-xs text-stone-500">
           {hint}
