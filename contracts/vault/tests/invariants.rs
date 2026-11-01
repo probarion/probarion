@@ -11,6 +11,7 @@ use probarion_vault::{
     Chain, MandateInput, MandateView, Payee, SpendRequest, SpendStatus, SpendView, Vault,
 };
 use proptest::prelude::*;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Once;
@@ -19,14 +20,20 @@ const T0: u64 = 1_800_000_000_000_000_000;
 const HOUR: u64 = 3_600_000_000_000;
 /// Largest generated amount, and the per-payment cap, so OverPerPayment never masks other refusals.
 const MAX_AMOUNT: u128 = 35;
-/// Three or four live reservations fill a mandate, so OverMandateTotal fires in most runs.
-const MAX_TOTAL: u128 = 60;
-/// Above both mandates' totals put together (2 x 60), so the daily backstop never masks the total.
+/// Two or three live reservations fill a mandate. Measured over four samples of 256 runs,
+/// OverMandateTotal fires in 31-38% of the runs (0 of 150 runs with a total of 100).
+const MAX_TOTAL: u128 = 50;
+/// Above both mandates' totals put together (2 x 50), so the daily backstop never masks the total.
 const BACKSTOP: u128 = 150;
-/// Distinct invoice_hash and ref values a run draws from. Refs are never released, so there are
-/// enough of them for a run not to use them all up.
+/// Distinct invoice_hash values a run draws from.
 const INVOICES: u8 = 10;
-const REFS: u8 = 30;
+/// Distinct refs a run draws from. A run accepts only about 2.6 spends, and refs are never
+/// released, so 12 are enough not to run out while repeats still happen.
+const REFS: u8 = 12;
+/// Spend ids that Approve, Reject, Settle and Expire name. Kept near the number of spends a run
+/// accepts, so most of those ops hit one: with 30 refs and ids up to 16, 30% of the runs settled
+/// a spend; with these values 43-48% do (approve 14-22%, reject 11-17%, expire 2-7%).
+const IDS: u64 = 6;
 const LIVE: [SpendStatus; 4] = [
     SpendStatus::Held,
     SpendStatus::Pending,
@@ -83,20 +90,36 @@ fn fresh() {
     ));
 }
 
-/// Hides the panic messages of expected contract refusals; every other panic stays visible.
-fn quiet_contract_panics() {
+thread_local! {
+    /// True only while a spend that `check_spend` refused runs under `catch_unwind`.
+    static EXPECTING_REFUSAL: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Marks the one place a contract panic is expected. The mark is cleared on drop, also on unwind.
+struct ExpectRefusal;
+
+impl ExpectRefusal {
+    fn begin() -> Self {
+        EXPECTING_REFUSAL.with(|flag| flag.set(true));
+        ExpectRefusal
+    }
+}
+
+impl Drop for ExpectRefusal {
+    fn drop(&mut self) {
+        EXPECTING_REFUSAL.with(|flag| flag.set(false));
+    }
+}
+
+/// Silences the panic report only while `ExpectRefusal` is alive on the panicking thread. Every
+/// other panic prints in full, even one whose message embeds a `PROBARION:` code (a wrong
+/// refusal code, an unexpected refusal from `approve`, a callback, ...).
+fn quiet_expected_refusals() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         let default = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            let payload = info.payload();
-            let text = payload
-                .downcast_ref::<String>()
-                .map(String::as_str)
-                .or_else(|| payload.downcast_ref::<&str>().copied())
-                .unwrap_or("");
-            // The mocked blockchain wraps the code: `... GuestPanic { panic_msg: "PROBARION:<Code>" }`.
-            if !text.contains("PROBARION:") {
+            if !EXPECTING_REFUSAL.with(Cell::get) {
                 default(info)
             }
         }));
@@ -172,16 +195,16 @@ fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
         4 => (1..=3u64, 0..=MAX_AMOUNT, 0..INVOICES, 0..REFS)
             .prop_map(|(mandate, amount, invoice, rf)| Op::Spend { mandate, amount, invoice, rf }),
-        2 => (1..=16u64).prop_map(Op::Approve),
-        1 => (1..=16u64).prop_map(Op::Reject),
-        3 => (1..=16u64, any::<bool>()).prop_map(|(spend, ok)| Op::Settle { spend, ok }),
-        1 => (1..=16u64).prop_map(Op::Expire),
+        2 => (1..=IDS).prop_map(Op::Approve),
+        1 => (1..=IDS).prop_map(Op::Reject),
+        3 => (1..=IDS, any::<bool>()).prop_map(|(spend, ok)| Op::Settle { spend, ok }),
+        1 => (1..=IDS).prop_map(Op::Expire),
         1 => (0..=2 * HOUR).prop_map(Op::Advance),
     ]
 }
 
 /// The use cap of both mandates. Mostly generous, so the total binds; sometimes tiny, so the use
-/// count binds and UsesExhausted fires too.
+/// count binds and UsesExhausted fires too (6-11% of the runs).
 fn max_uses() -> impl Strategy<Value = u32> {
     prop_oneof![3 => Just(8u32), 1 => Just(2u32)]
 }
@@ -260,9 +283,12 @@ impl Sim {
                     _ => {}
                 }
                 let before = state(&self.v);
-                let outcome = catch_unwind(AssertUnwindSafe(|| {
-                    let _ = self.v.spend(request);
-                }));
+                let outcome = {
+                    let _expected = ExpectRefusal::begin();
+                    catch_unwind(AssertUnwindSafe(|| {
+                        let _ = self.v.spend(request);
+                    }))
+                };
                 let payload = match outcome {
                     Ok(()) => {
                         panic!("spend accepted a request that check_spend refused with {code}")
@@ -416,7 +442,7 @@ fn check_i3(v: &Vault) {
 
 /// Runs `ops` on a fresh vault and calls `check` after every operation.
 fn run(max_uses: u32, ops: &[Op], check: fn(&Vault)) {
-    quiet_contract_panics();
+    quiet_expected_refusals();
     let mut sim = Sim {
         v: setup(max_uses),
         now: T0 + 1,
