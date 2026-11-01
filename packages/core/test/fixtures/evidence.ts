@@ -2,6 +2,7 @@
 // signer is a local secp256k1 key. Never present this evidence as a real NEAR AI Cloud attestation.
 import { privateKeyToAccount } from "viem/accounts";
 import {
+  formatProviderTeeText,
   TDX_QUOTE_V4_BODY_OFFSET,
   TDX_QUOTE_V5_BODY_OFFSET,
   TDX_REPORT_DATA_BODY_OFFSET,
@@ -110,7 +111,9 @@ export async function buildTestEvidence(o: TestEvidenceOptions): Promise<Attesta
   const responseBody =
     o.responseBody ?? fixtureChatCompletion({ chatId: o.chatId, model, proposal: o.proposal });
   const responseSha = sha256Hex(responseBody);
-  const text = `${model}:${requestSha}:${responseSha}`;
+  // The signed text follows PROVIDER_TEE_TEXT_FORMAT, so changing that one constant and running
+  // `pnpm fixtures` moves every fixture with it.
+  const text = formatProviderTeeText(model, requestSha, responseSha);
   const signature = await account.signMessage({ message: text });
   const reportSigner = o.reportSigner ?? account.address;
   const reportNonce = o.reportNonce ?? o.nonce;
