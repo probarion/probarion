@@ -351,6 +351,8 @@ export interface CheckResult {
   status: "pass" | "fail" | "skip";
   detail: string;
   firstBrokenSeq?: number;
+  /** Check c only: the last seq of the range it cannot prove (`firstBrokenSeq` is the first). Absent means one entry. */
+  lastUnprovenSeq?: number;
 }
 export interface VerifyReport {
   vault: string;

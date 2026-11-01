@@ -11,7 +11,7 @@ import {
   computeNonce,
   verifyEntrySignature,
 } from "../src/ledger.js";
-import type { CheckId, LedgerEntry, Snapshot, VerifyReport } from "../src/types.js";
+import type { CheckId, CheckResult, LedgerEntry, Snapshot, VerifyReport } from "../src/types.js";
 import {
   CHECK_NAMES,
   checkAnchors,
@@ -30,7 +30,7 @@ import {
 import { buildTestEvidence } from "./fixtures/evidence.js";
 import { TEST_FORGED_KEY, TEST_LEDGER_KEY, TEST_ROTATED_KEY } from "./fixtures/keys.js";
 import { FIXTURE_CODE_HASH, FIXTURE_VAULT, makeFixtureSnapshot } from "./fixtures/make-fixtures.js";
-import { honestSigner, rebuildLedger } from "./helpers/rebuild-ledger.js";
+import { assembleEntry, honestSigner, rebuildLedger } from "./helpers/rebuild-ledger.js";
 
 const NOW = new Date("2026-11-05T12:30:00.000Z");
 const OTHER_VAULT = "y.vaults.probarion.testnet";
@@ -678,6 +678,20 @@ describe("check c: anchors", () => {
     const report = await runChecks(s, { now: NOW });
     expect(check(report, "c").status).toBe("fail");
     expect(check(report, "c").firstBrokenSeq).toBe(3);
+    expect(check(report, "c").lastUnprovenSeq).toBe(3); // anchor 2 covers entries up to 3
+  });
+
+  it("names the range it cannot prove: the first seq and the last seq of that range", async () => {
+    const root = fresh();
+    anchorOf(root, 1).root = "f".repeat(64);
+    expect(checkAnchors(root)).toMatchObject({ firstBrokenSeq: 2, lastUnprovenSeq: 3 });
+    const gap = fresh();
+    gap.chain.anchors.splice(1, 1);
+    expect(checkAnchors(gap)).toMatchObject({ firstBrokenSeq: 2, lastUnprovenSeq: 4 });
+    const none = fresh();
+    none.chain.anchors = [];
+    expect(checkAnchors(none)).toMatchObject({ firstBrokenSeq: 0, lastUnprovenSeq: 4 });
+    expect(checkAnchors(fresh()).lastUnprovenSeq).toBeUndefined(); // a pass names no range
   });
 
   it("fails entries with no anchor on chain, and passes none with none", async () => {
@@ -1210,9 +1224,19 @@ describe("check f: vault locked to a reproducible build", () => {
     expect(check(report, "f").detail).toContain("no contract code");
   });
 
-  it("accepts a recorded reproducible vault build with an empty expected list (KNOWN_VAULT_CODE_HASHES)", async () => {
+  /** A factory vault whose code and whose factory version 1 are the recorded build `hash`. */
+  function runningBuild(hash: string): Snapshot {
     const s = fresh();
-    s.chain.code_hash = KNOWN_VAULT_HASH;
+    s.chain.code_hash = hash;
+    const [version] = s.chain.factory_versions;
+    if (version === undefined) throw new Error("fixture factory version missing");
+    s.chain.factory_versions = [{ ...version, code_hash: hash }];
+    s.expected_code_hashes = [];
+    return s;
+  }
+
+  it("accepts a recorded reproducible vault build with an empty expected list (KNOWN_VAULT_CODE_HASHES)", async () => {
+    const s = runningBuild(KNOWN_VAULT_HASH);
     s.expected_code_hashes = [];
     const report = await runChecks(s, { now: NOW });
     expect(report.ok).toBe(true);
@@ -1220,9 +1244,8 @@ describe("check f: vault locked to a reproducible build", () => {
   });
 
   it("accepts the hex spelling of the same hash", async () => {
-    const s = fresh();
+    const s = runningBuild(KNOWN_VAULT_HASH);
     s.chain.code_hash = bytesToHex(bs58.decode(KNOWN_VAULT_HASH)).toUpperCase();
-    s.expected_code_hashes = [];
     expect(check(await runChecks(s, { now: NOW }), "f").status).toBe("pass");
   });
 
@@ -1329,6 +1352,70 @@ describe("check f: vault locked to a reproducible build", () => {
       ];
       s.expected_code_hashes = [FIXTURE_CODE_HASH, KNOWN_VAULT_HASH];
       expect((await runChecks(s, { now: NOW })).ok).toBe(true);
+    });
+  });
+
+  describe("the code hash is the one the canonical factory lists for the vault's own version", () => {
+    /** The factory lists two builds; the vault says it was created at version `created` and runs `running`. */
+    function twoVersions(created: number, running: string): Snapshot {
+      const s = fresh();
+      s.chain.factory_versions = [
+        { index: 1, code_hash: FIXTURE_CODE_HASH, mode: "global", notes: "", at_ns: "1" },
+        { index: 2, code_hash: KNOWN_VAULT_HASH, mode: "global", notes: "", at_ns: "2" },
+      ];
+      s.chain.factory_version = created;
+      s.chain.code_hash = running;
+      s.expected_code_hashes = [];
+      return s;
+    }
+
+    it("probe N3: factory version 1 with the code hash of version 2 fails f", async () => {
+      const s = twoVersions(1, KNOWN_VAULT_HASH); // trusted (version 2), but not what version 1 deployed
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain("code hash does not match factory version 1");
+      expect(check(report, "f").detail).toContain(FIXTURE_CODE_HASH);
+    });
+
+    it("fails the other way round: version 2 with the code hash of version 1", async () => {
+      const report = await runChecks(twoVersions(2, FIXTURE_CODE_HASH), { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain("code hash does not match factory version 2");
+    });
+
+    it("passes each version when the vault runs the code that version lists", async () => {
+      expect((await runChecks(twoVersions(1, FIXTURE_CODE_HASH), { now: NOW })).ok).toBe(true);
+      expect((await runChecks(twoVersions(2, KNOWN_VAULT_HASH), { now: NOW })).ok).toBe(true);
+    });
+
+    it("compares the hash, not its spelling (hex against base58)", async () => {
+      const s = twoVersions(2, bytesToHex(bs58.decode(KNOWN_VAULT_HASH)));
+      expect(check(await runChecks(s, { now: NOW }), "f").status).toBe("pass");
+    });
+
+    it("leaves a vault with no usable factory version to check i, and plain vaults to KNOWN alone", async () => {
+      const unknown = twoVersions(7, KNOWN_VAULT_HASH);
+      expect(onlyFailing(await runChecks(unknown, { now: NOW }))).toEqual(["i"]);
+      const none = twoVersions(1, KNOWN_VAULT_HASH);
+      none.chain.factory_version = null;
+      expect(onlyFailing(await runChecks(none, { now: NOW }))).toEqual(["i"]);
+      const plain = twoVersions(1, KNOWN_VAULT_HASH);
+      plain.chain.config.factory = null;
+      plain.chain.factory_version = null;
+      plain.chain.factory_versions = [];
+      expect((await runChecks(plain, { now: NOW })).ok).toBe(true);
+    });
+
+    it("treats factory_version 0 as no version: f leaves it to check i even if the list holds an index 0", async () => {
+      const s = twoVersions(1, FIXTURE_CODE_HASH);
+      s.chain.factory_version = 0;
+      s.chain.factory_versions = [
+        { index: 0, code_hash: KNOWN_VAULT_HASH, mode: "global", notes: "", at_ns: "0" },
+        ...s.chain.factory_versions,
+      ];
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["i"]);
+      expect(check(report, "f").status).toBe("pass");
     });
   });
 
@@ -1542,6 +1629,8 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
 
   describe("R7 refinement: a pre-ledger burned spend with no burn record", () => {
     const V0 = sha256Hex('{"kind":"v0-manual-decision","mandate_id":1}');
+    const MAINNET_DETAIL =
+      "spend 2: burn tx not supplied (record it in docs/mainnet-proof.json with --spend-id)";
     /** The real v0 shape: no ledger, no anchor, one burned spend whose decision is documented as pre-ledger. */
     function preLedgerBurn(): Snapshot {
       const s = fresh();
@@ -1552,22 +1641,28 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
       return s;
     }
 
-    it("still FAILS h, with the precise detail that the burn tx was not supplied", async () => {
+    it("still FAILS h on testnet, saying the burn tx was not supplied and naming no mainnet file", async () => {
       const s = preLedgerBurn();
       s.chain.burns = [];
       const report = await runChecks(s, { now: NOW });
       expect(report.ok).toBe(false);
       expect(onlyFailing(report)).toEqual(["h"]);
-      expect(check(report, "h").detail).toBe(
-        "spend 2: burn tx not supplied (record it in docs/mainnet-proof.json with --spend-id)",
-      );
+      expect(check(report, "h").detail).toBe("spend 2: burn tx not supplied");
+    });
+
+    it("names docs/mainnet-proof.json and --spend-id only on mainnet", async () => {
+      const s = preLedgerBurn();
+      s.network = "mainnet";
+      s.chain.burns = [];
+      expect(checkBurnMemos(s).detail).toBe(MAINNET_DETAIL);
+      expect(checkBurnMemos(s).status).toBe("fail");
     });
 
     it("uses the same detail when the burn is recorded as missing, and passes once the burn is supplied", async () => {
       const missing = preLedgerBurn();
       burnOf(missing).status = "missing";
-      expect(check(await runChecks(missing, { now: NOW }), "h").detail).toContain(
-        "burn tx not supplied",
+      expect(check(await runChecks(missing, { now: NOW }), "h").detail).toBe(
+        "spend 2: burn tx not supplied",
       );
       const supplied = preLedgerBurn();
       expect((await runChecks(supplied, { now: NOW })).ok).toBe(true);
@@ -1576,8 +1671,38 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
     it("keeps the generic detail for a burned spend that is not pre-ledger", async () => {
       const s = fresh();
       s.chain.burns = [];
-      expect(check(await runChecks(s, { now: NOW }), "h").detail).not.toContain(
-        "burn tx not supplied",
+      expect(check(await runChecks(s, { now: NOW }), "h").detail).toBe(
+        "spend 2: no burn event observed",
+      );
+    });
+
+    it("keeps the generic detail for a listed hash that d did not exempt: a second use of the hash", async () => {
+      const s = preLedgerBurn();
+      s.chain.spends.push({ ...structuredClone(spendOf(s, 0)), id: 3 }); // the same hash again
+      s.chain.burns = [burnOf(s)]; // spend 2 has its burn; spend 3 has none
+      const report = await runChecks(s, { now: NOW });
+      expect(check(report, "d").detail).toContain("already used by spend 2");
+      expect(check(report, "h").detail).toBe("spend 3: no burn event observed");
+    });
+
+    it("keeps the generic detail for a listed hash that d did not exempt: created after the first anchor", async () => {
+      const s = fresh(); // anchors exist; spend 2 was created after the first one
+      spendOf(s, 1).decision_hash = V0;
+      s.pre_ledger_decision_hashes = [V0];
+      s.chain.burns = [];
+      const report = await runChecks(s, { now: NOW });
+      expect(check(report, "d").detail).toContain("created after the ledger began");
+      expect(check(report, "h").detail).toBe("spend 2: no burn event observed");
+    });
+
+    it("says burn tx not supplied for the exempted spend and nothing else when both kinds are burned", async () => {
+      const s = preLedgerBurn();
+      const second = { ...structuredClone(spendOf(s, 0)), id: 3, decision_hash: sha256Hex("v1") };
+      s.chain.spends.push(second);
+      s.pre_ledger_decision_hashes = [V0, second.decision_hash];
+      s.chain.burns = [{ ...burnOf(fresh()), spend_id: 3 }]; // spend 2 (exempt) has no burn
+      expect(check(await runChecks(s, { now: NOW }), "h").detail).toBe(
+        "spend 2: burn tx not supplied",
       );
     });
   });
@@ -1739,14 +1864,14 @@ describe("firstBrokenSeq", () => {
     expect(firstBrokenSeq(await runChecks(s, { now: NOW }))).toBeNull();
   });
 
-  it("prefers the exact seq that check a or b names over a lower seq named by another check", async () => {
+  it("is the lowest seq over the failing checks when check c names no range to refine", async () => {
     const s = await makeFixtureSnapshot({ forgedSignerFromSeq: 3 });
     burnOf(s).memo = `${WITHDRAW_MEMO_PREFIX}0x000000000000000000000000000000000000dEaD`;
     const report = await runChecks(s, { now: NOW });
     expect(onlyFailing(report)).toEqual(["a", "h"]);
     expect(check(report, "a").firstBrokenSeq).toBe(3);
     expect(check(report, "h").firstBrokenSeq).toBe(2);
-    expect(firstBrokenSeq(report)).toBe(3);
+    expect(firstBrokenSeq(report)).toBe(2); // h's seq 2 is not proven either
   });
 
   it("is the lowest seq of a and b when both name one", async () => {
@@ -1765,6 +1890,84 @@ describe("firstBrokenSeq", () => {
     const report = await runChecks(s, { now: NOW });
     expect(onlyFailing(report)).toEqual(["d", "h"]);
     expect(firstBrokenSeq(report)).toBe(2);
+  });
+
+  describe("check c names a range; a or b refine it only inside that range", () => {
+    it("probe 4, a fork: c names entries 2 to 3 and b names 3, inside it: 3", async () => {
+      const s = fresh();
+      const body = { ...structuredClone(entryOf(s, 2).body), request_id: "fork", seq: 2 };
+      body.prev_link = entryOf(s, 2).link;
+      s.ledger.splice(3, 0, await assembleEntry(body, honestSigner)); // a second seq 2, honestly signed
+      const report = await runChecks(s, { now: NOW });
+      expect(check(report, "b")).toMatchObject({ status: "fail", firstBrokenSeq: 3 });
+      expect(check(report, "c")).toMatchObject({
+        status: "fail",
+        firstBrokenSeq: 2,
+        lastUnprovenSeq: 3,
+      });
+      expect(firstBrokenSeq(report)).toBe(3);
+    });
+
+    it("probe N2b: entries 2 and 3 rewritten consistently plus a bad appended entry: 2, not 5", async () => {
+      // Entries 2 to 4 are rebuilt (a new request_id, new hashes and links), so anchor 2 no longer matches:
+      // c cannot prove entries 2 to 3. A tampered copy of entry 0 is appended at seq 5: a and b name 5.
+      const s = await rebuildLedger(fresh(), {
+        edit: (body, seq) => {
+          if (seq === 2) body.request_id = "rewritten";
+        },
+      });
+      s.chain.anchors = structuredClone(valid.chain.anchors); // the chain still holds the original anchors
+      s.ledger.push(tamperOneByte(structuredClone(entryOf(valid, 0)), "request_id"));
+      const report = await runChecks(s, { now: NOW });
+      expect(check(report, "a")).toMatchObject({ status: "fail", firstBrokenSeq: 5 });
+      expect(check(report, "b")).toMatchObject({ status: "fail", firstBrokenSeq: 5 });
+      expect(check(report, "c")).toMatchObject({
+        status: "fail",
+        firstBrokenSeq: 2,
+        lastUnprovenSeq: 3,
+      });
+      expect(firstBrokenSeq(report)).toBe(2);
+    });
+
+    const failing = (id: CheckId, seq: number, lastUnprovenSeq?: number): CheckResult => ({
+      id,
+      name: CHECK_NAMES[id],
+      status: "fail",
+      detail: "x",
+      firstBrokenSeq: seq,
+      ...(lastUnprovenSeq === undefined ? {} : { lastUnprovenSeq }),
+    });
+    const reportOf = (...checks: CheckResult[]): VerifyReport => ({
+      vault: "v.testnet",
+      network: "testnet",
+      ok: false,
+      checks,
+      entries: 0,
+      anchors: 0,
+      generated_at: NOW.toISOString(),
+    });
+
+    it.each([
+      ["b inside the range", [failing("c", 2, 3), failing("b", 3)], 3],
+      ["b at the start of the range", [failing("c", 2, 3), failing("b", 2)], 2],
+      ["b after the range", [failing("c", 2, 3), failing("b", 5)], 2],
+      ["a and b after the range", [failing("c", 2, 3), failing("a", 5), failing("b", 5)], 2],
+      ["a inside, b after", [failing("c", 2, 3), failing("a", 3), failing("b", 5)], 3],
+      ["a before the range", [failing("c", 2, 3), failing("a", 1)], 1],
+      ["no a or b", [failing("c", 2, 3), failing("e", 3)], 2],
+      ["d below the refined seq", [failing("c", 2, 3), failing("b", 3), failing("d", 1)], 1],
+      ["a range of one entry", [failing("c", 2), failing("b", 3)], 2],
+      ["a and b alone", [failing("b", 4), failing("a", 6)], 4],
+      ["a, h without c", [failing("a", 3), failing("h", 2)], 2],
+    ] as const)("%s", (_name, checks, expected) => {
+      expect(firstBrokenSeq(reportOf(...checks))).toBe(expected);
+    });
+
+    it("is null when no failing check names a seq", () => {
+      const noSeq: CheckResult = { id: "g", name: CHECK_NAMES.g, status: "fail", detail: "x" };
+      expect(firstBrokenSeq(reportOf(noSeq))).toBeNull();
+      expect(firstBrokenSeq(reportOf())).toBeNull();
+    });
   });
 });
 

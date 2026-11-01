@@ -31,13 +31,15 @@ function result(
   status: CheckResult["status"],
   detail: string,
   seq?: number,
+  lastSeq?: number,
 ): CheckResult {
   const base = { id, name: CHECK_NAMES[id], status, detail };
-  return seq === undefined ? base : { ...base, firstBrokenSeq: seq };
+  const named = seq === undefined ? base : { ...base, firstBrokenSeq: seq };
+  return lastSeq === undefined ? named : { ...named, lastUnprovenSeq: lastSeq };
 }
 const pass = (id: CheckId, detail: string): CheckResult => result(id, "pass", detail);
-const fail = (id: CheckId, detail: string, seq?: number): CheckResult =>
-  result(id, "fail", detail, seq);
+const fail = (id: CheckId, detail: string, seq?: number, lastSeq?: number): CheckResult =>
+  result(id, "fail", detail, seq, lastSeq);
 const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -236,9 +238,11 @@ export function checkAnchors(s: Snapshot): CheckResult {
           "c",
           `the ledger has ${s.ledger.length} entries but no anchor exists on chain: no entry is chain-attested`,
           0,
+          s.ledger.length - 1,
         );
   }
   let covered = 0;
+  const lastEntry = s.ledger.length - 1;
   for (let j = 0; j < anchors.length; j++) {
     const anchor = anchors[j];
     if (anchor === undefined) continue;
@@ -247,6 +251,7 @@ export function checkAnchors(s: Snapshot): CheckResult {
         "c",
         `anchor seq ${anchor.seq} found where ${j + 1} was expected; entry ${covered} and later are not proven`,
         covered,
+        Math.max(covered, lastEntry),
       );
     }
     if (!Number.isSafeInteger(anchor.count) || anchor.count < 1 || anchor.count < covered) {
@@ -254,6 +259,7 @@ export function checkAnchors(s: Snapshot): CheckResult {
         "c",
         `anchor ${anchor.seq} count ${String(anchor.count)} is not a count that goes forward from ${covered}; entry ${covered} and later are not proven`,
         covered,
+        Math.max(covered, lastEntry),
       );
     }
     if (anchor.count > s.ledger.length) {
@@ -261,6 +267,7 @@ export function checkAnchors(s: Snapshot): CheckResult {
         "c",
         `anchor ${anchor.seq} covers ${anchor.count} entries but the ledger has ${s.ledger.length}: entry ${s.ledger.length} and later are missing`,
         s.ledger.length,
+        anchor.count - 1,
       );
     }
     if ((s.ledger[anchor.count - 1] as LedgerEntry | undefined)?.link !== anchor.root) {
@@ -269,6 +276,7 @@ export function checkAnchors(s: Snapshot): CheckResult {
         "c",
         `anchor ${anchor.seq} root does not match the link of entry ${anchor.count - 1}, the last entry it covers; ${range} ${covered === anchor.count - 1 ? "is" : "are"} not proven`,
         covered,
+        anchor.count - 1,
       );
     }
     covered = anchor.count;
@@ -278,6 +286,50 @@ export function checkAnchors(s: Snapshot): CheckResult {
     "c",
     `${anchors.length} ${plural(anchors.length, "anchor matches", "anchors match")} the ledger; ${tail} ${plural(tail, "entry", "entries")} after the last anchored count (${covered}) ${plural(tail, "is", "are")} not chain-attested`,
   );
+}
+
+/**
+ * ICR-4b: judges one spend that has no ledger decision and whose hash the snapshot lists as pre-ledger. Returns
+ * why it is not exempt, or null when it is (and records the use, so the hash exempts no second spend).
+ */
+function judgePreLedger(
+  s: Snapshot,
+  spend: Snapshot["chain"]["spends"][number],
+  usedBy: Map<string, number>,
+): string | null {
+  const used = usedBy.get(spend.decision_hash);
+  if (used !== undefined) {
+    return `spend ${spend.id}: decision_hash is a pre-ledger hash already used by spend ${used}`;
+  }
+  const firstAnchor = anchorsInOrder(s)[0];
+  if (firstAnchor !== undefined) {
+    const created = nanoseconds(spend.created_at_ns);
+    const began = nanoseconds(firstAnchor.at_ns);
+    if (created === null) {
+      return `spend ${spend.id}: created_at_ns ${String(spend.created_at_ns)} is not a nanosecond count`;
+    }
+    if (began === null) {
+      return `anchor ${firstAnchor.seq}: at_ns ${String(firstAnchor.at_ns)} is not a nanosecond count`;
+    }
+    if (created >= began) {
+      return `spend ${spend.id}: decision_hash is a pre-ledger hash, but the spend was created after the ledger began (created_at_ns ${spend.created_at_ns}, first anchor at_ns ${firstAnchor.at_ns})`;
+    }
+  }
+  usedBy.set(spend.decision_hash, spend.id);
+  return null;
+}
+
+/** The ids of the spends that check d exempts as pre-ledger: the same judgement, so check h can say so. */
+function preLedgerExemptSpends(s: Snapshot): Set<number> {
+  const decisions = decisionsByHash(s);
+  const listed = new Set(s.pre_ledger_decision_hashes ?? []);
+  const usedBy = new Map<string, number>();
+  const exempt = new Set<number>();
+  for (const spend of [...s.chain.spends].sort((x, y) => x.id - y.id)) {
+    if (decisions.has(spend.decision_hash) || !listed.has(spend.decision_hash)) continue;
+    if (judgePreLedger(s, spend, usedBy) === null) exempt.add(spend.id);
+  }
+  return exempt;
 }
 
 function decisionsByHash(s: Snapshot): Map<string, LedgerEntry> {
@@ -325,36 +377,8 @@ export function checkSpendsHaveDecisions(s: Snapshot): CheckResult {
           `spend ${spend.id} has decision_hash ${spend.decision_hash}, which is not a decision in the ledger`,
         );
       }
-      const used = exemptedBy.get(spend.decision_hash);
-      if (used !== undefined) {
-        return fail(
-          "d",
-          `spend ${spend.id}: decision_hash is a pre-ledger hash already used by spend ${used}`,
-        );
-      }
-      if (firstAnchor !== undefined) {
-        const created = nanoseconds(spend.created_at_ns);
-        const began = nanoseconds(firstAnchor.at_ns);
-        if (created === null) {
-          return fail(
-            "d",
-            `spend ${spend.id}: created_at_ns ${String(spend.created_at_ns)} is not a nanosecond count`,
-          );
-        }
-        if (began === null) {
-          return fail(
-            "d",
-            `anchor ${firstAnchor.seq}: at_ns ${String(firstAnchor.at_ns)} is not a nanosecond count`,
-          );
-        }
-        if (created >= began) {
-          return fail(
-            "d",
-            `spend ${spend.id}: decision_hash is a pre-ledger hash, but the spend was created after the ledger began (created_at_ns ${spend.created_at_ns}, first anchor at_ns ${firstAnchor.at_ns})`,
-          );
-        }
-      }
-      exemptedBy.set(spend.decision_hash, spend.id);
+      const why = judgePreLedger(s, spend, exemptedBy);
+      if (why !== null) return fail("d", why);
       continue;
     }
     const { seq, verdict } = decision.body;
@@ -628,9 +652,30 @@ export function checkVaultLocked(s: Snapshot): CheckResult {
       `code_hash ${s.chain.code_hash} is not a recorded reproducible build (KNOWN_VAULT_CODE_HASHES) nor a version of the canonical factory ${canonical}${other}`,
     );
   }
+  // A vault the canonical factory created at version N runs version N's code, not another trusted build.
+  // (An unusable version number is check i's business; plain vaults have none and rest on KNOWN alone.)
+  let versionNote = "";
+  const version = s.chain.factory_version;
+  if (
+    s.chain.config.factory === NETWORKS[s.network].factory &&
+    typeof version === "number" &&
+    Number.isSafeInteger(version) &&
+    version >= 1
+  ) {
+    const record = s.chain.factory_versions.find((v) => v?.index === version);
+    if (record !== undefined) {
+      if (normalizeCodeHash(record.code_hash) !== actual) {
+        return fail(
+          "f",
+          `code hash does not match factory version ${version}: the vault runs ${s.chain.code_hash}, but ${NETWORKS[s.network].factory} lists ${String(record.code_hash)} for that version`,
+        );
+      }
+      versionNote = `; it is the code of factory version ${version}`;
+    }
+  }
   return pass(
     "f",
-    `no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash ${s.chain.code_hash} is ${source}`,
+    `no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash ${s.chain.code_hash} is ${source}${versionNote}`,
   );
 }
 
@@ -654,7 +699,7 @@ export function checkIntentsKeys(s: Snapshot): CheckResult {
  */
 export function checkBurnMemos(s: Snapshot): CheckResult {
   const decisions = decisionsByHash(s);
-  const preLedger = new Set(s.pre_ledger_decision_hashes ?? []);
+  const preLedgerExempt = preLedgerExemptSpends(s);
   const burned = s.chain.spends.filter((sp) => sp.status === "burned").sort((x, y) => x.id - y.id);
   for (const spend of burned) {
     const seq = decisions.get(spend.decision_hash)?.body.seq;
@@ -670,14 +715,15 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
       );
     const burn = matches[0];
     if (burn === undefined || burn.status !== "ok") {
-      // R7: a burned spend from before the ledger has no ledger entry to find its burn tx from. Without a
-      // supplied burn tx the burn is not proven, so this still fails; the detail says what to supply.
-      const preLedgerSpend =
-        !decisions.has(spend.decision_hash) && preLedger.has(spend.decision_hash);
+      // R7: a burned spend that check d exempted as pre-ledger has no ledger entry to find its burn tx
+      // from. Without a supplied burn tx the burn is not proven, so this still fails; the detail says what
+      // to supply. Any other unmatched burned spend (including a listed hash d did not exempt) is plain.
+      const supply =
+        s.network === "mainnet" ? " (record it in docs/mainnet-proof.json with --spend-id)" : "";
       return fail(
         "h",
-        preLedgerSpend
-          ? `spend ${spend.id}: burn tx not supplied (record it in docs/mainnet-proof.json with --spend-id)`
+        preLedgerExempt.has(spend.id)
+          ? `spend ${spend.id}: burn tx not supplied${supply}`
           : `spend ${spend.id}: no burn event observed`,
         seq,
       );
@@ -829,25 +875,30 @@ export async function runChecks(s: Snapshot, opts: { now?: Date } = {}): Promise
 /**
  * The first seq whose history is not proven, or null when no failing check names a seq.
  *
- * Checks a and b name the exact entry that is wrong (its signer, signature, hash, link or position), so their
- * lowest seq is preferred. Only when neither names one is the lowest seq named by any other failing check used:
- * c names the first entry of the anchor range it cannot prove, d the decision, and e and h the entry concerned;
- * they say where to look rather than which entry was altered.
+ * Every failing check names a seq whose history it cannot prove, so the answer is the lowest of them, with one
+ * refinement. Check c names the first entry of the anchor range it cannot prove (an anchor pins a whole range and
+ * cannot say which entry inside it is wrong), together with the last entry of that range. When check a or b
+ * names an exact entry INSIDE that range, that entry is the broken one and the rest of the range before it is
+ * individually proven, so it replaces c's start. A seq that a or b name OUTSIDE c's range refines nothing: the
+ * whole of c's range is still unproven, and the lowest seq wins.
  */
 export function firstBrokenSeq(report: VerifyReport): number | null {
-  const lowest = (ids: readonly CheckId[]): number | null => {
-    let first: number | null = null;
-    for (const c of report.checks) {
-      if (
-        c.status === "fail" &&
-        ids.includes(c.id) &&
-        typeof c.firstBrokenSeq === "number" &&
-        (first === null || c.firstBrokenSeq < first)
-      ) {
-        first = c.firstBrokenSeq;
-      }
-    }
-    return first;
-  };
-  return lowest(["a", "b"]) ?? lowest(["c", "d", "e", "f", "g", "h", "i"]);
+  const named = report.checks.filter(
+    (c) => c.status === "fail" && typeof c.firstBrokenSeq === "number",
+  );
+  const seqs: number[] = [];
+  for (const c of named) {
+    if (c.id !== "c" && typeof c.firstBrokenSeq === "number") seqs.push(c.firstBrokenSeq);
+  }
+  const range = named.find((c) => c.id === "c");
+  if (range !== undefined && typeof range.firstBrokenSeq === "number") {
+    const from = range.firstBrokenSeq;
+    const to = range.lastUnprovenSeq ?? from;
+    const exact = named
+      .filter((c) => c.id === "a" || c.id === "b")
+      .map((c) => c.firstBrokenSeq)
+      .filter((seq): seq is number => typeof seq === "number" && seq >= from && seq <= to);
+    seqs.push(exact.length > 0 ? Math.min(...exact) : from);
+  }
+  return seqs.length === 0 ? null : Math.min(...seqs);
 }
