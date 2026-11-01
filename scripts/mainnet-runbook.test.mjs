@@ -122,6 +122,11 @@ test("the vault wasm comes only from the CI artifact of the recorded commit", ()
     "no guard that the checked artifact is the recorded commit",
   );
   assert.ok(runbook.includes("matches the recorded build (commit $RECORDED)"));
+  // The output is captured, not piped through `tee /dev/stderr`: that truncates when stderr is a file.
+  assert.ok(!blocks.includes("tee /dev/stderr"), "the guard still pipes through tee /dev/stderr");
+  assert.ok(blocks.includes('CHECK_OUT="$(REQUIRE_RECORDED=1 node scripts/code-hash.mjs check'));
+  assert.ok(blocks.includes('probarion_vault.wasm 2>&1)"\necho "$CHECK_OUT"'), "output not shown");
+  assert.ok(blocks.includes("printf '%s\\n' \"$CHECK_OUT\" | grep -qF"));
   assert.ok(blocks.includes('echo "OK: artifact is the recorded build"'));
   assert.ok(blocks.includes('echo "STOP: wrong artifact, do not deploy"'));
   assert.match(runbook, /On `STOP`, stop and tell Claude/);
@@ -288,6 +293,9 @@ test("the money-safety order: guards before the deploy, checks before the irreve
   const inOrder = [
     // The wasm is the recorded commit's CI build (and `check` alone accepts any recorded build).
     'grep -qF "matches the recorded build (commit $RECORDED)"',
+    // Owner and approver are permanent after the lock: the owner confirms them before the deploy.
+    'echo "owner: $OWNER_ID  approver: $APPROVER_ID"',
+    "account by account",
     'contract deploy "$VAULT"',
     // Everything about the deployed vault is verified while the account can still be fixed.
     'as-read-only "$VAULT" get_config',
@@ -316,6 +324,15 @@ test("the money-safety order: guards before the deploy, checks before the irreve
     assert.ok(runbook.includes(field), `the get_config guard does not compare ${field}`);
   }
   assert.match(runbook, /no method to change its `owner` or `approvers`/);
+  // Guard 2 needs both hashes non-empty: two empty values (RPC error plus unset WASM) are no match.
+  assert.ok(
+    runbook.includes('[ -n "$DEPLOYED" ] && [ -n "$BUILT" ] && [ "$DEPLOYED" = "$BUILT" ]'),
+    "the code-hash guard does not require both hashes to be non-empty",
+  );
+  assert.ok(!runbook.includes('"$(node scripts/testnet/chain.mjs code-hash "$VAULT")" ='));
+  // The owner and approver confirmation is a condition of the lock, and of the deploy.
+  assert.match(runbook, /the owner and approver were confirmed against the wallet apps/);
+  assert.match(runbook, /If either differs, do not deploy: stop and tell Claude/);
   // A comma would delete several keys at once.
   assert.ok(runbook.includes('""|*,*) echo "STOP: expected exactly one full-access key"'));
 });
@@ -342,6 +359,13 @@ test("both payees are verified against the owner's own wallets, and a wrong one 
     "mandate 2 not checked on chain",
   );
   assert.match(runbook, /character by character/);
+  // The intro: the NEAR payee gets the on-chain check and "do you control it", not "twice".
+  assert.ok(!runbook.includes("checks both payees against their own wallets, twice"));
+  assert.match(
+    runbook,
+    /The NEAR payee \(mandate 1\) gets the on-chain check plus the owner's confirmation/,
+  );
+  assert.match(runbook, /The Base payee \(mandate 2\) gets one more check/);
   assert.match(runbook, /Do not compare it with `\$BASE_PAYEE_ADDRESS`/);
   assert.match(runbook, /do not run step 10/);
   assert.match(runbook, /do not run step 9/);
@@ -361,7 +385,10 @@ test("the vault is funded with 3 NEAR, checked, and topped up from probarion.nea
   const create = all.filter((c) => c.includes("create-account fund-myself"));
   assert.equal(create.length, 1);
   assert.ok(create[0].includes("\"$VAULT\" '3 NEAR' autogenerate-new-keypair"));
-  assert.ok(all.includes('node scripts/testnet/chain.mjs enough "$ROOT" 3   # exit code 0'));
+  // One story for the reserve: 3 NEAR for the vault + one 0.5 NEAR top-up (+ gas) = about 4 NEAR.
+  assert.ok(all.includes('node scripts/testnet/chain.mjs enough "$ROOT" 3 0.5   # exit code 0'));
+  assert.ok(runbook.includes("about 4 NEAR in `probarion.near`"));
+  assert.ok(!runbook.includes("3.5 NEAR"), "a stale 3.5 NEAR figure");
   // The measured numbers behind the 3 NEAR (testnet, identical wasm).
   for (const fact of ["250,733 bytes", "2.507 NEAR", "0.4955 NEAR", "0.0016 NEAR", "cap"]) {
     assert.ok(runbook.includes(fact), `budget line lacks ${fact}`);

@@ -24,7 +24,7 @@ Both files are committed together in step 12, in the same commit as the work.
 - [ ] `pnpm proof show` runs. Plan 05 Task 1 provides it and creates `docs/mainnet-proof.json`. Do not start step 1 without it.
 - [ ] The artifact guard in section 0.3 prints `OK: artifact is the recorded build`.
 - [ ] Budget:
-  - about 3.5 NEAR in `probarion.near`, the account that signs and funds step 1: 3 for the vault account, the rest for gas;
+  - about 4 NEAR in `probarion.near`, the account that signs and funds step 1 and any top-up: 3 for the vault account, 0.5 kept for one top-up (step 9), the rest for gas. The `enough` check in step 1 asks for 3 + 0.5 plus a 0.3 gas margin;
   - the vault account's 3 NEAR: its storage is 250,733 bytes (248,501 of them the code), which at 0.00001 NEAR per byte is 2.507 NEAR, so 3 - 2.507 = about 0.49 NEAR stays free for gas. The testnet run of the identical flow with the identical wasm (deploy, lock, `add_agent`, 2 mandates, 3 spends) ended with 0.4955 NEAR free, and its spends burned about 0.0016 NEAR of gas. The agent key's 1 NEAR allowance is a cap on its gas, not a reserve, and each mandate's storage is paid by the owner's `create_mandate` deposit. NEAR in the locked vault can never come out, while a shortfall is one plain transfer (the top-up in step 9). If the wasm size is not 248,501 bytes, redo the storage figure (1 NEAR per 100 KB);
   - about 0.5 NEAR in `$OWNER_ID` for its own deposits (0.05 NEAR per mandate, the excess refunded; 0.01 NEAR for the USDC registration) and gas;
   - about 10 native USDC in the owner wallet;
@@ -88,10 +88,12 @@ ls -l "$WASM"
 node scripts/code-hash.mjs hash "$WASM"
 ```
 
-`check` alone is not enough: it accepts the wasm of ANY recorded build, including an older commit's. The guard below ties the file to `$RECORDED`. It prints the `check` line, then `OK` only if that line names exactly the recorded commit:
+`check` alone is not enough: it accepts the wasm of ANY recorded build, including an older commit's. The guard below ties the file to `$RECORDED`. It captures everything `check` prints (messages and errors), shows it, then prints `OK` only if that text names exactly the recorded commit:
 
 ```bash
-if [ "${#RECORDED}" = 40 ] && REQUIRE_RECORDED=1 node scripts/code-hash.mjs check probarion-vault vault contracts/target/ci-artifact-mainnet/probarion_vault.wasm | tee /dev/stderr | grep -qF "matches the recorded build (commit $RECORDED)"; then
+CHECK_OUT="$(REQUIRE_RECORDED=1 node scripts/code-hash.mjs check probarion-vault vault contracts/target/ci-artifact-mainnet/probarion_vault.wasm 2>&1)"
+echo "$CHECK_OUT"
+if [ "${#RECORDED}" = 40 ] && printf '%s\n' "$CHECK_OUT" | grep -qF "matches the recorded build (commit $RECORDED)"; then
   echo "OK: artifact is the recorded build"
 else
   echo "STOP: wrong artifact, do not deploy"
@@ -104,12 +106,12 @@ Expected: a `check` line of the form `probarion-vault: code_hash <hash> matches 
 
 ## 1. Create `v0.probarion.near`
 
-Read-only checks first: the vault name must be free, `probarion.near` and the owner, approver and payee accounts from section 0.2 must exist, and `probarion.near` must cover the 3 NEAR plus gas.
+Read-only checks first: the vault name must be free, `probarion.near` and the owner, approver and payee accounts from section 0.2 must exist, and `probarion.near` must cover the 3 NEAR, one 0.5 NEAR top-up (step 9) and gas.
 
 ```bash
 node scripts/testnet/chain.mjs exists "$VAULT"   # prints no (exit code 1) for a free name
 for account in "$ROOT" "$OWNER_ID" "$APPROVER_ID" "$PAYEE_ID"; do node scripts/testnet/chain.mjs exists "$account"; done   # four lines of yes
-node scripts/testnet/chain.mjs enough "$ROOT" 3   # exit code 0
+node scripts/testnet/chain.mjs enough "$ROOT" 3 0.5   # exit code 0
 ```
 
 **OWNER SIGNS** (moves 3 NEAR from `probarion.near` to the new account)
@@ -123,6 +125,14 @@ near account create-account fund-myself "$VAULT" '3 NEAR' autogenerate-new-keypa
 Expected: a line saying the new account was created, then `Transaction ID: …`. Record at `vault_v0.create_tx`.
 
 ## 2. Deploy and initialise with the mainnet constants
+
+**Confirm the owner and the approver before the deploy.** They are permanent after the lock: the vault has no method to change them. Guard 1 below can only compare the chain with `$OWNER_ID` and `$APPROVER_ID`, so it cannot tell whether those variables name the right accounts. Print them:
+
+```bash
+echo "owner: $OWNER_ID  approver: $APPROVER_ID"
+```
+
+The owner confirms, account by account and character by character, in their own wallet apps (the apps themselves, not a note or a message), that `$OWNER_ID` is their owner account, the one that signs every OWNER SIGNS call below with a full-access key, and that `$APPROVER_ID` is their approver account. **If either differs, do not deploy: stop and tell Claude.** This is the same pattern as the Base payee check in step 8.
 
 **OWNER SIGNS** (signed by the new account's own full-access key)
 ```bash
@@ -154,13 +164,17 @@ curl -s "$RPC" -H 'content-type: application/json' \
 
 Straight after the deploy, the only reply that means "try again" is `STOP: no get_config result`: wait a few seconds and run guard 1 again. Any other `STOP` is a real one.
 
-Guard 2: the code on the chain is the CI wasm:
+Guard 2: the code on the chain is the CI wasm. Both hashes must be readable (non-empty) and equal; two empty values, from an RPC error and an unset `$WASM` together, are not a match:
 
 ```bash
-if [ "$(node scripts/testnet/chain.mjs code-hash "$VAULT")" = "$(node scripts/code-hash.mjs hash "$WASM")" ]; then
+DEPLOYED="$(node scripts/testnet/chain.mjs code-hash "$VAULT")"
+BUILT="$(node scripts/code-hash.mjs hash "$WASM")"
+echo "deployed: $DEPLOYED"
+echo "ci wasm:  $BUILT"
+if [ -n "$DEPLOYED" ] && [ -n "$BUILT" ] && [ "$DEPLOYED" = "$BUILT" ]; then
   echo "OK: the deployed code is the CI wasm"
 else
-  echo "STOP: the deployed code differs from the CI wasm"
+  echo "STOP: the deployed code differs from the CI wasm, or one of the two hashes could not be read"
 fi
 ```
 
@@ -175,7 +189,7 @@ Expected, by hand as well (all of these, not most of them):
 
 ## 3. Lock: delete the full-access key
 
-**Run this step only if every check of step 2 passed: both guards printed `OK`, and the config equalities hold.** Otherwise stop and tell Claude. Until the key is deleted, the account still has its full-access key and can still be fixed; after the lock nothing can. The vault has no method to change its `owner` or `approvers`, so a wrong value there is permanent after the lock.
+**Run this step only if every check of step 2 passed: the owner and approver were confirmed against the wallet apps, both guards printed `OK`, and the config equalities hold.** Otherwise stop and tell Claude. Until the key is deleted, the account still has its full-access key and can still be fixed; after the lock nothing can. The vault has no method to change its `owner` or `approvers`, so a wrong value there is permanent after the lock.
 
 Find the key (read-only) and let the guard check it:
 
@@ -315,7 +329,7 @@ export PURPOSE="$(sha256sum docs/evidence/v0-po.txt | cut -d' ' -f1)"
 export EXPIRES=1798675200000000000   # 2026-12-31T00:00:00Z; check with: date -u -d @1798675200
 ```
 
-**The payees decide where the money goes, and a variable proves nothing about an address.** A wrong payee cannot be changed: the only fix is to revoke the mandate. So the owner checks both payees against their own wallets, twice: before the mandate is created, and on the chain afterwards.
+**The payees decide where the money goes, and a variable proves nothing about an address.** A wrong payee cannot be changed: the only fix is to revoke the mandate. So the owner checks each payee against what the contract stored. The NEAR payee (mandate 1) gets the on-chain check plus the owner's confirmation that they control that account. The Base payee (mandate 2) gets one more check: the address is compared with the wallet app twice, before the mandate is created and on the chain afterwards.
 
 **OWNER SIGNS** (mandate 1, NEAR payee; the 0.05 NEAR covers storage and the payee's USDC registration, and the excess is refunded)
 ```bash
