@@ -122,8 +122,8 @@ export class ConfigError extends ProbarionError {
 
 export class NearAiError extends ProbarionError {
   override name = "NearAiError";
-  constructor(message: string) {
-    super(message, "NearAiError");
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, "NearAiError", options);
   }
 }
 
