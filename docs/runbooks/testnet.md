@@ -26,17 +26,17 @@ node scripts/testnet/chain.mjs protocol-version mainnet
    To create one again, use the faucet (testnet only):
 
    ```bash
-   near account create-account sponsor-by-faucet-service probarion.testnet autogenerate-new-keypair save-to-keychain network-config testnet create
+   near account create-account sponsor-by-faucet-service probarion.testnet autogenerate-new-keypair --signature-scheme ed25519 save-to-keychain network-config testnet create
    ```
 
-   Every variable can be overridden, so other account names work the same way.
-3. Budget. `ROOT` pays the initial balances: 1.8 NEAR for each of the three tokens, 1.9 for the stub and 2 for the vault, 9.3 NEAR in all, plus gas. `ROOT` holds exactly 10 NEAR from the faucet, so there is little to spare. Storage costs 1 NEAR per 100 KB of wasm, which is why the balances are lean. `deploy.sh` checks the balance before it sends anything. If it says `ROOT` is short, top it up from the owner account (a testnet send):
+   `--signature-scheme ed25519` is spelled out because near-cli-rs otherwise asks for the scheme in a terminal. Every variable can be overridden, so other account names work the same way.
+3. **OWNER:** top up `ROOT` before you deploy. `ROOT` pays the initial balances of the five new accounts: 1.8 NEAR for each of the three tokens, 1.9 for the stub and 3 for the vault, 10.3 NEAR in all, plus gas. Storage costs 1 NEAR per 100 KB of wasm, and the vault wasm is 248,501 bytes. `ROOT` holds exactly 10 NEAR from the faucet, so send it 3 NEAR from the owner account first (a testnet send):
 
    ```bash
    near tokens probarion-owner.testnet send-near probarion.testnet '3 NEAR' network-config testnet sign-with-keychain send
    ```
 
-   With the local vault build (step 1, path B) the vault needs 3 NEAR instead of 2, so top up first.
+   `deploy.sh` checks the balance before it sends anything, and prints this command if `ROOT` is still short.
 4. **OWNER:** generate the agent keypair. This sends no transaction.
 
    ```bash

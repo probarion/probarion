@@ -38,8 +38,9 @@ NET=(network-config testnet)
 DRY="${DRY_RUN:-0}"
 
 # Initial balances (NEAR). Storage costs 1 NEAR per 100 KB of wasm, so test-ft (157 KB) needs 1.6,
-# intents-stub (164 KB) 1.7 and the 102 KB reproducible vault 1.1; the rest is headroom for state and gas.
-# ROOT holds 10 NEAR from the faucet, and these defaults add up to 9.3.
+# intents-stub (164 KB) 1.7 and the vault (the CI wasm is 248,501 bytes) 2.5; the rest is headroom for
+# state and gas. These defaults add up to 10.3 NEAR (1.8 x3 + 1.9 + 3), and a faucet account holds 10:
+# top ROOT up first (docs/runbooks/testnet.md, step 0.3). The preflight checks it.
 TOKEN_NEAR="${TOKEN_NEAR:-1.8}"
 STUB_NEAR="${STUB_NEAR:-1.9}"
 
@@ -116,14 +117,14 @@ EOF
 fi
 TEST_FT_WASM="$(local_wasm test_ft)"
 INTENTS_WASM="$(local_wasm intents_stub)"
-# Storage costs 1 NEAR per 100 KB: the reproducible vault (102 KB) gets 2 NEAR, the local build (244 KB)
-# gets 3. The size of the file decides, rounded up with half a NEAR of headroom.
+# Storage costs 1 NEAR per 100 KB. The size of the file decides, rounded up with half a NEAR of headroom:
+# the CI wasm (248,501 bytes) and the local build (about 245 KB) both get 3 NEAR. A dry run may run before
+# the file is downloaded; it then assumes 250,000 bytes. (101,654 bytes is the size of the zipped artifact,
+# not of the wasm.)
 if [ -f "$VAULT_WASM_PATH" ]; then
   vault_bytes=$(($(wc -c <"$VAULT_WASM_PATH")))
-elif [ "$VAULT_WASM_KIND" = "local" ]; then
-  vault_bytes=244000
 else
-  vault_bytes=102000
+  vault_bytes=250000
 fi
 VAULT_NEAR="${VAULT_NEAR:-$(((vault_bytes + 149999) / 100000))}"
 
@@ -182,13 +183,14 @@ preflight() {
     [ "$rc" = "0" ] || fail "$account does not exist on testnet"
   done
   chain enough "$ROOT" "$TOKEN_NEAR" "$TOKEN_NEAR" "$TOKEN_NEAR" "$STUB_NEAR" "$VAULT_NEAR" ||
-    fail "$ROOT cannot fund the accounts. Top it up from another testnet account (docs/runbooks/testnet.md, step 0) or lower TOKEN_NEAR, STUB_NEAR and VAULT_NEAR"
+    fail "$ROOT cannot fund the accounts. Top it up from the owner, for example: near tokens $OWNER_ID send-near $ROOT '3 NEAR' network-config testnet sign-with-keychain send (docs/runbooks/testnet.md, step 0.3)"
 }
 
 # create <account> <balance in NEAR>
 create() {
-  run near account create-account fund-myself "$1" "$2 NEAR" autogenerate-new-keypair save-to-keychain \
-    sign-as "$ROOT" "${NET[@]}" sign-with-keychain send
+  # --signature-scheme is explicit: without it near-cli-rs asks which scheme to use when stdin is a terminal.
+  run near account create-account fund-myself "$1" "$2 NEAR" autogenerate-new-keypair \
+    --signature-scheme ed25519 save-to-keychain sign-as "$ROOT" "${NET[@]}" sign-with-keychain send
 }
 
 # deploy_init <account> <wasm file> <init json args>

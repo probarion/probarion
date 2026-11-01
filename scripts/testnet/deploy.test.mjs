@@ -1,23 +1,55 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { formatNear, fullAccessKeys, isUnknownAccount, parseNear } from "./chain.mjs";
 
 const repo = fileURLToPath(new URL("../../", import.meta.url));
 
-// Stands in for the CI artifact (gh run download ... -n probarion-vault-wasm). Dry runs never read it.
-const ARTIFACT = "contracts/target/ci-artifact/probarion_vault.wasm";
+// A path that exists on no machine. The runbook downloads the CI artifact to
+// contracts/target/ci-artifact, and these tests must give the same result whether or not it is there.
+// A dry run then prints that the file is not there yet, and deploy.sh assumes the size of the CI wasm
+// (248,501 bytes).
+const ARTIFACT = "contracts/target/test-no-such-artifact/probarion_vault.wasm";
+// A key file that exists on no machine: a dry run then uses a placeholder public key.
+const AGENT_KEY = "/tmp/probarion-test-no-such-agent-key.json";
+const RUNBOOK = readFileSync(new URL("../../docs/runbooks/testnet.md", import.meta.url), "utf8");
 const DEPLOY_ENV = {
   OWNER_ID: "owner-dev.testnet",
   APPROVER_ID: "approver-dev.testnet",
   VAULT_WASM: ARTIFACT,
 };
+const SMOKE_ENV = {
+  OWNER_ID: "owner-dev.testnet",
+  PAYEE_ID: "payee-dev.testnet",
+  AGENT_KEY_FILE: AGENT_KEY,
+};
 
-/** Runs a script with DRY_RUN=1. An env value of undefined removes the variable. */
+// Every variable either script reads: a value inherited from the machine must not change a result.
+const SCRIPT_VARS = [
+  "ROOT",
+  "OWNER_ID",
+  "APPROVER_ID",
+  "PAYEE_ID",
+  "AGENT_KEY_FILE",
+  "BASE_ADDRESS",
+  "VAULT_NAME",
+  "VAULT_WASM",
+  "ALLOW_NON_REPRODUCIBLE",
+  "TOKEN_NEAR",
+  "STUB_NEAR",
+  "VAULT_NEAR",
+  "RPC",
+  "DRY_RUN",
+];
+
+/** Runs a script with DRY_RUN=1 and a clean environment. An env value of undefined removes a variable. */
 function run(script, env) {
-  const merged = { ...process.env, DRY_RUN: "1", ...env };
+  const merged = { ...process.env };
+  for (const name of SCRIPT_VARS) delete merged[name];
+  Object.assign(merged, { DRY_RUN: "1", ...env });
   for (const [key, value] of Object.entries(merged)) {
     if (value === undefined) delete merged[key];
   }
@@ -39,6 +71,29 @@ function finder(out) {
     assert.ok(i >= 0, `no line contains ${parts.join(" + ")}`);
     return i;
   };
+}
+
+/** The initial balances (NEAR) of the five accounts in a dry run: usdc, base, sol, stub, vault. */
+function balances(out) {
+  const found = out
+    .split("\n")
+    .filter((l) => l.startsWith("+ near account create-account fund-myself "))
+    .map((l) => /fund-myself \S+ '?([\d.]+) NEAR/.exec(l)?.[1]);
+  assert.equal(found.length, 5);
+  return found;
+}
+
+/** Runs a dry deploy with a stand-in vault wasm of the given size (git-ignored, under contracts/target). */
+function withStandIn(bytes, env, check) {
+  const dir = `contracts/target/test-standin-${process.pid}-${bytes}`;
+  mkdirSync(join(repo, dir), { recursive: true });
+  try {
+    writeFileSync(join(repo, dir, "probarion_vault.wasm"), Buffer.alloc(bytes));
+    const vaultWasm = `${dir}/probarion_vault.wasm`;
+    check(run("scripts/testnet/deploy.sh", { ...DEPLOY_ENV, ...env, VAULT_WASM: vaultWasm }));
+  } finally {
+    rmSync(join(repo, dir), { recursive: true, force: true });
+  }
 }
 
 test("deploy.sh deploys every contract, then locks the vault before funding it", () => {
@@ -80,18 +135,35 @@ test("deploy.sh signs with the keychain and attaches 1 yoctoNEAR to the transfer
   }
 });
 
-test("deploy.sh funds within the 10 NEAR a faucet account holds", () => {
+test("deploy.sh's balances fit in 10 NEAR plus the top-up the runbook documents", () => {
   const out = dryRun("scripts/testnet/deploy.sh", DEPLOY_ENV);
-  const balances = out
-    .split("\n")
-    .filter((l) => l.startsWith("+ near account create-account fund-myself "))
-    .map((l) => /fund-myself \S+ '?([\d.]+) NEAR/.exec(l)?.[1]);
-  assert.equal(balances.length, 5);
-  const total = balances.reduce((sum, n) => sum + parseNear(n), 0n);
+  const total = balances(out).reduce((sum, n) => sum + parseNear(n), 0n);
+  // The CI wasm is 248,501 bytes (2.49 NEAR of storage), so the vault gets 3: 10.3 NEAR in all.
+  assert.equal(formatNear(total), "10.3");
+  const topUp = /send-near probarion\.testnet '(\d+(?:\.\d+)?) NEAR'/.exec(RUNBOOK)?.[1];
+  assert.ok(topUp, "the runbook gives the command that tops up the root account");
   assert.ok(
-    total + parseNear("0.3") <= parseNear("10"),
-    `${formatNear(total)} NEAR plus gas must fit in 10 NEAR`,
+    total + parseNear("0.3") <= parseNear("10") + parseNear(topUp),
+    `${formatNear(total)} NEAR plus gas must fit in 10 NEAR plus the ${topUp} NEAR top-up`,
   );
+});
+
+test("every account is created with an explicit ed25519 key scheme, so no prompt can block", () => {
+  const out = dryRun("scripts/testnet/deploy.sh", DEPLOY_ENV);
+  const creates = out.split("\n").filter((l) => l.includes(" create-account "));
+  assert.equal(creates.length, 5);
+  for (const command of creates) {
+    assert.ok(
+      command.includes(" autogenerate-new-keypair --signature-scheme ed25519 save-to-keychain "),
+      command,
+    );
+  }
+  // The runbook's own autogenerate command too.
+  const manual = RUNBOOK.split("\n").filter((l) => l.includes("autogenerate-new-keypair"));
+  assert.ok(manual.length >= 1);
+  for (const command of manual) {
+    assert.ok(command.includes("autogenerate-new-keypair --signature-scheme ed25519 "), command);
+  }
 });
 
 test("deploy.sh refuses to deploy the vault without a reproducible wasm", () => {
@@ -125,41 +197,57 @@ test("ALLOW_NON_REPRODUCIBLE=1 deploys the local vault build with a loud warning
     "v0.probarion.testnet",
     "contracts/target/near/probarion_vault/probarion_vault.wasm",
   );
-  // The 244 KB local build needs more storage than the 102 KB reproducible one.
-  at("create-account", "v0.probarion.testnet", "'3 NEAR'");
+  // A local build (about 245 KB) needs at least as much storage as the CI wasm.
+  const vaultNear = balances(result.stdout)[4];
+  assert.ok(Number(vaultNear) >= 3, `the vault got ${vaultNear} NEAR`);
 });
 
-test("the reproducible vault gets the smaller balance and no warning", () => {
+test("the CI vault wasm, 248,501 bytes, gets 3 NEAR and no warning", () => {
+  // The file is absent, so deploy.sh assumes the size of the CI wasm. A dry run does not need the file.
   const result = run("scripts/testnet/deploy.sh", DEPLOY_ENV);
   assert.equal(result.status, 0, result.stderr);
   assert.ok(!result.stderr.includes("WARNING"), result.stderr);
-  const at = finder(result.stdout);
-  at("create-account", "v0.probarion.testnet", "'2 NEAR'");
+  assert.deepEqual(balances(result.stdout), ["1.8", "1.8", "1.8", "1.9", "3"]);
+});
+
+test("the vault balance follows the size of the wasm file", () => {
+  // These stand-ins are not a recorded build, so ALLOW_NON_REPRODUCIBLE=1 lets the dry run go on.
+  for (const [bytes, expected] of [
+    [248_501, "3"],
+    [101_654, "2"],
+  ]) {
+    withStandIn(bytes, { ALLOW_NON_REPRODUCIBLE: "1" }, (result) => {
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stderr, /does NOT match/);
+      assert.match(result.stdout, /Vault v0\.probarion\.testnet \(unverified wasm\)/);
+      assert.equal(balances(result.stdout)[4], expected, `${bytes} bytes`);
+    });
+  }
+});
+
+test("a wasm that is not the recorded build is refused without ALLOW_NON_REPRODUCIBLE", () => {
+  withStandIn(248_501, {}, (result) => {
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /does not match the recorded reproducible build/);
+    assert.ok(!result.stdout.includes("contract deploy"), "nothing is printed before the refusal");
+  });
 });
 
 test("smoke.sh adds the agent, pays, burns, then expects a NoMandate refusal", () => {
-  const out = dryRun("scripts/testnet/smoke.sh", {
-    OWNER_ID: "owner-dev.testnet",
-    PAYEE_ID: "payee-dev.testnet",
-    AGENT_KEY_FILE: "/tmp/agent.json",
-  });
+  const out = dryRun("scripts/testnet/smoke.sh", SMOKE_ENV);
   const at = finder(out);
   const addAgent = at("add_agent");
   const firstSpend = at("v0.probarion.testnet", " spend ");
   const refusal = at("expect PROBARION:NoMandate");
   assert.ok(addAgent < firstSpend && firstSpend < refusal);
   assert.ok(
-    out.includes("sign-with-access-key-file /tmp/agent.json"),
+    out.includes(`sign-with-access-key-file ${AGENT_KEY}`),
     "spends are signed with the agent key file",
   );
 });
 
 test("smoke.sh attaches 1 yoctoNEAR to add_agent and explicit gas to every call", () => {
-  const out = dryRun("scripts/testnet/smoke.sh", {
-    OWNER_ID: "owner-dev.testnet",
-    PAYEE_ID: "payee-dev.testnet",
-    AGENT_KEY_FILE: "/tmp/agent.json",
-  });
+  const out = dryRun("scripts/testnet/smoke.sh", SMOKE_ENV);
   const commands = out.split("\n").filter((l) => l.includes("as-transaction"));
   const addAgent = commands.filter((l) => l.includes(" add_agent "));
   assert.equal(addAgent.length, 1);
