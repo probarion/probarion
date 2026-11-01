@@ -233,7 +233,7 @@ describe("runChecks on the valid TEST FIXTURE", () => {
     const detail = check(report, "e").detail;
     expect(detail).toContain("2 attested decisions pass A1–A7");
     expect(detail).toContain("quote not verified offline (run --online for O1)");
-    expect(detail).toContain("A8 not run");
+    expect(detail).toContain("A8 not run (the request is not checked against the invoice)");
     expect(detail).toContain("rules-only");
     expect(detail).toContain("seq 4");
     expect(detail).not.toContain("A1–A6");
@@ -341,7 +341,7 @@ describe("check a: every entry is signed by the ledger key the chain names for i
     const report = await runChecks(s, { now: NOW });
     expect(onlyFailing(report)).toEqual(["a"]);
     expect(check(report, "a").firstBrokenSeq).toBe(4);
-    expect(check(report, "c").detail).toContain("not yet anchored");
+    expect(check(report, "c").detail).toContain("not chain-attested");
   });
 
   it("passes an honestly signed unanchored tail", async () => {
@@ -354,6 +354,7 @@ describe("check a: every entry is signed by the ledger key the chain names for i
     const s = fresh();
     s.chain.anchors.pop();
     s.chain.config.ledger_key = null;
+    s.chain.access_keys.splice(1, 1); // no ledger key is set, so there is no anchor key on the vault either
     const report = await runChecks(s, { now: NOW });
     expect(onlyFailing(report)).toEqual(["a"]);
     expect(check(report, "a").firstBrokenSeq).toBe(4);
@@ -363,19 +364,19 @@ describe("check a: every entry is signed by the ledger key the chain names for i
   it("fails when the ledger key is not anchor-only", async () => {
     const s = fresh();
     accessKeyOf(s, 1).permission.method_names = ["anchor", "spend"];
-    expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["a"]);
+    expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["a", "f"]); // f: ICR-5, no key may do both
   });
 
   it("fails when the ledger key's method list is empty (a function-call key with no methods may call any)", async () => {
     const s = fresh();
     accessKeyOf(s, 1).permission.method_names = [];
-    expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["a"]);
+    expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["a", "f"]);
   });
 
   it("fails when the ledger key's receiver is not the vault", async () => {
     const s = fresh();
     accessKeyOf(s, 1).permission.receiver_id = "intents-stub.probarion.testnet";
-    expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["a"]);
+    expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["a", "f"]);
   });
 
   it("fails when the ledger key is not on the vault at all", async () => {
@@ -399,7 +400,7 @@ describe("check a: every entry is signed by the ledger key the chain names for i
     s.chain.spends = [];
     s.chain.burns = [];
     accessKeyOf(s, 1).permission.method_names = ["anchor", "spend"];
-    expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["a"]);
+    expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["a", "f"]);
   });
 
   it("accepts an anchor that repeats the previous count (the contract allows it)", async () => {
@@ -415,43 +416,67 @@ describe("check a: every entry is signed by the ledger key the chain names for i
   // the 32-byte transaction hash, and both are public. For an anchor transaction the signing key is the
   // ledger key, so (tx hash, signature, ledger key) is a triple that passes verifyEntrySignature as
   // (body_hash, sig, signer) with no secret needed. verifyEntrySignature does not recompute body_hash from
-  // the body, so check a cannot see that the body is something else: check b must, and the report must fail.
-  it("fails an entry built from a public anchor-transaction (hash, signature, ledger key) triple", async () => {
-    const anchorTxHash = sha256Bytes(utf8("TEST FIXTURE anchor transaction"));
-    expect(bs58.encode(anchorTxHash)).toMatch(/^[1-9A-HJ-NP-Za-km-z]{43,44}$/); // a real-looking 32-byte tx hash
-    const { sig, signer } = await honestSigner(anchorTxHash); // what the chain already shows the world
-    const s = fresh();
-    s.chain.anchors.pop(); // entry 4 is an unanchored tail entry: no anchor root pins its link
-    const real = entryOf(s, 4);
-    const forgedBody = { ...real.body, verdict: "allow" as const, amount: "999999999999" };
-    const bodyHash = bytesToHex(anchorTxHash);
-    const forged: LedgerEntry = {
-      body: forgedBody,
-      body_hash: bodyHash,
-      sig,
-      signer,
-      link: computeLink(forgedBody.prev_link, bodyHash, sig),
-    };
-    s.ledger[4] = forged;
+  // the body. Check a recomputes it itself (so it is safe called alone) and so does check b.
+  describe("a public anchor-transaction (hash, signature, ledger key) triple in a forged body", () => {
+    async function forgedWithTriple(): Promise<{ s: Snapshot; forged: LedgerEntry }> {
+      const anchorTxHash = sha256Bytes(utf8("TEST FIXTURE anchor transaction"));
+      expect(bs58.encode(anchorTxHash)).toMatch(/^[1-9A-HJ-NP-Za-km-z]{43,44}$/); // a real-looking 32-byte tx hash
+      const { sig, signer } = await honestSigner(anchorTxHash); // what the chain already shows the world
+      const s = fresh();
+      s.chain.anchors.pop(); // entry 4 is an unanchored tail entry: no anchor root pins its link
+      const real = entryOf(s, 4);
+      const forgedBody = { ...real.body, verdict: "allow" as const, amount: "999999999999" };
+      const bodyHash = bytesToHex(anchorTxHash);
+      const forged: LedgerEntry = {
+        body: forgedBody,
+        body_hash: bodyHash,
+        sig,
+        signer,
+        link: computeLink(forgedBody.prev_link, bodyHash, sig),
+      };
+      s.ledger[4] = forged;
+      // the triple verifies on its own, and the body does not hash to it
+      expect(verifyEntrySignature(forged)).toBe(true);
+      expect(signer).toBe(s.chain.config.ledger_key);
+      expect(computeBodyHash(forged.body)).not.toBe(forged.body_hash);
+      return { s, forged };
+    }
 
-    // the triple verifies on its own, and the body does not hash to it
-    expect(verifyEntrySignature(forged)).toBe(true);
-    expect(signer).toBe(s.chain.config.ledger_key);
-    expect(computeBodyHash(forged.body)).not.toBe(forged.body_hash);
+    it("fails the report, at that seq, in both a and b", async () => {
+      const { s } = await forgedWithTriple();
+      const report = await runChecks(s, { now: NOW });
+      expect(report.ok).toBe(false);
+      expect(check(report, "a").status).toBe("fail");
+      expect(check(report, "a").firstBrokenSeq).toBe(4);
+      expect(check(report, "b").status).toBe("fail");
+      expect(check(report, "b").firstBrokenSeq).toBe(4);
+      expect(check(report, "b").detail).toContain("body_hash");
+      expect(firstBrokenSeq(report)).toBe(4);
+    });
 
-    const report = await runChecks(s, { now: NOW });
-    expect(report.ok).toBe(false);
-    expect(check(report, "b").status).toBe("fail");
-    expect(check(report, "b").firstBrokenSeq).toBe(4);
-    expect(check(report, "b").detail).toContain("body_hash");
-    expect(firstBrokenSeq(report)).toBe(4);
-    // Check a's pass says what it proved: a signature over the STORED body_hash, with check b the recompute.
-    expect(check(report, "a").detail).toContain("check b");
+    it("fails check a when it is called alone: it does not rely on check b", async () => {
+      const { s } = await forgedWithTriple();
+      const result = checkLedgerSignatures(s);
+      expect(result.status).toBe("fail");
+      expect(result.firstBrokenSeq).toBe(4);
+      expect(result.detail).toContain("body_hash does not recompute");
+    });
+
+    it("fails check a alone for a body that is not canonical JSON, and passes the valid ledger alone", async () => {
+      const s = fresh();
+      (entryOf(s, 3).body as unknown as { amount: unknown }).amount = undefined;
+      const result = checkLedgerSignatures(s);
+      expect(result.status).toBe("fail");
+      expect(result.firstBrokenSeq).toBe(3);
+      expect(checkLedgerSignatures(fresh()).status).toBe("pass");
+    });
   });
 
-  it("never reports an entry as signed without saying that check b recomputes the body hash", async () => {
-    expect(checkLedgerSignatures(fresh()).detail).toContain("stored body_hash");
-    expect(checkLedgerSignatures(fresh()).detail).toContain("check b");
+  it("says in check a's pass what it verified, including the body_hash recompute", async () => {
+    const detail = checkLedgerSignatures(fresh()).detail;
+    expect(detail).toContain("recomputes from its body");
+    expect(detail).toContain("1 ledger key(s)");
+    expect(detail).toContain("check b");
   });
 });
 
@@ -461,20 +486,21 @@ describe("check b: body_hash and link recompute, and prev_link chains", () => {
     const s = fresh();
     s.ledger[2] = tamperOneByte(entryOf(s, 2));
     const report = await runChecks(s, { now: NOW });
-    // The byte is in the decision's amount: b catches it, and since ICR-4 d also sees that the spend no
-    // longer matches the decision. The first broken seq is the tampered entry for both.
-    expect(onlyFailing(report)).toEqual(["b", "d"]);
+    // The byte is in the decision's amount. Check a (it recomputes body_hash itself) and b catch it, and
+    // since ICR-4 d also sees that the spend no longer matches the decision. All name the tampered entry.
+    expect(onlyFailing(report)).toEqual(["a", "b", "d"]);
+    expect(check(report, "a").firstBrokenSeq).toBe(2);
     expect(check(report, "b").firstBrokenSeq).toBe(2);
     expect(check(report, "d").firstBrokenSeq).toBe(2);
     expect(firstBrokenSeq(report)).toBe(2);
   });
 
-  it("fails at the tampered seq when one byte changes that no spend refers to: only b sees it", async () => {
+  it("fails at the tampered seq when one byte changes that no spend refers to: a and b see it, d does not", async () => {
     const s = fresh();
     s.ledger[2] = tamperOneByte(entryOf(s, 2), "request_id");
     expect(entryOf(s, 2).body.request_id).toBe("Xixture-req-1");
     const report = await runChecks(s, { now: NOW });
-    expect(onlyFailing(report)).toEqual(["b"]);
+    expect(onlyFailing(report)).toEqual(["a", "b"]);
     expect(check(report, "b").firstBrokenSeq).toBe(2);
     expect(firstBrokenSeq(report)).toBe(2);
   });
@@ -609,6 +635,41 @@ describe("check c: anchors", () => {
     const report = await runChecks(s, { now: NOW });
     expect(onlyFailing(report)).toEqual(["c"]);
     expect(check(report, "c").firstBrokenSeq).toBe(2);
+    // the seq is the first entry of the range the anchor pins, and the detail says so
+    expect(check(report, "c").detail).toContain("entries 2 to 3 are not proven");
+  });
+
+  it("states in its pass detail how many entries after the last anchored count are not chain-attested", async () => {
+    expect(check(await runChecks(fresh(), { now: NOW }), "c").detail).toContain(
+      "3 anchors match the ledger; 0 entries after the last anchored count (5) are not chain-attested",
+    );
+    const s = fresh();
+    s.chain.anchors.pop();
+    expect(check(await runChecks(s, { now: NOW }), "c").detail).toContain(
+      "2 anchors match the ledger; 1 entry after the last anchored count (4) is not chain-attested",
+    );
+    const one = fresh();
+    one.chain.anchors = one.chain.anchors.slice(0, 1);
+    expect(check(await runChecks(one, { now: NOW }), "c").detail).toContain(
+      "1 anchor matches the ledger; 3 entries after the last anchored count (2) are not chain-attested",
+    );
+  });
+
+  it("names the seq it reports in every failure detail", async () => {
+    const gap = fresh();
+    gap.chain.anchors.splice(1, 1);
+    const gapResult = checkAnchors(gap);
+    expect(gapResult.firstBrokenSeq).toBe(2);
+    expect(gapResult.detail).toContain("entry 2 and later are not proven");
+    const back = fresh();
+    anchorOf(back, 2).count = 3;
+    const backResult = checkAnchors(back);
+    expect(backResult.firstBrokenSeq).toBe(4);
+    expect(backResult.detail).toContain("entry 4 and later are not proven");
+    const none = fresh();
+    none.chain.anchors = [];
+    expect(checkAnchors(none).firstBrokenSeq).toBe(0);
+    expect(checkAnchors(none).detail).toContain("no entry is chain-attested");
   });
 
   it("fails when the ledger is truncated below an anchored count", async () => {
@@ -673,7 +734,8 @@ describe("check d: every on-chain spend is bound to exactly one allow decision i
     s.pre_ledger_decision_hashes = [v0Decision];
     const report = await runChecks(s, { now: NOW });
     expect(report.ok).toBe(true);
-    expect(check(report, "d").detail).toContain("pre-ledger (documented)");
+    expect(check(report, "d").detail).toContain("listed as pre-ledger by the snapshot");
+    expect(check(report, "d").detail).not.toContain("docs/evidence");
   });
 
   it("does not excuse a spend whose decision hash is not the documented one", async () => {
@@ -846,20 +908,17 @@ describe("check d: every on-chain spend is bound to exactly one allow decision i
       expect(check(await runChecks(s, { now: NOW }), "d").detail).toContain("spends 1 and 3");
     });
 
-    it("keeps the pre-ledger exemption: documented spends need no decision, binding or uniqueness", async () => {
+    it("keeps the pre-ledger exemption for one spend: no decision, no binding", async () => {
       const s = fresh();
       const v0Decision = sha256Hex('{"kind":"v0-manual-decision","mandate_id":1}');
       spendOf(s, 0).decision_hash = v0Decision;
-      s.chain.spends.push({
-        ...structuredClone(spendOf(s, 0)),
-        id: 3,
-        amount: "7",
-        invoice_hash: sha256Hex("another v0 invoice"),
-      });
+      spendOf(s, 0).amount = "7"; // there is no decision to bind it to
       s.pre_ledger_decision_hashes = [v0Decision];
       const report = await runChecks(s, { now: NOW });
       expect(report.ok).toBe(true);
-      expect(check(report, "d").detail).toContain("2 pre-ledger (documented)");
+      expect(check(report, "d").detail).toContain(
+        "1 spend has a decision_hash listed as pre-ledger by the snapshot",
+      );
     });
 
     it("applies the rules to a spend whose hash is both in the ledger and documented as pre-ledger", async () => {
@@ -868,6 +927,131 @@ describe("check d: every on-chain spend is bound to exactly one allow decision i
       s.pre_ledger_decision_hashes = [spendOf(s, 0).decision_hash];
       expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["d"]);
     });
+  });
+});
+
+describe("check d, ICR-4b: a pre-ledger hash exempts one spend, created before the ledger began", () => {
+  const V0 = sha256Hex('{"kind":"v0-manual-decision","mandate_id":1}');
+  const V1 = sha256Hex('{"kind":"v0-manual-decision","mandate_id":2}');
+
+  /** Spend 1 (paid, created before the first anchor) points at the documented hash V0 instead of a ledger decision. */
+  function preLedger(): Snapshot {
+    const s = fresh();
+    spendOf(s, 0).decision_hash = V0;
+    s.pre_ledger_decision_hashes = [V0];
+    return s;
+  }
+
+  /** What the real testnet v0 vault looks like to the verifier: no ledger, no anchor, spends with documented hashes. */
+  function v0Like(): Snapshot {
+    const s = fresh();
+    s.ledger = [];
+    s.chain.anchors = [];
+    spendOf(s, 0).decision_hash = V0;
+    spendOf(s, 1).decision_hash = V1;
+    s.pre_ledger_decision_hashes = [V0, V1];
+    return s;
+  }
+
+  it("passes the valid single use: any invoice, mandate and amount, created before the first anchor", async () => {
+    const report = await runChecks(preLedger(), { now: NOW });
+    expect(report.ok).toBe(true);
+    expect(check(report, "d").detail).toContain("listed as pre-ledger by the snapshot");
+  });
+
+  it("fails a second spend that references the same pre-ledger hash", async () => {
+    const s = preLedger();
+    s.chain.spends.push({
+      ...structuredClone(spendOf(s, 0)),
+      id: 3,
+      amount: "7",
+      invoice_hash: sha256Hex("another v0 invoice"),
+    });
+    const report = await runChecks(s, { now: NOW });
+    expect(onlyFailing(report)).toEqual(["d"]);
+    expect(check(report, "d").detail).toContain(
+      "spend 3: decision_hash is a pre-ledger hash already used by spend 1",
+    );
+  });
+
+  it("gives the exemption to the lowest spend id, whatever order the snapshot lists them in", async () => {
+    const s = preLedger();
+    s.chain.spends.push({ ...structuredClone(spendOf(s, 0)), id: 3, amount: "7" });
+    s.chain.spends.reverse();
+    expect(check(await runChecks(s, { now: NOW }), "d").detail).toContain(
+      "already used by spend 1",
+    );
+  });
+
+  it("fails the reviewer's probe: three rogue spends sent after the ledger began, all on one public pre-ledger hash", async () => {
+    const s = preLedger();
+    s.chain.spends = [spendOf(s, 1)]; // the legitimate spend 1 is gone; the three rogue ones follow
+    for (const [id, amount] of [
+      [3, "24000000"],
+      [4, "23000000"],
+      [5, "22000000"],
+    ] as const) {
+      s.chain.spends.push({
+        ...structuredClone(spendOf(valid, 0)),
+        id,
+        amount,
+        invoice_hash: sha256Hex(`rogue ${id}`),
+        ref: `ROGUE-${id}`,
+        decision_hash: V0,
+        created_at_ns: "1793875000000000000", // after the last anchor at_ns 1793874001000000000
+      });
+    }
+    const report = await runChecks(s, { now: NOW });
+    expect(report.ok).toBe(false);
+    expect(onlyFailing(report)).toEqual(["d"]);
+    expect(check(report, "d").detail).toContain("spend 3: decision_hash is a pre-ledger hash");
+    expect(check(report, "d").detail).toContain("created after the ledger began");
+  });
+
+  it("fails a pre-ledger spend created at or after the first anchor, and passes one created just before", async () => {
+    const first = anchorOf(fresh(), 0).at_ns;
+    expect(first).toBe("1793872806000000000");
+    for (const [created, ok] of [
+      ["1793872805999999999", true],
+      [first, false],
+      ["1793872806000000001", false],
+    ] as const) {
+      const s = preLedger();
+      spendOf(s, 0).created_at_ns = created;
+      const report = await runChecks(s, { now: NOW });
+      expect(check(report, "d").status, created).toBe(ok ? "pass" : "fail");
+      if (!ok) expect(check(report, "d").detail).toContain("created after the ledger began");
+    }
+  });
+
+  it("fails a pre-ledger spend whose created_at_ns is not a nanosecond count", async () => {
+    const s = preLedger();
+    spendOf(s, 0).created_at_ns = "yesterday";
+    const report = await runChecks(s, { now: NOW });
+    expect(onlyFailing(report)).toEqual(["d"]);
+    expect(check(report, "d").detail).toContain("created_at_ns");
+  });
+
+  it("has no time bound while the snapshot has no anchor (the real testnet v0 vault), but still one spend per hash", async () => {
+    const s = v0Like();
+    spendOf(s, 0).created_at_ns = "1893872805000000000"; // far later: nothing to compare it with
+    const report = await runChecks(s, { now: NOW });
+    expect(report.ok).toBe(true);
+    expect(check(report, "d").detail).toContain("no spend is bound to a ledger decision");
+    expect(check(report, "d").detail).toContain(
+      "2 spends have a decision_hash listed as pre-ledger by the snapshot",
+    );
+    const reuse = v0Like();
+    spendOf(reuse, 1).decision_hash = V0;
+    expect(check(await runChecks(reuse, { now: NOW }), "d").detail).toContain(
+      "already used by spend 1",
+    );
+  });
+
+  it("lets each of two documented hashes exempt its own spend", async () => {
+    const report = await runChecks(v0Like(), { now: NOW });
+    expect(report.ok).toBe(true);
+    expect(check(report, "d").detail).not.toContain("0 on-chain spends");
   });
 });
 
@@ -1049,20 +1233,183 @@ describe("check f: vault locked to a reproducible build", () => {
     expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["f"]);
   });
 
-  it("says when a build is accepted only because the snapshot listed it", async () => {
+  it("trusts the canonical factory's version for the vault's own hash, and says so", async () => {
     const report = await runChecks(fresh(), { now: NOW });
     expect(check(report, "f").status).toBe("pass");
-    expect(check(report, "f").detail).toContain("supplied by the snapshot");
+    expect(check(report, "f").detail).toContain(
+      `version 1 of the canonical factory ${NETWORKS.testnet.factory}`,
+    );
   });
 
-  it("ignores expected entries that are not sha256 hashes, and fails a code hash that is not one", async () => {
-    const s = fresh();
-    s.expected_code_hashes = ["not-a-hash", "", FIXTURE_CODE_HASH];
-    expect(check(await runChecks(s, { now: NOW }), "f").status).toBe("pass");
-    s.chain.code_hash = "not-a-hash";
-    const report = await runChecks(s, { now: NOW });
-    expect(onlyFailing(report)).toEqual(["f"]);
-    expect(check(report, "f").detail).toContain("not a sha256 hash");
+  describe("ICR-5: the snapshot's expected_code_hashes is not trusted", () => {
+    const evil = sha256Hex("evil vault wasm");
+
+    it("fails an unknown hash with an empty expected list", async () => {
+      const s = fresh();
+      s.chain.code_hash = evil;
+      s.expected_code_hashes = [];
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain("not a recorded reproducible build");
+    });
+
+    it("probe 8b: a NON-factory vault whose unknown hash is listed only in expected_code_hashes fails", async () => {
+      const s = fresh();
+      s.chain.code_hash = evil;
+      s.chain.config.factory = null;
+      s.chain.factory_version = null;
+      s.chain.factory_versions = [];
+      s.expected_code_hashes = [evil];
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain("snapshot lists an untrusted code hash");
+    });
+
+    it("probe 8c: a canonical-factory vault whose hash is in expected_code_hashes but NOT in factory_versions fails", async () => {
+      const s = fresh();
+      s.chain.code_hash = evil;
+      s.expected_code_hashes = [...s.expected_code_hashes, evil];
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain("snapshot lists an untrusted code hash");
+    });
+
+    it("fails a trusted code hash when the snapshot also lists an untrusted one", async () => {
+      const s = fresh();
+      s.expected_code_hashes = [FIXTURE_CODE_HASH, evil];
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain(evil);
+    });
+
+    it("fails a list entry that is not a sha256 hash at all", async () => {
+      const s = fresh();
+      s.expected_code_hashes = [FIXTURE_CODE_HASH, "not-a-hash"];
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain("snapshot lists an untrusted code hash");
+    });
+
+    it("fails a code hash that is not a sha256 hash", async () => {
+      const s = fresh();
+      s.chain.code_hash = "not-a-hash";
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain("not a sha256 hash");
+    });
+
+    it("passes a canonical-factory vault whose hash is in factory_versions, with an empty expected list", async () => {
+      const s = fresh();
+      s.expected_code_hashes = [];
+      expect((await runChecks(s, { now: NOW })).ok).toBe(true);
+    });
+
+    it("fails the same factory version hash when the factory is not the canonical one (f and i)", async () => {
+      const s = fresh();
+      s.chain.config.factory = "factory.evil.testnet";
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f", "i"]);
+      // the fixture's own hash is listed by the snapshot and is not trusted from this factory
+      expect(check(report, "f").detail).toContain("snapshot lists an untrusted code hash");
+      s.expected_code_hashes = [];
+      const bare = await runChecks(s, { now: NOW });
+      expect(onlyFailing(bare)).toEqual(["f", "i"]);
+      expect(check(bare, "f").detail).toContain("not a recorded reproducible build");
+      expect(check(bare, "f").detail).toContain("whose versions are not trusted");
+      const wrongNetwork = fresh();
+      wrongNetwork.network = "mainnet";
+      expect(onlyFailing(await runChecks(wrongNetwork, { now: NOW }))).toEqual(["f", "i"]);
+    });
+
+    it("passes a hash from a canonical factory version even when the vault lists a second version", async () => {
+      const s = fresh();
+      s.chain.factory_versions = [
+        ...s.chain.factory_versions,
+        { index: 2, code_hash: KNOWN_VAULT_HASH, mode: "global", notes: "", at_ns: "2" },
+      ];
+      s.expected_code_hashes = [FIXTURE_CODE_HASH, KNOWN_VAULT_HASH];
+      expect((await runChecks(s, { now: NOW })).ok).toBe(true);
+    });
+  });
+
+  describe("ICR-5: every access key is the ledger key or an agent key, both on the vault", () => {
+    const pushKey = (s: Snapshot, permission: { receiver_id: string; method_names: string[] }) =>
+      s.chain.access_keys.push({
+        public_key: TEST_FORGED_KEY.publicKey,
+        permission: { ...permission, allowance: "1000000000000000000000000" },
+      });
+
+    it("probe 9a: fails an extra function-call key that may call any method (method_names [])", async () => {
+      const s = fresh();
+      pushKey(s, { receiver_id: s.vault, method_names: [] });
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain(TEST_FORGED_KEY.publicKey);
+      expect(check(report, "f").detail).toContain('"method_names":[]');
+    });
+
+    it("probe 9b: fails an extra key whose receiver is intents", async () => {
+      const s = fresh();
+      pushKey(s, { receiver_id: NETWORKS.testnet.intents, method_names: [] });
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain(NETWORKS.testnet.intents);
+    });
+
+    it("probe 9c: fails an agent key that may also call the callbacks", async () => {
+      const s = fresh();
+      accessKeyOf(s, 0).permission.method_names = ["spend", "on_withdraw", "on_transfer"];
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain("on_withdraw");
+    });
+
+    it("fails an agent key whose receiver is not the vault", async () => {
+      const s = fresh();
+      accessKeyOf(s, 0).permission.receiver_id = NETWORKS.testnet.usdc;
+      expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["f"]);
+    });
+
+    it("fails an anchor key that is not the current ledger key (an old ledger key left on the vault)", async () => {
+      const s = fresh();
+      pushKey(s, { receiver_id: s.vault, method_names: ["anchor"] });
+      const report = await runChecks(s, { now: NOW });
+      expect(onlyFailing(report)).toEqual(["f"]);
+      expect(check(report, "f").detail).toContain("not the current ledger key");
+    });
+
+    it("passes more than one spend-only agent key on the vault", async () => {
+      const s = fresh();
+      pushKey(s, { receiver_id: s.vault, method_names: ["spend"] });
+      expect((await runChecks(s, { now: NOW })).ok).toBe(true);
+    });
+
+    it("names the offending key and its permission", async () => {
+      const s = fresh();
+      pushKey(s, { receiver_id: s.vault, method_names: ["spend", "anchor"] });
+      const detail = check(await runChecks(s, { now: NOW }), "f").detail;
+      expect(detail).toContain(TEST_FORGED_KEY.publicKey);
+      expect(detail).toContain('"receiver_id":"x.vaults.probarion.testnet"');
+      expect(detail).toContain('"method_names":["spend","anchor"]');
+    });
+
+    it("passes the key shapes the contract grants: an agent with [spend] and a ledger key with [anchor]", async () => {
+      // contracts/vault/src/keys.rs: add_agent grants (vault, "spend"), set_ledger_key grants (vault, "anchor")
+      const report = await runChecks(fresh(), { now: NOW });
+      expect(check(report, "f").status).toBe("pass");
+      expect(valid.chain.access_keys.map((k) => k.permission)).toEqual([
+        {
+          receiver_id: FIXTURE_VAULT,
+          method_names: ["spend"],
+          allowance: "1000000000000000000000000",
+        },
+        {
+          receiver_id: FIXTURE_VAULT,
+          method_names: ["anchor"],
+          allowance: "250000000000000000000000",
+        },
+      ]);
+    });
   });
 
   it("needs no special case for global-mode vaults: the snapshot carries the global contract hash", async () => {
@@ -1168,7 +1515,71 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
     s.chain.burns = [];
     const report = await runChecks(s, { now: NOW });
     expect(check(report, "h").status).toBe("pass");
-    expect(check(report, "h").detail).toContain("0 burns");
+    expect(check(report, "h").detail).toContain("0 burned spends");
+  });
+
+  it("describes one burned spend in the singular and names the destination address", async () => {
+    const detail = check(await runChecks(fresh(), { now: NOW }), "h").detail;
+    expect(detail).toContain("1 burned spend has a matched burn pair");
+    expect(detail).toContain("WITHDRAW_TO:<destination address>");
+    const two = fresh();
+    two.chain.spends.push({
+      ...structuredClone(spendOf(two, 1)),
+      id: 3,
+      decision_hash: entryOf(two, 2).body_hash,
+    });
+    two.chain.burns.push({ ...burnOf(two), spend_id: 3 });
+    expect(checkBurnMemos(two).detail).toContain("2 burned spends have a matched burn pair");
+  });
+
+  it("says 'no burn event observed' for a burned spend that has a ledger decision but no burn", async () => {
+    const s = fresh();
+    s.chain.burns = [];
+    expect(check(await runChecks(s, { now: NOW }), "h").detail).toContain(
+      "spend 2: no burn event observed",
+    );
+  });
+
+  describe("R7 refinement: a pre-ledger burned spend with no burn record", () => {
+    const V0 = sha256Hex('{"kind":"v0-manual-decision","mandate_id":1}');
+    /** The real v0 shape: no ledger, no anchor, one burned spend whose decision is documented as pre-ledger. */
+    function preLedgerBurn(): Snapshot {
+      const s = fresh();
+      s.ledger = [];
+      s.chain.anchors = [];
+      s.chain.spends = [{ ...structuredClone(spendOf(s, 1)), decision_hash: V0 }];
+      s.pre_ledger_decision_hashes = [V0];
+      return s;
+    }
+
+    it("still FAILS h, with the precise detail that the burn tx was not supplied", async () => {
+      const s = preLedgerBurn();
+      s.chain.burns = [];
+      const report = await runChecks(s, { now: NOW });
+      expect(report.ok).toBe(false);
+      expect(onlyFailing(report)).toEqual(["h"]);
+      expect(check(report, "h").detail).toBe(
+        "spend 2: burn tx not supplied (record it in docs/mainnet-proof.json with --spend-id)",
+      );
+    });
+
+    it("uses the same detail when the burn is recorded as missing, and passes once the burn is supplied", async () => {
+      const missing = preLedgerBurn();
+      burnOf(missing).status = "missing";
+      expect(check(await runChecks(missing, { now: NOW }), "h").detail).toContain(
+        "burn tx not supplied",
+      );
+      const supplied = preLedgerBurn();
+      expect((await runChecks(supplied, { now: NOW })).ok).toBe(true);
+    });
+
+    it("keeps the generic detail for a burned spend that is not pre-ledger", async () => {
+      const s = fresh();
+      s.chain.burns = [];
+      expect(check(await runChecks(s, { now: NOW }), "h").detail).not.toContain(
+        "burn tx not supplied",
+      );
+    });
   });
 });
 
@@ -1179,9 +1590,18 @@ describe("check i: factory version (ids are 1-based, R14)", () => {
     expect(onlyFailing(await runChecks(s, { now: NOW }))).toEqual(["i"]);
     const plain = fresh();
     plain.chain.config.factory = null;
+    // Without the canonical factory only a recorded reproducible build is trusted (ICR-5): use a known hash.
+    plain.chain.code_hash = KNOWN_VAULT_HASH;
+    plain.expected_code_hashes = [KNOWN_VAULT_HASH];
     const report = await runChecks(plain, { now: NOW });
     expect(check(report, "i").status).toBe("skip");
     expect(report.ok).toBe(true);
+  });
+
+  it("does not trust the fixture's own build for a vault with no factory (ICR-5)", async () => {
+    const plain = fresh();
+    plain.chain.config.factory = null;
+    expect(onlyFailing(await runChecks(plain, { now: NOW }))).toEqual(["f"]);
   });
 
   it("fails factory_version 0: ids start at 1, so 0 is no version", async () => {
@@ -1226,11 +1646,11 @@ describe("check i: factory version (ids are 1-based, R14)", () => {
     const s = fresh();
     s.chain.config.factory = "factory.evil.testnet";
     const report = await runChecks(s, { now: NOW });
-    expect(onlyFailing(report)).toEqual(["i"]);
+    expect(onlyFailing(report)).toEqual(["f", "i"]); // f: its versions are not trusted either (ICR-5)
     expect(check(report, "i").detail).toContain(NETWORKS.testnet.factory);
     const wrongNetwork = fresh();
     wrongNetwork.network = "mainnet";
-    expect(onlyFailing(await runChecks(wrongNetwork, { now: NOW }))).toEqual(["i"]);
+    expect(onlyFailing(await runChecks(wrongNetwork, { now: NOW }))).toEqual(["f", "i"]);
   });
 });
 
@@ -1319,13 +1739,31 @@ describe("firstBrokenSeq", () => {
     expect(firstBrokenSeq(await runChecks(s, { now: NOW }))).toBeNull();
   });
 
-  it("is the lowest seq over all failing checks", async () => {
+  it("prefers the exact seq that check a or b names over a lower seq named by another check", async () => {
     const s = await makeFixtureSnapshot({ forgedSignerFromSeq: 3 });
     burnOf(s).memo = `${WITHDRAW_MEMO_PREFIX}0x000000000000000000000000000000000000dEaD`;
     const report = await runChecks(s, { now: NOW });
     expect(onlyFailing(report)).toEqual(["a", "h"]);
     expect(check(report, "a").firstBrokenSeq).toBe(3);
     expect(check(report, "h").firstBrokenSeq).toBe(2);
+    expect(firstBrokenSeq(report)).toBe(3);
+  });
+
+  it("is the lowest seq of a and b when both name one", async () => {
+    const s = await makeFixtureSnapshot({ forgedSignerFromSeq: 3 });
+    entryOf(s, 0).link = "e".repeat(64); // b names seq 0, a names seq 3
+    const report = await runChecks(s, { now: NOW });
+    expect(check(report, "a").firstBrokenSeq).toBe(3);
+    expect(check(report, "b").firstBrokenSeq).toBe(0);
+    expect(firstBrokenSeq(report)).toBe(0);
+  });
+
+  it("falls back to the lowest seq of the other failing checks when a and b pass", async () => {
+    const s = fresh();
+    spendOf(s, 0).decision_hash = entryOf(s, 4).body_hash; // d names the refused decision, seq 4
+    burnOf(s).memo = `${WITHDRAW_MEMO_PREFIX}0x000000000000000000000000000000000000dEaD`; // h names seq 2
+    const report = await runChecks(s, { now: NOW });
+    expect(onlyFailing(report)).toEqual(["d", "h"]);
     expect(firstBrokenSeq(report)).toBe(2);
   });
 });

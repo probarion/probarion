@@ -393,6 +393,6 @@ export interface Snapshot {
       status: "ok" | "missing";
     }[]; // POA ft_burn (owner_id = intents.near, memo) matched with intents.near mt_burn (owner_id = vault) in the same tx
   };
-  expected_code_hashes: string[]; // from reproducible build + factory versions
-  pre_ledger_decision_hashes: Hex32[]; // Day-4 v0 spends documented in docs/evidence/ before the ledger existed
+  expected_code_hashes: string[]; // advisory (ICR-5): check f derives its own trusted set and FAILS if this lists a hash outside it
+  pre_ledger_decision_hashes: Hex32[]; // Day-4 v0 spends from before the ledger (ICR-4b: each hash exempts one spend, created before the first anchor)
 }

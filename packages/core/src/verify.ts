@@ -48,6 +48,13 @@ function isEntry(value: unknown): value is LedgerEntry {
   return isRecord(value) && isRecord(value.body);
 }
 
+const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many);
+
+/** A U64 nanosecond string (the contract's JSON form), or null when it is anything else. */
+function nanoseconds(value: unknown): bigint | null {
+  return typeof value === "string" && /^[0-9]+$/.test(value) ? BigInt(value) : null;
+}
+
 /** sha256 of 32 zero bytes: what NEAR reports for an account without contract code ("1111…1" in base58). */
 const ZERO_CODE_HASH = ZERO_HEX32;
 
@@ -85,14 +92,13 @@ function anchorsInOrder(s: Snapshot): Snapshot["chain"]["anchors"] {
  * anchor is chain-attested evidence of which key signed that range. Entries after the last anchor must be
  * signed by `config.ledger_key`. The current ledger key must be an anchor-only function-call key on the vault.
  *
- * What this proves: for every entry, `signer` is the key the chain names for its range, and `sig` is a valid
- * ed25519 signature by it over the entry's STORED `body_hash`. `signer` is covered by no hash and no
- * signature, so comparing it with the on-chain key is the only thing that catches a self-consistent forgery.
+ * What this proves: for every entry, `signer` is the key the chain names for its range, `body_hash` recomputes
+ * from the body, and `sig` is a valid ed25519 signature by that key over it. `signer` is covered by no hash and
+ * no signature, so comparing it with the on-chain key is the only thing that catches a self-consistent forgery.
  *
- * What this does NOT prove: that the body hashes to `body_hash`. `verifyEntrySignature` does not recompute it,
- * and every public anchor-transaction signature is a (tx hash, signature, ledger key) triple that passes it
- * on its own. Check b recomputes every `body_hash` and every `link`; this check is meaningful only together
- * with b, which `runChecks` always runs, and a report is `ok` only if both pass.
+ * It recomputes `body_hash` itself, so it is safe to call alone: `verifyEntrySignature` does not, and every
+ * public anchor-transaction signature is a (tx hash, signature, ledger key) triple that passes it. Check b
+ * additionally verifies every link, the seq and the chain.
  */
 export function checkLedgerSignatures(s: Snapshot): CheckResult {
   const current = s.chain.config.ledger_key;
@@ -129,6 +135,19 @@ export function checkLedgerSignatures(s: Snapshot): CheckResult {
             i,
           );
         }
+        let recomputed: string;
+        try {
+          recomputed = computeBodyHash(entry.body);
+        } catch (error) {
+          return fail("a", `entry ${i} body is not canonical JSON: ${message(error)}`, i);
+        }
+        if (recomputed !== entry.body_hash) {
+          return fail(
+            "a",
+            `entry ${i} body_hash does not recompute from its body: a signature over a hash the body does not produce proves nothing about the body`,
+            i,
+          );
+        }
         if (!verifyEntrySignature(entry))
           return fail("a", `entry ${i} signature does not verify`, i);
       } catch (error) {
@@ -137,9 +156,10 @@ export function checkLedgerSignatures(s: Snapshot): CheckResult {
     }
     if (range.key !== null) keys.add(range.key);
   }
+  const n = s.ledger.length;
   return pass(
     "a",
-    `${s.ledger.length} signatures verify over the stored body_hash values with ${keys.size} ledger key(s) named by the anchors and the vault config; check b recomputes every body_hash`,
+    `${n} ${plural(n, "entry", "entries")}: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (${keys.size} ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain`,
   );
 }
 
@@ -197,38 +217,57 @@ export function checkHashLinks(s: Snapshot): CheckResult {
   );
 }
 
-/** Check c: every anchor's root is the link of the entry it names, anchor seqs run 1, 2, 3, … and counts never go back. */
+/** A range of seqs for a message: "entry 2" or "entries 2 to 3". */
+const entryRange = (from: number, to: number): string =>
+  from === to ? `entry ${from}` : `entries ${from} to ${to}`;
+
+/**
+ * Check c: every anchor's root is the link of the entry it names, anchor seqs run 1, 2, 3, … and counts never go back.
+ * A failure names the first seq of the range it cannot prove: an anchor pins a whole range, so it cannot say which
+ * entry inside it is wrong (checks a and b name the exact entry). Entries after the last anchored count are
+ * not chain-attested; the pass detail says how many there are.
+ */
 export function checkAnchors(s: Snapshot): CheckResult {
   const anchors = anchorsInOrder(s);
   if (anchors.length === 0) {
     return s.ledger.length === 0
       ? pass("c", "no anchors and an empty ledger")
-      : fail("c", `the ledger has ${s.ledger.length} entries but no anchor exists on chain`, 0);
+      : fail(
+          "c",
+          `the ledger has ${s.ledger.length} entries but no anchor exists on chain: no entry is chain-attested`,
+          0,
+        );
   }
   let covered = 0;
   for (let j = 0; j < anchors.length; j++) {
     const anchor = anchors[j];
     if (anchor === undefined) continue;
-    if (anchor.seq !== j + 1)
-      return fail("c", `anchor seq ${anchor.seq} found where ${j + 1} was expected`, covered);
+    if (anchor.seq !== j + 1) {
+      return fail(
+        "c",
+        `anchor seq ${anchor.seq} found where ${j + 1} was expected; entry ${covered} and later are not proven`,
+        covered,
+      );
+    }
     if (!Number.isSafeInteger(anchor.count) || anchor.count < 1 || anchor.count < covered) {
       return fail(
         "c",
-        `anchor ${anchor.seq} count ${String(anchor.count)} is not a count that goes forward`,
+        `anchor ${anchor.seq} count ${String(anchor.count)} is not a count that goes forward from ${covered}; entry ${covered} and later are not proven`,
         covered,
       );
     }
     if (anchor.count > s.ledger.length) {
       return fail(
         "c",
-        `anchor ${anchor.seq} covers ${anchor.count} entries but the ledger has ${s.ledger.length}`,
+        `anchor ${anchor.seq} covers ${anchor.count} entries but the ledger has ${s.ledger.length}: entry ${s.ledger.length} and later are missing`,
         s.ledger.length,
       );
     }
     if ((s.ledger[anchor.count - 1] as LedgerEntry | undefined)?.link !== anchor.root) {
+      const range = entryRange(covered, anchor.count - 1);
       return fail(
         "c",
-        `anchor ${anchor.seq} root does not match the link of entry ${anchor.count - 1}`,
+        `anchor ${anchor.seq} root does not match the link of entry ${anchor.count - 1}, the last entry it covers; ${range} ${covered === anchor.count - 1 ? "is" : "are"} not proven`,
         covered,
       );
     }
@@ -237,7 +276,7 @@ export function checkAnchors(s: Snapshot): CheckResult {
   const tail = s.ledger.length - covered;
   return pass(
     "c",
-    `${anchors.length} anchors match the ledger${tail > 0 ? `; ${tail} newest entries not yet anchored` : ""}`,
+    `${anchors.length} ${plural(anchors.length, "anchor matches", "anchors match")} the ledger; ${tail} ${plural(tail, "entry", "entries")} after the last anchored count (${covered}) ${plural(tail, "is", "are")} not chain-attested`,
   );
 }
 
@@ -249,9 +288,8 @@ function decisionsByHash(s: Snapshot): Map<string, LedgerEntry> {
 }
 
 /**
- * Check d (ICR-4): every on-chain spend whose `decision_hash` is not in `pre_ledger_decision_hashes` is bound to
- * exactly one allow decision. Its `decision_hash` must be the `body_hash` of a `decision` entry in the ledger
- * and that entry must:
+ * Check d (ICR-4, ICR-4b): every on-chain spend is bound to exactly one allow decision. Its `decision_hash` must be
+ * the `body_hash` of a `decision` entry in the ledger and that entry must:
  *  - have the verdict `allow`, or `hold` only when the spend went through `held`. The snapshot has no status
  *    history, but `held_until_ns` says it: the contract's `reserve` sets it only for a spend it holds and nothing
  *    clears it, so it is non-null for a spend that was held, whether it was then approved and paid out, rejected,
@@ -262,26 +300,62 @@ function decisionsByHash(s: Snapshot): Map<string, LedgerEntry> {
  *  - be referenced by no other spend: a decision authorises exactly one spend. The contract checks only that
  *    `decision_hash` is 64 hex and never de-duplicates it, so without this an agent key could reuse one allow
  *    decision for any number of spends.
- * Spends documented as pre-ledger (Day-4 v0, before the ledger existed) are exempt from all of it and reported.
+ *
+ * A spend whose `decision_hash` is not in the ledger is exempt only if the snapshot lists the hash in
+ * `pre_ledger_decision_hashes` (Day-4 v0 spends from before the ledger existed), and only ONCE (ICR-4b): the
+ * listed hashes are public and the contract does not de-duplicate them, so each exempts at most one spend, the
+ * lowest id that references it; and when the snapshot has an anchor, only a spend created before the first
+ * anchor's `at_ns` qualifies. Any other spend that references a pre-ledger hash fails. The report says "listed
+ * as pre-ledger by the snapshot": the verifier does not read `docs/evidence` and claims nothing about it.
  *
  * Not proved: that `decide()` would give that verdict for those inputs (the verifier does not re-run the policy).
  */
 export function checkSpendsHaveDecisions(s: Snapshot): CheckResult {
   const decisions = decisionsByHash(s);
   const preLedger = new Set(s.pre_ledger_decision_hashes ?? []);
+  const firstAnchor = anchorsInOrder(s)[0];
   const claimedBy = new Map<string, number>(); // decision body_hash -> the first spend that references it
-  let documented = 0;
+  const exemptedBy = new Map<string, number>(); // pre-ledger hash -> the one spend it exempts
   for (const spend of [...s.chain.spends].sort((x, y) => x.id - y.id)) {
     const decision = decisions.get(spend.decision_hash);
     if (decision === undefined) {
-      if (preLedger.has(spend.decision_hash)) {
-        documented++;
-        continue;
+      if (!preLedger.has(spend.decision_hash)) {
+        return fail(
+          "d",
+          `spend ${spend.id} has decision_hash ${spend.decision_hash}, which is not a decision in the ledger`,
+        );
       }
-      return fail(
-        "d",
-        `spend ${spend.id} has decision_hash ${spend.decision_hash}, which is not a decision in the ledger`,
-      );
+      const used = exemptedBy.get(spend.decision_hash);
+      if (used !== undefined) {
+        return fail(
+          "d",
+          `spend ${spend.id}: decision_hash is a pre-ledger hash already used by spend ${used}`,
+        );
+      }
+      if (firstAnchor !== undefined) {
+        const created = nanoseconds(spend.created_at_ns);
+        const began = nanoseconds(firstAnchor.at_ns);
+        if (created === null) {
+          return fail(
+            "d",
+            `spend ${spend.id}: created_at_ns ${String(spend.created_at_ns)} is not a nanosecond count`,
+          );
+        }
+        if (began === null) {
+          return fail(
+            "d",
+            `anchor ${firstAnchor.seq}: at_ns ${String(firstAnchor.at_ns)} is not a nanosecond count`,
+          );
+        }
+        if (created >= began) {
+          return fail(
+            "d",
+            `spend ${spend.id}: decision_hash is a pre-ledger hash, but the spend was created after the ledger began (created_at_ns ${spend.created_at_ns}, first anchor at_ns ${firstAnchor.at_ns})`,
+          );
+        }
+      }
+      exemptedBy.set(spend.decision_hash, spend.id);
+      continue;
     }
     const { seq, verdict } = decision.body;
     if (verdict !== "allow" && verdict !== "hold") {
@@ -321,11 +395,23 @@ export function checkSpendsHaveDecisions(s: Snapshot): CheckResult {
     }
     claimedBy.set(decision.body_hash, spend.id);
   }
-  const note = documented > 0 ? `; ${documented} pre-ledger (documented) in docs/evidence` : "";
-  return pass(
-    "d",
-    `${s.chain.spends.length - documented} on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount)${note}`,
-  );
+  const bound = claimedBy.size;
+  const exempt = exemptedBy.size;
+  const parts: string[] = [];
+  if (bound > 0) {
+    parts.push(
+      `${bound} on-chain ${plural(bound, "spend, bound to its own allow or hold decision", "spends, each bound to its own allow or hold decision")} (same invoice, mandate and amount)`,
+    );
+  } else {
+    parts.push(exempt === 0 ? "no on-chain spends" : "no spend is bound to a ledger decision");
+  }
+  if (exempt > 0) {
+    const when = firstAnchor === undefined ? "" : ", created before the first anchor";
+    parts.push(
+      `${exempt} ${plural(exempt, "spend has a decision_hash", "spends have a decision_hash")} listed as pre-ledger by the snapshot (exempt: at most one spend per listed hash${when})`,
+    );
+  }
+  return pass("d", parts.join("; "));
 }
 
 type AttestationOutcome =
@@ -427,17 +513,77 @@ export async function checkAttestations(s: Snapshot): Promise<CheckResult> {
       : "";
   return pass(
     "e",
-    `${attested} attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not bound to the invoice)${tail}`,
+    `${attested} attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice)${tail}`,
   );
 }
 
+const AGENT_KEY_SHAPE = 'receiver the vault, methods exactly ["spend"]';
+const LEDGER_KEY_SHAPE = 'receiver the vault, methods exactly ["anchor"]';
+
 /**
- * Check f: no FullAccess key, and the vault's code hash is an expected reproducible build.
+ * The first access key that is neither of the two shapes the contract grants (contracts/vault keys.rs), or null.
+ * `add_agent` grants (vault, ["spend"]); `set_ledger_key` grants (vault, ["anchor"]) to the one current ledger key
+ * and deletes the previous one. FullAccess keys are reported separately.
+ */
+function offendingKey(s: Snapshot): string | null {
+  const ledgerKey = s.chain.config.ledger_key;
+  for (const key of s.chain.access_keys) {
+    const permission = key.permission;
+    if (permission === "FullAccess") continue;
+    const only = (method: string): boolean =>
+      isRecord(permission) &&
+      permission.receiver_id === s.vault &&
+      Array.isArray(permission.method_names) &&
+      permission.method_names.length === 1 &&
+      permission.method_names[0] === method;
+    if (only("spend")) continue;
+    if (only("anchor") && key.public_key === ledgerKey) continue;
+    const why = only("anchor")
+      ? "an anchor key that is not the current ledger key"
+      : `neither the current ledger key (${LEDGER_KEY_SHAPE}) nor an agent key (${AGENT_KEY_SHAPE})`;
+    return `access key ${String(key.public_key)} has permission ${JSON.stringify(permission)}, which is ${why}`;
+  }
+  return null;
+}
+
+/**
+ * The code hashes this verifier trusts for a vault, each with where the trust comes from (ICR-5): the recorded
+ * reproducible vault builds (`KNOWN_VAULT_CODE_HASHES`), plus every version the factory lists, but only when the
+ * vault's `config.factory` is the network's canonical factory. A vault records whoever deployed it as its
+ * factory, so any other account's `versions()` proves nothing. The all-zero hash is never trusted.
+ */
+function trustedCodeHashes(s: Snapshot): Map<string, string> {
+  const trusted = new Map<string, string>();
+  const add = (hash: unknown, source: string): void => {
+    const normal = typeof hash === "string" ? normalizeCodeHash(hash) : null;
+    if (normal !== null && normal !== ZERO_CODE_HASH && !trusted.has(normal)) {
+      trusted.set(normal, source);
+    }
+  };
+  for (const hash of KNOWN_VAULT_CODE_HASHES) {
+    add(hash, "a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)");
+  }
+  const canonical = NETWORKS[s.network].factory;
+  if (s.chain.config.factory === canonical) {
+    for (const version of s.chain.factory_versions) {
+      add(
+        version?.code_hash,
+        `version ${String(version?.index)} of the canonical factory ${canonical}`,
+      );
+    }
+  }
+  return trusted;
+}
+
+/**
+ * Check f (ICR-5): no FullAccess key; every other access key is the current ledger key or an agent key, both on the
+ * vault itself (the detail names an offending key and its permission); and the vault's code hash is trusted.
  *
- * The hash is compared with `KNOWN_VAULT_CODE_HASHES` (generated from contracts/code-hashes.json, vault builds
- * only) and with the `expected_code_hashes` the snapshot builder supplies (the factory's versions for a factory
- * vault). The result says which of the two matched. A factory build, and the all-zero hash of an account with
- * no contract code, never match.
+ * The verifier derives its own trusted set (`trustedCodeHashes`): `KNOWN_VAULT_CODE_HASHES`, generated from
+ * contracts/code-hashes.json (vault builds only), plus the versions of the canonical factory. The snapshot's
+ * `expected_code_hashes` adds nothing: it is free text a snapshot builder, or a forger, can put anything into, so
+ * the check FAILS if it lists any hash outside the trusted set. A factory build, and the all-zero hash of an account
+ * with no contract code, are never trusted.
  *
  * No special case for a global-mode vault: its account has no code of its own, and the SDK puts the global
  * contract's hash (`global_contract_hash`) into `Snapshot.chain.code_hash` (R6, Task 14), so by the time it
@@ -449,6 +595,8 @@ export function checkVaultLocked(s: Snapshot): CheckResult {
     .map((k) => k.public_key);
   if (fullAccess.length > 0)
     return fail("f", `the vault has FullAccess key(s): ${fullAccess.join(", ")}`);
+  const offending = offendingKey(s);
+  if (offending !== null) return fail("f", offending);
   const actual = normalizeCodeHash(s.chain.code_hash);
   if (actual === null)
     return fail("f", `code_hash ${String(s.chain.code_hash)} is not a sha256 hash`);
@@ -458,30 +606,31 @@ export function checkVaultLocked(s: Snapshot): CheckResult {
       "the account has no contract code (the all-zero code hash); a global-mode vault must report its global contract hash",
     );
   }
-  const recognised = (hashes: readonly string[]): Set<string> => {
-    const set = new Set<string>();
-    for (const hash of hashes) {
-      const normal = normalizeCodeHash(hash);
-      if (normal !== null && normal !== ZERO_CODE_HASH) set.add(normal);
+  const trusted = trustedCodeHashes(s);
+  for (const listed of s.expected_code_hashes) {
+    const normal = typeof listed === "string" ? normalizeCodeHash(listed) : null;
+    if (normal === null || !trusted.has(normal)) {
+      return fail(
+        "f",
+        `the snapshot lists an untrusted code hash ${JSON.stringify(listed)}: expected_code_hashes is not trusted, and this hash is neither a recorded reproducible build nor a version of the canonical factory`,
+      );
     }
-    return set;
-  };
-  if (recognised(KNOWN_VAULT_CODE_HASHES).has(actual)) {
-    return pass(
+  }
+  const source = trusted.get(actual);
+  if (source === undefined) {
+    const canonical = NETWORKS[s.network].factory;
+    const other =
+      s.chain.config.factory === canonical
+        ? ""
+        : ` (this vault names ${String(s.chain.config.factory)} as its factory, whose versions are not trusted)`;
+    return fail(
       "f",
-      `no FullAccess key; code_hash ${s.chain.code_hash} is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)`,
+      `code_hash ${s.chain.code_hash} is not a recorded reproducible build (KNOWN_VAULT_CODE_HASHES) nor a version of the canonical factory ${canonical}${other}`,
     );
   }
-  const listed = recognised(s.expected_code_hashes);
-  if (listed.has(actual)) {
-    return pass(
-      "f",
-      `no FullAccess key; code_hash ${s.chain.code_hash} matches an expected build supplied by the snapshot (one of ${listed.size}; it is not among the ${KNOWN_VAULT_CODE_HASHES.length} builds recorded in this package)`,
-    );
-  }
-  return fail(
+  return pass(
     "f",
-    `code_hash ${s.chain.code_hash} is not one of the ${listed.size} expected build hashes nor a recorded reproducible build`,
+    `no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash ${s.chain.code_hash} is ${source}`,
   );
 }
 
@@ -505,6 +654,7 @@ export function checkIntentsKeys(s: Snapshot): CheckResult {
  */
 export function checkBurnMemos(s: Snapshot): CheckResult {
   const decisions = decisionsByHash(s);
+  const preLedger = new Set(s.pre_ledger_decision_hashes ?? []);
   const burned = s.chain.spends.filter((sp) => sp.status === "burned").sort((x, y) => x.id - y.id);
   for (const spend of burned) {
     const seq = decisions.get(spend.decision_hash)?.body.seq;
@@ -519,8 +669,19 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
         seq,
       );
     const burn = matches[0];
-    if (burn === undefined || burn.status !== "ok")
-      return fail("h", `spend ${spend.id}: no burn event observed`, seq);
+    if (burn === undefined || burn.status !== "ok") {
+      // R7: a burned spend from before the ledger has no ledger entry to find its burn tx from. Without a
+      // supplied burn tx the burn is not proven, so this still fails; the detail says what to supply.
+      const preLedgerSpend =
+        !decisions.has(spend.decision_hash) && preLedger.has(spend.decision_hash);
+      return fail(
+        "h",
+        preLedgerSpend
+          ? `spend ${spend.id}: burn tx not supplied (record it in docs/mainnet-proof.json with --spend-id)`
+          : `spend ${spend.id}: no burn event observed`,
+        seq,
+      );
+    }
     if (burn.memo !== expected) {
       return fail(
         "h",
@@ -550,9 +711,12 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
       );
     }
   }
+  const n = burned.length;
   return pass(
     "h",
-    `${burned.length} burns pair a POA ft_burn with WITHDRAW_TO:<mandate address> and the vault's intents mt_burn of the spend amount`,
+    n === 0
+      ? "0 burned spends: no burn to pair"
+      : `${n} burned ${plural(n, "spend has", "spends have")} a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount`,
   );
 }
 
@@ -662,16 +826,28 @@ export async function runChecks(s: Snapshot, opts: { now?: Date } = {}): Promise
   };
 }
 
+/**
+ * The first seq whose history is not proven, or null when no failing check names a seq.
+ *
+ * Checks a and b name the exact entry that is wrong (its signer, signature, hash, link or position), so their
+ * lowest seq is preferred. Only when neither names one is the lowest seq named by any other failing check used:
+ * c names the first entry of the anchor range it cannot prove, d the decision, and e and h the entry concerned;
+ * they say where to look rather than which entry was altered.
+ */
 export function firstBrokenSeq(report: VerifyReport): number | null {
-  let first: number | null = null;
-  for (const c of report.checks) {
-    if (
-      c.status === "fail" &&
-      typeof c.firstBrokenSeq === "number" &&
-      (first === null || c.firstBrokenSeq < first)
-    ) {
-      first = c.firstBrokenSeq;
+  const lowest = (ids: readonly CheckId[]): number | null => {
+    let first: number | null = null;
+    for (const c of report.checks) {
+      if (
+        c.status === "fail" &&
+        ids.includes(c.id) &&
+        typeof c.firstBrokenSeq === "number" &&
+        (first === null || c.firstBrokenSeq < first)
+      ) {
+        first = c.firstBrokenSeq;
+      }
     }
-  }
-  return first;
+    return first;
+  };
+  return lowest(["a", "b"]) ?? lowest(["c", "d", "e", "f", "g", "h", "i"]);
 }
