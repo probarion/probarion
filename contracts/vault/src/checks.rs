@@ -240,6 +240,12 @@ mod tests {
         assert_eq!(code_of(c), "NotMandateAgent");
     }
     #[test]
+    fn agent_mismatch_comes_before_per_payment() {
+        let mut c = case(ErrorCode::NotMandateAgent);
+        c.req.amount = U128(100 * USDC + 1);
+        assert_eq!(code_of(c), "NotMandateAgent");
+    }
+    #[test]
     fn zero_amount_comes_before_a_duplicate_invoice() {
         let mut c = case(ErrorCode::DuplicateInvoice);
         c.req.amount = U128(0);
