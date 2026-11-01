@@ -17,14 +17,16 @@ const QUOTE_MARKER = "PROBARION TEST FIXTURE - NOT A TDX QUOTE"; // 40 bytes, wr
 const TD_REPORT_BODY_LENGTH = 584;
 
 /**
- * Bytes shaped like a TDX quote only where the parser looks: the version (u16 LE at bytes 0–1), the v5 body
- * descriptor, and report_data at body offset 520. Everything else is zero or the marker. Not a real quote.
+ * Bytes shaped like a TDX quote only where the parser looks: the version (u16 LE at bytes 0–1), tee_type 0x81
+ * (u32 LE at bytes 4..8), the v5 body descriptor, and report_data at body offset 520. Everything else is zero
+ * or the marker. Not a real quote.
  */
 export function fixtureQuoteHex(reportDataHex: string, version: 4 | 5 = 4): string {
   const bodyOffset = version === 4 ? TDX_QUOTE_V4_BODY_OFFSET : TDX_QUOTE_V5_BODY_OFFSET;
   const bytes = new Uint8Array(bodyOffset + TD_REPORT_BODY_LENGTH);
   const view = new DataView(bytes.buffer);
   view.setUint16(0, version, true);
+  view.setUint32(4, 0x81, true); // tee_type: TDX
   bytes.set(utf8(QUOTE_MARKER), 8);
   if (version === 5) {
     view.setUint16(48, 2, true); // body type 2: TD report 1.0

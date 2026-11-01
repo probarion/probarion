@@ -85,12 +85,21 @@ describe("parseModelProposal", () => {
     ["decimal amount", { ...valid, amount: "25.5" }],
     ["numeric amount", { ...valid, amount: 25 }],
     ["negative mandate", { ...valid, mandate_id: -1 }],
+    ["zero mandate (vault ids start at 1)", { ...valid, mandate_id: 0 }],
+    ["negative zero mandate", { ...valid, mandate_id: -0 }],
+    ["fractional mandate", { ...valid, mandate_id: 1.5 }],
     ["string mandate", { ...valid, mandate_id: "1" }],
     ["unknown chain", { ...valid, payee_hint: { chain: "eth" } }],
     ["reasoning missing", { ...valid, reasoning: undefined }],
     ["not an object", ["pay"]],
   ])("rejects %s", (_name, value) => {
     expect(() => parseModelProposal(value)).toThrow(ProposalParseError);
+  });
+
+  it("accepts mandate 1 and null, and the JSON schema says mandate ids start at 1", () => {
+    expect(parseModelProposal({ ...valid, mandate_id: 1 }).mandate_id).toBe(1);
+    expect(parseModelProposal({ ...valid, mandate_id: null }).mandate_id).toBeNull();
+    expect(MODEL_PROPOSAL_JSON_SCHEMA.properties.mandate_id.minimum).toBe(1);
   });
 
   it("exposes a JSON schema requiring every proposal field", () => {
@@ -119,5 +128,23 @@ describe("extractJsonObject", () => {
   it("throws when no object is present", () => {
     expect(() => extractJsonObject("I cannot help with that.")).toThrow(ProposalParseError);
     expect(() => extractJsonObject("{ broken")).toThrow(ProposalParseError);
+  });
+
+  it("drops a <think> block that is never closed, with everything after it", () => {
+    expect(() => extractJsonObject('<think>reasoning {"action":"pay"} and no end')).toThrow(
+      ProposalParseError,
+    );
+    expect(extractJsonObject('{"a":1}<think>still thinking {"b":2}')).toEqual({ a: 1 });
+    expect(extractJsonObject('<think>one</think>{"a":1}<think>two</think>')).toEqual({ a: 1 });
+  });
+
+  it.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["a number", 7],
+    ["an object", { action: "pay" }],
+    ["an array of strings", ['{"a":1}']],
+  ])("throws ProposalParseError, not TypeError, for %s input", (_name, value) => {
+    expect(() => extractJsonObject(value as unknown as string)).toThrow(ProposalParseError);
   });
 });

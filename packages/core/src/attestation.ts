@@ -23,14 +23,28 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const SIGNATURE_RE = /^0x[0-9a-fA-F]{130}$/;
 const REPORT_DATA_RE = /^[0-9a-f]{128}$/;
 
+/** TDX quote v4 header tee_type (u32 little-endian at bytes 4..8); SGX is 0x00. */
+const TDX_TEE_TYPE = 0x81;
+/** TDX quote v5 body types: 2 = TD report 1.0, 3 = TD report 1.5 (1 is an SGX enclave report). */
+const TDX_V5_BODY_TYPES: readonly number[] = [2, 3];
+/** secp256k1 group order: an ECDSA signature is canonical only with s <= n/2 (low-s). */
+const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+const SECP256K1_HALF_N = SECP256K1_N >> 1n;
+const CHECK_IDS: readonly AttestationCheckId[] = ["A1", "A2", "A3", "A4", "A5", "A6", "A7"];
+
 export interface TdxQuoteInfo {
   version: 4 | 5;
   bodyOffset: number;
   reportData: string; // 128 lowercase hex
 }
 
-/** Reads the quote version (u16 little-endian at bytes 0–1) and the 64-byte report_data. Null if unparseable. */
+/**
+ * Reads the quote version (u16 little-endian at bytes 0–1) and the 64-byte report_data. Null if
+ * unparseable or not a TDX quote: v4 needs tee_type 0x81 (u32 LE at bytes 4..8), v5 needs body type 2 or 3
+ * (u16 LE at bytes 48..50). This is a format check, not a verification: O1 verifies the quote online.
+ */
 export function parseTdxQuote(intelQuoteHex: string): TdxQuoteInfo | null {
+  if (typeof intelQuoteHex !== "string") return null;
   let bytes: Uint8Array;
   try {
     bytes = hexToBytes(intelQuoteHex.trim());
@@ -43,6 +57,9 @@ export function parseTdxQuote(intelQuoteHex: string): TdxQuoteInfo | null {
   const bodyOffset = version === 4 ? TDX_QUOTE_V4_BODY_OFFSET : TDX_QUOTE_V5_BODY_OFFSET;
   const start = bodyOffset + TDX_REPORT_DATA_BODY_OFFSET;
   if (bytes.length < start + TDX_REPORT_DATA_LENGTH) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (version === 4 && view.getUint32(4, true) !== TDX_TEE_TYPE) return null;
+  if (version === 5 && !TDX_V5_BODY_TYPES.includes(view.getUint16(48, true))) return null;
   return {
     version,
     bodyOffset,
@@ -58,9 +75,17 @@ export function expectedSignatureText(evidence: AttestationEvidence): string {
   return `${evidence.model}:${evidence.request_sha256}:${evidence.response_sha256}`;
 }
 
+/**
+ * True if `signature` is a canonical EIP-191 signature (low-s, v 27 or 28) of `text` by `address`.
+ * The twin (n - s, flipped v) and the v 0/1 spelling recover to the same address, so accepting them
+ * would let one signed response carry several byte-different signatures.
+ */
 async function recoversTo(text: string, signature: string, address: string): Promise<boolean> {
   const sig = signature.startsWith("0x") ? signature : `0x${signature}`;
   if (!SIGNATURE_RE.test(sig) || !ADDRESS_RE.test(address)) return false;
+  const s = BigInt(`0x${sig.slice(66, 130)}`);
+  const v = Number.parseInt(sig.slice(130, 132), 16);
+  if (s === 0n || s > SECP256K1_HALF_N || (v !== 27 && v !== 28)) return false;
   try {
     const recovered = await recoverMessageAddress({
       message: text,
@@ -160,6 +185,16 @@ export async function checkAttestation(
   expectedNonce: Hex32,
   expectedProposal: ModelProposal | null,
 ): Promise<AttestationResult> {
+  // Evidence comes from a ledger file or a snapshot: whatever it is, report failed checks, never throw.
+  if (typeof evidence !== "object" || evidence === null || Array.isArray(evidence)) {
+    const detail = "evidence is missing or not an object";
+    return {
+      ok: false,
+      binding: "none",
+      quote_verified: false,
+      checks: CHECK_IDS.map((id) => ({ id, pass: false, detail })),
+    };
+  }
   const sig = evidence.signature;
   const signingAddress = str(sig?.signing_address);
   const signer = signingAddress.toLowerCase();
@@ -180,8 +215,8 @@ export async function checkAttestation(
     "A2",
     sig?.signing_algo === "ecdsa" &&
       (await recoversTo(str(sig.text), str(sig.signature), signingAddress)),
-    "the EIP-191 signature recovers to signing_address",
-    "the EIP-191 signer does not recover to signing_address",
+    "the canonical EIP-191 signature recovers to signing_address",
+    "the EIP-191 signature is not canonical (low-s, v 27 or 28) or does not recover to signing_address",
   );
   const report = evidence.report;
   add(

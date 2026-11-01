@@ -1,3 +1,5 @@
+import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { recoverMessageAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 import { checkAttestation, extractReportDataFromQuote, parseTdxQuote } from "../src/attestation.js";
@@ -200,6 +202,92 @@ describe("checkAttestation (A1–A7)", () => {
     const r = await check(withReport(junk, { signing_address: "" }));
     expect(verdicts(r)).toMatchObject({ A2: false, A3: false });
   });
+
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+    ["a string", "evidence"],
+    ["a number", 7],
+    ["an array", []],
+    ["a boolean", true],
+  ])("returns all seven checks failed, and does not throw, for %s", async (_name, value) => {
+    const r = await check(value as unknown as AttestationEvidence);
+    expect(r).toMatchObject({ ok: false, binding: "none", quote_verified: false });
+    expect(r.checks.map((c) => c.id)).toEqual(["A1", "A2", "A3", "A4", "A5", "A6", "A7"]);
+    expect(r.checks.every((c) => !c.pass)).toBe(true);
+  });
+});
+
+describe("A2 accepts canonical signatures only (low-s, v 27 or 28)", () => {
+  const N = secp256k1.Point.Fn.ORDER;
+  const hex32 = (n: bigint): string => n.toString(16).padStart(64, "0");
+  const parts = (signature: string): { r: string; s: bigint; v: number } => ({
+    r: signature.slice(2, 66),
+    s: BigInt(`0x${signature.slice(66, 130)}`),
+    v: Number.parseInt(signature.slice(130, 132), 16),
+  });
+  const withSignature = (ev: AttestationEvidence, signature: string): AttestationEvidence => ({
+    ...ev,
+    signature: { ...ev.signature, signature },
+  });
+
+  it("the TEST FIXTURE signature itself is canonical, so the variants below differ only in form", async () => {
+    const ev = await buildTestEvidence(base);
+    const { s, v } = parts(ev.signature.signature);
+    expect(s <= N / 2n).toBe(true);
+    expect([27, 28]).toContain(v);
+  });
+
+  it("rejects the high-s twin (n - s, flipped v) although it recovers to the same signer", async () => {
+    const ev = await buildTestEvidence(base);
+    const { r, s, v } = parts(ev.signature.signature);
+    const twin = `0x${r}${hex32(N - s)}${(v === 27 ? 28 : 27).toString(16)}`;
+    // the twin is a second, byte-different valid signature of the same text by the same key
+    expect(twin).not.toBe(ev.signature.signature);
+    expect(
+      await recoverMessageAddress({
+        message: ev.signature.text,
+        signature: twin as `0x${string}`,
+      }),
+    ).toBe(ev.signature.signing_address);
+    const result = await check(withSignature(ev, twin));
+    expect(verdicts(result)).toEqual({ ...ALL_PASS, A2: false });
+    expect(detailOf(result, "A2")).toContain("canonical");
+  });
+
+  it("rejects the 0/1 parity spelling of v, which recovers to the same signer", async () => {
+    const ev = await buildTestEvidence(base);
+    const { r, s, v } = parts(ev.signature.signature);
+    const parity = `0x${r}${hex32(s)}${(v - 27).toString(16).padStart(2, "0")}`; // v 27 -> 00, v 28 -> 01
+    expect(
+      await recoverMessageAddress({
+        message: ev.signature.text,
+        signature: parity as `0x${string}`,
+      }),
+    ).toBe(ev.signature.signing_address);
+    expect(verdicts(await check(withSignature(ev, parity))).A2).toBe(false);
+    // the other parity recovers to someone else; it fails too
+    const other = `0x${r}${hex32(s)}${(28 - v).toString(16).padStart(2, "0")}`;
+    expect(verdicts(await check(withSignature(ev, other))).A2).toBe(false);
+  });
+
+  it("rejects any other v byte", async () => {
+    const ev = await buildTestEvidence(base);
+    const { r, s } = parts(ev.signature.signature);
+    for (const vByte of ["02", "1a", "1d", "23", "ff"]) {
+      const result = await check(withSignature(ev, `0x${r}${hex32(s)}${vByte}`));
+      expect(verdicts(result).A2).toBe(false);
+    }
+  });
+
+  it("rejects s = 0 and s above n/2 without reaching the recovery", async () => {
+    const ev = await buildTestEvidence(base);
+    const { r } = parts(ev.signature.signature);
+    for (const s of [0n, N / 2n + 1n, N - 1n]) {
+      const result = await check(withSignature(ev, `0x${r}${hex32(s)}1b`));
+      expect(verdicts(result).A2).toBe(false);
+    }
+  });
 });
 
 // ICR-2: A7 binds the signed response body to response_sha256, to the chat id and to the recorded proposal.
@@ -382,5 +470,41 @@ describe("parseTdxQuote (report_data = TD report body bytes [520, 584))", () => 
     expect(parseTdxQuote(fixtureQuoteHex(rd, 4).slice(0, 1200))).toBeNull();
     expect(parseTdxQuote("not hex")).toBeNull();
     expect(extractReportDataFromQuote("")).toBeNull();
+    expect(parseTdxQuote(7 as unknown as string)).toBeNull();
+  });
+
+  describe("TEE type", () => {
+    const quoteWith = (version: 4 | 5, patch: (view: DataView) => void): string => {
+      const bytes = hexToBytes(fixtureQuoteHex(rd, version));
+      patch(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+      return bytesToHex(bytes);
+    };
+
+    it("v4 needs tee_type 0x81 (u32 little-endian at bytes 4..8)", () => {
+      const quote = fixtureQuoteHex(rd, 4);
+      expect(bytesToHex(hexToBytes(quote).slice(4, 8))).toBe("81000000");
+      expect(parseTdxQuote(quote)?.version).toBe(4);
+      for (const teeType of [0x00, 0x01, 0x80, 0x82, 0x81000000]) {
+        expect(parseTdxQuote(quoteWith(4, (v) => v.setUint32(4, teeType, true)))).toBeNull();
+      }
+    });
+
+    it("v5 needs body type 2 or 3 (u16 little-endian at bytes 48..50)", () => {
+      for (const bodyType of [2, 3]) {
+        const quote = quoteWith(5, (v) => v.setUint16(48, bodyType, true));
+        expect(parseTdxQuote(quote)).toEqual({ version: 5, bodyOffset: 54, reportData: rd });
+      }
+      for (const bodyType of [0, 1, 4, 0x0200]) {
+        expect(parseTdxQuote(quoteWith(5, (v) => v.setUint16(48, bodyType, true)))).toBeNull();
+      }
+    });
+
+    it("A4 and A5 fail, citing intel_quote, when the quote is an SGX quote", async () => {
+      const ev = await buildTestEvidence(base);
+      const sgx = quoteWith(4, (v) => v.setUint32(4, 0, true));
+      const r = await check(withReport(ev, { intel_quote: sgx }));
+      expect(verdicts(r)).toMatchObject({ A4: false, A5: false });
+      expect(details(r)).toContain("intel_quote");
+    });
   });
 });

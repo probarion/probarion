@@ -14,7 +14,7 @@ export const MODEL_PROPOSAL_JSON_SCHEMA = {
   required: ["action", "mandate_id", "amount", "payee_hint", "reasoning", "confidence"],
   properties: {
     action: { type: "string", enum: ["pay", "hold", "refuse"] },
-    mandate_id: { type: ["integer", "null"], minimum: 0 },
+    mandate_id: { type: ["integer", "null"], minimum: 1 }, // vault mandate ids start at 1
     amount: { type: ["string", "null"], pattern: "^[1-9][0-9]*$" },
     payee_hint: {
       anyOf: [
@@ -85,8 +85,8 @@ export function parseModelProposal(value: unknown): ModelProposal {
   let mandateId: number | null = null;
   const rawMandate = value.mandate_id;
   if (rawMandate !== null && rawMandate !== undefined) {
-    if (typeof rawMandate !== "number" || !Number.isSafeInteger(rawMandate) || rawMandate < 0) {
-      throw new ProposalParseError("mandate_id must be a non-negative integer or null");
+    if (typeof rawMandate !== "number" || !Number.isSafeInteger(rawMandate) || rawMandate < 1) {
+      throw new ProposalParseError("mandate_id must be an integer >= 1 or null");
     }
     mandateId = rawMandate;
   }
@@ -129,11 +129,15 @@ function tryParse(text: string): { ok: true; value: unknown } | { ok: false } {
   }
 }
 
-/** Model content may wrap the JSON in prose or <think> blocks; take the outermost object. */
+/**
+ * Model content may wrap the JSON in prose or <think> blocks; take the outermost object. A <think> block
+ * that is never closed runs to the end of the text and is dropped with everything after it.
+ */
 export function extractJsonObject(text: string): unknown {
+  if (typeof text !== "string") throw new ProposalParseError("model output is not text");
   const direct = tryParse(text.trim());
   if (direct.ok) return direct.value;
-  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "");
+  const cleaned = text.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, "");
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
   if (start === -1 || end <= start)
