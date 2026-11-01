@@ -4,8 +4,16 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { FactoryClient } from "../src/factory-client.js";
 import { IntentsClient } from "../src/intents-client.js";
-import { isSpendResult, MAX_PAGE_LIMIT, VaultClient } from "../src/vault-client.js";
-import { fakeSender, okOutcome, ROOT, request, VAULT, viewRpc } from "./helpers/client-fakes.js";
+import { isSpendResult, MAX_PAGE_LIMIT, SPEND_GAS, VaultClient } from "../src/vault-client.js";
+import {
+  fakeSender,
+  okOutcome,
+  ROOT,
+  request,
+  TGAS,
+  VAULT,
+  viewRpc,
+} from "./helpers/client-fakes.js";
 
 // The Rust contracts are the ABI. These tests read their source and check that every method the
 // clients call exists, takes exactly the arguments the client sends, and is not payable (a
@@ -131,6 +139,28 @@ describe("the clients match the Rust ABI", () => {
     for (const src of [VAULT_RS, FACTORY_RS]) {
       expect(/pub const MAX_PAGE: u64 = (\d+);/.exec(src)?.[1]).toBe(String(MAX_PAGE_LIMIT));
     }
+  });
+
+  it("the parser does see a payable method as payable (a positive control for the checks above)", () => {
+    // Without this, "not payable" would also pass if the parser could never see #[payable].
+    expect(rustMethod(VAULT_RS, "approve")?.payable).toBe(true);
+    expect(rustMethod(VAULT_RS, "withdraw")?.payable).toBe(true);
+    expect(rustMethod(VAULT_RS, "approve")?.mutates).toBe(true);
+    expect(rustMethod(VAULT_RS, "get_config")?.mutates).toBe(false);
+    expect(rustMethod(VAULT_RS, "spend")?.payable).toBe(false);
+  });
+
+  it("SPEND_GAS covers an Intents payout: the contract's ft_withdraw gas plus its callback gas", () => {
+    const tgas = (name: string): bigint => {
+      const found = new RegExp(`pub const ${name}: Gas = Gas::from_tgas\\((\\d+)\\)`).exec(
+        VAULT_RS,
+      );
+      if (found?.[1] === undefined) throw new Error(`${name} not found in contracts/vault/src`);
+      return BigInt(found[1]);
+    };
+    const floor = (tgas("GAS_FT_WITHDRAW") + tgas("GAS_CALLBACK")) * TGAS;
+    expect(floor).toBeGreaterThan(0n);
+    expect(SPEND_GAS).toBeGreaterThanOrEqual(floor);
   });
 
   it("isSpendResult accepts exactly the SpendStatus variants of the contract", () => {

@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ConfigError, ContractError, ViewError } from "../src/errors.js";
+import { ConfigError, ContractError, TxOutcomeUnknownError, ViewError } from "../src/errors.js";
 import { FactoryClient } from "../src/factory-client.js";
 import { IntentsClient } from "../src/intents-client.js";
-import type { TxOutcome } from "../src/tx.js";
+import { MAX_PAGES } from "../src/paging.js";
+import { parseTxOutcome, type TxOutcome, type TxSender } from "../src/tx.js";
 import { ANCHOR_GAS, isSpendResult, pageAll, SPEND_GAS, VaultClient } from "../src/vault-client.js";
 import {
   fakeSender,
@@ -145,28 +146,6 @@ describe("VaultClient change calls", () => {
     expect(SPEND_GAS).toBe(200n * TGAS);
   });
 
-  it("returns a refused spend with its code and no result", async () => {
-    const { rpc } = viewRpc(() => null);
-    const outcome: TxOutcome = {
-      txHash: "T",
-      ok: false,
-      value: null,
-      code: "NoMandate",
-      failure: "x",
-      raw: null,
-    };
-    const { sender } = fakeSender(outcome);
-    const r = await new VaultClient(VAULT, rpc, { agent: sender }).spend(request);
-    expect(r.result).toBeNull();
-    expect(r.tx.code).toBe("NoMandate");
-  });
-
-  it("does not take a success value that is not a spend result", async () => {
-    const { rpc } = viewRpc(() => null);
-    const { sender } = fakeSender(okOutcome({ spend_id: "1", status: "paid" }));
-    expect((await new VaultClient(VAULT, rpc, { agent: sender }).spend(request)).result).toBeNull();
-  });
-
   it("refuses to spend without an agent key", async () => {
     const { rpc } = viewRpc(() => null);
     const vault = new VaultClient("v.testnet", rpc);
@@ -202,7 +181,7 @@ describe("VaultClient change calls", () => {
       failure: "BadSeq",
       raw: null,
     });
-    const vault = new VaultClient("v.testnet", rpc, { ledger: sender });
+    const vault = new VaultClient(VAULT, rpc, { ledger: sender });
     const error = await vault.anchor(2, ROOT, 3).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ContractError);
     expect((error as ContractError).vaultCode).toBe("BadSeq");
@@ -244,6 +223,21 @@ describe("VaultClient change calls", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("refuses a sender that signs as another account than the vault", async () => {
+    const { rpc } = viewRpc(() => null);
+    const { sender, sent } = fakeSender(okOutcome(null));
+    const vault = new VaultClient("other.vaults.probarion.testnet", rpc, {
+      agent: sender,
+      ledger: sender,
+    });
+    await expect(vault.spend(request)).rejects.toThrow(/agent key signs as .* but this vault is/);
+    await expect(vault.anchor(1, ROOT, 1)).rejects.toThrow(
+      /ledger key signs as .* but this vault is/,
+    );
+    await expect(vault.spend(request)).rejects.toThrow(ConfigError);
+    expect(sent).toHaveLength(0);
+  });
+
   it("pageAll stops on an empty first page", async () => {
     expect(await pageAll(async () => [] as number[])).toEqual([]);
   });
@@ -253,6 +247,190 @@ describe("VaultClient change calls", () => {
     expect(isSpendResult({ spend_id: 1, status: "mystery" })).toBe(false);
     expect(isSpendResult({ spend_id: "1", status: "paid" })).toBe(false);
     expect(isSpendResult(null)).toBe(false);
+  });
+});
+
+/** A finished transaction whose first receipt is the spend call and whose second is its callback. */
+const finished = (spendStatus: unknown, callbackStatus: unknown, status: unknown) => ({
+  status,
+  transaction: { hash: "SpendTx" },
+  transaction_outcome: {
+    id: "SpendTx",
+    outcome: { receipt_ids: ["r1"], status: { SuccessReceiptId: "r1" } },
+  },
+  receipts_outcome: [
+    { id: "r1", outcome: { status: spendStatus } },
+    { id: "r2", outcome: { status: callbackStatus } },
+  ],
+});
+const failure = (message: string) => ({
+  Failure: {
+    ActionError: { index: 0, kind: { FunctionCallError: { ExecutionError: message } } },
+  },
+});
+const lackBalance = {
+  Failure: {
+    ActionError: {
+      index: null,
+      kind: { LackBalanceForState: { account_id: VAULT, amount: "1" } },
+    },
+  },
+};
+const spendWith = async (outcome: TxOutcome) => {
+  const { rpc } = viewRpc(() => null);
+  const { sender } = fakeSender(outcome);
+  return new VaultClient(VAULT, rpc, { agent: sender }).spend(request);
+};
+
+describe("VaultClient.spend verdict", () => {
+  it.each(["paid", "burned", "held"])("%s is ok", async (status) => {
+    const r = await spendWith(okOutcome({ spend_id: 1, status }));
+    expect(r).toMatchObject({ ok: true, unconfirmed: null, result: { spend_id: 1, status } });
+  });
+
+  it.each(["failed", "rejected", "expired"])(
+    "%s is not ok, although the transaction succeeded, and is not unconfirmed",
+    async (status) => {
+      const r = await spendWith(okOutcome({ spend_id: 1, status }));
+      expect(r.tx.ok).toBe(true);
+      expect(r).toMatchObject({ ok: false, unconfirmed: null, result: { spend_id: 1, status } });
+    },
+  );
+
+  it("pending is not ok, and unconfirmed: the payout is still in flight", async () => {
+    const r = await spendWith(okOutcome({ spend_id: 1, status: "pending" }));
+    expect(r.ok).toBe(false);
+    expect(r.result).toEqual({ spend_id: 1, status: "pending" });
+    expect(r.unconfirmed?.kind).toBe("pending");
+  });
+
+  it.each([
+    ["a string", "paid"],
+    ["null", null],
+    ["a wrong shape", { spend_id: "1", status: "paid" }],
+    ["an unknown status", { spend_id: 1, status: "mystery" }],
+  ])("an unreadable value (%s) is unconfirmed, never failed", async (_name, value) => {
+    const r = await spendWith(okOutcome(value));
+    expect(r.tx.ok).toBe(true);
+    expect(r).toMatchObject({ ok: false, result: null });
+    expect(r.unconfirmed?.kind).toBe("unreadable_value");
+    expect(r.unconfirmed?.reason).toContain("not a spend result");
+  });
+
+  it("a refusal by the contract (the spend receipt failed) is a definite failure", async () => {
+    const f = failure("Smart contract panicked: PROBARION:NoMandate");
+    const r = await spendWith(parseTxOutcome(finished(f, "Unknown", f)));
+    expect(r.tx.code).toBe("NoMandate");
+    expect(r).toMatchObject({ ok: false, result: null, unconfirmed: null });
+  });
+
+  it("a refusal before execution (no raw result) is a definite failure", async () => {
+    const r = await spendWith({
+      txHash: null,
+      ok: false,
+      value: null,
+      code: "NotEnoughBalance",
+      failure: "x",
+      raw: null,
+    });
+    expect(r).toMatchObject({ ok: false, result: null, unconfirmed: null });
+  });
+
+  it("a callback that failed after the spend receipt ran is unconfirmed: the payout may have gone out", async () => {
+    const f = failure("Smart contract panicked: something in the callback");
+    const out = parseTxOutcome(finished({ SuccessReceiptId: "r2" }, f, f));
+    expect(out.ok).toBe(false);
+    const r = await spendWith(out);
+    expect(r).toMatchObject({ ok: false, result: null });
+    expect(r.unconfirmed?.kind).toBe("callback_failed");
+    expect(r.unconfirmed?.reason).toContain("payout may have gone out");
+  });
+
+  it("an out-of-NEAR failure in the callback is unconfirmed too (its state was rolled back)", async () => {
+    const out = parseTxOutcome(finished({ SuccessReceiptId: "r2" }, lackBalance, lackBalance));
+    expect(out.code).toBe("LackBalanceForState");
+    expect((await spendWith(out)).unconfirmed?.kind).toBe("callback_failed");
+  });
+
+  it("a failed result that cannot say which receipt failed is unconfirmed, not failed", async () => {
+    const out = parseTxOutcome({
+      status: failure("Smart contract panicked: x"),
+      transaction: { hash: "T" },
+      receipts_outcome: [],
+    });
+    expect((await spendWith(out)).unconfirmed?.kind).toBe("callback_failed");
+  });
+
+  it("lets a TxOutcomeUnknownError through, with its hash", async () => {
+    const { rpc } = viewRpc(() => null);
+    const sender: TxSender = {
+      accountId: VAULT,
+      publicKey: "ed25519:Agent",
+      functionCall: async () => {
+        throw new TxOutcomeUnknownError("unknown", "HASH", VAULT);
+      },
+    };
+    const error = await new VaultClient(VAULT, rpc, { agent: sender })
+      .spend(request)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+    expect((error as TxOutcomeUnknownError).txHash).toBe("HASH");
+  });
+});
+
+describe("pageAll walks that cannot be trusted", () => {
+  const source = { contractId: "v.testnet", methodName: "list_mandates" };
+
+  it("throws within a few calls when the node keeps returning the same full page", async () => {
+    let calls = 0;
+    const stuck = async (_from: number, limit: number) => {
+      calls += 1;
+      return Array.from({ length: limit }, (_, i) => ({ id: i }));
+    };
+    const error = await pageAll(stuck, 50, source).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ViewError);
+    expect((error as ViewError).message).toContain("v.testnet.list_mandates");
+    expect((error as ViewError).message).toContain("repeats");
+    expect(calls).toBe(2);
+  });
+
+  it("throws when a page is longer than asked for", async () => {
+    const error = await pageAll(async () => [1, 2, 3], 2, source).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ViewError);
+    expect((error as ViewError).message).toContain("at most 2");
+  });
+
+  it("throws when a page is not a list", async () => {
+    const error = await pageAll(async () => null as unknown as number[], 2, source).catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(ViewError);
+  });
+
+  it("throws after the page cap, with distinct pages forever", async () => {
+    let calls = 0;
+    const endless = async (from: number) => {
+      calls += 1;
+      return [from];
+    };
+    const error = await pageAll(endless, 1, source).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ViewError);
+    expect((error as ViewError).message).toContain(`more than ${MAX_PAGES} pages`);
+    expect(calls).toBe(MAX_PAGES);
+    expect(MAX_PAGES).toBe(1000);
+  });
+
+  it("still reads a legitimate walk, including one that ends on an exact multiple", async () => {
+    const all = Array.from({ length: 100 }, (_, id) => ({ id }));
+    const got = await pageAll(async (from, limit) => all.slice(from, from + limit), 50, source);
+    expect(got).toHaveLength(100);
+  });
+
+  it("does not take two different pages that share an end for a repeat", async () => {
+    const pages = [[{ id: 1 }, { id: 2 }], [{ id: 1 }, { id: 3 }], [{ id: 4 }]];
+    let n = 0;
+    const got = await pageAll(async () => pages[n++] ?? [], 2, source);
+    expect(got).toHaveLength(5);
   });
 });
 
@@ -309,6 +487,7 @@ describe("gas and deposit table", () => {
         const cells = line.split("|").map((cell) => cell.trim());
         return {
           methods: [...(cells[1] ?? "").matchAll(/`([a-z_]+)`/g)].map((m) => m[1] ?? ""),
+          signer: cells[2] ?? "",
           deposit: cells[3] ?? "",
           gas: cells[4] ?? "",
         };
@@ -323,11 +502,12 @@ describe("gas and deposit table", () => {
         if (c === undefined) continue;
         checked += 1;
         expect(`${method}: ${tgas} Tgas`).toBe(`${method}: ${c.gasTgas} Tgas`);
+        expect(row.signer).toContain(`the ${c.signer} key`);
         expect(row.deposit).toContain(c.deposit === 0n ? "0 NEAR" : "yocto");
       }
     }
-    // spend is in the runbook; anchor is not (it is the ledger key's call, pinned by R18 above).
-    expect(checked).toBe(1);
+    // Both change calls the vault client builds have a row: spend (agent key), anchor (ledger key).
+    expect(checked).toBe(2);
   });
 });
 

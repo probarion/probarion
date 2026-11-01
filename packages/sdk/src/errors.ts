@@ -80,6 +80,39 @@ export class ContractError extends ProbarionError {
   }
 }
 
+/**
+ * A transaction was signed and handed to the network, but the node's answer was lost or never came
+ * (connection reset, 5xx, a deadline, retries exhausted). It may or may not have run: this is not a
+ * failure. `txHash` names the exact transaction that was sent and `signerId` the account that signed
+ * it, so the outcome can be looked up (`TxSender.lookup`). The caller must record the hash and must
+ * never send the same payment again, least of all under a fresh `ref`.
+ */
+export class TxOutcomeUnknownError extends ProbarionError {
+  override name = "TxOutcomeUnknownError";
+  readonly txHash: string;
+  readonly signerId: string;
+  constructor(message: string, txHash: string, signerId: string, options?: ErrorOptions) {
+    super(message, "TxOutcomeUnknown", options);
+    this.txHash = txHash;
+    this.signerId = signerId;
+  }
+}
+
+/**
+ * The node looked at the signed transaction and refused it before running anything (no allowance,
+ * a removed key, a bad signature, a nonce it would not accept). It changed nothing and was not
+ * paid, so this is a definite failure, never an unknown outcome. `kind` names the refusal, for
+ * example `NotEnoughAllowance` or `AccessKeyNotFound`; `cause` is a redacted copy of the node's error.
+ */
+export class TxRejectedError extends ProbarionError {
+  override name = "TxRejectedError";
+  readonly kind: string;
+  constructor(message: string, kind: string, options?: ErrorOptions) {
+    super(message, "TxRejected", options);
+    this.kind = kind;
+  }
+}
+
 export class ConfigError extends ProbarionError {
   override name = "ConfigError";
   constructor(message: string) {
