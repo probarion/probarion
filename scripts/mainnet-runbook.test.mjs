@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
@@ -29,7 +30,8 @@ function commands(markdown) {
     .join("\n")
     .replace(/\\\n/g, " ")
     .split("\n")
-    .filter((line) => line.trim() !== "");
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
 }
 
 test("the mainnet v0 runbook has every Day 4 step, in order", () => {
@@ -64,9 +66,12 @@ test("the runbook uses the mainnet constants from interfaces §3 and the spec de
     "sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",
     "500000000",
     "259200000000000",
+    // The Base USDC contract in its EIP-55 checksum spelling (wrong casing is an invalid checksum).
+    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   ]) {
     assert.ok(runbook.includes(value), `missing ${value}`);
   }
+  assert.ok(!runbook.includes("0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913"), "bad EIP-55 casing");
 });
 
 test("mainnet.json has a slot for every proof transaction", () => {
@@ -111,7 +116,15 @@ test("the vault wasm comes only from the CI artifact of the recorded commit", ()
   ]) {
     assert.ok(blocks.includes(command), `missing command: ${command}`);
   }
-  assert.ok(runbook.includes("matches the recorded build"), "no expected output for check");
+  // `check` accepts ANY recorded build, so the guard ties the artifact to the recorded commit.
+  assert.ok(
+    blocks.includes('grep -qF "matches the recorded build (commit $RECORDED)"'),
+    "no guard that the checked artifact is the recorded commit",
+  );
+  assert.ok(runbook.includes("matches the recorded build (commit $RECORDED)"));
+  assert.ok(blocks.includes('echo "OK: artifact is the recorded build"'));
+  assert.ok(blocks.includes('echo "STOP: wrong artifact, do not deploy"'));
+  assert.match(runbook, /On `STOP`, stop and tell Claude/);
   // A local build is never used on mainnet, and the testnet escape hatch is never a command here.
   assert.ok(!runbook.includes("contracts/target/reproducible"), "mentions the local build path");
   assert.ok(!blocks.includes("ALLOW_NON_REPRODUCIBLE"), "ALLOW_NON_REPRODUCIBLE is in a command");
@@ -163,8 +176,16 @@ test("commands use the shapes the testnet run proved (create-account, agent key,
 
 test("gas follows docs/runbooks/testnet.md §5 for the vault calls", () => {
   const all = commands(read("docs/runbooks/mainnet-v0.md"));
-  const wanted = { add_agent: 30, create_mandate: 100, spend: 200, freeze: 30, withdraw: 100 };
-  wanted.withdraw_intents = 150;
+  const wanted = {
+    add_agent: 30,
+    remove_agent: 30,
+    revoke_mandate: 30,
+    create_mandate: 100,
+    spend: 200,
+    freeze: 30,
+    withdraw: 100,
+    withdraw_intents: 150,
+  };
   for (const [method, tgas] of Object.entries(wanted)) {
     const calls = all.filter((c) => c.includes(`as-transaction "$VAULT" ${method} `));
     assert.ok(calls.length > 0, `no ${method} call`);
@@ -173,14 +194,18 @@ test("gas follows docs/runbooks/testnet.md §5 for the vault calls", () => {
       assert.equal(Number(gas), tgas, `${method} must attach ${tgas} Tgas: ${call}`);
     }
   }
-  // Owner calls to one-yocto methods attach exactly 1 yoctoNEAR, spends and freeze attach nothing.
-  for (const method of ["add_agent", "withdraw", "withdraw_intents"]) {
+  // Owner calls to one-yocto methods attach exactly 1 yoctoNEAR.
+  const oneYocto = ["add_agent", "remove_agent", "revoke_mandate", "withdraw", "withdraw_intents"];
+  for (const method of oneYocto) {
     for (const call of all.filter((c) => c.includes(`as-transaction "$VAULT" ${method} `))) {
       assert.ok(call.includes("attached-deposit '1 yoctoNEAR'"), `${method} needs 1 yoctoNEAR`);
     }
   }
-  for (const call of all.filter((c) => c.includes('as-transaction "$VAULT" spend '))) {
-    assert.ok(call.includes("attached-deposit '0 NEAR'"));
+  // Spends and freeze attach nothing: freeze is not payable, so any deposit makes it panic.
+  for (const method of ["spend", "freeze"]) {
+    for (const call of all.filter((c) => c.includes(`as-transaction "$VAULT" ${method} `))) {
+      assert.ok(call.includes("attached-deposit '0 NEAR'"), `${method} must attach '0 NEAR'`);
+    }
   }
 });
 
@@ -231,4 +256,149 @@ test("the evidence files exist, use LF, and the decisions point at their invoice
     assert.equal(decision.verdict, "allow");
   }
   assert.match(read("docs/evidence/v0-invoice-refusal.txt"), /PROBARION:NoMandate/);
+});
+
+test("the evidence files have the exact bytes whose sha256 becomes an on-chain hash", () => {
+  // purpose_hash, invoice_hash and decision_hash of the Day 4 spends are these digests. If one of
+  // these changes (an edit, a formatter, a line-ending conversion), the hashes in the mandates and
+  // the spends no longer match the files in the repo. Change a file only on purpose, with this table.
+  const pinned = {
+    "v0-po.txt": "30cdebeaa06b60c55f48662123b77b7fe97c0d44ce3c9d10c861c690e21488dc",
+    "v0-invoice-1.txt": "0f6567aeaf517d3ea2270388169afb7e7e70c378b1d8ffd07585dfe9aeea8f4b",
+    "v0-invoice-2.txt": "c1267f368fea15adc277b29dc8dd38a361ccdc1e2953d177014bd7914d1f86ac",
+    "v0-invoice-refusal.txt": "03f5854ef2555ff209ad01330f73d15dc82f49431eddbc62e9564b5a3c716053",
+    "v0-decision-1.json": "64eaf4203ca06a1bf20c76bd235df60be3640c3a15b85e632f8c8c86ef4a1672",
+    "v0-decision-2.json": "5cadc59418b90e510ab73e0d73614aee5391d7122bd7c8d58e0cd99b82b3fd11",
+    "v0-decision-refusal.json": "aa8a907f0666ab97fe78e8d9e6b77ed4572db5ed7132a6a6776325d4c0bc6dd0",
+  };
+  for (const [name, digest] of Object.entries(pinned)) {
+    const bytes = readFileSync(new URL(`../docs/evidence/${name}`, import.meta.url));
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), digest, `${name} changed`);
+  }
+  // A formatter must never touch them: biome ignores the folder.
+  const biome = JSON.parse(read("biome.json"));
+  assert.ok(
+    biome.files.includes.includes("!docs/evidence"),
+    "biome.json must exclude docs/evidence",
+  );
+});
+
+test("the money-safety order: guards before the deploy, checks before the irreversible lock", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const inOrder = [
+    // The wasm is the recorded commit's CI build (and `check` alone accepts any recorded build).
+    'grep -qF "matches the recorded build (commit $RECORDED)"',
+    'contract deploy "$VAULT"',
+    // Everything about the deployed vault is verified while the account can still be fixed.
+    'as-read-only "$VAULT" get_config',
+    "OK: get_config is exactly what was meant",
+    'node scripts/testnet/chain.mjs code-hash "$VAULT"',
+    "OK: the deployed code is the CI wasm",
+    "## 3. Lock",
+    "Run this step only if every check of step 2 passed",
+    'node scripts/testnet/chain.mjs full-access-keys "$VAULT"',
+    'echo "STOP: expected exactly one full-access key"',
+    'delete-keys "$VAULT"',
+  ];
+  let from = 0;
+  for (const step of inOrder) {
+    const at = runbook.indexOf(step, from);
+    assert.ok(at >= 0, `missing or out of order: ${step}`);
+    from = at;
+  }
+  // The comparison covers every field the owner cannot change after the lock.
+  for (const field of [
+    "owner:e.OWNER_ID",
+    "approvers:[e.APPROVER_ID]",
+    "usdc:e.USDC",
+    "frozen:false",
+  ]) {
+    assert.ok(runbook.includes(field), `the get_config guard does not compare ${field}`);
+  }
+  assert.match(runbook, /no method to change its `owner` or `approvers`/);
+  // A comma would delete several keys at once.
+  assert.ok(runbook.includes('""|*,*) echo "STOP: expected exactly one full-access key"'));
+});
+
+test("both payees are verified against the owner's own wallets, and a wrong one is revoked", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const all = commands(runbook);
+  // Mandate 1: the stored payee is shown and the owner confirms they control it, before step 9.
+  const mandateOne = runbook.indexOf("get_mandate json-args '{\"mandate_id\":1}'");
+  assert.ok(mandateOne > runbook.indexOf("Expected result: `1`"), "no get_mandate for mandate 1");
+  assert.ok(
+    mandateOne < runbook.indexOf('mandate_id\\":1,'),
+    "mandate 1 is not checked before step 9",
+  );
+  // Mandate 2: the address is printed and compared with the wallet app BEFORE the mandate exists,
+  // and the on-chain copy is compared with the wallet app (not with the variable) before step 10.
+  const echoAddress = runbook.indexOf('echo "$BASE_PAYEE_ADDRESS"');
+  const baseMandate = runbook.indexOf('\\"type\\":\\"intents\\"');
+  const mandateTwo = runbook.indexOf("get_mandate json-args '{\"mandate_id\":2}'");
+  const firstBaseSpend = runbook.indexOf('mandate_id\\":2,');
+  assert.ok(echoAddress > 0 && echoAddress < baseMandate, "address not compared before mandate 2");
+  assert.ok(
+    baseMandate < mandateTwo && mandateTwo < firstBaseSpend,
+    "mandate 2 not checked on chain",
+  );
+  assert.match(runbook, /character by character/);
+  assert.match(runbook, /Do not compare it with `\$BASE_PAYEE_ADDRESS`/);
+  assert.match(runbook, /do not run step 10/);
+  assert.match(runbook, /do not run step 9/);
+  // revoke_mandate is in the runbook (recovery) and signed by the owner.
+  const revoke = all.filter((c) => c.includes('as-transaction "$VAULT" revoke_mandate '));
+  assert.equal(revoke.length, 1);
+  assert.ok(revoke[0].includes("json-args '{\"mandate_id\":2}'"));
+  assert.ok(revoke[0].includes('sign-as "$OWNER_ID"'));
+  const recovery = runbook.indexOf("## If anything looks wrong");
+  assert.ok(recovery > 0 && runbook.indexOf('as-transaction "$VAULT" revoke_mandate ') > recovery);
+});
+
+test("the vault is funded with 3 NEAR, checked, and topped up from probarion.near if needed", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const all = commands(runbook);
+  assert.ok(!runbook.includes("'6 NEAR'") && !runbook.includes("(6 NEAR)"));
+  const create = all.filter((c) => c.includes("create-account fund-myself"));
+  assert.equal(create.length, 1);
+  assert.ok(create[0].includes("\"$VAULT\" '3 NEAR' autogenerate-new-keypair"));
+  assert.ok(all.includes('node scripts/testnet/chain.mjs enough "$ROOT" 3   # exit code 0'));
+  // The measured numbers behind the 3 NEAR (testnet, identical wasm).
+  for (const fact of ["250,733 bytes", "2.507 NEAR", "0.4955 NEAR", "0.0016 NEAR", "cap"]) {
+    assert.ok(runbook.includes(fact), `budget line lacks ${fact}`);
+  }
+  // Free NEAR = balance - storage_usage x 1e19, and below 0.2 NEAR the owner tops the vault up.
+  assert.ok(runbook.includes("BigInt(a.storage_usage)*10n**19n"));
+  assert.match(runbook, /free NEAR is below 0\.2/);
+  const topUp = all.filter((c) => c.includes("send-near"));
+  assert.deepEqual(topUp, [
+    'near tokens "$ROOT" send-near "$VAULT" \'0.5 NEAR\' network-config mainnet sign-with-keychain send',
+  ]);
+});
+
+test("probarion.near is checked on mainnet, not on testnet's default RPC", () => {
+  const all = commands(read("docs/runbooks/mainnet-v0.md"));
+  assert.ok(
+    all.includes(
+      "RPC=https://rpc.mainnet.fastnear.com node scripts/testnet/chain.mjs exists probarion.near   # must print yes",
+    ),
+  );
+  // Any other chain.mjs account query comes after `export RPC=` (section 0.2).
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const exported = runbook.indexOf("export RPC=https://rpc.mainnet.fastnear.com");
+  for (const m of runbook.matchAll(
+    /^(?:\s*)(?:for .*; do )?node scripts\/testnet\/chain\.mjs (exists|balance|enough|full-access-keys|key-count|code-hash|public-key) /gm,
+  )) {
+    assert.ok(m.index > exported, `chain.mjs ${m[1]} runs before RPC is exported: ${m[0]}`);
+  }
+});
+
+test("check_spend gates every spend, and the payee's balance is read before the first one", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const gates = runbook.match(/do not sign the spend: stop and tell Claude/g) ?? [];
+  assert.equal(gates.length, 2, "steps 9 and 10 both need the check_spend stop rule");
+  const expected = '`{"ok": true, "code": null, "would_hold": false}`';
+  assert.equal(runbook.split(expected).length - 1, 2, "steps 9 and 10 both need the Expected line");
+  const balance = runbook.indexOf('ft_balance_of json-args "{\\"account_id\\":\\"$PAYEE_ID\\"}"');
+  const firstSpend = runbook.indexOf('as-transaction "$VAULT" spend');
+  assert.ok(balance > 0 && balance < firstSpend, "payee balance not read before the first spend");
 });

@@ -5,7 +5,7 @@ The goal is three mainnet transaction hashes from a locked vault `v0.probarion.n
 - the first Base payout (2 USDC);
 - the first `NoMandate` refusal.
 
-**Every step marked OWNER SIGNS is signed by the human owner, in their own wallet or near-cli-rs. Claude never signs.** The amounts are small on purpose, because the contract is unaudited. The vault is locked for good after step 3: the USDC in it can be taken back only with the owner's `withdraw` and `withdraw_intents` (see the end of this page), and the NEAR in it (6 NEAR) can never be taken back.
+**Every step marked OWNER SIGNS is signed by the human owner, in their own wallet or near-cli-rs. Claude never signs.** The amounts are small on purpose, because the contract is unaudited. The vault is locked for good after step 3: the USDC in it can be taken back only with the owner's `withdraw` and `withdraw_intents` (see the end of this page), and the NEAR in it (3 NEAR) can never be taken back. Nothing else can be fixed after step 3 either: the vault has no method to change its `owner` or `approvers`, so check everything before the lock.
 
 Run every command from the repo root, in Git Bash. Put the cargo tools on the path first: `export PATH="$HOME/.cargo/bin:$PATH"`. The command shapes for creating the account, deploying, locking, `add_agent`, `create_mandate` and the agent-key `spend` are the ones that ran on testnet on 2026-11-01 (`docs/runbooks/testnet.md`, `scripts/testnet/deploy.sh` and `smoke.sh`). Testnet could not run the steps that need the real USDC, the real `intents.near` and the POA bridge (steps 4 to 6 and 10), nor the `check_spend` views and the recovery calls at the end. Amounts, gas and deposits follow `docs/runbooks/testnet.md` §5.
 
@@ -22,18 +22,18 @@ Both files are committed together in step 12, in the same commit as the work.
 - [ ] Day 3 gate passed: CI is green and the testnet smoke passed on 2026-11-01 (`docs/runbooks/testnet.md` §6). Its transaction ids are in `contracts/deployments/testnet.json`, under `smoke`.
 - [ ] Spike S1 proved, on mainnet, that a contract account can `ft_withdraw` Base POA USDC with a `WITHDRAW_TO:` memo and that the USDC arrived on Base. Run it just before Day 4, with the OWNER signing. If S1 failed, stop and use the fallback in report §8 (i).
 - [ ] `pnpm proof show` runs. Plan 05 Task 1 provides it and creates `docs/mainnet-proof.json`. Do not start step 1 without it.
-- [ ] The wasm check in section 0.3 prints `matches the recorded build`.
+- [ ] The artifact guard in section 0.3 prints `OK: artifact is the recorded build`.
 - [ ] Budget:
-  - about 7 NEAR in `probarion.near`, the account that signs and funds step 1: 6 for the vault account, the rest for gas;
-  - the vault account's 6 NEAR is 2.49 (code storage: 248,501 bytes at 1 NEAR per 100 KB) + 1.00 (the agent key's gas allowance) + 0.10 (contract state: config, 2 mandates, 3 spends) + 0.40 (gas for the deploy, the lock and 3 spends) = about 4 NEAR, which leaves about 2 NEAR of margin. If the wasm size is not 248,501 bytes, redo the first term;
+  - about 3.5 NEAR in `probarion.near`, the account that signs and funds step 1: 3 for the vault account, the rest for gas;
+  - the vault account's 3 NEAR: its storage is 250,733 bytes (248,501 of them the code), which at 0.00001 NEAR per byte is 2.507 NEAR, so 3 - 2.507 = about 0.49 NEAR stays free for gas. The testnet run of the identical flow with the identical wasm (deploy, lock, `add_agent`, 2 mandates, 3 spends) ended with 0.4955 NEAR free, and its spends burned about 0.0016 NEAR of gas. The agent key's 1 NEAR allowance is a cap on its gas, not a reserve, and each mandate's storage is paid by the owner's `create_mandate` deposit. NEAR in the locked vault can never come out, while a shortfall is one plain transfer (the top-up in step 9). If the wasm size is not 248,501 bytes, redo the storage figure (1 NEAR per 100 KB);
   - about 0.5 NEAR in `$OWNER_ID` for its own deposits (0.05 NEAR per mandate, the excess refunded; 0.01 NEAR for the USDC registration) and gas;
   - about 10 native USDC in the owner wallet;
   - about 6 USDC on Base, or 6 Base POA USDC already inside the owner's own `intents.near` account.
 - [ ] near-cli-rs 0.30.1 (`near --version`), Node 24, `curl` and the GitHub CLI `gh` (logged in with `gh auth login`) are installed.
-- [ ] `probarion.near` exists on mainnet and its key is in the keychain or on a Ledger. Step 1 creates `v0.probarion.near` as its sub-account, which only `probarion.near` can sign. On 2026-11-01 the account did not exist yet (the owner creates it, spec §19). Check:
+- [ ] `probarion.near` exists on mainnet and its key is in the keychain or on a Ledger. Step 1 creates `v0.probarion.near` as its sub-account, which only `probarion.near` can sign. On 2026-11-01 the account did not exist yet (the owner creates it, spec §19). Check it on mainnet (`chain.mjs` reads testnet unless `RPC` is set, and section 0.2 exports `RPC` only later, so set it on this line):
 
   ```bash
-  node scripts/testnet/chain.mjs exists probarion.near   # must print yes
+  RPC=https://rpc.mainnet.fastnear.com node scripts/testnet/chain.mjs exists probarion.near   # must print yes
   ```
 
 ### 0.1 Protocol version
@@ -83,27 +83,38 @@ In the list, find the entry whose `headSha` equals `$RECORDED`, whose `event` is
 ```bash
 export RUN_ID="${RUN_ID:?the databaseId of the push run whose headSha equals $RECORDED}"
 gh run download "$RUN_ID" --repo probarion/probarion -n probarion-vault-wasm -D contracts/target/ci-artifact-mainnet
-REQUIRE_RECORDED=1 node scripts/code-hash.mjs check probarion-vault vault contracts/target/ci-artifact-mainnet/probarion_vault.wasm
 export WASM=contracts/target/ci-artifact-mainnet/probarion_vault.wasm
 ls -l "$WASM"
 node scripts/code-hash.mjs hash "$WASM"
 ```
 
-Expected: the `check` line ends with `matches the recorded build`; the file is 248,501 bytes on 2026-11-01; the last line is the code hash that step 2 compares with the chain. If `check` says `not recorded`, `code_hash mismatch` or `recorded at … but this wasm was built at …`, stop: nothing may be deployed from this file. Recording a hash is a controller step done before this runbook (AGENTS.md, "Reproducible builds and code hashes").
+`check` alone is not enough: it accepts the wasm of ANY recorded build, including an older commit's. The guard below ties the file to `$RECORDED`. It prints the `check` line, then `OK` only if that line names exactly the recorded commit:
+
+```bash
+if [ "${#RECORDED}" = 40 ] && REQUIRE_RECORDED=1 node scripts/code-hash.mjs check probarion-vault vault contracts/target/ci-artifact-mainnet/probarion_vault.wasm | tee /dev/stderr | grep -qF "matches the recorded build (commit $RECORDED)"; then
+  echo "OK: artifact is the recorded build"
+else
+  echo "STOP: wrong artifact, do not deploy"
+fi
+```
+
+Expected: a `check` line of the form `probarion-vault: code_hash <hash> matches the recorded build (commit <sha>)` with `<sha>` equal to `$RECORDED`, then `OK: artifact is the recorded build`. The file is 248,501 bytes on 2026-11-01, and the hash printed above is the code hash that step 2 compares with the chain.
+
+**On `STOP`, stop and tell Claude: deploy nothing.** The same goes if `check` fails (`not recorded`, `code_hash mismatch`, or `recorded at … but this wasm was built at …`) or if `check` names another commit (an older artifact). Recording a hash is a controller step done before this runbook (AGENTS.md, "Reproducible builds and code hashes").
 
 ## 1. Create `v0.probarion.near`
 
-Read-only checks first: the vault name must be free, `probarion.near` and the owner, approver and payee accounts from section 0.2 must exist, and `probarion.near` must cover the 6 NEAR plus gas.
+Read-only checks first: the vault name must be free, `probarion.near` and the owner, approver and payee accounts from section 0.2 must exist, and `probarion.near` must cover the 3 NEAR plus gas.
 
 ```bash
 node scripts/testnet/chain.mjs exists "$VAULT"   # prints no (exit code 1) for a free name
 for account in "$ROOT" "$OWNER_ID" "$APPROVER_ID" "$PAYEE_ID"; do node scripts/testnet/chain.mjs exists "$account"; done   # four lines of yes
-node scripts/testnet/chain.mjs enough "$ROOT" 6   # exit code 0
+node scripts/testnet/chain.mjs enough "$ROOT" 3   # exit code 0
 ```
 
-**OWNER SIGNS** (moves 6 NEAR from `probarion.near` to the new account)
+**OWNER SIGNS** (moves 3 NEAR from `probarion.near` to the new account)
 ```bash
-near account create-account fund-myself "$VAULT" '6 NEAR' autogenerate-new-keypair --signature-scheme ed25519 save-to-keychain \
+near account create-account fund-myself "$VAULT" '3 NEAR' autogenerate-new-keypair --signature-scheme ed25519 save-to-keychain \
   sign-as "$ROOT" network-config mainnet sign-with-keychain send
 ```
 
@@ -127,28 +138,58 @@ pnpm proof add-tx --id v0_deploy --hash "$H" --signer "$VAULT" --receiver "$VAUL
   --kind deploy --signed-by deployer --what "Vault v0 deployed from the reproducible build and initialised with the mainnet constants"
 ```
 
-Check (free views):
+Check (free views). Read the config, then let the two guards decide:
 
 ```bash
 near contract call-function as-read-only "$VAULT" get_config json-args '{}' network-config mainnet now
-node scripts/testnet/chain.mjs code-hash "$VAULT"
-node scripts/code-hash.mjs hash "$WASM"
 ```
 
-Expected:
-- `get_config` shows `owner`, `approvers`, `usdc`, `"intents": "intents.near"`, both assets, `"daily_backstop": "500000000"`, `"held_ttl_ns": "259200000000000"`, `"frozen": false`, `"factory": null`, `"version": "0.1.0"` and `"ledger_key": null`.
-- The two hashes are equal, and equal to the one `check` accepted in section 0.3. Record the hash at `vault_v0.code_hash`.
+Guard 1: the config is exactly what was meant. It reads `get_config` over RPC and compares every field with the values you exported:
+
+```bash
+curl -s "$RPC" -H 'content-type: application/json' \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"call_function\",\"finality\":\"optimistic\",\"account_id\":\"$VAULT\",\"method_name\":\"get_config\",\"args_base64\":\"e30=\"}}" \
+  | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{const r=JSON.parse(s).result;if(!r||!r.result){console.log("STOP: no get_config result: "+s.slice(0,200));return}const c=JSON.parse(Buffer.from(r.result).toString());const e=process.env;const want={owner:e.OWNER_ID,approvers:[e.APPROVER_ID],usdc:e.USDC,intents:"intents.near",allowed_assets:[e.BASE_ASSET,e.SOL_ASSET],daily_backstop:"500000000",held_ttl_ns:"259200000000000",frozen:false,factory:null,version:"0.1.0",ledger_key:null};const bad=Object.keys(want).filter((k)=>JSON.stringify(c[k])!==JSON.stringify(want[k]));console.log(bad.length?"STOP: get_config differs in "+bad.join(", ")+": "+JSON.stringify(c):"OK: get_config is exactly what was meant")})'
+```
+
+Straight after the deploy, the only reply that means "try again" is `STOP: no get_config result`: wait a few seconds and run guard 1 again. Any other `STOP` is a real one.
+
+Guard 2: the code on the chain is the CI wasm:
+
+```bash
+if [ "$(node scripts/testnet/chain.mjs code-hash "$VAULT")" = "$(node scripts/code-hash.mjs hash "$WASM")" ]; then
+  echo "OK: the deployed code is the CI wasm"
+else
+  echo "STOP: the deployed code differs from the CI wasm"
+fi
+```
+
+Expected, by hand as well (all of these, not most of them):
+- `owner` is `$OWNER_ID`;
+- `approvers` is exactly `["$APPROVER_ID"]`;
+- `usdc` is `$USDC`;
+- `intents` is `intents.near`;
+- `allowed_assets` is exactly `["$BASE_ASSET", "$SOL_ASSET"]`;
+- `"daily_backstop": "500000000"`, `"held_ttl_ns": "259200000000000"`, `"frozen": false`, `"factory": null`, `"version": "0.1.0"` and `"ledger_key": null`;
+- the code hash is equal to the one `check` accepted in section 0.3. Record it at `vault_v0.code_hash`.
 
 ## 3. Lock: delete the full-access key
 
-Find the key (read-only):
+**Run this step only if every check of step 2 passed: both guards printed `OK`, and the config equalities hold.** Otherwise stop and tell Claude. Until the key is deleted, the account still has its full-access key and can still be fixed; after the lock nothing can. The vault has no method to change its `owner` or `approvers`, so a wrong value there is permanent after the lock.
+
+Find the key (read-only) and let the guard check it:
 
 ```bash
 FULL_ACCESS_KEY="$(node scripts/testnet/chain.mjs full-access-keys "$VAULT")"
 echo "$FULL_ACCESS_KEY"
+case "$FULL_ACCESS_KEY" in
+  ""|*,*) echo "STOP: expected exactly one full-access key" ;;
+  ed25519:*) echo "OK: one full-access key" ;;
+  *) echo "STOP: not an ed25519 key" ;;
+esac
 ```
 
-Expected: exactly one `ed25519:…` key and no comma. If it prints nothing, wait a few seconds and run it again. If it prints a comma, there is more than one full-access key: stop.
+Expected: `OK: one full-access key`. A comma-separated value would delete several keys at once, so on any `STOP` do not run the next command. If the key list is empty, wait a few seconds and run the block again; if it still `STOP`s, stop and tell Claude.
 
 **OWNER SIGNS** (irreversible: from now on only the contract code controls the account)
 ```bash
@@ -219,7 +260,7 @@ curl -s https://bridge.chaindefuser.com/rpc -H 'content-type: application/json' 
   -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"deposit_address\",\"params\":[{\"account_id\":\"$VAULT\",\"chain\":\"eth:8453\"}]}"
 ```
 
-**OWNER SIGNS** in the Base wallet app (there is no near-cli command): send 6 USDC (Base USDC contract `0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913`) to the returned `address`. The minimum is 0.15 USDC. Record the Base tx hash at `funding.intents_topup.base_tx`. It is a Base hash, not a NEAR one, so the evidence file gets a link: `pnpm proof set links.v0_intents_topup_base "https://basescan.org/tx/$BASE_H" --source "docs/runbooks/mainnet-v0.md step 6 option B"`.
+**OWNER SIGNS** in the Base wallet app (there is no near-cli command): send 6 USDC (Base USDC contract `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`) to the returned `address`. The minimum is 0.15 USDC. Record the Base tx hash at `funding.intents_topup.base_tx`. It is a Base hash, not a NEAR one, so the evidence file gets a link: `pnpm proof set links.v0_intents_topup_base "https://basescan.org/tx/$BASE_H" --source "docs/runbooks/mainnet-v0.md step 6 option B"`.
 
 Check, after finality:
 
@@ -274,6 +315,8 @@ export PURPOSE="$(sha256sum docs/evidence/v0-po.txt | cut -d' ' -f1)"
 export EXPIRES=1798675200000000000   # 2026-12-31T00:00:00Z; check with: date -u -d @1798675200
 ```
 
+**The payees decide where the money goes, and a variable proves nothing about an address.** A wrong payee cannot be changed: the only fix is to revoke the mandate. So the owner checks both payees against their own wallets, twice: before the mandate is created, and on the chain afterwards.
+
 **OWNER SIGNS** (mandate 1, NEAR payee; the 0.05 NEAR covers storage and the payee's USDC registration, and the excess is refunded)
 ```bash
 near contract call-function as-transaction "$VAULT" create_mandate \
@@ -287,6 +330,22 @@ Expected result: `1`. Record at `setup.near_mandate_tx`, and in the evidence fil
 pnpm proof add-tx --id v0_mandate_near --hash "$H" --signer "$OWNER_ID" --receiver "$VAULT" \
   --kind mandate_created --signed-by owner --what "Mandate 1: NEAR payee, at most 5 USDC per payment, 20 USDC total"
 ```
+
+Check mandate 1 on the chain:
+
+```bash
+near contract call-function as-read-only "$VAULT" get_mandate json-args '{"mandate_id":1}' network-config mainnet now
+```
+
+Expected: the payee `account_id` is `$PAYEE_ID`, and `"status": "active"`. The owner confirms that they control that account (they can sign in to it). **If the payee is not an account the owner controls, do not run step 9.** Send the `revoke_mandate` command from "If anything looks wrong" with `{"mandate_id":1}`, then stop and tell Claude: the evidence files name mandate 1.
+
+Before mandate 2, print the Base address and compare it, character by character, with the Receive screen of your own Base wallet app (the app itself, not a message, a file or the clipboard history):
+
+```bash
+echo "$BASE_PAYEE_ADDRESS"
+```
+
+One wrong character sends the 2 USDC to an address nobody controls, and it cannot be recovered. Stop if even one character differs.
 
 **OWNER SIGNS** (mandate 2, Base payee)
 ```bash
@@ -302,9 +361,38 @@ pnpm proof add-tx --id v0_mandate_base --hash "$H" --signer "$OWNER_ID" --receiv
   --kind mandate_created --signed-by owner --what "Mandate 2: Base address payee via NEAR Intents, at most 5 USDC per payment"
 ```
 
-Check: `near contract call-function as-read-only "$VAULT" get_mandate json-args '{"mandate_id":2}' network-config mainnet now` shows the address exactly as `$BASE_PAYEE_ADDRESS` and `"status": "active"`.
+Check mandate 2 on the chain:
+
+```bash
+near contract call-function as-read-only "$VAULT" get_mandate json-args '{"mandate_id":2}' network-config mainnet now
+```
+
+Expected: `"status": "active"`, and the `address` in the reply is the address of the owner's own Base wallet. **Compare the address in this reply, which is what the contract stored, with the Receive screen of the Base wallet app, character by character. Do not compare it with `$BASE_PAYEE_ADDRESS`**: the variable is what was sent, so it would match even when it is wrong. **If they differ, do not run step 10.** Send the `revoke_mandate` command from "If anything looks wrong" with `{"mandate_id":2}` (as it is written there), then stop and tell Claude: the evidence files name mandate 2.
 
 ## 9. First NEAR payment (2 USDC)
+
+First check that the vault has NEAR left for gas (read-only). Free NEAR is the vault's balance minus its storage stake (`storage_usage` bytes at 0.00001 NEAR per byte):
+
+```bash
+curl -s "$RPC" -H 'content-type: application/json' \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"view_account\",\"finality\":\"final\",\"account_id\":\"$VAULT\"}}" \
+  | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{const a=JSON.parse(s).result;const free=BigInt(a.amount)-BigInt(a.storage_usage)*10n**19n;console.log("storage_usage",a.storage_usage,"bytes; free NEAR:",Number(free)/1e24)})'
+```
+
+Expected: about 0.49 NEAR free. **Top-up rule:** if free NEAR is below 0.2, top the vault up with one plain transfer before you sign any spend (the vault pays each spend's prepaid gas from this balance, and a spend it cannot pay for is rejected). Check it again after step 11.
+
+**OWNER SIGNS** (only if free NEAR is below 0.2; moves 0.5 NEAR from `probarion.near` to the vault)
+```bash
+near tokens "$ROOT" send-near "$VAULT" '0.5 NEAR' network-config mainnet sign-with-keychain send
+```
+
+Read the payee's USDC balance now, so that the payment can be checked against it:
+
+```bash
+near contract call-function as-read-only "$USDC" ft_balance_of json-args "{\"account_id\":\"$PAYEE_ID\"}" network-config mainnet now
+```
+
+Write the number down. Then check the spend (free view):
 
 ```bash
 export INVOICE1="$(sha256sum docs/evidence/v0-invoice-1.txt | cut -d' ' -f1)"
@@ -314,7 +402,7 @@ near contract call-function as-read-only "$VAULT" check_spend \
   network-config mainnet now
 ```
 
-Expected: `{"ok": true, "code": null, "would_hold": false}`.
+Expected: `{"ok": true, "code": null, "would_hold": false}`. **If `ok` is not `true`, or `would_hold` is `true`, do not sign the spend: stop and tell Claude with the output.**
 
 **OWNER SIGNS** (moves 2 USDC; signed on the owner's machine with the agent key file)
 ```bash
@@ -328,7 +416,7 @@ Expected:
 - the result `{"spend_id":1,"status":"paid"}`;
 - a `Transaction ID: …`.
 
-If near-cli-rs prints only some receipts' logs, open `https://nearblocks.io/txns/<hash>` and confirm `spend_paid` there. Check that `ft_balance_of` for `$PAYEE_ID` rose by `2000000`. Record at `proof.first_near_payment_tx`, and in the evidence file. The signer is the vault, because the agent FC key signs as the vault account:
+If near-cli-rs prints only some receipts' logs, open `https://nearblocks.io/txns/<hash>` and confirm `spend_paid` there. Read `ft_balance_of` for `$PAYEE_ID` again (the command above): it must be exactly 2000000 higher than the number you wrote down. Record at `proof.first_near_payment_tx`, and in the evidence file. The signer is the vault, because the agent FC key signs as the vault account:
 
 ```bash
 pnpm proof add-tx --id first_near_payment --hash "$H" --signer "$VAULT" --receiver "$VAULT" \
@@ -344,6 +432,8 @@ near contract call-function as-read-only "$VAULT" check_spend \
   json-args "{\"request\":{\"mandate_id\":2,\"amount\":\"2000000\",\"invoice_hash\":\"$INVOICE2\",\"ref\":\"V0-INV-2\",\"decision_hash\":\"$DECISION2\"},\"signer_pk\":\"$AGENT_PK\"}" \
   network-config mainnet now
 ```
+
+Expected: `{"ok": true, "code": null, "would_hold": false}`. **If `ok` is not `true`, or `would_hold` is `true`, do not sign the spend: stop and tell Claude with the output.** Do not start this step either unless the mandate 2 address check in step 8 passed against the wallet app.
 
 **OWNER SIGNS** (moves 2 Base POA USDC out of the vault's Intents balance and burns it for release on Base)
 ```bash
@@ -445,7 +535,19 @@ near contract call-function as-transaction "$VAULT" freeze json-args '{}' \
   prepaid-gas '30 Tgas' attached-deposit '0 NEAR' sign-as "$OWNER_ID" network-config mainnet sign-with-keychain send
 ```
 
-**OWNER SIGNS** (native USDC back to the owner; set the amount to the balance)
+**OWNER SIGNS** (revokes a mandate, for a wrong payee: change `2` to the mandate's id; the mandate then refuses every new spend)
+```bash
+near contract call-function as-transaction "$VAULT" revoke_mandate json-args '{"mandate_id":2}' \
+  prepaid-gas '30 Tgas' attached-deposit '1 yoctoNEAR' sign-as "$OWNER_ID" network-config mainnet sign-with-keychain send
+```
+
+**OWNER SIGNS** (removes the agent key, for example after the key file leaked; this makes the agent unable to sign any spend)
+```bash
+near contract call-function as-transaction "$VAULT" remove_agent json-args "{\"public_key\":\"$AGENT_PK\"}" \
+  prepaid-gas '30 Tgas' attached-deposit '1 yoctoNEAR' sign-as "$OWNER_ID" network-config mainnet sign-with-keychain send
+```
+
+**OWNER SIGNS** (native USDC back to the owner; set the amount to the vault's `ft_balance_of`, step 5 check)
 ```bash
 near contract call-function as-transaction "$VAULT" withdraw json-args '{"amount":"8000000"}' \
   prepaid-gas '100 Tgas' attached-deposit '1 yoctoNEAR' sign-as "$OWNER_ID" network-config mainnet sign-with-keychain send
@@ -460,7 +562,7 @@ near contract call-function as-transaction "$BASE_ASSET" storage_deposit \
   prepaid-gas '30 Tgas' attached-deposit '0.01 NEAR' sign-as "$OWNER_ID" network-config mainnet sign-with-keychain send
 ```
 
-**OWNER SIGNS** (the vault's Base POA balance in Intents back to the owner's NEAR account)
+**OWNER SIGNS** (the vault's Base POA balance in Intents back to the owner's NEAR account; set the amount to the vault's `mt_balance_of`, step 6 check)
 ```bash
 near contract call-function as-transaction "$VAULT" withdraw_intents \
   json-args "{\"token\":\"$BASE_ASSET\",\"amount\":\"4000000\"}" \
