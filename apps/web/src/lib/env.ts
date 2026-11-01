@@ -37,13 +37,38 @@ type Source = Record<string, string | undefined>;
 const opt = (v: string | undefined): string | null =>
   v !== undefined && v.trim() !== "" ? v.trim() : null;
 
-function isHttps(value: string): boolean {
+/**
+ * Parses an http(s) service URL. The scheme must be followed by "//" and a host, so "https:foo",
+ * "https:/foo" and "https:///foo" (which `new URL` would read as https://foo/) are refused.
+ */
+function parseServiceUrl(value: string): URL | null {
+  if (!/^https?:\/\/[^/?#\\\s]/i.test(value)) return null;
   try {
-    return new URL(value).protocol === "https:";
+    return new URL(value);
   } catch {
-    return false;
+    return null;
   }
 }
+
+/** Strict https, for the URLs that carry a secret to a third party (the Sentry DSN, the heartbeat). */
+function isHttps(value: string): boolean {
+  return parseServiceUrl(value)?.protocol === "https:";
+}
+
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+/**
+ * https, or http for a local development service. The host is read from the parsed URL, never by
+ * a string prefix: http://localhost.evil.com and http://localhost@evil.com are refused.
+ */
+export function isAllowedServiceUrl(value: string): boolean {
+  const url = parseServiceUrl(value);
+  if (url === null) return false;
+  if (url.protocol === "https:") return true;
+  return LOOPBACK_HOSTS.has(url.hostname) || url.hostname.endsWith(".localhost");
+}
+
+const HTTPS_OR_LOCAL = "must be https (http only for localhost)";
 
 /** 32 bytes as standard base64 is 43 characters and one "=". */
 const BASE64_32_BYTES = /^[A-Za-z0-9+/]{43}=$/;
@@ -81,7 +106,7 @@ export function loadEnv(src: Source): Env {
     .filter(Boolean);
   const rpc = listed.length > 0 ? listed : [...NETWORKS[network].rpcUrls];
   rpc.forEach((u, i) => {
-    if (!isHttps(u)) problems.push(`NEAR_RPC_URLS entry ${i + 1} must be https`);
+    if (!isAllowedServiceUrl(u)) problems.push(`NEAR_RPC_URLS entry ${i + 1} ${HTTPS_OR_LOCAL}`);
   });
 
   const master = req("KEY_ENCRYPTION_SECRET");
@@ -96,9 +121,13 @@ export function loadEnv(src: Source): Env {
   const heartbeat = opt(src.BETTERSTACK_HEARTBEAT_URL);
   if (heartbeat && !isHttps(heartbeat)) problems.push("BETTERSTACK_HEARTBEAT_URL must be https");
   const supabaseUrl = req("SUPABASE_URL");
-  if (supabaseUrl && !isHttps(supabaseUrl)) problems.push("SUPABASE_URL must be https");
+  if (supabaseUrl && !isAllowedServiceUrl(supabaseUrl))
+    problems.push(`SUPABASE_URL ${HTTPS_OR_LOCAL}`);
+  const publicSupabaseUrl = req("NEXT_PUBLIC_SUPABASE_URL");
+  if (publicSupabaseUrl && !isAllowedServiceUrl(publicSupabaseUrl))
+    problems.push(`NEXT_PUBLIC_SUPABASE_URL ${HTTPS_OR_LOCAL}`);
   const baseRpc = opt(src.BASE_RPC_URL);
-  if (baseRpc && !isHttps(baseRpc)) problems.push("BASE_RPC_URL must be https");
+  if (baseRpc && !isAllowedServiceUrl(baseRpc)) problems.push(`BASE_RPC_URL ${HTTPS_OR_LOCAL}`);
   const sentryDsn = opt(src.SENTRY_DSN);
   if (sentryDsn && !isHttps(sentryDsn)) problems.push("SENTRY_DSN must be https");
 
@@ -112,7 +141,7 @@ export function loadEnv(src: Source): Env {
     ONECLICK_JWT: opt(src.ONECLICK_JWT),
     SUPABASE_URL: supabaseUrl,
     SUPABASE_SERVICE_ROLE_KEY: req("SUPABASE_SERVICE_ROLE_KEY"),
-    NEXT_PUBLIC_SUPABASE_URL: req("NEXT_PUBLIC_SUPABASE_URL"),
+    NEXT_PUBLIC_SUPABASE_URL: publicSupabaseUrl,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: req("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     KEY_ENCRYPTION_SECRET: master,
     SENTRY_DSN: sentryDsn,

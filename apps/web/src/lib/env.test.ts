@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EnvError, loadEnv } from "./env";
+import { EnvError, isAllowedServiceUrl, loadEnv } from "./env";
 
 // 32 distinct bytes: a key that is one repeated byte is rejected.
 const KEY = Buffer.from(Array.from({ length: 32 }, (_, i) => (i * 7 + 3) % 256)).toString("base64");
@@ -211,8 +211,182 @@ describe("loadEnv: KEY_ENCRYPTION_SECRET", () => {
   });
 });
 
-describe("loadEnv: https URLs", () => {
-  it("requires https for SUPABASE_URL, BASE_RPC_URL, SENTRY_DSN and the heartbeat", () => {
+describe("isAllowedServiceUrl", () => {
+  const allowed = [
+    "https://rpc.example",
+    "https://rpc.example:8443/path?x=1",
+    "https://user:pw@rpc.example/path",
+    "HTTPS://RPC.EXAMPLE",
+    "https://localhost",
+    "http://localhost",
+    "http://localhost:3000",
+    "http://LOCALHOST:3000",
+    "http://app.localhost:8080/x",
+    "http://a.b.localhost",
+    "http://127.0.0.1",
+    "http://127.0.0.1:54321/rest/v1",
+    "http://[::1]",
+    "http://[::1]:3030/",
+  ];
+  const rejected = [
+    // Not loopback: the host is read after parsing, never by a prefix.
+    "http://rpc.example",
+    "http://localhost.evil.com",
+    "http://localhost.evil.com:3000",
+    "http://localhostevil.com",
+    "http://evillocalhost",
+    "http://notlocalhost",
+    "http://evil.com/localhost",
+    "http://evil.com?h=localhost",
+    "http://localhost@evil.com",
+    "http://localhost:3000@evil.com",
+    "http://127.0.0.1.evil.com",
+    "http://127.0.0.2",
+    "http://0.0.0.0",
+    "http://localhost.:3000",
+    "http://[::2]",
+    "http://[::1].evil.com",
+    // A scheme other than http(s).
+    "ftp://localhost",
+    "ws://localhost",
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "localhost:3000",
+    "//localhost",
+    // https without // or a host, which new URL() would repair.
+    "https:foo",
+    "https:/foo",
+    "https:///foo",
+    "https:\\foo",
+    "https://",
+    "https://:443",
+    "https://user@/path",
+    "http:localhost",
+    "http:///localhost",
+    // Not a URL at all.
+    "",
+    " ",
+    "not a url",
+    " https://rpc.example",
+    "https://rpc example",
+  ];
+
+  it.each(allowed)("allows %s", (url) => {
+    expect(isAllowedServiceUrl(url)).toBe(true);
+  });
+
+  it.each(rejected)("rejects %j", (url) => {
+    expect(isAllowedServiceUrl(url)).toBe(false);
+  });
+});
+
+describe("loadEnv: service URLs", () => {
+  const HOSTILE = "http://localhost.evil.com";
+  const LOCAL_FORMS = [
+    "http://localhost:54321",
+    "http://127.0.0.1:54321",
+    "http://[::1]:54321",
+    "http://app.localhost:54321",
+  ];
+
+  it("allows http on a loopback host for development", () => {
+    for (const local of LOCAL_FORMS) {
+      const env = loadEnv({
+        ...base,
+        SUPABASE_URL: local,
+        NEXT_PUBLIC_SUPABASE_URL: local,
+        BASE_RPC_URL: local,
+        NEAR_RPC_URLS: local,
+      });
+      expect(env.SUPABASE_URL).toBe(local);
+      expect(env.NEXT_PUBLIC_SUPABASE_URL).toBe(local);
+      expect(env.BASE_RPC_URL).toBe(local);
+      expect(env.NEAR_RPC_URLS).toEqual([local]);
+    }
+    expect(
+      loadEnv({ ...base, NEAR_RPC_URLS: "http://localhost:3030, https://rpc.example" })
+        .NEAR_RPC_URLS,
+    ).toEqual(["http://localhost:3030", "https://rpc.example"]);
+  });
+
+  it("rejects a non-loopback http host and names the variable, never the value", () => {
+    const cases: Array<[string, Record<string, string>, RegExp]> = [
+      ["SUPABASE_URL", { SUPABASE_URL: HOSTILE }, /SUPABASE_URL must be https/],
+      [
+        "NEXT_PUBLIC_SUPABASE_URL",
+        { NEXT_PUBLIC_SUPABASE_URL: HOSTILE },
+        /NEXT_PUBLIC_SUPABASE_URL must be https/,
+      ],
+      ["BASE_RPC_URL", { BASE_RPC_URL: HOSTILE }, /BASE_RPC_URL must be https/],
+      [
+        "NEAR_RPC_URLS",
+        { NEAR_RPC_URLS: `http://localhost:3030,${HOSTILE}` },
+        /NEAR_RPC_URLS entry 2 must be https/,
+      ],
+    ];
+    for (const [name, override, pattern] of cases) {
+      let message = "";
+      try {
+        loadEnv({ ...base, ...override });
+      } catch (e) {
+        message = (e as Error).message;
+      }
+      expect(message, name).toMatch(pattern);
+      expect(message, name).not.toContain("evil.com");
+    }
+  });
+
+  it("now checks NEXT_PUBLIC_SUPABASE_URL too", () => {
+    expect(() => loadEnv({ ...base, NEXT_PUBLIC_SUPABASE_URL: "http://x.supabase.co" })).toThrow(
+      /NEXT_PUBLIC_SUPABASE_URL must be https/,
+    );
+    expect(() => loadEnv({ ...base, NEXT_PUBLIC_SUPABASE_URL: "not a url" })).toThrow(
+      /NEXT_PUBLIC_SUPABASE_URL must be https/,
+    );
+  });
+
+  it("rejects https: without // or a host in every URL variable", () => {
+    for (const bad of ["https:foo", "https:/foo", "https:///foo"]) {
+      for (const name of [
+        "SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "BASE_RPC_URL",
+        "NEAR_RPC_URLS",
+        "SENTRY_DSN",
+        "BETTERSTACK_HEARTBEAT_URL",
+      ]) {
+        expect(() => loadEnv({ ...base, [name]: bad }), `${name}=${bad}`).toThrow(
+          new RegExp(`${name}( entry 1)? must be https`),
+        );
+      }
+    }
+  });
+
+  it("keeps SENTRY_DSN and BETTERSTACK_HEARTBEAT_URL strictly https, even on localhost", () => {
+    for (const local of LOCAL_FORMS) {
+      expect(() => loadEnv({ ...base, SENTRY_DSN: local })).toThrow(/SENTRY_DSN must be https/);
+      expect(() => loadEnv({ ...base, BETTERSTACK_HEARTBEAT_URL: local })).toThrow(
+        /BETTERSTACK_HEARTBEAT_URL must be https/,
+      );
+    }
+    expect(() => loadEnv({ ...base, SENTRY_DSN: "http://k@o1.ingest.sentry.io/2" })).toThrow(
+      /SENTRY_DSN must be https/,
+    );
+    expect(() => loadEnv({ ...base, SENTRY_DSN: "ftp://k@o1.ingest.sentry.io/2" })).toThrow(
+      /SENTRY_DSN must be https/,
+    );
+    const ok = loadEnv({
+      ...base,
+      SENTRY_DSN: "https://k@o1.ingest.sentry.io/2",
+      BETTERSTACK_HEARTBEAT_URL: "https://uptime.betterstack.com/api/v1/heartbeat/abc",
+    });
+    expect(ok.SENTRY_DSN).toBe("https://k@o1.ingest.sentry.io/2");
+    expect(ok.BETTERSTACK_HEARTBEAT_URL).toBe(
+      "https://uptime.betterstack.com/api/v1/heartbeat/abc",
+    );
+  });
+
+  it("still requires https for the hosted services", () => {
     expect(() => loadEnv({ ...base, SUPABASE_URL: "http://x.supabase.co" })).toThrow(
       /SUPABASE_URL must be https/,
     );
@@ -222,18 +396,7 @@ describe("loadEnv: https URLs", () => {
     expect(() => loadEnv({ ...base, BASE_RPC_URL: "http://base.example" })).toThrow(
       /BASE_RPC_URL must be https/,
     );
-    expect(() => loadEnv({ ...base, SENTRY_DSN: "http://k@o1.ingest.sentry.io/2" })).toThrow(
-      /SENTRY_DSN must be https/,
-    );
-    expect(() => loadEnv({ ...base, SENTRY_DSN: "ftp://k@o1.ingest.sentry.io/2" })).toThrow(
-      /SENTRY_DSN must be https/,
-    );
-    const ok = loadEnv({
-      ...base,
-      BASE_RPC_URL: "https://mainnet.base.org",
-      SENTRY_DSN: "https://k@o1.ingest.sentry.io/2",
-    });
+    const ok = loadEnv({ ...base, BASE_RPC_URL: "https://mainnet.base.org" });
     expect(ok.BASE_RPC_URL).toBe("https://mainnet.base.org");
-    expect(ok.SENTRY_DSN).toBe("https://k@o1.ingest.sentry.io/2");
   });
 });

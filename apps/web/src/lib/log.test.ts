@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "./env";
-import { formatLog, redact } from "./log";
+import { formatLog, redact, SECRET_ENV_NAMES, secretEnvValues } from "./log";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -197,6 +197,14 @@ describe("redaction: an Env-shaped object", () => {
     const line = formatLog("info", "env.public", { env: envLike });
     for (const name of PUBLIC_CONFIG) expect(line, name).toContain(sentinel(name));
   });
+
+  it("lists every non-public variable in SECRET_ENV_NAMES, so its value is masked in text", () => {
+    const listed: ReadonlySet<string> = new Set(SECRET_ENV_NAMES);
+    for (const name of [...Object.keys(envLike), ...Object.keys(otherSecrets)]) {
+      if (PUBLIC_CONFIG.includes(name as keyof Env)) expect(listed.has(name), name).toBe(false);
+      else expect(listed.has(name), name).toBe(true);
+    }
+  });
 });
 
 describe("redaction: arrays and depth", () => {
@@ -256,7 +264,7 @@ describe("formatLog: values and failure", () => {
   it("logs an Error as name and message only, with the message scrubbed", () => {
     const secretKey = `ed25519:${"Ab3".repeat(30)}`;
     const publicKey = `ed25519:${"6".repeat(44)}`;
-    vi.stubEnv("TEST_LOG_API_KEY", "env-secret-value-1234");
+    vi.stubEnv("CRON_SECRET", "env-secret-value-1234");
     const err = new TypeError(
       [
         "boom Bearer abc.def-ghi",
@@ -345,5 +353,145 @@ describe("formatLog: values and failure", () => {
     expect(JSON.parse(formatLog("info", "bad.date", {}, new Date(Number.NaN))).at).toBe(
       "invalid-date",
     );
+  });
+});
+
+describe("redaction: values that cannot be secrets", () => {
+  it("keeps a boolean, null or undefined under a secret-looking name", () => {
+    const out = redact({
+      heartbeat: true,
+      is_private: false,
+      cookie: true,
+      password: null,
+      token: undefined,
+      nested: { heartbeat: false, api_key: null },
+    });
+    expect(out).toStrictEqual({
+      heartbeat: true,
+      is_private: false,
+      cookie: true,
+      password: null,
+      token: undefined,
+      nested: { heartbeat: false, api_key: null },
+    });
+    const line = formatLog("info", "watch.run", { heartbeat: true, is_private: false });
+    expect(JSON.parse(line)).toMatchObject({ heartbeat: true, is_private: false });
+  });
+
+  it("still redacts a string or a number under the same names", () => {
+    expect(
+      redact({ heartbeat: "https://beat.example/abc", is_private: 1, password: "x", token: 0 }),
+    ).toEqual({
+      heartbeat: "[redacted]",
+      is_private: "[redacted]",
+      password: "[redacted]",
+      token: "[redacted]",
+    });
+  });
+});
+
+describe("redaction: string values are scrubbed", () => {
+  // Built at run time, so no token-shaped literal sits in the source for a secret scanner.
+  const TELEGRAM_TOKEN = `123456789:AAH${"x".repeat(32)}`;
+  const RPC_KEY_A = "KEYA0123456789";
+  const RPC_KEY_B = "KEYB0123456789";
+
+  it("masks a Telegram bot token in an error string, wherever the string sits", () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", TELEGRAM_TOKEN);
+    const line = formatLog("error", `send failed for ${TELEGRAM_TOKEN}`, {
+      error: `fetch https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage failed`,
+      result: { error: `Unauthorized (${TELEGRAM_TOKEN})` },
+      errors: [`first ${TELEGRAM_TOKEN}`, "second"],
+    });
+    expect(line).not.toContain(TELEGRAM_TOKEN);
+    expect(line).not.toContain("xxxxxxxx");
+    expect(JSON.parse(line).errors[1]).toBe("second");
+    expect(JSON.parse(line).error).toContain("api.telegram.org");
+  });
+
+  it("masks every entry of NEAR_RPC_URLS and the BASE_RPC_URL in a string", () => {
+    vi.stubEnv("NEAR_RPC_URLS", `https://rpc.example/${RPC_KEY_A}, https://b.example/${RPC_KEY_B}`);
+    vi.stubEnv("BASE_RPC_URL", "https://base.example/v2/BASEKEY0123456789");
+    const line = formatLog("warn", "rpc.failover", {
+      error: `503 from https://rpc.example/${RPC_KEY_A}, then https://b.example/${RPC_KEY_B}`,
+      base: "timeout https://base.example/v2/BASEKEY0123456789",
+    });
+    for (const key of [RPC_KEY_A, RPC_KEY_B, "BASEKEY0123456789"]) {
+      expect(line, key).not.toContain(key);
+    }
+    expect(JSON.parse(line).error).toBe("503 from [redacted], then [redacted]");
+  });
+
+  it("masks a Telegram token and a Bearer header by shape when the environment does not hold them", () => {
+    const line = formatLog("error", "telegram.failed", {
+      error: `getUpdates https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates`,
+      header: "Bearer abc.def-ghi",
+      url: "https://rpc.example/status?api_key=SENTINEL&x=1",
+    });
+    expect(line).not.toContain(TELEGRAM_TOKEN);
+    expect(line).not.toContain("abc.def-ghi");
+    expect(line).not.toContain("SENTINEL");
+  });
+
+  it("leaves ordinary strings alone", () => {
+    const strings = {
+      request_id: "6f1c3a52-0f7d-4d0a-9d55-3a1b2c4d5e6f",
+      invoice_hash: "ab".repeat(32),
+      public_key: `ed25519:${"6".repeat(44)}`,
+      vault: "acme.vaults.probarion.near",
+      when: "2026-11-08T00:00:00.000Z",
+      next: "http://localhost:3000/console?tab=keys",
+      note: "payment of 12.50 USDC to 1234567:8",
+    };
+    expect(redact(strings)).toEqual(strings);
+  });
+
+  it("masks only the listed variables, not anything whose name looks secret", () => {
+    vi.stubEnv("__NEXT_PRIVATE_ORIGIN", "http://localhost:3000");
+    vi.stubEnv("MY_APP_TOKEN", "not-a-listed-variable-1234");
+    expect(secretEnvValues()).not.toContain("http://localhost:3000");
+    expect(secretEnvValues()).not.toContain("not-a-listed-variable-1234");
+    const line = formatLog("info", "dev.origin", {
+      origin: "http://localhost:3000",
+      note: "not-a-listed-variable-1234",
+    });
+    expect(JSON.parse(line)).toMatchObject({
+      origin: "http://localhost:3000",
+      note: "not-a-listed-variable-1234",
+    });
+  });
+
+  it("masks the longest value first, so an entry that contains another is fully hidden", () => {
+    vi.stubEnv("NEAR_RPC_URLS", "https://rpc.example/key-abc,https://rpc.example/key-abc-longer");
+    const line = formatLog("error", "x", { error: "https://rpc.example/key-abc-longer failed" });
+    expect(JSON.parse(line).error).toBe("[redacted] failed");
+  });
+
+  it("ignores values shorter than 8 characters, which would mask ordinary text", () => {
+    vi.stubEnv("CRON_SECRET", "short");
+    expect(secretEnvValues()).toEqual([]);
+  });
+
+  it("reads the environment once per log line, however many strings it holds", () => {
+    const real = process.env;
+    let reads = 0;
+    const counted = new Proxy(real, {
+      get(target, key) {
+        if (key === "TELEGRAM_BOT_TOKEN") reads += 1;
+        return Reflect.get(target, key);
+      },
+    });
+    Object.defineProperty(process, "env", { value: counted, configurable: true, writable: true });
+    try {
+      formatLog("info", "many", {
+        a: "x",
+        b: ["y", "z"],
+        c: { d: "w", e: ["v"] },
+        err: new Error("boom"),
+      });
+    } finally {
+      Object.defineProperty(process, "env", { value: real, configurable: true, writable: true });
+    }
+    expect(reads).toBe(1);
   });
 });
