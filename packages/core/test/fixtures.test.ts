@@ -91,14 +91,14 @@ describe("TEST FIXTURE snapshot: internal consistency", () => {
     expect(s.chain.config.ledger_key).toBe(TEST_LEDGER_KEY.publicKey);
   });
 
-  it("binds each attestation nonce to the vault and its ledger position (A1-A6 pass)", async () => {
+  it("binds each attestation nonce to the vault and its ledger position (A1-A7 pass)", async () => {
     const s = await makeFixtureSnapshot();
     const attested = s.ledger.filter((e) => e.body.evidence !== null);
     expect(attested.map((e) => e.body.seq)).toEqual([0, 2]);
     for (const entry of attested) {
       const expected = expectedNonceOf(s.vault, entry);
       expect(evidenceOf(entry).nonce).toBe(expected);
-      const result = await checkAttestation(evidenceOf(entry), expected);
+      const result = await checkAttestation(evidenceOf(entry), expected, entry.body.proposal);
       expect(result.ok).toBe(true);
       // ICR-1: the same ledger position in another vault needs a different nonce.
       expect(expectedNonceOf("other.vaults.probarion.testnet", entry)).not.toBe(expected);
@@ -156,7 +156,11 @@ describe("TEST FIXTURE snapshot: tampered variants", () => {
       [d1, false],
     ] as const) {
       if (entry === undefined) throw new Error("fixture entry missing");
-      const result = await checkAttestation(evidenceOf(entry), expectedNonceOf(s.vault, entry));
+      const result = await checkAttestation(
+        evidenceOf(entry),
+        expectedNonceOf(s.vault, entry),
+        entry.body.proposal,
+      );
       expect(result.ok).toBe(ok);
       expect(result.checks.find((c) => c.id === "A6")?.pass).toBe(ok);
     }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CanonicalJsonError, canonicalJson } from "../src/hash.js";
 import {
   extractJsonObject,
   MAX_REASONING_CHARS,
@@ -33,6 +34,48 @@ describe("parseModelProposal", () => {
   it("truncates reasoning to 2000 characters", () => {
     const p = parseModelProposal({ ...valid, reasoning: "x".repeat(5000) });
     expect(p.reasoning).toHaveLength(MAX_REASONING_CHARS);
+  });
+
+  describe("reasoning is cut on code points and never splits a surrogate pair", () => {
+    const astral = "\u{1F600}"; // one code point, two UTF-16 units
+
+    it("keeps an astral character that straddles the 2000th UTF-16 unit whole", () => {
+      const reasoning = `${"x".repeat(MAX_REASONING_CHARS - 1)}${astral}tail`;
+      // The old cut, reasoning.slice(0, 2000), leaves a lone high surrogate that canonicalJson refuses.
+      const naive = reasoning.slice(0, MAX_REASONING_CHARS);
+      expect(() => canonicalJson({ reasoning: naive })).toThrow(CanonicalJsonError);
+
+      const p = parseModelProposal({ ...valid, reasoning });
+      expect(Array.from(p.reasoning)).toHaveLength(MAX_REASONING_CHARS);
+      expect(p.reasoning.endsWith(astral)).toBe(true);
+      // a pair is one code point; \p{Surrogate} would match only a lone surrogate
+      expect(/\p{Surrogate}/u.test(p.reasoning)).toBe(false);
+      expect(() => canonicalJson(p)).not.toThrow();
+    });
+
+    it("drops an astral character that starts after the 2000th code point", () => {
+      const p = parseModelProposal({
+        ...valid,
+        reasoning: `${"x".repeat(MAX_REASONING_CHARS)}${astral}`,
+      });
+      expect(p.reasoning).toBe("x".repeat(MAX_REASONING_CHARS));
+      expect(() => canonicalJson(p)).not.toThrow();
+    });
+
+    it("counts code points, as JSON Schema maxLength does: 2500 astral characters become 2000", () => {
+      const p = parseModelProposal({ ...valid, reasoning: astral.repeat(2500) });
+      expect(Array.from(p.reasoning)).toHaveLength(MAX_REASONING_CHARS);
+      expect(p.reasoning).toHaveLength(2 * MAX_REASONING_CHARS);
+      expect(() => canonicalJson(p)).not.toThrow();
+    });
+
+    it("leaves a reasoning of 2000 code points or fewer untouched", () => {
+      const exact = astral.repeat(MAX_REASONING_CHARS);
+      expect(parseModelProposal({ ...valid, reasoning: exact }).reasoning).toBe(exact);
+      expect(parseModelProposal({ ...valid, reasoning: `a${astral}b` }).reasoning).toBe(
+        `a${astral}b`,
+      );
+    });
   });
 
   it.each([

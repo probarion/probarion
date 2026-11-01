@@ -75,6 +75,7 @@ function fullBody(seq: number, prevLink: string): LedgerEntryBody {
       nonce: sha256Hex("nonce"),
       request_sha256: sha256Hex("request"),
       response_sha256: sha256Hex("response"),
+      response_body: "response",
       signature: {
         text: "model:request:response",
         signature: `0x${"ab".repeat(65)}`,

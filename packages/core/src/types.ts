@@ -228,6 +228,8 @@ export interface AttestationEvidence {
   nonce: Hex32;
   request_sha256: Hex32;
   response_sha256: Hex32;
+  /** ICR-2: the exact UTF-8 text of the chat-completion HTTP response body as received; sha256(utf8(.)) === response_sha256 (A7). */
+  response_body: string;
   signature: { text: string; signature: string; signing_address: string; signing_algo: "ecdsa" };
   report: {
     signing_address: string;
@@ -322,7 +324,7 @@ export interface CustomRule {
 
 // ---------- Attestation (interfaces §7) ----------
 
-export type AttestationCheckId = "A1" | "A2" | "A3" | "A4" | "A5" | "A6";
+export type AttestationCheckId = "A1" | "A2" | "A3" | "A4" | "A5" | "A6" | "A7";
 export type AttestationBinding = "address" | "tls" | "none";
 export interface AttestationCheck {
   id: AttestationCheckId;
@@ -332,7 +334,9 @@ export interface AttestationCheck {
 export interface AttestationResult {
   ok: boolean;
   binding: AttestationBinding;
-  checks: AttestationCheck[]; // always A1..A6, in order
+  /** Always false from the offline checks: A1..A7 prove internal consistency only; the TDX quote is verified by O1 (online). */
+  quote_verified: boolean;
+  checks: AttestationCheck[]; // always A1..A7, in order
 }
 
 // ---------- Verifier (interfaces §10) ----------

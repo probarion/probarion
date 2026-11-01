@@ -224,10 +224,13 @@ export async function makeFixtureSnapshot(options: FixtureOptions = {}): Promise
               mandate_id: draft.body.mandate_id,
               seq,
             });
+      // ICR-2: the signed response body carries the recorded proposal (A7).
+      if (draft.body.proposal === null)
+        throw new Error(`attested fixture draft ${seq} has no proposal`);
       evidence = await buildTestEvidence({
         nonce,
         requestBody: JSON.stringify({ fixture: FIXTURE_LABEL, seq, part: "request" }),
-        responseBody: JSON.stringify({ fixture: FIXTURE_LABEL, seq, part: "response" }),
+        proposal: draft.body.proposal,
         chatId: `chatcmpl-test-fixture-${seq}`,
         fetchedAt: draft.body.at,
       });

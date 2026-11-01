@@ -1,5 +1,6 @@
 import type { ModelProposal, PayeeHint } from "./types.js";
 
+/** Unicode code points, as JSON Schema `maxLength` counts them (not UTF-16 units). */
 export const MAX_REASONING_CHARS = 2000;
 
 export class ProposalParseError extends Error {
@@ -34,6 +35,22 @@ export const MODEL_PROPOSAL_JSON_SCHEMA = {
     confidence: { type: "number", minimum: 0, maximum: 1 },
   },
 } as const;
+
+/**
+ * Keeps the first `max` code points. A cut by UTF-16 units can split a surrogate pair and leave a lone
+ * surrogate, which canonicalJson refuses, so a model answer could then never be written to the ledger.
+ */
+function truncateCodePoints(text: string, max: number): string {
+  if (text.length <= max) return text; // units >= code points, so this is already short enough
+  let count = 0;
+  let end = 0;
+  for (const point of text) {
+    if (count === max) break;
+    count += 1;
+    end += point.length;
+  }
+  return text.slice(0, end);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -99,7 +116,7 @@ export function parseModelProposal(value: unknown): ModelProposal {
     mandate_id: mandateId,
     amount,
     payee_hint: parseHint(value.payee_hint),
-    reasoning: reasoning.slice(0, MAX_REASONING_CHARS),
+    reasoning: truncateCodePoints(reasoning, MAX_REASONING_CHARS),
     confidence,
   };
 }
