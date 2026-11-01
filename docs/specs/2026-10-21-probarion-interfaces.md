@@ -365,10 +365,12 @@ Rules:
 Nonce:
 
 ```
-nonce = sha256( utf8("probarion/v1") || bytes32(prev_link) || bytes32(invoice_hash ?? 0x00*32) || u64be(mandate_id ?? 0) || u64be(seq) )
+nonce = sha256( utf8("probarion/v1") || bytes32(prev_link) || bytes32(invoice_hash ?? 0x00*32) || u64be(mandate_id ?? 0) || u64be(seq) || u32be(byteLength(utf8(vault))) || utf8(vault) )
 ```
 
-`seq` is the seq of the decision entry about to be written. The output is lowercase hex of 64 chars.
+`seq` is the seq of the decision entry about to be written. `vault` is the vault account id, the same string as `LedgerEntryBody.vault`; it is appended for every `seq` as a 4-byte big-endian byte length followed by its UTF-8 bytes (ICR-1, 2026-11-01). The length prefix keeps the preimage unambiguous for account ids of any length. The output is lowercase hex of 64 chars.
+
+Why the vault is in the preimage: the first decision of every vault has `prev_link = 0x00*32` and `seq = 0`, and mandate ids restart at 1 in each vault, so without it the seq-0 nonce depends only on `(invoice_hash, mandate_id)` and attestation evidence from one vault's public seq-0 decision would pass A5 and A6 in another vault.
 
 ## 7. Attestation checks (offline, in `@probarion/core/attestation`)
 
@@ -384,7 +386,7 @@ Given an `AttestationEvidence` and the expected nonce:
 | A3 | `report.signing_address` equals `signature.signing_address` |
 | A4 | `report_data` bytes 0–31 hold the 20-byte address left-aligned, zero-padded. If they instead hold `sha256(signer \|\| tls_fingerprint)`, mark `binding: "tls"` and pass A4 only online |
 | A5 | `report_data` bytes 32–63 equal `nonce` |
-| A6 | `nonce` equals the recomputed nonce from the ledger context |
+| A6 | `nonce` equals the recomputed nonce from the ledger context (`prev_link`, `invoice_hash`, `mandate_id`, `seq` and the vault account id) |
 
 Online-only checks (O1 TDX quote via DCAP, O2 NVIDIA NRAS) are **optional**, run behind `--online`, and may use `@nearai/inference-sdk`.
 
@@ -616,3 +618,4 @@ The owning plan adds the marker in the same task that writes the proving test. P
   **Open OWNER decision:** repo visibility. The default recommendation is public from Day 1 (build in public, npm provenance on Day 7).
 - 2026-10-21: accepted plan 05 ICR-16 (claim ID ONE-YOCTO, owned by plan 02) and ICR-17 (Probarion.anchors.latest()).
 - 2026-10-21: recorded plan 03 additions: the extra CLI printers, `verify --evidence`, and the default archival RPC URLs. Interfaces v2 is final for execution.
+- 2026-11-01: ICR-1 from the plan 03 Task 3 review: bound the §6 ledger nonce to the vault. Why: the seq-0 nonce was not bound to a vault (every vault's first decision has `prev_link` = 0x00*32 and `seq` = 0, and mandate ids restart at 1), so NEAR AI evidence from one vault's seq-0 decision could be reused in another vault. What: `u32be(len) || utf8(vault)` is appended to the nonce preimage for every `seq`; A6 recomputes with the vault. `computeNonce` takes `vault`.
