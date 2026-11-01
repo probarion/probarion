@@ -66,6 +66,8 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
   git add contracts/code-hashes.json && git commit -m "chore: record probarion-vault reproducible code hash"
   ```
 
+  The factory records the same way: download `-n probarion-factory-wasm` and use `probarion-factory factory <dir>/probarion_factory.wasm`.
+
 - **R9:** any change to `contracts/vault`, `contracts/Cargo.toml` or `contracts/Cargo.lock` makes the record stale. Re-record right after the push that changes them: take the artifact of that push run and run `record`. Until then CI warns "not recorded" and a `v*` tag fails.
 - Every deploy uses only a CI-built reproducible wasm whose `code_hash` is in `contracts/code-hashes.json` (`check` passes). A deploy script may fall back to a local non-reproducible build only when `ALLOW_NON_REPRODUCIBLE=1` is set, with a loud warning. The testnet smoke may set it; mainnet never may.
 - Compare a deployed contract: `curl -s https://rpc.mainnet.fastnear.com -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"query","params":{"request_type":"view_account","finality":"final","account_id":"v0.probarion.near"}}' | jq -r .result.code_hash`

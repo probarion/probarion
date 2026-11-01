@@ -8,7 +8,8 @@
 #
 # This runs in CI (job `reproducible`: ubuntu, Docker). The Windows dev machine has no Docker, and
 # a local `--no-abi` build is never a source of code hashes (R6): record hashes only from the
-# `probarion-vault-wasm` artifact of a CI push run (scripts/code-hash.mjs record).
+# `<crate>-wasm` artifact (`probarion-vault-wasm` or `probarion-factory-wasm`) of a CI push run
+# (scripts/code-hash.mjs record).
 #
 # SRC_DIR: the checkout to build. Default: this repo. CI points it at a clone of the recorded commit,
 # because the wasm embeds the commit it was built from (see scripts/code-hash.mjs).
