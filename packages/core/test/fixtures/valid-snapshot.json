@@ -1,13 +1,13 @@
 {
   "v": 1,
-  "vault": "fixture.vaults.probarion.testnet",
+  "vault": "x.vaults.probarion.testnet",
   "network": "testnet",
   "taken_at": "2026-11-05T12:00:00.000Z",
   "ledger": [
     {
       "body": {
         "v": 1,
-        "vault": "fixture.vaults.probarion.testnet",
+        "vault": "x.vaults.probarion.testnet",
         "settlement": null,
         "refs": null,
         "kind": "decision",
@@ -29,14 +29,84 @@
         },
         "rules": [
           {
+            "id": "vault.frozen",
+            "outcome": "pass",
+            "detail": "vault is not frozen"
+          },
+          {
             "id": "mandate.none",
             "outcome": "pass",
             "detail": "mandate 1 selected by proposal"
           },
           {
+            "id": "mandate.inactive",
+            "outcome": "pass",
+            "detail": "mandate 1 is not revoked (status active)"
+          },
+          {
+            "id": "mandate.expired",
+            "outcome": "pass",
+            "detail": "expires at 1825408800000000000 ns"
+          },
+          {
+            "id": "mandate.agent_mismatch",
+            "outcome": "pass",
+            "detail": "agent key matches the mandate"
+          },
+          {
+            "id": "invoice.po_mismatch",
+            "outcome": "pass",
+            "detail": "purpose matches mandate 1"
+          },
+          {
             "id": "mandate.payee_mismatch",
             "outcome": "pass",
             "detail": "destination is the mandate payee near:vendor.fixture.testnet"
+          },
+          {
+            "id": "invoice.amount_invalid",
+            "outcome": "pass",
+            "detail": "amount 25000000"
+          },
+          {
+            "id": "mandate.over_per_payment",
+            "outcome": "pass",
+            "detail": "amount 25000000 vs per-payment cap 25000000"
+          },
+          {
+            "id": "mandate.uses_exhausted",
+            "outcome": "pass",
+            "detail": "0 of 4 uses consumed"
+          },
+          {
+            "id": "mandate.over_total",
+            "outcome": "pass",
+            "detail": "spent + reserved + amount = 25000000 vs total cap 100000000"
+          },
+          {
+            "id": "invoice.duplicate",
+            "outcome": "pass",
+            "detail": "invoice and ref are unused"
+          },
+          {
+            "id": "vault.daily_backstop",
+            "outcome": "pass",
+            "detail": "today 25000000 of backstop 500000000"
+          },
+          {
+            "id": "intents.balance_low",
+            "outcome": "pass",
+            "detail": "not an Intents payee"
+          },
+          {
+            "id": "model.refused",
+            "outcome": "pass",
+            "detail": "model proposed pay"
+          },
+          {
+            "id": "model.low_confidence",
+            "outcome": "pass",
+            "detail": "confidence 0.93 (floor 0.7)"
           }
         ],
         "verdict": "allow",
@@ -48,39 +118,40 @@
           "provider": "near-ai-cloud",
           "model": "test-fixture/not-a-real-model",
           "chat_id": "chatcmpl-test-fixture-0",
-          "nonce": "6fe82acb3bd64065e7e0a74c9e946f8374f0d509586200a27f752084d25b67c9",
+          "nonce": "15db0847a46305317a4ba08a30e9bb5ce71f7277de6a5b79886b3996cbe28b50",
           "request_sha256": "84fe0374ddf4c3627ebc1a9d816c3a0658364ca5c23542c00c8145a4bd6ce281",
-          "response_sha256": "e4a7efd75cccf3f0f4bdc84d52cd8681495896e2251ba99448bd6aec57c7900e",
+          "response_sha256": "42d5df622b8367be0c533ba980dd766e07e4a257c742f822a6e10a7122e1dfff",
+          "response_body": "{\"id\":\"chatcmpl-test-fixture-0\",\"object\":\"chat.completion\",\"model\":\"test-fixture/not-a-real-model\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"action\\\":\\\"pay\\\",\\\"mandate_id\\\":1,\\\"amount\\\":\\\"25000000\\\",\\\"payee_hint\\\":{\\\"near_account\\\":\\\"vendor.fixture.testnet\\\",\\\"name\\\":\\\"Fixture Vendor\\\"},\\\"reasoning\\\":\\\"TEST FIXTURE: not a real NEAR AI Cloud attestation. Invoice A matches PO-1001.\\\",\\\"confidence\\\":0.93}\"},\"finish_reason\":\"stop\"}],\"fixture\":\"TEST FIXTURE: not a real NEAR AI Cloud attestation\"}",
           "signature": {
-            "text": "test-fixture/not-a-real-model:84fe0374ddf4c3627ebc1a9d816c3a0658364ca5c23542c00c8145a4bd6ce281:e4a7efd75cccf3f0f4bdc84d52cd8681495896e2251ba99448bd6aec57c7900e",
-            "signature": "0x2c5bcbce141786f44413b4cc1db2ccc703165c6368456d34fa665f83b251624e64dea7fe1c358d9a70d394cec1cd9515370c384776c43d4153158204037e6ea91c",
+            "text": "test-fixture/not-a-real-model:84fe0374ddf4c3627ebc1a9d816c3a0658364ca5c23542c00c8145a4bd6ce281:42d5df622b8367be0c533ba980dd766e07e4a257c742f822a6e10a7122e1dfff",
+            "signature": "0xbace10807f0a6639f35639f35614b9dcb2e22f629345aa1998706a7ef5e8d43b0d38ffa558cd366c91470682bb27ac6414b91c619fb5eb0426b7b150471a02c01c",
             "signing_address": "0x39cf9b81BEdE0a4e0685772cA85Bf0AacF11F7E8",
             "signing_algo": "ecdsa"
           },
           "report": {
             "signing_address": "0x39cf9b81BEdE0a4e0685772cA85Bf0AacF11F7E8",
             "signing_algo": "ecdsa",
-            "request_nonce": "6fe82acb3bd64065e7e0a74c9e946f8374f0d509586200a27f752084d25b67c9",
-            "report_data": "39cf9b81bede0a4e0685772ca85bf0aacf11f7e80000000000000000000000006fe82acb3bd64065e7e0a74c9e946f8374f0d509586200a27f752084d25b67c9",
-            "intel_quote": "040000000000000050524f424152494f4e20544553542046495854555245202d204e4f542041205444582051554f54450000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000039cf9b81bede0a4e0685772ca85bf0aacf11f7e80000000000000000000000006fe82acb3bd64065e7e0a74c9e946f8374f0d509586200a27f752084d25b67c9",
+            "request_nonce": "15db0847a46305317a4ba08a30e9bb5ce71f7277de6a5b79886b3996cbe28b50",
+            "report_data": "39cf9b81bede0a4e0685772ca85bf0aacf11f7e800000000000000000000000015db0847a46305317a4ba08a30e9bb5ce71f7277de6a5b79886b3996cbe28b50",
+            "intel_quote": "040000008100000050524f424152494f4e20544553542046495854555245202d204e4f542041205444582051554f54450000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000039cf9b81bede0a4e0685772ca85bf0aacf11f7e800000000000000000000000015db0847a46305317a4ba08a30e9bb5ce71f7277de6a5b79886b3996cbe28b50",
             "nvidia_payload": null,
             "event_log": null
           },
           "fetched_at": "2026-11-05T10:00:00.000Z"
         }
       },
-      "body_hash": "4a3d252d25a0de24280e3fbdbf74391c394a368a56931e3f623bbca21bd5bca5",
-      "sig": "ed25519:hikouE6wVZRewd8jWRXZHnwZ1XB6hsEcNkMKBRz3VuWs7Sx5pVxdLyuT1zqErSreo5jUkk7GLd6fofdEDmVeqbD",
+      "body_hash": "149be958e28246fdaab48dccd16d12a572478232ad027c58aa2588f158f0c040",
+      "sig": "ed25519:5UqMbFwgU2rhP9ix2L8yQivwuMu9YW9TZHuLw93wtjPQ54SNSVzXDgernRhzPbtUk3nDGMLRmYx9XVNXEb4jRxJz",
       "signer": "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP",
-      "link": "303876cfd451a6742b9c716deef530814289c4b0565253133620759f2fc57b30"
+      "link": "156b7056795fde45f2a1e140222feb884445b9c554d4c7671a2fb2f6c9f0831b"
     },
     {
       "body": {
         "v": 1,
-        "vault": "fixture.vaults.probarion.testnet",
+        "vault": "x.vaults.probarion.testnet",
         "settlement": null,
         "refs": {
-          "decision_body_hash": "4a3d252d25a0de24280e3fbdbf74391c394a368a56931e3f623bbca21bd5bca5"
+          "decision_body_hash": "149be958e28246fdaab48dccd16d12a572478232ad027c58aa2588f158f0c040"
         },
         "kind": "payment",
         "at": "2026-11-05T10:00:05.000Z",
@@ -94,23 +165,23 @@
         "decided_by": null,
         "contract": {
           "code": null,
-          "tx_hash": "FixtureSpendTxA1111111111111111111111111111111",
+          "tx_hash": "Afyz99fesbMSdpHXc5Fc6bqhsaPJ8Wrc7gc8JgBicCsT",
           "spend_id": 1,
           "status": "paid"
         },
         "seq": 1,
-        "prev_link": "303876cfd451a6742b9c716deef530814289c4b0565253133620759f2fc57b30",
+        "prev_link": "156b7056795fde45f2a1e140222feb884445b9c554d4c7671a2fb2f6c9f0831b",
         "evidence": null
       },
-      "body_hash": "2584beb74461a83bac44cce0ca43ddb8e3bbf81bbea11f458e54b0d669e34c8e",
-      "sig": "ed25519:4ugtGj2SKGNhMmJeryiW6Mb1rRFdQg5g8oCTxk4QXdki6sh2fBCJZmZB2C5swY7bN7PpqPHSsg9h9BdSeF3qThr2",
+      "body_hash": "ca1dc330e8630f8b282197120fe4ccae8d7317253ea9967d8dbda4d5718cc96e",
+      "sig": "ed25519:5UbQb7Jec9aQgg1j3xwBH5wTpWMeYpfPR6ek2p26evPBCvJR783Trb6dyMNpDTkJ7UbW2k2W4ZLSycsMKJUDE4av",
       "signer": "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP",
-      "link": "be9b0d4b2421212fc48ba10f69642e2a4a8d6a970e266178fcb933ff0da1dce2"
+      "link": "4a5ddd25e87b3a79ab762cc62c84176ede7835784da586a236a0049fde85f9ab"
     },
     {
       "body": {
         "v": 1,
-        "vault": "fixture.vaults.probarion.testnet",
+        "vault": "x.vaults.probarion.testnet",
         "settlement": null,
         "refs": null,
         "kind": "decision",
@@ -132,62 +203,133 @@
         },
         "rules": [
           {
+            "id": "vault.frozen",
+            "outcome": "pass",
+            "detail": "vault is not frozen"
+          },
+          {
             "id": "mandate.none",
             "outcome": "pass",
             "detail": "mandate 2 selected by proposal"
           },
           {
+            "id": "mandate.inactive",
+            "outcome": "pass",
+            "detail": "mandate 2 is not revoked (status active)"
+          },
+          {
+            "id": "mandate.expired",
+            "outcome": "pass",
+            "detail": "expires at 1825408800000000000 ns"
+          },
+          {
+            "id": "mandate.agent_mismatch",
+            "outcome": "pass",
+            "detail": "agent key matches the mandate"
+          },
+          {
+            "id": "invoice.po_mismatch",
+            "outcome": "pass",
+            "detail": "purpose matches mandate 2"
+          },
+          {
+            "id": "mandate.payee_mismatch",
+            "outcome": "pass",
+            "detail": "destination is the mandate payee base:0x1111111111111111111111111111111111111111 (base-usdc.probarion.testnet)"
+          },
+          {
+            "id": "invoice.amount_invalid",
+            "outcome": "pass",
+            "detail": "amount 40000000"
+          },
+          {
+            "id": "mandate.over_per_payment",
+            "outcome": "pass",
+            "detail": "amount 40000000 vs per-payment cap 50000000"
+          },
+          {
+            "id": "mandate.uses_exhausted",
+            "outcome": "pass",
+            "detail": "0 of 4 uses consumed"
+          },
+          {
+            "id": "mandate.over_total",
+            "outcome": "pass",
+            "detail": "spent + reserved + amount = 40000000 vs total cap 200000000"
+          },
+          {
+            "id": "invoice.duplicate",
+            "outcome": "pass",
+            "detail": "invoice and ref are unused"
+          },
+          {
+            "id": "vault.daily_backstop",
+            "outcome": "pass",
+            "detail": "today 65000000 of backstop 500000000"
+          },
+          {
             "id": "intents.balance_low",
             "outcome": "pass",
             "detail": "POA balance 100000000"
+          },
+          {
+            "id": "model.refused",
+            "outcome": "pass",
+            "detail": "model proposed pay"
+          },
+          {
+            "id": "model.low_confidence",
+            "outcome": "pass",
+            "detail": "confidence 0.91 (floor 0.7)"
           }
         ],
         "verdict": "allow",
         "decided_by": "model+rules",
         "contract": null,
         "seq": 2,
-        "prev_link": "be9b0d4b2421212fc48ba10f69642e2a4a8d6a970e266178fcb933ff0da1dce2",
+        "prev_link": "4a5ddd25e87b3a79ab762cc62c84176ede7835784da586a236a0049fde85f9ab",
         "evidence": {
           "provider": "near-ai-cloud",
           "model": "test-fixture/not-a-real-model",
           "chat_id": "chatcmpl-test-fixture-2",
-          "nonce": "dd25c9722e8c41d444aecab858d0720dfb3121168e17fa42242c7efbb11273d7",
+          "nonce": "df1c26d025ab6670b866997d3373acb01b4642018e73e9a215341355a366f12e",
           "request_sha256": "7fa68a49088470e8b707e7fef9cbf6f68401e15a4a24c7a9744eb56dd7116e79",
-          "response_sha256": "23d7f5699057fd7dac84bfffe4b09de2b8620470b41a167fa494e63333371d48",
+          "response_sha256": "109fb2d4d52ea5d928eca6e8125aee42977ad3b74cdd20d0214eda14226349c9",
+          "response_body": "{\"id\":\"chatcmpl-test-fixture-2\",\"object\":\"chat.completion\",\"model\":\"test-fixture/not-a-real-model\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"action\\\":\\\"pay\\\",\\\"mandate_id\\\":2,\\\"amount\\\":\\\"40000000\\\",\\\"payee_hint\\\":{\\\"chain\\\":\\\"base\\\",\\\"address\\\":\\\"0x1111111111111111111111111111111111111111\\\"},\\\"reasoning\\\":\\\"TEST FIXTURE: not a real NEAR AI Cloud attestation. Invoice B matches PO-2002.\\\",\\\"confidence\\\":0.91}\"},\"finish_reason\":\"stop\"}],\"fixture\":\"TEST FIXTURE: not a real NEAR AI Cloud attestation\"}",
           "signature": {
-            "text": "test-fixture/not-a-real-model:7fa68a49088470e8b707e7fef9cbf6f68401e15a4a24c7a9744eb56dd7116e79:23d7f5699057fd7dac84bfffe4b09de2b8620470b41a167fa494e63333371d48",
-            "signature": "0x762ef3df170c1427ea353b295baa560f55d7544e9aa1a7d4ef5eaf8d3d022d1e6f2d13a9816fa7308fd9299ee6d8f9ae052a75f014b38307f6709aeaed72e7b41b",
+            "text": "test-fixture/not-a-real-model:7fa68a49088470e8b707e7fef9cbf6f68401e15a4a24c7a9744eb56dd7116e79:109fb2d4d52ea5d928eca6e8125aee42977ad3b74cdd20d0214eda14226349c9",
+            "signature": "0x09edcdb2607d4d8c7757e2862c1d10e36bf8b4ed8844bf69b08a97595793057738f63275834cce9b3fc1bc43dcd76e73f5ec319c8adbd21062b14a9ee633874a1c",
             "signing_address": "0x39cf9b81BEdE0a4e0685772cA85Bf0AacF11F7E8",
             "signing_algo": "ecdsa"
           },
           "report": {
             "signing_address": "0x39cf9b81BEdE0a4e0685772cA85Bf0AacF11F7E8",
             "signing_algo": "ecdsa",
-            "request_nonce": "dd25c9722e8c41d444aecab858d0720dfb3121168e17fa42242c7efbb11273d7",
-            "report_data": "39cf9b81bede0a4e0685772ca85bf0aacf11f7e8000000000000000000000000dd25c9722e8c41d444aecab858d0720dfb3121168e17fa42242c7efbb11273d7",
-            "intel_quote": "040000000000000050524f424152494f4e20544553542046495854555245202d204e4f542041205444582051554f54450000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000039cf9b81bede0a4e0685772ca85bf0aacf11f7e8000000000000000000000000dd25c9722e8c41d444aecab858d0720dfb3121168e17fa42242c7efbb11273d7",
+            "request_nonce": "df1c26d025ab6670b866997d3373acb01b4642018e73e9a215341355a366f12e",
+            "report_data": "39cf9b81bede0a4e0685772ca85bf0aacf11f7e8000000000000000000000000df1c26d025ab6670b866997d3373acb01b4642018e73e9a215341355a366f12e",
+            "intel_quote": "040000008100000050524f424152494f4e20544553542046495854555245202d204e4f542041205444582051554f54450000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000039cf9b81bede0a4e0685772ca85bf0aacf11f7e8000000000000000000000000df1c26d025ab6670b866997d3373acb01b4642018e73e9a215341355a366f12e",
             "nvidia_payload": null,
             "event_log": null
           },
           "fetched_at": "2026-11-05T10:10:00.000Z"
         }
       },
-      "body_hash": "273595da0ae0961ec8f4a00078ce3f58027068ec2795097da6bfdec83285bcc0",
-      "sig": "ed25519:4fBx6Fr39ycc2YBhU1LMAmPtuVkLZ35ju646ZcMCQFjqWwHbChAZhKs2GixLdRiUTphAHDH5nZZBdduKM56US3zQ",
+      "body_hash": "36ade9632c9886369f957df7dc6da6ad4fc53a3cd6e68008150d4da45f767a14",
+      "sig": "ed25519:WKPWRuBYEEENyQL1WPao88yCiXRLVeSm6mWvtQ9jpA8g7inoJHDbyUfPXweuuvjdVcQwaTMf27Nz58FsYuWXoDQ",
       "signer": "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP",
-      "link": "e5627c6aa91d9c7ff95e7e0d1d51761e917071a5ebe5f2c3664c642b551ab0ea"
+      "link": "77f62f9c3f81ce621b055996376cb47d15c833b4171e41fc82e4a92ef49e1970"
     },
     {
       "body": {
         "v": 1,
-        "vault": "fixture.vaults.probarion.testnet",
+        "vault": "x.vaults.probarion.testnet",
         "settlement": {
           "chain": "base",
           "tx_hash": null,
-          "burn_tx_hash": "FixtureSpendTxB1111111111111111111111111111111"
+          "burn_tx_hash": "4UViDBu8eHvNMe7WB24hDfDA5un4R5Wmy7ENLWGeRecF"
         },
         "refs": {
-          "decision_body_hash": "273595da0ae0961ec8f4a00078ce3f58027068ec2795097da6bfdec83285bcc0"
+          "decision_body_hash": "36ade9632c9886369f957df7dc6da6ad4fc53a3cd6e68008150d4da45f767a14"
         },
         "kind": "payment",
         "at": "2026-11-05T10:10:20.000Z",
@@ -201,23 +343,23 @@
         "decided_by": null,
         "contract": {
           "code": null,
-          "tx_hash": "FixtureSpendTxB1111111111111111111111111111111",
+          "tx_hash": "4UViDBu8eHvNMe7WB24hDfDA5un4R5Wmy7ENLWGeRecF",
           "spend_id": 2,
           "status": "burned"
         },
         "seq": 3,
-        "prev_link": "e5627c6aa91d9c7ff95e7e0d1d51761e917071a5ebe5f2c3664c642b551ab0ea",
+        "prev_link": "77f62f9c3f81ce621b055996376cb47d15c833b4171e41fc82e4a92ef49e1970",
         "evidence": null
       },
-      "body_hash": "2269730d9c2e448edc43ac54e64f7419764f187503aa71170c3e3a8258a91437",
-      "sig": "ed25519:3nGiW284CFqaX71FLCdcvGFVfg6LTHSUtRUapAeEpGsSBZoH8hcUC1UP8kfWfmapEyAsJ4hXftujK4ancbuuby5i",
+      "body_hash": "a26591c78c265e6266e80bbdc1ce3ed600c1ff9a7e71ad39f0ea09012e34a813",
+      "sig": "ed25519:4VTWNXGnVsNdYjGyxu7YA8p8CP5mn1PTHAyFevysdqnrZ1esXZT8tsyihqMj8st8pyG1FHipfW7TbdCC714BMnA9",
       "signer": "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP",
-      "link": "59575fd86bcacb444e9ad06062dbcc0658775cfb1be3b5628f92eabb7648724b"
+      "link": "c33614856da30f0530b1ecececffe3761fd22ba3653ad6e4da4e46d651de34c9"
     },
     {
       "body": {
         "v": 1,
-        "vault": "fixture.vaults.probarion.testnet",
+        "vault": "x.vaults.probarion.testnet",
         "settlement": null,
         "refs": null,
         "kind": "decision",
@@ -229,22 +371,87 @@
         "proposal": null,
         "rules": [
           {
+            "id": "vault.frozen",
+            "outcome": "pass",
+            "detail": "vault is not frozen"
+          },
+          {
+            "id": "mandate.none",
+            "outcome": "pass",
+            "detail": "mandate 1 selected by purpose_hash"
+          },
+          {
+            "id": "mandate.inactive",
+            "outcome": "pass",
+            "detail": "mandate 1 is not revoked (status active)"
+          },
+          {
+            "id": "mandate.expired",
+            "outcome": "pass",
+            "detail": "expires at 1825408800000000000 ns"
+          },
+          {
+            "id": "mandate.agent_mismatch",
+            "outcome": "pass",
+            "detail": "agent key matches the mandate"
+          },
+          {
+            "id": "invoice.po_mismatch",
+            "outcome": "pass",
+            "detail": "purpose matches mandate 1"
+          },
+          {
             "id": "mandate.payee_mismatch",
             "outcome": "refuse",
-            "detail": "TEST FIXTURE: not a real NEAR AI Cloud attestation. Invoice names NEAR account attacker.fixture.testnet; the mandate pays vendor.fixture.testnet"
+            "detail": "invoice names NEAR account attacker.fixture.testnet; the mandate pays vendor.fixture.testnet"
+          },
+          {
+            "id": "invoice.amount_invalid",
+            "outcome": "pass",
+            "detail": "amount 25000000"
+          },
+          {
+            "id": "mandate.over_per_payment",
+            "outcome": "pass",
+            "detail": "amount 25000000 vs per-payment cap 25000000"
+          },
+          {
+            "id": "mandate.uses_exhausted",
+            "outcome": "pass",
+            "detail": "1 of 4 uses consumed"
+          },
+          {
+            "id": "mandate.over_total",
+            "outcome": "pass",
+            "detail": "spent + reserved + amount = 50000000 vs total cap 100000000"
+          },
+          {
+            "id": "invoice.duplicate",
+            "outcome": "pass",
+            "detail": "invoice and ref are unused"
+          },
+          {
+            "id": "vault.daily_backstop",
+            "outcome": "pass",
+            "detail": "today 90000000 of backstop 500000000"
+          },
+          {
+            "id": "intents.balance_low",
+            "outcome": "pass",
+            "detail": "not an Intents payee"
           }
         ],
         "verdict": "refuse",
         "decided_by": "rules-only",
         "contract": null,
         "seq": 4,
-        "prev_link": "59575fd86bcacb444e9ad06062dbcc0658775cfb1be3b5628f92eabb7648724b",
+        "prev_link": "c33614856da30f0530b1ecececffe3761fd22ba3653ad6e4da4e46d651de34c9",
         "evidence": null
       },
-      "body_hash": "a2d74e4c6a7544640f91f0c65f0be898a900ff9c875a901d57d5bb4ef605c304",
-      "sig": "ed25519:4kj1bv9mctN3rdcASz78XHvdidhehrZsq2FjjhpAnmrgRHdFSrQpjwqsEgGWDRTfFq1udkC8hBEtyVAkVinxkJPe",
+      "body_hash": "349f04dd64fa331c8bceec9efbb3e553c7143f30136c519476d288df52ae8788",
+      "sig": "ed25519:2cgYeuw2yM2iWdNceTfMrJPyFD8MNQMS1sSiqkpsqTn915VRf5w655P3w6tp75EHwCDNdFDF2SLzCRYiy5qxjcva",
       "signer": "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP",
-      "link": "3845f68ddbd7ff65551bbac15137463f5ac3b69ffd420c9ddd5eebbe4026269d"
+      "link": "c8ba2b300285617f510e0ea5cbddd79b4b8d22625c31c73c7e15265dc96aa53e"
     }
   ],
   "chain": {
@@ -252,16 +459,20 @@
       {
         "public_key": "ed25519:BXTijpNmKGnHfXMZUppkCnXG44HBT5zoqXtp3YAaqBr9",
         "permission": {
-          "receiver_id": "fixture.vaults.probarion.testnet",
-          "method_names": ["spend"],
+          "receiver_id": "x.vaults.probarion.testnet",
+          "method_names": [
+            "spend"
+          ],
           "allowance": "1000000000000000000000000"
         }
       },
       {
         "public_key": "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP",
         "permission": {
-          "receiver_id": "fixture.vaults.probarion.testnet",
-          "method_names": ["anchor"],
+          "receiver_id": "x.vaults.probarion.testnet",
+          "method_names": [
+            "anchor"
+          ],
           "allowance": "250000000000000000000000"
         }
       }
@@ -269,10 +480,15 @@
     "code_hash": "9xTTGSkSHPbw2DCumDxoraeR7uL8Pc2ANm5XKjhohnWL",
     "config": {
       "owner": "owner.fixture.testnet",
-      "approvers": ["approver.fixture.testnet"],
+      "approvers": [
+        "approver.fixture.testnet"
+      ],
       "usdc": "usdc.probarion.testnet",
       "intents": "intents-stub.probarion.testnet",
-      "allowed_assets": ["base-usdc.probarion.testnet", "sol-usdc.probarion.testnet"],
+      "allowed_assets": [
+        "base-usdc.probarion.testnet",
+        "sol-usdc.probarion.testnet"
+      ],
       "daily_backstop": "500000000",
       "held_ttl_ns": "259200000000000",
       "frozen": false,
@@ -283,21 +499,21 @@
     "anchors": [
       {
         "seq": 1,
-        "root": "be9b0d4b2421212fc48ba10f69642e2a4a8d6a970e266178fcb933ff0da1dce2",
+        "root": "4a5ddd25e87b3a79ab762cc62c84176ede7835784da586a236a0049fde85f9ab",
         "count": 2,
         "at_ns": "1793872806000000000",
         "ledger_key": "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP"
       },
       {
         "seq": 2,
-        "root": "59575fd86bcacb444e9ad06062dbcc0658775cfb1be3b5628f92eabb7648724b",
+        "root": "c33614856da30f0530b1ecececffe3761fd22ba3653ad6e4da4e46d651de34c9",
         "count": 4,
         "at_ns": "1793873421000000000",
         "ledger_key": "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP"
       },
       {
         "seq": 3,
-        "root": "3845f68ddbd7ff65551bbac15137463f5ac3b69ffd420c9ddd5eebbe4026269d",
+        "root": "c8ba2b300285617f510e0ea5cbddd79b4b8d22625c31c73c7e15265dc96aa53e",
         "count": 5,
         "at_ns": "1793874001000000000",
         "ledger_key": "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP"
@@ -310,7 +526,6 @@
         "amount": "25000000",
         "invoice_hash": "275b70cc9c03bb0e837993299aad1afcaebe6e04977626703892a9ee8f29e965",
         "ref": "FIX-INV-A",
-        "decision_hash": "4a3d252d25a0de24280e3fbdbf74391c394a368a56931e3f623bbca21bd5bca5",
         "agent_pk": "ed25519:BXTijpNmKGnHfXMZUppkCnXG44HBT5zoqXtp3YAaqBr9",
         "destination": {
           "type": "near",
@@ -319,7 +534,8 @@
         "status": "paid",
         "created_at_ns": "1793872805000000000",
         "held_until_ns": null,
-        "memo": null
+        "memo": null,
+        "decision_hash": "149be958e28246fdaab48dccd16d12a572478232ad027c58aa2588f158f0c040"
       },
       {
         "id": 2,
@@ -327,7 +543,6 @@
         "amount": "40000000",
         "invoice_hash": "e4bf55390f34220b93779cf417388973deebac7791c5d1135c2637a58bccd15d",
         "ref": "FIX-INV-B",
-        "decision_hash": "273595da0ae0961ec8f4a00078ce3f58027068ec2795097da6bfdec83285bcc0",
         "agent_pk": "ed25519:BXTijpNmKGnHfXMZUppkCnXG44HBT5zoqXtp3YAaqBr9",
         "destination": {
           "type": "intents",
@@ -338,7 +553,8 @@
         "status": "burned",
         "created_at_ns": "1793873420000000000",
         "held_until_ns": null,
-        "memo": "WITHDRAW_TO:0x1111111111111111111111111111111111111111"
+        "memo": "WITHDRAW_TO:0x1111111111111111111111111111111111111111",
+        "decision_hash": "36ade9632c9886369f957df7dc6da6ad4fc53a3cd6e68008150d4da45f767a14"
       }
     ],
     "intents_public_keys": [],
@@ -349,21 +565,23 @@
         "index": 1,
         "code_hash": "9xTTGSkSHPbw2DCumDxoraeR7uL8Pc2ANm5XKjhohnWL",
         "mode": "global",
-        "notes": "TEST FIXTURE: not a real NEAR AI Cloud attestation",
+        "notes": "TEST FIXTURE factory version",
         "at_ns": "1793750400000000000"
       }
     ],
     "burns": [
       {
         "spend_id": 2,
-        "tx_hash": "FixtureSpendTxB1111111111111111111111111111111",
+        "tx_hash": "4UViDBu8eHvNMe7WB24hDfDA5un4R5Wmy7ENLWGeRecF",
         "memo": "WITHDRAW_TO:0x1111111111111111111111111111111111111111",
-        "intents_owner": "fixture.vaults.probarion.testnet",
+        "intents_owner": "x.vaults.probarion.testnet",
         "amount": "40000000",
         "status": "ok"
       }
     ]
   },
-  "expected_code_hashes": ["9xTTGSkSHPbw2DCumDxoraeR7uL8Pc2ANm5XKjhohnWL"],
+  "expected_code_hashes": [
+    "9xTTGSkSHPbw2DCumDxoraeR7uL8Pc2ANm5XKjhohnWL"
+  ],
   "pre_ledger_decision_hashes": []
 }
