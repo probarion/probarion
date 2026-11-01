@@ -565,6 +565,13 @@ export class NearAiProposer {
         "facts.invoice_hash must be sha256Hex(utf8(invoiceText)), the hash of the text the model sees (ICR-3b)",
       );
     }
+    // ICR-3c: A8 accepts a po_ref only if it occurs verbatim in the invoice text. The adapter copies nothing
+    // itself (the caller's extractor owns po_ref); it refuses facts that A8 would reject.
+    if (input.facts.po_ref !== null && !input.invoiceText.includes(input.facts.po_ref)) {
+      throw new NearAiError(
+        "facts.po_ref must be null or copied verbatim from invoiceText: it is not a substring of the text (ICR-3c)",
+      );
+    }
     const systemPrompt = this.opts.systemPrompt ?? PROPOSAL_SYSTEM_PROMPT;
     // Held to A8's shape before any request, with a placeholder model id (the shape check does not depend on it).
     this.checkShape("unresolved", input, systemPrompt);

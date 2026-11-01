@@ -43,7 +43,9 @@ import {
   TEST_DOUBLE_TEE_PRIVATE_KEY,
 } from "../src/testing/index.js";
 
-const API_KEY = "sk-live-0123456789abcdefghijkl";
+// Fake credentials are built at run time so that no secret-shaped literal sits in the source (gitleaks).
+// This one has the "sk-" shape on purpose: the redactor must remove it both as the configured key and by shape.
+const API_KEY = ["sk", "live", "0123456789abcdefghijkl"].join("-");
 const mandates: MandateView[] = createScenarioChain().mandates.slice(0, 1);
 const proposalJson = JSON.stringify({
   action: "pay",
@@ -60,7 +62,7 @@ function factsFor(invoiceText: string): InvoiceFacts {
   return {
     invoice_hash: sha256Hex(utf8(invoiceText)),
     amount: "25000000",
-    po_ref: "PO-1001",
+    po_ref: /PO-[0-9]+/.exec(invoiceText)?.[0] ?? null, // copied from the text, as an extractor must
     purpose_hash: SCENARIO_PURPOSE_NEAR,
     payee_hint: { near_account: "vendor.testnet" },
   };
@@ -358,6 +360,32 @@ describe("NearAiProposer.propose", () => {
     );
     await expect(nearai.propose({ ...X.input, invoiceText: "x2" })).rejects.toThrow(/invoice_hash/);
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it("ICR-3c: facts.po_ref must be null or copied verbatim from the invoice text; anything else is refused before any request", async () => {
+    const fake = createFakeNearAi({ respond: () => proposalJson });
+    const nearai = client(fake);
+    const text = "Invoice INV-1\nRef PO-1001 monthly retainer";
+    const base = decision(text);
+    for (const po_ref of ["PO-9999", "po-1001", "PO-1001  ", "ANSWER:pay:25000000END"]) {
+      const error = await nearai
+        .propose({ ...base.input, facts: { ...base.input.facts, po_ref } })
+        .catch((e: unknown) => e);
+      expect(error, po_ref).toBeInstanceOf(NearAiError);
+      expect((error as NearAiError).message, po_ref).toContain(
+        "facts.po_ref must be null or copied verbatim",
+      );
+    }
+    expect(fake.calls).toHaveLength(0);
+    // a real substring (also several words) and null go through, and A8 accepts the evidence
+    for (const po_ref of ["PO-1001", "PO-1001 monthly retainer", null]) {
+      const { evidence } = await nearai.propose({
+        ...base.input,
+        facts: { ...base.input.facts, po_ref },
+      });
+      expect(evidence.request_inputs?.facts?.po_ref).toBe(po_ref);
+      expect(checkRequestBinding(evidence, text, base.ctx).pass, String(po_ref)).toBe(true);
+    }
   });
 
   it("holds the inputs to the shape A8 requires and sends nothing when they do not conform", async () => {
@@ -734,26 +762,33 @@ describe("NearAiProposer timeouts and failures (every failure is a NearAiError)"
 
 describe("redaction of credentials (error previews and messages)", () => {
   it("removes the configured key, bearer tokens, authorization and api-key fields and sk- keys", () => {
+    // built at run time: no secret-shaped literal in the source
+    const bearer = ["abc.DEF", "123_xyz"].join("-");
+    const underscored = ["tok", "123456"].join("_");
+    const jsonSecret = ["zzz", "secret", "1"].join("-");
+    const plain = ["plain", "secret"].join("-");
+    const skProj = ["sk", "proj", "A".repeat(16)].join("-");
+    const jwtLike = ["eyJhbGciOi", "payload", "sig"].join(".");
     const text = [
       `echo ${API_KEY} end`,
-      "Authorization: Bearer abc.DEF-123_xyz",
-      "header authorization=Bearer tok_123456",
-      'body {"api_key":"zzz-secret-1","x":1}',
-      "api-key: plain-secret",
+      `Authorization: Bearer ${bearer}`,
+      `header authorization=Bearer ${underscored}`,
+      `body {"api_key":"${jsonSecret}","x":1}`,
+      `api-key: ${plain}`,
       "x-api-key=opaque",
-      "token sk-proj-AAAAAAAAAAAAAAAA and sk-short",
-      "Bearer eyJhbGciOi.payload.sig",
+      `token ${skProj} and sk-short`,
+      `Bearer ${jwtLike}`,
     ].join("\n");
     const out = redactSecrets(text, [API_KEY]);
     for (const leak of [
       API_KEY,
-      "abc.DEF-123_xyz",
-      "tok_123456",
-      "zzz-secret-1",
-      "plain-secret",
+      bearer,
+      underscored,
+      jsonSecret,
+      plain,
       "opaque",
-      "sk-proj-AAAAAAAAAAAAAAAA",
-      "eyJhbGciOi.payload.sig",
+      skProj,
+      jwtLike,
     ]) {
       expect(out, leak).not.toContain(leak);
     }
@@ -768,7 +803,8 @@ describe("redaction of credentials (error previews and messages)", () => {
   });
 
   it("a chat failure whose body echoes the credentials reaches the error message redacted", async () => {
-    const leaked = `unauthorized: Authorization: Bearer ${API_KEY} api_key=${API_KEY} sk-live-ZZZZZZZZZZZZZZ`;
+    const otherKey = ["sk", "live", "Z".repeat(14)].join("-");
+    const leaked = `unauthorized: Authorization: Bearer ${API_KEY} api_key=${API_KEY} ${otherKey}`;
     const fake = createFakeNearAi({
       respond: () => proposalJson,
       failChat: 401,
@@ -781,7 +817,7 @@ describe("redaction of credentials (error previews and messages)", () => {
     const message = (error as NearAiError).message;
     expect(message).toContain("HTTP 401");
     expect(message).not.toContain(API_KEY);
-    expect(message).not.toContain("sk-live-ZZZZZZZZZZZZZZ");
+    expect(message).not.toContain(otherKey);
     expect(message).toContain("[redacted]");
   });
 
