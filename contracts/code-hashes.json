@@ -10,6 +10,28 @@
       "code_hash": "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
       "built_with": "cargo-near 0.22.0 reproducible-wasm, sourcescan/cargo-near:0.22.0-rust-1.99.1",
       "recorded_at": "2026-11-01"
+    },
+    {
+      "crate": "probarion-vault",
+      "version": "0.1.0",
+      "tree": "f22a90836676f79f7be8a3a3d402702e8ac38b6d",
+      "workspace": "221ae317a3ad834a7d0801abf4cd510d387eb7ab",
+      "lock": "e8dc575414d6de50d75df528eb63b342ee087cd4",
+      "commit": "ba654353fa5af4cf2b023badf7e56ddf4caff491",
+      "code_hash": "54Ne1r9g2Smf2Qtrt9VznmPpEAAHzvK4hbQSJ9voQmuD",
+      "built_with": "cargo-near 0.22.0 reproducible-wasm, sourcescan/cargo-near:0.22.0-rust-1.99.1",
+      "recorded_at": "2026-11-01"
+    },
+    {
+      "crate": "probarion-factory",
+      "version": "0.1.0",
+      "tree": "2dc0f5189a3555956ba2047ca9ad86181d33697c",
+      "workspace": "221ae317a3ad834a7d0801abf4cd510d387eb7ab",
+      "lock": "e8dc575414d6de50d75df528eb63b342ee087cd4",
+      "commit": "ba654353fa5af4cf2b023badf7e56ddf4caff491",
+      "code_hash": "91MDwdWx56fYh6rN3VWvnuk5fEv2bc58cv9inGEfnevd",
+      "built_with": "cargo-near 0.22.0 reproducible-wasm, sourcescan/cargo-near:0.22.0-rust-1.99.1",
+      "recorded_at": "2026-11-01"
     }
   ]
 }
