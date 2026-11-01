@@ -53,14 +53,15 @@ function hasExpired(now: Date, expiresAtNs: string): boolean | null {
 }
 
 /**
- * Whether the contract could still accept a spend on this mandate at `now`: not revoked (checks.rs:34),
- * not expired (:37), a use left (:50), and room under the total for the smallest amount, 1 (:53).
- * Unreadable numbers count as not spendable.
+ * Whether the contract could still accept a spend from `agentPk` on this mandate at `now`: not
+ * revoked (checks.rs:34), not expired (:37), bound to this agent (:40), a use left (:50), and room
+ * under the total for the smallest amount, 1 (:53). Unreadable numbers count as not spendable.
  */
-function spendable(m: MandateView, now: Date): boolean {
+function spendable(m: MandateView, now: Date, agentPk: string): boolean {
   if (m.status === "revoked") return false;
   if (hasExpired(now, m.expires_at_ns) !== false) return false;
-  if (m.uses >= m.max_uses) return false;
+  if (m.agent_pk !== agentPk) return false;
+  if (!(m.uses < m.max_uses)) return false; // written so a NaN or missing count fails closed
   const spent = toBig(m.spent);
   const reserved = toBig(m.reserved);
   const total = toBig(m.max_total);
@@ -70,20 +71,23 @@ function spendable(m: MandateView, now: Date): boolean {
 
 /**
  * The mandate the code pre-selects for a purpose: the lowest-id one that is not revoked, not expired
- * at `now`, has a use left and room under its total. If none qualifies it falls back to the lowest-id
- * match, so the decision still refuses with the precise reason (inactive, expired, uses_exhausted,
- * over_total) instead of "no mandate". A trusted `proposal.mandate_id` bypasses this.
+ * at `now`, bound to `agentPk`, has a use left and room under its total. A dead or foreign mandate
+ * (another agent's, e.g. after a key rotation or with two agents on one PO) never shadows a payable
+ * one. If none qualifies it falls back to the lowest-id match, so the decision still refuses with the
+ * precise reason (inactive, expired, agent_mismatch, uses_exhausted, over_total) instead of "no
+ * mandate". A trusted `proposal.mandate_id` bypasses this.
  */
 export function purposeMatch(
   mandates: readonly MandateView[],
   purposeHash: string | null,
   now: Date,
+  agentPk: string,
 ): MandateView | null {
   if (purposeHash === null) return null;
   const matches = mandates
     .filter((m) => m.purpose_hash === purposeHash)
     .sort((a, b) => a.id - b.id);
-  return matches.find((m) => spendable(m, now)) ?? matches[0] ?? null;
+  return matches.find((m) => spendable(m, now, agentPk)) ?? matches[0] ?? null;
 }
 
 export function describePayee(payee: Payee): string {
@@ -241,7 +245,8 @@ function limitRules(m: MandateView, amount: bigint, push: Push): void {
   );
   push(
     "mandate.uses_exhausted",
-    m.uses >= m.max_uses ? "refuse" : "pass",
+    // checks.rs:50 refuses `uses >= max_uses`; written as a negated `<` so a NaN count refuses too.
+    m.uses < m.max_uses ? "pass" : "refuse",
     `${m.uses} of ${m.max_uses} uses consumed`,
   );
 
@@ -418,7 +423,12 @@ export function decide(input: DecisionInput): Decision {
   }
 
   const proposedId = trusted?.mandate_id ?? null;
-  const byPurpose = purposeMatch(input.mandates, input.invoice.purpose_hash, input.now);
+  const byPurpose = purposeMatch(
+    input.mandates,
+    input.invoice.purpose_hash,
+    input.now,
+    input.agentPk,
+  );
   const chosen =
     proposedId !== null ? (input.mandates.find((m) => m.id === proposedId) ?? null) : byPurpose;
 

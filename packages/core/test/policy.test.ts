@@ -226,6 +226,12 @@ const cases: Case[] = [
     rule: ["vault.daily_backstop", "pass"],
   },
   {
+    name: "daily backstop one unit over",
+    input: () => input({ daily: { backstop: "100000000", spent_today: "75000001" } }),
+    verdict: "refuse",
+    rule: ["vault.daily_backstop", "refuse"],
+  },
+  {
     name: "daily data absent passes",
     input: () => input({ daily: null }),
     verdict: "allow",
@@ -267,6 +273,27 @@ const cases: Case[] = [
       }),
     verdict: "allow",
     rule: ["mandate.over_total", "pass"],
+  },
+  {
+    name: "rules-only: a lower-id mandate bound to another agent does not shadow ours",
+    input: () =>
+      rulesOnly({
+        mandates: [mandate({ id: 1, agent_pk: OTHER_AGENT }), mandate({ id: 2 })],
+      }),
+    verdict: "allow",
+    rule: ["mandate.agent_mismatch", "pass"],
+  },
+  {
+    name: "rules-only: every purpose match is bound to another agent, the lowest id explains",
+    input: () =>
+      rulesOnly({
+        mandates: [
+          mandate({ id: 2, agent_pk: OTHER_AGENT }),
+          mandate({ id: 1, agent_pk: OTHER_AGENT }),
+        ],
+      }),
+    verdict: "refuse",
+    rule: ["mandate.agent_mismatch", "refuse"],
   },
   {
     name: "rules-only: every purpose match is dead, the lowest id explains the refusal",
@@ -458,6 +485,20 @@ const cases: Case[] = [
     rule: ["mandate.uses_exhausted", "refuse"],
   },
   {
+    name: "a NaN use count fails closed",
+    input: () => input({ mandates: [mandate({ uses: Number.NaN })] }),
+    verdict: "refuse",
+    rule: ["mandate.uses_exhausted", "refuse"],
+    skipOracle: true,
+  },
+  {
+    name: "a NaN use cap fails closed",
+    input: () => input({ mandates: [mandate({ max_uses: Number.NaN })] }),
+    verdict: "refuse",
+    rule: ["mandate.uses_exhausted", "refuse"],
+    skipOracle: true,
+  },
+  {
     name: "the last remaining use (uses >= max_uses)",
     input: () => input({ mandates: [mandate({ uses: 9 })] }),
     verdict: "allow",
@@ -474,6 +515,12 @@ const cases: Case[] = [
     input: () => input({ mandates: [mandate({ spent: "955000000", reserved: "20000000" })] }),
     verdict: "allow",
     rule: ["mandate.over_total", "pass"],
+  },
+  {
+    name: "one unit over the mandate total",
+    input: () => input({ mandates: [mandate({ spent: "955000001", reserved: "20000000" })] }),
+    verdict: "refuse",
+    rule: ["mandate.over_total", "refuse"],
   },
   {
     name: "reserved counts against the total",
@@ -735,7 +782,8 @@ function contractCode(r: RuleResult, i: DecisionInput): ContractCode | null {
     case "mandate.over_total":
       return "OverMandateTotal";
     case "invoice.duplicate":
-      return r.detail.startsWith("invoice ") ? "DuplicateInvoice" : "DuplicateRef";
+      // One rule id covers both codes; the contract checks the invoice hash first (checks.rs:56, :59).
+      return i.paidInvoiceHashes.has(i.invoice.invoice_hash) ? "DuplicateInvoice" : "DuplicateRef";
     case "vault.daily_backstop":
       return "OverDailyBackstop";
     default:
@@ -800,7 +848,7 @@ describe("decide(): one row per built-in rule", () => {
       const decision = decide(i);
       if (decision.verdict === "refuse") continue;
       expect(decision.mandate_id).toBe(
-        purposeMatch(i.mandates, i.invoice.purpose_hash, i.now)?.id ?? null,
+        purposeMatch(i.mandates, i.invoice.purpose_hash, i.now, i.agentPk)?.id ?? null,
       );
     }
   });
@@ -821,12 +869,14 @@ describe("decide(): purpose pre-selection never lets a dead mandate shadow a liv
     ["out of uses", { uses: 10, status: "exhausted" }],
     ["out of total", { spent: "1000000000", status: "exhausted" }],
     ["reserved up to the total", { spent: "900000000", reserved: "100000000" }],
+    ["bound to another agent", { agent_pk: OTHER_AGENT }],
+    ["with a NaN use count", { uses: Number.NaN }],
   ];
 
   it("chooses the live id-2 mandate over a dead id-1 one, and the contract accepts it", () => {
     for (const [label, overrides] of dead) {
       const i = rulesOnly({ mandates: [mandate({ id: 1, ...overrides }), mandate({ id: 2 })] });
-      expect(purposeMatch(i.mandates, P1, NOW)?.id, label).toBe(2);
+      expect(purposeMatch(i.mandates, P1, NOW, AGENT)?.id, label).toBe(2);
       const d = decide(i);
       expect(d.mandate_id, label).toBe(2);
       expect(d.verdict, label).toBe("allow");
@@ -836,10 +886,10 @@ describe("decide(): purpose pre-selection never lets a dead mandate shadow a liv
 
   it("takes the lowest live id, whatever order the mandates arrive in", () => {
     const ms = [mandate({ id: 3 }), mandate({ id: 2 }), mandate({ id: 1, status: "revoked" })];
-    expect(purposeMatch(ms, P1, NOW)?.id).toBe(2);
+    expect(purposeMatch(ms, P1, NOW, AGENT)?.id).toBe(2);
     expect(ms.map((m) => m.id)).toEqual([3, 2, 1]); // the caller's array is not reordered
     expect(
-      purposeMatch([mandate({ id: 1 }), mandate({ id: 2, status: "revoked" })], P1, NOW)?.id,
+      purposeMatch([mandate({ id: 1 }), mandate({ id: 2, status: "revoked" })], P1, NOW, AGENT)?.id,
     ).toBe(1);
   });
 
@@ -868,6 +918,10 @@ describe("decide(): purpose pre-selection never lets a dead mandate shadow a liv
           mandate({ id: 1, spent: "1000000000", status: "exhausted" }),
         ],
       ],
+      [
+        "mandate.agent_mismatch",
+        [mandate({ id: 2, agent_pk: OTHER_AGENT }), mandate({ id: 1, agent_pk: OTHER_AGENT })],
+      ],
     ];
     for (const [ruleId, mandates] of table) {
       const i = rulesOnly({ mandates });
@@ -880,9 +934,21 @@ describe("decide(): purpose pre-selection never lets a dead mandate shadow a liv
     }
   });
 
+  it("picks the mandate bound to the asking agent (key rotation, two agents on one PO)", () => {
+    const ms = [mandate({ id: 1, agent_pk: OTHER_AGENT }), mandate({ id: 2 })];
+    expect(purposeMatch(ms, P1, NOW, AGENT)?.id).toBe(2);
+    expect(purposeMatch(ms, P1, NOW, OTHER_AGENT)?.id).toBe(1);
+    // Nothing is bound to this agent, so the fallback is the lowest id and the refusal names the
+    // real reason.
+    const only = [mandate({ id: 1, agent_pk: OTHER_AGENT }), mandate({ id: 2, status: "revoked" })];
+    const d = decide(rulesOnly({ mandates: only }));
+    expect(d.mandate_id).toBe(1);
+    expect(rule(d.rules, "mandate.agent_mismatch")?.outcome).toBe("refuse");
+  });
+
   it("returns null when no mandate has the purpose, or the invoice has none", () => {
-    expect(purposeMatch([mandate({ id: 1 })], sha256Hex("other"), NOW)).toBeNull();
-    expect(purposeMatch([mandate({ id: 1 })], null, NOW)).toBeNull();
+    expect(purposeMatch([mandate({ id: 1 })], sha256Hex("other"), NOW, AGENT)).toBeNull();
+    expect(purposeMatch([mandate({ id: 1 })], null, NOW, AGENT)).toBeNull();
   });
 
   it("still takes a trusted proposal's mandate as-is, even when it is dead", () => {
@@ -1192,21 +1258,21 @@ describe("helpers", () => {
 
   it("prefers the lowest-id live mandate for a purpose", () => {
     const ms = [mandate({ id: 3 }), mandate({ id: 1, status: "revoked" }), mandate({ id: 2 })];
-    expect(purposeMatch(ms, P1, NOW)?.id).toBe(2);
-    expect(purposeMatch([mandate({ id: 1, status: "revoked" })], P1, NOW)?.id).toBe(1);
-    expect(purposeMatch(ms, null, NOW)).toBeNull();
+    expect(purposeMatch(ms, P1, NOW, AGENT)?.id).toBe(2);
+    expect(purposeMatch([mandate({ id: 1, status: "revoked" })], P1, NOW, AGENT)?.id).toBe(1);
+    expect(purposeMatch(ms, null, NOW, AGENT)).toBeNull();
   });
 
   it("judges expiry against the clock it is given (now >= expires_at_ns is dead)", () => {
     const ms = [mandate({ id: 1, expires_at_ns: NOW_NS.toString() }), mandate({ id: 2 })];
-    expect(purposeMatch(ms, P1, NOW)?.id).toBe(2);
-    expect(purposeMatch(ms, P1, new Date(NOW.getTime() - 1))?.id).toBe(1);
+    expect(purposeMatch(ms, P1, NOW, AGENT)?.id).toBe(2);
+    expect(purposeMatch(ms, P1, new Date(NOW.getTime() - 1), AGENT)?.id).toBe(1);
   });
 
   it("treats an unreadable clock or expiry as dead, never as live", () => {
     const ms = [mandate({ id: 1, expires_at_ns: "soon" }), mandate({ id: 2 })];
-    expect(purposeMatch(ms, P1, NOW)?.id).toBe(2);
-    expect(purposeMatch(ms, P1, new Date(Number.NaN))?.id).toBe(1); // nothing live: lowest id
+    expect(purposeMatch(ms, P1, NOW, AGENT)?.id).toBe(2);
+    expect(purposeMatch(ms, P1, new Date(Number.NaN), AGENT)?.id).toBe(1); // nothing live: lowest id
   });
 
   it("explains payee contradictions", () => {
