@@ -1,6 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { type Db, DbError } from "@/lib/db/port";
+import { type Db, DbError, toDbError } from "@/lib/db/port";
 import {
   memberRole,
   memberTenants,
@@ -723,6 +723,46 @@ describe("api functions: edges", () => {
     await expect(
       registerTenant(db, { ...input, owner: "eve.near", approvers: [] }),
     ).rejects.toMatchObject({ code: "owner_mismatch" });
+  });
+
+  // The insert-first path has one more outcome: the insert is skipped because the vault already exists, and that row
+  // is gone by the time the re-select runs (a concurrent transaction deleted it). PGlite has one connection, so that
+  // interleaving cannot be produced. A BEFORE INSERT trigger that skips the row reaches the same state: nothing was
+  // inserted and there is nothing to find. It must end in an explicit not_found, not carry a NULL tenant id on into
+  // tenant_members and fail there with a not-null violation.
+  it("tenant_register says not_found when the insert is skipped and no row exists to re-select", async () => {
+    const vault = "ghost.vaults.probarion.near";
+    const code = await pg.transaction(async (tx) => {
+      await tx.exec(`
+        create function public.test_skip_insert() returns trigger language plpgsql as $$ begin return null; end $$;
+        create trigger test_skip_insert before insert on public.tenants
+          for each row execute function public.test_skip_insert();`);
+      let failure: string | null = null;
+      try {
+        await tx.query("select public.tenant_register($1::jsonb) as r", [
+          JSON.stringify({
+            vault_id: vault,
+            network: "mainnet",
+            kind: "external",
+            display_name: "Ghost",
+            owner_account: "ghost.near",
+            approvers: [],
+          }),
+        ]);
+      } catch (e) {
+        failure = toDbError(e).code;
+      }
+      await tx.rollback();
+      return failure;
+    });
+    expect(code).toBe("not_found");
+    // Nothing survived the rollback: no tenant, no member, no trigger function.
+    expect(await pgliteDb(pg).rpc("tenant_by_vault", { vault_id: vault })).toBeNull();
+    const left = await pg.query<{ members: number; fns: number }>(
+      `select (select count(*)::int from public.tenant_members where account_id = 'ghost.near') as members,
+              (select count(*)::int from pg_proc where proname = 'test_skip_insert') as fns`,
+    );
+    expect(left.rows[0]).toEqual({ members: 0, fns: 0 });
   });
 
   it("an owner of one tenant gets nothing back for another tenant's vault", async () => {

@@ -39,11 +39,18 @@ end $$;
 
 -- Per-tenant lease: serialises Payables / Canary cycles so the ledger never forks. A held lease expires on its own.
 --
--- The lease is also a FENCE (W-T3-R1). `until` is the instant the lease runs out, and it is unique to this grant: a
--- later grant starts at or after the earlier one's `until` and runs at least a second, so its `until` is always larger.
--- tenant_release only clears the lease whose `until` it is given back. Without that, a worker that overran its lease
--- (A) would, on finishing, clear the lease its successor (B) holds, and a third worker (C) could start while B still
--- runs. The `until` is returned as the exact text the database wrote, to be passed back unchanged.
+-- The lease is also a FENCE (W-T3-R1). `until` is the instant the lease runs out. tenant_release only clears the lease
+-- whose `until` it is given back. Without that, a worker that overran its lease (A) would, on finishing, clear the
+-- lease its successor (B) holds, and a third worker (C) could start while B still runs. The `until` is returned as the
+-- exact text the database wrote, to be passed back unchanged.
+--
+-- What the fence rests on. When A's lease EXPIRES unreleased, B can only take it from A's `until` onwards and runs at
+-- least a second, so B's `until` is larger and A's late release cannot match it. `until` is NOT a unique token across
+-- all grants, though: after an early release a shorter re-lease can end at the very same instant (90 s at t0, released
+-- at t0+10, then 40 s at t0+50: both end at t0+90). The fence therefore holds because each grant is released exactly
+-- once, by its own holder, which is what withLease does (one release, in `finally`). A caller that released the same
+-- grant twice could free a later grant that happens to share its `until`; nothing but withLease should call
+-- tenant_release.
 --
 -- tenant_id must be a canonical uuid: anything else is invalid_input, not a cast error.
 create or replace function public.tenant_lease(p jsonb) returns jsonb
@@ -145,6 +152,11 @@ begin
   returning id, owner_account into v_id, v_existing_owner;
   if v_id is null then
     select id, owner_account into v_id, v_existing_owner from public.tenants where vault_id = v_vault;
+  end if;
+  -- The insert was skipped and the row it conflicted with is gone again (deleted by a concurrent transaction). Stop
+  -- here: with a NULL id the owner check below is NULL (so it passes) and the member rows would fail on a not-null.
+  if v_id is null then
+    raise exception 'not_found';
   end if;
   if v_existing_owner <> v_owner then
     raise exception 'owner_mismatch';
