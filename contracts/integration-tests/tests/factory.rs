@@ -226,6 +226,7 @@ async fn a_deposit_below_the_embedded_requirement_is_refused() -> Result<()> {
 #[tokio::test]
 async fn publish_global_lets_the_factory_create_vaults_from_the_global_code() -> Result<()> {
     let env = factory_with_embedded_version().await?;
+    let factory_before = env.factory.view_account().await?.balance;
     let published = env
         .factory_owner
         .call(env.factory.id(), "publish_global")
@@ -234,6 +235,16 @@ async fn publish_global_lets_the_factory_create_vaults_from_the_global_code() ->
         .transact()
         .await?;
     assert!(published.is_success(), "{published:?}");
+    // The burn is about 10 NEAR per 100 KB (24.9 NEAR for the 248,501-byte vault wasm), paid from the
+    // factory's own balance.
+    let factory_after = env.factory.view_account().await?.balance;
+    let burned = factory_before
+        .as_yoctonear()
+        .saturating_sub(factory_after.as_yoctonear());
+    assert!(
+        burned >= NearToken::from_near(20).as_yoctonear(),
+        "the factory should have paid the global burn (at least 20 NEAR), it paid {burned} yoctoNEAR"
+    );
     let version = json!({"code_hash": env.hash, "mode": "global", "notes": "sandbox global"});
     let _ = ok(
         &env.factory_owner,

@@ -69,7 +69,7 @@ near contract call-function as-transaction "$FACTORY" create_vault \
   prepaid-gas '300.0 Tgas' attached-deposit '1 NEAR' sign-as "$OWNER_ID" network-config testnet sign-with-keychain send
 near account list-keys "smoke-global.$FACTORY" network-config testnet now
 near contract call-function as-read-only "smoke-global.$FACTORY" get_config json-args '{}' network-config testnet now
-curl -s https://rpc.testnet.fastnear.com -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"query","params":{"request_type":"view_account","finality":"optimistic","account_id":"smoke-global.vaults.probarion.testnet"}}' | grep -o '"global_contract_hash":"[^"]*"'
+curl -s https://rpc.testnet.fastnear.com -H 'content-type: application/json' -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"view_account\",\"finality\":\"optimistic\",\"account_id\":\"smoke-global.$FACTORY\"}}" | grep -o '"global_contract_hash":"[^"]*"'
 ```
 
 Expected:

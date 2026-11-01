@@ -636,7 +636,8 @@ fn publish_global_needs_a_version() {
 #[should_panic(expected = "PROBARION:NotOwner")]
 fn only_the_factory_owner_publishes_global_code() {
     let (mut f, _) = with_version("embedded");
-    ctx(user(), 1);
+    // 0 yocto, like the other owner-only tests: the caller check must run before the yocto check.
+    ctx(user(), 0);
     let _ = f.publish_global();
 }
 

@@ -18,11 +18,13 @@
 // is what CI rebuilds and compares.
 //
 // `scripts/build-reproducible.sh` writes `<lib>.build-info.json` beside the wasm, and the CI job
-// uploads both as the artifact `probarion-vault-wasm`. `record` and `check` read that file to learn
-// the commit, so they work on a downloaded artifact whatever commit is checked out locally.
+// uploads both as the artifact `<crate>-wasm` (`probarion-vault-wasm`, `probarion-factory-wasm`).
+// `record` and `check` read that file to learn the commit, so they work on a downloaded artifact
+// whatever commit is checked out locally.
 //
-// R9: any change to contracts/vault, contracts/Cargo.toml or contracts/Cargo.lock makes the record
-// stale. Re-record right after the push that changes them: take the artifact of that push run
+// R9: any change to contracts/vault or contracts/factory (or to contracts/Cargo.toml or
+// contracts/Cargo.lock, which both crates share) makes that crate's record stale. Re-record right
+// after the push that changes them: take the artifact of that push run
 // (never a pull_request run), run `record`, commit contracts/code-hashes.json. `record` refuses a wasm
 // without its CI build-info (event `push`, a run id): a local build is never a source of hashes (R6). Until then CI warns
 // "not recorded" and a `v*` tag fails. Never deploy a wasm whose hash is not in the record.
