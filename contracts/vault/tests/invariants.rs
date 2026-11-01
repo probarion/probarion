@@ -17,6 +17,16 @@ use std::sync::Once;
 
 const T0: u64 = 1_800_000_000_000_000_000;
 const HOUR: u64 = 3_600_000_000_000;
+/// Largest generated amount, and the per-payment cap, so OverPerPayment never masks other refusals.
+const MAX_AMOUNT: u128 = 35;
+/// Three or four live reservations fill a mandate, so OverMandateTotal fires in most runs.
+const MAX_TOTAL: u128 = 60;
+/// Above both mandates' totals put together (2 x 60), so the daily backstop never masks the total.
+const BACKSTOP: u128 = 150;
+/// Distinct invoice_hash and ref values a run draws from. Refs are never released, so there are
+/// enough of them for a run not to use them all up.
+const INVOICES: u8 = 10;
+const REFS: u8 = 30;
 const LIVE: [SpendStatus; 4] = [
     SpendStatus::Held,
     SpendStatus::Pending,
@@ -93,13 +103,13 @@ fn quiet_contract_panics() {
     });
 }
 
-fn input(payee: Payee) -> MandateInput {
+fn input(payee: Payee, max_uses: u32) -> MandateInput {
     MandateInput {
         payee,
         purpose_hash: hex(0xaa),
-        max_per_payment: U128(30),
-        max_total: U128(100),
-        max_uses: 6,
+        max_per_payment: U128(MAX_AMOUNT),
+        max_total: U128(MAX_TOTAL),
+        max_uses,
         expires_at_ns: U64(T0 + 1_000 * HOUR),
         approval_above: U128(20),
         agent_pk: agent(),
@@ -108,8 +118,8 @@ fn input(payee: Payee) -> MandateInput {
 }
 
 /// Mandate 1 pays a NEAR account, mandate 2 a Base address; mandate 3 does not exist.
-/// The daily backstop (150) is below the two totals (200), so it bites too.
-fn setup() -> Vault {
+/// The daily backstop never bites here (its unit tests cover it); the total and the use count do.
+fn setup(max_uses: u32) -> Vault {
     fresh();
     let mut v = Vault::new(
         acc("owner.near"),
@@ -117,20 +127,26 @@ fn setup() -> Vault {
         acc("usdc.near"),
         acc("intents.near"),
         vec![acc("base-usdc.near")],
-        U128(150),
+        U128(BACKSTOP),
         U64(HOUR),
     );
     ctx("owner.near", T0, NearToken::from_yoctonear(1), vec![]);
     v.add_agent(agent(), U128(10u128.pow(24)), "agent".to_string());
     ctx("owner.near", T0, NearToken::from_near(1), vec![]);
-    v.create_mandate(input(Payee::Near {
-        account_id: acc("payee.near"),
-    }));
-    v.create_mandate(input(Payee::Intents {
-        chain: Chain::Base,
-        address: format!("0x{}", "ab".repeat(20)),
-        asset: acc("base-usdc.near"),
-    }));
+    v.create_mandate(input(
+        Payee::Near {
+            account_id: acc("payee.near"),
+        },
+        max_uses,
+    ));
+    v.create_mandate(input(
+        Payee::Intents {
+            chain: Chain::Base,
+            address: format!("0x{}", "ab".repeat(20)),
+            asset: acc("base-usdc.near"),
+        },
+        max_uses,
+    ));
     v
 }
 
@@ -154,14 +170,20 @@ enum Op {
 
 fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
-        4 => (1..=3u64, 0..=35u128, 0..5u8, 0..10u8)
+        4 => (1..=3u64, 0..=MAX_AMOUNT, 0..INVOICES, 0..REFS)
             .prop_map(|(mandate, amount, invoice, rf)| Op::Spend { mandate, amount, invoice, rf }),
-        2 => (1..=12u64).prop_map(Op::Approve),
-        1 => (1..=12u64).prop_map(Op::Reject),
-        3 => (1..=12u64, any::<bool>()).prop_map(|(spend, ok)| Op::Settle { spend, ok }),
-        1 => (1..=12u64).prop_map(Op::Expire),
+        2 => (1..=16u64).prop_map(Op::Approve),
+        1 => (1..=16u64).prop_map(Op::Reject),
+        3 => (1..=16u64, any::<bool>()).prop_map(|(spend, ok)| Op::Settle { spend, ok }),
+        1 => (1..=16u64).prop_map(Op::Expire),
         1 => (0..=2 * HOUR).prop_map(Op::Advance),
     ]
+}
+
+/// The use cap of both mandates. Mostly generous, so the total binds; sometimes tiny, so the use
+/// count binds and UsesExhausted fires too.
+fn max_uses() -> impl Strategy<Value = u32> {
+    prop_oneof![3 => Just(8u32), 1 => Just(2u32)]
 }
 
 fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
@@ -323,7 +345,8 @@ impl Sim {
     }
 }
 
-/// I2 plus the accounting behind it: reserved = Held + Pending, spent = Paid + Burned, uses = live spends.
+/// I2 plus the accounting behind it: reserved = Held + Pending, spent = Paid + Burned, uses = live
+/// spends and uses <= max_uses.
 fn check_i2(v: &Vault) {
     let (mandates, spends) = state(v);
     for m in &mandates {
@@ -360,6 +383,11 @@ fn check_i2(v: &Vault) {
             "uses != live spends for mandate {}",
             m.id
         );
+        assert!(
+            m.uses <= m.max_uses,
+            "more live spends than max_uses for mandate {}: {m:?}",
+            m.id
+        );
     }
 }
 
@@ -387,10 +415,10 @@ fn check_i3(v: &Vault) {
 }
 
 /// Runs `ops` on a fresh vault and calls `check` after every operation.
-fn run(ops: &[Op], check: fn(&Vault)) {
+fn run(max_uses: u32, ops: &[Op], check: fn(&Vault)) {
     quiet_contract_panics();
     let mut sim = Sim {
-        v: setup(),
+        v: setup(max_uses),
         now: T0 + 1,
     };
     for op in ops {
@@ -404,13 +432,19 @@ proptest! {
 
     // probarion-claim: I2
     #[test]
-    fn i2_spent_plus_reserved_never_exceeds_max_total(ops in proptest::collection::vec(op(), 1..40)) {
-        run(&ops, check_i2);
+    fn i2_spent_plus_reserved_never_exceeds_max_total(
+        uses in max_uses(),
+        ops in proptest::collection::vec(op(), 1..40),
+    ) {
+        run(uses, &ops, check_i2);
     }
 
     // probarion-claim: I3
     #[test]
-    fn i3_each_invoice_hash_is_paid_at_most_once(ops in proptest::collection::vec(op(), 1..40)) {
-        run(&ops, check_i3);
+    fn i3_each_invoice_hash_is_paid_at_most_once(
+        uses in max_uses(),
+        ops in proptest::collection::vec(op(), 1..40),
+    ) {
+        run(uses, &ops, check_i3);
     }
 }
