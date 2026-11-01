@@ -7,6 +7,7 @@ use near_sdk::store::{LookupMap, LookupSet, Vector};
 use near_sdk::{env, near, AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, PublicKey};
 
 mod admin;
+mod anchors;
 pub mod checks;
 pub mod errors;
 pub mod events;
