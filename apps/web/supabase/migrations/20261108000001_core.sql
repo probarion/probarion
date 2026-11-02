@@ -148,6 +148,9 @@ create table public.vault_events (
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   event_key text not null,
   -- 'near_low' (R3): the vault's free NEAR is below the alert threshold (emitted once per UTC day).
+  -- TODO(plan 04 Task 20): the watcher emits it at most once per UTC day while free NEAR (balance minus storage
+  -- stake) is below NEAR_LOW_ALERT_YOCTO, 0.05 NEAR, in apps/web/src/lib/near/runway.ts.
+  -- TODO(plan 04 Task 21): alert_subscription_create puts it in a new subscription's default kinds (as below).
   kind text not null check (kind in (
     'mandate_created', 'spend_held', 'spend_pending', 'spend_paid', 'spend_burned', 'spend_failed',
     'spend_rejected', 'spend_expired', 'refused_by_contract', 'anchor', 'allowance_low', 'near_low')),
