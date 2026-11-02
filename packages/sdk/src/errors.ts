@@ -36,6 +36,19 @@ export class RpcError extends ProbarionError {
   }
 }
 
+/**
+ * A node answered (HTTP 200), but not in a shape this client can read: a garbled result, a field of the wrong
+ * type, an access-key permission it does not know. It is never a transport failure (a node did answer) and
+ * says nothing about the queried target. A stable marker for callers that classify errors, instead of the
+ * message text: the web console calls it "rpc". `attempts` is empty and `rpcError` null.
+ */
+export class RpcMalformedError extends RpcError {
+  override name = "RpcMalformedError";
+  constructor(message: string) {
+    super(message);
+  }
+}
+
 /** Extra context a `ViewError` carries over from the `RpcError` it was built from. */
 export interface ViewErrorContext {
   attempts?: readonly RpcAttempt[];

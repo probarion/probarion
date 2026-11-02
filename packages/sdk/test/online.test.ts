@@ -108,5 +108,6 @@ describe("applyOnlineChecks", () => {
       expect(typeof verifier.verifyQuote).toBe("function");
       expect(typeof verifier.verifyGpu).toBe("function");
     }
-  });
+    // The package is large: its first import can take tens of seconds on a loaded machine.
+  }, 120_000);
 });

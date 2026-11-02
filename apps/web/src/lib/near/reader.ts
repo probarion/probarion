@@ -6,7 +6,14 @@ import type {
   SpendView,
   VaultConfig,
 } from "@probarion/core";
-import { FactoryClient, type RpcClient, RpcError, VaultClient, ViewError } from "@probarion/sdk";
+import {
+  FactoryClient,
+  type RpcClient,
+  RpcError,
+  RpcMalformedError,
+  VaultClient,
+  ViewError,
+} from "@probarion/sdk";
 
 // The console's chain reads, as thin adapters over @probarion/sdk (R9). RPC failover, retry/backoff,
 // URL redaction and strict response parsing all live in the SDK's `RpcClient`; this file only gives
@@ -106,11 +113,12 @@ function legacyResultText(raw: unknown): string | null {
 }
 
 /**
- * An answer the SDK could not read (it words these "...malformed..." and records no attempts, since
- * the node did answer). A failover that gave up always has attempts.
+ * An answer the SDK could not read: the SDK marks every such answer with `RpcMalformedError` (a node did
+ * answer, so it is never an outage). A failover that gave up is a plain `RpcError`; when its last answers were
+ * node errors (INTERNAL_ERROR, UNAVAILABLE_SHARD, NOT_SYNCED_YET) it carries one in `rpcError` and is "rpc".
  */
 function isUnreadableAnswer(error: RpcError): boolean {
-  return error.attempts.length === 0 && /malformed/i.test(error.message);
+  return error instanceof RpcMalformedError;
 }
 
 /** `kind` for an SDK `RpcError` (a `ViewError` is one), or null for anything else (a bad argument, a bug). */
@@ -285,22 +293,10 @@ export function createVaultReader(rpc: RpcClient): VaultReader {
         await rpc.viewAccount(account);
         return true;
       } catch (error) {
+        // The SDK reads both answers for a missing account (the structured UNKNOWN_ACCOUNT error and the
+        // legacy HTTP 200 "account … does not exist while viewing", Task 14) as UNKNOWN_ACCOUNT. Any other
+        // failure is an error, never "the account is not there".
         if (hasCause(error, ["UNKNOWN_ACCOUNT"])) return false;
-        // The SDK cannot read the legacy `result.error` answer for a missing account. If that is
-        // what the node sent, the account is not there; any other unreadable answer is an error.
-        if (
-          error instanceof RpcError &&
-          !(error instanceof ViewError) &&
-          isUnreadableAnswer(error)
-        ) {
-          const raw = await rpc.call<unknown>("query", {
-            request_type: "view_account",
-            finality: "final",
-            account_id: account,
-          });
-          const text = legacyResultText(raw);
-          if (text !== null && MISSING_ACCOUNT.test(text)) return false;
-        }
         throw error;
       }
     },

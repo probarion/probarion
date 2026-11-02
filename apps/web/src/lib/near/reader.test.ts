@@ -1,4 +1,4 @@
-import { ConfigError, RpcError, ViewError } from "@probarion/sdk";
+import { ConfigError, RpcError, RpcMalformedError, ViewError } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import {
   accountResult,
@@ -148,6 +148,38 @@ describe("error classification", () => {
     expect(chainErrorKind(new ConfigError("bad"))).toBeNull();
     expect(chainErrorKind("UNKNOWN_ACCOUNT")).toBeNull();
     expect(isContractError(new Error("UNKNOWN_ACCOUNT"))).toBe(false);
+  });
+
+  it("reads the SDK's RpcMalformedError marker as rpc, never as transport (Task 14 follow-up)", async () => {
+    expect(chainErrorKind(new RpcMalformedError("view_account v.near: malformed result"))).toBe(
+      "rpc",
+    );
+    // The marker, not the message text, decides: an outage that mentions "malformed" stays transport.
+    expect(
+      chainErrorKind(
+        new RpcError("query: all 1 RPC endpoint(s) failed; last error: malformed gateway page", [
+          { url: "https://a.example", error: "HTTP 503" },
+        ]),
+      ),
+    ).toBe("transport");
+    const unknownPermission = readerWith([
+      rpcOk({
+        keys: [{ public_key: "ed25519:K", access_key: { nonce: 1, permission: { NewKind: {} } } }],
+        block_height: 1,
+        block_hash: "h",
+      }),
+    ]);
+    const error = await unknownPermission.rpc.viewAccessKeyList(VAULT).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RpcMalformedError);
+    expect(chainErrorKind(error)).toBe("rpc");
+    // A read every endpoint answers INTERNAL_ERROR fails over, then ends as that node error: rpc.
+    const busy = readerWith(
+      [rpcErr("INTERNAL_ERROR", "INTERNAL_ERROR"), rpcErr("INTERNAL_ERROR", "INTERNAL_ERROR")],
+      ["https://a.example", "https://b.example"],
+      { maxRounds: 1 },
+    );
+    expect(await kindOf(busy.reader.getConfig(VAULT))).toBe("rpc");
+    expect(busy.calls).toHaveLength(2);
   });
 
   it("the fixture builders classify like real failures", async () => {
@@ -470,21 +502,22 @@ describe("account existence", () => {
 
   it("is false for the answer real nodes may send: HTTP 200 with result.error", async () => {
     const text = "account free.vaults.probarion.near does not exist while viewing";
-    const { reader, calls } = readerWith([legacyErr(text), legacyErr(text)]);
+    const { reader, calls, remaining } = readerWith([legacyErr(text)]);
     expect(await reader.accountExists("free.vaults.probarion.near")).toBe(false);
-    // The SDK cannot read that answer, so the adapter looked once more at the raw result.
-    expect(calls.map((c) => c.body.params.request_type)).toEqual(["view_account", "view_account"]);
+    // The SDK reads that answer itself (Task 14): one view_account, no extra raw query.
+    expect(calls.map((c) => c.body.params.request_type)).toEqual(["view_account"]);
+    expect(remaining()).toBe(0);
   });
 
   it("does not answer false for any other unreadable account answer", async () => {
     expect(await kindOf(downReader().reader.accountExists(VAULT))).toBe("transport");
 
-    const garbled = readerWith([rpcOk({ nothing: true }), rpcOk({ nothing: true })]);
+    const garbled = readerWith([rpcOk({ nothing: true })]);
     const error = await garbled.reader.accountExists(VAULT).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(RpcError);
     expect(chainErrorKind(error)).toBe("rpc");
 
-    const refused = readerWith([legacyErr("something else"), legacyErr("something else")]);
+    const refused = readerWith([legacyErr("something else")]);
     expect(await kindOf(refused.reader.accountExists(VAULT))).toBe("rpc");
 
     const busy = readerWith([rpcErr("INTERNAL_ERROR", "INTERNAL_ERROR")]);

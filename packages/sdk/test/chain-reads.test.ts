@@ -1,7 +1,7 @@
 // Task 14 carries A (SDK fixes 1-4 from the web review, R6 code identity): chain reads fail closed and read the
 // answers real nodes give. Everything runs against scripted fetches or the loopback fake RPC server.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { RpcError, ViewError } from "../src/errors.js";
+import { RpcError, RpcMalformedError, ViewError } from "../src/errors.js";
 import { IntentsClient } from "../src/intents-client.js";
 import { codeIdentity, RpcClient } from "../src/rpc.js";
 import {
@@ -287,5 +287,123 @@ describe("the fake RPC server answers missing keys and accounts as nodes do", ()
     expect(
       (await new RpcClient({ urls: [server.url] }).viewAccount(SCENARIO_VAULT)).code_hash,
     ).not.toBe(SCENARIO_CODE_HASH);
+  });
+});
+
+describe("how a failed read ends (web review follow-up): a node answer is never an outage", () => {
+  const cases: [string, string][] = [
+    ["INTERNAL_ERROR", "INTERNAL_ERROR"],
+    ["HANDLER_ERROR", "UNAVAILABLE_SHARD"],
+    ["HANDLER_ERROR", "NOT_SYNCED_YET"],
+  ];
+
+  it.each(cases)(
+    "a read every endpoint answers %s/%s keeps the last node error as rpcError",
+    async (name, cause) => {
+      const { rpc, calls } = client(["https://a.test", "https://b.test"], [rpcError(name, cause)]);
+      const error = (await rpc.viewAccount("a.testnet").catch((e: unknown) => e)) as RpcError;
+      expect(error).toBeInstanceOf(RpcError);
+      expect(calls.length).toBe(4); // 2 rounds over 2 endpoints
+      expect(error.attempts).toHaveLength(4);
+      expect((error.rpcError as { cause: { name: string } }).cause.name).toBe(cause);
+      // A view keeps the old shape: a ViewError carrying the node's error.
+      const view = client(["https://a.test"], [rpcError(name, cause)]);
+      const viewError = await view.rpc
+        .viewFunction("v.testnet", "get_config")
+        .catch((e: unknown) => e);
+      expect(viewError).toBeInstanceOf(ViewError);
+      expect(((viewError as ViewError).rpcError as { cause: { name: string } }).cause.name).toBe(
+        cause,
+      );
+    },
+  );
+
+  it("keeps the node error when an outage follows it, and stays a plain outage without one", async () => {
+    const mixed = client(
+      ["https://a.test", "https://b.test"],
+      [rpcError("INTERNAL_ERROR", "INTERNAL_ERROR"), () => json({ error: "busy" }, 503)],
+    );
+    const error = (await mixed.rpc.viewAccount("a.testnet").catch((e: unknown) => e)) as RpcError;
+    expect((error.rpcError as { name: string }).name).toBe("INTERNAL_ERROR");
+    const down = client(["https://a.test"], [() => json({ error: "busy" }, 503)]);
+    const outage = (await down.rpc.viewAccount("a.testnet").catch((e: unknown) => e)) as RpcError;
+    expect(outage).toBeInstanceOf(RpcError);
+    expect(outage).not.toBeInstanceOf(RpcMalformedError);
+    expect(outage.rpcError).toBeNull();
+    expect(outage.attempts.length).toBeGreaterThan(0);
+  });
+
+  it("marks every answer it cannot read as RpcMalformedError (a stable marker, not message text)", async () => {
+    const account = { amount: "1", locked: "0", code_hash: "Hash111", storage_usage: 1 };
+    const reads: [string, () => Promise<unknown>, unknown][] = [
+      [
+        "a garbled view_account",
+        () => client(["https://a.test"], [ok({ nothing: true })]).rpc.viewAccount("a.testnet"),
+        null,
+      ],
+      [
+        "a wrong-typed amount",
+        () =>
+          client(["https://a.test"], [ok({ ...account, amount: 5 })]).rpc.viewAccount("a.testnet"),
+        null,
+      ],
+      [
+        "an unrecognised result.error from view_account",
+        () =>
+          client(
+            ["https://a.test"],
+            [ok({ error: "something else", logs: [], ...BLOCK })],
+          ).rpc.viewAccount("a.testnet"),
+        null,
+      ],
+      [
+        "a garbled key list",
+        () => client(["https://a.test"], [ok({ keys: "x" })]).rpc.viewAccessKeyList("a.testnet"),
+        null,
+      ],
+      [
+        "an unknown permission in the key list",
+        () =>
+          client(
+            ["https://a.test"],
+            [
+              ok({
+                keys: [
+                  {
+                    public_key: "ed25519:K",
+                    access_key: { nonce: 1, permission: { NewKind: {} } },
+                  },
+                ],
+              }),
+            ],
+          ).rpc.viewAccessKeyList("a.testnet"),
+        null,
+      ],
+      [
+        "an unknown permission from view_access_key",
+        () =>
+          client(
+            ["https://a.test"],
+            [ok({ nonce: 1, permission: "NoAccess", ...BLOCK })],
+          ).rpc.viewAccessKey("a.testnet", "ed25519:K"),
+        null,
+      ],
+      [
+        "a garbled tx result",
+        () =>
+          client(["https://a.test"], [ok({ status: {}, transaction: "x" })]).rpc.txStatus(
+            "T",
+            "a.testnet",
+          ),
+        null,
+      ],
+    ];
+    for (const [label, read] of reads) {
+      const error = (await read().catch((e: unknown) => e)) as RpcError;
+      expect(error, label).toBeInstanceOf(RpcMalformedError);
+      expect(error, label).toBeInstanceOf(RpcError);
+      expect(error.name, label).toBe("RpcMalformedError");
+      expect(error.attempts, label).toEqual([]);
+    }
   });
 });

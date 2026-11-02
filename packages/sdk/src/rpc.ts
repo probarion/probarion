@@ -1,6 +1,6 @@
 import { type AccessKeyInfo, NETWORKS } from "@probarion/core";
 import { envValue } from "./env.js";
-import { ConfigError, type RpcAttempt, RpcError, ViewError } from "./errors.js";
+import { ConfigError, type RpcAttempt, RpcError, RpcMalformedError, ViewError } from "./errors.js";
 
 export interface RpcClientOptions {
   urls: readonly string[];
@@ -40,7 +40,14 @@ export interface TxStatusResult {
 
 type Attempt =
   | { kind: "ok"; result: unknown }
-  | { kind: "retry"; message: string; retryAfterMs: number | null; cause?: unknown }
+  | {
+      kind: "retry";
+      message: string;
+      retryAfterMs: number | null;
+      cause?: unknown;
+      /** The node's JSON-RPC error, when a node answered with one that another endpoint may not repeat. */
+      rpcError?: unknown;
+    }
   // `error` is the raw JSON-RPC error object, or `null` for an HTTP-level failure that is not
   // worth a failover (so it never turns into a ViewError).
   | { kind: "fatal"; message: string; error: unknown };
@@ -80,6 +87,16 @@ const READ_TRANSIENT_NAMES: ReadonlySet<string> = new Set([
   "UNAVAILABLE_SHARD",
   "NOT_SYNCED_YET",
 ]);
+
+/** A node answered INTERNAL_ERROR, UNAVAILABLE_SHARD or NOT_SYNCED_YET: worth a failover for a read, but an answer. */
+function isReadTransientAnswer(error: unknown): boolean {
+  if (!isRecord(error)) return false;
+  const cause = isRecord(error.cause) ? error.cause : EMPTY;
+  return (
+    (typeof error.name === "string" && READ_TRANSIENT_NAMES.has(error.name)) ||
+    (typeof cause.name === "string" && READ_TRANSIENT_NAMES.has(cause.name))
+  );
+}
 
 function isTransientRpcError(error: unknown, method: string): boolean {
   if (!isRecord(error)) return false;
@@ -236,11 +253,13 @@ function parsePermission(permission: unknown): Parsed {
 /** One key of a `view_access_key_list` answer. An unknown or malformed permission throws (fail closed). */
 export function toAccessKeyInfo(raw: unknown): AccessKeyInfo {
   if (!isRecord(raw) || typeof raw.public_key !== "string" || !isRecord(raw.access_key)) {
-    throw new RpcError("malformed access key in view_access_key_list");
+    throw new RpcMalformedError("malformed access key in view_access_key_list");
   }
   const parsed = parsePermission(raw.access_key.permission);
   if (!parsed.ok) {
-    throw new RpcError(`malformed access key ${raw.public_key}: ${parsed.problem} (permission)`);
+    throw new RpcMalformedError(
+      `malformed access key ${raw.public_key}: ${parsed.problem} (permission)`,
+    );
   }
   return { public_key: raw.public_key, permission: parsed.permission };
 }
@@ -280,8 +299,8 @@ export function codeIdentity(
   return account.global_contract_hash ?? account.code_hash;
 }
 
-function malformedTx(detail: string): RpcError {
-  return new RpcError(`malformed tx result: ${detail}`);
+function malformedTx(detail: string): RpcMalformedError {
+  return new RpcMalformedError(`malformed tx result: ${detail}`);
 }
 
 function toOutcome(raw: unknown, label: string): ExecutionOutcomeView {
@@ -415,9 +434,12 @@ export class RpcClient {
     }
     if (parsed.error !== undefined && parsed.error !== null) {
       const message = describeRpcError(parsed.error);
-      return isTransientRpcError(parsed.error, method)
-        ? { kind: "retry", message, retryAfterMs: null }
-        : { kind: "fatal", message, error: parsed.error };
+      if (!isTransientRpcError(parsed.error, method)) {
+        return { kind: "fatal", message, error: parsed.error };
+      }
+      return isReadTransientAnswer(parsed.error)
+        ? { kind: "retry", message, retryAfterMs: null, rpcError: parsed.error }
+        : { kind: "retry", message, retryAfterMs: null };
     }
     if (!("result" in parsed)) {
       return {
@@ -436,11 +458,16 @@ export class RpcClient {
    * identical params, so a request that is not idempotent (or whose first try did reach the node)
    * could take effect twice. A JSON-RPC error that is not a timeout is final and thrown at once
    * with the raw error in `rpcError`; transport failures end in an `RpcError` with `rpcError`
-   * `null`, the attempt log and the last underlying error as `cause`.
+   * `null`, the attempt log and the last underlying error as `cause`. A read that failed over on a node's
+   * INTERNAL_ERROR, UNAVAILABLE_SHARD or NOT_SYNCED_YET keeps the last such error in `rpcError` (a node
+   * answered: it is not an outage). An answer this client cannot read is an `RpcMalformedError`.
    */
   async call<T>(method: string, params: unknown): Promise<T> {
     const attempts: RpcAttempt[] = [];
     let lastCause: unknown;
+    // A read that failed over on INTERNAL_ERROR, UNAVAILABLE_SHARD or NOT_SYNCED_YET ends with that node error:
+    // a node did answer, so it is never reported as an outage (rpcError stays null only for transport failures).
+    let nodeError: unknown = null;
     const total = this.maxRounds * this.urls.length;
     for (let n = 0; n < total; n++) {
       const index = (this.preferred + n) % this.urls.length;
@@ -455,6 +482,7 @@ export class RpcClient {
         throw new RpcError(`${method}: ${outcome.message}`, attempts, outcome.error);
       }
       attempts.push({ url: redactUrl(url), error: outcome.message });
+      if (outcome.rpcError !== undefined) nodeError = outcome.rpcError;
       lastCause = outcome.cause ?? new Error(outcome.message);
       if (n < total - 1) await this.sleep(this.delay(n, outcome.retryAfterMs));
     }
@@ -463,7 +491,7 @@ export class RpcClient {
     throw new RpcError(
       `${method}: all ${this.urls.length} RPC endpoint(s) failed after ${attempts.length} attempts (tried ${tried}); last error: ${last}`,
       attempts,
-      null,
+      nodeError,
       { cause: lastCause },
     );
   }
@@ -528,7 +556,7 @@ export class RpcClient {
       throw unknownAccountError("view_access_key_list", accountId, result);
     }
     if (!isRecord(result) || !Array.isArray(result.keys)) {
-      throw new RpcError(`view_access_key_list ${accountId}: malformed result`);
+      throw new RpcMalformedError(`view_access_key_list ${accountId}: malformed result`);
     }
     return result.keys.map((key: unknown) => toAccessKeyInfo(key));
   }
@@ -561,7 +589,7 @@ export class RpcClient {
       ? parsePermission(result.permission)
       : bad("the answer is not an object");
     if (!parsed.ok) {
-      throw new RpcError(`view_access_key ${accountId}: ${parsed.problem} (permission)`);
+      throw new RpcMalformedError(`view_access_key ${accountId}: ${parsed.problem} (permission)`);
     }
     return { public_key: publicKey, permission: parsed.permission };
   }
@@ -576,17 +604,17 @@ export class RpcClient {
       throw unknownAccountError("view_account", accountId, result);
     }
     if (!isRecord(result) || typeof result.code_hash !== "string") {
-      throw new RpcError(`view_account ${accountId}: malformed result`);
+      throw new RpcMalformedError(`view_account ${accountId}: malformed result`);
     }
     const { amount, locked, storage_usage: storage } = result;
     if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
-      throw new RpcError(`view_account ${accountId}: malformed amount`);
+      throw new RpcMalformedError(`view_account ${accountId}: malformed amount`);
     }
     if (typeof locked !== "string" || !/^\d+$/.test(locked)) {
-      throw new RpcError(`view_account ${accountId}: malformed locked`);
+      throw new RpcMalformedError(`view_account ${accountId}: malformed locked`);
     }
     if (typeof storage !== "number" || !Number.isSafeInteger(storage) || storage < 0) {
-      throw new RpcError(`view_account ${accountId}: malformed storage_usage`);
+      throw new RpcMalformedError(`view_account ${accountId}: malformed storage_usage`);
     }
     // R6 (NEP-591): RPC omits global_contract_hash for an account that deploys its own code.
     const globalHash = result.global_contract_hash;
@@ -595,7 +623,7 @@ export class RpcClient {
       globalHash !== null &&
       (typeof globalHash !== "string" || globalHash.length === 0)
     ) {
-      throw new RpcError(`view_account ${accountId}: malformed global_contract_hash`);
+      throw new RpcMalformedError(`view_account ${accountId}: malformed global_contract_hash`);
     }
     return {
       amount,
