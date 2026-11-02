@@ -225,14 +225,15 @@ describe("schema and RLS", () => {
         expect(r.rows[0]?.ok, `${role} ${priv}`).toBe(false);
       }
     }
-    // The service key still does its job: it reads and inserts, and the trigger still blocks rewrites.
+    // The service key still reads the ledger; it writes only through ledger_append (migration 0004 revokes INSERT, UPDATE
+    // and DELETE), and the trigger still blocks rewrites for every role that could reach it.
     const rows = await asRole(pg, "service_role", null, (tx) =>
       tx.query("select 1 from public.ledger_entries"),
     );
     expect(rows.rows.length).toBe(2);
     await expect(
       asRole(pg, "service_role", null, (tx) => tx.query("delete from public.ledger_entries")),
-    ).rejects.toThrow(/ledger_append_only/);
+    ).rejects.toThrow(/permission denied|ledger_append_only/);
   });
 
   it("refuses invoice content when retention is off", async () => {

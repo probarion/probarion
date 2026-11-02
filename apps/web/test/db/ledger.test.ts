@@ -15,7 +15,12 @@ import {
 import { composeBody, FileLedgerStore, LedgerConflictError, LedgerError } from "@probarion/sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "@/lib/db/port";
-import { PublicLedgerStore, SupabaseLedgerStore } from "@/lib/ledger/store";
+import {
+  PUBLIC_LEDGER_PAGE,
+  type PublicLedgerRow,
+  PublicLedgerStore,
+  SupabaseLedgerStore,
+} from "@/lib/ledger/store";
 import { appendBody, testSigner } from "../fixtures/ledger";
 import { makeSnapshot } from "../fixtures/snapshot";
 import { asRole, freshDb, seedTenant } from "./harness";
@@ -81,6 +86,20 @@ function appendArgs(
     body_text: JSON.stringify(e.body),
     expect,
   };
+}
+
+/**
+ * `n` hand-made rows (seq 0..n-1, each with a distinct prev_link and hash), written as the table owner, only to get
+ * past a page size cheaply. They are not a valid chain: reads and paging do not care.
+ */
+async function junkRows(pg: PGlite, tenantId: string, n: number): Promise<void> {
+  await pg.query(
+    `insert into public.ledger_entries (tenant_id, seq, kind, body, body_hash, sig, signer, link, request_id)
+     select $1, i, 'note', jsonb_build_object('seq', i, 'prev_link', md5(i::text) || md5((i + 1000)::text)),
+            md5(i::text) || md5((i + 2000)::text), 'ed25519:s', 'ed25519:p', md5(i::text) || md5((i + 3000)::text), 'r'
+     from generate_series(0, $2::int - 1) i`,
+    [tenantId, n],
+  );
 }
 
 /** Every `ledger_head` read must finish before any `ledger_append` may start: the interleaving of a race. */
@@ -186,14 +205,7 @@ describe("SupabaseLedgerStore: persistence", () => {
 
   it("returns entries from a seq on, at most 500 at a time", async () => {
     const { id } = await f.tenant();
-    // Direct inserts (the table owner), only to get past 500 cheaply; the chain is irrelevant to this read.
-    await f.pg.query(
-      `insert into public.ledger_entries (tenant_id, seq, kind, body, body_hash, sig, signer, link, request_id)
-       select $1, i, 'note', jsonb_build_object('seq', i, 'prev_link', md5(i::text) || md5((i + 1000)::text)),
-              md5(i::text) || md5((i + 2000)::text), 'ed25519:s', 'ed25519:p', md5(i::text) || md5((i + 3000)::text), 'r'
-       from generate_series(0, 599) i`,
-      [id],
-    );
+    await junkRows(f.pg, id, 600); // the chain is irrelevant to this read
     const store = new SupabaseLedgerStore(f.service, id);
     expect((await store.since(0)).map((e) => e.body.seq)).toEqual([...Array(500).keys()]);
     expect((await store.since(500)).map((e) => e.body.seq)).toEqual(
@@ -289,7 +301,8 @@ describe("SupabaseLedgerStore: the chain never forks", () => {
 
   it("concurrent appends leave one winner and a LedgerConflictError (Review Focus #2)", async () => {
     const { id, vault } = await f.tenant();
-    // Two instances, each with its own database session, as two serverless invocations would be.
+    // Two store instances with their own Db handles, as two serverless invocations would have. Both still run on ONE
+    // PGlite backend (one connection, one transaction at a time), so this exercises the logic, not parallel execution.
     const a = new SupabaseLedgerStore(pgliteDb(f.pg), id);
     const b = new SupabaseLedgerStore(pgliteDb(f.pg), id);
     const results = await Promise.allSettled([
@@ -396,6 +409,44 @@ describe("SupabaseLedgerStore: the chain never forks", () => {
       f.service.rpc("ledger_append", appendArgs(id, e1, { seq: 0, prev_link: ZERO_LINK })),
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(await f.count(id)).toBe(0);
+  });
+
+  it("an insert that loses to a unique key is reported as ledger_conflict, not as a raw duplicate", async () => {
+    const { id, vault } = await f.tenant();
+    const store = new SupabaseLedgerStore(f.service, id);
+    const e0 = await store.append(appendBody(vault, { request_id: "e0" }), signer.sign);
+    // The head check passes for this entry (it is at seq 1 on e0's link), but it carries e0's body_hash, so the INSERT
+    // itself collides with the unique key (tenant, body_hash). SQL cannot recompute hashes (that is core's job), so a
+    // crafted payload is how to reach the INSERT's own failure, which is what a lost race looks like.
+    const e1 = await entryAt(vault, 1, e0.link, "e1");
+    const err = await f.service
+      .rpc("ledger_append", appendArgs(id, { ...e1, body_hash: e0.body_hash }))
+      .catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "ledger_conflict" });
+    expect((err as Error).message).toMatch(/the head gives seq 1 on prev_link [0-9a-f]{64}/);
+    expect(await f.count(id)).toBe(1);
+  });
+
+  it("ledger_append holds a transaction-scoped advisory lock (what serialises two appends of one tenant)", async () => {
+    const { id, vault } = await f.tenant();
+    const e0 = await entryAt(vault, 0, ZERO_LINK, "lock");
+    const advisory = async (q: (sql: string) => Promise<{ rows: { n: number }[] }>) =>
+      (
+        await q(
+          "select count(*)::int as n from pg_locks where locktype = 'advisory' and granted and pid = pg_backend_pid()",
+        )
+      ).rows[0]?.n;
+    const [before, during] = await asRole(f.pg, "service_role", null, async (tx) => {
+      const b = await advisory((sql) => tx.query<{ n: number }>(sql));
+      await tx.query("select public.ledger_append($1::jsonb)", [
+        JSON.stringify(appendArgs(id, e0)),
+      ]);
+      return [b, await advisory((sql) => tx.query<{ n: number }>(sql))];
+    });
+    expect(before).toBe(0);
+    expect(during).toBe(1);
+    expect(await advisory((sql) => f.pg.query<{ n: number }>(sql))).toBe(0); // released at commit
+    expect(await f.count(id)).toBe(1);
   });
 
   it("ledger_append validates its input before it writes", async () => {
@@ -589,6 +640,30 @@ describe("SupabaseLedgerStore: what it refuses to write", () => {
     expect(await f.count(id)).toBe(1);
   });
 
+  it("an error code is read from the front of the message: a vault named ledger_conflict.near is invalid_input", async () => {
+    const { id, vault } = await f.tenant();
+    const store = new SupabaseLedgerStore(f.service, id);
+    // An entry for a vault named like an error code, into a tenant whose vault is another one.
+    const err = await store.append(appendBody("ledger_conflict.near"), signer.sign).catch((e) => e);
+    expect(err).toBeInstanceOf(LedgerError);
+    expect(err).not.toBeInstanceOf(LedgerConflictError);
+    expect((err as Error).message).toMatch(
+      /invalid_input: the entry is for vault ledger_conflict\.near/,
+    );
+    const raw = await entryAt("ledger_conflict.near", 0, ZERO_LINK);
+    await expect(f.service.rpc("ledger_append", appendArgs(id, raw))).rejects.toMatchObject({
+      code: "invalid_input",
+    });
+    // And the other way round: a tenant whose own vault has that name.
+    const oddId = await seedTenant(f.pg, { vault: "ledger_conflict.near", owner: "acme.near" });
+    const odd = new SupabaseLedgerStore(f.service, oddId);
+    const err2 = await odd.append(appendBody(vault), signer.sign).catch((e) => e);
+    expect(err2).toBeInstanceOf(LedgerError);
+    expect(err2).not.toBeInstanceOf(LedgerConflictError);
+    expect(await f.count(id)).toBe(0);
+    expect(await f.count(oddId)).toBe(0);
+  });
+
   it("refuses to chain onto a head that does not recompute under core", async () => {
     const { id, vault } = await f.tenant();
     // Not an entry the store wrote: a direct insert whose body_hash is not the hash of its body.
@@ -713,7 +788,6 @@ describe("public proof: anon reads only what the owner made public", () => {
   });
 
   const PUBLIC_KEYS = [
-    "body",
     "body_hash",
     "body_text",
     "created_at",
@@ -773,6 +847,105 @@ describe("public proof: anon reads only what the owner made public", () => {
       vault_id: pub.vault,
     });
     expect(Object.keys(rows[0] ?? {}).sort()).toEqual(PUBLIC_KEYS);
+    // The body travels once, as text; there is no jsonb copy.
+    expect(typeof rows[0]?.body_text).toBe("string");
+    expect(rows[0]).not.toHaveProperty("body");
+  });
+
+  it("pages public_ledger: at most 500 rows a call, from_seq is the cursor, and each row carries the body once", async () => {
+    const pub = await f.tenant({ proofPublic: true });
+    await junkRows(f.pg, pub.id, 600);
+    const page = (p: Record<string, unknown>) =>
+      f.anon.rpc<PublicLedgerRow[]>("public_ledger", { vault_id: pub.vault, ...p });
+    const seqs = (rows: PublicLedgerRow[]) => rows.map((r) => r.seq);
+    expect(seqs(await page({}))).toEqual([...Array(500).keys()]); // the default is the maximum
+    expect(await page({ limit: 5000 })).toHaveLength(500); // clamped
+    expect(seqs(await page({ limit: 3, from_seq: 10 }))).toEqual([10, 11, 12]);
+    expect(seqs(await page({ from_seq: 598 }))).toEqual([598, 599]);
+    expect(await page({ from_seq: 600 })).toEqual([]);
+    expect(await page({ limit: 0 })).toHaveLength(1); // at least one row
+    // Odd paging input never errors: it falls back to the defaults.
+    for (const odd of [
+      { limit: "abc" },
+      { limit: -5 },
+      { limit: 1.5 },
+      { limit: null },
+      { limit: {} },
+    ]) {
+      expect(await page(odd), JSON.stringify(odd)).toHaveLength(500);
+    }
+    for (const odd of [
+      { from_seq: "x" },
+      { from_seq: -3 },
+      { from_seq: 2.5 },
+      { from_seq: null },
+    ]) {
+      expect(seqs(await page({ ...odd, limit: 2 })), JSON.stringify(odd)).toEqual([0, 1]);
+    }
+    // A row made by hand has no body_text: the public row falls back to the jsonb text, still one copy.
+    const [row] = await page({ limit: 1 });
+    expect(Object.keys(row ?? {}).sort()).toEqual(PUBLIC_KEYS);
+    expect(JSON.parse(row?.body_text ?? "null")).toMatchObject({ seq: 0 });
+    // Paging does not unlock a private vault.
+    const priv = await f.tenant({ proofPublic: false });
+    await junkRows(f.pg, priv.id, 3);
+    expect(
+      await f.anon.rpc("public_ledger", { vault_id: priv.vault, from_seq: 0, limit: 500 }),
+    ).toEqual([]);
+  });
+
+  it("PublicLedgerStore.all joins the pages in order, and asks for the next page from the last seq", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const spy: Db = {
+      rpc: <T>(fn: string, p?: Record<string, unknown>) => {
+        calls.push({ fn, ...p });
+        return f.anon.rpc<T>(fn, p);
+      },
+    };
+    for (const [rows, expectedCalls] of [
+      [0, 1],
+      [100, 1],
+      [PUBLIC_LEDGER_PAGE, 2], // a full page may be the last one: it takes one more call to know
+      [600, 2],
+    ] as const) {
+      const pub = await f.tenant({ proofPublic: true });
+      await junkRows(f.pg, pub.id, rows);
+      calls.length = 0;
+      const all = await new PublicLedgerStore(spy, pub.vault).all();
+      expect(
+        all.map((e) => e.body.seq),
+        `${rows} rows`,
+      ).toEqual([...Array(rows).keys()]);
+      expect(calls, `${rows} rows`).toHaveLength(expectedCalls);
+      expect(calls[0]).toMatchObject({
+        fn: "public_ledger",
+        from_seq: 0,
+        limit: PUBLIC_LEDGER_PAGE,
+      });
+      if (expectedCalls === 2) expect(calls[1]).toMatchObject({ from_seq: 500 });
+    }
+  });
+
+  it("PublicLedgerStore.all refuses a page that does not advance instead of looping", async () => {
+    const stuck = {
+      seq: 0,
+      body_text: "{}",
+      body_hash: "a".repeat(64),
+      sig: "ed25519:s",
+      signer: "ed25519:p",
+      link: "b".repeat(64),
+      kind: "note",
+      created_at: "2026-11-08T00:00:00Z",
+    };
+    let calls = 0;
+    const loop: Db = {
+      rpc: async <T>() => {
+        calls += 1;
+        return Array.from({ length: PUBLIC_LEDGER_PAGE }, () => stuck) as T;
+      },
+    };
+    await expect(new PublicLedgerStore(loop, "x.near").all()).rejects.toThrow(/does not advance/);
+    expect(calls).toBe(2);
   });
 
   it("follows proof_public in both directions", async () => {
@@ -897,6 +1070,50 @@ describe("ledger table constraints (F29)", () => {
         [id, "8".repeat(64)],
       ),
     ).rejects.toThrow(/ledger_entries_body_text_is_body/);
+  });
+
+  it("service_role cannot write the table itself; ledger_append (security definer, pinned search_path) still lands", async () => {
+    const t = await f.tenant();
+    const e0 = await entryAt(t.vault, 0, ZERO_LINK, "direct");
+    const insert = (tx: { query: (sql: string, p?: unknown[]) => Promise<unknown> }) =>
+      tx.query(
+        `insert into public.ledger_entries (tenant_id, seq, kind, body, body_hash, sig, signer, link, request_id)
+         values ($1, 0, 'note', $2::jsonb, $3, $4, $5, $6, 'x')`,
+        [t.id, JSON.stringify(e0.body), e0.body_hash, e0.sig, e0.signer, e0.link],
+      );
+    await expect(asRole(f.pg, "service_role", null, insert)).rejects.toThrow(/permission denied/);
+    await expect(
+      asRole(f.pg, "service_role", null, (tx) =>
+        tx.query("update public.ledger_entries set request_id = 'x'"),
+      ),
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      asRole(f.pg, "service_role", null, (tx) => tx.query("delete from public.ledger_entries")),
+    ).rejects.toThrow(/permission denied/);
+    expect(await f.count(t.id)).toBe(0);
+
+    const privileges = await f.pg.query<{ priv: string; ok: boolean }>(
+      `select p as priv, has_table_privilege('service_role', 'public.ledger_entries', p) as ok
+       from unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) p`,
+    );
+    expect(Object.fromEntries(privileges.rows.map((r) => [r.priv, r.ok]))).toEqual({
+      SELECT: true,
+      INSERT: false,
+      UPDATE: false,
+      DELETE: false,
+    });
+    const fn = await f.pg.query<{ secdef: boolean; cfg: string[] | null }>(
+      `select prosecdef as secdef, proconfig as cfg from pg_proc
+       where proname = 'ledger_append' and pronamespace = 'public'::regnamespace`,
+    );
+    expect(fn.rows[0]?.secdef).toBe(true);
+    expect(fn.rows[0]?.cfg?.some((c) => c.startsWith("search_path="))).toBe(true);
+
+    // The one way in still works, and the service role still reads what it wrote.
+    const store = new SupabaseLedgerStore(f.service, t.id);
+    await store.append(appendBody(t.vault), signer.sign);
+    expect(await f.count(t.id)).toBe(1);
+    expect(await store.all()).toHaveLength(1);
   });
 
   it("the unique key on (tenant, seq) is still there", async () => {

@@ -12,12 +12,15 @@ import type { Network } from "@/lib/config";
 import { type Db, DbError } from "@/lib/db/port";
 import type { TenantKind } from "@/lib/db/tenants";
 
-/** A row as the ledger_* and public_ledger functions return it (`ledger_entry_json`). */
+/** A row as the service-role ledger_* functions return it (`ledger_entry_json`). */
 export interface LedgerRow {
   seq: number;
   /** The body as jsonb: the same value as `body_text`, but with its object keys in jsonb order. */
   body: LedgerEntryBody;
-  /** `JSON.stringify(entry.body)` exactly as core hashed it. Null only for a row inserted by hand. */
+  /**
+   * `JSON.stringify(entry.body)` verbatim, kept for byte parity with the SDK's FileLedgerStore (core hashes
+   * `canonicalJson(body)`, which does not depend on key order). Null only for a row inserted by hand.
+   */
   body_text: string | null;
   body_hash: string;
   sig: string;
@@ -26,6 +29,9 @@ export interface LedgerRow {
   kind: string;
   created_at: string;
 }
+
+/** A row of `public_ledger`: the body once, as text (no jsonb copy). */
+export type PublicLedgerRow = Omit<LedgerRow, "body" | "body_text"> & { body_text: string };
 
 /** What /proof needs to know about a public vault. */
 export interface PublicVault {
@@ -50,7 +56,8 @@ function toEntry(r: unknown): LedgerEntry {
   ) {
     throw new LedgerError("the database returned a ledger row that is not an entry");
   }
-  // body_text is the bytes core hashed, key order included; the jsonb column is only the fallback for a row made by hand.
+  // body_text is the body as the SDK serialised it, key order included, so the entry re-serialises to the same line as
+  // FileLedgerStore's; the jsonb column is only the fallback for a row made by hand.
   const body = (
     typeof r.body_text === "string" ? JSON.parse(r.body_text) : r.body
   ) as LedgerEntryBody;
@@ -236,10 +243,16 @@ export class SupabaseLedgerStore implements LedgerStore {
   }
 }
 
+/** Rows per `public_ledger` call: the function's own maximum (it clamps anything larger). */
+export const PUBLIC_LEDGER_PAGE = 500;
+
 /**
  * Anon-key reader for /proof and snapshot.json. Every read goes through the public_* functions, which answer only for
  * a vault whose owner turned `proof_public` on: for a private vault, and for one that does not exist, `all()` is `[]`,
  * `head()` is null and `vault()` is null. Read-only: `append` always throws.
+ *
+ * `all()` pages through `public_ledger({ vault_id, from_seq, limit })` (at most 500 rows a call, the
+ * cursor is the last row's seq + 1) and joins the pages. `head()` reads the whole ledger the same way.
  */
 export class PublicLedgerStore implements LedgerStore {
   constructor(
@@ -252,7 +265,23 @@ export class PublicLedgerStore implements LedgerStore {
   }
 
   async all(): Promise<LedgerEntry[]> {
-    return toEntries(await this.db.rpc<LedgerRow[]>("public_ledger", { vault_id: this.vaultId }));
+    const entries: LedgerEntry[] = [];
+    let fromSeq = 0;
+    for (;;) {
+      const rows = await this.db.rpc<PublicLedgerRow[]>("public_ledger", {
+        vault_id: this.vaultId,
+        from_seq: fromSeq,
+        limit: PUBLIC_LEDGER_PAGE,
+      });
+      entries.push(...toEntries(rows));
+      if (rows.length < PUBLIC_LEDGER_PAGE) return entries;
+      const last = rows[rows.length - 1]?.seq;
+      // The cursor must move on, or a misbehaving server would make this loop for ever.
+      if (typeof last !== "number" || last < fromSeq) {
+        throw new LedgerError("public_ledger returned a page that does not advance");
+      }
+      fromSeq = last + 1;
+    }
   }
 
   async head(): Promise<LedgerEntry | null> {

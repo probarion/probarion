@@ -3,15 +3,11 @@ export interface Db {
   rpc<T>(fn: string, p?: Record<string, unknown>): Promise<T>;
 }
 
-const KNOWN_CODES = [
-  "ledger_conflict",
-  "ledger_append_only",
-  "invalid_input",
-  "owner_mismatch",
-  "not_found",
-  "duplicate",
-  "permission denied",
-] as const;
+/** Postgres' own messages that carry a code of ours: [the start of the message, the code]. */
+const NATIVE: readonly (readonly [string, string])[] = [
+  ["permission denied", "permission_denied"],
+  ["duplicate", "duplicate"],
+];
 
 export class DbError extends Error {
   constructor(
@@ -34,7 +30,14 @@ export function toDbError(e: unknown): DbError {
         : typeof e === "object" && "message" in e
           ? String((e as { message: unknown }).message)
           : String(e);
-  if (/^[a-z_]+$/.test(msg)) return new DbError(msg);
-  const known = KNOWN_CODES.find((c) => msg.includes(c));
-  return new DbError(known ? known.replace(" ", "_") : "db_error", msg);
+  // Our own functions raise `<code>` or `<code>: detail`, with the code first. Read it as a PREFIX, never as a
+  // substring: the detail can hold text a caller chose (a vault named "ledger_conflict.near" in "invalid_input: the
+  // entry is for vault ledger_conflict.near ..."), and that must not become the code.
+  const coded = /^([a-z_]+)(:|$)/.exec(msg);
+  if (coded?.[1] !== undefined) {
+    return coded[1] === msg ? new DbError(coded[1]) : new DbError(coded[1], msg);
+  }
+  // Postgres' own wording (`permission denied for ...`, `duplicate key value violates ...`), again from the start.
+  const known = NATIVE.find(([phrase]) => msg.startsWith(phrase));
+  return new DbError(known ? known[1] : "db_error", msg);
 }

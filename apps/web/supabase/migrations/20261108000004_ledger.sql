@@ -9,10 +9,11 @@
 -- "RULE FOR EVERY LATER ROUTE"). Only public_vault and public_ledger are open to anon, and both return data only for a
 -- vault whose owner set `tenants.proof_public`.
 
--- The exact text core hashed. jsonb sorts object keys (shorter first, then bytewise) and drops duplicate keys, so a body
--- read back from the `body` column is the same value but not the same bytes the SDK's FileLedgerStore would hold.
--- `body_text` is `JSON.stringify(entry.body)` verbatim; `body` stays for SQL (RLS reads, kind, request_id).
--- NULL only for a row inserted by hand: ledger_append always sets it.
+-- Core hashes `canonicalJson(body)` (RFC 8785: keys sorted), which does not depend on key order, so the hash and the
+-- signature would survive jsonb either way. `body_text` exists for byte parity with the SDK's FileLedgerStore, whose
+-- JSONL line is `JSON.stringify(entry)`: jsonb sorts object keys (shorter first, then bytewise), so a body read back
+-- from the `body` column is the same value but not the same bytes. `body_text` is `JSON.stringify(entry.body)` verbatim;
+-- `body` stays for SQL (RLS reads, kind, request_id). NULL only for a row inserted by hand: ledger_append always sets it.
 alter table public.ledger_entries add column body_text text;
 alter table public.ledger_entries add constraint ledger_entries_body_text_is_body
   check (body_text is null or body_text::jsonb = body);
@@ -22,6 +23,9 @@ alter table public.ledger_entries add constraint ledger_entries_body_text_is_bod
 -- stops the table owner, and a TRUNCATE ... CASCADE started from `tenants`.
 create trigger ledger_entries_no_truncate before truncate on public.ledger_entries
   for each statement execute function public.ledger_entries_append_only();
+
+-- Every write goes through ledger_append (security definer, below): service_role has no INSERT, UPDATE or DELETE on the table.
+revoke insert, update, delete on public.ledger_entries from service_role;
 
 -- A second line of defence against a fork, independent of ledger_append: no two entries of one tenant follow the same
 -- predecessor. Together with the primary key (tenant_id, seq) a chain cannot branch even if a row is inserted by hand.
@@ -84,10 +88,14 @@ $$;
 -- The entry is written only if the tenant's head gives exactly `expect` (and the entry sits at that position). If the
 -- head moved it raises ledger_conflict and writes nothing. Appends of one tenant are serialised by a transaction-scoped
 -- advisory lock, so two concurrent appends cannot both see the same head. The primary key (tenant_id, seq) and the
--- unique index on (tenant_id, prev_link) are the backstop if this function were ever bypassed.
+-- unique index on (tenant_id, prev_link) are the backstop if this function were ever bypassed: should the insert still
+-- lose a race (another isolation level, a lock that did not serialise), the unique violation is reported as
+-- ledger_conflict too, so the caller always sees the same contract.
 -- (READ COMMITTED, which PostgREST uses: the head is read after the lock is held, so it is the latest committed one.)
+-- SECURITY DEFINER: service_role cannot write the table itself (revoked above), so this function is the only way in.
+-- Its search_path is pinned, and only service_role may execute it.
 create or replace function public.ledger_append(p jsonb) returns jsonb
-language plpgsql set search_path = public, pg_temp as $$
+language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v_tenant uuid := public.ledger_tenant(p);
   e jsonb := p->'entry';
@@ -156,9 +164,18 @@ begin
     raise exception 'invalid_input: the entry is not at the position it expects';
   end if;
 
-  insert into public.ledger_entries (tenant_id, seq, kind, body, body_text, body_hash, sig, signer, link, request_id)
-  values (v_tenant, v_seq, v_body->>'kind', v_body, v_text, e->>'body_hash', e->>'sig', e->>'signer', e->>'link',
-          coalesce(v_body->>'request_id', ''));
+  begin
+    insert into public.ledger_entries (tenant_id, seq, kind, body, body_text, body_hash, sig, signer, link, request_id)
+    values (v_tenant, v_seq, v_body->>'kind', v_body, v_text, e->>'body_hash', e->>'sig', e->>'signer', e->>'link',
+            coalesce(v_body->>'request_id', ''));
+  exception when unique_violation then
+    -- Someone else took this seq, this predecessor or this hash first. Report where the head is now (the winner is
+    -- committed, so a fresh statement sees it), exactly as the check above does.
+    select l.seq, l.link into v_head_seq, v_head_link from public.ledger_entries l
+      where l.tenant_id = v_tenant order by l.seq desc limit 1;
+    raise exception 'ledger_conflict: the head gives seq % on prev_link %',
+      coalesce(v_head_seq + 1, 0), coalesce(v_head_link, repeat('0', 64));
+  end;
   return jsonb_build_object('seq', v_seq, 'link', e->>'link');
 end $$;
 
@@ -171,11 +188,23 @@ language sql stable security definer set search_path = public, pg_temp as $$
   from public.tenants t where t.vault_id = p->>'vault_id' and t.proof_public
 $$;
 
+-- Paged like ledger_since: p = { vault_id, from_seq?, limit? } returns at most `limit` rows (default and maximum 500, at
+-- least 1) with seq >= from_seq (default 0), oldest first. A from_seq or limit that is not a plain non-negative integer
+-- is ignored (the default applies), so odd input never errors. Each row carries the body once, as body_text
+-- (a row made by hand, without body_text, falls back to its jsonb text): { seq, body_text, body_hash, sig, signer, link,
+-- kind, created_at }. Anyone with the anon key can call this, so the page size is bounded.
 create or replace function public.public_ledger(p jsonb) returns jsonb
 language sql stable security definer set search_path = public, pg_temp as $$
-  select coalesce(jsonb_agg(public.ledger_entry_json(e) order by e.seq), '[]'::jsonb)
-  from public.ledger_entries e join public.tenants t on t.id = e.tenant_id
-  where t.vault_id = p->>'vault_id' and t.proof_public
+  select coalesce(jsonb_agg(x.j order by x.seq), '[]'::jsonb) from (
+    select e.seq,
+           jsonb_build_object('seq', e.seq, 'body_text', coalesce(e.body_text, e.body::text), 'body_hash', e.body_hash,
+                              'sig', e.sig, 'signer', e.signer, 'link', e.link, 'kind', e.kind,
+                              'created_at', e.created_at) as j
+    from public.ledger_entries e join public.tenants t on t.id = e.tenant_id
+    where t.vault_id = p->>'vault_id' and t.proof_public
+      and e.seq >= case when (p->>'from_seq') ~ '^[0-9]{1,9}$' then (p->>'from_seq')::integer else 0 end
+    order by e.seq
+    limit case when (p->>'limit') ~ '^[0-9]{1,9}$' then least(greatest((p->>'limit')::integer, 1), 500) else 500 end) x
 $$;
 
 revoke execute on function
