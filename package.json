@@ -21,6 +21,7 @@
     "lint:fix": "biome check --write .",
     "typecheck": "pnpm -r --if-present run typecheck",
     "proof": "tsx scripts/proof.ts",
+    "release:check": "tsx scripts/release-check.ts",
     "test:scripts": "vitest run --root scripts",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "verify:launch": "pnpm typecheck:scripts && pnpm test:scripts"

@@ -1,0 +1,821 @@
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { gzipSync } from "node:zlib";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  checkDocs,
+  checkManifest,
+  checkRelease,
+  checkTarball,
+  expectedTarballName,
+  exportTargets,
+  inspectTarballs,
+  loadRelease,
+  main,
+  type PackageInfo,
+  PUBLISHED_DIRS,
+  parseCliArgs,
+  readTarball,
+} from "../release-check.js";
+
+const pkgs = (version: string): PackageInfo[] => [
+  { dir: "packages/core", name: "@probarion/core", version, private: false },
+  { dir: "packages/sdk", name: "@probarion/sdk", version, private: false },
+  { dir: "packages/cli", name: "probarion", version, private: false },
+];
+const changelog = "# Changelog\n\n## 0.1.0 - 2026-11-07\n\n### Added\n- first release\n";
+
+describe("checkRelease", () => {
+  it("accepts a consistent release", () => {
+    expect(
+      checkRelease({ tag: "sdk-v0.1.0", packages: pkgs("0.1.0"), changelog, cliVersion: "0.1.0" }),
+    ).toEqual([]);
+  });
+
+  it("rejects a tag that is not sdk-v<semver>", () => {
+    expect(
+      checkRelease({ tag: "v0.1.0", packages: pkgs("0.1.0"), changelog, cliVersion: "0.1.0" })[0],
+    ).toContain("sdk-v");
+  });
+
+  it("takes the whole tag, not a prefix of it", () => {
+    for (const tag of [
+      "sdk-v0.1.0+build",
+      "sdk-v0.1.0 ",
+      "sdk-v0.1.0-",
+      "sdk-v0.1",
+      "xsdk-v0.1.0",
+    ]) {
+      const problems = checkRelease({
+        tag,
+        packages: pkgs("0.1.0"),
+        changelog,
+        cliVersion: "0.1.0",
+      });
+      expect(problems[0], tag).toContain("does not match sdk-v<semver>");
+    }
+  });
+
+  it("lists every mismatch", () => {
+    const problems = checkRelease({
+      tag: "sdk-v0.2.0",
+      packages: [
+        ...pkgs("0.1.0"),
+        { dir: "packages/mcp", name: "@probarion/mcp", version: "0.2.0", private: true },
+      ],
+      changelog,
+      cliVersion: "0.1.0",
+    });
+    expect(problems.join("\n")).toContain("@probarion/core is 0.1.0");
+    expect(problems.join("\n")).toContain("private");
+    expect(problems.join("\n")).toContain("version.ts");
+    expect(problems.join("\n")).toContain('no "## 0.2.0" section');
+  });
+
+  it("accepts a bracketed changelog heading and a prerelease tag", () => {
+    const pre = "# Changelog\n\n## [0.2.0-rc.1] - 2026-11-20\n";
+    expect(
+      checkRelease({
+        tag: "sdk-v0.2.0-rc.1",
+        packages: pkgs("0.2.0-rc.1"),
+        changelog: pre,
+        cliVersion: "0.2.0-rc.1",
+      }),
+    ).toEqual([]);
+  });
+
+  it("does not take 0.1.0 as a prefix of 0.1.01 or 0.1.0.1 in the changelog", () => {
+    for (const heading of ["## 0.1.01 - x", "## 0.1.0.1 - x", "## 10.1.0 - x", "# 0.1.0"]) {
+      const problems = checkRelease({
+        tag: "sdk-v0.1.0",
+        packages: pkgs("0.1.0"),
+        changelog: `# Changelog\n\n${heading}\n`,
+        cliVersion: "0.1.0",
+      });
+      expect(problems.join("\n")).toContain('no "## 0.1.0" section');
+    }
+  });
+
+  it("requires @probarion/core and skips the cli version when there is no version.ts", () => {
+    const problems = checkRelease({
+      tag: "sdk-v0.1.0",
+      packages: pkgs("0.1.0").filter((p) => p.name !== "@probarion/core"),
+      changelog,
+      cliVersion: null,
+    });
+    expect(problems).toEqual(["@probarion/core is missing"]);
+  });
+
+  it("publishes in dependency order, mcp last", () => {
+    expect([...PUBLISHED_DIRS]).toEqual([
+      "packages/core",
+      "packages/sdk",
+      "packages/cli",
+      "packages/mcp",
+    ]);
+  });
+});
+
+describe("parseCliArgs", () => {
+  it("takes the tag from the argument, ignoring the -- that pnpm may pass on", () => {
+    expect(parseCliArgs(["--", "sdk-v0.1.0"], {})).toEqual({
+      tag: "sdk-v0.1.0",
+      pack: false,
+      out: undefined,
+    });
+  });
+
+  it("falls back to GITHUB_REF_NAME, and an empty one counts as unset", () => {
+    expect(parseCliArgs([], { GITHUB_REF_NAME: "sdk-v0.1.0" }).tag).toBe("sdk-v0.1.0");
+    expect(parseCliArgs([], { GITHUB_REF_NAME: "" }).tag).toBe("");
+  });
+
+  it("reads --pack and --out", () => {
+    expect(parseCliArgs(["--pack", "--out", "/tmp/x", "sdk-v0.1.0"], {})).toEqual({
+      tag: "sdk-v0.1.0",
+      pack: true,
+      out: "/tmp/x",
+    });
+  });
+
+  it("refuses an unknown flag or a second tag", () => {
+    expect(() => parseCliArgs(["--publish", "sdk-v0.1.0"], {})).toThrow();
+    expect(() => parseCliArgs(["sdk-v0.1.0", "sdk-v0.1.1"], {})).toThrow(/one tag/);
+  });
+});
+
+// ---------- manifests ----------
+
+const goodManifest = () => ({
+  name: "@probarion/sdk",
+  version: "0.1.0",
+  license: "MIT",
+  type: "module",
+  main: "./dist/index.js",
+  types: "./dist/index.d.ts",
+  exports: {
+    ".": {
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+      default: "./dist/index.js",
+    },
+    "./testing": {
+      types: "./dist/testing/index.d.ts",
+      import: "./dist/testing/index.js",
+      default: "./dist/testing/index.js",
+    },
+  },
+  files: ["dist", "README.md"],
+  publishConfig: { access: "public" },
+});
+
+describe("checkManifest", () => {
+  it("accepts a manifest with main, types, full conditions, files and public access", () => {
+    expect(checkManifest(goodManifest())).toEqual([]);
+  });
+
+  it("asks for main and types at the top level", () => {
+    const { main: _m, types: _t, ...rest } = goodManifest();
+    const problems = checkManifest(rest).join("\n");
+    expect(problems).toContain('"main"');
+    expect(problems).toContain('"types"');
+  });
+
+  it('asks for the "default" condition and for "types" first', () => {
+    const noDefault = goodManifest();
+    noDefault.exports["./testing"] = {
+      types: "./dist/testing/index.d.ts",
+      import: "./dist/testing/index.js",
+    } as never;
+    expect(checkManifest(noDefault).join("\n")).toContain('"./testing"');
+    expect(checkManifest(noDefault).join("\n")).toContain("default");
+
+    const typesLast = goodManifest();
+    typesLast.exports["."] = {
+      import: "./dist/index.js",
+      types: "./dist/index.d.ts",
+      default: "./dist/index.js",
+    };
+    expect(checkManifest(typesLast).join("\n")).toContain('"types" must come first');
+  });
+
+  it("asks for dist and README.md in files, and public access", () => {
+    const m = goodManifest();
+    m.files = ["dist"];
+    m.publishConfig = { access: "restricted" } as never;
+    const problems = checkManifest(m).join("\n");
+    expect(problems).toContain("README.md");
+    expect(problems).toContain("access");
+  });
+});
+
+// ---------- tarballs ----------
+
+/** A ustar header + body per file; the second form uses the prefix field, the third a PAX path. */
+function tarEntry(
+  path: string,
+  body: string,
+  how: "name" | "prefix" | "pax" | "gnu" = "name",
+): Buffer {
+  const data = Buffer.from(body);
+  const chunks: Buffer[] = [];
+  const header = (name: string, size: number, type: string, prefix = ""): Buffer => {
+    const h = Buffer.alloc(512);
+    h.write(name, 0, "utf8");
+    h.write("0000644\0", 100);
+    h.write("0000000\0", 108);
+    h.write("0000000\0", 116);
+    h.write(`${size.toString(8).padStart(11, "0")}\0`, 124);
+    h.write("00000000000\0", 136);
+    h.write("        ", 148);
+    h.write(type, 156);
+    h.write("ustar\0", 257);
+    h.write("00", 263);
+    h.write(prefix, 345, "utf8");
+    let sum = 0;
+    for (const byte of h) sum += byte;
+    h.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148);
+    return h;
+  };
+  const padded = (b: Buffer): Buffer => {
+    const out = Buffer.alloc(Math.ceil(b.length / 512) * 512);
+    b.copy(out);
+    return out;
+  };
+  if (how === "prefix") {
+    const cut = path.lastIndexOf("/");
+    chunks.push(header(path.slice(cut + 1), data.length, "0", path.slice(0, cut)));
+  } else if (how === "pax") {
+    const record = (key: string, value: string): string => {
+      const rest = ` ${key}=${value}\n`;
+      let len = rest.length + 1;
+      while (`${len}${rest}`.length !== len) len = `${len}${rest}`.length;
+      return `${len}${rest}`;
+    };
+    const pax = Buffer.from(record("path", path));
+    chunks.push(header("PaxHeader", pax.length, "x"), padded(pax));
+    chunks.push(header("short", data.length, "0"));
+  } else if (how === "gnu") {
+    const long = Buffer.from(`${path}\0`);
+    chunks.push(header("././@LongLink", long.length, "L"), padded(long));
+    chunks.push(header("short", data.length, "0"));
+  } else {
+    chunks.push(header(path, data.length, "0"));
+  }
+  chunks.push(padded(data));
+  return Buffer.concat(chunks);
+}
+
+function tarball(files: Record<string, string>, how: "name" | "prefix" | "pax" | "gnu" = "name") {
+  const entries = Object.entries(files).map(([path, body]) => tarEntry(path, body, how));
+  return gzipSync(Buffer.concat([...entries, Buffer.alloc(1024)]));
+}
+
+const text = (bytes: Uint8Array | undefined) => new TextDecoder().decode(bytes);
+
+describe("readTarball", () => {
+  it("lists regular files without the package/ prefix, with their contents", () => {
+    const files = readTarball(
+      tarball({ "package/package.json": '{"name":"x"}', "package/dist/index.js": "export {};\n" }),
+    );
+    expect([...files.keys()].sort()).toEqual(["dist/index.js", "package.json"]);
+    expect(text(files.get("dist/index.js"))).toBe("export {};\n");
+  });
+
+  it("reads a name split over the ustar prefix field, a PAX path and a GNU long name", () => {
+    const long = `package/dist/${"deeper/".repeat(20)}file.js`;
+    for (const how of ["prefix", "pax", "gnu"] as const) {
+      const files = readTarball(tarball({ [long]: "x" }, how));
+      expect([...files.keys()]).toEqual([long.slice("package/".length)]);
+      expect(text(files.get(long.slice("package/".length)))).toBe("x");
+    }
+  });
+
+  it("refuses something that is not a gzip tarball", () => {
+    expect(() => readTarball(Buffer.from("not a tarball"))).toThrow();
+  });
+});
+
+const sdkTarball = (over: Record<string, string | null> = {}): Map<string, Uint8Array> => {
+  const manifest = {
+    ...goodManifest(),
+    dependencies: { "@probarion/core": "0.1.0", "near-api-js": "^7.4.0" },
+  };
+  const base: Record<string, string> = {
+    "package.json": JSON.stringify(manifest),
+    "README.md": "# sdk\n",
+    LICENSE: "MIT License\n",
+    "dist/index.js": "export {};\n",
+    "dist/index.d.ts": "export {};\n",
+    "dist/testing/index.js": "export {};\n",
+    "dist/testing/index.d.ts": "export {};\n",
+  };
+  for (const [path, body] of Object.entries(over)) {
+    if (body === null) delete base[path];
+    else base[path] = body;
+  }
+  return new Map(Object.entries(base).map(([p, b]) => [p, new TextEncoder().encode(b)]));
+};
+
+const sdkInfo: PackageInfo = {
+  dir: "packages/sdk",
+  name: "@probarion/sdk",
+  version: "0.1.0",
+  private: false,
+};
+const internal = new Map([
+  ["@probarion/core", "0.1.0"],
+  ["@probarion/sdk", "0.1.0"],
+]);
+
+describe("checkTarball", () => {
+  it("accepts a complete tarball", () => {
+    expect(checkTarball({ info: sdkInfo, files: sdkTarball(), internal })).toEqual([]);
+  });
+
+  it("fails when the ./testing export points at a file that was not packed", () => {
+    const problems = checkTarball({
+      info: sdkInfo,
+      files: sdkTarball({ "dist/testing/index.js": null, "dist/testing/index.d.ts": null }),
+      internal,
+    });
+    expect(problems.join("\n")).toContain("dist/testing/index.js");
+    expect(problems.join("\n")).toContain("exports");
+    expect(problems.join("\n")).toContain("not in the tarball");
+  });
+
+  it("fails when main or types is missing from the tarball", () => {
+    const problems = checkTarball({
+      info: sdkInfo,
+      files: sdkTarball({ "dist/index.js": null, "dist/index.d.ts": null }),
+      internal,
+    }).join("\n");
+    expect(problems).toContain("main");
+    expect(problems).toContain('"types"');
+  });
+
+  it("checks the bin target and its shebang", () => {
+    const manifest = {
+      ...goodManifest(),
+      name: "probarion",
+      bin: { probarion: "./dist/bin.js" },
+    };
+    const files = sdkTarball({ "package.json": JSON.stringify(manifest) });
+    const info = { ...sdkInfo, name: "probarion", dir: "packages/cli" };
+    expect(checkTarball({ info, files, internal }).join("\n")).toContain("dist/bin.js");
+    const noShebang = sdkTarball({
+      "package.json": JSON.stringify(manifest),
+      "dist/bin.js": "console.log(1);\n",
+    });
+    expect(checkTarball({ info, files: noShebang, internal }).join("\n")).toContain("#!");
+    const ok = sdkTarball({
+      "package.json": JSON.stringify(manifest),
+      "dist/bin.js": "#!/usr/bin/env node\nconsole.log(1);\n",
+    });
+    expect(checkTarball({ info, files: ok, internal })).toEqual([]);
+  });
+
+  it("matches a wildcard export against the packed files, and ignores a null (blocked) one", () => {
+    const manifest = {
+      ...goodManifest(),
+      exports: {
+        ".": goodManifest().exports["."],
+        "./testing": goodManifest().exports["./testing"],
+        "./dist/*": { types: "./dist/*.d.ts", import: "./dist/*.js", default: "./dist/*.js" },
+        "./internal/*": null,
+      },
+    };
+    const files = sdkTarball({ "package.json": JSON.stringify(manifest) });
+    expect(checkTarball({ info: sdkInfo, files, internal })).toEqual([]);
+    const none = sdkTarball({
+      "package.json": JSON.stringify({
+        ...manifest,
+        exports: { ...manifest.exports, "./nothing/*": "./nothing/*.js" },
+      }),
+    });
+    expect(checkTarball({ info: sdkInfo, files: none, internal }).join("\n")).toContain(
+      "./nothing/*.js",
+    );
+  });
+
+  it("refuses source maps, which would point at a src/ that is not shipped", () => {
+    const problems = checkTarball({
+      info: sdkInfo,
+      files: sdkTarball({ "dist/index.js.map": "{}", "dist/index.d.ts.map": "{}" }),
+      internal,
+    }).join("\n");
+    expect(problems).toContain("source map");
+    expect(problems).toContain("dist/index.js.map");
+  });
+
+  it("allows only dist/, README.md, LICENSE and package.json", () => {
+    const problems = checkTarball({
+      info: sdkInfo,
+      files: sdkTarball({ "src/index.ts": "x", ".env": "SECRET=1", "test/a.test.ts": "x" }),
+      internal,
+    }).join("\n");
+    for (const path of ["src/index.ts", ".env", "test/a.test.ts"]) expect(problems).toContain(path);
+  });
+
+  it("needs README.md and LICENSE", () => {
+    const problems = checkTarball({
+      info: sdkInfo,
+      files: sdkTarball({ "README.md": null, LICENSE: null }),
+      internal,
+    }).join("\n");
+    expect(problems).toContain("README.md");
+    expect(problems).toContain("LICENSE");
+  });
+
+  it("fails on a workspace: or link: specifier that pnpm pack left in the manifest", () => {
+    const manifest = {
+      ...goodManifest(),
+      dependencies: { "@probarion/core": "workspace:*", other: "link:../other" },
+    };
+    const problems = checkTarball({
+      info: sdkInfo,
+      files: sdkTarball({ "package.json": JSON.stringify(manifest) }),
+      internal,
+    }).join("\n");
+    expect(problems).toContain("workspace:*");
+    expect(problems).toContain("link:../other");
+  });
+
+  it("fails on a workspace: specifier for a package that is not part of the release", () => {
+    const manifest = { ...goodManifest(), dependencies: { "some-tool": "workspace:^" } };
+    const problems = checkTarball({
+      info: sdkInfo,
+      files: sdkTarball({ "package.json": JSON.stringify(manifest) }),
+      internal,
+    });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('"workspace:^"');
+  });
+
+  it("fails when the packed dependency on a sibling is another version than this release", () => {
+    for (const [spec, bad] of [
+      ["0.1.0", false],
+      ["^0.1.0", false],
+      ["0.0.9", true],
+      ["^0.2.0", true],
+      [">=0.1.0", true],
+    ] as const) {
+      const manifest = { ...goodManifest(), dependencies: { "@probarion/core": spec } };
+      const problems = checkTarball({
+        info: sdkInfo,
+        files: sdkTarball({ "package.json": JSON.stringify(manifest) }),
+        internal,
+      });
+      expect(problems.length > 0, spec).toBe(bad);
+    }
+  });
+
+  it("fails when the tarball's own name or version is not the one released", () => {
+    const manifest = { ...goodManifest(), version: "0.0.9" };
+    const problems = checkTarball({
+      info: sdkInfo,
+      files: sdkTarball({ "package.json": JSON.stringify(manifest) }),
+      internal,
+    }).join("\n");
+    expect(problems).toContain("0.0.9");
+  });
+
+  it("fails when package.json is missing or not JSON", () => {
+    expect(
+      checkTarball({ info: sdkInfo, files: sdkTarball({ "package.json": null }), internal }).join(
+        "\n",
+      ),
+    ).toContain("package.json");
+    expect(
+      checkTarball({
+        info: sdkInfo,
+        files: sdkTarball({ "package.json": "{not json" }),
+        internal,
+      }).join("\n"),
+    ).toContain("package.json");
+  });
+});
+
+describe("exportTargets", () => {
+  it("collects every string leaf, through nested conditions and arrays, and skips null", () => {
+    expect(
+      exportTargets({
+        ".": { types: "./a.d.ts", node: { import: "./a.js", default: ["./b.js", "./c.js"] } },
+        "./x": null,
+        "./y": "./y.js",
+      }),
+    ).toEqual(["./a.d.ts", "./a.js", "./b.js", "./c.js", "./y.js"]);
+    expect(exportTargets("./index.js")).toEqual(["./index.js"]);
+    expect(exportTargets(undefined)).toEqual([]);
+  });
+});
+
+describe("expectedTarballName", () => {
+  it("names a scoped and an unscoped package the way pnpm pack does", () => {
+    expect(expectedTarballName("@probarion/core", "0.1.0")).toBe("probarion-core-0.1.0.tgz");
+    expect(expectedTarballName("probarion", "0.1.0")).toBe("probarion-0.1.0.tgz");
+  });
+});
+
+// ---------- a fixture repository ----------
+
+let root: string;
+
+function writeRepo(files: Record<string, string>): void {
+  for (const [path, body] of Object.entries(files)) {
+    const file = join(root, path);
+    mkdirSync(join(file, ".."), { recursive: true });
+    writeFileSync(file, body);
+  }
+}
+
+const manifestOf = (name: string, version: string, extra: object = {}) =>
+  JSON.stringify({ ...goodManifest(), name, version, ...extra });
+
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), "release-check-"));
+});
+afterEach(() => {
+  rmSync(root, { recursive: true, force: true });
+});
+
+describe("loadRelease", () => {
+  it("reads the published packages that exist, the changelog and the cli version", async () => {
+    writeRepo({
+      "packages/core/package.json": manifestOf("@probarion/core", "0.1.0"),
+      "packages/sdk/package.json": manifestOf("@probarion/sdk", "0.1.0"),
+      "packages/cli/package.json": manifestOf("probarion", "0.1.0", { private: true }),
+      "packages/cli/src/version.ts": 'export const CLI_VERSION = "0.1.0";\n',
+      "CHANGELOG.md": changelog,
+    });
+    const release = await loadRelease(root);
+    expect(release.packages).toEqual([
+      { dir: "packages/core", name: "@probarion/core", version: "0.1.0", private: false },
+      { dir: "packages/sdk", name: "@probarion/sdk", version: "0.1.0", private: false },
+      { dir: "packages/cli", name: "probarion", version: "0.1.0", private: true },
+    ]);
+    expect(release.cliVersion).toBe("0.1.0");
+    expect(release.changelog).toBe(changelog);
+    expect(release.manifests.get("packages/sdk")?.name).toBe("@probarion/sdk");
+  });
+
+  it("reports no cli version when version.ts has no CLI_VERSION", async () => {
+    writeRepo({
+      "packages/core/package.json": manifestOf("@probarion/core", "0.1.0"),
+      "packages/cli/package.json": manifestOf("probarion", "0.1.0"),
+      "packages/cli/src/version.ts": "export const OTHER = 1;\n",
+      "CHANGELOG.md": changelog,
+    });
+    expect((await loadRelease(root)).cliVersion).toBeNull();
+  });
+});
+
+describe("inspectTarballs", () => {
+  const sdkInfo2 = sdkInfo;
+  const coreInfo: PackageInfo = {
+    dir: "packages/core",
+    name: "@probarion/core",
+    version: "0.1.0",
+    private: false,
+  };
+
+  function writeTarballs(over: Record<string, Buffer | null> = {}): void {
+    const core = JSON.stringify({
+      ...goodManifest(),
+      name: "@probarion/core",
+      exports: { ".": goodManifest().exports["."] },
+    });
+    const sdk = JSON.stringify({
+      ...goodManifest(),
+      dependencies: { "@probarion/core": "0.1.0" },
+    });
+    const body = (manifest: string) => ({
+      "package/package.json": manifest,
+      "package/README.md": "# r\n",
+      "package/LICENSE": "MIT\n",
+      "package/dist/index.js": "export {};\n",
+      "package/dist/index.d.ts": "export {};\n",
+      "package/dist/testing/index.js": "export {};\n",
+      "package/dist/testing/index.d.ts": "export {};\n",
+    });
+    const entries: Record<string, Buffer | null> = {
+      "probarion-core-0.1.0.tgz": tarball(body(core)),
+      "probarion-sdk-0.1.0.tgz": tarball(body(sdk)),
+      ...over,
+    };
+    mkdirSync(root, { recursive: true });
+    for (const [name, data] of Object.entries(entries)) {
+      if (data !== null) writeFileSync(join(root, name), data);
+    }
+  }
+
+  it("checks every tarball and returns the publish list in order", () => {
+    writeTarballs();
+    const result = inspectTarballs([coreInfo, sdkInfo2], root);
+    expect(result.problems).toEqual([]);
+    expect(result.entries).toEqual([
+      { name: "@probarion/core", version: "0.1.0", file: "probarion-core-0.1.0.tgz" },
+      { name: "@probarion/sdk", version: "0.1.0", file: "probarion-sdk-0.1.0.tgz" },
+    ]);
+  });
+
+  it("says which package has the bad export, and which tarball is missing", () => {
+    const sdk = JSON.stringify({ ...goodManifest(), dependencies: {} });
+    writeTarballs({
+      "probarion-sdk-0.1.0.tgz": tarball({
+        "package/package.json": sdk,
+        "package/README.md": "r",
+        "package/LICENSE": "m",
+        "package/dist/index.js": "x",
+        "package/dist/index.d.ts": "x",
+      }),
+      "probarion-core-0.1.0.tgz": null,
+    });
+    const problems = inspectTarballs([coreInfo, sdkInfo2], root).problems.join("\n");
+    expect(problems).toContain("@probarion/core: probarion-core-0.1.0.tgz was not produced");
+    expect(problems).toContain("@probarion/sdk");
+    expect(problems).toContain("dist/testing/index.js");
+  });
+});
+
+describe("checkDocs", () => {
+  it("flags every TODO(release) note and nothing else", () => {
+    const docs = new Map([
+      ["CHANGELOG.md", "# Changelog\n\n## 0.1.0 - x\n<!-- TODO(release): set the date -->\n"],
+      ["packages/cli/README.md", "# cli\nA TODO(release) line\n\nand a normal TODO\n"],
+      ["packages/core/README.md", "# core\n"],
+    ]);
+    const problems = checkDocs(docs);
+    expect(problems).toHaveLength(2);
+    expect(problems[0]).toContain("CHANGELOG.md");
+    expect(problems[0]).toContain("set the date");
+    expect(problems[1]).toContain("packages/cli/README.md");
+  });
+});
+
+describe("loadRelease docs", () => {
+  it("reads the changelog and the README of every published package", async () => {
+    writeRepo({
+      "packages/core/package.json": manifestOf("@probarion/core", "0.1.0"),
+      "packages/core/README.md": "# core\n",
+      "packages/sdk/package.json": manifestOf("@probarion/sdk", "0.1.0"),
+      "CHANGELOG.md": changelog,
+    });
+    const { docs } = await loadRelease(root);
+    expect([...docs.keys()].sort()).toEqual(["CHANGELOG.md", "packages/core/README.md"]);
+  });
+});
+
+describe("main", () => {
+  let stdout: string[];
+  let stderr: string[];
+
+  beforeEach(() => {
+    stdout = [];
+    stderr = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdout.push(String(chunk));
+      return true;
+    });
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      stderr.push(String(chunk));
+      return true;
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const coreManifest = (version: string) =>
+    manifestOf("@probarion/core", version, { exports: { ".": goodManifest().exports["."] } });
+  const sdkManifest = (version: string) =>
+    manifestOf("@probarion/sdk", version, { dependencies: { "@probarion/core": version } });
+
+  function writeCleanRepo(version = "0.1.0"): void {
+    writeRepo({
+      "packages/core/package.json": coreManifest(version),
+      "packages/core/README.md": "# core\n",
+      "packages/sdk/package.json": sdkManifest(version),
+      "packages/sdk/README.md": "# sdk\n",
+      "CHANGELOG.md": `# Changelog\n\n## ${version} - 2026-11-07\n`,
+    });
+  }
+
+  const packedBody = (manifest: string): Record<string, string> => ({
+    "package/package.json": manifest,
+    "package/README.md": "# r\n",
+    "package/LICENSE": "MIT\n",
+    "package/dist/index.js": "export {};\n",
+    "package/dist/index.d.ts": "export {};\n",
+    "package/dist/testing/index.js": "export {};\n",
+    "package/dist/testing/index.d.ts": "export {};\n",
+  });
+
+  /** What `pnpm pack` would have produced for the fixture packages, one tarball per package. */
+  function writeFakeTarballs(dir: string, over: Record<string, Buffer> = {}): void {
+    mkdirSync(dir, { recursive: true });
+    const files: Record<string, Buffer> = {
+      "probarion-core-0.1.0.tgz": tarball(packedBody(coreManifest("0.1.0"))),
+      "probarion-sdk-0.1.0.tgz": tarball(packedBody(sdkManifest("0.1.0"))),
+      ...over,
+    };
+    for (const [name, data] of Object.entries(files)) writeFileSync(join(dir, name), data);
+  }
+
+  /** A stand-in for pnpm's entry point: `pack --pack-destination DIR` copies the prepared tarball of the package in cwd. */
+  function fakePnpm(): string {
+    const script = join(root, "fake-bin", "pnpm.cjs");
+    mkdirSync(join(root, "fake-bin"), { recursive: true });
+    writeFileSync(
+      script,
+      [
+        'const fs = require("node:fs"); const path = require("node:path");',
+        'if (process.argv[2] !== "pack") process.exit(3);',
+        'const dest = process.argv[process.argv.indexOf("--pack-destination") + 1];',
+        'const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));',
+        'const file = pkg.name.replace(/^@/, "").replace("/", "-") + "-" + pkg.version + ".tgz";',
+        "fs.copyFileSync(path.join(process.env.FAKE_TARBALLS, file), path.join(dest, file));",
+      ].join("\n"),
+    );
+    return script;
+  }
+
+  it("passes on a consistent repository", async () => {
+    writeCleanRepo();
+    expect(await main(["sdk-v0.1.0"], {}, root)).toBe(0);
+    expect(stdout.join("")).toBe("release check ok: @probarion/core@0.1.0, @probarion/sdk@0.1.0\n");
+  });
+
+  it("fails with every problem on stderr: tag, changelog, manifest shape and open release notes", async () => {
+    writeCleanRepo();
+    writeRepo({
+      "packages/sdk/package.json": JSON.stringify({ name: "@probarion/sdk", version: "0.1.0" }),
+      "packages/core/README.md": "# core\n<!-- TODO(release): fix -->\n",
+    });
+    expect(await main(["sdk-v0.2.0"], {}, root)).toBe(1);
+    const err = stderr.join("");
+    expect(err).toContain("@probarion/core is 0.1.0, the tag says 0.2.0");
+    expect(err).toContain('no "## 0.2.0" section');
+    expect(err).toContain('@probarion/sdk: "main" is missing');
+    expect(err).toContain("packages/core/README.md still has an open release note");
+  });
+
+  it("refuses bad arguments with exit code 2", async () => {
+    writeCleanRepo();
+    expect(await main(["--nope"], {}, root)).toBe(2);
+    expect(stderr.join("")).toContain("usage:");
+  });
+
+  it("packs every package, inspects the tarballs and writes the publish list", async () => {
+    writeCleanRepo();
+    const prepared = join(root, "prepared");
+    writeFakeTarballs(prepared);
+    const out = join(root, "out");
+    const env = { npm_execpath: fakePnpm(), FAKE_TARBALLS: prepared };
+    expect(await main(["--pack", "--out", out, "sdk-v0.1.0"], env, root)).toBe(0);
+    expect(stdout.join("")).toContain("2 tarballs checked in");
+    const list = JSON.parse(readFileSync(join(out, "packages.json"), "utf8")) as {
+      tag: string;
+      packages: { name: string; file: string }[];
+    };
+    expect(list.tag).toBe("sdk-v0.1.0");
+    expect(list.packages.map((p) => p.file)).toEqual([
+      "probarion-core-0.1.0.tgz",
+      "probarion-sdk-0.1.0.tgz",
+    ]);
+  });
+
+  it("leaves no publish list behind when a packed export is missing", async () => {
+    writeCleanRepo();
+    const prepared = join(root, "prepared");
+    const withoutTesting = packedBody(sdkManifest("0.1.0"));
+    delete withoutTesting["package/dist/testing/index.js"];
+    delete withoutTesting["package/dist/testing/index.d.ts"];
+    writeFakeTarballs(prepared, { "probarion-sdk-0.1.0.tgz": tarball(withoutTesting) });
+    const out = join(root, "out");
+    // A publish list from an earlier, good run must not survive a bad one.
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, "packages.json"), "{}");
+    const env = { npm_execpath: fakePnpm(), FAKE_TARBALLS: prepared };
+    expect(await main(["--pack", "--out", out, "sdk-v0.1.0"], env, root)).toBe(1);
+    expect(stderr.join("")).toContain(
+      'exports "./testing" → ./dist/testing/index.js is not in the tarball',
+    );
+    expect(existsSync(join(out, "packages.json"))).toBe(false);
+  });
+
+  it("reports a failing pnpm pack", async () => {
+    writeCleanRepo();
+    const script = join(root, "fake-bin", "pnpm.cjs");
+    mkdirSync(join(root, "fake-bin"), { recursive: true });
+    writeFileSync(script, "process.exit(7);\n");
+    const code = await main(
+      ["--pack", "--out", join(root, "out"), "sdk-v0.1.0"],
+      { npm_execpath: script },
+      root,
+    );
+    expect(code).toBe(1);
+    expect(stderr.join("")).toContain("@probarion/core: pnpm pack failed");
+  });
+});
