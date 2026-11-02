@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { Field, inputClass } from "@/components/ui";
-import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
 import { DEFAULT_TOPUP_YOCTO, MAX_TOPUP_YOCTO } from "@/lib/near/runway";
 import { asWalletTx, sendNearTx } from "@/lib/near/transfer";
 import { AmountError, formatNear, parseNear } from "@/lib/near/units";
+import { VaultTxButton } from "./VaultTxButton";
 
 /** The top-up amount the owner typed, or why it cannot be sent. */
 export function parseTopup(amount: string): { yocto: string } | { problem: string } {
@@ -29,10 +29,12 @@ export function SendNearPanel({
   vault,
   network,
   signer,
+  outOfNearCodes,
 }: {
   vault: string;
   network: Network;
   signer: string;
+  outOfNearCodes: string[];
 }) {
   const [amount, setAmount] = useState(formatNear(DEFAULT_TOPUP_YOCTO.toString()));
   const parsed = parseTopup(amount);
@@ -52,12 +54,14 @@ export function SendNearPanel({
       </Field>
       {"yocto" in parsed ? (
         <>
-          <TxButton
+          <VaultTxButton
             label={`Send ${formatNear(parsed.yocto, 6)} NEAR`}
             network={network}
             expectedSigner={signer}
             confirm={`Send ${formatNear(parsed.yocto, 6)} NEAR to ${vault}? NEAR in a vault cannot be withdrawn.`}
             tx={asWalletTx(sendNearTx(vault, parsed.yocto))}
+            outOfNearCodes={outOfNearCodes}
+            vaultNearLow={false}
           />
           <p className="mt-1 text-xs text-[#0B0B0C]/60">
             Or from a terminal (near-cli-rs, you sign):

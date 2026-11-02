@@ -1,37 +1,58 @@
 "use client";
 
-import { type ComponentProps, useState } from "react";
+import { useState } from "react";
 import { Notice } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
+import type { Network } from "@/lib/config";
+import { rewordOutOfNear } from "@/lib/console/display";
 import type { TxResult } from "@/lib/near/outcome";
-
-/** Built on the server from the SDK (lib/console/out-of-near.ts) and passed down as plain data. */
-export interface OutOfNearProp {
-  codes: string[];
-  detail: string;
-}
+import type { WalletTx } from "@/lib/near/tx";
 
 /**
- * A TxButton for a vault call. When the outcome's code says the vault ran out of NEAR (R3:
- * `isOutOfNearCode`), it shows the SDK's own text and points at the top-up, because the remedy is
- * a plain transfer, not another try of the same call.
+ * A TxButton for a call the console asks the owner or an approver to sign (freeze, withdraw,
+ * approve, reject, a top-up). When the chain refuses it as out of NEAR (R3, `isOutOfNearCode`; the
+ * codes come from the server as plain data), the signer's own account is the first suspect, so the
+ * SDK's vault-only wording is replaced by `SIGNER_OUT_OF_NEAR`. The "Send NEAR to this vault"
+ * suggestion is added only when the vault's free NEAR reads low (W-T8-R1).
+ *
+ * Every call here is known before the click, so it always takes a `tx` (TxButton keys its lock on
+ * the transaction) and never a `prepare`.
  */
 export function VaultTxButton({
-  outOfNear,
-  ...props
-}: Omit<ComponentProps<typeof TxButton>, "onResult"> & { outOfNear: OutOfNearProp }) {
-  const [hint, setHint] = useState<string | null>(null);
+  label,
+  network,
+  expectedSigner,
+  confirm,
+  tx,
+  outOfNearCodes,
+  vaultNearLow,
+}: {
+  label: string;
+  network: Network;
+  expectedSigner?: string;
+  confirm?: string;
+  tx: WalletTx;
+  outOfNearCodes: string[];
+  /** True only when the vault's free NEAR was read and is below 0.1 NEAR (never on "unavailable"). */
+  vaultNearLow: boolean;
+}) {
+  const [topUp, setTopUp] = useState(false);
   return (
     <div>
       <TxButton
-        {...props}
+        label={label}
+        network={network}
+        expectedSigner={expectedSigner}
+        confirm={confirm}
+        tx={tx}
         onResult={(r: TxResult) => {
-          setHint(r.code !== null && outOfNear.codes.includes(r.code) ? outOfNear.detail : null);
+          const v = rewordOutOfNear(r, outOfNearCodes, vaultNearLow);
+          setTopUp(v?.suggestTopUp ?? false);
         }}
       />
-      {hint ? (
+      {topUp ? (
         <Notice tone="warn">
-          {hint}. <a href="#send-near">Send NEAR to this vault</a>.
+          <a href="#send-near">Send NEAR to this vault</a>
         </Notice>
       ) : null}
     </div>

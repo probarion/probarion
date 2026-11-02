@@ -6,10 +6,12 @@ import { Field, inputClass, Notice, type Tone } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
 import { VAULT_DEFAULTS } from "@/lib/config";
+import { createWarnings, parseApprovers } from "@/lib/console/create-rules";
+import { rewordOutOfNear } from "@/lib/console/display";
 import { lockKeyFor } from "@/lib/near/lock";
 import type { TxResult } from "@/lib/near/outcome";
 import { createDepositPlan, type FactoryMode, MAX_CREATE_DEPOSIT_YOCTO } from "@/lib/near/runway";
-import { formatNear, parseNear } from "@/lib/near/units";
+import { formatNear, formatNearUp, parseNear } from "@/lib/near/units";
 
 /** After an "ok" create, the vault can take a few seconds to read as final: registration is a read, so it may retry. */
 const REGISTER_TRIES = 4;
@@ -25,7 +27,8 @@ function depositView(minDeposit: string, mode: FactoryMode, depositNear: string)
     return { ok: false as const, text: "Enter the deposit as a plain number of NEAR, such as 3.5" };
   }
   const plan = createDepositPlan(minDeposit, mode, yocto);
-  const required = formatNear(plan.requiredYocto.toString(), 6);
+  // A minimum is rounded up: the figure shown, typed back in, always meets it.
+  const required = formatNearUp(plan.requiredYocto.toString(), 6);
   if (yocto < plan.requiredYocto) {
     return {
       ok: false as const,
@@ -57,6 +60,8 @@ export function CreateVaultPanel({
   version,
   minDeposit,
   defaultDeposit,
+  owner,
+  outOfNearCodes,
 }: {
   factory: string;
   network: Network;
@@ -66,19 +71,27 @@ export function CreateVaultPanel({
   minDeposit: string;
   /** yoctoNEAR: min_deposit, plus the code storage in embedded mode (R14). */
   defaultDeposit: string;
+  /**
+   * The signed-in account. The factory makes whoever signs `create_vault` the vault's permanent
+   * owner (contracts/factory create_vault: owner = predecessor), so only this account may sign.
+   */
+  owner: string;
+  /** The SDK's out-of-NEAR codes, from the server. */
+  outOfNearCodes: string[];
 }) {
   const [form, setForm] = useState({
     name: "",
     approvers: "",
     dailyBackstopUsdc: VAULT_DEFAULTS.dailyBackstopUsdc,
     heldTtlHours: String(VAULT_DEFAULTS.heldTtlHours),
-    depositNear: formatNear(defaultDeposit, 6),
+    depositNear: formatNearUp(defaultDeposit, 6),
   });
   const [note, setNote] = useState<Note>(null);
   const set = (k: keyof typeof form) => (e: ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: e.target.value });
   const vaultId = `${form.name.trim()}.${factory}`;
   const deposit = depositView(minDeposit, mode, form.depositNear);
+  const warnings = createWarnings(parseApprovers(form.approvers), owner);
 
   async function register(id: string, tries: number): Promise<void> {
     for (let i = 0; i < tries; i++) {
@@ -104,6 +117,9 @@ export function CreateVaultPanel({
     if (r.status === "ok") {
       setNote({ tone: "info", text: `Created. Registering ${id}…` });
       await register(id, REGISTER_TRIES);
+    } else if (r.status === "failed") {
+      // Out of NEAR here is the signer's own account: the vault does not exist yet.
+      rewordOutOfNear(r, outOfNearCodes, false);
     } else if (r.status === "unknown") {
       // Never sign again: the vault may exist. Registration is a read, so one try is safe.
       setNote({
@@ -118,7 +134,8 @@ export function CreateVaultPanel({
     <div>
       <p className="mb-3 text-xs text-[#0B0B0C]/60">
         Factory version {version} ({mode === "global" ? "global code" : "embedded code"}). You sign
-        with your own wallet and become the vault&apos;s owner.
+        with your own wallet as <span className="mono">{owner}</span>, and that account becomes the
+        vault&apos;s owner for good.
       </p>
       <Field
         label="Vault name"
@@ -158,11 +175,17 @@ export function CreateVaultPanel({
         <input className={inputClass} value={form.depositNear} onChange={set("depositNear")} />
       </Field>
       {deposit.ok ? <Notice tone={deposit.low ? "warn" : "neutral"}>{deposit.text}</Notice> : null}
+      {warnings.map((w) => (
+        <Notice key={w} tone="warn">
+          {w}
+        </Notice>
+      ))}
       {deposit.ok ? (
         <TxButton
           label="Create vault in my wallet"
           network={network}
-          confirm={`Create ${vaultId} with a ${form.depositNear.trim()} NEAR deposit? The deposit becomes the vault's runway and cannot be withdrawn. If the name is taken, the factory refunds it.`}
+          expectedSigner={owner}
+          confirm={`Create ${vaultId} with ${owner} as its owner and a ${form.depositNear.trim()} NEAR deposit? The deposit becomes the vault's runway and cannot be withdrawn. If the name is taken, the factory refunds it.`}
           prepare={() => prepareCreateVaultAction(form)}
           lockKey={lockKeyFor(`create-vault:${vaultId}`)}
           onResult={onResult}

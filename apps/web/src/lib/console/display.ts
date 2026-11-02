@@ -89,6 +89,13 @@ export function heldActions(
   frozen: boolean,
   nowMs: number,
 ): { canApprove: boolean; note: string | null } {
+  // The view's U64 is a decimal string; anything else is not a time to compare (and BigInt throws on it).
+  if (heldUntilNs !== null && !/^(0|[1-9][0-9]*)$/.test(heldUntilNs)) {
+    return {
+      canApprove: false,
+      note: "The hold's end time could not be read: approve is not offered.",
+    };
+  }
   const expired = heldUntilNs === null || BigInt(heldUntilNs) < BigInt(nowMs) * 1_000_000n;
   if (expired)
     return {
@@ -101,4 +108,50 @@ export function heldActions(
       note: "The vault is frozen: the vault refuses approve until it is unfrozen.",
     };
   return { canApprove: true, note: null };
+}
+
+// ---- out of NEAR on a call the console asks you to sign (W-T8-R1) --------------------------------
+
+/**
+ * A console call (freeze, withdraw, approve, reject, create, a top-up) is signed by the owner or an
+ * approver. When the chain refuses it as out of NEAR (`LackBalanceForState`, `NotEnoughBalance`),
+ * the signer's account is the first suspect: it pays the gas and any deposit. The SDK's
+ * OUT_OF_NEAR_DETAIL, which blames the vault, is right only for spends the vault's agent key signs.
+ */
+export const SIGNER_OUT_OF_NEAR =
+  "Your account (the signer) or the vault is short of NEAR: check your wallet first.";
+
+/** Added only when the vault's own free NEAR reads low (below 0.1 NEAR, the amber runway). */
+export const VAULT_LOW_SUGGESTION =
+  "The vault's free NEAR also reads low (below 0.1 NEAR): Send NEAR to this vault.";
+
+/**
+ * The wording for a console-signed call that came back out of NEAR, or null for any other code.
+ * `codes` are the SDK's out-of-NEAR codes, handed down from the server (out-of-near.ts).
+ */
+export function consoleOutOfNear(
+  code: string | null,
+  codes: readonly string[],
+  vaultNearLow: boolean,
+): { text: string; suggestTopUp: boolean } | null {
+  if (code === null || !codes.includes(code)) return null;
+  return vaultNearLow
+    ? { text: `${SIGNER_OUT_OF_NEAR} ${VAULT_LOW_SUGGESTION}`, suggestTopUp: true }
+    : { text: SIGNER_OUT_OF_NEAR, suggestTopUp: false };
+}
+
+/**
+ * The outcome reader (lib/near/confirm.ts, Task 6) puts the SDK's vault-only text into `error` for
+ * these codes. A console-signed call replaces it here, chosen by the code alone. TxButton shows the
+ * same result object it hands to onResult, so the replaced text is what the signer reads.
+ * Returns the wording used, or null when the code is not an out-of-NEAR one (nothing changed).
+ */
+export function rewordOutOfNear(
+  r: { code: string | null; error: string | null },
+  codes: readonly string[],
+  vaultNearLow: boolean,
+): { text: string; suggestTopUp: boolean } | null {
+  const v = consoleOutOfNear(r.code, codes, vaultNearLow);
+  if (v !== null) r.error = v.text;
+  return v;
 }

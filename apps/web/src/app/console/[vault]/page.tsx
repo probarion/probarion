@@ -32,12 +32,25 @@ import { formatNear, formatUsdc, nsToDate } from "@/lib/near/units";
 import { refreshMembersAction, updateSettingsAction } from "./actions";
 
 export const metadata: Metadata = { title: "Vault" };
+/** Every wallet button here confirms through confirmTx, which waits for the transaction to be FINAL. */
+export const maxDuration = 60;
 
 const muted = "text-[#0B0B0C]/60";
+const DIGITS = /^(0|[1-9][0-9]*)$/;
 
-/** A U128 from the chain, formatted, or a plain word when it is not a decimal (never a crash, never "0"). */
+/** A U128 of the network's USDC (6 decimals), or a plain word when it is not a decimal (never "0"). */
 function usdc(units: string): string {
-  return /^(0|[1-9][0-9]*)$/.test(units) ? formatUsdc(units) : "unreadable";
+  return DIGITS.test(units) ? formatUsdc(units) : "unreadable";
+}
+
+/**
+ * Amounts in the vault's own token. The console knows the decimals of the network's USDC only; any
+ * other token is shown in raw base units and says so, never scaled by a guess.
+ */
+function tokenAmount(token: string, networkUsdc: string): (units: string) => string {
+  if (token === networkUsdc) return (units) => `${usdc(units)} USDC`;
+  return (units) =>
+    `${DIGITS.test(units) ? units : "unreadable"} base units of ${token} (decimals unknown)`;
 }
 
 function hours(ns: string): string {
@@ -50,7 +63,7 @@ function payeeText(p: Payee): string {
 }
 
 function expiry(s: SpendView): string {
-  if (s.held_until_ns === null || !/^[0-9]+$/.test(s.held_until_ns)) return "n/a";
+  if (s.held_until_ns === null || !DIGITS.test(s.held_until_ns)) return "n/a";
   return `${nsToDate(s.held_until_ns).toISOString().replace("T", " ").slice(0, 16)} UTC`;
 }
 
@@ -85,18 +98,24 @@ function Counts({
   );
 }
 
+const FREEZE_CONFIRM = "Freeze stops every spend and every approval until you unfreeze. Continue?";
+
 function VaultCard({
   vault,
   config,
   network,
   isOwner,
   networkUsdc,
+  amount,
+  vaultNearLow,
 }: {
   vault: string;
   config: VaultConfig;
   network: Network;
   isOwner: boolean;
   networkUsdc: string;
+  amount: (units: string) => string;
+  vaultNearLow: boolean;
 }) {
   return (
     <Card
@@ -119,7 +138,7 @@ function VaultCard({
               ))}
         </dd>
         <dt>Daily backstop</dt>
-        <dd>{usdc(config.daily_backstop)} USDC</dd>
+        <dd>{amount(config.daily_backstop)}</dd>
         <dt>Held payments expire after</dt>
         <dd>{hours(config.held_ttl_ns)}</dd>
         <dt>Code version</dt>
@@ -133,7 +152,7 @@ function VaultCard({
       {config.usdc !== networkUsdc ? (
         <Notice tone="warn">
           This vault&apos;s token is {config.usdc}, not this network&apos;s USDC ({networkUsdc}).
-          Its balance below is of its own token.
+          The console does not know its decimals, so its amounts are shown in raw base units.
         </Notice>
       ) : null}
       {isOwner ? (
@@ -145,9 +164,10 @@ function VaultCard({
           confirm={
             config.frozen
               ? "Unfreeze the vault? Agents can spend again within their mandates."
-              : "Freeze stops every spend and every approval until you unfreeze. Continue?"
+              : FREEZE_CONFIRM
           }
-          outOfNear={OUT_OF_NEAR}
+          outOfNearCodes={OUT_OF_NEAR.codes}
+          vaultNearLow={vaultNearLow}
         />
       ) : (
         <p className={`mt-2 text-xs ${muted}`}>Only the owner can freeze or unfreeze this vault.</p>
@@ -169,6 +189,9 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
   const config = o.config.ok ? o.config.value : null;
   const isOwner = config !== null && config.owner === session.accountId;
   const isApprover = config?.approvers.includes(session.accountId) ?? false;
+  // Only a NEAR balance that was read can be low; "unavailable" never suggests a top-up.
+  const vaultNearLow = o.near.ok && o.near.value.low;
+  const amount = tokenAmount(config?.usdc ?? consts.usdc, consts.usdc);
   const now = Date.now();
 
   return (
@@ -181,11 +204,32 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
       <VaultNav vault={vault} />
 
       {config === null ? (
-        <Notice tone="bad">
-          The vault&apos;s config could not be read (
-          {o.config.ok ? "" : whyUnavailable(o.config.kind)}), so nothing about its state is shown.
-          Reload to try again. The vault itself is not affected.
-        </Notice>
+        <>
+          <Notice tone="bad">
+            The vault&apos;s config could not be read (
+            {o.config.ok ? "" : whyUnavailable(o.config.kind)}), so nothing about its state is
+            shown. Reload to try again. The vault itself is not affected.
+          </Notice>
+          {/* W-T8-R1: the emergency stop must not depend on a read. The membership row says who the
+              owner is (it is the on-chain owner, checked at registration); the contract checks again. */}
+          {member.role === "owner" ? (
+            <Card title="Emergency stop">
+              <p className={`text-sm ${muted}`}>
+                Freezing does not need the config: it stops every spend and every approval. Unfreeze
+                needs the vault&apos;s state, so it waits until the config reads again.
+              </p>
+              <VaultTxButton
+                label="Freeze vault"
+                network={network}
+                expectedSigner={session.accountId}
+                tx={freezeTx(member.vault_id)}
+                confirm={FREEZE_CONFIRM}
+                outOfNearCodes={OUT_OF_NEAR.codes}
+                vaultNearLow={false}
+              />
+            </Card>
+          ) : null}
+        </>
       ) : (
         <>
           <VaultCard
@@ -194,13 +238,15 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
             network={network}
             isOwner={isOwner}
             networkUsdc={consts.usdc}
+            amount={amount}
+            vaultNearLow={vaultNearLow}
           />
 
           <Card title="Balances">
             <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-              <dt>USDC on NEAR</dt>
+              <dt>{config.usdc === consts.usdc ? "USDC on NEAR" : "Token on NEAR"}</dt>
               <dd>
-                <Figure read={o.usdc} fmt={(v) => `${usdc(v)} USDC`} />
+                <Figure read={o.usdc} fmt={amount} />
               </dd>
               <dt>Base USDC in Intents</dt>
               <dd>
@@ -227,12 +273,13 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
             </dl>
             {isOwner && o.usdc.ok && /^[1-9][0-9]*$/.test(o.usdc.value) ? (
               <VaultTxButton
-                label={`Withdraw all ${usdc(o.usdc.value)} USDC to my wallet`}
+                label={`Withdraw all ${amount(o.usdc.value)} to my wallet`}
                 network={network}
                 expectedSigner={config.owner}
                 tx={withdrawTx(vault, o.usdc.value)}
-                confirm={`Withdraw the vault's whole USDC balance on NEAR (${usdc(o.usdc.value)} USDC) to ${config.owner}?`}
-                outOfNear={OUT_OF_NEAR}
+                confirm={`Withdraw the vault's whole balance on NEAR (${amount(o.usdc.value)}) to ${config.owner}?`}
+                outOfNearCodes={OUT_OF_NEAR.codes}
+                vaultNearLow={vaultNearLow}
               />
             ) : null}
             {isOwner && o.intentsBase.ok && /^[1-9][0-9]*$/.test(o.intentsBase.value) ? (
@@ -242,10 +289,16 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                 expectedSigner={config.owner}
                 tx={withdrawIntentsTx(vault, consts.allowedAssets.base, o.intentsBase.value)}
                 confirm={`Withdraw the vault's whole Base USDC balance (${usdc(o.intentsBase.value)}) from ${config.intents} to ${config.owner}?`}
-                outOfNear={OUT_OF_NEAR}
+                outOfNearCodes={OUT_OF_NEAR.codes}
+                vaultNearLow={vaultNearLow}
               />
             ) : null}
-            <SendNearPanel vault={vault} network={network} signer={session.accountId} />
+            <SendNearPanel
+              vault={vault}
+              network={network}
+              signer={session.accountId}
+              outOfNearCodes={OUT_OF_NEAR.codes}
+            />
           </Card>
 
           <Card
@@ -271,9 +324,8 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                     className="mb-3 border-b border-[#0B0B0C]/10 pb-3 text-sm last:border-0"
                   >
                     <div>
-                      Spend #{s.id} · mandate #{s.mandate_id} ·{" "}
-                      <strong>{usdc(s.amount)} USDC</strong> to{" "}
-                      <span className="mono break-all">{payeeText(s.destination)}</span>
+                      Spend #{s.id} · mandate #{s.mandate_id} · <strong>{amount(s.amount)}</strong>{" "}
+                      to <span className="mono break-all">{payeeText(s.destination)}</span>
                     </div>
                     <div className={`text-xs ${muted}`}>
                       ref <span className="mono">{s.ref}</span> · hold ends {expiry(s)}
@@ -287,8 +339,9 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                             network={network}
                             expectedSigner={session.accountId}
                             tx={approveTx(vault, s.id)}
-                            confirm={`Approve paying ${usdc(s.amount)} USDC to ${payeeText(s.destination)} (spend #${s.id})?`}
-                            outOfNear={OUT_OF_NEAR}
+                            confirm={`Approve paying ${amount(s.amount)} to ${payeeText(s.destination)} (spend #${s.id})?`}
+                            outOfNearCodes={OUT_OF_NEAR.codes}
+                            vaultNearLow={vaultNearLow}
                           />
                         ) : null}
                         <VaultTxButton
@@ -297,7 +350,8 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                           expectedSigner={session.accountId}
                           tx={rejectTx(vault, s.id)}
                           confirm={`Reject spend #${s.id}? Its reservation goes back to the mandate.`}
-                          outOfNear={OUT_OF_NEAR}
+                          outOfNearCodes={OUT_OF_NEAR.codes}
+                          vaultNearLow={vaultNearLow}
                         />
                       </div>
                     ) : (
@@ -350,7 +404,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                 <thead>
                   <tr className="border-b border-[#0B0B0C]/10">
                     <th>#</th>
-                    <th>Amount (USDC)</th>
+                    <th>Amount</th>
                     <th>Status</th>
                     <th>To</th>
                     <th>Ref</th>
@@ -362,7 +416,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                     return (
                       <tr key={s.id} className="border-b border-[#0B0B0C]/10 last:border-0">
                         <td>{s.id}</td>
-                        <td>{usdc(s.amount)}</td>
+                        <td>{amount(s.amount)}</td>
                         <td>
                           <Badge tone={v.tone}>{v.label}</Badge>
                         </td>

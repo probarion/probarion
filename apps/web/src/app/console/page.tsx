@@ -6,6 +6,7 @@ import { CreateVaultPanel } from "@/components/console/CreateVaultPanel";
 import { RegisterVaultForm } from "@/components/console/RegisterVaultForm";
 import { Badge, Card } from "@/components/ui";
 import { requireSession } from "@/lib/auth/guard";
+import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { loadFactoryForCreate } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
 import { memberTenants } from "@/lib/db/tenants";
@@ -14,6 +15,8 @@ import { createDepositPlan } from "@/lib/near/runway";
 import { getRpc } from "@/lib/near/server";
 
 export const metadata: Metadata = { title: "Your vaults" };
+/** The create button's confirmTx server action waits for the transaction to be FINAL. */
+export const maxDuration = 60;
 
 /**
  * The console home. It comes before any vault, so it is guarded by the session (requireSession);
@@ -65,9 +68,15 @@ export default async function ConsolePage() {
               factory.mode,
               0n,
             ).requiredYocto.toString()}
+            owner={session.accountId}
+            outOfNearCodes={OUT_OF_NEAR.codes}
           />
         ) : (
-          <CliFallback factory={env.PROBARION_FACTORY_ID} reason={factory.reason} />
+          <CliFallback
+            factory={env.PROBARION_FACTORY_ID}
+            network={env.NEAR_NETWORK}
+            reason={factory.reason}
+          />
         )}
       </Card>
       <Card title="Register a vault you already own">

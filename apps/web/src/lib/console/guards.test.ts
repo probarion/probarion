@@ -21,6 +21,16 @@ const h = vi.hoisted(() => ({
   reader: null as unknown as VaultReader,
   account: null as unknown as () => Promise<unknown>,
   revalidated: [] as string[],
+  /** Factory views by method name; a method left out throws (the factory cannot be read). */
+  factory: {} as Record<string, unknown>,
+  /** Every wallet button the page rendered, with its props. */
+  buttons: [] as {
+    label: string;
+    expectedSigner?: string;
+    confirm?: string;
+    tx?: { receiverId: string; actions: { type: string; params: { methodName?: string } }[] };
+    onResult?: (r: import("@/lib/near/outcome").TxResult) => void | Promise<void>;
+  }[],
 }));
 
 vi.mock("next/headers", () => ({
@@ -58,8 +68,9 @@ vi.mock("@/lib/near/server", async () => {
     getReader: () => h.reader,
     getRpc: () => ({
       viewAccount: () => h.account(),
-      viewFunction: async () => {
-        throw new Error("no factory in this test");
+      viewFunction: async (_contract: string, method: string) => {
+        if (!(method in h.factory)) throw new Error("no factory in this test");
+        return h.factory[method];
       },
     }),
     chainConsts: () => N.mainnet,
@@ -72,13 +83,18 @@ vi.mock("next/navigation", async (importOriginal) => ({
 }));
 // The wallet button needs the browser wallet; here it only shows what it would sign.
 vi.mock("@/components/wallet/TxButton", () => ({
-  TxButton: (p: { label: string }) => createElement("button", { type: "button" }, p.label),
+  TxButton: (p: (typeof h.buttons)[number]) => {
+    h.buttons.push(p);
+    return createElement("button", { type: "button" }, p.label);
+  },
 }));
 
+import { KNOWN_VAULT_CODE_HASHES } from "@probarion/core";
 import { refreshMembersAction, updateSettingsAction } from "@/app/console/[vault]/actions";
-import VaultPage from "@/app/console/[vault]/page";
+import VaultPage, { maxDuration as vaultMaxDuration } from "@/app/console/[vault]/page";
 import { prepareCreateVaultAction, registerVaultAction } from "@/app/console/actions";
-import ConsolePage from "@/app/console/page";
+import ConsolePage, { maxDuration as homeMaxDuration } from "@/app/console/page";
+import { SIGNER_OUT_OF_NEAR, VAULT_LOW_SUGGESTION } from "./display";
 
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
 const VAULT = "acme.vaults.probarion.near";
@@ -99,6 +115,8 @@ afterAll(async () => {
 beforeEach(() => {
   h.jar.clear();
   h.revalidated.length = 0;
+  h.buttons.length = 0;
+  h.factory = {};
   h.reader = fakeReader({
     getConfig: async () => vaultConfig({ owner: "acme.near", approvers: ["cfo.near"] }),
     ftBalance: async () => "25000000",
@@ -312,7 +330,282 @@ describe("console home guard (requireSession)", () => {
     await signInAs("acme.near");
     const out = renderToStaticMarkup((await ConsolePage()) as ReactElement);
     expect(out).toContain(VAULT);
-    expect(out).toContain("npx probarion vault create");
+    expect(out).toContain("npx probarion --network mainnet vault create");
     expect(out).not.toContain("Create vault in my wallet");
+  });
+});
+
+const HOUR_NS = 3_600_000_000_000n;
+const nowNs = () => BigInt(Date.now()) * 1_000_000n;
+const heldSpend = (id: number, heldUntilNs: string) => ({
+  id,
+  mandate_id: 1,
+  amount: "2500000",
+  invoice_hash: "aa",
+  ref: `inv-${id}`,
+  decision_hash: "bb",
+  agent_pk: "ed25519:x",
+  destination: { type: "near" as const, account_id: "payee.near" },
+  status: "held" as const,
+  created_at_ns: "1",
+  held_until_ns: heldUntilNs,
+  memo: null,
+});
+
+describe("W-T8-R1 item 3: Freeze survives an unreadable config", () => {
+  const configDown = () => {
+    h.reader = fakeReader({
+      getConfig: async () => {
+        throw transportError();
+      },
+    });
+  };
+
+  it("the owner still gets Freeze (signed by the session account), never Unfreeze", async () => {
+    configDown();
+    await signInAs("acme.near");
+    const out = await html(VAULT);
+    expect(out).toContain("config could not be read");
+    expect(out).toContain("Freeze vault");
+    expect(out).not.toContain(">Unfreeze vault<");
+    expect(h.buttons.map((b) => b.label)).not.toContain("Unfreeze vault");
+    const freeze = h.buttons.find((b) => b.label === "Freeze vault");
+    expect(freeze?.expectedSigner).toBe("acme.near");
+    expect(freeze?.tx?.receiverId).toBe(VAULT);
+    expect(freeze?.tx?.actions.map((a) => a.params.methodName)).toEqual(["freeze"]);
+  });
+
+  it("an approver gets no Freeze", async () => {
+    configDown();
+    await signInAs("cfo.near");
+    const out = await html(VAULT);
+    expect(out).toContain("config could not be read");
+    expect(out).not.toContain("Freeze vault");
+  });
+});
+
+describe("vault page: approvals, withdraw and tokens", () => {
+  it("an approver gets Approve and Reject for a live hold", async () => {
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", approvers: ["cfo.near"] }),
+      listSpends: async () => [heldSpend(7, (nowNs() + HOUR_NS).toString())],
+    });
+    await signInAs("cfo.near");
+    const out = await html(VAULT);
+    expect(out).toContain("Held for approval (1)");
+    expect(out).toContain(">Approve<");
+    expect(out).toContain(">Reject<");
+    expect(h.buttons.find((b) => b.label === "Approve")?.expectedSigner).toBe("cfo.near");
+  });
+
+  it("Approve is hidden while the vault is frozen; Reject stays", async () => {
+    h.reader = fakeReader({
+      getConfig: async () =>
+        vaultConfig({ owner: "acme.near", approvers: ["cfo.near"], frozen: true }),
+      listSpends: async () => [heldSpend(7, (nowNs() + HOUR_NS).toString())],
+    });
+    await signInAs("cfo.near");
+    const out = await html(VAULT);
+    expect(out).not.toContain(">Approve<");
+    expect(out).toContain(">Reject<");
+    expect(out).toContain("frozen");
+  });
+
+  it("the owner gets Withdraw for a positive USDC balance, none for zero", async () => {
+    await signInAs("acme.near");
+    expect(await html(VAULT)).toContain("Withdraw all 25 USDC to my wallet");
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", approvers: ["cfo.near"] }),
+      ftBalance: async () => "0",
+      intentsBalance: async () => "0",
+    });
+    expect(await html(VAULT)).not.toContain("Withdraw all");
+  });
+
+  it("a vault whose token is not the network USDC shows raw units, decimals unknown", async () => {
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ usdc: "other-token.near" }),
+      ftBalance: async () => "25000000",
+      intentsBalance: async () => "0",
+    });
+    await signInAs("acme.near");
+    const out = await html(VAULT);
+    expect(out).toContain("25000000 base units of other-token.near (decimals unknown)");
+    expect(out).not.toContain("25 USDC");
+    const w = h.buttons.find((b) => b.label.startsWith("Withdraw all"));
+    expect(w?.label).toContain("25000000 base units of other-token.near (decimals unknown)");
+    expect(w?.confirm).toContain("decimals unknown");
+  });
+});
+
+describe("W-T8-R1 item 2: out-of-NEAR wording on the page", () => {
+  const lack = () => ({
+    status: "failed" as const,
+    txHash: "HashHashHashHashHashHashHashHashHashHashHash",
+    code: "LackBalanceForState",
+    error: "vault is out of free NEAR",
+  });
+
+  it("names the signer first; no vault top-up while the vault's NEAR reads fine", async () => {
+    await signInAs("acme.near");
+    await html(VAULT);
+    const r = lack();
+    await h.buttons.find((b) => b.label === "Freeze vault")?.onResult?.(r);
+    expect(r.error).toBe(SIGNER_OUT_OF_NEAR);
+  });
+
+  it("adds the vault top-up when the vault's NEAR reads low (below 0.1)", async () => {
+    h.account = async () =>
+      viewAccount({
+        amount: (250_733n * 10n ** 19n + 9n * 10n ** 22n).toString(),
+        storage_usage: 250_733,
+      });
+    await signInAs("acme.near");
+    await html(VAULT);
+    const r = lack();
+    await h.buttons.find((b) => b.label === "Freeze vault")?.onResult?.(r);
+    expect(r.error).toBe(`${SIGNER_OUT_OF_NEAR} ${VAULT_LOW_SUGGESTION}`);
+  });
+
+  it("does not suggest a top-up when the vault's NEAR is unavailable", async () => {
+    h.account = async () => {
+      throw transportError();
+    };
+    await signInAs("acme.near");
+    await html(VAULT);
+    const r = lack();
+    await h.buttons.find((b) => b.label === "Freeze vault")?.onResult?.(r);
+    expect(r.error).toBe(SIGNER_OUT_OF_NEAR);
+  });
+});
+
+describe("server actions: the success paths", () => {
+  const factoryConfig = (minDeposit: string) => ({
+    owner: "probarion.near",
+    usdc: NETWORKS.mainnet.usdc,
+    intents: NETWORKS.mainnet.intents,
+    allowed_assets: [],
+    min_deposit: minDeposit,
+    current_version: 1,
+  });
+  const versions = (mode: string) => [
+    { index: 1, code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "", mode, notes: "", at_ns: "1" },
+  ];
+  const form = {
+    name: "fresh",
+    approvers: "cfo.near",
+    dailyBackstopUsdc: "500",
+    heldTtlHours: "72",
+    depositNear: "1",
+  };
+
+  it("prepareCreateVaultAction builds the factory call for the session account, global mode", async () => {
+    h.factory = {
+      get_config: factoryConfig((10n ** 24n / 2n).toString()),
+      versions: versions("global"),
+    };
+    await signInAs("acme.near");
+    const r = await prepareCreateVaultAction(form);
+    if (!("actions" in r)) throw new Error(`expected a tx: ${JSON.stringify(r)}`);
+    expect(r.receiverId).toBe(NETWORKS.mainnet.factory);
+    const call = r.actions[0];
+    expect(call?.type).toBe("FunctionCall");
+    if (call?.type !== "FunctionCall") return;
+    expect(call.params.methodName).toBe("create_vault");
+    expect(call.params.deposit).toBe("1000000000000000000000000");
+  });
+
+  it("prepareCreateVaultAction passes the factory's mode through: embedded needs the code storage", async () => {
+    h.factory = {
+      get_config: factoryConfig((10n ** 24n / 2n).toString()),
+      versions: versions("embedded"),
+    };
+    await signInAs("acme.near");
+    const r = await prepareCreateVaultAction(form);
+    expect(r).toMatchObject({ error: expect.stringMatching(/embedded mode: 3\.23352 NEAR/) });
+    const ok = await prepareCreateVaultAction({ ...form, depositNear: "3.23352" });
+    expect("actions" in ok).toBe(true);
+  });
+
+  it("prepareCreateVaultAction never trusts extra fields from the browser", async () => {
+    h.factory = {
+      get_config: factoryConfig((10n ** 24n / 2n).toString()),
+      versions: versions("global"),
+    };
+    await signInAs("acme.near");
+    const r = await prepareCreateVaultAction({
+      ...form,
+      factory: "vaults.evil.near",
+      minDeposit: "0",
+    } as typeof form);
+    if (!("actions" in r)) throw new Error("expected a tx");
+    expect(r.receiverId).toBe(NETWORKS.mainnet.factory);
+  });
+
+  it("registerVaultAction registers a known build for its on-chain owner", async () => {
+    h.reader = fakeReader({
+      getConfig: async () =>
+        vaultConfig({ owner: "acme.near", approvers: ["coo.near"], factory: null }),
+    });
+    h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    await signInAs("acme.near");
+    expect(await registerVaultAction(" fresh.near ")).toEqual({ ok: true, vaultId: "fresh.near" });
+    const m = await pgliteDb(pg).rpc<{ role: string } | null>("member_role", {
+      vault_id: "fresh.near",
+      account: "coo.near",
+    });
+    expect(m?.role).toBe("approver");
+    expect(h.revalidated).toEqual(["/console"]);
+  });
+
+  it("registerVaultAction says why it refused, with the code", async () => {
+    h.reader = fakeReader({ getConfig: async () => vaultConfig({ owner: "someone.near" }) });
+    h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    await signInAs("acme.near");
+    expect(await registerVaultAction("taken.near")).toMatchObject({ ok: false, code: "not_owner" });
+  });
+
+  it("refreshMembersAction re-reads the approvers from the chain for the owner", async () => {
+    h.reader = fakeReader({
+      getConfig: async () =>
+        vaultConfig({ owner: "acme.near", approvers: ["cfo.near", "coo.near"] }),
+    });
+    h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    await signInAs("acme.near");
+    expect(await refreshMembersAction(VAULT, null)).toMatchObject({ ok: true });
+    const m = await pgliteDb(pg).rpc<{ role: string } | null>("member_role", {
+      vault_id: VAULT,
+      account: "coo.near",
+    });
+    expect(m?.role).toBe("approver");
+    expect(h.revalidated).toEqual([`/console/${VAULT}`]);
+  });
+});
+
+describe("pages that host a wallet button wait for FINAL", () => {
+  it("export maxDuration = 60", () => {
+    expect(homeMaxDuration).toBe(60);
+    expect(vaultMaxDuration).toBe(60);
+  });
+});
+
+describe("console home: create pins the signer", () => {
+  it("passes the session account to the create panel as the expected signer", async () => {
+    h.factory = {
+      get_config: {
+        owner: "probarion.near",
+        usdc: "u.near",
+        intents: "i.near",
+        allowed_assets: [],
+        min_deposit: "500000000000000000000000",
+        current_version: 1,
+      },
+      versions: [{ index: 1, code_hash: "h", mode: "global", notes: "", at_ns: "1" }],
+    };
+    await signInAs("acme.near");
+    renderToStaticMarkup((await ConsolePage()) as ReactElement);
+    expect(h.buttons.find((b) => b.label === "Create vault in my wallet")?.expectedSigner).toBe(
+      "acme.near",
+    );
   });
 });

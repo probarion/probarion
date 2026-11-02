@@ -1,7 +1,17 @@
 import { isOutOfNearCode, OUT_OF_NEAR_DETAIL } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import { parseTopup } from "@/components/console/SendNearPanel";
-import { heldActions, shown, spendStatusView, UNAVAILABLE, whyUnavailable } from "./display";
+import {
+  consoleOutOfNear,
+  heldActions,
+  rewordOutOfNear,
+  SIGNER_OUT_OF_NEAR,
+  shown,
+  spendStatusView,
+  UNAVAILABLE,
+  VAULT_LOW_SUGGESTION,
+  whyUnavailable,
+} from "./display";
 import { OUT_OF_NEAR, outOfNearDetail } from "./out-of-near";
 
 describe("shown", () => {
@@ -78,5 +88,59 @@ describe("parseTopup", () => {
     for (const bad of ["0", "", "abc", "5.000000000000000000000001", "-1"]) {
       expect("problem" in parseTopup(bad), bad).toBe(true);
     }
+  });
+});
+
+describe("heldActions: a hold end that cannot be read", () => {
+  it("offers no Approve and says why, without throwing", () => {
+    for (const bad of ["", "abc", "1e9", "-1", "12.5"]) {
+      const r = heldActions(bad, false, Date.UTC(2026, 10, 8));
+      expect(r.canApprove, bad).toBe(false);
+      expect(r.note, bad).toMatch(/could not be read/);
+    }
+  });
+});
+
+describe("consoleOutOfNear (W-T8-R1 item 2)", () => {
+  const codes = ["LackBalanceForState", "NotEnoughBalance"];
+
+  it("for a console-signed call, names the signer first and the vault second", () => {
+    for (const code of codes) {
+      const v = consoleOutOfNear(code, codes, false);
+      expect(v?.text).toBe(SIGNER_OUT_OF_NEAR);
+      expect(v?.suggestTopUp).toBe(false);
+    }
+    expect(SIGNER_OUT_OF_NEAR).toMatch(
+      /your account \(the signer\) or the vault is short of NEAR: check your wallet first/i,
+    );
+    expect(SIGNER_OUT_OF_NEAR).not.toBe(OUT_OF_NEAR_DETAIL);
+  });
+
+  it("suggests sending NEAR to the vault only when its NEAR reads low", () => {
+    const low = consoleOutOfNear("LackBalanceForState", codes, true);
+    expect(low).toEqual({
+      text: `${SIGNER_OUT_OF_NEAR} ${VAULT_LOW_SUGGESTION}`,
+      suggestTopUp: true,
+    });
+    expect(VAULT_LOW_SUGGESTION).toMatch(/Send NEAR to this vault/);
+  });
+
+  it("is null for any other code, or none", () => {
+    expect(consoleOutOfNear("Frozen", codes, true)).toBeNull();
+    expect(consoleOutOfNear(null, codes, true)).toBeNull();
+  });
+
+  it("rewords the result in place, by code only", () => {
+    const r = {
+      status: "failed" as const,
+      txHash: "h",
+      code: "LackBalanceForState",
+      error: OUT_OF_NEAR_DETAIL,
+    };
+    rewordOutOfNear(r, codes, false);
+    expect(r.error).toBe(SIGNER_OUT_OF_NEAR);
+    const other = { status: "failed" as const, txHash: "h", code: "Frozen", error: "frozen" };
+    rewordOutOfNear(other, codes, true);
+    expect(other.error).toBe("frozen");
   });
 });
