@@ -25,9 +25,9 @@ const MEMO = `WITHDRAW_TO:${ADDRESS}`;
 
 const log = (standard: string, event: string, data: unknown) =>
   `EVENT_JSON:${JSON.stringify({ standard, version: "1.0.0", event, data })}`;
-const receipt = (executor: string, logs: string[]) => ({
+const receipt = (executor: string, logs: string[], status: unknown = { SuccessValue: "" }) => ({
   id: executor,
-  outcome: { logs, receipt_ids: [], executor_id: executor, status: {} },
+  outcome: { logs, receipt_ids: [], executor_id: executor, status },
 });
 
 function tx(receipts: ReturnType<typeof receipt>[], hash = "T"): TxStatusResult {
@@ -83,6 +83,32 @@ describe("findBurnPair (check h input, R5)", () => {
     expect(findBurnPair(mainnetStub, asset, m.intents, "mainnet")).toBeNull();
     const mainnetReal = tx([mtBurn(VAULT, "1", m.intents, asset), ftBurn(m.intents, MEMO, asset)]);
     expect(findBurnPair(mainnetReal, asset, m.intents, "mainnet")).toMatchObject({ amount: "1" });
+  });
+
+  it("counts only receipts that succeeded (SuccessValue or SuccessReceiptId): a failed one keeps its logs", () => {
+    const failed = {
+      Failure: { ActionError: { index: 0, kind: { FunctionCallError: { ExecutionError: "x" } } } },
+    };
+    const mt = (status: unknown) => receipt(INTENTS, [mtBurnLog(VAULT, "25000000")], status);
+    const ft = (status: unknown) => receipt(ASSET, [ftBurnLog(INTENTS)], status);
+    expect(
+      findBurnPair(
+        tx([mt({ SuccessReceiptId: "R" }), ft({ SuccessValue: "" })]),
+        ASSET,
+        INTENTS,
+        "mainnet",
+      ),
+    ).not.toBeNull();
+    for (const [m, f] of [
+      [failed, { SuccessValue: "" }],
+      [{ SuccessValue: "" }, failed],
+      [{}, { SuccessValue: "" }],
+      [{ SuccessValue: "" }, null],
+    ]) {
+      expect(findBurnPair(tx([mt(m), ft(f)]), ASSET, INTENTS, "mainnet")).toBeNull();
+    }
+    const stubFailed = receipt(INTENTS, [mtBurnLog(VAULT, "1"), ftBurnLog(INTENTS)], failed);
+    expect(findBurnPair(tx([stubFailed]), ASSET, INTENTS, "testnet")).toBeNull();
   });
 
   it("scans every receipt, whatever comes first", () => {
@@ -435,6 +461,59 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       notes: failNotes,
     });
     expect(failNotes.at(-1)).toBe("the tx index could not be read: TEST: index down");
+  });
+
+  it("tries a hint's own signer first (docs/mainnet-proof.json signer_id)", async () => {
+    const { rpc, calls } = fakeRpc({ HINT: { signer: "owner.testnet", tx: burnTx() } });
+    const burns = await collectBurns({
+      rpc,
+      now: NOW,
+      vaultId: VAULT,
+      network: "testnet",
+      config,
+      spends: [spend(1)],
+      ledger: [],
+      burnTxHints: new Map([[1, [{ hash: "HINT", signer: "owner.testnet" }]]]),
+    });
+    expect(burns[0]).toMatchObject({ tx_hash: "HINT", status: "ok" });
+    expect(calls).toEqual([["HINT", "owner.testnet"]]);
+  });
+
+  it("looks up only the network's intents contract and POA assets (T14-R1)", async () => {
+    // The vault names another intents contract: the lookup still reads the network's own one.
+    const { rpc } = fakeRpc({ T1: { signer: VAULT, tx: burnTx() } });
+    const evil = { ...config, intents: "evil-intents.testnet" } as VaultConfig;
+    const burns = await collectBurns({
+      rpc,
+      now: NOW,
+      vaultId: VAULT,
+      network: "testnet",
+      config: evil,
+      spends: [spend(1)],
+      ledger: [payment(spend(1).decision_hash, "T1")],
+    });
+    expect(burns[0]).toMatchObject({ status: "ok" });
+    // An asset that is not a POA asset of the network is not looked up at all.
+    const lookups = fakeRpc({ T1: { signer: VAULT, tx: burnTx() } });
+    const notes: string[] = [];
+    const foreign = spend(1, {
+      destination: { type: "intents", chain: "base", address: ADDRESS, asset: "base-evil.near" },
+    });
+    const none = await collectBurns({
+      rpc: lookups.rpc,
+      now: NOW,
+      vaultId: VAULT,
+      network: "testnet",
+      config,
+      spends: [foreign],
+      ledger: [payment(foreign.decision_hash, "T1")],
+      notes,
+    });
+    expect(none[0]).toMatchObject({ status: "missing", tx_hash: "" });
+    expect(lookups.calls).toEqual([]);
+    expect(notes).toEqual([
+      "spend 1: asset base-evil.near is not a POA asset of testnet: not looked up",
+    ]);
   });
 
   it("records a burned spend to a NEAR account as missing without any lookup", async () => {

@@ -1,5 +1,6 @@
 import { assetMatchesChain, assetPrefixOf, isChainAddress, isNearAccountId } from "./formats.js";
 import { deepFreeze } from "./freeze.js";
+import { isRecord } from "./guards.js";
 import { canonicalJson, sha256Hex } from "./hash.js";
 import { isHex32, utf8 } from "./hex.js";
 import { MODEL_PROPOSAL_JSON_SCHEMA } from "./proposal.js";
@@ -224,10 +225,6 @@ const MANDATE_KEYS: readonly string[] = deepFreeze([
 const NEAR_PAYEE_KEYS: readonly string[] = deepFreeze(["type", "account_id"]);
 const INTENTS_PAYEE_KEYS: readonly string[] = deepFreeze(["type", "chain", "address", "asset"]);
 const MANDATE_STATUSES: readonly string[] = deepFreeze(["active", "revoked", "exhausted"]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** null when `o` has exactly `keys`; otherwise what is wrong. A field the request does not carry would be unbound. */
 function keyProblem(o: Record<string, unknown>, keys: readonly string[]): string | null {

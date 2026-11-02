@@ -2,6 +2,7 @@ import bs58 from "bs58";
 import { checkAttestation, checkRequestBinding } from "./attestation.js";
 import { KNOWN_VAULT_CODE_HASHES } from "./code-hashes.js";
 import { NETWORKS, WITHDRAW_MEMO_PREFIX } from "./constants.js";
+import { isRecord } from "./guards.js";
 import { canonicalJson } from "./hash.js";
 import { bytesToHex, ZERO_HEX32 } from "./hex.js";
 import {
@@ -54,8 +55,6 @@ const fail = (id: CheckId, detail: string, seq?: number, lastSeq?: number): Chec
   result(id, "fail", detail, seq, lastSeq);
 const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** A ledger entry as far as the checks need it: an object with an object `body`. Anything else is malformed. */
 function isEntry(value: unknown): value is LedgerEntry {
@@ -342,6 +341,17 @@ function preLedgerExemptSpends(s: Snapshot): Set<number> {
     if (judgePreLedger(s, spend, usedBy) === null) exempt.add(spend.id);
   }
   return exempt;
+}
+
+/** The decision hashes that a payment entry of the ledger points back to. */
+function decisionsWithPayment(s: Snapshot): Set<string> {
+  const out = new Set<string>();
+  for (const entry of s.ledger) {
+    if (!isEntry(entry) || entry.body.kind !== "payment") continue;
+    const decision = isRecord(entry.body.refs) ? entry.body.refs.decision_body_hash : undefined;
+    if (typeof decision === "string") out.add(decision);
+  }
+  return out;
 }
 
 function decisionsByHash(s: Snapshot): Map<string, LedgerEntry> {
@@ -955,8 +965,31 @@ export function checkVaultLocked(s: Snapshot): CheckResult {
   );
 }
 
-/** Check g: no key of the vault is registered in intents, and predecessor auth is on. */
+/**
+ * T14-R1 (I1): a vault records the intents contract it pays through itself (`config.intents`), so only the
+ * network's own NEAR Intents contract (`NETWORKS[network].intents`) proves anything. Null when it is that one.
+ */
+function intentsProblem(s: Snapshot): string | null {
+  const canonical = NETWORKS[s.network].intents;
+  return s.chain.config.intents === canonical
+    ? null
+    : `the vault names intents contract ${String(s.chain.config.intents)}, not ${canonical}, the NEAR Intents contract of ${s.network}`;
+}
+
+/** The POA assets of the network (`NETWORKS[network].allowedAssets`): the only assets a burn can be proven for. */
+function networkAssets(s: Snapshot): readonly string[] {
+  return Object.values(NETWORKS[s.network].allowedAssets);
+}
+
+/**
+ * Check g: the vault names the network's NEAR Intents contract (T14-R1), no key of the vault is registered in
+ * it, and predecessor auth is on.
+ */
 export function checkIntentsKeys(s: Snapshot): CheckResult {
+  const intents = intentsProblem(s);
+  if (intents !== null) {
+    return fail("g", `${intents}: its keys and auth flag say nothing about the real intents`);
+  }
   if (s.chain.intents_public_keys.length > 0) {
     return fail(
       "g",
@@ -974,9 +1007,15 @@ export function checkIntentsKeys(s: Snapshot): CheckResult {
  * destination address, and intents' mt_burn has the vault as owner and the spend's amount. One transaction
  * burns for one spend, so two spends that cite the same burn tx fail.
  *
- * R7 (Task 14): a burned spend that check d exempted as pre-ledger (documented) and whose burn tx nobody
- * supplied is a note, not a failure: "documented, burn tx not supplied", and the pass detail says its burn is
- * not proven. A burn record that names a tx in which no pair was found fails, documented or not.
+ * T14-R1 (I1): the vault must name the network's NEAR Intents contract, and every burned spend's asset must be
+ * one of the network's POA assets (`NETWORKS[network].allowedAssets`); otherwise h fails.
+ *
+ * Notes, not failures (the pass detail says these burns are not proven):
+ * - R7: a burned spend that check d exempted as pre-ledger and whose burn tx nobody supplied: "listed as
+ *   pre-ledger by the snapshot, burn tx not supplied". A supplied tx in which no pair was found fails.
+ * - A held spend that an approver paid out, or one whose cycle wrote no payment entry (`ledgerComplete: false`):
+ *   its burn is in the approver's tx, or not recorded, so the ledger cannot name it: "supply a hint or run
+ *   --online". Any other burned spend whose burn pair is not found fails.
  */
 export function checkBurnMemos(s: Snapshot): CheckResult {
   const decisions = decisionsByHash(s);
@@ -984,10 +1023,23 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
   const burned = s.chain.spends.filter((sp) => sp.status === "burned").sort((x, y) => x.id - y.id);
   const notes: string[] = [];
   const spendOfTx = new Map<string, number>();
+  const intents = intentsProblem(s);
+  if (intents !== null) {
+    return fail("h", `${intents}: its burns prove nothing about a real withdrawal`);
+  }
+  const assets = networkAssets(s);
+  const withPayment = decisionsWithPayment(s);
   for (const spend of burned) {
     const seq = decisions.get(spend.decision_hash)?.body.seq;
     if (spend.destination.type !== "intents")
       return fail("h", `spend ${spend.id} is burned but pays a NEAR account`, seq);
+    if (!assets.includes(spend.destination.asset)) {
+      return fail(
+        "h",
+        `spend ${spend.id} pays through asset ${spend.destination.asset}, which is not a POA asset of ${s.network} (${assets.join(", ")})`,
+        seq,
+      );
+    }
     const expected = `${WITHDRAW_MEMO_PREFIX}${spend.destination.address}`;
     const matches = s.chain.burns.filter((x) => x.spend_id === spend.id);
     if (matches.length > 1)
@@ -1002,19 +1054,25 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
         burn !== undefined && typeof burn.tx_hash === "string" && burn.tx_hash.length > 0
           ? burn.tx_hash
           : null;
-      if (tx !== null) {
-        return fail(
-          "h",
-          `spend ${spend.id}: no burn event observed in tx ${tx} (no POA ft_burn with the WITHDRAW_TO: memo paired with the intents mt_burn)`,
-          seq,
-        );
-      }
+      const noPair = `spend ${spend.id}: no burn event observed in tx ${tx} (no POA ft_burn with the WITHDRAW_TO: memo paired with the intents mt_burn)`;
       if (preLedgerExempt.has(spend.id)) {
+        if (tx !== null) return fail("h", noPair, seq);
         const supply =
           s.network === "mainnet" ? " (record it in docs/mainnet-proof.json with --spend-id)" : "";
-        notes.push(`spend ${spend.id}: documented (pre-ledger), burn tx not supplied${supply}`);
+        notes.push(
+          `spend ${spend.id}: listed as pre-ledger by the snapshot, burn tx not supplied${supply}`,
+        );
         continue;
       }
+      const held = spend.held_until_ns !== null && spend.held_until_ns !== undefined;
+      const unrecorded = seq !== undefined && !withPayment.has(spend.decision_hash);
+      if (seq !== undefined && (held || unrecorded)) {
+        notes.push(
+          `spend ${spend.id}: burn is in the approver's tx (or not recorded); supply a hint or run --online`,
+        );
+        continue;
+      }
+      if (tx !== null) return fail("h", noPair, seq);
       return fail("h", `spend ${spend.id}: no burn event observed`, seq);
     }
     if (typeof burn.tx_hash !== "string" || burn.tx_hash.length === 0) {
@@ -1067,7 +1125,7 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
   else
     detail = `${proven} burned ${plural(proven, "spend has", "spends have")} a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount`;
   if (notes.length > 0) {
-    detail += `; not proven (notes, not failures): ${notes.join("; ")}: the burn of a documented pre-ledger spend is not proven until its tx is supplied`;
+    detail += `; not proven (notes, not failures): ${notes.join("; ")}: these burns are not proven until their tx is supplied`;
   }
   return pass("h", detail);
 }

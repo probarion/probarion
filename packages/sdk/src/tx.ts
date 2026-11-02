@@ -29,6 +29,7 @@ import {
   TxOutcomeUnknownError,
   TxRejectedError,
 } from "./errors.js";
+import { isRecord } from "./guards.js";
 
 export interface FunctionCallTx {
   receiverId: string;
@@ -104,10 +105,6 @@ export interface TxSender {
   functionCall(tx: FunctionCallTx): Promise<TxOutcome>;
   /** Read the final outcome of a transaction this sender signed. Throws `TxOutcomeUnknownError` if it cannot. */
   lookup?(txHash: string): Promise<TxOutcome>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringify(value: unknown): string {

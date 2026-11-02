@@ -1,4 +1,5 @@
 import { recoverMessageAddress } from "viem";
+import { isRecord } from "./guards.js";
 import { canonicalJson, sha256Hex } from "./hash.js";
 import { bytesToHex, hexToBytes, isHex32 } from "./hex.js";
 import { computeNonce, type NonceContext } from "./ledger.js";
@@ -363,10 +364,6 @@ export async function checkAttestation(
 }
 
 // ---------- A8: request binding (ICR-3, ICR-3b) ----------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 export interface RequestBindingOptions {
   /**

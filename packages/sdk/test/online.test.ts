@@ -1,7 +1,16 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { extractReportDataFromQuote, runChecks, type Snapshot } from "@probarion/core";
 import { describe, expect, it } from "vitest";
-import { applyOnlineChecks, loadDefaultOnlineVerifier } from "../src/online.js";
+import {
+  ACCEPTED_TCB_STATUSES,
+  applyOnlineChecks,
+  loadDefaultOnlineVerifier,
+  nvidiaPayloadNonce,
+  O1_MEASUREMENT_PINNED,
+  type OnlineAttestationVerifier,
+  type VerifiedTdxQuote,
+} from "../src/online.js";
 
 const NOW = new Date("2026-11-05T12:30:00.000Z");
 
@@ -14,39 +23,94 @@ async function fixture(): Promise<Snapshot> {
   ) as Snapshot;
 }
 
-const honest = {
-  verifyQuote: async (quote: string) => ({
-    reportDataHex: extractReportDataFromQuote(quote) ?? "",
-  }),
+/** A DCAP result as an honest TD gives it: the quote's own report data, debug off, an up-to-date TCB. */
+const genuine = (quote: string): VerifiedTdxQuote => ({
+  reportDataHex: extractReportDataFromQuote(quote) ?? "",
+  tcbStatus: "UpToDate",
+  debugEnabled: false,
+});
+
+const honest: OnlineAttestationVerifier = {
+  verifyQuote: async (quote) => genuine(quote),
   verifyGpu: async () => {},
 };
 
 const checkE = (report: Awaited<ReturnType<typeof runChecks>>) =>
   report.checks.find((c) => c.id === "e");
 
-describe("applyOnlineChecks", () => {
-  it("adds O1/O2 results to check e when every quote verifies", async () => {
-    const snapshot = await fixture();
-    const report = await applyOnlineChecks(
-      await runChecks(snapshot, { now: NOW }),
-      snapshot,
-      honest,
-    );
+async function online(verifier: OnlineAttestationVerifier | null, s?: Snapshot) {
+  const snapshot = s ?? (await fixture());
+  return applyOnlineChecks(await runChecks(snapshot, { now: NOW }), snapshot, verifier);
+}
+
+/** The fixture with a GPU payload on the attested decision at seq 2, whose nonce is `nonce` (default its own). */
+async function withGpuPayload(nonce?: string): Promise<Snapshot> {
+  const s = await fixture();
+  const evidence = s.ledger[2]?.body.evidence;
+  if (evidence === null || evidence === undefined || evidence.report === null) {
+    throw new Error("fixture report missing");
+  }
+  evidence.report.nvidia_payload = JSON.stringify({
+    nonce: nonce ?? evidence.nonce,
+    evidence_list: [],
+    arch: "HOPPER",
+  });
+  return s;
+}
+
+describe("applyOnlineChecks: O1 (DCAP plus the library's policy) and O2 (NRAS, nonce-bound)", () => {
+  it("adds O1/O2 results to check e when every quote verifies, and says the measurement is not pinned", async () => {
+    const report = await online(honest);
     expect(report.ok).toBe(true);
-    expect(checkE(report)?.detail).toContain("online: 2 TDX quotes (O1)");
+    const detail = checkE(report)?.detail ?? "";
+    expect(detail).toContain("online: 2 DCAP-genuine TDX quotes bound to this request (O1");
+    expect(detail).toContain("measurement not pinned, so quote_verified stays false");
+    expect(O1_MEASUREMENT_PINNED).toBe(false);
+  });
+
+  it("fails O1 for a quote from a debug TD, or one the verifier does not say is non-debug", async () => {
+    for (const debugEnabled of [true, undefined]) {
+      const report = await online({
+        ...honest,
+        verifyQuote: async (q) => ({ ...genuine(q), debugEnabled }) as VerifiedTdxQuote,
+      });
+      expect(checkE(report)).toMatchObject({ status: "fail", firstBrokenSeq: 0 });
+      expect(checkE(report)?.detail).toContain(
+        "O1 failed at entry 0: the TD runs with debug enabled",
+      );
+    }
+  });
+
+  it("fails O1 for a TCB status the library's policy refuses (Revoked, Unknown, ConfigurationNeeded)", async () => {
+    expect(ACCEPTED_TCB_STATUSES).toEqual(["UpToDate", "OutOfDate", "TDRelaunchAdvised"]);
+    for (const tcbStatus of [
+      "Revoked",
+      "Unknown",
+      "ConfigurationNeeded",
+      "SWHardeningNeeded",
+      "",
+    ]) {
+      const report = await online({
+        ...honest,
+        verifyQuote: async (q) => ({ ...genuine(q), tcbStatus }),
+      });
+      expect(checkE(report), tcbStatus).toMatchObject({ status: "fail", firstBrokenSeq: 0 });
+      expect(checkE(report)?.detail).toContain(`TCB status ${tcbStatus} is not accepted`);
+    }
+    for (const tcbStatus of ACCEPTED_TCB_STATUSES) {
+      const report = await online({
+        ...honest,
+        verifyQuote: async (q) => ({ ...genuine(q), tcbStatus }),
+      });
+      expect(report.ok, tcbStatus).toBe(true);
+    }
   });
 
   it("fails e at the first entry whose quote does not verify, and says so first", async () => {
-    const snapshot = await fixture();
-    const failing = {
+    const report = await online({
       ...honest,
       verifyQuote: async () => Promise.reject(new Error("quote.verification_failed")),
-    };
-    const report = await applyOnlineChecks(
-      await runChecks(snapshot, { now: NOW }),
-      snapshot,
-      failing,
-    );
+    });
     expect(report.ok).toBe(false);
     expect(checkE(report)).toMatchObject({ status: "fail", firstBrokenSeq: 0 });
     expect(checkE(report)?.detail).toMatch(
@@ -55,42 +119,86 @@ describe("applyOnlineChecks", () => {
   });
 
   it("fails e when the verified report data differs from the evidence", async () => {
-    const snapshot = await fixture();
-    const lying = { ...honest, verifyQuote: async () => ({ reportDataHex: "00".repeat(64) }) };
-    const report = await applyOnlineChecks(
-      await runChecks(snapshot, { now: NOW }),
-      snapshot,
-      lying,
-    );
+    const report = await online({
+      ...honest,
+      verifyQuote: async (q) => ({ ...genuine(q), reportDataHex: "00".repeat(64) }),
+    });
     expect(checkE(report)).toMatchObject({ status: "fail", firstBrokenSeq: 0 });
-    expect(checkE(report)?.detail).toContain("O1");
+    expect(checkE(report)?.detail).toContain(
+      "O1 failed at entry 0: the verified quote's report data differs",
+    );
   });
 
-  it("verifies a GPU payload when there is one, and fails e when O2 refuses it", async () => {
-    const snapshot = await fixture();
-    const att = snapshot.ledger[2]?.body.evidence?.report;
-    if (att === null || att === undefined) throw new Error("fixture report missing");
-    att.nvidia_payload = "TEST GPU payload";
+  it("binds the GPU payload to the request nonce before NRAS sees it (O2)", async () => {
     const seen: string[] = [];
-    const counting = {
+    const counting: OnlineAttestationVerifier = {
       ...honest,
-      verifyGpu: async (p: string) => {
+      verifyGpu: async (p) => {
         seen.push(p);
       },
     };
-    const ok = await applyOnlineChecks(await runChecks(snapshot, { now: NOW }), snapshot, counting);
-    expect(checkE(ok)?.detail).toContain("and 1 GPU payloads (O2) verified");
-    expect(seen).toEqual(["TEST GPU payload"]);
+    const bound = await withGpuPayload();
+    const ok = await online(counting, bound);
+    // Editing the payload changes the entry body (a and b fail); e is what this test is about.
+    expect(checkE(ok)?.status).toBe("pass");
+    expect(checkE(ok)?.detail).toContain(
+      "and 1 GPU payloads bound to the request nonce and verified by NRAS (O2)",
+    );
+    expect(seen).toHaveLength(1);
+    // A payload replayed from another session: NRAS would accept it, the nonce does not.
+    const replayed = await online(counting, await withGpuPayload("ab".repeat(32)));
+    expect(checkE(replayed)).toMatchObject({ status: "fail", firstBrokenSeq: 2 });
+    expect(checkE(replayed)?.detail).toContain(
+      "O2 failed at entry 2: the GPU payload's nonce is not this request's nonce",
+    );
+    expect(seen).toHaveLength(1); // never sent to NRAS
+    const noNonce = await fixture();
+    const report = noNonce.ledger[2]?.body.evidence?.report;
+    if (report === null || report === undefined) throw new Error("fixture");
+    report.nvidia_payload = "TEST GPU payload without a nonce";
+    expect(checkE(await online(counting, noNonce))?.detail).toContain(
+      "the GPU payload carries no 32-byte nonce",
+    );
     const refusing = {
       ...honest,
       verifyGpu: async () => Promise.reject(new Error("gpu.nras_request_failed")),
     };
-    const bad = await applyOnlineChecks(
-      await runChecks(snapshot, { now: NOW }),
-      snapshot,
-      refusing,
-    );
-    expect(checkE(bad)).toMatchObject({ status: "fail", firstBrokenSeq: 2 });
+    expect(checkE(await online(refusing, await withGpuPayload()))).toMatchObject({
+      status: "fail",
+      firstBrokenSeq: 2,
+    });
+  });
+
+  it("reads the payload nonce as the library does: 32 bytes of hex, 0x optional, any case", () => {
+    const n = "Cd".repeat(32);
+    expect(nvidiaPayloadNonce(JSON.stringify({ nonce: n }))).toBe(n.toLowerCase());
+    expect(nvidiaPayloadNonce(JSON.stringify({ nonce: `0x${n}` }))).toBe(n.toLowerCase());
+    for (const bad of [
+      "{}",
+      "not json",
+      JSON.stringify({ nonce: "ab" }),
+      JSON.stringify({ nonce: 5 }),
+      "[]",
+    ]) {
+      expect(nvidiaPayloadNonce(bad), bad).toBeNull();
+    }
+  });
+
+  it("never upgrades an offline failure, and reports the lowest broken seq of the two", async () => {
+    const broken = await fixture();
+    const second = broken.ledger[2]?.body.evidence;
+    if (second === null || second === undefined) throw new Error("fixture");
+    second.chat_id = "chatcmpl-tampered"; // A7 fails offline at seq 2
+    const offline = await runChecks(broken, { now: NOW });
+    expect(checkE(offline)).toMatchObject({ status: "fail", firstBrokenSeq: 2 });
+    const allVerified = await applyOnlineChecks(offline, broken, honest);
+    expect(checkE(allVerified)).toMatchObject({ status: "fail", firstBrokenSeq: 2 });
+    expect(allVerified.ok).toBe(false);
+    const firstFails = await applyOnlineChecks(offline, broken, {
+      ...honest,
+      verifyQuote: async (q) => ({ ...genuine(q), tcbStatus: "Revoked" }),
+    });
+    expect(checkE(firstFails)).toMatchObject({ status: "fail", firstBrokenSeq: 0 });
   });
 
   it("reports unavailability without changing the offline result", async () => {
@@ -101,12 +209,65 @@ describe("applyOnlineChecks", () => {
     expect(checkE(report)?.status).toBe(checkE(offline)?.status);
     expect(checkE(report)?.detail).toContain("online: unavailable");
   });
+});
 
-  it("loads the default verifier from @nearai/inference-sdk without touching the network, or gives null", async () => {
+describe("loadDefaultOnlineVerifier", () => {
+  it("is null when the package cannot be loaded, or does not export the verifiers, and verify says unavailable", async () => {
+    expect(
+      await loadDefaultOnlineVerifier(async () => Promise.reject(new Error("Cannot find package"))),
+    ).toBeNull();
+    expect(await loadDefaultOnlineVerifier(async () => ({}))).toBeNull();
+    expect(
+      await loadDefaultOnlineVerifier(async () => ({ createTdxQuoteVerifier: () => () => {} })),
+    ).toBeNull();
+    expect(await loadDefaultOnlineVerifier(async () => null)).toBeNull();
+    const snapshot = await fixture();
+    const report = await applyOnlineChecks(await runChecks(snapshot, { now: NOW }), snapshot, null);
+    expect(checkE(report)?.detail).toContain("online: unavailable (install @nearai/inference-sdk");
+  });
+
+  it("maps the library's result, reads a missing debug flag as debug, and leaves the policy to O1", async () => {
+    const reportData = new Uint8Array(64).fill(7);
+    const verifier = await loadDefaultOnlineVerifier(async () => ({
+      createTdxQuoteVerifier: () => async () => ({
+        tcbStatus: "UpToDate",
+        advisoryIds: ["INTEL-SA-1"],
+        debugEnabled: false,
+        reportData,
+        mrConfigId: new Uint8Array([1, 2]),
+        rtMr3: new Uint8Array([3]),
+      }),
+      createGpuEvidenceVerifier: () => async () => {},
+    }));
+    expect(await verifier?.verifyQuote("00")).toEqual({
+      reportDataHex: "07".repeat(64),
+      tcbStatus: "UpToDate",
+      debugEnabled: false,
+      advisoryIds: ["INTEL-SA-1"],
+      mrConfigIdHex: "0102",
+      rtMr3Hex: "03",
+    });
+    const noFlag = await loadDefaultOnlineVerifier(async () => ({
+      createTdxQuoteVerifier: () => async () => ({ tcbStatus: "UpToDate", reportData }),
+      createGpuEvidenceVerifier: () => async () => {},
+    }));
+    expect((await noFlag?.verifyQuote("00"))?.debugEnabled).toBe(true);
+  });
+
+  it("loads the installed @nearai/inference-sdk without touching the network", async () => {
+    let installed = true;
+    try {
+      createRequire(import.meta.url).resolve("@nearai/inference-sdk");
+    } catch {
+      installed = false;
+    }
     const verifier = await loadDefaultOnlineVerifier();
-    if (verifier !== null) {
-      expect(typeof verifier.verifyQuote).toBe("function");
-      expect(typeof verifier.verifyGpu).toBe("function");
+    if (installed) {
+      expect(verifier).not.toBeNull();
+      expect(typeof verifier?.verifyQuote).toBe("function");
+      expect(typeof verifier?.verifyGpu).toBe("function");
+    } else {
+      expect(verifier).toBeNull();
     }
     // The package is large: its first import can take tens of seconds on a loaded machine.
   }, 120_000);

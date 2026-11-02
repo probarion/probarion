@@ -15,6 +15,7 @@ import {
   verifyEntrySignature,
 } from "@probarion/core";
 import { LedgerError } from "./errors.js";
+import { isRecord } from "./guards.js";
 
 export type LedgerAppendBody = Omit<LedgerEntryBody, "seq" | "prev_link">;
 
@@ -53,9 +54,6 @@ function snapshotBody(b: LedgerAppendBody, seq: number, prevLink: Hex32): Ledger
   canonicalJson(composed);
   return structuredClone(composed);
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Why `head` cannot be chained onto, or null when it is a sound entry. Recomputed by core, not trusted. */
 function headProblem(head: LedgerEntry): string | null {

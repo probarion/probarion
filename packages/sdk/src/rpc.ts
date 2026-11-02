@@ -1,6 +1,7 @@
 import { type AccessKeyInfo, NETWORKS } from "@probarion/core";
 import { envValue } from "./env.js";
 import { ConfigError, type RpcAttempt, RpcError, RpcMalformedError, ViewError } from "./errors.js";
+import { isRecord } from "./guards.js";
 
 export interface RpcClientOptions {
   urls: readonly string[];
@@ -54,10 +55,6 @@ type Attempt =
 
 const MAX_ROUNDS_LIMIT = 10;
 const EMPTY: Record<string, unknown> = {};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function describeRpcError(error: unknown): string {
   if (!isRecord(error)) return String(error);

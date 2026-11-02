@@ -195,6 +195,29 @@ interface Gathered {
   preLedgerSource: string | null;
 }
 
+/**
+ * `verify({ systemPrompts })`: undefined, or a list of `{ name, sha256 }` (`knownSystemPrompt(name, prompt)`).
+ * Anything else is a `ConfigError`, so a mistyped option can never shrink or silently empty the allow-list.
+ */
+function checkSystemPrompts(value: unknown): readonly KnownSystemPrompt[] {
+  if (value === undefined) return [];
+  const ok =
+    Array.isArray(value) &&
+    value.every(
+      (p) =>
+        isRecord(p) &&
+        typeof p.name === "string" &&
+        typeof p.sha256 === "string" &&
+        /^[0-9a-f]{64}$/.test(p.sha256),
+    );
+  if (!ok) {
+    throw new ConfigError(
+      "verify: systemPrompts must be a list of { name, sha256 } entries (use knownSystemPrompt(name, prompt))",
+    );
+  }
+  return value as readonly KnownSystemPrompt[];
+}
+
 /** Appends `text` to the detail of check `id`; the status never changes. */
 function appendDetail(report: VerifyReport, id: string, text: string): VerifyReport {
   return {
@@ -221,6 +244,7 @@ function annotate(report: VerifyReport, g: Gathered): VerifyReport {
   if (g.notes.burns.length > 0)
     out = appendDetail(out, "h", `burn lookups: ${g.notes.burns.join("; ")}`);
   if (g.notes.factory.length > 0) out = appendDetail(out, "i", g.notes.factory.join("; "));
+  if (g.notes.intents.length > 0) out = appendDetail(out, "g", g.notes.intents.join("; "));
   return out;
 }
 
@@ -690,14 +714,18 @@ export class Probarion {
    * for every attested decision whose text it holds, under this instance's prompt allow-list extended by
    * `systemPrompts`. `online` adds O1/O2 to check e. Every result says why it passed, failed or was skipped;
    * what could not be established is a note in the detail, never a pass of its own.
+   *
+   * By design `v0.probarion.testnet` fails check d: its pre-ledger smoke spends point at decision hashes no ledger
+   * holds, and only mainnet v0 has documented pre-ledger decisions. Demos verify a fresh vault (R16).
    */
   async verify(opts: VerifyOptions = {}): Promise<VerifyReport> {
+    const extraPrompts = checkSystemPrompts(opts.systemPrompts);
     const gathered = opts.snapshot === undefined ? await this.gather(opts.online === true) : null;
     const snapshot = opts.snapshot ?? (gathered as Gathered).snapshot;
     let report = await runChecks(snapshot, {
       now: this.now(),
       ...(opts.invoiceTexts === undefined ? {} : { invoiceTexts: opts.invoiceTexts }),
-      systemPrompts: [...this.systemPrompts, ...(opts.systemPrompts ?? [])],
+      systemPrompts: [...this.systemPrompts, ...extraPrompts],
     });
     if (gathered !== null) report = annotate(report, gathered);
     if (opts.online !== true) return report;
@@ -722,12 +750,24 @@ export class Probarion {
         preLedgerSource = `the v0-decision-*.json files in ${evidenceDir}`;
       }
     }
-    const hints =
-      this.deps.burnTxHints ??
-      (await loadBurnTxHints(DEFAULT_PROOF_FILE, { vault: this.vaultId, network: this.network }));
+    const notes: SnapshotNotes = { burns: [], factory: [], intents: [] };
+    let hints = this.deps.burnTxHints;
+    if (hints === undefined) {
+      try {
+        hints = await loadBurnTxHints(DEFAULT_PROOF_FILE, {
+          vault: this.vaultId,
+          network: this.network,
+        });
+      } catch (error) {
+        // A broken evidence file must not break every verify: go on without hints, and say so.
+        const why = `${DEFAULT_PROOF_FILE} could not be read (${messageOf(error)}): verify goes on without burn tx hints`;
+        this.warn(why);
+        notes.burns.push(why);
+        hints = new Map();
+      }
+    }
     const txIndex =
       online && this.deps.txIndex !== null ? (this.deps.txIndex ?? fastnearTxIndex()) : null;
-    const notes: SnapshotNotes = { burns: [], factory: [] };
     const snapshot = await gatherSnapshot({
       rpc: this.rpc,
       archivalRpc: this.archivalRpc,

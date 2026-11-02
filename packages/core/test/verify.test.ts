@@ -1342,7 +1342,13 @@ describe("check f: vault locked to a reproducible build", () => {
       expect(check(bare, "f").detail).toContain("whose versions are not trusted");
       const wrongNetwork = fresh();
       wrongNetwork.network = "mainnet";
-      expect(onlyFailing(await runChecks(wrongNetwork, { now: NOW }))).toEqual(["f", "i"]);
+      // T14-R1: the testnet intents-stub and its POA asset are not mainnet's either (g, h).
+      expect(onlyFailing(await runChecks(wrongNetwork, { now: NOW }))).toEqual([
+        "f",
+        "g",
+        "h",
+        "i",
+      ]);
     });
 
     it("passes a hash from a canonical factory version even when the vault lists a second version", async () => {
@@ -1635,7 +1641,7 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
 
   describe("R7 (Task 14): a pre-ledger burned spend with no burn record is a note, not a failure", () => {
     const V0 = sha256Hex('{"kind":"v0-manual-decision","mandate_id":1}');
-    const NOTE = "spend 2: documented (pre-ledger), burn tx not supplied";
+    const NOTE = "spend 2: listed as pre-ledger by the snapshot, burn tx not supplied";
     const MAINNET_NOTE = `${NOTE} (record it in docs/mainnet-proof.json with --spend-id)`;
     /** The real v0 shape: no ledger, no anchor, one burned spend whose decision is documented as pre-ledger. */
     function preLedgerBurn(): Snapshot {
@@ -1653,13 +1659,17 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
       const report = await runChecks(s, { now: NOW });
       expect(check(report, "h").status).toBe("pass");
       expect(check(report, "h").detail).toBe(
-        `0 of 1 burned spend has a proven burn pair; not proven (notes, not failures): ${NOTE}: the burn of a documented pre-ledger spend is not proven until its tx is supplied`,
+        `0 of 1 burned spend has a proven burn pair; not proven (notes, not failures): ${NOTE}: these burns are not proven until their tx is supplied`,
       );
     });
 
     it("names docs/mainnet-proof.json and --spend-id only on mainnet", async () => {
       const s = preLedgerBurn();
       s.network = "mainnet";
+      s.chain.config.intents = NETWORKS.mainnet.intents;
+      const spend = s.chain.spends[0];
+      if (spend?.destination.type === "intents")
+        spend.destination.asset = NETWORKS.mainnet.allowedAssets.base;
       s.chain.burns = [];
       expect(checkBurnMemos(s).detail).toContain(MAINNET_NOTE);
       expect(checkBurnMemos(s).status).toBe("pass");
@@ -1795,7 +1805,8 @@ describe("check i: factory version (ids are 1-based, R14)", () => {
     expect(check(report, "i").detail).toContain(NETWORKS.testnet.factory);
     const wrongNetwork = fresh();
     wrongNetwork.network = "mainnet";
-    expect(onlyFailing(await runChecks(wrongNetwork, { now: NOW }))).toEqual(["f", "i"]);
+    // T14-R1: the testnet intents-stub and its POA asset are not mainnet's either (g, h).
+    expect(onlyFailing(await runChecks(wrongNetwork, { now: NOW }))).toEqual(["f", "g", "h", "i"]);
   });
 });
 

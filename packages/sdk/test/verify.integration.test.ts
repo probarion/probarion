@@ -14,7 +14,7 @@ import {
   sha256Hex,
 } from "@probarion/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TxOutcomeUnknownError } from "../src/errors.js";
+import { ConfigError, TxOutcomeUnknownError } from "../src/errors.js";
 import { InMemoryLedgerStore } from "../src/ledger-store.js";
 import { NearAiProposer } from "../src/nearai.js";
 import type { OnlineAttestationVerifier } from "../src/online.js";
@@ -28,6 +28,7 @@ import {
   FakeChain,
   type FakeChatRequest,
   type FakeRpcServer,
+  SCENARIO_APPROVER,
   SCENARIO_BASE_ADDRESS,
   SCENARIO_CODE_HASH,
   SCENARIO_NEAR_PAYEE,
@@ -39,6 +40,7 @@ import {
   startFakeRpcServer,
   TEST_KEYS,
 } from "../src/testing/index.js";
+import { NearApiJsSender } from "../src/tx.js";
 import {
   FailingLedgerStore,
   parseUserMessage,
@@ -257,7 +259,9 @@ describe("Probarion.snapshot and verify", () => {
     expect(report.checks.find((c) => c.id === "g")?.status).toBe("fail");
   });
 
-  it("fails f for a gas full-access key on the vault, and reads a scoped gas key as its plain counterpart", async () => {
+  // The gas-key variants (GasKeyFullAccess as FullAccess, GasKeyFunctionCall as its FunctionCall) are mapped
+  // and tested in rpc.test.ts; the fake chain models plain keys only.
+  it("fails f for a full-access key added to the vault", async () => {
     const pb = probarion();
     await runThreeCycles(pb);
     server.chain.addAccessKey(SCENARIO_VAULT, {
@@ -273,6 +277,8 @@ describe("Probarion.snapshot and verify", () => {
     const verifier: OnlineAttestationVerifier = {
       verifyQuote: async (quote: string) => ({
         reportDataHex: extractReportDataFromQuote(quote) ?? "",
+        tcbStatus: "UpToDate",
+        debugEnabled: false,
       }),
       verifyGpu: async () => {},
     };
@@ -281,7 +287,9 @@ describe("Probarion.snapshot and verify", () => {
     await runThreeCycles(pb);
     const report = await pb.verify({ online: true });
     expect(report.ok).toBe(true);
-    expect(report.checks.find((c) => c.id === "e")?.detail).toContain("online: 3 TDX quotes");
+    expect(report.checks.find((c) => c.id === "e")?.detail).toContain(
+      "online: 3 DCAP-genuine TDX quotes bound to this request",
+    );
     const unavailable = await probarion({ onlineVerifier: null, txIndex: null }).verify({
       online: true,
     });
@@ -666,7 +674,7 @@ describe("mainnet v0: documented pre-ledger spends (carries A, R7)", () => {
     );
     const h = report.checks.find((c) => c.id === "h")?.detail;
     expect(h).toContain(
-      "spend 2: documented (pre-ledger), burn tx not supplied (record it in docs/mainnet-proof.json with --spend-id)",
+      "spend 2: listed as pre-ledger by the snapshot, burn tx not supplied (record it in docs/mainnet-proof.json with --spend-id)",
     );
     expect(h).toContain("burn lookups: spend 2: no burn pair in the 0 tx hash(es) tried");
   });
@@ -696,5 +704,136 @@ describe("mainnet v0: documented pre-ledger spends (carries A, R7)", () => {
     );
     const none = await v0({ evidenceDir: join(tmpdir(), "probarion-no-evidence-here") }).verify();
     expect(none.checks.find((c) => c.id === "d")).toMatchObject({ status: "fail" });
+  });
+});
+
+describe("T14-R1 fix round 1 (end to end)", () => {
+  beforeEach(async () => {
+    await start();
+  });
+
+  it("notes an approved held Base payout whose burn is in the approver's tx, and finds it online", async () => {
+    const ledger = new InMemoryLedgerStore();
+    const pb = probarion({ ledger });
+    const text = [
+      "Invoice B-9 for PO-2002",
+      "Base contractor, a large job",
+      "Total due: 60.00 USDC",
+    ].join("\n");
+    const held = await pb.process({
+      text,
+      ref: "B-9",
+      facts: {
+        invoice_hash: sha256Hex(text),
+        amount: "60000000",
+        po_ref: "PO-2002",
+        purpose_hash: SCENARIO_PURPOSE_BASE,
+        payee_hint: { chain: "base", address: SCENARIO_BASE_ADDRESS },
+      },
+    });
+    expect(held).toMatchObject({ status: "held", spendId: 1 });
+    const approver = new NearApiJsSender({
+      accountId: SCENARIO_APPROVER,
+      secretKey: TEST_KEYS.approver.secretKey,
+      rpcUrl: server.url,
+    });
+    const approved = await approver.functionCall({
+      receiverId: SCENARIO_VAULT,
+      methodName: "approve",
+      args: { spend_id: 1 },
+      gas: 200_000_000_000_000n,
+      deposit: 1n,
+    });
+    expect(approved.ok).toBe(true);
+    expect(server.chain.spends[0]?.status).toBe("burned");
+    const offline = await pb.verify();
+    const h = offline.checks.find((c) => c.id === "h");
+    expect(h?.status).toBe("pass");
+    expect(h?.detail).toContain(
+      "spend 1: burn is in the approver's tx (or not recorded); supply a hint or run --online",
+    );
+    expect(h?.detail).not.toContain("no burn event observed in");
+    const online = probarion({
+      ledger,
+      txIndex: { accountTxs: async () => [{ hash: approved.txHash ?? "", isSigner: false }] },
+    });
+    const snapshot = await online.snapshot({ online: true });
+    expect(snapshot.chain.burns[0]).toMatchObject({
+      spend_id: 1,
+      tx_hash: approved.txHash,
+      status: "ok",
+    });
+    expect((await online.verify({ snapshot })).checks.find((c) => c.id === "h")?.detail).toContain(
+      "1 burned spend has a matched burn pair",
+    );
+  });
+
+  it("keeps the demo vaults' own intents contract passing g and h (testnet intents-stub)", async () => {
+    const pb = probarion();
+    await runThreeCycles(pb);
+    const report = await pb.verify();
+    expect(report.checks.find((c) => c.id === "g")?.detail).toBe(
+      "no intents public keys; predecessor auth enabled",
+    );
+    expect(report.checks.find((c) => c.id === "h")?.status).toBe("pass");
+  });
+
+  it("fails g and h for a vault that names another intents contract", async () => {
+    const pb = probarion();
+    await runThreeCycles(pb);
+    server.chain.config.intents = "evil-intents.testnet";
+    const report = await pb.verify();
+    expect(report.ok).toBe(false);
+    expect(report.checks.find((c) => c.id === "g")?.detail).toContain(
+      "the vault names intents contract evil-intents.testnet",
+    );
+    expect(report.checks.find((c) => c.id === "h")?.status).toBe("fail");
+  });
+
+  it("warns and goes on without hints when docs/mainnet-proof.json is not JSON", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "probarion-cwd-"));
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(join(dir, "docs"));
+    await writeFile(join(dir, "docs", "mainnet-proof.json"), "{ not json");
+    const warnings: string[] = [];
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      const { burnTxHints: _none, ...rest } = { burnTxHints: undefined };
+      const pb = new Probarion(
+        {
+          network: "testnet",
+          vault: SCENARIO_VAULT,
+          rpcUrls: [server.url],
+          model: null,
+          ledger: new InMemoryLedgerStore(),
+        },
+        { now: () => NOW, archivalRpc: null, logger: { warn: (m) => warnings.push(m) }, ...rest },
+      );
+      const report = await pb.verify();
+      expect(report.checks.find((c) => c.id === "a")?.status).toBe("pass");
+      expect(warnings.join(" ")).toContain("docs/mainnet-proof.json could not be read");
+      expect(report.checks.find((c) => c.id === "h")?.detail).toContain(
+        "verify goes on without burn tx hints",
+      );
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it("validates verify({ systemPrompts }) and tolerates undefined", async () => {
+    const pb = probarion();
+    expect((await pb.verify({ systemPrompts: undefined })).checks).toHaveLength(9);
+    for (const bad of [
+      "canary",
+      [{ name: "x" }],
+      [{ name: "x", sha256: "not hex" }],
+      [null],
+      { name: "x", sha256: "a".repeat(64) },
+    ]) {
+      await expect(pb.verify({ systemPrompts: bad as never }), JSON.stringify(bad)).rejects.toThrow(
+        ConfigError,
+      );
+    }
   });
 });

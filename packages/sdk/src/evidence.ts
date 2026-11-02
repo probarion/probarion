@@ -3,6 +3,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Hex32, sha256Hex } from "@probarion/core";
+import { isRecord } from "./guards.js";
 
 /** Plan 02's Day-4 decision records; each v0 spend's decision_hash is the sha256 of one of these files. */
 export const PRE_LEDGER_DECISION_FILE = /^v0-decision-.+\.json$/;
@@ -47,24 +48,24 @@ export async function readPreLedgerDecisionHashes(dir: string): Promise<Hex32[]>
   return hashes;
 }
 
-/** Spend id to the transactions that may hold its burn (R7 source 1). Each one is checked on chain. */
-export type BurnTxHints = ReadonlyMap<number, readonly string[]>;
+/** A transaction that may hold a burn: its hash, and the account that signed it when that is known. */
+export type BurnTxHint = string | { hash: string; signer?: string };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+/** Spend id to the transactions that may hold its burn (R7 source 1). Each one is checked on chain. */
+export type BurnTxHints = ReadonlyMap<number, readonly BurnTxHint[]>;
 
 /**
  * The burn tx hints of `vault` from a plan 05 evidence file (`docs/mainnet-proof.json`, interfaces §16): every
  * recorded transaction of `network` whose receiver is the vault, that carries a `spend_id` and was expected to
  * succeed (a `base_payout`, or the `approved` tx that paid a held spend). A hint is only a place to look: check h
- * still needs the burn pair inside the transaction. A missing file gives an empty map; a file that is not JSON
- * throws.
+ * still needs the burn pair inside the transaction. The entry's `signer_id` comes along, so the lookup asks the
+ * right account first. A missing file gives an empty map; a file that is not JSON throws (Probarion warns and
+ * goes on without hints).
  */
 export async function loadBurnTxHints(
   file: string,
   opts: { vault: string; network: "mainnet" | "testnet" },
-): Promise<Map<number, string[]>> {
+): Promise<Map<number, { hash: string; signer?: string }[]>> {
   let text: string;
   try {
     text = await readFile(file, "utf8");
@@ -74,15 +75,24 @@ export async function loadBurnTxHints(
   }
   const parsed: unknown = JSON.parse(text);
   const txs = isRecord(parsed) && isRecord(parsed.txs) ? parsed.txs : {};
-  const hints = new Map<number, string[]>();
+  const hints = new Map<number, { hash: string; signer?: string }[]>();
   for (const tx of Object.values(txs)) {
     if (!isRecord(tx)) continue;
-    const { hash, network, receiver_id: receiver, spend_id: spendId, expect } = tx;
+    const {
+      hash,
+      network,
+      receiver_id: receiver,
+      spend_id: spendId,
+      expect,
+      signer_id: signer,
+    } = tx;
     if (typeof hash !== "string" || hash.length === 0) continue;
     if (network !== opts.network || receiver !== opts.vault || expect === "failure") continue;
     if (typeof spendId !== "number" || !Number.isSafeInteger(spendId) || spendId < 0) continue;
     const list = hints.get(spendId) ?? [];
-    if (!list.includes(hash)) list.push(hash);
+    if (!list.some((h) => h.hash === hash)) {
+      list.push(typeof signer === "string" && signer.length > 0 ? { hash, signer } : { hash });
+    }
     hints.set(spendId, list);
   }
   return hints;

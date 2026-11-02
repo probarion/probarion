@@ -460,10 +460,17 @@ describe("check h notes and the burn records it refuses (R7, Task 14)", () => {
       if (network === "mainnet") {
         s.vault = "v0.probarion.near";
         s.chain.config.factory = null;
+        s.chain.config.intents = "intents.near";
+        const spend = s.chain.spends[0];
+        if (spend?.destination.type === "intents") {
+          spend.destination.asset = "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
+        }
       }
       const h = check(await runChecks(s, { now: NOW }), "h");
       expect(h.status).toBe("pass");
-      expect(h.detail).toContain("spend 2: documented (pre-ledger), burn tx not supplied");
+      expect(h.detail).toContain(
+        "spend 2: listed as pre-ledger by the snapshot, burn tx not supplied",
+      );
       expect(h.detail).toContain("not proven (notes, not failures)");
       expect(h.detail.includes("docs/mainnet-proof.json")).toBe(network === "mainnet");
     }
@@ -507,5 +514,84 @@ describe("check h notes and the burn records it refuses (R7, Task 14)", () => {
     expect(check(await runChecks(bare, { now: NOW }), "h").detail).toBe(
       "spend 2: the burn record names no tx",
     );
+  });
+});
+
+describe("T14-R1 (I1): verify trusts only the network's intents contract and POA assets", () => {
+  it("fails g and h for a vault that names another intents contract (probe on valid-snapshot.json)", async () => {
+    const s = structuredClone(valid);
+    s.chain.config.intents = "evil-intents.testnet";
+    const report = await runChecks(s, { now: NOW });
+    expect(report.ok).toBe(false);
+    expect(check(report, "g")).toMatchObject({ status: "fail" });
+    expect(check(report, "g").detail).toContain(
+      "the vault names intents contract evil-intents.testnet, not intents-stub.probarion.testnet",
+    );
+    expect(check(report, "h")).toMatchObject({ status: "fail" });
+    expect(check(report, "h").detail).toContain("its burns prove nothing");
+  });
+
+  it("fails h for a burned spend paid through an asset that is not a POA asset of the network", async () => {
+    const s = structuredClone(valid);
+    const spend = s.chain.spends[1];
+    if (spend === undefined || spend.destination.type !== "intents") throw new Error("fixture");
+    spend.destination = { ...spend.destination, asset: "base-evil.near" };
+    const h = check(await runChecks(s, { now: NOW }), "h");
+    expect(h).toMatchObject({ status: "fail", firstBrokenSeq: 2 });
+    expect(h.detail).toContain(
+      "spend 2 pays through asset base-evil.near, which is not a POA asset of testnet",
+    );
+    // A mainnet asset on testnet is not one either.
+    spend.destination = {
+      ...spend.destination,
+      asset: "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+    };
+    expect(check(await runChecks(s, { now: NOW }), "h").status).toBe("fail");
+  });
+
+  it("keeps the honest fixture (the testnet intents-stub and POA asset) passing", async () => {
+    const report = await runChecks(structuredClone(valid), { now: NOW });
+    expect(report.ok).toBe(true);
+    expect(check(report, "g").detail).toBe("no intents public keys; predecessor auth enabled");
+  });
+});
+
+describe("T14-R1 minor 3: a burn the ledger cannot name is a note, not 'no burn event observed in <reservation tx>'", () => {
+  const NOTE =
+    "spend 2: burn is in the approver's tx (or not recorded); supply a hint or run --online";
+
+  it("notes a held spend an approver paid out whose reservation tx holds no burn", async () => {
+    const s = structuredClone(valid);
+    const spend = s.chain.spends[1];
+    const burn = s.chain.burns[0];
+    if (spend === undefined || burn === undefined) throw new Error("fixture");
+    spend.held_until_ns = "1793900000000000000";
+    s.chain.burns = [{ ...burn, status: "missing", memo: "", intents_owner: "", amount: "" }];
+    const h = check(await runChecks(s, { now: NOW }), "h");
+    expect(h.status).toBe("pass");
+    expect(h.detail).toContain(NOTE);
+    expect(h.detail).not.toContain("no burn event observed in");
+  });
+
+  it("notes a burned spend whose cycle wrote no payment entry (ledgerComplete false)", async () => {
+    const kept = await rebuildLedger({
+      ...structuredClone(valid),
+      ledger: valid.ledger.filter((_, i) => i !== 3),
+    });
+    kept.chain.burns = [];
+    const h = check(await runChecks(kept, { now: NOW }), "h");
+    expect(h.status).toBe("pass");
+    expect(h.detail).toContain(NOTE);
+  });
+
+  it("still fails a burned spend that was not held and has its payment entry", async () => {
+    const s = structuredClone(valid);
+    const burn = s.chain.burns[0];
+    if (burn === undefined) throw new Error("fixture");
+    s.chain.burns = [{ ...burn, status: "missing", memo: "", intents_owner: "", amount: "" }];
+    expect(check(await runChecks(s, { now: NOW }), "h")).toMatchObject({
+      status: "fail",
+      detail: expect.stringContaining(`spend 2: no burn event observed in tx ${burn.tx_hash}`),
+    });
   });
 });

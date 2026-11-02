@@ -12,8 +12,9 @@ import {
   WITHDRAW_MEMO_PREFIX,
 } from "@probarion/core";
 import { envValue } from "./env.js";
-import { type BurnTxHints, isPreLedgerVault } from "./evidence.js";
+import { type BurnTxHint, type BurnTxHints, isPreLedgerVault } from "./evidence.js";
 import { FactoryClient } from "./factory-client.js";
+import { isRecord, messageOf } from "./guards.js";
 import { IntentsClient } from "./intents-client.js";
 import {
   codeIdentity,
@@ -24,14 +25,6 @@ import {
 import { VaultClient } from "./vault-client.js";
 
 type Network = "mainnet" | "testnet";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** Regular RPC nodes keep transactions for roughly 2.5 days (5 epochs); older lookups need an archival node. */
 export const ARCHIVAL_AFTER_NS = 216_000_000_000_000n;
@@ -88,7 +81,8 @@ function eventItems(
  * Who may log the `ft_burn`: the asset contract itself (the mainnet shape, where intents.near and the POA token
  * log in separate receipts), and on the testnet network only, also the intents account (the intents-stub logs
  * both events in one receipt). The stub shape is never accepted on mainnet. Logs of any other account, the
- * vault's own included, never count.
+ * vault's own included, never count, and neither does a receipt that did not succeed (its status must be
+ * `SuccessValue` or `SuccessReceiptId`).
  */
 export function findBurnPair(
   tx: TxStatusResult,
@@ -100,6 +94,8 @@ export function findBurnPair(
   let mtBurn: { owner: string; amount: string } | null = null;
   const tokenId = `nep141:${asset}`;
   for (const receipt of tx.receipts_outcome) {
+    // A failed receipt keeps the logs it wrote before it failed: only a successful one counts (T14-R1).
+    if (!succeeded(receipt.outcome.status)) continue;
     const executor = receipt.outcome.executor_id;
     const ftBurnFrom = executor === asset || (network === "testnet" && executor === intentsId);
     if (ftBurnFrom && memo === null) {
@@ -133,6 +129,11 @@ export function findBurnPair(
   return memo !== null && mtBurn !== null
     ? { memo, intents_owner: mtBurn.owner, amount: mtBurn.amount }
     : null;
+}
+
+/** A receipt status of success: `SuccessValue` or `SuccessReceiptId` (a `Failure` keeps its earlier logs). */
+function succeeded(status: unknown): boolean {
+  return isRecord(status) && ("SuccessValue" in status || "SuccessReceiptId" in status);
 }
 
 /** One transaction an account index lists for the vault. */
@@ -248,6 +249,9 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
   const nowNs = BigInt((args.now ?? new Date()).getTime()) * 1_000_000n;
   const archival = args.archivalRpc ?? null;
   const senders = [...new Set([args.vaultId, ...args.config.approvers])];
+  // T14-R1 (I1): only the network's own intents contract and POA assets prove a burn, whatever the vault names.
+  const intentsId = NETWORKS[args.network].intents;
+  const assets: readonly string[] = Object.values(NETWORKS[args.network].allowedAssets);
   const used = new Set<string>();
   const burns: Burn[] = [];
   const pending: { spend: SpendView; index: number; old: boolean; read: string | null }[] = [];
@@ -280,15 +284,28 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
       burns.push(missing(spend.id, ""));
       continue;
     }
-    const hinted = [...(args.burnTxHints?.get(spend.id) ?? [])];
+    if (!assets.includes(spend.destination.asset)) {
+      burns.push(missing(spend.id, ""));
+      args.notes?.push(
+        `spend ${spend.id}: asset ${spend.destination.asset} is not a POA asset of ${args.network}: not looked up`,
+      );
+      continue;
+    }
+    // A hint may name its signer (docs/mainnet-proof.json): try it first.
+    const hinted = (args.burnTxHints?.get(spend.id) ?? []).map(toHint);
+    const signerOf = new Map(hinted.map((h) => [h.hash, h.signer]));
     const fromLedger = ledgerTxHashes(args.ledger, spend);
-    const hashes = [...new Set([...hinted, ...fromLedger])].filter((h) => !used.has(h));
+    const hashes = [...new Set([...hinted.map((h) => h.hash), ...fromLedger])].filter(
+      (h) => !used.has(h),
+    );
     let found: Burn | null = null;
     let read: string | null = null;
     for (const hash of hashes) {
-      const tx = await fetchTx(clients, hash, senders);
+      const signer = signerOf.get(hash);
+      const from = signer === undefined ? senders : [...new Set([signer, ...senders])];
+      const tx = await fetchTx(clients, hash, from);
       if (tx === null) continue;
-      const pair = findBurnPair(tx, spend.destination.asset, args.config.intents, args.network);
+      const pair = findBurnPair(tx, spend.destination.asset, intentsId, args.network);
       if (pair === null) {
         read ??= hash;
         continue;
@@ -335,7 +352,7 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
       // tx holds for its own asset, address and amount. One tx burns for one spend.
       const at = pending.findIndex(({ spend }) => {
         if (spend.destination.type !== "intents") return false;
-        const pair = findBurnPair(tx, spend.destination.asset, args.config.intents, args.network);
+        const pair = findBurnPair(tx, spend.destination.asset, intentsId, args.network);
         return (
           pair !== null &&
           pair.memo === `${WITHDRAW_MEMO_PREFIX}${spend.destination.address}` &&
@@ -345,7 +362,7 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
       });
       const hit = pending[at];
       if (hit === undefined || hit.spend.destination.type !== "intents") continue;
-      const pair = findBurnPair(tx, hit.spend.destination.asset, args.config.intents, args.network);
+      const pair = findBurnPair(tx, hit.spend.destination.asset, intentsId, args.network);
       if (pair === null) continue;
       burns[hit.index] = { spend_id: hit.spend.id, tx_hash: entry.hash, ...pair, status: "ok" };
       used.add(entry.hash);
@@ -356,6 +373,13 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
     }
   }
   return burns;
+}
+
+/** A hint as a hash and, when the evidence file names it, the account that signed it. */
+function toHint(hint: BurnTxHint): { hash: string; signer: string | undefined } {
+  return typeof hint === "string"
+    ? { hash: hint, signer: undefined }
+    : { hash: hint.hash, signer: typeof hint.signer === "string" ? hint.signer : undefined };
 }
 
 function missing(spendId: number, txHash: string): Burn {
@@ -412,6 +436,8 @@ export interface GatherSnapshotArgs {
 export interface SnapshotNotes {
   burns: string[];
   factory: string[];
+  /** Check g: the network's intents contract could not be read for a vault that names another one. */
+  intents: string[];
 }
 
 /** Reads a factory the vault names. The canonical factory must answer; any other one may fail (check i fails it). */
@@ -445,11 +471,24 @@ export async function gatherSnapshot(args: GatherSnapshotArgs): Promise<Snapshot
     vault.listAllSpends(),
     vault.listAllMandates(),
   ]);
-  const intents = new IntentsClient(config.intents, args.rpc);
-  const [intentsKeys, predecessorAuth] = await Promise.all([
-    intents.publicKeysOf(args.vaultId),
-    intents.isAuthByPredecessorIdEnabled(args.vaultId),
-  ]);
+  // T14-R1 (I1): the vault's keys and auth flag are read in the network's own intents contract. Check g fails a
+  // vault that names any other one before it looks at them, so for such a vault a failed read is only a note.
+  const canonicalIntents = NETWORKS[args.network].intents;
+  const intents = new IntentsClient(canonicalIntents, args.rpc);
+  let intentsKeys: string[];
+  let predecessorAuth: boolean;
+  try {
+    [intentsKeys, predecessorAuth] = await Promise.all([
+      intents.publicKeysOf(args.vaultId),
+      intents.isAuthByPredecessorIdEnabled(args.vaultId),
+    ]);
+  } catch (error) {
+    if (config.intents === canonicalIntents) throw error;
+    args.notes?.intents.push(
+      `the vault names intents contract ${config.intents}; ${canonicalIntents} could not be read: ${messageOf(error)}`,
+    );
+    [intentsKeys, predecessorAuth] = [[], false];
+  }
   const factory =
     config.factory === null
       ? { version: null, versions: [] as VersionView[] }

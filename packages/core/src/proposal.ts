@@ -1,4 +1,5 @@
 import { deepFreeze } from "./freeze.js";
+import { isRecord } from "./guards.js";
 import type { ModelProposal, PayeeHint } from "./types.js";
 
 /** Unicode code points, as JSON Schema `maxLength` counts them (not UTF-16 units). */
@@ -54,10 +55,6 @@ function truncateCodePoints(text: string, max: number): string {
     end += point.length;
   }
   return text.slice(0, end);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Matches only a lone surrogate: with the u flag a valid pair is one code point outside this range. */

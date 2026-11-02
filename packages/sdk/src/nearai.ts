@@ -26,6 +26,7 @@ import {
   utf8,
 } from "@probarion/core";
 import { NearAiError } from "./errors.js";
+import { isRecord } from "./guards.js";
 
 // The request builder, the default system prompt and the template id live in core (pure, byte-deterministic,
 // needed by the offline auditor check A8); the SDK re-exports them for integrators.
@@ -141,10 +142,6 @@ export interface RawModelReport {
   intel_quote: string;
   nvidia_payload: string | null;
   event_log: unknown | null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** True for the `TimeoutError` that `AbortSignal.timeout` aborts with, however fetch wrapped it. */

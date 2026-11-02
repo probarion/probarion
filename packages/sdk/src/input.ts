@@ -17,6 +17,7 @@ import {
   utf8,
 } from "@probarion/core";
 import { ProbarionError } from "./errors.js";
+import { isRecord, messageOf } from "./guards.js";
 
 const NOT_TEXT =
   "hashInvoice takes the invoice text, as a string or as its UTF-8 bytes; this is not UTF-8 text. Pass the extracted text (the text the model is shown); a PDF's file hash belongs in document_sha256";
@@ -49,13 +50,7 @@ export function invalid(message: string): ProbarionError {
   return new ProbarionError(message, "InvalidInput");
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+export { isRecord, messageOf };
 
 function checkRef(ref: unknown): string {
   if (typeof ref !== "string" || LONE_SURROGATE_RE.test(ref)) {

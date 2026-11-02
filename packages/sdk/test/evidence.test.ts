@@ -83,9 +83,16 @@ describe("loadBurnTxHints (R7 source 1: docs/mainnet-proof.json)", () => {
       }),
     );
     const hints = await loadBurnTxHints(file, { vault: "v0.probarion.near", network: "mainnet" });
+    // Each hint carries the entry's signer_id, so the lookup asks the right account first.
     expect([...hints.entries()]).toEqual([
-      [2, ["H1", "H2"]],
-      [1, ["H3"]],
+      [
+        2,
+        [
+          { hash: "H1", signer: "v0.probarion.near" },
+          { hash: "H2", signer: "owner.near" },
+        ],
+      ],
+      [1, [{ hash: "H3", signer: "v0.probarion.near" }]],
     ]);
   });
 
