@@ -1,0 +1,67 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { isDenied, memberForAction } from "@/lib/console/action-auth";
+import { REGISTER_ERROR_TEXT, registerVault, rpcChainReads } from "@/lib/console/vaults";
+import { serviceDb } from "@/lib/db/clients";
+import { setTenantSettings } from "@/lib/db/tenants";
+import { getEnv } from "@/lib/env";
+import { getReader, getRpc } from "@/lib/near/server";
+
+/** What the settings form shows after a submit. */
+export type SettingsState =
+  | null
+  | { ok: true; message: string }
+  | { ok: false; error: string; status?: 401 | 403 };
+
+// `vault` is bound by the page, but a bound argument comes back from the browser, so it is only a
+// lookup key: the tenant id and the role come from the membership row (memberForAction), never
+// from the form.
+
+export async function updateSettingsAction(
+  vault: string,
+  _prev: SettingsState,
+  formData: FormData,
+): Promise<SettingsState> {
+  const auth = await memberForAction(vault, ["owner"]);
+  if (isDenied(auth)) return { ok: false, ...auth };
+  const saved = await setTenantSettings(serviceDb(), auth.member.tenant_id, {
+    zeroRetention: formData.get("zero_retention") === "on",
+    proofPublic: formData.get("proof_public") === "on",
+  });
+  revalidatePath(`/console/${auth.member.vault_id}`);
+  return {
+    ok: true,
+    message: `Saved. Zero-retention ${saved.zero_retention ? "on" : "off"}; public proof page ${saved.proof_public ? "on" : "off"}.`,
+  };
+}
+
+/** Re-reads get_config so the approvers on chain are reflected in membership (R11 re-registration). */
+export async function refreshMembersAction(
+  vault: string,
+  _prev: SettingsState,
+  _formData?: FormData,
+): Promise<SettingsState> {
+  const auth = await memberForAction(vault, ["owner"]);
+  if (isDenied(auth)) return { ok: false, ...auth };
+  const env = getEnv();
+  const r = await registerVault(
+    {
+      db: serviceDb(),
+      reader: getReader(),
+      chain: rpcChainReads(getRpc()),
+      network: env.NEAR_NETWORK,
+      factoryId: env.PROBARION_FACTORY_ID,
+      canaryVaultId: env.CANARY_VAULT_ID,
+      teamVaultIds: env.TEAM_VAULT_IDS,
+    },
+    {
+      vaultId: auth.member.vault_id,
+      account: auth.session.accountId,
+      displayName: auth.member.display_name,
+    },
+  );
+  if (!r.ok) return { ok: false, error: REGISTER_ERROR_TEXT[r.error] };
+  revalidatePath(`/console/${auth.member.vault_id}`);
+  return { ok: true, message: "Approvers re-read from the chain." };
+}
