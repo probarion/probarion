@@ -1295,3 +1295,19 @@ describe("helpers", () => {
     );
   });
 });
+
+describe("RuleId ledger.unresolved (ICR-8, Task 14 B6)", () => {
+  it("is a RuleId distinct from invoice.duplicate, and decide() never emits it (the SDK's unconfirmed-payment guard does)", () => {
+    const unresolved: RuleId = "ledger.unresolved";
+    const duplicate: RuleId = "invoice.duplicate";
+    expect(unresolved).not.toBe(duplicate);
+    for (const c of cases) {
+      const ids = decide(c.input()).rules.map((r) => r.id);
+      expect(ids, c.name).not.toContain("ledger.unresolved");
+    }
+    // "Already paid" stays invoice.duplicate.
+    const paid = input();
+    const again = decide({ ...paid, paidInvoiceHashes: new Set([paid.invoice.invoice_hash]) });
+    expect(again.rules.find((r) => r.outcome === "refuse")?.id).toBe("invoice.duplicate");
+  });
+});

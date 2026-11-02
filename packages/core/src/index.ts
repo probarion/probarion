@@ -1,6 +1,7 @@
 export * from "./attestation.js";
 export * from "./code-hashes.js";
 export * from "./constants.js";
+export * from "./formats.js";
 export * from "./hash.js";
 export * from "./hex.js";
 export * from "./keys.js";

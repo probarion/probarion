@@ -439,8 +439,8 @@ export function recordSpend(read: SpendRead, payee: Payee | undefined, ref: stri
 }
 
 /**
- * How long an unconfirmed payment can still land (T13-R2): the NEAR transaction validity window (a signed
- * transaction names a recent block hash and expires about 24 hours later) plus a margin. Counted from the
+ * How long an unconfirmed payment is guarded (T13-R2): after 86,400 blocks the tx expires (<=48 h at <=2 s
+ * blocks); even if it lands later, the contract lets at most one spend of the invoice pay. Counted from the
  * payment entry's `at`, which is written after the transaction was signed, so the bound is conservative.
  */
 export const UNKNOWN_SETTLE_MS = 48 * 3600 * 1000;
@@ -458,7 +458,8 @@ function settledByTime(entry: LedgerEntry, now: Date): boolean {
  * - a spend on chain carries that decision's hash (then the chain state decides, through `decide()`'s
  *   duplicate rules);
  * - its `at` is more than `UNKNOWN_SETTLE_MS` before `now` (the instance's clock) and no spend on chain
- *   carries the decision's hash: by then its transaction can no longer pay.
+ *   carries the decision's hash: after 86,400 blocks the tx expires (<=48 h at <=2 s blocks); even if it lands
+ *   later, the contract lets at most one spend of the invoice pay.
  * The ledger body holds no `ref`, so the match is by invoice hash, which is the double-pay risk (a fresh ref
  * for the same invoice); the contract refuses a reused ref by itself.
  */
@@ -495,9 +496,10 @@ export function unresolvedPayment(
 
 /**
  * Refuses a decision because of an unconfirmed earlier payment that is not yet settled (`unresolvedPayment`).
- * The RuleId is `invoice.duplicate`, the nearest existing id (`RuleId` is a closed union in core; Task 14
- * carries `ledger.unresolved`): it replaces the passing `invoice.duplicate` rule, or is added when the decision
- * has none (raw mode). The detail says when the invoice can be retried.
+ * The RuleId is `ledger.unresolved` (ICR-8): "unknown, wait", distinct from `invoice.duplicate`, which stays
+ * "already paid". The passing `invoice.duplicate` rule is kept (the chain holds no live spend of the invoice)
+ * and the refusal goes right after it, or at the end when the decision has none (raw mode). The detail says
+ * when the invoice can be retried.
  */
 export function refuseForUnresolved(decision: Decision, unresolved: LedgerEntry): Decision {
   const at = Date.parse(unresolved.body.at);
@@ -507,18 +509,12 @@ export function refuseForUnresolved(decision: Decision, unresolved: LedgerEntry)
     ? `this invoice can be retried after ${new Date(at + UNKNOWN_SETTLE_MS).toISOString()}`
     : "this invoice can be retried once that outcome is known";
   const rule: RuleResult = {
-    id: "invoice.duplicate",
+    id: "ledger.unresolved",
     outcome: "refuse",
     detail: `an unconfirmed payment for this invoice from ${unresolved.body.at}${tx} may still land; ${retry}, and its outcome may appear on chain sooner`,
   };
-  let replaced = false;
-  const rules = decision.rules.map((r) => {
-    if (!replaced && r.id === "invoice.duplicate" && r.outcome === "pass") {
-      replaced = true;
-      return rule;
-    }
-    return r;
-  });
-  if (!replaced) rules.push(rule);
+  const duplicate = decision.rules.findIndex((r) => r.id === "invoice.duplicate");
+  const rules = [...decision.rules];
+  rules.splice(duplicate === -1 ? rules.length : duplicate + 1, 0, rule);
   return { ...decision, verdict: "refuse", rules };
 }

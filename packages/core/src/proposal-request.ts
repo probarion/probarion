@@ -1,3 +1,4 @@
+import { assetMatchesChain, assetPrefixOf, isChainAddress, isNearAccountId } from "./formats.js";
 import { deepFreeze } from "./freeze.js";
 import { canonicalJson, sha256Hex } from "./hash.js";
 import { isHex32, utf8 } from "./hex.js";
@@ -256,13 +257,21 @@ function factsProblem(facts: unknown): string | null {
   return null;
 }
 
-/** The `Payee` of interfaces §4.1: a tagged union, `near` or `intents`, with exactly its own keys. */
+/**
+ * The `Payee` of interfaces §4.1: a tagged union, `near` or `intents`, with exactly its own keys, and each value
+ * in its chain format (Task 14 B1): `account_id` and `asset` follow the NEAR AccountId grammar, the asset's
+ * prefix names the chain, and the address is an EVM address on Base and a base58 address on Solana, as
+ * contracts/vault/src/validate.rs accepts them. A directive in any of these fields therefore fails A8 here,
+ * before the snapshot match (Task 14 B2) compares the fields with the chain.
+ */
 function payeeProblem(payee: unknown, at: string): string | null {
   if (!isRecord(payee)) return `${at} is not an object`;
   if (payee.type === "near") {
     const keys = keyProblem(payee, NEAR_PAYEE_KEYS);
     if (keys !== null) return `${at} ${keys}`;
-    return isNonEmptyString(payee.account_id) ? null : `${at}.account_id is not an account id`;
+    return isNearAccountId(payee.account_id)
+      ? null
+      : `${at}.account_id is not a NEAR account id (2 to 64 characters: lowercase a-z and 0-9 parts separated by single dots, dashes or underscores)`;
   }
   if (payee.type === "intents") {
     const keys = keyProblem(payee, INTENTS_PAYEE_KEYS);
@@ -270,9 +279,14 @@ function payeeProblem(payee: unknown, at: string): string | null {
     if (payee.chain !== "base" && payee.chain !== "solana") {
       return `${at}.chain is not base or solana`;
     }
-    return isNonEmptyString(payee.address) && isNonEmptyString(payee.asset)
+    if (!isChainAddress(payee.chain, payee.address)) {
+      return payee.chain === "base"
+        ? `${at}.address is not a Base (EVM) address: 0x and 40 hex digits`
+        : `${at}.address is not a Solana address: 32 to 44 base58 characters`;
+    }
+    return assetMatchesChain(payee.chain, payee.asset)
       ? null
-      : `${at} has a wrong-typed address or asset`;
+      : `${at}.asset is not a NEAR account id starting with ${assetPrefixOf(payee.chain)} (the POA token of ${payee.chain})`;
   }
   return `${at}.type is neither near nor intents`;
 }

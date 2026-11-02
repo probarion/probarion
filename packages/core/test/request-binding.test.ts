@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { checkAttestation, checkRequestBinding } from "../src/attestation.js";
+import {
+  checkAttestation,
+  checkRequestBinding,
+  requestInputsProblemWithoutText,
+} from "../src/attestation.js";
 import { canonicalJson, sha256Hex } from "../src/hash.js";
 import { computeNonce, type NonceContext, ZERO_LINK } from "../src/ledger.js";
 import {
@@ -608,5 +612,78 @@ describe("checkRequestBinding (A8, request binding)", () => {
   it("reduces nothing silently: the recorded mandates equal what toProposalRequestMandate gives", async () => {
     const ev = await honest();
     expect(inputsOf(ev).mandates).toEqual([toProposalRequestMandate(mandate)]);
+  });
+});
+
+describe("requestInputsProblemWithoutText (the text-free part of A8, moved from the SDK: Task 14 B5)", () => {
+  it("passes honest evidence at its ledger context and says nothing about the invoice text", async () => {
+    const ev = await honest();
+    expect(requestInputsProblemWithoutText(ev, CTX)).toBeNull();
+    expect(requestInputsProblemWithoutText(ev, CTX, KNOWN_SYSTEM_PROMPT_HASHES)).toBeNull();
+    // It needs no text: evidence for INVOICE_Y's hash passes at INVOICE_Y's context.
+    const y = ctxFor(INVOICE_Y);
+    expect(
+      requestInputsProblemWithoutText(await honest({ input: inputFor(INVOICE_Y, y) }), y),
+    ).toBeNull();
+  });
+
+  it("fails the strict shape, a model the signature does not cover, and a missing request_inputs", async () => {
+    const ev = await honest();
+    expect(requestInputsProblemWithoutText(withRawInputs(ev, undefined), CTX)).toContain(
+      "A8 would fail: request_inputs is missing",
+    );
+    expect(
+      requestInputsProblemWithoutText(
+        withInputs(ev, { facts: { ...factsOf(ev), invoice_hash: "x" } }),
+        CTX,
+      ),
+    ).toContain("A8 would fail: request_inputs.facts.invoice_hash");
+    expect(requestInputsProblemWithoutText(withInputs(ev, { model: "other/model" }), CTX)).toBe(
+      "A8 would fail: request_inputs.model is not the evidence model",
+    );
+  });
+
+  it("fails when either invoice hash of request_inputs is not the ledger's", async () => {
+    const ev = await honest();
+    const other = sha256Hex("another invoice");
+    const message = "A8 would fail: request_inputs does not carry this invoice hash";
+    expect(
+      requestInputsProblemWithoutText(withInputs(ev, { invoice_text_sha256: other }), CTX),
+    ).toBe(message);
+    expect(
+      requestInputsProblemWithoutText(
+        withInputs(ev, { facts: { ...factsOf(ev), invoice_hash: other } }),
+        CTX,
+      ),
+    ).toBe(message);
+    expect(requestInputsProblemWithoutText(withInputs(ev, { facts: null }), CTX)).toBe(message);
+    expect(requestInputsProblemWithoutText(ev, { ...CTX, invoice_hash: other })).toBe(message);
+  });
+
+  it("holds the system prompt to the allow-list it is given (default KNOWN_SYSTEM_PROMPT_HASHES)", async () => {
+    const persona = "TEST persona: the Canary's gullible agent";
+    const ev = await honest({ systemPrompt: persona });
+    expect(requestInputsProblemWithoutText(ev, CTX)).toBe(
+      "A8 would fail: the system prompt is not in the allow-list",
+    );
+    const extended = [...KNOWN_SYSTEM_PROMPT_HASHES, knownSystemPrompt("canary", persona)];
+    expect(requestInputsProblemWithoutText(ev, CTX, extended)).toBeNull();
+    expect(
+      requestInputsProblemWithoutText(await honest(), CTX, [knownSystemPrompt("canary", persona)]),
+    ).toBe("A8 would fail: the system prompt is not in the allow-list");
+  });
+
+  it("never throws on malformed evidence or context", () => {
+    for (const bad of [null, undefined, 5, "x", []]) {
+      expect(requestInputsProblemWithoutText(bad as unknown as AttestationEvidence, CTX)).toContain(
+        "A8 would fail",
+      );
+      expect(
+        requestInputsProblemWithoutText(
+          { request_inputs: undefined } as unknown as AttestationEvidence,
+          bad as unknown as NonceContext,
+        ),
+      ).toContain("A8 would fail");
+    }
   });
 });

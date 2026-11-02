@@ -198,6 +198,8 @@ export type RuleId =
   | "vault.frozen"
   | "vault.daily_backstop"
   | "contract.check_failed"
+  /** ICR-8 (Task 14 B6): an earlier payment of this invoice has an unknown outcome and has not settled (the SDK guard); "already paid" stays invoice.duplicate. */
+  | "ledger.unresolved"
   | `custom.${string}`;
 
 export interface RuleResult {

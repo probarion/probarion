@@ -834,17 +834,23 @@ describe("unknown outcomes block the same invoice until resolved (T13-R1 items 5
     expect(chats()).toBe(1);
 
     const viaProcess = await pb.process({ ...INVOICE(), ref: "INV-1-b" });
-    expect(viaProcess).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+    expect(viaProcess).toMatchObject({ status: "refused_by_code", code: "ledger.unresolved" });
     const decision = (await ledger.all()).at(-1);
     expect(decision?.body.rules.find((r) => r.outcome === "refuse")?.detail).toMatch(
       /unconfirmed payment for this invoice from \S+ \(tx LOST-TX\) may still land; this invoice can be retried after /,
     );
+    // ICR-8: "unknown, wait" is ledger.unresolved; invoice.duplicate ("already paid") still passes, right before it.
+    const ids = (decision?.body.rules ?? []).map((r) => `${r.id}:${r.outcome}`);
+    const duplicateAt = ids.indexOf("invoice.duplicate:pass");
+    expect(duplicateAt).toBeGreaterThanOrEqual(0);
+    expect(ids[duplicateAt + 1]).toBe("ledger.unresolved:refuse");
+    expect(ids.filter((id) => id.endsWith(":refuse"))).toEqual(["ledger.unresolved:refuse"]);
     expect(chats()).toBe(1); // no model tokens for a cycle that is refused anyway
 
     const spend = { mandateId: 1, amount: "25000000", invoiceHash: INVOICE().facts.invoice_hash };
     for (const extra of [{ ref: "INV-1-c" }, { ref: "INV-1-d", skipPreflight: true }]) {
       const out = await pb.requestSpend({ ...spend, ...extra });
-      expect(out).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+      expect(out).toMatchObject({ status: "refused_by_code", code: "ledger.unresolved" });
     }
     expect(calls).toHaveLength(1);
 
@@ -954,7 +960,7 @@ describe("the unconfirmed-payment guard is bounded in time (T13-R2)", () => {
     for (const [i, offset] of [HOUR, UNKNOWN_SETTLE_MS].entries()) {
       t.at(offset);
       const out = await t.pb.process({ ...INVOICE(), ref: `INV-1-w${i}` });
-      expect(out).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+      expect(out).toMatchObject({ status: "refused_by_code", code: "ledger.unresolved" });
       expect(await refusalDetail(t.ledger)).toBe(
         `an unconfirmed payment for this invoice from ${NOW.toISOString()} (tx LOST-TX) may still land; this invoice can be retried after ${RETRY_AT}, and its outcome may appear on chain sooner`,
       );

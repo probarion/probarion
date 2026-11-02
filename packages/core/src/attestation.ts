@@ -499,3 +499,41 @@ export function checkRequestBinding(
     return fail(`cannot rebuild the request: ${reason}`);
   }
 }
+
+/**
+ * The part of A8 that needs no invoice text (Task 14 B5, moved here from the SDK): the strict shape of
+ * `request_inputs`, its model against the evidence model, both of its invoice hashes against the ledger
+ * context's `invoice_hash`, and the system prompt in the allow-list (`prompts`, default
+ * `KNOWN_SYSTEM_PROMPT_HASHES`). Null when all hold, else what A8 would fail on ("A8 would fail: ...").
+ *
+ * The SDK's `requestSpend` has only the invoice hash, so it holds caller evidence to this before writing it.
+ * It is a subset of A8, never a pass of A8: the request is not rebuilt, the nonce header and `po_ref` are not
+ * checked against a text, and the mandates are not matched with the chain. It never throws.
+ */
+export function requestInputsProblemWithoutText(
+  evidence: AttestationEvidence,
+  context: NonceContext,
+  prompts: readonly KnownSystemPrompt[] = KNOWN_SYSTEM_PROMPT_HASHES,
+): string | null {
+  if (!isRecord(evidence)) return "A8 would fail: evidence is missing or not an object";
+  const shape = proposalRequestInputsProblem(evidence.request_inputs);
+  if (shape !== null) return `A8 would fail: ${shape}`;
+  const inputs = evidence.request_inputs as ProposalRequestInputs;
+  if (inputs.model !== evidence.model) {
+    return "A8 would fail: request_inputs.model is not the evidence model";
+  }
+  const invoiceHash = isRecord(context) ? context.invoice_hash : undefined;
+  if (
+    !isHex32(invoiceHash) ||
+    inputs.invoice_text_sha256 !== invoiceHash ||
+    inputs.facts?.invoice_hash !== invoiceHash
+  ) {
+    return "A8 would fail: request_inputs does not carry this invoice hash";
+  }
+  const promptHash = sha256Hex(inputs.system_prompt);
+  const listed = Array.isArray(prompts) ? prompts : [];
+  if (!listed.some((p) => isRecord(p) && p.sha256 === promptHash)) {
+    return "A8 would fail: the system prompt is not in the allow-list";
+  }
+  return null;
+}
