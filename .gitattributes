@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.wasm binary
+# Invoice-text fixtures: A8 rebuilds the request from their exact bytes (plan 03 Task 14), so git never converts them.
+packages/core/test/fixtures/invoice-*.txt -text
