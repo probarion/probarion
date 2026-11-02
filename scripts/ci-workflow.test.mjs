@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
@@ -187,9 +187,11 @@ function stepsOf(jobLines) {
 }
 
 /** Every problem with a release workflow; the empty list means it has the shape the release relies on. */
-function checkReleaseWorkflow(text, ciText) {
+function checkReleaseWorkflow(crlfOrLf, ciText) {
   const problems = [];
   const fail = (message) => problems.push(message);
+  // Line endings are normalised exactly as the sha256 pin does, so a CRLF copy has the same shape.
+  const text = crlfOrLf.replace(/\r\n/g, "\n");
   const lines = codeLines(text);
   const ciLines = ciText.split(/\r?\n/);
 
@@ -315,6 +317,40 @@ function checkReleaseWorkflow(text, ciText) {
   if (checkoutAt < 0) fail("the verify job needs a checkout");
   if (!/with:\n\s+fetch-depth: 0\n\s+persist-credentials: false/.test(checkout)) {
     fail("the checkout needs fetch-depth: 0 and persist-credentials: false");
+  }
+  // Y1: the checkout takes the tagged commit. A ref: (main, a branch, a SHA) would test and pack another
+  // commit than the one the tag names, while the main check still looks at the tag's $GITHUB_SHA.
+  const checkoutStep = stepsOf(verify).find((step) => /uses: actions\/checkout@/.test(step[0]));
+  if (
+    JSON.stringify(checkoutStep?.slice(1)) !==
+    JSON.stringify([
+      "        with:",
+      "          fetch-depth: 0",
+      "          persist-credentials: false",
+    ])
+  ) {
+    fail(
+      "Y1: the checkout's with: must be exactly fetch-depth: 0 and persist-credentials: false (no ref:, which would pack another commit than the tag)",
+    );
+  }
+  // Y6: the upload sends exactly what release:check packed and checked. With path: . it would send the
+  // checkout, so a committed packages.json and tarball, never built from the tested code, would be published.
+  const uploadStep = stepsOf(verify).find((step) =>
+    /uses: actions\/upload-artifact@/.test(step[0]),
+  );
+  if (
+    JSON.stringify(uploadStep?.slice(1)) !==
+    JSON.stringify([
+      "        with:",
+      "          name: release-tarballs",
+      "          path: ${{ runner.temp }}/release",
+      "          if-no-files-found: error",
+      "          retention-days: 7",
+    ])
+  ) {
+    fail(
+      "Y6: the upload's with: must be exactly name: release-tarballs, path: ${{ runner.temp }}/release, if-no-files-found: error and retention-days: 7",
+    );
   }
   if (/\bcache:/.test(text)) fail("no dependency cache in the release workflow");
   const verifyText = verify.join("\n");
@@ -1025,6 +1061,43 @@ const mutations = [
       ),
     "shell: may appear once",
   ],
+  // Named by the shape check itself, not only by the pin (T17-R4, review minors)
+  [
+    "Y1: ref: main on the checkout",
+    (t) =>
+      t.replace(
+        "          persist-credentials: false\n",
+        "          persist-credentials: false\n          ref: main\n",
+      ),
+    "Y1:",
+  ],
+  [
+    "Y1b: a ref: before fetch-depth",
+    (t) =>
+      t.replace(
+        "        with:\n          fetch-depth: 0\n",
+        "        with:\n          ref: main\n          fetch-depth: 0\n",
+      ),
+    "Y1:",
+  ],
+  [
+    "Y6: the upload path changed to .",
+    (t) =>
+      t.replace(
+        "          path: ${{ runner.temp }}/release\n          if-no-files-found: error",
+        "          path: .\n          if-no-files-found: error",
+      ),
+    "Y6:",
+  ],
+  [
+    "Y6b: a second upload path",
+    (t) =>
+      t.replace(
+        "          path: ${{ runner.temp }}/release\n          if-no-files-found: error",
+        "          path: |\n            ${{ runner.temp }}/release\n            .\n          if-no-files-found: error",
+      ),
+    "Y6:",
+  ],
 ];
 
 for (const [name, mutate, expected] of mutations) {
@@ -1069,6 +1142,19 @@ test("the pin ignores line endings and nothing else: one changed byte anywhere i
     releaseSha(release),
   );
   assert.notEqual(releaseSha(`${release}\n`), releaseSha(release));
+});
+
+test("the shape check treats a CRLF copy as the pin does: same shape, and every mutant still refused", () => {
+  const crlf = (text) => text.replace(/\n/g, "\r\n");
+  assert.notEqual(crlf(release), release);
+  assert.deepEqual(checkReleaseWorkflow(crlf(release), crlf(ci)), []);
+  for (const [name, mutate, expected] of mutations) {
+    const problems = checkReleaseWorkflow(crlf(mutate(release)), ci);
+    assert.ok(
+      problems.some((p) => p.includes(expected)),
+      `CRLF copy of "${name}" not refused for "${expected}": ${problems.join(" | ")}`,
+    );
+  }
 });
 
 test("release.yml: the tagged commit must be on main, and the workflow leaves no credentials behind", () => {
@@ -1128,3 +1214,487 @@ test("every published package refuses `npm publish` outside the release workflow
 });
 
 // biome-ignore-end lint/suspicious/noTemplateCurlyInString: see biome-ignore-start above
+
+// ---------- the gate scripts, pinned crosswise with scripts/test/release-manifests.test.ts (T17-R4) ----------
+//
+// release.yml runs `pnpm run verify:ts` and `pnpm run verify:launch`; what they do is in package.json
+// scripts, so the scripts are pinned too, by two files that run under different gates. This file runs
+// under verify:ts (root `test` runs `node --test "scripts/**/*.test.mjs"`) and pins verify:launch and the
+// scripts it runs. scripts/test/release-manifests.test.ts runs under verify:launch and pins verify:ts and
+// the scripts it runs. Switching off one gate is refused by the test that runs under the other. The
+// refusal of constructs that swallow a failure, the per-package map and the workspace pins are in both
+// files on purpose (T17-R4).
+
+const SELF = "scripts/ci-workflow.test.mjs";
+
+/** The root scripts this file pins (release-manifests.test.ts pins verify:ts and what it runs). */
+const ROOT_PINNED = {
+  "verify:launch": "pnpm typecheck:scripts && pnpm test:scripts",
+  "test:scripts": "vitest run --root scripts",
+  "typecheck:scripts": "tsc -p scripts/tsconfig.json",
+  "release:check": "tsx scripts/release-check.ts",
+};
+
+const PACKAGE_BUILD =
+  "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json";
+/**
+ * The test, build, typecheck and lint scripts of every workspace package, exactly; null means the
+ * package has no such script. `pnpm -r --if-present` skips a package whose script is missing, so a
+ * removed script is a change too. No package has a lint script: the root `biome check .` lints them all.
+ */
+const PACKAGE_PINNED = {
+  "packages/cli/package.json": {
+    test: "vitest run",
+    build: PACKAGE_BUILD,
+    typecheck: "tsc -p tsconfig.json",
+    lint: null,
+  },
+  "packages/core/package.json": {
+    test: "vitest run",
+    build: PACKAGE_BUILD,
+    typecheck: "tsc -p tsconfig.json",
+    lint: null,
+  },
+  "packages/sdk/package.json": {
+    test: "vitest run",
+    build: PACKAGE_BUILD,
+    typecheck: "tsc -p tsconfig.json",
+    lint: null,
+  },
+  "apps/web/package.json": {
+    test: "vitest run",
+    build: "next build",
+    typecheck: "tsc --noEmit",
+    lint: null,
+  },
+};
+
+/** The one script allowed to use `||`: the publish guard of the three published packages, exactly. */
+const PREPUBLISH_GUARD =
+  "node -e \"if(process.env.CI!=='true'||process.env.GITHUB_WORKFLOW!=='release'){console.error('Refusing to publish: only the GitHub release workflow publishes. Push a tag such as sdk-v0.1.0 instead.');process.exit(1)}\"";
+const GUARDED = [
+  "packages/core/package.json",
+  "packages/sdk/package.json",
+  "packages/cli/package.json",
+];
+
+// Where a shell word starts a command: the start, after && || | & ; ( ) { !, or after then/do/else.
+const COMMAND_START = String.raw`(?:^|&&|\|\||[;|&(){!]|\b(?:then|do|else)\b)\s*`;
+/** Constructs that let a failing script pass. None may appear in any script of any workspace package. */
+const SWALLOWS = [
+  [/\|\|/, '"||"'],
+  [/\|\|\s*exit\s+0\b/, '"|| exit 0"'],
+  [/;\s*true\b/, '"; true" (or ";true")'],
+  [/\bexit\s+0\b/, '"exit 0"'],
+  [/--passWithNoTests|--pass-with-no-tests/i, '"--passWithNoTests"'],
+  [/--bail(?:\s+|=)0\b/, '"--bail 0"'],
+  [new RegExp(`${COMMAND_START}(?:true|:)(?=$|[\\s;&|)}])`), '"true" (or ":") used as a command'],
+  [new RegExp(`${COMMAND_START}exit\\s*(?=$|[;&|)}])`), 'a bare "exit", which exits 0'],
+];
+
+// pnpm-workspace.yaml chooses the packages that `pnpm -r` runs and can hold settings (scriptShell).
+const WORKSPACE_YAML = 'packages:\n  - "packages/*"\n  - "apps/*"\n  - "eval"\n';
+// scripts/vitest.config.ts chooses which scripts/test files verify:launch runs. Update with:
+// node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync("scripts/vitest.config.ts","utf8").replace(/\r\n/g,"\n")).digest("hex"))'
+const SCRIPTS_VITEST_SHA256 = "b2c667b89f365ece33ad8b5fdb0024cd6ce82b64bd6916cb5b5696776e8f9b70";
+
+const repoRoot = new URL("../", import.meta.url);
+const inRepo = (path) => new URL(path, repoRoot);
+const readRepo = (path) => readFileSync(inRepo(path), "utf8");
+const lf = (text) => text.replace(/\r\n/g, "\n");
+const sha256 = (text) => createHash("sha256").update(lf(text)).digest("hex");
+
+/** The workspace manifests by path, and the config files that decide how the scripts run (null: absent). */
+function loadRepo() {
+  const paths = ["package.json"];
+  for (const parent of ["packages", "apps"]) {
+    for (const dir of readdirSync(inRepo(`${parent}/`)).sort()) {
+      if (existsSync(inRepo(`${parent}/${dir}/package.json`))) {
+        paths.push(`${parent}/${dir}/package.json`);
+      }
+    }
+  }
+  if (existsSync(inRepo("eval/package.json"))) paths.push("eval/package.json");
+  const optional = (path) => (existsSync(inRepo(path)) ? readRepo(path) : null);
+  const files = new Map([
+    ["pnpm-workspace.yaml", optional("pnpm-workspace.yaml")],
+    ["scripts/vitest.config.ts", optional("scripts/vitest.config.ts")],
+  ]);
+  for (const dir of ["", ...paths.slice(1).map((p) => p.slice(0, -"package.json".length))]) {
+    files.set(`${dir}.npmrc`, optional(`${dir}.npmrc`));
+    for (const base of ["vitest.config", "vite.config"]) {
+      for (const ext of ["ts", "mts", "cts", "js", "mjs", "cjs"]) {
+        const path = `${dir}${base}.${ext}`;
+        if (existsSync(inRepo(path))) files.set(path, readRepo(path));
+      }
+    }
+  }
+  return { manifests: new Map(paths.map((p) => [p, JSON.parse(readRepo(p))])), files };
+}
+
+/** Every way the workspace's scripts differ from the pinned ones; the empty list means none. */
+function gateProblems(repo) {
+  const problems = [];
+  const fail = (message) => problems.push(message);
+  const show = (value) => (value === null ? "absent" : JSON.stringify(value));
+  const pinned = (file, name, want) => {
+    const got = repo.manifests.get(file)?.scripts?.[name] ?? null;
+    if (got !== want) {
+      fail(
+        `${file}: scripts["${name}"] changed (pinned ${show(want)}, now ${show(got)}); review the change, then update the pinned value in ${SELF}`,
+      );
+    }
+  };
+
+  const expected = ["package.json", ...Object.keys(PACKAGE_PINNED)];
+  for (const file of repo.manifests.keys()) {
+    if (!expected.includes(file)) {
+      fail(
+        `${file}: a workspace package whose test, build, typecheck and lint scripts are not pinned; review them, then add them to the pinned value in ${SELF}`,
+      );
+    }
+  }
+  for (const file of expected) {
+    if (!repo.manifests.has(file)) {
+      fail(
+        `${file}: a pinned workspace package is missing; review the change, then update ${SELF}`,
+      );
+    }
+  }
+  for (const [name, want] of Object.entries(ROOT_PINNED)) pinned("package.json", name, want);
+  for (const [file, scripts] of Object.entries(PACKAGE_PINNED)) {
+    for (const [name, want] of Object.entries(scripts)) pinned(file, name, want);
+  }
+  for (const file of GUARDED) pinned(file, "prepublishOnly", PREPUBLISH_GUARD);
+
+  for (const [file, manifest] of repo.manifests) {
+    for (const [name, script] of Object.entries(manifest.scripts ?? {})) {
+      if (typeof script !== "string") {
+        fail(`${file}: scripts["${name}"] is not a string; review the change`);
+        continue;
+      }
+      if (name === "prepublishOnly" && GUARDED.includes(file) && script === PREPUBLISH_GUARD)
+        continue;
+      for (const [pattern, label] of SWALLOWS) {
+        if (pattern.test(script)) {
+          fail(
+            `${file}: scripts["${name}"] contains ${label}, which lets a failure pass; review the change (only the three pinned prepublishOnly guards may use "||")`,
+          );
+        }
+      }
+    }
+  }
+
+  if (lf(repo.files.get("pnpm-workspace.yaml") ?? "") !== WORKSPACE_YAML) {
+    fail(
+      `pnpm-workspace.yaml changed (it chooses the packages that pnpm -r runs, and can set scriptShell); review the change, then update the pinned value in ${SELF}`,
+    );
+  }
+  if (sha256(repo.files.get("scripts/vitest.config.ts") ?? "") !== SCRIPTS_VITEST_SHA256) {
+    fail(
+      `scripts/vitest.config.ts changed (it chooses which scripts/test files verify:launch runs); review the change, then update the pinned value in ${SELF}`,
+    );
+  }
+  for (const [path, text] of repo.files) {
+    if (path.endsWith(".npmrc") && text !== null) {
+      fail(
+        `${path} exists (an .npmrc can replace the shell every script runs in, with script-shell); review it, then allow it in ${SELF}`,
+      );
+    }
+    if (/\bvite(st)?\.config\./.test(path) && /passWithNoTests/i.test(text ?? "")) {
+      fail(
+        `${path} sets passWithNoTests, which lets a run with no test files pass; review the change`,
+      );
+    }
+  }
+  return problems;
+}
+
+const workspace = loadRepo();
+
+const cloneRepo = (from) => ({
+  manifests: new Map([...from.manifests].map(([file, m]) => [file, structuredClone(m)])),
+  files: new Map(from.files),
+});
+const scriptsIn = (of, file) => {
+  const scripts = of.manifests.get(file)?.scripts;
+  if (!scripts) throw new Error(`${file} has no scripts`);
+  return scripts;
+};
+const appendTo = (of, file, name, tail) => {
+  const scripts = scriptsIn(of, file);
+  scripts[name] = `${scripts[name]}${tail}`;
+};
+
+// Each is an edit of an in-memory copy of the parsed manifests (or of a config file). Every one must be
+// refused, and for each listed reason. The first four are the ruling's (T17-R4 item 5).
+const gateMutations = [
+  [
+    '"|| true" on verify:ts',
+    (r) => appendTo(r, "package.json", "verify:ts", " || true"),
+    ['package.json: scripts["verify:ts"] contains "||"'],
+  ],
+  [
+    "verify:launch replaced with true",
+    (r) => {
+      scriptsIn(r, "package.json")["verify:launch"] = "true";
+    },
+    [
+      'package.json: scripts["verify:launch"] changed (pinned "pnpm typecheck:scripts && pnpm test:scripts", now "true")',
+      'package.json: scripts["verify:launch"] contains "true" (or ":") used as a command',
+    ],
+  ],
+  [
+    "a package's test replaced with echo ok",
+    (r) => {
+      scriptsIn(r, "packages/core/package.json").test = "echo ok";
+    },
+    ['packages/core/package.json: scripts["test"] changed (pinned "vitest run", now "echo ok")'],
+  ],
+  [
+    "--passWithNoTests added to a package's test",
+    (r) => appendTo(r, "packages/sdk/package.json", "test", " --passWithNoTests"),
+    [
+      'packages/sdk/package.json: scripts["test"] changed',
+      'packages/sdk/package.json: scripts["test"] contains "--passWithNoTests"',
+    ],
+  ],
+  // The other constructs, on scripts no exact pin covers, so only the scan can refuse them.
+  [
+    '"; true" on a root script',
+    (r) => appendTo(r, "package.json", "proof", "; true"),
+    ['package.json: scripts["proof"] contains "; true"'],
+  ],
+  [
+    '";true" on an app script',
+    (r) => appendTo(r, "apps/web/package.json", "test:e2e", ";true"),
+    ['apps/web/package.json: scripts["test:e2e"] contains "; true"'],
+  ],
+  [
+    '"exit 0" in an app script',
+    (r) => appendTo(r, "apps/web/package.json", "dev", " && exit 0"),
+    ['apps/web/package.json: scripts["dev"] contains "exit 0"'],
+  ],
+  [
+    '"|| exit 0" in a package script',
+    (r) => appendTo(r, "packages/core/package.json", "fixtures", " || exit 0"),
+    ['packages/core/package.json: scripts["fixtures"] contains "|| exit 0"'],
+  ],
+  [
+    '"--bail 0" on the web tests',
+    (r) => appendTo(r, "apps/web/package.json", "test", " --bail 0"),
+    [
+      'apps/web/package.json: scripts["test"] changed',
+      'apps/web/package.json: scripts["test"] contains "--bail 0"',
+    ],
+  ],
+  [
+    '" true" used as a command',
+    (r) => {
+      scriptsIn(r, "package.json")["verify:full"] = "pnpm run verify; true";
+    },
+    ['scripts["verify:full"] contains "; true"', 'scripts["verify:full"] contains "true" (or ":")'],
+  ],
+  [
+    "true as the whole script",
+    (r) => {
+      scriptsIn(r, "package.json")["test:sandbox"] = " true";
+    },
+    ['scripts["test:sandbox"] contains "true" (or ":") used as a command'],
+  ],
+  [
+    "a bare exit",
+    (r) => {
+      scriptsIn(r, "package.json")["contracts:build"] = "exit";
+    },
+    ['scripts["contracts:build"] contains a bare "exit"'],
+  ],
+  [
+    '":" as a command',
+    (r) => {
+      scriptsIn(r, "packages/sdk/package.json")["record:nearai"] = ":";
+    },
+    ['scripts["record:nearai"] contains "true" (or ":") used as a command'],
+  ],
+  // Pins this file holds
+  [
+    "test:scripts dropped from verify:launch",
+    (r) => {
+      scriptsIn(r, "package.json")["verify:launch"] = "pnpm typecheck:scripts";
+    },
+    ['package.json: scripts["verify:launch"] changed'],
+  ],
+  [
+    "test:scripts weakened to echo",
+    (r) => {
+      scriptsIn(r, "package.json")["test:scripts"] = "echo ok";
+    },
+    ['package.json: scripts["test:scripts"] changed'],
+  ],
+  [
+    "test:scripts pointed at another root",
+    (r) => {
+      scriptsIn(r, "package.json")["test:scripts"] = "vitest run --root scripts/testnet";
+    },
+    ['package.json: scripts["test:scripts"] changed'],
+  ],
+  [
+    "typecheck:scripts weakened",
+    (r) => {
+      scriptsIn(r, "package.json")["typecheck:scripts"] = "tsc --version";
+    },
+    ['package.json: scripts["typecheck:scripts"] changed'],
+  ],
+  [
+    "release:check pointed at another script",
+    (r) => {
+      scriptsIn(r, "package.json")["release:check"] = "node -e 0";
+    },
+    ['package.json: scripts["release:check"] changed'],
+  ],
+  [
+    "a package's test script removed (pnpm -r --if-present would skip it)",
+    (r) => {
+      delete scriptsIn(r, "packages/cli/package.json").test;
+    },
+    ['packages/cli/package.json: scripts["test"] changed (pinned "vitest run", now absent)'],
+  ],
+  [
+    "a package's typecheck weakened",
+    (r) => {
+      scriptsIn(r, "apps/web/package.json").typecheck = "echo ok";
+    },
+    ['apps/web/package.json: scripts["typecheck"] changed'],
+  ],
+  [
+    "a package lint script added",
+    (r) => {
+      scriptsIn(r, "packages/core/package.json").lint = "echo ok";
+    },
+    ['packages/core/package.json: scripts["lint"] changed (pinned absent, now "echo ok")'],
+  ],
+  [
+    "a package build that no longer cleans dist",
+    (r) => {
+      scriptsIn(r, "packages/sdk/package.json").build = "tsc -p tsconfig.build.json";
+    },
+    ['packages/sdk/package.json: scripts["build"] changed'],
+  ],
+  [
+    "a prepublishOnly guard that exits 0",
+    (r) => {
+      const scripts = scriptsIn(r, "packages/cli/package.json");
+      scripts.prepublishOnly = scripts.prepublishOnly.replace("exit(1)", "exit(0)");
+    },
+    [
+      'packages/cli/package.json: scripts["prepublishOnly"] changed',
+      'packages/cli/package.json: scripts["prepublishOnly"] contains "||"',
+    ],
+  ],
+  [
+    "the guard copied into a package that is not one of the three",
+    (r) => {
+      scriptsIn(r, "apps/web/package.json").prepublishOnly = PREPUBLISH_GUARD;
+    },
+    ['apps/web/package.json: scripts["prepublishOnly"] contains "||"'],
+  ],
+  [
+    "a new workspace package that nothing pins",
+    (r) => {
+      r.manifests.set("packages/mcp/package.json", { scripts: { test: "echo ok" } });
+    },
+    ["packages/mcp/package.json: a workspace package whose test, build, typecheck and lint"],
+  ],
+  // The files that decide how every script runs
+  [
+    "an .npmrc that replaces the script shell",
+    (r) => {
+      r.files.set(".npmrc", "script-shell=/bin/true\n");
+    },
+    [".npmrc exists"],
+  ],
+  [
+    "a scriptShell setting in pnpm-workspace.yaml",
+    (r) => {
+      r.files.set("pnpm-workspace.yaml", `${WORKSPACE_YAML}scriptShell: ./sh\n`);
+    },
+    ["pnpm-workspace.yaml changed"],
+  ],
+  [
+    "a package dropped from the pnpm workspace",
+    (r) => {
+      r.files.set("pnpm-workspace.yaml", 'packages:\n  - "apps/*"\n');
+    },
+    ["pnpm-workspace.yaml changed"],
+  ],
+  [
+    "a scripts/vitest.config.ts that skips release-manifests.test.ts",
+    (r) => {
+      r.files.set(
+        "scripts/vitest.config.ts",
+        r.files
+          .get("scripts/vitest.config.ts")
+          .replace(
+            'include: ["test/**/*.test.ts"]',
+            'include: ["test/**/*.test.ts"], exclude: ["test/release-manifests.test.ts"]',
+          ),
+      );
+    },
+    ["scripts/vitest.config.ts changed"],
+  ],
+  [
+    "passWithNoTests in a package's vitest config",
+    (r) => {
+      r.files.set(
+        "packages/core/vitest.config.ts",
+        r.files
+          .get("packages/core/vitest.config.ts")
+          .replace("  test: {\n", "  test: {\n    passWithNoTests: true,\n"),
+      );
+    },
+    ["packages/core/vitest.config.ts sets passWithNoTests"],
+  ],
+];
+
+test("the gate scripts release.yml runs are the pinned ones, and none can swallow a failure (T17-R4)", () => {
+  assert.deepEqual(gateProblems(workspace), []);
+});
+
+test("the gate scripts are read from every workspace package and every config file that changes how they run", () => {
+  assert.deepEqual(
+    [...workspace.manifests.keys()].sort(),
+    ["package.json", ...Object.keys(PACKAGE_PINNED)].sort(),
+  );
+  for (const path of [
+    "pnpm-workspace.yaml",
+    "scripts/vitest.config.ts",
+    ".npmrc",
+    "apps/web/.npmrc",
+    "packages/core/vitest.config.ts",
+    "apps/web/vitest.config.ts",
+  ]) {
+    assert.ok(workspace.files.has(path), `${path} is not read`);
+  }
+});
+
+for (const [name, edit, reasons] of gateMutations) {
+  test(`the gate scripts check refuses: ${name}`, () => {
+    const before = JSON.stringify([...workspace.manifests, ...workspace.files]);
+    const mutated = cloneRepo(workspace);
+    edit(mutated);
+    assert.notEqual(
+      JSON.stringify([...mutated.manifests, ...mutated.files]),
+      before,
+      "changed nothing",
+    );
+    const problems = gateProblems(mutated);
+    for (const reason of reasons) {
+      assert.ok(
+        problems.some((p) => p.includes(reason)),
+        `"${name}" not refused for "${reason}": ${problems.join(" | ")}`,
+      );
+    }
+    // The edit was made on a copy: the manifests as read are untouched.
+    assert.equal(JSON.stringify([...workspace.manifests, ...workspace.files]), before);
+  });
+}
