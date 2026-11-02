@@ -19,7 +19,7 @@ import {
   type NearRunway,
   nearRunway,
 } from "@/lib/near/runway";
-import { createVaultTx, type WalletTx } from "@/lib/near/tx";
+import { type ContractTx, createVaultTx } from "@/lib/near/tx";
 import { AmountError, formatNear, hoursToNs, parseNear, parseUsdc } from "@/lib/near/units";
 import { isNearAccountId } from "@/lib/near/validate";
 
@@ -115,7 +115,7 @@ export interface CreateVaultContext {
 }
 
 export type CreateVaultCheck =
-  | { ok: true; tx: WalletTx; vaultId: string; warnings: string[] }
+  | { ok: true; tx: ContractTx; vaultId: string; warnings: string[] }
   | { ok: false; errors: Partial<Record<keyof CreateVaultForm, string>> };
 
 export function parseApprovers(raw: string): string[] {

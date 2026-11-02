@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // near-connect's `near-wallet-injected` message listener does not check the sender's origin.
+          // A page that opened the console in a window keeps no `window.opener` handle to it, while
+          // the popups the console opens for a wallet still work (W-T6-R1).
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
         ],
       },
     ];

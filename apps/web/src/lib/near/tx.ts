@@ -1,7 +1,10 @@
 /**
  * Owner and approver transactions, built as plain JSON actions for the owner's own wallet to sign.
- * Nothing here signs or sends. Gas and deposits come from the tables below and never from a call
- * site, so every value the wallet shows the owner is one this file chose and the tests pin.
+ * Nothing here signs or sends. Gas always comes from the `GAS` table, and every deposit from
+ * `METHOD_DEPOSIT` or one of the two storage constants, never from a call site, so what the wallet
+ * shows the owner is what this file chose and the tests pin. The one amount a caller supplies is the
+ * `create_vault` deposit, which the factory checks against its `min_deposit` (and, for an embedded
+ * version, the code storage); the builder only checks that it is a whole, positive number of yocto.
  */
 
 export const TGAS = 1_000_000_000_000n;
@@ -55,6 +58,10 @@ export const GAS = {
 } as const satisfies Record<string, number>;
 export type GasMethod = keyof typeof GAS;
 
+export function isGasMethod(name: unknown): name is GasMethod {
+  return typeof name === "string" && Object.hasOwn(GAS, name);
+}
+
 /**
  * 0.05 NEAR. `create_mandate` requires the byte cost of the storage the mandate adds, plus 0.00125 NEAR
  * to register a NEAR payee on USDC (contracts/vault/src/mandates.rs). The worst mandate needs about
@@ -70,11 +77,40 @@ export interface FunctionCallAction {
   params: { methodName: string; args: Record<string, unknown>; gas: string; deposit: string };
 }
 
+/** near-connect 0.11.4's `TransferAction` (build/actions/types.d.ts): the deposit only, no gas. */
+export interface TransferAction {
+  type: "Transfer";
+  params: { deposit: string };
+}
+
+/** The two actions this console signs: a contract call, or a plain NEAR transfer (a vault top-up). */
+export type WalletAction = FunctionCallAction | TransferAction;
+
 /** What the server prepares and the owner signs in their own wallet. */
 export interface WalletTx {
   receiverId: string;
-  actions: FunctionCallAction[];
+  actions: WalletAction[];
   summary: string;
+}
+
+/** A transaction made only of contract calls: what every builder in this file returns. */
+export interface ContractTx extends WalletTx {
+  actions: FunctionCallAction[];
+}
+
+/**
+ * What the outcome reader and the chain check call a transaction by: the name of its last contract
+ * call, or `Transfer` for a plain transfer. The reader table in outcome.ts is exhaustive over this.
+ */
+export type ReadableMethod = GasMethod | "Transfer";
+
+export function isReadableMethod(name: unknown): name is ReadableMethod {
+  return name === "Transfer" || isGasMethod(name);
+}
+
+/** The name an action goes by in a summary line and in the chain check. */
+export function actionLabel(action: WalletAction): string {
+  return action.type === "Transfer" ? "Transfer" : action.params.methodName;
 }
 
 export type PayeeJson =
@@ -95,13 +131,20 @@ export interface MandateInputJson {
 }
 
 const U128_MAX = 2n ** 128n - 1n;
+const U64_MAX = 2n ** 64n - 1n;
 const U32_MAX = 2 ** 32 - 1;
 const DIGITS = /^(0|[1-9][0-9]*)$/;
 
-/** A canonical decimal string that fits a U128. The wallet and the contract both parse these. */
-function uint(name: string, value: unknown, { positive = false } = {}): string {
-  if (typeof value !== "string" || !DIGITS.test(value) || BigInt(value) > U128_MAX) {
-    throw new RangeError(`${name} must be a whole number written in digits (at most 2^128-1)`);
+/**
+ * A canonical decimal string that fits a U128 (amounts, deposits) or, with `u64`, a U64 (nanosecond
+ * times). The wallet and the contract both parse these, and the contract refuses what overflows.
+ */
+function uint(name: string, value: unknown, { positive = false, u64 = false } = {}): string {
+  const max = u64 ? U64_MAX : U128_MAX;
+  if (typeof value !== "string" || !DIGITS.test(value) || BigInt(value) > max) {
+    throw new RangeError(
+      `${name} must be a whole number written in digits (at most ${u64 ? "2^64-1" : "2^128-1"})`,
+    );
   }
   if (positive && value === "0") throw new RangeError(`${name} must be more than zero`);
   return value;
@@ -136,7 +179,7 @@ export function createVaultTx(
     heldTtlNs: string;
     deposit: string;
   },
-): WalletTx {
+): ContractTx {
   return {
     receiverId: factory,
     actions: [
@@ -146,7 +189,7 @@ export function createVaultTx(
           name: i.name,
           approvers: i.approvers,
           daily_backstop: uint("dailyBackstop", i.dailyBackstop, { positive: true }),
-          held_ttl_ns: uint("heldTtlNs", i.heldTtlNs, { positive: true }),
+          held_ttl_ns: uint("heldTtlNs", i.heldTtlNs, { positive: true, u64: true }),
         },
         uint("deposit", i.deposit, { positive: true }),
       ),
@@ -161,7 +204,7 @@ function payeeJson(p: PayeeJson): PayeeJson {
     : { type: "intents", chain: p.chain, address: p.address, asset: p.asset };
 }
 
-export function createMandateTx(vault: string, input: MandateInputJson): WalletTx {
+export function createMandateTx(vault: string, input: MandateInputJson): ContractTx {
   if (!Number.isInteger(input.max_uses) || input.max_uses < 1 || input.max_uses > U32_MAX) {
     throw new RangeError("max_uses must be a whole number from 1 to 4294967295");
   }
@@ -172,7 +215,7 @@ export function createMandateTx(vault: string, input: MandateInputJson): WalletT
     max_per_payment: uint("max_per_payment", input.max_per_payment, { positive: true }),
     max_total: uint("max_total", input.max_total, { positive: true }),
     max_uses: input.max_uses,
-    expires_at_ns: uint("expires_at_ns", input.expires_at_ns, { positive: true }),
+    expires_at_ns: uint("expires_at_ns", input.expires_at_ns, { positive: true, u64: true }),
     approval_above: uint("approval_above", input.approval_above),
     agent_pk: input.agent_pk,
     label: input.label,
@@ -188,7 +231,7 @@ export function createMandateTx(vault: string, input: MandateInputJson): WalletT
   };
 }
 
-export function revokeMandateTx(vault: string, mandateId: number): WalletTx {
+export function revokeMandateTx(vault: string, mandateId: number): ContractTx {
   return {
     receiverId: vault,
     actions: [ownerCall("revoke_mandate", { mandate_id: contractId("mandateId", mandateId) })],
@@ -201,7 +244,7 @@ export function addAgentTx(
   publicKey: string,
   allowanceYocto: string,
   label: string,
-): WalletTx {
+): ContractTx {
   return {
     receiverId: vault,
     actions: [
@@ -215,7 +258,7 @@ export function addAgentTx(
   };
 }
 
-export function removeAgentTx(vault: string, publicKey: string): WalletTx {
+export function removeAgentTx(vault: string, publicKey: string): ContractTx {
   return {
     receiverId: vault,
     actions: [ownerCall("remove_agent", { public_key: publicKey })],
@@ -223,7 +266,11 @@ export function removeAgentTx(vault: string, publicKey: string): WalletTx {
   };
 }
 
-export function setLedgerKeyTx(vault: string, publicKey: string, allowanceYocto: string): WalletTx {
+export function setLedgerKeyTx(
+  vault: string,
+  publicKey: string,
+  allowanceYocto: string,
+): ContractTx {
   return {
     receiverId: vault,
     actions: [
@@ -237,7 +284,7 @@ export function setLedgerKeyTx(vault: string, publicKey: string, allowanceYocto:
 }
 
 /** Signed by an approver of the vault (the contract refuses anyone else with NotApprover). */
-export function approveTx(vault: string, spendId: number): WalletTx {
+export function approveTx(vault: string, spendId: number): ContractTx {
   return {
     receiverId: vault,
     actions: [ownerCall("approve", { spend_id: contractId("spendId", spendId) })],
@@ -246,7 +293,7 @@ export function approveTx(vault: string, spendId: number): WalletTx {
 }
 
 /** Signed by an approver of the vault. */
-export function rejectTx(vault: string, spendId: number): WalletTx {
+export function rejectTx(vault: string, spendId: number): ContractTx {
   return {
     receiverId: vault,
     actions: [ownerCall("reject", { spend_id: contractId("spendId", spendId) })],
@@ -254,7 +301,7 @@ export function rejectTx(vault: string, spendId: number): WalletTx {
   };
 }
 
-export function freezeTx(vault: string): WalletTx {
+export function freezeTx(vault: string): ContractTx {
   return {
     receiverId: vault,
     actions: [ownerCall("freeze", {})],
@@ -262,12 +309,12 @@ export function freezeTx(vault: string): WalletTx {
   };
 }
 
-export function unfreezeTx(vault: string): WalletTx {
+export function unfreezeTx(vault: string): ContractTx {
   return { receiverId: vault, actions: [ownerCall("unfreeze", {})], summary: "Unfreeze the vault" };
 }
 
 /** Owner takes NEP-141 USDC back from the vault. Moves funds: OWNER SIGNS. */
-export function withdrawTx(vault: string, amount: string): WalletTx {
+export function withdrawTx(vault: string, amount: string): ContractTx {
   return {
     receiverId: vault,
     actions: [ownerCall("withdraw", { amount: uint("amount", amount, { positive: true }) })],
@@ -276,7 +323,7 @@ export function withdrawTx(vault: string, amount: string): WalletTx {
 }
 
 /** Owner takes a POA token balance back out of intents.near to the owner account. Moves funds: OWNER SIGNS. */
-export function withdrawIntentsTx(vault: string, token: string, amount: string): WalletTx {
+export function withdrawIntentsTx(vault: string, token: string, amount: string): ContractTx {
   return {
     receiverId: vault,
     actions: [
@@ -287,7 +334,7 @@ export function withdrawIntentsTx(vault: string, token: string, amount: string):
 }
 
 /** Owner funds the vault's NEP-141 USDC balance (for NEAR payees). Moves funds: OWNER SIGNS. */
-export function fundVaultUsdcTx(usdc: string, vault: string, amount: string): WalletTx {
+export function fundVaultUsdcTx(usdc: string, vault: string, amount: string): ContractTx {
   return {
     receiverId: usdc,
     actions: [
@@ -312,7 +359,7 @@ export function intentsDepositTx(
   depositAddress: string,
   amount: string,
   memo: string | null,
-): WalletTx {
+): ContractTx {
   return {
     receiverId: usdc,
     actions: [

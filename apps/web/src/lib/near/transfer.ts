@@ -2,20 +2,14 @@
  * A plain NEAR transfer to a vault (R3 top-up). It lives here, not in tx.ts, which holds the
  * contract calls. Nothing here signs or sends.
  */
-import type { WalletTx } from "./tx";
+import type { TransferAction, WalletTx } from "./tx";
 import { formatNear } from "./units";
 import { isNearAccountId } from "./validate";
 
-/** near-connect 0.11.4's `TransferAction` (build/actions/types.d.ts): the deposit only, no gas. */
-export interface TransferAction {
-  type: "Transfer";
-  params: { deposit: string };
-}
+export type { TransferAction };
 
-export interface TransferTx {
-  receiverId: string;
+export interface TransferTx extends WalletTx {
   actions: [TransferAction];
-  summary: string;
 }
 
 const U128_MAX = 2n ** 128n - 1n;
@@ -35,12 +29,9 @@ export function sendNearTx(receiverId: string, yocto: string): TransferTx {
 }
 
 /**
- * TxButton and the wallet provider take a `WalletTx`, whose actions tx.ts types as FunctionCall
- * only. near-connect's action union includes Transfer, and the provider hands `actions` to the
- * wallet unchanged, so the object is passed through as it is.
- * TODO(plan 04 Task 6): widen `WalletTx.actions` to `FunctionCallAction | TransferAction`, then
- * drop this cast.
+ * `WalletTx` (tx.ts) covers both contract calls and plain transfers now, so a `TransferTx` is one
+ * as it is. Kept so callers written against the old cast keep compiling.
  */
 export function asWalletTx(tx: TransferTx): WalletTx {
-  return tx as unknown as WalletTx;
+  return tx;
 }

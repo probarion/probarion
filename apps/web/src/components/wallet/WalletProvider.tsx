@@ -11,23 +11,18 @@ import {
   useState,
 } from "react";
 import type { Network } from "@/lib/config";
-import { parseConnectError, settleSend, type TxResult } from "@/lib/near/outcome";
+import { confirmTxAction } from "@/lib/near/confirm-action";
+import type { TxResult } from "@/lib/near/outcome";
+import { type SendWallet, sendWalletTx } from "@/lib/near/send";
 import { type Nep413Wallet, signInWithWallet } from "@/lib/near/signin";
 import type { WalletTx } from "@/lib/near/tx";
+import { connectorOptions, type DataStorage, hardenConnector } from "./manifest";
 
 /**
  * Our own narrow view of near-connect 0.11.4, so its missing @near-js/* types cannot leak
- * (Verify on first use #1). Matches the installed build/types: `NearWalletBase.signMessage`,
- * `NearWalletBase.signAndSendTransaction(SignAndSendTransactionParams)` and `NearConnector`.
+ * (Verify on first use #1). Matches the installed build/types: `NearWalletBase` and `NearConnector`.
  */
-interface WalletLike extends Nep413Wallet {
-  signAndSendTransaction(p: {
-    network: Network;
-    receiverId: string;
-    actions: WalletTx["actions"];
-    signerId?: string;
-  }): Promise<unknown>;
-}
+type WalletLike = Nep413Wallet & SendWallet;
 interface ConnectorLike {
   connect(): Promise<unknown>;
   disconnect(): Promise<void>;
@@ -43,8 +38,8 @@ interface WalletCtx {
   signIn(): Promise<string>;
   signOut(): Promise<void>;
   /**
-   * Asks the wallet to sign and send once. It never throws and never sends the same transaction
-   * twice: an outcome it cannot confirm comes back as `unknown`, for the owner to check.
+   * Asks the wallet to sign and send once, then reads the result from the chain. It never throws and
+   * never sends the same transaction twice: a result it cannot confirm comes back as `unknown`.
    */
   sendTx(tx: WalletTx, signerId?: string): Promise<TxResult>;
 }
@@ -81,10 +76,16 @@ export function WalletProvider({ network, children }: { network: Network; childr
     let detach: (() => void) | undefined;
     (async () => {
       try {
-        const { NearConnector } = await import("@hot-labs/near-connect"); // client-only, never at SSR
+        const { NearConnector, LocalStorage } = await import("@hot-labs/near-connect"); // client-only, never at SSR
         // React StrictMode runs this effect twice in dev: only the live run builds a connector.
         if (!alive) return;
-        const c = new NearConnector({ network }) as unknown as ConnectorLike;
+        // Our pinned wallet list (manifest.ts), never the one the library would fetch from GitHub.
+        const options = connectorOptions(network, new LocalStorage() as DataStorage);
+        // (The library types `platform` as string[], but its own manifest, and ours, use an object.)
+        const built = new NearConnector(
+          options as unknown as ConstructorParameters<typeof NearConnector>[0],
+        );
+        const c = hardenConnector(built) as unknown as ConnectorLike;
         connector.current = c;
         const onSignIn = (payload: unknown) => {
           const id = firstAccountId(payload);
@@ -99,7 +100,7 @@ export function WalletProvider({ network, children }: { network: Network; childr
           c.off("wallet:signIn", onSignIn);
           c.off("wallet:signOut", onSignOut);
         };
-        // Restoring a connected wallet waits for the wallet manifest, which is a network fetch. Do
+        // Restoring a connected wallet waits for the wallet code, which is a network fetch. Do
         // not hold the page on "Loading wallets…" longer than a few seconds if it is slow.
         const restore = c.getConnectedWallet().then(
           ({ accounts }) => {
@@ -156,27 +157,17 @@ export function WalletProvider({ network, children }: { network: Network; childr
   }, []);
 
   const sendTx = useCallback(
-    async (tx: WalletTx, signerId?: string): Promise<TxResult> => {
-      let w: WalletLike;
-      try {
-        w = await wallet();
-      } catch (e) {
-        // No wallet to talk to: nothing was signed, so this is a definite failure.
-        return parseConnectError(e);
-      }
-      // The last call decides the transaction's result, and R12 reads its return value.
-      const method = tx.actions.at(-1)?.params.methodName;
-      return settleSend(
-        () =>
-          w.signAndSendTransaction({
-            network,
-            receiverId: tx.receiverId,
-            actions: tx.actions,
-            ...(signerId === undefined ? {} : { signerId }),
-          }),
-        method,
-      );
-    },
+    (tx: WalletTx, signerId?: string): Promise<TxResult> =>
+      sendWalletTx(
+        {
+          network,
+          getWallet: wallet,
+          confirm: (hash, signer, method, receiverId) =>
+            confirmTxAction(hash, signer, method, receiverId),
+        },
+        tx,
+        signerId,
+      ),
     [wallet, network],
   );
 

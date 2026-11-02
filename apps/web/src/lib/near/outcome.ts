@@ -1,33 +1,45 @@
 /**
- * Turns what a wallet hands back into one honest result.
+ * What a wallet call turned into, without trusting the wallet (W-T6-R1).
  *
- * Three rules, all about money:
+ * A wallet's outcome object is only ever mined for two facts: the transaction hash and the signer.
+ * Whether the transaction worked is read from the chain by the server (`confirm.ts`), and this file
+ * decides what the chain's answer means:
  *
- * 1. A wallet call that resolved is not an action that succeeded (R12). `create_vault` refunds and
- *    returns `null` when the name is taken; `approve` returns a `SpendResult` whose status may be
- *    `failed`; `withdraw_intents` returns `"0"` when Intents paid nothing out. The base64
- *    `SuccessValue` is decoded per method before anything is called "ok".
- * 2. An outcome we cannot read is `unknown`, never `ok` and never `failed`.
- * 3. Never retry on `unknown` (the SDK's `TxOutcomeUnknownError` rule). If the wallet reports an
- *    error but there is a transaction hash, or the outcome is missing, or the call timed out after
- *    it may have been broadcast, the transaction may have run. The owner is told to confirm on the
- *    explorer; nothing here, and nothing in the UI, signs the same action again.
+ * 1. A call that ran is not an action that worked (R12). `create_vault` refunds and returns `null`
+ *    when the name is taken; `approve` returns a `SpendResult` whose status may be `failed`;
+ *    `withdraw_intents` returns `"0"` when Intents paid nothing out. The return value is read per
+ *    method, and the table is exhaustive over `ReadableMethod` (the gas table's methods and `Transfer`), so a
+ *    new method cannot ship without one.
+ * 2. A call that succeeded is not a transaction that finished. A step it started (a key added, a
+ *    payee registered on USDC) can fail under a top-level success: that is `unknown`. And a callback
+ *    method (`approve`, `create_vault`, `withdraw_intents`) whose first call ran and whose later step
+ *    failed may have half happened: that is `unknown` too.
+ * 3. Anything we cannot confirm is `unknown`, never `ok` and never a "failed" that invites another
+ *    try: no hash, a cancelled or closed wallet, an outcome we cannot read, a node that cannot be
+ *    reached. The button stays locked until the owner has looked at the explorer (the SDK's
+ *    `TxOutcomeUnknownError` rule: never send the same action again on a guess).
  */
 import { VAULT_ERROR_CODES } from "@probarion/core";
+import type { ReadableMethod } from "./tx";
+import { isNearAccountId } from "./validate";
 
 export interface TxResult {
   status: "ok" | "failed" | "unknown";
   txHash: string | null;
-  code: string | null; // PROBARION:<Code> from IF §4.3
+  code: string | null; // PROBARION:<Code> from IF §4.3, or a chain refusal such as LackBalanceForState
   error: string | null;
 }
 
 const MAX_TEXT = 500;
-const MAX_HASH = 128;
 const KNOWN_CODES: ReadonlySet<string> = new Set(VAULT_ERROR_CODES);
 
-/** What the owner is told when the outcome may hide a transaction that ran. */
+/** The chain has the transaction, and it is not known to be finished or whole. */
 export const UNKNOWN_HEADLINE = "Sent: confirm on the explorer";
+/** The wallet gave no transaction (cancel, closed window, no hash): it may still have gone out. */
+export const NOT_CONFIRMED_HEADLINE =
+  "Not confirmed: if you approved in your wallet, check the explorer first";
+/** Nothing was sent: no wallet to ask, or the wallet is signed in as someone else. */
+export const NOT_SENT_HEADLINE = "Not sent";
 /** R12: the factory's `on_vault_created` returned `null` (the batch rolled back and the deposit went back). */
 export const REFUSED_CREATE_VAULT = "name taken or deposit too low, refunded";
 /** R12: `approve` came back with status `failed` (the vault released the reservation). */
@@ -36,7 +48,20 @@ export const REFUSED_APPROVE = "payout failed, reservation released";
 export const REFUSED_WITHDRAW_INTENTS =
   "nothing was withdrawn: Intents paid nothing out, so the balance stays in Intents";
 
-const NO_OUTCOME = "The wallet returned no outcome; confirm on the explorer.";
+/**
+ * Methods whose receipt chain ends in a callback that settles state, so a failure after the first
+ * call ran can leave the action half done (contracts/vault/src/{held,spend,admin}.rs,
+ * contracts/factory/src/lib.rs):
+ * - `approve`: payout, then `on_transfer` / `on_withdraw` (Pending until it runs);
+ * - `create_vault`: account batch, then `on_vault_created` (registry and refund);
+ * - `withdraw_intents`: `intents.ft_withdraw`, which debits, pays and re-credits inside Intents.
+ * `withdraw` is not one: it returns the USDC `ft_transfer` itself, and a failed transfer moves nothing.
+ */
+export const CALLBACK_METHODS: ReadonlySet<ReadableMethod> = new Set<ReadableMethod>([
+  "approve",
+  "create_vault",
+  "withdraw_intents",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -82,8 +107,15 @@ function codeIn(text: string): string | null {
   return null;
 }
 
-function hashString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 && value.length <= MAX_HASH ? value : null;
+/** A NEAR transaction hash: base58 of 32 bytes, so 43 or 44 characters from the Bitcoin alphabet. */
+const TX_HASH = /^[1-9A-HJ-NP-Za-km-z]{43,44}$/;
+
+export function isTxHash(value: unknown): value is string {
+  return typeof value === "string" && TX_HASH.test(value);
+}
+
+function txHashField(value: unknown): string | null {
+  return isTxHash(value) ? value : null;
 }
 
 /** transaction.hash, else transaction_outcome.id (a FinalExecutionOutcome), else a plain hash field. */
@@ -91,13 +123,21 @@ function hashOfRecord(o: Record<string, unknown>): string | null {
   const tx = isRecord(o.transaction) ? o.transaction : null;
   const first = isRecord(o.transaction_outcome) ? o.transaction_outcome : null;
   return (
-    hashString(tx?.hash) ??
-    hashString(first?.id) ??
-    hashString(o.txHash) ??
-    hashString(o.tx_hash) ??
-    hashString(o.transactionHash) ??
-    hashString(o.transaction_hash)
+    txHashField(tx?.hash) ??
+    txHashField(first?.id) ??
+    txHashField(o.txHash) ??
+    txHashField(o.tx_hash) ??
+    txHashField(o.transactionHash) ??
+    txHashField(o.transaction_hash)
   );
+}
+
+function signerOfRecord(o: Record<string, unknown>): string | null {
+  const tx = isRecord(o.transaction) ? o.transaction : null;
+  for (const candidate of [tx?.signer_id, o.signerId, o.signer_id]) {
+    if (typeof candidate === "string" && isNearAccountId(candidate)) return candidate;
+  }
+  return null;
 }
 
 const NESTED_KEYS = [
@@ -111,16 +151,21 @@ const NESTED_KEYS = [
   "details",
 ];
 
-/** A hash an error object carries, looking a few levels into the places wallets and near-api-js put it. */
-function hashInObject(value: unknown, depth = 0, seen = new WeakSet<object>()): string | null {
+/** Look a few levels into the places wallets and near-api-js put a hash or a signer on an error. */
+function search(
+  pick: (o: Record<string, unknown>) => string | null,
+  value: unknown,
+  depth = 0,
+  seen = new WeakSet<object>(),
+): string | null {
   if (typeof value !== "object" || value === null || depth > 4 || seen.has(value)) return null;
   seen.add(value);
   try {
     const o = value as Record<string, unknown>;
-    const own = hashOfRecord(o);
+    const own = pick(o);
     if (own !== null) return own;
     for (const key of NESTED_KEYS) {
-      const found = hashInObject(o[key], depth + 1, seen);
+      const found = search(pick, o[key], depth + 1, seen);
       if (found !== null) return found;
     }
   } catch {
@@ -129,20 +174,15 @@ function hashInObject(value: unknown, depth = 0, seen = new WeakSet<object>()): 
   return null;
 }
 
-// A transaction hash is 43-44 base58 characters. In free text, only trust one next to a word that
-// says what it is, or inside an explorer URL: a public key in the same message must not match.
+// In free text, only trust a hash next to a word that says what it is, or inside an explorer URL: a
+// public key in the same message must not match. Case-sensitive on purpose: the base58 alphabet has
+// no 0, O, I or l, and an `i` flag would let them in.
 const HASH_IN_TEXT =
-  /(?:\/txns?\/|\btransaction(?:[ _-]?(?:hash|id))?\b[\s:#="']*|\btx(?:[ _-]?(?:hash|id))?\b[\s:#="']*)([1-9A-HJ-NP-Za-km-z]{43,44})(?![1-9A-HJ-NP-Za-km-z])/i;
+  /(?:\/txns?\/|\b(?:transaction|Transaction|TRANSACTION|tx|Tx|TX)(?:[ _-]?(?:hash|Hash|HASH|id|Id|ID))?\b[\s:#="']*)([1-9A-HJ-NP-Za-km-z]{43,44})(?![1-9A-HJ-NP-Za-km-z])/;
 
 function hashInText(text: string): string | null {
   return HASH_IN_TEXT.exec(text)?.[1] ?? null;
 }
-
-// Errors that say the request may have reached the network and the answer was lost. The wallet
-// could have broadcast before this happened, so these are unknown, not failed. (`timeout` also
-// covers the TIMEOUT_ERROR near-api-js raises.)
-const MAY_HAVE_BEEN_SENT =
-  /time(?:d)?[ _-]?out|exceeded\s+\d+\s+seconds|failed to fetch|fetch failed|network\s?error|socket hang up|ECONN(?:RESET|ABORTED|REFUSED)|ENOTFOUND|EAI_AGAIN/i;
 
 function messageOf(e: unknown): string {
   let text: string;
@@ -161,38 +201,101 @@ function searchText(e: unknown): string {
   return own;
 }
 
-function unknown(txHash: string | null, error: string, code: string | null = null): TxResult {
-  return { status: "unknown", txHash, code, error: truncate(error) };
+// ---------------------------------------------------------------------------------------------
+// What the wallet told us: a hash and a signer, nothing more.
+// ---------------------------------------------------------------------------------------------
+
+export interface WalletReport {
+  txHash: string | null;
+  signerId: string | null;
+  /** The wallet's own words, shown to the owner but never believed. */
+  message: string | null;
+  /** A PROBARION code found in those words: shown, never acted on. */
+  code: string | null;
 }
 
-function failed(txHash: string | null, error: string, code: string | null = null): TxResult {
-  return { status: "failed", txHash, code, error: truncate(error) };
+const EMPTY_REPORT: WalletReport = { txHash: null, signerId: null, message: null, code: null };
+
+/** The wallet resolved. Its `status` is ignored: only the hash and the signer are taken. */
+export function reportFromOutcome(outcome: unknown): WalletReport {
+  try {
+    if (!isRecord(outcome)) return EMPTY_REPORT;
+    return {
+      txHash: hashOfRecord(outcome),
+      signerId: signerOfRecord(outcome),
+      message: null,
+      code: null,
+    };
+  } catch {
+    return EMPTY_REPORT; // a hostile getter is not worth crashing the result for
+  }
 }
 
-const OK = (txHash: string | null): TxResult => ({
-  status: "ok",
-  txHash,
-  code: null,
-  error: null,
-});
+/** The wallet threw: a cancel, a closed window, a timeout, a contract panic it relayed. */
+export function reportFromError(e: unknown): WalletReport {
+  try {
+    const message = messageOf(e);
+    return {
+      txHash: search(hashOfRecord, e) ?? hashInText(message),
+      signerId: search(signerOfRecord, e),
+      message,
+      code: codeIn(searchText(e)),
+    };
+  } catch {
+    return { ...EMPTY_REPORT, message: "The wallet reported an error it could not describe." };
+  }
+}
+
+/**
+ * We cannot say what happened. With a hash the transaction exists and the owner can look it up; with
+ * none, a cancel and a transaction that went out look the same to us.
+ */
+export function unconfirmed(report: WalletReport): TxResult {
+  const fallback =
+    report.txHash === null
+      ? "The wallet gave no transaction."
+      : "The wallet gave no result for this transaction.";
+  return {
+    status: "unknown",
+    txHash: report.txHash,
+    code: report.code,
+    error: truncate(report.message ?? fallback),
+  };
+}
+
+/** Before anything was signed (no wallet to talk to, wrong account): a definite "not sent". */
+export function notSent(reason: unknown): TxResult {
+  return { status: "failed", txHash: null, code: null, error: truncate(messageOf(reason)) };
+}
+
+// ---------------------------------------------------------------------------------------------
+// What the chain told us: read by the server, decided here.
+// ---------------------------------------------------------------------------------------------
+
+/** The server's reading of a final `tx` RPC result (built by `confirm.ts` with the SDK). */
+export interface ChainOutcome {
+  txHash: string | null;
+  /** The top-level status is a `SuccessValue`. */
+  ok: boolean;
+  /** The top-level status is a `Failure`. Neither `ok` nor `failed` means not final. */
+  failed: boolean;
+  /** The decoded return value (JSON, else text). */
+  value: unknown;
+  /** The `SuccessValue` was empty: the method returned nothing. */
+  empty: boolean;
+  /** A PROBARION code, or LackBalanceForState / NotEnoughBalance. */
+  code: string | null;
+  /** The failure in words (the SDK's plain-language text for the chain's balance refusals). */
+  failure: string | null;
+  /** Did the transaction's first receipt (the call itself) succeed? `null` when there are no receipts. */
+  firstReceiptOk: boolean | null;
+  /** Did any receipt of the transaction end in a Failure? */
+  receiptFailed: boolean;
+}
 
 interface Decoded {
-  /** True for an empty SuccessValue: the method returned nothing. */
   empty: boolean;
   value: unknown;
-}
-
-/** base64 -> UTF-8 -> JSON. `null` when any step fails (that is not the same as the JSON value null). */
-function decodeReturn(base64: string): Decoded | null {
-  if (base64 === "") return { empty: true, value: undefined };
-  try {
-    const binary = atob(base64);
-    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    return { empty: false, value: JSON.parse(text) as unknown };
-  } catch {
-    return null;
-  }
 }
 
 type Verdict =
@@ -200,28 +303,32 @@ type Verdict =
   | { kind: "refused"; reason: string }
   | { kind: "unknown"; reason: string };
 
+type Reader = (d: Decoded) => Verdict;
+
 const OK_VERDICT: Verdict = { kind: "ok" };
 const explorer = (what: string): Verdict => ({
   kind: "unknown",
   reason: `${what}; confirm on the explorer.`,
 });
 
+/** Methods that return nothing: any SuccessValue means the contract ran to the end. */
+const returnsNothing: Reader = () => OK_VERDICT;
+
 /**
- * What each method that returns a value must return before the owner is told "Done".
- * Methods that return nothing (freeze, reject, the key calls, withdraw's ft_transfer) are not here:
- * any SuccessValue means the contract ran to the end, and a failed promise fails the transaction.
+ * What each method must return before the owner is told "Done". Exhaustive over `ReadableMethod` (the
+ * gas table's methods and `Transfer`): a method added without a reader here does not compile.
  */
-const READERS: Record<string, (d: Decoded | null) => Verdict> = {
+export const READERS: Record<ReadableMethod, Reader> = {
   // contracts/factory/src/lib.rs on_vault_created -> Option<AccountId>
   create_vault(d) {
-    if (d === null || d.empty) return explorer("The factory's answer could not be read");
+    if (d.empty) return explorer("The factory's answer was empty");
     if (d.value === null) return { kind: "refused", reason: REFUSED_CREATE_VAULT };
-    if (typeof d.value === "string" && d.value.length > 0) return OK_VERDICT;
+    if (typeof d.value === "string" && isNearAccountId(d.value)) return OK_VERDICT;
     return explorer("The factory answered with something other than a vault account");
   },
   // contracts/vault/src/held.rs approve -> PromiseOrValue<SpendResult>, settled by on_transfer / on_withdraw
   approve(d) {
-    const status = d !== null && isRecord(d.value) ? d.value.status : undefined;
+    const status = isRecord(d.value) ? d.value.status : undefined;
     if (status === "paid" || status === "burned") return OK_VERDICT;
     if (status === "failed") return { kind: "refused", reason: REFUSED_APPROVE };
     return explorer(
@@ -232,7 +339,7 @@ const READERS: Record<string, (d: Decoded | null) => Verdict> = {
   },
   // intents ft_withdraw -> U128: the amount withdrawn, "0" when the withdrawal was undone inside Intents
   withdraw_intents(d) {
-    const value = d?.value;
+    const value = d.value;
     if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)) {
       return value === "0" ? { kind: "refused", reason: REFUSED_WITHDRAW_INTENTS } : OK_VERDICT;
     }
@@ -240,91 +347,69 @@ const READERS: Record<string, (d: Decoded | null) => Verdict> = {
   },
   // contracts/vault/src/mandates.rs create_mandate -> u64, the new mandate's id (ids start at 1)
   create_mandate(d) {
-    const value = d?.value;
+    const value = d.value;
     if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1) return OK_VERDICT;
     return explorer("The vault did not return a mandate id");
   },
+  add_agent: returnsNothing,
+  remove_agent: returnsNothing,
+  set_ledger_key: returnsNothing,
+  revoke_mandate: returnsNothing,
+  reject: returnsNothing,
+  freeze: returnsNothing,
+  unfreeze: returnsNothing,
+  withdraw: returnsNothing, // the USDC ft_transfer returns nothing
+  storage_deposit: returnsNothing,
+  ft_transfer: returnsNothing,
+  Transfer: returnsNothing, // a plain NEAR transfer (a vault top-up) returns nothing
 };
 
-function fromSuccessValue(
-  base64: string,
-  method: string | undefined,
+function result(
+  status: TxResult["status"],
   txHash: string | null,
+  error: string | null,
+  code: string | null = null,
 ): TxResult {
-  const read = method !== undefined && Object.hasOwn(READERS, method) ? READERS[method] : undefined;
-  if (read === undefined) return OK(txHash);
-  const verdict = read(decodeReturn(base64));
-  if (verdict.kind === "ok") return OK(txHash);
-  if (verdict.kind === "refused") return failed(txHash, verdict.reason);
-  return unknown(txHash, verdict.reason);
+  return { status, txHash, code, error: error === null ? null : truncate(error) };
 }
 
-/**
- * The top-level status reflects the method's final result (including its promise callback).
- * `method` is the last call of the transaction; without it any SuccessValue is "ok".
- */
-export function parseTxOutcome(outcome: unknown, method?: string): TxResult {
-  if (!isRecord(outcome)) return unknown(null, NO_OUTCOME);
-  const txHash = hashOfRecord(outcome);
-  const status = outcome.status;
-  if (status === "Failure")
-    return failed(txHash, "The transaction failed (the wallet gave no details).");
-  if (isRecord(status) && "Failure" in status) {
-    const text = safeStringify(status.Failure);
-    return { status: "failed", txHash, code: codeIn(text), error: truncate(text) };
+/** What a final, chain-read transaction means for the owner. */
+export function interpretChain(method: ReadableMethod, c: ChainOutcome): TxResult {
+  if (c.ok) {
+    const verdict = READERS[method]({ empty: c.empty, value: c.value });
+    if (verdict.kind === "refused") return result("failed", c.txHash, verdict.reason);
+    if (verdict.kind === "unknown") return result("unknown", c.txHash, verdict.reason);
+    if (c.receiptFailed) {
+      return result(
+        "unknown",
+        c.txHash,
+        "The call succeeded, but a step it started failed (a key, a registration or a refund may be missing); confirm on the explorer.",
+      );
+    }
+    return result("ok", c.txHash, null);
   }
-  if (isRecord(status) && typeof status.SuccessValue === "string") {
-    return fromSuccessValue(status.SuccessValue, method, txHash);
+  if (c.failed) {
+    const text = c.failure ?? "The transaction failed.";
+    if (CALLBACK_METHODS.has(method) && c.firstReceiptOk !== false) {
+      return result(
+        "unknown",
+        c.txHash,
+        `The call ran, then a later step failed, so part of it may have happened; confirm on the explorer. (${text})`,
+        c.code,
+      );
+    }
+    return result("failed", c.txHash, text, c.code);
   }
-  if (isRecord(status) && "SuccessReceiptId" in status) {
-    return unknown(
-      txHash,
-      "The transaction was accepted but its final result is not known yet; confirm on the explorer.",
-    );
-  }
-  return unknown(txHash, "Unrecognised outcome status; confirm on the explorer.");
+  return result(
+    "unknown",
+    c.txHash,
+    c.failure ?? "The transaction is not final yet; confirm on the explorer.",
+  );
 }
 
-/**
- * A wallet call that threw. With a transaction hash, or an error that looks like a lost answer (a
- * timeout), the transaction may have run: `unknown`. Otherwise the wallet or the contract said no
- * and nothing was sent: `failed`.
- */
-export function parseWalletError(e: unknown): TxResult {
-  const message = messageOf(e);
-  const code = codeIn(searchText(e));
-  const txHash = hashInObject(e) ?? hashInText(message);
-  if (txHash !== null) return unknown(txHash, message, code);
-  if (MAY_HAVE_BEEN_SENT.test(message)) return unknown(null, message, code);
-  return failed(null, message, code);
-}
-
-/** An error before anything was sent (no wallet to talk to): nothing was signed, so this is a definite failure. */
-export function parseConnectError(e: unknown): TxResult {
-  return failed(null, messageOf(e));
-}
-
-/**
- * Runs one wallet send and turns its result or its error into a `TxResult`. It calls `send` exactly
- * once, never retries, and never throws: whatever happens, the caller gets a result to show.
- */
-export async function settleSend(send: () => Promise<unknown>, method?: string): Promise<TxResult> {
-  let outcome: unknown;
-  try {
-    outcome = await send();
-  } catch (e) {
-    return parseWalletError(e);
-  }
-  try {
-    return parseTxOutcome(outcome, method);
-  } catch {
-    return unknown(null, "The wallet's outcome could not be read; confirm on the explorer.");
-  }
-}
-
-/** After an unknown outcome the same action must not be signed again until the owner has checked. */
-export function sendLocked(result: TxResult | null): boolean {
-  return result?.status === "unknown";
+/** After an unconfirmed outcome the same action must not be signed again until the owner has checked. */
+export function sendLocked(r: TxResult | null): boolean {
+  return r?.status === "unknown";
 }
 
 export interface TxResultView {
@@ -340,17 +425,19 @@ export function describeTxResult(r: TxResult): TxResultView {
     return { tone: "good", headline: "Done", detail: null, explorer: r.txHash ? "tx" : null };
   }
   if (r.status === "failed") {
+    // A failure the chain confirmed always has a hash. One without is a call that never left us.
     return {
       tone: "bad",
-      headline: r.code ? `Refused: ${r.code}` : "Refused",
+      headline: r.txHash === null ? NOT_SENT_HEADLINE : r.code ? `Refused: ${r.code}` : "Refused",
       detail: r.error,
       explorer: r.txHash ? "tx" : null,
     };
   }
+  const detail = r.code && r.error ? `${r.code}: ${r.error}` : (r.error ?? r.code);
   return {
     tone: "warn",
-    headline: UNKNOWN_HEADLINE,
-    detail: r.error,
+    headline: r.txHash ? UNKNOWN_HEADLINE : NOT_CONFIRMED_HEADLINE,
+    detail,
     explorer: r.txHash ? "tx" : "account",
   };
 }

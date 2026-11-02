@@ -6,6 +6,7 @@ import { Field, inputClass, Notice, type Tone } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
 import { VAULT_DEFAULTS } from "@/lib/config";
+import { lockKeyFor } from "@/lib/near/lock";
 import type { TxResult } from "@/lib/near/outcome";
 import { createDepositPlan, type FactoryMode, MAX_CREATE_DEPOSIT_YOCTO } from "@/lib/near/runway";
 import { formatNear, parseNear } from "@/lib/near/units";
@@ -163,6 +164,7 @@ export function CreateVaultPanel({
           network={network}
           confirm={`Create ${vaultId} with a ${form.depositNear.trim()} NEAR deposit? The deposit becomes the vault's runway and cannot be withdrawn. If the name is taken, the factory refunds it.`}
           prepare={() => prepareCreateVaultAction(form)}
+          lockKey={lockKeyFor(`create-vault:${vaultId}`)}
           onResult={onResult}
         />
       ) : (

@@ -1,20 +1,25 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buttonClass } from "@/components/ui";
 import type { Network } from "@/lib/config";
+import { actionKey, browserStore, clearLock, readLock, writeLock } from "@/lib/near/lock";
 import { sendLocked, type TxResult } from "@/lib/near/outcome";
-import type { WalletTx } from "@/lib/near/tx";
+import { actionLabel, type WalletTx } from "@/lib/near/tx";
 import { TxResultNote } from "./TxResultNote";
 import { useWallet } from "./WalletProvider";
 
 type Prepared = WalletTx | { error: string };
 
 /**
- * One button, one signature request per click. It never signs again by itself: a wallet outcome we
- * cannot confirm ("Sent: confirm on the explorer") locks the button until the owner says they
- * checked, because the transaction may have run.
+ * One button, one signature request per click. It never signs again by itself: a result the chain
+ * could not confirm ("Sent: confirm on the explorer", or "Not confirmed" when the wallet gave no
+ * transaction) locks the button until the owner says they checked, because the transaction may have
+ * run. The lock survives a reload (sessionStorage, keyed by the action).
+ *
+ * `lockKey` names the action for the lock when the transaction is only known after `prepare()`
+ * (with `tx` the key is derived from the transaction itself).
  */
 export function TxButton(props: {
   label: string;
@@ -23,6 +28,7 @@ export function TxButton(props: {
   prepare?: () => Promise<Prepared>;
   expectedSigner?: string;
   confirm?: string;
+  lockKey?: string;
   onResult?: (r: TxResult) => void | Promise<void>;
 }) {
   const { sendTx, accountId, ready } = useWallet();
@@ -35,6 +41,13 @@ export function TxButton(props: {
   const preview = props.tx ?? prepared;
   const locked = sendLocked(result);
   const wrongSigner = !!props.expectedSigner && !!accountId && accountId !== props.expectedSigner;
+  const key = props.lockKey ?? (props.tx ? actionKey(props.tx) : null);
+
+  // A reload must not undo the lock: pick it up again (after hydration, so server and client agree).
+  useEffect(() => {
+    // (also when the action changes, e.g. another vault name: its result is not this one's)
+    setResult(readLock(browserStore(), key));
+  }, [key]);
 
   async function run() {
     if (inflight.current || locked) return;
@@ -52,6 +65,7 @@ export function TxButton(props: {
       }
       setPrepared(next);
       const r = await sendTx(next, props.expectedSigner);
+      writeLock(browserStore(), key ?? actionKey(next), r);
       setResult(r);
       try {
         await props.onResult?.(r);
@@ -75,7 +89,7 @@ export function TxButton(props: {
         disabled={!ready || busy || wrongSigner || locked}
         onClick={run}
       >
-        {busy ? "Waiting for your wallet…" : props.label}
+        {busy ? "Waiting for your wallet and the network…" : props.label}
       </button>
       {wrongSigner ? (
         <p className="mt-1 text-xs text-rose-700">
@@ -85,7 +99,7 @@ export function TxButton(props: {
       {preview ? (
         <p className="mt-1 text-xs text-stone-500">
           You sign: {preview.summary} — {preview.receiverId}.
-          {preview.actions.map((a) => a.params.methodName).join(" + ")}
+          {preview.actions.map(actionLabel).join(" + ")}
         </p>
       ) : null}
       {error ? <p className="mt-1 text-xs text-rose-700">{error}</p> : null}
@@ -94,7 +108,10 @@ export function TxButton(props: {
         <button
           type="button"
           className="mt-1 text-xs text-stone-600 underline"
-          onClick={() => setResult(null)}
+          onClick={() => {
+            clearLock(browserStore(), key ?? (preview ? actionKey(preview) : null));
+            setResult(null);
+          }}
         >
           I checked the explorer: unlock this button
         </button>

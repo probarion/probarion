@@ -44,15 +44,36 @@ describe("TxResultNote", () => {
     expect(html).not.toMatch(/Refused/);
   });
 
-  it("an unknown outcome with no hash links to the signer's account page instead", () => {
-    const html = render(r({ status: "unknown", txHash: null, error: "no outcome" }));
-    expect(html).toContain("Sent: confirm on the explorer");
+  it("an unknown outcome with no hash (a cancel, a closed wallet) says not confirmed, and links to the signer's account page", () => {
+    const html = render(r({ status: "unknown", txHash: null, error: "User rejected the request" }));
+    expect(html).toContain(
+      "Not confirmed: if you approved in your wallet, check the explorer first",
+    );
+    expect(html).toContain("User rejected the request");
     expect(hrefs(html)).toEqual(["https://testnet.nearblocks.io/address/owner.testnet"]);
+    expect(html).not.toMatch(/try again|retry|Refused/i);
+    expect(html).not.toContain("Sent: confirm");
   });
 
   it("an unknown outcome with no hash and no account has no link, but still says where to look", () => {
     const html = render(r({ status: "unknown", txHash: null, error: "no outcome" }), null);
-    expect(html).toContain("Sent: confirm on the explorer");
+    expect(html).toContain("check the explorer first");
+    expect(hrefs(html)).toEqual([]);
+  });
+
+  it("an unknown outcome shows its code next to the words", () => {
+    const html = render(
+      r({ status: "unknown", code: "LackBalanceForState", error: "out of NEAR" }),
+    );
+    expect(html).toContain("LackBalanceForState: out of NEAR");
+  });
+
+  it("a send that never left is Not sent, with no link", () => {
+    const html = render(
+      r({ status: "failed", txHash: null, error: "Your wallet is connected as a.near" }),
+    );
+    expect(html).toContain("Not sent");
+    expect(html).toContain("Your wallet is connected as a.near");
     expect(hrefs(html)).toEqual([]);
   });
 

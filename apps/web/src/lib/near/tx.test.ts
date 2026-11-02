@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addAgentTx,
   approveTx,
+  type ContractTx,
   createMandateTx,
   createVaultTx,
   FT_STORAGE_DEPOSIT,
@@ -20,7 +21,6 @@ import {
   setLedgerKeyTx,
   TGAS,
   unfreezeTx,
-  type WalletTx,
   withdrawIntentsTx,
   withdrawTx,
 } from "./tx";
@@ -119,7 +119,7 @@ describe("owner transaction builders", () => {
   });
 
   it("attaches exactly 1 yocto to every one-yocto method and nothing to freeze (interfaces v2 §4.2)", () => {
-    const cases: [WalletTx, string][] = [
+    const cases: [ContractTx, string][] = [
       [addAgentTx(V, "ed25519:pk", "1", "l"), "1"],
       [removeAgentTx(V, "ed25519:pk"), "1"],
       [setLedgerKeyTx(V, "ed25519:pk", "1"), "1"],
@@ -199,7 +199,7 @@ describe("gas table (R13)", () => {
 
   it("writes gas as a yocto-gas decimal string, and no transaction asks for more than 300 Tgas", () => {
     expect(TGAS).toBe(1_000_000_000_000n);
-    const txs: WalletTx[] = [
+    const txs: ContractTx[] = [
       createVaultTx("vaults.probarion.near", {
         name: "acme",
         approvers: ["cfo.near"],
@@ -233,7 +233,7 @@ describe("gas table (R13)", () => {
 });
 
 describe("one method, one exact action (methodName, args, gas, deposit)", () => {
-  const action = (tx: WalletTx): FunctionCallAction => {
+  const action = (tx: ContractTx): FunctionCallAction => {
     expect(tx.actions).toHaveLength(1);
     return tx.actions[0] as FunctionCallAction;
   };
