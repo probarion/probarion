@@ -676,6 +676,21 @@ describe("T14-R2: an unproven burn is 'unproven', never a pass (the report is no
     expect(both.unproven).toEqual([]);
   });
 
+  it("a held burned spend bound to no decision fails h: only a bound held spend is unproven", async () => {
+    const s = structuredClone(valid);
+    const spend = s.chain.spends[1];
+    if (spend === undefined) throw new Error("fixture");
+    spend.held_until_ns = "1793900000000000000";
+    spend.decision_hash = sha256Hex("not a decision of this ledger");
+    missingBurn(s);
+    const report = await runChecks(s, { now: NOW });
+    expect(check(report, "h")).toMatchObject({
+      status: "fail",
+      detail: "spend 2: no burn event observed",
+    });
+    expect(report.unproven).toEqual([]);
+  });
+
   it("an honest snapshot has no unproven burns, and firstBrokenSeq ignores unproven checks", async () => {
     const honest = await runChecks(structuredClone(valid), { now: NOW });
     expect(honest).toMatchObject({ ok: true, unproven: [] });

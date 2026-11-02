@@ -220,6 +220,23 @@ describe("applyOnlineChecks: O1 (DCAP plus the library's policy) and O2 (NRAS, n
     expect(checkE(secondRevoked)).toMatchObject({ status: "fail", firstBrokenSeq: 0 });
   });
 
+  it("keeps ok false for an unproven h, however well every quote verifies (T14-R2)", async () => {
+    const snapshot = await fixture();
+    const spend = snapshot.chain.spends[1];
+    const burn = snapshot.chain.burns[0];
+    if (spend === undefined || burn === undefined) throw new Error("fixture");
+    spend.held_until_ns = "1793900000000000000";
+    snapshot.chain.burns = [
+      { ...burn, tx_hash: "", status: "missing", memo: "", intents_owner: "", amount: "" },
+    ];
+    const offline = await runChecks(snapshot, { now: NOW });
+    expect(offline.checks.find((c) => c.id === "h")?.status).toBe("unproven");
+    const report = await applyOnlineChecks(offline, snapshot, honest);
+    expect(checkE(report)?.status).toBe("pass");
+    expect(report.ok).toBe(false);
+    expect(report.unproven).toEqual([{ check: "h", spend_id: 2, reason: "approver_tx" }]);
+  });
+
   it("reports unavailability without changing the offline result", async () => {
     const snapshot = await fixture();
     const offline = await runChecks(snapshot, { now: NOW });
