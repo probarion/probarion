@@ -6,7 +6,13 @@ import { type GlobalOpts, optionalAccount, requireVault, resolveNetwork } from "
 import { CliError } from "../errors.js";
 import { findGitWorkTree } from "../git-work-tree.js";
 import type { CliIo } from "../io.js";
-import { displayPath, ONE_YOCTO, printOwnerTx, shellQuote } from "../owner-tx.js";
+import {
+  assertQuotablePath,
+  displayPath,
+  ONE_YOCTO,
+  printOwnerTx,
+  shellQuote,
+} from "../owner-tx.js";
 import { assertPositive, nearToYocto } from "../units.js";
 
 type KeyTxOpts = GlobalOpts & {
@@ -59,6 +65,8 @@ export function registerAgent(program: Command, io: CliIo): void {
       if (options.out !== undefined) {
         const file = path.resolve(io.cwd, options.out);
         const shown = displayPath(io.cwd, file);
+        // The path goes into the git commands of the warning below, which run in bash or PowerShell.
+        assertQuotablePath(shown, "--out");
         const windows = (io.platform ?? process.platform) === "win32";
         await mkdir(path.dirname(file), { recursive: true });
         try {

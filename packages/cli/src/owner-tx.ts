@@ -19,8 +19,27 @@ export interface OwnerTx {
   note?: string;
 }
 
+/**
+ * A word for a printed command: bare when it is plain, otherwise in single quotes. A value holding a
+ * single quote is refused: bash writes it `'\''` and PowerShell writes it `''`, no spelling works in
+ * both, and the printed commands promise to run in either.
+ */
 export function shellQuote(value: string): string {
-  return /^[A-Za-z0-9_./-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
+  if (value.includes("'")) {
+    throw new CliError(
+      `${JSON.stringify(value)} contains a single quote ('), which bash and PowerShell quote differently, so it cannot go into a command that runs in both`,
+    );
+  }
+  return /^[A-Za-z0-9_./-]+$/.test(value) ? value : `'${value}'`;
+}
+
+/** Refuses a path that shellQuote would refuse, with the flag the owner has to change. Writes nothing. */
+export function assertQuotablePath(shown: string, flag: string): void {
+  if (shown.includes("'")) {
+    throw new CliError(
+      `${flag}: the path ${JSON.stringify(shown)} contains a single quote ('), which bash and PowerShell quote differently: choose a path without one`,
+    );
+  }
 }
 
 export function renderNearCliCommand(tx: OwnerTx, argsPath: string): string {
@@ -105,10 +124,12 @@ async function writeArgsFile(file: string, shown: string, argsJson: string): Pro
  */
 export async function printOwnerTx(io: CliIo, tx: OwnerTx, outDir: string): Promise<string> {
   const dir = path.resolve(io.cwd, outDir);
-  await mkdir(dir, { recursive: true });
   const argsJson = `${JSON.stringify(tx.args, null, 2)}\n`;
   const file = path.join(dir, argsFileName(tx.method, argsJson));
   const shown = displayPath(io.cwd, file);
+  // Before anything is created: a path the printed command cannot quote for both bash and PowerShell.
+  assertQuotablePath(shown, "--out-dir");
+  await mkdir(dir, { recursive: true });
   await writeArgsFile(file, shown, argsJson);
   const quoted = shellQuote(shown);
   const lines = [

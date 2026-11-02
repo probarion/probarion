@@ -1,7 +1,8 @@
-import { readFile } from "node:fs/promises";
-import { posix, win32 } from "node:path";
+import { mkdir, readdir, readFile } from "node:fs/promises";
+import { join, posix, win32 } from "node:path";
 import { describe, expect, it } from "vitest";
-import { displayPath, printOwnerTx, renderNearCliCommand } from "../src/owner-tx.js";
+import { CliError } from "../src/errors.js";
+import { displayPath, printOwnerTx, renderNearCliCommand, shellQuote } from "../src/owner-tx.js";
 import { runCli } from "../src/program.js";
 import { argsFileFor, tempDir, testIo } from "./helpers.js";
 
@@ -50,9 +51,14 @@ describe("renderNearCliCommand", () => {
     );
   });
 
-  it("closes a quote inside a path instead of letting it break out", () => {
-    const line = renderNearCliCommand(TX, "./o'brien/freeze.args.json");
-    expect(line).toContain("file-args './o'\\''brien/freeze.args.json' prepaid-gas");
+  // bash writes a quote inside single quotes as '\'' and PowerShell as '', and no spelling works in
+  // both, so a value with a single quote is refused instead of printed.
+  it("refuses a value with a single quote, which no quoting works for in both bash and PowerShell", () => {
+    expect(() => renderNearCliCommand(TX, "./o'brien/freeze.args.json")).toThrow(CliError);
+    expect(() => renderNearCliCommand(TX, "./o'brien/freeze.args.json")).toThrow(/single quote/);
+    expect(() => shellQuote("it's")).toThrow(/bash and PowerShell/);
+    expect(shellQuote("it is")).toBe("'it is'");
+    expect(shellQuote("plain-path/ok_1.json")).toBe("plain-path/ok_1.json");
   });
 
   it("puts a placeholder where the signer is unknown", () => {
@@ -69,6 +75,29 @@ describe("renderNearCliCommand", () => {
 });
 
 describe("printOwnerTx", () => {
+  it("refuses an out dir with a single quote before it creates anything", async () => {
+    const dir = await tempDir();
+    const { io, state } = testIo(dir);
+    await expect(printOwnerTx(io, TX, "o'brien")).rejects.toThrow(
+      /--out-dir: the path .* single quote/,
+    );
+    expect(state.out).toBe("");
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it("refuses a quote only when the printed path shows it: the working directory itself is not printed", async () => {
+    const parent = await tempDir();
+    const cwd = join(parent, "o'brien");
+    await mkdir(cwd);
+    const { io, state } = testIo(cwd);
+    await printOwnerTx(io, TX, ".");
+    expect(state.out).toContain(`file-args ./${FREEZE_FILE} `);
+    // From the parent folder the same directory is printed as ./o'brien/..., so that is refused.
+    const fromParent = testIo(parent);
+    await expect(printOwnerTx(fromParent.io, TX, cwd)).rejects.toThrow(/single quote/);
+    expect(fromParent.state.out).toBe("");
+  });
+
   it("writes <outDir>/<method>.<hash>.args.json and prints the command with forward slashes only", async () => {
     const dir = await tempDir();
     const { io, state } = testIo(dir);

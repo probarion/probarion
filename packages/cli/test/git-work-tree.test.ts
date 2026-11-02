@@ -71,13 +71,36 @@ describe("findGitWorkTree", () => {
     expect(await findGitWorkTree(join(outside, "via", "new", "agent.json"))).toBe(repo);
   });
 
-  it("is null for a link inside a repository that points out of it: the file is not in the work tree", async (context) => {
+  // T15-R3: Git for Windows walks into a junction and commits the target's files as ordinary files,
+  // so a key under a link that sits inside a repository is in the work tree as git sees it, even
+  // though its real path is elsewhere.
+  it("finds the repository for a link inside it that points out of it (the logical path)", async (context) => {
     const repo = await realpath(await tempDir());
     await mkdir(join(repo, ".git"));
     const away = await realpath(await tempDir());
     if ((await findGitWorkTree(join(away, "probe"))) !== null) context.skip();
     await link(away, join(repo, "keys"));
-    expect(await findGitWorkTree(join(repo, "keys", "agent.json"))).toBeNull();
+    expect(await findGitWorkTree(join(repo, "keys", "agent.json"))).toBe(repo);
+    // Through a folder that does not exist yet beyond the link, too.
+    expect(await findGitWorkTree(join(repo, "keys", "new", "agent.json"))).toBe(repo);
+  });
+
+  it("looks at the logical and the real folder, and is null only when neither is in a repository", async (context) => {
+    const outside = await realpath(await tempDir());
+    const away = await realpath(await tempDir());
+    if ((await findGitWorkTree(join(away, "probe"))) !== null) context.skip();
+    if ((await findGitWorkTree(join(outside, "probe"))) !== null) context.skip();
+    await link(away, join(outside, "via"));
+    expect(await findGitWorkTree(join(outside, "via", "agent.json"))).toBeNull();
+  });
+
+  it("answers for a link inside one repository that points into another", async () => {
+    const first = await realpath(await tempDir());
+    const second = await realpath(await tempDir());
+    await mkdir(join(first, ".git"));
+    await mkdir(join(second, ".git"));
+    await link(second, join(first, "keys"));
+    expect(await findGitWorkTree(join(first, "keys", "agent.json"))).not.toBeNull();
   });
 });
 

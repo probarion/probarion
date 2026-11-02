@@ -37,18 +37,28 @@ export async function realDirectory(dir: string): Promise<string> {
   }
 }
 
-/**
- * The work tree `file` is in, or null. Resolves the real path of the file's folder first (a symlinked
- * parent pointing into a repository counts as inside it, and one pointing out of it does not), then
- * walks up looking for `.git`, which is a directory in a repository and a file in a linked worktree
- * or a submodule.
- */
-export async function findGitWorkTree(file: string): Promise<string | null> {
-  let dir = await realDirectory(path.dirname(path.resolve(file)));
+/** The nearest ancestor of `start` (itself included) holding `.git`, or null. Walks the path as written. */
+async function walkUp(start: string): Promise<string | null> {
+  let dir = start;
   for (;;) {
     if (await exists(path.join(dir, ".git"))) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
+}
+
+/**
+ * The work tree `file` is in, or null. It looks from two places and answers yes if EITHER is inside
+ * a work tree:
+ * - the folder as written (`path.resolve(file)`, no link followed): a link inside a repository that
+ *   points out of it still puts the key where git sees it, because Git for Windows walks into a
+ *   junction and a plain `git add -A` stages the target's files as ordinary files;
+ * - the real folder (symlinks and junctions resolved): a link outside every repository that points
+ *   into one puts the key in that repository.
+ * `.git` is a directory in a repository and a file in a linked worktree or a submodule.
+ */
+export async function findGitWorkTree(file: string): Promise<string | null> {
+  const logical = path.dirname(path.resolve(file));
+  return (await walkUp(logical)) ?? (await walkUp(await realDirectory(logical)));
 }

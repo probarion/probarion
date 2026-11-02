@@ -115,6 +115,16 @@ describe("agent keygen --out writes the pair to a private file and keeps the sec
     expect(await readFile(join(dir, "agent.json"), "utf8")).toBe("precious");
   });
 
+  it("refuses a path with a single quote, which bash and PowerShell quote differently", async () => {
+    const dir = await tempDir();
+    const { io, state } = testIo(dir);
+    expect(await runCli(["agent", "keygen", "--out", "o'brien/agent.json"], io)).toBe(1);
+    expect(state.err).toMatch(/--out: the path .* single quote/);
+    expect(state.out).toBe("");
+    // Nothing was created, and no key was generated into a file.
+    expect(await readdir(dir)).toEqual([]);
+  });
+
   describe("warnings go to stderr, never into the JSON on stdout", () => {
     it("on Windows it says that mode bits do not restrict the file", async () => {
       const dir = await tempDir();
@@ -238,6 +248,21 @@ describe("agent keygen --out writes the pair to a private file and keeps the sec
       expect(state.err).toBe(WARNING("./via/agent.json"));
       // The key really is in the repository.
       expect(await readdir(join(repo, "keys"))).toEqual(["agent.json"]);
+    });
+
+    // T15-R3: keys/ is a junction to a folder outside the repository. The key is physically outside,
+    // but Git for Windows walks into the junction, so `git add -A` would stage it. Warn.
+    it("warns when --out goes through a link inside a repository that points out of it", async (context) => {
+      const repo = await tempDir();
+      const away = await tempDir();
+      if ((await findGitWorkTree(join(away, "probe"))) !== null) context.skip();
+      await mkdir(join(repo, ".git"));
+      await symlink(away, join(repo, "keys"), "junction");
+      const { io, state } = testIo(repo, {}, "linux");
+      expect(await runCli(["agent", "keygen", "--out", "keys/agent.json"], io)).toBe(0);
+      expect(state.err).toBe(WARNING("./keys/agent.json"));
+      // The key really is outside the repository.
+      expect(await readdir(away)).toEqual(["agent.json"]);
     });
 
     it("says nothing about git outside a work tree", async (context) => {
