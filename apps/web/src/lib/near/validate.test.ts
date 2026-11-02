@@ -1,5 +1,6 @@
+import { isEvmAddress } from "@probarion/core";
 import { describe, expect, it } from "vitest";
-import { isNearAccountId } from "./validate";
+import { isNearAccountId, parseBaseAddress } from "./validate";
 
 describe("isNearAccountId", () => {
   it.each([
@@ -117,6 +118,88 @@ describe("isNearAccountId", () => {
     for (const [id, ok] of cases) {
       expect(id.length, id).toBeLessThanOrEqual(64);
       expect(isNearAccountId(id), id).toBe(ok);
+    }
+  });
+});
+
+// The vault accepts `0x` and 40 hex digits in any case and stores them as written (validate.rs is_evm_address,
+// the same shape as core's isEvmAddress). parseBaseAddress is stricter on purpose, in two ways the contract
+// cannot be: a mixed-case address must carry a valid EIP-55 checksum (a typo in a mixed-case address is
+// caught here, not paid out to the wrong place), and the zero address is refused. What it returns is
+// always something the contract accepts, in the checksummed form.
+describe("parseBaseAddress", () => {
+  const CHECKSUMMED = "0x52908400098527886E0F7030069857D2E4169EE7"; // the EIP-55 specification's own vector
+  const ALL_LOWER_VALID = "0xde709f2102306220921060314715629080e2fb77"; // EIP-55 form that is all lower case
+  const DIGITS_ONLY = `0x${"1".repeat(40)}`; // the vault's own test address
+
+  it.each([
+    [CHECKSUMMED, CHECKSUMMED],
+    [CHECKSUMMED.toLowerCase(), CHECKSUMMED],
+    [`0x${CHECKSUMMED.slice(2).toUpperCase()}`, CHECKSUMMED],
+    [
+      ` ${ALL_LOWER_VALID}
+`,
+      ALL_LOWER_VALID,
+    ],
+    [DIGITS_ONLY, DIGITS_ONLY],
+  ])("accepts %s", (input, out) => expect(parseBaseAddress(input)).toBe(out));
+
+  it.each([
+    ["a bad EIP-55 checksum", "0x52908400098527886e0F7030069857D2E4169EE7"],
+    [
+      "the vault's mixed-case test address, which is not checksummed",
+      "0xAbCdEf0123456789abcdef0123456789ABCDEF01",
+    ],
+    ["a space inside", "0x5290840009852788 6E0F7030069857D2E4169EE7"],
+    ["an ENS name", "acme.eth"],
+    ["the zero address", `0x${"0".repeat(40)}`],
+    ["a short address", "0x1234"],
+    ["39 digits", `0x${"1".repeat(39)}`],
+    ["41 digits", `0x${"1".repeat(41)}`],
+    ["an upper-case 0X prefix", `0X${"1".repeat(40)}`],
+    ["no 0x prefix", "1".repeat(40)],
+    ["a non-hex digit", `0x${"1".repeat(39)}g`],
+    ["empty", ""],
+    ["a NEAR account id", "designer.near"],
+    ["a fullwidth digit", `0x${"1".repeat(39)}１`],
+  ])("rejects %s", (_why, input) => expect(parseBaseAddress(input)).toBeNull());
+
+  it("accepts an all-capitals or all-lower-case address that is not its own checksum (written without one)", () => {
+    // 0x + AB x 20: its EIP-55 form mixes cases, so all-caps is NOT the checksum here; the vault accepts it as written
+    const allCaps = `0x${"AB".repeat(20)}`;
+    const checksummed = parseBaseAddress(allCaps);
+    expect(checksummed).not.toBeNull();
+    expect(checksummed).not.toBe(allCaps);
+    expect(checksummed?.toLowerCase()).toBe(allCaps.toLowerCase());
+    expect(parseBaseAddress(allCaps.toLowerCase())).toBe(checksummed);
+    // while the same letters with ONE case flipped by hand (a typo) are refused
+    expect(parseBaseAddress(`0x${"AB".repeat(19)}Ab`)).toBeNull();
+  });
+
+  it("returns the checksummed form for every case of the same address, and is idempotent", () => {
+    const forms = [
+      CHECKSUMMED,
+      CHECKSUMMED.toLowerCase(),
+      `0x${CHECKSUMMED.slice(2).toUpperCase()}`,
+    ];
+    for (const f of forms) {
+      const out = parseBaseAddress(f);
+      expect(out).toBe(CHECKSUMMED);
+      expect(parseBaseAddress(out as string)).toBe(out);
+    }
+  });
+
+  it("only ever returns an address the vault and core's A8 shape accept", () => {
+    for (const f of [CHECKSUMMED, CHECKSUMMED.toLowerCase(), ALL_LOWER_VALID, DIGITS_ONLY]) {
+      const out = parseBaseAddress(f) as string;
+      expect(out).toMatch(/^0x[0-9a-fA-F]{40}$/); // validate.rs is_evm_address
+      expect(isEvmAddress(out)).toBe(true);
+    }
+  });
+
+  it("is null for anything that is not a string", () => {
+    for (const bad of [undefined, null, 12, {}, [CHECKSUMMED]]) {
+      expect(parseBaseAddress(bad as unknown as string)).toBeNull();
     }
   });
 });
