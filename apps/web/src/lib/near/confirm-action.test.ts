@@ -132,12 +132,47 @@ describe("sendBaselineAction", () => {
     expect(await sendBaselineAction()).toBe(4242);
   });
 
-  it("shares the rate caps with the confirmation", async () => {
+  it("has its own caps (30 a minute per account, 300 a minute in all), apart from the confirmation's", async () => {
     await sendBaselineAction();
     expect(mocks.rateLimitOr429.mock.calls).toEqual([
-      [{ db: true }, "confirm:owner.near", [30, 60]],
-      [{ db: true }, "confirm:all", [300, 60]],
+      [{ db: true }, "baseline:owner.near", [30, 60]],
+      [{ db: true }, "baseline:all", [300, 60]],
     ]);
+  });
+
+  it("a whole send (baseline, then confirmation) costs one token of each cap, never two of the same", async () => {
+    await sendBaselineAction();
+    await confirmTxAction(request());
+    const buckets = mocks.rateLimitOr429.mock.calls.map((c) => c[1]);
+    expect(buckets).toEqual([
+      "baseline:owner.near",
+      "baseline:all",
+      "confirm:owner.near",
+      "confirm:all",
+    ]);
+    expect(new Set(buckets).size).toBe(buckets.length);
+  });
+
+  it("the confirmation touches only the confirm caps, and the baseline only its own", async () => {
+    await confirmTxAction(request());
+    expect(mocks.rateLimitOr429.mock.calls.map((c) => c[1])).toEqual([
+      "confirm:owner.near",
+      "confirm:all",
+    ]);
+    mocks.rateLimitOr429.mockClear();
+    await sendBaselineAction();
+    expect(mocks.rateLimitOr429.mock.calls.map((c) => c[1])).toEqual([
+      "baseline:owner.near",
+      "baseline:all",
+    ]);
+  });
+
+  it("running out of baseline tokens does not take the confirmation's (the global cap is not shared)", async () => {
+    mocks.rateLimitOr429.mockImplementation(async (_db: unknown, bucket: string) =>
+      bucket.startsWith("baseline:") ? new Response(null, { status: 429 }) : null,
+    );
+    expect(await sendBaselineAction()).toBeNull();
+    expect(await confirmTxAction(request())).toEqual(OK);
   });
 
   it("is null without a session, over a cap, or when the network cannot say (the send then cannot end as done)", async () => {

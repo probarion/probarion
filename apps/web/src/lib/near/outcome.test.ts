@@ -610,7 +610,7 @@ describe("what the owner reads", () => {
   });
 });
 
-describe("withWords: a wrapper's wording on top of ours", () => {
+describe("withWords: a wrapper's detail on top of our headline", () => {
   const base = describeTxResult({
     status: "unknown",
     txHash: HASH,
@@ -618,28 +618,44 @@ describe("withWords: a wrapper's wording on top of ours", () => {
     error: "the vault is out of NEAR",
   });
 
-  it("replaces the headline and the detail it names, and nothing else", () => {
-    const v = withWords(base, {
-      headline: "Sent, check your wallet",
-      detail: "Top up your account",
-    });
-    expect(v).toEqual({
-      ...base,
-      headline: "Sent, check your wallet",
-      detail: "Top up your account",
-    });
+  it("replaces the detail and nothing else: headline, tone and link stay ours", () => {
+    const v = withWords(base, { detail: "Top up your account" });
+    expect(v).toEqual({ ...base, detail: "Top up your account" });
+    expect(v.headline).toBe(base.headline);
     expect(v.tone).toBe(base.tone);
     expect(v.explorer).toBe(base.explorer);
+  });
+
+  it("a headline in the words is ignored, whatever else comes with it", () => {
+    // the type forbids it; a JavaScript caller or a cast cannot get it through
+    const sneaky = (w: object) => w as Parameters<typeof withWords>[1];
+    expect(withWords(base, sneaky({ headline: "Done" }))).toEqual(base);
+    expect(withWords(base, sneaky({ headline: "Done", detail: "d" }))).toEqual({
+      ...base,
+      detail: "d",
+    });
+    expect(withWords(base, sneaky({ headline: "" })).headline).toBe(base.headline);
+    expect(withWords(base, sneaky({ headline: null })).headline).toBe(base.headline);
+    expect(base.headline).toBe(UNKNOWN_HEADLINE);
+  });
+
+  it("the Sent and Refused headlines stay ours for every kind of result", () => {
+    const sneaky = { headline: "Done", detail: "d" } as Parameters<typeof withWords>[1];
+    for (const result of [
+      { status: "unknown", txHash: HASH, code: null, error: "x" },
+      { status: "failed", txHash: HASH, code: "NotOwner", error: "x" },
+      { status: "failed", txHash: null, code: null, error: "x" },
+      { status: "unknown", txHash: null, code: null, error: "x" },
+    ] as const) {
+      const ours = describeTxResult(result);
+      expect(withWords(ours, sneaky).headline, result.status).toBe(ours.headline);
+    }
   });
 
   it("keeps what it does not name, and a null detail clears the line", () => {
     expect(withWords(base, { detail: "only the detail" })).toEqual({
       ...base,
       detail: "only the detail",
-    });
-    expect(withWords(base, { headline: "only the headline" })).toEqual({
-      ...base,
-      headline: "only the headline",
     });
     expect(withWords(base, { detail: null }).detail).toBeNull();
     expect(withWords(base, { detail: undefined }).detail).toBe(base.detail);
@@ -653,7 +669,7 @@ describe("withWords: a wrapper's wording on top of ours", () => {
 
   it("does not change the view it was given", () => {
     const frozen = Object.freeze({ ...base });
-    withWords(frozen, { headline: "x", detail: "y" });
+    withWords(frozen, { detail: "y" });
     expect(frozen).toEqual(base);
   });
 });

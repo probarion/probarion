@@ -17,7 +17,7 @@ export const accepted = [
     label="Freeze"
     network="testnet"
     tx={tx}
-    describe={(r) => (r.code === null ? undefined : { headline: "Sent", detail: r.error })}
+    describe={(r) => (r.code === null ? undefined : { detail: r.error })}
   />,
   <TxButton
     key="prepare-key"

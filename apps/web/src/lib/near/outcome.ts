@@ -435,12 +435,11 @@ export interface TxResultView {
 }
 
 /**
- * Words a wrapper may swap on what the owner reads, without touching the result: the headline and the
- * detail. Never the tone, the explorer link or the result itself, so the locked state and what a
- * result means stay as outcome.ts decided.
+ * Words a wrapper may swap on what the owner reads, without touching the result: the detail line,
+ * and only that. Never the headline, the tone, the explorer link or the result itself, so what a
+ * result means, and the locked state, stay as outcome.ts decided.
  */
 export interface ResultWords {
-  headline?: string;
   /** `null` shows no detail line; leaving it out keeps the default one. */
   detail?: string | null;
 }
@@ -448,14 +447,14 @@ export interface ResultWords {
 /** `TxButton`'s `describe`: wording for a result (live, or read back after a reload), or nothing to keep ours. */
 export type DescribeResult = (result: TxResult) => ResultWords | null | undefined;
 
-/** The view with a wrapper's words applied. */
+/**
+ * The view with a wrapper's words applied: the detail line only. The headline ("Done", "Refused",
+ * "Sent: confirm on the explorer", "Not confirmed...") always stays ours, whatever a wrapper returns
+ * (a caller that is not type-checked may still return one: it is ignored).
+ */
 export function withWords(view: TxResultView, words: ResultWords | null | undefined): TxResultView {
   if (words === null || words === undefined) return view;
-  return {
-    ...view,
-    headline: words.headline ?? view.headline,
-    detail: words.detail !== undefined ? words.detail : view.detail,
-  };
+  return { ...view, detail: words.detail !== undefined ? words.detail : view.detail };
 }
 
 export function describeTxResult(r: TxResult): TxResultView {

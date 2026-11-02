@@ -122,10 +122,32 @@ describe("TxResultNote with a wrapper's describe", () => {
     expect(hrefs(html)).toEqual([`https://testnet.nearblocks.io/txns/${HASH}`]);
   });
 
-  it("can set the headline too", () => {
-    expect(out(lack, () => ({ headline: "Sent: check your wallet" }))).toContain(
-      "Sent: check your wallet",
+  it("a headline returned by describe is ignored: ours stays", () => {
+    const wantsHeadline = (() => ({
+      headline: "All good",
+      detail: "Your account is short of NEAR",
+    })) as unknown as DescribeResult;
+    const html = out(lack, wantsHeadline);
+    expect(html).toContain("Sent: confirm on the explorer");
+    expect(html).not.toContain("All good");
+    expect(html).toContain("Your account is short of NEAR"); // the detail still applies
+    expect(out(lack, (() => ({ headline: "All good" })) as unknown as DescribeResult)).toBe(
+      out(lack),
     );
+  });
+
+  it("the Refused and Sent headlines survive a describe that tries to rename them", () => {
+    const rename = (() => ({ headline: "Fine" })) as unknown as DescribeResult;
+    const refused: TxResult = {
+      status: "failed",
+      txHash: HASH,
+      code: "NotOwner",
+      error: "not the owner",
+    };
+    expect(out(refused, rename)).toContain("Refused");
+    expect(out(refused, rename)).not.toContain("Fine");
+    expect(out(lack, rename)).toContain("Sent: confirm on the explorer");
+    expect(out(lack, rename)).not.toContain("Fine");
   });
 
   it("changes nothing when it has no words for this result", () => {

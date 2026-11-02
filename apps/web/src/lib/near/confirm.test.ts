@@ -1,7 +1,14 @@
 import { OUT_OF_GAS_NEAR_DETAIL, OUT_OF_NEAR_DETAIL } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import trees from "../../../test/fixtures/testnet-spend-trees.json";
-import { confirmTx, currentFinalHeight, parseRequest, type RpcLike, sameJson } from "./confirm";
+import {
+  BASELINE_TOLERANCE_BLOCKS,
+  confirmTx,
+  currentFinalHeight,
+  parseRequest,
+  type RpcLike,
+  sameJson,
+} from "./confirm";
 import type { ConfirmRequest, TxResult } from "./outcome";
 import { sendNearTx } from "./transfer";
 import {
@@ -12,7 +19,10 @@ import {
   type MandateInputJson,
   type PreparedAction,
   type PreparedTx,
+  rejectTx,
   toPrepared,
+  unfreezeTx,
+  withdrawTx,
 } from "./tx";
 
 // Real `tx` RPC results from the testnet smoke run (contracts/deployments/testnet.json): three spends,
@@ -889,6 +899,55 @@ describe("W-T6-R2: the transaction that landed is the transaction that was shown
       }
     });
 
+    describe("empty arguments on the chain count as {} when {} was shown (some wallets encode it so)", () => {
+      const emptyBytes = (actions: Json[]) =>
+        actions.map((a) => ({ FunctionCall: { ...a.FunctionCall, args: "" } }));
+
+      it.each([
+        ["freeze", freezeTx(VAULT)],
+        ["unfreeze", unfreezeTx(VAULT)],
+      ])("%s with empty argument bytes is ok", async (_name, tx) => {
+        expect(toPrepared(tx).actions[0]).toMatchObject({ args: {} });
+        expect(await landed(tx, OWNER, emptyBytes)).toEqual({
+          status: "ok",
+          txHash: HASH,
+          code: null,
+          error: null,
+        });
+      });
+
+      it("{} spelled out is still ok (both encodings are accepted)", async () => {
+        expect((await landed(freezeTx(VAULT), OWNER)).status).toBe("ok");
+      });
+
+      it("but arguments that were shown as something else are not satisfied by empty bytes", async () => {
+        for (const tx of [approveTx(VAULT, 7), rejectTx(VAULT, 7), withdrawTx(VAULT, HALF)]) {
+          const r = await landed(tx, OWNER, emptyBytes);
+          notOk(r);
+          expect(r.error).toMatch(/different arguments/);
+        }
+      });
+
+      it("only truly empty bytes count: blanks, null, [] or 0 do not", async () => {
+        for (const args of [" ", "bnVsbA==", "W10=", "MA=="]) {
+          const r = await landed(freezeTx(VAULT), OWNER, (actions) =>
+            actions.map((a) => ({ FunctionCall: { ...a.FunctionCall, args } })),
+          );
+          notOk(r);
+        }
+      });
+
+      it("empty bytes do not excuse any other mismatch on the same action", async () => {
+        const r = await landed(freezeTx(VAULT), OWNER, (actions) =>
+          actions.map((a) => ({
+            FunctionCall: { ...a.FunctionCall, args: "", deposit: "1" },
+          })),
+        );
+        notOk(r);
+        expect(r.error).toMatch(/deposit/);
+      });
+    });
+
     it("a changed nested mandate field in create_mandate", async () => {
       const input: MandateInputJson = {
         payee: { type: "near", account_id: "bob.testnet" },
@@ -966,11 +1025,18 @@ describe("W-T6-R2: the transaction that landed is the transaction that was shown
   describe("an old transaction is never ok (replay)", () => {
     const tx = freezeTx(VAULT);
 
-    it("a block older than the send began: unknown, even though everything else matches", async () => {
-      const r = await landed(tx, OWNER, (a) => a, { height: 99, baseline: 100 });
+    const NOT_THIS_ONE =
+      /could not confirm this is the transaction you just approved; check the explorer/;
+
+    it("the tolerance is 30 blocks (about half a minute)", () => {
+      expect(BASELINE_TOLERANCE_BLOCKS).toBe(30);
+    });
+
+    it("a block far older than the send began: unknown, even though everything else matches", async () => {
+      const r = await landed(tx, OWNER, (a) => a, { height: 100, baseline: 1000 });
       expect(r.status).toBe("unknown");
       expect(r.txHash).toBe(HASH);
-      expect(r.error).toMatch(/block 99, older than this send \(block 100\)/);
+      expect(r.error).toMatch(NOT_THIS_ONE);
     });
 
     it("last week's freeze (far older) is unknown", async () => {
@@ -982,6 +1048,71 @@ describe("W-T6-R2: the transaction that landed is the transaction that was shown
     it("the same block, or a newer one, is ok", async () => {
       expect((await landed(tx, OWNER, (a) => a, { height: 100, baseline: 100 })).status).toBe("ok");
       expect((await landed(tx, OWNER, (a) => a, { height: 101, baseline: 100 })).status).toBe("ok");
+    });
+
+    describe("the baseline is read while the wallet is already being asked, so a little earlier is fine", () => {
+      const BASE = 1000;
+
+      it("inside the tolerance (one block, half the tolerance, exactly 30 earlier) is ok", async () => {
+        for (const behind of [1, 15, BASELINE_TOLERANCE_BLOCKS]) {
+          const r = await landed(tx, OWNER, (a) => a, { height: BASE - behind, baseline: BASE });
+          expect(r.status, `${behind} blocks behind`).toBe("ok");
+        }
+      });
+
+      it("one block beyond the tolerance (31 earlier) is unknown, with the explorer wording", async () => {
+        const r = await landed(tx, OWNER, (a) => a, {
+          height: BASE - BASELINE_TOLERANCE_BLOCKS - 1,
+          baseline: BASE,
+        });
+        expect(r.status).toBe("unknown");
+        expect(r.txHash).toBe(HASH);
+        expect(r.error).toMatch(NOT_THIS_ONE);
+      });
+
+      it("a replay older than 30 blocks is still refused, whatever else matches", async () => {
+        for (const behind of [31, 60, 500, 100_000]) {
+          const r = await landed(tx, OWNER, (a) => a, { height: BASE - behind, baseline: BASE });
+          expect(r.status, `${behind} blocks behind`).toBe("unknown");
+        }
+      });
+
+      it("a baseline near the start of the chain (less than 30) accepts any block", async () => {
+        const r = await landed(tx, OWNER, (a) => a, { height: 1, baseline: 5 });
+        expect(r.status).toBe("ok");
+      });
+
+      it("the tolerance only loosens the height; a different action still never matches", async () => {
+        const r = await landed(
+          approveTx(VAULT, 7),
+          OWNER,
+          (actions) =>
+            actions.map((a) => ({
+              FunctionCall: { ...a.FunctionCall, args: b64({ spend_id: 8 }) },
+            })),
+          { height: BASE - 10, baseline: BASE },
+        );
+        notOk(r);
+      });
+
+      it("the signer still has to match inside the tolerance", async () => {
+        const r = await landed(tx, OWNER, (a) => a, {
+          height: BASE - 10,
+          baseline: BASE,
+          signer: "someone-else.near",
+        });
+        notOk(r);
+      });
+
+      it("a failure inside the tolerance is judged like any other failure, not as ok", async () => {
+        const shown = toPrepared(tx);
+        const tree = treeWith(shown, OWNER, shown.actions.map(chainAction), panic("NotOwner"));
+        const r = await confirmTx(
+          { hash: HASH, signerId: OWNER, tx: shown, baselineHeight: BASE },
+          rpcFor(tree, { height: BASE - 10 }).rpc,
+        );
+        expect(r.status).not.toBe("ok");
+      });
     });
 
     it("an old failure is not reported as a fresh failure either", async () => {

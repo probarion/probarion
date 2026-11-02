@@ -38,6 +38,18 @@ const MAX_ACTIONS = 16;
 const MAX_ARGS_JSON = 16_384;
 const MAX_DEPTH = 32;
 
+/**
+ * How many blocks BEFORE the baseline a transaction may still be in and count as this send.
+ *
+ * The baseline is the final height read when the send begins, and that read races the wallet: the
+ * request to the server starts before the wallet is asked, but its answer can come back after a fast
+ * approval of an urgent call (a freeze), so the transaction can land at or a few blocks below the
+ * height the server saw. At about a block a second, 30 blocks is half a minute: far more than that race,
+ * and a replay of an old transaction (hours or days old) is still refused. What really ties the record
+ * to this send is the rest of the check: every action, the arguments, the deposits and the signer.
+ */
+export const BASELINE_TOLERANCE_BLOCKS = 30;
+
 // ---------------------------------------------------------------------------------------------
 // The request is untrusted input (it crossed from the browser): check its shape before using it.
 // ---------------------------------------------------------------------------------------------
@@ -146,8 +158,14 @@ function sameAmount(onChain: unknown, shown: string): boolean {
   return text !== null && DIGITS.test(text) && BigInt(text) === BigInt(shown);
 }
 
+/**
+ * The arguments a call carried, decoded base64 -> UTF-8 -> JSON. A call with no arguments is sent by
+ * some wallets as empty bytes rather than `{}`: those are read as `{}`, so a `freeze` or an
+ * `unfreeze` (shown with `{}`) matches either. Empty bytes still do not match any non-empty args.
+ */
 function decodeArgs(base64: unknown): unknown {
   if (typeof base64 !== "string") return undefined;
+  if (base64 === "") return {};
   try {
     return JSON.parse(Buffer.from(base64, "base64").toString("utf8")) as unknown;
   } catch {
@@ -296,10 +314,10 @@ export async function confirmTx(request: unknown, rpc: RpcLike = getRpc()): Prom
       "The block this transaction is in could not be read; confirm on the explorer.",
     );
   }
-  if (height < parsed.baselineHeight) {
+  if (height < parsed.baselineHeight - BASELINE_TOLERANCE_BLOCKS) {
     return unknown(
       hash,
-      `That transaction is in block ${height}, older than this send (block ${parsed.baselineHeight}): it is an earlier transaction, not this one; confirm on the explorer.`,
+      "could not confirm this is the transaction you just approved; check the explorer",
     );
   }
 
