@@ -7,10 +7,19 @@
 //
 // Publishing itself is an OWNER action and never happens here.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { gunzipSync } from "node:zlib";
@@ -97,6 +106,8 @@ export interface PackageManifest {
   exports?: unknown;
   files?: readonly string[];
   publishConfig?: { access?: string };
+  repository?: { type?: string; url?: string; directory?: string };
+  scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
@@ -128,14 +139,19 @@ export function exportTargets(exportsField: unknown): string[] {
   return exportEntries(exportsField).map((entry) => entry.target);
 }
 
+export const REPOSITORY_URL = "git+https://github.com/probarion/probarion.git";
+
 /**
  * The shape every published manifest must have, checked on the files in the repository:
  * - `main` and `types` at the top level, for tools that do not read `exports`;
  * - every `exports` subpath names `types`, `import` and `default`, `types` first (TypeScript and Node use
  *   the first condition that matches), so a CommonJS or bundler consumer is not told "not exported";
- * - `files` ships `dist` and `README.md`; a scoped package needs `publishConfig.access: "public"`.
+ * - `files` ships `dist` and `README.md`; a scoped package needs `publishConfig.access: "public"`;
+ * - `repository` names this repository and, when `dir` is given, the package's directory (npm provenance
+ *   compares the repository with the one the workflow ran in);
+ * - `scripts.prepublishOnly` is set, so a `npm publish` from a developer machine is refused.
  */
-export function checkManifest(manifest: PackageManifest): string[] {
+export function checkManifest(manifest: PackageManifest, dir?: string): string[] {
   const problems: string[] = [];
   if (typeof manifest.main !== "string") problems.push('"main" is missing');
   if (typeof manifest.types !== "string") problems.push('"types" is missing');
@@ -175,6 +191,17 @@ export function checkManifest(manifest: PackageManifest): string[] {
       'publishConfig.access must be "public" (a scoped package is otherwise restricted)',
     );
   }
+  if (manifest.repository?.url !== REPOSITORY_URL) {
+    problems.push(`repository.url must be ${REPOSITORY_URL}`);
+  }
+  if (dir !== undefined && manifest.repository?.directory !== dir) {
+    problems.push(`repository.directory must be ${dir}`);
+  }
+  if (typeof manifest.scripts?.prepublishOnly !== "string") {
+    problems.push(
+      "scripts.prepublishOnly is missing (a publish from a developer machine must be refused)",
+    );
+  }
   return problems;
 }
 
@@ -183,6 +210,8 @@ export interface Release {
   manifests: Map<string, PackageManifest>;
   changelog: string;
   cliVersion: string | null;
+  /** Set when `version.ts` exists but holds no `CLI_VERSION = "…"`: the version check must not be skipped silently. */
+  cliVersionProblem: string | null;
   /** CHANGELOG.md and the README.md of every published package, by path relative to the root. */
   docs: Map<string, string>;
 }
@@ -231,7 +260,11 @@ export async function loadRelease(root: string): Promise<Release> {
   const cliSource = existsSync(versionFile) ? await readFile(versionFile, "utf8") : null;
   const cliVersion =
     cliSource === null ? null : (/CLI_VERSION = "([^"]+)"/.exec(cliSource)?.[1] ?? null);
-  return { packages, manifests, changelog, cliVersion, docs };
+  const cliVersionProblem =
+    cliSource !== null && cliVersion === null
+      ? 'packages/cli/src/version.ts exists but has no CLI_VERSION = "<version>", so the cli version cannot be checked against the tag'
+      : null;
+  return { packages, manifests, changelog, cliVersion, cliVersionProblem, docs };
 }
 
 // ---------- tarballs ----------
@@ -452,21 +485,63 @@ export function inspectTarballs(
   return { problems, entries };
 }
 
-/**
- * `pnpm pack` rewrites `workspace:*` to the real version, which `npm pack` does not. Run through
- * `pnpm run` the script has `npm_execpath`, so pnpm's own entry point is started with this node
- * (no .cmd shim, which Node on Windows refuses to spawn without a shell).
- */
-function pnpmCommand(env: Readonly<Record<string, string | undefined>>): {
+export interface PackInvocation {
   command: string;
   args: string[];
   shell: boolean;
-} {
+  /** True when pnpm writes the tarball into the package directory, from where it is moved to `outDir`. */
+  inPlace: boolean;
+}
+
+/**
+ * How to run `pnpm pack`. `pnpm pack` rewrites `workspace:*` to the real version, which `npm pack` does not.
+ * - Started through `pnpm run` the script has `npm_execpath`, so pnpm's own entry point runs under this
+ *   node with `--pack-destination`: no shell, no quoting, a folder with spaces is one argument.
+ * - Otherwise on Windows pnpm is a .cmd shim, which Node refuses to start without a shell. A shell takes
+ *   one command string, so the string is the constant `pnpm pack` with no path in it (pnpm does not read
+ *   the destination from the environment, and an argument list next to `shell: true` is deprecated,
+ *   DEP0190, and not quoted). The tarball lands in the package directory and `takeTarball` moves it.
+ * - Otherwise `pnpm` is started directly.
+ */
+export function pnpmPackInvocation(
+  env: Readonly<Record<string, string | undefined>>,
+  outDir: string,
+  platform: NodeJS.Platform = process.platform,
+): PackInvocation {
+  const dest = resolve(outDir);
   const execPath = env.npm_execpath;
   if (execPath !== undefined && /pnpm/i.test(execPath) && /\.[cm]?js$/.test(execPath)) {
-    return { command: process.execPath, args: [execPath], shell: false };
+    return {
+      command: process.execPath,
+      args: [execPath, "pack", "--pack-destination", dest],
+      shell: false,
+      inPlace: false,
+    };
   }
-  return { command: "pnpm", args: [], shell: process.platform === "win32" };
+  if (platform === "win32") {
+    return { command: "pnpm pack", args: [], shell: true, inPlace: true };
+  }
+  return {
+    command: "pnpm",
+    args: ["pack", "--pack-destination", dest],
+    shell: false,
+    inPlace: false,
+  };
+}
+
+/** Moves the tarball that `pnpm pack` wrote into the package directory to `outDir`. Returns a problem, or null. */
+export function takeTarball(info: PackageInfo, packageDir: string, outDir: string): string | null {
+  const file = expectedTarballName(info.name, info.version);
+  const from = join(packageDir, file);
+  if (!existsSync(from)) return `${info.name}: pnpm pack did not write ${file} into ${packageDir}`;
+  try {
+    // Copy and delete, not rename: the out directory may be on another drive.
+    copyFileSync(from, join(outDir, file));
+    rmSync(from, { force: true });
+  } catch (error) {
+    return `${info.name}: cannot move ${file} to ${outDir} (${error instanceof Error ? error.message : String(error)})`;
+  }
+  return null;
 }
 
 function packPackages(
@@ -476,25 +551,49 @@ function packPackages(
   env: Readonly<Record<string, string | undefined>>,
 ): string[] {
   const problems: string[] = [];
-  const pnpm = pnpmCommand(env);
+  const pack = pnpmPackInvocation(env, outDir);
   for (const info of packages) {
-    const result = spawnSync(
-      pnpm.command,
-      [...pnpm.args, "pack", "--pack-destination", resolve(outDir)],
-      {
-        cwd: join(root, info.dir),
-        stdio: "inherit",
-        shell: pnpm.shell,
-        env: { ...process.env, ...env },
-      },
-    );
+    const packageDir = join(root, info.dir);
+    const result = spawnSync(pack.command, pack.args, {
+      cwd: packageDir,
+      stdio: "inherit",
+      shell: pack.shell,
+      env: { ...process.env, ...env },
+    });
     if (result.status !== 0) {
       problems.push(
         `${info.name}: pnpm pack failed (${result.error?.message ?? `exit ${result.status}`})`,
       );
+    } else if (pack.inPlace) {
+      const problem = takeTarball(info, packageDir, outDir);
+      if (problem !== null) problems.push(problem);
     }
   }
   return problems;
+}
+
+/**
+ * Whether this module was started as the script (`main`), is being imported (`imported`), or was started
+ * under its own name from a path that does not resolve to this file (`mismatch`). The last one must not
+ * be mistaken for an import: that would end the process with exit code 0 having checked nothing.
+ */
+export function entryPointState(
+  argv1: string | undefined,
+  moduleUrl: string,
+  platform: NodeJS.Platform = process.platform,
+): "main" | "imported" | "mismatch" {
+  if (argv1 === undefined) return "imported";
+  const canonical = (path: string): string => {
+    let real: string;
+    try {
+      real = realpathSync(path);
+    } catch {
+      real = resolve(path);
+    }
+    return platform === "win32" ? real.toLowerCase() : real;
+  };
+  if (canonical(argv1) === canonical(fileURLToPath(moduleUrl))) return "main";
+  return /^release-check.[cm]?[jt]s$/.test(basename(argv1)) ? "mismatch" : "imported";
 }
 
 // ---------- main ----------
@@ -517,10 +616,11 @@ export async function main(
   }
   const release = await loadRelease(root);
   const problems = checkRelease({ ...release, tag: args.tag });
+  if (release.cliVersionProblem !== null) problems.push(release.cliVersionProblem);
   for (const info of release.packages) {
     const manifest = release.manifests.get(info.dir);
     if (manifest !== undefined)
-      problems.push(...checkManifest(manifest).map((p) => `${info.name}: ${p}`));
+      problems.push(...checkManifest(manifest, info.dir).map((p) => `${info.name}: ${p}`));
   }
   problems.push(...checkDocs(release.docs));
   let packed = "";
@@ -559,6 +659,13 @@ export async function main(
   return 0;
 }
 
-if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+const entry = entryPointState(process.argv[1], import.meta.url);
+if (entry === "main") {
   process.exitCode = await main(process.argv.slice(2));
+} else if (entry === "mismatch") {
+  process.stderr.write(
+    `release-check: started as ${process.argv[1]}, which does not resolve to ${fileURLToPath(import.meta.url)}; nothing was checked
+`,
+  );
+  process.exitCode = 1;
 }

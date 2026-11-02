@@ -1,7 +1,7 @@
 {
   "name": "probarion",
   "version": "0.1.0",
-  "description": "Probarion CLI: prepare owner transactions, dry-run spends and verify a vault's ledger, anchors, attestations and keys.",
+  "description": "Probarion CLI: print the owner and approver transactions of a Probarion vault for near-cli-rs to sign, and generate ed25519 keys.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -26,6 +26,7 @@
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "prepack": "pnpm run build",
+    "prepublishOnly": "node -e \"if(process.env.CI!=='true'||process.env.GITHUB_WORKFLOW!=='release'){console.error('Refusing to publish: only the GitHub release workflow publishes. Push a tag such as sdk-v0.1.0 instead.');process.exit(1)}\"",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

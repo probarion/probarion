@@ -23,8 +23,17 @@ describe("the published packages", () => {
     for (const dir of existing) {
       const manifest = manifests.get(dir);
       expect(manifest, dir).toBeDefined();
-      expect(checkManifest(manifest ?? {}), dir).toEqual([]);
+      expect(checkManifest(manifest ?? {}, dir), dir).toEqual([]);
     }
+  });
+
+  it("describe only what the package does today", () => {
+    // The cli description may mention a dry run or verification only once those commands exist (Task 16).
+    const commands = (name: string) => existsSync(join(root, "packages/cli/src/commands", name));
+    const description = (json("packages/cli/package.json") as { description: string }).description;
+    if (!commands("verify.ts")) expect(description).not.toMatch(/verif/i);
+    if (!commands("check.ts")) expect(description).not.toMatch(/dry-run|dry run/i);
+    expect(description).toMatch(/near-cli-rs/);
   });
 
   it("export ./testing from the sdk, and only that, next to the root entry", () => {

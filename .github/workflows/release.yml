@@ -2,14 +2,23 @@ name: release
 
 # Publishing is an OWNER action. Pushing a tag sdk-v<version> starts this workflow:
 #   git tag -a sdk-v0.1.0 -m "SDK v0.1.0" && git push origin sdk-v0.1.0
-# The tag must match the version of every published package and have a "## <version>" section in
-# CHANGELOG.md (scripts/release-check.ts enforces both).
+# The tag must match the version of every published package, have a "## <version>" section in
+# CHANGELOG.md (scripts/release-check.ts enforces both), and point at a commit that is on main.
 #
 # Two jobs, so that the job that can publish runs no repository code:
 #   verify   contents: read. Checks, tests and packs the packages, and uploads the tarballs.
-#   publish  contents: read + id-token: write. Downloads exactly those tarballs and runs `npm publish`.
+#   publish  contents: read + id-token: write, in the "npm-release" environment. Downloads exactly
+#            those tarballs and runs `npm publish`.
 # The Rust contracts are not rebuilt here, because only the TypeScript packages are published; the ci
 # workflow runs the contract jobs on the branch commit that gets tagged.
+#
+# OWNER setup, once (Settings > Environments):
+#   1. Create the environment "npm-release".
+#   2. Deployment branches and tags: only the tag pattern sdk-v*.
+#   3. Required reviewers: the owner, so that a pushed tag waits for a second look before it publishes.
+#   4. Store NPM_TOKEN as an environment secret of "npm-release" (not as a repository secret).
+#   5. After 0.1.0 is on npm, switch each package to npm trusted publishing (OIDC, no token) and
+#      revoke NPM_TOKEN.
 on:
   push:
     tags: ["sdk-v*"]
@@ -30,14 +39,23 @@ jobs:
     name: Check, test and pack
     runs-on: ubuntu-latest
     steps:
+      # Full history, so that origin/main is there for the check below. No credentials are left behind.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the tagged commit to be on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::the tagged commit $GITHUB_SHA is not on main; a release is cut from main"
+            exit 1
+          }
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Fails fast on the tag, the versions and the changelog, before the slow steps.
       - run: pnpm run release:check -- "$GITHUB_REF_NAME"
@@ -58,6 +76,7 @@ jobs:
     name: Publish to npm
     needs: verify
     runs-on: ubuntu-latest
+    environment: npm-release
     permissions:
       contents: read
       id-token: write # npm provenance (Sigstore); this job only
@@ -82,14 +101,22 @@ jobs:
             echo "::warning::the repository is private; npm provenance needs a public repository, so this publish has no provenance"
             base_args=(--access public)
           fi
+          list=$(node -e 'for (const p of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).packages) console.log([p.file, p.name, p.version].join("\t"))' "$RELEASE_DIR/packages.json")
+          [ -n "$list" ] || { echo "::error::empty publish list"; exit 1; }
           while IFS=$'\t' read -r file name version; do
-            if npm view "$name@$version" version >/dev/null 2>&1; then
-              echo "$name@$version is already on npm; skipping"
-              continue
+            if npm view "$name@$version" version </dev/null >/dev/null 2>&1; then
+              published=$(npm view "$name@$version" dist.integrity </dev/null)
+              local_integrity="sha512-$(openssl dgst -sha512 -binary "$RELEASE_DIR/$file" | base64 -w0)"
+              if [ "$published" = "$local_integrity" ]; then
+                echo "::notice::$name@$version is already on npm with the same content as this tarball; skipping"
+                continue
+              fi
+              echo "::error::$name@$version is already on npm with different content (npm: $published, this run: $local_integrity); nothing after it is published"
+              exit 1
             fi
             args=("${base_args[@]}")
             # npm refuses a prerelease without a dist-tag, and a prerelease must not become "latest".
             case "$version" in *-*) args+=(--tag next) ;; esac
             echo "publishing $name@$version"
-            npm publish "$RELEASE_DIR/$file" "${args[@]}"
-          done < <(node -e 'for (const p of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).packages) console.log([p.file, p.name, p.version].join("\t"))' "$RELEASE_DIR/packages.json")
+            npm publish "$RELEASE_DIR/$file" "${args[@]}" </dev/null
+          done <<<"$list"

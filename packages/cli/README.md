@@ -70,4 +70,4 @@ ledger and anchors it). Keep the secret on your server and out of the repository
 
 The commands that read a vault, `check`, `verify` and `ledger export`, are not in this version yet.
 For now, use `verify()` from [`@probarion/sdk`](https://www.npmjs.com/package/@probarion/sdk).
-<!-- TODO(release): replace this section when the check, verify and ledger export commands land (plan 03 Task 16), and add them to CHANGELOG.md -->
+<!-- TODO(release): replace this section when the check, verify and ledger export commands land (plan 03 Task 16), add them to CHANGELOG.md, and restore the description in packages/cli/package.json (dry-run spends, verify a vault's ledger, anchors, attestations and keys) -->

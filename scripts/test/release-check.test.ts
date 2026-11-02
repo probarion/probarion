@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -8,6 +9,7 @@ import {
   checkManifest,
   checkRelease,
   checkTarball,
+  entryPointState,
   expectedTarballName,
   exportTargets,
   inspectTarballs,
@@ -16,7 +18,10 @@ import {
   type PackageInfo,
   PUBLISHED_DIRS,
   parseCliArgs,
+  pnpmPackInvocation,
+  REPOSITORY_URL,
   readTarball,
+  takeTarball,
 } from "../release-check.js";
 
 const pkgs = (version: string): PackageInfo[] => [
@@ -167,12 +172,41 @@ const goodManifest = () => ({
     },
   },
   files: ["dist", "README.md"],
+  scripts: { prepublishOnly: 'node -e "process.exit(1)"' },
+  repository: { type: "git", url: REPOSITORY_URL, directory: "packages/sdk" },
   publishConfig: { access: "public" },
 });
 
 describe("checkManifest", () => {
   it("accepts a manifest with main, types, full conditions, files and public access", () => {
     expect(checkManifest(goodManifest())).toEqual([]);
+    expect(checkManifest(goodManifest(), "packages/sdk")).toEqual([]);
+  });
+
+  it("asks for this repository and the package's own directory, which provenance compares", () => {
+    const wrongUrl = {
+      ...goodManifest(),
+      repository: { ...goodManifest().repository, url: "git+https://github.com/someone/else.git" },
+    };
+    expect(checkManifest(wrongUrl).join("\n")).toContain(
+      `repository.url must be ${REPOSITORY_URL}`,
+    );
+    const wrongDir = {
+      ...goodManifest(),
+      repository: { ...goodManifest().repository, directory: "packages/core" },
+    };
+    expect(checkManifest(wrongDir, "packages/sdk").join("\n")).toContain(
+      "repository.directory must be packages/sdk",
+    );
+    // Without a directory to compare with, only the url is checked.
+    expect(checkManifest(wrongDir)).toEqual([]);
+    const { repository: _r, ...none } = goodManifest();
+    expect(checkManifest(none, "packages/sdk")).toHaveLength(2);
+  });
+
+  it("asks for a prepublishOnly script, so that a local publish is refused", () => {
+    const { scripts: _s, ...none } = goodManifest();
+    expect(checkManifest(none).join("\n")).toContain("prepublishOnly");
   });
 
   it("asks for main and types at the top level", () => {
@@ -530,8 +564,19 @@ function writeRepo(files: Record<string, string>): void {
   }
 }
 
+const DIRS: Record<string, string> = {
+  "@probarion/core": "packages/core",
+  "@probarion/sdk": "packages/sdk",
+  probarion: "packages/cli",
+};
 const manifestOf = (name: string, version: string, extra: object = {}) =>
-  JSON.stringify({ ...goodManifest(), name, version, ...extra });
+  JSON.stringify({
+    ...goodManifest(),
+    name,
+    version,
+    repository: { type: "git", url: REPOSITORY_URL, directory: DIRS[name] },
+    ...extra,
+  });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "release-check-"));
@@ -560,14 +605,26 @@ describe("loadRelease", () => {
     expect(release.manifests.get("packages/sdk")?.name).toBe("@probarion/sdk");
   });
 
-  it("reports no cli version when version.ts has no CLI_VERSION", async () => {
+  it("reports a problem, not a skipped check, when version.ts has no CLI_VERSION", async () => {
     writeRepo({
       "packages/core/package.json": manifestOf("@probarion/core", "0.1.0"),
       "packages/cli/package.json": manifestOf("probarion", "0.1.0"),
       "packages/cli/src/version.ts": "export const OTHER = 1;\n",
       "CHANGELOG.md": changelog,
     });
-    expect((await loadRelease(root)).cliVersion).toBeNull();
+    const release = await loadRelease(root);
+    expect(release.cliVersion).toBeNull();
+    expect(release.cliVersionProblem).toContain("no CLI_VERSION");
+  });
+
+  it("has no cli version problem when version.ts is absent or holds the version", async () => {
+    writeRepo({
+      "packages/core/package.json": manifestOf("@probarion/core", "0.1.0"),
+      "CHANGELOG.md": changelog,
+    });
+    expect((await loadRelease(root)).cliVersionProblem).toBeNull();
+    writeRepo({ "packages/cli/src/version.ts": 'export const CLI_VERSION = "0.1.0";\n' });
+    expect((await loadRelease(root)).cliVersionProblem).toBeNull();
   });
 });
 
@@ -761,6 +818,17 @@ describe("main", () => {
     expect(err).toContain("packages/core/README.md still has an open release note");
   });
 
+  it("fails the run when version.ts exists but holds no CLI_VERSION", async () => {
+    writeCleanRepo();
+    writeRepo({
+      "packages/cli/package.json": manifestOf("probarion", "0.1.0"),
+      "packages/cli/README.md": "# cli\n",
+      "packages/cli/src/version.ts": "export const OTHER = 1;\n",
+    });
+    expect(await main(["sdk-v0.1.0"], {}, root)).toBe(1);
+    expect(stderr.join("")).toContain("no CLI_VERSION");
+  });
+
   it("refuses bad arguments with exit code 2", async () => {
     writeCleanRepo();
     expect(await main(["--nope"], {}, root)).toBe(2);
@@ -817,5 +885,111 @@ describe("main", () => {
     );
     expect(code).toBe(1);
     expect(stderr.join("")).toContain("@probarion/core: pnpm pack failed");
+  });
+});
+
+describe("pnpmPackInvocation", () => {
+  const out = join(tmpdir(), "a folder with spaces & more");
+
+  it("starts pnpm's own entry point under node when run through pnpm: no shell, one argument per word", () => {
+    const run = pnpmPackInvocation({ npm_execpath: "/x/pnpm/bin/pnpm.cjs" }, out, "win32");
+    expect(run).toEqual({
+      command: process.execPath,
+      args: ["/x/pnpm/bin/pnpm.cjs", "pack", "--pack-destination", resolve(out)],
+      shell: false,
+      inPlace: false,
+    });
+  });
+
+  it("uses the constant shell command `pnpm pack` on Windows without pnpm's entry point, and no path in it", () => {
+    for (const env of [
+      {},
+      { npm_execpath: "C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js" },
+    ]) {
+      const run = pnpmPackInvocation(env, out, "win32");
+      expect(run.shell).toBe(true);
+      // No argument list next to a shell (DEP0190), and nothing a shell could misread.
+      expect(run.args).toEqual([]);
+      expect(run.command).toBe("pnpm pack");
+      expect(run.inPlace).toBe(true);
+    }
+  });
+
+  it("does not take a file that merely has pnpm in its path for pnpm's entry point", () => {
+    expect(pnpmPackInvocation({ npm_execpath: "/pnpm/bin/pnpm" }, out, "linux").command).toBe(
+      "pnpm",
+    );
+    expect(pnpmPackInvocation({ npm_execpath: "/pnpm/bin/pnpmXjs" }, out, "linux").command).toBe(
+      "pnpm",
+    );
+  });
+
+  it("starts pnpm directly elsewhere", () => {
+    const run = pnpmPackInvocation({ npm_execpath: "/usr/bin/npm-cli.js" }, out, "linux");
+    expect(run).toEqual({
+      command: "pnpm",
+      args: ["pack", "--pack-destination", resolve(out)],
+      shell: false,
+      inPlace: false,
+    });
+  });
+});
+
+describe("takeTarball", () => {
+  const info: PackageInfo = {
+    dir: "packages/core",
+    name: "@probarion/core",
+    version: "0.1.0",
+    private: false,
+  };
+
+  it("moves the tarball from the package directory to the out directory, spaces and all", () => {
+    const pkgDir = join(root, "pkg with space");
+    const outDir = join(root, "out dir");
+    mkdirSync(pkgDir, { recursive: true });
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(join(pkgDir, "probarion-core-0.1.0.tgz"), "tarball");
+    expect(takeTarball(info, pkgDir, outDir)).toBeNull();
+    expect(readFileSync(join(outDir, "probarion-core-0.1.0.tgz"), "utf8")).toBe("tarball");
+    expect(existsSync(join(pkgDir, "probarion-core-0.1.0.tgz"))).toBe(false);
+  });
+
+  it("reports a tarball that pnpm did not write", () => {
+    mkdirSync(join(root, "p"), { recursive: true });
+    mkdirSync(join(root, "o"), { recursive: true });
+    expect(takeTarball(info, join(root, "p"), join(root, "o"))).toContain(
+      "did not write probarion-core-0.1.0.tgz",
+    );
+  });
+});
+
+describe("entryPointState", () => {
+  const scriptsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const here = join(scriptsDir, "release-check.ts");
+  const url = pathToFileURL(here).href;
+
+  it("is main when started as this file, however the path is spelled", () => {
+    expect(entryPointState(here, url, "linux")).toBe("main");
+    expect(entryPointState(join(scriptsDir, "test", "..", "release-check.ts"), url, "linux")).toBe(
+      "main",
+    );
+    // Windows paths differ in case only.
+    expect(entryPointState(here.toUpperCase(), url, "win32")).toBe("main");
+  });
+
+  it("is imported when another program started the process", () => {
+    expect(
+      entryPointState(join(scriptsDir, "node_modules", "vitest", "vitest.mjs"), url, "linux"),
+    ).toBe("imported");
+    expect(entryPointState(undefined, url, "linux")).toBe("imported");
+  });
+
+  it("is a mismatch, not a quiet success, when a release-check script that is not this file was started", () => {
+    expect(entryPointState(join(tmpdir(), "elsewhere", "release-check.ts"), url, "linux")).toBe(
+      "mismatch",
+    );
+    expect(entryPointState(join(tmpdir(), "elsewhere", "release-check.mjs"), url, "linux")).toBe(
+      "mismatch",
+    );
   });
 });
