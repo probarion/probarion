@@ -26,9 +26,14 @@ const HINT: Partial<Record<Name, string>> = {
 };
 
 /**
- * Exit codes: 0 done (a clean dry run, or an apply); 1 a dry run that is not clean, a refused apply or a
- * failure; 2 bad input (a missing or malformed variable, equal masters, an unknown argument), before the
- * database is touched. Output is one JSON line of counts; errors name a variable or a code, never a value.
+ * Exit codes:
+ *  - 0: a clean dry run, or an apply whose read-back shows every row under the new master;
+ *  - 1: a dry run that is not clean, a refused apply, or a failure;
+ *  - 2: bad input (a missing or malformed variable, equal masters, an unknown argument), before the
+ *    database is touched;
+ *  - 3: the apply wrote, but is not finished: the read-back shows rows still under the old master (or
+ *    under neither), or there is no read-back. Switch, then run again (W-T10-R1).
+ * Output is one JSON line of counts; errors name a variable or a code, never a value.
  */
 export async function runRotateCli(
   argv: readonly string[],
@@ -86,6 +91,23 @@ export async function runRotateCli(
         "rotate-keys: the dry run is not clean (see unreadable / mismatched); --apply would be refused",
       );
       return 1;
+    }
+    if (apply) {
+      const after = report.after;
+      if (after === null) {
+        deps.err(
+          "rotate-keys: WARNING: the apply wrote, but the read-back failed. Run the dry run to see which master opens each row; keep OLD_KEY_ENCRYPTION_SECRET.",
+        );
+        return 3;
+      }
+      const old = after.agent_keys.old + after.invoices.old;
+      const unreadable = after.agent_keys.unreadable + after.invoices.unreadable;
+      if (old > 0 || unreadable > 0) {
+        deps.err(
+          `rotate-keys: WARNING: the apply wrote, but ${old} row(s) are still under the old master and ${unreadable} open under neither. Switch KEY_ENCRYPTION_SECRET, then run --apply again; keep OLD_KEY_ENCRYPTION_SECRET.`,
+        );
+        return 3;
+      }
     }
     return 0;
   } catch (error) {

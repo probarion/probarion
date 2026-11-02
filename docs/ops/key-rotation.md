@@ -9,6 +9,13 @@ master is lost, every sealed secret is lost with it: the agent and ledger keys (
 safe, but you must remove those keys from the vault and add new ones) and every retained invoice.
 `scripts/rotate-keys.ts` never generates a master, for exactly this reason. Do the steps in order.
 
+> **If the master may have leaked, rotating it is not enough: also replace every key it protected
+> (step 7).** Rotation re-seals the *same* secrets under a new master. Anyone who held the old master
+> and any copy of the database (a dump, a backup, a point-in-time restore) can still open the old
+> ciphertexts and so still holds every agent key and the ledger key. Replace every agent key
+> (Remove, then generate, then add) and the ledger key (generate, then set). Rotating the master does
+> not change the keys themselves.
+
 ## What the command does
 
 `pnpm --filter @probarion/web rotate-keys [--apply]` reads both masters from the environment and:
@@ -27,8 +34,13 @@ safe, but you must remove those keys from the vault and add new ones) and every 
   row's old ciphertext: a row changed since it was read fails the whole batch (`rotation_conflict`).
   Afterwards every row is read back and counted by the master that opens it (`after`).
 
-It prints one JSON line of counts, never a key, a ciphertext or a plaintext. Exit codes: 0 done,
-1 not clean / refused / failed, 2 bad input.
+It prints one JSON line of counts, never a key, a ciphertext or a plaintext. Exit codes:
+
+- 0: a clean dry run, or an apply whose read-back shows every row under the new master;
+- 1: not clean, refused, or failed;
+- 2: bad input;
+- 3: the apply **wrote but is not finished**. The read-back shows rows still under the old master (sealed
+  by the live app meanwhile) or under neither, or the read-back failed. Follow step 6.
 
 `key_version` on `agent_keys` is a **rotation counter** (1 when sealed, +1 per re-seal). It does not
 say which master sealed a row: a key the live app seals under the new master starts at 1 again. That
@@ -74,7 +86,8 @@ is why the command uses trial decryption.
    ```
 
    Expect `"mode":"apply","ok":true`, `written` equal to the dry run's `rotate` counts, and in
-   `after` every row under `new`. From this moment the running app (still on the old master) cannot
+   `after` every row under `new` (exit 0). Exit 3 means it wrote but rows remain under the old master or
+   the read-back failed: go on with step 5, then step 6. From this moment the running app (still on the old master) cannot
    open the rotated rows: the Payables and Canary cycles fail closed with `decrypt_failed` until
    step 5. Do steps 4 and 5 back to back.
 
@@ -93,8 +106,21 @@ is why the command uses trial decryption.
    ```
 
    If `rotate` is above 0, run `--apply` once more (it re-seals only those rows). When a dry run shows
-   `rotate: 0`, `unreadable: 0` and `mismatched: 0` for both tables, every row opens under the new
-   master: delete the old master from the secret manager and `unset` the variables.
+   `rotate: 0`, `unreadable: 0` and `mismatched: 0` for both tables, every row of the **live** database
+   opens under the new master, and you can `unset` the variables.
+
+   **Backups still need the OLD master.** Every backup and point-in-time restore taken before the
+   apply holds rows sealed under the old master, and deleting it makes them unreadable. Keep the old
+   master in the secret manager (marked "retired, for backups before <date>") for as long as those
+   backups are retained (your Supabase plan's backup / PITR window), then delete it. If you delete it
+   sooner, write down that you accept losing the sealed content of those backups. If the old master
+   leaked, keeping it adds no exposure the leak has not already caused, but step 7 is then required.
+
+7. **If the master may have leaked: replace every key it protected** (see the box at the top). On the
+   console Keys page, for each agent key: Remove (sign in your wallet), then generate a new agent key
+   and add it. For the ledger key: generate a new ledger key and set it (this removes the old one from
+   the vault). Then re-check that no old key is still `active`. Do this after step 5, so the new keys
+   are sealed under the new master.
 
 ## If something goes wrong
 

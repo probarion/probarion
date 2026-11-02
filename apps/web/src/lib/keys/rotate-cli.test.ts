@@ -5,6 +5,7 @@ import { openAgentSecret } from "@/lib/crypto/secrets";
 import { parseMasterKey } from "@/lib/crypto/sodium";
 import { type Db, DbError } from "@/lib/db/port";
 import { freshDb, seedTenant } from "../../../test/db/harness";
+import { silenceLogs } from "../../../test/db/keys-helpers";
 import { pgliteDb } from "../../../test/db/pglite-db";
 import { runRotateCli } from "./rotate-cli";
 import { generateKey } from "./service";
@@ -12,6 +13,8 @@ import { generateKey } from "./service";
 // The OWNER's rotation command (scripts/rotate-keys.ts is a thin wrapper over runRotateCli). It never
 // generates a master, refuses two equal ones, dry-runs by default, applies only after a clean dry run
 // in the same process, and prints counts only.
+
+silenceLogs();
 
 const b64 = (fill: number) => Buffer.alloc(32, fill).toString("base64");
 const OLD = b64(5);
@@ -53,13 +56,14 @@ async function run(
   argv: string[],
   env: Record<string, string | undefined>,
   pg?: PGlite,
+  wrap: (db: Db) => Db = (db) => db,
 ): Promise<Run> {
   const r: Run = { code: -1, out: [], err: [], dbMade: 0 };
   r.code = await runRotateCli(argv, env, {
     makeDb: (): Db => {
       r.dbMade += 1;
       if (!pg) throw new Error("no database in this test");
-      return pgliteDb(pg);
+      return wrap(pgliteDb(pg));
     },
     out: (line) => r.out.push(line),
     err: (line) => r.err.push(line),
@@ -211,6 +215,62 @@ describe("rotate-keys CLI", () => {
     expect((await pg.query("select secret_ciphertext from agent_keys order by id")).rows).toEqual(
       before,
     );
+    expectNoMaterial(r, secrets);
+  });
+
+  it("--apply exits 3 with a warning when the read-back still finds rows under the old master", async () => {
+    const { pg, secrets } = await seeded();
+    const tenant = (await pg.query<{ id: string }>("select id from tenants")).rows[0]?.id as string;
+    // The live app (still on the old master) seals a key right after the write.
+    const lateWrite = (db: Db): Db => ({
+      async rpc<T>(fn: string, p?: Record<string, unknown>): Promise<T> {
+        const out = await db.rpc<T>(fn, p);
+        if (fn === "key_rotation_apply") {
+          await generateKey(pgliteDb(pg), parseMasterKey(OLD), {
+            tenantId: tenant,
+            purpose: "agent",
+            label: "late",
+            createdBy: "acme.near",
+          });
+        }
+        return out;
+      },
+    });
+    const r = await run(["--apply"], ENV, pg, lateWrite);
+    expect(r.code).toBe(3);
+    expectCountsOnly(r.out);
+    expect(JSON.parse(r.out[0] ?? "null")).toMatchObject({
+      mode: "apply",
+      written: { agent_keys: 2 },
+      after: { agent_keys: { total: 3, new: 2, old: 1 } },
+    });
+    expect(r.err.join("\n")).toMatch(
+      /WARNING: the apply wrote, but 1 row\(s\) are still under the old master/,
+    );
+    expect(r.err.join("\n")).toMatch(/keep OLD_KEY_ENCRYPTION_SECRET/);
+    expectNoMaterial(r, secrets);
+  });
+
+  it("--apply exits 3 with a warning when the read-back fails", async () => {
+    const { pg, secrets } = await seeded();
+    let reads = 0;
+    const failingReadBack = (db: Db): Db => ({
+      async rpc<T>(fn: string, p?: Record<string, unknown>): Promise<T> {
+        if (fn === "key_rotation_rows") {
+          reads += 1;
+          if (reads === 2) throw new DbError("db_error", "connection reset");
+        }
+        return db.rpc<T>(fn, p);
+      },
+    });
+    const r = await run(["--apply"], ENV, pg, failingReadBack);
+    expect(r.code).toBe(3);
+    expect(JSON.parse(r.out[0] ?? "null")).toMatchObject({
+      mode: "apply",
+      written: { agent_keys: 2 },
+      after: null,
+    });
+    expect(r.err.join("\n")).toMatch(/WARNING: the apply wrote, but the read-back failed/);
     expectNoMaterial(r, secrets);
   });
 
