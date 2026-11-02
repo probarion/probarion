@@ -1,8 +1,19 @@
 import { OUT_OF_GAS_NEAR_DETAIL, OUT_OF_NEAR_DETAIL } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import trees from "../../../test/fixtures/testnet-spend-trees.json";
-import { confirmTx, type RpcLike } from "./confirm";
-import type { TxResult } from "./outcome";
+import { confirmTx, currentFinalHeight, parseRequest, type RpcLike, sameJson } from "./confirm";
+import type { ConfirmRequest, TxResult } from "./outcome";
+import { sendNearTx } from "./transfer";
+import {
+  approveTx,
+  createMandateTx,
+  freezeTx,
+  fundVaultUsdcTx,
+  type MandateInputJson,
+  type PreparedAction,
+  type PreparedTx,
+  toPrepared,
+} from "./tx";
 
 // Real `tx` RPC results from the testnet smoke run (contracts/deployments/testnet.json): three spends,
 // signed by the vault itself with the agent key. `approve` runs the same payout and callback chain, so
@@ -16,6 +27,9 @@ const real = trees as unknown as { paid: Json; burned: Json; noMandate: Json };
 
 const VAULT = "v0.probarion.testnet";
 const APPROVER = "cfo.testnet";
+const OWNER = "owner.testnet";
+const HASH = "9fV2pZ7mUq5f6p3rGq7bX1tYkqfUu1Vb3bWm2C5g7h8J";
+const BLOCK = "2ADxt1ZzSyXhWkXWdF9aGtsHSv8SqPVjvQyEmEXvwxp8";
 const b64 = (v: unknown) => Buffer.from(JSON.stringify(v), "utf8").toString("base64");
 const failure = (text: string) => ({
   Failure: { ActionError: { index: 0, kind: { FunctionCallError: { ExecutionError: text } } } },
@@ -35,31 +49,102 @@ function asCall(tree: Json, method: string, signer: string, receiver: string): J
 const asApprove = (tree: Json) => asCall(tree, "approve", APPROVER, VAULT);
 const hashOf = (t: Json): string => t.transaction.hash;
 
-function rpcReturning(result: unknown) {
-  const calls: { method: string; params: unknown }[] = [];
+/** How a faithful wallet's transaction looks in the node's JSON. */
+function chainAction(a: PreparedAction): Json {
+  return a.type === "Transfer"
+    ? { Transfer: { deposit: a.deposit } }
+    : {
+        FunctionCall: {
+          method_name: a.methodName,
+          args: b64(a.args),
+          gas: Number(a.gas),
+          deposit: a.deposit,
+        },
+      };
+}
+
+/** What was shown, read back from a chain tree (so a tree of any shape can be confirmed as itself). */
+function preparedFrom(tree: Json): PreparedTx {
+  const actions = (tree.transaction.actions as Json[]).map((a): PreparedAction => {
+    if (a.Transfer) return { type: "Transfer", deposit: String(a.Transfer.deposit) };
+    const c = a.FunctionCall;
+    return {
+      type: "FunctionCall",
+      methodName: c.method_name,
+      args: JSON.parse(Buffer.from(c.args, "base64").toString("utf8")),
+      deposit: String(c.deposit),
+      gas: String(c.gas),
+    };
+  });
+  return { receiverId: tree.transaction.receiver_id, actions };
+}
+
+interface RpcOptions {
+  /** The block the transaction is in (default 100). `null`: the block cannot be read. */
+  height?: number | null;
+  /** The final height "now" (default 100). */
+  finalHeight?: number | null;
+  /** What the node says the block's own hash is, when it differs from the one asked for. */
+  blockHash?: string;
+}
+
+function rpcFor(tree: unknown, o: RpcOptions = {}) {
+  const calls: { method: string; params: Json }[] = [];
   const rpc: RpcLike = {
     async call(method, params) {
-      calls.push({ method, params });
-      if (result instanceof Error) throw result;
-      return result as never;
+      const p = params as Json;
+      calls.push({ method, params: p });
+      if (method === "tx") {
+        if (tree instanceof Error) throw tree;
+        return tree as never;
+      }
+      if (method === "block") {
+        if (p.finality === "final") {
+          if (o.finalHeight === null) throw new Error("no final block");
+          return { header: { height: o.finalHeight ?? 100, hash: BLOCK } } as never;
+        }
+        if (o.height === null) throw new Error("UNKNOWN_BLOCK");
+        return { header: { height: o.height ?? 100, hash: o.blockHash ?? p.block_id } } as never;
+      }
+      throw new Error(`unexpected rpc ${method}`);
     },
   };
   return { rpc, calls };
 }
 
-async function confirm(
-  tree: Json,
-  method: string,
-  over: { signer?: string; receiver?: string; hash?: string } = {},
-): Promise<TxResult> {
-  const { rpc } = rpcReturning(tree);
-  return confirmTx(
-    over.hash ?? hashOf(tree),
-    over.signer ?? tree.transaction.signer_id,
-    method,
-    over.receiver ?? tree.transaction.receiver_id,
-    rpc,
-  );
+interface Over extends RpcOptions {
+  signer?: string;
+  receiver?: string;
+  hash?: string;
+  /** The final height when the send began (default 100; `null`: it could not be read). */
+  baseline?: number | null;
+  /** Change what was shown. */
+  shown?: (p: PreparedTx) => PreparedTx;
+}
+
+function requestFor(tree: Json, method: string, over: Over): ConfirmRequest {
+  let shown = preparedFrom(tree);
+  // asking about another last call means that call is what was shown last
+  const last = shown.actions[shown.actions.length - 1];
+  const label = last?.type === "Transfer" ? "Transfer" : last?.methodName;
+  if (method !== label) {
+    const swapped: PreparedAction =
+      method === "Transfer"
+        ? { type: "Transfer", deposit: "1" }
+        : { type: "FunctionCall", methodName: method, args: {}, deposit: "0", gas: "1" };
+    shown = { ...shown, actions: [...shown.actions.slice(0, -1), swapped] };
+  }
+  if (over.shown) shown = over.shown(shown);
+  return {
+    hash: over.hash ?? hashOf(tree),
+    signerId: over.signer ?? tree.transaction.signer_id,
+    tx: { ...shown, receiverId: over.receiver ?? shown.receiverId },
+    baselineHeight: over.baseline === undefined ? 100 : over.baseline,
+  };
+}
+
+async function confirm(tree: Json, method: string, over: Over = {}): Promise<TxResult> {
+  return confirmTx(requestFor(tree, method, over), rpcFor(tree, over).rpc);
 }
 
 describe("confirmTx on real receipt trees", () => {
@@ -85,15 +170,16 @@ describe("confirmTx on real receipt trees", () => {
     expect((await confirm(t, "approve")).status).toBe("ok");
   });
 
-  it("asks the node for the final status of exactly this transaction", async () => {
+  it("asks the node for the final status of exactly this transaction, then for its block", async () => {
     const t = asApprove(real.paid);
-    const { rpc, calls } = rpcReturning(t);
-    await confirmTx(hashOf(t), APPROVER, "approve", VAULT, rpc);
+    const { rpc, calls } = rpcFor(t);
+    await confirmTx(requestFor(t, "approve", {}), rpc);
     expect(calls).toEqual([
       {
         method: "tx",
         params: { tx_hash: hashOf(t), sender_account_id: APPROVER, wait_until: "FINAL" },
       },
+      { method: "block", params: { block_id: t.transaction_outcome.block_hash } },
     ]);
   });
 
@@ -111,7 +197,7 @@ describe("confirmTx on real receipt trees", () => {
     });
   });
 
-  it("the first receipt ran, the callback failed, the top level is a Failure: unknown (locked), with the code", async () => {
+  it("the first receipt ran, the callback failed, the top level is a Failure: unknown (locked)", async () => {
     const t = asApprove(real.paid);
     const [first, , , callback] = t.receipts_outcome;
     expect(first.outcome.status).toHaveProperty("SuccessReceiptId");
@@ -169,10 +255,11 @@ describe("confirmTx on real receipt trees", () => {
     for (const t of [real.paid, real.burned, real.noMandate]) {
       const r = await confirm(clone(t), "spend");
       expect(r.status).toBe("unknown");
-      expect(r.error).toMatch(/malformed/);
-      // and asked as another call, the chain's record does not match
+      expect(r.error).toMatch(/not one this console reads/);
+      // and shown as another call, the chain's record does not match
       const other = await confirm(clone(t), "withdraw");
-      expect(other.error).toMatch(/does not end in a withdraw call/);
+      expect(other.status).toBe("unknown");
+      expect(other.error).toMatch(/calls spend, not withdraw/);
     }
   });
 
@@ -188,7 +275,6 @@ describe("confirmTx on real receipt trees", () => {
 });
 
 describe("confirmTx on the other methods' receipt trees (from the contracts' promise chains)", () => {
-  const HASH = "9fV2pZ7mUq5f6p3rGq7bX1tYkqfUu1Vb3bWm2C5g7h8J";
   const FACTORY = "vaults.probarion.testnet";
   const receipt = (id: string, executor: string, status: unknown, ids: string[] = []) => ({
     id,
@@ -210,13 +296,13 @@ describe("confirmTx on the other methods' receipt trees (from the contracts' pro
         receiver_id: receiver,
         actions: [{ FunctionCall: { method_name: method, args: "e30=", gas: 1, deposit: "1" } }],
       },
-      transaction_outcome: receipt(HASH, signer, { SuccessReceiptId: receipts[0]?.id }, [
-        receipts[0]?.id ?? "",
-      ]),
+      transaction_outcome: {
+        ...receipt(HASH, signer, { SuccessReceiptId: receipts[0]?.id }, [receipts[0]?.id ?? ""]),
+        block_hash: BLOCK,
+      },
       receipts_outcome: receipts,
     };
   }
-  const OWNER = "owner.testnet";
 
   describe("create_vault: factory.create_vault -> account batch + on_vault_created", () => {
     const vault = "acme.vaults.probarion.testnet";
@@ -394,7 +480,7 @@ describe("confirmTx on the other methods' receipt trees (from the contracts' pro
       return t;
     }
 
-    it("delivered: ok, and the deposit is not asked about (a transfer has nothing to read back)", async () => {
+    it("delivered: ok", async () => {
       const t = transfer({ SuccessValue: "" }, [receipt("r1", VAULT, { SuccessValue: "" })]);
       expect(await confirm(t, "Transfer")).toEqual({
         status: "ok",
@@ -439,7 +525,7 @@ describe("confirmTx on the other methods' receipt trees (from the contracts' pro
       ]);
       const r = await confirm(call, "Transfer");
       expect(r.status).toBe("unknown");
-      expect(r.error).toMatch(/does not end in a Transfer/);
+      expect(r.error).toMatch(/is not a Transfer/);
     });
 
     it("and a transfer is not a freeze (or any other call)", async () => {
@@ -447,11 +533,11 @@ describe("confirmTx on the other methods' receipt trees (from the contracts' pro
       for (const method of ["freeze", "withdraw", "approve", "ft_transfer"]) {
         const r = await confirm(t, method);
         expect(r.status, method).toBe("unknown");
-        expect(r.error, method).toMatch(new RegExp(`does not end in a ${method} call`));
+        expect(r.error, method).toMatch(/is not a contract call/);
       }
     });
 
-    it("a transfer followed by a call is read as the call", async () => {
+    it("a transfer followed by a call is read as the call, and both actions must match", async () => {
       const t = transfer({ SuccessValue: "" }, [receipt("r1", VAULT, { SuccessValue: "" })]);
       t.transaction.actions = [
         { Transfer: { deposit } },
@@ -499,14 +585,13 @@ describe("the chain's record has to be the transaction that was prepared", () =>
 
   it("another transaction's hash in the answer: unknown", async () => {
     const tree = t();
-    const { rpc } = rpcReturning(tree);
     const other = hashOf(tree).replace(/^./, "8");
-    const r = await confirmTx(other, APPROVER, "approve", VAULT, rpc);
+    const r = await confirm(tree, "approve", { hash: other });
     expect(r).toMatchObject({ status: "unknown", txHash: other });
     expect(r.error).toMatch(/different transaction/);
   });
 
-  it("signed by someone else: unknown", async () => {
+  it("signed by someone else than the expected signer: unknown", async () => {
     const r = await confirm(t(), "approve", { signer: "stranger.testnet" });
     expect(r.status).toBe("unknown");
     expect(r.error).toMatch(/not signed by stranger\.testnet/);
@@ -522,27 +607,28 @@ describe("the chain's record has to be the transaction that was prepared", () =>
     for (const method of ["withdraw", "freeze", "reject", "create_vault"]) {
       const r = await confirm(t(), method);
       expect(r.status, method).toBe("unknown");
-      expect(r.error).toMatch(new RegExp(`does not end in a ${method} call`));
+      expect(r.error).toMatch(new RegExp(`calls approve, not ${method}`));
     }
   });
 
-  it("a multi-action transaction is read by its LAST call", async () => {
+  it("a multi-action transaction is checked action by action, in order", async () => {
     const tree = t();
     tree.transaction.actions = [
       { FunctionCall: { method_name: "storage_deposit", args: "e30=", gas: 1, deposit: "1" } },
       { FunctionCall: { method_name: "approve", args: "e30=", gas: 1, deposit: "1" } },
     ];
     expect((await confirm(tree, "approve")).status).toBe("ok");
-    expect((await confirm(tree, "storage_deposit")).status).toBe("unknown");
+    // shown in the other order: not the same transaction
+    const r = await confirm(tree, "approve", {
+      shown: (p) => ({ ...p, actions: [...p.actions].reverse() }),
+    });
+    expect(r.status).toBe("unknown");
   });
 
-  it("no actions, a non-call last action, or a missing transaction: unknown", async () => {
+  it("no actions, a missing transaction or non-array actions: unknown", async () => {
     for (const mutate of [
       (x: Json) => {
         x.transaction.actions = [];
-      },
-      (x: Json) => {
-        x.transaction.actions = [{ Transfer: { deposit: "1" } }];
       },
       (x: Json) => {
         x.transaction.actions = undefined;
@@ -552,39 +638,562 @@ describe("the chain's record has to be the transaction that was prepared", () =>
       },
     ]) {
       const tree = t();
+      const request = requestFor(tree, "approve", {});
       mutate(tree);
+      const r = await confirmTx(request, rpcFor(tree).rpc);
+      expect(r.status).toBe("unknown");
+    }
+  });
+});
+
+describe("W-T6-R2: the transaction that landed is the transaction that was shown", () => {
+  const ATTACKER = "attacker.testnet";
+  const USDC = "usdc.probarion.testnet";
+  const HALF = "500000000000000000000000";
+  const FIFTY = "50000000000000000000000000";
+
+  /** A tree whose actions are exactly `actions` (as the node would report them), succeeding with `status`. */
+  function treeWith(
+    shown: PreparedTx,
+    signer: string,
+    actions: Json[],
+    status: unknown = { SuccessValue: "" },
+  ): Json {
+    return {
+      final_execution_status: "FINAL",
+      status,
+      transaction: {
+        hash: HASH,
+        signer_id: signer,
+        receiver_id: shown.receiverId,
+        actions,
+      },
+      transaction_outcome: {
+        id: HASH,
+        block_hash: BLOCK,
+        outcome: {
+          logs: [],
+          receipt_ids: ["r1"],
+          executor_id: signer,
+          status: { SuccessReceiptId: "r1" },
+        },
+      },
+      receipts_outcome: [
+        { id: "r1", outcome: { logs: [], receipt_ids: [], executor_id: shown.receiverId, status } },
+      ],
+    };
+  }
+
+  async function landed(
+    tx: Parameters<typeof toPrepared>[0],
+    signer: string,
+    tamper: (faithful: Json[], shown: PreparedTx) => Json[] = (a) => a,
+    over: Over = {},
+  ): Promise<TxResult> {
+    const shown = toPrepared(tx);
+    const tree = treeWith(shown, signer, tamper(shown.actions.map(chainAction), shown));
+    const { rpc } = rpcFor(tree, over);
+    return confirmTx(
+      {
+        hash: HASH,
+        signerId: over.signer ?? signer,
+        tx: shown,
+        baselineHeight: over.baseline === undefined ? 100 : over.baseline,
+      },
+      rpc,
+    );
+  }
+
+  const notOk = (r: TxResult) => {
+    expect(r.status).not.toBe("ok");
+    expect(["unknown", "failed"]).toContain(r.status);
+  };
+
+  describe("a faithful transaction is ok", () => {
+    it.each([
+      ["freeze", freezeTx(VAULT)],
+      ["a USDC top-up (storage_deposit then ft_transfer)", fundVaultUsdcTx(USDC, VAULT, "25")],
+      ["a NEAR top-up", sendNearTx(VAULT, HALF)],
+    ])("%s", async (_name, tx) => {
+      expect(await landed(tx, OWNER)).toEqual({
+        status: "ok",
+        txHash: HASH,
+        code: null,
+        error: null,
+      });
+    });
+
+    it("gas may differ: a wallet can adjust it", async () => {
+      const r = await landed(freezeTx(VAULT), OWNER, (actions) =>
+        actions.map((a) => ({ FunctionCall: { ...a.FunctionCall, gas: 1 } })),
+      );
+      expect(r.status).toBe("ok");
+    });
+
+    it("the order of an object's keys in the arguments does not matter", async () => {
+      const input: MandateInputJson = {
+        payee: { type: "near", account_id: "bob.testnet" },
+        purpose_hash: "a".repeat(64),
+        max_per_payment: "1",
+        max_total: "10",
+        max_uses: 3,
+        expires_at_ns: "1798675200000000000",
+        approval_above: "5",
+        agent_pk: "ed25519:8hSHprDq2StXwMtNd43wDTXQYsjXcD4MJTXQYsjXcD4M",
+        label: "x",
+      };
+      const tx = createMandateTx(VAULT, input);
+      const shown = toPrepared(tx);
+      const reordered = shown.actions.map((a) => {
+        if (a.type !== "FunctionCall") return chainAction(a);
+        const inner = (a.args as { input: Record<string, unknown> }).input;
+        const flipped = Object.fromEntries(Object.entries(inner).reverse());
+        return chainAction({ ...a, args: { input: flipped } });
+      });
+      const tree = treeWith(shown, OWNER, reordered, { SuccessValue: b64(1) });
+      const r = await confirmTx(
+        { hash: HASH, signerId: OWNER, tx: shown, baselineHeight: 100 },
+        rpcFor(tree).rpc,
+      );
+      expect(r.status).toBe("ok");
+    });
+
+    it("a deposit the node writes as a safe integer equals the shown decimal string", async () => {
+      const r = await landed(approveTx(VAULT, 7), OWNER, (actions) =>
+        actions.map((a) => ({ FunctionCall: { ...a.FunctionCall, deposit: 1 } })),
+      );
+      // (this tree's top-level status is not an approve result, so it is not "ok", but the
+      // actions themselves matched: the reader, not the match, is what stops it)
+      expect(r.error ?? "").not.toMatch(/differs from the one shown/);
+    });
+  });
+
+  describe("a prepended, appended or swapped action is never ok", () => {
+    const attacker = (amount: string): Json => ({
+      FunctionCall: {
+        method_name: "ft_transfer",
+        args: b64({ receiver_id: ATTACKER, amount, memo: null }),
+        gas: 30000000000000,
+        deposit: "1",
+      },
+    });
+
+    it("fundVaultUsdcTx lands as [ft_transfer(attacker, 10000 USDC), storage_deposit, ft_transfer(vault, 25)]", async () => {
+      const r = await landed(fundVaultUsdcTx(USDC, VAULT, "25"), OWNER, (a) => [
+        attacker("10000000000"),
+        ...a,
+      ]);
+      notOk(r);
+      expect(r.error).toMatch(/has 3 actions, not the 2 that were shown/);
+    });
+
+    it("lands as [ft_transfer(attacker, 10000 USDC), ft_transfer(vault, 25)]: same count, first action replaced", async () => {
+      const r = await landed(fundVaultUsdcTx(USDC, VAULT, "25"), OWNER, (a) => [
+        attacker("10000000000"),
+        a[1] as Json,
+      ]);
+      notOk(r);
+      expect(r.error).toMatch(/action 1 calls ft_transfer, not storage_deposit/);
+    });
+
+    it("an action appended after the last one", async () => {
+      const r = await landed(freezeTx(VAULT), OWNER, (a) => [...a, attacker("1")]);
+      notOk(r);
+      expect(r.error).toMatch(/has 2 actions, not the 1/);
+    });
+
+    it("the same method on the same contract, but the money goes to the attacker", async () => {
+      const r = await landed(fundVaultUsdcTx(USDC, VAULT, "25"), OWNER, (a) => [
+        a[0] as Json,
+        attacker("25"),
+      ]);
+      notOk(r);
+      expect(r.error).toMatch(/action 2 \(ft_transfer\) has different arguments/);
+    });
+
+    it("an action of a kind this console never sends (AddKey, DeleteAccount, Stake, DeployContract, CreateAccount)", async () => {
+      for (const extra of [
+        { AddKey: { public_key: "ed25519:x", access_key: { nonce: 0, permission: "FullAccess" } } },
+        { DeleteAccount: { beneficiary_id: ATTACKER } },
+        { Stake: { stake: "1", public_key: "ed25519:x" } },
+        { DeployContract: { code: "AGFzbQ==" } },
+        { CreateAccount: {} },
+        null,
+        "FunctionCall",
+      ]) {
+        const alone = await landed(freezeTx(VAULT), OWNER, () => [extra as Json]);
+        notOk(alone);
+        const after = await landed(freezeTx(VAULT), OWNER, (a) => [...a, extra as Json]);
+        notOk(after);
+      }
+    });
+  });
+
+  describe("different arguments are never ok", () => {
+    it("approve {spend_id: 7} lands as {spend_id: 8}", async () => {
+      const shown = toPrepared(approveTx(VAULT, 7));
+      const tree = asApprove(real.paid);
+      tree.transaction.actions = shown.actions.map((a) =>
+        a.type === "FunctionCall" ? chainAction({ ...a, args: { spend_id: 8 } }) : chainAction(a),
+      );
+      tree.transaction.receiver_id = shown.receiverId;
+      const r = await confirmTx(
+        { hash: hashOf(tree), signerId: APPROVER, tx: shown, baselineHeight: 100 },
+        rpcFor(tree).rpc,
+      );
+      notOk(r);
+      expect(r.error).toMatch(/action 1 \(approve\) has different arguments/);
+    });
+
+    it("the same transaction with spend_id 7 is ok (the control)", async () => {
+      const shown = toPrepared(approveTx(VAULT, 7));
+      const tree = asApprove(real.paid);
+      tree.transaction.actions = shown.actions.map(chainAction);
+      tree.transaction.receiver_id = shown.receiverId;
+      const r = await confirmTx(
+        { hash: hashOf(tree), signerId: APPROVER, tx: shown, baselineHeight: 100 },
+        rpcFor(tree).rpc,
+      );
+      expect(r.status).toBe("ok");
+    });
+
+    it.each([
+      ["a nested field changed", { input: { max_total: "999" } }],
+      ["a key added", { extra: true }],
+      ["a key removed", {}],
+      ["a number where a string was shown", { spend_id: "7" }],
+      ["a string where a number was shown", { spend_id: 7.5 }],
+      ["null", null],
+      ["an array", [7]],
+    ])("%s", async (_name, args) => {
+      const r = await landed(approveTx(VAULT, 7), OWNER, (actions) =>
+        actions.map((a) => ({ FunctionCall: { ...a.FunctionCall, args: b64(args) } })),
+      );
+      notOk(r);
+      expect(r.error).toMatch(/different arguments/);
+    });
+
+    it("arguments that are not base64 JSON at all", async () => {
+      for (const args of [
+        "",
+        "!!!",
+        Buffer.from("not json").toString("base64"),
+        5,
+        null,
+        undefined,
+      ]) {
+        const r = await landed(approveTx(VAULT, 7), OWNER, (actions) =>
+          actions.map((a) => ({ FunctionCall: { ...a.FunctionCall, args } })),
+        );
+        notOk(r);
+      }
+    });
+
+    it("a changed nested mandate field in create_mandate", async () => {
+      const input: MandateInputJson = {
+        payee: { type: "near", account_id: "bob.testnet" },
+        purpose_hash: "a".repeat(64),
+        max_per_payment: "1",
+        max_total: "10",
+        max_uses: 3,
+        expires_at_ns: "1798675200000000000",
+        approval_above: "5",
+        agent_pk: "ed25519:8hSHprDq2StXwMtNd43wDTXQYsjXcD4MJTXQYsjXcD4M",
+        label: "x",
+      };
+      const shown = toPrepared(createMandateTx(VAULT, input));
+      const forged = shown.actions.map((a) =>
+        a.type === "FunctionCall"
+          ? chainAction({
+              ...a,
+              args: { input: { ...input, payee: { type: "near", account_id: ATTACKER } } },
+            })
+          : chainAction(a),
+      );
+      const tree = treeWith(shown, OWNER, forged, { SuccessValue: b64(1) });
+      const r = await confirmTx(
+        { hash: HASH, signerId: OWNER, tx: shown, baselineHeight: 100 },
+        rpcFor(tree).rpc,
+      );
+      notOk(r);
+      expect(r.error).toMatch(/different arguments/);
+    });
+  });
+
+  describe("an inflated deposit is never ok", () => {
+    it("a 0.5 NEAR top-up that landed as 50 NEAR", async () => {
+      const r = await landed(sendNearTx(VAULT, HALF), OWNER, () => [
+        { Transfer: { deposit: FIFTY } },
+      ]);
+      notOk(r);
+      expect(r.error).toMatch(/moves a different amount of NEAR/);
+    });
+
+    it("a smaller transfer is not ok either", async () => {
+      const r = await landed(sendNearTx(VAULT, HALF), OWNER, () => [
+        { Transfer: { deposit: "1" } },
+      ]);
+      notOk(r);
+    });
+
+    it("a call that attached more than was shown", async () => {
+      for (const deposit of ["2", "1000000000000000000000000"]) {
+        const r = await landed(approveTx(VAULT, 7), OWNER, (actions) =>
+          actions.map((a) => ({ FunctionCall: { ...a.FunctionCall, deposit } })),
+        );
+        notOk(r);
+        expect(r.error).toMatch(/attaches a different deposit/);
+      }
+    });
+
+    it("a freeze (no deposit) that landed with one", async () => {
+      const r = await landed(freezeTx(VAULT), OWNER, (actions) =>
+        actions.map((a) => ({ FunctionCall: { ...a.FunctionCall, deposit: "1" } })),
+      );
+      notOk(r);
+    });
+
+    it("a deposit that is not a number", async () => {
+      for (const deposit of ["1.0", "1e0", "", "-1", null, undefined, {}, 1.5, "0x1"]) {
+        const r = await landed(approveTx(VAULT, 7), OWNER, (actions) =>
+          actions.map((a) => ({ FunctionCall: { ...a.FunctionCall, deposit } })),
+        );
+        notOk(r);
+      }
+    });
+  });
+
+  describe("an old transaction is never ok (replay)", () => {
+    const tx = freezeTx(VAULT);
+
+    it("a block older than the send began: unknown, even though everything else matches", async () => {
+      const r = await landed(tx, OWNER, (a) => a, { height: 99, baseline: 100 });
+      expect(r.status).toBe("unknown");
+      expect(r.txHash).toBe(HASH);
+      expect(r.error).toMatch(/block 99, older than this send \(block 100\)/);
+    });
+
+    it("last week's freeze (far older) is unknown", async () => {
       expect(
-        (await confirm(tree, "approve", { signer: APPROVER, receiver: VAULT, hash: hashOf(t()) }))
-          .status,
+        (await landed(tx, OWNER, (a) => a, { height: 1000, baseline: 2_000_000 })).status,
       ).toBe("unknown");
+    });
+
+    it("the same block, or a newer one, is ok", async () => {
+      expect((await landed(tx, OWNER, (a) => a, { height: 100, baseline: 100 })).status).toBe("ok");
+      expect((await landed(tx, OWNER, (a) => a, { height: 101, baseline: 100 })).status).toBe("ok");
+    });
+
+    it("an old failure is not reported as a fresh failure either", async () => {
+      const shown = toPrepared(tx);
+      const tree = treeWith(shown, OWNER, shown.actions.map(chainAction), panic("NotOwner"));
+      const r = await confirmTx(
+        { hash: HASH, signerId: OWNER, tx: shown, baselineHeight: 500 },
+        rpcFor(tree, { height: 10 }).rpc,
+      );
+      expect(r.status).toBe("unknown");
+    });
+
+    it("the height when the send began could not be read: never ok", async () => {
+      const r = await landed(tx, OWNER, (a) => a, { baseline: null });
+      expect(r.status).toBe("unknown");
+      expect(r.error).toMatch(/height when the send began could not be read/);
+    });
+
+    it("the block the transaction is in cannot be established: never ok", async () => {
+      const unreadable = await landed(tx, OWNER, (a) => a, { height: null });
+      expect(unreadable.status).toBe("unknown");
+      expect(unreadable.error).toMatch(/block this transaction is in could not be read/);
+      const wrongBlock = await landed(tx, OWNER, (a) => a, { blockHash: "someOtherBlock" });
+      expect(wrongBlock.status).toBe("unknown");
+    });
+
+    it("a transaction with no block hash is never ok", async () => {
+      const shown = toPrepared(tx);
+      const tree = treeWith(shown, OWNER, shown.actions.map(chainAction));
+      for (const hash of [undefined, "", 5, null]) {
+        tree.transaction_outcome.block_hash = hash;
+        const r = await confirmTx(
+          { hash: HASH, signerId: OWNER, tx: shown, baselineHeight: 100 },
+          rpcFor(tree).rpc,
+        );
+        expect(r.status).toBe("unknown");
+      }
+    });
+
+    it("a block height that is not a height is never ok", async () => {
+      const shown = toPrepared(tx);
+      const tree = treeWith(shown, OWNER, shown.actions.map(chainAction));
+      for (const height of [0, -5, 1.5, "100", Number.NaN, undefined, 2 ** 60]) {
+        const rpc: RpcLike = {
+          async call(method) {
+            if (method === "tx") return tree as never;
+            return { header: { height, hash: BLOCK } } as never;
+          },
+        };
+        const r = await confirmTx(
+          { hash: HASH, signerId: OWNER, tx: shown, baselineHeight: 100 },
+          rpc,
+        );
+        expect(r.status, String(height)).toBe("unknown");
+      }
+    });
+  });
+
+  describe("the signer is the expected one, not the one the wallet names", () => {
+    it("a transaction signed by another account than expected: unknown", async () => {
+      const r = await landed(freezeTx(VAULT), "stranger.testnet", (a) => a, { signer: OWNER });
+      expect(r.status).toBe("unknown");
+      expect(r.error).toMatch(/not signed by owner\.testnet/);
+    });
+
+    it("the node is asked about the expected signer's transaction", async () => {
+      const shown = toPrepared(freezeTx(VAULT));
+      const tree = treeWith(shown, OWNER, shown.actions.map(chainAction));
+      const { rpc, calls } = rpcFor(tree);
+      await confirmTx({ hash: HASH, signerId: OWNER, tx: shown, baselineHeight: 100 }, rpc);
+      expect(calls[0]?.params.sender_account_id).toBe(OWNER);
+    });
+  });
+});
+
+describe("confirmTx refuses a malformed request without asking the network", () => {
+  const good = (): ConfirmRequest => ({
+    hash: HASH,
+    signerId: OWNER,
+    tx: toPrepared(freezeTx(VAULT)),
+    baselineHeight: 100,
+  });
+  const withTx = (edit: (tx: Json) => void): Json => {
+    const r = clone(good()) as Json;
+    edit(r.tx);
+    return r;
+  };
+
+  it("a good request parses back as itself", () => {
+    expect(parseRequest(good())).toEqual(good());
+    expect(parseRequest({ ...good(), baselineHeight: null })).toMatchObject({
+      baselineHeight: null,
+    });
+  });
+
+  it.each([
+    ["not an object", null],
+    ["an array", []],
+    ["a string", "x"],
+    ["a bad hash", { ...good(), hash: "not-a-hash" }],
+    ["a hash with a path in it", { ...good(), hash: "../../etc/passwd" }],
+    ["no hash", { ...good(), hash: undefined }],
+    ["a bad signer", { ...good(), signerId: "Not An Account" }],
+    ["no signer", { ...good(), signerId: undefined }],
+    ["a bad receiver", withTx((tx) => (tx.receiverId = "Bad Receiver"))],
+    ["no tx", { ...good(), tx: undefined }],
+    ["no actions", withTx((tx) => (tx.actions = []))],
+    ["actions not an array", withTx((tx) => (tx.actions = {}))],
+    [
+      "too many actions",
+      withTx((tx) => (tx.actions = Array.from({ length: 17 }, () => tx.actions?.[0] ?? {}))),
+    ],
+    ["an unknown action type", withTx((tx) => (tx.actions[0].type = "DeleteAccount"))],
+    ["an action that is not an object", withTx((tx) => (tx.actions = ["freeze"]))],
+    ["no deposit", withTx((tx) => (tx.actions[0].deposit = undefined))],
+    ["a deposit that is not digits", withTx((tx) => (tx.actions[0].deposit = "1.5"))],
+    ["a deposit above U128", withTx((tx) => (tx.actions[0].deposit = (2n ** 128n).toString()))],
+    ["a numeric deposit", withTx((tx) => (tx.actions[0].deposit = 1))],
+    ["no gas", withTx((tx) => (tx.actions[0].gas = undefined))],
+    ["a bad method name", withTx((tx) => (tx.actions[0].methodName = "free ze"))],
+    ["an empty method name", withTx((tx) => (tx.actions[0].methodName = ""))],
+    ["a long method name", withTx((tx) => (tx.actions[0].methodName = "a".repeat(129)))],
+    ["args that are not an object", withTx((tx) => (tx.actions[0].args = []))],
+    ["args that are too big", withTx((tx) => (tx.actions[0].args = { x: "y".repeat(17_000) }))],
+    [
+      "a last call this console does not read",
+      withTx((tx) => (tx.actions[0].methodName = "spend")),
+    ],
+    ["no starting height", { ...good(), baselineHeight: undefined }],
+    ["a starting height of 0", { ...good(), baselineHeight: 0 }],
+    ["a negative starting height", { ...good(), baselineHeight: -1 }],
+    ["a fractional starting height", { ...good(), baselineHeight: 1.5 }],
+    ["a starting height as text", { ...good(), baselineHeight: "100" }],
+    ["a starting height of NaN", { ...good(), baselineHeight: Number.NaN }],
+  ])("%s", async (_name, request) => {
+    expect(typeof parseRequest(request)).toBe("string");
+    const { rpc, calls } = rpcFor(new Error("must not be asked"));
+    const r = await confirmTx(request, rpc);
+    expect(r.status).toBe("unknown");
+    expect(calls).toEqual([]);
+  });
+
+  it("says what is wrong with the actions and with the starting height", () => {
+    expect(parseRequest(withTx((tx) => (tx.actions = [])))).toBe(
+      "The transaction has no actions, or too many",
+    );
+    expect(
+      parseRequest(
+        withTx((tx) => (tx.actions = Array.from({ length: 17 }, () => tx.actions?.[0] ?? {}))),
+      ),
+    ).toBe("The transaction has no actions, or too many");
+    expect(parseRequest({ ...good(), baselineHeight: undefined })).toBe(
+      "The starting block height is missing",
+    );
+    expect(parseRequest({ ...good(), baselineHeight: -1 })).toBe(
+      "The starting block height is not a block height",
+    );
+  });
+
+  it("checks the method name of EVERY action, not only the last", () => {
+    const two = (first: string): Json => {
+      const r = clone({
+        hash: HASH,
+        signerId: OWNER,
+        tx: toPrepared(fundVaultUsdcTx("usdc.near", VAULT, "25")),
+        baselineHeight: 100,
+      }) as Json;
+      r.tx.actions[0].methodName = first;
+      return r;
+    };
+    expect(typeof parseRequest(two("storage_deposit"))).toBe("object");
+    for (const bad of ["a b", "", "a".repeat(129), "a.b", "a-b", "a;b", "é", "a\nb"]) {
+      expect(parseRequest(two(bad)), JSON.stringify(bad)).toBe("An action was malformed");
     }
   });
 
-  it("without a receiver to compare, the signer and the method are still checked", async () => {
-    const tree = t();
-    const { rpc } = rpcReturning(tree);
-    expect((await confirmTx(hashOf(tree), APPROVER, "approve", undefined, rpc)).status).toBe("ok");
-    expect((await confirmTx(hashOf(tree), APPROVER, "freeze", undefined, rpc)).status).toBe(
-      "unknown",
-    );
+  it("echoes only a real hash back", async () => {
+    const { rpc } = rpcFor(new Error("x"));
+    expect((await confirmTx({ ...good(), signerId: "BAD" }, rpc)).txHash).toBe(HASH);
+    expect(
+      (await confirmTx({ ...good(), hash: "<script>", signerId: "BAD" }, rpc)).txHash,
+    ).toBeNull();
+    expect((await confirmTx(null, rpc)).txHash).toBeNull();
+  });
+
+  it("a request is read from its fields, not from anything else it carries", () => {
+    const r = parseRequest({
+      ...good(),
+      extra: "x",
+      tx: { ...good().tx, more: 1 },
+    }) as ConfirmRequest;
+    expect(r).toEqual(good());
   });
 });
 
 describe("what cannot be established is unknown, never ok", () => {
   const tree = asApprove(real.paid);
-  const hash = hashOf(tree);
+  const request = requestFor(tree, "approve", {});
 
   it("the node cannot be reached: unknown, with the hash", async () => {
-    const { rpc } = rpcReturning(new Error("network error: timed out after 8000ms"));
-    const r = await confirmTx(hash, APPROVER, "approve", VAULT, rpc);
-    expect(r).toMatchObject({ status: "unknown", txHash: hash });
+    const r = await confirmTx(
+      request,
+      rpcFor(new Error("network error: timed out after 8000ms")).rpc,
+    );
+    expect(r).toMatchObject({ status: "unknown", txHash: hashOf(tree) });
     expect(r.error).toMatch(/timed out/);
     expect(r.error).toMatch(/confirm on the explorer/);
   });
 
   it("the node says there is no such transaction: unknown", async () => {
-    const { rpc } = rpcReturning(new Error("UNKNOWN_TRANSACTION"));
-    expect((await confirmTx(hash, APPROVER, "approve", VAULT, rpc)).status).toBe("unknown");
+    const r = await confirmTx(request, rpcFor(new Error("UNKNOWN_TRANSACTION")).rpc);
+    expect(r.status).toBe("unknown");
   });
 
   it("an answer that is not a transaction: unknown", async () => {
@@ -598,38 +1207,107 @@ describe("what cannot be established is unknown, never ok", () => {
       { status: { SuccessValue: "" } },
       { transaction: {} },
     ]) {
-      const { rpc } = rpcReturning(junk);
-      const r = await confirmTx(hash, APPROVER, "approve", VAULT, rpc);
+      const r = await confirmTx(request, rpcFor(junk).rpc);
       expect(r.status, JSON.stringify(junk)).toBe("unknown");
     }
   });
 
   it("an error message is cut short", async () => {
-    const { rpc } = rpcReturning(new Error("x".repeat(5000)));
-    const r = await confirmTx(hash, APPROVER, "approve", VAULT, rpc);
+    const r = await confirmTx(request, rpcFor(new Error("x".repeat(5000))).rpc);
     expect(r.error?.length).toBeLessThan(400);
   });
+});
 
-  it("malformed inputs never reach the network", async () => {
-    const { rpc, calls } = rpcReturning(tree);
-    const cases: [string, string, string, string | undefined][] = [
-      ["not-a-hash", APPROVER, "approve", VAULT],
-      [hash, "Not An Account", "approve", VAULT],
-      [hash, APPROVER, "spend", VAULT],
-      [hash, APPROVER, "constructor", VAULT],
-      [hash, APPROVER, "approve", "Bad Receiver"],
-    ];
-    for (const [h, s, m, r] of cases) {
-      const result = await confirmTx(h, s, m, r, rpc);
-      expect(result.status, `${h} ${s} ${m} ${r}`).toBe("unknown");
-    }
-    expect(calls).toEqual([]);
+describe("sameJson", () => {
+  it("is equal for the same value whatever the order of keys", () => {
+    expect(
+      sameJson({ a: 1, b: { c: [1, 2, { d: null }] } }, { b: { c: [1, 2, { d: null }] }, a: 1 }),
+    ).toBe(true);
+    expect(sameJson([], [])).toBe(true);
+    expect(sameJson({}, {})).toBe(true);
+    expect(sameJson("a", "a")).toBe(true);
+    expect(sameJson(null, null)).toBe(true);
   });
 
-  it("a bad hash is not echoed back as a link", async () => {
-    const { rpc } = rpcReturning(tree);
-    expect(
-      (await confirmTx("../../etc/passwd", APPROVER, "approve", VAULT, rpc)).txHash,
-    ).toBeNull();
+  it("is not equal for anything that differs, including its type", () => {
+    for (const [a, b] of [
+      [{ a: 1 }, { a: 2 }],
+      [{ a: 1 }, { a: "1" }],
+      [{ a: 1 }, { a: 1, b: 2 }],
+      [{ a: 1, b: 2 }, { a: 1 }],
+      [{ a: 1 }, { b: 1 }],
+      [
+        [1, 2],
+        [2, 1],
+      ],
+      [[1], [1, 2]],
+      [{}, []],
+      [[], {}],
+      [null, {}],
+      [{}, null],
+      [0, "0"],
+      [undefined, null],
+      [{ a: undefined }, {}],
+      [{ a: [] }, { a: {} }],
+    ] as [unknown, unknown][]) {
+      expect(sameJson(a, b), JSON.stringify([a, b])).toBe(false);
+    }
+  });
+
+  it("gives up (not equal) on absurd nesting instead of recursing without bound", () => {
+    let a: unknown = 1;
+    let b: unknown = 1;
+    for (let i = 0; i < 50; i++) {
+      a = [a];
+      b = [b];
+    }
+    expect(sameJson(a, b)).toBe(false);
+  });
+
+  it("treats a key called __proto__ as a key", () => {
+    const a = JSON.parse('{"__proto__": {"x": 1}}');
+    const b = JSON.parse('{"__proto__": {"x": 2}}');
+    expect(sameJson(a, b)).toBe(false);
+    expect(sameJson(a, JSON.parse('{"__proto__": {"x": 1}}'))).toBe(true);
+  });
+});
+
+describe("currentFinalHeight", () => {
+  const rpc = (answer: unknown): RpcLike => ({
+    async call() {
+      if (answer instanceof Error) throw answer;
+      return answer as never;
+    },
+  });
+
+  it("reads the final block's height", async () => {
+    expect(await currentFinalHeight(rpc({ header: { height: 123 } }))).toBe(123);
+  });
+
+  it("is null when the network cannot say", async () => {
+    for (const bad of [
+      new Error("down"),
+      null,
+      {},
+      { header: null },
+      { header: {} },
+      { header: { height: 0 } },
+      { header: { height: -1 } },
+      { header: { height: 1.5 } },
+      { header: { height: "5" } },
+    ]) {
+      expect(await currentFinalHeight(rpc(bad)), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("asks for the final block", async () => {
+    const asked: unknown[] = [];
+    await currentFinalHeight({
+      async call(method, params) {
+        asked.push([method, params]);
+        return { header: { height: 1 } } as never;
+      },
+    });
+    expect(asked).toEqual([["block", { finality: "final" }]]);
   });
 });

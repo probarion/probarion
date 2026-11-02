@@ -11,8 +11,11 @@
  * - every executor URL is `https://raw.githubusercontent.com/<org>/<repo>/<40-hex commit>/<file>`: the
  *   bytes behind it can never change. No branch, no query, no other host;
  * - `permissions.external` holds only the injected objects the executor really calls (read from each
- *   executor at the pinned commit), and never `window`, `document`, `location`, `eval`, `fetch`,
- *   `localStorage` or a parent of them;
+ *   executor at the pinned commit), and only from an exact allowlist (`ALLOWED_EXTERNAL_ENTITIES`):
+ *   `meteorCom`, `meteorComV2`, `nightly.near`. Anything else is refused, so `window`, `document`,
+ *   `location`, `eval`, `fetch`, `localStorage` and every way to reach them can never be added;
+ * - icons are our own files under `public/wallets` (or an svg data URI), never a third-party image host
+ *   (W-T6-R2); see `ICON_AUDIT` for where each came from;
  * - wallets whose executor is served from a host we cannot pin (their own domain, a feature branch,
  *   a CDN), or needs WalletConnect (we pass no project id), are not offered.
  *
@@ -75,6 +78,13 @@ const raw = (pin: Pin, path: string): string =>
   `https://raw.githubusercontent.com/${pin.repo}/${pin.sha}/${path}`;
 const version = (upstream: string, pin: Pin): string => `${upstream}+${pin.sha.slice(0, 7)}`;
 
+/**
+ * Meteor's logo as an svg data URI (percent-encoded, byte for byte the file in ICON_AUDIT): an svg file
+ * under public/ would be linted as code, and a data URI cannot be swapped by editing a hosted file.
+ */
+const METEOR_ICON =
+  "data:image/svg+xml,%3Csvg%20data-name%3D%22Layer%201%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20xmlns%3Axlink%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxlink%22%20viewBox%3D%220%200%20400.04%20400.04%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22a%22%20x1%3D%22215.39%22%20y1%3D%22239.47%22%20x2%3D%22382.38%22%20y2%3D%22239.47%22%20gradientTransform%3D%22translate(-122.96%20-148.16)%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22.07%22%20stop-color%3D%22%230f0f36%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22.76%22%20stop-color%3D%22%23232371%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22b%22%20x1%3D%22285.49%22%20y1%3D%22335.04%22%20x2%3D%22469.44%22%20y2%3D%22335.04%22%20gradientTransform%3D%22translate(-78.4%20-231.71)%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%230f0f36%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22.8%22%20stop-color%3D%22%23232371%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22c%22%20x1%3D%22298.99%22%20y1%3D%22428.49%22%20x2%3D%22366.74%22%20y2%3D%22428.49%22%20gradientTransform%3D%22translate(.74%20-227.54)%22%20xlink%3Ahref%3D%22%23a%22%2F%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22d%22%20x1%3D%2236.6%22%20y1%3D%22332.92%22%20x2%3D%22431.62%22%20y2%3D%22332.92%22%20gradientTransform%3D%22rotate(-45%2058.56%20313.83)%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23479ff5%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22.22%22%20stop-color%3D%22%23405ee5%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22.35%22%20stop-color%3D%22%23523bda%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22.43%22%20stop-color%3D%22%235a55ce%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22.56%22%20stop-color%3D%22%235a55ce%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22.76%22%20stop-color%3D%22%233b3cbb%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%22.87%22%20stop-color%3D%22%23171e9b%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23171e9b%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Cpath%20d%3D%22M105%2065.29h128.39a26%2026%200%200%201%2026%2026%2026%2026%200%200%201-26%2026H105a12.54%2012.54%200%200%201-12.57-12.49v-27A12.54%2012.54%200%200%201%20105%2065.29Z%22%20transform%3D%22rotate(-45%20175.92%2091.31)%22%20fill%3D%22url(%23a)%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M220.2%2076.74h144.24A26.59%2026.59%200%200%201%20391%20103.33a26.59%2026.59%200%200%201-26.59%2026.59H220.2a13.11%2013.11%200%200%201-13.11-13.11v-27a13.11%2013.11%200%200%201%2013.11-13.07Z%22%20transform%3D%22rotate(-45%20299.06%20103.33)%22%20fill%3D%22url(%23b)%22%2F%3E%0A%20%20%3Crect%20x%3D%22299.73%22%20y%3D%22176.9%22%20width%3D%2267.75%22%20height%3D%2248.08%22%20rx%3D%2224.04%22%20transform%3D%22rotate(-45%20333.6%20200.95)%22%20fill%3D%22url(%23c)%22%2F%3E%0A%20%20%3Cpath%20d%3D%22m339.09%2099.35-64.8%2064.8a25.5%2025.5%200%200%201-36.05%200%2025.49%2025.49%200%200%201%200-36L252%20114.37c8.68-8.69%209.33-22.93.81-31.77a22.3%2022.3%200%200%200-31.81-.29l-60.82%2060.83a25.49%2025.49%200%200%201-36%200%2025.5%2025.5%200%200%201%200-36.06l20.26-20.27a22.31%2022.31%200%200%200-.3-31.83c-8.84-8.52-23.08-7.86-31.76.82l-55%2055c-.26.25-.48.53-.72.79A163.53%20163.53%200%200%200%20287.8%20342.86l-.2-.2c.26-.24.53-.46.79-.72l97.09-97.09c8.68-8.68%209.34-22.92.81-31.76a22.31%2022.31%200%200%200-31.83-.3s18.18-18.15-9.8%209.86a23.25%2023.25%200%200%201-32.9%200%2023.25%2023.25%200%200%201%200-32.9l59.39-59.39a22.31%2022.31%200%200%200-.3-31.83c-8.85-8.53-23.08-7.86-31.76.82Z%22%20fill%3D%22url(%23d)%22%2F%3E%0A%20%20%3Crect%20x%3D%2262.59%22%20y%3D%2294.34%22%20width%3D%2250.97%22%20height%3D%2225.49%22%20rx%3D%2212.74%22%20transform%3D%22rotate(-45%2088.07%20107.1)%22%20fill%3D%22%23a4a1ef%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22124.11%22%20cy%3D%2271.04%22%20r%3D%2212.74%22%20fill%3D%22%23c2bffc%22%2F%3E%0A%20%20%3Crect%20x%3D%22208.62%22%20y%3D%2289.84%22%20width%3D%2238.23%22%20height%3D%2225.49%22%20rx%3D%2212.74%22%20transform%3D%22rotate(-45%20227.74%20102.58)%22%20fill%3D%22%23786bee%22%2F%3E%0A%3C%2Fsvg%3E%0A";
+
 const LEDGER_ICON =
   "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20768.91%20669.35%22%3E%3Cpath%20style%3D%22stroke%3A%23000%22%20d%3D%22M-2.876-2.76h774.662v674.871H-2.876z%22%2F%3E%3Cpath%20d%3D%22M150.057%20422.845v115.877h176.334v-25.698H175.749v-90.179zm443.103%200v90.179H442.519v25.692h176.334V422.845zM326.647%20246.504v176.334h115.872v-23.174H352.34v-153.16zm-176.59-115.877v115.877h25.692v-90.185h150.642v-25.692zm292.462%200v25.692H593.16v90.185h25.693V130.627z%22%20style%3D%22fill%3A%23fff%22%2F%3E%3C%2Fsvg%3E";
 
@@ -102,7 +112,7 @@ export const CURATED_MANIFEST: CuratedManifest = {
     {
       id: "hot-wallet",
       name: "HOT Wallet",
-      icon: "https://app.hot-labs.org/images/hot/hot-icon.png",
+      icon: "/wallets/hot-wallet.png",
       description:
         "Secure Multichain wallet. Manage assets, refuel gas, and mine $HOT on any device with HOT Wallet",
       website: "https://hot-labs.org/wallet",
@@ -128,16 +138,21 @@ export const CURATED_MANIFEST: CuratedManifest = {
       },
       permissions: {
         storage: true,
+        // Read from hotwallet.js at the pinned commit (`window.selector.open(...)`, the only opener):
+        // - https://download.hot-labs.org?hotconnector           (get the extension)
+        // - https://t.me/hot_wallet/app?startapp=hotcall-<id>    (Telegram)
+        // - https://app.hot-labs.org/link?hotcall-<id>           (universal link, and the Android fallback)
+        // - intent://hotcall-<id>#Intent;scheme=hotwallet;package=app.herewallet.hot;...;end (Android)
+        // The last has a different host on every request (<id> is a hash of the request), and
+        // near-connect compares the host exactly, so `intent://` cannot be narrowed to a host. ACCEPTED:
+        // it lets this commit-pinned executor open an Android intent link from a user tap, nothing
+        // more. The old entries nobody opens (hotwallet://, the app stores, wallet.near.org,
+        // hot-labs.org/wallet) are gone.
         allowsOpen: [
           "https://download.hot-labs.org",
-          "https://hot-labs.org/wallet",
           "https://t.me/hot_wallet/app",
           "https://app.hot-labs.org/link",
-          "https://play.google.com",
-          "https://apps.apple.com",
-          "hotwallet://",
           "intent://",
-          "https://wallet.near.org",
         ],
         external: [],
       },
@@ -145,7 +160,7 @@ export const CURATED_MANIFEST: CuratedManifest = {
     {
       id: "meteor-wallet",
       name: "Meteor Wallet",
-      icon: raw(PIN.meteor, "assets/meteor-logo-svg.svg"),
+      icon: METEOR_ICON,
       description:
         "The most simple and secure wallet to manage your crypto, access DeFi, and explore Web3",
       website: "https://meteorwallet.app/",
@@ -185,7 +200,7 @@ export const CURATED_MANIFEST: CuratedManifest = {
     {
       id: "mynearwallet",
       name: "MyNearWallet",
-      icon: "https://storage.herewallet.app/upload/d0544304123d10518af961a15d5722ff1cef7abf62155f830e6d733e41f7da4b.png",
+      icon: "/wallets/mynearwallet.png",
       description: "Web wallet for NEAR.",
       website: "https://mynearwallet.com",
       version: version("1.0.0", PIN.selector),
@@ -208,7 +223,7 @@ export const CURATED_MANIFEST: CuratedManifest = {
     {
       id: "nightly-wallet",
       name: "Nightly Wallet",
-      icon: "https://storage.herewallet.app/upload/6947eb5c14c65a715fb49a08e5937dcecc994bf224b3869b9878bd7a7db068f9.webp",
+      icon: "/wallets/nightly-wallet.webp",
       description: "Surf through the multichain Metaverse with Nightly",
       website: "https://nightly.app",
       version: version("1.0.0", PIN.selector),
@@ -262,6 +277,47 @@ export const CURATED_MANIFEST: CuratedManifest = {
 };
 
 /**
+ * Where each wallet icon came from. They are images, not code; each was fetched once on 2026-11-02
+ * (Meteor's from its commit-pinned URL, the other three from the wallet's own host), checked for its
+ * file signature (PNG, WEBP) or, for the svg, for scripts, handlers and external references, and
+ * committed: the PNG and WEBP as files under `public/wallets` (`file`), Meteor's svg as the data URI
+ * `METEOR_ICON` (no `file`). Ledger's icon is the svg data URI from its upstream manifest, not audited
+ * here. The tests compare the sha256 of what is in the repo with the record, so a changed image fails.
+ */
+export const ICON_AUDIT: Record<
+  string,
+  { file?: string; source: string; bytes: number; sha256: string }
+> = {
+  "hot-wallet": {
+    file: "hot-wallet.png",
+    source: "https://app.hot-labs.org/images/hot/hot-icon.png",
+    bytes: 45296,
+    sha256: "3390b7e4e15fed4122572898712bdf4c6ede862e36150203deecacc4f8bbe5ae",
+  },
+  "meteor-wallet": {
+    source:
+      "https://raw.githubusercontent.com/Meteor-Wallet/meteor_wallet_sdk/911f9d645b912fadbb1af0d0953cba44b005c82f/assets/meteor-logo-svg.svg",
+    bytes: 2816,
+    sha256: "9c3981ca59212248e09d37011c07492bf1e19d7d55b9210213af3be6079a05ae",
+  },
+  mynearwallet: {
+    file: "mynearwallet.png",
+    source:
+      "https://storage.herewallet.app/upload/d0544304123d10518af961a15d5722ff1cef7abf62155f830e6d733e41f7da4b.png",
+    bytes: 11051,
+    sha256: "f907c2e6d0971cd6cb458e9d62519eea58083064af886176837f80763346db24",
+  },
+  "nightly-wallet": {
+    file: "nightly-wallet.webp",
+    source:
+      "https://storage.herewallet.app/upload/6947eb5c14c65a715fb49a08e5937dcecc994bf224b3869b9878bd7a7db068f9.webp",
+    bytes: 12226,
+    sha256: "6947eb5c14c65a715fb49a08e5937dcecc994bf224b3869b9878bd7a7db068f9",
+  },
+  // ledger: an svg data URI inside the manifest (from the upstream manifest), no file
+};
+
+/**
  * What was read at the pinned commit: the executor's size and sha256, so a reviewer can fetch the URL
  * and compare. (The connector cannot check a hash itself; the commit in the URL is what pins the bytes.)
  */
@@ -293,45 +349,16 @@ export const EXECUTOR_AUDIT: Record<string, { bytes: number; sha256: string }> =
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Path segments of an `external` entity that must never appear: the executor can call any method of the
- * object an entity names (`obj[key](...args)`), so `window`, `document`, a way to reach them (`self`,
- * `top`, `parent`, `opener`, `frames`, `globalThis`), storage, network or code-running globals are out.
+ * The only `permissions.external` entities any wallet may have, exactly. An executor can call any
+ * method of the object an entity names (`obj[key](...args)` on our `window`), so this is a list of
+ * what is allowed, not of what is forbidden: nothing else can be added by mistake, however it is
+ * spelled. Each is an object a wallet extension injects, read from the executor that uses it.
  */
-export const FORBIDDEN_EXTERNAL_SEGMENTS: ReadonlySet<string> = new Set([
-  "window",
-  "self",
-  "top",
-  "parent",
-  "opener",
-  "frames",
-  "globalthis",
-  "global",
-  "document",
-  "location",
-  "history",
-  "navigator",
-  "localstorage",
-  "sessionstorage",
-  "indexeddb",
-  "caches",
-  "cookiestore",
-  "eval",
-  "function",
-  "fetch",
-  "xmlhttprequest",
-  "websocket",
-  "eventsource",
-  "importscripts",
-  "settimeout",
-  "setinterval",
-  "postmessage",
-  "open",
-  "constructor",
-  "prototype",
-  "__proto__",
-  "__defineGetter__",
-  "__lookupGetter__",
-]);
+export const ALLOWED_EXTERNAL_ENTITIES: readonly string[] = [
+  "meteorCom",
+  "meteorComV2",
+  "nightly.near",
+];
 
 const ALLOWED_PERMISSION_KEYS: ReadonlySet<string> = new Set([
   "storage",
@@ -343,13 +370,13 @@ const ALLOWED_PERMISSION_KEYS: ReadonlySet<string> = new Set([
 ]);
 const ALLOWED_OPEN_PROTOCOLS: ReadonlySet<string> = new Set([
   "https:",
-  "hotwallet:",
   "intent:",
   "meteorwallet:",
   "meteorwalletdev:",
 ]);
-const EXTERNAL_ENTITY = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/;
 const PINNED_PATH = /^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/[0-9a-f]{40}\/[A-Za-z0-9_./-]+$/;
+const LOCAL_ICON = /^\/wallets\/[a-z0-9-]+\.(?:png|svg|webp)$/;
+const SVG_DATA_URI = /^data:image\/svg\+xml,[A-Za-z0-9%._~!*'()-]+$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -435,16 +462,10 @@ export function validateManifest(manifest: unknown): string[] {
         if (!Array.isArray(p.external)) problems.push(`${name}: external must be a list`);
         else {
           for (const entity of p.external) {
-            if (typeof entity !== "string" || !EXTERNAL_ENTITY.test(entity)) {
+            if (typeof entity !== "string" || !ALLOWED_EXTERNAL_ENTITIES.includes(entity)) {
               problems.push(
-                `${name}: external entity ${JSON.stringify(entity)} is not a dotted name`,
+                `${name}: external ${JSON.stringify(entity)} is not on the allowlist (${ALLOWED_EXTERNAL_ENTITIES.join(", ")})`,
               );
-              continue;
-            }
-            for (const segment of entity.split(".")) {
-              if (FORBIDDEN_EXTERNAL_SEGMENTS.has(segment.toLowerCase())) {
-                problems.push(`${name}: external "${entity}" reaches ${segment}`);
-              }
             }
           }
         }
@@ -464,8 +485,12 @@ export function validateManifest(manifest: unknown): string[] {
       }
     }
 
-    if (typeof w.icon === "string" && !/^(?:https:\/\/|data:image\/svg\+xml,)/.test(w.icon)) {
-      problems.push(`${name}: icon must be https or an svg data URI`);
+    // No third-party image host (it would see every visitor who opens the selector): an icon is one of
+    // our own files under /wallets, or an svg data URI.
+    if (typeof w.icon !== "string" || !(LOCAL_ICON.test(w.icon) || SVG_DATA_URI.test(w.icon))) {
+      problems.push(
+        `${name}: icon must be one of ours (/wallets/<name>.png|svg|webp) or an svg data URI`,
+      );
     }
   }
 

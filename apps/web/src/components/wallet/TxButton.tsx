@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { buttonClass } from "@/components/ui";
 import type { Network } from "@/lib/config";
 import { actionKey, browserStore, clearLock, readLock, writeLock } from "@/lib/near/lock";
-import { sendLocked, type TxResult } from "@/lib/near/outcome";
+import { type DescribeResult, sendLocked, type TxResult } from "@/lib/near/outcome";
 import { actionLabel, type WalletTx } from "@/lib/near/tx";
 import { TxResultNote } from "./TxResultNote";
 import { useWallet } from "./WalletProvider";
@@ -18,10 +18,11 @@ type Prepared = WalletTx | { error: string };
  * transaction) locks the button until the owner says they checked, because the transaction may have
  * run. The lock survives a reload (sessionStorage, keyed by the action).
  *
- * `lockKey` names the action for the lock when the transaction is only known after `prepare()`
- * (with `tx` the key is derived from the transaction itself).
+ * With `tx` the lock is keyed by the transaction itself. With `prepare()` the transaction is only
+ * known after the click, so a `lockKey` naming the action is REQUIRED, and the types enforce it:
+ * without one a reload would forget an unconfirmed send and let the owner sign it again.
  */
-export function TxButton(props: {
+export interface TxButtonBaseProps {
   label: string;
   network: Network;
   tx?: WalletTx;
@@ -29,8 +30,21 @@ export function TxButton(props: {
   expectedSigner?: string;
   confirm?: string;
   lockKey?: string;
+  /** Wording for the result, live or read back after a reload (so a reloaded lock reads the same). */
+  describe?: DescribeResult;
   onResult?: (r: TxResult) => void | Promise<void>;
-}) {
+}
+
+/**
+ * What a use of the button must add: a `lockKey` whenever it passes `prepare`. (A generic rather than
+ * a union, so `ComponentProps<typeof TxButton>` and `Omit` keep working for wrappers; a wrapper that
+ * forwards a loose `prepare?` should itself require a `lockKey` with it.)
+ */
+export type RequiredWithPrepare<P> = P extends { prepare: (...args: never[]) => unknown }
+  ? { lockKey: string }
+  : unknown;
+
+export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPrepare<P>) {
   const { sendTx, accountId, ready } = useWallet();
   const router = useRouter();
   const inflight = useRef(false); // state updates are async; two fast clicks must not both sign
@@ -103,7 +117,14 @@ export function TxButton(props: {
         </p>
       ) : null}
       {error ? <p className="mt-1 text-xs text-rose-700">{error}</p> : null}
-      {result ? <TxResultNote result={result} network={props.network} account={accountId} /> : null}
+      {result ? (
+        <TxResultNote
+          result={result}
+          network={props.network}
+          account={accountId}
+          describe={props.describe}
+        />
+      ) : null}
       {locked ? (
         <button
           type="button"

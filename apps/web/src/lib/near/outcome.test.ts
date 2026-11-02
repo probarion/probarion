@@ -15,6 +15,7 @@ import {
   type TxResult,
   UNKNOWN_HEADLINE,
   unconfirmed,
+  withWords,
 } from "./outcome";
 import { GAS, type GasMethod, type ReadableMethod } from "./tx";
 
@@ -606,5 +607,53 @@ describe("what the owner reads", () => {
     expect(v.headline).toBe("Refused");
     expect(v.detail).toBe("name taken or deposit too low, refunded");
     expect(`${v.headline} ${v.detail}`).not.toMatch(/try again|retry/i);
+  });
+});
+
+describe("withWords: a wrapper's wording on top of ours", () => {
+  const base = describeTxResult({
+    status: "unknown",
+    txHash: HASH,
+    code: "LackBalanceForState",
+    error: "the vault is out of NEAR",
+  });
+
+  it("replaces the headline and the detail it names, and nothing else", () => {
+    const v = withWords(base, {
+      headline: "Sent, check your wallet",
+      detail: "Top up your account",
+    });
+    expect(v).toEqual({
+      ...base,
+      headline: "Sent, check your wallet",
+      detail: "Top up your account",
+    });
+    expect(v.tone).toBe(base.tone);
+    expect(v.explorer).toBe(base.explorer);
+  });
+
+  it("keeps what it does not name, and a null detail clears the line", () => {
+    expect(withWords(base, { detail: "only the detail" })).toEqual({
+      ...base,
+      detail: "only the detail",
+    });
+    expect(withWords(base, { headline: "only the headline" })).toEqual({
+      ...base,
+      headline: "only the headline",
+    });
+    expect(withWords(base, { detail: null }).detail).toBeNull();
+    expect(withWords(base, { detail: undefined }).detail).toBe(base.detail);
+    expect(withWords(base, {})).toEqual(base);
+  });
+
+  it("no words at all leaves the view as it is", () => {
+    expect(withWords(base, null)).toBe(base);
+    expect(withWords(base, undefined)).toBe(base);
+  });
+
+  it("does not change the view it was given", () => {
+    const frozen = Object.freeze({ ...base });
+    withWords(frozen, { headline: "x", detail: "y" });
+    expect(frozen).toEqual(base);
   });
 });

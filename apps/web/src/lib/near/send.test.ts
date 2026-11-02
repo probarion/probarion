@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { TxResult } from "./outcome";
+import type { ConfirmRequest, TxResult } from "./outcome";
 import { type SendDeps, type SendWallet, sendWalletTx } from "./send";
 import { sendNearTx } from "./transfer";
-import { approveTx, freezeTx, fundVaultUsdcTx, type WalletTx, withdrawTx } from "./tx";
+import { approveTx, freezeTx, fundVaultUsdcTx, toPrepared, type WalletTx, withdrawTx } from "./tx";
 
 const HASH = "9fV2pZ7mUq5f6p3rGq7bX1tYkqfUu1Vb3bWm2C5g7h8J";
 const VAULT = "acme.vaults.probarion.near";
@@ -17,11 +17,15 @@ function setup(opts: {
   confirm?: Confirm;
   getWallet?: () => Promise<SendWallet>;
   accountsFail?: boolean;
+  baseline?: () => Promise<number | null>;
 }) {
   const calls = {
     sign: 0,
     accounts: 0,
-    confirm: [] as Parameters<Confirm>[],
+    baseline: 0,
+    /** What happened, in order: "baseline", "sign". */
+    order: [] as string[],
+    confirm: [] as ConfirmRequest[],
     params: [] as unknown[],
   };
   const wallet: SendWallet = {
@@ -32,6 +36,7 @@ function setup(opts: {
     },
     async signAndSendTransaction(p) {
       calls.sign++;
+      calls.order.push("sign");
       calls.params.push(p);
       return (opts.signs ?? (async () => ({ transaction: { hash: HASH, signer_id: OWNER } })))();
     },
@@ -39,20 +44,18 @@ function setup(opts: {
   const deps: SendDeps = {
     network: "testnet",
     getWallet: opts.getWallet ?? (async () => wallet),
-    confirm:
-      opts.confirm ??
-      (async (hash, signer, method, receiver) => {
-        calls.confirm.push([hash, signer, method, receiver]);
-        return { status: "ok", txHash: hash, code: null, error: null };
-      }),
+    baseline: async () => {
+      calls.baseline++;
+      calls.order.push("baseline");
+      return opts.baseline ? opts.baseline() : 777;
+    },
+    confirm: async (request) => {
+      calls.confirm.push(request);
+      return opts.confirm
+        ? opts.confirm(request)
+        : { status: "ok", txHash: request.hash, code: null, error: null };
+    },
   };
-  if (opts.confirm !== undefined) {
-    const inner = opts.confirm;
-    deps.confirm = async (...args) => {
-      calls.confirm.push(args);
-      return inner(...args);
-    };
-  }
   return { deps, calls, wallet };
 }
 
@@ -65,7 +68,9 @@ describe("sendWalletTx", () => {
     const r = await sendWalletTx(deps, tx, OWNER);
     expect(r).toEqual(ok());
     expect(calls.sign).toBe(1);
-    expect(calls.confirm).toEqual([[HASH, OWNER, "freeze", VAULT]]);
+    expect(calls.confirm).toEqual([
+      { hash: HASH, signerId: OWNER, tx: toPrepared(tx), baselineHeight: 777 },
+    ]);
     expect(calls.params).toEqual([
       { network: "testnet", receiverId: VAULT, actions: tx.actions, signerId: OWNER },
     ]);
@@ -80,8 +85,12 @@ describe("sendWalletTx", () => {
   it("uses the LAST action's method, so a funding transaction is read as ft_transfer", async () => {
     const { deps, calls } = setup({});
     await sendWalletTx(deps, fundVaultUsdcTx("usdc.near", VAULT, "5"), OWNER);
-    expect(calls.confirm[0]?.[2]).toBe("ft_transfer");
-    expect(calls.confirm[0]?.[3]).toBe("usdc.near");
+    const sent = calls.confirm[0]?.tx;
+    expect(sent?.actions.map((a) => (a.type === "FunctionCall" ? a.methodName : a.type))).toEqual([
+      "storage_deposit",
+      "ft_transfer",
+    ]);
+    expect(sent?.receiverId).toBe("usdc.near");
   });
 
   describe("the wallet's own answer is never believed", () => {
@@ -111,19 +120,19 @@ describe("sendWalletTx", () => {
         signs: async () => ({ transaction: { hash: HASH, signer_id: "other.near" } }),
       });
       await sendWalletTx(deps, freezeTx(VAULT));
-      expect(calls.confirm[0]).toEqual([HASH, "other.near", "freeze", VAULT]);
+      expect(calls.confirm[0]).toMatchObject({ hash: HASH, signerId: "other.near" });
     });
 
     it("falls back to the expected signer, then to the connected account, for the lookup", async () => {
       const a = setup({ signs: async () => ({ transaction: { hash: HASH } }) });
       await sendWalletTx(a.deps, freezeTx(VAULT), OWNER);
-      expect(a.calls.confirm[0]?.[1]).toBe(OWNER);
+      expect(a.calls.confirm[0]?.signerId).toBe(OWNER);
       const b = setup({
         accounts: ["solo.near"],
         signs: async () => ({ transaction: { hash: HASH } }),
       });
       await sendWalletTx(b.deps, freezeTx(VAULT));
-      expect(b.calls.confirm[0]?.[1]).toBe("solo.near");
+      expect(b.calls.confirm[0]?.signerId).toBe("solo.near");
     });
 
     it("the result carries the hash it was asked about, even if the server's answer names another", async () => {
@@ -195,7 +204,7 @@ describe("sendWalletTx", () => {
       const { deps, calls } = setup({
         signs: async () =>
           Promise.reject(Object.assign(new Error("Exceeded 60 seconds"), { txHash: HASH })),
-        confirm: async (hash) => ({ status: "ok", txHash: hash, code: null, error: null }),
+        confirm: async (request) => ok(request.hash),
       });
       const r = await sendWalletTx(deps, freezeTx(VAULT), OWNER);
       expect(r).toEqual(ok());
@@ -347,7 +356,10 @@ describe("sendWalletTx: a plain NEAR transfer (Send NEAR to this vault)", () => 
     expect(calls.params[0]).toHaveProperty("actions", [
       { type: "Transfer", params: { deposit: HALF } },
     ]);
-    expect(calls.confirm).toEqual([[HASH, OWNER, "Transfer", VAULT]]);
+    expect(calls.confirm).toEqual([
+      { hash: HASH, signerId: OWNER, tx: toPrepared(tx), baselineHeight: 777 },
+    ]);
+    expect(calls.confirm[0]?.tx.actions).toEqual([{ type: "Transfer", deposit: HALF }]);
   });
 
   it("is checked on chain like any other: the chain's failure is the result", async () => {
@@ -389,6 +401,113 @@ describe("sendWalletTx: a plain NEAR transfer (Send NEAR to this vault)", () => 
       actions: [...transfer.actions, ...call.actions],
     };
     await sendWalletTx(deps, both, OWNER);
-    expect(calls.confirm[0]?.[2]).toBe("freeze");
+    expect(calls.confirm[0]?.tx.actions).toEqual(toPrepared(both).actions);
+  });
+});
+
+describe("sendWalletTx: W-T6-R2", () => {
+  it("confirms against the expected signer, not the one the wallet says it used", async () => {
+    const { deps, calls } = setup({
+      accounts: [OWNER],
+      signs: async () => ({ transaction: { hash: HASH, signer_id: "stranger.near" } }),
+    });
+    await sendWalletTx(deps, freezeTx(VAULT), OWNER);
+    expect(calls.confirm[0]?.signerId).toBe(OWNER);
+  });
+
+  it("without an expected signer, the wallet's word (or its first account) is used and the server still checks it", async () => {
+    const { deps, calls } = setup({
+      accounts: [OWNER],
+      signs: async () => ({ transaction: { hash: HASH, signer_id: "other.near" } }),
+    });
+    await sendWalletTx(deps, freezeTx(VAULT));
+    expect(calls.confirm[0]?.signerId).toBe("other.near");
+  });
+
+  it("sends the server the transaction that was shown, action by action, as it went to the wallet", async () => {
+    const tx = fundVaultUsdcTx("usdc.near", VAULT, "25000000");
+    const { deps, calls } = setup({});
+    await sendWalletTx(deps, tx, OWNER);
+    const request = calls.confirm[0];
+    expect(request?.tx).toEqual(toPrepared(tx));
+    expect(request?.tx.actions).toEqual([
+      {
+        type: "FunctionCall",
+        methodName: "storage_deposit",
+        args: { account_id: VAULT, registration_only: true },
+        deposit: "1250000000000000000000",
+        gas: "30000000000000",
+      },
+      {
+        type: "FunctionCall",
+        methodName: "ft_transfer",
+        args: { receiver_id: VAULT, amount: "25000000", memo: "probarion:fund" },
+        deposit: "1",
+        gas: "30000000000000",
+      },
+    ]);
+    // what the wallet was asked to sign is the same list
+    const asked = calls.params[0] as { actions: WalletTx["actions"] };
+    expect(toPrepared({ ...tx, actions: asked.actions })).toEqual(request?.tx);
+  });
+
+  describe("the height when the send began", () => {
+    it("is read once, before the wallet is asked, and sent with the hash", async () => {
+      const { deps, calls } = setup({ baseline: async () => 4242 });
+      await sendWalletTx(deps, freezeTx(VAULT), OWNER);
+      expect(calls.baseline).toBe(1);
+      expect(calls.order).toEqual(["baseline", "sign"]);
+      expect(calls.confirm[0]?.baselineHeight).toBe(4242);
+    });
+
+    it("is not read at all when the send never reaches the wallet", async () => {
+      const { deps, calls } = setup({ accounts: ["stranger.near"] });
+      await sendWalletTx(deps, freezeTx(VAULT), OWNER);
+      expect(calls.baseline).toBe(0);
+    });
+
+    it.each([
+      ["a server that cannot say", async () => null],
+      ["a server that throws", async () => Promise.reject(new Error("rate limited"))],
+      ["a height of 0", async () => 0],
+      ["a negative height", async () => -3],
+      ["a fractional height", async () => 1.5],
+      ["a height as text", async () => "100" as unknown as number],
+      ["NaN", async () => Number.NaN],
+      ["an unsafe integer", async () => 2 ** 60],
+    ])(
+      "%s: the owner can still sign (a freeze must not wait on this), but the server is told there is no baseline",
+      async (_name, baseline) => {
+        const { deps, calls } = setup({ baseline });
+        const r = await sendWalletTx(deps, freezeTx(VAULT), OWNER);
+        expect(calls.sign).toBe(1);
+        expect(calls.confirm[0]?.baselineHeight).toBeNull();
+        expect(r.txHash).toBe(HASH);
+      },
+    );
+
+    it("a failing baseline read does not leave an unhandled rejection behind when the wallet is cancelled", async () => {
+      const unhandled: unknown[] = [];
+      const on = (e: unknown) => unhandled.push(e);
+      process.on("unhandledRejection", on);
+      const { deps } = setup({
+        baseline: async () => Promise.reject(new Error("boom")),
+        signs: async () => Promise.reject(new Error("User rejected the request")),
+      });
+      await sendWalletTx(deps, freezeTx(VAULT), OWNER);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      process.off("unhandledRejection", on);
+      expect(unhandled).toEqual([]);
+    });
+
+    it("a baseline that never comes does not stop the wallet from being asked", async () => {
+      const { deps, calls } = setup({
+        baseline: () => new Promise<number | null>(() => undefined),
+        signs: async () => Promise.reject(new Error("User rejected the request")),
+      });
+      const r = await sendWalletTx(deps, freezeTx(VAULT), OWNER);
+      expect(calls.sign).toBe(1);
+      expect(r).toMatchObject({ status: "unknown", txHash: null });
+    });
   });
 });

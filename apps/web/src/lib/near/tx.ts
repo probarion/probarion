@@ -381,3 +381,42 @@ export function intentsDepositTx(
     summary: `Deposit ${amount} USDC units to 1Click address ${depositAddress.slice(0, 10)}…`,
   };
 }
+
+/** One action in the canonical form the server checks the chain against: flat, plain JSON. */
+export type PreparedAction =
+  | {
+      type: "FunctionCall";
+      methodName: string;
+      args: Record<string, unknown>;
+      deposit: string;
+      gas: string;
+    }
+  | { type: "Transfer"; deposit: string };
+
+/** The transaction the owner was shown, as the server receives it to confirm what landed (W-T6-R2). */
+export interface PreparedTx {
+  receiverId: string;
+  actions: PreparedAction[];
+}
+
+export function toPrepared(tx: WalletTx): PreparedTx {
+  return {
+    receiverId: tx.receiverId,
+    actions: tx.actions.map((a): PreparedAction => {
+      if (a.type === "Transfer") return { type: "Transfer", deposit: a.params.deposit };
+      const p = a.params;
+      return {
+        type: "FunctionCall",
+        methodName: p.methodName,
+        args: p.args,
+        deposit: p.deposit,
+        gas: p.gas,
+      };
+    }),
+  };
+}
+
+/** The name a prepared action goes by in the chain check: its method, or `Transfer`. */
+export function preparedLabel(action: PreparedAction): string {
+  return action.type === "Transfer" ? "Transfer" : action.methodName;
+}

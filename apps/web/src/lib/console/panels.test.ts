@@ -12,6 +12,7 @@ type Captured = {
   expectedSigner?: string;
   prepare?: () => Promise<unknown>;
   onResult?: (r: TxResult) => void | Promise<void>;
+  describe?: (r: TxResult) => { headline?: string; detail?: string | null } | null | undefined;
   lockKey?: string;
 };
 
@@ -136,29 +137,48 @@ describe("VaultTxButton (W-T8-R1 item 2)", () => {
     return b;
   };
 
-  it("rewords the vault-only SDK text for a console-signed call: the signer first", async () => {
+  it("rewords the vault-only SDK text for a console-signed call: the signer first", () => {
     const b = render(false);
     const r = result({
       status: "failed",
       code: "LackBalanceForState",
       error: "vault is out of free NEAR",
     });
-    await b.onResult?.(r);
-    expect(r.error).toBe(SIGNER_OUT_OF_NEAR);
-    expect(r.error).not.toMatch(/Send NEAR to this vault/);
+    const words = b.describe?.(r);
+    expect(words?.detail).toBe(SIGNER_OUT_OF_NEAR);
+    expect(words?.detail).not.toMatch(/Send NEAR to this vault/);
+    // the words are set at display time: the result object itself is not changed
+    expect(r.error).toBe("vault is out of free NEAR");
   });
 
-  it("adds the vault top-up only when the vault's NEAR reads low", async () => {
+  it("adds the vault top-up only when the vault's NEAR reads low", () => {
     const b = render(true);
     const r = result({ status: "failed", code: "NotEnoughBalance", error: "x" });
-    await b.onResult?.(r);
-    expect(r.error).toBe(`${SIGNER_OUT_OF_NEAR} ${VAULT_LOW_SUGGESTION}`);
+    expect(b.describe?.(r)?.detail).toBe(`${SIGNER_OUT_OF_NEAR} ${VAULT_LOW_SUGGESTION}`);
+    expect(r.error).toBe("x");
   });
 
-  it("leaves every other outcome as the chain worded it", async () => {
+  it("leaves every other outcome as the chain worded it", () => {
     const b = render(true);
     const r = result({ status: "failed", code: "Frozen", error: "PROBARION:Frozen" });
-    await b.onResult?.(r);
+    expect(b.describe?.(r)).toBeUndefined();
     expect(r.error).toBe("PROBARION:Frozen");
+  });
+
+  it("rewords a locked send read back after a reload: it never went through onResult", () => {
+    const b = render(false);
+    const restored = result({
+      status: "unknown",
+      code: "LackBalanceForState",
+      error: "vault is out of free NEAR",
+    });
+    expect(b.describe?.(restored)?.detail).toBe(SIGNER_OUT_OF_NEAR);
+  });
+
+  it("still tells the wrapper about a live result through onResult (for the top-up link)", async () => {
+    const b = render(true);
+    await expect(
+      Promise.resolve(b.onResult?.(result({ status: "failed", code: "NotEnoughBalance" }))),
+    ).resolves.toBeUndefined();
   });
 });

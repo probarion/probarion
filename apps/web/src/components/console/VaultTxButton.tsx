@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Notice } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
-import { rewordOutOfNear } from "@/lib/console/display";
+import { consoleOutOfNear } from "@/lib/console/display";
 import type { TxResult } from "@/lib/near/outcome";
 import type { WalletTx } from "@/lib/near/tx";
 
@@ -45,9 +45,14 @@ export function VaultTxButton({
         expectedSigner={expectedSigner}
         confirm={confirm}
         tx={tx}
+        // The words are set at display time, so a result read back after a reload (a locked,
+        // unconfirmed send) says the same as the live one; the result object is not touched.
+        describe={(r: TxResult) => {
+          const v = consoleOutOfNear(r.code, outOfNearCodes, vaultNearLow);
+          return v === null ? undefined : { detail: v.text };
+        }}
         onResult={(r: TxResult) => {
-          const v = rewordOutOfNear(r, outOfNearCodes, vaultNearLow);
-          setTopUp(v?.suggestTopUp ?? false);
+          setTopUp(consoleOutOfNear(r.code, outOfNearCodes, vaultNearLow)?.suggestTopUp ?? false);
         }}
       />
       {topUp ? (

@@ -30,6 +30,9 @@ const h = vi.hoisted(() => ({
     confirm?: string;
     tx?: { receiverId: string; actions: { type: string; params: { methodName?: string } }[] };
     onResult?: (r: import("@/lib/near/outcome").TxResult) => void | Promise<void>;
+    describe?: (
+      r: import("@/lib/near/outcome").TxResult,
+    ) => { headline?: string; detail?: string | null } | null | undefined;
   }[],
 }));
 
@@ -450,8 +453,9 @@ describe("W-T8-R1 item 2: out-of-NEAR wording on the page", () => {
     await signInAs("acme.near");
     await html(VAULT);
     const r = lack();
-    await h.buttons.find((b) => b.label === "Freeze vault")?.onResult?.(r);
-    expect(r.error).toBe(SIGNER_OUT_OF_NEAR);
+    const words = h.buttons.find((b) => b.label === "Freeze vault")?.describe?.(r);
+    expect(words?.detail).toBe(SIGNER_OUT_OF_NEAR);
+    expect(r.error).toBe("vault is out of free NEAR"); // the result itself is not changed
   });
 
   it("adds the vault top-up when the vault's NEAR reads low (below 0.1)", async () => {
@@ -463,8 +467,8 @@ describe("W-T8-R1 item 2: out-of-NEAR wording on the page", () => {
     await signInAs("acme.near");
     await html(VAULT);
     const r = lack();
-    await h.buttons.find((b) => b.label === "Freeze vault")?.onResult?.(r);
-    expect(r.error).toBe(`${SIGNER_OUT_OF_NEAR} ${VAULT_LOW_SUGGESTION}`);
+    const words = h.buttons.find((b) => b.label === "Freeze vault")?.describe?.(r);
+    expect(words?.detail).toBe(`${SIGNER_OUT_OF_NEAR} ${VAULT_LOW_SUGGESTION}`);
   });
 
   it("does not suggest a top-up when the vault's NEAR is unavailable", async () => {
@@ -474,8 +478,8 @@ describe("W-T8-R1 item 2: out-of-NEAR wording on the page", () => {
     await signInAs("acme.near");
     await html(VAULT);
     const r = lack();
-    await h.buttons.find((b) => b.label === "Freeze vault")?.onResult?.(r);
-    expect(r.error).toBe(SIGNER_OUT_OF_NEAR);
+    const words = h.buttons.find((b) => b.label === "Freeze vault")?.describe?.(r);
+    expect(words?.detail).toBe(SIGNER_OUT_OF_NEAR);
   });
 });
 

@@ -1,5 +1,5 @@
 {
-  "_source": "Real `tx` RPC results (wait_until FINAL) from testnet, fetched read-only on 2026-11-02 from rpc.testnet.fastnear.com for the smoke transactions recorded in contracts/deployments/testnet.json. Trimmed: proofs and block hashes removed. All three are `spend` calls signed by the vault itself with the agent function-call key; `approve` runs the same payout and callback chain (contracts/vault/src/spend.rs execute_payout), so its receipt tree has the same shape. The transaction signature and public key are removed.",
+  "_source": "Real `tx` RPC results (wait_until FINAL) from testnet, fetched read-only on 2026-11-02 from rpc.testnet.fastnear.com for the smoke transactions recorded in contracts/deployments/testnet.json. Trimmed: proofs removed, and the transaction signature and public key. block_hash is kept: the confirmation reads the inclusion height from it. All three are `spend` calls signed by the vault itself with the agent function-call key; `approve` runs the same payout and callback chain (contracts/vault/src/spend.rs execute_payout), so its receipt tree has the same shape.",
   "paid": {
     "final_execution_status": "FINAL",
     "status": {
@@ -23,6 +23,7 @@
       "signer_id": "v0.probarion.testnet"
     },
     "transaction_outcome": {
+      "block_hash": "3zcXhu3viMmyFEfJ2vbjff6Au6Qw3xbaT2S8sx6WZ3h2",
       "id": "3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX",
       "outcome": {
         "logs": [],
@@ -37,6 +38,7 @@
     },
     "receipts_outcome": [
       {
+        "block_hash": "3zcXhu3viMmyFEfJ2vbjff6Au6Qw3xbaT2S8sx6WZ3h2",
         "id": "C7aoovt8hQneqUrrqoaZaWurwNRuwCE3P5rr1RTAXnJe",
         "outcome": {
           "logs": [
@@ -56,6 +58,7 @@
         }
       },
       {
+        "block_hash": "7WsAdDC8cJYsqz5csLJTEP5EPqTYoCkdLpoS7Wtkywh8",
         "id": "BZFmBmt9gvvTkQ3szP7UWjSXGgFuanH5TjqYY4mNPXtK",
         "outcome": {
           "logs": [
@@ -71,6 +74,7 @@
         }
       },
       {
+        "block_hash": "2DWsesvq2CoT7nFyxJmEwysaXsbfc4Dsd1wVKKoLiedi",
         "id": "5bcCzwvknDxcNBksyV1XeXrqZXkp9rhBYLHFUhMiN8FR",
         "outcome": {
           "logs": [],
@@ -84,6 +88,7 @@
         }
       },
       {
+        "block_hash": "2DWsesvq2CoT7nFyxJmEwysaXsbfc4Dsd1wVKKoLiedi",
         "id": "B2Wjg9UzTNFYpCKfR8PTfwFieedJkEen5QzxhcZzp6Ud",
         "outcome": {
           "logs": [
@@ -99,6 +104,7 @@
         }
       },
       {
+        "block_hash": "8yx9sP9aaZN7hMR5eyvr1RrquxcGHE6twKwjLw6cpe7D",
         "id": "ANcubGoCUAM6Jj5tuFC8Hj2JtiGEaD6yaFeswo6JnbHS",
         "outcome": {
           "logs": [],
@@ -112,6 +118,7 @@
         }
       },
       {
+        "block_hash": "7WsAdDC8cJYsqz5csLJTEP5EPqTYoCkdLpoS7Wtkywh8",
         "id": "4K9dgTaKjKG82L6aqVT8tcRfY6oXtqVJex4hVFZQudq6",
         "outcome": {
           "logs": [],
@@ -149,6 +156,7 @@
       "signer_id": "v0.probarion.testnet"
     },
     "transaction_outcome": {
+      "block_hash": "CodnQj8u8iQaqXedMW5gA8mJA7piHkBhTNVuAuxvhQuG",
       "id": "3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe",
       "outcome": {
         "logs": [],
@@ -163,6 +171,7 @@
     },
     "receipts_outcome": [
       {
+        "block_hash": "CodnQj8u8iQaqXedMW5gA8mJA7piHkBhTNVuAuxvhQuG",
         "id": "Hv4Hyt4EjNHe8iJt14kxVk1weJ8NdW22hy8ZdeNTwbQC",
         "outcome": {
           "logs": [
@@ -182,6 +191,7 @@
         }
       },
       {
+        "block_hash": "As1uXiFnpi7LdKbLu1s7WA7mo29pnf3ECMoejfUuTLb1",
         "id": "Fvs9ZsdrJuSZ9TFJVMN5pqAC9BUVxq42v9jUuhjdPhhA",
         "outcome": {
           "logs": [
@@ -198,6 +208,7 @@
         }
       },
       {
+        "block_hash": "2Ra8GNXS6tQCMQVgAb4qX1Kea53XJ75UsgWvgyHd3kdG",
         "id": "2udcdveT9EqMBqcq5pJJ7MTd2rBqYJ7BVHhYBVReWQp1",
         "outcome": {
           "logs": [],
@@ -211,6 +222,7 @@
         }
       },
       {
+        "block_hash": "2Ra8GNXS6tQCMQVgAb4qX1Kea53XJ75UsgWvgyHd3kdG",
         "id": "CBH9W2tkM4pPQazdKFVtFithFgDudr4JMpDCCNJ81731",
         "outcome": {
           "logs": [
@@ -226,6 +238,7 @@
         }
       },
       {
+        "block_hash": "BbNCdRto12aNCbotaqwACpGYjRCPYxwJxcWMDaE9VuLv",
         "id": "4JsaE8HMujBDUKeSH6k43KimMAjvGDpogBzNj3jHL6ZY",
         "outcome": {
           "logs": [],
@@ -239,6 +252,7 @@
         }
       },
       {
+        "block_hash": "As1uXiFnpi7LdKbLu1s7WA7mo29pnf3ECMoejfUuTLb1",
         "id": "4547uzfBsxHYWSMa5pYLJXXoQ9tTGWRRX6vj3E4HC8BG",
         "outcome": {
           "logs": [],
@@ -285,6 +299,7 @@
       "signer_id": "v0.probarion.testnet"
     },
     "transaction_outcome": {
+      "block_hash": "4HjpfHG6ece54932uebfzANRokAZo8e6VipP1JFkxysF",
       "id": "AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY",
       "outcome": {
         "logs": [],
@@ -299,6 +314,7 @@
     },
     "receipts_outcome": [
       {
+        "block_hash": "4HjpfHG6ece54932uebfzANRokAZo8e6VipP1JFkxysF",
         "id": "3DgmxPHCTKJYtiXkZQajp7nbvjLrMfkjhfDr4TJDkFb8",
         "outcome": {
           "logs": [],
@@ -321,6 +337,7 @@
         }
       },
       {
+        "block_hash": "9rSoGDA1yD7nchj5g1faxo78jNAUVasneU2e1fz2wuRv",
         "id": "9tMeGzBe7KnPAB9zvucBDtNB16mTrtjUh4q7PCgsqMXg",
         "outcome": {
           "logs": [],

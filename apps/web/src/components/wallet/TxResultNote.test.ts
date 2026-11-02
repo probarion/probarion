@@ -1,7 +1,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { TxResult } from "@/lib/near/outcome";
+import { actionKey, type KeyValueStore, readLock, writeLock } from "@/lib/near/lock";
+import type { DescribeResult, TxResult } from "@/lib/near/outcome";
+import { freezeTx } from "@/lib/near/tx";
 import { TxResultNote } from "./TxResultNote";
 
 const HASH = "9fV2pZ7mUq5f6p3rGq7bX1tYkqfUu1Vb3bWm2C5g7h8J";
@@ -89,5 +91,76 @@ describe("TxResultNote", () => {
     );
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
+  });
+});
+
+describe("TxResultNote with a wrapper's describe", () => {
+  const out = (result: TxResult, describe?: DescribeResult) =>
+    renderToStaticMarkup(
+      createElement(TxResultNote, {
+        result,
+        network: "testnet",
+        account: "owner.testnet",
+        describe,
+      }),
+    );
+  const lack: TxResult = {
+    status: "unknown",
+    txHash: HASH,
+    code: "LackBalanceForState",
+    error: "the vault is out of free NEAR",
+  };
+  const signerWording: DescribeResult = (res) =>
+    res.code === "LackBalanceForState" ? { detail: "Your account is short of NEAR" } : undefined;
+
+  it("shows the wrapper's detail instead of ours, and keeps the headline, tone and link", () => {
+    const html = out(lack, signerWording);
+    expect(html).toContain("Your account is short of NEAR");
+    expect(html).not.toContain("the vault is out of free NEAR");
+    expect(html).toContain("Sent: confirm on the explorer");
+    expect(html).toContain("bg-amber-100");
+    expect(hrefs(html)).toEqual([`https://testnet.nearblocks.io/txns/${HASH}`]);
+  });
+
+  it("can set the headline too", () => {
+    expect(out(lack, () => ({ headline: "Sent: check your wallet" }))).toContain(
+      "Sent: check your wallet",
+    );
+  });
+
+  it("changes nothing when it has no words for this result", () => {
+    expect(out(r({}), signerWording)).toBe(out(r({})));
+    expect(out(lack, () => null)).toBe(out(lack));
+    expect(out(lack, () => undefined)).toBe(out(lack));
+  });
+
+  it("a describe that throws falls back to our words", () => {
+    const html = out(lack, () => {
+      throw new Error("boom");
+    });
+    expect(html).toBe(out(lack));
+    expect(html).toContain("the vault is out of free NEAR");
+  });
+
+  it("escapes a wrapper's text too", () => {
+    const html = out(lack, () => ({ detail: "<img src=x onerror=alert(1)>" }));
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  });
+
+  it("a locked send read back after a reload reads the same as the live one", () => {
+    const data = new Map<string, string>();
+    const store: KeyValueStore = {
+      getItem: (k) => data.get(k) ?? null,
+      setItem: (k, v) => void data.set(k, v),
+      removeItem: (k) => void data.delete(k),
+    };
+    const key = actionKey(freezeTx("acme.vaults.probarion.testnet"));
+    writeLock(store, key, lack); // what TxButton stores when the unconfirmed result arrives
+    const restored = readLock(store, key); // what it reads after a reload
+    expect(restored).toEqual(lack);
+    if (restored === null) throw new Error("no lock");
+    expect(out(restored, signerWording)).toBe(out(lack, signerWording));
+    expect(out(restored, signerWording)).toContain("Your account is short of NEAR");
   });
 });

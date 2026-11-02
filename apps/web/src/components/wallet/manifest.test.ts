@@ -1,17 +1,19 @@
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  ALLOWED_EXTERNAL_ENTITIES,
   CURATED_MANIFEST,
   type CuratedManifest,
   connectorOptions,
   type DataStorage,
   DEBUG_WALLETS_KEY,
   EXECUTOR_AUDIT,
-  FORBIDDEN_EXTERNAL_SEGMENTS,
   GuardedStorage,
   hardenConnector,
+  ICON_AUDIT,
   pinnedUrlProblem,
   validateManifest,
 } from "./manifest";
@@ -223,6 +225,26 @@ describe("the validator refuses what must never ship", () => {
     "XMLHttpRequest",
     "WebSocket",
     "indexedDB",
+    "meteorcom",
+    "MeteorCom",
+    "meteorCom ",
+    " meteorCom",
+    "meteorCom.x",
+    "meteorComV3",
+    "nightly",
+    "nightly.near.x",
+    "nightly.near ",
+    "Nightly.near",
+    "__proto__",
+    "constructor",
+    "toString",
+    "hasOwnProperty",
+    "meteorCom.constructor",
+    "nightly.near.constructor",
+    "Telegram.WebApp",
+    "TelegramWebviewProxy",
+    "okxwallet.near",
+    "hanaWallet.near",
   ])("an external entity %s", (entity) => {
     const problems = problemsAfter((w) => {
       w.permissions.external = ["nightly.near", entity];
@@ -236,7 +258,7 @@ describe("the validator refuses what must never ship", () => {
       const problems = problemsAfter((w) => {
         w.permissions.external = [entity];
       });
-      expect(problems.join("\n")).toMatch(/dotted name/);
+      expect(problems.join("\n")).toMatch(/allowlist/);
     },
   );
 
@@ -248,7 +270,7 @@ describe("the validator refuses what must never ship", () => {
     ).toMatch(/list/);
     expect(
       problemsAfter((w) => ((w.permissions as Record<string, unknown>).external = [5])).join(),
-    ).toMatch(/dotted name/);
+    ).toMatch(/allowlist/);
   });
 
   it.each(["walletConnect", "clipboardRead", "clipboardWrite", "location", "anything"])(
@@ -315,10 +337,33 @@ describe("the validator refuses what must never ship", () => {
     expect(validateManifest({ version: "1", wallets: [5] }).join()).toMatch(/not an object/);
   });
 
-  it("covers the globals the executor could reach through an external entity", () => {
-    for (const name of ["window", "document", "location", "eval", "fetch", "localstorage"]) {
-      expect(FORBIDDEN_EXTERNAL_SEGMENTS.has(name), name).toBe(true);
+  it("the external allowlist is exactly the three injected objects, and every wallet stays inside it", () => {
+    expect([...ALLOWED_EXTERNAL_ENTITIES]).toEqual(["meteorCom", "meteorComV2", "nightly.near"]);
+    for (const w of CURATED_MANIFEST.wallets) {
+      for (const entity of w.permissions.external ?? []) {
+        expect(ALLOWED_EXTERNAL_ENTITIES, w.id).toContain(entity);
+      }
     }
+  });
+
+  it("accepts each allowlisted entity, and nothing it would add to a wallet that has none", () => {
+    for (const entity of ALLOWED_EXTERNAL_ENTITIES) {
+      expect(
+        problemsAfter((w) => {
+          w.permissions.external = [entity];
+        }),
+      ).toEqual([]);
+    }
+    expect(
+      problemsAfter((w) => {
+        w.permissions.external = [...ALLOWED_EXTERNAL_ENTITIES];
+      }),
+    ).toEqual([]);
+    expect(
+      problemsAfter((w) => {
+        w.permissions.external = [];
+      }),
+    ).toEqual([]);
   });
 });
 
@@ -482,7 +527,7 @@ describe("connectorOptions", () => {
     const w = open.wallets[1];
     if (w === undefined) throw new Error("no wallet");
     w.permissions.external = ["meteorCom", "window"];
-    expect(() => connectorOptions("mainnet", storage, open)).toThrow(/reaches window/);
+    expect(() => connectorOptions("mainnet", storage, open)).toThrow(/allowlist/);
   });
 
   it("passes the network, turns auto-connect off, and wraps the storage", async () => {
@@ -491,5 +536,169 @@ describe("connectorOptions", () => {
     expect(options.autoConnect).toBe(false);
     expect(options.storage).toBeInstanceOf(GuardedStorage);
     expect(await options.storage.get(DEBUG_WALLETS_KEY)).toBeNull();
+  });
+});
+
+const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const ICON_DIR = resolve(WEB_ROOT, "public/wallets");
+
+describe("icons are ours, never a third-party image host (W-T6-R2)", () => {
+  it("every wallet icon is a file under /wallets or an svg data URI", () => {
+    for (const w of CURATED_MANIFEST.wallets) {
+      const ok = w.icon.startsWith("/wallets/") || w.icon.startsWith("data:image/svg+xml,");
+      expect(ok, `${w.id}: ${w.icon.slice(0, 60)}`).toBe(true);
+    }
+    expect(JSON.stringify(CURATED_MANIFEST)).not.toMatch(
+      /storage\.herewallet\.app|hot-labs\.org\/images/,
+    );
+  });
+
+  it("the validator refuses an icon on any other host, or any other kind of file", () => {
+    for (const icon of [
+      "https://app.hot-labs.org/images/hot/hot-icon.png",
+      "https://storage.herewallet.app/upload/x.png",
+      "https://raw.githubusercontent.com/o/r/9cee11c04cfd42f5a420688f808d4aca612b5fde/a.svg",
+      "http://example.com/a.png",
+      "//example.com/a.png",
+      "/wallets/../secret.png",
+      "/wallets/sub/dir.png",
+      "/wallets/Upper.png",
+      "/wallets/a.exe",
+      "/wallets/a.png?x=1",
+      "/wallets/a.svg#x",
+      "/other/a.png",
+      "wallets/a.png",
+      "javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "data:image/png;base64,AAAA",
+      "data:image/svg+xml;base64,AAAA",
+      "data:image/svg+xml,<svg onload=alert(1)>",
+      "",
+    ]) {
+      const problems = problemsAfter((w) => {
+        w.icon = icon;
+      });
+      expect(problems.join("\n"), icon).toMatch(/icon must be one of ours/);
+    }
+    expect(problemsAfter((w) => ((w as { icon: unknown }).icon = 5)).join()).toMatch(
+      /icon must be/,
+    );
+  });
+
+  it("accepts a file of ours and the Ledger svg data URI", () => {
+    for (const icon of ["/wallets/a.png", "/wallets/a-b-2.svg", "/wallets/a.webp"]) {
+      expect(
+        problemsAfter((w) => {
+          w.icon = icon;
+        }),
+        icon,
+      ).toEqual([]);
+    }
+  });
+
+  const svgScan = (text: string, what: string) => {
+    // an svg shown in an <img> runs no script, but keep it free of anything that could
+    const t = text.toLowerCase();
+    for (const bad of [
+      "<script",
+      "onload",
+      "onerror",
+      "onclick",
+      "javascript:",
+      "<foreignobject",
+      'href="http',
+      "<image",
+      "@import",
+      "url(http",
+    ]) {
+      expect(t.includes(bad), `${what} contains ${bad}`).toBe(false);
+    }
+  };
+
+  it("has an audit record for each icon file, and no other file sits in public/wallets", () => {
+    const files = readdirSync(ICON_DIR).sort();
+    expect(files).toEqual(
+      Object.values(ICON_AUDIT)
+        .flatMap((a) => (a.file === undefined ? [] : [a.file]))
+        .sort(),
+    );
+    const referenced = CURATED_MANIFEST.wallets
+      .filter((w) => w.icon.startsWith("/wallets/"))
+      .map((w) => w.icon);
+    expect(referenced.sort()).toEqual(files.map((f) => `/wallets/${f}`).sort());
+  });
+
+  it.each(Object.entries(ICON_AUDIT).filter(([, a]) => a.file !== undefined))(
+    "%s: the file is the one that was audited (size, sha256, type)",
+    (id, audit) => {
+      const file = audit.file ?? "";
+      const path = resolve(ICON_DIR, file);
+      expect(existsSync(path), path).toBe(true);
+      const bytes = readFileSync(path);
+      expect(bytes.length).toBe(audit.bytes);
+      expect(statSync(path).size).toBeLessThanOrEqual(100_000);
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(audit.sha256);
+      expect(CURATED_MANIFEST.wallets.find((w) => w.id === id)?.icon).toBe(`/wallets/${file}`);
+      expect(audit.source.startsWith("https://")).toBe(true);
+      if (file.endsWith(".png")) {
+        expect([...bytes.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      } else if (file.endsWith(".webp")) {
+        expect(bytes.subarray(0, 4).toString("latin1")).toBe("RIFF");
+        expect(bytes.subarray(8, 12).toString("latin1")).toBe("WEBP");
+      } else {
+        svgScan(bytes.toString("utf8"), file);
+      }
+    },
+  );
+
+  it.each(Object.entries(ICON_AUDIT).filter(([, a]) => a.file === undefined))(
+    "%s: the svg data URI is byte for byte the audited svg (size, sha256, no script)",
+    (id, audit) => {
+      const icon = CURATED_MANIFEST.wallets.find((w) => w.id === id)?.icon ?? "";
+      const prefix = "data:image/svg+xml,";
+      expect(icon.startsWith(prefix)).toBe(true);
+      const bytes = Buffer.from(decodeURIComponent(icon.slice(prefix.length)), "utf8");
+      expect(bytes.length).toBe(audit.bytes);
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(audit.sha256);
+      expect(audit.source.startsWith("https://")).toBe(true);
+      expect(bytes.subarray(0, 4).toString("latin1")).toBe("<svg");
+      svgScan(bytes.toString("utf8"), id);
+    },
+  );
+});
+
+describe("HOT's links are the ones its pinned executor opens (W-T6-R2)", () => {
+  const hot = CURATED_MANIFEST.wallets.find((w) => w.id === "hot-wallet");
+
+  it("allows exactly three https pages and the Android intent scheme", () => {
+    expect(hot?.permissions.allowsOpen).toEqual([
+      "https://download.hot-labs.org",
+      "https://t.me/hot_wallet/app",
+      "https://app.hot-labs.org/link",
+      "intent://",
+    ]);
+  });
+
+  it("no longer allows the entries the executor never opens", () => {
+    const text = JSON.stringify(hot?.permissions.allowsOpen);
+    for (const gone of [
+      "hotwallet://",
+      "play.google.com",
+      "apps.apple.com",
+      "wallet.near.org",
+      "hot-labs.org/wallet",
+    ]) {
+      expect(text, gone).not.toContain(gone);
+    }
+  });
+
+  it("the near-connect matcher compares hosts exactly, which is why intent:// has no host", () => {
+    // build/SandboxedWallet/executor.js checkPermissions("allowsOpen")
+    const lib = readFileSync(
+      resolve(WEB_ROOT, "node_modules/@hot-labs/near-connect/build/SandboxedWallet/executor.js"),
+      "utf8",
+    );
+    expect(lib).toContain("openUrl.hostname !== url.hostname");
+    expect(lib).toContain("openUrl.protocol !== url.protocol");
   });
 });

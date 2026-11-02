@@ -20,7 +20,7 @@
  *    `TxOutcomeUnknownError` rule: never send the same action again on a guess).
  */
 import { VAULT_ERROR_CODES } from "@probarion/core";
-import type { ReadableMethod } from "./tx";
+import type { PreparedTx, ReadableMethod } from "./tx";
 import { isNearAccountId } from "./validate";
 
 export interface TxResult {
@@ -247,6 +247,20 @@ export function reportFromError(e: unknown): WalletReport {
 }
 
 /**
+ * What the client sends the server to check against the chain (`confirmTxAction`). Everything in it
+ * is untrusted input to the server, and the server re-checks all of it.
+ */
+export interface ConfirmRequest {
+  hash: string;
+  /** The account the owner expected to sign (the session's), not whatever the wallet says it used. */
+  signerId: string;
+  /** The transaction that was shown: the chain's record has to match it action by action. */
+  tx: PreparedTx;
+  /** The final block height read when the send began; the transaction must be in a block at least this new. */
+  baselineHeight: number | null;
+}
+
+/**
  * We cannot say what happened. With a hash the transaction exists and the owner can look it up; with
  * none, a cancel and a transaction that went out look the same to us.
  */
@@ -418,6 +432,30 @@ export interface TxResultView {
   detail: string | null;
   /** Which explorer page to link: the transaction, or (no hash) the signer's account. */
   explorer: "tx" | "account" | null;
+}
+
+/**
+ * Words a wrapper may swap on what the owner reads, without touching the result: the headline and the
+ * detail. Never the tone, the explorer link or the result itself, so the locked state and what a
+ * result means stay as outcome.ts decided.
+ */
+export interface ResultWords {
+  headline?: string;
+  /** `null` shows no detail line; leaving it out keeps the default one. */
+  detail?: string | null;
+}
+
+/** `TxButton`'s `describe`: wording for a result (live, or read back after a reload), or nothing to keep ours. */
+export type DescribeResult = (result: TxResult) => ResultWords | null | undefined;
+
+/** The view with a wrapper's words applied. */
+export function withWords(view: TxResultView, words: ResultWords | null | undefined): TxResultView {
+  if (words === null || words === undefined) return view;
+  return {
+    ...view,
+    headline: words.headline ?? view.headline,
+    detail: words.detail !== undefined ? words.detail : view.detail,
+  };
 }
 
 export function describeTxResult(r: TxResult): TxResultView {

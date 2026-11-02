@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import type { Network } from "@/lib/config";
-import { confirmTxAction } from "@/lib/near/confirm-action";
+import { confirmTxAction, sendBaselineAction } from "@/lib/near/confirm-action";
 import type { TxResult } from "@/lib/near/outcome";
 import { type SendWallet, sendWalletTx } from "@/lib/near/send";
 import { type Nep413Wallet, signInWithWallet } from "@/lib/near/signin";
@@ -162,8 +162,8 @@ export function WalletProvider({ network, children }: { network: Network; childr
         {
           network,
           getWallet: wallet,
-          confirm: (hash, signer, method, receiverId) =>
-            confirmTxAction(hash, signer, method, receiverId),
+          baseline: () => sendBaselineAction(),
+          confirm: (request) => confirmTxAction(request),
         },
         tx,
         signerId,

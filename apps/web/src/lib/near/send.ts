@@ -1,5 +1,6 @@
 import type { Network } from "@/lib/config";
 import {
+  type ConfirmRequest,
   notSent,
   reportFromError,
   reportFromOutcome,
@@ -7,7 +8,7 @@ import {
   unconfirmed,
   type WalletReport,
 } from "./outcome";
-import { actionLabel, isReadableMethod, type ReadableMethod, type WalletTx } from "./tx";
+import { actionLabel, isReadableMethod, toPrepared, type WalletTx } from "./tx";
 
 /** The two near-connect wallet methods a send needs (build/types/index.d.ts `NearWalletBase`). */
 export interface SendWallet {
@@ -24,13 +25,10 @@ export interface SendDeps {
   network: Network;
   /** The connected wallet, or the selector popup. Throws when there is none. */
   getWallet(): Promise<SendWallet>;
-  /** Reads the transaction from the chain (the `confirmTxAction` server action). */
-  confirm(
-    hash: string,
-    signerId: string,
-    method: ReadableMethod,
-    receiverId: string,
-  ): Promise<TxResult>;
+  /** The final block height now (the `sendBaselineAction` server action), or `null` when it cannot be read. */
+  baseline(): Promise<number | null>;
+  /** Reads the transaction from the chain and checks it is the one shown (the `confirmTxAction` server action). */
+  confirm(request: ConfirmRequest): Promise<TxResult>;
 }
 
 /** A server action's answer crossed the network: take only a well-formed result, for this hash. */
@@ -48,14 +46,30 @@ function asResult(value: unknown, hash: string): TxResult {
   };
 }
 
+/** Calls `deps.baseline()` now (not on a later tick) and never rejects: anything but a block height is `null`. */
+function startBaseline(deps: SendDeps): Promise<number | null> {
+  let call: Promise<number | null>;
+  try {
+    call = deps.baseline();
+  } catch {
+    return Promise.resolve(null);
+  }
+  return Promise.resolve(call)
+    .then((h) => (typeof h === "number" && Number.isSafeInteger(h) && h > 0 ? h : null))
+    .catch(() => null);
+}
+
 /**
  * Asks the wallet to sign and send ONE transaction, then asks the chain what happened.
  *
  * - The wallet is asked exactly once. Nothing here, on any path, signs the same action again.
  * - Before it is asked, the connected accounts are checked against `signerId`, so a wallet connected
  *   as someone else (also right after `connect()`) is refused before a signature is requested.
- * - What the wallet answers is used only to find the transaction hash and signer. The result comes
- *   from `deps.confirm`, which reads the chain; `ok` can only come from there.
+ * - What the wallet answers is used only to find the transaction hash. The result comes from
+ *   `deps.confirm`, which reads the chain, checks that it is the transaction that was shown (every
+ *   action) and that it is newer than the moment the send began; `ok` can only come from there.
+ * - The signer it checks against is `signerId`, the account the caller expected, whenever there is
+ *   one, never the one the wallet says it used.
  * - No hash (a cancel, a closed window, a wallet that says nothing) is "not confirmed": we cannot
  *   tell it from a transaction that went out, so the caller locks the button like for `unknown`.
  * - It never throws.
@@ -99,6 +113,10 @@ export async function sendWalletTx(
     );
   }
 
+  // The chain height when the send begins. Started before the wallet is asked, so it is read long
+  // before the owner can approve: the transaction must come out in a block at least this new.
+  const baseline = startBaseline(deps);
+
   let report: WalletReport;
   try {
     const outcome = await wallet.signAndSendTransaction({
@@ -113,11 +131,18 @@ export async function sendWalletTx(
   }
 
   if (report.txHash === null) return unconfirmed(report); // a report's hash is already base58 (outcome.ts)
-  const signer = report.signerId ?? signerId ?? accounts[0] ?? null;
+  // The expected signer when there is one; only without one, the wallet's word or its first account
+  // (the server then still requires it to be the signed-in account).
+  const signer = signerId ?? report.signerId ?? accounts[0] ?? null;
   if (signer === null) return unconfirmed(report);
   try {
     return asResult(
-      await deps.confirm(report.txHash, signer, method, tx.receiverId),
+      await deps.confirm({
+        hash: report.txHash,
+        signerId: signer,
+        tx: toPrepared(tx),
+        baselineHeight: await baseline,
+      }),
       report.txHash,
     );
   } catch {
