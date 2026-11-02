@@ -25,7 +25,13 @@ const h = vi.hoisted(() => ({
   out: null as unknown as import("next/server").NextResponse,
   db: null as unknown as Db,
   rpc: null as unknown,
-  rpcCalls: 0,
+  /** Switches that make one piece of infrastructure fail, to see that each gives a 503 and never a 500. */
+  fail: {
+    db: null as null | ((fn: string, p?: Record<string, unknown>) => boolean),
+    subkey: new Set<string>(),
+    serviceDb: false,
+    getRpc: false,
+  },
 }));
 
 vi.mock("next/headers", () => ({
@@ -45,11 +51,23 @@ vi.mock("@/lib/crypto/server", async () => {
   return {
     masterKey: () => master,
     subkey: (purpose: Parameters<typeof sodium.deriveSubkey>[1]) =>
-      sodium.deriveSubkey(master, purpose),
+      h.fail.subkey.has(purpose)
+        ? Promise.reject(new Error("kdf down"))
+        : sodium.deriveSubkey(master, purpose),
   };
 });
-vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
-vi.mock("@/lib/near/server", () => ({ getRpc: () => h.rpc }));
+vi.mock("@/lib/db/clients", () => ({
+  serviceDb: () => {
+    if (h.fail.serviceDb) throw new Error("SUPABASE_URL is required");
+    return h.db;
+  },
+}));
+vi.mock("@/lib/near/server", () => ({
+  getRpc: () => {
+    if (h.fail.getRpc) throw new Error("NEAR_RPC_URLS is invalid");
+    return h.rpc;
+  },
+}));
 
 import { GET as challengeRoute } from "@/app/api/auth/challenge/route";
 import { POST as logoutRoute } from "@/app/api/auth/logout/route";
@@ -69,7 +87,10 @@ const nextIp = () => {
 
 beforeAll(async () => {
   pg = await freshDb();
-  h.db = pgliteDb(pg);
+  const real = pgliteDb(pg);
+  h.db = {
+    rpc: (fn, p) => (h.fail.db?.(fn, p) ? Promise.reject(new Error("db down")) : real.rpc(fn, p)),
+  };
 });
 
 afterAll(async () => {
@@ -81,6 +102,10 @@ beforeEach(async () => {
   const { NextResponse } = await import("next/server");
   h.out = new NextResponse(null);
   h.sent = new Map();
+  h.fail.db = null;
+  h.fail.subkey.clear();
+  h.fail.serviceDb = false;
+  h.fail.getRpc = false;
   logged = [];
   const sink = (line: unknown) => {
     logged.push(String(line));
@@ -412,8 +437,21 @@ describe("POST /api/auth/verify", () => {
     useRpc(httpStatus(503));
     const r = await postVerify(login(c.body), c.cookie);
     expect(r.res.status).toBe(503);
-    expect(r.json).toEqual({ error: "verifier_unavailable" });
+    expect(r.json).toEqual({ error: "unavailable" });
     expect(setCookieOf(r.setCookies, SESSION_COOKIE)).toBeUndefined();
+    expect(logged.join(" | ")).toContain("verifier_unavailable");
+  });
+
+  it("refuses a forged signature with a 401 and no RPC call, even while the nodes are down", async () => {
+    const c = await getChallenge();
+    const rpc = useRpc(httpStatus(503), httpStatus(503));
+    const forged = { ...login(c.body), signature: Buffer.alloc(64, 9).toString("base64") };
+    const r = await postVerify(forged, c.cookie);
+    expect(r.res.status).toBe(401);
+    expect(r.json).toEqual({ error: "bad_signature" });
+    expect(setCookieOf(r.setCookies, SESSION_COOKIE)).toBeUndefined();
+    expect(rpc.calls).toHaveLength(0);
+    expect(rpc.remaining()).toBe(2);
   });
 
   it("answers invalid_input for a body that is not a login, and never asks the RPC", async () => {
@@ -427,14 +465,125 @@ describe("POST /api/auth/verify", () => {
     expect(rpc.remaining()).toBe(1);
   });
 
-  it("refuses a body far larger than a login", async () => {
+  it("refuses a body far larger than a login with a 413", async () => {
     const c = await getChallenge();
     const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
     const l = login(c.body);
     const r = await postVerify({ ...l, padding: "x".repeat(100_000) }, c.cookie);
-    expect(r.res.status).toBe(401);
-    expect(r.json).toEqual({ error: "invalid_input" });
+    expect(r.res.status).toBe(413);
+    expect(r.json).toEqual({ error: "payload_too_large" });
+    expect(setCookieOf(r.setCookies, SESSION_COOKIE)).toBeUndefined();
     expect(rpc.remaining()).toBe(1);
+  });
+
+  describe("the body cap counts real bytes as they arrive (no Content-Length)", () => {
+    const MAX = 2048;
+    const enc = new TextEncoder();
+
+    /** A chunked request body: `next()` gives the next piece, or null at the end. `state` is what the route took. */
+    function streamed(next: () => Uint8Array | null, headers: Record<string, string> = {}) {
+      const state = { pulls: 0, bytes: 0, cancelled: false };
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            state.pulls += 1;
+            const chunk = next();
+            if (chunk === null) {
+              controller.close();
+              return;
+            }
+            state.bytes += chunk.byteLength;
+            controller.enqueue(chunk);
+          },
+          cancel() {
+            state.cancelled = true;
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const req = new Request(`${ORIGIN}/api/auth/verify`, {
+        method: "POST",
+        headers: { origin: ORIGIN, "x-forwarded-for": nextIp(), ...headers },
+        body,
+        duplex: "half",
+      } as RequestInit);
+      return { req, state };
+    }
+
+    /** The bytes of `text` in pieces of `size`. */
+    function pieces(bytes: Uint8Array, size: number) {
+      let at = 0;
+      return () => {
+        if (at >= bytes.byteLength) return null;
+        const chunk = bytes.slice(at, at + size);
+        at += size;
+        return chunk;
+      };
+    }
+
+    async function send(req: Request, chal: string) {
+      const { res, setCookies } = await run(verifyRoute, req, { [CHALLENGE_COOKIE]: chal });
+      return { res, setCookies, json: (await res.json()) as Record<string, unknown> };
+    }
+
+    it("has no Content-Length on these requests (so the header cannot be what stops them)", () => {
+      const { req } = streamed(() => null);
+      expect(req.headers.get("content-length")).toBeNull();
+    });
+
+    it("stops reading an endless chunked body at the cap, and cancels the stream", async () => {
+      const c = await getChallenge();
+      const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+      const { req, state } = streamed(() => new Uint8Array(1000).fill(0x20));
+      const r = await send(req, c.cookie);
+      expect(r.res.status).toBe(413);
+      expect(r.json).toEqual({ error: "payload_too_large" });
+      // 1000-byte chunks: the third pushes the total past 2048, and nothing more is pulled
+      expect(state.bytes).toBeLessThanOrEqual(MAX + 1000);
+      expect(state.pulls).toBeLessThanOrEqual(3);
+      expect(state.cancelled).toBe(true);
+      expect(setCookieOf(r.setCookies, SESSION_COOKIE)).toBeUndefined();
+      expect(rpc.remaining()).toBe(1);
+    });
+
+    it("counts bytes, not characters", async () => {
+      const c = await getChallenge();
+      const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+      const text = JSON.stringify({ padding: "é".repeat(1100) }); // about 1100 characters, 2200+ bytes
+      expect(text.length).toBeLessThan(MAX);
+      expect(enc.encode(text).byteLength).toBeGreaterThan(MAX);
+      const { req } = streamed(pieces(enc.encode(text), 64));
+      const r = await send(req, c.cookie);
+      expect(r.res.status).toBe(413);
+      expect(rpc.remaining()).toBe(1);
+    });
+
+    it("accepts a login of exactly the cap and refuses one byte more", async () => {
+      const padTo = (json: string, size: number) =>
+        enc.encode(json + " ".repeat(size - enc.encode(json).byteLength));
+      const c1 = await getChallenge();
+      useRpc(rpcOk(FULL_ACCESS_KEY));
+      const exact = streamed(pieces(padTo(JSON.stringify(login(c1.body)), MAX), 100));
+      const ok = await send(exact.req, c1.cookie);
+      expect(ok.res.status).toBe(200);
+      expect(ok.json).toEqual({ accountId: "alice.near" });
+
+      const c2 = await getChallenge();
+      const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+      const over = streamed(pieces(padTo(JSON.stringify(login(c2.body)), MAX + 1), 100));
+      const no = await send(over.req, c2.cookie);
+      expect(no.res.status).toBe(413);
+      expect(rpc.remaining()).toBe(1);
+    });
+
+    it("refuses a declared length over the cap without reading the body", async () => {
+      const c = await getChallenge();
+      useRpc(rpcOk(FULL_ACCESS_KEY));
+      const { req, state } = streamed(() => new Uint8Array(10), { "content-length": "5000" });
+      const r = await send(req, c.cookie);
+      expect(r.res.status).toBe(413);
+      expect(state.pulls).toBe(0);
+    });
   });
 
   it("checks the origin first: no Origin or a foreign one is a 403, and nothing is spent", async () => {
@@ -581,5 +730,149 @@ describe("POST /api/auth/logout", () => {
       expect(res.status).toBe(403);
       expect(setCookies).toEqual([]);
     }
+  });
+});
+
+describe("infrastructure failures answer 503 'unavailable', never an unhandled 500", () => {
+  const isRateLimit = (fn: string) => fn === "rate_limit_take";
+
+  /** The response the browser would get: a handler that threw would have rejected before reaching here. */
+  function unavailable(res: Response, json: unknown) {
+    expect(res.status).toBe(503);
+    expect(json).toEqual({ error: "unavailable" });
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  }
+
+  describe("GET /api/auth/challenge", () => {
+    it("when the rate-limit database is down", async () => {
+      h.fail.db = isRateLimit;
+      const c = await getChallenge();
+      unavailable(c.res, c.body);
+      expect(c.setCookies).toEqual([]);
+      expect(logged.join(" | ")).toContain("auth.challenge_failed");
+    });
+
+    it("when the database client cannot be built (environment)", async () => {
+      h.fail.serviceDb = true;
+      const c = await getChallenge();
+      unavailable(c.res, c.body);
+      expect(c.setCookies).toEqual([]);
+    });
+
+    it("when the challenge subkey cannot be derived", async () => {
+      h.fail.subkey.add("challenge");
+      const c = await getChallenge();
+      unavailable(c.res, c.body);
+      expect(c.setCookies).toEqual([]);
+    });
+
+    it("does not put the failure's text in the response", async () => {
+      h.fail.db = isRateLimit;
+      const c = await getChallenge();
+      expect(JSON.stringify(c.body)).not.toContain("db down");
+    });
+  });
+
+  describe("POST /api/auth/verify", () => {
+    it("when the rate-limit database is down", async () => {
+      const c = await getChallenge();
+      const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+      h.fail.db = isRateLimit;
+      const r = await postVerify(login(c.body), c.cookie);
+      unavailable(r.res, r.json);
+      expect(setCookieOf(r.setCookies, SESSION_COOKIE)).toBeUndefined();
+      expect(rpc.remaining()).toBe(1);
+      expect(logged.join(" | ")).toContain("auth.verify_failed");
+    });
+
+    it("when the database client cannot be built (environment)", async () => {
+      const c = await getChallenge();
+      h.fail.serviceDb = true;
+      const r = await postVerify(login(c.body), c.cookie);
+      expect(r.res.status).toBe(503);
+      expect(r.json).toEqual({ error: "unavailable" });
+    });
+
+    it("when the challenge subkey cannot be derived", async () => {
+      const c = await getChallenge();
+      const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+      h.fail.subkey.add("challenge");
+      const r = await postVerify(login(c.body), c.cookie);
+      expect(r.res.status).toBe(503);
+      expect(r.json).toEqual({ error: "unavailable" });
+      expect(setCookieOf(r.setCookies, SESSION_COOKIE)).toBeUndefined();
+      expect(rpc.remaining()).toBe(1);
+    });
+
+    it("when the nonce cannot be burned", async () => {
+      const c = await getChallenge();
+      const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+      h.fail.db = (_fn, p) => String(p?.bucket).startsWith("auth:nonce:");
+      const r = await postVerify(login(c.body), c.cookie);
+      expect(r.res.status).toBe(503);
+      expect(r.json).toEqual({ error: "unavailable" });
+      expect(rpc.remaining()).toBe(1);
+    });
+
+    it("when the request body read is aborted", async () => {
+      const c = await getChallenge();
+      const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+      let sent = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!sent) {
+            sent = true;
+            controller.enqueue(new TextEncoder().encode('{"accountId":'));
+            return;
+          }
+          controller.error(new Error("client went away"));
+        },
+      });
+      const req = new Request(`${ORIGIN}/api/auth/verify`, {
+        method: "POST",
+        headers: { origin: ORIGIN, "x-forwarded-for": nextIp() },
+        body,
+        duplex: "half",
+      } as RequestInit);
+      const { res, setCookies } = await run(verifyRoute, req, { [CHALLENGE_COOKIE]: c.cookie });
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: "unavailable" });
+      expect(setCookieOf(setCookies, SESSION_COOKIE)).toBeUndefined();
+      expect(rpc.remaining()).toBe(1);
+    });
+
+    it("when no node can be asked", async () => {
+      const c = await getChallenge();
+      useRpc(httpStatus(503));
+      const r = await postVerify(login(c.body), c.cookie);
+      expect(r.res.status).toBe(503);
+      expect(r.json).toEqual({ error: "unavailable" });
+    });
+
+    it("when the RPC client cannot be built (environment)", async () => {
+      const c = await getChallenge();
+      h.fail.getRpc = true;
+      const r = await postVerify(login(c.body), c.cookie);
+      expect(r.res.status).toBe(503);
+      expect(r.json).toEqual({ error: "unavailable" });
+      expect(setCookieOf(r.setCookies, SESSION_COOKIE)).toBeUndefined();
+    });
+
+    it("when the session subkey cannot be derived after a good signature: no session", async () => {
+      const c = await getChallenge();
+      useRpc(rpcOk(FULL_ACCESS_KEY));
+      h.fail.subkey.add("session");
+      const r = await postVerify(login(c.body), c.cookie);
+      expect(r.res.status).toBe(503);
+      expect(r.json).toEqual({ error: "unavailable" });
+      expect(setCookieOf(r.setCookies, SESSION_COOKIE)).toBeUndefined();
+    });
+
+    it("never puts the failure's text, a key or a URL in the response", async () => {
+      const c = await getChallenge();
+      h.fail.serviceDb = true;
+      const r = await postVerify(login(c.body), c.cookie);
+      expect(JSON.stringify(r.json)).not.toMatch(/SUPABASE|NEAR_RPC|kdf|db down/);
+    });
   });
 });

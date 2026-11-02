@@ -7,6 +7,7 @@ import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
 } from "@/lib/auth/session";
+import { authUnavailable } from "@/lib/auth/unavailable";
 import { nearApiVerifier, rpcLoginProvider, verifyLogin } from "@/lib/auth/verify";
 import { subkey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
@@ -20,16 +21,38 @@ export const dynamic = "force-dynamic";
 /** A login is about 250 bytes of JSON; anything near this size is not one. */
 const MAX_BODY_BYTES = 2048;
 
-/** The parsed body, or null for anything that is too large, empty or not JSON (the caller says invalid_input). */
-async function readLoginBody(req: Request): Promise<unknown> {
+type LoginBody = { tooLarge: true } | { tooLarge: false; value: unknown };
+
+/**
+ * The request body as JSON, counting real bytes as they arrive: the read stops (and the stream is cancelled)
+ * the moment more than MAX_BODY_BYTES have been seen, so a chunked body with no Content-Length is never
+ * buffered whole. A body that is empty or not JSON gives `value: null` (the caller says invalid_input). A read
+ * that fails half way (the client went away) throws.
+ */
+async function readLoginBody(req: Request): Promise<LoginBody> {
   const declared = Number(req.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
-  const text = await req.text();
-  if (text.length > MAX_BODY_BYTES) return null;
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    await req.body?.cancel().catch(() => {});
+    return { tooLarge: true };
+  }
+  if (req.body === null) return { tooLarge: false, value: null };
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => {});
+      return { tooLarge: true };
+    }
+    chunks.push(value);
+  }
   try {
-    return JSON.parse(text);
+    return { tooLarge: false, value: JSON.parse(new TextDecoder().decode(Buffer.concat(chunks))) };
   } catch {
-    return null;
+    return { tooLarge: false, value: null };
   }
 }
 
@@ -38,6 +61,16 @@ export async function POST(req: Request) {
   const bad = assertSameOrigin(req);
   if (bad) return bad;
   const requestId = req.headers.get("x-request-id") ?? undefined;
+  try {
+    return await verify(req, requestId);
+  } catch (error) {
+    // The database, the key derivation, the RPC client's settings or a cut-off body: 503 `unavailable` with
+    // no detail, never an unhandled 500. Nothing has been signed in (the session cookie is set last).
+    return authUnavailable("auth.verify_failed", error, requestId);
+  }
+}
+
+async function verify(req: Request, requestId: string | undefined): Promise<Response> {
   const db = serviceDb();
   const limited = await rateLimitOr429(
     db,
@@ -60,11 +93,7 @@ export async function POST(req: Request) {
     try {
       first = await burnChallenge(db, challenge.nonce);
     } catch (error) {
-      log.error("auth.nonce_burn_failed", {
-        error: error instanceof Error ? error.message : "unknown",
-        request_id: requestId,
-      });
-      return problem(503, "unavailable");
+      return authUnavailable("auth.nonce_burn_failed", error, requestId);
     }
     if (!first) {
       log.warn("auth.rejected", { reason: "challenge_replayed", request_id: requestId });
@@ -73,10 +102,22 @@ export async function POST(req: Request) {
   }
 
   const body = await readLoginBody(req);
-  const result = await verifyLogin(body, challenge, nearApiVerifier(rpcLoginProvider(getRpc())));
+  if (body.tooLarge) {
+    log.warn("auth.rejected", { reason: "payload_too_large", request_id: requestId });
+    return problem(413, "payload_too_large");
+  }
+  const result = await verifyLogin(
+    body.value,
+    challenge,
+    nearApiVerifier(rpcLoginProvider(getRpc())),
+  );
   if (!result.ok) {
     log.warn("auth.rejected", { reason: result.reason, request_id: requestId });
-    return problem(result.reason === "verifier_unavailable" ? 503 : 401, result.reason);
+    // "verifier_unavailable" (no node could say whether the key is on the account) is the same 503 as every
+    // other infrastructure failure; the reason above is in the log.
+    return result.reason === "verifier_unavailable"
+      ? problem(503, "unavailable")
+      : problem(401, result.reason);
   }
   jar.set(
     SESSION_COOKIE,

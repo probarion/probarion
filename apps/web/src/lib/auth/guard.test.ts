@@ -5,12 +5,15 @@ import type { Db } from "@/lib/db/port";
 import { freshDb, seedTenant } from "../../../test/db/harness";
 import { pgliteDb } from "../../../test/db/pglite-db";
 import { issueChallenge } from "./challenge";
+import { loginPath, safeNextPath } from "./redirect";
 import { createSessionToken, SESSION_COOKIE, SESSION_TTL_MS } from "./session";
 
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
 
 const h = vi.hoisted(() => ({
   jar: new Map<string, string>(),
+  /** Request headers the page was rendered with (the proxy sets x-pathname). */
+  headers: new Map<string, string>(),
   db: null as unknown as Db,
   calls: [] as { fn: string; p: Record<string, unknown> | undefined }[],
 }));
@@ -19,6 +22,7 @@ vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => (h.jar.has(name) ? { name, value: h.jar.get(name) } : undefined),
   }),
+  headers: async () => ({ get: (name: string) => h.headers.get(name) ?? null }),
 }));
 vi.mock("@/lib/crypto/server", async () => {
   const sodium = await import("@/lib/crypto/sodium");
@@ -69,6 +73,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   h.jar.clear();
+  h.headers.clear();
   h.calls.length = 0;
 });
 
@@ -94,6 +99,40 @@ describe("getSession / requireSession", () => {
   it("is null without a cookie, and requireSession redirects to /login", async () => {
     expect(await getSession()).toBeNull();
     expect(await thrownDigest(requireSession())).toMatch(/^NEXT_REDIRECT;[a-z]+;\/login;/);
+  });
+
+  describe("the redirect carries where the visitor was going, as a same-origin path", () => {
+    const target = (digest: string) => digest.split(";")[2];
+
+    it("uses the path the proxy forwarded, URL-encoded, like the proxy's own redirect", async () => {
+      h.headers.set("x-pathname", "/console/vaults/acme.near");
+      expect(target(await thrownDigest(requireSession()))).toBe(
+        "/login?next=%2Fconsole%2Fvaults%2Facme.near",
+      );
+      expect(target(await thrownDigest(requireMember("acme.near")))).toBe(
+        "/login?next=%2Fconsole%2Fvaults%2Facme.near",
+      );
+    });
+
+    it("takes an explicit path first", async () => {
+      h.headers.set("x-pathname", "/console/other");
+      expect(target(await thrownDigest(requireSession("/console/vaults/b.near")))).toBe(
+        "/login?next=%2Fconsole%2Fvaults%2Fb.near",
+      );
+    });
+
+    it("is a plain /login without a path", async () => {
+      expect(target(await thrownDigest(requireSession()))).toBe("/login");
+    });
+
+    it("never redirects to another origin or a script, whichever way the path arrives", async () => {
+      for (const bad of HOSTILE_NEXT) {
+        h.headers.set("x-pathname", bad);
+        expect(target(await thrownDigest(requireSession())), JSON.stringify(bad)).toBe("/login");
+        h.headers.clear();
+        expect(target(await thrownDigest(requireSession(bad))), JSON.stringify(bad)).toBe("/login");
+      }
+    });
   });
 
   it("reads a live session cookie", async () => {
@@ -309,5 +348,64 @@ describe("requireMember", () => {
     await signInAs("alice.near");
     expect(await thrownDigest(requireMember("x".repeat(500)))).toBe("NEXT_HTTP_ERROR_FALLBACK;404");
     expect(h.calls).toEqual([]);
+  });
+});
+
+const HOSTILE_NEXT = [
+  "//evil.example",
+  "//evil.example/console",
+  "/\\evil.example",
+  "/\\/evil.example",
+  "https://evil.example",
+  "http://localhost:3000/console",
+  "javascript:alert(1)",
+  "data:text/html,x",
+  "evil.example",
+  "console",
+  "",
+  " /console",
+  "/console ",
+  "/con sole",
+  "/console\r\nSet-Cookie: a=b",
+  "/console\n",
+  "/console\u0000",
+  "/\u202eevil",
+  "/console#frag",
+  "/console<script>",
+  '/console"onload=',
+  `/${"a".repeat(600)}`,
+];
+
+describe("safeNextPath", () => {
+  it("keeps a plain absolute path, with or without a query", () => {
+    for (const ok of [
+      "/",
+      "/console",
+      "/console/",
+      "/console/vaults/acme.near",
+      "/console/vaults/a_b-c.near/spends",
+      "/console?tab=spends&x=1",
+      "/console/vaults/a.near?from=10&limit=20",
+      "/a%20b",
+      "/a/..b/c",
+    ]) {
+      expect(safeNextPath(ok), ok).toBe(ok);
+    }
+  });
+
+  it("refuses everything that could leave the origin or smuggle a header", () => {
+    for (const bad of HOSTILE_NEXT) expect(safeNextPath(bad), JSON.stringify(bad)).toBeNull();
+    for (const notString of [undefined, null, 5, {}, ["/console"]]) {
+      expect(safeNextPath(notString as unknown as string)).toBeNull();
+    }
+  });
+
+  it("builds the login path, encoded, or a plain /login", () => {
+    expect(loginPath("/console/vaults/a.near?x=1")).toBe(
+      "/login?next=%2Fconsole%2Fvaults%2Fa.near%3Fx%3D1",
+    );
+    expect(loginPath("//evil.example")).toBe("/login");
+    expect(loginPath(undefined)).toBe("/login");
+    expect(loginPath(null)).toBe("/login");
   });
 });

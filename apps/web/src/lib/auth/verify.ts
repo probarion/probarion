@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { RpcError } from "@probarion/sdk";
 import { PublicKey } from "near-api-js";
 import { verifyMessage } from "near-api-js/nep413";
 import { AUTH_RECIPIENT } from "@/lib/config";
 import { decodeCanonical } from "@/lib/crypto/sodium";
+import { rpcCauseName } from "@/lib/near/reader";
 import { isNearAccountId } from "@/lib/near/validate";
 
 export interface SignedLogin {
@@ -57,11 +59,13 @@ const NOT_FOUND_CAUSES: ReadonlySet<string> = new Set([
 
 /** True only for a JSON-RPC answer that says the key or its account does not exist. */
 function isNotFound(error: unknown): boolean {
-  if (!(error instanceof RpcError) || !isRecord(error.rpcError)) return false;
-  const { cause, name } = error.rpcError;
-  const causeName = isRecord(cause) && typeof cause.name === "string" ? cause.name : name;
-  return typeof causeName === "string" && NOT_FOUND_CAUSES.has(causeName);
+  if (!(error instanceof RpcError) || error.rpcError === null) return false;
+  const cause = rpcCauseName(error.rpcError);
+  return cause !== null && NOT_FOUND_CAUSES.has(cause);
 }
+
+/** What older nodes put in `result.error` (HTTP 200, no JSON-RPC error) for a key or account that is not there. */
+const MISSING_TEXT = /^(?:access key|account) .+ does not exist while viewing$/;
 
 /**
  * `viewAccessKey` over the shared SDK RpcClient (failover, backoff, URL redaction). A definitive chain answer
@@ -69,8 +73,9 @@ function isNotFound(error: unknown): boolean {
  * a transport failure, a node-side error or a result that is not an access key, becomes `VerifierUnavailableError`.
  *
  * The permission is passed through untouched: `verifyMessage` accepts the exact string "FullAccess" and nothing
- * else. Do not swap this for the console's `reader.accessKey`, whose parser reads an unknown permission as full
- * access (right for a display that must never understate a key, wrong for a login).
+ * else. Do not swap this for the console's `reader.accessKey`. It reads permissions fail-closed now, but its
+ * `fullAccess` is true for `GasKeyFullAccess` (right for a display of what a key can do), and a login must
+ * accept a plain full-access key only: the ruling excludes gas keys.
  */
 export function rpcLoginProvider(rpc: {
   call<T>(method: string, params: unknown): Promise<T>;
@@ -91,8 +96,7 @@ export function rpcLoginProvider(rpc: {
       }
       if (isRecord(result) && typeof result.error === "string") {
         // Some nodes answer a missing key as HTTP 200 with the text in result.error, not as a JSON-RPC error.
-        if (/does not exist while viewing/i.test(result.error))
-          throw new Error("access key not found");
+        if (MISSING_TEXT.test(result.error)) throw new Error("access key not found");
         throw new VerifierUnavailableError();
       }
       if (!isRecord(result) || !("permission" in result)) {
@@ -103,9 +107,43 @@ export function rpcLoginProvider(rpc: {
   };
 }
 
-/** near-api-js checks the ed25519 signature AND that publicKey is a FullAccess key of accountId (via RPC). */
+const NEP413_TAG = 2147484061; // 2^31 + 413
+const NONCE_BYTES = 32;
+
+/**
+ * The NEP-413 digest a wallet signs (NEPs/nep-0413.md): sha256(u32le(2^31 + 413) || borsh(Payload)), with the
+ * payload { message: string, nonce: [u8; 32], recipient: string, callbackUrl: None }. This is the construction
+ * near-api-js's `verifyMessage` hashes (we verify with no callback URL); it is written out here so the
+ * signature can be checked before any RPC call. A test compares it with an independent copy.
+ */
+export function nep413Digest(message: string, nonce: Uint8Array, recipient: string): Uint8Array {
+  if (nonce.length !== NONCE_BYTES) throw new Error(`the nonce must be ${NONCE_BYTES} bytes`);
+  const enc = new TextEncoder();
+  const str = (s: string): Uint8Array => {
+    const bytes = enc.encode(s);
+    const out = new Uint8Array(4 + bytes.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(bytes, 4);
+    return out;
+  };
+  const tag = new Uint8Array(4);
+  new DataView(tag.buffer).setUint32(0, NEP413_TAG, true);
+  const payload = Buffer.concat([tag, str(message), nonce, str(recipient), new Uint8Array([0])]);
+  return new Uint8Array(createHash("sha256").update(payload).digest());
+}
+
+/**
+ * Two checks, in this order. First the ed25519 signature, here and now, with the claimed key: a forgery is
+ * refused without an RPC call (it would otherwise cost a full round trip, and during an outage turn a plain
+ * "bad signature" into a 503). Only then `verifyMessage`, which checks the signature again and, through the
+ * provider, that publicKey is a FullAccess key of accountId on chain.
+ */
 export function nearApiVerifier(provider: AccessKeyProvider): Nep413Verifier {
   return async (a) => {
+    const digest = nep413Digest(a.message, a.nonce, a.recipient);
+    if (!PublicKey.fromString(a.publicKey).verify(digest, a.signature)) {
+      throw new Error("signature does not match");
+    }
     await verifyMessage({
       signerAccountId: a.accountId,
       signerPublicKey: a.publicKey,

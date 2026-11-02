@@ -76,6 +76,19 @@ describe("proxy", () => {
     expect(sent).toMatch(UUID);
   });
 
+  it("forwards the path, for pages that send a signed-out visitor to /login (never the query)", () => {
+    const res = proxy(req("/console/vaults/acme.near?tab=spends", { cookie: "pb_session=x" }));
+    expect(res.headers.get("x-middleware-request-x-pathname")).toBe("/console/vaults/acme.near");
+    expect(res.headers.get("x-middleware-override-headers")).toContain("x-pathname");
+  });
+
+  it("overwrites an x-pathname the caller sent, so a page can trust it", () => {
+    for (const forged of ["//evil.example", "/console/other", "https://evil.example/"]) {
+      const res = proxy(req("/console/real", { cookie: "pb_session=x", "x-pathname": forged }));
+      expect(res.headers.get("x-middleware-request-x-pathname")).toBe("/console/real");
+    }
+  });
+
   it("puts the request id on the redirect too", () => {
     const res = proxy(req("/console", { "x-request-id": GOOD_ID }));
     expect(res.headers.get("x-request-id")).toBe(GOOD_ID);

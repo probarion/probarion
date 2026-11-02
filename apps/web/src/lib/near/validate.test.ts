@@ -94,10 +94,29 @@ describe("isNearAccountId", () => {
     }
   });
 
-  it("does not take long on a hostile input", () => {
-    const start = Date.now();
-    isNearAccountId(`${"a-".repeat(2000)}!`);
-    isNearAccountId(`${"a.".repeat(2000)}!`);
-    expect(Date.now() - start).toBeLessThan(200);
+  // The grammar is a chain of runs that each end in one separator, so the engine can only back off one run
+  // at a time (polynomial at worst, never exponential), and the length check runs first, so the input is at
+  // most 64 characters when the pattern sees it. These are the shapes that are slow in a badly written
+  // version of this pattern; each one must simply be answered.
+  it("answers hostile inputs of 64 characters or fewer", () => {
+    const cases: [string, boolean][] = [
+      [`${"a-".repeat(31)}!`, false],
+      [`${"a.".repeat(31)}!`, false],
+      [`${"a-a.".repeat(15)}!`, false],
+      [`${"a_".repeat(32)}`, false], // 64 characters, ends in a separator
+      [`${"a".repeat(63)}!`, false],
+      [`${"a".repeat(62)}--`, false],
+      [`${"a-".repeat(31)}a`, true], // 63 characters, as long as a valid one gets with this shape
+      [`${"a.".repeat(31)}a`, true],
+      [`${"1-".repeat(32)}`, false],
+      ["-".repeat(64), false],
+      [".".repeat(64), false],
+      ["a".repeat(32) + "-".repeat(32), false],
+      [`${"ab".repeat(15)}_${"cd".repeat(15)}.`, false],
+    ];
+    for (const [id, ok] of cases) {
+      expect(id.length, id).toBeLessThanOrEqual(64);
+      expect(isNearAccountId(id), id).toBe(ok);
+    }
   });
 });

@@ -23,7 +23,13 @@ import {
   readSessionToken,
   SESSION_TTL_MS,
 } from "./session";
-import { type Nep413Verifier, nearApiVerifier, rpcLoginProvider, verifyLogin } from "./verify";
+import {
+  type Nep413Verifier,
+  nearApiVerifier,
+  nep413Digest,
+  rpcLoginProvider,
+  verifyLogin,
+} from "./verify";
 
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
 const NOW = Date.UTC(2026, 10, 8, 10, 0, 0);
@@ -124,6 +130,15 @@ describe("NEP-413 sign-in", () => {
       "FullAccess ",
       { FullAccess: {} },
       { GasKeyFullAccess: { balance: "0", num_nonces: 1 } },
+      {
+        GasKeyFunctionCall: {
+          allowance: null,
+          balance: "0",
+          method_names: [],
+          num_nonces: 1,
+          receiver_id: "x.near",
+        },
+      },
       {},
       null,
       undefined,
@@ -365,6 +380,30 @@ describe("NEP-413 sign-in against the RPC (near-api-js verifyMessage behind the 
     });
   });
 
+  it("rejects the gas-key permissions a node can report, full access or not", async () => {
+    const { opened, login: l } = await login();
+    const gasKeys = [
+      { GasKeyFullAccess: { balance: "1000000000000000000000000", num_nonces: 1 } },
+      {
+        GasKeyFunctionCall: {
+          allowance: null,
+          balance: "1000000000000000000000000",
+          method_names: [],
+          num_nonces: 1,
+          receiver_id: "x.near",
+        },
+      },
+    ];
+    for (const permission of gasKeys) {
+      const { rpc, calls } = scriptedRpc([rpcOk({ ...FULL_ACCESS_KEY, permission })]);
+      expect(
+        await verifyLogin(l, opened, nearApiVerifier(rpcLoginProvider(rpc))),
+        JSON.stringify(Object.keys(permission)),
+      ).toEqual({ ok: false, reason: "bad_signature" });
+      expect(calls).toHaveLength(1); // the signature was fine, so the node was asked, and said no
+    }
+  });
+
   it("rejects a public key that is not on the account (a valid signature does not matter)", async () => {
     const { opened, login: l } = await login();
     const { rpc } = scriptedRpc([rpcErr("UNKNOWN_ACCESS_KEY")]);
@@ -428,6 +467,15 @@ describe("NEP-413 sign-in against the RPC (near-api-js verifyMessage behind the 
     }
   });
 
+  it("rejects an account id the node calls invalid", async () => {
+    const { opened, login: l } = await login();
+    const { rpc } = scriptedRpc([rpcErr("INVALID_ACCOUNT")]);
+    expect(await verifyLogin(l, opened, nearApiVerifier(rpcLoginProvider(rpc)))).toEqual({
+      ok: false,
+      reason: "bad_signature",
+    });
+  });
+
   it("still rejects a wrong signature when the key is full access", async () => {
     const a = await login();
     const b = await login();
@@ -437,6 +485,124 @@ describe("NEP-413 sign-in against the RPC (near-api-js verifyMessage behind the 
       ok: false,
       reason: "bad_signature",
     });
+  });
+});
+
+describe("the signature is checked locally before any RPC call", () => {
+  /** A forged login in each way a signature can be wrong: all must be refused without asking a node. */
+  async function forgeries() {
+    const { opened, login: l, challenge } = await signedFor();
+    const sig = Buffer.from(l.signature, "base64");
+    const flipped = Buffer.from(sig);
+    flipped[10] = (flipped[10] ?? 0) ^ 0x01;
+    const mine = KeyPair.fromRandom("ed25519");
+    const sign = (hash: Uint8Array) => ({
+      ...l,
+      publicKey: mine.getPublicKey().toString(),
+      signature: Buffer.from(mine.sign(hash).signature).toString("base64"),
+    });
+    return {
+      opened,
+      valid: l,
+      forged: {
+        "a bit flipped in a real signature": { ...l, signature: flipped.toString("base64") },
+        "all zeros": { ...l, signature: Buffer.alloc(64).toString("base64") },
+        "another key's signature under the claimed key": {
+          ...l,
+          publicKey: KeyPair.fromRandom("ed25519").getPublicKey().toString(),
+        },
+        "signed for another recipient": sign(
+          nep413Hash(challenge.message, opened.nonce, "evil.example"),
+        ),
+        "signed over another message": sign(
+          nep413Hash("Pay mallory", opened.nonce, AUTH_RECIPIENT),
+        ),
+        "signed over another nonce": sign(
+          nep413Hash(challenge.message, Buffer.alloc(32, 5), AUTH_RECIPIENT),
+        ),
+        "signed with a callback URL": sign(
+          nep413Hash(challenge.message, opened.nonce, AUTH_RECIPIENT, "https://evil.example"),
+        ),
+      },
+    };
+  }
+
+  it("refuses every kind of forgery without a single RPC call", async () => {
+    const { opened, forged } = await forgeries();
+    for (const [name, login] of Object.entries(forged)) {
+      const { rpc, calls } = scriptedRpc([rpcOk(FULL_ACCESS_KEY)]);
+      expect(
+        await verifyLogin(login, opened, nearApiVerifier(rpcLoginProvider(rpc))),
+        name,
+      ).toEqual({
+        ok: false,
+        reason: "bad_signature",
+      });
+      expect(calls, name).toHaveLength(0);
+    }
+  });
+
+  it("says 'bad signature', not 'unavailable', for a forgery while the nodes are down", async () => {
+    const { opened, forged, valid } = await forgeries();
+    const down = () =>
+      scriptedRpc(
+        Array.from({ length: 4 }, () => httpStatus(503)),
+        ["https://a.example", "https://b.example"],
+        { maxRounds: 2 },
+      );
+    for (const [name, login] of Object.entries(forged)) {
+      const { rpc, calls } = down();
+      expect(
+        await verifyLogin(login, opened, nearApiVerifier(rpcLoginProvider(rpc))),
+        name,
+      ).toEqual({
+        ok: false,
+        reason: "bad_signature",
+      });
+      expect(calls, name).toHaveLength(0);
+    }
+    // a genuine signature does reach the nodes, and is then reported as unavailable
+    const { rpc, calls } = down();
+    expect(await verifyLogin(valid, opened, nearApiVerifier(rpcLoginProvider(rpc)))).toEqual({
+      ok: false,
+      reason: "verifier_unavailable",
+    });
+    expect(calls.length).toBeGreaterThan(0);
+  });
+
+  it("asks exactly once for a genuine signature, with an injected provider too", async () => {
+    const { opened, valid } = await forgeries();
+    const asked: unknown[] = [];
+    const provider = {
+      viewAccessKey: async (a: unknown) => {
+        asked.push(a);
+        return { permission: "FullAccess" };
+      },
+    };
+    expect(await verifyLogin(valid, opened, nearApiVerifier(provider))).toEqual({
+      ok: true,
+      accountId: "alice.near",
+    });
+    expect(asked).toEqual([{ accountId: "alice.near", publicKey: valid.publicKey }]);
+  });
+
+  it("builds the NEP-413 digest the way the spec does, byte for byte", () => {
+    const cases: [string, Uint8Array, string][] = [
+      ["Sign in to Probarion", Buffer.alloc(32, 1), "probarion.xyz"],
+      ["", Buffer.alloc(32, 255), ""],
+      [
+        "Zażółć gęślą jaźń \u{1F512} \n\t",
+        Uint8Array.from({ length: 32 }, (_, i) => i * 8),
+        "x.near",
+      ],
+      ["m".repeat(1000), Buffer.alloc(32, 7), "r".repeat(300)],
+    ];
+    for (const [message, nonce, recipient] of cases) {
+      expect(Buffer.from(nep413Digest(message, nonce, recipient)).toString("hex")).toBe(
+        Buffer.from(nep413Hash(message, nonce, recipient)).toString("hex"),
+      );
+    }
+    expect(() => nep413Digest("m", new Uint8Array(31), "r")).toThrow(/32/);
   });
 });
 

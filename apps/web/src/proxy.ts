@@ -32,6 +32,9 @@ export function proxy(req: NextRequest) {
 
   const headers = new Headers(req.headers);
   headers.set("x-request-id", requestId);
+  // For pages that send a signed-out visitor to /login (requireSession). Always overwritten, so what the
+  // browser sent never reaches a page; the page still checks it is a same-origin path.
+  headers.set("x-pathname", req.nextUrl.pathname);
   const res = NextResponse.next({ request: { headers } });
   res.headers.set("x-request-id", requestId);
   return res;

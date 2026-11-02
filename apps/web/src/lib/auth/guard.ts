@@ -1,11 +1,12 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { subkey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
 import { type MemberRole, type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { problem } from "@/lib/http";
 import { isNearAccountId } from "@/lib/near/validate";
+import { loginPath } from "./redirect";
 import { readSessionToken, SESSION_COOKIE, type Session } from "./session";
 
 export async function getSession(): Promise<Session | null> {
@@ -14,9 +15,15 @@ export async function getSession(): Promise<Session | null> {
   return readSessionToken(await subkey("session"), token);
 }
 
-export async function requireSession(): Promise<Session> {
+/**
+ * A signed-in session, or a redirect to /login. The redirect carries where the visitor was going as
+ * `?next=<path>`, the way the proxy's own redirect does: `next` if the caller gives one, else the path the
+ * proxy forwarded in `x-pathname` (it overwrites any value the browser sent). Either way the path is checked
+ * to be a same-origin path (`safeNextPath`), so this cannot be made an open redirect; anything else is /login.
+ */
+export async function requireSession(next?: string): Promise<Session> {
   const s = await getSession();
-  if (!s) redirect("/login");
+  if (!s) redirect(loginPath(next ?? (await headers()).get("x-pathname")));
   return s;
 }
 
