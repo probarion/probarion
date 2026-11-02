@@ -169,6 +169,10 @@ const SWALLOWS: Array<[RegExp, string]> = [
   [/;\s*true\b/, '"; true" (or ";true")'],
   [/\bexit\s+0\b/, '"exit 0"'],
   [/--passWithNoTests|--pass-with-no-tests/i, '"--passWithNoTests"'],
+  [
+    /--dangerouslyIgnoreUnhandledErrors|--dangerously-ignore-unhandled-errors/i,
+    '"--dangerouslyIgnoreUnhandledErrors"',
+  ],
   [/--bail(?:\s+|=)0\b/, '"--bail 0"'],
   [new RegExp(`${COMMAND_START}(?:true|:)(?=$|[\\s;&|)}])`), '"true" (or ":") used as a command'],
   [new RegExp(`${COMMAND_START}exit\\s*(?=$|[;&|)}])`), 'a bare "exit", which exits 0'],
@@ -204,6 +208,9 @@ function loadRepo(): Repo {
   ]);
   for (const dir of ["", ...paths.slice(1).map((p) => p.slice(0, -"package.json".length))]) {
     files.set(`${dir}.npmrc`, optional(`${dir}.npmrc`));
+    for (const pnpmfile of [".pnpmfile.cjs", ".pnpmfile.mjs"]) {
+      files.set(`${dir}${pnpmfile}`, optional(`${dir}${pnpmfile}`));
+    }
     for (const base of ["vitest.config", "vite.config"]) {
       for (const ext of ["ts", "mts", "cts", "js", "mjs", "cjs"]) {
         const path = `${dir}${base}.${ext}`;
@@ -283,9 +290,22 @@ function gateProblems(repo: Repo): string[] {
         `${path} exists (an .npmrc can replace the shell every script runs in, with script-shell); review it, then allow it in ${SELF}`,
       );
     }
+    if (/(^|\/)\.pnpmfile\.[cm]js$/.test(path) && text !== null) {
+      fail(
+        `${path} exists (a pnpmfile runs its own code on every pnpm install and can rewrite package manifests); review it, then allow it in ${SELF}`,
+      );
+    }
     if (/\bvite(st)?\.config\./.test(path) && /passWithNoTests/i.test(text ?? "")) {
       fail(
         `${path} sets passWithNoTests, which lets a run with no test files pass; review the change`,
+      );
+    }
+    if (
+      /\bvite(st)?\.config\./.test(path) &&
+      /dangerouslyIgnoreUnhandledErrors/i.test(text ?? "")
+    ) {
+      fail(
+        `${path} sets dangerouslyIgnoreUnhandledErrors, which lets a run with unhandled errors pass; review the change`,
       );
     }
   }
@@ -517,6 +537,39 @@ const GATE_MUTATIONS: Array<[string, (r: Repo) => void, string[]]> = [
     },
     ["packages/core/vitest.config.ts sets passWithNoTests"],
   ],
+  [
+    "a .pnpmfile.cjs at the root",
+    (r) => {
+      r.files.set(".pnpmfile.cjs", "module.exports = { hooks: { readPackage: (p) => p } };\n");
+    },
+    [".pnpmfile.cjs exists (a pnpmfile runs its own code"],
+  ],
+  [
+    "a .pnpmfile.cjs in a workspace package",
+    (r) => {
+      r.files.set("packages/core/.pnpmfile.cjs", "module.exports = {};\n");
+    },
+    ["packages/core/.pnpmfile.cjs exists"],
+  ],
+  [
+    "dangerouslyIgnoreUnhandledErrors in a package's vitest config",
+    (r) => {
+      const config = r.files.get("apps/web/vitest.config.ts") ?? "";
+      r.files.set(
+        "apps/web/vitest.config.ts",
+        config.replace("  test: {\n", "  test: {\n    dangerouslyIgnoreUnhandledErrors: true,\n"),
+      );
+    },
+    ["apps/web/vitest.config.ts sets dangerouslyIgnoreUnhandledErrors"],
+  ],
+  [
+    "--dangerouslyIgnoreUnhandledErrors on a package's test",
+    (r) => append(r, "packages/cli/package.json", "test", " --dangerouslyIgnoreUnhandledErrors"),
+    [
+      'packages/cli/package.json: scripts["test"] changed',
+      'packages/cli/package.json: scripts["test"] contains "--dangerouslyIgnoreUnhandledErrors"',
+    ],
+  ],
 ];
 
 describe("the gate scripts that release.yml runs (T17-R4)", () => {
@@ -534,6 +587,8 @@ describe("the gate scripts that release.yml runs (T17-R4)", () => {
         "scripts/vitest.config.ts",
         ".npmrc",
         "apps/web/.npmrc",
+        ".pnpmfile.cjs",
+        "apps/web/.pnpmfile.cjs",
         "packages/core/vitest.config.ts",
         "apps/web/vitest.config.ts",
       ]),
