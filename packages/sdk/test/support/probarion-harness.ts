@@ -101,6 +101,8 @@ export interface SetupOptions {
   ledgerSender?: (real: TxSender) => TxSender;
   /** Pass no logger, so the instance uses its default (console.warn). */
   consoleLogger?: boolean;
+  /** The instance clock (default: the fixed scenario time). */
+  now?: () => Date;
 }
 
 export function realSender(server: FakeRpcServer, secretKey: string): NearApiJsSender {
@@ -124,7 +126,7 @@ export function setup(server: FakeRpcServer, opts: SetupOptions = {}) {
           ...(proposerPrompt === undefined ? {} : { systemPrompt: proposerPrompt }),
         })
       : null,
-    now: () => NOW,
+    now: opts.now ?? (() => NOW),
     expectedCodeHashes: [SCENARIO_CODE_HASH],
   };
   if (opts.consoleLogger !== true) deps.logger = { warn: (message) => warnings.push(message) };

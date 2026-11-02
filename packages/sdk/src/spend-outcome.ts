@@ -54,9 +54,9 @@ export interface ModelUsage {
  *   spend, else why the transaction did not run (`TxSendFailed`, a `TxRejectedError` kind such as
  *   `NotEnoughAllowance`, `LackBalanceForState` / `NotEnoughBalance`, `TxFailed`).
  * - `unconfirmed`: `spend` was sent and may have paid. `txHash` is set whenever the sender knows it. Never
- *   send it again, least of all under a fresh `ref`: resolve it with `VaultClient.resolveSpend(txHash)` or by
- *   looking the spend up by `ref`. A transaction that never landed stays unknown until its block-hash window
- *   expires (about 1 day). `code` says what is unknown (`TxOutcomeUnknown`, `pending`, `callback_failed`,
+ *   send it again, least of all under a fresh `ref`: look the spend up by `ref` (`spends.get`) or wait. Until
+ *   the chain shows the spend, or until `UNKNOWN_SETTLE_MS` (48 h, the transaction validity window plus a
+ *   margin) has passed, this instance refuses the same invoice by code. `code` says what is unknown (`TxOutcomeUnknown`, `pending`, `callback_failed`,
  *   `unreadable_value`, or `DuplicateRef` / `DuplicateInvoice` when no spend could be found by ref).
  *
  * Two identical calls can both report the same `spendId` paid by ONE payment (identical decisions, two
@@ -407,7 +407,7 @@ export function recordSpend(read: SpendRead, payee: Payee | undefined, ref: stri
           code: read.code,
           txHash: read.txHash,
         },
-        warning: `spend ${read.txHash ?? "(no tx hash)"} for ref ${ref} has an unknown outcome (${read.why}): it may have paid. Never send it again, least of all under a fresh ref; resolve it with resolveSpend(txHash) or by looking the spend up by ref. A transaction that never landed stays unknown until its block-hash window expires (about 1 day).`,
+        warning: `spend ${read.txHash ?? "(no tx hash)"} for ref ${ref} has an unknown outcome (${read.why}): it may have paid. Never send it again, least of all under a fresh ref. Until the chain shows the spend, or for 48 hours (the transaction validity window plus a margin, UNKNOWN_SETTLE_MS), this invoice is refused by code; look the spend up by ref to see it sooner.`,
       };
     case "refused":
       return {
@@ -439,17 +439,34 @@ export function recordSpend(read: SpendRead, payee: Payee | undefined, ref: stri
 }
 
 /**
- * T13-R1 item 6: an earlier payment of this invoice whose outcome is unknown and still unresolved, or null.
- * Unresolved means the payment entry says `contract.status: "unknown"`, no later payment entry of the same
- * decision records a known status, and no spend on chain carries that decision's hash (once it does, the
- * chain state decides, through `decide()`'s duplicate rules). The ledger body holds no `ref`, so the match is
- * by invoice hash, which is the double-pay risk (a fresh ref for the same invoice); the contract refuses a
- * reused ref by itself.
+ * How long an unconfirmed payment can still land (T13-R2): the NEAR transaction validity window (a signed
+ * transaction names a recent block hash and expires about 24 hours later) plus a margin. Counted from the
+ * payment entry's `at`, which is written after the transaction was signed, so the bound is conservative.
+ */
+export const UNKNOWN_SETTLE_MS = 48 * 3600 * 1000;
+
+/** True when the entry's `at` is more than `UNKNOWN_SETTLE_MS` before `now`; an unreadable `at` never settles. */
+function settledByTime(entry: LedgerEntry, now: Date): boolean {
+  const at = Date.parse(entry.body.at);
+  return Number.isFinite(at) && now.getTime() - at > UNKNOWN_SETTLE_MS;
+}
+
+/**
+ * T13-R1 item 6, bounded by T13-R2: an earlier payment of this invoice whose outcome is unknown and not yet
+ * settled, or null. A `contract.status: "unknown"` payment entry is settled when any of these hold:
+ * - a later payment entry of the same decision records a known status;
+ * - a spend on chain carries that decision's hash (then the chain state decides, through `decide()`'s
+ *   duplicate rules);
+ * - its `at` is more than `UNKNOWN_SETTLE_MS` before `now` (the instance's clock) and no spend on chain
+ *   carries the decision's hash: by then its transaction can no longer pay.
+ * The ledger body holds no `ref`, so the match is by invoice hash, which is the double-pay risk (a fresh ref
+ * for the same invoice); the contract refuses a reused ref by itself.
  */
 export function unresolvedPayment(
   entries: readonly LedgerEntry[],
   invoiceHash: Hex32,
   spends: readonly SpendView[],
+  now: Date,
 ): LedgerEntry | null {
   const onChain = new Set(spends.map((s) => s.decision_hash));
   const known = new Set<string>();
@@ -467,7 +484,8 @@ export function unresolvedPayment(
       e.body.invoice_hash === invoiceHash &&
       decision !== undefined &&
       !known.has(decision) &&
-      !onChain.has(decision)
+      !onChain.has(decision) &&
+      !settledByTime(e, now)
     ) {
       return e;
     }
@@ -476,15 +494,22 @@ export function unresolvedPayment(
 }
 
 /**
- * Refuses a decision because of an unresolved earlier payment (`unresolvedPayment`). The RuleId is
- * `invoice.duplicate`, the nearest existing id (`RuleId` is a closed union in core): it replaces the passing
- * `invoice.duplicate` rule, or is added when the decision has none (raw mode).
+ * Refuses a decision because of an unconfirmed earlier payment that is not yet settled (`unresolvedPayment`).
+ * The RuleId is `invoice.duplicate`, the nearest existing id (`RuleId` is a closed union in core; Task 14
+ * carries `ledger.unresolved`): it replaces the passing `invoice.duplicate` rule, or is added when the decision
+ * has none (raw mode). The detail says when the invoice can be retried.
  */
 export function refuseForUnresolved(decision: Decision, unresolved: LedgerEntry): Decision {
+  const at = Date.parse(unresolved.body.at);
+  const txHash = unresolved.body.contract?.tx_hash ?? null;
+  const tx = txHash === null ? "" : ` (tx ${txHash})`;
+  const retry = Number.isFinite(at)
+    ? `this invoice can be retried after ${new Date(at + UNKNOWN_SETTLE_MS).toISOString()}`
+    : "this invoice can be retried once that outcome is known";
   const rule: RuleResult = {
     id: "invoice.duplicate",
     outcome: "refuse",
-    detail: `an earlier payment of this invoice has an unknown outcome (ledger seq ${unresolved.body.seq}, tx ${unresolved.body.contract?.tx_hash ?? "unknown"}): resolve it first (resolveSpend(txHash), or look the spend up by ref); it may have paid`,
+    detail: `an unconfirmed payment for this invoice from ${unresolved.body.at}${tx} may still land; ${retry}, and its outcome may appear on chain sooner`,
   };
   let replaced = false;
   const rules = decision.rules.map((r) => {

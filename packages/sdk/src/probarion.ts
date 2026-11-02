@@ -75,6 +75,7 @@ import { VaultClient } from "./vault-client.js";
 
 export { hashInvoice } from "./input.js";
 export type { ModelUsage, SpendOutcome, SpendOutcomeStatus } from "./spend-outcome.js";
+export { UNKNOWN_SETTLE_MS } from "./spend-outcome.js";
 
 /** The ledger file when neither `ledger` nor `PROBARION_LEDGER_PATH` is given. */
 export const DEFAULT_LEDGER_PATH = ".probarion/ledger.jsonl";
@@ -399,7 +400,8 @@ export class Probarion {
    * Full cycle: (optional) model → policy → ledger decision entry → contract spend → ledger outcome entry →
    * anchor. `facts.invoice_hash` must equal `hashInvoice(text)` and `facts.po_ref` must be null or a verbatim
    * substring of `text`, otherwise `ProbarionError` `InvalidInput` is thrown before any write (ICR-6). An
-   * earlier payment of the same invoice whose outcome is still unknown refuses the cycle by code.
+   * unconfirmed earlier payment of the same invoice refuses the cycle by code until it settles: until the chain
+   * shows its spend, or until `UNKNOWN_SETTLE_MS` (48 h) after it, when its transaction can no longer pay.
    */
   process(invoice: { text: string; facts: InvoiceFacts; ref: string }): Promise<SpendOutcome> {
     return this.lock.run(async () => {
@@ -410,7 +412,7 @@ export class Probarion {
       this.assertLedgerKey(ctx.config, keys);
       const entries = await this.ledger.all();
       const expected = nextBodyFields(entries.at(-1) ?? null);
-      const unresolved = unresolvedPayment(entries, input.facts.invoice_hash, ctx.spends);
+      const unresolved = unresolvedPayment(entries, input.facts.invoice_hash, ctx.spends, now);
       // The nonce mandate: the decision entry records it and the policy refuses any decision that leaves it
       // (invoice.po_mismatch), so the nonce recomputed from the entry always matches.
       const candidate = purposeMatch(ctx.mandates, input.facts.purpose_hash, now, keys.agentPk);
@@ -464,7 +466,8 @@ export class Probarion {
    * `skipPreflight: true` (Canary raw mode only) writes a decision entry (verdict allow, rule
    * `custom.raw_mode`), skips the code rules and `check_spend`, and always sends `spend`: a contract panic
    * comes back as `refused_by_contract` with the bare code and the failed transaction's hash. The one
-   * exception is an unresolved earlier payment of the same invoice, which refuses even in raw mode.
+   * exception is an unconfirmed payment of the same invoice that has not settled yet (see `process`): it
+   * refuses by code even in raw mode.
    */
   requestSpend(input: {
     mandateId: number;
@@ -484,7 +487,7 @@ export class Probarion {
       const entries = await this.ledger.all();
       const expected = nextBodyFields(entries.at(-1) ?? null);
       const mandate = ctx.mandates.find((m) => m.id === s.mandateId) ?? null;
-      const unresolved = unresolvedPayment(entries, s.invoiceHash, ctx.spends);
+      const unresolved = unresolvedPayment(entries, s.invoiceHash, ctx.spends, now);
 
       let evidence = s.evidence;
       let attestationOk: boolean | null = null;

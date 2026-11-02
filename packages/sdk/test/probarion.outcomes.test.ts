@@ -26,7 +26,7 @@ import {
   LedgerConflictError,
   type LedgerStore,
 } from "../src/ledger-store.js";
-import type { SpendOutcome } from "../src/probarion.js";
+import { type SpendOutcome, UNKNOWN_SETTLE_MS } from "../src/probarion.js";
 import {
   createScenarioChain,
   type FakeRpcServer,
@@ -45,6 +45,7 @@ import {
 import {
   baseInvoice,
   FailingLedgerStore,
+  NOW,
   nearInvoice,
   nonceContextOf,
   scriptedSender,
@@ -836,7 +837,7 @@ describe("unknown outcomes block the same invoice until resolved (T13-R1 items 5
     expect(viaProcess).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
     const decision = (await ledger.all()).at(-1);
     expect(decision?.body.rules.find((r) => r.outcome === "refuse")?.detail).toMatch(
-      /unknown outcome .*tx LOST-TX.*resolve it first/,
+      /unconfirmed payment for this invoice from \S+ \(tx LOST-TX\) may still land; this invoice can be retried after /,
     );
     expect(chats()).toBe(1); // no model tokens for a cycle that is refused anyway
 
@@ -909,6 +910,128 @@ describe("unknown outcomes block the same invoice until resolved (T13-R1 items 5
     expect((await ledger.all()).map((e) => e.body.kind)).toEqual(["decision"]);
     expect(server.chain.anchors).toEqual([]);
     expect(spendTxs(server)).toEqual([]);
+  });
+});
+
+describe("the unconfirmed-payment guard is bounded in time (T13-R2)", () => {
+  const HOUR = 3600 * 1000;
+  const RETRY_AT = new Date(NOW.getTime() + UNKNOWN_SETTLE_MS).toISOString();
+
+  /** A cycle whose spend answer is lost at the scenario time; later cycles run on `clock`. */
+  async function unconfirmedFirst(answer: () => Promise<TxOutcome>) {
+    let offset = 0;
+    let calls: unknown[] = [];
+    const harness = setup(server, {
+      now: () => new Date(NOW.getTime() + offset),
+      agentSender: (real) => {
+        const scripted = scriptedSender(real, (tx, n) =>
+          n === 1 ? answer() : real.functionCall(tx),
+        );
+        calls = scripted.calls;
+        return scripted.sender;
+      },
+    });
+    const first = await harness.pb.process(INVOICE());
+    expect(first.status).toBe("unconfirmed");
+    return {
+      ...harness,
+      first,
+      at: (ms: number) => {
+        offset = ms;
+      },
+      sent: () => calls.length,
+    };
+  }
+  const lostTx = () =>
+    Promise.reject(new TxOutcomeUnknownError("TEST DOUBLE: lost", "LOST-TX", SCENARIO_VAULT));
+
+  async function refusalDetail(ledger: LedgerStore): Promise<string | undefined> {
+    return (await ledger.all()).at(-1)?.body.rules.find((r) => r.outcome === "refuse")?.detail;
+  }
+
+  it("inside the window, up to and including 48 h, the invoice is refused with the retry time", async () => {
+    const t = await unconfirmedFirst(lostTx);
+    for (const [i, offset] of [HOUR, UNKNOWN_SETTLE_MS].entries()) {
+      t.at(offset);
+      const out = await t.pb.process({ ...INVOICE(), ref: `INV-1-w${i}` });
+      expect(out).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+      expect(await refusalDetail(t.ledger)).toBe(
+        `an unconfirmed payment for this invoice from ${NOW.toISOString()} (tx LOST-TX) may still land; this invoice can be retried after ${RETRY_AT}, and its outcome may appear on chain sooner`,
+      );
+    }
+    expect(t.sent()).toBe(1);
+    expect(UNKNOWN_SETTLE_MS).toBe(48 * 3600 * 1000);
+  });
+
+  it("1 ms after the window, with no spend on chain, the invoice proceeds and pays", async () => {
+    const t = await unconfirmedFirst(lostTx);
+    t.at(UNKNOWN_SETTLE_MS + 1);
+    const out = await t.pb.process({ ...INVOICE(), ref: "INV-1-late" });
+    expect(out).toMatchObject({ status: "paid", spendId: 1 });
+    expect(t.sent()).toBe(2);
+    expect(server.chain.spends).toHaveLength(1);
+  });
+
+  it("a chain spend with the decision hash inside the window resolves it: decide() refuses the duplicate", async () => {
+    const t = await unconfirmedFirst(lostTx);
+    t.at(HOUR);
+    server.chain.spends.push({
+      id: 1,
+      mandate_id: 1,
+      amount: "25000000",
+      invoice_hash: INVOICE().facts.invoice_hash,
+      ref: "INV-1",
+      decision_hash: t.first.decisionHash,
+      agent_pk: TEST_KEYS.agent.publicKey,
+      destination: { type: "near", account_id: SCENARIO_NEAR_PAYEE },
+      status: "paid",
+      created_at_ns: SCENARIO_NOW.toString(),
+      held_until_ns: null,
+      memo: null,
+    });
+    const out = await t.pb.process({ ...INVOICE(), ref: "INV-1-x" });
+    expect(out).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+    const rules = (await t.ledger.all()).at(-1)?.body.rules ?? [];
+    expect(rules.find((r) => r.outcome === "refuse")?.detail).toMatch(/already paid or is pending/);
+    expect(rules.some((r) => r.detail.includes("unconfirmed payment"))).toBe(false);
+    expect(t.sent()).toBe(1);
+  });
+
+  it("an unclassified sender error with no tx hash is guarded the same way and settles after the window", async () => {
+    const t = await unconfirmedFirst(() =>
+      Promise.reject(new Error("TEST DOUBLE: socket hang up")),
+    );
+    expect((await t.ledger.all())[1]?.body.contract).toMatchObject({
+      tx_hash: null,
+      status: "unknown",
+    });
+    t.at(HOUR);
+    expect(await t.pb.process({ ...INVOICE(), ref: "INV-1-y" })).toMatchObject({
+      status: "refused_by_code",
+    });
+    expect(await refusalDetail(t.ledger)).toBe(
+      `an unconfirmed payment for this invoice from ${NOW.toISOString()} may still land; this invoice can be retried after ${RETRY_AT}, and its outcome may appear on chain sooner`,
+    );
+    t.at(UNKNOWN_SETTLE_MS + 1);
+    expect((await t.pb.process({ ...INVOICE(), ref: "INV-1-z" })).status).toBe("paid");
+  });
+
+  it("raw mode is refused inside the window and sends after it", async () => {
+    const t = await unconfirmedFirst(lostTx);
+    const raw = {
+      mandateId: 1,
+      amount: "25000000",
+      invoiceHash: INVOICE().facts.invoice_hash,
+      skipPreflight: true,
+    };
+    t.at(HOUR);
+    expect(await t.pb.requestSpend({ ...raw, ref: "RAW-1" })).toMatchObject({
+      status: "refused_by_code",
+    });
+    expect(t.sent()).toBe(1);
+    t.at(UNKNOWN_SETTLE_MS + 1);
+    expect(await t.pb.requestSpend({ ...raw, ref: "RAW-2" })).toMatchObject({ status: "paid" });
+    expect(t.sent()).toBe(2);
   });
 });
 
