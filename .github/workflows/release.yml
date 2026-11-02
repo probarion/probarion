@@ -19,6 +19,15 @@ name: release
 #   4. Store NPM_TOKEN as an environment secret of "npm-release" (not as a repository secret).
 #   5. After 0.1.0 is on npm, switch each package to npm trusted publishing (OIDC, no token) and
 #      revoke NPM_TOKEN.
+#
+# If a run fails, re-run it from the Actions page:
+#   "Re-run failed jobs" keeps the tarballs of the first verify job and runs only what failed (for
+#     example publish, after a network error). This is the normal choice.
+#   "Re-run all jobs" packs again. If `pnpm pack` does not give the same bytes, the publish step stops
+#     at any package that is already on npm with different content, and publishes nothing after it.
+#     A package that was published is skipped when npm holds the same bytes.
+# No step in this file may swallow a failure (no continue-on-error, no if:, no `|| true`):
+# scripts/ci-workflow.test.mjs refuses such an edit.
 on:
   push:
     tags: ["sdk-v*"]
@@ -104,7 +113,7 @@ jobs:
           list=$(node -e 'for (const p of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).packages) console.log([p.file, p.name, p.version].join("\t"))' "$RELEASE_DIR/packages.json")
           [ -n "$list" ] || { echo "::error::empty publish list"; exit 1; }
           while IFS=$'\t' read -r file name version; do
-            if npm view "$name@$version" version </dev/null >/dev/null 2>&1; then
+            if view=$(npm view "$name@$version" version 2>&1 </dev/null); then
               published=$(npm view "$name@$version" dist.integrity </dev/null)
               local_integrity="sha512-$(openssl dgst -sha512 -binary "$RELEASE_DIR/$file" | base64 -w0)"
               if [ "$published" = "$local_integrity" ]; then
@@ -113,6 +122,12 @@ jobs:
               fi
               echo "::error::$name@$version is already on npm with different content (npm: $published, this run: $local_integrity); nothing after it is published"
               exit 1
+            else
+              # Only "not found" means "not published yet"; any other failure (network, registry) stops here.
+              case "$view" in
+                *E404*) ;;
+                *) echo "::error::cannot tell whether $name@$version is on npm: $view"; exit 1 ;;
+              esac
             fi
             args=("${base_args[@]}")
             # npm refuses a prerelease without a dist-tag, and a prerelease must not become "latest".

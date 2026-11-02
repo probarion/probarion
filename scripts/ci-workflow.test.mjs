@@ -199,7 +199,9 @@ function checkReleaseWorkflow(text, ciText) {
     "list=$(node -e ",
     '[ -n "$list" ] || { echo "::error::empty publish list"; exit 1; }',
     'done <<<"$list"',
-    'npm view "$name@$version" version </dev/null >/dev/null 2>&1',
+    'if view=$(npm view "$name@$version" version 2>&1 </dev/null); then',
+    "*E404*) ;;",
+    '*) echo "::error::cannot tell whether $name@$version is on npm: $view"; exit 1 ;;',
     'case "$version" in *-*) args+=(--tag next) ;; esac',
   ]) {
     if (!script.includes(needle)) fail(`the publish script lacks: ${needle}`);
@@ -215,7 +217,9 @@ function checkReleaseWorkflow(text, ciText) {
     at("::notice::"),
     at("continue"),
     at("::error::$name@$version is already on npm with different content"),
-    at("exit 1\n            fi\n            args="),
+    at('nothing after it is published"\n              exit 1\n            else'),
+    at("*E404*) ;;"),
+    at("cannot tell whether"),
     at(NPM_PUBLISH_LINE),
   ];
   if (integrity.includes(-1) || integrity.some((n, i) => i > 0 && n < integrity[i - 1])) {
@@ -277,6 +281,64 @@ function checkReleaseWorkflow(text, ciText) {
     .slice(1)) {
     const body = block.split(/\n\s*(?:- |env:|with:)/)[0];
     if (body.includes("${{")) fail(`an expression in a run script: ${body.slice(0, 60)}`);
+  }
+
+  // --- nothing may swallow a failure or switch a gate off
+  const code = lines.join("\n");
+  if (/continue-on-error/.test(code)) {
+    fail("continue-on-error is not allowed: a failed step must fail the run");
+  }
+  if (lines.some((l) => /^\s*(- )?if:/.test(l))) {
+    fail("an if: key is not allowed: every step and job runs, and a failure stops the run");
+  }
+  if (/\bshell:/.test(code)) fail("shell: is not allowed (the default bash -e must apply)");
+  if (/set \+e|set \+o errexit/.test(code)) fail("set +e is not allowed");
+  if (/\bexit 0\b/.test(code)) fail("exit 0 is not allowed");
+  if (lines.some((l) => /;\s*true\s*$/.test(l))) {
+    fail('a line that ends in "; true" swallows a failure');
+  }
+  // The only places where a command may fail into something else are these two guards, and both exit 1.
+  const exitGuards = [
+    'git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {',
+    '[ -n "$list" ] || { echo "::error::empty publish list"; exit 1; }',
+  ];
+  for (const l of lines) {
+    if (l.includes("||") && !exitGuards.includes(l.trim())) {
+      fail(`|| outside the two exit-1 guards swallows a failure: ${l.trim().slice(0, 80)}`);
+    }
+  }
+  const mainCheck = [
+    "      - name: Require the tagged commit to be on main",
+    "        run: |",
+    '          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {',
+    '            echo "::error::the tagged commit $GITHUB_SHA is not on main; a release is cut from main"',
+    "            exit 1",
+    "          }",
+  ].join("\n");
+  if (!verify.join("\n").includes(mainCheck)) {
+    fail("the main check must be verbatim (a failing check must exit 1)");
+  }
+  const runAt = publish.findIndex((l) => /^ {8}run: \|$/.test(l));
+  if (runAt < 0 || publish[runAt + 1] !== "          set -euo pipefail") {
+    fail("the publish script must start with set -euo pipefail");
+  }
+  // The token goes to the registry named here, so it is pinned: exactly one, in the publish job.
+  const registries = lines.filter((l) => /registry-url:/.test(l));
+  if (
+    registries.length !== 1 ||
+    registries[0] !== "          registry-url: https://registry.npmjs.org" ||
+    !publish.includes(registries[0])
+  ) {
+    fail("registry-url must be exactly https://registry.npmjs.org, once, in the publish job");
+  }
+  if (!verify.includes("          if-no-files-found: error")) {
+    fail("the upload step needs if-no-files-found: error");
+  }
+  if (
+    !verify.includes("          name: release-tarballs") ||
+    !publish.includes("          name: release-tarballs")
+  ) {
+    fail("the artifact must be named release-tarballs in both jobs");
   }
   return problems;
 }
@@ -433,10 +495,20 @@ const mutations = [
     "a different version skipped without the error",
     (t) =>
       t.replace(
-        "exit 1\n            fi\n            args=",
-        "true\n            fi\n            args=",
+        'nothing after it is published"\n              exit 1\n            else',
+        'nothing after it is published"\n              true\n            else',
       ),
     "dist.integrity",
+  ],
+  [
+    "any failure of npm view taken for not published",
+    (t) => t.replace("                *E404*) ;;\n", "                *) ;;\n"),
+    "*E404*",
+  ],
+  [
+    "the error branch for an unreadable registry answer replaced",
+    (t) => t.replace('is on npm: $view"; exit 1 ;;', 'is on npm: $view"; echo "going on" ;;'),
+    "cannot tell whether",
   ],
   [
     "the empty publish list not refused",
@@ -516,6 +588,142 @@ const mutations = [
     "a publish job that does not wait for verify",
     (t) => t.replace("needs: verify\n", ""),
     "must need verify",
+  ],
+  // A gate that is still there but no longer stops the run (T17-R2)
+  [
+    "continue-on-error on the verify:ts step",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:ts\n",
+        "      - run: pnpm run verify:ts\n        continue-on-error: true\n",
+      ),
+    "continue-on-error",
+  ],
+  [
+    "|| true after verify:ts",
+    (t) => t.replace("pnpm run verify:ts\n", "pnpm run verify:ts || true\n"),
+    "||",
+  ],
+  [
+    "an if: false on the verify:launch step",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:launch\n",
+        "      - if: false\n        run: pnpm run verify:launch\n",
+      ),
+    "if:",
+  ],
+  [
+    "if: always() on the publish job",
+    (t) => t.replace("    needs: verify\n", "    needs: verify\n    if: always()\n"),
+    "if:",
+  ],
+  [
+    "the exit 1 of the main check replaced by true",
+    (t) =>
+      t.replace(
+        'is not on main; a release is cut from main"\n            exit 1',
+        'is not on main; a release is cut from main"\n            true',
+      ),
+    "main check must be verbatim",
+  ],
+  [
+    "the publish registry pointed at another host",
+    (t) =>
+      t.replace(
+        "registry-url: https://registry.npmjs.org",
+        "registry-url: https://registry.example.com",
+      ),
+    "registry-url",
+  ],
+  [
+    "a second registry-url",
+    (t) =>
+      t.replace(
+        "      - run: pnpm install --frozen-lockfile\n",
+        "      - run: pnpm install --frozen-lockfile\n      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0\n        with:\n          registry-url: https://registry.npmjs.org\n",
+      ),
+    "registry-url",
+  ],
+  [
+    "|| true after the first release:check",
+    (t) =>
+      t.replace(
+        'release:check -- "$GITHUB_REF_NAME"\n',
+        'release:check -- "$GITHUB_REF_NAME" || true\n',
+      ),
+    "||",
+  ],
+  [
+    "set -euo pipefail removed from the publish script",
+    (t) => t.replace("          set -euo pipefail\n", ""),
+    "set -euo pipefail",
+  ],
+  [
+    "set -euo pipefail no longer the first line",
+    (t) =>
+      t.replace(
+        "          set -euo pipefail\n",
+        "          echo start\n          set -euo pipefail\n",
+      ),
+    "set -euo pipefail",
+  ],
+  [
+    "|| true after the main check's closing brace",
+    (t) =>
+      t.replace(
+        "          }\n      - uses: pnpm/action-setup",
+        "          } || true\n      - uses: pnpm/action-setup",
+      ),
+    "||",
+  ],
+  [
+    "if-no-files-found: warn on the upload",
+    (t) => t.replace("if-no-files-found: error", "if-no-files-found: warn"),
+    "if-no-files-found",
+  ],
+  [
+    "|| : after a command",
+    (t) => t.replace("pnpm run verify:launch\n", "pnpm run verify:launch || :\n"),
+    "||",
+  ],
+  [
+    "; true at the end of a run line",
+    (t) => t.replace("pnpm run verify:ts\n", "pnpm run verify:ts; true\n"),
+    "; true",
+  ],
+  [
+    "exit 0 inside the main check",
+    (t) =>
+      t.replace(
+        'is not on main; a release is cut from main"\n            exit 1',
+        'is not on main; a release is cut from main"\n            exit 0',
+      ),
+    "exit 0",
+  ],
+  [
+    "set +e in the publish script",
+    (t) =>
+      t.replace("          set -euo pipefail\n", "          set -euo pipefail\n          set +e\n"),
+    "set +e",
+  ],
+  [
+    "a shell override that drops -e",
+    (t) =>
+      t.replace(
+        "        run: |\n          git merge-base",
+        "        shell: bash {0}\n        run: |\n          git merge-base",
+      ),
+    "shell:",
+  ],
+  [
+    "a different artifact name in the publish job",
+    (t) =>
+      t.replace(
+        "      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0\n        with:\n          name: release-tarballs",
+        "      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0\n        with:\n          name: other-artifact",
+      ),
+    "release-tarballs",
   ],
 ];
 
