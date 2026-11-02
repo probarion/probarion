@@ -27,6 +27,10 @@ export interface KeyView {
   revoked_at: string | null;
   /** Null for a key that is not active (nothing is read for it). */
   allowance: AllowanceView | null;
+  /** The last sync saw the vault register it (null: never read). Remove is offered for every such agent key. */
+  registered: boolean | null;
+  /** The vault registers it, but its access key was never added (W-T10-R1). */
+  stuck: boolean;
 }
 
 export interface KeysView {
@@ -68,6 +72,8 @@ export async function loadKeysView(
         created_at: k.created_at,
         activated_at: k.activated_at,
         revoked_at: k.revoked_at,
+        registered: k.chain_registered,
+        stuck: k.chain_registered === true && k.chain_has_key === false,
         allowance:
           k.status === "active" ? await allowanceOf(reader, member.vault_id, k.public_key) : null,
       }),

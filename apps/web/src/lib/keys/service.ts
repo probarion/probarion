@@ -34,6 +34,13 @@ export interface KeyRow {
   created_at: string;
   activated_at: string | null;
   revoked_at: string | null;
+  /** What the last sync saw: the vault registers it (null = never read). */
+  chain_registered: boolean | null;
+  /** What the last sync saw: its access key exists (null = never read). */
+  chain_has_key: boolean | null;
+  chain_checked_at: string | null;
+  /** Ever registered or with an access key. A pending key never seen on chain may be handed out again. */
+  chain_seen: boolean;
 }
 
 /** What a key generator must give: a public key and the `ed25519:<secret>` text (near-api-js `KeyPair`). */
@@ -61,6 +68,50 @@ export async function generateKey(
   });
   log.info("keys.generated", { tenant: i.tenantId, purpose: i.purpose, public_key: publicKey });
   return { id, publicKey };
+}
+
+/** A pending key younger than this, never seen on chain, is handed out again instead of a new one. */
+export const PENDING_REUSE_SECONDS = 24 * 3600;
+
+/**
+ * The key to offer the owner for `purpose` (W-T10-R1). It is the newest pending key of that purpose
+ * that is under 24 h old and was never seen on chain, which also takes the new label. Only when no
+ * such key exists is a new one generated. Each cancelled wallet prompt therefore no longer leaves
+ * another sealed key behind.
+ */
+export async function reuseOrGenerateKey(
+  db: Db,
+  master: Uint8Array,
+  i: { tenantId: string; purpose: KeyPurpose; label: string; createdBy: string },
+  keygen?: Keygen,
+): Promise<{ id: string; publicKey: string; reused: boolean }> {
+  const reused = await db.rpc<{ id: string; public_key: string } | null>(
+    "agent_key_reuse_pending",
+    {
+      tenant_id: i.tenantId,
+      purpose: i.purpose,
+      label: i.label,
+      max_age_seconds: PENDING_REUSE_SECONDS,
+    },
+  );
+  if (reused) {
+    log.info("keys.reused_pending", {
+      tenant: i.tenantId,
+      purpose: i.purpose,
+      public_key: reused.public_key,
+    });
+    return { id: reused.id, publicKey: reused.public_key, reused: true };
+  }
+  return { ...(await generateKey(db, master, i, keygen)), reused: false };
+}
+
+/** Owner only (the caller checks): a pending key is set aside, pending -> removed. Anything else is left. */
+export function discardKey(
+  db: Db,
+  tenantId: string,
+  id: string,
+): Promise<{ id: string; status: KeyStatus; changed: boolean }> {
+  return db.rpc("agent_key_discard", { tenant_id: tenantId, id });
 }
 
 export function listKeys(db: Db, tenantId: string): Promise<KeyRow[]> {
@@ -152,16 +203,41 @@ function logScope(
   else log.error("keys.active_scope_changed", fields);
 }
 
+/** At most this many `view_access_key` reads in flight in one sync (W-T10-R1). */
+export const SYNC_READ_CONCURRENCY = 4;
+
+/** `f` over `items`, at most `limit` at a time, results in order. */
+async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  f: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next;
+      next += 1;
+      out[i] = await f(items[i] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 /**
- * Brings each key's status in line with the chain (Task 10 ruling).
+ * Brings each key's status in line with the chain (Task 10 ruling, W-T10-R1).
  *
- * A pending key becomes active only when the chain shows exactly the key the vault hands out (a plain
- * FunctionCall key, receiver the vault, methods exactly [spend] / [anchor]) AND the vault registers it
- * (list_agents for an agent key; get_config().ledger_key for the ledger key). An active key becomes
- * `removed` on a definite NO_KEY, and `revoked` when the vault no longer registers it or its permission
- * changed. A read that fails leaves the key as it is: an outage never reads as "removed".
+ * A key becomes active only through the one full check: the chain shows exactly the key the vault
+ * hands out (a plain FunctionCall key, receiver the vault, methods exactly [spend] / [anchor]) AND the
+ * vault registers it (list_agents for an agent key; get_config().ledger_key for the ledger key). That
+ * holds for a pending key and for a revoked or removed one (so a lagging node's NO_KEY never sticks).
+ * An active key becomes `removed` on a definite NO_KEY, and `revoked` when the vault no longer
+ * registers it or its permission changed. A read that fails leaves the key as it is.
  *
- * Every write is compare-and-set on the status this call read, so two syncs never fight.
+ * What each readable key looked like is stored (agent_key_observe): the page offers Remove for every
+ * agent key the vault registers, and shows a key the vault registers without its access key as stuck.
+ * Every status write is compare-and-set on the status this call read, so two syncs never fight.
  */
 export async function syncKeyStatuses(
   db: Db,
@@ -169,52 +245,61 @@ export async function syncKeyStatuses(
   tenant: { tenant_id: string; vault_id: string },
 ): Promise<{ keys: KeyRow[]; checks: KeyCheck[] }> {
   const vault = tenant.vault_id;
-  const open = (await listKeys(db, tenant.tenant_id)).filter(
-    (k) => k.status === "pending" || k.status === "active",
-  );
+  const all = await listKeys(db, tenant.tenant_id);
   // Only the views a key needs: an unreadable get_config must not stop an agent key's check, nor
   // list_agents a ledger key's.
   const none = <T>(): Promise<Read<T>> => Promise.resolve({ ok: false });
-  const agentsRead: Promise<Read<AgentView[]>> = open.some((k) => k.purpose === "agent")
+  const agentsRead: Promise<Read<AgentView[]>> = all.some((k) => k.purpose === "agent")
     ? read("list_agents", tenant.tenant_id, () => reader.listAgents(vault))
     : none();
-  const configRead: Promise<Read<VaultConfig>> = open.some((k) => k.purpose === "ledger")
+  const configRead: Promise<Read<VaultConfig>> = all.some((k) => k.purpose === "ledger")
     ? read("get_config", tenant.tenant_id, () => reader.getConfig(vault))
     : none();
   const [agents, config, keys] = await Promise.all([
     agentsRead,
     configRead,
-    Promise.all(
-      open.map((k) =>
-        read(
-          "view_access_key",
-          tenant.tenant_id,
-          () => reader.accessKey(vault, k.public_key),
-          k.public_key,
-        ),
+    mapLimit(all, SYNC_READ_CONCURRENCY, (k) =>
+      read(
+        "view_access_key",
+        tenant.tenant_id,
+        () => reader.accessKey(vault, k.public_key),
+        k.public_key,
       ),
     ),
   ]);
 
-  const checks: KeyCheck[] = [];
-  for (const [i, k] of open.entries()) {
+  const views: ChainView[] = all.map((k, i) => {
     const key = keys[i];
-    let view: ChainView = { readable: false };
     if (key?.ok && k.purpose === "agent" && agents.ok) {
-      view = {
+      return {
         readable: true,
         registered: agents.value.some((a) => a.public_key === k.public_key),
         key: key.value,
       };
-    } else if (key?.ok && k.purpose === "ledger" && config.ok) {
-      view = {
+    }
+    if (key?.ok && k.purpose === "ledger" && config.ok) {
+      return {
         readable: true,
         registered: config.value.ledger_key === k.public_key,
         key: key.value,
       };
     }
-    if (view.readable)
-      logScope(tenant.tenant_id, k, view.key, vault, k.status as "pending" | "active");
+    return { readable: false };
+  });
+  const observed = all.flatMap((k, i) => {
+    const v = views[i];
+    return v?.readable ? [{ id: k.id, registered: v.registered, has_key: v.key.exists }] : [];
+  });
+  if (observed.length > 0) {
+    await db.rpc("agent_key_observe", { tenant_id: tenant.tenant_id, keys: observed });
+  }
+
+  const checks: KeyCheck[] = [];
+  for (const [i, k] of all.entries()) {
+    const view = views[i] ?? { readable: false };
+    if (view.readable && (k.status === "pending" || k.status === "active")) {
+      logScope(tenant.tenant_id, k, view.key, vault, k.status);
+    }
     const verdict = nextStatus(k, vault, view);
     let to = verdict.to;
     if (to !== k.status) {

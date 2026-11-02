@@ -12,6 +12,7 @@ import type { Db } from "@/lib/db/port";
 import type { AccessKeyState, VaultReader } from "@/lib/near/reader";
 import type { WalletTx } from "@/lib/near/tx";
 import { freshDb, seedTenant } from "../../../test/db/harness";
+import { silenceLogs } from "../../../test/db/keys-helpers";
 import { pgliteDb } from "../../../test/db/pglite-db";
 import { fakeReader, vaultConfig } from "../../../test/fixtures/reader";
 import { transportError } from "../../../test/fixtures/rpc";
@@ -73,11 +74,16 @@ vi.mock("@/components/wallet/TxButton", () => ({
   },
 }));
 
-import { generateKeyAction, syncKeysAction } from "@/app/console/[vault]/keys/actions";
+import {
+  discardKeyAction,
+  generateKeyAction,
+  syncKeysAction,
+} from "@/app/console/[vault]/keys/actions";
 import KeysPage, { maxDuration } from "@/app/console/[vault]/keys/page";
 import { SIGNER_OUT_OF_NEAR } from "@/lib/console/display";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import type { TxResult } from "@/lib/near/outcome";
+import { generateKey } from "./service";
 import { loadKeysView } from "./view";
 
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
@@ -86,6 +92,8 @@ const OTHER = "other.vaults.probarion.near";
 
 let pg: PGlite;
 let tenant: string;
+/** Console output is silenced; the lines are kept for the exposure test. */
+const logs = silenceLogs();
 
 const fc = (methods: string[]): AccessKeyState => ({
   exists: true,
@@ -195,8 +203,21 @@ describe("keys page guard (requireMember)", () => {
   });
 
   it("gives the owner the wallet buttons, signed by the session account, each with a stable lock key", async () => {
+    // Several keys of each kind, so every per-key button appears more than once.
+    for (const purpose of ["agent", "agent", "ledger", "ledger"] as const) {
+      await generateKey(h.db, MASTER, {
+        tenantId: tenant,
+        purpose,
+        label: "x",
+        createdBy: "acme.near",
+      });
+    }
     await signInAs("acme.near");
     const out = await html(VAULT);
+    expect(h.buttons.filter((b) => b.label === "Add on-chain").length).toBeGreaterThanOrEqual(2);
+    expect(h.buttons.filter((b) => b.label === "Set as ledger key").length).toBeGreaterThanOrEqual(
+      2,
+    );
     expect(out).toContain("Generate agent key and add it in my wallet");
     expect(out).toContain("Generate ledger key and set it in my wallet");
     expect(h.buttons.length).toBeGreaterThanOrEqual(2);
@@ -323,16 +344,122 @@ describe("key actions guard (memberForApi)", () => {
   });
 });
 
+describe("pending, registered and stuck keys (W-T10-R1)", () => {
+  let n = 0;
+  /** A vault of its own (acme.near owns it, cfo.near approves), so these tests see only their keys. */
+  async function ownVault(): Promise<{ vault: string; tenantId: string }> {
+    n += 1;
+    const vault = `r${n}.vaults.probarion.near`;
+    return {
+      vault,
+      tenantId: await seedTenant(pg, { vault, owner: "acme.near", approvers: ["cfo.near"] }),
+    };
+  }
+  const publicKeyOf = (tx: unknown) => {
+    const a = (tx as WalletTx).actions[0];
+    return a?.type === "FunctionCall" ? (a.params.args.public_key as string) : null;
+  };
+  const statusOf = async (publicKey: string | null) =>
+    (
+      await pg.query<{ status: string }>("select status from agent_keys where public_key = $1", [
+        publicKey,
+      ])
+    ).rows[0]?.status;
+
+  it("generate hands out the same unused pending key again instead of a new one", async () => {
+    const { vault, tenantId } = await ownVault();
+    await signInAs("acme.near");
+    const first = publicKeyOf(await generateKeyAction(vault, "agent", "one"));
+    const again = publicKeyOf(await generateKeyAction(vault, "agent", "two"));
+    expect(again).toBe(first);
+    const rows = await pg.query("select label from agent_keys where tenant_id = $1", [tenantId]);
+    expect(rows.rows).toEqual([{ label: "two" }]);
+  });
+
+  it("discard: owner only; it sets a pending key aside, and the next generate makes a new key", async () => {
+    const { vault } = await ownVault();
+    await signInAs("acme.near");
+    const pk = publicKeyOf(await generateKeyAction(vault, "agent", "x"));
+    const id = (
+      await pg.query<{ id: string }>("select id from agent_keys where public_key = $1", [pk])
+    ).rows[0]?.id as string;
+    for (const who of [null, "mallory.near", "cfo.near"]) {
+      h.jar.clear();
+      if (who) await signInAs(who);
+      await discardKeyAction(vault, id);
+      expect(await statusOf(pk), String(who)).toBe("pending");
+    }
+    // The vault id is only a lookup key: mallory.near's own vault does not reach acme's key.
+    await signInAs("mallory.near");
+    await discardKeyAction(OTHER, id);
+    expect(await statusOf(pk)).toBe("pending");
+
+    await signInAs("acme.near");
+    h.buttons.length = 0;
+    expect(await html(vault)).toContain("Discard");
+    await discardKeyAction(vault, id);
+    expect(await statusOf(pk)).toBe("removed");
+    expect(h.revalidated).toContain(`/console/${vault}/keys`);
+    const next = publicKeyOf(await generateKeyAction(vault, "agent", "x"));
+    expect(next).not.toBe(pk);
+  });
+
+  it("offers Remove for every agent key the vault registers, and shows a stuck key for what it is", async () => {
+    const { vault, tenantId } = await ownVault();
+    const mk = async (purpose: "agent" | "ledger") =>
+      (await generateKey(h.db, MASTER, { tenantId, purpose, label: "x", createdBy: "acme.near" }))
+        .publicKey;
+    const stuckAgent = await mk("agent"); // list_agents has it, its access key was never added
+    const goneAgent = await mk("agent"); // removed here, but still listed (and keyless)
+    const plainAgent = await mk("agent"); // pending, not on chain at all
+    const stuckLedger = await mk("ledger"); // get_config names it, no access key
+    await pg.query(
+      "update agent_keys set status = 'removed', revoked_at = now() where public_key = $1",
+      [goneAgent],
+    );
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", ledger_key: stuckLedger }),
+      listAgents: async () =>
+        [stuckAgent, goneAgent].map((pk) => ({ public_key: pk, label: "x", added_at_ns: "1" })),
+      accessKey: async () => NO_KEY,
+    });
+    await signInAs("acme.near");
+    const sync = await syncKeysAction(vault, null);
+    const notes = sync?.ok ? sync.notes.join("\n") : "";
+    expect(notes).toMatch(/registered in the vault but its access key was never added/);
+    expect(notes).toMatch(/a contract fix is needed to recover/);
+    expect(notes).not.toMatch(/check again in a minute.*(registered|contract)/);
+
+    h.buttons.length = 0;
+    const out = await html(vault);
+    expect(out.match(/Stuck: this key/g)?.length).toBe(3); // the two keyless agents and the ledger key
+    const removeFor = h.buttons
+      .filter((b) => b.label === "Remove")
+      .map((b) => publicKeyOf(b.tx))
+      .sort();
+    expect(removeFor).toEqual([stuckAgent, goneAgent].sort());
+    // A key the vault already registers is never offered for adding again (the contract would refuse it).
+    const addFor = h.buttons
+      .filter((b) => b.label === "Add on-chain")
+      .map((b) => publicKeyOf(b.tx));
+    expect(addFor).toEqual([plainAgent]);
+    expect(h.buttons.filter((b) => b.label === "Set as ledger key")).toEqual([]);
+    for (const b of h.buttons) expect(b.expectedSigner, b.label).toBe("acme.near");
+
+    // An approver sees the same state, with no button.
+    await signInAs("cfo.near");
+    h.buttons.length = 0;
+    const seen = await html(vault);
+    expect(seen.match(/Stuck: this key/g)?.length).toBe(3);
+    expect(h.buttons).toEqual([]);
+    expect(seen).not.toContain("Discard");
+  });
+});
+
 describe("the secret never leaves the server", () => {
   it("is absent from every action result, the rendered page, every prop and every log line", async () => {
     const out: string[] = [];
-    const logs: string[] = [];
-    const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) =>
-      vi.spyOn(console, m).mockImplementation((...args: unknown[]) => {
-        logs.push(args.map(String).join(" "));
-      }),
-    );
-    try {
+    {
       await signInAs("acme.near");
       out.push(JSON.stringify(await generateKeyAction(VAULT, "agent", "payables")));
       out.push(JSON.stringify(await generateKeyAction(VAULT, "ledger", "ledger")));
@@ -363,8 +490,6 @@ describe("the secret never leaves the server", () => {
       out.push(
         JSON.stringify(await loadKeysView(h.db, h.reader, { tenant_id: tenant, vault_id: VAULT })),
       );
-    } finally {
-      for (const s of spies) s.mockRestore();
     }
 
     const { secrets, sealed } = await allSecrets();
@@ -372,7 +497,9 @@ describe("the secret never leaves the server", () => {
     expect(
       (await pg.query("select 1 from agent_keys where status = 'active'")).rows.length,
     ).toBeGreaterThan(0);
-    const everything = [...out, ...logs].join("\n");
+    const everything = [...out, ...logs.lines].join("\n");
+    // The log lines were captured (so their check below means something).
+    expect(logs.lines.some((l) => /keys\.(generated|reused_pending)/.test(l))).toBe(true);
     expect(everything).toContain("ed25519:"); // public keys are shown, as they should be
     for (const secret of secrets) {
       const body = secret.slice("ed25519:".length);

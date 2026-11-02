@@ -7,13 +7,13 @@ import { VAULT_DEFAULTS } from "@/lib/config";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { serviceDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
-import type { KeyStatus } from "@/lib/keys/rules";
+import { type KeyStatus, STUCK_TEXT } from "@/lib/keys/rules";
 import { type AllowanceView, type KeyView, loadKeysView } from "@/lib/keys/view";
 import { lockKeyFor } from "@/lib/near/lock";
 import { getReader } from "@/lib/near/server";
 import { addAgentTx, removeAgentTx, setLedgerKeyTx } from "@/lib/near/tx";
 import { formatNear } from "@/lib/near/units";
-import { generateKeyAction, syncKeysAction } from "./actions";
+import { discardKeyAction, generateKeyAction, syncKeysAction } from "./actions";
 
 export const metadata: Metadata = { title: "Keys" };
 /** The wallet buttons confirm their transaction on chain (FINAL) through a server action. */
@@ -53,43 +53,55 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
   const sync = syncKeysAction.bind(null, vault);
   const codes = OUT_OF_NEAR.codes;
 
-  const ownerButton = (k: KeyView) => {
+  // Owner only. A pending key can be added (unless the vault already registers it) or discarded; an
+  // agent key the last sync saw registered in list_agents can be removed whatever its status here,
+  // so a stuck or revoked registration can always be cleared (W-T10-R1).
+  const ownerButtons = (k: KeyView) => {
     if (!isOwner) return null;
     const common = { network, signer: session.accountId, outOfNearCodes: codes, sync };
-    if (k.status === "pending") {
-      return k.purpose === "agent" ? (
-        <KeyTxButton
-          {...common}
-          label="Add on-chain"
-          tx={addAgentTx(vault, k.public_key, VAULT_DEFAULTS.agentAllowanceYocto, k.label)}
-          lockKey={lockKeyFor(`keys:add:${vault}:${k.public_key}`)}
-        />
-      ) : (
-        <KeyTxButton
-          {...common}
-          label="Set as ledger key"
-          tx={setLedgerKeyTx(vault, k.public_key, VAULT_DEFAULTS.ledgerAllowanceYocto)}
-          lockKey={lockKeyFor(`keys:set-ledger:${vault}:${k.public_key}`)}
-          confirm={
-            view.ledgerActive
-              ? "Replace the vault's ledger key with this one? The current one is removed from the vault."
-              : undefined
-          }
-        />
-      );
-    }
-    if (k.status === "active" && k.purpose === "agent") {
-      return (
-        <KeyTxButton
-          {...common}
-          label="Remove"
-          tx={removeAgentTx(vault, k.public_key)}
-          lockKey={lockKeyFor(`keys:remove:${vault}:${k.public_key}`)}
-          confirm="Remove this agent key from the vault? Payables stops using it at once."
-        />
-      );
-    }
-    return null;
+    const canAdd = k.status === "pending" && k.registered !== true;
+    const canRemove = k.purpose === "agent" && (k.registered === true || k.status === "active");
+    return (
+      <>
+        {canAdd && k.purpose === "agent" ? (
+          <KeyTxButton
+            {...common}
+            label="Add on-chain"
+            tx={addAgentTx(vault, k.public_key, VAULT_DEFAULTS.agentAllowanceYocto, k.label)}
+            lockKey={lockKeyFor(`keys:add:${vault}:${k.public_key}`)}
+          />
+        ) : null}
+        {canAdd && k.purpose === "ledger" ? (
+          <KeyTxButton
+            {...common}
+            label="Set as ledger key"
+            tx={setLedgerKeyTx(vault, k.public_key, VAULT_DEFAULTS.ledgerAllowanceYocto)}
+            lockKey={lockKeyFor(`keys:set-ledger:${vault}:${k.public_key}`)}
+            confirm={
+              view.ledgerActive
+                ? "Replace the vault's ledger key with this one? The current one is removed from the vault."
+                : undefined
+            }
+          />
+        ) : null}
+        {canRemove ? (
+          <KeyTxButton
+            {...common}
+            label="Remove"
+            tx={removeAgentTx(vault, k.public_key)}
+            lockKey={lockKeyFor(`keys:remove:${vault}:${k.public_key}`)}
+            confirm="Remove this agent key from the vault? Payables stops using it at once."
+          />
+        ) : null}
+        {k.status === "pending" ? (
+          <form action={discardKeyAction.bind(null, vault, k.id)}>
+            <button type="submit" className="text-xs text-stone-600 underline">
+              Discard
+            </button>
+          </form>
+        ) : null}
+      </>
+    );
   };
 
   return (
@@ -128,9 +140,14 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
                   <td>{k.label}</td>
                   <td>
                     <Badge tone={STATUS_TONE[k.status]}>{k.status}</Badge>
+                    {k.stuck ? (
+                      <p className="mt-1 text-xs text-rose-700">
+                        Stuck: this key {STUCK_TEXT[k.purpose]}
+                      </p>
+                    ) : null}
                   </td>
                   <td>{allowanceText(k.allowance)}</td>
-                  <td>{ownerButton(k)}</td>
+                  <td>{ownerButtons(k)}</td>
                 </tr>
               ))}
             </tbody>

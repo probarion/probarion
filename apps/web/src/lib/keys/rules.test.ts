@@ -151,18 +151,28 @@ describe("nextStatus", () => {
   });
 
   it("keeps a pending key pending while its access key is not on chain yet", () => {
-    expect(nextStatus(row("agent", "pending"), VAULT, seen(NO_KEY))).toEqual({
-      to: "pending",
-      reason: "not_on_chain",
-    });
     expect(nextStatus(row("agent", "pending"), VAULT, seen(NO_KEY, false))).toEqual({
       to: "pending",
       reason: "not_on_chain",
     });
   });
 
+  it("calls a key the vault registers without its access key stuck, for every status but active", () => {
+    for (const purpose of ["agent", "ledger"] as const) {
+      for (const status of ["pending", "revoked", "removed"] as const) {
+        expect(
+          nextStatus(row(purpose, status), VAULT, seen(NO_KEY, true)),
+          `${purpose} ${status}`,
+        ).toEqual({
+          to: status,
+          reason: "registered_without_key",
+        });
+      }
+    }
+  });
+
   it("never changes a status on a read error", () => {
-    for (const status of ["pending", "active"] as const) {
+    for (const status of ["pending", "active", "revoked", "removed"] as const) {
       expect(nextStatus(row("agent", status), VAULT, { readable: false })).toEqual({
         to: status,
         reason: "unreadable",
@@ -218,12 +228,29 @@ describe("nextStatus", () => {
     });
   });
 
-  it("never moves a revoked or removed key, whatever the chain says", () => {
+  it("makes a revoked or removed key active again only through the full activation check", () => {
     for (const status of ["revoked", "removed"] as const) {
-      for (const view of [seen(fc(["spend"])), seen(NO_KEY), { readable: false } as const]) {
-        expect(nextStatus(row("agent", status), VAULT, view)).toEqual({
+      expect(nextStatus(row("agent", status), VAULT, seen(fc(["spend"])))).toEqual({
+        to: "active",
+        reason: "reactivated",
+      });
+      expect(nextStatus(row("ledger", status), VAULT, seen(fc(["anchor"])))).toEqual({
+        to: "active",
+        reason: "reactivated",
+      });
+      // Anything short of the full check leaves it where it is.
+      for (const [view, why] of [
+        [seen(fc(["spend"]), false), "not registered"],
+        [seen(NO_KEY, false), "no key"],
+        [seen(FULL), "full access"],
+        [seen(fc(["spend"], { kind: "GasKeyFunctionCall" })), "gas key"],
+        [seen(fc(["spend", "approve"])), "wrong methods"],
+        [seen(fc(["spend"], { receiverId: "evil.near" })), "wrong receiver"],
+        [seen(fc(["anchor"])), "the other purpose's method"],
+      ] as const) {
+        expect(nextStatus(row("agent", status), VAULT, view), `${status}: ${why}`).toEqual({
           to: status,
-          reason: "final",
+          reason: "inactive",
         });
       }
     }
@@ -272,14 +299,43 @@ describe("describeCheck", () => {
     reason,
   });
 
-  it("explains every outcome a member can act on, and says nothing about a final key", () => {
+  it("explains every outcome a member can act on, and says nothing about a key out of use", () => {
     expect(describeCheck(check("activated", "active"))).toMatch(/active/);
+    expect(describeCheck(check("reactivated", "active"))).toMatch(/active again/);
     expect(describeCheck(check("scope_gas_key", "pending"))).toMatch(/gas key/);
     expect(describeCheck(check("scope_full_access", "pending"))).toMatch(/full-access/);
     expect(describeCheck(check("unreadable", "pending"))).toMatch(/unchanged/);
     expect(describeCheck(check("not_on_chain", "pending"))).toMatch(/not on the vault yet/);
     expect(describeCheck(check("removed_on_chain", "removed"))).toMatch(/removed/);
-    expect(describeCheck(check("final", "revoked"))).toBeNull();
+    expect(describeCheck(check("inactive", "revoked"))).toBeNull();
     expect(describeCheck(check("still_active", "active"))).toBeNull();
+    // A key out of use whose read failed is not worth a note.
+    expect(describeCheck({ ...check("unreadable", "removed"), from: "removed" })).toBeNull();
+  });
+
+  it("words the stuck state by what the page can do, and never says to wait", () => {
+    const agent = describeCheck(check("registered_without_key", "pending"));
+    const ledger = describeCheck({
+      ...check("registered_without_key", "pending"),
+      purpose: "ledger",
+    });
+    for (const text of [agent, ledger]) {
+      expect(text).toMatch(/registered in the vault but its access key was never added/);
+      expect(text).toMatch(/possibly the vault ran out of NEAR/);
+      expect(text).not.toMatch(/again in a minute|check again/i);
+    }
+    expect(agent).toMatch(/Remove it/);
+    expect(ledger).toMatch(/a contract fix is needed to recover/);
+    // A revoked key's remedy is the one the page offers for its purpose.
+    expect(describeCheck({ ...check("scope_full_access", "revoked"), from: "active" })).toMatch(
+      /Remove/,
+    );
+    expect(
+      describeCheck({
+        ...check("scope_full_access", "revoked"),
+        from: "active",
+        purpose: "ledger",
+      }),
+    ).toMatch(/Set a new ledger key/);
   });
 });

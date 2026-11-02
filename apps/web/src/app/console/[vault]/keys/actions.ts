@@ -12,7 +12,7 @@ import {
   type KeyPurpose,
   type KeySyncState,
 } from "@/lib/keys/rules";
-import { generateKey, syncKeyStatuses } from "@/lib/keys/service";
+import { discardKey, reuseOrGenerateKey, syncKeyStatuses } from "@/lib/keys/service";
 import { log } from "@/lib/log";
 import { getReader } from "@/lib/near/server";
 import { addAgentTx, setLedgerKeyTx, type WalletTx } from "@/lib/near/tx";
@@ -23,8 +23,10 @@ import { addAgentTx, setLedgerKeyTx, type WalletTx } from "@/lib/near/tx";
 // throws a secret: generateKey seals it before it is stored and hands back the public key only.
 
 /**
- * Owner only. Generates a key on the server and returns the transaction the owner signs in their own
- * wallet: `add_agent` for an agent key, `set_ledger_key` for the ledger key, with the PUBLIC key.
+ * Owner only. Returns the transaction the owner signs in their own wallet: `add_agent` for an agent
+ * key, `set_ledger_key` for the ledger key, with the PUBLIC key. The key is a recent unused pending
+ * key of the same purpose when there is one (under 24 h, never seen on chain), else a new key generated
+ * on the server (W-T10-R1).
  */
 export async function generateKeyAction(
   vault: string,
@@ -39,7 +41,7 @@ export async function generateKeyAction(
   const { member, session } = auth;
   let publicKey: string;
   try {
-    ({ publicKey } = await generateKey(serviceDb(), masterKey(), {
+    ({ publicKey } = await reuseOrGenerateKey(serviceDb(), masterKey(), {
       tenantId: member.tenant_id,
       purpose,
       label: clean.value,
@@ -59,7 +61,32 @@ export async function generateKeyAction(
     : setLedgerKeyTx(member.vault_id, publicKey, VAULT_DEFAULTS.ledgerAllowanceYocto);
 }
 
-/** Any member. Re-reads the chain for every pending and active key (syncKeyStatuses) and says what changed. */
+/**
+ * Owner only. Sets a pending key aside (pending -> removed): the key the owner never added, or no
+ * longer wants to. Like any removed key, it is active again only if the chain shows it fully. A form
+ * action: it answers nothing; the page shows the new status.
+ */
+export async function discardKeyAction(
+  vault: string,
+  keyId: string,
+  _formData?: FormData,
+): Promise<void> {
+  const auth = await memberForAction(vault, ["owner"]);
+  if (isDenied(auth)) return;
+  const { member } = auth;
+  try {
+    const r = await discardKey(serviceDb(), member.tenant_id, keyId);
+    log.info("keys.discarded", { tenant: member.tenant_id, id: r.id, changed: r.changed });
+  } catch (error) {
+    log.warn("keys.discard_failed", {
+      tenant: member.tenant_id,
+      error: error instanceof Error ? error.name : "unknown",
+    });
+  }
+  revalidatePath(`/console/${member.vault_id}/keys`);
+}
+
+/** Any member. Re-reads the chain for every key (syncKeyStatuses) and says what changed. */
 export async function syncKeysAction(
   vault: string,
   _prev: KeySyncState = null,
@@ -76,11 +103,14 @@ export async function syncKeysAction(
     revalidatePath(`/console/${member.vault_id}/keys`);
     const notes = checks.map(describeCheck).filter((n): n is string => n !== null);
     const changed = checks.filter((c) => c.to !== c.from).length;
-    const unread = checks.filter((c) => c.reason === "unreadable").length;
+    // Keys in use: pending or active before this sync. Old keys are read too, but only to notice
+    // one that is back on the vault.
+    const inUse = checks.filter((c) => c.from === "pending" || c.from === "active");
+    const unread = inUse.filter((c) => c.reason === "unreadable").length;
     const message =
-      checks.length === 0
+      inUse.length === 0 && changed === 0
         ? "No pending or active key to check."
-        : unread === checks.length
+        : inUse.length > 0 && unread === inUse.length
           ? "The chain could not be read: every status is unchanged. Try again in a minute."
           : changed === 0
             ? "Checked on chain: nothing changed."

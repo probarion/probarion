@@ -1,35 +1,31 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { KeyPair, type KeyPairString } from "near-api-js";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { openAgentSecret, sealAgentSecret } from "@/lib/crypto/secrets";
 import {
-  openAgentSecret,
-  openInvoice,
-  reencryptAgentSecret,
-  reencryptInvoice,
-  sealAgentSecret,
-  sealInvoice,
-} from "@/lib/crypto/secrets";
-import { parseMasterKey, sha256Hex } from "@/lib/crypto/sodium";
-import type { Db } from "@/lib/db/port";
-import { RotationRefusedError, rotateAll } from "@/lib/keys/rotate";
-import {
+  discardKey,
   generateKey,
   type KeyRow,
   listKeys,
   loadActiveSecret,
+  PENDING_REUSE_SECONDS,
+  reuseOrGenerateKey,
+  SYNC_READ_CONCURRENCY,
   syncKeyStatuses,
 } from "@/lib/keys/service";
 import type { AccessKeyState, VaultReader } from "@/lib/near/reader";
 import { fakeReader, vaultConfig } from "../fixtures/reader";
 import { nodeError, transportError } from "../fixtures/rpc";
 import { asRole, freshDb, seedTenant } from "./harness";
+import { at, expectNoSecret, MASTER, silenceLogs } from "./keys-helpers";
 import { pgliteDb } from "./pglite-db";
 
-// Masters are built at run time (no high-entropy literal in the repo: gitleaks scans history).
-const MASTER = parseMasterKey(Buffer.alloc(32, 5).toString("base64"));
-const NEW_MASTER = parseMasterKey(Buffer.alloc(32, 6).toString("base64"));
-const LOST_MASTER = parseMasterKey(Buffer.alloc(32, 7).toString("base64"));
+// Agent and ledger keys over PGlite: generation, the activation rules, the SQL guards and privileges.
+// Master-key rotation is in key-rotation.test.ts.
+
+/** Every console line, silenced and kept for the tests that check what was (not) logged. */
+const logs = silenceLogs();
 
 /** Exactly what `add_agent` / `set_ledger_key` adds: a plain FunctionCall key on `vault`. */
 const fc = (
@@ -57,6 +53,10 @@ const NO_KEY: AccessKeyState = {
 /** Exactly the fields of KeyRow (sorted): agent_key_list returns nothing else, no sealed column. */
 const KEY_ROW_FIELDS: (keyof KeyRow)[] = [
   "activated_at",
+  "chain_checked_at",
+  "chain_has_key",
+  "chain_registered",
+  "chain_seen",
   "created_at",
   "created_by",
   "id",
@@ -78,6 +78,8 @@ interface Chain {
   keys?: Record<string, AccessKeyState | Error>;
   /** Public keys whose access key was read, in order. */
   reads?: string[];
+  /** Holds each view_access_key read open until the returned promise resolves. */
+  delay?: () => Promise<void>;
 }
 
 function chainReader(vault: string, c: Chain): VaultReader {
@@ -95,41 +97,12 @@ function chainReader(vault: string, c: Chain): VaultReader {
     accessKey: async (account, pk) => {
       if (account !== vault) throw new Error(`accessKey on ${account}`);
       c.reads?.push(pk);
+      await c.delay?.();
       const k = c.keys?.[pk] ?? NO_KEY;
       if (k instanceof Error) throw k;
       return k;
     },
   });
-}
-
-/** Captures what the code logs (console.*), so a test can check that no secret reaches a log line. */
-function captureLogs(): { lines: string[]; restore(): void } {
-  const lines: string[] = [];
-  const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) =>
-    vi.spyOn(console, m).mockImplementation((...args: unknown[]) => {
-      lines.push(args.map(String).join(" "));
-    }),
-  );
-  return {
-    lines,
-    restore: () => {
-      for (const s of spies) s.mockRestore();
-    },
-  };
-}
-
-/** Element `i`, or a failed test (never an `undefined` that a later check would wave through). */
-function at<T>(rows: readonly T[], i = 0): T {
-  const row = rows[i];
-  if (row === undefined) throw new Error(`expected a row at ${i}, got ${rows.length} row(s)`);
-  return row;
-}
-
-function expectNoSecret(text: string, secret: string): void {
-  const body = secret.slice("ed25519:".length);
-  expect(body.length).toBeGreaterThan(60);
-  expect(text).not.toContain(body);
-  expect(text).not.toContain(body.slice(10, 40));
 }
 
 describe("agent and ledger keys (service + SQL)", () => {
@@ -232,13 +205,11 @@ describe("agent and ledger keys (service + SQL)", () => {
     });
 
     it("logs the public key only", async () => {
-      const logs = captureLogs();
-      try {
+      logs.lines.length = 0;
+      {
         const k = await pending("agent");
         expect(logs.lines.join("\n")).toContain(k.publicKey);
         expectNoSecret(logs.lines.join("\n"), k.secret);
-      } finally {
-        logs.restore();
       }
     });
 
@@ -340,8 +311,8 @@ describe("agent and ledger keys (service + SQL)", () => {
 
     it("refuses a gas key and logs the mismatch (without the secret)", async () => {
       const k = await pending("agent");
-      const logs = captureLogs();
-      try {
+      logs.lines.length = 0;
+      {
         const r = await syncKeyStatuses(
           db(),
           chainReader(k.vault, {
@@ -356,8 +327,6 @@ describe("agent and ledger keys (service + SQL)", () => {
         expect(text).toContain("keys.scope_mismatch");
         expect(text).toContain("GasKeyFunctionCall");
         expectNoSecret(text, k.secret);
-      } finally {
-        logs.restore();
       }
     });
 
@@ -470,12 +439,46 @@ describe("agent and ledger keys (service + SQL)", () => {
 
     it("keeps a pending key pending while its access key is not on chain yet (NO_KEY)", async () => {
       const k = await pending("agent");
-      const r = await syncKeyStatuses(db(), chainReader(k.vault, { agents: [k.publicKey] }), {
+      const r = await syncKeyStatuses(db(), chainReader(k.vault, { agents: [] }), {
         tenant_id: k.tenant,
         vault_id: k.vault,
       });
       expect(r.keys[0]?.status).toBe("pending");
       expect(r.checks[0]?.reason).toBe("not_on_chain");
+      // Read, so the key now has an observation: not registered, no key, never seen.
+      expect(r.keys[0]).toMatchObject({
+        chain_registered: false,
+        chain_has_key: false,
+        chain_seen: false,
+      });
+      expect(r.keys[0]?.chain_checked_at).not.toBeNull();
+    });
+
+    it("reports an agent key list_agents has but whose access key was never added as stuck, and stores it", async () => {
+      const k = await pending("agent");
+      const r = await syncKeyStatuses(db(), chainReader(k.vault, { agents: [k.publicKey] }), {
+        tenant_id: k.tenant,
+        vault_id: k.vault,
+      });
+      expect(r.keys[0]?.status).toBe("pending");
+      expect(r.checks[0]?.reason).toBe("registered_without_key");
+      expect(r.keys[0]).toMatchObject({
+        chain_registered: true,
+        chain_has_key: false,
+        chain_seen: true,
+      });
+    });
+
+    it("reports a ledger key get_config names but whose access key was never added as stuck", async () => {
+      const l = await pending("ledger");
+      const r = await syncKeyStatuses(db(), chainReader(l.vault, { ledgerKey: l.publicKey }), {
+        tenant_id: l.tenant,
+        vault_id: l.vault,
+      });
+      expect(r.keys[0]?.status).toBe("pending");
+      expect(r.checks[0]?.reason).toBe("registered_without_key");
+      expect(r.keys[0]).toMatchObject({ chain_registered: true, chain_has_key: false });
+      expect(await loadActiveSecret(db(), MASTER, l.tenant, "ledger")).toBeNull();
     });
 
     it("leaves every status unchanged on a read error, and never reads it as removed", async () => {
@@ -576,8 +579,8 @@ describe("agent and ledger keys (service + SQL)", () => {
         keys: { [a.publicKey]: fc(t.vault, ["spend"]), [b.publicKey]: fc(t.vault, ["spend"]) },
       };
       await syncKeyStatuses(db(), chainReader(t.vault, on), { tenant_id: t.id, vault_id: t.vault });
-      const logs = captureLogs();
-      try {
+      logs.lines.length = 0;
+      {
         const r = await syncKeyStatuses(
           db(),
           chainReader(t.vault, {
@@ -594,40 +597,109 @@ describe("agent and ledger keys (service + SQL)", () => {
           [b.publicKey, "revoked", "scope_gas_key"],
         ]);
         expect(logs.lines.join("\n")).toContain("keys.active_scope_changed");
-      } finally {
-        logs.restore();
       }
       expect(await loadActiveSecret(db(), MASTER, t.id, "agent")).toBeNull();
     });
 
-    it("never reads or moves a revoked or removed key again", async () => {
+    it("a NO_KEY (a lagging node), then the key back on chain: active again, through the full check only", async () => {
       const k = await pending("agent");
-      await syncKeyStatuses(
-        db(),
-        chainReader(k.vault, {
-          agents: [k.publicKey],
-          keys: { [k.publicKey]: fc(k.vault, ["spend"]) },
-        }),
-        { tenant_id: k.tenant, vault_id: k.vault },
-      );
-      await syncKeyStatuses(db(), chainReader(k.vault, { agents: [] }), {
+      const on = { agents: [k.publicKey], keys: { [k.publicKey]: fc(k.vault, ["spend"]) } };
+      await syncKeyStatuses(db(), chainReader(k.vault, on), {
+        tenant_id: k.tenant,
+        vault_id: k.vault,
+      });
+      // One node lags and says the key is gone.
+      await syncKeyStatuses(db(), chainReader(k.vault, { agents: [k.publicKey] }), {
         tenant_id: k.tenant,
         vault_id: k.vault,
       });
       expect(await statusOf(k.keyId)).toBe("removed");
-      const reads: string[] = [];
-      const r = await syncKeyStatuses(
-        db(),
-        chainReader(k.vault, {
+      expect(await loadActiveSecret(db(), MASTER, k.tenant, "agent")).toBeNull();
+
+      // A removed key is still read, but anything short of the full check leaves it removed.
+      for (const partial of [
+        { agents: [], keys: on.keys },
+        {
           agents: [k.publicKey],
-          keys: { [k.publicKey]: fc(k.vault, ["spend"]) },
-          reads,
-        }),
-        { tenant_id: k.tenant, vault_id: k.vault },
+          keys: { [k.publicKey]: fc(k.vault, ["spend"], { kind: "GasKeyFunctionCall" }) },
+        },
+        { agents: [k.publicKey], keys: { [k.publicKey]: fc(k.vault, ["spend", "approve"]) } },
+        { agents: [k.publicKey], keys: { [k.publicKey]: transportError() } },
+      ]) {
+        const reads: string[] = [];
+        const r = await syncKeyStatuses(db(), chainReader(k.vault, { ...partial, reads }), {
+          tenant_id: k.tenant,
+          vault_id: k.vault,
+        });
+        expect(reads).toEqual([k.publicKey]);
+        expect(r.keys[0]?.status).toBe("removed");
+      }
+
+      // The next node shows it, exactly as the vault added it: active again.
+      const r = await syncKeyStatuses(db(), chainReader(k.vault, on), {
+        tenant_id: k.tenant,
+        vault_id: k.vault,
+      });
+      expect(r.checks[0]).toMatchObject({ from: "removed", to: "active", reason: "reactivated" });
+      expect(r.keys[0]?.revoked_at).toBeNull();
+      expect((await loadActiveSecret(db(), MASTER, k.tenant, "agent"))?.publicKey).toBe(
+        k.publicKey,
       );
-      expect(reads).toEqual([]);
-      expect(r.keys[0]?.status).toBe("removed");
-      expect(r.checks).toEqual([]);
+    });
+
+    it("two overlapping ledger syncs, one on a stale node: the final state follows the chain", async () => {
+      const t = await tenant();
+      const a = await pending("ledger", t);
+      const b = await pending("ledger", t);
+      const keys = {
+        [a.publicKey]: fc(t.vault, ["anchor"]),
+        [b.publicKey]: fc(t.vault, ["anchor"]),
+      };
+      const sync = (ledgerKey: string) =>
+        syncKeyStatuses(db(), chainReader(t.vault, { ledgerKey, keys }), {
+          tenant_id: t.id,
+          vault_id: t.vault,
+        });
+      // The chain: a was the ledger key, then the owner set b.
+      await sync(a.publicKey); // an old sync, from before set_ledger_key(b)
+      await sync(b.publicKey); // a fresh sync: b active, a retired
+      await sync(a.publicKey); // a stale node, still at the old block: wrongly brings back a, retiring b
+      expect(await statusOf(a.keyId)).toBe("active");
+      expect(await statusOf(b.keyId)).toBe("revoked");
+      // The next fresh sync puts the chain's ledger key back: b active, a retired, exactly one active.
+      const r = await sync(b.publicKey);
+      expect(r.keys.find((k) => k.id === b.keyId)?.status).toBe("active");
+      expect(r.keys.find((k) => k.id === a.keyId)?.status).toBe("revoked");
+      expect((await loadActiveSecret(db(), MASTER, t.id, "ledger"))?.publicKey).toBe(b.publicKey);
+      const active = await pg.query(
+        "select 1 from agent_keys where tenant_id = $1 and purpose = 'ledger' and status = 'active'",
+        [t.id],
+      );
+      expect(active.rows).toHaveLength(1);
+    });
+
+    it(`reads at most ${SYNC_READ_CONCURRENCY} access keys at a time`, async () => {
+      const t = await tenant();
+      for (let i = 0; i < 10; i++) await pending("agent", t);
+      let inFlight = 0;
+      let most = 0;
+      const reads: string[] = [];
+      await syncKeyStatuses(
+        db(),
+        chainReader(t.vault, {
+          agents: [],
+          reads,
+          delay: async () => {
+            inFlight += 1;
+            most = Math.max(most, inFlight);
+            await new Promise((r) => setTimeout(r, 5));
+            inFlight -= 1;
+          },
+        }),
+        { tenant_id: t.id, vault_id: t.vault },
+      );
+      expect(reads).toHaveLength(10);
+      expect(most).toBe(SYNC_READ_CONCURRENCY);
     });
 
     it("keeps exactly one active ledger key: a new set_ledger_key retires the old one", async () => {
@@ -712,7 +784,7 @@ describe("agent and ledger keys (service + SQL)", () => {
   });
 
   describe("agent_key_set_status", () => {
-    it("allows only pending→active, active→revoked and active→removed, compare-and-set", async () => {
+    it("allows only pending→active, active→revoked/removed and revoked/removed→active, compare-and-set", async () => {
       const k = await pending("agent");
       const set = (from: unknown, status: unknown, over: Record<string, unknown> = {}) =>
         db().rpc<{ id: string; status: string; changed: boolean }>("agent_key_set_status", {
@@ -727,8 +799,9 @@ describe("agent and ledger keys (service + SQL)", () => {
         ["pending", "removed"],
         ["pending", "pending"],
         ["active", "pending"],
-        ["revoked", "active"],
-        ["removed", "active"],
+        ["revoked", "removed"],
+        ["removed", "revoked"],
+        ["removed", "pending"],
         [null, "active"],
         ["pending", null],
         ["pending", "deleted"],
@@ -750,8 +823,80 @@ describe("agent and ledger keys (service + SQL)", () => {
       expect(await set("pending", "active")).toMatchObject({ status: "active", changed: true });
       expect(await set("pending", "active")).toMatchObject({ status: "active", changed: false });
       expect(await set("active", "removed")).toMatchObject({ status: "removed", changed: true });
-      await expect(set("removed", "active")).rejects.toMatchObject({ code: "invalid_input" });
-      expect(await statusOf(k.keyId)).toBe("removed");
+      // Back from removed or revoked (the caller asks only after the full activation check).
+      expect(await set("removed", "active")).toMatchObject({ status: "active", changed: true });
+      expect(await set("active", "revoked")).toMatchObject({ status: "revoked", changed: true });
+      expect(await set("removed", "active")).toMatchObject({ status: "revoked", changed: false });
+      expect(await set("revoked", "active")).toMatchObject({ status: "active", changed: true });
+      const row = (
+        await pg.query<{ activated_at: string | null; revoked_at: string | null }>(
+          "select activated_at, revoked_at from agent_keys where id = $1",
+          [k.keyId],
+        )
+      ).rows[0];
+      expect(row?.activated_at).not.toBeNull();
+      expect(row?.revoked_at).toBeNull();
+    });
+
+    it("agent_key_observe records what one sync saw, for the tenant's own keys only, all or nothing", async () => {
+      const t = await tenant();
+      const a = await pending("agent", t);
+      const b = await pending("agent", t);
+      const other = await pending("agent");
+      const observe = (keys: unknown[], tenantId = t.id) =>
+        db().rpc("agent_key_observe", { tenant_id: tenantId, keys });
+      const state = async (id: string) =>
+        (
+          await pg.query(
+            "select chain_registered, chain_has_key, chain_seen from agent_keys where id = $1",
+            [id],
+          )
+        ).rows[0];
+      for (const bad of [
+        [{ id: a.keyId, registered: "yes", has_key: false }],
+        [{ id: a.keyId, registered: true }],
+        [{ id: "x", registered: true, has_key: true }],
+      ]) {
+        await expect(observe(bad)).rejects.toMatchObject({ code: "invalid_input" });
+      }
+      await expect(
+        db().rpc("agent_key_observe", { tenant_id: t.id, keys: "x" }),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+      });
+      // Another tenant's key in the batch: not_found, and nothing of the batch is written.
+      await expect(
+        observe([
+          { id: a.keyId, registered: true, has_key: true },
+          { id: other.keyId, registered: true, has_key: true },
+        ]),
+      ).rejects.toMatchObject({ code: "not_found" });
+      expect(await state(a.keyId)).toEqual({
+        chain_registered: null,
+        chain_has_key: null,
+        chain_seen: false,
+      });
+      await observe([
+        { id: a.keyId, registered: true, has_key: false },
+        { id: b.keyId, registered: false, has_key: false },
+      ]);
+      expect(await state(a.keyId)).toEqual({
+        chain_registered: true,
+        chain_has_key: false,
+        chain_seen: true,
+      });
+      expect(await state(b.keyId)).toEqual({
+        chain_registered: false,
+        chain_has_key: false,
+        chain_seen: false,
+      });
+      // chain_seen is sticky.
+      await observe([{ id: a.keyId, registered: false, has_key: false }]);
+      expect(await state(a.keyId)).toEqual({
+        chain_registered: false,
+        chain_has_key: false,
+        chain_seen: true,
+      });
     });
 
     it("agent_keys_active_all lists every active key with its vault and no secret", async () => {
@@ -776,6 +921,108 @@ describe("agent and ledger keys (service + SQL)", () => {
     });
   });
 
+  describe("pending keys: reuse and discard (W-T10-R1)", () => {
+    const offer = (t: { id: string }, purpose: "agent" | "ledger", label = "payables") =>
+      reuseOrGenerateKey(db(), MASTER, { tenantId: t.id, purpose, label, createdBy: "acme.near" });
+
+    it("hands out the same recent unused pending key again, with the new label, per purpose", async () => {
+      const t = await tenant();
+      const first = await offer(t, "agent", "one");
+      expect(first.reused).toBe(false);
+      const again = await offer(t, "agent", "two");
+      expect(again).toEqual({ id: first.id, publicKey: first.publicKey, reused: true });
+      const rows = await listKeys(db(), t.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.label).toBe("two");
+      // Another purpose is another key.
+      const ledger = await offer(t, "ledger", "ledger");
+      expect(ledger.reused).toBe(false);
+      expect(ledger.publicKey).not.toBe(first.publicKey);
+    });
+
+    it("never reuses a key seen on chain, an old one, a non-pending one, or another tenant's", async () => {
+      const t = await tenant();
+      const seen = await offer(t, "agent");
+      await db().rpc("agent_key_observe", {
+        tenant_id: t.id,
+        keys: [{ id: seen.id, registered: true, has_key: false }],
+      });
+      const afterSeen = await offer(t, "agent");
+      expect(afterSeen.reused).toBe(false);
+
+      await pg.query(
+        "update agent_keys set created_at = now() - make_interval(secs => $1) where id = $2",
+        [PENDING_REUSE_SECONDS + 60, afterSeen.id],
+      );
+      const afterOld = await offer(t, "agent");
+      expect(afterOld.reused).toBe(false);
+
+      await discardKey(db(), t.id, afterOld.id);
+      const afterDiscard = await offer(t, "agent");
+      expect(afterDiscard.reused).toBe(false);
+
+      const u = await tenant();
+      const theirs = await offer(u, "agent");
+      expect(theirs.publicKey).not.toBe(afterDiscard.publicKey);
+      expect((await offer(u, "agent")).id).toBe(theirs.id);
+      expect(new Set([seen.id, afterSeen.id, afterOld.id, afterDiscard.id]).size).toBe(4);
+    });
+
+    it("refuses a malformed reuse request", async () => {
+      const t = await tenant();
+      for (const bad of [
+        { purpose: "full" },
+        { label: "a".repeat(65) },
+        { max_age_seconds: 0 },
+        { max_age_seconds: "86400" },
+        { tenant_id: "x" },
+      ]) {
+        await expect(
+          db().rpc("agent_key_reuse_pending", {
+            tenant_id: t.id,
+            purpose: "agent",
+            label: "x",
+            max_age_seconds: 86400,
+            ...bad,
+          }),
+          JSON.stringify(bad),
+        ).rejects.toMatchObject({ code: "invalid_input" });
+      }
+    });
+
+    it("discard sets a pending key aside (removed) and leaves any other key as it is", async () => {
+      const t = await tenant();
+      const p = await pending("agent", t);
+      const a = await pending("agent", t);
+      await db().rpc("agent_key_set_status", {
+        tenant_id: t.id,
+        id: a.keyId,
+        from: "pending",
+        status: "active",
+      });
+      expect(await discardKey(db(), t.id, p.keyId)).toEqual({
+        id: p.keyId,
+        status: "removed",
+        changed: true,
+      });
+      expect(await discardKey(db(), t.id, p.keyId)).toEqual({
+        id: p.keyId,
+        status: "removed",
+        changed: false,
+      });
+      expect(await discardKey(db(), t.id, a.keyId)).toEqual({
+        id: a.keyId,
+        status: "active",
+        changed: false,
+      });
+      expect(await statusOf(a.keyId)).toBe("active");
+      await expect(discardKey(db(), randomUUID(), p.keyId)).rejects.toMatchObject({
+        code: "not_found",
+      });
+      await expect(discardKey(db(), t.id, "x")).rejects.toMatchObject({ code: "invalid_input" });
+    });
+  });
+
   describe("privileges: the secret never leaves through the database API", () => {
     const FUNCTIONS = [
       "agent_key_uuid(text)",
@@ -783,6 +1030,9 @@ describe("agent and ledger keys (service + SQL)", () => {
       "agent_key_list(jsonb)",
       "agent_key_secret(jsonb)",
       "agent_key_set_status(jsonb)",
+      "agent_key_observe(jsonb)",
+      "agent_key_reuse_pending(jsonb)",
+      "agent_key_discard(jsonb)",
       "agent_keys_active_all(jsonb)",
       "key_rotation_rows(jsonb)",
       "key_rotation_apply(jsonb)",
@@ -821,6 +1071,9 @@ describe("agent and ledger keys (service + SQL)", () => {
           "agent_key_list",
           "agent_key_insert",
           "agent_key_set_status",
+          "agent_key_observe",
+          "agent_key_reuse_pending",
+          "agent_key_discard",
           "agent_keys_active_all",
           "key_rotation_rows",
           "key_rotation_apply",
@@ -896,417 +1149,5 @@ describe("agent and ledger keys (service + SQL)", () => {
       expect(r.rows[0]?.c).toMatch(/rotation counter/i);
       expect(r.rows[0]?.c).toMatch(/not .*master/i);
     });
-  });
-});
-
-// ---- rotation ----------------------------------------------------------------------------------
-
-interface RotationFixture {
-  pg: PGlite;
-  db: Db;
-  tenant: string;
-  /** The plaintext of every sealed row, by row id. */
-  secrets: Map<string, string>;
-  invoiceId: string;
-  invoiceContent: Uint8Array;
-}
-
-async function rotationFixture(): Promise<RotationFixture> {
-  const pg = await freshDb();
-  const tenant = await seedTenant(pg, { vault: "rot.vaults.probarion.near", owner: "acme.near" });
-  const db = pgliteDb(pg);
-  const secrets = new Map<string, string>();
-  for (const purpose of ["agent", "agent", "ledger"] as const) {
-    const kp = KeyPair.fromRandom("ed25519");
-    const { id } = await generateKey(
-      db,
-      MASTER,
-      { tenantId: tenant, purpose, label: purpose, createdBy: "acme.near" },
-      () => kp,
-    );
-    secrets.set(id, kp.toString());
-  }
-  const [agentId, , ledgerId] = [...secrets.keys()];
-  for (const id of [agentId, ledgerId]) {
-    await db.rpc("agent_key_set_status", {
-      tenant_id: tenant,
-      id,
-      from: "pending",
-      status: "active",
-    });
-  }
-  const invoiceContent = new TextEncoder().encode(`Invoice ${randomUUID()}: 120.00 USDC`);
-  const sealed = await sealInvoice(MASTER, tenant, invoiceContent);
-  const inv = await pg.query<{ id: string }>(
-    `insert into invoices (tenant_id, invoice_hash, ref, media_type, retained, content_ciphertext, content_nonce, request_id, created_by)
-     values ($1, $2, 'inv-1', 'text/plain', true, $3, $4, 'r', 'acme.near') returning id`,
-    [tenant, sha256Hex(invoiceContent), sealed.ciphertext, sealed.nonce],
-  );
-  // A zero-retention invoice has nothing sealed: rotation leaves it alone.
-  await pg.query(
-    `insert into invoices (tenant_id, invoice_hash, ref, media_type, retained, request_id, created_by)
-     values ($1, $2, 'inv-2', 'text/plain', false, 'r', 'acme.near')`,
-    [tenant, "a".repeat(64)],
-  );
-  return { pg, db, tenant, secrets, invoiceId: inv.rows[0]?.id, invoiceContent };
-}
-
-async function sealedState(pg: PGlite): Promise<unknown> {
-  const keys = await pg.query(
-    "select id, secret_ciphertext, secret_nonce, key_version from agent_keys order by id",
-  );
-  const invoices = await pg.query(
-    "select id, content_ciphertext, content_nonce from invoices order by id",
-  );
-  return { keys: keys.rows, invoices: invoices.rows };
-}
-
-/** Every agent key row opens under `master` to its own secret; the retained invoice opens to its content. */
-async function expectAllOpenUnder(f: RotationFixture, master: Uint8Array): Promise<void> {
-  const rows = await f.pg.query<{ id: string; secret_ciphertext: string; secret_nonce: string }>(
-    "select id, secret_ciphertext, secret_nonce from agent_keys",
-  );
-  for (const r of rows.rows) expect(await openAgentSecret(master, r)).toBe(f.secrets.get(r.id));
-  const inv = await f.pg.query<{ content_ciphertext: string; content_nonce: string }>(
-    "select content_ciphertext, content_nonce from invoices where id = $1",
-    [f.invoiceId],
-  );
-  const opened = await openInvoice(master, f.tenant, {
-    ciphertext: inv.rows[0]?.content_ciphertext,
-    nonce: inv.rows[0]?.content_nonce,
-  });
-  expect(Buffer.from(opened).equals(Buffer.from(f.invoiceContent))).toBe(true);
-}
-
-describe("rotateAll: verified dry run, then an atomic apply", () => {
-  const fixtures: RotationFixture[] = [];
-  const fixture = async () => {
-    const f = await rotationFixture();
-    fixtures.push(f);
-    return f;
-  };
-  afterEach(async () => {
-    for (const f of fixtures.splice(0)) await f.pg.close();
-  });
-
-  it("dry run (the default) re-encrypts and verifies every row in memory, and writes nothing", async () => {
-    const f = await fixture();
-    const before = await sealedState(f.pg);
-    const report = await rotateAll(f.db, MASTER, NEW_MASTER);
-    expect(report).toEqual({
-      mode: "dry-run",
-      ok: true,
-      agent_keys: { total: 3, rotate: 3, already_new: 0, unreadable: 0, mismatched: 0 },
-      invoices: { total: 1, rotate: 1, already_new: 0, unreadable: 0, mismatched: 0 },
-      written: null,
-      after: null,
-    });
-    expect(await sealedState(f.pg)).toEqual(before);
-    await expectAllOpenUnder(f, MASTER);
-  });
-
-  it("apply rotates every sealed row to the new master and bumps key_version", async () => {
-    const f = await fixture();
-    const before = await loadActiveSecret(f.db, MASTER, f.tenant, "ledger");
-    const versions = await f.pg.query<{ id: string; key_version: number }>(
-      "select id, key_version from agent_keys",
-    );
-    const report = await rotateAll(f.db, MASTER, NEW_MASTER, { apply: true });
-    expect(report).toMatchObject({
-      mode: "apply",
-      ok: true,
-      written: { agent_keys: 3, invoices: 1 },
-      after: {
-        agent_keys: { total: 3, new: 3, old: 0, unreadable: 0 },
-        invoices: { total: 1, new: 1, old: 0, unreadable: 0 },
-      },
-    });
-    await expectAllOpenUnder(f, NEW_MASTER);
-    expect(await loadActiveSecret(f.db, NEW_MASTER, f.tenant, "ledger")).toEqual(before);
-    await expect(loadActiveSecret(f.db, MASTER, f.tenant, "ledger")).rejects.toThrow(
-      /decrypt_failed/,
-    );
-    const after = await f.pg.query<{ id: string; key_version: number }>(
-      "select id, key_version from agent_keys",
-    );
-    for (const v of versions.rows) {
-      expect(after.rows.find((x) => x.id === v.id)?.key_version).toBe(v.key_version + 1);
-    }
-  });
-
-  it("finds a row sealed under the new master mid-rotation by trial decryption and leaves it as it is", async () => {
-    const f = await fixture();
-    // The live app, already on the new master, adds a key during the rotation window.
-    const kp = KeyPair.fromRandom("ed25519");
-    const { id } = await generateKey(
-      f.db,
-      NEW_MASTER,
-      { tenantId: f.tenant, purpose: "agent", label: "late", createdBy: "acme.near" },
-      () => kp,
-    );
-    f.secrets.set(id, kp.toString());
-    const lateRow = async () =>
-      (
-        await f.pg.query(
-          "select secret_ciphertext, secret_nonce, key_version from agent_keys where id = $1",
-          [id],
-        )
-      ).rows[0];
-    const late = await lateRow();
-
-    const dry = await rotateAll(f.db, MASTER, NEW_MASTER);
-    expect(dry.ok).toBe(true);
-    expect(dry.agent_keys).toEqual({
-      total: 4,
-      rotate: 3,
-      already_new: 1,
-      unreadable: 0,
-      mismatched: 0,
-    });
-
-    const report = await rotateAll(f.db, MASTER, NEW_MASTER, { apply: true });
-    expect(report.written).toEqual({ agent_keys: 3, invoices: 1 });
-    expect(report.after?.agent_keys).toEqual({ total: 4, new: 4, old: 0, unreadable: 0 });
-    expect(await lateRow()).toEqual(late);
-    await expectAllOpenUnder(f, NEW_MASTER);
-
-    // Re-running after the switch finds nothing left to do: OLD can be retired.
-    expect((await rotateAll(f.db, MASTER, NEW_MASTER)).agent_keys).toEqual({
-      total: 4,
-      rotate: 0,
-      already_new: 4,
-      unreadable: 0,
-      mismatched: 0,
-    });
-  });
-
-  it("reports a row that opens under neither master, and refuses --apply without writing anything", async () => {
-    const f = await fixture();
-    await generateKey(f.db, LOST_MASTER, {
-      tenantId: f.tenant,
-      purpose: "agent",
-      label: "orphan",
-      createdBy: "acme.near",
-    });
-    const before = await sealedState(f.pg);
-    const dry = await rotateAll(f.db, MASTER, NEW_MASTER);
-    expect(dry.ok).toBe(false);
-    expect(dry.agent_keys).toEqual({
-      total: 4,
-      rotate: 3,
-      already_new: 0,
-      unreadable: 1,
-      mismatched: 0,
-    });
-
-    const refused = await rotateAll(f.db, MASTER, NEW_MASTER, { apply: true }).catch(
-      (e: unknown) => e,
-    );
-    expect(refused).toBeInstanceOf(RotationRefusedError);
-    expect((refused as RotationRefusedError).report.agent_keys.unreadable).toBe(1);
-    expect((refused as Error).message).toMatch(/^rotation_refused/);
-    expect(await sealedState(f.pg)).toEqual(before);
-  });
-
-  it("refuses --apply when a re-encrypted row does not open under the new master to the same plaintext", async () => {
-    const wrongKey = {
-      agentSecret: async (
-        o: Uint8Array,
-        _n: Uint8Array,
-        row: Parameters<typeof reencryptAgentSecret>[2],
-      ) => reencryptAgentSecret(o, LOST_MASTER, row),
-    };
-    const wrongText = {
-      agentSecret: async (
-        o: Uint8Array,
-        n: Uint8Array,
-        row: Parameters<typeof reencryptAgentSecret>[2],
-      ) => {
-        const s = await sealAgentSecret(n, KeyPair.fromRandom("ed25519").toString());
-        void o;
-        return { ...s, key_version: row.key_version + 1 };
-      },
-    };
-    const wrongInvoice = {
-      invoice: async (
-        o: Uint8Array,
-        n: Uint8Array,
-        _tenant: string,
-        s: Parameters<typeof reencryptInvoice>[3],
-      ) => reencryptInvoice(o, n, randomUUID(), s),
-    };
-    // These two return a sealed value (no throw), so only the read-back check can catch them.
-    const invoiceUnderOtherTenant = {
-      invoice: async (
-        o: Uint8Array,
-        n: Uint8Array,
-        tenant: string,
-        s: Parameters<typeof reencryptInvoice>[3],
-      ) => sealInvoice(n, randomUUID(), await openInvoice(o, tenant, s)),
-    };
-    const invoiceOtherBytes = {
-      invoice: async (o: Uint8Array, n: Uint8Array, tenant: string) => {
-        void o;
-        return sealInvoice(n, tenant, new TextEncoder().encode("a different invoice"));
-      },
-    };
-    // A re-seal that does not move key_version on: the counter must go up on every re-seal.
-    const sameVersion = {
-      agentSecret: async (
-        o: Uint8Array,
-        n: Uint8Array,
-        row: Parameters<typeof reencryptAgentSecret>[2],
-      ) => ({ ...(await reencryptAgentSecret(o, n, row)), key_version: row.key_version }),
-    };
-    for (const [name, reencrypt, counts] of [
-      ["wrong key", wrongKey, { agent: 3, invoice: 0 }],
-      ["wrong plaintext", wrongText, { agent: 3, invoice: 0 }],
-      ["same key_version", sameVersion, { agent: 3, invoice: 0 }],
-      ["wrong invoice key", wrongInvoice, { agent: 0, invoice: 1 }],
-      ["invoice sealed under another tenant", invoiceUnderOtherTenant, { agent: 0, invoice: 1 }],
-      ["invoice with other bytes", invoiceOtherBytes, { agent: 0, invoice: 1 }],
-    ] as const) {
-      const f = await fixture();
-      const before = await sealedState(f.pg);
-      const dry = await rotateAll(f.db, MASTER, NEW_MASTER, { reencrypt });
-      expect(dry.ok, name).toBe(false);
-      expect(dry.agent_keys.mismatched, name).toBe(counts.agent);
-      expect(dry.invoices.mismatched, name).toBe(counts.invoice);
-      await expect(
-        rotateAll(f.db, MASTER, NEW_MASTER, { apply: true, reencrypt }),
-        name,
-      ).rejects.toBeInstanceOf(RotationRefusedError);
-      expect(await sealedState(f.pg), name).toEqual(before);
-    }
-  });
-
-  it("refuses equal masters before reading anything", async () => {
-    let calls = 0;
-    const db: Db = {
-      rpc: async () => {
-        calls += 1;
-        throw new Error("must not be called");
-      },
-    };
-    const same = parseMasterKey(Buffer.alloc(32, 5).toString("base64"));
-    for (const apply of [false, true]) {
-      await expect(rotateAll(db, MASTER, same, { apply })).rejects.toThrow(/identical/);
-    }
-    expect(calls).toBe(0);
-  });
-
-  it("key_rotation_apply is atomic: one stale row and nothing changes", async () => {
-    const f = await fixture();
-    const rows = (
-      await f.pg.query<{ id: string; secret_ciphertext: string; key_version: number }>(
-        "select id, secret_ciphertext, key_version from agent_keys order by id",
-      )
-    ).rows;
-    const [r0, r1] = [at(rows, 0), at(rows, 1)];
-    const before = await sealedState(f.pg);
-    const item = (r: (typeof rows)[number], old = r.secret_ciphertext) => ({
-      id: r.id,
-      old_ciphertext: old,
-      ciphertext: Buffer.alloc(48, 1).toString("base64"),
-      nonce: Buffer.alloc(24, 2).toString("base64"),
-      key_version: r.key_version + 1,
-    });
-    const bad = [
-      // the second row's ciphertext changed since it was read
-      { agent_keys: [item(r0), item(r1, "c3RhbGU=")], invoices: [] },
-      // a row that does not exist
-      { agent_keys: [item(r0), { ...item(r1), id: randomUUID() }], invoices: [] },
-      // the same row twice
-      { agent_keys: [item(r0), item(r0)], invoices: [] },
-      // key_version must go up
-      {
-        agent_keys: [item(r0), { ...item(r1), key_version: r1.key_version }],
-        invoices: [],
-      },
-      // the invoice's ciphertext changed since it was read
-      {
-        agent_keys: [item(r0)],
-        invoices: [
-          { id: f.invoiceId, old_ciphertext: "c3RhbGU=", ciphertext: "eQ==", nonce: "eg==" },
-        ],
-      },
-      // an invoice that is not there
-      {
-        agent_keys: [item(r0)],
-        invoices: [{ id: randomUUID(), old_ciphertext: "x", ciphertext: "y", nonce: "z" }],
-      },
-    ];
-    for (const batch of bad) {
-      await expect(f.db.rpc("key_rotation_apply", batch)).rejects.toMatchObject({
-        code: "rotation_conflict",
-      });
-      expect(await sealedState(f.pg)).toEqual(before);
-    }
-    for (const malformed of [
-      {},
-      { agent_keys: "x", invoices: [] },
-      { agent_keys: [{ id: r0.id }], invoices: [] },
-    ]) {
-      await expect(f.db.rpc("key_rotation_apply", malformed)).rejects.toMatchObject({
-        code: "invalid_input",
-      });
-    }
-    expect(await sealedState(f.pg)).toEqual(before);
-  });
-
-  it("a row changed between the dry run and the write makes the whole apply fail, with nothing written", async () => {
-    const f = await fixture();
-    const other = sealAgentSecret(NEW_MASTER, KeyPair.fromRandom("ed25519").toString());
-    const racing: Db = {
-      async rpc<T>(fn: string, p?: Record<string, unknown>): Promise<T> {
-        if (fn === "key_rotation_apply") {
-          // Another process re-sealed one row after this one read it.
-          const s = await other;
-          await f.pg.query(
-            "update agent_keys set secret_ciphertext = $1, secret_nonce = $2 where id = (select min(id::text)::uuid from agent_keys)",
-            [s.ciphertext, s.nonce],
-          );
-        }
-        return f.db.rpc<T>(fn, p);
-      },
-    };
-    const before = await f.pg.query<{ id: string; secret_ciphertext: string }>(
-      "select id, secret_ciphertext from agent_keys order by id",
-    );
-    await expect(rotateAll(racing, MASTER, NEW_MASTER, { apply: true })).rejects.toMatchObject({
-      code: "rotation_conflict",
-    });
-    const after = await f.pg.query<{ id: string; secret_ciphertext: string }>(
-      "select id, secret_ciphertext from agent_keys order by id",
-    );
-    // Only the racing write landed; none of the rotation's own writes did.
-    const changed = after.rows.filter(
-      (r, i) => r.secret_ciphertext !== before.rows[i]?.secret_ciphertext,
-    );
-    expect(changed).toHaveLength(1);
-    const inv = await f.pg.query<{ content_ciphertext: string; content_nonce: string }>(
-      "select content_ciphertext, content_nonce from invoices where id = $1",
-      [f.invoiceId],
-    );
-    await expect(
-      openInvoice(MASTER, f.tenant, {
-        ciphertext: inv.rows[0]?.content_ciphertext,
-        nonce: inv.rows[0]?.content_nonce,
-      }),
-    ).resolves.toBeDefined();
-  });
-
-  it("never returns key material: the report is counts only", async () => {
-    const f = await fixture();
-    const report = await rotateAll(f.db, MASTER, NEW_MASTER, { apply: true });
-    const text = JSON.stringify(report);
-    for (const s of f.secrets.values()) expectNoSecret(text, s);
-    const leaves: unknown[] = [];
-    JSON.parse(text, (_k, v) => {
-      if (typeof v !== "object" || v === null) leaves.push(v);
-      return v;
-    });
-    for (const v of leaves)
-      expect(["number", "boolean"].includes(typeof v) || v === "apply").toBe(true);
   });
 });

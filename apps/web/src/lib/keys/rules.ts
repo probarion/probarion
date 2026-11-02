@@ -11,8 +11,13 @@ export type KeyPurpose = "agent" | "ledger";
  * - `active`: the chain shows exactly the key the vault hands out, registered. The only usable state.
  * - `revoked`: the vault stopped accepting it while its access key may still exist (`remove_agent`
  *   or `set_ledger_key` already took it out of the registry), or its permission is no longer the one
- *   the vault hands out. Final.
- * - `removed`: the chain answered, definitively, that the access key is gone (NO_KEY). Final.
+ *   the vault hands out.
+ * - `removed`: the chain answered, definitively, that the access key is gone (NO_KEY), or the owner
+ *   discarded the key while it was pending.
+ *
+ * `revoked` and `removed` are not final (W-T10-R1): when a later sync sees the full activation
+ * state again (the exact scoped key, registered), the key is active again. A transient NO_KEY from a
+ * lagging node therefore never sticks, and the chain is always what decides.
  */
 export type KeyStatus = "pending" | "active" | "revoked" | "removed";
 
@@ -68,43 +73,50 @@ export type ChainView =
 
 export type CheckReason =
   | "activated"
+  | "reactivated"
   | "not_on_chain"
   | "not_registered"
+  /** The vault registers the key, but its access key was never added: stuck (W-T10-R1). */
+  | "registered_without_key"
   | `scope_${ScopeProblem}`
   | "unreadable"
   | "removed_on_chain"
   | "unregistered"
   | "still_active"
-  | "final";
+  | "inactive";
 
 export interface Verdict {
   to: KeyStatus;
   reason: CheckReason;
 }
 
-/** The next status of one key, from what the chain showed. Pure; the caller writes it compare-and-set. */
+/**
+ * The next status of one key, from what the chain showed. Pure; the caller writes it compare-and-set.
+ * A key goes to `active` only through the one full check (`usable`): the exact scoped key, registered.
+ */
 export function nextStatus(
   row: { purpose: KeyPurpose; status: KeyStatus },
   vault: string,
   view: ChainView,
 ): Verdict {
-  if (row.status === "revoked" || row.status === "removed")
-    return { to: row.status, reason: "final" };
   if (!view.readable) return { to: row.status, reason: "unreadable" };
   const { registered, key } = view;
-  if (row.status === "pending") {
-    if (!key.exists) return { to: "pending", reason: "not_on_chain" };
-    const problem = scopeProblem(row.purpose, vault, key);
-    if (problem !== null) return { to: "pending", reason: `scope_${problem}` };
-    if (!registered) return { to: "pending", reason: "not_registered" };
-    return { to: "active", reason: "activated" };
-  }
-  // active: a definite NO_KEY first (remove_agent and set_ledger_key delete the key), then the registry.
-  if (!key.exists) return { to: "removed", reason: "removed_on_chain" };
-  if (!registered) return { to: "revoked", reason: "unregistered" };
   const problem = scopeProblem(row.purpose, vault, key);
-  if (problem !== null) return { to: "revoked", reason: `scope_${problem}` };
-  return { to: "active", reason: "still_active" };
+  const usable = problem === null && registered;
+  if (row.status === "active") {
+    // A definite NO_KEY first (remove_agent and set_ledger_key delete the key), then the registry.
+    if (!key.exists) return { to: "removed", reason: "removed_on_chain" };
+    if (!registered) return { to: "revoked", reason: "unregistered" };
+    if (problem !== null) return { to: "revoked", reason: `scope_${problem}` };
+    return { to: "active", reason: "still_active" };
+  }
+  if (usable)
+    return { to: "active", reason: row.status === "pending" ? "activated" : "reactivated" };
+  if (!key.exists && registered) return { to: row.status, reason: "registered_without_key" };
+  if (row.status !== "pending") return { to: row.status, reason: "inactive" };
+  if (!key.exists) return { to: "pending", reason: "not_on_chain" };
+  if (problem !== null) return { to: "pending", reason: `scope_${problem}` };
+  return { to: "pending", reason: "not_registered" };
 }
 
 /** The contract refuses `label.len() > 64` (bytes) in add_agent; the table checks octet_length too. */
@@ -145,14 +157,32 @@ const SCOPE_TEXT: Readonly<Record<ScopeProblem, string>> = {
   wrong_methods: "the chain shows a key for other methods",
 };
 
-/** A sentence for a member, or null when there is nothing to say (a healthy or a final key). */
+/** The stuck state (W-T10-R1), worded by what can be done about it on the keys page. */
+export const STUCK_TEXT: Readonly<Record<KeyPurpose, string>> = {
+  // remove_agent clears the registry even when the access key is missing, so Remove recovers.
+  agent:
+    "is registered in the vault but its access key was never added (possibly the vault ran out of NEAR). Remove it, then generate a new agent key.",
+  // set_ledger_key would try to delete the missing key and fail: only a contract fix recovers.
+  ledger:
+    "is registered in the vault but its access key was never added (possibly the vault ran out of NEAR); a contract fix is needed to recover.",
+};
+
+/**
+ * A sentence for a member, or null when there is nothing to say (a healthy key, or a key that is
+ * no longer in use and still is not). Every remedy it names is one the keys page offers.
+ */
 export function describeCheck(c: KeyCheck): string | null {
   const name = `${c.purpose === "agent" ? "Agent" : "Ledger"} key ${c.public_key.slice(0, 16)}…`;
   const r = c.reason;
-  if (r === "final" || r === "still_active") return null;
+  const inUse = c.from === "pending" || c.from === "active";
+  if (r === "inactive" || r === "still_active") return null;
   if (r === "activated") return `${name} is active.`;
-  if (r === "unreadable")
-    return `${name}: the chain could not be read, so its status is unchanged.`;
+  if (r === "reactivated")
+    return `${name} is on the vault again, limited to its one method: active again.`;
+  if (r === "registered_without_key") return `${name} ${STUCK_TEXT[c.purpose]}`;
+  if (r === "unreadable") {
+    return inUse ? `${name}: the chain could not be read, so its status is unchanged.` : null;
+  }
   if (r === "not_on_chain") {
     return `${name} is not on the vault yet. If you signed the transaction, check again in a minute.`;
   }
@@ -162,12 +192,14 @@ export function describeCheck(c: KeyCheck): string | null {
       : `${name} is not the vault's ledger key, so it stays pending.`;
   }
   if (r === "removed_on_chain") return `${name} is gone from the vault: marked removed.`;
-  if (r === "unregistered")
+  if (r === "unregistered") {
     return `${name} is no longer registered with the vault: marked revoked.`;
+  }
   const problem = SCOPE_TEXT[r.slice("scope_".length) as ScopeProblem];
-  return c.to === "revoked"
-    ? `${name} was revoked: ${problem}. Remove it from the vault in your wallet.`
-    : `${name} was not activated: ${problem}.`;
+  if (c.to !== "revoked") return `${name} was not activated: ${problem}.`;
+  return c.purpose === "agent"
+    ? `${name} was revoked: ${problem}. Remove it from the vault (Remove, below).`
+    : `${name} was revoked: ${problem}. Set a new ledger key.`;
 }
 
 /** What the "Check on-chain status" form shows. */
