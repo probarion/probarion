@@ -661,14 +661,15 @@ describe("IntentsClient and FactoryClient", () => {
     });
   });
 
-  it("reads keys, a missing key list and a missing balance defensively", async () => {
+  it("reads keys and a missing key list defensively, and refuses a null balance", async () => {
     const { rpc } = viewRpc((_c, method) => {
       if (method === "public_keys_of") return ["ed25519:K"];
       return null;
     });
     const intents = new IntentsClient("intents.near", rpc);
     expect(await intents.publicKeysOf("a.near")).toEqual(["ed25519:K"]);
-    expect(await intents.poaBalance("a.near", "x.near")).toBe(0n);
+    // mt_balance_of always answers a U128 string: a null is an error, never a silent zero (Task 14 fix 2).
+    await expect(intents.poaBalance("a.near", "x.near")).rejects.toThrow(ViewError);
     expect(await intents.isAuthByPredecessorIdEnabled("a.near")).toBe(false);
   });
 

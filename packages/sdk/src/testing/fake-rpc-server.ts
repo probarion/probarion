@@ -19,6 +19,17 @@ import {
   FakeVmError,
 } from "./fake-chain.js";
 
+/**
+ * How the fake answers a query whose target is not there (Task 14 fix 3). Real nodes answer a missing access key
+ * with HTTP 200 and `result.error` "access key … does not exist while viewing" plus the block fields
+ * (`legacy`, the default); some answer with the structured `UNKNOWN_ACCESS_KEY` error. A missing account is the
+ * structured `UNKNOWN_ACCOUNT` error by default, or the legacy 200 "account … does not exist while viewing".
+ */
+export interface FakeRpcServerOptions {
+  missingAccessKey?: "legacy" | "structured";
+  missingAccount?: "structured" | "legacy";
+}
+
 export interface FakeRpcServer {
   readonly url: string;
   readonly chain: FakeChain;
@@ -81,9 +92,18 @@ function panicText(message: string): string {
   return `Smart contract panicked: ${message}`;
 }
 
-function query(chain: FakeChain, p: Record<string, unknown>): unknown {
+function query(
+  chain: FakeChain,
+  p: Record<string, unknown>,
+  shapes: Required<FakeRpcServerOptions>,
+): unknown {
   const accountId = String(p.account_id);
   const tail = { block_height: chain.height, block_hash: chain.blockHash };
+  /** The legacy answer for a missing account: HTTP 200, `result.error`, the block fields. */
+  const missingAccount = (): unknown => {
+    if (shapes.missingAccount === "structured") throw chain.unknownAccount(accountId);
+    return { error: `account ${accountId} does not exist while viewing`, logs: [], ...tail };
+  };
   switch (p.request_type) {
     case "call_function": {
       try {
@@ -105,7 +125,7 @@ function query(chain: FakeChain, p: Record<string, unknown>): unknown {
       }
     }
     case "view_access_key_list": {
-      if (!chain.knownAccount(accountId)) throw chain.unknownAccount(accountId);
+      if (!chain.knownAccount(accountId)) return missingAccount();
       return {
         keys: chain.accessKeysOf(accountId).map((k) => ({
           public_key: k.info.public_key,
@@ -116,6 +136,14 @@ function query(chain: FakeChain, p: Record<string, unknown>): unknown {
     }
     case "view_access_key": {
       const key = chain.accessKey(accountId, String(p.public_key));
+      if (key === undefined && shapes.missingAccessKey === "legacy") {
+        // nearcore keeps the legacy answer for this query: HTTP 200, no JSON-RPC error.
+        return {
+          error: `access key ${String(p.public_key)} does not exist while viewing`,
+          logs: [],
+          ...tail,
+        };
+      }
       if (key === undefined) {
         throw new FakeRpcFault(
           "HANDLER_ERROR",
@@ -132,6 +160,7 @@ function query(chain: FakeChain, p: Record<string, unknown>): unknown {
       return { nonce: key.nonce, permission: toRpcPermission(key.info), ...tail };
     }
     case "view_account":
+      if (!chain.knownAccount(accountId)) return missingAccount();
       return { ...chain.accountView(accountId), ...tail };
     default:
       throw new FakeRpcFault(
@@ -457,10 +486,15 @@ function txStatus(chain: FakeChain, params: unknown): unknown {
   return found;
 }
 
-function dispatch(chain: FakeChain, method: string, params: unknown): unknown {
+function dispatch(
+  chain: FakeChain,
+  method: string,
+  params: unknown,
+  shapes: Required<FakeRpcServerOptions>,
+): unknown {
   switch (method) {
     case "query":
-      return query(chain, record(params));
+      return query(chain, record(params), shapes);
     case "block":
       return {
         author: "fake.testnet",
@@ -495,7 +529,14 @@ function dispatch(chain: FakeChain, method: string, params: unknown): unknown {
   }
 }
 
-export async function startFakeRpcServer(chain: FakeChain): Promise<FakeRpcServer> {
+export async function startFakeRpcServer(
+  chain: FakeChain,
+  options: FakeRpcServerOptions = {},
+): Promise<FakeRpcServer> {
+  const shapes: Required<FakeRpcServerOptions> = {
+    missingAccessKey: options.missingAccessKey ?? "legacy",
+    missingAccount: options.missingAccount ?? "structured",
+  };
   const methods: string[] = [];
   const failures: number[] = [];
   let drops = 0;
@@ -517,7 +558,7 @@ export async function startFakeRpcServer(chain: FakeChain): Promise<FakeRpcServe
     }
     const id = message.id ?? null;
     try {
-      const result = dispatch(chain, method, message.params);
+      const result = dispatch(chain, method, message.params, shapes);
       if (drops > 0 && (method === "send_tx" || method === "broadcast_tx_commit")) {
         drops -= 1;
         req.socket.destroy();

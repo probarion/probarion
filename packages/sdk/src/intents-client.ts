@@ -31,13 +31,13 @@ export class IntentsClient {
     );
   }
 
-  /** POA token balance held by `accountId` inside intents (NEP-245 token id `nep141:<asset>`). */
+  /** POA token balance held by `accountId` inside intents (NEP-245 token id `nep141:<asset>`). A null answer throws. */
   async poaBalance(accountId: string, asset: string): Promise<bigint> {
     const balance = await this.rpc.viewFunction<string | null>(this.intentsId, "mt_balance_of", {
       account_id: accountId,
       token_id: `nep141:${asset}`,
     });
-    if (balance === null) return 0n;
+    // mt_balance_of always answers a U128 string; a null is an error, never a silent zero (Task 14 fix 2).
     if (typeof balance !== "string" || !/^\d+$/.test(balance)) {
       throw new ViewError(this.intentsId, "mt_balance_of", "the answer is not a decimal balance");
     }

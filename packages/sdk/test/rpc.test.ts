@@ -185,7 +185,8 @@ describe("RpcClient views", () => {
     expect((modernError as ViewError).probarionCode).toBe("Frozen");
   });
 
-  it("maps access keys, treating unknown permission kinds as FullAccess", async () => {
+  it("maps the four AccessKeyPermissionView variants; a gas key reads as its plain counterpart", async () => {
+    const fc = { receiver_id: "vault.testnet", method_names: ["spend"] };
     const { rpc } = client(
       ["https://a.test"],
       [
@@ -194,16 +195,7 @@ describe("RpcClient views", () => {
             { public_key: "ed25519:A", access_key: { nonce: 1, permission: "FullAccess" } },
             {
               public_key: "ed25519:B",
-              access_key: {
-                nonce: 1,
-                permission: {
-                  FunctionCall: {
-                    allowance: "100",
-                    receiver_id: "vault.testnet",
-                    method_names: ["spend"],
-                  },
-                },
-              },
+              access_key: { nonce: 1, permission: { FunctionCall: { allowance: "100", ...fc } } },
             },
             {
               public_key: "ed25519:C",
@@ -220,7 +212,26 @@ describe("RpcClient views", () => {
             },
             {
               public_key: "ed25519:D",
-              access_key: { nonce: 1, permission: { GasKeyFunctionCall: {} } },
+              access_key: {
+                nonce: 1,
+                permission: {
+                  GasKeyFunctionCall: { balance: "1000", num_nonces: 2, allowance: "5", ...fc },
+                },
+              },
+            },
+            {
+              public_key: "ed25519:E",
+              access_key: {
+                nonce: 1,
+                permission: { GasKeyFullAccess: { balance: "1000", num_nonces: 2 } },
+              },
+            },
+            {
+              public_key: "ed25519:F",
+              access_key: {
+                nonce: 1,
+                permission: { GasKeyFunctionCall: { balance: "0", num_nonces: 1, ...fc } },
+              },
             },
           ],
         }),
@@ -228,16 +239,57 @@ describe("RpcClient views", () => {
     );
     expect(await rpc.viewAccessKeyList("vault.testnet")).toEqual([
       { public_key: "ed25519:A", permission: "FullAccess" },
-      {
-        public_key: "ed25519:B",
-        permission: { receiver_id: "vault.testnet", method_names: ["spend"], allowance: "100" },
-      },
+      { public_key: "ed25519:B", permission: { ...fc, allowance: "100" } },
       {
         public_key: "ed25519:C",
         permission: { receiver_id: "vault.testnet", method_names: ["anchor"], allowance: null },
       },
-      { public_key: "ed25519:D", permission: "FullAccess" },
+      // A scoped gas key never reads as FullAccess; check f then treats it like a plain function-call key.
+      { public_key: "ed25519:D", permission: { ...fc, allowance: "5" } },
+      // A gas full-access key is a full-access key.
+      { public_key: "ed25519:E", permission: "FullAccess" },
+      { public_key: "ed25519:F", permission: { ...fc, allowance: null } },
     ]);
+  });
+
+  it("fails closed on a permission shape it does not know: the list throws, it never reads as some key", async () => {
+    const fc = { receiver_id: "vault.testnet", method_names: ["spend"] };
+    const shapes: [string, unknown][] = [
+      ["an unknown variant", { NewKind: { ...fc } }],
+      ["an unknown string", "NoAccess"],
+      ["two variants in one object", { FunctionCall: fc, FullAccess: {} }],
+      ["an empty object", {}],
+      ["null", null],
+      ["a lower-case variant", { functionCall: fc }],
+      ["a GasKeyFunctionCall without balance", { GasKeyFunctionCall: { num_nonces: 1, ...fc } }],
+      [
+        "a GasKeyFunctionCall without method_names",
+        { GasKeyFunctionCall: { balance: "1", num_nonces: 1, receiver_id: "v.testnet" } },
+      ],
+      ["a GasKeyFunctionCall that is not an object", { GasKeyFunctionCall: "x" }],
+      ["a GasKeyFullAccess without num_nonces", { GasKeyFullAccess: { balance: "1" } }],
+      [
+        "a GasKeyFullAccess with a numeric balance",
+        { GasKeyFullAccess: { balance: 1, num_nonces: 1 } },
+      ],
+      [
+        "a GasKeyFullAccess with a non-decimal balance",
+        { GasKeyFullAccess: { balance: "1.5", num_nonces: 1 } },
+      ],
+      [
+        "a GasKeyFullAccess with a fractional num_nonces",
+        { GasKeyFullAccess: { balance: "1", num_nonces: 1.5 } },
+      ],
+      ["a GasKeyFullAccess that is a string", { GasKeyFullAccess: "x" }],
+      ["a FunctionCall with a numeric allowance", { FunctionCall: { ...fc, allowance: 5 } }],
+    ];
+    for (const [name, permission] of shapes) {
+      const { rpc } = client(
+        ["https://a.test"],
+        [ok({ keys: [{ public_key: "ed25519:X", access_key: { nonce: 1, permission } }] })],
+      );
+      await expect(rpc.viewAccessKeyList("vault.testnet"), name).rejects.toThrow(/permission/);
+    }
   });
 
   it("reads code_hash and tx status", async () => {
