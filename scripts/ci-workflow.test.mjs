@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
@@ -104,6 +105,86 @@ function blockLines(lines, key, indent = 0) {
 
 const usesAction = (line) => /uses: ([\w.-]+\/[\w.-]+)@/.exec(line)?.[1];
 const usesSha = (line) => /@([0-9a-f]{40})/.exec(line)?.[1];
+
+// The whole file is pinned. A reviewed change to release.yml needs a reviewed change to this hash, which
+// is the point: the structural checks below explain what is wrong, the pin refuses everything else.
+// Update it with: node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync(".github/workflows/release.yml","utf8").replace(/\r\n/g,"\n")).digest("hex"))'
+const RELEASE_YML_SHA256 = "f58673e15ed0df05372b03a105ca30fcf24ec8f3f09e200fa120263ca4d73e45";
+const releaseSha = (text) => createHash("sha256").update(text.replace(/\r\n/g, "\n")).digest("hex");
+
+// The publish script and the run steps of the verify job, exactly as reviewed (comments and blank lines
+// removed). The script is the body of the one `run: |` of the publish job, without its indentation.
+const PUBLISH_SCRIPT = [
+  "set -euo pipefail",
+  "base_args=(--access public --provenance)",
+  'if [ "$REPO_PRIVATE" = "true" ]; then',
+  '  echo "::warning::the repository is private; npm provenance needs a public repository, so this publish has no provenance"',
+  "  base_args=(--access public)",
+  "fi",
+  'list=$(node -e \'for (const p of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).packages) console.log([p.file, p.name, p.version].join("\\t"))\' "$RELEASE_DIR/packages.json")',
+  '[ -n "$list" ] || { echo "::error::empty publish list"; exit 1; }',
+  "while IFS=$'\\t' read -r file name version; do",
+  '  if view=$(npm view "$name@$version" version 2>&1 </dev/null); then',
+  '    published=$(npm view "$name@$version" dist.integrity </dev/null)',
+  '    local_integrity="sha512-$(openssl dgst -sha512 -binary "$RELEASE_DIR/$file" | base64 -w0)"',
+  '    if [ "$published" = "$local_integrity" ]; then',
+  '      echo "::notice::$name@$version is already on npm with the same content as this tarball; skipping"',
+  "      continue",
+  "    fi",
+  '    echo "::error::$name@$version is already on npm with different content (npm: $published, this run: $local_integrity); nothing after it is published"',
+  "    exit 1",
+  "  else",
+  '    case "$view" in',
+  "      *E404*) ;;",
+  '      *) echo "::error::cannot tell whether $name@$version is on npm: $view"; exit 1 ;;',
+  "    esac",
+  "  fi",
+  '  args=("${base_args[@]}")',
+  '  case "$version" in *-*) args+=(--tag next) ;; esac',
+  '  echo "publishing $name@$version"',
+  '  npm publish "$RELEASE_DIR/$file" "${args[@]}" </dev/null',
+  'done <<<"$list"',
+];
+
+const VERIFY_RUN_STEPS = [
+  [
+    "      - name: Require the tagged commit to be on main",
+    "        run: |",
+    '          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {',
+    '            echo "::error::the tagged commit $GITHUB_SHA is not on main; a release is cut from main"',
+    "            exit 1",
+    "          }",
+  ],
+  ["      - run: pnpm install --frozen-lockfile"],
+  ['      - run: pnpm run release:check -- "$GITHUB_REF_NAME"'],
+  ["      - run: pnpm run verify:ts"],
+  ["      - run: pnpm run verify:launch"],
+  ['      - run: pnpm run release:check -- --pack --out "$RUNNER_TEMP/release" "$GITHUB_REF_NAME"'],
+];
+
+const PUBLISH_ENV_LINES = [
+  "        env:",
+  "          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}",
+  "          REPO_PRIVATE: ${{ github.event.repository.private }}",
+  "          RELEASE_DIR: ${{ runner.temp }}/release",
+];
+// The only lines that may hold a ${{ }} expression.
+const EXPRESSION_LINES = [
+  "          path: ${{ runner.temp }}/release",
+  ...PUBLISH_ENV_LINES.slice(1),
+];
+
+/** The steps of a job as arrays of lines (a step starts at `      - `). */
+function stepsOf(jobLines) {
+  const at = jobLines.indexOf("    steps:");
+  const steps = [];
+  if (at < 0) return steps;
+  for (const line of jobLines.slice(at + 1)) {
+    if (/^ {6}- /.test(line)) steps.push([line]);
+    else steps.at(-1)?.push(line);
+  }
+  return steps;
+}
 
 /** Every problem with a release workflow; the empty list means it has the shape the release relies on. */
 function checkReleaseWorkflow(text, ciText) {
@@ -274,13 +355,11 @@ function checkReleaseWorkflow(text, ciText) {
       fail(`${action} is used at two SHAs`);
     seen.set(action, usesSha(line));
   }
-  // --- run scripts take nothing from ${{ }}
-  for (const block of codeLines(text)
-    .join("\n")
-    .split(/\n\s*(?:- )?run: \|?/)
-    .slice(1)) {
-    const body = block.split(/\n\s*(?:- |env:|with:)/)[0];
-    if (body.includes("${{")) fail(`an expression in a run script: ${body.slice(0, 60)}`);
+  // --- only the reviewed lines may hold an expression, wherever they stand
+  for (const l of lines) {
+    if (l.includes("${{") && !EXPRESSION_LINES.includes(l)) {
+      fail(`an expression outside the reviewed lines: ${l.trim().slice(0, 80)}`);
+    }
   }
 
   // --- nothing may swallow a failure or switch a gate off
@@ -288,11 +367,23 @@ function checkReleaseWorkflow(text, ciText) {
   if (/continue-on-error/.test(code)) {
     fail("continue-on-error is not allowed: a failed step must fail the run");
   }
-  if (lines.some((l) => /^\s*(- )?if:/.test(l))) {
+  // Also inside a flow mapping ({ if: false, run: … }) and with a quoted key.
+  const keyOf = (l) => l.replace(/^\s*(-\s+)?/, "");
+  if (lines.some((l) => /(^|[{,]\s*)["']?if["']?\s*:/.test(keyOf(l)))) {
     fail("an if: key is not allowed: every step and job runs, and a failure stops the run");
   }
-  if (/\bshell:/.test(code)) fail("shell: is not allowed (the default bash -e must apply)");
-  if (/set \+e|set \+o errexit/.test(code)) fail("set +e is not allowed");
+  // Every script runs under `bash -eo pipefail`, which GitHub applies only when the shell is named.
+  const defaults = blockLines(lines, "defaults");
+  if (JSON.stringify(defaults) !== JSON.stringify(["defaults:", "  run:", "    shell: bash"])) {
+    fail("defaults must be exactly run: shell: bash, so that every script runs with pipefail");
+  }
+  if ((code.match(/\bshell\s*:/g) ?? []).length !== 1) {
+    fail("shell: may appear once, in defaults (no step may choose another shell)");
+  }
+  if (/set \+/.test(code)) fail("set +e, set +o pipefail and every other set + are not allowed");
+  if (/\bpipefail\b/.test(code.replace("set -euo pipefail", ""))) {
+    fail("pipefail may be mentioned only in set -euo pipefail");
+  }
   if (/\bexit 0\b/.test(code)) fail("exit 0 is not allowed");
   if (lines.some((l) => /;\s*true\s*$/.test(l))) {
     fail('a line that ends in "; true" swallows a failure');
@@ -339,6 +430,30 @@ function checkReleaseWorkflow(text, ciText) {
     !publish.includes("          name: release-tarballs")
   ) {
     fail("the artifact must be named release-tarballs in both jobs");
+  }
+
+  // --- exact run bodies (a blacklist always misses a way to swallow a failure; these list what is allowed)
+  const verifyRunSteps = stepsOf(verify).filter((step) =>
+    step.some((l) => /(^|[\s{,-])run\s*:/.test(l)),
+  );
+  if (JSON.stringify(verifyRunSteps) !== JSON.stringify(VERIFY_RUN_STEPS)) {
+    fail("the verify job's run steps must be exactly the reviewed ones, each with no other key");
+  }
+  const publishRunAt = publish.findIndex((l) => /^ {8}run: \|$/.test(l));
+  const publishBody =
+    publishRunAt < 0 ? [] : publish.slice(publishRunAt + 1).map((l) => l.slice(10));
+  if (JSON.stringify(publishBody) !== JSON.stringify(PUBLISH_SCRIPT)) {
+    fail("the publish script must equal the reviewed copy, line for line");
+  }
+  const publishEnv = blockLines(publish, "env", 8);
+  if (JSON.stringify(publishEnv) !== JSON.stringify(PUBLISH_ENV_LINES)) {
+    fail("the publish env block must be exactly NODE_AUTH_TOKEN, REPO_PRIVATE and RELEASE_DIR");
+  }
+  if (/\bNPM_CONFIG_|\bnpm_config_/i.test(text)) {
+    fail("npm configuration through the environment is not allowed (registry, dry-run, …)");
+  }
+  if (/--registry|--dry-run|--userconfig|--otp/.test(text)) {
+    fail("--registry, --dry-run, --userconfig and --otp are not allowed on any command");
   }
   return problems;
 }
@@ -421,8 +536,8 @@ const mutations = [
     "a top-level id-token",
     (t) =>
       t.replace(
-        "permissions:\n  contents: read\n\n# Third",
-        "permissions:\n  contents: read\n  id-token: write\n\n# Third",
+        "permissions:\n  contents: read\n\n",
+        "permissions:\n  contents: read\n  id-token: write\n\n",
       ),
     "top-level permissions",
   ],
@@ -725,6 +840,191 @@ const mutations = [
       ),
     "release-tarballs",
   ],
+  // Ways to swallow a failure that a blacklist of words misses (T17-R3). They are refused because the run
+  // steps, the publish script and the publish env are compared exactly with the reviewed copies.
+  [
+    "X1: a pipe into tee after verify:ts (no pipefail)",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:ts\n",
+        "      - run: pnpm run verify:ts | tee verify.log\n",
+      ),
+    "run steps must be exactly",
+  ],
+  [
+    "X2: && echo ok after verify:launch",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:launch\n",
+        "      - run: pnpm run verify:launch && echo ok\n",
+      ),
+    "run steps must be exactly",
+  ],
+  [
+    "X3: if ! … then … fi around verify:ts",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:ts\n",
+        "      - run: if ! pnpm run verify:ts; then echo skipped; fi\n",
+      ),
+    "run steps must be exactly",
+  ],
+  [
+    "X4: a negated verify:ts",
+    (t) => t.replace("      - run: pnpm run verify:ts\n", "      - run: ! pnpm run verify:ts\n"),
+    "run steps must be exactly",
+  ],
+  [
+    "X5: ; echo done after verify:ts",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:ts\n",
+        "      - run: pnpm run verify:ts; echo done\n",
+      ),
+    "run steps must be exactly",
+  ],
+  [
+    "X6: if: inside a flow mapping",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:launch\n",
+        "      - { if: false, run: pnpm run verify:launch }\n",
+      ),
+    "an if: key",
+  ],
+  [
+    "X6b: a quoted if key",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:launch\n",
+        '      - "if": false\n        run: pnpm run verify:launch\n',
+      ),
+    "an if: key",
+  ],
+  [
+    "X6c: if with a space before the colon",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:launch\n",
+        "      - if : false\n        run: pnpm run verify:launch\n",
+      ),
+    "an if: key",
+  ],
+  [
+    "X7: set +o pipefail in the publish script",
+    (t) =>
+      t.replace(
+        "          set -euo pipefail\n",
+        "          set -euo pipefail\n          set +o pipefail\n",
+      ),
+    "set +",
+  ],
+  [
+    "X8: NPM_CONFIG_REGISTRY in the publish env",
+    (t) =>
+      t.replace(
+        "          RELEASE_DIR:",
+        "          NPM_CONFIG_REGISTRY: https://registry.example.com\n          RELEASE_DIR:",
+      ),
+    "npm configuration through the environment",
+  ],
+  [
+    "X9: --registry added to the publish arguments",
+    (t) =>
+      t.replace(
+        '            echo "publishing $name@$version"\n',
+        '            args+=(--registry https://registry.example.com)\n            echo "publishing $name@$version"\n',
+      ),
+    "--registry",
+  ],
+  [
+    "X9b: --dry-run in the base arguments",
+    (t) =>
+      t.replace(
+        "base_args=(--access public --provenance)",
+        "base_args=(--access public --provenance --dry-run)",
+      ),
+    "--dry-run",
+  ],
+  [
+    "X12: a github.ref expression after a - line in the script",
+    (t) =>
+      t.replace(
+        "          set -euo pipefail\n",
+        "          set -euo pipefail\n          - x\n          echo ${{ github.ref }}\n",
+      ),
+    "an expression outside the reviewed lines",
+  ],
+  [
+    "X14: a trailing & after verify:ts",
+    (t) => t.replace("      - run: pnpm run verify:ts\n", "      - run: pnpm run verify:ts &\n"),
+    "run steps must be exactly",
+  ],
+  [
+    "X15: working-directory on a run step",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:ts\n",
+        "      - run: pnpm run verify:ts\n        working-directory: /tmp\n",
+      ),
+    "run steps must be exactly",
+  ],
+  [
+    "X16: env on a run step",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:ts\n",
+        '      - run: pnpm run verify:ts\n        env:\n          CI: ""\n',
+      ),
+    "run steps must be exactly",
+  ],
+  [
+    "X17: an extra run step in the verify job",
+    (t) =>
+      t.replace(
+        "      - run: pnpm install --frozen-lockfile\n",
+        "      - run: pnpm install --frozen-lockfile\n      - run: echo hello\n",
+      ),
+    "run steps must be exactly",
+  ],
+  [
+    "X19: NPM_CONFIG_DRY_RUN in the publish env",
+    (t) =>
+      t.replace(
+        "          RELEASE_DIR:",
+        "          NPM_CONFIG_DRY_RUN: true\n          RELEASE_DIR:",
+      ),
+    "npm configuration through the environment",
+  ],
+  [
+    "a publish env variable added",
+    (t) => t.replace("          RELEASE_DIR:", "          EXTRA: x\n          RELEASE_DIR:"),
+    "publish env block must be exactly",
+  ],
+  [
+    "one character changed in the publish script",
+    (t) => t.replace('echo "publishing $name@$version"', 'echo "publishing $name@$version!"'),
+    "publish script must equal the reviewed copy",
+  ],
+  [
+    "the defaults block removed",
+    (t) => t.replace("defaults:\n  run:\n    shell: bash\n\n", ""),
+    "defaults must be exactly",
+  ],
+  [
+    "defaults with another shell",
+    (t) => t.replace("    shell: bash\n", "    shell: sh\n"),
+    "defaults must be exactly",
+  ],
+  [
+    "a per-step shell: bash",
+    (t) =>
+      t.replace(
+        "      - run: pnpm run verify:ts\n",
+        "      - run: pnpm run verify:ts\n        shell: bash\n",
+      ),
+    "shell: may appear once",
+  ],
 ];
 
 for (const [name, mutate, expected] of mutations) {
@@ -737,8 +1037,39 @@ for (const [name, mutate, expected] of mutations) {
       problems.some((p) => p.includes(expected)),
       `"${name}" was refused for other reasons than "${expected}": ${problems.join(" | ")}`,
     );
+    // And the pin refuses it too, whatever the structural checks say.
+    assert.notEqual(releaseSha(mutated), RELEASE_YML_SHA256);
   });
 }
+
+test("release.yml is the reviewed file", () => {
+  assert.equal(
+    releaseSha(release),
+    RELEASE_YML_SHA256,
+    "release.yml changed: review the diff, then update RELEASE_YML_SHA256",
+  );
+});
+
+test("the pin ignores line endings and nothing else: one changed byte anywhere is refused", () => {
+  assert.equal(releaseSha(release.replace(/\n/g, "\r\n")), releaseSha(release));
+  const last = release.length - 1;
+  for (const i of [0, 1, 17, 500, Math.floor(release.length / 2), last - 2, last - 1]) {
+    const changed = release[i] === "x" ? "y" : "x";
+    assert.notEqual(
+      releaseSha(release.slice(0, i) + changed + release.slice(i + 1)),
+      releaseSha(release),
+      `byte ${i}`,
+    );
+  }
+  // An appended comment, a deleted line break, an inserted space, and one more empty line.
+  assert.notEqual(releaseSha(`${release}# x\n`), releaseSha(release));
+  assert.notEqual(releaseSha(release.replace("\n", "")), releaseSha(release));
+  assert.notEqual(
+    releaseSha(release.replace("name: release", "name:  release")),
+    releaseSha(release),
+  );
+  assert.notEqual(releaseSha(`${release}\n`), releaseSha(release));
+});
 
 test("release.yml: the tagged commit must be on main, and the workflow leaves no credentials behind", () => {
   assert.match(release, /git merge-base --is-ancestor "\$GITHUB_SHA" origin\/main/);

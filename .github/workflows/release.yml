@@ -27,7 +27,8 @@ name: release
 #     at any package that is already on npm with different content, and publishes nothing after it.
 #     A package that was published is skipped when npm holds the same bytes.
 # No step in this file may swallow a failure (no continue-on-error, no if:, no `|| true`):
-# scripts/ci-workflow.test.mjs refuses such an edit.
+# scripts/ci-workflow.test.mjs refuses such an edit, and pins the sha256 of this whole file, so every
+# change here needs a reviewed change to RELEASE_YML_SHA256 there.
 on:
   push:
     tags: ["sdk-v*"]
@@ -38,6 +39,12 @@ concurrency:
 
 permissions:
   contents: read
+
+# Naming the shell makes GitHub run every script as `bash --noprofile --norc -eo pipefail {0}`. Without
+# it the default is `bash -e {0}`, and `pnpm run verify:ts | tee log` would pass when verify:ts fails.
+defaults:
+  run:
+    shell: bash
 
 # Third-party actions are pinned by full commit SHA, with the tag in a trailing comment, because a
 # tag can be moved. Use the same SHAs as ci.yml (scripts/ci-workflow.test.mjs checks that they agree).
