@@ -24,7 +24,11 @@ export interface RegisterTenantInput {
   vaultId: string;
   network: Network;
   kind: TenantKind;
-  displayName: string;
+  /**
+   * Null or left out (migration 0005): a new tenant takes the vault name before its first dot, and a
+   * registered one keeps the name it has.
+   */
+  displayName?: string | null;
   owner: string;
   approvers: string[];
 }
@@ -42,7 +46,7 @@ export function registerTenant(db: Db, t: RegisterTenantInput): Promise<{ tenant
     vault_id: t.vaultId,
     network: t.network,
     kind: t.kind,
-    display_name: t.displayName,
+    display_name: t.displayName ?? null,
     owner_account: t.owner,
     approvers: t.approvers,
   });

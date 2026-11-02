@@ -88,6 +88,14 @@ describe("prepareCreateVault", () => {
     expect(Object.keys(r.errors).sort()).toEqual(["approvers", "name"]);
   });
 
+  it("an amount above u128 is a field error, never a thrown RangeError", () => {
+    const huge = `1${"0".repeat(40)}`;
+    const r = prepareCreateVault({ ...good, dailyBackstopUsdc: huge, depositNear: huge }, ctx);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(Object.keys(r.errors).sort()).toEqual(["dailyBackstopUsdc", "depositNear"]);
+  });
+
   it("takes whole hours from 1 to 720 only", () => {
     for (const h of ["1e1", "1.5", "721", " "]) {
       const r = prepareCreateVault({ ...good, heldTtlHours: h }, ctx);
@@ -107,22 +115,35 @@ describe("prepareCreateVault", () => {
     const half = { ...ctx, minDeposit: (NEAR / 2n).toString() };
 
     it("embedded mode without a sufficient deposit blocks Create", () => {
-      // min_deposit alone is enough in global mode, but not for an embedded vault (+2.48501 NEAR of code)
+      // min_deposit alone is enough in global mode, but not for an embedded vault (+2.73352 NEAR of
+      // code: the 248,501-byte wasm plus a 10% margin)
       expect(prepareCreateVault({ ...good, depositNear: "0.5" }, half).ok).toBe(true);
-      const r = prepareCreateVault({ ...good, depositNear: "2.98" }, { ...half, mode: "embedded" });
+      const r = prepareCreateVault(
+        { ...good, depositNear: "3.2335" },
+        { ...half, mode: "embedded" },
+      );
       expect(r.ok).toBe(false);
       if (r.ok) return;
       expect(Object.keys(r.errors)).toEqual(["depositNear"]);
       expect(r.errors.depositNear).toMatch(/embedded/);
-      expect(r.errors.depositNear).toMatch(/2\.98501/);
+      expect(r.errors.depositNear).toMatch(/3\.23352/);
     });
 
     it("embedded mode with min_deposit plus the code storage passes", () => {
       const r = prepareCreateVault(
-        { ...good, depositNear: "2.98501" },
+        { ...good, depositNear: "3.23352" },
         { ...half, mode: "embedded" },
       );
       expect(r.ok).toBe(true);
+    });
+
+    it("shows a required minimum rounded up, so typing it back always passes", () => {
+      const odd = { ...half, minDeposit: (NEAR / 2n + 1n).toString() }; // 0.5 NEAR and 1 yocto
+      const r = prepareCreateVault({ ...good, depositNear: "0.5" }, odd);
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.errors.depositNear).toMatch(/0\.500001 NEAR/);
+      expect(prepareCreateVault({ ...good, depositNear: "0.500001" }, odd).ok).toBe(true);
     });
 
     it("refuses a deposit the factory could not refund from its float (above 5 NEAR)", () => {
@@ -429,6 +450,35 @@ describe("registerVault (R11)", () => {
     });
     expect(await kindOf(vaultId)).toBe("team");
     expect((await memberRole(pgliteDb(pg), vaultId, "team.near"))?.display_name).toBe("Team vault");
+    // A later registration from the form (no display name) keeps it, and never downgrades the kind.
+    await registerVault(deps(reader), { vaultId, account: "team.near" });
+    expect(await kindOf(vaultId)).toBe("team");
+    expect((await memberRole(pgliteDb(pg), vaultId, "team.near"))?.display_name).toBe("Team vault");
+  });
+
+  it("a first registration with no display name takes the vault name", async () => {
+    const reader = fakeReader({ getConfig: async () => vaultConfig({ owner: "named.near" }) });
+    await registerVault(deps(reader), {
+      vaultId: "named.vaults.probarion.near",
+      account: "named.near",
+    });
+    expect(
+      (await memberRole(pgliteDb(pg), "named.vaults.probarion.near", "named.near"))?.display_name,
+    ).toBe("named");
+  });
+
+  it("maps the database's owner_mismatch (a row under an older owner) to owner_mismatch", async () => {
+    await pg.query(
+      "insert into public.tenants (vault_id, network, kind, owner_account) values ($1, 'mainnet', 'external', 'old.near')",
+      ["moved.vaults.probarion.near"],
+    );
+    const reader = fakeReader({ getConfig: async () => vaultConfig({ owner: "new.near" }) });
+    expect(
+      await registerVault(deps(reader), {
+        vaultId: "moved.vaults.probarion.near",
+        account: "new.near",
+      }),
+    ).toEqual({ ok: false, error: "owner_mismatch" });
   });
 });
 

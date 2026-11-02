@@ -3,8 +3,8 @@
 import { FactoryClient } from "@probarion/sdk";
 import { revalidatePath } from "next/cache";
 import { isDenied, sessionForAction } from "@/lib/console/action-auth";
+import { asForm, type CreateVaultForm } from "@/lib/console/create-rules";
 import {
-  type CreateVaultForm,
   loadFactoryForCreate,
   prepareCreateVault,
   REGISTER_ERROR_TEXT,
@@ -19,24 +19,6 @@ import type { WalletTx } from "@/lib/near/tx";
 
 // The two actions that come before a vault exists, so they check the session (sessionForAction), not a
 // membership. Their arguments come from the browser and are treated as untrusted text.
-
-const FORM_KEYS = [
-  "name",
-  "approvers",
-  "dailyBackstopUsdc",
-  "heldTtlHours",
-  "depositNear",
-] as const;
-
-function asForm(raw: unknown): CreateVaultForm {
-  const src = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
-  const out = {} as CreateVaultForm;
-  for (const k of FORM_KEYS) {
-    const v = src[k];
-    out[k] = typeof v === "string" ? v.slice(0, 1_000) : "";
-  }
-  return out;
-}
 
 /**
  * Re-reads the factory (R14: min_deposit and the current version's mode) and builds the
@@ -61,7 +43,11 @@ export async function prepareCreateVaultAction(
     mode: factory.mode,
     owner: auth.accountId,
   });
-  return r.ok ? r.tx : { error: Object.values(r.errors).join(" · ") };
+  if (!r.ok) return { error: Object.values(r.errors).join(" · ") };
+  // A warning does not block the create; it rides in the line the owner reads beside the signature.
+  return r.warnings.length === 0
+    ? r.tx
+    : { ...r.tx, summary: `${r.tx.summary}. ${r.warnings.join(" ")}` };
 }
 
 export type RegisterActionResult =

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   codeStorageYocto,
   createDepositPlan,
+  EMBEDDED_CODE_ESTIMATE_BYTES,
   EMBEDDED_VAULT_WASM_BYTES,
   FRESH_VAULT_STATE_BYTES,
   freeNearYocto,
@@ -22,6 +23,8 @@ describe("runway constants (R3)", () => {
     expect(LOW_NEAR_YOCTO).toBe(milli(100n)); // amber below 0.1 NEAR
     expect(NEAR_LOW_ALERT_YOCTO).toBe(milli(50n)); // near_low below 0.05 NEAR (Task 20)
     expect(EMBEDDED_VAULT_WASM_BYTES).toBe(248_501n);
+    // +10% on the measured wasm, rounded up: the factory does not expose code_len (ICR to come)
+    expect(EMBEDDED_CODE_ESTIMATE_BYTES).toBe(273_352n);
     expect(FRESH_VAULT_STATE_BYTES).toBe(250_733n - 248_501n);
   });
 });
@@ -71,9 +74,9 @@ describe("createDepositPlan (R14)", () => {
     expect(p.spends).toBe(90);
   });
 
-  it("embedded mode adds the storage of the vault's copy of the wasm (2.48501 NEAR)", () => {
-    expect(codeStorageYocto("embedded")).toBe(2_485_010n * 10n ** 18n);
-    const required = NEAR / 2n + 2_485_010n * 10n ** 18n;
+  it("embedded mode adds the storage of the vault's copy of the wasm, with a 10% margin (2.73352 NEAR)", () => {
+    expect(codeStorageYocto("embedded")).toBe(2_733_520n * 10n ** 18n);
+    const required = NEAR / 2n + 2_733_520n * 10n ** 18n;
     expect(createDepositPlan(min, "embedded", required).covers).toBe(true);
     expect(createDepositPlan(min, "embedded", required - 1n).covers).toBe(false);
     // min_deposit alone does not cover an embedded vault, and leaves no runway

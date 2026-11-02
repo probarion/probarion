@@ -69,9 +69,39 @@ describe("tenant_register re-registration (0005)", () => {
       display_name: "Re team",
       proof_public: false,
     });
-    // and back, when the vault leaves TEAM_VAULT_IDS
+    // Never back down: a vault that leaves TEAM_VAULT_IDS stays team, and team never becomes canary.
     await registerTenant(db, { ...base, kind: "external" });
-    expect((await tenant(base.vaultId))?.kind).toBe("external");
+    expect((await tenant(base.vaultId))?.kind).toBe("team");
+    await registerTenant(db, { ...base, kind: "canary" });
+    expect((await tenant(base.vaultId))?.kind).toBe("team");
+  });
+
+  it("external can also become canary, once", async () => {
+    const db = pgliteDb(pg);
+    const vaultId = "can.vaults.probarion.near";
+    await registerTenant(db, { ...base, vaultId });
+    await registerTenant(db, { ...base, vaultId, kind: "canary" });
+    expect((await tenant(vaultId))?.kind).toBe("canary");
+    await registerTenant(db, { ...base, vaultId, kind: "team" });
+    expect((await tenant(vaultId))?.kind).toBe("canary");
+  });
+
+  it("a first registration without a display name takes the vault name before the first dot", async () => {
+    const db = pgliteDb(pg);
+    await db.rpc("tenant_register", {
+      vault_id: "first.vaults.probarion.near",
+      network: "testnet",
+      kind: "external",
+      owner_account: base.owner,
+      approvers: [],
+    });
+    expect((await tenant("first.vaults.probarion.near"))?.display_name).toBe("first");
+    await registerTenant(db, {
+      ...base,
+      vaultId: "second.vaults.probarion.near",
+      displayName: null,
+    });
+    expect((await tenant("second.vaults.probarion.near"))?.display_name).toBe("second");
   });
 
   it("keeps the stored display name when none is given, and trims a long one to 80", async () => {

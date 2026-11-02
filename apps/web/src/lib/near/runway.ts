@@ -35,6 +35,17 @@ export const NEAR_LOW_ALERT_YOCTO = NEAR / 20n;
 export const EMBEDDED_VAULT_WASM_BYTES = 248_501n;
 
 /**
+ * What the console assumes an embedded version's code costs: the measured wasm plus 10%, rounded up
+ * (273,352 bytes, 2.73352 NEAR). The factory charges `code_len` bytes of the version it serves, and
+ * its views do not say how many, so a rebuild a little larger than 248,501 bytes must still clear
+ * the factory's check. Over-estimating is safe: what the code does not take stays in the vault as
+ * free NEAR (runway).
+ * TODO(ICR, interfaces v2 §5): expose `code_len` in the factory's `VersionView`, then read it here
+ * instead of this estimate.
+ */
+export const EMBEDDED_CODE_ESTIMATE_BYTES = (EMBEDDED_VAULT_WASM_BYTES * 11n + 9n) / 10n;
+
+/**
  * What a fresh vault stores besides its code: mainnet-v0 measured 250,733 bytes in all, 248,501 of
  * them code. Used only to estimate a new vault's runway before it exists.
  */
@@ -83,9 +94,12 @@ export function nearRunway(account: { amount: string; storage_usage: number }): 
   };
 }
 
-/** The storage of the vault's own copy of the code: embedded only (a global vault references it by hash). */
+/**
+ * The storage of the vault's own copy of the code: embedded only (a global vault references it by
+ * hash). The estimate with its margin, see EMBEDDED_CODE_ESTIMATE_BYTES.
+ */
 export function codeStorageYocto(mode: FactoryMode): bigint {
-  return mode === "embedded" ? EMBEDDED_VAULT_WASM_BYTES * STORAGE_BYTE_COST_YOCTO : 0n;
+  return mode === "embedded" ? EMBEDDED_CODE_ESTIMATE_BYTES * STORAGE_BYTE_COST_YOCTO : 0n;
 }
 
 export interface CreateDepositPlan {

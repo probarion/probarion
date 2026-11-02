@@ -55,11 +55,8 @@ export async function refreshMembersAction(
       canaryVaultId: env.CANARY_VAULT_ID,
       teamVaultIds: env.TEAM_VAULT_IDS,
     },
-    {
-      vaultId: auth.member.vault_id,
-      account: auth.session.accountId,
-      displayName: auth.member.display_name,
-    },
+    // No display name: the stored one is kept (migration 0005).
+    { vaultId: auth.member.vault_id, account: auth.session.accountId },
   );
   if (!r.ok) return { ok: false, error: REGISTER_ERROR_TEXT[r.error] };
   revalidatePath(`/console/${auth.member.vault_id}`);

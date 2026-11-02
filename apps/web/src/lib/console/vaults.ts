@@ -20,8 +20,19 @@ import {
   nearRunway,
 } from "@/lib/near/runway";
 import { type ContractTx, createVaultTx } from "@/lib/near/tx";
-import { AmountError, formatNear, hoursToNs, parseNear, parseUsdc } from "@/lib/near/units";
+import {
+  AmountError,
+  formatNear,
+  formatNearUp,
+  hoursToNs,
+  parseNear,
+  parseUsdc,
+} from "@/lib/near/units";
 import { isNearAccountId } from "@/lib/near/validate";
+import { type CreateVaultForm, createWarnings, parseApprovers } from "./create-rules";
+
+export type { CreateVaultForm } from "./create-rules";
+export { parseApprovers } from "./create-rules";
 
 /** `^[a-z0-9][a-z0-9_-]{1,30}$` (interfaces §5, contracts/factory `valid_name`). */
 export const VAULT_NAME = /^[a-z0-9][a-z0-9_-]{1,30}$/;
@@ -96,14 +107,6 @@ export function isVaultConfig(v: unknown): v is VaultConfig {
 
 // ---- create --------------------------------------------------------------------------------------
 
-export interface CreateVaultForm {
-  name: string;
-  approvers: string; // comma/space separated
-  dailyBackstopUsdc: string;
-  heldTtlHours: string;
-  depositNear: string;
-}
-
 export interface CreateVaultContext {
   factory: string;
   /** The factory's `min_deposit`, yoctoNEAR. */
@@ -118,17 +121,6 @@ export type CreateVaultCheck =
   | { ok: true; tx: ContractTx; vaultId: string; warnings: string[] }
   | { ok: false; errors: Partial<Record<keyof CreateVaultForm, string>> };
 
-export function parseApprovers(raw: string): string[] {
-  return [
-    ...new Set(
-      raw
-        .split(/[\s,]+/)
-        .map((a) => a.trim())
-        .filter(Boolean),
-    ),
-  ];
-}
-
 /**
  * Checks the form against the factory's own rules (contracts/factory `valid_name`,
  * `valid_vault_init`, `required_deposit`) before the owner is asked to sign anything, so a deposit
@@ -139,7 +131,6 @@ export function prepareCreateVault(
   ctx: CreateVaultContext,
 ): CreateVaultCheck {
   const errors: Partial<Record<keyof CreateVaultForm, string>> = {};
-  const warnings: string[] = [];
   const name = form.name.trim();
   const vaultId = `${name}.${ctx.factory}`;
   if (!VAULT_NAME.test(name)) {
@@ -156,11 +147,8 @@ export function prepareCreateVault(
     errors.approvers = `At most ${MAX_APPROVERS} approvers`;
   else if (approvers.some((a) => !isNearAccountId(a))) {
     errors.approvers = "Every approver must be a NEAR account id (lowercase)";
-  } else if (approvers.length === 1 && approvers[0] === ctx.owner) {
-    warnings.push(
-      "You are the only approver, so a held payment needs nobody else's signature. A second person is safer.",
-    );
   }
+  const warnings = errors.approvers === undefined ? createWarnings(approvers, ctx.owner) : [];
 
   let backstop = "";
   try {
@@ -183,8 +171,8 @@ export function prepareCreateVault(
     if (BigInt(deposit) < plan.requiredYocto) {
       errors.depositNear =
         ctx.mode === "embedded"
-          ? `Below what the factory requires in embedded mode: ${formatNear(plan.requiredYocto.toString(), 6)} NEAR (min_deposit plus the storage of the vault's copy of its code)`
-          : `Below the factory's minimum deposit: ${formatNear(plan.requiredYocto.toString(), 6)} NEAR`;
+          ? `Below what the factory requires in embedded mode: ${formatNearUp(plan.requiredYocto.toString(), 6)} NEAR (min_deposit plus the storage of the vault's copy of its code)`
+          : `Below the factory's minimum deposit: ${formatNearUp(plan.requiredYocto.toString(), 6)} NEAR`;
     } else if (!plan.covers) {
       errors.depositNear = "Too low to pay for the vault's own storage";
     } else if (BigInt(deposit) > MAX_CREATE_DEPOSIT_YOCTO) {
@@ -195,18 +183,24 @@ export function prepareCreateVault(
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
-  return {
-    ok: true,
-    vaultId,
-    warnings,
-    tx: createVaultTx(ctx.factory, {
+  let tx: ContractTx;
+  try {
+    tx = createVaultTx(ctx.factory, {
       name,
       approvers,
       dailyBackstop: backstop,
       heldTtlNs: hoursToNs(hours),
       deposit,
-    }),
-  };
+    });
+  } catch (e) {
+    // The checks above keep every value inside the builder's bounds; if one ever slips through, it
+    // is still a form error, never an exception out of a server action.
+    return {
+      ok: false,
+      errors: { name: `The transaction could not be built: ${(e as Error).message}` },
+    };
+  }
+  return { ok: true, vaultId, warnings, tx };
 }
 
 export type FactoryForCreate =
@@ -293,13 +287,14 @@ export const REGISTER_ERROR_TEXT: Record<RegisterError, string> = {
  * known to be a Probarion vault. The code must be a recorded reproducible build
  * (KNOWN_VAULT_CODE_HASHES), or the vault must name this console's factory AND run one of that
  * factory's versions. Then only the on-chain owner may register it, and the approvers come from
- * `get_config`. Registering again re-syncs the approvers and updates the kind (TEAM_VAULT_IDS,
- * CANARY_VAULT_ID), network and display name.
+ * `get_config`. Registering again re-syncs the approvers and the network, upgrades the kind
+ * (external -> team or canary, never back: TEAM_VAULT_IDS, CANARY_VAULT_ID) and keeps the stored
+ * display name unless one is given.
  */
 export async function registerVault(
   deps: RegisterDeps,
   input: { vaultId: string; account: string; displayName?: string },
-): Promise<{ ok: true; tenantId: string; kind: TenantKind } | { ok: false; error: RegisterError }> {
+): Promise<{ ok: true; tenantId: string } | { ok: false; error: RegisterError }> {
   const vaultId = input.vaultId.trim();
   if (!isNearAccountId(vaultId)) return { ok: false, error: "invalid_vault" };
   let config: VaultConfig;
@@ -343,11 +338,12 @@ export async function registerVault(
       vaultId,
       network: deps.network,
       kind,
-      displayName: (input.displayName ?? vaultId.split(".")[0] ?? vaultId).slice(0, 80),
+      // None given (the form, a re-sync): a new tenant takes the vault name, a known one keeps its own.
+      displayName: input.displayName === undefined ? null : input.displayName.slice(0, 80),
       owner: config.owner,
       approvers: config.approvers,
     });
-    return { ok: true, tenantId: tenant_id, kind };
+    return { ok: true, tenantId: tenant_id };
   } catch (e) {
     if (e instanceof DbError && e.code === "owner_mismatch")
       return { ok: false, error: "owner_mismatch" };

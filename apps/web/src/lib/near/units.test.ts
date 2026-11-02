@@ -3,11 +3,13 @@ import {
   AmountError,
   dateToNs,
   formatNear,
+  formatNearUp,
   formatUnits,
   formatUsdc,
   hoursToNs,
   nsToDate,
   parseNear,
+  parseUnits,
   parseUsdc,
 } from "./units";
 
@@ -44,5 +46,35 @@ describe("units", () => {
     expect(() => dateToNs("2026-13-01")).toThrow(AmountError);
     expect(() => dateToNs("2026-02-30")).toThrow(AmountError);
     expect(nsToDate("259200000000000").toISOString()).toBe("1970-01-04T00:00:00.000Z");
+  });
+});
+
+describe("units: fix round 1 bounds", () => {
+  it("refuses an amount above u128 with a field error, never a RangeError", () => {
+    expect(() => parseNear(`1${"0".repeat(20)}`)).toThrow(AmountError); // 1e44 yocto > 2^128-1
+    expect(() => parseUsdc(`1${"0".repeat(40)}`)).toThrow(AmountError);
+    const max = (2n ** 128n - 1n).toString();
+    expect(parseUnits(max, 0)).toBe(max);
+    expect(() => parseUnits((2n ** 128n).toString(), 0)).toThrow(AmountError);
+  });
+
+  it("dateToNs takes the years 1970 to 9999 only (Date.UTC reads 0099 as 1999)", () => {
+    expect(() => dateToNs("0099-01-01")).toThrow(AmountError);
+    expect(() => dateToNs("1969-12-31")).toThrow(AmountError);
+    expect(() => dateToNs("10000-01-01")).toThrow(AmountError);
+    expect(dateToNs("1970-01-01")).toBe(
+      String(BigInt(Date.UTC(1970, 0, 1, 23, 59, 59)) * 1_000_000n),
+    );
+    expect(dateToNs("9999-12-31")).toBe(
+      String(BigInt(Date.UTC(9999, 11, 31, 23, 59, 59)) * 1_000_000n),
+    );
+  });
+
+  it("formatNearUp rounds a required minimum up, never down", () => {
+    expect(formatNearUp("2485010000000000000000001", 6)).toBe("2.485011");
+    expect(formatNearUp("2485010000000000000000000", 6)).toBe("2.48501");
+    expect(formatNearUp("1", 6)).toBe("0.000001");
+    expect(formatNearUp("0", 6)).toBe("0");
+    expect(formatNearUp("3000000000000000000000000", 6)).toBe("3");
   });
 });

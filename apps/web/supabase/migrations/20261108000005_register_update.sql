@@ -1,8 +1,11 @@
 -- Re-registration (plan 04 Task 8, R11; parked from Task 3's review). Two changes to tenant_register:
 --
--- 1. Registering a vault that is already registered updates its kind, network and display name. The kind follows
---    TEAM_VAULT_IDS / CANARY_VAULT_ID at the time of the call, so a vault first registered as `external` becomes
---    `team` once it is listed (and back). proof_public is the owner's own setting and is never changed here.
+-- 1. Registering a vault that is already registered updates its network, upgrades its kind and may rename it.
+--    - kind only moves up, from `external` to `team` or `canary` (TEAM_VAULT_IDS / CANARY_VAULT_ID at the time of
+--      the call), never back down: a vault that leaves the list, or a call with another kind, changes nothing.
+--    - display_name changes only when the call gives one. Without one, a new tenant takes the vault name before its
+--      first dot and a registered one keeps its name (a re-sync or the register form never overwrites it).
+--    - proof_public is the owner's own setting and is never changed here.
 -- 2. A viewer whom an earlier registration promoted to approver (because the chain lists them) goes back to viewer
 --    when the chain stops listing them, instead of losing access. tenant_members.promoted_from_viewer remembers the
 --    promotion; an approver who was never a viewer is still removed.
@@ -44,7 +47,8 @@ begin
   -- committed first) nothing is inserted and we use the existing row, so the second call returns the same tenant
   -- instead of failing on the unique vault_id. Either way the owner must match.
   insert into public.tenants (vault_id, network, kind, display_name, owner_account, proof_public)
-  values (v_vault, p->>'network', v_kind, left(coalesce(p->>'display_name', ''), 80), v_owner, v_kind in ('team', 'canary'))
+  values (v_vault, p->>'network', v_kind, left(coalesce(p->>'display_name', split_part(v_vault, '.', 1)), 80), v_owner,
+          v_kind in ('team', 'canary'))
   on conflict (vault_id) do nothing
   returning id, owner_account, true into v_id, v_existing_owner, v_inserted;
   if v_id is null then
@@ -58,11 +62,11 @@ begin
   if v_existing_owner <> v_owner then
     raise exception 'owner_mismatch';
   end if;
-  -- (1) An existing tenant takes the kind, network and display name of this registration. A missing display_name
-  -- keeps the stored one. proof_public is left alone.
+  -- (1) An existing tenant takes the network of this registration and, only from `external`, its kind. A missing
+  -- display_name keeps the stored one. proof_public is left alone.
   if not coalesce(v_inserted, false) then
     update public.tenants set
-        kind = v_kind,
+        kind = case when kind = 'external' then v_kind else kind end,
         network = p->>'network',
         display_name = left(coalesce(p->>'display_name', display_name), 80)
       where id = v_id;
