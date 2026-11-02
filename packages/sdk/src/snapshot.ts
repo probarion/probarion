@@ -294,6 +294,8 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
     // A hint may name its signer (docs/mainnet-proof.json): try it first.
     const hinted = (args.burnTxHints?.get(spend.id) ?? []).map(toHint);
     const signerOf = new Map(hinted.map((h) => [h.hash, h.signer]));
+    const hintedHashes = new Set(hinted.map((h) => h.hash));
+    const held = spend.held_until_ns !== null && spend.held_until_ns !== undefined;
     const fromLedger = ledgerTxHashes(args.ledger, spend);
     const hashes = [...new Set([...hinted.map((h) => h.hash), ...fromLedger])].filter(
       (h) => !used.has(h),
@@ -307,7 +309,10 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
       if (tx === null) continue;
       const pair = findBurnPair(tx, spend.destination.asset, intentsId, args.network);
       if (pair === null) {
-        read ??= hash;
+        // T14-R2: a held spend's ledger tx is its reservation, never the approver's tx that burned it, so it does
+        // not count as read: without a hint (or the index, online) the burn is unproven, not failed. A hinted tx,
+        // and any tx of a spend that was not held, does count: one without a burn pair fails check h.
+        if (!held || hintedHashes.has(hash)) read ??= hash;
         continue;
       }
       found = { spend_id: spend.id, tx_hash: hash, ...pair, status: "ok" };
@@ -323,7 +328,7 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
           ? "; it is older than about 2.5 days and archival lookups are disabled, so the regular RPC may no longer hold its tx"
           : "";
       args.notes?.push(
-        `spend ${spend.id}: no burn pair in the ${hashes.length} tx hash(es) tried (${where})${read === null ? "" : `; tx ${read} was read and holds none`}${archivalNote}`,
+        `spend ${spend.id}: no burn pair in the ${hashes.length} tx hash(es) tried (${where})${read === null ? "" : `; tx ${read} was read and holds none`}${held && read === null ? "; it was held, so its burn is in the approver's tx, which the ledger does not record" : ""}${archivalNote}`,
       );
     }
   }

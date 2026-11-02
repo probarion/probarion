@@ -7,7 +7,13 @@
 //   (mrConfigId, rtMr3, the deployment) are NOT pinned yet (O1b, deferred): O1 shows a DCAP-genuine TDX quote
 //   bound to this request, not that the TD runs NEAR AI's published image, so `quote_verified` stays false.
 // - O2: the NVIDIA GPU payload's own nonce must be this request's nonce, and NVIDIA NRAS must verify it.
-import { bytesToHex, type CheckResult, type Snapshot, type VerifyReport } from "@probarion/core";
+import {
+  bytesToHex,
+  type CheckResult,
+  reportOk,
+  type Snapshot,
+  type VerifyReport,
+} from "@probarion/core";
 import { isRecord, messageOf } from "./guards.js";
 
 /** What DCAP verification of a TDX quote says (@nearai/inference-sdk `TdxQuoteVerificationResult`, as hex). */
@@ -202,5 +208,6 @@ export async function applyOnlineChecks(
     }
   }
   const checks = report.checks.map((c, i) => (i === index ? updated : c));
-  return { ...report, checks, ok: checks.every((c) => c.status !== "fail") };
+  // T14-R2: a report is ok only when no check failed and none is unproven.
+  return { ...report, checks, ok: reportOk(checks) };
 }

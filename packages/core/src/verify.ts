@@ -22,6 +22,7 @@ import type {
   MandateView,
   ProposalRequestInputs,
   Snapshot,
+  UnprovenBurn,
   VerifyReport,
 } from "./types.js";
 
@@ -1010,14 +1011,27 @@ export function checkIntentsKeys(s: Snapshot): CheckResult {
  * T14-R1 (I1): the vault must name the network's NEAR Intents contract, and every burned spend's asset must be
  * one of the network's POA assets (`NETWORKS[network].allowedAssets`); otherwise h fails.
  *
- * Notes, not failures (the pass detail says these burns are not proven):
- * - R7: a burned spend that check d exempted as pre-ledger and whose burn tx nobody supplied: "listed as
- *   pre-ledger by the snapshot, burn tx not supplied". A supplied tx in which no pair was found fails.
- * - A held spend that an approver paid out, or one whose cycle wrote no payment entry (`ledgerComplete: false`):
- *   its burn is in the approver's tx, or not recorded, so the ledger cannot name it: "supply a hint or run
- *   --online". Any other burned spend whose burn pair is not found fails.
+ * T14-R2: a burn that nobody could look at is `unproven`, never a pass (the report is then not ok). Only when
+ * the burn record names no tx at all:
+ * - `pre_ledger_no_tx`: a burned spend that check d exempted as pre-ledger, whose burn tx nobody supplied;
+ * - `approver_tx`: a held spend an approver paid out: its burn is in the approver's tx, which was not read;
+ * - `not_recorded`: a spend bound to its decision whose cycle wrote no payment entry (`ledgerComplete: false`,
+ *   or a writer that left it out), so the ledger names no burn tx.
+ * A burn record that names a tx which was read and holds no burn pair FAILS, for every spend. Any other burned
+ * spend whose burn is not found fails. A failure wins over unproven burns.
  */
 export function checkBurnMemos(s: Snapshot): CheckResult {
+  return burnCheck(s).result;
+}
+
+/** Check h and the burns it could not prove (`VerifyReport.unproven`, listed only when h is `unproven`). */
+export function burnCheck(s: Snapshot): { result: CheckResult; unproven: UnprovenBurn[] } {
+  const unproven: UnprovenBurn[] = [];
+  const done = (result: CheckResult) => ({
+    result,
+    unproven: result.status === "unproven" ? unproven : [],
+  });
+  const failed = (detail: string, seq?: number) => done(fail("h", detail, seq));
   const decisions = decisionsByHash(s);
   const preLedgerExempt = preLedgerExemptSpends(s);
   const burned = s.chain.spends.filter((sp) => sp.status === "burned").sort((x, y) => x.id - y.id);
@@ -1025,17 +1039,16 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
   const spendOfTx = new Map<string, number>();
   const intents = intentsProblem(s);
   if (intents !== null) {
-    return fail("h", `${intents}: its burns prove nothing about a real withdrawal`);
+    return failed(`${intents}: its burns prove nothing about a real withdrawal`);
   }
   const assets = networkAssets(s);
   const withPayment = decisionsWithPayment(s);
   for (const spend of burned) {
     const seq = decisions.get(spend.decision_hash)?.body.seq;
     if (spend.destination.type !== "intents")
-      return fail("h", `spend ${spend.id} is burned but pays a NEAR account`, seq);
+      return failed(`spend ${spend.id} is burned but pays a NEAR account`, seq);
     if (!assets.includes(spend.destination.asset)) {
-      return fail(
-        "h",
+      return failed(
         `spend ${spend.id} pays through asset ${spend.destination.asset}, which is not a POA asset of ${s.network} (${assets.join(", ")})`,
         seq,
       );
@@ -1043,74 +1056,73 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
     const expected = `${WITHDRAW_MEMO_PREFIX}${spend.destination.address}`;
     const matches = s.chain.burns.filter((x) => x.spend_id === spend.id);
     if (matches.length > 1)
-      return fail(
-        "h",
-        `spend ${spend.id}: ${matches.length} burn records name it, expected one`,
-        seq,
-      );
+      return failed(`spend ${spend.id}: ${matches.length} burn records name it, expected one`, seq);
     const burn = matches[0];
     if (burn === undefined || burn.status !== "ok") {
       const tx =
         burn !== undefined && typeof burn.tx_hash === "string" && burn.tx_hash.length > 0
           ? burn.tx_hash
           : null;
-      const noPair = `spend ${spend.id}: no burn event observed in tx ${tx} (no POA ft_burn with the WITHDRAW_TO: memo paired with the intents mt_burn)`;
+      // A tx that was read and holds no burn pair fails, whoever the spend is (T14-R2).
+      if (tx !== null) {
+        return failed(
+          `spend ${spend.id}: no burn event observed in tx ${tx} (no POA ft_burn with the WITHDRAW_TO: memo paired with the intents mt_burn)`,
+          seq,
+        );
+      }
+      const held = spend.held_until_ns !== null && spend.held_until_ns !== undefined;
+      const unrecorded = seq !== undefined && !withPayment.has(spend.decision_hash);
       if (preLedgerExempt.has(spend.id)) {
-        if (tx !== null) return fail("h", noPair, seq);
-        const supply =
-          s.network === "mainnet" ? " (record it in docs/mainnet-proof.json with --spend-id)" : "";
+        const supply = s.network === "mainnet" ? " (record it in docs/mainnet-proof.json)" : "";
+        unproven.push({ check: "h", spend_id: spend.id, reason: "pre_ledger_no_tx" });
         notes.push(
           `spend ${spend.id}: listed as pre-ledger by the snapshot, burn tx not supplied${supply}`,
         );
         continue;
       }
-      const held = spend.held_until_ns !== null && spend.held_until_ns !== undefined;
-      const unrecorded = seq !== undefined && !withPayment.has(spend.decision_hash);
-      if (seq !== undefined && (held || unrecorded)) {
-        notes.push(
-          `spend ${spend.id}: burn is in the approver's tx (or not recorded); supply a hint or run --online`,
-        );
+      if (seq !== undefined && held) {
+        unproven.push({ check: "h", spend_id: spend.id, reason: "approver_tx" });
+        notes.push(`spend ${spend.id}: held, its burn is in the approver's tx, which was not read`);
         continue;
       }
-      if (tx !== null) return fail("h", noPair, seq);
-      return fail("h", `spend ${spend.id}: no burn event observed`, seq);
+      if (unrecorded) {
+        unproven.push({ check: "h", spend_id: spend.id, reason: "not_recorded" });
+        notes.push(`spend ${spend.id}: no payment entry records its burn tx`);
+        continue;
+      }
+      return failed(`spend ${spend.id}: no burn event observed`, seq);
     }
     if (typeof burn.tx_hash !== "string" || burn.tx_hash.length === 0) {
-      return fail("h", `spend ${spend.id}: the burn record names no tx`, seq);
+      return failed(`spend ${spend.id}: the burn record names no tx`, seq);
     }
     const other = spendOfTx.get(burn.tx_hash);
     if (other !== undefined) {
-      return fail(
-        "h",
+      return failed(
         `spends ${other} and ${spend.id} cite the same burn tx ${burn.tx_hash}: one transaction burns for one spend`,
         seq,
       );
     }
     spendOfTx.set(burn.tx_hash, spend.id);
     if (burn.memo !== expected) {
-      return fail(
-        "h",
+      return failed(
         `spend ${spend.id}: burn memo ${JSON.stringify(burn.memo)} is not ${JSON.stringify(expected)}`,
         seq,
       );
     }
     if (burn.intents_owner !== s.vault) {
-      return fail(
-        "h",
+      return failed(
         `spend ${spend.id}: the intents mt_burn owner is ${burn.intents_owner}, not the vault ${s.vault}`,
         seq,
       );
     }
     if (burn.amount !== spend.amount) {
-      return fail(
-        "h",
+      return failed(
         `spend ${spend.id}: the intents mt_burn amount ${burn.amount} is not the spend amount ${spend.amount}`,
         seq,
       );
     }
     if (spend.memo !== null && spend.memo !== expected) {
-      return fail(
-        "h",
+      return failed(
         `spend ${spend.id}: spend memo ${JSON.stringify(spend.memo)} is not ${JSON.stringify(expected)}`,
         seq,
       );
@@ -1125,9 +1137,10 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
   else
     detail = `${proven} burned ${plural(proven, "spend has", "spends have")} a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount`;
   if (notes.length > 0) {
-    detail += `; not proven (notes, not failures): ${notes.join("; ")}: these burns are not proven until their tx is supplied`;
+    detail += `; not proven, so the report is not ok: ${notes.join("; ")}: supply a hint (\`pnpm proof add-tx --spend-id\`) or run \`--online\``;
+    return done(result("h", "unproven", detail));
   }
-  return pass("h", detail);
+  return done(pass("h", detail));
 }
 
 /**
@@ -1226,8 +1239,10 @@ export async function runChecks(s: Snapshot, opts: RunChecksOptions = {}): Promi
       entries: Array.isArray(record.ledger) ? record.ledger.length : 0,
       anchors: 0,
       generated_at: generatedAt,
+      unproven: [],
     };
   }
+  let unproven: UnprovenBurn[] = [];
   const checks: CheckResult[] = [
     await safe("a", () => checkLedgerSignatures(s)),
     await safe("b", () => checkHashLinks(s)),
@@ -1236,22 +1251,33 @@ export async function runChecks(s: Snapshot, opts: RunChecksOptions = {}): Promi
     await safe("e", () => checkAttestations(s, opts)),
     await safe("f", () => checkVaultLocked(s)),
     await safe("g", () => checkIntentsKeys(s)),
-    await safe("h", () => checkBurnMemos(s)),
+    await safe("h", () => {
+      const h = burnCheck(s);
+      unproven = h.unproven;
+      return h.result;
+    }),
     await safe("i", () => checkFactoryVersion(s)),
   ];
   return {
     vault: s.vault,
     network: s.network,
-    ok: checks.every((c) => c.status !== "fail"),
+    ok: reportOk(checks),
     checks,
     entries: s.ledger.length,
     anchors: s.chain.anchors.length,
     generated_at: generatedAt,
+    unproven,
   };
+}
+
+/** T14-R2: a report is ok only when no check failed and none is unproven. */
+export function reportOk(checks: readonly CheckResult[]): boolean {
+  return checks.every((c) => c.status !== "fail" && c.status !== "unproven");
 }
 
 /**
  * The lowest seq any failing check points to, or null when no failing check names a seq. Nothing refines it.
+ * An `unproven` check is not a failure and names no broken seq (T14-R2).
  *
  * What each check points to: a and b the exact entry that fails (its signer, signature, hash, link or position);
  * c the first entry of the anchor range it cannot prove (an anchor pins a whole range and cannot say which entry

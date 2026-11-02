@@ -395,7 +395,8 @@ export type CheckId = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i";
 export interface CheckResult {
   id: CheckId;
   name: string;
-  status: "pass" | "fail" | "skip";
+  /** ICR-12 (T14-R2): "unproven" (check h only) means what the check needs could not be looked at; the report is then not ok. */
+  status: "pass" | "fail" | "skip" | "unproven";
   detail: string;
   firstBrokenSeq?: number;
   /** Check c only: the last seq of the range it cannot prove (`firstBrokenSeq` is the first). Information only; absent means one entry. */
@@ -409,6 +410,15 @@ export interface VerifyReport {
   entries: number;
   anchors: number;
   generated_at: string;
+  /** ICR-12 (T14-R2): every burn check h could not prove (listed when h is "unproven"); `ok` is then false. */
+  unproven: UnprovenBurn[];
+}
+
+/** One burn check h could not prove: no tx was supplied, its tx is the approver's and was not read, or no payment entry names it. */
+export interface UnprovenBurn {
+  check: "h";
+  spend_id: number;
+  reason: "pre_ledger_no_tx" | "approver_tx" | "not_recorded";
 }
 
 export interface AccessKeyInfo {

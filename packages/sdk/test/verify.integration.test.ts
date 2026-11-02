@@ -663,10 +663,11 @@ describe("mainnet v0: documented pre-ledger spends (carries A, R7)", () => {
       { now: () => NOW, archivalRpc: null, evidenceDir: dir, burnTxHints: new Map(), ...deps },
     );
 
-  it("passes d for the Day-4 spends documented in docs/evidence, and notes the Base burn whose tx was not supplied", async () => {
+  it("passes d for the Day-4 spends documented in docs/evidence; the Base burn without a supplied tx is unproven (T14-R2)", async () => {
     const report = await v0().verify();
-    expect(statusOf(report)).toEqual([...ALL_PASS.slice(0, 8), ["i", "skip"]]);
-    expect(report.ok).toBe(true);
+    expect(statusOf(report)).toEqual([...ALL_PASS.slice(0, 7), ["h", "unproven"], ["i", "skip"]]);
+    expect(report.ok).toBe(false);
+    expect(report.unproven).toEqual([{ check: "h", spend_id: 2, reason: "pre_ledger_no_tx" }]);
     const d = report.checks.find((c) => c.id === "d")?.detail;
     expect(d).toContain("2 spends have a decision_hash listed as pre-ledger by the snapshot");
     expect(d).toContain(
@@ -674,8 +675,9 @@ describe("mainnet v0: documented pre-ledger spends (carries A, R7)", () => {
     );
     const h = report.checks.find((c) => c.id === "h")?.detail;
     expect(h).toContain(
-      "spend 2: listed as pre-ledger by the snapshot, burn tx not supplied (record it in docs/mainnet-proof.json with --spend-id)",
+      "spend 2: listed as pre-ledger by the snapshot, burn tx not supplied (record it in docs/mainnet-proof.json)",
     );
+    expect(h).toContain("supply a hint (`pnpm proof add-tx --spend-id`) or run `--online`");
     expect(h).toContain("burn lookups: spend 2: no burn pair in the 0 tx hash(es) tried");
   });
 
@@ -695,8 +697,10 @@ describe("mainnet v0: documented pre-ledger spends (carries A, R7)", () => {
   });
 
   it("takes the hashes from deps.preLedgerDecisionHashes, and fails d without them", async () => {
+    server.chain.txs.set("V0BURN", v0BurnTx("V0BURN"));
     const supplied = await v0({
       preLedgerDecisionHashes: [sha256Hex(RECORD_1), sha256Hex(RECORD_2)],
+      burnTxHints: new Map([[2, ["V0BURN"]]]),
     }).verify();
     expect(supplied.ok).toBe(true);
     expect(supplied.checks.find((c) => c.id === "d")?.detail).toContain(
@@ -712,7 +716,7 @@ describe("T14-R1 fix round 1 (end to end)", () => {
     await start();
   });
 
-  it("notes an approved held Base payout whose burn is in the approver's tx, and finds it online", async () => {
+  it("T14-R2: an approved held Base payout is unproven offline, proven with the approver-tx hint or online", async () => {
     const ledger = new InMemoryLedgerStore();
     const pb = probarion({ ledger });
     const text = [
@@ -748,11 +752,38 @@ describe("T14-R1 fix round 1 (end to end)", () => {
     expect(server.chain.spends[0]?.status).toBe("burned");
     const offline = await pb.verify();
     const h = offline.checks.find((c) => c.id === "h");
-    expect(h?.status).toBe("pass");
+    // The reservation tx in the ledger does not count as read: honest, unproven, never failed.
+    expect(h?.status).toBe("unproven");
+    expect(offline.ok).toBe(false);
+    expect(offline.unproven).toEqual([{ check: "h", spend_id: 1, reason: "approver_tx" }]);
     expect(h?.detail).toContain(
-      "spend 1: burn is in the approver's tx (or not recorded); supply a hint or run --online",
+      "spend 1: held, its burn is in the approver's tx, which was not read",
     );
+    expect(h?.detail).toContain("it was held, so its burn is in the approver's tx");
     expect(h?.detail).not.toContain("no burn event observed in");
+    // With the approver's tx as a hint (docs/mainnet-proof.json, signer the approver): proven.
+    const hinted = probarion({
+      ledger,
+      burnTxHints: new Map([[1, [{ hash: approved.txHash ?? "", signer: SCENARIO_APPROVER }]]]),
+    });
+    const withHint = await hinted.verify();
+    expect(withHint.checks.find((c) => c.id === "h")?.status).toBe("pass");
+    expect(withHint).toMatchObject({ ok: true, unproven: [] });
+    // Scenario C: a hinted tx that holds no burn pair (here the reservation tx) fails.
+    const spendTx = [...server.chain.txs.keys()].find((hash) => {
+      const t = server.chain.txs.get(hash)?.transaction as {
+        actions?: { FunctionCall?: { method_name?: string } }[];
+      };
+      return t.actions?.[0]?.FunctionCall?.method_name === "spend";
+    });
+    const wrongHint = await probarion({
+      ledger,
+      burnTxHints: new Map([[1, [spendTx ?? ""]]]),
+    }).verify();
+    expect(wrongHint.checks.find((c) => c.id === "h")).toMatchObject({
+      status: "fail",
+      detail: expect.stringContaining(`spend 1: no burn event observed in tx ${spendTx}`),
+    });
     const online = probarion({
       ledger,
       txIndex: { accountTxs: async () => [{ hash: approved.txHash ?? "", isSigner: false }] },

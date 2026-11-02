@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { extractReportDataFromQuote, runChecks, type Snapshot } from "@probarion/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -288,4 +290,31 @@ describe("loadDefaultOnlineVerifier", () => {
     }
     // The package is large: its first import can take tens of seconds on a loaded machine.
   }, 120_000);
+});
+
+describe("drift guard: our O1 policy copy is the installed library's own", () => {
+  it("matches DEFAULT_ACCEPTED_TCB_STATUSES and the debug check in @nearai/inference-sdk's dist, at the pinned version", () => {
+    let entry: string;
+    try {
+      entry = createRequire(import.meta.url).resolve("@nearai/inference-sdk");
+    } catch {
+      // Not installed: nothing to drift from (verify then reports "online: unavailable").
+      return;
+    }
+    const pkg = JSON.parse(readFileSync(join(dirname(entry), "..", "package.json"), "utf8")) as {
+      version: string;
+    };
+    expect(
+      pkg.version,
+      "re-check ACCEPTED_TCB_STATUSES and o1PolicyProblem against the new verifyTdxQuote policy, then update this pin",
+    ).toBe("0.2.1");
+    const dist = readFileSync(entry, "utf8");
+    const listed = /DEFAULT_ACCEPTED_TCB_STATUSES\s*=\s*\[([^\]]*)\]/.exec(dist)?.[1];
+    expect(listed, "DEFAULT_ACCEPTED_TCB_STATUSES not found in the library").toBeDefined();
+    const statuses = [...(listed ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(statuses).toEqual([...ACCEPTED_TCB_STATUSES]);
+    expect(dist).toMatch(
+      /if \(quote\.debugEnabled\) \{\s*throw new VerificationError\(\{\s*code: "policy\.debug_enabled"/,
+    );
+  });
 });

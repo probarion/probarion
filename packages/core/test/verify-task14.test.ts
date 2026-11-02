@@ -17,7 +17,13 @@ import type {
   Snapshot,
   VerifyReport,
 } from "../src/types.js";
-import { IMMUTABLE_MANDATE_FIELDS, matchRequestMandates, runChecks } from "../src/verify.js";
+import {
+  firstBrokenSeq,
+  IMMUTABLE_MANDATE_FIELDS,
+  matchRequestMandates,
+  reportOk,
+  runChecks,
+} from "../src/verify.js";
 import { buildTestEvidenceForRequest } from "./fixtures/evidence.js";
 import {
   FIXTURE_BASE_ADDRESS,
@@ -453,7 +459,7 @@ describe("check h notes and the burn records it refuses (R7, Task 14)", () => {
     return s;
   }
 
-  it("notes a documented pre-ledger burn whose tx was not supplied, and passes h", async () => {
+  it("reports a documented pre-ledger burn whose tx was not supplied as unproven (T14-R2 supersedes the note)", async () => {
     for (const network of ["testnet", "mainnet"] as const) {
       const s = preLedgerBurn(network);
       s.chain.burns = [];
@@ -467,11 +473,11 @@ describe("check h notes and the burn records it refuses (R7, Task 14)", () => {
         }
       }
       const h = check(await runChecks(s, { now: NOW }), "h");
-      expect(h.status).toBe("pass");
+      expect(h.status).toBe("unproven");
       expect(h.detail).toContain(
         "spend 2: listed as pre-ledger by the snapshot, burn tx not supplied",
       );
-      expect(h.detail).toContain("not proven (notes, not failures)");
+      expect(h.detail).toContain("not proven, so the report is not ok");
       expect(h.detail.includes("docs/mainnet-proof.json")).toBe(network === "mainnet");
     }
     const missing = preLedgerBurn();
@@ -480,7 +486,9 @@ describe("check h notes and the burn records it refuses (R7, Task 14)", () => {
     missing.chain.burns = [
       { ...burn, tx_hash: "", status: "missing", memo: "", intents_owner: "", amount: "" },
     ];
-    expect(check(await runChecks(missing, { now: NOW }), "h")).toMatchObject({ status: "pass" });
+    expect(check(await runChecks(missing, { now: NOW }), "h")).toMatchObject({
+      status: "unproven",
+    });
   });
 
   it("fails a documented pre-ledger burn whose supplied tx holds no burn pair", async () => {
@@ -556,32 +564,30 @@ describe("T14-R1 (I1): verify trusts only the network's intents contract and POA
   });
 });
 
-describe("T14-R1 minor 3: a burn the ledger cannot name is a note, not 'no burn event observed in <reservation tx>'", () => {
-  const NOTE =
-    "spend 2: burn is in the approver's tx (or not recorded); supply a hint or run --online";
-
-  it("notes a held spend an approver paid out whose reservation tx holds no burn", async () => {
+describe("T14-R1 minor 3 as amended by T14-R2: a burn the ledger cannot name is unproven, never 'no burn event observed in <reservation tx>'", () => {
+  it("a held spend's burn is unproven only when no tx was read: the SDK never records the reservation tx", async () => {
     const s = structuredClone(valid);
     const spend = s.chain.spends[1];
     const burn = s.chain.burns[0];
     if (spend === undefined || burn === undefined) throw new Error("fixture");
     spend.held_until_ns = "1793900000000000000";
-    s.chain.burns = [{ ...burn, status: "missing", memo: "", intents_owner: "", amount: "" }];
+    s.chain.burns = [
+      { ...burn, tx_hash: "", status: "missing", memo: "", intents_owner: "", amount: "" },
+    ];
     const h = check(await runChecks(s, { now: NOW }), "h");
-    expect(h.status).toBe("pass");
-    expect(h.detail).toContain(NOTE);
+    expect(h.status).toBe("unproven");
     expect(h.detail).not.toContain("no burn event observed in");
   });
 
-  it("notes a burned spend whose cycle wrote no payment entry (ledgerComplete false)", async () => {
+  it("a burned spend whose cycle wrote no payment entry (ledgerComplete false) is unproven", async () => {
     const kept = await rebuildLedger({
       ...structuredClone(valid),
       ledger: valid.ledger.filter((_, i) => i !== 3),
     });
     kept.chain.burns = [];
     const h = check(await runChecks(kept, { now: NOW }), "h");
-    expect(h.status).toBe("pass");
-    expect(h.detail).toContain(NOTE);
+    expect(h.status).toBe("unproven");
+    expect(h.detail).toContain("spend 2: no payment entry records its burn tx");
   });
 
   it("still fails a burned spend that was not held and has its payment entry", async () => {
@@ -593,5 +599,97 @@ describe("T14-R1 minor 3: a burn the ledger cannot name is a note, not 'no burn 
       status: "fail",
       detail: expect.stringContaining(`spend 2: no burn event observed in tx ${burn.tx_hash}`),
     });
+  });
+});
+
+describe("T14-R2: an unproven burn is 'unproven', never a pass (the report is not ok)", () => {
+  const missingBurn = (s: Snapshot, txHash = "") => {
+    const burn = s.chain.burns[0];
+    if (burn === undefined) throw new Error("fixture");
+    s.chain.burns = [
+      { ...burn, tx_hash: txHash, status: "missing", memo: "", intents_owner: "", amount: "" },
+    ];
+  };
+
+  it("scenario A: an approved held Base payout verified offline (no tx read) is unproven, ok false", async () => {
+    const s = structuredClone(valid);
+    const spend = s.chain.spends[1];
+    if (spend === undefined) throw new Error("fixture");
+    spend.held_until_ns = "1793900000000000000";
+    missingBurn(s);
+    const report = await runChecks(s, { now: NOW });
+    expect(check(report, "h")).toMatchObject({ status: "unproven" });
+    expect(check(report, "h").detail).toContain(
+      "spend 2: held, its burn is in the approver's tx, which was not read",
+    );
+    expect(check(report, "h").detail).toContain(
+      "supply a hint (`pnpm proof add-tx --spend-id`) or run `--online`",
+    );
+    expect(report.ok).toBe(false);
+    expect(report.unproven).toEqual([{ check: "h", spend_id: 2, reason: "approver_tx" }]);
+    expect(firstBrokenSeq(report)).toBeNull();
+  });
+
+  it("scenario B: a writer that leaves out the payment entries proves nothing: unproven, ok false", async () => {
+    const kept = await rebuildLedger({
+      ...structuredClone(valid),
+      ledger: valid.ledger.filter((_, i) => i !== 3),
+    });
+    kept.chain.burns = [];
+    const report = await runChecks(kept, { now: NOW });
+    expect(check(report, "h")).toMatchObject({ status: "unproven" });
+    expect(report.unproven).toEqual([{ check: "h", spend_id: 2, reason: "not_recorded" }]);
+    expect(report.ok).toBe(false);
+  });
+
+  it("scenario C: a tx that was read and holds no burn pair fails h, for a held spend too", async () => {
+    const s = structuredClone(valid);
+    const spend = s.chain.spends[1];
+    const tx = s.chain.burns[0]?.tx_hash ?? "";
+    if (spend === undefined) throw new Error("fixture");
+    spend.held_until_ns = "1793900000000000000";
+    missingBurn(s, tx);
+    const report = await runChecks(s, { now: NOW });
+    expect(check(report, "h")).toMatchObject({ status: "fail", firstBrokenSeq: 2 });
+    expect(check(report, "h").detail).toContain(`spend 2: no burn event observed in tx ${tx}`);
+    expect(report.unproven).toEqual([]);
+  });
+
+  it("the R7 documented pre-ledger burn without a tx is unproven too, and a failure wins over it", async () => {
+    const V0 = sha256Hex('{"kind":"v0-manual-decision","mandate_id":2}');
+    const s = structuredClone(valid);
+    s.ledger = [];
+    s.chain.anchors = [];
+    const spend = s.chain.spends[1];
+    if (spend === undefined) throw new Error("fixture");
+    s.chain.spends = [{ ...spend, decision_hash: V0 }];
+    s.pre_ledger_decision_hashes = [V0];
+    s.chain.burns = [];
+    const report = await runChecks(s, { now: NOW });
+    expect(check(report, "h").status).toBe("unproven");
+    expect(report.unproven).toEqual([{ check: "h", spend_id: 2, reason: "pre_ledger_no_tx" }]);
+    expect(report.ok).toBe(false);
+    // Another burned spend whose burn is plainly missing: h fails, and the failure is what h reports.
+    s.chain.spends.push({ ...spend, id: 3, decision_hash: sha256Hex("not a decision") });
+    const both = await runChecks(s, { now: NOW });
+    expect(check(both, "h").status).toBe("fail");
+    expect(both.unproven).toEqual([]);
+  });
+
+  it("an honest snapshot has no unproven burns, and firstBrokenSeq ignores unproven checks", async () => {
+    const honest = await runChecks(structuredClone(valid), { now: NOW });
+    expect(honest).toMatchObject({ ok: true, unproven: [] });
+    const s = structuredClone(valid);
+    const spend = s.chain.spends[1];
+    if (spend === undefined) throw new Error("fixture");
+    spend.held_until_ns = "1793900000000000000";
+    missingBurn(s);
+    const first = s.ledger[0];
+    if (first === undefined) throw new Error("fixture");
+    first.sig = valid.ledger[1]?.sig ?? "";
+    const report = await runChecks(s, { now: NOW });
+    expect(check(report, "h").status).toBe("unproven");
+    expect(firstBrokenSeq(report)).toBe(0); // from check a, not from h
+    expect(reportOk(report.checks)).toBe(false);
   });
 });

@@ -516,6 +516,42 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
     ]);
   });
 
+  it("T14-R2: never counts a held spend's reservation tx as read, but does count a hinted one", async () => {
+    const { rpc } = fakeRpc({ RESERVE: { signer: VAULT, tx: noBurn() } });
+    const held = spend(1, { held_until_ns: "1793900000000000000" });
+    const fromLedger = await collectBurns({
+      rpc,
+      now: NOW,
+      vaultId: VAULT,
+      network: "testnet",
+      config,
+      spends: [held],
+      ledger: [payment(held.decision_hash, "RESERVE")],
+    });
+    expect(fromLedger[0]).toMatchObject({ status: "missing", tx_hash: "" }); // unproven in check h, not failed
+    const hinted = await collectBurns({
+      rpc,
+      now: NOW,
+      vaultId: VAULT,
+      network: "testnet",
+      config,
+      spends: [held],
+      ledger: [],
+      burnTxHints: new Map([[1, ["RESERVE"]]]),
+    });
+    expect(hinted[0]).toMatchObject({ status: "missing", tx_hash: "RESERVE" }); // read and holds no pair: fails
+    const notHeld = await collectBurns({
+      rpc,
+      now: NOW,
+      vaultId: VAULT,
+      network: "testnet",
+      config,
+      spends: [spend(1)],
+      ledger: [payment(spend(1).decision_hash, "RESERVE")],
+    });
+    expect(notHeld[0]).toMatchObject({ status: "missing", tx_hash: "RESERVE" });
+  });
+
   it("records a burned spend to a NEAR account as missing without any lookup", async () => {
     const { rpc, calls } = fakeRpc({});
     const near = spend(1, { destination: { type: "near", account_id: "vendor.testnet" } });
