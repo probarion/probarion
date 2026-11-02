@@ -1,6 +1,7 @@
 import "server-only";
 import { NETWORKS } from "@probarion/core";
 import type { Network } from "./config";
+import { isNearAccountId } from "./near/validate";
 
 export type CanaryMode = "live" | "code-only" | "replay" | "off";
 const CANARY_MODES: readonly CanaryMode[] = ["live", "code-only", "replay", "off"];
@@ -22,6 +23,8 @@ export interface Env {
   TELEGRAM_BOT_TOKEN: string | null;
   RESEND_API_KEY: string | null;
   CANARY_VAULT_ID: string | null;
+  /** R11: vaults the team runs. Registering one gives the tenant kind "team" (else "external"). */
+  TEAM_VAULT_IDS: string[];
   BASE_RPC_URL: string | null;
   CRON_SECRET: string;
   CANARY_MODE: CanaryMode;
@@ -36,6 +39,13 @@ type Source = Record<string, string | undefined>;
 /** R12: an empty or whitespace-only value counts as unset. */
 const opt = (v: string | undefined): string | null =>
   v !== undefined && v.trim() !== "" ? v.trim() : null;
+
+/** A comma list: entries trimmed, empty ones dropped. Unset, blank or only commas is an empty list (R12). */
+const list = (v: string | undefined): string[] =>
+  (opt(v) ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
 /**
  * Parses an http(s) service URL. The scheme must be followed by "//" and a host, so "https:foo",
@@ -100,11 +110,13 @@ export function loadEnv(src: Source): Env {
   const network: Network = rawNetwork === "mainnet" ? "mainnet" : "testnet";
 
   // A list with no entries (for example ",") is unset, so the network default applies.
-  const listed = (opt(src.NEAR_RPC_URLS) ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const listed = list(src.NEAR_RPC_URLS);
   const rpc = listed.length > 0 ? listed : [...NETWORKS[network].rpcUrls];
+  const teamVaults = list(src.TEAM_VAULT_IDS);
+  teamVaults.forEach((id, i) => {
+    if (!isNearAccountId(id))
+      problems.push(`TEAM_VAULT_IDS entry ${i + 1} is not a NEAR account id`);
+  });
   rpc.forEach((u, i) => {
     if (!isAllowedServiceUrl(u)) problems.push(`NEAR_RPC_URLS entry ${i + 1} ${HTTPS_OR_LOCAL}`);
   });
@@ -148,6 +160,7 @@ export function loadEnv(src: Source): Env {
     TELEGRAM_BOT_TOKEN: opt(src.TELEGRAM_BOT_TOKEN),
     RESEND_API_KEY: opt(src.RESEND_API_KEY),
     CANARY_VAULT_ID: opt(src.CANARY_VAULT_ID),
+    TEAM_VAULT_IDS: teamVaults,
     BASE_RPC_URL: baseRpc,
     CRON_SECRET: cron,
     CANARY_MODE: mode as CanaryMode,

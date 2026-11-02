@@ -400,3 +400,30 @@ describe("loadEnv: service URLs", () => {
     expect(ok.BASE_RPC_URL).toBe("https://mainnet.base.org");
   });
 });
+
+describe("loadEnv: TEAM_VAULT_IDS (R11)", () => {
+  it("is an empty list when unset, blank or only commas (R12)", () => {
+    for (const v of [undefined, "", "   ", ",", " , ,"]) {
+      expect(loadEnv({ ...base, TEAM_VAULT_IDS: v }).TEAM_VAULT_IDS, String(v)).toEqual([]);
+    }
+  });
+
+  it("splits, trims and drops empty entries, like NEAR_RPC_URLS", () => {
+    expect(
+      loadEnv({ ...base, TEAM_VAULT_IDS: " demo.vaults.probarion.near ,, v0.probarion.near ," })
+        .TEAM_VAULT_IDS,
+    ).toEqual(["demo.vaults.probarion.near", "v0.probarion.near"]);
+  });
+
+  it("rejects an entry that is not a NEAR account id, by position and without its value", () => {
+    let message = "";
+    try {
+      loadEnv({ ...base, TEAM_VAULT_IDS: "demo.vaults.probarion.near,SENTINEL Vault" });
+    } catch (e) {
+      expect(e).toBeInstanceOf(EnvError);
+      message = (e as Error).message;
+    }
+    expect(message).toMatch(/TEAM_VAULT_IDS entry 2 is not a NEAR account id/);
+    expect(message).not.toContain("SENTINEL");
+  });
+});
