@@ -4,9 +4,9 @@ import { generateKeyPair, KeyFormatError, parsePublicKey, utf8 } from "@probario
 import type { Command } from "commander";
 import { type GlobalOpts, optionalAccount, requireVault, resolveNetwork } from "../context.js";
 import { CliError } from "../errors.js";
-import { gitIgnoreStatus } from "../git-ignore.js";
+import { findGitWorkTree } from "../git-work-tree.js";
 import type { CliIo } from "../io.js";
-import { displayPath, forwardSlashes, ONE_YOCTO, printOwnerTx } from "../owner-tx.js";
+import { displayPath, ONE_YOCTO, printOwnerTx, shellQuote } from "../owner-tx.js";
 import { assertPositive, nearToYocto } from "../units.js";
 
 type KeyTxOpts = GlobalOpts & {
@@ -81,10 +81,12 @@ export function registerAgent(program: Command, io: CliIo): void {
             `warning: on Windows, file permissions are not restricted by mode bits: ${shown} gets the permissions of its folder, so other users or programs on this machine may be able to read it. Keep it in a folder only you can read.\n`,
           );
         }
-        const git = await gitIgnoreStatus(file);
-        if (git.root !== null && !git.ignored) {
+        // Whether git ignores or tracks the file cannot be told reliably without running git, so any
+        // file inside a work tree gets the warning, covered by a .gitignore or not.
+        if ((await findGitWorkTree(file)) !== null) {
+          const quoted = shellQuote(shown);
           io.err(
-            `warning: ${shown} is inside the git work tree ${forwardSlashes(git.root)} and the .gitignore there does not plainly cover it. Add it to .gitignore before you run "git add", and never commit a key file.\n`,
+            `warning: this file is inside a git repository: make sure it is ignored and not tracked (git check-ignore -v ${quoted}; git ls-files ${quoted})\n`,
           );
         }
         if (options.json === true) {

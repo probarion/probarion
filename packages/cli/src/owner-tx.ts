@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { type NetworkId, sha256Hex } from "@probarion/core";
+import { CliError } from "./errors.js";
 import type { CliIo } from "./io.js";
 
 /** Interfaces §4.2 v2: mutating owner and approver methods require exactly 1 yoctoNEAR. */
@@ -18,7 +19,7 @@ export interface OwnerTx {
   note?: string;
 }
 
-function shellQuote(value: string): string {
+export function shellQuote(value: string): string {
   return /^[A-Za-z0-9_./-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
@@ -70,18 +71,51 @@ export function argsFileName(method: string, argsJson: string): string {
   return `${method}.${sha256Hex(argsJson).slice(0, 12)}.args.json`;
 }
 
-/** Writes <outDir>/<method>.<hash>.args.json and prints the command. Never signs, never sends. */
+/**
+ * Creates the args file exclusively ("wx"). A file already there is fine only if its content is
+ * exactly ours (an identical earlier print); anything else is refused, because the name was meant to
+ * pin the content and a file under it that differs was edited after printing (or collided).
+ */
+async function writeArgsFile(file: string, shown: string, argsJson: string): Promise<void> {
+  try {
+    await writeFile(file, argsJson, { encoding: "utf8", flag: "wx" });
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+  let existing: string;
+  try {
+    existing = await readFile(file, "utf8");
+  } catch (error) {
+    throw new CliError(
+      `${shown} exists and cannot be read as a file (${error instanceof Error ? error.message : String(error)}): delete it and print again`,
+    );
+  }
+  if (existing !== argsJson) {
+    throw new CliError(
+      `${shown} exists with different content (edited after printing, or a hash collision): delete it and print again`,
+    );
+  }
+}
+
+/**
+ * Writes <outDir>/<method>.<hash>.args.json and prints the command with the full sha256 of that
+ * file beside it, so the owner can check the file against the line before signing. Never signs,
+ * never sends.
+ */
 export async function printOwnerTx(io: CliIo, tx: OwnerTx, outDir: string): Promise<string> {
   const dir = path.resolve(io.cwd, outDir);
   await mkdir(dir, { recursive: true });
   const argsJson = `${JSON.stringify(tx.args, null, 2)}\n`;
   const file = path.join(dir, argsFileName(tx.method, argsJson));
-  await writeFile(file, argsJson, "utf8");
   const shown = displayPath(io.cwd, file);
+  await writeArgsFile(file, shown, argsJson);
+  const quoted = shellQuote(shown);
   const lines = [
     `${(tx.signer ?? "owner").toUpperCase()} SIGNS: probarion never signs owner or approver transactions. Review the arguments, then sign with your own wallet or near-cli-rs:`,
     "",
     renderNearCliCommand(tx, shown),
+    `sha256 of the args file: ${sha256Hex(argsJson)}  (check: sha256sum ${quoted}, or Get-FileHash -Algorithm SHA256 ${quoted} in PowerShell)`,
     "Run it in bash, zsh or PowerShell (not cmd.exe).",
     "",
     `${tx.method} arguments (${shown}):`,

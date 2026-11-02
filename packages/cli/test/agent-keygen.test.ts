@@ -1,8 +1,8 @@
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { publicKeyFromSecret } from "@probarion/core";
 import { describe, expect, it } from "vitest";
-import { gitIgnoreStatus } from "../src/git-ignore.js";
+import { findGitWorkTree } from "../src/git-work-tree.js";
 import { runCli } from "../src/program.js";
 import { tempDir, testIo } from "./helpers.js";
 
@@ -138,44 +138,76 @@ describe("agent keygen --out writes the pair to a private file and keeps the sec
       }
     });
 
-    async function inRepo(gitignore: string | null, out: string) {
+    async function inRepo(setup: (dir: string) => Promise<void>, out: string, json = false) {
       const dir = await tempDir();
       await mkdir(join(dir, ".git"));
-      if (gitignore !== null) await writeFile(join(dir, ".gitignore"), gitignore);
+      await setup(dir);
       const { io, state } = testIo(dir, {}, "linux");
-      const code = await runCli(["agent", "keygen", "--out", out], io);
+      const code = await runCli(["agent", "keygen", ...(json ? ["--json"] : []), "--out", out], io);
       return { code, ...state, dir };
     }
 
-    it("warns when the file sits in a git work tree with no .gitignore at all", async () => {
-      const r = await inRepo(null, "keys/agent.json");
+    const WARNING = (file: string) =>
+      `warning: this file is inside a git repository: make sure it is ignored and not tracked (git check-ignore -v ${file}; git ls-files ${file})\n`;
+
+    it("always warns inside a git repository, and names the two commands that settle it", async () => {
+      const r = await inRepo(async () => {}, "keys/agent.json");
       expect(r.code).toBe(0);
-      expect(r.err).toContain("is inside the git work tree");
-      expect(r.err).toContain("./keys/agent.json");
-      expect(r.err).toContain('before you run "git add"');
+      expect(r.err).toBe(WARNING("./keys/agent.json"));
       expect(r.err).not.toContain("\\");
+      expect(r.out).not.toContain("warning");
     });
 
-    it("warns when the .gitignore does not cover it", async () => {
-      const r = await inRepo("node_modules/\n*.pem\n", "keys/agent.json");
-      expect(r.err).toContain("is inside the git work tree");
+    // T15-R2: a partial .gitignore parser gave false all-clears. These are the setups where git
+    // would ignore or track the file differently from what the root .gitignore alone says; the
+    // warning does not depend on any of them.
+    it.each([
+      ["a root .gitignore that plainly covers the folder", ".keys/\n", ".keys/agent.json"],
+      ["a root .gitignore that covers the file by pattern", "*.json\n", "agent.json"],
+      [
+        "a pattern followed by a tab, which git keeps as part of the name",
+        "keys/\t\n",
+        "keys/agent.json",
+      ],
+      ["a pattern with CRLF line endings", "keys/\r\n", "keys/agent.json"],
+      ["an anchored folder", "/secrets\n", "secrets/agent.json"],
+      ["a .gitignore that does not mention it", "node_modules/\n", "keys/agent.json"],
+    ])("warns with %s", async (_name, gitignore, out) => {
+      const r = await inRepo(async (dir) => {
+        await writeFile(join(dir, ".gitignore"), gitignore);
+      }, out);
+      expect(r.err).toBe(WARNING(`./${out}`));
     });
 
-    it("warns when it cannot decide: a negation, or a pattern it does not evaluate", async () => {
-      expect((await inRepo("keys/\n!keys/agent.json\n", "keys/agent.json")).err).toContain(
-        "is inside the git work tree",
-      );
-      expect((await inRepo("**/keys/\n", "keys/agent.json")).err).toContain(
-        "is inside the git work tree",
-      );
+    it("warns when a nested .gitignore re-includes the file the root ignores", async () => {
+      const r = await inRepo(async (dir) => {
+        await writeFile(join(dir, ".gitignore"), "*.json\n");
+        await mkdir(join(dir, "keys"));
+        await writeFile(join(dir, "keys", ".gitignore"), "!agent.json\n");
+      }, "keys/agent.json");
+      expect(r.err).toBe(WARNING("./keys/agent.json"));
     });
 
-    it("stays quiet when the .gitignore plainly covers the file", async () => {
-      expect((await inRepo(".keys/\n", ".keys/agent.json")).err).toBe("");
-      expect((await inRepo("# keys\nkeys/\n", "keys/agent.json")).err).toBe("");
-      expect((await inRepo("/secrets\n", "secrets/agent.json")).err).toBe("");
-      expect((await inRepo("*.json\n", "agent.json")).err).toBe("");
-      expect((await inRepo("agent.json\r\n", "keys/agent.json")).err).toBe("");
+    it("warns when the folder was ignored after the file was committed earlier", async () => {
+      // `keys/` is in .gitignore, but .gitignore never applies to a path the index already tracks;
+      // a committed keys/ entry is simulated by an index file next to a .gitignore that covers it.
+      const r = await inRepo(async (dir) => {
+        await writeFile(join(dir, ".git", "index"), "DIRC");
+        await writeFile(join(dir, ".gitignore"), "keys/\n");
+      }, "keys/agent.json");
+      expect(r.err).toBe(WARNING("./keys/agent.json"));
+    });
+
+    it("quotes a path with a space in the two commands to run", async () => {
+      const r = await inRepo(async () => {}, "my keys/agent.json");
+      expect(r.err).toBe(WARNING("'./my keys/agent.json'"));
+    });
+
+    it("keeps the warning off stdout, so --json output stays parseable", async () => {
+      const r = await inRepo(async () => {}, "agent.json", true);
+      expect(r.err).toContain("this file is inside a git repository");
+      expect(() => JSON.parse(r.out)).not.toThrow();
+      expect(Object.keys(JSON.parse(r.out)).sort()).toEqual(["public_key", "secret_file"]);
     });
 
     it("recognises a .git file, which is how a linked worktree or submodule looks", async () => {
@@ -183,7 +215,7 @@ describe("agent keygen --out writes the pair to a private file and keeps the sec
       await writeFile(join(dir, ".git"), "gitdir: /elsewhere\n");
       const { io, state } = testIo(dir, {}, "linux");
       expect(await runCli(["agent", "keygen", "--out", "agent.json"], io)).toBe(0);
-      expect(state.err).toContain("is inside the git work tree");
+      expect(state.err).toBe(WARNING("./agent.json"));
     });
 
     it("looks above the file's own folder for the repository", async () => {
@@ -192,13 +224,26 @@ describe("agent keygen --out writes the pair to a private file and keeps the sec
       await mkdir(join(dir, "a", "b"), { recursive: true });
       const { io, state } = testIo(join(dir, "a", "b"), {}, "linux");
       expect(await runCli(["agent", "keygen", "--out", "agent.json"], io)).toBe(0);
-      expect(state.err).toContain("is inside the git work tree");
+      expect(state.err).toBe(WARNING("./agent.json"));
+    });
+
+    it("warns when --out goes through a symlinked folder into a repository", async () => {
+      const outside = await tempDir();
+      const repo = await tempDir();
+      await mkdir(join(repo, ".git"));
+      await mkdir(join(repo, "keys"));
+      await symlink(join(repo, "keys"), join(outside, "via"), "junction");
+      const { io, state } = testIo(outside, {}, "linux");
+      expect(await runCli(["agent", "keygen", "--out", "via/agent.json"], io)).toBe(0);
+      expect(state.err).toBe(WARNING("./via/agent.json"));
+      // The key really is in the repository.
+      expect(await readdir(join(repo, "keys"))).toEqual(["agent.json"]);
     });
 
     it("says nothing about git outside a work tree", async (context) => {
       const dir = await tempDir();
       // The temp folder is normally outside every repository; if this machine's is not, skip.
-      if ((await gitIgnoreStatus(join(dir, "agent.json"))).root !== null) context.skip();
+      if ((await findGitWorkTree(join(dir, "agent.json"))) !== null) context.skip();
       const { io, state } = testIo(dir, {}, "linux");
       expect(await runCli(["agent", "keygen", "--out", "agent.json"], io)).toBe(0);
       expect(state.err).toBe("");

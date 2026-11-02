@@ -1,4 +1,5 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sha256Hex } from "@probarion/core";
 import {
@@ -429,5 +430,70 @@ describe("args files are named by their content (T15-R1)", () => {
     const names = new Set([base, label, allowance].map((r) => printedArgsPath(r.state.out)));
     expect(names.size).toBe(3);
     expect(printedArgsPath(signer.state.out)).toBe(printedArgsPath(base.state.out));
+  });
+});
+
+describe("the args file is created exclusively and its sha256 is printed (T15-R2)", () => {
+  const argv = ["vault", "freeze", "--vault", VAULT];
+  const freezeName = argsFileFor("freeze", {});
+
+  it("an identical file from an earlier print is reused, even a read-only one", async () => {
+    const first = testIo(dir);
+    expect(await runCli(argv, first.io)).toBe(0);
+    await chmod(join(dir, freezeName), 0o444);
+    const second = testIo(dir);
+    expect(await runCli(argv, second.io)).toBe(0);
+    expect(second.state.err).toBe("");
+    expect(printedArgsPath(second.state.out)).toBe(`./${freezeName}`);
+    expect(await readFile(join(dir, freezeName), "utf8")).toBe(argsJsonText({}));
+  });
+
+  it("a file with other content under the name is refused, named, and left alone", async () => {
+    const first = testIo(dir);
+    expect(await runCli(argv, first.io)).toBe(0);
+    await writeFile(join(dir, freezeName), '{"edited": true}\n');
+    const second = testIo(dir);
+    expect(await runCli(argv, second.io)).toBe(1);
+    expect(second.state.out).toBe("");
+    expect(second.state.err).toBe(
+      `error: ./${freezeName} exists with different content (edited after printing, or a hash collision): delete it and print again\n`,
+    );
+    expect(await readFile(join(dir, freezeName), "utf8")).toBe('{"edited": true}\n');
+  });
+
+  it("a directory under the name is refused too", async () => {
+    await mkdir(join(dir, freezeName));
+    const { io, state } = testIo(dir);
+    expect(await runCli(argv, io)).toBe(1);
+    expect(state.out).toBe("");
+    expect(state.err).toContain(`./${freezeName} exists and cannot be read as a file`);
+  });
+
+  it("prints the full sha256 of the file on the line after the command", async () => {
+    const { io, state } = testIo(dir);
+    expect(
+      await runCli(
+        ["agent", "add", "--vault", VAULT, "--pk", TEST_KEYS.agent.publicKey, "--label", "a"],
+        io,
+      ),
+    ).toBe(0);
+    const lines = state.out.split("\n");
+    const at = lines.findIndex((l) => l.startsWith("near contract call-function"));
+    const shaLine = lines[at + 1] ?? "";
+    const printed = /^sha256 of the args file: ([0-9a-f]{64})\b/.exec(shaLine)?.[1];
+    expect(printed).toBeDefined();
+    const bytes = await readFile(join(dir, printedArgsPath(state.out)));
+    expect(printed).toBe(createHash("sha256").update(bytes).digest("hex"));
+    expect(shaLine).toContain(`sha256sum ${printedArgsPath(state.out)}`);
+  });
+
+  it("prints the same sha256 for a reused file", async () => {
+    const first = testIo(dir);
+    const second = testIo(dir);
+    expect(await runCli(argv, first.io)).toBe(0);
+    expect(await runCli(argv, second.io)).toBe(0);
+    const sha = (out: string) => /sha256 of the args file: ([0-9a-f]{64})/.exec(out)?.[1];
+    expect(sha(first.state.out)).toBeDefined();
+    expect(sha(second.state.out)).toBe(sha(first.state.out));
   });
 });
