@@ -20,14 +20,22 @@ export interface OwnerTx {
 }
 
 /**
+ * Every character PowerShell reads as a single quote: the ASCII one and U+2018 to U+201B (the
+ * typographic quotes a word processor or a chat client puts into a pasted name).
+ */
+const SINGLE_QUOTE_RE = /['‘’‚‛]/;
+
+/**
  * A word for a printed command: bare when it is plain, otherwise in single quotes. A value holding a
- * single quote is refused: bash writes it `'\''` and PowerShell writes it `''`, no spelling works in
- * both, and the printed commands promise to run in either.
+ * single quote is refused: bash writes it `'\''` and PowerShell writes it `''` (and also ends a
+ * quoted word at U+2018 to U+201B), no spelling works in both, and the printed commands promise to
+ * run in either.
  */
 export function shellQuote(value: string): string {
-  if (value.includes("'")) {
+  const quote = SINGLE_QUOTE_RE.exec(value)?.[0];
+  if (quote !== undefined) {
     throw new CliError(
-      `${JSON.stringify(value)} contains a single quote ('), which bash and PowerShell quote differently, so it cannot go into a command that runs in both`,
+      `${JSON.stringify(value)} contains a single quote (${quote}), which bash and PowerShell quote differently, so it cannot go into a command that runs in both`,
     );
   }
   return /^[A-Za-z0-9_./-]+$/.test(value) ? value : `'${value}'`;
@@ -35,9 +43,10 @@ export function shellQuote(value: string): string {
 
 /** Refuses a path that shellQuote would refuse, with the flag the owner has to change. Writes nothing. */
 export function assertQuotablePath(shown: string, flag: string): void {
-  if (shown.includes("'")) {
+  const quote = SINGLE_QUOTE_RE.exec(shown)?.[0];
+  if (quote !== undefined) {
     throw new CliError(
-      `${flag}: the path ${JSON.stringify(shown)} contains a single quote ('), which bash and PowerShell quote differently: choose a path without one`,
+      `${flag}: the path ${JSON.stringify(shown)} contains a single quote (${quote}), which bash and PowerShell quote differently: choose a path without one`,
     );
   }
 }

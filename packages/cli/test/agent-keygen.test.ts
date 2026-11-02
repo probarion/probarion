@@ -125,6 +125,15 @@ describe("agent keygen --out writes the pair to a private file and keeps the sec
     expect(await readdir(dir)).toEqual([]);
   });
 
+  it("refuses a typographic single quote in the path too", async () => {
+    const dir = await tempDir();
+    const { io, state } = testIo(dir);
+    expect(await runCli(["agent", "keygen", "--out", "o’brien/agent.json"], io)).toBe(1);
+    expect(state.err).toMatch(/--out: the path .* single quote/);
+    expect(state.out).toBe("");
+    expect(await readdir(dir)).toEqual([]);
+  });
+
   describe("warnings go to stderr, never into the JSON on stdout", () => {
     it("on Windows it says that mode bits do not restrict the file", async () => {
       const dir = await tempDir();

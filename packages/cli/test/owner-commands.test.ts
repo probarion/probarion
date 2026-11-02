@@ -259,6 +259,8 @@ describe("owner-only commands print transactions and never sign", () => {
     [["spend", "reject", "--spend", "1.5"], "--spend"],
     // bash and PowerShell quote a single quote differently, so a path with one is refused (T15-R3).
     [["vault", "freeze", "--out-dir", "o'brien"], "--out-dir"],
+    // PowerShell also reads U+2018 to U+201B as single quotes.
+    [["vault", "freeze", "--out-dir", "o’brien"], "--out-dir"],
     [["agent", "add", "--pk", TEST_KEYS.agent.publicKey, "--out-dir", "a/it's"], "--out-dir"],
   ] as const)("%j is refused before anything is printed (names %s)", async (argv, flag) => {
     const { io, state } = testIo(dir, { PROBARION_VAULT_ID: VAULT });

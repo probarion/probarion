@@ -61,6 +61,23 @@ describe("renderNearCliCommand", () => {
     expect(shellQuote("plain-path/ok_1.json")).toBe("plain-path/ok_1.json");
   });
 
+  // PowerShell reads U+2018 to U+201B as single quotes, and a name pasted from a word processor or a
+  // chat client carries them. Other non-ASCII text is fine inside single quotes.
+  it.each([
+    ["U+2018", "o‘brien"],
+    ["U+2019", "o’brien"],
+    ["U+201A", "o‚brien"],
+    ["U+201B", "o‛brien"],
+  ])("refuses the typographic single quote %s too", (_name, value) => {
+    expect(() => shellQuote(value)).toThrow(/single quote .*bash and PowerShell/);
+    expect(() => renderNearCliCommand(TX, `./${value}/freeze.args.json`)).toThrow(CliError);
+  });
+
+  it("still quotes other non-ASCII text, double typographic quotes included", () => {
+    expect(shellQuote("café")).toBe("'café'");
+    expect(shellQuote("say “hi”")).toBe("'say “hi”'");
+  });
+
   it("puts a placeholder where the signer is unknown", () => {
     expect(renderNearCliCommand(TX, "./a.json")).toContain(
       "sign-as <owner-account-id> network-config",
@@ -80,6 +97,16 @@ describe("printOwnerTx", () => {
     const { io, state } = testIo(dir);
     await expect(printOwnerTx(io, TX, "o'brien")).rejects.toThrow(
       /--out-dir: the path .* single quote/,
+    );
+    expect(state.out).toBe("");
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it("refuses an out dir with a typographic single quote too, before it creates anything", async () => {
+    const dir = await tempDir();
+    const { io, state } = testIo(dir);
+    await expect(printOwnerTx(io, TX, "o’brien")).rejects.toThrow(
+      /--out-dir: the path .* single quote \(’\)/,
     );
     expect(state.out).toBe("");
     expect(await readdir(dir)).toEqual([]);
