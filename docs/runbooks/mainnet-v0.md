@@ -9,7 +9,7 @@ The goal is three mainnet transaction hashes from a locked vault `v0.probarion.n
 
 Run every command from the repo root, in Git Bash. Put the cargo tools on the path first: `export PATH="$HOME/.cargo/bin:$PATH"`. The command shapes for creating the account, deploying, locking, `add_agent`, `create_mandate` and the agent-key `spend` are the ones that ran on testnet on 2026-11-01 (`docs/runbooks/testnet.md`, `scripts/testnet/deploy.sh` and `smoke.sh`). Testnet could not run the steps that need the real USDC, the real `intents.near` and the POA bridge (steps 4 to 6 and 10), nor the `check_spend` views and the recovery calls at the end. Amounts, gas and deposits follow `docs/runbooks/testnet.md` §5.
 
-Signing: the commands use `sign-with-keychain`. If the key is on a Ledger, replace it with `sign-with-ledger`. Agent-key spends use `sign-with-access-key-file`. Keys are written only to the keychain (step 1, `save-to-keychain`) or to the git-ignored `.keys/` folder (step 7, `save-to-folder`), and no command prints one.
+Signing: the commands use `sign-with-keychain`. If the key is on a Ledger, replace `sign-with-keychain send` with `sign-with-ledger usb send`. Agent-key spends use `sign-with-access-key-file`. Keys are written only to the keychain (step 1, `save-to-keychain`) or to the git-ignored `.keys/` folder (step 7, `save-to-folder`), and no command prints one.
 
 Recording: after each signed step, copy the `Transaction ID: …` value (or the hash from https://nearblocks.io) into the chat. Claude then does two things:
 1. writes it into `contracts/deployments/mainnet.json` at the path named in the step;

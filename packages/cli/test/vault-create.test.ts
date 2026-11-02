@@ -7,7 +7,7 @@ import {
 } from "@probarion/sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../src/program.js";
-import { tempDir, testIo } from "./helpers.js";
+import { printedArgsPath, tempDir, testIo } from "./helpers.js";
 
 // R10: `vault create` checks the bounds the factory enforces before it prints anything, and reads
 // the factory's current version (global or embedded) to size the deposit.
@@ -52,6 +52,11 @@ describe("vault create: client-side bounds (the factory's own checks)", () => {
     ["no approver", ["--approvers", ""], "--approvers"],
     ["a blank approver list", ["--approvers", " , "], "--approvers"],
     ["eleven approvers", ["--approvers", approvers(11)], "10"],
+    [
+      "a duplicated approver",
+      ["--approvers", "cfo.testnet,ops.testnet,cfo.testnet"],
+      "listed twice",
+    ],
     ["an invalid approver id", ["--approvers", "cfo.testnet,Not An Account"], "Not An Account"],
     ["a zero daily backstop", ["--daily-backstop", "0"], "--daily-backstop"],
     ["a daily backstop with 7 decimals", ["--daily-backstop", "1.0000001"], "--daily-backstop"],
@@ -63,7 +68,7 @@ describe("vault create: client-side bounds (the factory's own checks)", () => {
     ["a name that is not an account label", ["--name", "acme-"], "--name"],
     ["an uppercase name", ["--name", "Acme"], "--name"],
     ["a shell metacharacter in --sign-as", ["--sign-as", "x;echo"], "--sign-as"],
-    ["a deposit in yocto spelling", ["--deposit", "1 NEAR"], "--deposit"],
+    ["a deposit with a unit written in it", ["--deposit", "1 NEAR"], "--deposit"],
   ])("refuses %s before it reads the factory", async (_name, override, mention) => {
     const server = await start();
     let argv = [...BASE];
@@ -105,7 +110,9 @@ describe("vault create: client-side bounds (the factory's own checks)", () => {
     );
     const result = await create(server, argv);
     expect(result.code).toBe(0);
-    const printed = JSON.parse(await readFile(join(result.dir, "create_vault.args.json"), "utf8"));
+    const printed = JSON.parse(
+      await readFile(join(result.dir, printedArgsPath(result.out)), "utf8"),
+    );
     expect(printed.held_ttl_ns).toBe("2592000000000000");
     expect(printed.daily_backstop).toBe("1");
     expect(printed.approvers).toHaveLength(10);

@@ -128,15 +128,25 @@ export function parseExpiry(value: string, now: Date): string {
   return ns.toString();
 }
 
-export function positiveInt(value: string, what: string): number {
-  if (!/^[1-9][0-9]{0,8}$/.test(value.trim()))
-    throw new CliError(`${what} must be a positive integer`);
-  return Number(value.trim());
+/** The contract's u32 (`max_uses`). */
+export const U32_MAX = 4_294_967_295;
+
+function wholeNumber(value: string, what: string, min: bigint, max: number): number {
+  const text = value.trim();
+  if (!/^(0|[1-9][0-9]*)$/.test(text) || BigInt(text) < min || BigInt(text) > BigInt(max)) {
+    throw new CliError(
+      `${what} must be a whole number from ${min} to ${max}, got ${JSON.stringify(value)}`,
+    );
+  }
+  return Number(text);
 }
 
-export function nonNegativeInt(value: string, what: string): number {
-  if (!/^(0|[1-9][0-9]{0,15})$/.test(value.trim())) {
-    throw new CliError(`${what} must be a non-negative integer`);
-  }
-  return Number(value.trim());
+/** A whole number from 1 to `max` (default: the largest integer JavaScript and JSON numbers hold exactly). */
+export function positiveInt(value: string, what: string, max = Number.MAX_SAFE_INTEGER): number {
+  return wholeNumber(value, what, 1n, max);
+}
+
+/** A whole number from 0 to `max` (default: the largest integer JavaScript and JSON numbers hold exactly). */
+export function nonNegativeInt(value: string, what: string, max = Number.MAX_SAFE_INTEGER): number {
+  return wholeNumber(value, what, 0n, max);
 }

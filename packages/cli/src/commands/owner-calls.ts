@@ -4,7 +4,6 @@ import { type GlobalOpts, optionalAccount, requireVault, resolveNetwork } from "
 import { CliError } from "../errors.js";
 import type { CliIo } from "../io.js";
 import { ONE_YOCTO, printOwnerTx } from "../owner-tx.js";
-import { NEAR_ACCOUNT_RE } from "../payee.js";
 import { assertPositive, positiveInt, toSmallestUnits } from "../units.js";
 import { checkedPublicKey } from "./agent.js";
 
@@ -47,14 +46,17 @@ function amountArg(value: string | undefined): string {
   return assertPositive(toSmallestUnits(required(value, "--amount"), "--amount"), "--amount");
 }
 
+/**
+ * The amount is converted with USDC's 6 decimals, so only the network's two allowed USDC assets are
+ * accepted: `base` and `solana` are short for them, and their account ids are taken as written.
+ */
 function intentsToken(value: string, network: NetworkId): string {
   const assets = NETWORKS[network].allowedAssets;
-  if (value === "base") return assets.base;
-  if (value === "solana") return assets.solana;
-  if (!NEAR_ACCOUNT_RE.test(value)) {
-    throw new CliError(`--token must be base, solana or a token account id, got ${value}`);
-  }
-  return value;
+  if (value === "base" || value === assets.base) return assets.base;
+  if (value === "solana" || value === assets.solana) return assets.solana;
+  throw new CliError(
+    `--token must be base, solana or one of this network's allowed USDC assets (${assets.base}, ${assets.solana}), got ${value}`,
+  );
 }
 
 // Gas: docs/runbooks/testnet.md section 5. Approving and withdrawing cascade into cross-contract
@@ -155,7 +157,7 @@ export const OWNER_CALLS: readonly CallSpec[] = [
     oneYocto: true,
     signer: "owner",
     options: [
-      ["--token <token>", "base, solana or a POA token account id"],
+      ["--token <token>", "base, solana, or the network's POA USDC asset id"],
       ["--amount <usdc>", "amount in USDC"],
     ],
     args: (o, network) => ({

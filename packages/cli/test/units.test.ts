@@ -7,9 +7,11 @@ import {
   canonicalNear,
   hoursToNs,
   nearToYocto,
+  nonNegativeInt,
   parseExpiry,
   positiveInt,
   toSmallestUnits,
+  U32_MAX,
   yoctoToNear,
 } from "../src/units.js";
 import { NOW } from "./helpers.js";
@@ -88,11 +90,31 @@ describe("amount conversions", () => {
     expect(parseExpiry("2028-02-29", NOW)).toBe("1835481599999000000");
   });
 
-  it("parses positive integers only", () => {
+  it("parses whole numbers from 1 to the cap, and the message states the cap", () => {
     expect(positiveInt("10", "--uses")).toBe(10);
-    for (const bad of ["0", "-1", "1.5", "", "01", "1000000000"]) {
+    expect(positiveInt(" 1 ", "--uses")).toBe(1);
+    for (const bad of ["0", "-1", "1.5", "", "01", "1e3", "0x10"]) {
       expect(() => positiveInt(bad, "--uses")).toThrow(CliError);
     }
+    // The default cap is the largest integer a JSON number holds exactly (ids); --uses is a u32.
+    expect(positiveInt("9007199254740991", "--mandate")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(() => positiveInt("9007199254740992", "--mandate")).toThrow(
+      /from 1 to 9007199254740991/,
+    );
+    expect(positiveInt("4294967295", "--uses", U32_MAX)).toBe(4_294_967_295);
+    expect(() => positiveInt("4294967296", "--uses", U32_MAX)).toThrow(/from 1 to 4294967295/);
+    expect(() => positiveInt("721", "--held-ttl-hours", 720)).toThrow(
+      /--held-ttl-hours.*from 1 to 720/,
+    );
+    expect(positiveInt("720", "--held-ttl-hours", 720)).toBe(720);
+  });
+
+  it("parses whole numbers from 0, with the same cap rules", () => {
+    expect(nonNegativeInt("0", "--n")).toBe(0);
+    expect(nonNegativeInt("9007199254740991", "--n")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(() => nonNegativeInt("9007199254740992", "--n")).toThrow(/from 0 to 9007199254740991/);
+    expect(() => nonNegativeInt("-1", "--n")).toThrow(CliError);
+    expect(() => nonNegativeInt("007", "--n")).toThrow(CliError);
   });
 });
 

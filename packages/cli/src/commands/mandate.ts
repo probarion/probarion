@@ -18,6 +18,7 @@ import {
   parseExpiry,
   positiveInt,
   toSmallestUnits,
+  U32_MAX,
 } from "../units.js";
 import { checkedPublicKey } from "./agent.js";
 
@@ -60,7 +61,7 @@ export function registerMandate(program: Command, io: CliIo): void {
       "PO or contract file (hashed with sha256), or its 64-hex hash",
     )
     .requiredOption("--label <label>", "label, at most 64 bytes")
-    .option("--deposit <near>", "attached deposit in NEAR; the vault refunds the excess", "0.1")
+    .option("--deposit <near>", "attached deposit in NEAR; the vault refunds the excess", "0.05")
     .option("--sign-as <account>", "the owner account that signs")
     .option("--out-dir <dir>", "directory for the args JSON", ".")
     .action(async (_options: unknown, command: Command) => {
@@ -89,7 +90,7 @@ export function registerMandate(program: Command, io: CliIo): void {
         purpose_hash: await readPurpose(o.purpose, io.cwd),
         max_per_payment: maxPer,
         max_total: maxTotal,
-        max_uses: positiveInt(o.uses, "--uses"),
+        max_uses: positiveInt(o.uses, "--uses", U32_MAX),
         expires_at_ns: parseExpiry(o.expires, io.now()),
         approval_above: approvalAbove,
         agent_pk: agentPk,

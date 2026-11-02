@@ -3,7 +3,7 @@ import { posix, win32 } from "node:path";
 import { describe, expect, it } from "vitest";
 import { displayPath, printOwnerTx, renderNearCliCommand } from "../src/owner-tx.js";
 import { runCli } from "../src/program.js";
-import { tempDir, testIo } from "./helpers.js";
+import { argsFileFor, tempDir, testIo } from "./helpers.js";
 
 const TX = {
   network: "testnet",
@@ -13,6 +13,9 @@ const TX = {
   gasTgas: "30.0",
   deposit: "0 NEAR",
 } as const;
+
+// The args file of a `freeze` print: {} is its whole content.
+const FREEZE_FILE = argsFileFor("freeze", {});
 
 describe("displayPath (R11: forward slashes, always)", () => {
   it("shows a file under the working directory as ./relative", () => {
@@ -66,15 +69,16 @@ describe("renderNearCliCommand", () => {
 });
 
 describe("printOwnerTx", () => {
-  it("writes <outDir>/<method>.args.json and prints the command with forward slashes only", async () => {
+  it("writes <outDir>/<method>.<hash>.args.json and prints the command with forward slashes only", async () => {
     const dir = await tempDir();
     const { io, state } = testIo(dir);
     const file = await printOwnerTx(io, { ...TX, args: { a: 1 } }, "deep/er");
+    const named = argsFileFor("freeze", { a: 1 });
     expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ a: 1 });
     const command = state.out.split("\n").find((l) => l.startsWith("near contract"));
-    expect(command).toContain("file-args ./deep/er/freeze.args.json ");
+    expect(command).toContain(`file-args ./deep/er/${named} `);
     const header = state.out.split("\n").find((l) => l.startsWith("freeze arguments ("));
-    expect(header).toBe("freeze arguments (./deep/er/freeze.args.json):");
+    expect(header).toBe(`freeze arguments (./deep/er/${named}):`);
     expect(command).not.toContain("\\");
     expect(header).not.toContain("\\");
   });
@@ -88,8 +92,8 @@ describe("printOwnerTx", () => {
     const shown = /file-args (?:'([^']+)'|(\S+)) prepaid-gas/.exec(command);
     const path = shown?.[1] ?? shown?.[2] ?? "";
     expect(path).not.toContain("\\");
-    expect(path.endsWith("/freeze.args.json")).toBe(true);
-    expect(path).toBe(`${elsewhere.replaceAll("\\", "/")}/freeze.args.json`);
+    expect(path.endsWith(`/${FREEZE_FILE}`)).toBe(true);
+    expect(path).toBe(`${elsewhere.replaceAll("\\", "/")}/${FREEZE_FILE}`);
   });
 
   it("says plainly that it never signs, and offers the Ledger variant", async () => {
@@ -97,13 +101,15 @@ describe("printOwnerTx", () => {
     const { io, state } = testIo(dir);
     await printOwnerTx(io, TX, ".");
     expect(state.out).toContain("probarion never signs owner or approver transactions");
-    expect(state.out).toContain("sign-with-ledger");
+    expect(state.out).toContain(
+      "replace `sign-with-keychain send` with `sign-with-ledger usb send`",
+    );
   });
 
   it("goes through the CLI with a nested --out-dir", async () => {
     const dir = await tempDir();
     const { io, state } = testIo(dir, { PROBARION_VAULT_ID: "acme.vaults.probarion.testnet" });
     expect(await runCli(["vault", "freeze", "--out-dir", "a/b"], io)).toBe(0);
-    expect(state.out).toContain("file-args ./a/b/freeze.args.json ");
+    expect(state.out).toContain(`file-args ./a/b/${FREEZE_FILE} `);
   });
 });

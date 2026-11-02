@@ -82,21 +82,20 @@ export function registerVault(program: Command, io: CliIo): void {
           `--approvers takes at most ${MAX_APPROVERS} accounts, got ${approvers.length}`,
         );
       }
-      for (const approver of approvers) {
+      for (const [index, approver] of approvers.entries()) {
         if (!NEAR_ACCOUNT_RE.test(approver)) {
           throw new CliError(`approver ${approver} is not a valid NEAR account id`);
+        }
+        if (approvers.indexOf(approver) !== index) {
+          throw new CliError(`approver ${approver} is listed twice in --approvers`);
         }
       }
       const dailyBackstop = assertPositive(
         toSmallestUnits(o.dailyBackstop, "--daily-backstop"),
         "--daily-backstop",
       );
-      const heldTtlHours = positiveInt(o.heldTtlHours, "--held-ttl-hours");
-      if (heldTtlHours > MAX_HELD_TTL_HOURS) {
-        throw new CliError(
-          `--held-ttl-hours must be between 1 and ${MAX_HELD_TTL_HOURS} (30 days), got ${heldTtlHours}`,
-        );
-      }
+      // 1 to 720 hours: the vault refuses a hold longer than 30 days.
+      const heldTtlHours = positiveInt(o.heldTtlHours, "--held-ttl-hours", MAX_HELD_TTL_HOURS);
       const heldTtlNs = hoursToNs(String(heldTtlHours));
       const signAs = optionalAccount(o.signAs, "--sign-as");
       const requested = o.deposit === undefined ? undefined : canonicalNear(o.deposit, "--deposit");

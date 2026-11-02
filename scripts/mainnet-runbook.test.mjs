@@ -479,6 +479,8 @@ test("the vault's free NEAR is a storage runway, with the numbers measured on te
 test("signing wording: keys are written only to the keychain or .keys/, and no command prints one", () => {
   const runbook = read("docs/runbooks/mainnet-v0.md");
   assert.ok(runbook.includes("sign-with-ledger"));
+  // near-cli-rs 0.30.1 rejects `sign-with-ledger send`; the Ledger transport word `usb` is required.
+  assert.ok(runbook.includes("`sign-with-keychain send` with `sign-with-ledger usb send`"));
   assert.ok(!runbook.includes("No command here prints or stores a private key"));
   assert.match(runbook, /Keys are written only to the keychain.*git-ignored `\.keys\/` folder/);
   assert.match(runbook, /no command prints one/);

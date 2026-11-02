@@ -4,8 +4,9 @@ import { generateKeyPair, KeyFormatError, parsePublicKey, utf8 } from "@probario
 import type { Command } from "commander";
 import { type GlobalOpts, optionalAccount, requireVault, resolveNetwork } from "../context.js";
 import { CliError } from "../errors.js";
+import { gitIgnoreStatus } from "../git-ignore.js";
 import type { CliIo } from "../io.js";
-import { displayPath, ONE_YOCTO, printOwnerTx } from "../owner-tx.js";
+import { displayPath, forwardSlashes, ONE_YOCTO, printOwnerTx } from "../owner-tx.js";
 import { assertPositive, nearToYocto } from "../units.js";
 
 type KeyTxOpts = GlobalOpts & {
@@ -32,18 +33,33 @@ export function registerAgent(program: Command, io: CliIo): void {
   const agent = program.command("agent").description("agent keys");
   agent
     .command("keygen")
-    .description("print a new ed25519 key pair (public to share, secret to the server environment)")
+    .description(
+      "generate an ed25519 key pair; needs --out <file> (saved, not printed) or --print-secret (printed)",
+    )
     .option("--json", "print JSON")
     .option(
       "--out <file>",
-      "write the pair to this file (owner-only, never overwritten) and print only the public key",
+      "save the pair to this file (owner-only, never overwritten) and print only the public key",
+    )
+    .option(
+      "--print-secret",
+      "print the secret key to this terminal, where it stays in your scrollback",
     )
     .action(async (_options: unknown, command: Command) => {
-      const options = command.opts<{ json?: boolean; out?: string }>();
+      const options = command.opts<{ json?: boolean; out?: string; printSecret?: boolean }>();
+      if (options.out === undefined && options.printSecret !== true) {
+        throw new CliError(
+          "agent keygen needs one of: --out <file> (saves the key pair to a file only you can read, never overwriting, and prints the public key only) or --print-secret (prints the secret key to this terminal, where it stays in your scrollback)",
+        );
+      }
+      if (options.out !== undefined && options.printSecret === true) {
+        throw new CliError("use --out <file> or --print-secret, not both");
+      }
       const pair = generateKeyPair();
       if (options.out !== undefined) {
         const file = path.resolve(io.cwd, options.out);
         const shown = displayPath(io.cwd, file);
+        const windows = (io.platform ?? process.platform) === "win32";
         await mkdir(path.dirname(file), { recursive: true });
         try {
           // "wx" never overwrites a key file; 0o600 keeps it to its owner where the OS enforces modes.
@@ -60,6 +76,17 @@ export function registerAgent(program: Command, io: CliIo): void {
               : `could not write ${shown}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
+        if (windows) {
+          io.err(
+            `warning: on Windows, file permissions are not restricted by mode bits: ${shown} gets the permissions of its folder, so other users or programs on this machine may be able to read it. Keep it in a folder only you can read.\n`,
+          );
+        }
+        const git = await gitIgnoreStatus(file);
+        if (git.root !== null && !git.ignored) {
+          io.err(
+            `warning: ${shown} is inside the git work tree ${forwardSlashes(git.root)} and the .gitignore there does not plainly cover it. Add it to .gitignore before you run "git add", and never commit a key file.\n`,
+          );
+        }
         if (options.json === true) {
           io.out(
             `${JSON.stringify({ public_key: pair.publicKey, secret_file: shown }, null, 2)}\n`,
@@ -69,7 +96,7 @@ export function registerAgent(program: Command, io: CliIo): void {
         io.out(
           [
             `public_key: ${pair.publicKey}`,
-            `secret_key: saved to ${shown} (owner-only where the OS supports it; not printed)`,
+            `secret_key: saved to ${shown}${windows ? "" : " (mode 0600)"}, not printed`,
             "",
             "Keep that file server-side only (read PROBARION_AGENT_KEY or PROBARION_LEDGER_KEY from it). Never commit it.",
             'Share only the public key with the vault owner, who adds it with "probarion agent add" or "probarion ledger set-key".',
@@ -91,7 +118,7 @@ export function registerAgent(program: Command, io: CliIo): void {
           "",
           "Keep the secret server-side only (PROBARION_AGENT_KEY or PROBARION_LEDGER_KEY). Never commit it.",
           'Share only the public key with the vault owner, who adds it with "probarion agent add" or "probarion ledger set-key".',
-          "To keep the secret off the terminal, run again with --out <file>.",
+          "The secret is now in your terminal scrollback. --out <file> keeps it off the screen.",
           "",
         ].join("\n"),
       );

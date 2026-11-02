@@ -5,6 +5,8 @@ export interface CliIo {
   cwd: string;
   now(): Date;
   setExitCode(code: number): void;
+  /** Defaults to the running platform; only the Windows-specific warnings read it. */
+  platform?: NodeJS.Platform;
 }
 
 export function processIo(): CliIo {
@@ -21,5 +23,6 @@ export function processIo(): CliIo {
     setExitCode: (code) => {
       process.exitCode = code;
     },
+    platform: process.platform,
   };
 }
