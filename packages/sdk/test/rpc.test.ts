@@ -237,7 +237,7 @@ describe("RpcClient views", () => {
         }),
       ],
     );
-    expect(await rpc.viewAccessKeyList("vault.testnet")).toEqual([
+    await expect(rpc.viewAccessKeyList("vault.testnet")).resolves.toEqual([
       { public_key: "ed25519:A", permission: "FullAccess" },
       { public_key: "ed25519:B", permission: { ...fc, allowance: "100" } },
       {

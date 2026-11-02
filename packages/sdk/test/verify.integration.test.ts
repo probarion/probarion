@@ -20,7 +20,7 @@ import { NearAiProposer } from "../src/nearai.js";
 import type { OnlineAttestationVerifier } from "../src/online.js";
 import { Probarion, type ProbarionDeps } from "../src/probarion.js";
 import { RpcClient } from "../src/rpc.js";
-import type { TxIndex } from "../src/snapshot.js";
+import { gatherSnapshot, type TxIndex } from "../src/snapshot.js";
 import {
   createFakeNearAi,
   createScenarioChain,
@@ -787,6 +787,11 @@ describe("T14-R1 fix round 1 (end to end)", () => {
     expect(report.checks.find((c) => c.id === "g")?.detail).toContain(
       "the vault names intents contract evil-intents.testnet",
     );
+    // The snapshot never reads the vault's own intents contract: it reads the network's (which this fake chain
+    // does not serve once the vault names another one, hence the note).
+    expect(report.checks.find((c) => c.id === "g")?.detail).toContain(
+      "intents-stub.probarion.testnet could not be read",
+    );
     expect(report.checks.find((c) => c.id === "h")?.status).toBe("fail");
   });
 
@@ -810,6 +815,8 @@ describe("T14-R1 fix round 1 (end to end)", () => {
         },
         { now: () => NOW, archivalRpc: null, logger: { warn: (m) => warnings.push(m) }, ...rest },
       );
+      // It resolves: a broken evidence file never fails verify itself.
+      await expect(pb.verify()).resolves.toMatchObject({ vault: SCENARIO_VAULT });
       const report = await pb.verify();
       expect(report.checks.find((c) => c.id === "a")?.status).toBe("pass");
       expect(warnings.join(" ")).toContain("docs/mainnet-proof.json could not be read");
@@ -835,5 +842,25 @@ describe("T14-R1 fix round 1 (end to end)", () => {
         ConfigError,
       );
     }
+  });
+});
+
+describe("gatherSnapshot gates the pre-ledger hashes itself (defence in depth)", () => {
+  beforeEach(async () => {
+    await start();
+  });
+
+  it("lists no pre-ledger hashes for any vault but mainnet v0, even when they are passed in", async () => {
+    const snapshot = await gatherSnapshot({
+      rpc: new RpcClient({ urls: [server.url] }),
+      archivalRpc: null,
+      vaultId: SCENARIO_VAULT,
+      network: "testnet",
+      ledger: [],
+      preLedgerDecisionHashes: [sha256Hex("TEST pre-ledger decision")],
+      burnTxHints: new Map(),
+      now: NOW,
+    });
+    expect(snapshot.pre_ledger_decision_hashes).toEqual([]);
   });
 });

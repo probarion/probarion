@@ -199,6 +199,23 @@ describe("applyOnlineChecks: O1 (DCAP plus the library's policy) and O2 (NRAS, n
       verifyQuote: async (q) => ({ ...genuine(q), tcbStatus: "Revoked" }),
     });
     expect(checkE(firstFails)).toMatchObject({ status: "fail", firstBrokenSeq: 0 });
+    // The offline seq is the lower one: offline fails at 0, online at 2, and the report says 0.
+    const early = await fixture();
+    const first = early.ledger[0]?.body.evidence;
+    if (first === null || first === undefined) throw new Error("fixture");
+    first.chat_id = "chatcmpl-tampered";
+    const earlyOffline = await runChecks(early, { now: NOW });
+    expect(checkE(earlyOffline)).toMatchObject({ status: "fail", firstBrokenSeq: 0 });
+    let call = 0;
+    const secondRevoked = await applyOnlineChecks(earlyOffline, early, {
+      ...honest,
+      verifyQuote: async (q) => ({
+        ...genuine(q),
+        tcbStatus: call++ === 0 ? "UpToDate" : "Revoked",
+      }),
+    });
+    expect(checkE(secondRevoked)?.detail).toContain("O1 failed at entry 2");
+    expect(checkE(secondRevoked)).toMatchObject({ status: "fail", firstBrokenSeq: 0 });
   });
 
   it("reports unavailability without changing the offline result", async () => {
