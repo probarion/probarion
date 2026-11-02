@@ -179,6 +179,11 @@ function mandatesAfter(spent: readonly FixtureSpend[]): MandateView[] {
   ];
 }
 
+/** The fixture's mandates as the contract holds them once the spends with these ids (1, 2) were paid. */
+export function fixtureMandatesAfter(spendIds: readonly number[]): MandateView[] {
+  return mandatesAfter([SPEND_A, SPEND_B].filter((s) => spendIds.includes(s.view.id)));
+}
+
 const COMMON = { v: 1 as const, vault: FIXTURE_VAULT, settlement: null, refs: null };
 
 interface DecisionSpec {

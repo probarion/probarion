@@ -432,6 +432,11 @@ export interface Snapshot {
     intents_public_keys: string[];
     intents_predecessor_auth: boolean;
     factory_version: number | null; // 1-based, as returned by the factory's `vault_version`
+    /**
+     * ICR-9 (Task 14): the vault's mandates (`list_mandates`), which A8's mandate match compares
+     * `request_inputs.mandates` with. Optional so snapshots made before it still parse; A8 fails without it.
+     */
+    mandates?: MandateView[];
     factory_versions: VersionView[];
     burns: {
       spend_id: number;

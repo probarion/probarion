@@ -1,7 +1,8 @@
 import bs58 from "bs58";
-import { checkAttestation } from "./attestation.js";
+import { checkAttestation, checkRequestBinding } from "./attestation.js";
 import { KNOWN_VAULT_CODE_HASHES } from "./code-hashes.js";
 import { NETWORKS, WITHDRAW_MEMO_PREFIX } from "./constants.js";
+import { canonicalJson } from "./hash.js";
 import { bytesToHex, ZERO_HEX32 } from "./hex.js";
 import {
   computeBodyHash,
@@ -10,7 +11,18 @@ import {
   verifyEntrySignature,
   ZERO_LINK,
 } from "./ledger.js";
-import type { CheckId, CheckResult, LedgerEntry, Snapshot, VerifyReport } from "./types.js";
+import { KNOWN_SYSTEM_PROMPT_HASHES, type KnownSystemPrompt } from "./proposal-request.js";
+import type {
+  CheckId,
+  CheckResult,
+  Hex32,
+  LedgerEntry,
+  LedgerEntryBody,
+  MandateView,
+  ProposalRequestInputs,
+  Snapshot,
+  VerifyReport,
+} from "./types.js";
 
 export const CHECK_NAMES: Readonly<Record<CheckId, string>> = {
   a: "ledger-signatures",
@@ -435,7 +447,51 @@ export function checkSpendsHaveDecisions(s: Snapshot): CheckResult {
       `${exempt} ${plural(exempt, "spend has a decision_hash", "spends have a decision_hash")} listed as pre-ledger by the snapshot (exempt: at most one spend per listed hash${when})`,
     );
   }
+  const notes = paymentNotes(s, decisions, claimedBy);
+  if (notes.length > 0) parts.push(`notes (not failures): ${notes.join("; ")}`);
   return pass("d", parts.join("; "));
+}
+
+/**
+ * The notes check d adds for Task 13's ledger shapes (carries C). They never fail d: the chain spend, not the
+ * payment entry, is what d binds.
+ * - A payment entry with `contract.status: "unknown"` (ICR-6) is resolved from chain state: the spend that
+ *   carries its decision hash says what happened. With no such spend it is pending.
+ * - A spend bound to its decision with no payment entry for that decision: the cycle could not write it
+ *   (`ledgerComplete: false`). d still binds the spend to its decision.
+ */
+function paymentNotes(
+  s: Snapshot,
+  decisions: Map<string, LedgerEntry>,
+  claimedBy: Map<string, number>,
+): string[] {
+  const notes: string[] = [];
+  const spendByDecision = new Map<string, Snapshot["chain"]["spends"][number]>();
+  for (const spend of [...s.chain.spends].sort((x, y) => x.id - y.id)) {
+    if (!spendByDecision.has(spend.decision_hash)) spendByDecision.set(spend.decision_hash, spend);
+  }
+  const withPayment = new Set<string>();
+  for (let i = 0; i < s.ledger.length; i++) {
+    const entry: unknown = s.ledger[i];
+    if (!isEntry(entry) || entry.body.kind !== "payment") continue;
+    const decision = isRecord(entry.body.refs) ? entry.body.refs.decision_body_hash : undefined;
+    if (typeof decision === "string") withPayment.add(decision);
+    if (!isRecord(entry.body.contract) || entry.body.contract.status !== "unknown") continue;
+    const spend = typeof decision === "string" ? spendByDecision.get(decision) : undefined;
+    notes.push(
+      spend === undefined
+        ? `payment seq ${i} recorded an unknown outcome and no spend on chain carries its decision: pending (it can be neither paid nor failed until its transaction lands or expires)`
+        : `payment seq ${i} recorded an unknown outcome; spend ${spend.id} on chain carries its decision (status ${String(spend.status)}): resolved from chain state`,
+    );
+  }
+  for (const [decisionHash, spendId] of claimedBy) {
+    if (withPayment.has(decisionHash)) continue;
+    const seq = decisions.get(decisionHash)?.body.seq;
+    notes.push(
+      `spend ${spendId} is bound to decision seq ${String(seq)}, which has no payment entry (the cycle could not write it: ledgerComplete false)`,
+    );
+  }
+  return notes;
 }
 
 type AttestationOutcome =
@@ -506,18 +562,211 @@ async function attestationOutcome(
 }
 
 /**
+ * Invoice texts for A8, by `invoice_hash` (the sha256 of the text, ICR-3b): a map, or a loader (sync or async)
+ * that returns the text or null/undefined when it has none. The texts never enter the ledger or the snapshot.
+ */
+export type InvoiceTextSource =
+  | ReadonlyMap<string, string>
+  | ((invoiceHash: Hex32) => string | null | undefined | Promise<string | null | undefined>);
+
+/**
+ * The mandate fields that never change on chain once `create_mandate` stored them. `remaining` and `status`
+ * do change (spends, revocation), so A8's mandate match compares only these (Task 14 B2).
+ */
+export const IMMUTABLE_MANDATE_FIELDS = [
+  "id",
+  "label",
+  "payee",
+  "purpose_hash",
+  "max_per_payment",
+  "expires_at_ns",
+] as const;
+
+/** At most `max` characters of `JSON.stringify(value)`, for a detail. */
+function shown(value: unknown, max = 80): string {
+  let text: string;
+  try {
+    text = JSON.stringify(value) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
+ * A8's mandate match (Task 14 B2), folded into A8's verdict by check e: the mandates the model was shown
+ * (`request_inputs.mandates`) are the vault's own. Every listed mandate must exist in `mandates` (the snapshot's
+ * chain mandates), appear once, and have the chain's immutable fields (`IMMUTABLE_MANDATE_FIELDS`); the entry's
+ * `mandate_id` must be among them; and `facts.amount` must be the entry's `amount` when the entry has one (a
+ * refusal with an unreadable amount has none, and no spend). `remaining` and `status` change on chain, so a
+ * difference there is a note: the values at decision time need archival state. `problem` is null when it
+ * matches. It never throws.
+ */
+export function matchRequestMandates(
+  inputs: ProposalRequestInputs,
+  entry: Pick<LedgerEntryBody, "mandate_id" | "amount">,
+  mandates: readonly MandateView[] | undefined,
+  seq?: number,
+): { problem: string | null; notes: string[] } {
+  const notes: string[] = [];
+  const problem = (text: string) => ({ problem: text, notes });
+  if (!Array.isArray(mandates)) {
+    return problem(
+      "the snapshot holds no chain mandates (chain.mandates) to match request_inputs.mandates against",
+    );
+  }
+  const chain = new Map<number, MandateView>();
+  for (const m of mandates) {
+    if (isRecord(m) && typeof m.id === "number") chain.set(m.id, m as unknown as MandateView);
+  }
+  const listed = Array.isArray(inputs?.mandates) ? inputs.mandates : [];
+  const seen = new Set<number>();
+  const where = seq === undefined ? "" : ` (seq ${seq})`;
+  for (const [i, m] of listed.entries()) {
+    if (!isRecord(m)) return problem(`request_inputs.mandates[${i}] is not a mandate`);
+    if (seen.has(m.id)) return problem(`request_inputs.mandates lists mandate ${m.id} twice`);
+    seen.add(m.id);
+    const onChain = chain.get(m.id);
+    if (onChain === undefined) {
+      return problem(
+        `request_inputs.mandates[${i}] is mandate ${m.id}, which the vault does not have`,
+      );
+    }
+    for (const field of IMMUTABLE_MANDATE_FIELDS) {
+      if (canonicalJson(m[field]) !== canonicalJson(onChain[field])) {
+        return problem(
+          `request_inputs.mandates[${i}] (mandate ${m.id}) differs from the chain in ${field}: the model was shown ${shown(m[field])}, the chain holds ${shown(onChain[field])}`,
+        );
+      }
+    }
+    let remaining: string | null = null;
+    try {
+      remaining = (
+        BigInt(onChain.max_total) -
+        BigInt(onChain.spent) -
+        BigInt(onChain.reserved)
+      ).toString();
+    } catch {
+      remaining = null;
+    }
+    if (m.remaining !== remaining || m.status !== onChain.status) {
+      notes.push(
+        `mandate ${m.id}${where}: the model was shown remaining ${m.remaining} and status ${m.status}; the chain now holds ${String(remaining)} and ${String(onChain.status)} (the values at decision time need archival state)`,
+      );
+    }
+  }
+  if (entry.mandate_id === null || !seen.has(entry.mandate_id)) {
+    return problem(
+      `the entry's mandate_id ${String(entry.mandate_id)} is not among the mandates the model was shown`,
+    );
+  }
+  if (!isRecord(inputs.facts)) return problem("request_inputs.facts is null");
+  if (entry.amount !== null && inputs.facts.amount !== entry.amount) {
+    return problem(
+      `the model was shown amount ${String(inputs.facts.amount)}, but the entry records ${entry.amount}`,
+    );
+  }
+  return { problem: null, notes };
+}
+
+type RequestBindingOutcome =
+  | { kind: "fail"; detail: string }
+  | { kind: "checked"; notes: string[] }
+  | { kind: "not_run"; note: string };
+
+/** A8 plus the mandate match for one attested decision, when its invoice text is supplied. */
+async function requestBindingOutcome(
+  s: Snapshot,
+  entry: LedgerEntry,
+  i: number,
+  texts: InvoiceTextSource,
+  prompts: readonly KnownSystemPrompt[],
+): Promise<RequestBindingOutcome> {
+  const b = entry.body;
+  const hash = b.invoice_hash;
+  let text: string | null | undefined;
+  try {
+    text =
+      typeof texts === "function"
+        ? await texts(String(hash))
+        : (texts as ReadonlyMap<string, string>).get(String(hash));
+  } catch (error) {
+    return {
+      kind: "not_run",
+      note: `seq ${i} (the invoice text loader failed: ${message(error)})`,
+    };
+  }
+  if (typeof text !== "string") {
+    return {
+      kind: "not_run",
+      note: `seq ${i} (no invoice text supplied for invoice_hash ${String(hash)})`,
+    };
+  }
+  const evidence = b.evidence;
+  if (evidence === null || evidence === undefined) {
+    return { kind: "fail", detail: `entry ${i} has no evidence for A8` };
+  }
+  const a8 = checkRequestBinding(
+    evidence,
+    text,
+    {
+      vault: b.vault,
+      prev_link: b.prev_link,
+      invoice_hash: b.invoice_hash,
+      mandate_id: b.mandate_id,
+      seq: b.seq,
+    },
+    { systemPrompts: prompts },
+  );
+  if (!a8.pass) return { kind: "fail", detail: `entry ${i} fails A8: ${a8.detail}` };
+  const match = matchRequestMandates(
+    evidence.request_inputs as ProposalRequestInputs,
+    b,
+    s.chain.mandates,
+    i,
+  );
+  if (match.problem !== null) {
+    return {
+      kind: "fail",
+      detail: `entry ${i} fails A8 (the mandates the model was shown are not the vault's): ${match.problem}`,
+    };
+  }
+  return { kind: "checked", notes: match.notes };
+}
+
+/** The A8 allow-list: `KNOWN_SYSTEM_PROMPT_HASHES` extended (never replaced) by the caller's prompts. */
+function promptAllowList(extra: readonly KnownSystemPrompt[] | undefined): KnownSystemPrompt[] {
+  return [...KNOWN_SYSTEM_PROMPT_HASHES, ...(Array.isArray(extra) ? extra : [])];
+}
+
+/**
  * Check e: every entry with evidence passes A1–A7 (the offline attestation checks) with its own `proposal`
  * as the expected proposal. Decisions with `decided_by = "rules-only"` are reported, not failed.
  *
+ * With `opts.invoiceTexts` (ICR-9), every attested decision whose text is supplied must also pass A8 (the
+ * request rebuilt from `request_inputs`, the text and the ledger nonce, under the allow-list
+ * `KNOWN_SYSTEM_PROMPT_HASHES` plus `opts.systemPrompts`) AND the mandate match (`matchRequestMandates`); the
+ * two are one verdict, never "A8 pass" alone. A decision without its text is "A8 not run" for that seq, which
+ * is neither a pass nor a fail.
+ *
  * The detail says what this did NOT establish: the TDX quote is not verified offline (that is O1, run with
- * --online), and A8, the request binding, is not run. A1–A7 prove the signature, the response body, the
- * recorded proposal and the attestation report agree with each other and with the ledger position. They do
- * not prove the request was the honest one for this invoice, and not that the quote came from genuine TEE
- * hardware.
+ * --online), and without the texts A8 is not run. A1–A7 prove the signature, the response body, the recorded
+ * proposal and the attestation report agree with each other and with the ledger position. They do not prove
+ * the request was the honest one for this invoice (A8 does, for the texts supplied), and not that the quote
+ * came from genuine TEE hardware. Neither does A8 prove that the invoice is authentic: an invented invoice
+ * whose hash is written into both the entry and the spend passes.
  */
-export async function checkAttestations(s: Snapshot): Promise<CheckResult> {
+export async function checkAttestations(
+  s: Snapshot,
+  opts: Pick<RunChecksOptions, "invoiceTexts" | "systemPrompts"> = {},
+): Promise<CheckResult> {
   let attested = 0;
   const reported: string[] = [];
+  const texts = opts.invoiceTexts;
+  const prompts = promptAllowList(opts.systemPrompts);
+  const checked: number[] = [];
+  const notRun: string[] = [];
+  const notes: string[] = [];
   for (let i = 0; i < s.ledger.length; i++) {
     const entry: unknown = s.ledger[i];
     if (!isEntry(entry)) return fail("e", `entry ${i} is missing or malformed`, i);
@@ -528,16 +777,43 @@ export async function checkAttestations(s: Snapshot): Promise<CheckResult> {
       return fail("e", `entry ${i} cannot be checked: ${message(error)}`, i);
     }
     if (outcome.kind === "fail") return fail("e", outcome.detail, i);
-    if (outcome.kind === "attested") attested++;
-    else if (outcome.kind === "reported") reported.push(outcome.note);
+    if (outcome.kind === "reported") reported.push(outcome.note);
+    if (outcome.kind !== "attested") continue;
+    attested++;
+    if (texts === undefined) continue;
+    let binding: RequestBindingOutcome;
+    try {
+      binding = await requestBindingOutcome(s, entry, i, texts, prompts);
+    } catch (error) {
+      return fail(
+        "e",
+        `entry ${i} cannot be checked against its invoice text: ${message(error)}`,
+        i,
+      );
+    }
+    if (binding.kind === "fail") return fail("e", binding.detail, i);
+    if (binding.kind === "not_run") notRun.push(binding.note);
+    else {
+      checked.push(i);
+      notes.push(...binding.notes);
+    }
   }
   const tail =
     reported.length > 0
       ? `; rules-only or unattested (reported, not failed): seq ${reported.join(", ")}`
       : "";
+  let a8: string;
+  if (texts === undefined) {
+    a8 = "A8 not run (the request is not checked against the invoice)";
+  } else {
+    const which = checked.length > 0 ? ` (seq ${checked.join(", ")})` : "";
+    a8 = `A8 (request binding and mandate match) passes for ${checked.length} of ${attested} attested decisions${which}`;
+    if (notRun.length > 0) a8 += `; A8 not run for ${notRun.join(", ")}`;
+    if (notes.length > 0) a8 += `; notes (not failures): ${notes.join("; ")}`;
+  }
   return pass(
     "e",
-    `${attested} attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice)${tail}`,
+    `${attested} attested decisions pass A1–A7; quote not verified offline (run --online for O1); ${a8}${tail}`,
   );
 }
 
@@ -695,12 +971,19 @@ export function checkIntentsKeys(s: Snapshot): CheckResult {
 /**
  * Check h: every Burned spend has exactly one matched burn pair (Snapshot.burns is the pair summary, so this
  * check does not depend on the receipt shape): the POA token's ft_burn memo is `WITHDRAW_TO:` + the mandate's
- * destination address, and intents' mt_burn has the vault as owner and the spend's amount.
+ * destination address, and intents' mt_burn has the vault as owner and the spend's amount. One transaction
+ * burns for one spend, so two spends that cite the same burn tx fail.
+ *
+ * R7 (Task 14): a burned spend that check d exempted as pre-ledger (documented) and whose burn tx nobody
+ * supplied is a note, not a failure: "documented, burn tx not supplied", and the pass detail says its burn is
+ * not proven. A burn record that names a tx in which no pair was found fails, documented or not.
  */
 export function checkBurnMemos(s: Snapshot): CheckResult {
   const decisions = decisionsByHash(s);
   const preLedgerExempt = preLedgerExemptSpends(s);
   const burned = s.chain.spends.filter((sp) => sp.status === "burned").sort((x, y) => x.id - y.id);
+  const notes: string[] = [];
+  const spendOfTx = new Map<string, number>();
   for (const spend of burned) {
     const seq = decisions.get(spend.decision_hash)?.body.seq;
     if (spend.destination.type !== "intents")
@@ -715,19 +998,37 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
       );
     const burn = matches[0];
     if (burn === undefined || burn.status !== "ok") {
-      // R7: a burned spend that check d exempted as pre-ledger has no ledger entry to find its burn tx
-      // from. Without a supplied burn tx the burn is not proven, so this still fails; the detail says what
-      // to supply. Any other unmatched burned spend (including a listed hash d did not exempt) is plain.
-      const supply =
-        s.network === "mainnet" ? " (record it in docs/mainnet-proof.json with --spend-id)" : "";
+      const tx =
+        burn !== undefined && typeof burn.tx_hash === "string" && burn.tx_hash.length > 0
+          ? burn.tx_hash
+          : null;
+      if (tx !== null) {
+        return fail(
+          "h",
+          `spend ${spend.id}: no burn event observed in tx ${tx} (no POA ft_burn with the WITHDRAW_TO: memo paired with the intents mt_burn)`,
+          seq,
+        );
+      }
+      if (preLedgerExempt.has(spend.id)) {
+        const supply =
+          s.network === "mainnet" ? " (record it in docs/mainnet-proof.json with --spend-id)" : "";
+        notes.push(`spend ${spend.id}: documented (pre-ledger), burn tx not supplied${supply}`);
+        continue;
+      }
+      return fail("h", `spend ${spend.id}: no burn event observed`, seq);
+    }
+    if (typeof burn.tx_hash !== "string" || burn.tx_hash.length === 0) {
+      return fail("h", `spend ${spend.id}: the burn record names no tx`, seq);
+    }
+    const other = spendOfTx.get(burn.tx_hash);
+    if (other !== undefined) {
       return fail(
         "h",
-        preLedgerExempt.has(spend.id)
-          ? `spend ${spend.id}: burn tx not supplied${supply}`
-          : `spend ${spend.id}: no burn event observed`,
+        `spends ${other} and ${spend.id} cite the same burn tx ${burn.tx_hash}: one transaction burns for one spend`,
         seq,
       );
     }
+    spendOfTx.set(burn.tx_hash, spend.id);
     if (burn.memo !== expected) {
       return fail(
         "h",
@@ -758,12 +1059,17 @@ export function checkBurnMemos(s: Snapshot): CheckResult {
     }
   }
   const n = burned.length;
-  return pass(
-    "h",
-    n === 0
-      ? "0 burned spends: no burn to pair"
-      : `${n} burned ${plural(n, "spend has", "spends have")} a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount`,
-  );
+  const proven = n - notes.length;
+  let detail: string;
+  if (n === 0) detail = "0 burned spends: no burn to pair";
+  else if (proven === 0)
+    detail = `0 of ${n} burned ${plural(n, "spend has", "spends have")} a proven burn pair`;
+  else
+    detail = `${proven} burned ${plural(proven, "spend has", "spends have")} a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount`;
+  if (notes.length > 0) {
+    detail += `; not proven (notes, not failures): ${notes.join("; ")}: the burn of a documented pre-ledger spend is not proven until its tx is supplied`;
+  }
+  return pass("h", detail);
 }
 
 /**
@@ -828,13 +1134,27 @@ function shapeProblem(s: unknown): string | null {
   ]) {
     if (!Array.isArray(chain[key])) return `chain.${key} is not an array`;
   }
+  if (chain.mandates !== undefined && !Array.isArray(chain.mandates)) {
+    return "chain.mandates is not an array";
+  }
   if (!isRecord(chain.config)) return "chain.config is missing";
   if (typeof chain.code_hash !== "string") return "chain.code_hash is not a string";
   return null;
 }
 
+/**
+ * Options of `runChecks` (ICR-9). `invoiceTexts` runs A8 with the mandate match for every attested decision
+ * whose invoice text it holds (check e); without it A8 is "not run". `systemPrompts` extends A8's allow-list
+ * (`KNOWN_SYSTEM_PROMPT_HASHES` is always in it, never replaced).
+ */
+export interface RunChecksOptions {
+  now?: Date;
+  invoiceTexts?: InvoiceTextSource;
+  systemPrompts?: readonly KnownSystemPrompt[];
+}
+
 /** Pure, offline. Async only because EIP-191 recovery in viem is async. Never throws: a broken snapshot fails. */
-export async function runChecks(s: Snapshot, opts: { now?: Date } = {}): Promise<VerifyReport> {
+export async function runChecks(s: Snapshot, opts: RunChecksOptions = {}): Promise<VerifyReport> {
   const generatedAt = (opts.now ?? new Date()).toISOString();
   const problem = shapeProblem(s);
   if (problem !== null) {
@@ -855,7 +1175,7 @@ export async function runChecks(s: Snapshot, opts: { now?: Date } = {}): Promise
     await safe("b", () => checkHashLinks(s)),
     await safe("c", () => checkAnchors(s)),
     await safe("d", () => checkSpendsHaveDecisions(s)),
-    await safe("e", () => checkAttestations(s)),
+    await safe("e", () => checkAttestations(s, opts)),
     await safe("f", () => checkVaultLocked(s)),
     await safe("g", () => checkIntentsKeys(s)),
     await safe("h", () => checkBurnMemos(s)),

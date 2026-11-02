@@ -4,12 +4,11 @@ import {
   type AttestationEvidence,
   canonicalJson,
   type Hex32,
+  IMMUTABLE_MANDATE_FIELDS,
   type InvoiceFacts,
   isHex32,
-  type KnownSystemPrompt,
   type MandateView,
   type ModelProposal,
-  type NonceContext,
   type PayeeHint,
   type ProposalRequestInputs,
   parseModelProposal,
@@ -201,45 +200,6 @@ export function spendInput(input: unknown): SpendInput {
     skipPreflight,
   };
 }
-
-/**
- * The part of A8 that needs no invoice text: the strict shape of `request_inputs`, its model, both of its
- * invoice hashes against the ledger's, and the system prompt in the allow-list. `requestSpend` has only the
- * hash, so it holds caller evidence to this before writing it. (Carried to Task 14: move it into core.)
- */
-export function requestInputsProblemWithoutText(
-  evidence: AttestationEvidence,
-  context: NonceContext,
-  prompts: readonly KnownSystemPrompt[],
-): string | null {
-  const shape = proposalRequestInputsProblem(evidence.request_inputs);
-  if (shape !== null) return `A8 would fail: ${shape}`;
-  const inputs = evidence.request_inputs as ProposalRequestInputs;
-  if (inputs.model !== evidence.model) {
-    return "A8 would fail: request_inputs.model is not the evidence model";
-  }
-  if (
-    inputs.invoice_text_sha256 !== context.invoice_hash ||
-    inputs.facts?.invoice_hash !== context.invoice_hash
-  ) {
-    return "A8 would fail: request_inputs does not carry this invoice hash";
-  }
-  const promptHash = sha256Hex(inputs.system_prompt);
-  if (!prompts.some((p) => p.sha256 === promptHash)) {
-    return "A8 would fail: the system prompt is not in the allow-list";
-  }
-  return null;
-}
-
-/** The mandate fields that never change on chain; `remaining` and `status` do, so they are not compared. */
-const IMMUTABLE_MANDATE_FIELDS = [
-  "id",
-  "label",
-  "payee",
-  "purpose_hash",
-  "max_per_payment",
-  "expires_at_ns",
-] as const;
 
 /**
  * Caller evidence must have been made for THIS spend (T13-R1 item 3): the model was shown this amount, this

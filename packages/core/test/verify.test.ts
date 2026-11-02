@@ -1615,7 +1615,12 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
       id: 3,
       decision_hash: entryOf(two, 2).body_hash,
     });
-    two.chain.burns.push({ ...burnOf(two), spend_id: 3 });
+    // One transaction burns for one spend: spend 3's burn is its own tx.
+    two.chain.burns.push({
+      ...burnOf(two),
+      spend_id: 3,
+      tx_hash: bs58.encode(sha256Bytes(utf8("TEST burn tx 3"))),
+    });
     expect(checkBurnMemos(two).detail).toContain("2 burned spends have a matched burn pair");
   });
 
@@ -1627,10 +1632,10 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
     );
   });
 
-  describe("R7 refinement: a pre-ledger burned spend with no burn record", () => {
+  describe("R7 (Task 14): a pre-ledger burned spend with no burn record is a note, not a failure", () => {
     const V0 = sha256Hex('{"kind":"v0-manual-decision","mandate_id":1}');
-    const MAINNET_DETAIL =
-      "spend 2: burn tx not supplied (record it in docs/mainnet-proof.json with --spend-id)";
+    const NOTE = "spend 2: documented (pre-ledger), burn tx not supplied";
+    const MAINNET_NOTE = `${NOTE} (record it in docs/mainnet-proof.json with --spend-id)`;
     /** The real v0 shape: no ledger, no anchor, one burned spend whose decision is documented as pre-ledger. */
     function preLedgerBurn(): Snapshot {
       const s = fresh();
@@ -1641,42 +1646,54 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
       return s;
     }
 
-    it("still FAILS h on testnet, saying the burn tx was not supplied and naming no mainnet file", async () => {
+    it("passes h on testnet with the note, says the burn is not proven, and names no mainnet file", async () => {
       const s = preLedgerBurn();
       s.chain.burns = [];
       const report = await runChecks(s, { now: NOW });
-      expect(report.ok).toBe(false);
-      expect(onlyFailing(report)).toEqual(["h"]);
-      expect(check(report, "h").detail).toBe("spend 2: burn tx not supplied");
+      expect(check(report, "h").status).toBe("pass");
+      expect(check(report, "h").detail).toBe(
+        `0 of 1 burned spend has a proven burn pair; not proven (notes, not failures): ${NOTE}: the burn of a documented pre-ledger spend is not proven until its tx is supplied`,
+      );
     });
 
     it("names docs/mainnet-proof.json and --spend-id only on mainnet", async () => {
       const s = preLedgerBurn();
       s.network = "mainnet";
       s.chain.burns = [];
-      expect(checkBurnMemos(s).detail).toBe(MAINNET_DETAIL);
-      expect(checkBurnMemos(s).status).toBe("fail");
+      expect(checkBurnMemos(s).detail).toContain(MAINNET_NOTE);
+      expect(checkBurnMemos(s).status).toBe("pass");
     });
 
-    it("uses the same detail when the burn is recorded as missing, and passes once the burn is supplied", async () => {
+    it("notes a burn recorded as missing with no tx, fails one whose supplied tx holds no pair, passes a supplied pair", async () => {
       const missing = preLedgerBurn();
       burnOf(missing).status = "missing";
-      expect(check(await runChecks(missing, { now: NOW }), "h").detail).toBe(
-        "spend 2: burn tx not supplied",
-      );
+      burnOf(missing).tx_hash = "";
+      expect(check(await runChecks(missing, { now: NOW }), "h").detail).toContain(NOTE);
+      const empty = preLedgerBurn();
+      burnOf(empty).status = "missing";
+      expect(check(await runChecks(empty, { now: NOW }), "h")).toMatchObject({
+        status: "fail",
+        detail: expect.stringContaining(
+          `spend 2: no burn event observed in tx ${burnOf(empty).tx_hash}`,
+        ),
+      });
       const supplied = preLedgerBurn();
       expect((await runChecks(supplied, { now: NOW })).ok).toBe(true);
-    });
-
-    it("keeps the generic detail for a burned spend that is not pre-ledger", async () => {
-      const s = fresh();
-      s.chain.burns = [];
-      expect(check(await runChecks(s, { now: NOW }), "h").detail).toBe(
-        "spend 2: no burn event observed",
+      expect(check(await runChecks(supplied, { now: NOW }), "h").detail).not.toContain(
+        "not proven",
       );
     });
 
-    it("keeps the generic detail for a listed hash that d did not exempt: a second use of the hash", async () => {
+    it("keeps failing a burned spend that is not pre-ledger", async () => {
+      const s = fresh();
+      s.chain.burns = [];
+      expect(check(await runChecks(s, { now: NOW }), "h")).toMatchObject({
+        status: "fail",
+        detail: "spend 2: no burn event observed",
+      });
+    });
+
+    it("keeps failing a listed hash that d did not exempt: a second use of the hash", async () => {
       const s = preLedgerBurn();
       s.chain.spends.push({ ...structuredClone(spendOf(s, 0)), id: 3 }); // the same hash again
       s.chain.burns = [burnOf(s)]; // spend 2 has its burn; spend 3 has none
@@ -1685,7 +1702,7 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
       expect(check(report, "h").detail).toBe("spend 3: no burn event observed");
     });
 
-    it("keeps the generic detail for a listed hash that d did not exempt: created after the first anchor", async () => {
+    it("keeps failing a listed hash that d did not exempt: created after the first anchor", async () => {
       const s = fresh(); // anchors exist; spend 2 was created after the first one
       spendOf(s, 1).decision_hash = V0;
       s.pre_ledger_decision_hashes = [V0];
@@ -1695,15 +1712,17 @@ describe("check h: burn memos (Snapshot.burns is the matched-pair summary)", () 
       expect(check(report, "h").detail).toBe("spend 2: no burn event observed");
     });
 
-    it("says burn tx not supplied for the exempted spend and nothing else when both kinds are burned", async () => {
+    it("proves the other burn and notes only the exempted spend when both kinds are burned", async () => {
       const s = preLedgerBurn();
       const second = { ...structuredClone(spendOf(s, 0)), id: 3, decision_hash: sha256Hex("v1") };
       s.chain.spends.push(second);
       s.pre_ledger_decision_hashes = [V0, second.decision_hash];
       s.chain.burns = [{ ...burnOf(fresh()), spend_id: 3 }]; // spend 2 (exempt) has no burn
-      expect(check(await runChecks(s, { now: NOW }), "h").detail).toBe(
-        "spend 2: burn tx not supplied",
-      );
+      const h = check(await runChecks(s, { now: NOW }), "h");
+      expect(h.status).toBe("pass");
+      expect(h.detail).toContain("1 burned spend has a matched burn pair");
+      expect(h.detail).toContain(NOTE);
+      expect(h.detail).not.toContain("spend 3: documented");
     });
   });
 });

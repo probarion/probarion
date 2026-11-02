@@ -17,6 +17,7 @@ import {
   decide,
   type Hex32,
   type InvoiceFacts,
+  type InvoiceTextSource,
   KNOWN_SYSTEM_PROMPT_HASHES,
   type KnownSystemPrompt,
   knownSystemPrompt,
@@ -31,14 +32,26 @@ import {
   publicKeyFromSecret,
   purposeMatch,
   type RuleResult,
+  requestInputsProblemWithoutText,
+  runChecks,
+  type Snapshot,
   type SpendRequest,
   type SpendView,
   type VaultConfig,
+  type VerifyReport,
   ZERO_HEX32,
 } from "@probarion/core";
 import { type ChainContext, liveInvoiceHashes, spentToday, usedRefs } from "./context.js";
 import { envValue } from "./env.js";
 import { ConfigError, ContractError, LedgerError, ProbarionError } from "./errors.js";
+import {
+  type BurnTxHints,
+  DEFAULT_EVIDENCE_DIR,
+  DEFAULT_PROOF_FILE,
+  isPreLedgerVault,
+  loadBurnTxHints,
+  readPreLedgerDecisionHashes,
+} from "./evidence.js";
 import {
   callerEvidenceMismatch,
   invalid,
@@ -46,7 +59,6 @@ import {
   messageOf,
   type ProcessInput,
   processInput,
-  requestInputsProblemWithoutText,
   spendInput,
 } from "./input.js";
 import { IntentsClient } from "./intents-client.js";
@@ -59,7 +71,19 @@ import {
 } from "./ledger-store.js";
 import { Mutex } from "./mutex.js";
 import { NearAiProposer, type ProposeResult } from "./nearai.js";
+import {
+  applyOnlineChecks,
+  loadDefaultOnlineVerifier,
+  type OnlineAttestationVerifier,
+} from "./online.js";
 import { RpcClient, resolveRpcUrls } from "./rpc.js";
+import {
+  fastnearTxIndex,
+  gatherSnapshot,
+  resolveArchivalRpcUrls,
+  type SnapshotNotes,
+  type TxIndex,
+} from "./snapshot.js";
 import {
   type ModelUsage,
   type OutcomeFields,
@@ -118,12 +142,86 @@ export interface ProbarionDeps {
   requestId?: () => string;
   /** Default: one structured JSON line per warning on `console.warn`. */
   logger?: ProbarionLogger;
+  /**
+   * @deprecated Ignored (ICR-5, Task 14): a snapshot lists exactly the code hashes check f trusts
+   * (`KNOWN_VAULT_CODE_HASHES` plus the canonical factory's versions); any other hash would only fail f.
+   */
   expectedCodeHashes?: readonly string[];
   env?: Readonly<Record<string, string | undefined>>;
-  /** Placeholders that Task 14 (`snapshot`, `verify`) finalizes; this class only stores them. */
-  archivalRpc?: RpcClient;
+  // ---- snapshot() and verify() (Task 14; these names are final, plan 04 R5) ----
+  /**
+   * Archival RPC for burn lookups older than about 2.5 days (tried first for those, last for newer ones). `null`
+   * disables archival lookups. Default: `NEAR_ARCHIVAL_RPC_URLS`, else FastNEAR's archival node.
+   */
+  archivalRpc?: RpcClient | null;
+  /**
+   * The documented pre-ledger decision hashes (check d). Used only for `v0.probarion.near` on mainnet; every
+   * other vault gets none. Default: the sha256 of each `v0-decision-*.json` in `evidenceDir`.
+   */
   preLedgerDecisionHashes?: readonly Hex32[];
+  /** Plan 02's `docs/evidence` (default `"docs/evidence"`), read only for mainnet v0. */
   evidenceDir?: string;
+  /**
+   * Spend id to the txs that may hold its burn (check h, R7 source 1), tried before the ledger's tx hashes.
+   * Default: the vault's transactions in `docs/mainnet-proof.json` (`loadBurnTxHints`); a missing file gives none.
+   */
+  burnTxHints?: BurnTxHints;
+  /** O1/O2 for `verify({ online: true })`. `null` = unavailable. Default: `@nearai/inference-sdk` when installed. */
+  onlineVerifier?: OnlineAttestationVerifier | null;
+  /** R7 source 3, used only online. `null` disables it. Default: FastNEAR's transactions API. */
+  txIndex?: TxIndex | null;
+}
+
+/** What `verify` checks besides the snapshot (interfaces §9, ICR-9). */
+export interface VerifyOptions {
+  /** Adds O1/O2 to check e and lets the snapshot look burns up in the tx index (FastNEAR). */
+  online?: boolean;
+  /** Verify this snapshot instead of taking a fresh one. */
+  snapshot?: Snapshot;
+  /** Invoice texts by invoice_hash (a map or a loader): A8 and the mandate match run for each attested decision. */
+  invoiceTexts?: InvoiceTextSource;
+  /**
+   * More system prompts A8 accepts. They extend this instance's allow-list (`KNOWN_SYSTEM_PROMPT_HASHES` plus
+   * `opts.model.systemPrompt`), never replace it; a read-only instance passes a persona (the Canary's) here.
+   */
+  systemPrompts?: readonly KnownSystemPrompt[];
+}
+
+/** A snapshot this instance gathered, with what it knows about where the snapshot's data came from. */
+interface Gathered {
+  snapshot: Snapshot;
+  notes: SnapshotNotes;
+  /** Where the pre-ledger hashes came from (mainnet v0 only), or null when the snapshot lists none by design. */
+  preLedgerSource: string | null;
+}
+
+/** Appends `text` to the detail of check `id`; the status never changes. */
+function appendDetail(report: VerifyReport, id: string, text: string): VerifyReport {
+  return {
+    ...report,
+    checks: report.checks.map((c) => (c.id === id ? { ...c, detail: `${c.detail}; ${text}` } : c)),
+  };
+}
+
+/**
+ * What the SDK knows about a snapshot it gathered, added to the details as notes (never a change of status):
+ * where the pre-ledger hashes came from (check d), and where burns were looked for (check h) or why a factory
+ * could not be read (check i).
+ */
+function annotate(report: VerifyReport, g: Gathered): VerifyReport {
+  let out = report;
+  const listed = g.snapshot.pre_ledger_decision_hashes.length;
+  if (g.preLedgerSource !== null && listed > 0) {
+    out = appendDetail(
+      out,
+      "d",
+      `pre-ledger (documented): the ${listed} listed ${listed === 1 ? "hash is" : "hashes are"} the sha256 of ${g.preLedgerSource}`,
+    );
+  }
+  if (g.notes.burns.length > 0)
+    out = appendDetail(out, "h", `burn lookups: ${g.notes.burns.join("; ")}`);
+  if (g.notes.factory.length > 0) out = appendDetail(out, "i", g.notes.factory.join("; "));
+  return out;
 }
 
 /** The default logger: one JSON line per warning, so a host's log pipeline can parse it. */
@@ -192,9 +290,9 @@ interface Cycle {
 /**
  * The Probarion client for one vault.
  *
- * With no keys and `model: null` the instance is read-only: `mandates.*`, `spends.get`, `anchors.latest`
- * and `checkSpend` work (Task 14 adds `snapshot()` and `verify()`); `process` and `requestSpend` throw
- * `ConfigError` before reading or writing anything.
+ * With no keys and `model: null` the instance is read-only: `mandates.*`, `spends.get`, `anchors.latest`,
+ * `checkSpend`, `snapshot()` and `verify()` work; `process` and `requestSpend` throw `ConfigError` before
+ * reading or writing anything.
  *
  * Serialization: `process` and `requestSpend` run in one critical section per instance (a `Mutex`). The
  * decision entry is written with a compare-and-append (`LedgerStore.append(..., { expect })`), checked under
@@ -229,6 +327,7 @@ export class Probarion {
   private readonly deps: ProbarionDeps;
   private readonly logger: ProbarionLogger;
   private readonly rpc: RpcClient;
+  private readonly archivalRpc: RpcClient | null;
   private readonly vault: VaultClient;
   private readonly ledger: LedgerStore;
   private readonly proposer: NearAiProposer | null;
@@ -240,7 +339,7 @@ export class Probarion {
   private readonly fixedRequestId: string | undefined;
   /**
    * The system prompts A8 accepts for this instance: core's defaults plus `opts.model.systemPrompt` when set.
-   * Write-time A8 uses it; Task 14's `verify` must use the same list (see the Task 13 report).
+   * Write-time A8 and `verify` use the same list; `verify({ systemPrompts })` extends it.
    */
   private readonly systemPrompts: readonly KnownSystemPrompt[];
   private readonly customRules: CustomRule[] = [];
@@ -262,6 +361,10 @@ export class Probarion {
     this.logger = deps.logger ?? CONSOLE_LOGGER;
     this.fixedRequestId = nonEmpty(opts.requestId);
     this.rpc = deps.rpc ?? new RpcClient({ urls: resolveRpcUrls(opts.network, opts.rpcUrls, env) });
+    this.archivalRpc =
+      deps.archivalRpc !== undefined
+        ? deps.archivalRpc
+        : new RpcClient({ urls: resolveArchivalRpcUrls(opts.network, env) });
     const rpcUrl = (): string => this.rpc.currentUrl;
 
     const agentKey = nonEmpty(opts.agentKey);
@@ -400,8 +503,10 @@ export class Probarion {
    * Full cycle: (optional) model → policy → ledger decision entry → contract spend → ledger outcome entry →
    * anchor. `facts.invoice_hash` must equal `hashInvoice(text)` and `facts.po_ref` must be null or a verbatim
    * substring of `text`, otherwise `ProbarionError` `InvalidInput` is thrown before any write (ICR-6). An
-   * unconfirmed earlier payment of the same invoice refuses the cycle by code until it settles: until the chain
-   * shows its spend, or until `UNKNOWN_SETTLE_MS` (48 h) after it, when its transaction can no longer pay.
+   * unconfirmed earlier payment of the same invoice refuses the cycle by code (`ledger.unresolved`) until it
+   * settles: until the chain shows its spend, or until `UNKNOWN_SETTLE_MS` (48 h) after it. After 86,400 blocks
+   * the tx expires (<=48 h at <=2 s blocks); even if it lands later, the contract lets at most one spend of the
+   * invoice pay.
    */
   process(invoice: { text: string; facts: InvoiceFacts; ref: string }): Promise<SpendOutcome> {
     return this.lock.run(async () => {
@@ -566,6 +671,76 @@ export class Probarion {
         modelUsage: null,
       };
     });
+  }
+
+  // ---------- proof ----------
+
+  /**
+   * The chain data verify needs (interfaces §10): access keys, the code identity (R6), config, anchors, spends,
+   * mandates, the vault's intents keys and auth flag, the factory version and versions, and the burn pair of each
+   * burned spend, with the ledger and, for mainnet v0 only, the documented pre-ledger decision hashes.
+   * `online: true` also looks burns up in the tx index (FastNEAR).
+   */
+  async snapshot(opts: { online?: boolean } = {}): Promise<Snapshot> {
+    return (await this.gather(opts.online === true)).snapshot;
+  }
+
+  /**
+   * Runs checks a-i on a fresh (or the given) snapshot. `invoiceTexts` adds A8 with the mandate match to check e
+   * for every attested decision whose text it holds, under this instance's prompt allow-list extended by
+   * `systemPrompts`. `online` adds O1/O2 to check e. Every result says why it passed, failed or was skipped;
+   * what could not be established is a note in the detail, never a pass of its own.
+   */
+  async verify(opts: VerifyOptions = {}): Promise<VerifyReport> {
+    const gathered = opts.snapshot === undefined ? await this.gather(opts.online === true) : null;
+    const snapshot = opts.snapshot ?? (gathered as Gathered).snapshot;
+    let report = await runChecks(snapshot, {
+      now: this.now(),
+      ...(opts.invoiceTexts === undefined ? {} : { invoiceTexts: opts.invoiceTexts }),
+      systemPrompts: [...this.systemPrompts, ...(opts.systemPrompts ?? [])],
+    });
+    if (gathered !== null) report = annotate(report, gathered);
+    if (opts.online !== true) return report;
+    const verifier =
+      this.deps.onlineVerifier !== undefined
+        ? this.deps.onlineVerifier
+        : await loadDefaultOnlineVerifier();
+    return applyOnlineChecks(report, snapshot, verifier);
+  }
+
+  private async gather(online: boolean): Promise<Gathered> {
+    const v0 = isPreLedgerVault(this.network, this.vaultId);
+    const evidenceDir = this.deps.evidenceDir ?? DEFAULT_EVIDENCE_DIR;
+    let preLedger: readonly Hex32[] = [];
+    let preLedgerSource: Gathered["preLedgerSource"] = null;
+    if (v0) {
+      if (this.deps.preLedgerDecisionHashes !== undefined) {
+        preLedger = this.deps.preLedgerDecisionHashes;
+        preLedgerSource = "deps.preLedgerDecisionHashes";
+      } else {
+        preLedger = await readPreLedgerDecisionHashes(evidenceDir);
+        preLedgerSource = `the v0-decision-*.json files in ${evidenceDir}`;
+      }
+    }
+    const hints =
+      this.deps.burnTxHints ??
+      (await loadBurnTxHints(DEFAULT_PROOF_FILE, { vault: this.vaultId, network: this.network }));
+    const txIndex =
+      online && this.deps.txIndex !== null ? (this.deps.txIndex ?? fastnearTxIndex()) : null;
+    const notes: SnapshotNotes = { burns: [], factory: [] };
+    const snapshot = await gatherSnapshot({
+      rpc: this.rpc,
+      archivalRpc: this.archivalRpc,
+      vaultId: this.vaultId,
+      network: this.network,
+      ledger: await this.ledger.all(),
+      preLedgerDecisionHashes: preLedger,
+      burnTxHints: hints,
+      txIndex,
+      now: this.now(),
+      notes,
+    });
+    return { snapshot, notes, preLedgerSource };
   }
 
   // ---------- internals ----------
