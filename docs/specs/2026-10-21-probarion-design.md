@@ -323,7 +323,7 @@ The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
 
 1. **Before 2026-11-01:** a no-code waitlist form plus direct outreach (`prep/pilot-outreach.md`). Goal: 8–10 committed pilots, so that 3+ actually run.
 2. **Days 8–12:** white-glove onboarding of 30 minutes per pilot. The pilot creates their own vault from their own wallet, adds one mandate, and pays one real invoice of a small amount.
-3. **Every day from Day 1:** a build-in-public post on X with what shipped and one mainnet transaction link, tagging @NEAR_hckthn. This builds distribution and leaves a timestamped trail the judges can see.
+3. **Every day from Day 1:** a build-in-public post on X with what shipped and one mainnet transaction link, tagging @NEARProtocol #NEARHackathon. This builds distribution and leaves a timestamped trail the judges can see.
 
 ### 14.3 Probarion Canary (growth, demo and security proof in one)
 
