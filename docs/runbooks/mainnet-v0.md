@@ -88,7 +88,7 @@ echo "$RECORDED"
 gh run list --repo probarion/probarion --workflow ci --branch dev --limit 30 --json databaseId,headSha,event,conclusion
 ```
 
-In the list, find the entry whose `headSha` equals `$RECORDED`, whose `event` is `push` and whose `conclusion` is `success`. Its `databaseId` is the run id. (On 2026-11-01 the recorded commit was `ba65435`, built by run 41296983756 with code_hash `54Ne1r9g2Smf2Qtrt9VznmPpEAAHzvK4hbQSJ9voQmuD`. Do not copy these: derive them as above, because the record moves whenever the vault source changes.) If no run matches, or the artifact has expired, stop.
+In the list, find the entry whose `headSha` equals `$RECORDED`, whose `event` is `push` and whose `conclusion` is `success`. Its `databaseId` is the run id. (On 2026-11-03 the recorded commit was `64ac3c0`, built by run 41602304226 with code_hash `3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`: the ledger-key fix, which supersedes `ba65435` (`54Ne1r…`), whose `set_ledger_key` could leave a vault unable to anchor. Do not copy these: derive them as above, because the record moves whenever the vault source changes.) If no run matches, or the artifact has expired, stop.
 
 ```bash
 export RUN_ID="${RUN_ID:?the databaseId of the push run whose headSha equals $RECORDED}"
@@ -110,7 +110,7 @@ else
 fi
 ```
 
-Expected: a `check` line of the form `probarion-vault: code_hash <hash> matches the recorded build (commit <sha>)` with `<sha>` equal to `$RECORDED`, then `OK: artifact is the recorded build`. The file is 248,501 bytes on 2026-11-01, and the hash printed above is the code hash that step 2 compares with the chain.
+Expected: a `check` line of the form `probarion-vault: code_hash <hash> matches the recorded build (commit <sha>)` with `<sha>` equal to `$RECORDED`, then `OK: artifact is the recorded build`. The file is 248,969 bytes on 2026-11-03, and the hash printed above is the code hash that step 2 compares with the chain.
 
 **On `STOP`, stop and tell Claude: deploy nothing.** The same goes if `check` fails (`not recorded`, `code_hash mismatch`, or `recorded at … but this wasm was built at …`) or if `check` names another commit (an older artifact). Recording a hash is a controller step done before this runbook (AGENTS.md, "Reproducible builds and code hashes").
 

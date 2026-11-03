@@ -3,18 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { VAULT_DEFAULTS } from "@/lib/config";
 import { isDenied, memberForAction } from "@/lib/console/action-auth";
+import { rpcChainReads } from "@/lib/console/vaults";
 import { masterKey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
 import {
   cleanLabel,
   describeCheck,
   isKeyPurpose,
+  type KeepState,
   type KeyPurpose,
   type KeySyncState,
+  keepResultText,
+  type VaultCode,
 } from "@/lib/keys/rules";
 import { discardKey, keepKey, reuseOrGenerateKey, syncKeyStatuses } from "@/lib/keys/service";
+import { readVaultCode } from "@/lib/keys/view";
 import { log } from "@/lib/log";
-import { getReader } from "@/lib/near/server";
+import { getReader, getRpc } from "@/lib/near/server";
 import { addAgentTx, setLedgerKeyTx, type WalletTx } from "@/lib/near/tx";
 
 // `vault`, `purpose` and `label` come back from the browser (bound or typed), so `vault` is only a
@@ -62,9 +67,11 @@ export async function generateKeyAction(
 }
 
 /**
- * Owner only. Sets a pending key aside (pending -> removed): the key the owner never added, or no
- * longer wants to. Like any removed key, it is active again only if the chain shows it fully. A form
- * action: it answers nothing; the page shows the new status.
+ * Owner only. Sets a pending key aside (pending -> removed, marked discarded): the key the owner never
+ * added, or no longer wants to. A sync never makes a discarded key active, even if it later shows up on
+ * chain exactly as the vault adds it: the page then shows it as discarded but on chain, and the owner
+ * removes it there or keeps it (keepKeyAction). A form action: it answers nothing; the page shows the
+ * new status.
  */
 export async function discardKeyAction(
   vault: string,
@@ -89,26 +96,29 @@ export async function discardKeyAction(
 /**
  * Owner only. Keeps a key the owner discarded but that is on the vault after all (W-T10-R2): it
  * becomes active only if the chain shows it exactly as the vault adds it, registered (the same full
- * check a sync runs). A form action: it answers nothing; the page shows the new status.
+ * check a sync runs). It always says what happened, also when nothing changed (W-T10-R3).
  */
 export async function keepKeyAction(
   vault: string,
   keyId: string,
+  _prev: KeepState = null,
   _formData?: FormData,
-): Promise<void> {
+): Promise<KeepState> {
   const auth = await memberForAction(vault, ["owner"]);
-  if (isDenied(auth)) return;
+  if (isDenied(auth)) return { ok: false, message: auth.error };
   const { member } = auth;
   try {
     const r = await keepKey(serviceDb(), getReader(), member, keyId);
     log.info("keys.keep", { tenant: member.tenant_id, id: keyId, kept: r.kept, reason: r.reason });
+    revalidatePath(`/console/${member.vault_id}/keys`);
+    return keepResultText(r);
   } catch (error) {
     log.warn("keys.keep_failed", {
       tenant: member.tenant_id,
       error: error instanceof Error ? error.name : "unknown",
     });
+    return { ok: false, message: "Not kept: the key could not be checked. Nothing changed." };
   }
-  revalidatePath(`/console/${member.vault_id}/keys`);
 }
 
 /** Any member. Re-reads the chain for every key (syncKeyStatuses) and says what changed. */
@@ -126,7 +136,14 @@ export async function syncKeysAction(
       vault_id: member.vault_id,
     });
     revalidatePath(`/console/${member.vault_id}/keys`);
-    const notes = checks.map(describeCheck).filter((n): n is string => n !== null);
+    // A stuck ledger key is worded by what this vault's code can do about it (W-T10-R3).
+    const ledgerStuck = checks.some(
+      (c) => c.purpose === "ledger" && c.reason === "registered_without_key",
+    );
+    const code: VaultCode = ledgerStuck
+      ? await readVaultCode(rpcChainReads(getRpc()), member.vault_id)
+      : "unknown";
+    const notes = checks.map((c) => describeCheck(c, code)).filter((n): n is string => n !== null);
     const changed = checks.filter((c) => c.to !== c.from).length;
     // Keys in use: pending or active before this sync. Old keys are read too, but only to notice
     // one that is back on the vault.

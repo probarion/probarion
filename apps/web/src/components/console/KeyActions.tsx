@@ -5,7 +5,7 @@ import { buttonClass, Field, inputClass, Notice } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
 import { consoleOutOfNear } from "@/lib/console/display";
-import type { KeyPurpose, KeySyncState } from "@/lib/keys/rules";
+import type { KeepState, KeyPurpose, KeySyncState, VaultCode } from "@/lib/keys/rules";
 import { lockKeyFor } from "@/lib/near/lock";
 import type { DescribeResult, TxResult } from "@/lib/near/outcome";
 import type { WalletTx } from "@/lib/near/tx";
@@ -18,6 +18,7 @@ type Generate = (
   label: string,
 ) => Promise<WalletTx | { error: string; status?: 401 | 403 }>;
 type Sync = (prev: KeySyncState, formData?: FormData) => Promise<KeySyncState>;
+type Keep = (prev: KeepState, formData?: FormData) => Promise<KeepState>;
 
 /**
  * The owner signs every key call, so an out-of-NEAR refusal names the signer first (W-T8-R1). The
@@ -88,14 +89,36 @@ export function KeySyncButton({ sync }: { sync: Sync }) {
   );
 }
 
+/**
+ * Owner only: Keep a discarded key that is on the vault after all. It always shows what happened, also
+ * when nothing changed (W-T10-R3).
+ */
+export function KeyKeepButton({ keep }: { keep: Keep }) {
+  const [state, action, pending] = useActionState(keep, null);
+  return (
+    <form action={action}>
+      <button type="submit" className="text-xs text-stone-600 underline" disabled={pending}>
+        {pending ? "Checking…" : "Keep"}
+      </button>
+      {state ? (
+        <Notice tone={state.ok ? "good" : "warn"}>
+          <span role="status">{state.message}</span>
+        </Notice>
+      ) : null}
+    </form>
+  );
+}
+
 /** Owner only (the page renders it for the owner; the actions check again). */
 export function KeyActions(props: {
   vault: string;
   signer: string;
   network: Network;
   ledgerActive: boolean;
-  /** The vault's ledger key is registered without its access key: no new ledger key is offered. */
+  /** The vault's ledger key is registered without its access key (W-T10-R1). */
   ledgerStuck: boolean;
+  /** What the vault's code can do about a stuck ledger key (W-T10-R3); used only while it is stuck. */
+  vaultCode: VaultCode;
   outOfNearCodes: string[];
   generate: Generate;
   sync: Sync;
@@ -132,17 +155,28 @@ export function KeyActions(props: {
           The ledger key signs ledger entries and anchors their root on chain. Setting a new one
           removes the old one from the vault.
         </p>
-        {props.ledgerStuck ? (
-          // W-T10-R2: set_ledger_key first deletes the current ledger key, which is missing here, so the
-          // whole call fails after the vault already points at the new key. Offering it would only move
-          // the stuck pointer.
+        {props.ledgerStuck && props.vaultCode === "old" ? (
+          // W-T10-R3: on the first vault code release set_ledger_key deletes and adds in one batch, so
+          // the failed delete of the missing key undoes the add: a new key could only move the pointer.
           <Notice tone="bad">
             The vault&apos;s ledger key is stuck: it is registered, but its access key was never
-            added. Setting a new ledger key now would fail the same way and only move the stuck
-            pointer to the new key, so it is turned off here until a contract fix is available.
+            added. This vault&apos;s code cannot replace a stuck ledger key, so a new ledger key is
+            not offered here: anchoring needs a new vault.
+          </Notice>
+        ) : props.ledgerStuck && props.vaultCode === "unknown" ? (
+          <Notice tone="warn">
+            The vault&apos;s ledger key is stuck, and the vault&apos;s code could not be read, so a
+            new ledger key is not offered: reload the page.
           </Notice>
         ) : (
           <>
+            {props.ledgerStuck ? (
+              <Notice tone="warn">
+                The vault&apos;s ledger key is stuck: it is registered, but its access key was never
+                added. Setting a new ledger key recovers it. If the vault has no free NEAR, top it
+                up first.
+              </Notice>
+            ) : null}
             {props.ledgerActive ? (
               <Notice tone="warn">
                 This vault already has an active ledger key. A new one replaces it: the old key can

@@ -46,6 +46,20 @@ async fn delete_vault_access_key(env: &Env, pk: &PublicKey) -> Result<()> {
     Ok(())
 }
 
+/// Patches the vault's balance to its storage stake plus `free_bytes` bytes' worth, as when agent gas
+/// has used up its free NEAR. Returns the new balance.
+async fn set_free_balance(env: &Env, free_bytes: u64) -> Result<NearToken> {
+    let storage = env.vault.view_account().await?.storage_usage;
+    let balance = NearToken::from_yoctonear(u128::from(storage + free_bytes) * YOCTO_PER_BYTE);
+    env.worker
+        .patch(env.vault.id())
+        .account_from_current(move |current| AccountDetailsPatch::from(current).balance(balance))
+        .transact()
+        .await?;
+    assert_eq!(env.vault.view_account().await?.balance, balance);
+    Ok(balance)
+}
+
 /// `pk` is an access key of the vault that may call only `anchor` on it, with `allowance` left.
 async fn assert_anchor_key(env: &Env, pk: &PublicKey, allowance: NearToken) -> Result<()> {
     let key = env.vault.view_access_key(pk).await?;
@@ -130,17 +144,13 @@ async fn a_ledger_key_left_without_its_access_key_can_be_replaced() -> Result<()
 #[tokio::test]
 async fn a_ledger_key_whose_add_key_ran_out_of_balance_is_replaced_after_a_top_up() -> Result<()> {
     let env = setup().await?;
-    // Leave the vault 77 bytes of free balance, as when agent gas has used up its free NEAR. That
-    // covers set_ledger_key's own state (Some(ledger_key) grows the contract state by 37 bytes) but
-    // not the anchor key (33 bytes of key, about 60 of AccessKey and 40 of record overhead).
+    // Leave the vault 77 bytes of free balance, as when agent gas has used up its free NEAR.
+    // BYTE ESTIMATES (not measured): that covers set_ledger_key's own state (Some(ledger_key) grows
+    // the contract state by 37 bytes) but not the anchor key (33 bytes of key, about 60 of AccessKey
+    // and 40 of record overhead). Independent of the receipt order: this first call has no previous
+    // key to delete, and the recovery below runs after a top-up.
     let before = env.vault.view_account().await?;
-    let tight = NearToken::from_yoctonear(u128::from(before.storage_usage + 77) * YOCTO_PER_BYTE);
-    env.worker
-        .patch(env.vault.id())
-        .account_from_current(move |current| AccountDetailsPatch::from(current).balance(tight))
-        .transact()
-        .await?;
-    assert_eq!(env.vault.view_account().await?.balance, tight);
+    let tight = set_free_balance(&env, 77).await?;
 
     let a = SecretKey::from_random(KeyType::ED25519);
     let first = ok(
@@ -167,6 +177,57 @@ async fn a_ledger_key_whose_add_key_ran_out_of_balance_is_replaced_after_a_top_u
         .into_result()?;
     let b = SecretKey::from_random(KeyType::ED25519);
     assert_replaced(&env, b, NearToken::from_near(1)).await
+}
+
+#[tokio::test]
+async fn a_rotation_on_a_vault_with_no_free_balance_succeeds() -> Result<()> {
+    let env = setup().await?;
+    let a = SecretKey::from_random(KeyType::ED25519);
+    let before_a = env.vault.view_account().await?.storage_usage;
+    let _ = ok(
+        &env.owner,
+        env.vault.id(),
+        "set_ledger_key",
+        ledger_key_args(&a.public_key(), NearToken::from_near(1)),
+        ONE_YOCTO,
+    )
+    .await?;
+    let with_a = env.vault.view_account().await?.storage_usage;
+    // No headroom at all: the balance is exactly the storage stake. Rotating A to B keeps every size
+    // (same key type, receiver, method and allowance width; Some(A) and Some(B) have equal length),
+    // so the vault ends at the same storage. Deleting A first frees its bytes before AddKey(B) is
+    // charged; add-first would need one extra key's worth and fail with LackBalanceForState.
+    set_free_balance(&env, 0).await?;
+    let b = SecretKey::from_random(KeyType::ED25519);
+    let outcome = ok(
+        &env.owner,
+        env.vault.id(),
+        "set_ledger_key",
+        ledger_key_args(&b.public_key(), NearToken::from_near(1)),
+        ONE_YOCTO,
+    )
+    .await?;
+    assert!(outcome.failures().is_empty(), "{:?}", outcome.failures());
+    assert_anchor_key(&env, &b.public_key(), NearToken::from_near(1)).await?;
+    assert!(env.vault.view_access_key(&a.public_key()).await.is_err());
+    assert_eq!(ledger_key(&env).await?, json!(b.public_key().to_string()));
+
+    // The rotation really had no room for an extra key: what the vault holds above its stake (the
+    // 1 yocto and one call's gas reward) is less than one anchor key.
+    // BYTE ESTIMATE (not measured): 37 bytes of set_ledger_key(A)'s growth are contract state, the
+    // rest is A's access key.
+    let after = env.vault.view_account().await?;
+    assert_eq!(after.storage_usage, with_a);
+    let key_bytes = with_a - before_a - 37;
+    let free = after
+        .balance
+        .as_yoctonear()
+        .saturating_sub(u128::from(after.storage_usage) * YOCTO_PER_BYTE);
+    assert!(
+        free < u128::from(key_bytes) * YOCTO_PER_BYTE,
+        "free {free} yocto, key {key_bytes} bytes"
+    );
+    Ok(())
 }
 
 #[tokio::test]

@@ -3,4 +3,5 @@
 export const KNOWN_VAULT_CODE_HASHES: readonly string[] = [
   "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
   "54Ne1r9g2Smf2Qtrt9VznmPpEAAHzvK4hbQSJ9voQmuD",
+  "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
 ];

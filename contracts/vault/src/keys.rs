@@ -56,13 +56,18 @@ impl Vault {
 
     /// Sets the anchor-only ledger key, replacing (and deleting) the previous one.
     ///
-    /// The AddKey of the new key and the DeleteKey of the previous key are two independent
+    /// The DeleteKey of the previous key and the AddKey of the new key are two independent
     /// receipts, never one batch. The state change commits with this call, but a key action can
     /// still fail later in its own receipt: an AddKey fails with LackBalanceForState once agent gas
     /// has used up the vault's free NEAR, which leaves `ledger_key` naming a key that does not
     /// exist. A later DeleteKey of that key fails with DeleteKeyDoesNotExist, and a failed action
     /// rolls back every action of its receipt. In one batch it would undo the new key's AddKey on
     /// every retry, and the vault could never anchor again. Apart, a failed delete only fails itself.
+    ///
+    /// Delete first: the receipts run in creation order, so the old key's storage is freed before
+    /// the AddKey is charged for the new one, and a rotation fits on a vault with no free NEAR.
+    /// Add-first would need room for one extra key, and if that AddKey failed the delete would
+    /// still land, leaving the vault with no ledger key until a top-up.
     #[payable]
     pub fn set_ledger_key(&mut self, public_key: PublicKey, allowance: U128) {
         self.assert_owner();
@@ -71,7 +76,11 @@ impl Vault {
         if self.is_known_key(&public_key) {
             fail(ErrorCode::InvalidInput)
         }
-        let previous = self.ledger_key.replace(public_key.clone());
+        if let Some(previous) = self.ledger_key.replace(public_key.clone()) {
+            Promise::new(env::current_account_id())
+                .delete_key(previous)
+                .detach();
+        }
         Promise::new(env::current_account_id())
             .add_access_key_allowance(
                 public_key.clone(),
@@ -80,11 +89,6 @@ impl Vault {
                 "anchor",
             )
             .detach();
-        if let Some(previous) = previous {
-            Promise::new(env::current_account_id())
-                .delete_key(previous)
-                .detach();
-        }
         VaultEvent::LedgerKeySet { public_key }.emit();
     }
 
@@ -389,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn replacing_the_ledger_key_adds_and_deletes_in_two_independent_receipts() {
+    fn replacing_the_ledger_key_deletes_and_adds_in_two_independent_receipts() {
         // The stuck state: ledger_key is set, but its AddKey failed (for example LackBalanceForState)
         // so the access key does not exist. DeleteKey of it then fails, and a failed action rolls back
         // its whole receipt. The AddKey of the new key must therefore not share that receipt, and
@@ -402,12 +406,12 @@ mod tests {
         assert_eq!(
             receipts(),
             vec![
+                (vault_id(), vec![], vec![KeyAction::Delete(ledger_pk())]),
                 (
                     vault_id(),
                     vec![],
                     vec![fc_key(pk(10), 2 * ONE_NEAR, "anchor")]
                 ),
-                (vault_id(), vec![], vec![KeyAction::Delete(ledger_pk())]),
             ]
         );
         assert_eq!(v.get_config().ledger_key, Some(pk(10)));
@@ -422,10 +426,31 @@ mod tests {
         assert_eq!(
             receipts(),
             vec![
-                (vault_id(), vec![], vec![fc_key(pk(11), ONE_NEAR, "anchor")]),
                 (vault_id(), vec![], vec![KeyAction::Delete(pk(10))]),
+                (vault_id(), vec![], vec![fc_key(pk(11), ONE_NEAR, "anchor")]),
             ]
         );
+    }
+
+    #[test]
+    fn the_previous_ledger_key_is_deleted_before_the_new_one_is_added() {
+        // The receipts run in creation order. Deleting first frees the old key's storage before the
+        // AddKey is charged for the new one, so a rotation fits on a vault with no free NEAR beyond
+        // its staked storage. Add-first would need room for one extra key, and if that AddKey failed
+        // the delete would still land, leaving the vault with no ledger key until a top-up.
+        let mut v = setup();
+        as_owner(ONE_YOCTO);
+        v.set_ledger_key(ledger_pk(), U128(ONE_NEAR));
+        as_owner(ONE_YOCTO);
+        v.set_ledger_key(pk(10), U128(ONE_NEAR));
+        let order: Vec<KeyAction> = receipts().into_iter().flat_map(|(_, _, a)| a).collect();
+        let delete = order
+            .iter()
+            .position(|a| *a == KeyAction::Delete(ledger_pk()));
+        let add = order
+            .iter()
+            .position(|a| *a == fc_key(pk(10), ONE_NEAR, "anchor"));
+        assert_eq!((delete, add), (Some(0), Some(1)), "{order:?}");
     }
 
     #[test]

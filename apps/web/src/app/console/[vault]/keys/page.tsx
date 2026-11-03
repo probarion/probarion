@@ -1,16 +1,22 @@
 import type { Metadata } from "next";
-import { KeyActions, KeySyncButton, KeyTxButton } from "@/components/console/KeyActions";
+import {
+  KeyActions,
+  KeyKeepButton,
+  KeySyncButton,
+  KeyTxButton,
+} from "@/components/console/KeyActions";
 import { VaultNav } from "@/components/console/VaultNav";
 import { Badge, Card, Notice, type Tone } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import { VAULT_DEFAULTS } from "@/lib/config";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
+import { rpcChainReads } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
-import { DISCARDED_ON_CHAIN_TEXT, type KeyStatus, STUCK_TEXT } from "@/lib/keys/rules";
+import { DISCARDED_ON_CHAIN_TEXT, type KeyStatus, stuckText } from "@/lib/keys/rules";
 import { type AllowanceView, type KeyView, loadKeysView } from "@/lib/keys/view";
 import { lockKeyFor } from "@/lib/near/lock";
-import { getReader } from "@/lib/near/server";
+import { getReader, getRpc } from "@/lib/near/server";
 import { addAgentTx, removeAgentTx, setLedgerKeyTx } from "@/lib/near/tx";
 import { formatNear } from "@/lib/near/units";
 import { discardKeyAction, generateKeyAction, keepKeyAction, syncKeysAction } from "./actions";
@@ -48,7 +54,10 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
   const { session, member } = await requireMember(requested);
   const vault = member.vault_id;
   const network = getEnv().NEAR_NETWORK;
-  const view = await loadKeysView(serviceDb(), getReader(), member);
+  const view = await loadKeysView(serviceDb(), getReader(), member, rpcChainReads(getRpc()));
+  // A stuck ledger key can be replaced only on current vault code (W-T10-R3); on old code, or when the
+  // code could not be read, a new ledger key is not offered (it could only move the stuck pointer).
+  const ledgerBlocked = view.ledgerStuck && view.vaultCode !== "current";
   const isOwner = member.role === "owner";
   const sync = syncKeysAction.bind(null, vault);
   const codes = OUT_OF_NEAR.codes;
@@ -57,15 +66,13 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
   // agent key the last sync saw registered in list_agents can be removed whatever its status here,
   // so a stuck or revoked registration can always be cleared (W-T10-R1). A discarded key that is on
   // the vault after all can be removed there or kept (W-T10-R2). While the vault's ledger key is
-  // stuck, no ledger key is offered for setting: set_ledger_key would fail the same way and only move
-  // the stuck pointer.
+  // stuck on old vault code (or code that could not be read), no ledger key is offered for setting
+  // (ledgerBlocked); on current code, setting a new ledger key is how it recovers.
   const ownerButtons = (k: KeyView) => {
     if (!isOwner) return null;
     const common = { network, signer: session.accountId, outOfNearCodes: codes, sync };
     const canAdd =
-      k.status === "pending" &&
-      k.registered !== true &&
-      !(k.purpose === "ledger" && view.ledgerStuck);
+      k.status === "pending" && k.registered !== true && !(k.purpose === "ledger" && ledgerBlocked);
     const canRemove = k.purpose === "agent" && (k.registered === true || k.status === "active");
     return (
       <>
@@ -99,13 +106,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             confirm="Remove this agent key from the vault? Payables stops using it at once."
           />
         ) : null}
-        {k.discardedOnChain ? (
-          <form action={keepKeyAction.bind(null, vault, k.id)}>
-            <button type="submit" className="text-xs text-stone-600 underline">
-              Keep
-            </button>
-          </form>
-        ) : null}
+        {k.discardedOnChain ? <KeyKeepButton keep={keepKeyAction.bind(null, vault, k.id)} /> : null}
         {k.status === "pending" ? (
           <form action={discardKeyAction.bind(null, vault, k.id)}>
             <button type="submit" className="text-xs text-stone-600 underline">
@@ -155,7 +156,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
                     <Badge tone={STATUS_TONE[k.status]}>{k.status}</Badge>
                     {k.stuck ? (
                       <p className="mt-1 text-xs text-rose-700">
-                        Stuck: this key {STUCK_TEXT[k.purpose]}
+                        Stuck: this key {stuckText(k.purpose, view.vaultCode)}
                       </p>
                     ) : null}
                     {k.discardedOnChain ? (
@@ -185,6 +186,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             network={network}
             ledgerActive={view.ledgerActive}
             ledgerStuck={view.ledgerStuck}
+            vaultCode={view.vaultCode}
             outOfNearCodes={codes}
             generate={generateKeyAction.bind(null, vault)}
             sync={sync}

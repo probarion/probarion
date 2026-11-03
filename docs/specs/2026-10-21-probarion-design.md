@@ -323,7 +323,7 @@ The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
 
 1. **Before 2026-11-01:** a no-code waitlist form plus direct outreach (`prep/pilot-outreach.md`). Goal: 8–10 committed pilots, so that 3+ actually run.
 2. **Days 8–12:** white-glove onboarding of 30 minutes per pilot. The pilot creates their own vault from their own wallet, adds one mandate, and pays one real invoice of a small amount.
-3. **Every day from Day 1:** a build-in-public post on X with what shipped and one mainnet transaction link, tagging @NEAR_hckthn. This builds distribution and leaves a timestamped trail the judges can see.
+3. **Every day from Day 1:** a build-in-public post on X with what shipped and one mainnet transaction link, tagging @NEARProtocol #NEARHackathon. This builds distribution and leaves a timestamped trail the judges can see.
 
 ### 14.3 Probarion Canary (growth, demo and security proof in one)
 
@@ -365,7 +365,7 @@ The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
   - the claims → evidence table;
   - "What's real vs simulated";
   - the breach blast-radius table (§11);
-  - "Prior work and reuse": Vestiarion as a concept, the spikes repo, and this spec, with dates.
+  - "Prior work and reuse": the spikes repo and this spec, with dates.
 - **AGENTS.md** with setup, the offline verify command, the optional live checks, a repo map and the contract addresses.
 - **3-minute video**, plus one short clip per flow.
 - **X demo post and the "What did you build?" text.** Drafts are in [Report §9]; re-count characters after editing.

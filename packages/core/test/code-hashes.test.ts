@@ -8,10 +8,15 @@ const SOURCE = new URL("../../../contracts/code-hashes.json", import.meta.url);
 const GENERATED = new URL("../src/code-hashes.ts", import.meta.url);
 const TESTNET_DEPLOYMENT = new URL("../../../contracts/deployments/testnet.json", import.meta.url);
 
-/** The two probarion-vault reproducible builds contracts/code-hashes.json records today (plan 02). */
+/**
+ * The probarion-vault reproducible builds contracts/code-hashes.json records, in record order: the
+ * two plan-02 builds (3bd8189, ba65435) and the ledger-key fix (64ac3c0, set_ledger_key deletes
+ * then adds in two receipts).
+ */
 const VAULT_HASHES = [
   "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
   "54Ne1r9g2Smf2Qtrt9VznmPpEAAHzvK4hbQSJ9voQmuD",
+  "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
 ];
 /** The two probarion-factory builds it records. A factory is not a vault: its hash must never be trusted as one. */
 const FACTORY_HASHES = [
@@ -84,7 +89,7 @@ describe("KNOWN_VAULT_CODE_HASHES (generated from contracts/code-hashes.json)", 
     expect(renderCodeHashes(VAULT_HASHES)).toBe(renderCodeHashes(VAULT_HASHES));
     const rendered = renderCodeHashes(VAULT_HASHES);
     expect(rendered).toContain(
-      `export const KNOWN_VAULT_CODE_HASHES: readonly string[] = [\n  "${VAULT_HASHES[0]}",\n  "${VAULT_HASHES[1]}",\n];\n`,
+      `export const KNOWN_VAULT_CODE_HASHES: readonly string[] = [\n${VAULT_HASHES.map((h) => `  "${h}",`).join("\n")}\n];\n`,
     );
     expect(rendered.endsWith("\n")).toBe(true);
     expect(rendered.includes("\r")).toBe(false);

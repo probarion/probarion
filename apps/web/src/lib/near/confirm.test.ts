@@ -458,6 +458,218 @@ describe("confirmTx on the other methods' receipt trees (from the contracts' pro
     );
   });
 
+  describe("set_ledger_key recovering a stuck ledger key (W-T10-R3)", () => {
+    // contracts/vault/src/keys.rs (3dde545, 64ac3c0): DeleteKey(previous) and AddKey(new) are two
+    // independent receipts. When the previous key was never added, only the DeleteKey fails.
+    const OLD_LEDGER = "ed25519:old-ledger-key-never-added";
+    const NEW_LEDGER = "ed25519:new-ledger-key";
+    const deleteMissing = (publicKey: string, account = VAULT) => ({
+      Failure: {
+        ActionError: {
+          index: 0,
+          kind: { DeleteKeyDoesNotExist: { account_id: account, public_key: publicKey } },
+        },
+      },
+    });
+    const anchorKey = {
+      nonce: 0,
+      permission: {
+        FunctionCall: {
+          allowance: "250000000000000000000000",
+          receiver_id: VAULT,
+          method_names: ["anchor"],
+        },
+      },
+    };
+
+    function recovering(
+      deleteStatus: unknown = deleteMissing(OLD_LEDGER),
+      over: { method?: string; executor?: string; extra?: ReturnType<typeof receipt>[] } = {},
+    ): Json {
+      const method = over.method ?? "set_ledger_key";
+      const t = tx(method, OWNER, VAULT, { SuccessValue: "" }, [
+        receipt("r1", VAULT, { SuccessValue: "" }, ["r2", "r3"]),
+        receipt("r2", over.executor ?? VAULT, deleteStatus),
+        receipt("r3", VAULT, { SuccessValue: "" }),
+        ...(over.extra ?? []),
+      ]);
+      t.transaction.actions[0].FunctionCall.args = b64({
+        public_key: NEW_LEDGER,
+        allowance: "250000000000000000000000",
+      });
+      return t;
+    }
+
+    interface Chain {
+      /** get_config at the block the transaction is in; an Error makes the view fail. */
+      before?: unknown;
+      /** view_access_key of the new key now. */
+      key?: unknown;
+    }
+
+    function chainRpc(t: Json, c: Chain = {}) {
+      const calls: { method: string; params: Json }[] = [];
+      const rpc: RpcLike = {
+        async call(method, params) {
+          const p = params as Json;
+          calls.push({ method, params: p });
+          if (method === "tx") return t as never;
+          if (method === "block") {
+            return { header: { height: 100, hash: p.block_id ?? BLOCK } } as never;
+          }
+          if (method === "query" && p.request_type === "call_function") {
+            if (c.before instanceof Error) throw c.before;
+            const config = c.before ?? { owner: OWNER, ledger_key: OLD_LEDGER };
+            return { result: [...Buffer.from(JSON.stringify(config))], logs: [] } as never;
+          }
+          if (method === "query" && p.request_type === "view_access_key") {
+            return (c.key ?? anchorKey) as never;
+          }
+          throw new Error(`unexpected rpc ${method}`);
+        },
+      };
+      return { rpc, calls };
+    }
+
+    const run = (t: Json, c: Chain = {}, method = "set_ledger_key") =>
+      confirmTx(requestFor(t, method, {}), chainRpc(t, c).rpc);
+
+    it("the only failed receipt is the DeleteKey of the previous, never-added ledger key, and the new key landed: ok", async () => {
+      const t = recovering();
+      const { rpc, calls } = chainRpc(t);
+      expect(await confirmTx(requestFor(t, "set_ledger_key", {}), rpc)).toEqual({
+        status: "ok",
+        txHash: HASH,
+        code: null,
+        error: null,
+      });
+      // The previous key is read at the block the transaction is in; the new key, as it is now.
+      expect(calls.filter((x) => x.method === "query").map((x) => x.params)).toEqual([
+        {
+          request_type: "call_function",
+          block_id: BLOCK,
+          account_id: VAULT,
+          method_name: "get_config",
+          args_base64: "e30=",
+        },
+        {
+          request_type: "view_access_key",
+          finality: "final",
+          account_id: VAULT,
+          public_key: NEW_LEDGER,
+        },
+      ]);
+    });
+
+    it.each([
+      [
+        "the failed DeleteKey is of a key that was not the ledger key",
+        () => recovering(deleteMissing("ed25519:another-key")),
+        {},
+      ],
+      [
+        "the failed DeleteKey is of the new key itself",
+        () => recovering(deleteMissing(NEW_LEDGER)),
+        { before: { ledger_key: NEW_LEDGER } },
+      ],
+      [
+        "the failed receipt ran on another account",
+        () => recovering(deleteMissing(OLD_LEDGER), { executor: OWNER }),
+        {},
+      ],
+      ["the error names another account", () => recovering(deleteMissing(OLD_LEDGER, OWNER)), {}],
+      [
+        "another action of the receipt failed",
+        () =>
+          recovering({
+            Failure: {
+              ActionError: {
+                index: 1,
+                kind: { DeleteKeyDoesNotExist: { account_id: VAULT, public_key: OLD_LEDGER } },
+              },
+            },
+          }),
+        {},
+      ],
+      [
+        "the failure is not a DeleteKeyDoesNotExist",
+        () =>
+          recovering({
+            Failure: {
+              ActionError: {
+                index: 0,
+                kind: { LackBalanceForState: { account_id: VAULT, amount: "1" } },
+              },
+            },
+          }),
+        {},
+      ],
+      [
+        "a second receipt failed too",
+        () =>
+          recovering(deleteMissing(OLD_LEDGER), {
+            extra: [receipt("r4", VAULT, deleteMissing(OLD_LEDGER))],
+          }),
+        {},
+      ],
+      [
+        "the vault's ledger key before the call cannot be read",
+        () => recovering(),
+        { before: new Error("UNKNOWN_BLOCK") },
+      ],
+      [
+        "the new key is not on the vault",
+        () => recovering(),
+        { key: { error: `access key ${NEW_LEDGER} does not exist while viewing` } },
+      ],
+      [
+        "the new key is not anchor-only",
+        () => recovering(),
+        {
+          key: {
+            nonce: 0,
+            permission: { FunctionCall: { receiver_id: VAULT, method_names: ["anchor", "spend"] } },
+          },
+        },
+      ],
+      [
+        "the new key is for another single method",
+        () => recovering(),
+        {
+          key: {
+            nonce: 0,
+            permission: { FunctionCall: { receiver_id: VAULT, method_names: ["spend"] } },
+          },
+        },
+      ],
+      [
+        "the new key is a full-access key",
+        () => recovering(),
+        { key: { nonce: 0, permission: "FullAccess" } },
+      ],
+      [
+        "the new key is for another receiver",
+        () => recovering(),
+        {
+          key: {
+            nonce: 0,
+            permission: { FunctionCall: { receiver_id: OWNER, method_names: ["anchor"] } },
+          },
+        },
+      ],
+    ] as const)("%s: unknown, never ok", async (_name, make, c) => {
+      const r = await run(make(), c as Chain);
+      expect(r.status).toBe("unknown");
+      expect(r.error).toMatch(/a step it started failed/);
+    });
+
+    it("the same shape on another key call is not a ledger recovery", async () => {
+      const t = recovering(deleteMissing(OLD_LEDGER), { method: "remove_agent" });
+      const r = await run(t, {}, "remove_agent");
+      expect(r.status).toBe("unknown");
+    });
+  });
+
   describe("create_mandate: mandate stored, payee registered on USDC by a detached receipt, excess refunded", () => {
     const usdc = "usdc.probarion.testnet";
     it("ok", async () => {

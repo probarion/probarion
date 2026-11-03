@@ -161,7 +161,6 @@ const SCOPE_TEXT: Readonly<Record<ScopeProblem, string>> = {
   wrong_methods: "the chain shows a key for other methods",
 };
 
-/** The stuck state (W-T10-R1), worded by what can be done about it on the keys page. */
 /** A discarded key that is on chain after all (W-T10-R2), worded by what the keys page offers. */
 export const DISCARDED_ON_CHAIN_TEXT: Readonly<Record<KeyPurpose, string>> = {
   agent:
@@ -170,20 +169,54 @@ export const DISCARDED_ON_CHAIN_TEXT: Readonly<Record<KeyPurpose, string>> = {
     "is the vault's ledger key although you discarded it. Keep it to use it again, or generate and set a new ledger key.",
 };
 
-export const STUCK_TEXT: Readonly<Record<KeyPurpose, string>> = {
+/**
+ * What the vault's code can do about a stuck ledger key (W-T10-R3):
+ *  - `old`: a build from before the contract fix (3dde545 / 64ac3c0). Its set_ledger_key deletes the
+ *    old key and adds the new one in ONE batch, so the failed delete of the missing key undoes the add
+ *    every time: a stuck ledger key can never be replaced on that vault.
+ *  - `current`: any other code identity. set_ledger_key deletes and adds in two independent receipts,
+ *    so setting a new ledger key recovers (the delete fails alone, the add lands).
+ *  - `unknown`: the vault's code identity could not be read.
+ */
+export type VaultCode = "old" | "current" | "unknown";
+
+/**
+ * The vault builds that cannot replace a stuck ledger key: the two reproducible builds recorded in
+ * contracts/code-hashes.json before the set_ledger_key fix (commits 3bd8189 and ba65435).
+ */
+export const VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY: readonly string[] = [
+  "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
+  "54Ne1r9g2Smf2Qtrt9VznmPpEAAHzvK4hbQSJ9voQmuD",
+];
+
+/** `identity`: the vault's code identity (global contract hash, else code hash), or null when unread. */
+export function vaultCodeOf(identity: string | null | undefined): VaultCode {
+  if (typeof identity !== "string" || identity === "") return "unknown";
+  return VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY.includes(identity) ? "old" : "current";
+}
+
+const STUCK_CAUSE =
+  "is registered in the vault but its access key was never added (possibly the vault ran out of NEAR).";
+
+/** The stuck state (W-T10-R1), worded by what can be done about it on the keys page (W-T10-R3). */
+export function stuckText(purpose: KeyPurpose, code: VaultCode): string {
   // remove_agent clears the registry even when the access key is missing, so Remove recovers.
-  agent:
-    "is registered in the vault but its access key was never added (possibly the vault ran out of NEAR). Remove it, then generate a new agent key.",
-  // set_ledger_key would try to delete the missing key and fail: only a contract fix recovers.
-  ledger:
-    "is registered in the vault but its access key was never added (possibly the vault ran out of NEAR); a contract fix is needed to recover.",
-};
+  if (purpose === "agent") return `${STUCK_CAUSE} Remove it, then generate a new agent key.`;
+  if (code === "old") {
+    return `${STUCK_CAUSE} This vault's code cannot replace a stuck ledger key, so anchoring needs a new vault.`;
+  }
+  if (code === "current") {
+    return `${STUCK_CAUSE} Set a new ledger key to recover (Generate ledger key, below); if the vault has no free NEAR, top it up first.`;
+  }
+  return `${STUCK_CAUSE} The vault's code could not be read, so no new ledger key is offered: reload the page. A vault on the first code release cannot replace a stuck ledger key and needs a new vault; a newer one recovers when you set a new ledger key.`;
+}
 
 /**
  * A sentence for a member, or null when there is nothing to say (a healthy key, or a key that is
- * no longer in use and still is not). Every remedy it names is one the keys page offers.
+ * no longer in use and still is not). Every remedy it names is one the keys page offers. `vaultCode`
+ * words a stuck ledger key; it does not change anything else.
  */
-export function describeCheck(c: KeyCheck): string | null {
+export function describeCheck(c: KeyCheck, vaultCode: VaultCode = "unknown"): string | null {
   const name = `${c.purpose === "agent" ? "Agent" : "Ledger"} key ${c.public_key.slice(0, 16)}…`;
   const r = c.reason;
   const inUse = c.from === "pending" || c.from === "active";
@@ -191,7 +224,7 @@ export function describeCheck(c: KeyCheck): string | null {
   if (r === "activated") return `${name} is active.`;
   if (r === "reactivated")
     return `${name} is on the vault again, limited to its one method: active again.`;
-  if (r === "registered_without_key") return `${name} ${STUCK_TEXT[c.purpose]}`;
+  if (r === "registered_without_key") return `${name} ${stuckText(c.purpose, vaultCode)}`;
   if (r === "discarded_on_chain") return `${name} ${DISCARDED_ON_CHAIN_TEXT[c.purpose]}`;
   if (r === "unreadable") {
     return inUse ? `${name}: the chain could not be read, so its status is unchanged.` : null;
@@ -213,6 +246,37 @@ export function describeCheck(c: KeyCheck): string | null {
   return c.purpose === "agent"
     ? `${name} was revoked: ${problem}. Remove it from the vault (Remove, below).`
     : `${name} was revoked: ${problem}. Set a new ledger key.`;
+}
+
+/** What a Keep answers (W-T10-R3): it always says what happened, also when nothing changed. */
+export type KeepState = null | { ok: boolean; message: string };
+
+/** The Keep result in words, from keepKey's answer. */
+export function keepResultText(r: {
+  kept: boolean;
+  reason: CheckReason | "not_found" | "not_discarded";
+}): KeepState {
+  if (r.kept) return { ok: true, message: "Kept: the key is active again." };
+  const why = (() => {
+    switch (r.reason) {
+      case "not_found":
+        return "this is not one of this vault's keys";
+      case "not_discarded":
+        return "the key is not a discarded one, so the next check on chain sets its status";
+      case "unreadable":
+        return "the chain could not be read; try again in a minute";
+      case "registered_without_key":
+        return "the vault registers it, but its access key is missing";
+      case "not_registered":
+      case "inactive":
+        return "the vault does not register this key";
+      default:
+        return r.reason.startsWith("scope_")
+          ? SCOPE_TEXT[r.reason.slice("scope_".length) as ScopeProblem]
+          : "the chain does not show this key exactly as the vault adds it";
+    }
+  })();
+  return { ok: false, message: `Not kept: ${why}. Nothing changed.` };
 }
 
 /** What the "Check on-chain status" form shows. */
