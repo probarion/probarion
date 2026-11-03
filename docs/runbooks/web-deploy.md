@@ -1,0 +1,181 @@
+# Web console: first deploy to Vercel and Supabase
+
+**OWNER** does every step on this page, in a browser or a terminal on your own machine. Claude prepares the code and checks it, but never creates a project, never deploys and never calls the Vercel or Supabase APIs. Nothing here sends a NEAR transaction: the sign-in in the smoke test is a message signature.
+
+Plan for about an hour. Do the steps in order: the Vercel build does not need the Supabase values, but the running console does.
+
+Where things are defined (you do not edit these to deploy):
+
+- `apps/web/vercel.json`: framework, region `iad1` (Washington DC, next to Supabase `us-east-1`), and the build command.
+- `.env.example` (repo root): every variable the console reads. `docs/specs/2026-10-21-probarion-interfaces.md` section 14 lists the same names.
+- `apps/web/next.config.ts`: the security headers. They are not repeated in `vercel.json`.
+- `apps/web/supabase/migrations/*.sql`: the database schema, in filename order.
+- `apps/web/test/deploy.test.ts`: the guardrails that keep this page true. `pnpm --filter @probarion/web test` runs them.
+
+## 0. Before you start
+
+- [ ] **OWNER:** make sure this work is on `main`. Vercel builds the Production Branch (`main`) and reads `apps/web/vercel.json` from the branch it builds; the guardrail tests and this page live on the development branch until they are merged. Merge `dev` into `main` first (the controller does that through a pull request), then check the file is there:
+  ```bash
+  git fetch origin
+  git ls-tree origin/main apps/web/vercel.json
+  ```
+  It must print one line. If it prints nothing, stop: without `vercel.json` the first build has no `buildCommand`, cannot find `@probarion/core` and `@probarion/sdk` (they are loaded from `dist`), and fails. A Preview deployment of another branch is not a substitute for this check.
+- [ ] **OWNER:** decide the network. Read `contracts/deployments/mainnet.json`. While its `factory.deploy_tx` is `null`, the mainnet factory `vaults.probarion.near` is not deployed, so the console cannot create or register a mainnet vault. Deploy against **testnet** first (`NEAR_NETWORK=testnet`) and move Production to mainnet when the factory is live (`docs/runbooks/factory.md`).
+- [ ] **OWNER:** check the testnet factory `vaults.probarion.testnet` is deployed (`docs/runbooks/factory.md`). Without it the console shows the Create vault panel as unavailable. Registering an existing vault still works.
+
+## 1. Supabase
+
+- [ ] **OWNER:** create the project `probarion`, region **us-east-1** (N. Virginia). Save the database password in your password manager. If you want Preview deployments to keep their own data (recommended, see step 3.4), create a second project, for example `probarion-preview`, in the same region.
+- [ ] **OWNER:** copy three values from the project's API settings. Projects created in 2026 issue the new key names, and the console keeps the old variable names for them:
+
+  | Value | Looks like | Goes into |
+  |---|---|---|
+  | Project URL | `https://<ref>.supabase.co` | `SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_URL` |
+  | Publishable key | `sb_publishable_...` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+  | Secret key | `sb_secret_...` | `SUPABASE_SERVICE_ROLE_KEY` (server only) |
+
+  The secret key bypasses row-level security. It goes into one variable, as Sensitive, and nowhere else: not in git, not in chat, not behind a `NEXT_PUBLIC_` prefix.
+- [ ] **OWNER:** apply the migrations **in filename order**. Today they are `20261108000001_core.sql` to `20261108000005_register_update.sql`; any later file in `apps/web/supabase/migrations/` follows the same rule (the sequence number in the name is the order, with no gaps). Either way, stop at the first error and do not run a file twice:
+  - **With the Supabase CLI**, from `apps/web`:
+    ```bash
+    cd apps/web
+    pnpm dlx supabase login
+    pnpm dlx supabase link --project-ref <project-ref>
+    pnpm dlx supabase db push
+    ```
+    If the CLI refuses because `supabase/config.toml` is missing, use the SQL editor below and tell the controller. Never run `supabase db reset` against the hosted project. The CLI writes your project reference into `apps/web/supabase/.temp/`; that folder is git-ignored, so leave it out of every commit.
+  - **Or in the dashboard**: SQL Editor, paste each file in order, Run.
+- [ ] **OWNER:** check the result. In the SQL Editor:
+  ```sql
+  select c.relname, c.relrowsecurity
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind = 'r'
+  order by 1;
+  ```
+  Every table in the list must show `relrowsecurity = true`, and the list must not be empty. Any `false` is a stop: do not deploy, send the controller the table name. (Do not compare with a table count from this page: later migrations add tables.)
+- [ ] **OWNER, optional:** paste `apps/web/test/db/rls-assert.sql` into the SQL Editor and run it. It raises an error naming the problem and prints nothing otherwise. It passes on the local test database; it has not been run against a hosted project yet, so if it raises, send the controller the message.
+- [ ] **OWNER, optional hardening:** sign-in to the console is a NEAR signature, not Supabase Auth. In the dashboard's Authentication settings, turn off new user sign-ups. (Menu names change; the setting is called "allow new users to sign up".)
+
+## 2. Secrets (offline)
+
+- [ ] **OWNER:** generate both on your own machine (Git Bash on Windows has `openssl`) and save each in your password manager **before** you use it:
+  ```bash
+  openssl rand -base64 32   # KEY_ENCRYPTION_SECRET: 32 random bytes, base64 (44 characters, ends in "=")
+  openssl rand -hex 32      # CRON_SECRET: 64 hex characters (the app requires at least 32)
+  ```
+  Paste each output into the password manager first, then into Vercel. Do not generate one inside a command that sets it.
+- [ ] **OWNER:** understand what `KEY_ENCRYPTION_SECRET` protects. The console seals every agent key, the ledger key and every retained invoice under it. If you lose it, every sealed secret is lost with it; if it leaks, follow `docs/ops/key-rotation.md`. Production and a Preview that uses the **same Supabase project** must share one value (a row sealed under one master cannot be opened under another); see step 3.4.
+
+## 3. Vercel
+
+### 3.1 Import the repository
+
+- [ ] **OWNER:** Vercel dashboard, Add New, Project, import `probarion/probarion` from GitHub.
+- [ ] **OWNER:** on the configure screen set:
+  - **Framework Preset:** Next.js (detected).
+  - **Root Directory:** `apps/web`.
+  - **Include source files outside of the Root Directory in the Build Step:** on (the default). The build needs `packages/core` and `packages/sdk`.
+  - **Build, Install and Output commands:** leave them on their defaults and leave every Override toggle **off**. The build command comes from `apps/web/vercel.json`: it builds `@probarion/core` and `@probarion/sdk` (the app loads both from their `dist` folders), then runs `next build`. Do not override the install command: with an override such as `pnpm install`, Vercel uses the oldest pnpm in its image, and the lockfile needs pnpm 10.
+- [ ] **OWNER:** after the project exists, Settings, General: **Node.js Version 24.x**. Settings, Git: **Production Branch `main`**. Leave "Automatically expose System Environment Variables" on. Do not set `NODE_ENV` yourself; the build needs the dev dependencies.
+- [ ] **OWNER:** leave the Git integration as it is. Vercel then makes a Preview deployment for every pull request and a Production deployment for every push to `main`.
+
+### 3.2 Environment variables
+
+- [ ] **OWNER:** Settings, Environment Variables. Add each row for **Production** and **Preview** separately (use the Environment checkboxes). Tick **Sensitive** where the table says so: Sensitive values cannot be read back after saving.
+
+  Required for the console to start. With one missing or malformed, the sign-in routes answer a bare 503 `unavailable` and the console pages show an error page; the cause is in Vercel, Logs, where the message names the variable (never its value):
+
+  | Variable | Production | Preview | Sensitive |
+  |---|---|---|---|
+  | `NEAR_NETWORK` | `testnet` now, `mainnet` when step 0 allows | `testnet` | no |
+  | `NEAR_RPC_URLS` | leave unset for the network default, or a comma list in failover order | unset | no |
+  | `PROBARION_FACTORY_ID` | unset for the default (`vaults.probarion.testnet` or `vaults.probarion.near`) | unset | no |
+  | `SUPABASE_URL` | project URL | the Preview project's URL, or the Production URL if Preview shares that project | no |
+  | `NEXT_PUBLIC_SUPABASE_URL` | the same URL | the same URL as `SUPABASE_URL` in Preview | no |
+  | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | publishable key | the publishable key of the project Preview uses | no (public by design) |
+  | `SUPABASE_SERVICE_ROLE_KEY` | secret key | the secret key of the project Preview uses | **yes** |
+  | `KEY_ENCRYPTION_SECRET` | from step 2 | **Preview has its own Supabase project:** its own new value. **Preview shares Production's project:** exactly the Production value (see 3.4) | **yes** |
+  | `CRON_SECRET` | from step 2 (the app requires one even before any cron exists) | its own value (it is never stored in the database, so it may differ from Production either way) | **yes** |
+
+  Optional today, set when you need the feature:
+
+  | Variable | Notes | Sensitive |
+  |---|---|---|
+  | `TEAM_VAULT_IDS` | comma-separated vault accounts the team runs; they register as tenant kind `team` (step 5) | no |
+  | `PROBARION_VAULT_ID` | the demo vault the `/proof` page shows by default | no |
+  | `NEARAI_API_KEY` | NEAR AI Cloud key; set a spend cap in the NEAR AI dashboard first | **yes** |
+  | `NEARAI_MODEL` | leave unset: the SDK resolves a default | no |
+  | `ONECLICK_JWT` | 1Click top-up quotes (mainnet only) | **yes** |
+  | `CANARY_VAULT_ID`, `CANARY_MODE` | leave `CANARY_MODE` unset (it defaults to `code-only`); set the vault when the Canary is built | no |
+  | `BASE_RPC_URL` | public Base RPC for settlement lookups, for example `https://mainnet.base.org` | no |
+  | `SENTRY_DSN` | https DSN of a Sentry project | no |
+  | `TELEGRAM_BOT_TOKEN`, `RESEND_API_KEY` | alert channels | **yes** |
+  | `BETTERSTACK_HEARTBEAT_URL` | https; its path carries a token | **yes** |
+
+  Do **not** set these on Vercel:
+
+  - `PROBARION_AGENT_KEY`, `PROBARION_LEDGER_KEY`: the console keeps each vault's keys sealed in the database. These two are for the SDK and CLI on a developer machine.
+  - `PROBARION_LEDGER_PATH`, `NEAR_ARCHIVAL_RPC_URLS`: for the SDK, CLI and verifier; the console does not read them.
+  - `OLD_KEY_ENCRYPTION_SECRET`, `NEW_KEY_ENCRYPTION_SECRET`: inputs of the one-off rotation command, never stored.
+  - Any variable with a `NEXT_PUBLIC_` prefix beyond the two in the table. The prefix publishes the value to every visitor's browser. `next.config.ts` derives the two it needs (`NEXT_PUBLIC_NEAR_NETWORK` and `NEXT_PUBLIC_SENTRY_DSN`) from `NEAR_NETWORK` and `SENTRY_DSN`.
+
+  The `NEXT_PUBLIC_` values and `NEAR_NETWORK` are fixed into the build. After changing one, redeploy (a new build), not just restart.
+
+### 3.3 Domain (only if you have one)
+
+- [ ] **OWNER:** Settings, Domains, add `probarion.xyz` (or yours) and create the DNS records Vercel shows. Wait until Vercel marks the domain valid. The wallet sign-in message is addressed to the fixed recipient `probarion.xyz` (`AUTH_RECIPIENT` in `apps/web/src/lib/config.ts`), so sign-in also works on the `*.vercel.app` address before the domain is ready.
+
+### 3.4 Preview versus Production data (advice)
+
+This is advice, not a rule of the code. The code does not stop you from pointing Preview and Production at one Supabase project; it only requires that every row can be opened. Rows are sealed under `KEY_ENCRYPTION_SECRET`, so a project shared by two environments needs the same value in both, and then a leaked Preview value is a leaked Production value. Two Supabase projects, each with its own value, keep a throwaway Preview from touching real tenants. If you share one project, use one `KEY_ENCRYPTION_SECRET` and one network in both environments.
+
+## 4. First deploy and smoke test
+
+- [ ] **OWNER:** Deploy (the first import deploys by itself), or push to `main`. Open the build log and check, in order:
+  - the install step prints a pnpm 10.x version. If it prints 9.x and fails with `ERR_PNPM_UNSUPPORTED_ENGINE`, stop and tell the controller: the root `package.json` needs a pinned pnpm for Vercel (Corepack), and that is a repository change;
+  - `packages/core build` and `packages/sdk build` finish with "Done";
+  - `next build` finishes and lists the routes `/`, `/login`, `/console`, `/console/[vault]`, `/console/[vault]/keys`, `/console/[vault]/mandates` and `/api/auth/*`.
+- [ ] **OWNER:** smoke test, on the deployment URL:
+  1. `/` loads with the amber "Unaudited beta" banner and three cards. The Canary and Open metrics entries read "(coming soon)" and are not links; no link on the page, in the menu or in the footer leads to a 404.
+  2. `/console` while signed out sends you to `/login?next=%2Fconsole`.
+  3. `/login`: Sign in with your NEAR wallet. The wallet asks for a **message signature**, not a transaction. You land on `/console`.
+  4. `/console`: register a vault you own, signed in as its on-chain owner. On testnet that is `v0.probarion.testnet` (`contracts/deployments/testnet.json`). The vault page opens with Overview, Mandates and Keys tabs.
+  5. Security headers: `curl -sI https://<deployment-url>/` shows `x-content-type-options`, `referrer-policy`, `x-frame-options`, `permissions-policy` and `cross-origin-opener-policy`.
+  6. There is no `/api/health` route yet; plan 05 adds the health probes. Skip it until then.
+- [ ] If sign-in answers 503 or `/console` shows an error page: Vercel, Logs. The message names the variable that is missing or malformed (for example "KEY_ENCRYPTION_SECRET must be 32 bytes encoded as base64"), never its value. Fix the variable, then redeploy.
+
+## 5. Team vaults
+
+The earlier plan set `kind = 'team'` with a SQL update. The console now does it from configuration, so there is no SQL step.
+
+- [ ] **OWNER:** set `TEAM_VAULT_IDS` to the comma-separated vault accounts the team runs (for example the demo vault) and redeploy.
+- [ ] **OWNER:** register each of those vaults as its on-chain owner (step 4.4). Registering a vault that is already registered as external upgrades it to `team`; it never goes back.
+- [ ] **OWNER:** if a vault's `/proof` page should be public, tick "Public proof page" in that vault's settings in the console. It is off by default.
+
+## 6. Repository homepage
+
+- [ ] **OWNER:** once the production URL answers, GitHub, the repository's About panel (gear icon), Website: the production URL. Or, from a terminal logged in with `gh auth login`:
+  ```bash
+  gh repo edit probarion/probarion --homepage https://<production-url>
+  ```
+  This edits public repository metadata, so it is yours to do.
+
+## 7. Later: record the mainnet firsts as evidence
+
+Do this only after the transaction exists, once per transaction, each in its own commit. **OWNER SIGNS** every transaction. Recording one only writes `docs/mainnet-proof.json`: use the `add-tx` subcommand of the proof CLI (`pnpm proof` prints its usage; `docs/runbooks/mainnet-v0.md` shows the full command and the `H` variable it takes the hash from). Copy the hash from the console's "Done" or "Contract did" link.
+
+| `--id` | `--kind` | `--signer` | `--receiver` | `--signed-by` | Happens when |
+|---|---|---|---|---|---|
+| `first_console_vault` | `vault_created` | the owner account | `vaults.probarion.near` | `owner` | the owner signs `create_vault` at `/console` |
+| `first_console_agent_key` | `agent_added` | the owner account | the vault | `owner` | the owner signs `add_agent` at `/console/<vault>/keys` |
+| `first_console_mandate` | `mandate_created` | the owner account | the vault | `owner` | the owner signs the mandate at `/console/<vault>/mandates` |
+| `first_payables_payout` | `near_payment` (for a Base payee: `base_payout`, plus `--base-tx` once the Base transfer is visible) | the vault | the vault | `agent_key` (add `--spend-id` and `--amount`) | the Payables agent pays an invoice (the Payables page is not built yet) |
+
+Give each one a `--what` line in plain words, for example "First vault created through the console (factory create_vault)".
+
+## When a later task changes this page
+
+- A new environment variable: it goes into `.env.example` first (`deploy.test.ts` fails otherwise), then into the tables in 3.2.
+- A new Vercel cron: add it to `apps/web/vercel.json`. `deploy.test.ts` requires a `GET` route at that path that checks `CRON_SECRET`. Per-minute and hourly schedules need Vercel Pro; the Hobby plan rejects them at deploy time.
+- A new migration: one new file, next sequence number, no gaps. The test applies the folder to a fresh database and refuses extensions, role changes, owners and Supabase-only features.
+- A page that was "coming soon": delete its line from `PLANNED_ROUTES` in `apps/web/src/lib/routes.ts`, and its link goes live.

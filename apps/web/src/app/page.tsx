@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RouteLink } from "@/components/RouteLink";
 import { Card } from "@/components/ui";
 
 export default function Home() {
@@ -18,17 +19,17 @@ export default function Home() {
           to create a vault and sign mandates from your wallet.
         </Card>
         <Card title="Try to break it">
-          <Link className="underline" href="/canary">
+          <RouteLink className="underline" route="/canary">
             Canary
-          </Link>
+          </RouteLink>
           : make a gullible agent pay you. The contract decides.
         </Card>
         <Card title="Verify">
-          <Link className="underline" href="/open">
+          <RouteLink className="underline" route="/open">
             Open metrics
-          </Link>{" "}
-          and every vault&apos;s <code>/proof</code> page, plus{" "}
-          <code>probarion verify --offline</code>.
+          </RouteLink>
+          : public numbers anyone can check. A proof page for every vault and{" "}
+          <code>probarion verify --offline</code> are coming.
         </Card>
       </div>
     </div>
