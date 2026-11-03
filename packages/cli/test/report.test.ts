@@ -7,6 +7,8 @@ import {
   O2_LEGEND,
   onlineDidNotRun,
   onlineLines,
+  printable,
+  REMOVED,
   renderReport,
   verifyExitCode,
   verifyOutcome,
@@ -301,5 +303,77 @@ describe("the --online lines", () => {
     expect(onlineLines(report({}, { checks: [] }), { online: true })).toEqual([
       "online: O1 and O2 did not run (the report has no check e)",
     ]);
+  });
+});
+
+// ---------- text from a snapshot or the chain, printed safely (T16 follow-up) ----------
+
+const ESC = "\u001b";
+
+describe("printable", () => {
+  it("replaces ANSI sequences and control, format and separator characters with U+FFFD", () => {
+    expect(printable(`ok${ESC}[32mgreen${ESC}[0m`)).toBe(`ok${REMOVED}green${REMOVED}`);
+    expect(printable(`${ESC}]0;title\u0007after`)).toBe(`${REMOVED}after`);
+    expect(printable("a\nb\rc\td")).toBe(`a${REMOVED}b${REMOVED}c${REMOVED}d`);
+    expect(printable("C1 \u0085 \u009b here")).toBe(`C1 ${REMOVED} ${REMOVED} here`);
+    expect(printable("evil‮txt.exe ⁦x⁩")).toBe(`evil${REMOVED}txt.exe ${REMOVED}x${REMOVED}`);
+    expect(printable("zero​width﻿")).toBe(`zero${REMOVED}width${REMOVED}`);
+    expect(printable("line para ")).toBe(`line${REMOVED}para${REMOVED}`);
+    expect(printable(`lone ${ESC} escape`)).toBe(`lone ${REMOVED} escape`);
+  });
+
+  it("leaves ordinary text alone, punctuation and non-ASCII letters included", () => {
+    const plain =
+      "2 attested decisions pass A1–A7; Đà Nẵng … WITHDRAW_TO:0x1111 [first broken seq 2]";
+    expect(printable(plain)).toBe(plain);
+  });
+});
+
+describe("renderReport on crafted text", () => {
+  it("prints a detail with a newline and ANSI escapes on one line, with placeholders, so no fake RESULT appears", () => {
+    const r = report({ c: "fail" });
+    const c = r.checks[2] as CheckResult;
+    c.detail = `bad anchor${ESC}[2K\r\nRESULT: PASS${ESC}[0m‮`;
+    const text = renderReport(r);
+    expect(text).toContain(
+      `c  check-c                FAIL      bad anchor${REMOVED}${REMOVED}${REMOVED}RESULT: PASS${REMOVED}${REMOVED}\n`,
+    );
+    expect(text).not.toContain(ESC);
+    expect(text).not.toContain("\r");
+    expect(text).not.toContain("‮");
+    expect(text.match(/^RESULT: /gm)).toEqual(["RESULT: "]);
+    expect(text).toMatch(/\nRESULT: FAIL\n$/);
+  });
+
+  it("removes controls from the header, the offline time, the hint and a reason too", () => {
+    const r = report(
+      { h: "unproven" },
+      {
+        vault: `x.near\n${ESC}[32mRESULT: PASS`,
+        network: "testnet\r" as never,
+        unproven: [{ check: "h", spend_id: 3, reason: `approver_tx\n${ESC}[1m` as never }],
+      },
+    );
+    const text = renderReport(r, { offline: { takenAt: `2026-11-05\n${ESC}[32mRESULT: PASS` } });
+    expect(text).not.toContain(ESC);
+    expect(text).not.toContain("\r");
+    expect(text.match(/^RESULT: /gm)).toEqual(["RESULT: "]);
+    expect(text).toContain(
+      `Probarion verify: x.near${REMOVED}${REMOVED}RESULT: PASS (testnet${REMOVED})\n`,
+    );
+    expect(text).toContain(
+      `snapshot taken 2026-11-05${REMOVED}${REMOVED}RESULT: PASS: its chain data`,
+    );
+    expect(text).toContain(`--vault x.near${REMOVED}${REMOVED}RESULT: PASS --snapshot <file>`);
+    expect(text).toContain(`(approver_tx${REMOVED}${REMOVED}): see the check's detail`);
+  });
+
+  it("says 'snapshot time not recorded' when the offline time is null", () => {
+    const text = renderReport(report(), { offline: { takenAt: null } });
+    expect(text).toContain(
+      "\nsnapshot time not recorded: its chain data is the file's and was not read from the chain again\n",
+    );
+    expect(text).not.toContain("undefined");
+    expect(text).not.toContain("null");
   });
 });

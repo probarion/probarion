@@ -44,7 +44,7 @@ export interface RenderOptions {
    * The report is of a saved snapshot (`--offline`) taken at `takenAt`: its chain data is the file's and was not
    * read from the chain again, and the flags that shape a snapshot apply to taking it again.
    */
-  offline?: { takenAt: string };
+  offline?: { takenAt: string | null };
   /** `--online` was asked for: say whether O1 and O2 ran, and what they check when they did. */
   online?: boolean;
   /** Why O1 and O2 did not run, when the caller knows it (no online verifier could be loaded). */
@@ -98,6 +98,28 @@ export function onlineLines(report: VerifyReport, opts: RenderOptions = {}): str
 const STATUS_WIDTH = "UNPROVEN".length;
 const OFFLINE_O1 = "(run --online for O1)";
 
+/** What stands where text was removed from the human output, so that a reader can tell that something was. */
+export const REMOVED = "\u{FFFD}";
+
+/** A whole ANSI escape sequence: CSI (`ESC [ … final`) or OSC (`ESC ] … BEL` or `ESC ] … ESC \`). */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ESC and BEL is the point of this pattern
+const ANSI_SEQUENCE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)?)/g;
+
+/**
+ * Control and format characters (C0, C1, ESC, bidi overrides, zero-width marks) and line or paragraph separators:
+ * anything that can move the cursor, recolour, reorder or split what the terminal shows.
+ */
+const UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
+/**
+ * Text that comes from a snapshot or the chain, made safe to print: each ANSI sequence and each control, format
+ * or separator character becomes `REMOVED` (U+FFFD). A crafted snapshot cannot add a line (a fake `RESULT: PASS`),
+ * recolour one or reorder it. `--json` prints the data as it is: JSON escapes it.
+ */
+export function printable(text: string): string {
+  return String(text).replace(ANSI_SEQUENCE, REMOVED).replace(UNPRINTABLE, REMOVED);
+}
+
 function unprovenLines(report: VerifyReport, check: CheckResult, opts: RenderOptions): string[] {
   const byReason = new Map<string, number[]>();
   for (const u of Array.isArray(report.unproven) ? report.unproven : []) {
@@ -142,9 +164,11 @@ export function renderReport(report: VerifyReport, opts: RenderOptions = {}): st
     `entries ${report.entries}, anchors ${report.anchors}, generated ${report.generated_at}`,
   ];
   if (opts.offline !== undefined) {
-    lines.push(
-      `snapshot taken ${opts.offline.takenAt}: its chain data is the file's and was not read from the chain again`,
-    );
+    const when =
+      opts.offline.takenAt === null
+        ? "snapshot time not recorded"
+        : `snapshot taken ${opts.offline.takenAt}`;
+    lines.push(`${when}: its chain data is the file's and was not read from the chain again`);
   }
   lines.push("");
   const checks: readonly CheckResult[] = Array.isArray(report.checks) ? report.checks : [];
@@ -173,5 +197,6 @@ export function renderReport(report: VerifyReport, opts: RenderOptions = {}): st
     const first = firstBrokenSeq(report);
     lines.push(`RESULT: FAIL${first === null ? "" : ` (first broken seq ${first})`}`);
   }
-  return `${lines.join("\n")}\n`;
+  // Every line, the snapshot's and the chain's strings among them: one line each, as the reader sees it.
+  return `${lines.map(printable).join("\n")}\n`;
 }

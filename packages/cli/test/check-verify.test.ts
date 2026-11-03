@@ -479,6 +479,65 @@ describe("probarion verify --offline", () => {
     expect(notSnapshot.out + notJson.out + missing.out).not.toContain("RESULT");
   });
 
+  it.each([
+    [
+      "taken_at holds a newline and an ANSI escape (a fake RESULT line)",
+      { taken_at: "2026-11-05T12:00:00.000Z\n\u001b[32mRESULT: PASS\u001b[0m" },
+      "taken_at",
+    ],
+    ["taken_at is not a timestamp", { taken_at: "yesterday" }, "taken_at"],
+    ["taken_at is a number", { taken_at: 1793880000000 }, "taken_at"],
+    [
+      "vault holds shell metacharacters",
+      { vault: "x.vaults.probarion.testnet; echo PWNED" },
+      "vault",
+    ],
+    ["vault holds a newline", { vault: "x.vaults.probarion.testnet\nRESULT: PASS" }, "vault"],
+    ["network is neither mainnet nor testnet", { network: "devnet" }, "network"],
+  ])(
+    "exits 64 when the snapshot's %s, naming the field and printing none of it",
+    async (_name, patch, field) => {
+      await writeFile(
+        join(dir, "crafted.json"),
+        JSON.stringify({ ...(await fixtureSnapshot()), ...patch }),
+      );
+      const r = await cli(["verify", "--offline", "crafted.json"]);
+      expect(r.code).toBe(64);
+      expect(r.err).toBe(
+        `error: --offline crafted.json: "${field}" is not ${
+          field === "vault"
+            ? "a NEAR account id"
+            : field === "network"
+              ? "mainnet or testnet"
+              : "an ISO-8601 timestamp"
+        }\n`,
+      );
+      expect(r.out).toBe("");
+    },
+  );
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+    ["empty", ""],
+    ["blank", "  "],
+  ])(
+    "says 'snapshot time not recorded' for a %s taken_at, never 'undefined'",
+    async (_name, takenAt) => {
+      const snapshot: Record<string, unknown> = { ...(await fixtureSnapshot()) };
+      if (takenAt === undefined) delete snapshot.taken_at;
+      else snapshot.taken_at = takenAt;
+      await writeFile(join(dir, "untimed.json"), JSON.stringify(snapshot));
+      const r = await cli(["verify", "--offline", "untimed.json"]);
+      expect(r.code).toBe(0);
+      expect(r.out).toContain(
+        "\nsnapshot time not recorded: its chain data is the file's and was not read from the chain again\n",
+      );
+      expect(r.out).not.toContain("snapshot taken");
+      expect(r.out).not.toContain("undefined");
+    },
+  );
+
   it("writes the snapshot it verified with --snapshot", async () => {
     const r = await cli(["verify", "--offline", FIXTURE, "--snapshot", "copy.json"]);
     expect(r.code).toBe(0);
@@ -887,7 +946,10 @@ describe("probarion verify against a vault", () => {
     );
     expect(online.out).not.toContain("online legend: O2");
     expect(online.out).not.toMatch(/verified TEE|TEE verified|attested model verified/i);
-    expect(online.err).not.toContain("did not run");
+    // The "did not run" line reaches stderr too (0 GPU payloads); the legend stays in the report.
+    expect(online.err).toBe(
+      "warning: online: O2 did not run (no attested decision carries a GPU payload)\n",
+    );
 
     const debug: OnlineAttestationVerifier = {
       ...genuine,
@@ -918,7 +980,7 @@ describe("probarion verify against a vault", () => {
     expect(unavailable.out).toContain(
       "\nonline: O1 and O2 did not run (no online verifier was given)\n",
     );
-    expect(unavailable.err).toContain(
+    expect(unavailable.err).toBe(
       "warning: online: O1 and O2 did not run (no online verifier was given)\n",
     );
     expect(unavailable.out).not.toContain("online legend");
@@ -954,6 +1016,9 @@ describe("probarion verify against a vault", () => {
       "\nonline: O1 and O2 did not run (no attested decision in this ledger)\n",
     );
     expect(r.out).not.toContain("online legend");
+    expect(r.err).toBe(
+      "warning: online: O1 and O2 did not run (no attested decision in this ledger)\n",
+    );
   });
 
   it("--online loads @nearai/inference-sdk itself, from probarion's own optional dependency", async () => {
@@ -974,7 +1039,8 @@ describe("probarion verify against a vault", () => {
       expect(r.out).toContain(
         "online: O1 and O2 did not run (no attested decision in this ledger)",
       );
-      expect(r.err).not.toContain("did not run");
+      expect(r.err).not.toContain("could not be loaded");
+      expect(r.err).toContain("warning: online: O1 and O2 did not run (no attested decision");
     } else {
       expect(r.out).toContain(
         "online: O1 and O2 did not run (@nearai/inference-sdk could not be loaded",

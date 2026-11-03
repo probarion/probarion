@@ -1,6 +1,12 @@
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { isNearTxHash, runChecks, type Snapshot, type VerifyReport } from "@probarion/core";
+import {
+  isNearAccountId,
+  isNearTxHash,
+  runChecks,
+  type Snapshot,
+  type VerifyReport,
+} from "@probarion/core";
 import {
   type BurnTxHint,
   FileLedgerStore,
@@ -27,7 +33,13 @@ import { asUsage, CliError, UsageError, usageExitCodes } from "../errors.js";
 import type { CliIo } from "../io.js";
 import { displayPath } from "../owner-tx.js";
 import { NEAR_ACCOUNT_RE } from "../payee.js";
-import { onlineDidNotRun, type RenderOptions, renderReport, verifyExitCode } from "../report.js";
+import {
+  onlineLines,
+  printable,
+  type RenderOptions,
+  renderReport,
+  verifyExitCode,
+} from "../report.js";
 
 type VerifyOpts = GlobalOpts & {
   vault?: string;
@@ -111,9 +123,29 @@ function parseSnapshot(text: string, file: string): Snapshot {
   ) {
     throw new CliError(`--offline ${file} is not a Probarion snapshot (v: 1)`);
   }
+  // The fields the report prints as they are: a crafted value must not reach the terminal (exit 64, value not echoed).
+  const bad = (field: string, what: string): never => {
+    throw new UsageError(`--offline ${file}: "${field}" is not ${what}`);
+  };
+  if (!isNearAccountId(rec.vault)) bad("vault", "a NEAR account id");
+  if (rec.network !== "mainnet" && rec.network !== "testnet") bad("network", "mainnet or testnet");
+  if (snapshotTime(rec.taken_at) === undefined) bad("taken_at", "an ISO-8601 timestamp");
   // A snapshot written before the field existed lists no pre-ledger hashes: check d exempts nothing.
   if (!Array.isArray(rec.pre_ledger_decision_hashes)) rec.pre_ledger_decision_hashes = [];
   return value as Snapshot;
+}
+
+const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * A snapshot's `taken_at`: the timestamp, null when it is not recorded (absent, null or blank), or undefined when it
+ * is anything else, which the snapshot check refuses.
+ */
+function snapshotTime(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  if (value.trim() === "") return null;
+  return ISO_8601.test(value) && !Number.isNaN(Date.parse(value)) ? value : undefined;
 }
 
 /** `--snapshot` goes to a new file that is not the ledger: checked before anything is read (exit 64). */
@@ -234,7 +266,7 @@ export function registerVerify(program: Command, io: CliIo): void {
       const snapshot = parseSnapshot(text, file);
       if (target !== undefined) await saveSnapshot(target, o.snapshot ?? "", snapshot);
       const report = await runChecks(snapshot, { now: io.now() });
-      print(io, o, report, { offline: { takenAt: String(snapshot.taken_at) } });
+      print(io, o, report, { offline: { takenAt: snapshotTime(snapshot.taken_at) ?? null } });
       return;
     }
 
@@ -305,7 +337,7 @@ export function registerVerify(program: Command, io: CliIo): void {
       evidenceDir: parsed.evidenceDir,
       // Always a map, never undefined: the SDK would otherwise read docs/mainnet-proof.json from the process cwd.
       burnTxHints: hints,
-      logger: { warn: (message) => io.err(`warning: ${message}\n`) },
+      logger: { warn: (message) => io.err(`warning: ${printable(message)}\n`) },
     };
     if (parsed.archivalRpc !== undefined) deps.archivalRpc = parsed.archivalRpc;
     if (io.verifyDeps?.txIndex !== undefined) deps.txIndex = io.verifyDeps.txIndex;
@@ -324,7 +356,6 @@ export function registerVerify(program: Command, io: CliIo): void {
           injected === null
             ? "no online verifier was given"
             : "@nearai/inference-sdk could not be loaded; probarion installs it as an optional dependency, and it declares Node 24.22.1 or newer";
-        io.err(`warning: ${onlineDidNotRun(onlineNotRun)}\n`);
       }
     }
     const pb = new Probarion(
@@ -356,5 +387,10 @@ async function saveSnapshot(path: string, given: string, snapshot: Snapshot): Pr
 
 function print(io: CliIo, o: VerifyOpts, report: VerifyReport, opts: RenderOptions): void {
   io.out(o.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderReport(report, opts));
+  // Every "did not run" line of --online also goes to stderr (no verifier, nothing to check, no GPU payload),
+  // with --json too; the legend stays in the report.
+  for (const line of onlineLines(report, opts)) {
+    if (!line.startsWith("online legend")) io.err(`warning: ${printable(line)}\n`);
+  }
   io.setExitCode(verifyExitCode(report));
 }

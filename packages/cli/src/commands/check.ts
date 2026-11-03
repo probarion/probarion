@@ -6,6 +6,7 @@ import type { Command } from "commander";
 import { type GlobalOpts, makeRpc, requireVault, resolveNetwork } from "../context.js";
 import { asUsage, CliError, UsageError, usageExitCodes } from "../errors.js";
 import type { CliIo } from "../io.js";
+import { printable } from "../report.js";
 import { positiveInt, toSmallestUnits } from "../units.js";
 import { checkedPublicKey } from "./agent.js";
 
@@ -117,9 +118,10 @@ export function registerCheck(program: Command, io: CliIo): void {
     } else {
       const head = verdict.ok
         ? `OK: the vault would accept this spend${verdict.would_hold ? " and hold it for an approver" : ""}.`
-        : `REFUSED: PROBARION:${verdict.code ?? "unknown"}`;
+        : `REFUSED: PROBARION:${printable(verdict.code ?? "unknown")}`;
+      // The code and a mandate's agent_pk come from the chain: printed one line each, controls removed.
       io.out(
-        `${head}\nchecked as agent ${signerPk} against the vault's state now (a dry run: nothing was signed)\ninvoice_hash ${invoiceHash}\n`,
+        `${head}\nchecked as agent ${printable(signerPk)} against the vault's state now (a dry run: nothing was signed)\ninvoice_hash ${invoiceHash}\n`,
       );
     }
     io.setExitCode(verdict.ok ? 0 : 1);

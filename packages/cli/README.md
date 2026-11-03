@@ -192,7 +192,9 @@ The flags:
   `--ledger`, `--evidence`, `--burn-tx`, `--proof`, `--archival-rpc`, `--online`, `--rpc` and
   `--network`. It runs every check on what the file holds: it shows that the ledger and the chain data
   recorded in the snapshot agree with each other, as of the time the snapshot was taken (the report
-  prints it). It does not read the chain, so it takes the file's chain data as it is.
+  prints it). It does not read the chain, so it takes the file's chain data as it is. A snapshot
+  whose `vault`, `network` or `taken_at` is malformed is refused (exit 64), and the human report
+  shows control characters from a snapshot as `�` (U+FFFD) rather than passing them to the terminal.
 - `--ledger <path>` is the ledger file. It defaults to `PROBARION_LEDGER_PATH`, else
   `.probarion/ledger.jsonl`; an empty `PROBARION_LEDGER_PATH` counts as unset. verify warns when the
   file is not there, and then fails the spends it cannot bind to a decision.
