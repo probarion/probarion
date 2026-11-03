@@ -8,6 +8,7 @@ import { registerVault } from "./commands/vault.js";
 import { registerVerify } from "./commands/verify.js";
 import { CliError } from "./errors.js";
 import type { CliIo } from "./io.js";
+import { printable } from "./report.js";
 import { CLI_VERSION } from "./version.js";
 
 export function buildProgram(io: CliIo): Command {
@@ -44,7 +45,8 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     await program.parseAsync([...argv], { from: "user" });
   } catch (error) {
     if (error instanceof CommanderError) return error.exitCode;
-    io.err(`error: ${error instanceof Error ? error.message : String(error)}\n`);
+    // An error message can carry text from a node or a file; it must not forge lines or move the cursor.
+    io.err(`error: ${printable(error instanceof Error ? error.message : String(error))}\n`);
     // A CliError carries its own code (64 for a usage error of check and verify); anything else is 1.
     return error instanceof CliError ? error.exitCode : 1;
   }
