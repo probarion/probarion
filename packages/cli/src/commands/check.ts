@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { publicKeyFromSecret, sha256Hex, ZERO_HEX32 } from "@probarion/core";
-import { envValue, VaultClient } from "@probarion/sdk";
+import { publicKeyFromSecret, ZERO_HEX32 } from "@probarion/core";
+import { envValue, hashInvoice, VaultClient } from "@probarion/sdk";
 import type { Command } from "commander";
 import { type GlobalOpts, makeRpc, requireVault, resolveNetwork } from "../context.js";
 import { asUsage, CliError, UsageError, usageExitCodes } from "../errors.js";
@@ -23,7 +23,7 @@ const CHECK_EXIT_CODES = `
 Exit codes:
   0   the vault would accept the spend (it may hold it for an approver)
   1   the vault would refuse it (REFUSED: PROBARION:<Code>), or the check could not run (error: on stderr)
-  64  usage error: a missing, malformed or conflicting flag
+  64  usage error: a missing, malformed or conflicting flag, or an --invoice file that is not UTF-8 text
 `;
 
 /** The contract's `is_ref`: 1 to 64 bytes. */
@@ -53,7 +53,10 @@ export function registerCheck(program: Command, io: CliIo): void {
     .option("--vault <id>", "vault account (default: PROBARION_VAULT_ID)")
     .requiredOption("--mandate <id>", "mandate id")
     .requiredOption("--amount <usdc>", "amount in USDC, up to 6 decimals")
-    .requiredOption("--invoice <file>", "invoice file; the sha256 of its bytes is the invoice_hash")
+    .requiredOption(
+      "--invoice <file>",
+      "the extracted invoice text (UTF-8), the text the agent processes; its hash is the invoice_hash",
+    )
     .requiredOption("--ref <ref>", "idempotency reference, 1 to 64 bytes")
     .option(
       "--agent-pk <pk>",
@@ -81,7 +84,15 @@ export function registerCheck(program: Command, io: CliIo): void {
     } catch {
       throw new CliError(`--invoice ${o.invoice} is not a readable file`);
     }
-    const invoiceHash = sha256Hex(invoiceBytes);
+    // The SDK's hash (ICR-3b): the sha256 of the invoice text, so the dry run names the invoice the agent pays.
+    let invoiceHash: string;
+    try {
+      invoiceHash = hashInvoice(invoiceBytes);
+    } catch {
+      throw new UsageError(
+        `--invoice ${o.invoice} is not UTF-8 text: pass the extracted invoice text, the text the agent processes`,
+      );
+    }
     const vault = new VaultClient(parsed.vaultId, parsed.rpc);
     let signerPk = agentPk;
     if (signerPk === undefined) {

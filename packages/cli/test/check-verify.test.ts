@@ -20,6 +20,7 @@ import {
 } from "@probarion/core";
 import {
   FileLedgerStore,
+  hashInvoice,
   NearAiProposer,
   NearApiJsSender,
   type OnlineAttestationVerifier,
@@ -337,6 +338,28 @@ describe("probarion check", () => {
     expect(server.methods).toEqual([]);
   });
 
+  it("exits 64 for an --invoice that is not UTF-8 text, before any RPC call", async () => {
+    await writeFile(
+      join(dir, "scan.pdf"),
+      new Uint8Array([0x25, 0x50, 0x44, 0x46, 0xff, 0xfe, 0x00]),
+    );
+    const r = await cli([...args("--amount", "25"), "--invoice", "scan.pdf"]);
+    expect(r.code).toBe(64);
+    expect(r.err).toContain(
+      "--invoice scan.pdf is not UTF-8 text: pass the extracted invoice text",
+    );
+    expect(r.out).toBe("");
+    expect(server.methods).toEqual([]);
+  });
+
+  it("hashes the invoice as the SDK does (hashInvoice), a UTF-8 BOM included", async () => {
+    const text = "﻿Invoice INV-9 for PO-1001";
+    await writeFile(join(dir, "bom.txt"), text);
+    const r = await cli([...args("--amount", "25", "--json"), "--invoice", "bom.txt"]);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out).request.invoice_hash).toBe(hashInvoice(text));
+  });
+
   it("exits 1 when the invoice file cannot be read, before any RPC call", async () => {
     const r = await cli([...args("--amount", "25"), "--invoice", "missing.pdf"]);
     expect(r.code).toBe(1);
@@ -366,6 +389,13 @@ describe("probarion verify --offline", () => {
     expect(r.code).toBe(0);
     expect(r.out).toContain("Probarion verify: x.vaults.probarion.testnet (testnet)");
     expect(r.out).toContain("entries 5, anchors 3");
+    expect(r.out).toContain(
+      "\nsnapshot taken 2026-11-05T12:00:00.000Z: its chain data is the file's and was not read from the chain again\n",
+    );
+    expect(r.out).toContain(
+      "quote not verified offline (run --online for O1; re-take the snapshot live with --online)",
+    );
+    expect(r.out).not.toMatch(/^online/m);
     for (const name of CHECK_NAMES)
       expect(r.out).toMatch(new RegExp(`^[a-i] {2}${name} +PASS `, "m"));
     expect(r.out).toContain("9 passed, 0 failed, 0 unproven");
@@ -402,7 +432,7 @@ describe("probarion verify --offline", () => {
     expect(r.out).toMatch(/^h {2}burn-memos +UNPROVEN /m);
     expect(r.out).not.toMatch(/^h {2}burn-memos +(PASS|FAIL) /m);
     expect(r.out).toContain(
-      "unproven: spend 2 (tx_unavailable): re-run, or add --archival-rpc (when the snapshot is taken: probarion verify --vault x.vaults.probarion.testnet --snapshot <file>)",
+      "unproven: spend 2 (tx_unavailable): re-run, or add --archival-rpc (when the snapshot is taken: probarion verify --network testnet --vault x.vaults.probarion.testnet --snapshot <file>)",
     );
     expect(r.out).toContain("8 passed, 0 failed, 1 unproven");
     expect(r.out).toMatch(/\nRESULT: UNPROVEN/);
@@ -457,6 +487,65 @@ describe("probarion verify --offline", () => {
     const empty = await cli(["verify", "--offline", FIXTURE, "--snapshot", " "]);
     expect(empty.code).toBe(64);
     expect(empty.err).toContain("--snapshot needs a file");
+  });
+
+  it("exits 64 when --snapshot names a file that exists (the --offline input too), and leaves it alone", async () => {
+    await writeFile(join(dir, "taken.json"), "keep me\n");
+    const taken = await cli(["verify", "--offline", FIXTURE, "--snapshot", "taken.json"]);
+    expect(taken.code).toBe(64);
+    expect(taken.err).toContain("--snapshot taken.json already exists: choose a new file");
+    expect(taken.out).toBe("");
+    expect(await readFile(join(dir, "taken.json"), "utf8")).toBe("keep me\n");
+    await writeFile(join(dir, "input.json"), await readFile(FIXTURE, "utf8"));
+    const before = await readFile(join(dir, "input.json"), "utf8");
+    const self = await cli(["verify", "--offline", "input.json", "--snapshot", "input.json"]);
+    expect(self.code).toBe(64);
+    expect(await readFile(join(dir, "input.json"), "utf8")).toBe(before);
+  });
+
+  it.each([
+    ["the default ledger", {}, ".probarion/ledger.jsonl"],
+    ["the default ledger, spelled another way", {}, "./.probarion/../.probarion/ledger.jsonl"],
+    [
+      "the ledger PROBARION_LEDGER_PATH names",
+      { PROBARION_LEDGER_PATH: "custom.jsonl" },
+      "custom.jsonl",
+    ],
+  ])(
+    "exits 64 when --offline --snapshot names %s, whether it exists or not",
+    async (_name, env, out) => {
+      const r = await cli(["verify", "--offline", FIXTURE, "--snapshot", out], env);
+      expect(r.code).toBe(64);
+      expect(r.err).toContain("--snapshot must be a different file from the ledger");
+      await mkdir(join(dir, ".probarion"), { recursive: true });
+      await writeFile(join(dir, ".probarion", "ledger.jsonl"), "ledger line\n");
+      await writeFile(join(dir, "custom.jsonl"), "custom ledger line\n");
+      const again = await cli(["verify", "--offline", FIXTURE, "--snapshot", out], env);
+      expect(again.code).toBe(64);
+      expect(again.err).toContain("--snapshot must be a different file from the ledger");
+      expect(await readFile(join(dir, ".probarion", "ledger.jsonl"), "utf8")).toBe("ledger line\n");
+      expect(await readFile(join(dir, "custom.jsonl"), "utf8")).toBe("custom ledger line\n");
+    },
+  );
+
+  it("exits 64 on Windows when --offline --snapshot names the ledger in other letter case", async () => {
+    const r = await cli(
+      ["verify", "--offline", FIXTURE, "--snapshot", ".PROBARION/Ledger.JSONL"],
+      {},
+      { platform: "win32" },
+    );
+    expect(r.code).toBe(64);
+    expect(r.err).toContain("--snapshot must be a different file from the ledger");
+  });
+
+  it("exits 64 when --offline --snapshot names a hard link of the ledger", async () => {
+    await mkdir(join(dir, ".probarion"), { recursive: true });
+    await writeFile(join(dir, ".probarion", "ledger.jsonl"), "ledger line\n");
+    await link(join(dir, ".probarion", "ledger.jsonl"), join(dir, "alias.jsonl"));
+    const r = await cli(["verify", "--offline", FIXTURE, "--snapshot", "alias.jsonl"]);
+    expect(r.code).toBe(64);
+    expect(r.err).toContain("--snapshot must be a different file from the ledger");
+    expect(await readFile(join(dir, ".probarion", "ledger.jsonl"), "utf8")).toBe("ledger line\n");
   });
 
   it.each([
@@ -789,10 +878,16 @@ describe("probarion verify against a vault", () => {
     );
     expect(online.code).toBe(0);
     expect(online.out).toContain("online: 1 DCAP-genuine TDX quotes bound to this request");
+    // O1 ran on one quote: its legend, phrased as what O1 checks. The fake sends no GPU payload: O2 did not run.
     expect(online.out).toContain(
-      "O1: DCAP-genuine TDX quote bound to this request; measurement not pinned (O1b deferred)",
+      "\nonline legend: O1 checks that a TDX quote is DCAP-genuine (Intel DCAP; debug off, an accepted TCB status) and bound to this request; measurement not pinned (O1b deferred)",
     );
+    expect(online.out).toContain(
+      "\nonline: O2 did not run (no attested decision carries a GPU payload)\n",
+    );
+    expect(online.out).not.toContain("online legend: O2");
     expect(online.out).not.toMatch(/verified TEE|TEE verified|attested model verified/i);
+    expect(online.err).not.toContain("did not run");
 
     const debug: OnlineAttestationVerifier = {
       ...genuine,
@@ -808,6 +903,7 @@ describe("probarion verify against a vault", () => {
     expect(refused.code).toBe(1);
     expect(refused.out).toMatch(/^e {2}attestations +FAIL .*O1 failed at entry 0/m);
     expect(refused.out).toContain("RESULT: FAIL (first broken seq 0)");
+    expect(refused.out).not.toContain("online legend");
 
     const unavailable = await cli(
       [...live(), "--online"],
@@ -819,6 +915,81 @@ describe("probarion verify against a vault", () => {
     expect(unavailable.code).toBe(0);
     expect(unavailable.out).toContain("online: unavailable");
     expect(unavailable.out).not.toContain("online: 1 DCAP-genuine");
+    expect(unavailable.out).toContain(
+      "\nonline: O1 and O2 did not run (no online verifier was given)\n",
+    );
+    expect(unavailable.err).toContain(
+      "warning: online: O1 and O2 did not run (no online verifier was given)\n",
+    );
+    expect(unavailable.out).not.toContain("online legend");
+    const json = await cli(
+      [...live(), "--online", "--json"],
+      {},
+      {
+        verifyDeps: { onlineVerifier: null, txIndex: null },
+      },
+    );
+    expect(JSON.parse(json.out)).toMatchObject({ ok: true });
+    expect(json.err).toContain("online: O1 and O2 did not run (no online verifier was given)");
+  });
+
+  it("--online on a ledger with no attested decision: O1 and O2 did not run, and no legend (exit 0)", async () => {
+    await payNear(agentSdk());
+    const genuine: OnlineAttestationVerifier = {
+      verifyQuote: async () => {
+        throw new Error("no quote should be verified");
+      },
+      verifyGpu: async () => {},
+    };
+    const r = await cli(
+      [...live(), "--online"],
+      {},
+      {
+        verifyDeps: { onlineVerifier: genuine, txIndex: null },
+      },
+    );
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("online: 0 DCAP-genuine TDX quotes");
+    expect(r.out).toContain(
+      "\nonline: O1 and O2 did not run (no attested decision in this ledger)\n",
+    );
+    expect(r.out).not.toContain("online legend");
+  });
+
+  it("--online loads @nearai/inference-sdk itself, from probarion's own optional dependency", async () => {
+    await payNear(agentSdk());
+    // What this test process can load from packages/cli is what the CLI can load: the same resolution.
+    const specifier = "@nearai/inference-sdk";
+    const loadable = await import(specifier).then(
+      (mod: Record<string, unknown>) =>
+        typeof mod.createTdxQuoteVerifier === "function" &&
+        typeof mod.createGpuEvidenceVerifier === "function",
+      () => false,
+    );
+    const r = await cli([...live(), "--online"], {}, { verifyDeps: { txIndex: null } });
+    expect(r.code).toBe(0);
+    expect(r.out).not.toContain("online legend");
+    if (loadable) {
+      expect(r.out).toContain("online: 0 DCAP-genuine TDX quotes");
+      expect(r.out).toContain(
+        "online: O1 and O2 did not run (no attested decision in this ledger)",
+      );
+      expect(r.err).not.toContain("did not run");
+    } else {
+      expect(r.out).toContain(
+        "online: O1 and O2 did not run (@nearai/inference-sdk could not be loaded",
+      );
+      expect(r.err).toContain("warning: online: O1 and O2 did not run (@nearai/inference-sdk");
+    }
+  });
+
+  it("exits 64 when --snapshot names a file that exists, before any RPC call, and leaves it alone", async () => {
+    await writeFile(join(dir, "taken.json"), "keep me\n");
+    const r = await cli([...live(), "--snapshot", "taken.json"]);
+    expect(r.code).toBe(64);
+    expect(r.err).toContain("--snapshot taken.json already exists: choose a new file");
+    expect(server.methods).toEqual([]);
+    expect(await readFile(join(dir, "taken.json"), "utf8")).toBe("keep me\n");
   });
 
   it("reads the ledger from --ledger, else PROBARION_LEDGER_PATH, else .probarion/ledger.jsonl (empty counts as unset)", async () => {

@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isHex32, NETWORKS, type NetworkId, sha256Hex } from "@probarion/core";
 import {
@@ -70,6 +70,40 @@ export async function sameFile(a: string, b: string, platform: NodeJS.Platform):
     return x.ino !== 0n && x.dev === y.dev && x.ino === y.ino;
   } catch {
     return false;
+  }
+}
+
+/** Whether anything (a file, a directory) is at `path`. */
+export async function fileExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The error for an output file that is already there, worded the same for every command. */
+export function alreadyExists(flag: string, given: string): CliError {
+  return new CliError(`${flag} ${given} already exists: choose a new file`);
+}
+
+/**
+ * Writes `text` to a new file ("wx"): an export or a snapshot never replaces a file that is there. `flag` and
+ * `given` name the option and its value in the error.
+ */
+export async function writeNewFile(
+  path: string,
+  text: string,
+  flag: string,
+  given: string,
+): Promise<void> {
+  try {
+    await writeFile(path, text, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    const code = typeof error === "object" && error !== null ? Reflect.get(error, "code") : null;
+    if (code === "EEXIST") throw alreadyExists(flag, given);
+    throw error;
   }
 }
 

@@ -1,28 +1,33 @@
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isNearTxHash, runChecks, type Snapshot, type VerifyReport } from "@probarion/core";
 import {
+  type BurnTxHint,
   FileLedgerStore,
   isPreLedgerVault,
   loadBurnTxHints,
+  loadDefaultOnlineVerifier,
   Probarion,
   type ProbarionDeps,
   readPreLedgerDecisionHashes,
 } from "@probarion/sdk";
 import type { Command } from "commander";
 import {
+  alreadyExists,
+  fileExists,
   type GlobalOpts,
   ledgerFile,
   makeRpc,
   requireVault,
   resolveNetwork,
   sameFile,
+  writeNewFile,
 } from "../context.js";
 import { asUsage, CliError, UsageError, usageExitCodes } from "../errors.js";
 import type { CliIo } from "../io.js";
 import { displayPath } from "../owner-tx.js";
 import { NEAR_ACCOUNT_RE } from "../payee.js";
-import { renderReport, verifyExitCode } from "../report.js";
+import { onlineDidNotRun, type RenderOptions, renderReport, verifyExitCode } from "../report.js";
 
 type VerifyOpts = GlobalOpts & {
   vault?: string;
@@ -37,11 +42,8 @@ type VerifyOpts = GlobalOpts & {
   proof?: string;
 };
 
-/** A transaction that may hold a spend's burn: its hash, and the account that signed it when that is known. */
-export interface BurnTxHintInput {
-  hash: string;
-  signer?: string;
-}
+/** A burn tx hint in the SDK's object form (`BurnTxHint`): the tx hash, and its signer when that is known. */
+type Hint = Exclude<BurnTxHint, string>;
 
 const VERIFY_HELP = `
 Exit codes:
@@ -58,7 +60,7 @@ Without --proof, verify reads no evidence file, not even a docs/mainnet-proof.js
 const MAX_SPEND_ID = Number.MAX_SAFE_INTEGER;
 
 /** `<spend_id>=<tx hash>[@<signer>]`, as `--burn-tx` takes it. Anything else is a usage error (exit 64). */
-export function parseBurnTx(value: string): { spendId: number; hint: BurnTxHintInput } {
+export function parseBurnTx(value: string): { spendId: number; hint: Hint } {
   const bad = (why: string): never => {
     throw new UsageError(
       `--burn-tx ${JSON.stringify(value)}: ${why}; expected <spend_id>=<tx hash>[@<signer>]`,
@@ -83,7 +85,7 @@ export function parseBurnTx(value: string): { spendId: number; hint: BurnTxHintI
   return { spendId: Number(id), hint: signer === undefined ? { hash } : { hash, signer } };
 }
 
-function addHint(hints: Map<number, BurnTxHintInput[]>, spendId: number, hint: BurnTxHintInput) {
+function addHint(hints: Map<number, Hint[]>, spendId: number, hint: Hint) {
   const list = hints.get(spendId) ?? [];
   if (!list.some((h) => h.hash === hint.hash)) list.push(hint);
   hints.set(spendId, list);
@@ -114,13 +116,14 @@ function parseSnapshot(text: string, file: string): Snapshot {
   return value as Snapshot;
 }
 
-async function exists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
+/** `--snapshot` goes to a new file that is not the ledger: checked before anything is read (exit 64). */
+async function snapshotTarget(io: CliIo, given: string, ledgerPath: string): Promise<string> {
+  const path = resolve(io.cwd, given);
+  if (await sameFile(path, ledgerPath, io.platform ?? process.platform)) {
+    throw new UsageError("--snapshot must be a different file from the ledger");
   }
+  if (await fileExists(path)) throw new UsageError(alreadyExists("--snapshot", given).message);
+  return path;
 }
 
 /** `--proof <file>`: the vault's burn tx hints in a plan 05 evidence file. A file that is not there is an error. */
@@ -128,7 +131,7 @@ async function proofHints(
   file: string,
   io: CliIo,
   opts: { vault: string; network: "mainnet" | "testnet" },
-): Promise<Map<number, BurnTxHintInput[]>> {
+): Promise<Map<number, Hint[]>> {
   const path = resolve(io.cwd, file);
   let isFile = false;
   try {
@@ -156,7 +159,10 @@ export function registerVerify(program: Command, io: CliIo): void {
       "--online",
       "also run O1 (Intel DCAP on each TDX quote) and O2 (NVIDIA NRAS on each GPU payload), and look burns up in FastNEAR's tx index; uses the network",
     )
-    .option("--snapshot <out>", "write the snapshot that was verified to this file")
+    .option(
+      "--snapshot <out>",
+      "write the snapshot that was verified to a new file (refused when the file exists or is the ledger)",
+    )
     .option("--offline <file>", "verify a saved snapshot, with no network at all")
     .option("--json", "print the report as JSON")
     .option(
@@ -214,6 +220,11 @@ export function registerVerify(program: Command, io: CliIo): void {
           );
         }
       });
+      // --ledger is refused here, so the ledger to protect is the one PROBARION_LEDGER_PATH (or the default) names.
+      const target =
+        o.snapshot === undefined
+          ? undefined
+          : await snapshotTarget(io, o.snapshot, ledgerFile(undefined, io.env, io.cwd));
       let text: string;
       try {
         text = await readFile(resolve(io.cwd, file), "utf8");
@@ -221,9 +232,9 @@ export function registerVerify(program: Command, io: CliIo): void {
         throw new CliError(`--offline ${file} is not a readable file`);
       }
       const snapshot = parseSnapshot(text, file);
-      if (o.snapshot !== undefined) await saveSnapshot(io, o.snapshot, snapshot);
+      if (target !== undefined) await saveSnapshot(target, o.snapshot ?? "", snapshot);
       const report = await runChecks(snapshot, { now: io.now() });
-      print(io, o, report, { offline: true });
+      print(io, o, report, { offline: { takenAt: String(snapshot.taken_at) } });
       return;
     }
 
@@ -237,7 +248,7 @@ export function registerVerify(program: Command, io: CliIo): void {
           ? undefined
           : makeRpc({ rpc: o.archivalRpc }, io.env, network, "--archival-rpc");
       if (o.evidence.trim() === "") throw new UsageError("--evidence needs a directory");
-      const hints = new Map<number, BurnTxHintInput[]>();
+      const hints = new Map<number, Hint[]>();
       for (const value of burnTx) {
         const { spendId, hint } = parseBurnTx(value);
         addHint(hints, spendId, hint);
@@ -252,13 +263,10 @@ export function registerVerify(program: Command, io: CliIo): void {
         evidenceDir: resolve(io.cwd, o.evidence),
       };
     });
-    const platform = io.platform ?? process.platform;
-    if (
-      o.snapshot !== undefined &&
-      (await sameFile(resolve(io.cwd, o.snapshot), parsed.ledgerPath, platform))
-    ) {
-      throw new UsageError("--snapshot must be a different file from the ledger");
-    }
+    const target =
+      o.snapshot === undefined
+        ? undefined
+        : await snapshotTarget(io, o.snapshot, parsed.ledgerPath);
 
     const hints = parsed.hints;
     if (o.proof !== undefined) {
@@ -276,7 +284,7 @@ export function registerVerify(program: Command, io: CliIo): void {
         for (const hint of list) addHint(hints, spendId, hint);
       }
     }
-    if (!(await exists(parsed.ledgerPath))) {
+    if (!(await fileExists(parsed.ledgerPath))) {
       io.err(
         `warning: the ledger file ${displayPath(io.cwd, parsed.ledgerPath)} does not exist: verifying the chain against an empty ledger\n`,
       );
@@ -300,10 +308,25 @@ export function registerVerify(program: Command, io: CliIo): void {
       logger: { warn: (message) => io.err(`warning: ${message}\n`) },
     };
     if (parsed.archivalRpc !== undefined) deps.archivalRpc = parsed.archivalRpc;
-    if (io.verifyDeps?.onlineVerifier !== undefined) {
-      deps.onlineVerifier = io.verifyDeps.onlineVerifier;
-    }
     if (io.verifyDeps?.txIndex !== undefined) deps.txIndex = io.verifyDeps.txIndex;
+    let onlineNotRun: string | undefined;
+    if (online) {
+      // The CLI loads the verifier itself, from its own optional dependency, so that an npm-installed probarion
+      // finds it. An injected null (tests, hosts) means "no verifier", as it does in the SDK.
+      const injected = io.verifyDeps?.onlineVerifier;
+      const verifier =
+        injected !== undefined
+          ? injected
+          : await loadDefaultOnlineVerifier((specifier) => import(specifier));
+      deps.onlineVerifier = verifier;
+      if (verifier === null) {
+        onlineNotRun =
+          injected === null
+            ? "no online verifier was given"
+            : "@nearai/inference-sdk could not be loaded; probarion installs it as an optional dependency, and it declares Node 24.22.1 or newer";
+        io.err(`warning: ${onlineDidNotRun(onlineNotRun)}\n`);
+      }
+    }
     const pb = new Probarion(
       {
         network: parsed.network,
@@ -319,23 +342,19 @@ export function registerVerify(program: Command, io: CliIo): void {
       report = await pb.verify({ online });
     } else {
       const snapshot = await pb.snapshot({ online });
-      await saveSnapshot(io, o.snapshot, snapshot);
+      await saveSnapshot(target ?? resolve(io.cwd, o.snapshot), o.snapshot, snapshot);
       report = await pb.verify({ snapshot, online });
     }
-    print(io, o, report, { online });
+    print(io, o, report, onlineNotRun === undefined ? { online } : { online, onlineNotRun });
   });
 }
 
-async function saveSnapshot(io: CliIo, file: string, snapshot: Snapshot): Promise<void> {
-  await writeFile(resolve(io.cwd, file), `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+/** Written with "wx": a file that appeared after the check is refused too, never replaced. */
+async function saveSnapshot(path: string, given: string, snapshot: Snapshot): Promise<void> {
+  await writeNewFile(path, `${JSON.stringify(snapshot, null, 2)}\n`, "--snapshot", given);
 }
 
-function print(
-  io: CliIo,
-  o: VerifyOpts,
-  report: VerifyReport,
-  opts: { offline?: boolean; online?: boolean },
-): void {
+function print(io: CliIo, o: VerifyOpts, report: VerifyReport, opts: RenderOptions): void {
   io.out(o.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderReport(report, opts));
   io.setExitCode(verifyExitCode(report));
 }
