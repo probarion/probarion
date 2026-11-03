@@ -54,6 +54,15 @@ impl Vault {
         .emit();
     }
 
+    /// Sets the anchor-only ledger key, replacing (and deleting) the previous one.
+    ///
+    /// The AddKey of the new key and the DeleteKey of the previous key are two independent
+    /// receipts, never one batch. The state change commits with this call, but a key action can
+    /// still fail later in its own receipt: an AddKey fails with LackBalanceForState once agent gas
+    /// has used up the vault's free NEAR, which leaves `ledger_key` naming a key that does not
+    /// exist. A later DeleteKey of that key fails with DeleteKeyDoesNotExist, and a failed action
+    /// rolls back every action of its receipt. In one batch it would undo the new key's AddKey on
+    /// every retry, and the vault could never anchor again. Apart, a failed delete only fails itself.
     #[payable]
     pub fn set_ledger_key(&mut self, public_key: PublicKey, allowance: U128) {
         self.assert_owner();
@@ -62,11 +71,8 @@ impl Vault {
         if self.is_known_key(&public_key) {
             fail(ErrorCode::InvalidInput)
         }
-        let mut batch = Promise::new(env::current_account_id());
-        if let Some(previous) = self.ledger_key.replace(public_key.clone()) {
-            batch = batch.delete_key(previous);
-        }
-        batch
+        let previous = self.ledger_key.replace(public_key.clone());
+        Promise::new(env::current_account_id())
             .add_access_key_allowance(
                 public_key.clone(),
                 allowance,
@@ -74,6 +80,11 @@ impl Vault {
                 "anchor",
             )
             .detach();
+        if let Some(previous) = previous {
+            Promise::new(env::current_account_id())
+                .delete_key(previous)
+                .detach();
+        }
         VaultEvent::LedgerKeySet { public_key }.emit();
     }
 
@@ -111,6 +122,7 @@ mod tests {
     use crate::*;
     use near_sdk::mock::MockAction;
     use near_sdk::serde_json::json;
+    use near_sdk::test_utils::get_created_receipts;
 
     type AddedKey = (
         AccountId,
@@ -144,6 +156,62 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    /// A key action as these tests compare it; any other action keeps its debug text.
+    #[derive(Debug, PartialEq)]
+    enum KeyAction {
+        Add {
+            public_key: PublicKey,
+            allowance: Option<NearToken>,
+            receiver_id: AccountId,
+            method_names: Vec<String>,
+        },
+        Delete(PublicKey),
+        Other(String),
+    }
+
+    /// Each receipt the call scheduled, in creation order: its receiver, the receipts it waits on
+    /// (none for an independent receipt) and its actions. A receipt's actions succeed or fail together.
+    fn receipts() -> Vec<(AccountId, Vec<u64>, Vec<KeyAction>)> {
+        get_created_receipts()
+            .into_iter()
+            .map(|r| {
+                let actions = r
+                    .actions
+                    .into_iter()
+                    .map(|a| match a {
+                        MockAction::AddKeyWithFunctionCall {
+                            public_key,
+                            allowance,
+                            receiver_id,
+                            method_names,
+                            ..
+                        } => KeyAction::Add {
+                            public_key: public_key.into(),
+                            allowance,
+                            receiver_id,
+                            method_names,
+                        },
+                        MockAction::DeleteKey { public_key, .. } => {
+                            KeyAction::Delete(public_key.into())
+                        }
+                        other => KeyAction::Other(format!("{other:?}")),
+                    })
+                    .collect();
+                (r.receiver_id, r.receipt_indices, actions)
+            })
+            .collect()
+    }
+
+    /// The AddKey of an FC key on the vault that may call only `method`.
+    fn fc_key(public_key: PublicKey, allowance: u128, method: &str) -> KeyAction {
+        KeyAction::Add {
+            public_key,
+            allowance: Some(yocto(allowance)),
+            receiver_id: vault_id(),
+            method_names: vec![method.to_string()],
+        }
     }
 
     #[test]
@@ -302,6 +370,97 @@ mod tests {
         assert_eq!(deleted_keys(), vec![(vault_id(), ledger_pk())]);
         assert_eq!(added_keys()[0].1, pk(10));
         assert_eq!(v.get_config().ledger_key, Some(pk(10)));
+    }
+
+    #[test]
+    fn a_first_ledger_key_is_one_add_key_receipt_and_nothing_is_deleted() {
+        let mut v = setup();
+        as_owner(ONE_YOCTO);
+        v.set_ledger_key(ledger_pk(), U128(ONE_NEAR));
+        assert_eq!(
+            receipts(),
+            vec![(
+                vault_id(),
+                vec![],
+                vec![fc_key(ledger_pk(), ONE_NEAR, "anchor")]
+            )]
+        );
+        assert_eq!(v.get_config().ledger_key, Some(ledger_pk()));
+    }
+
+    #[test]
+    fn replacing_the_ledger_key_adds_and_deletes_in_two_independent_receipts() {
+        // The stuck state: ledger_key is set, but its AddKey failed (for example LackBalanceForState)
+        // so the access key does not exist. DeleteKey of it then fails, and a failed action rolls back
+        // its whole receipt. The AddKey of the new key must therefore not share that receipt, and
+        // neither receipt may wait on the other.
+        let mut v = setup();
+        as_owner(ONE_YOCTO);
+        v.set_ledger_key(ledger_pk(), U128(ONE_NEAR));
+        as_owner(ONE_YOCTO);
+        v.set_ledger_key(pk(10), U128(2 * ONE_NEAR));
+        assert_eq!(
+            receipts(),
+            vec![
+                (
+                    vault_id(),
+                    vec![],
+                    vec![fc_key(pk(10), 2 * ONE_NEAR, "anchor")]
+                ),
+                (vault_id(), vec![], vec![KeyAction::Delete(ledger_pk())]),
+            ]
+        );
+        assert_eq!(v.get_config().ledger_key, Some(pk(10)));
+        assert_eq!(
+            last_event(),
+            json!({"standard": "probarion", "version": "1.0.0", "event": "ledger_key_set",
+                   "data": {"public_key": pk(10)}})
+        );
+        // A third rotation is the same shape: only the key it replaces is deleted.
+        as_owner(ONE_YOCTO);
+        v.set_ledger_key(pk(11), U128(ONE_NEAR));
+        assert_eq!(
+            receipts(),
+            vec![
+                (vault_id(), vec![], vec![fc_key(pk(11), ONE_NEAR, "anchor")]),
+                (vault_id(), vec![], vec![KeyAction::Delete(pk(10))]),
+            ]
+        );
+    }
+
+    #[test]
+    fn add_agent_and_remove_agent_each_schedule_one_single_action_receipt() {
+        // The registry change commits with the call; the key action has a receipt of its own. So a
+        // remove_agent whose key is already gone still clears the registry, and add_agent can then
+        // add the key again.
+        let mut v = setup();
+        as_owner(ONE_YOCTO);
+        v.add_agent(agent_pk(), U128(ONE_NEAR), "a".to_string());
+        assert_eq!(
+            receipts(),
+            vec![(
+                vault_id(),
+                vec![],
+                vec![fc_key(agent_pk(), ONE_NEAR, "spend")]
+            )]
+        );
+        as_owner(ONE_YOCTO);
+        v.remove_agent(agent_pk());
+        assert_eq!(
+            receipts(),
+            vec![(vault_id(), vec![], vec![KeyAction::Delete(agent_pk())])]
+        );
+        assert!(v.list_agents().is_empty());
+        as_owner(ONE_YOCTO);
+        v.add_agent(agent_pk(), U128(ONE_NEAR), "again".to_string());
+        assert_eq!(
+            receipts(),
+            vec![(
+                vault_id(),
+                vec![],
+                vec![fc_key(agent_pk(), ONE_NEAR, "spend")]
+            )]
+        );
     }
 
     #[test]
