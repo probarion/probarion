@@ -6,7 +6,9 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   appRoutes,
+  builtPlannedRoutes,
   clientBoundaryViolations,
+  codeOnly,
   cronProblems,
   deadLinks,
   directives,
@@ -17,9 +19,13 @@ import {
   migrationProblems,
   nextPublicNames,
   parseDotenv,
+  processEnvReads,
+  publicPaths,
+  readsCronSecret,
   scriptTargets,
   specEnvNames,
   stripSqlComments,
+  stripSqlStrings,
 } from "./deploy-scan";
 
 const made: string[] = [];
@@ -141,6 +147,45 @@ describe("clientBoundaryViolations", () => {
       'src/components/A.tsx: reads process.env.KEY_ENCRYPTION_SECRET, which the browser never gets; imports "node:fs"; imports "libsodium-wrappers"',
       "src/components/B.tsx: reads process.env by a computed name",
     ]);
+  });
+
+  it("flags a destructured or optional-chained read of a server variable", () => {
+    const web = tree({
+      "src/components/A.tsx": client(
+        "const { CRON_SECRET, NEXT_PUBLIC_X: shown } = process.env;\nexport const A = () => [CRON_SECRET, shown];",
+      ),
+      "src/components/B.tsx": client(
+        "export const B = () => process.env?.SUPABASE_SERVICE_ROLE_KEY;",
+      ),
+      "src/components/C.tsx": client("export const C = () => process.env?.NEXT_PUBLIC_OK;"),
+    });
+    expect(clientBoundaryViolations(web)).toEqual([
+      "src/components/A.tsx: reads process.env.CRON_SECRET, which the browser never gets",
+      "src/components/B.tsx: reads process.env.SUPABASE_SERVICE_ROLE_KEY, which the browser never gets",
+    ]);
+  });
+
+  it("reads every direct form of process.env, and nothing from a comment or a string", () => {
+    const src = [
+      "const a = process.env.DOT;",
+      "const b = process.env?.OPTIONAL;",
+      'const c = process.env["INDEXED"];',
+      "const { PLAIN, RENAMED: r, WITH_DEFAULT = 1 } = process.env;",
+      "const { ...all } = process.env;",
+      "// process.env.IN_A_COMMENT",
+      'const m = "process.env.IN_A_STRING";',
+      "const n = process.env[name];",
+    ].join("\n");
+    expect(processEnvReads(src)).toEqual([
+      "*",
+      "DOT",
+      "INDEXED",
+      "OPTIONAL",
+      "PLAIN",
+      "RENAMED",
+      "WITH_DEFAULT",
+    ]);
+    expect(processEnvReads("const x = load(process.env);")).toEqual([]);
   });
 
   it("ignores type-only imports, which the compiler erases", () => {
@@ -277,13 +322,135 @@ describe("routes and links", () => {
     });
     expect(deadLinks(bad, [])).toEqual(['src/components/Nav.tsx: href "/prooof/x" has no page']);
   });
+
+  it("serves the metadata files Next.js reads from app/ as well as the files in public/", () => {
+    const dir = tree({
+      "src/app/page.tsx": "export default () => null;",
+      "src/app/favicon.ico": "ico",
+      "src/app/icon.png": "png",
+      "src/app/apple-icon.png": "png",
+      "src/app/opengraph-image.tsx": "export default () => null;",
+      "src/app/robots.ts": "export default () => ({});",
+      "src/app/sitemap.ts": "export default () => [];",
+      "src/app/(marketing)/manifest.json": "{}",
+      "src/app/blog/icon.svg": "<svg/>",
+      "src/app/_private/icon.png": "png",
+      "src/app/globals.css": "",
+      "public/brand/logo.svg": "<svg/>",
+    });
+    expect(publicPaths(dir)).toEqual([
+      "/apple-icon.png",
+      "/blog/icon.svg",
+      "/brand/logo.svg",
+      "/favicon.ico",
+      "/icon.png",
+      "/manifest.json",
+      "/opengraph-image",
+      "/robots.txt",
+      "/sitemap.xml",
+    ]);
+  });
+
+  it("accepts a link to a metadata file and still flags one to a file that is not there", () => {
+    const dir = tree({
+      "src/app/page.tsx": [
+        '<><a href="/favicon.ico">i</a><a href="/robots.txt">r</a><a href="/sitemap.xml">s</a>',
+        '<a href="/nope.ico">n</a><a href="/apple-icon.png">a</a></>',
+      ].join(""),
+      "src/app/favicon.ico": "ico",
+      "src/app/robots.ts": "export default () => ({});",
+      "src/app/sitemap.ts": "export default () => [];",
+    });
+    expect(deadLinks(dir, [])).toEqual([
+      'src/app/page.tsx: href "/nope.ico" has no page',
+      'src/app/page.tsx: href "/apple-icon.png" has no page',
+    ]);
+  });
+
+  it("finds a planned route whose page exists under another parameter name", () => {
+    const dir = tree({
+      "src/app/proof/[id]/page.tsx": "export default () => null;",
+      "src/app/console/[vault]/keys/page.tsx": "export default () => null;",
+    });
+    expect(
+      builtPlannedRoutes(dir, [
+        "/proof/[vault]",
+        "/console/[vault]/keys",
+        "/console/[vault]/payables",
+        "/canary",
+      ]),
+    ).toEqual(["/proof/[vault]", "/console/[vault]/keys"]);
+  });
+});
+
+describe("codeOnly", () => {
+  it("removes comments and empties strings, but not a comment marker inside a string", () => {
+    const out = codeOnly(
+      [
+        'const a = "x.CRON_SECRET"; // y.CRON_SECRET',
+        "/* z.CRON_SECRET */ const u = 'https://h'; env.KEPT",
+      ].join("\n"),
+    );
+    expect(out).not.toContain("CRON_SECRET");
+    expect(out).toContain("env.KEPT");
+  });
+
+  it("keeps the expressions of a template literal, nested ones too, and drops its text", () => {
+    const out = codeOnly(
+      "const s = `text ${a.B} more ${fn({ k: 1 }).C} ${`inner ${d.E}`} end`; f.AFTER",
+    );
+    expect(out).toContain("a.B");
+    expect(out).toContain(".C");
+    expect(out).toContain("d.E");
+    expect(out).toContain("f.AFTER");
+    expect(out).not.toMatch(/text|more|inner|end/);
+  });
+
+  it("turns a string index into a property access", () => {
+    expect(codeOnly('process.env["CRON_SECRET"]')).toBe("process.env.CRON_SECRET");
+    expect(codeOnly("process.env['A_B']")).toBe("process.env.A_B");
+    expect(codeOnly('process.env?.["X"]')).toBe("process.env?.X");
+    expect(codeOnly('list["not an identifier"]')).toBe('list[""]');
+    expect(codeOnly('process.env[name + "X"]')).toBe('process.env[name + ""]');
+    expect(codeOnly('list[0]["A"]')).toBe("list[0].A");
+    expect(codeOnly('get()["A"]')).toBe("get().A");
+  });
+
+  it("leaves a one-string array alone: it lists a name, it does not read one", () => {
+    expect(codeOnly('const a = ["CRON_SECRET"];')).toBe('const a = [""];');
+    expect(codeOnly('return ["A"]')).toBe('return [""]');
+    expect(codeOnly('f(["A"], x)')).toBe('f([""], x)');
+    expect(codeOnly('{ names: ["A"] }')).toBe('{ names: [""] }');
+  });
+});
+
+describe("readsCronSecret", () => {
+  it("accepts a property read, an indexed read and a destructured one", () => {
+    expect(readsCronSecret("const s = getEnv().CRON_SECRET;")).toBe(true);
+    expect(readsCronSecret('const s = process.env["CRON_SECRET"];')).toBe(true);
+    expect(readsCronSecret("const { CRON_SECRET } = getEnv();")).toBe(true);
+    expect(readsCronSecret("const { A, CRON_SECRET, B } = env;")).toBe(true);
+    expect(readsCronSecret("check(`Bearer ${process.env.CRON_SECRET}`)")).toBe(true);
+  });
+
+  it("refuses the name in a string, a comment or a type", () => {
+    expect(readsCronSecret('export const NAMES = ["CRON_SECRET"];')).toBe(false);
+    expect(readsCronSecret("// compare with process.env.CRON_SECRET\nconst a = 1;")).toBe(false);
+    expect(readsCronSecret("/* env.CRON_SECRET */ const a = 1;")).toBe(false);
+    expect(readsCronSecret('const m = "env.CRON_SECRET is missing";')).toBe(false);
+    expect(readsCronSecret("interface Env { CRON_SECRET: string }")).toBe(false);
+    expect(readsCronSecret("const e: { CRON_SECRET: string } = { CRON_SECRET: 'x' };")).toBe(false);
+  });
 });
 
 describe("cronProblems", () => {
   const route = (body: string) => ({ "src/app/api/cron/watch/route.ts": body });
   const cron = [{ path: "/api/cron/watch", schedule: "* * * * *" }];
+  const NEVER_READS =
+    "/api/cron/watch: the route never reads CRON_SECRET (Vercel sends it as a bearer token)";
+  const GET_ONLY = "export async function GET() { return new Response(); }";
 
-  it("accepts no crons, and a cron whose GET route checks CRON_SECRET", () => {
+  it("accepts no crons, and a cron whose GET route compares the bearer token with the secret", () => {
     expect(cronProblems(tree({}), {})).toEqual([]);
     expect(cronProblems(tree({}), { crons: [] })).toEqual([]);
     const ok = tree(
@@ -294,7 +461,15 @@ describe("cronProblems", () => {
     expect(cronProblems(ok, { crons: cron })).toEqual([]);
   });
 
-  it("accepts a route that checks the secret through a helper it imports", () => {
+  it("accepts a route that reads the secret as an index, destructured, or through a helper it imports", () => {
+    const indexed = tree(route('export const GET = async () => process.env["CRON_SECRET"];'));
+    expect(cronProblems(indexed, { crons: cron })).toEqual([]);
+    const destructured = tree(
+      route(
+        "export async function GET() { const { CRON_SECRET } = process.env; return CRON_SECRET; }",
+      ),
+    );
+    expect(cronProblems(destructured, { crons: cron })).toEqual([]);
     const dir = tree({
       ...route(
         'import { authorized } from "@/lib/cron";\nexport const GET = async (r: Request) => authorized(r);',
@@ -305,36 +480,81 @@ describe("cronProblems", () => {
     expect(cronProblems(dir, { crons: cron })).toEqual([]);
   });
 
-  it("flags a cron with no route, a route without GET, and one that never checks the secret", () => {
+  it("flags a cron with no route, a route without GET, and one that never reads the secret", () => {
     expect(cronProblems(tree({}), { crons: cron })).toEqual([
       "/api/cron/watch: no route handler at src/app/api/cron/watch/route.ts",
     ]);
     expect(cronProblems(tree(route("export async function POST() {}")), { crons: cron })).toEqual([
       "/api/cron/watch: the route does not export GET (Vercel crons send GET)",
-      "/api/cron/watch: the route never checks CRON_SECRET (Vercel sends it as a bearer token)",
+      NEVER_READS,
     ]);
-    expect(
-      cronProblems(tree(route("export async function GET() { return new Response(); }")), {
-        crons: cron,
-      }),
-    ).toEqual([
-      "/api/cron/watch: the route never checks CRON_SECRET (Vercel sends it as a bearer token)",
-    ]);
+    expect(cronProblems(tree(route(GET_ONLY)), { crons: cron })).toEqual([NEVER_READS]);
   });
 
-  it("does not count the env loader, which names every variable, as a check", () => {
+  it("flags a route that imports a file which only lists the name as a string", () => {
+    const dir = tree({
+      ...route(
+        'import { NAMES } from "@/lib/names";\nexport async function GET() { return NAMES; }',
+      ),
+      "src/lib/names.ts": 'export const NAMES = ["CRON_SECRET", "OTHER"];',
+    });
+    expect(cronProblems(dir, { crons: cron })).toEqual([NEVER_READS]);
+  });
+
+  it("flags a route that only mentions the name in a comment or a message", () => {
+    const comment = tree(
+      route(`// TODO check process.env.CRON_SECRET\n/* env.CRON_SECRET */\n${GET_ONLY}`),
+    );
+    expect(cronProblems(comment, { crons: cron })).toEqual([NEVER_READS]);
+    const message = tree(
+      route('export async function GET() { return new Response("set process.env.CRON_SECRET"); }'),
+    );
+    expect(cronProblems(message, { crons: cron })).toEqual([NEVER_READS]);
+  });
+
+  it("flags a route that imports the logger and does no auth", () => {
+    const dir = tree({
+      ...route(
+        'import { log } from "@/lib/log";\nexport async function GET() { log.info("tick"); return new Response(); }',
+      ),
+      "src/lib/log.ts": [
+        'const SECRET_ENV_NAMES = ["CRON_SECRET", "KEY_ENCRYPTION_SECRET"] as const;',
+        "export const log = { info: (m: string) => process.env[SECRET_ENV_NAMES[0]] && m };",
+        "export const masked = () => process.env.CRON_SECRET;",
+      ].join("\n"),
+    });
+    expect(cronProblems(dir, { crons: cron })).toEqual([NEVER_READS]);
+  });
+
+  it("does not count the env loader, which names every variable", () => {
     const dir = tree({
       ...route(
         'import { getEnv } from "@/lib/env";\nexport async function GET() { getEnv(); return new Response(); }',
       ),
       "src/lib/env.ts": "export const getEnv = () => ({ CRON_SECRET: process.env.CRON_SECRET });",
     });
-    expect(cronProblems(dir, { crons: cron })).toEqual([
-      "/api/cron/watch: the route never checks CRON_SECRET (Vercel sends it as a bearer token)",
-    ]);
+    expect(cronProblems(dir, { crons: cron })).toEqual([NEVER_READS]);
   });
 
-  it("flags a duplicate path, a path outside /api and a bad schedule", () => {
+  it("accepts any five-field schedule (names, lists, ranges, steps) and a query string in the path", () => {
+    const dir = tree(route("export async function GET() { return process.env.CRON_SECRET; }"));
+    expect(
+      cronProblems(dir, {
+        crons: [
+          { path: "/api/cron/watch", schedule: "0 9 * * MON" },
+          { path: "/api/cron/watch?kind=a", schedule: "*/5 1,3-5 1-15/2 JAN-MAR 1,3-5" },
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it("finds the route by the path alone, and still reports a missing one with its query", () => {
+    expect(
+      cronProblems(tree({}), { crons: [{ path: "/api/cron/gone?x=1", schedule: "* * * * *" }] }),
+    ).toEqual(["/api/cron/gone?x=1: no route handler at src/app/api/cron/gone/route.ts"]);
+  });
+
+  it("flags a duplicate path, a path outside /api and a schedule that is not five fields", () => {
     const dir = tree(route("export async function GET() { return process.env.CRON_SECRET; }"));
     const got = cronProblems(dir, {
       crons: [
@@ -413,13 +633,28 @@ describe("environment variables", () => {
         "export function load(src: Record<string, string | undefined>) { return src.FROM_SRC; }",
       ].join("\n"),
       "src/lib/a.ts": 'export const a = process.env.DIRECT + process.env["QUOTED"] + env.FROM_ENV;',
+      "src/lib/b.ts": [
+        "const { DESTRUCTURED, RENAMED: r, ...rest } = process.env;",
+        "const chained = process.env?.OPTIONAL_CHAIN;",
+        "const e = process.env;",
+        "export const aliased = e.ALIASED;",
+        "export function f(cfg: Record<string, string | undefined> = process.env) {",
+        "  return cfg.PARAM_ALIAS;",
+        "}",
+        "// process.env.IN_A_COMMENT and e.COMMENTED_ALIAS",
+        'export const s = "process.env.IN_A_STRING";',
+      ].join("\n"),
       "src/lib/log.ts": 'const SECRET_ENV_NAMES = [\n  "MASKED_ONE",\n  "MASKED_TWO",\n] as const;',
-      "scripts/run.ts": 'const NAMES = ["SCRIPT_INPUT"] as const;',
+      "src/lib/palette.ts": 'export const COLOR_NAMES = ["NOT_A_VARIABLE"];',
+      "scripts/run.ts": 'const NAMES = ["NO_ENV_IN_THE_LIST_NAME"] as const;',
+      "scripts/req.ts": 'const REQUIRED_ENV_NAMES = ["SCRIPT_INPUT"] as const;',
       "src/lib/a.test.ts": "process.env.IN_A_TEST_ONLY;",
       "next.config.ts": "export default { env: { NEXT_PUBLIC_X: process.env.FROM_NEXT_CONFIG } };",
     });
     expect([...envNamesRead(dir).keys()].sort()).toEqual([
+      "ALIASED",
       "CRON_SECRET",
+      "DESTRUCTURED",
       "DIRECT",
       "FROM_ENV",
       "FROM_NEXT_CONFIG",
@@ -427,8 +662,11 @@ describe("environment variables", () => {
       "MASKED_ONE",
       "MASKED_TWO",
       "NEAR_NETWORK",
+      "OPTIONAL_CHAIN",
       "OPTIONAL_THING",
+      "PARAM_ALIAS",
       "QUOTED",
+      "RENAMED",
       "SCRIPT_INPUT",
     ]);
   });
@@ -483,6 +721,40 @@ describe("migrationProblems", () => {
     expect(bad("select auth.uid();")).toHaveLength(1);
     expect(bad("select * from auth.users;")).toHaveLength(1);
     expect(bad("set role postgres;")).toHaveLength(1);
+    expect(
+      bad(
+        "alter default privileges for role postgres in schema public revoke all on tables from anon;",
+      ),
+    ).toEqual([
+      "20261108000001_x.sql: sets default privileges for a named role: the hosted roles differ",
+    ]);
+    expect(
+      bad("ALTER DEFAULT PRIVILEGES FOR USER app GRANT SELECT ON TABLES TO anon;"),
+    ).toHaveLength(1);
+    // Dynamic SQL in an execute string really runs, so it is read.
+    expect(
+      bad("do $$ begin execute 'alter table t owner to postgres'; end $$;").length,
+    ).toBeGreaterThan(0);
+    expect(
+      bad("do $$ begin execute format('create role %I', 'x'); end $$;").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("does not read prose inside a quoted string as a statement", () => {
+    const ok = (sql: string) => migrationProblems([f("20261108000001_x.sql", sql)]);
+    expect(ok("select 'alter table t owner to postgres' as note;")).toEqual([]);
+    expect(ok("insert into t (msg) values ('create role x; set role postgres');")).toEqual([]);
+    expect(ok("do $$ begin raise exception 'cannot reach postgres: it''s down'; end $$;")).toEqual(
+      [],
+    );
+    expect(ok("comment on table t is 'owned by supabase_admin';")).toEqual([]);
+  });
+
+  it("empties quoted strings, keeps escaped quotes inside them, and keeps execute strings", () => {
+    expect(stripSqlStrings("select 'a', 'it''s', 'b';")).toBe("select '', '', '';");
+    expect(stripSqlStrings("execute 'grant x'; execute format('y'); raise 'z';")).toBe(
+      "execute 'grant x'; execute format('y'); raise '';",
+    );
   });
 
   it("leaves alone comments, a column called role, and ordinary DDL", () => {

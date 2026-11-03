@@ -12,9 +12,15 @@ Where things are defined (you do not edit these to deploy):
 - `apps/web/supabase/migrations/*.sql`: the database schema, in filename order.
 - `apps/web/test/deploy.test.ts`: the guardrails that keep this page true. `pnpm --filter @probarion/web test` runs them.
 
-## 0. Decide the network for this deploy
+## 0. Before you start
 
-- [ ] **OWNER:** read `contracts/deployments/mainnet.json`. While its `factory.deploy_tx` is `null`, the mainnet factory `vaults.probarion.near` is not deployed, so the console cannot create or register a mainnet vault. Deploy against **testnet** first (`NEAR_NETWORK=testnet`) and move Production to mainnet when the factory is live (`docs/runbooks/factory.md`).
+- [ ] **OWNER:** make sure this work is on `main`. Vercel builds the Production Branch (`main`) and reads `apps/web/vercel.json` from the branch it builds; the guardrail tests and this page live on the development branch until they are merged. Merge `dev` into `main` first (the controller does that through a pull request), then check the file is there:
+  ```bash
+  git fetch origin
+  git ls-tree origin/main apps/web/vercel.json
+  ```
+  It must print one line. If it prints nothing, stop: without `vercel.json` the first build has no `buildCommand`, cannot find `@probarion/core` and `@probarion/sdk` (they are loaded from `dist`), and fails. A Preview deployment of another branch is not a substitute for this check.
+- [ ] **OWNER:** decide the network. Read `contracts/deployments/mainnet.json`. While its `factory.deploy_tx` is `null`, the mainnet factory `vaults.probarion.near` is not deployed, so the console cannot create or register a mainnet vault. Deploy against **testnet** first (`NEAR_NETWORK=testnet`) and move Production to mainnet when the factory is live (`docs/runbooks/factory.md`).
 - [ ] **OWNER:** check the testnet factory `vaults.probarion.testnet` is deployed (`docs/runbooks/factory.md`). Without it the console shows the Create vault panel as unavailable. Registering an existing vault still works.
 
 ## 1. Supabase
@@ -37,7 +43,7 @@ Where things are defined (you do not edit these to deploy):
     pnpm dlx supabase link --project-ref <project-ref>
     pnpm dlx supabase db push
     ```
-    If the CLI refuses because `supabase/config.toml` is missing, use the SQL editor below and tell the controller. Never run `supabase db reset` against the hosted project.
+    If the CLI refuses because `supabase/config.toml` is missing, use the SQL editor below and tell the controller. Never run `supabase db reset` against the hosted project. The CLI writes your project reference into `apps/web/supabase/.temp/`; that folder is git-ignored, so leave it out of every commit.
   - **Or in the dashboard**: SQL Editor, paste each file in order, Run.
 - [ ] **OWNER:** check the result. In the SQL Editor:
   ```sql
@@ -46,7 +52,7 @@ Where things are defined (you do not edit these to deploy):
   where n.nspname = 'public' and c.relkind = 'r'
   order by 1;
   ```
-  After migrations 0001 to 0005 there are 12 tables, and `relrowsecurity` is `true` on every one. Any `false` is a stop: do not deploy, send the controller the table name.
+  Every table in the list must show `relrowsecurity = true`, and the list must not be empty. Any `false` is a stop: do not deploy, send the controller the table name. (Do not compare with a table count from this page: later migrations add tables.)
 - [ ] **OWNER, optional:** paste `apps/web/test/db/rls-assert.sql` into the SQL Editor and run it. It raises an error naming the problem and prints nothing otherwise. It passes on the local test database; it has not been run against a hosted project yet, so if it raises, send the controller the message.
 - [ ] **OWNER, optional hardening:** sign-in to the console is a NEAR signature, not Supabase Auth. In the dashboard's Authentication settings, turn off new user sign-ups. (Menu names change; the setting is called "allow new users to sign up".)
 
@@ -84,12 +90,12 @@ Where things are defined (you do not edit these to deploy):
   | `NEAR_NETWORK` | `testnet` now, `mainnet` when step 0 allows | `testnet` | no |
   | `NEAR_RPC_URLS` | leave unset for the network default, or a comma list in failover order | unset | no |
   | `PROBARION_FACTORY_ID` | unset for the default (`vaults.probarion.testnet` or `vaults.probarion.near`) | unset | no |
-  | `SUPABASE_URL` | project URL | preview project URL | no |
-  | `NEXT_PUBLIC_SUPABASE_URL` | the same URL | the same URL | no |
-  | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | publishable key | publishable key | no (public by design) |
-  | `SUPABASE_SERVICE_ROLE_KEY` | secret key | secret key | **yes** |
-  | `KEY_ENCRYPTION_SECRET` | from step 2 | its own value, see 3.4 | **yes** |
-  | `CRON_SECRET` | from step 2 (the app requires one even before any cron exists) | a different value | **yes** |
+  | `SUPABASE_URL` | project URL | the Preview project's URL, or the Production URL if Preview shares that project | no |
+  | `NEXT_PUBLIC_SUPABASE_URL` | the same URL | the same URL as `SUPABASE_URL` in Preview | no |
+  | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | publishable key | the publishable key of the project Preview uses | no (public by design) |
+  | `SUPABASE_SERVICE_ROLE_KEY` | secret key | the secret key of the project Preview uses | **yes** |
+  | `KEY_ENCRYPTION_SECRET` | from step 2 | **Preview has its own Supabase project:** its own new value. **Preview shares Production's project:** exactly the Production value (see 3.4) | **yes** |
+  | `CRON_SECRET` | from step 2 (the app requires one even before any cron exists) | its own value (it is never stored in the database, so it may differ from Production either way) | **yes** |
 
   Optional today, set when you need the feature:
 
@@ -121,7 +127,7 @@ Where things are defined (you do not edit these to deploy):
 
 ### 3.4 Preview versus Production data (advice)
 
-This is my advice, not a rule of the code. The code does not stop you from pointing Preview and Production at one Supabase project; it only requires that every row can be opened. Rows are sealed under `KEY_ENCRYPTION_SECRET`, so a project shared by two environments needs the same value in both, and then a leaked Preview value is a leaked Production value. Two Supabase projects, each with its own value, keep a throwaway Preview from touching real tenants. If you share one project, use one `KEY_ENCRYPTION_SECRET` and one network in both environments.
+This is advice, not a rule of the code. The code does not stop you from pointing Preview and Production at one Supabase project; it only requires that every row can be opened. Rows are sealed under `KEY_ENCRYPTION_SECRET`, so a project shared by two environments needs the same value in both, and then a leaked Preview value is a leaked Production value. Two Supabase projects, each with its own value, keep a throwaway Preview from touching real tenants. If you share one project, use one `KEY_ENCRYPTION_SECRET` and one network in both environments.
 
 ## 4. First deploy and smoke test
 

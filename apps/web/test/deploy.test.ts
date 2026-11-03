@@ -8,6 +8,7 @@ import { FOOTER_NAV, PLANNED_ROUTES, SITE_NAV, VAULT_TABS } from "@/lib/routes";
 import { freshDb } from "./db/harness";
 import {
   appRoutes,
+  builtPlannedRoutes,
   clientBoundaryViolations,
   cronProblems,
   deadLinks,
@@ -89,10 +90,11 @@ describe("environment variables", () => {
 
   it("keeps the key-rotation inputs out of .env.example and in the runbook", () => {
     const runbook = text(ROOT, "docs", "ops", "key-rotation.md");
+    const rotateCli = text(WEB, "src", "lib", "keys", "rotate-cli.ts");
     for (const name of ROTATION_INPUTS) {
       expect(example.has(name), `${name} in .env.example`).toBe(false);
       expect(runbook, name).toContain(name);
-      expect(envNamesRead(WEB).has(name), `${name} read by the web app`).toBe(true);
+      expect(rotateCli, `${name} read by rotate-keys`).toContain(name);
     }
   });
 
@@ -204,7 +206,7 @@ describe("vercel.json", () => {
     expect(VERCEL.headers).toBeUndefined();
   });
 
-  it("gives every cron a GET route that checks CRON_SECRET", () => {
+  it("gives every cron a GET route that reads CRON_SECRET", () => {
     expect(cronProblems(WEB, VERCEL)).toEqual([]);
   });
 });
@@ -268,7 +270,11 @@ describe("links", () => {
   });
 
   it("are planned only while their page does not exist", () => {
-    expect(PLANNED_ROUTES.filter((r) => patterns.includes(r))).toEqual([]);
+    const built = builtPlannedRoutes(WEB, PLANNED_ROUTES);
+    expect(
+      built,
+      `these planned pages are built, so delete these lines from PLANNED_ROUTES in src/lib/routes.ts: ${built.join(", ")}`,
+    ).toEqual([]);
   });
 
   it("are listed in the navigation only when they exist or are planned", () => {

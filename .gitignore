@@ -4,6 +4,7 @@ contracts/target/
 dist/
 .next/
 .vercel/
+apps/web/supabase/.temp/
 next-env.d.ts
 coverage/
 .env

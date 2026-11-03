@@ -122,14 +122,144 @@ function stripExt(p: string): string {
   return p.replace(/(\/index)?\.[cm]?[jt]sx?$/, "");
 }
 
-/** `process.env.X` names a module reads, `*` for a computed `process.env[...]`. */
-export function processEnvReads(src: string): string[] {
-  const out = new Set<string>();
-  for (const m of src.matchAll(/\bprocess\.env\.([A-Za-z_][A-Za-z0-9_]*)/g)) out.add(m[1] ?? "");
-  for (const m of src.matchAll(/\bprocess\.env\[\s*(["'])([A-Za-z_][A-Za-z0-9_]*)\1\s*\]/g)) {
-    out.add(m[2] ?? "");
+const NOT_A_VALUE =
+  /^(?:return|typeof|in|of|case|yield|await|void|delete|new|throw|else|do|default|export)$/;
+
+/** Does `out` end in `value[`, an index, rather than `= [`, `return [` or `([`, which open an array? */
+function indexesAValue(out: string): boolean {
+  const before = out.replace(/\s*\[\s*$/, "");
+  if (before === out) return false;
+  if (/\?\.$/.test(before) || /[)\]]$/.test(before)) return true;
+  const word = /([\w$]+)$/.exec(before)?.[1];
+  return word !== undefined && !NOT_A_VALUE.test(word);
+}
+
+/**
+ * TypeScript source with comments removed and string literals emptied, so a name that only sits in a comment
+ * or a string (a list of names to mask, a log message) is not mistaken for code. The text of a template
+ * literal goes, but its `${…}` expressions stay. A string that is the only index of `x["NAME"]` becomes the
+ * property access `x.NAME`. Regex literals are not understood: a quote inside one can swallow the rest of its
+ * line.
+ */
+export function codeOnly(src: string): string {
+  let out = "";
+  let i = 0;
+  let inTemplateText = false;
+  const holes: number[] = []; // open `{` count inside each `${ … }` that is being read
+  while (i < src.length) {
+    const c = src.charAt(i);
+    const d = src.charAt(i + 1);
+    if (inTemplateText) {
+      if (c === "\\") i += 2;
+      else if (c === "`") {
+        out += "`";
+        inTemplateText = false;
+        i++;
+      } else if (c === "$" && d === "{") {
+        holes.push(0);
+        inTemplateText = false;
+        out += " ";
+        i += 2;
+      } else i++;
+    } else if (c === "/" && d === "/") {
+      const nl = src.indexOf("\n", i);
+      i = nl === -1 ? src.length : nl;
+    } else if (c === "/" && d === "*") {
+      const end = src.indexOf("*/", i + 2);
+      i = end === -1 ? src.length : end + 2;
+      out += " ";
+    } else if (c === '"' || c === "'") {
+      let j = i + 1;
+      let content = "";
+      while (j < src.length && src.charAt(j) !== c && src.charAt(j) !== "\n") {
+        if (src.charAt(j) === "\\") {
+          content += src.slice(j, j + 2);
+          j += 2;
+        } else content += src.charAt(j++);
+      }
+      const closed = src.charAt(j) === c;
+      const end = closed ? j + 1 : j;
+      const close = /^\s*\]/.exec(src.slice(end));
+      if (closed && close && indexesAValue(out) && /^[A-Za-z_$][\w$]*$/.test(content)) {
+        out = /\?\.\s*\[\s*$/.test(out)
+          ? out.replace(/\[\s*$/, "") + content
+          : `${out.replace(/\[\s*$/, "")}.${content}`;
+        i = end + close[0].length;
+      } else {
+        out += `${c}${c}`;
+        i = end;
+      }
+    } else if (c === "`") {
+      out += "`";
+      inTemplateText = true;
+      i++;
+    } else if (c === "{" && holes.length > 0) {
+      holes[holes.length - 1] = (holes[holes.length - 1] ?? 0) + 1;
+      out += c;
+      i++;
+    } else if (c === "}" && holes.length > 0) {
+      if (holes[holes.length - 1] === 0) {
+        holes.pop();
+        inTemplateText = true;
+        out += " ";
+      } else {
+        holes[holes.length - 1] = (holes[holes.length - 1] ?? 1) - 1;
+        out += c;
+      }
+      i++;
+    } else {
+      out += c;
+      i++;
+    }
   }
-  if (/\bprocess\.env\[\s*(?!["'][A-Za-z_][A-Za-z0-9_]*["']\s*\])/.test(src)) out.add("*");
+  return out;
+}
+
+const IDENT = "[A-Za-z_$][\\w$]*";
+
+/**
+ * The names a module reads straight off `process.env`: `process.env.X`, `process.env?.X`, `process.env["X"]`
+ * and `const { X, Y: alias } = process.env`. `*` stands for a computed read (`process.env[name]`) or a rest
+ * pattern. Names in comments and strings do not count.
+ */
+export function processEnvReads(src: string): string[] {
+  const code = codeOnly(src);
+  const out = new Set<string>();
+  for (const m of code.matchAll(new RegExp(`\\bprocess\\.env\\s*\\??\\.\\s*(${IDENT})`, "g"))) {
+    out.add(m[1] ?? "");
+  }
+  if (/\bprocess\.env\s*(?:\?\.\s*)?\[/.test(code)) out.add("*");
+  for (const m of code.matchAll(/\{([^{}]*)\}\s*=\s*process\.env\b(?!\s*\??\.|\s*\[)/g)) {
+    for (const part of (m[1] ?? "").split(",")) {
+      const entry = part.trim();
+      if (entry === "") continue;
+      out.add(entry.startsWith("...") ? "*" : (new RegExp(`^${IDENT}`).exec(entry)?.[0] ?? "*"));
+    }
+  }
+  return [...out].sort();
+}
+
+/**
+ * Uppercase names read off a local alias of `process.env`: `const e = process.env; e.FOO`, or a parameter
+ * that defaults to it (`function f(src = process.env) { src.FOO }`).
+ */
+export function envAliasReads(src: string): string[] {
+  const code = codeOnly(src);
+  const aliases = new Set<string>();
+  for (const m of code.matchAll(
+    new RegExp(`\\b(${IDENT})\\s*(?::[^=;)]*)?=\\s*process\\.env\\b(?!\\s*\\??[.\\[])`, "g"),
+  )) {
+    if (m[1] !== "process") aliases.add(m[1] ?? "");
+  }
+  const out = new Set<string>();
+  for (const alias of aliases) {
+    const esc = alias.replace(/\$/g, "\\$");
+    for (const m of code.matchAll(
+      new RegExp(`(?<![\\w$.])${esc}\\s*\\??\\.\\s*([A-Z][A-Z0-9_]+)\\b`, "g"),
+    )) {
+      out.add(m[1] ?? "");
+    }
+  }
   return [...out].sort();
 }
 
@@ -218,10 +348,51 @@ export function appRoutes(webDir: string): string[] {
   return [...routes].sort();
 }
 
-/** Files served as-is from `public/`, as URL paths. */
+/** The Next.js file conventions in `app/` that are served at a URL of their own. */
+const APP_FILE_CONVENTION =
+  /^(favicon|icon\d*|apple-icon\d*|opengraph-image|twitter-image|robots|sitemap|manifest)\.(ico|png|jpe?g|gif|svg|txt|xml|webmanifest|json|[cm]?[jt]sx?)$/;
+/** What a generated convention file (robots.ts and the like) is served as. */
+const GENERATED_AS: Record<string, string> = {
+  robots: "robots.txt",
+  sitemap: "sitemap.xml",
+  manifest: "manifest.webmanifest",
+};
+
+/**
+ * Addresses that answer without a page: files served as-is from `public/`, and the metadata files Next.js
+ * serves from `src/app` (`favicon.ico`, `icon.*`, `apple-icon.*`, `opengraph-image.*`, `twitter-image.*`,
+ * `robots.*`, `sitemap.*`, `manifest.*`), at the path of the folder they sit in.
+ */
 export function publicPaths(webDir: string): string[] {
-  const root = join(webDir, "public");
-  return walk(root).map((f) => `/${toPosix(relative(root, f))}`);
+  const out = new Set<string>();
+  const publicRoot = join(webDir, "public");
+  for (const f of walk(publicRoot)) out.add(`/${toPosix(relative(publicRoot, f))}`);
+  const appRoot = join(webDir, "src", "app");
+  for (const f of walk(appRoot)) {
+    const rel = toPosix(relative(appRoot, f));
+    const m = /^(?:(.*)\/)?([^/]+)$/.exec(rel);
+    const folder = (m?.[1] ?? "")
+      .split("/")
+      .filter((s) => s !== "" && !/^\(.*\)$/.test(s) && !s.startsWith("@"));
+    const conv = APP_FILE_CONVENTION.exec(m?.[2] ?? "");
+    if (!conv || folder.some((s) => s.startsWith("_"))) continue;
+    const base = conv[1] ?? "";
+    const ext = conv[2] ?? "";
+    const prefix = folder.length > 0 ? `/${folder.join("/")}` : "";
+    if (/^[cm]?[jt]sx?$/.test(ext)) {
+      // Generated: served under its generated name, or (icons, images) at the bare route.
+      out.add(`${prefix}/${GENERATED_AS[base] ?? base}`);
+    } else {
+      out.add(`${prefix}/${base}.${ext}`);
+    }
+  }
+  return [...out].sort();
+}
+
+/** The planned routes whose page now exists (a pattern match, so `/proof/[id]` builds `/proof/[vault]`). */
+export function builtPlannedRoutes(webDir: string, planned: readonly string[]): string[] {
+  const patterns = appRoutes(webDir);
+  return planned.filter((r) => hrefResolves(r, patterns, []));
 }
 
 const DYNAMIC = "\u0000";
@@ -324,7 +495,21 @@ export interface Cron {
   schedule: string;
 }
 
-const CRON_FIELD = /^(\*|\d+|\d+-\d+|\*\/\d+|\d+-\d+\/\d+|\d+(,\d+)+)$/;
+/**
+ * A real read of the secret: `x.CRON_SECRET` (also `x["CRON_SECRET"]`, which `codeOnly` turns into that) or
+ * `const { CRON_SECRET } = …`. A name in a comment, a string, a type or a list of names to mask is not one.
+ */
+const CRON_SECRET_READ = /\.CRON_SECRET\b|\{[^{}:]*\bCRON_SECRET\b[^{}:]*\}\s*=[^=]/;
+
+/** Modules that name every variable (the env loader, the logger's mask list) and so never prove a check. */
+const NAMES_EVERY_VARIABLE = [
+  ["lib", "env.ts"],
+  ["lib", "log.ts"],
+];
+
+export function readsCronSecret(src: string): boolean {
+  return CRON_SECRET_READ.test(codeOnly(src));
+}
 
 /** Problems with the crons in a parsed vercel.json; `[]` when it has none or all are sound. */
 export function cronProblems(webDir: string, config: { crons?: Cron[] }): string[] {
@@ -332,31 +517,30 @@ export function cronProblems(webDir: string, config: { crons?: Cron[] }): string
   const srcRoot = join(webDir, "src");
   const seen = new Set<string>();
   for (const c of config.crons ?? []) {
-    if (!c.path.startsWith("/api/")) problems.push(`${c.path}: a cron path must start with /api/`);
+    // A cron path may carry a query string; the route is found by the path alone.
+    const pathname = c.path.split("?")[0] ?? "";
+    if (!pathname.startsWith("/api/"))
+      problems.push(`${c.path}: a cron path must start with /api/`);
     if (seen.has(c.path)) problems.push(`${c.path}: listed twice`);
     seen.add(c.path);
-    if (
-      c.schedule.trim().split(/\s+/).length !== 5 ||
-      !c.schedule
-        .trim()
-        .split(/\s+/)
-        .every((f) => CRON_FIELD.test(f))
-    ) {
+    // Vercel validates the expression itself; here only the shape (five fields) is checked.
+    if (c.schedule.trim().split(/\s+/).length !== 5) {
       problems.push(`${c.path}: schedule "${c.schedule}" is not a five-field cron expression`);
     }
-    const dir = join(srcRoot, "app", ...c.path.split("/").filter(Boolean));
+    const dir = join(srcRoot, "app", ...pathname.split("/").filter(Boolean));
     const route = ["route.ts", "route.tsx", "route.js"].map((n) => join(dir, n)).find(existsSync);
     if (route === undefined) {
-      problems.push(`${c.path}: no route handler at src/app${c.path}/route.ts`);
+      problems.push(`${c.path}: no route handler at src/app${pathname}/route.ts`);
       continue;
     }
     const src = readFileSync(route, "utf8");
-    if (!/export\s+(?:async\s+)?function\s+GET\b|export\s+const\s+GET\b/.test(src)) {
+    if (!/export\s+(?:async\s+)?function\s+GET\b|export\s+const\s+GET\b/.test(codeOnly(src))) {
       problems.push(`${c.path}: the route does not export GET (Vercel crons send GET)`);
     }
-    if (!reaches(route, srcRoot, (s) => /\bCRON_SECRET\b/.test(s))) {
+    const skip = NAMES_EVERY_VARIABLE.map((p) => join(srcRoot, ...p));
+    if (!reaches(route, srcRoot, readsCronSecret, skip)) {
       problems.push(
-        `${c.path}: the route never checks CRON_SECRET (Vercel sends it as a bearer token)`,
+        `${c.path}: the route never reads CRON_SECRET (Vercel sends it as a bearer token)`,
       );
     }
   }
@@ -364,17 +548,21 @@ export function cronProblems(webDir: string, config: { crons?: Cron[] }): string
 }
 
 /**
- * Does `start` or any module it imports (relative or `@/`) satisfy `test`? The env loader names every
- * variable, so it never counts: a route must read `CRON_SECRET` itself or through a helper.
+ * Does `start` or any module it imports (relative or `@/`) satisfy `test`? Modules in `skip` are walked
+ * through but never count.
  */
-function reaches(start: string, srcRoot: string, test: (src: string) => boolean): boolean {
-  const loader = join(srcRoot, "lib", "env.ts");
+function reaches(
+  start: string,
+  srcRoot: string,
+  test: (src: string) => boolean,
+  skip: readonly string[],
+): boolean {
   const seen = new Set<string>([start]);
   const queue = [start];
   while (queue.length > 0) {
     const file = queue.shift() as string;
     const src = readFileSync(file, "utf8");
-    if (file !== loader && test(src)) return true;
+    if (!skip.includes(file) && test(src)) return true;
     for (const imp of importsOf(src)) {
       const target = resolveLocal(imp.spec, file, srcRoot);
       if (target !== null && /\.(ts|tsx)$/.test(target) && !seen.has(target)) {
@@ -454,12 +642,15 @@ export function envNamesRead(webDir: string): Map<string, string[]> {
     const src = readFileSync(f, "utf8");
     const rel = toPosix(relative(webDir, f));
     for (const name of processEnvReads(src)) if (name !== "*") note(name, rel);
-    for (const m of src.matchAll(/\b(?:src|env|source)\.([A-Z][A-Z0-9_]+)\b/g))
+    for (const name of envAliasReads(src)) note(name, rel);
+    // A parameter that carries the environment (`loadEnv(src)`), however it is indexed.
+    for (const m of codeOnly(src).matchAll(
+      /(?<![\w$.])(?:src|env|source)\s*\??\.\s*([A-Z][A-Z0-9_]+)\b/g,
+    )) {
       note(m[1] ?? "", rel);
-    for (const m of src.matchAll(/\b(?:src|env|source)\[\s*(["'])([A-Z][A-Z0-9_]+)\1\s*\]/g)) {
-      note(m[2] ?? "", rel);
     }
-    for (const m of src.matchAll(/\b\w*NAMES\b[^=\n]*=\s*\[([^\]]*)\]/g)) {
+    // String lists of variable names, such as the logger's mask list (`SECRET_ENV_NAMES`).
+    for (const m of src.matchAll(/\b(?=\w*ENV)\w*NAMES\b[^=\n]*=\s*\[([^\]]*)\]/g)) {
       for (const s of (m[1] ?? "").matchAll(/(["'])([A-Z][A-Z0-9_]+)\1/g)) note(s[2] ?? "", rel);
     }
     const iface = /export interface Env \{([\s\S]*?)\n\}/.exec(src)?.[1];
@@ -506,9 +697,24 @@ export function stripSqlComments(sql: string): string {
     .join("\n");
 }
 
+/**
+ * The SQL with single-quoted strings emptied, so prose in a message ('cannot reach postgres') is not read
+ * as a statement. A string that follows `execute` is kept: it is dynamic SQL that really runs.
+ */
+export function stripSqlStrings(sql: string): string {
+  return sql.replace(
+    /(\bexecute\s*(?:format\s*\(\s*)?)?'(?:[^']|'')*'/gi,
+    (whole: string, execute?: string) => (execute ? whole : "''"),
+  );
+}
+
 const NOT_PORTABLE: readonly [RegExp, string][] = [
   [/\bowner\s+to\b/i, "sets an owner (OWNER TO): the hosted owner is not the local one"],
   [/\b(?:create|alter|drop)\s+role\b/i, "creates or changes a role: Supabase owns the roles"],
+  [
+    /\balter\s+default\s+privileges\s+for\s+(?:role|user)\b/i,
+    "sets default privileges for a named role: the hosted roles differ",
+  ],
   [
     /\bset\s+session\s+authorization\b|\bset\s+(?:local\s+|session\s+)?role\s+(?!=)\S/i,
     "switches role or session authorization",
@@ -553,7 +759,7 @@ export function migrationProblems(files: readonly MigrationFile[]): string[] {
     }
   });
   for (const f of files) {
-    const sql = stripSqlComments(f.sql);
+    const sql = stripSqlStrings(stripSqlComments(f.sql));
     for (const m of sql.matchAll(
       /\bcreate\s+extension\s+(?:if\s+not\s+exists\s+)?"?([a-z0-9_-]+)"?/gi,
     )) {
