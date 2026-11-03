@@ -1017,8 +1017,11 @@ export function checkIntentsKeys(s: Snapshot): CheckResult {
  * - `approver_tx`: a held spend an approver paid out: its burn is in the approver's tx, which was not read;
  * - `not_recorded`: a spend bound to its decision whose cycle wrote no payment entry (`ledgerComplete: false`,
  *   or a writer that left it out), so the ledger names no burn tx.
- * A burn record that names a tx which was read and holds no burn pair FAILS, for every spend. Any other burned
- * spend whose burn is not found fails. A failure wins over unproven burns.
+ * - `tx_unavailable` (ICR-13): a burn record with status `unavailable`: its tx could not be read right now (an
+ *   RPC outage, an answer the client cannot read, an old tx with no archival RPC).
+ * A burn record that names a tx which was read and holds no burn pair FAILS, for every spend; so does a tx the node
+ * says does not exist (the SDK records it like one that was read). Any other burned spend whose burn is not found
+ * fails. A failure wins over unproven burns.
  */
 export function checkBurnMemos(s: Snapshot): CheckResult {
   return burnCheck(s).result;
@@ -1058,6 +1061,14 @@ export function burnCheck(s: Snapshot): { result: CheckResult; unproven: Unprove
     if (matches.length > 1)
       return failed(`spend ${spend.id}: ${matches.length} burn records name it, expected one`, seq);
     const burn = matches[0];
+    if (burn !== undefined && burn.status === "unavailable") {
+      // ICR-13: the node could not be asked right now (not a "no such tx" answer): unproven, never a pass.
+      unproven.push({ check: "h", spend_id: spend.id, reason: "tx_unavailable" });
+      notes.push(
+        `spend ${spend.id}: tx ${String(burn.tx_hash)} could not be read right now; re-run, or add an archival RPC`,
+      );
+      continue;
+    }
     if (burn === undefined || burn.status !== "ok") {
       const tx =
         burn !== undefined && typeof burn.tx_hash === "string" && burn.tx_hash.length > 0

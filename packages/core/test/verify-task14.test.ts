@@ -708,3 +708,28 @@ describe("T14-R2: an unproven burn is 'unproven', never a pass (the report is no
     expect(reportOk(report.checks)).toBe(false);
   });
 });
+
+describe("T14-R2 follow-up: a burn tx that could not be read right now is unproven (tx_unavailable)", () => {
+  it("reports a burn record with status unavailable as unproven, with the re-run hint, for any spend", async () => {
+    const s = structuredClone(valid);
+    const burn = s.chain.burns[0];
+    if (burn === undefined) throw new Error("fixture");
+    s.chain.burns = [{ ...burn, status: "unavailable", memo: "", intents_owner: "", amount: "" }];
+    const report = await runChecks(s, { now: NOW });
+    const h = check(report, "h");
+    expect(h.status).toBe("unproven");
+    expect(h.detail).toContain(
+      `spend 2: tx ${burn.tx_hash} could not be read right now; re-run, or add an archival RPC`,
+    );
+    expect(report.unproven).toEqual([{ check: "h", spend_id: 2, reason: "tx_unavailable" }]);
+    expect(report.ok).toBe(false);
+  });
+
+  it("still fails a burn record that names a tx which was read (or does not exist) and holds no pair", async () => {
+    const s = structuredClone(valid);
+    const burn = s.chain.burns[0];
+    if (burn === undefined) throw new Error("fixture");
+    s.chain.burns = [{ ...burn, status: "missing", memo: "", intents_owner: "", amount: "" }];
+    expect(check(await runChecks(s, { now: NOW }), "h").status).toBe("fail");
+  });
+});

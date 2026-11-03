@@ -776,6 +776,13 @@ describe("T14-R1 fix round 1 (end to end)", () => {
       };
       return t.actions?.[0]?.FunctionCall?.method_name === "spend";
     });
+    // A writer-supplied hash the node does not know fails too: UNKNOWN_TRANSACTION is a definitive answer (ICR-13).
+    const bogusHash = "9BogusTxHash111111111111111111111111111111";
+    const bogus = await probarion({ ledger, burnTxHints: new Map([[1, [bogusHash]]]) }).verify();
+    expect(bogus.checks.find((c) => c.id === "h")).toMatchObject({
+      status: "fail",
+      detail: expect.stringContaining(`spend 1: no burn event observed in tx ${bogusHash}`),
+    });
     const wrongHint = await probarion({
       ledger,
       burnTxHints: new Map([[1, [spendTx ?? ""]]]),

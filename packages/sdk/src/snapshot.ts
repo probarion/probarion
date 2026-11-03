@@ -12,6 +12,7 @@ import {
   WITHDRAW_MEMO_PREFIX,
 } from "@probarion/core";
 import { envValue } from "./env.js";
+import { RpcError } from "./errors.js";
 import { type BurnTxHint, type BurnTxHints, isPreLedgerVault } from "./evidence.js";
 import { FactoryClient } from "./factory-client.js";
 import { isRecord, messageOf } from "./guards.js";
@@ -198,9 +199,17 @@ export function fastnearTxIndex(opts: { fetch?: typeof fetch; maxPages?: number 
 /** At most this many transactions of the index are fetched per snapshot. */
 const TX_INDEX_LOOKUPS = 200;
 
-/** The tx hashes a ledger records for a spend: its payment entries, by decision hash or by spend id. */
-function ledgerTxHashes(ledger: readonly LedgerEntry[], spend: SpendView): string[] {
+/**
+ * The tx hashes a ledger records for a spend: its payment entries, by decision hash or by spend id. `reservations`
+ * are the `contract.tx_hash` of the entries whose `contract.status` is `"held"`: the tx that put the spend on
+ * hold, which never holds its burn (an approver's tx does).
+ */
+function ledgerTxHashes(
+  ledger: readonly LedgerEntry[],
+  spend: SpendView,
+): { hashes: string[]; reservations: Set<string> } {
   const hashes: string[] = [];
+  const reservations = new Set<string>();
   for (const entry of ledger) {
     const body = entry?.body;
     if (!isRecord(body) || body.kind !== "payment") continue;
@@ -211,9 +220,28 @@ function ledgerTxHashes(ledger: readonly LedgerEntry[], spend: SpendView): strin
     for (const hash of [settlement.burn_tx_hash, contract.tx_hash]) {
       if (typeof hash === "string" && hash.length > 0 && !hashes.includes(hash)) hashes.push(hash);
     }
+    if (contract.status === "held" && typeof contract.tx_hash === "string") {
+      reservations.add(contract.tx_hash);
+    }
   }
-  return hashes;
+  return { hashes, reservations };
 }
+
+/** The node's definitive answer that it has no such tx (nearcore's UNKNOWN_TRANSACTION). */
+function isUnknownTransaction(error: unknown): boolean {
+  // An RpcMalformedError carries no rpcError, so it is never read as a definitive answer.
+  if (!(error instanceof RpcError)) return false;
+  const answer = error.rpcError;
+  if (!isRecord(answer)) return false;
+  const cause = isRecord(answer.cause) ? answer.cause : {};
+  return answer.name === "UNKNOWN_TRANSACTION" || cause.name === "UNKNOWN_TRANSACTION";
+}
+
+/** What looking a tx up came to: found, a definitive "no such tx", or no answer that can be trusted right now. */
+type TxLookup =
+  | { kind: "found"; tx: TxStatusResult }
+  | { kind: "absent" }
+  | { kind: "unavailable"; why: string };
 
 export interface CollectBurnsArgs {
   rpc: RpcClient;
@@ -257,21 +285,32 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
   const pending: { spend: SpendView; index: number; old: boolean; read: string | null }[] = [];
   const burned = args.spends.filter((s) => s.status === "burned").sort((a, b) => a.id - b.id);
 
+  // ICR-13: only a node's UNKNOWN_TRANSACTION answer says a tx is not there. An outage, an answer the client
+  // cannot read or exhausted failover says nothing: the tx is unavailable, and the burn unproven, never failed.
+  const lookUp = async (
+    clients: readonly RpcClient[],
+    hash: string,
+    from: readonly string[],
+  ): Promise<TxLookup> => {
+    let unavailable: string | null = null;
+    for (const client of clients) {
+      for (const sender of from) {
+        try {
+          return { kind: "found", tx: await client.txStatus(hash, sender) };
+        } catch (error) {
+          if (!isUnknownTransaction(error)) unavailable ??= messageOf(error);
+        }
+      }
+    }
+    return unavailable === null ? { kind: "absent" } : { kind: "unavailable", why: unavailable };
+  };
   const fetchTx = async (
     clients: readonly RpcClient[],
     hash: string,
     from: readonly string[],
   ): Promise<TxStatusResult | null> => {
-    for (const client of clients) {
-      for (const sender of from) {
-        try {
-          return await client.txStatus(hash, sender);
-        } catch {
-          // not under this sender, or not on this node
-        }
-      }
-    }
-    return null;
+    const result = await lookUp(clients, hash, from);
+    return result.kind === "found" ? result.tx : null;
   };
 
   for (const spend of burned) {
@@ -296,30 +335,50 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
     const signerOf = new Map(hinted.map((h) => [h.hash, h.signer]));
     const hintedHashes = new Set(hinted.map((h) => h.hash));
     const held = spend.held_until_ns !== null && spend.held_until_ns !== undefined;
-    const fromLedger = ledgerTxHashes(args.ledger, spend);
+    const { hashes: fromLedger, reservations } = ledgerTxHashes(args.ledger, spend);
     const hashes = [...new Set([...hinted.map((h) => h.hash), ...fromLedger])].filter(
       (h) => !used.has(h),
     );
     let found: Burn | null = null;
     let read: string | null = null;
+    let absent: string | null = null;
+    let unavailable: string | null = null;
     for (const hash of hashes) {
       const signer = signerOf.get(hash);
       const from = signer === undefined ? senders : [...new Set([signer, ...senders])];
-      const tx = await fetchTx(clients, hash, from);
-      if (tx === null) continue;
-      const pair = findBurnPair(tx, spend.destination.asset, intentsId, args.network);
+      const lookup = await lookUp(clients, hash, from);
+      if (lookup.kind === "unavailable") {
+        unavailable ??= hash;
+        continue;
+      }
+      if (lookup.kind === "absent") {
+        // An old tx the regular RPC may have dropped, with no archival RPC to ask: no definitive answer.
+        if (old && archival === null) unavailable ??= hash;
+        else absent ??= hash;
+        continue;
+      }
+      const pair = findBurnPair(lookup.tx, spend.destination.asset, intentsId, args.network);
       if (pair === null) {
-        // T14-R2: a held spend's ledger tx is its reservation, never the approver's tx that burned it, so it does
-        // not count as read: without a hint (or the index, online) the burn is unproven, not failed. A hinted tx,
-        // and any tx of a spend that was not held, does count: one without a burn pair fails check h.
-        if (!held || hintedHashes.has(hash)) read ??= hash;
+        // T14-R2: a held spend's reservation entry (`contract.status: "held"`) is never the approver's tx that
+        // burned it, so it does not count as read: without a hint (or the index, online) the burn is unproven,
+        // not failed. A hinted tx and every other ledger tx count: one without a burn pair fails check h.
+        if (!(held && reservations.has(hash) && !hintedHashes.has(hash))) read ??= hash;
         continue;
       }
       found = { spend_id: spend.id, tx_hash: hash, ...pair, status: "ok" };
       used.add(hash);
       break;
     }
-    burns.push(found ?? missing(spend.id, read ?? ""));
+    // A definitive answer (read without a pair, or no such tx) fails check h and wins over an unreadable tx.
+    const failing = read ?? absent;
+    burns.push(
+      found ??
+        (failing !== null
+          ? missing(spend.id, failing)
+          : unavailable !== null
+            ? { ...missing(spend.id, unavailable), status: "unavailable" }
+            : missing(spend.id, "")),
+    );
     if (found === null) {
       pending.push({ spend, index, old, read });
       const where = [`${hinted.length} hinted`, `${fromLedger.length} from the ledger`].join(", ");
@@ -328,7 +387,7 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
           ? "; it is older than about 2.5 days and archival lookups are disabled, so the regular RPC may no longer hold its tx"
           : "";
       args.notes?.push(
-        `spend ${spend.id}: no burn pair in the ${hashes.length} tx hash(es) tried (${where})${read === null ? "" : `; tx ${read} was read and holds none`}${held && read === null ? "; it was held, so its burn is in the approver's tx, which the ledger does not record" : ""}${archivalNote}`,
+        `spend ${spend.id}: no burn pair in the ${hashes.length} tx hash(es) tried (${where})${read === null ? "" : `; tx ${read} was read and holds none`}${absent === null ? "" : `; tx ${absent} does not exist on chain`}${failing === null && unavailable !== null ? `; tx ${unavailable} could not be read right now; re-run, or add an archival RPC` : ""}${held && failing === null && unavailable === null ? "; it was held, so its burn is in the approver's tx, which the ledger does not record" : ""}${archivalNote}`,
       );
     }
   }

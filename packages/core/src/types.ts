@@ -414,11 +414,14 @@ export interface VerifyReport {
   unproven: UnprovenBurn[];
 }
 
-/** One burn check h could not prove: no tx was supplied, its tx is the approver's and was not read, or no payment entry names it. */
+/**
+ * One burn check h could not prove: no tx was supplied, its tx is the approver's and was not read, no payment
+ * entry names it, or its tx could not be read right now (`tx_unavailable`, ICR-13).
+ */
 export interface UnprovenBurn {
   check: "h";
   spend_id: number;
-  reason: "pre_ledger_no_tx" | "approver_tx" | "not_recorded";
+  reason: "pre_ledger_no_tx" | "approver_tx" | "not_recorded" | "tx_unavailable";
 }
 
 export interface AccessKeyInfo {
@@ -454,7 +457,8 @@ export interface Snapshot {
       memo: string;
       intents_owner: string;
       amount: string;
-      status: "ok" | "missing";
+      /** "unavailable" (ICR-13): the tx could not be read right now (RPC down, an answer the client cannot read, archival needed); check h reports it unproven. */
+      status: "ok" | "missing" | "unavailable";
     }[]; // POA ft_burn (owner_id = intents.near, memo) matched with intents.near mt_burn (owner_id = vault) in the same tx
   };
   expected_code_hashes: string[]; // advisory (ICR-5): check f derives its own trusted set and FAILS if this lists a hash outside it
