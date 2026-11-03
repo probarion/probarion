@@ -12,8 +12,8 @@ import {
   loadActiveSecretFor,
 } from "@/lib/keys/service";
 import { log, scrubText } from "@/lib/log";
-import { extractText, type InvoiceMediaType } from "./extract";
-import { extractFacts, refFor } from "./facts";
+import { extractInvoice, type InvoiceMediaType } from "./extract";
+import { type AmountIssue, extractFacts, refFor } from "./facts";
 import { signingMandate } from "./mandate";
 import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
 
@@ -66,6 +66,8 @@ export type PipelineResult =
       outcome: SpendOutcome;
       /** False when the outcome could not be written to the invoice row (it stays `processing`). */
       recorded: boolean;
+      /** Why the code read the amount as "0" (the policy then refuses it), or null when it read one. */
+      amountIssue: AmountIssue | null;
     }
   | { status: "duplicate"; invoiceId: string; invoiceStatus: InvoiceStatus }
   | { status: "busy" }
@@ -148,7 +150,7 @@ export async function processInvoice(
   const now = (deps.now ?? (() => new Date()))();
 
   // The text the model is shown, and its hash: the invoice hash is never the file hash (ICR-3b).
-  const text = await extractText(upload);
+  const { text, truncated } = await extractInvoice(upload);
   if (text.trim() === "") return { status: "empty" };
   const invoiceHash = hashInvoice(text);
   const purposeHash =
@@ -156,7 +158,11 @@ export async function processInvoice(
       ? sha256Hex(input.purposeBytes)
       : null;
   // R26: only the five InvoiceFacts keys reach the SDK; the invoice number is kept for display.
-  const { invoiceNumber, ...facts } = extractFacts(text, invoiceHash, purposeHash);
+  // A text cut short (more pages than are read, or past the length limit) gives the amount "0": its final total
+  // may be on the part that was not read.
+  const { invoiceNumber, amountIssue, ...facts } = extractFacts(text, invoiceHash, purposeHash, {
+    truncated: truncated !== null,
+  });
   const ref = refFor(invoiceHash);
 
   const keyUnavailable = (
@@ -224,6 +230,7 @@ export async function processInvoice(
         documentSha256: sha256Hex(upload.bytes),
         sealed: zero ? null : await sealInvoice(deps.master, tenant.tenant_id, upload.bytes),
         facts: zero ? null : { ...facts, invoice_number: invoiceNumber },
+        amountIssue,
         requestId,
         createdBy: input.actor,
       });
@@ -274,6 +281,7 @@ export async function processInvoice(
         spend_id: outcome.spendId,
         tx: outcome.txHash,
         anchor_tx: outcome.anchorTxHash ?? null,
+        amount_issue: amountIssue,
       };
       let recorded = false;
       try {
@@ -294,7 +302,14 @@ export async function processInvoice(
         log.error("payables.outcome_not_recorded", { ...fields, error: messageOf(e) });
       }
       log.info("payables.decided", fields);
-      return { status: "decided", invoiceId: inserted.id, invoiceStatus, outcome, recorded };
+      return {
+        status: "decided",
+        invoiceId: inserted.id,
+        invoiceStatus,
+        outcome,
+        recorded,
+        amountIssue,
+      };
     },
   );
   return leased.acquired ? leased.value : { status: "busy" };

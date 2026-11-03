@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { tinyPdf } from "../../../test/fixtures/pdf";
-import { ExtractError, extractText, MAX_INVOICE_BYTES, MAX_TEXT_CHARS } from "./extract";
+import {
+  ExtractError,
+  extractInvoice,
+  extractText,
+  MAX_INVOICE_BYTES,
+  MAX_PDF_PAGES,
+  MAX_TEXT_CHARS,
+} from "./extract";
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
 
@@ -57,5 +64,59 @@ describe("extractText", () => {
     expect(text.length).toBeLessThanOrEqual(MAX_TEXT_CHARS);
     // The same text twice gives the same cut, so the invoice hash is stable.
     expect(await extractText({ bytes: utf8(long), mediaType: "text/plain" })).toBe(text);
+  });
+
+  it("turns CRLF into LF, so the model and the hash see one text however it was saved", async () => {
+    const crlf = await extractText({
+      bytes: utf8("Invoice 1\r\nTotal 5\r\n"),
+      mediaType: "text/plain",
+    });
+    expect(crlf).toBe("Invoice 1\nTotal 5\n");
+    expect(crlf).toBe(
+      await extractText({ bytes: utf8("Invoice 1\nTotal 5\n"), mediaType: "text/plain" }),
+    );
+  });
+
+  it("says when the text is not the whole invoice", async () => {
+    expect(await extractInvoice({ bytes: utf8("Total 5"), mediaType: "text/plain" })).toEqual({
+      text: "Total 5",
+      truncated: null,
+    });
+    const long = await extractInvoice({
+      bytes: utf8(`Total 5\n${"x".repeat(MAX_TEXT_CHARS)}`),
+      mediaType: "text/plain",
+    });
+    expect(long.truncated).toBe("chars");
+    const fits = await extractInvoice({
+      bytes: tinyPdf("Total 5", MAX_PDF_PAGES),
+      mediaType: "application/pdf",
+    });
+    expect(fits.truncated).toBeNull();
+    const more = await extractInvoice({
+      bytes: tinyPdf("Total 5", MAX_PDF_PAGES + 1),
+      mediaType: "application/pdf",
+    });
+    expect(more.truncated).toBe("pages");
+  });
+
+  it("gives up on a PDF that takes too long to read, and destroys its parser", async () => {
+    let destroyed = 0;
+    const stuck = () => ({
+      getText: () => new Promise<never>(() => {}), // never answers
+      destroy: async () => {
+        destroyed += 1;
+      },
+    });
+    await expect(
+      extractInvoice(
+        { bytes: tinyPdf("Total 5"), mediaType: "application/pdf" },
+        { pdfTimeoutMs: 20, makeParser: stuck },
+      ),
+    ).rejects.toThrow(/took longer than/);
+    expect(destroyed).toBeGreaterThanOrEqual(1);
+    // A later file still reads with the real parser.
+    expect(
+      await extractText({ bytes: tinyPdf("Invoice INV-8"), mediaType: "application/pdf" }),
+    ).toContain("INV-8");
   });
 });

@@ -18,15 +18,18 @@ export interface TenantProbarionOptions {
   systemPrompt?: string;
 }
 
-/** The SDK's warnings, as this app's scrubbed JSON log lines, tagged with the request and the tenant. */
+/**
+ * The SDK's warnings, as this app's scrubbed JSON log lines, tagged with the request and the tenant. The SDK's
+ * own fields come first, so they can never replace the request id, the tenant or the message.
+ */
 function sdkLogger(o: TenantProbarionOptions): ProbarionLogger {
   return {
     warn: (message, meta) =>
       log.warn("sdk.warn", {
+        ...meta,
         request_id: o.requestId,
         tenant: o.tenant.tenant_id,
         message,
-        ...meta,
       }),
   };
 }

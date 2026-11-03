@@ -106,4 +106,20 @@ describe("makeTenantProbarion", () => {
       },
     ]);
   });
+
+  it("never lets the SDK's fields replace the request id, the tenant or the message", () => {
+    makeTenantProbarion({ tenant: TENANT, requestId: "req-10" });
+    made().deps.logger?.warn("the real warning", {
+      request_id: "forged",
+      tenant: "another-tenant",
+      message: "forged",
+      vault: TENANT.vault_id,
+    });
+    expect(h.warned.at(-1)?.fields).toEqual({
+      request_id: "req-10",
+      tenant: TENANT.tenant_id,
+      message: "the real warning",
+      vault: TENANT.vault_id,
+    });
+  });
 });

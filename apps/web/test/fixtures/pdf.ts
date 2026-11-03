@@ -1,12 +1,20 @@
-/** Builds a minimal, valid one-page PDF with correct xref offsets, whose text layer is `text`. */
-export function tinyPdf(text: string): Uint8Array {
+/**
+ * Builds a minimal, valid PDF with correct xref offsets: `pages` pages (default 1), each with `text` as its text
+ * layer.
+ */
+export function tinyPdf(text: string, pages = 1): Uint8Array {
   const stream = `BT /F1 12 Tf 20 100 Td (${text}) Tj ET`;
+  // 1 catalog, 2 page tree, 3 content stream, 4 font, then one object per page.
+  const pageIds = Array.from({ length: pages }, (_, i) => i + 5);
   const objs = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages} >>`,
     `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ...pageIds.map(
+      () =>
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 144] /Contents 3 0 R /Resources << /Font << /F1 4 0 R >> >> >>",
+    ),
   ];
   let out = "%PDF-1.4\n";
   const offsets: number[] = [];

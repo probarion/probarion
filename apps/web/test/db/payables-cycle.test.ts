@@ -23,8 +23,9 @@ import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { createVaultReader, listAll } from "@/lib/near/reader";
 import { type PipelineDeps, processInvoice } from "@/lib/payables/pipeline";
 import { getInvoice } from "@/lib/payables/store";
+import { quietLogs } from "../fixtures/quiet-logs";
 import { freshDb, seedTenant } from "./harness";
-import { MASTER, silenceLogs } from "./keys-helpers";
+import { MASTER } from "./keys-helpers";
 import { pgliteDb } from "./pglite-db";
 
 // One Payables cycle end to end, offline: the real SDK `Probarion` (through makeTenantProbarion) against the SDK's
@@ -71,7 +72,7 @@ function honestModel(request: FakeChatRequest): string {
 }
 
 describe("a Payables cycle on the fake chain", () => {
-  silenceLogs();
+  quietLogs();
   let pg: PGlite;
   let server: FakeRpcServer;
   let member: MemberTenant;

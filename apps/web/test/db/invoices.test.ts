@@ -61,6 +61,7 @@ describe("invoice functions (migration 0006)", () => {
         payee_hint: null,
         invoice_number: null,
       },
+      amountIssue: null,
       requestId: "r",
       createdBy: "alice.near",
       ...over,
@@ -103,6 +104,7 @@ describe("invoice functions (migration 0006)", () => {
       { sealed: null }, // zero retention with facts and a file name
       { sealed: null, facts: null }, // zero retention with a file name (R18)
       { sealed: { ciphertext: "", nonce: "" } },
+      { amountIssue: "made_up" as NewInvoice["amountIssue"] },
     ];
     for (const over of bad) {
       await expect(insertInvoice(db, a, invoice(over))).rejects.toMatchObject({
@@ -115,6 +117,47 @@ describe("invoice functions (migration 0006)", () => {
     await expect(db.rpc("invoice_insert", { tenant_id: "not-a-uuid" })).rejects.toMatchObject({
       code: "invalid_input",
     });
+  });
+
+  it("never retains an invoice for a tenant in zero-retention mode, whatever the caller read", async () => {
+    const z = await seedTenant(pg, { vault: "z.vaults.probarion.near", owner: "zed.near" });
+    await pg.query("update tenants set zero_retention = true where id = $1", [z]);
+    // A caller that read the setting before the owner turned it on still sends retained content.
+    await expect(insertInvoice(db, z, invoice())).rejects.toMatchObject({
+      code: "invalid_input",
+      message: expect.stringMatching(/zero-retention/),
+    });
+    expect((await pg.query("select 1 from invoices where tenant_id = $1", [z])).rows).toHaveLength(
+      0,
+    );
+    // Hashes only is what the tenant gets, with why the amount was refused kept.
+    const hashOnly = await insertInvoice(
+      db,
+      z,
+      invoice({ sealed: null, facts: null, filename: null, amountIssue: "ambiguous" }),
+    );
+    expect(await getInvoice(db, z, hashOnly.id)).toMatchObject({
+      retained: false,
+      facts: null,
+      amount_issue: "ambiguous",
+    });
+    // An error row is not taken over with retained content either (R24 path).
+    await setInvoiceOutcome(db, z, hashOnly.id, { status: "error", error: "x" });
+    const row = await getInvoice(db, z, hashOnly.id);
+    await expect(
+      insertInvoice(db, z, invoice({ invoiceHash: row?.invoice_hash ?? "", ref: row?.ref ?? "" })),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(
+      db.rpc("invoice_insert", {
+        tenant_id: "00000000-0000-4000-8000-00000000dead",
+        invoice_hash: H("1"),
+        ref: "inv-x",
+        media_type: "text/plain",
+        retained: false,
+        request_id: "r",
+        created_by: "x",
+      }),
+    ).rejects.toMatchObject({ code: "not_found" });
   });
 
   it("keeps no file name for a zero-retention row, even written by hand (R18)", async () => {

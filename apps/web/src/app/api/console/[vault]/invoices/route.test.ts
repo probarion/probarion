@@ -12,6 +12,7 @@ import { LIMITS } from "@/lib/ratelimit";
 import { freshDb, seedTenant } from "../../../../../../test/db/harness";
 import { MASTER } from "../../../../../../test/db/keys-helpers";
 import { pgliteDb } from "../../../../../../test/db/pglite-db";
+import { quietLogs } from "../../../../../../test/fixtures/quiet-logs";
 
 const h = vi.hoisted(() => ({
   db: null as unknown as Db,
@@ -86,6 +87,8 @@ function mandate(id: number, pk: string): MandateView {
   };
 }
 
+const logs = quietLogs();
+
 beforeAll(async () => {
   pg = await freshDb();
   h.db = pgliteDb(pg);
@@ -117,7 +120,6 @@ afterAll(async () => {
   await pg.close();
 });
 
-let logged: string[];
 beforeEach(() => {
   h.auth = null;
   h.roles = [];
@@ -125,12 +127,6 @@ beforeEach(() => {
   h.failDb = null;
   h.mandates = async (_v, from) => (from === 0 ? [mandate(1, agentPk)] : []);
   h.process = async () => PAID;
-  logged = [];
-  for (const m of ["log", "warn", "error"] as const) {
-    vi.spyOn(console, m).mockImplementation((...args: unknown[]) => {
-      logged.push(args.map(String).join(" "));
-    });
-  }
 });
 
 let unique = 0;
@@ -140,11 +136,34 @@ const fresh = (s = "Total 5 USDC") => {
   return `Invoice INV-${unique}\n${s}`;
 };
 
-function post(form: FormData | null, headers: Record<string, string> = {}): Promise<Response> {
-  const req = new Request(`${ORIGIN}/api/console/${VAULT}/invoices`, {
+const URL_ = `${ORIGIN}/api/console/${VAULT}/invoices`;
+
+/**
+ * A POST as a browser sends it: the multipart body encoded once, with its Content-Length (a request without
+ * one is refused). `length: false` leaves the header out.
+ */
+async function post(
+  form: FormData | null,
+  headers: Record<string, string> = {},
+  o: { length?: boolean } = {},
+): Promise<Response> {
+  let bytes = new Uint8Array();
+  let type: string | null = null;
+  if (form) {
+    const encoded = new Request(URL_, { method: "POST", body: form });
+    bytes = new Uint8Array(await encoded.arrayBuffer());
+    type = encoded.headers.get("content-type");
+  }
+  const req = new Request(URL_, {
     method: "POST",
-    headers: { origin: ORIGIN, "x-request-id": "req-1", ...headers },
-    ...(form ? { body: form } : {}),
+    headers: {
+      origin: ORIGIN,
+      "x-request-id": "req-1",
+      ...(type ? { "content-type": type } : {}),
+      ...(o.length === false ? {} : { "content-length": String(bytes.length) }),
+      ...headers,
+    },
+    ...(form ? { body: bytes } : {}),
   });
   return POST(req, { params: Promise.resolve({ vault: VAULT }) });
 }
@@ -180,14 +199,17 @@ describe("POST /api/console/[vault]/invoices", () => {
   it("runs the cycle for an uploaded text file, signing with the mandate's key", async () => {
     const text = fresh("Total 25 USDC");
     const r = await post(
-      // Only the base name is kept, without control characters.
-      invoiceForm({ file: new File([text], "C:\\bills\\in\u0007v.txt", { type: "text/plain" }) }),
+      // Only the base name is kept, without control or format characters (U+202E reverses how a name shows).
+      invoiceForm({
+        file: new File([text], "C:\\bills\\in\u0007v\u202e.txt", { type: "text/plain" }),
+      }),
     );
     expect(r.status).toBe(200);
     expect(await body(r)).toMatchObject({
       status: "decided",
       outcome: { status: "paid" },
       recorded: true,
+      amountIssue: null,
       requestId: "req-1",
     });
     expect(h.made).toEqual([
@@ -228,7 +250,30 @@ describe("POST /api/console/[vault]/invoices", () => {
       (await post(invoiceForm({ text: fresh() }), { "content-length": String(20 * 1024 * 1024) }))
         .status,
     ).toBe(413);
+    // The invoice and the purpose document together must fit in 4 MiB (Vercel's body cap is 4.5 MB).
+    const both = new FormData();
+    both.set(
+      "file",
+      new File([new Uint8Array(3 * 1024 * 1024)], "inv.txt", { type: "text/plain" }),
+    );
+    both.set("purpose", new File([new Uint8Array(2 * 1024 * 1024)], "po.pdf"));
+    expect((await post(both)).status).toBe(413);
     expect(h.made).toEqual([]);
+  });
+
+  it("refuses a request that does not say how long it is (411)", async () => {
+    const r = await post(invoiceForm({ text: fresh() }), {}, { length: false });
+    expect(r.status).toBe(411);
+    expect(await body(r)).toMatchObject({ error: "length_required" });
+    const bad = await post(invoiceForm({ text: fresh() }), { "content-length": "lots" });
+    expect(bad.status).toBe(411);
+    expect(h.made).toEqual([]);
+  });
+
+  it("says why the amount was refused", async () => {
+    const r = await post(invoiceForm({ text: fresh("Total: 100 USDC\nTotal due: 9,999 USDC") }));
+    expect(r.status).toBe(200);
+    expect(await body(r)).toMatchObject({ status: "decided", amountIssue: "ambiguous" });
   });
 
   it("asks for the purpose document when none is attached", async () => {
@@ -296,18 +341,28 @@ describe("POST /api/console/[vault]/invoices", () => {
     const down = await post(invoiceForm({ text: fresh() }));
     expect(down.status).toBe(503);
     expect(await body(down)).toMatchObject({ error: "unavailable" });
-    expect(logged.some((l) => l.includes("payables.route_failed"))).toBe(true);
+    expect(logs.lines.some((l) => l.includes("payables.route_failed"))).toBe(true);
     h.failDb = "rate_limit_take";
     const noLimiter = await post(invoiceForm({ text: fresh() }));
     expect(noLimiter.status).toBe(503);
     expect(await body(noLimiter)).toMatchObject({ error: "unavailable" });
     h.failDb = null;
     h.process = async () => {
-      throw new Error("ledger moved since this decision was attested; retry");
+      throw new Error("ledger moved since this decision was attested; retry (secret-ish detail)");
     };
     const failed = await post(invoiceForm({ text: fresh() }));
     expect(failed.status).toBe(502);
-    expect(await body(failed)).toMatchObject({ error: "failed", invoiceId: expect.any(String) });
+    const answer = await body(failed);
+    expect(answer).toMatchObject({
+      error: "failed",
+      invoiceId: expect.any(String),
+      detail: expect.stringContaining("request req-1"),
+    });
+    // The SDK's error text goes to the log only, never to the browser.
+    expect(JSON.stringify(answer)).not.toContain("ledger moved");
+    expect(
+      logs.lines.some((l) => l.includes("payables.failed") && l.includes("ledger moved")),
+    ).toBe(true);
   });
 
   it("rate-limits uploads per vault", async () => {

@@ -3,6 +3,7 @@ import type { SpendOutcome } from "@probarion/sdk";
 import type { Sealed } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import type { InvoiceMediaType } from "./extract";
+import type { AmountIssue } from "./facts";
 
 // The invoices rows as the service-role functions of migration 0006 read and write them. `tenantId` must come
 // from the session's membership (memberRole) or a server job's own tenant row, never from a request.
@@ -26,6 +27,8 @@ export interface InvoiceRow {
   document_sha256: string | null;
   retained: boolean;
   facts: StoredFacts | null;
+  /** Why the amount was read as "0" (refused by invoice.amount_invalid), or null. Kept in zero-retention mode too. */
+  amount_issue: AmountIssue | null;
   status: InvoiceStatus;
   outcome: SpendOutcome | null;
   error: string | null;
@@ -48,6 +51,7 @@ export interface NewInvoice {
   /** The sealed file, or null in zero-retention mode (then `facts` and `filename` are null too). */
   sealed: Sealed | null;
   facts: StoredFacts | null;
+  amountIssue: AmountIssue | null;
   requestId: string;
   createdBy: string;
 }
@@ -68,6 +72,7 @@ export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<
     content_ciphertext: i.sealed?.ciphertext ?? null,
     content_nonce: i.sealed?.nonce ?? null,
     facts: i.facts,
+    amount_issue: i.amountIssue,
     request_id: i.requestId,
     created_by: i.createdBy,
   });

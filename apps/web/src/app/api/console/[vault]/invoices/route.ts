@@ -16,20 +16,29 @@ export const dynamic = "force-dynamic";
 // The tenant lease (PROCESS_LEASE_SECONDS, 90 s) outlasts this with a 30 s margin; route.test.ts checks it.
 export const maxDuration = 60;
 
-/** The invoice and an optional purpose document, each at most 4 MiB, plus the multipart framing. */
-const MAX_REQUEST_BYTES = 2 * MAX_INVOICE_BYTES + 64 * 1024;
+/**
+ * The whole multipart body (the invoice, the optional purpose document and the framing) is at most 4 MiB: Vercel
+ * refuses a request body over 4.5 MB before this code runs, so a larger limit here would promise what the
+ * platform does not deliver. A request must state its length (Content-Length), so the limit is checked before
+ * any of the body is read.
+ */
+const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 
 /** Shown for an unconfirmed outcome (F6/R6): the spend was sent and is never sent again. */
 const PAYMENT_PENDING =
   "Payment sent, confirmation pending. Do not send it again: the spend is confirmed from the chain.";
 
-const tooLarge = () => problem(413, "too_large", "The invoice is larger than 4 MB");
+const tooLarge = () =>
+  problem(413, "too_large", "The invoice and its purpose document must be 4 MB at most together");
 
-/** Only the base name, without control characters, at most 200 characters (the column's limit). */
+/** An invisible format character, such as U+202E, which reverses how the rest of a name is shown. */
+const FORMAT_CHAR = /\p{Cf}/u;
+
+/** Only the base name, without control or format characters, at most 200 characters (the column's limit). */
 function cleanName(name: string): string | null {
   const last = name.split(/[\\/]/).pop() ?? "";
   const base = [...last]
-    .filter((c) => c > "\u001f" && c !== "\u007f")
+    .filter((c) => c > "\u001f" && c !== "\u007f" && !FORMAT_CHAR.test(c))
     .join("")
     .trim();
   return base === "" ? null : base.slice(0, 200);
@@ -94,6 +103,7 @@ function respond(r: PipelineResult, requestId: string): Response {
         status: r.invoiceStatus,
         outcome: r.outcome,
         recorded: r.recorded,
+        amountIssue: r.amountIssue,
         requestId,
         ...(r.invoiceStatus === "unconfirmed" ? { notice: PAYMENT_PENDING } : {}),
       });
@@ -158,10 +168,11 @@ function respond(r: PipelineResult, requestId: string): Response {
         "No text could be read from the invoice. A scanned PDF has no text layer: paste the text instead.",
       );
     case "failed":
+      // A fixed message: the SDK's error text goes to the log (payables.failed), never to the browser.
       return json(
         {
           error: "failed",
-          detail: `${r.error} (nothing was sent; upload the invoice again to retry)`,
+          detail: `The cycle stopped before any payment was sent. Upload the invoice again to retry (request ${requestId}).`,
           invoiceId: r.invoiceId,
         },
         502,
@@ -203,8 +214,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ vault: 
     return unavailable(e);
   }
 
-  const declared = Number(req.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_REQUEST_BYTES) {
+  const length = req.headers.get("content-length");
+  if (length === null || !/^[0-9]{1,12}$/.test(length.trim())) {
+    await req.body?.cancel().catch(() => {});
+    return problem(411, "length_required", "Send the request with a Content-Length header");
+  }
+  if (Number(length) > MAX_REQUEST_BYTES) {
     await req.body?.cancel().catch(() => {});
     return tooLarge();
   }
