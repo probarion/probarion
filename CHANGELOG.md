@@ -14,6 +14,12 @@ The software is an unaudited beta.
 
 ### Added
 
+- Web console deploy checks, run with its tests: every environment variable the console reads is
+  listed in `.env.example` with secrets left empty, no secret can reach the browser through a
+  `NEXT_PUBLIC_` name, migrations stay ordered and portable to a hosted Supabase, every scheduled job
+  has a GET route that reads `CRON_SECRET`, and no browser code can import server-only code.
+- `apps/web/vercel.json` and a first-deploy checklist for the owner, `docs/runbooks/web-deploy.md`
+  (Supabase, secrets, Vercel settings, a smoke test).
 - Community files: a pull request template with Safety and Review sections, bug and feature issue
   forms (blank issues are off; vulnerabilities go to the private channel SECURITY.md names),
   `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
@@ -72,6 +78,9 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- Web console: pages that are not built yet (Canary, open metrics, the proof page, Payables, Top-up,
+  Alerts, Security, Status, Terms, Privacy) show as "coming soon" instead of a link that answers 404,
+  and the landing page no longer presents them or the offline `probarion verify` as available.
 - Vault: `set_ledger_key` deletes the old ledger key and adds the new one in two separate receipts,
   the delete first. A failed delete no longer rolls back the new key and leaves the vault unable to
   anchor, and a rotation fits on a vault with no spare NEAR. The testnet vault runs the build from

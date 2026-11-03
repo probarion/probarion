@@ -177,7 +177,7 @@ What exists at this commit, and what does not yet.
 | `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` needs a deployed factory, so it waits for the factory | [`packages/cli`](packages/cli) |
 | CLI `check`, `verify` and `ledger export` | **In progress**. Use `verify()` from the SDK meanwhile | [`packages/cli`](packages/cli) |
 | npm release 0.1.0 of the packages | **Planned**. The tag-driven release pipeline is in place; nothing is published | [`.github/workflows/release.yml`](.github/workflows/release.yml) |
-| Web console (Next.js 16 and Supabase): wallet sign-in, vault overview, freeze, approvals, keys, mandates | **In progress**, not deployed: there is no live URL yet | [`apps/web`](apps/web) |
+| Web console (Next.js 16 and Supabase): wallet sign-in, vault overview, freeze, approvals, keys, mandates | **In progress**, not deployed: there is no live URL yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
 | Mainnet vault `v0.probarion.near` | **Planned**. The runbook is ready; the owner signs every step | [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) |
 | MCP server `@probarion/mcp` | **Planned** | |
 | Payables, the reference agent that pays invoices in USDC | **Planned** | |
@@ -356,7 +356,7 @@ mainnet claim.
 | [`apps/web`](apps/web) | The web console (Next.js 16, Supabase with row-level security), in progress |
 | [`scripts`](scripts) | Contract builds, the reproducible build and code-hash record, testnet deploy and smoke, the proof file and the release check |
 | [`docs/specs`](docs/specs) | The design spec and the shared interfaces |
-| [`docs/runbooks`](docs/runbooks), [`docs/ops`](docs/ops) | Deploy runbooks (testnet, factory, mainnet v0) and the key rotation procedure |
+| [`docs/runbooks`](docs/runbooks), [`docs/ops`](docs/ops) | Deploy runbooks (testnet, factory, mainnet v0, the web console) and the key rotation procedure |
 | [`docs/evidence`](docs/evidence) | The purchase order and invoices prepared for the planned mainnet v0 run |
 
 ## Quick start
@@ -403,7 +403,7 @@ stores.
 | --- | --- |
 | **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy and threat model](SECURITY.md) |
 | **Packages** | [`@probarion/core`](packages/core/README.md) · [`@probarion/sdk`](packages/sdk/README.md) · [`probarion` CLI](packages/cli/README.md) · [`intents-stub`](contracts/intents-stub/README.md) |
-| **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Key rotation](docs/ops/key-rotation.md) |
+| **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Web deploy runbook](docs/runbooks/web-deploy.md) · [Key rotation](docs/ops/key-rotation.md) |
 | **This repository** | [AGENTS.md](AGENTS.md), for AI agents and humans who build here · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Changelog](CHANGELOG.md) · [CI runs](https://github.com/probarion/probarion/actions/workflows/ci.yml) |
 
 ## Development
