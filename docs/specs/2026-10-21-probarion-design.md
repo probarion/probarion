@@ -365,7 +365,7 @@ The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
   - the claims → evidence table;
   - "What's real vs simulated";
   - the breach blast-radius table (§11);
-  - "Prior work and reuse": Vestiarion as a concept, the spikes repo, and this spec, with dates.
+  - "Prior work and reuse": the spikes repo and this spec, with dates.
 - **AGENTS.md** with setup, the offline verify command, the optional live checks, a repo map and the contract addresses.
 - **3-minute video**, plus one short clip per flow.
 - **X demo post and the "What did you build?" text.** Drafts are in [Report §9]; re-count characters after editing.

@@ -404,7 +404,7 @@ stores.
 | **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy and threat model](SECURITY.md) |
 | **Packages** | [`@probarion/core`](packages/core/README.md) · [`@probarion/sdk`](packages/sdk/README.md) · [`probarion` CLI](packages/cli/README.md) · [`intents-stub`](contracts/intents-stub/README.md) |
 | **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Key rotation](docs/ops/key-rotation.md) |
-| **This repository** | [AGENTS.md](AGENTS.md), for AI agents and humans who build here · [Changelog](CHANGELOG.md) · [CI runs](https://github.com/probarion/probarion/actions/workflows/ci.yml) |
+| **This repository** | [AGENTS.md](AGENTS.md), for AI agents and humans who build here · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Changelog](CHANGELOG.md) · [CI runs](https://github.com/probarion/probarion/actions/workflows/ci.yml) |
 
 ## Development
 
@@ -419,7 +419,7 @@ pnpm verify:ts     # the TypeScript part only, no Rust needed
 
 As of 2026-11-03, `pnpm verify` runs 301 Rust tests (227 vault unit tests, 2 error-coverage
 tests, 2 property tests that take about two minutes, 53 factory, 12 intents-stub and 5 test-ft tests)
-and 3,808 TypeScript tests: 200 Node script tests, 806 in `@probarion/core`, 767 in `@probarion/sdk`,
+and 3,878 TypeScript tests: 270 Node script tests, 806 in `@probarion/core`, 767 in `@probarion/sdk`,
 230 in the CLI, 1,641 in the web console and 164 launch checks. Skipped in that run: the two tests of
 a recorded real NEAR AI Cloud decision, which wait for that recording, and, on Windows, one
 file-permission test.
@@ -434,6 +434,9 @@ ubuntu) on every push:
 | Reproducible build and code hash | Builds the vault and the factory in Docker with cargo-near 0.22.0 and compares each code hash with `contracts/code-hashes.json` |
 | TS lint, typecheck and tests | `pnpm verify:ts` and `pnpm verify:launch` |
 | Secret scan | gitleaks over the whole history |
+| `verify` | Passes only when every job above succeeded; a skipped or cancelled job fails it. This is the one check a branch rule requires |
+
+When a gate fails, the job's last step posts the last 60 lines of that gate's log as an annotation and in the job summary, so the cause is readable without signing in.
 
 A local `pnpm contracts:build` (cargo-near 0.22.0) is not reproducible and is not a source of code
 hashes; [AGENTS.md](AGENTS.md#reproducible-builds-and-code-hashes) describes how a CI build is

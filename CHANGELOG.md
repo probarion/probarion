@@ -14,6 +14,15 @@ The software is an unaudited beta.
 
 ### Added
 
+- Community files: a pull request template with Safety and Review sections, bug and feature issue
+  forms (blank issues are off; vulnerabilities go to the private channel SECURITY.md names),
+  `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
+- CI: one `verify` check that needs every other job and passes only when each one succeeded (a
+  skipped or cancelled job fails it), for branch rules to require. When a gate in the TypeScript,
+  Rust unit or sandbox job fails, the job posts the last 60 lines of that gate's log as one annotation
+  and in the job summary.
+- A 1280×640 social preview image for the repository page, rendered from the brand by a script that
+  refuses any other size.
 - Vault contract (`probarion-vault` 0.1.0). The owner creates mandates, each with a payee fixed at
   creation (a NEAR account, or a Base or Solana address paid out through NEAR Intents), a limit per
   payment, a total, a number of uses, an expiry and an amount above which an approver must confirm.
@@ -71,7 +80,7 @@ The software is an unaudited beta.
   its first activation date; and a discarded key that shows up on chain is reported, for the owner to
   keep or remove.
 - Web console, keys: only the ledger key can be loaded as "the active key"; every payment loads the
-  agent key named by its mandate, so a ledger key can never sign a payment. A ledger key that is
+  agent key named by its mandate, not the ledger key. A ledger key that is
   stuck now says what to do for this vault's code: a vault built before the `set_ledger_key` fix needs
   a new vault, and a vault on the fixed code can set a new ledger key. A `set_ledger_key` that
   recovers a stuck key, whose only failed receipt is the delete of the missing old key, is shown as
