@@ -30,7 +30,13 @@ const h = vi.hoisted(() => ({
       receiverId: string;
       actions: { params: { methodName: string; args: Record<string, unknown>; deposit: string } }[];
     };
+    prepare?: () => Promise<unknown>;
+    describe?: (r: unknown) => unknown;
+    onResult?: (r: unknown) => void;
   }[],
+  /** The props of every MandateFormPanel the page rendered. */
+  panels: [] as Record<string, unknown>[],
+  constsThrow: false,
 }));
 
 vi.mock("next/headers", () => ({
@@ -54,7 +60,14 @@ vi.mock("@/lib/env", () => ({
 }));
 vi.mock("@/lib/near/server", async () => {
   const { NETWORKS: N } = await import("@probarion/core");
-  return { getReader: () => h.reader, getRpc: () => ({}), chainConsts: () => N.mainnet };
+  return {
+    getReader: () => h.reader,
+    getRpc: () => ({}),
+    chainConsts: () => {
+      if (h.constsThrow) throw new Error("no network configured");
+      return N.mainnet;
+    },
+  };
 });
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
@@ -68,11 +81,31 @@ vi.mock("@/components/wallet/TxButton", () => ({
   },
 }));
 
-import { prepareMandateAction } from "@/app/console/[vault]/mandates/actions";
+// The real panel, with its props recorded: what the page hands the form is part of what is tested.
+vi.mock("@/components/console/MandateFormPanel", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/components/console/MandateFormPanel")>();
+  return {
+    MandateFormPanel: (p: Parameters<typeof real.MandateFormPanel>[0]) => {
+      h.panels.push(p as unknown as Record<string, unknown>);
+      return real.MandateFormPanel(p);
+    },
+  };
+});
+
+import { checkPayeeAction, prepareMandateAction } from "@/app/console/[vault]/mandates/actions";
 import MandatesPage, { maxDuration } from "@/app/console/[vault]/mandates/page";
+import { MandateFormPanel } from "@/components/console/MandateFormPanel";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
+import { log } from "@/lib/log";
 import { MANDATE_STORAGE_DEPOSIT, TGAS, type WalletTx } from "@/lib/near/tx";
+import { formatNear } from "@/lib/near/units";
+import { CHANGED_SINCE_REVIEW, createLockKey } from "./mandate-create";
 import type { MandateForm } from "./mandates";
+import { EXPIRED_REVOKE_NOTE, EXPIRED_REVOKE_NOTE_UNKNOWN } from "./mandates-view";
+
+// stderr stays clean, and the events are asserted
+const warn = vi.spyOn(log, "warn").mockImplementation(() => {});
+const logError = vi.spyOn(log, "error").mockImplementation(() => {});
 
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
 const VAULT = "acme.vaults.probarion.near";
@@ -164,9 +197,22 @@ function chain(
 beforeEach(() => {
   h.jar.clear();
   h.buttons.length = 0;
+  h.panels.length = 0;
+  h.constsThrow = false;
   reads.n = 0;
+  warn.mockClear();
+  logError.mockClear();
   chain();
 });
+
+/** The mandate ids of the Revoke buttons the page rendered. */
+const revoked = () =>
+  h.buttons
+    .filter((b) => b.label === "Revoke")
+    .map((b) => b.tx?.actions[0]?.params.args.mandate_id)
+    .sort();
+/** The create button, if the page rendered one. */
+const createButton = () => h.buttons.find((b) => b.label === "Sign mandate in my wallet");
 
 async function signInAs(account: string) {
   h.jar.set(
@@ -235,7 +281,7 @@ describe("mandates page guard (requireMember)", () => {
       expect(out, who).toContain("Only the vault&#x27;s owner can create or revoke mandates");
       expect(out, who).not.toContain("New mandate");
       expect(out, who).not.toContain("Sign mandate in my wallet");
-      expect(h.buttons, who).toEqual([]);
+      expect(h.buttons, who).toEqual([]); // neither a Revoke nor a create button
     }
   });
 
@@ -244,8 +290,9 @@ describe("mandates page guard (requireMember)", () => {
     const out = await html();
     expect(out).toContain("New mandate");
     expect(out).toContain("Sign mandate in my wallet");
-    expect(h.buttons).toHaveLength(1);
-    const revoke = h.buttons[0];
+    const revokes = h.buttons.filter((b) => b.label === "Revoke");
+    expect(revokes).toHaveLength(1);
+    const revoke = revokes[0];
     expect(revoke?.label).toBe("Revoke");
     expect(revoke?.expectedSigner).toBe("acme.near");
     expect(revoke?.lockKey).toContain(`revoke-mandate:${VAULT}:1`);
@@ -326,7 +373,11 @@ describe("mandates page: honest status", () => {
     expect(out).toContain("mandate list is unavailable");
     expect(out).not.toContain("No mandates yet");
     expect(out).not.toContain("Mandates (0)");
-    expect(h.buttons).toEqual([]); // no Revoke without a list
+    expect(revoked()).toEqual([]); // no Revoke without a list
+    expect(warn).toHaveBeenCalledWith(
+      "console.read_failed",
+      expect.objectContaining({ what: "list_mandates", vault: VAULT, kind: "transport" }),
+    );
   });
 
   it("says so when there are none", async () => {
@@ -424,13 +475,12 @@ describe("mandates page: what the form needs", () => {
     expect(out).not.toContain("Sign mandate in my wallet");
   });
 
-  it("explains the purpose hash (R15) and the deposit, and names no number for the deposit that the builder does not own", async () => {
+  it("explains what the purpose hash is for (R15), and shows no review until the form can be signed", async () => {
     await signInAs("acme.near");
     const out = await html();
     expect(out).toContain("sha256");
     expect(out).toContain("attach it to the invoices it covers");
     expect(out).toContain("hashes to this value");
-    // the deposit text is built from MANDATE_STORAGE_DEPOSIT (0.05 NEAR), only once there is something to review
     expect(out).not.toContain("You are about to create");
   });
 });
@@ -598,10 +648,12 @@ describe("prepareMandateAction: owner-only, and the server checks the form again
   it("answers an error, never a throw, for a form that is not an object or has fields of other types", async () => {
     await signInAs("acme.near");
     for (const bad of [null, undefined, 5, "x", [], { payee: 5, label: {} }]) {
-      expect(await prepareMandateAction(VAULT, bad as unknown as MandateForm)).toHaveProperty(
-        "error",
-      );
+      expect(
+        await prepareMandateAction(VAULT, bad as unknown as MandateForm),
+        String(bad),
+      ).toMatchObject({ error: expect.stringContaining("Payee type") }); // the form's own refusal
     }
+    expect(logError).not.toHaveBeenCalled(); // refused, not crashed and caught
   });
 
   it("answers an error, not a throw or a guess, when the vault cannot be read", async () => {
@@ -610,6 +662,10 @@ describe("prepareMandateAction: owner-only, and the server checks the form again
     expect(await prepareMandateAction(VAULT, goodForm())).toMatchObject({
       error: expect.stringContaining("nothing was signed"),
     });
+    expect(warn).toHaveBeenCalledWith(
+      "console.mandate_prepare_read_failed",
+      expect.objectContaining({ vault: VAULT, kind: "transport" }),
+    );
     chain({ agents: "throw" });
     expect(await prepareMandateAction(VAULT, goodForm())).toMatchObject({
       error: expect.stringContaining("nothing was signed"),
@@ -639,7 +695,10 @@ describe("prepareMandateAction: owner-only, and the server checks the form again
       listAgents: async () => [agent()],
     });
     await signInAs("acme.near");
-    expect(await prepareMandateAction(VAULT, goodForm())).toHaveProperty("error");
+    expect(await prepareMandateAction(VAULT, goodForm())).toMatchObject({
+      error: expect.stringMatching(/answer could not be read/),
+    });
+    expect(logError).not.toHaveBeenCalled();
   });
 
   it("refuses an agent answer that is not a list at all, without throwing", async () => {
@@ -649,10 +708,11 @@ describe("prepareMandateAction: owner-only, and the server checks the form again
         listAgents: async () => bad as unknown as AgentView[],
       });
       await signInAs("acme.near");
-      expect(await prepareMandateAction(VAULT, goodForm()), JSON.stringify(bad)).toHaveProperty(
-        "error",
-      );
+      expect(await prepareMandateAction(VAULT, goodForm()), JSON.stringify(bad)).toMatchObject({
+        error: expect.stringMatching(/answer could not be read/),
+      });
     }
+    expect(logError).not.toHaveBeenCalled();
   });
 
   it("refuses an agent list that is not a list of keys", async () => {
@@ -661,7 +721,10 @@ describe("prepareMandateAction: owner-only, and the server checks the form again
       listAgents: async () => [{ label: "x" }] as unknown as AgentView[],
     });
     await signInAs("acme.near");
-    expect(await prepareMandateAction(VAULT, goodForm())).toHaveProperty("error");
+    expect(await prepareMandateAction(VAULT, goodForm())).toMatchObject({
+      error: expect.stringMatching(/answer could not be read/),
+    });
+    expect(logError).not.toHaveBeenCalled();
   });
 
   it("refuses an answer from the chain that has not the shape of a config", async () => {
@@ -670,12 +733,517 @@ describe("prepareMandateAction: owner-only, and the server checks the form again
       listAgents: async () => [agent()],
     });
     await signInAs("acme.near");
-    expect(await prepareMandateAction(VAULT, goodForm())).toHaveProperty("error");
+    expect(await prepareMandateAction(VAULT, goodForm())).toMatchObject({
+      error: expect.stringMatching(/answer could not be read/),
+    });
+    expect(logError).not.toHaveBeenCalled();
   });
 });
 
 describe("the out-of-NEAR codes reach the form from the server", () => {
   it("passes the SDK's codes as plain data", () => {
     expect(OUT_OF_NEAR.codes.length).toBeGreaterThan(0);
+  });
+});
+
+const panelProps = (over: Partial<Parameters<typeof MandateFormPanel>[0]> = {}) => ({
+  vault: VAULT,
+  owner: "acme.near",
+  network: "mainnet" as const,
+  baseAsset: BASE_ASSET,
+  allowedAssets: [BASE_ASSET],
+  protocolAccounts: [NETWORKS.mainnet.usdc, NETWORKS.mainnet.intents, BASE_ASSET],
+  agentKeys: [{ public_key: AGENT, label: "invoice bot" }],
+  dailyBackstop: "500000000",
+  floats: {
+    near: { ok: true as const, units: "500000000" },
+    base: { ok: true as const, units: "500000000" },
+  },
+  outOfNearCodes: OUT_OF_NEAR.codes,
+  ...over,
+});
+/** The real form panel, started with these fields. */
+const panel = (initialForm: Partial<MandateForm> = {}, over = {}) =>
+  renderToStaticMarkup(
+    createElement(MandateFormPanel, { ...panelProps(over), initialForm } as Parameters<
+      typeof MandateFormPanel
+    >[0]),
+  );
+
+describe("W-T9-R1: Revoke where it still changes what the contract does, and only for the real owner", () => {
+  it("offers Revoke on an expired mandate that still has funds reserved, and says what it stops", async () => {
+    chain({
+      mandates: [
+        mandate({ id: 1, expires_at_ns: nsIn(-DAY), reserved: "5000000" }), // expired, a payment still reserved
+        mandate({ id: 2, expires_at_ns: nsIn(-DAY), reserved: "0" }), // expired, nothing left to stop
+        mandate({ id: 3, expires_at_ns: nsIn(-DAY), reserved: "5000000", status: "revoked" }),
+      ],
+    });
+    await signInAs("acme.near");
+    const out = await html();
+    expect(revoked()).toEqual([1]);
+    expect(out.split(EXPIRED_REVOKE_NOTE).length - 1).toBe(1); // the note sits with that one button
+    expect(out).toContain("stops any held payments from being approved");
+    expect(out).toContain(">expired<");
+    expect(out).toContain(">revoked<");
+  });
+
+  it("offers Revoke on an expired mandate whose reserved figure cannot be read, with the note that says so", async () => {
+    chain({
+      mandates: [
+        mandate({ id: 1, expires_at_ns: nsIn(-DAY), reserved: "not a number" }),
+        mandate({ id: 2, expires_at_ns: nsIn(-DAY), reserved: "0" }),
+      ],
+    });
+    await signInAs("acme.near");
+    const out = await html();
+    expect(revoked()).toEqual([1]);
+    expect(out.split(EXPIRED_REVOKE_NOTE_UNKNOWN).length - 1).toBe(1);
+    expect(out).not.toContain(EXPIRED_REVOKE_NOTE); // not the note that claims a reserved amount
+  });
+
+  it("shows an approver neither the Revoke nor the note", async () => {
+    chain({ mandates: [mandate({ expires_at_ns: nsIn(-DAY), reserved: "5000000" })] });
+    await signInAs("cfo.near");
+    const out = await html();
+    expect(revoked()).toEqual([]);
+    expect(out).not.toContain(EXPIRED_REVOKE_NOTE);
+  });
+
+  it("offers no Revoke, and no form, when the contract's owner is another account than the signed-in owner", async () => {
+    chain({ config: { owner: "someone-else.near" } });
+    await signInAs("acme.near");
+    const out = await html();
+    expect(out).toContain("Acme Design retainer"); // the list still shows
+    expect(revoked()).toEqual([]);
+    expect(createButton()).toBeUndefined();
+  });
+
+  it("offers no Revoke when the vault's config cannot be read", async () => {
+    chain({ config: "throw" });
+    await signInAs("acme.near");
+    const out = await html();
+    expect(out).toContain("Acme Design retainer");
+    expect(revoked()).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      "console.read_failed",
+      expect.objectContaining({ what: "get_config", vault: VAULT }),
+    );
+  });
+
+  it("still offers Revoke on a vault whose token is not the network USDC (revoking needs no decimals)", async () => {
+    chain({ config: { usdc: "other-token.near" } });
+    await signInAs("acme.near");
+    await html();
+    expect(revoked()).toEqual([1]);
+    expect(createButton()).toBeUndefined();
+  });
+});
+
+describe("W-T9-R1: the create button is always there, locked by the action, signed by the owner", () => {
+  it("is rendered even while the form is incomplete, with the owner as signer and the vault's lock", async () => {
+    await signInAs("acme.near");
+    await html();
+    const b = createButton();
+    expect(b).toBeDefined();
+    expect(b?.expectedSigner).toBe("acme.near");
+    expect(b?.lockKey).toBe(createLockKey(VAULT));
+    expect(b?.lockKey).toContain(`create-mandate:${VAULT}`);
+    expect(b?.confirm).toBeUndefined(); // nothing to confirm yet
+    expect(await b?.prepare?.()).toMatchObject({
+      error: expect.stringContaining("Fix the highlighted"),
+    });
+  });
+
+  it("keeps the same lock whatever the form holds, so an edit after an unknown outcome stays locked", () => {
+    const keys = new Set<string | undefined>();
+    for (const initial of [
+      {},
+      { payee: "designer.near" },
+      { payee: "designer.near", purposeHash: "ab".repeat(32), expiresOn: dayIn(30), label: "A" },
+      { payee: "designer.near", purposeHash: "ab".repeat(32), expiresOn: dayIn(30), label: "B" },
+      { payeeKind: "base" as const, payee: CHECKSUMMED },
+    ]) {
+      h.buttons.length = 0;
+      panel(initial);
+      keys.add(createButton()?.lockKey);
+    }
+    expect([...keys]).toEqual([createLockKey(VAULT)]);
+  });
+
+  it("is not rendered for anyone but the owner", async () => {
+    for (const who of ["cfo.near", "view.near"]) {
+      h.buttons.length = 0;
+      await signInAs(who);
+      await html();
+      expect(createButton(), who).toBeUndefined();
+    }
+  });
+});
+
+describe("W-T9-R1: the form panel, started with a complete form", () => {
+  const complete = (over: Partial<MandateForm> = {}): Partial<MandateForm> => ({
+    payee: "designer.near",
+    purposeHash: "ab".repeat(32),
+    expiresOn: dayIn(30),
+    label: "Acme Design retainer",
+    agentPk: AGENT,
+    ...over,
+  });
+
+  it("shows the review: the payee, the amounts, the exact expiry and the deposit from the builder", () => {
+    const out = panel(complete());
+    expect(out).toContain("You are about to create");
+    expect(out).toContain("designer.near (USDC on NEAR)");
+    expect(out).toContain("up to 100 USDC");
+    expect(out).toContain("up to 1000 USDC, at most 10");
+    expect(out).toContain(`${dayIn(30)} 23:59:59 UTC`);
+    expect(out).toContain(`Your wallet attaches ${formatNear(MANDATE_STORAGE_DEPOSIT)} NEAR`);
+    expect(out).toContain("payee&#x27;s USDC registration"); // a NEAR payee is registered with the same attachment
+    expect(out).not.toContain("Still to fill in");
+  });
+
+  it("leaves the registration out of the deposit text for a Base payee, and shows the EIP-55 address", () => {
+    const out = panel(complete({ payeeKind: "base", payee: CHECKSUMMED.toLowerCase() }));
+    expect(out).toContain(`${CHECKSUMMED} (USDC on Base)`);
+    expect(out).toContain("(checksummed)");
+    expect(out).not.toContain("registration");
+  });
+
+  it("hands the wallet button the owner, the vault's lock, and a confirm built from what will be signed", () => {
+    panel(
+      complete({ payeeKind: "base", payee: CHECKSUMMED.toLowerCase(), maxPerPaymentUsdc: "12.5" }),
+    );
+    const b = createButton();
+    expect(b?.expectedSigner).toBe("acme.near");
+    expect(b?.lockKey).toBe(createLockKey(VAULT));
+    expect(b?.confirm).toContain(CHECKSUMMED);
+    expect(b?.confirm).toContain("12.5 USDC per payment");
+    expect(b?.confirm).toContain("1000 USDC in all");
+    expect(b?.confirm).toContain(`until ${dayIn(30)} 23:59:59 UTC`);
+  });
+
+  it("signs the transaction the server prepares when it is the one reviewed", async () => {
+    await signInAs("acme.near");
+    panel(complete());
+    const answer = (await createButton()?.prepare?.()) as WalletTx;
+    expect(answer.receiverId).toBe(VAULT);
+    expect(createCall(answer).methodName).toBe("create_mandate");
+    const reviewed = await prepareMandateAction(VAULT, goodForm({ expiresOn: dayIn(30) }));
+    expect(answer).toEqual(reviewed);
+  });
+
+  it("refuses to sign, with CHANGED_SINCE_REVIEW, when the server's transaction is not the reviewed one", async () => {
+    await signInAs("acme.near");
+    // the browser was handed another Base asset than the one the server builds with
+    panel(complete({ payeeKind: "base", payee: CHECKSUMMED }), {
+      baseAsset: "base-other.omft.near",
+      allowedAssets: ["base-other.omft.near"],
+    });
+    expect(await createButton()?.prepare?.()).toEqual({ error: CHANGED_SINCE_REVIEW });
+  });
+
+  it("passes the server's refusal through (here: the account is not the vault's owner)", async () => {
+    await signInAs("mallory.near");
+    panel(complete());
+    expect(await createButton()?.prepare?.()).toMatchObject({ status: 403 });
+  });
+
+  it("words an out-of-NEAR refusal for the signer, in the detail line only", () => {
+    panel(complete());
+    const code = OUT_OF_NEAR.codes[0] ?? "LackBalanceForState";
+    const words = createButton()?.describe?.({ status: "failed", txHash: null, code, error: null });
+    expect(Object.keys(words as object)).toEqual(["detail"]);
+    expect(
+      createButton()?.describe?.({
+        status: "failed",
+        txHash: null,
+        code: "PROBARION:NotOwner",
+        error: null,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("refuses a NEAR payee that is a token or bridge contract of the vault", () => {
+    for (const payee of [NETWORKS.mainnet.usdc, NETWORKS.mainnet.intents, BASE_ASSET]) {
+      const out = panel(complete({ payee }));
+      expect(out, payee).toContain("token or bridge contract");
+      expect(out, payee).not.toContain("You are about to create");
+    }
+  });
+
+  it("warns, without blocking, that a 0x address typed as a NEAR account is not a Base payout", () => {
+    const out = panel(complete({ payee: `0x${"ab".repeat(20)}` }));
+    expect(out).toContain("ETH-implicit");
+    expect(out).toContain("You are about to create"); // the vault accepts it, so the form does too
+  });
+
+  it("says the vault does not allow Base USDC payouts, rather than 'could not read', for a Base payee", () => {
+    const out = panel(complete({ payeeKind: "base", payee: CHECKSUMMED }), {
+      floats: {
+        near: { ok: true, units: "500000000" },
+        base: { ok: false, notAllowed: true },
+      },
+    });
+    expect(out).toContain("so a Base payee cannot be paid from it"); // the float's words, not the field error's
+    expect(out).not.toContain("Balance unavailable");
+  });
+
+  it("takes a Base payee's balance from the Base USDC in Intents, not from the USDC on NEAR", () => {
+    // plenty on NEAR, nothing readable in Intents
+    let out = panel(complete({ payeeKind: "base", payee: CHECKSUMMED }), {
+      floats: { near: { ok: true, units: "500000000" }, base: { ok: false } },
+    });
+    expect(out).toContain("Balance unavailable");
+    expect(out).toContain("Base USDC in Intents");
+    // plenty in Intents, little on NEAR: a NEAR payee is warned, a Base payee is not
+    const floats = {
+      near: { ok: true as const, units: "25000000" },
+      base: { ok: true as const, units: "500000000" },
+    };
+    out = panel(complete({ payeeKind: "base", payee: CHECKSUMMED }), { floats });
+    expect(out).not.toContain("the vault holds now");
+    out = panel(complete(), { floats });
+    expect(out).toContain("USDC on NEAR the vault holds now (25 USDC)");
+    // and the reverse: little in Intents warns the Base payee
+    out = panel(complete({ payeeKind: "base", payee: CHECKSUMMED }), {
+      floats: { near: floats.base, base: floats.near },
+    });
+    expect(out).toContain("Base USDC in Intents the vault holds now (25 USDC)");
+  });
+
+  it("starts empty of everything it must not guess: no payee, no purpose, no date", () => {
+    const out = panel();
+    expect(out).toContain("Still to fill in: Payee, Purpose document hash, Expires on, Name.");
+    expect(out).not.toContain("You are about to create");
+  });
+});
+
+describe("W-T9-R1: what the page hands the form is read from the chain, and made safe", () => {
+  it("gives the form the vault's own token and bridge contracts as accounts that are not payees", async () => {
+    await signInAs("acme.near");
+    await html();
+    expect(h.panels[0]?.protocolAccounts).toEqual([
+      NETWORKS.mainnet.usdc,
+      NETWORKS.mainnet.intents,
+      BASE_ASSET,
+    ]);
+  });
+
+  it("tells a Base asset the vault does not allow from a balance that could not be read", async () => {
+    await signInAs("acme.near");
+    chain({ config: { allowed_assets: [] } });
+    await html();
+    expect(h.panels[0]?.floats).toMatchObject({ base: { ok: false, notAllowed: true } });
+    h.panels.length = 0;
+    chain({ intents: "throw" });
+    await html();
+    const floats = h.panels[0]?.floats as { base: Record<string, unknown> } | undefined;
+    const base = floats?.base;
+    expect(base).toEqual({ ok: false }); // a failed read, not an asset the vault refuses
+  });
+
+  it("passes balances that were read, and an unreadable NEAR balance as unreadable, never as zero", async () => {
+    await signInAs("acme.near");
+    chain({ usdc: "25000000" });
+    await html();
+    expect(h.panels[0]?.floats).toMatchObject({ near: { ok: true, units: "25000000" } });
+    h.panels.length = 0;
+    chain({ usdc: "throw" });
+    await html();
+    const floats = h.panels[0]?.floats as { near: unknown } | undefined;
+    expect(floats?.near).toEqual({ ok: false });
+  });
+
+  it("shows agent keys with text from the chain made safe, but keeps the key itself exact", async () => {
+    chain({ agents: [{ ...agent(), label: "bot\u202E evil" }] });
+    await signInAs("acme.near");
+    const out = await html();
+    const keys = h.panels[0]?.agentKeys as { public_key: string; label: string }[];
+    expect(keys[0]?.public_key).toBe(AGENT);
+    expect(keys[0]?.label).toBe("bot\uFFFD evil");
+    expect(out).not.toContain("\u202E");
+  });
+
+  it("falls back to the start of the key when an agent has no label, and cuts a long one", async () => {
+    chain({
+      agents: [
+        { ...agent(), label: "" },
+        { ...agent(REMOVED_AGENT), label: "x".repeat(200) },
+      ],
+    });
+    await signInAs("acme.near");
+    await html();
+    const keys = h.panels[0]?.agentKeys as { label: string }[];
+    expect(keys[0]?.label).toBe(`${AGENT.slice(0, 20)}…`);
+    expect(keys[1]?.label).toBe(`${"x".repeat(40)}…`);
+  });
+
+  it("shows the vault's owner and token in the notices as safe text", async () => {
+    chain({ config: { owner: "evil\u202E.near" } });
+    await signInAs("acme.near");
+    expect(await html()).not.toContain("\u202E");
+    chain({ config: { usdc: "tok\u202Een.near" } });
+    expect(await html()).not.toContain("\u202E");
+  });
+
+  it("puts a purpose hash in a tooltip only when it is a sha256", async () => {
+    chain({
+      mandates: [mandate({ id: 1 }), mandate({ id: 2, purpose_hash: 'x" onmouseover="alert(1)' })],
+    });
+    await signInAs("acme.near");
+    const out = await html();
+    expect(out).toContain(`title="${"ab".repeat(32)}"`);
+    expect(out.match(/title="/g)).toHaveLength(1);
+    expect(out).not.toContain("onmouseover");
+    expect(out).toContain("PO unreadable");
+  });
+
+  it("shows agent keys that are not a list of keys as unavailable, never as 'no key yet'", async () => {
+    await signInAs("acme.near");
+    for (const bad of [
+      {},
+      "keys",
+      5,
+      [{ label: "x" }],
+      [null],
+      [{ public_key: 5 }],
+      [{ public_key: "" }],
+    ]) {
+      chain({ agents: bad as unknown as AgentView[] });
+      const out = await html();
+      expect(out, JSON.stringify(bad)).toContain("agent keys are unavailable");
+      expect(out, JSON.stringify(bad)).not.toContain("this vault has none yet");
+      expect(out, JSON.stringify(bad)).not.toContain("Sign mandate in my wallet");
+    }
+  });
+});
+
+describe("W-T9-R1: prepareMandateAction, the rest of the NEAR payee rules", () => {
+  it("refuses the vault's USDC, its Intents contract and its allowed assets as NEAR payees", async () => {
+    await signInAs("acme.near");
+    for (const payee of [NETWORKS.mainnet.usdc, NETWORKS.mainnet.intents, BASE_ASSET]) {
+      expect(await prepareMandateAction(VAULT, goodForm({ payee })), payee).toMatchObject({
+        error: expect.stringContaining("token or bridge contract"),
+      });
+    }
+  });
+
+  it("takes the protocol accounts from the chain's config, not from the browser", async () => {
+    chain({ config: { usdc: NETWORKS.mainnet.usdc, intents: "bridge.near" } });
+    await signInAs("acme.near");
+    expect(await prepareMandateAction(VAULT, goodForm({ payee: "bridge.near" }))).toMatchObject({
+      error: expect.stringContaining("token or bridge contract"),
+    });
+    // ...and an account that is not one is a payee
+    expect(
+      "error" in (await prepareMandateAction(VAULT, goodForm({ payee: "designer.near" }))),
+    ).toBe(false);
+  });
+
+  it("accepts a 0x address typed as a NEAR account: the console warns, the vault allows it", async () => {
+    await signInAs("acme.near");
+    const tx = await prepareMandateAction(VAULT, goodForm({ payee: `0x${"ab".repeat(20)}` }));
+    expect("error" in tx).toBe(false);
+  });
+
+  it("answers an error, not a throw, when the membership read fails, and logs the event", async () => {
+    await signInAs("acme.near");
+    const real = h.db;
+    h.db = new Proxy(
+      {},
+      {
+        get: () => async () => {
+          throw new Error("db down");
+        },
+      },
+    ) as unknown as Db;
+    try {
+      expect(await prepareMandateAction(VAULT, goodForm())).toMatchObject({
+        error: expect.stringContaining("nothing was signed"),
+      });
+    } finally {
+      h.db = real;
+    }
+    expect(logError).toHaveBeenCalledWith("console.mandate_prepare_failed", { error: "Error" });
+  });
+
+  it("answers an error, not a throw, when the network constants fail", async () => {
+    await signInAs("acme.near");
+    h.constsThrow = true;
+    expect(await prepareMandateAction(VAULT, goodForm())).toMatchObject({
+      error: expect.stringContaining("nothing was signed"),
+    });
+    expect(logError).toHaveBeenCalledWith("console.mandate_prepare_failed", expect.anything());
+  });
+});
+
+describe("W-T9-R1: checkPayeeAction (does the named account exist?), owner-only", () => {
+  const exists = (answer: boolean | "throw") => {
+    h.reader = fakeReader({
+      accountExists: async () => {
+        reads.n += 1;
+        if (answer === "throw") throw transportError();
+        return answer;
+      },
+    });
+  };
+
+  it("401 without a session and 403 for a non-owner, before any chain read", async () => {
+    exists(true);
+    expect(await checkPayeeAction(VAULT, "designer.near")).toMatchObject({ status: 401 });
+    for (const who of ["mallory.near", "cfo.near", "view.near"]) {
+      await signInAs(who);
+      expect(await checkPayeeAction(VAULT, "designer.near"), who).toMatchObject({ status: 403 });
+    }
+    await signInAs("acme.near");
+    expect(await checkPayeeAction(OTHER, "designer.near")).toMatchObject({ status: 403 });
+    expect(reads.n).toBe(0);
+  });
+
+  it("tells an account that exists from one that does not", async () => {
+    await signInAs("acme.near");
+    exists(true);
+    expect(await checkPayeeAction(VAULT, "designer.near")).toEqual({ exists: true });
+    exists(false);
+    expect(await checkPayeeAction(VAULT, "  desinger.near ")).toEqual({ exists: false });
+  });
+
+  it("says null, never 'does not exist', when it cannot tell", async () => {
+    await signInAs("acme.near");
+    exists("throw");
+    expect(await checkPayeeAction(VAULT, "designer.near")).toEqual({ exists: null });
+    expect(warn).toHaveBeenCalledWith(
+      "console.payee_check_failed",
+      expect.objectContaining({ vault: VAULT, kind: "transport" }),
+    );
+  });
+
+  it("does not read the chain for text that is not an account id", async () => {
+    await signInAs("acme.near");
+    exists(false);
+    for (const bad of ["", "Not An Account", "a", `${"x".repeat(70)}`, 5 as unknown as string]) {
+      expect(await checkPayeeAction(VAULT, bad)).toEqual({ exists: null });
+    }
+    expect(reads.n).toBe(0);
+  });
+
+  it("says null, not a throw, when the membership read fails", async () => {
+    await signInAs("acme.near");
+    const real = h.db;
+    h.db = new Proxy(
+      {},
+      {
+        get: () => async () => {
+          throw new Error("db down");
+        },
+      },
+    ) as unknown as Db;
+    try {
+      expect(await checkPayeeAction(VAULT, "designer.near")).toEqual({ exists: null });
+    } finally {
+      h.db = real;
+    }
+    expect(logError).toHaveBeenCalledWith("console.payee_check_crashed", { error: "Error" });
   });
 });

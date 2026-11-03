@@ -1,32 +1,36 @@
 "use client";
 
-import { type ChangeEvent, useMemo, useState } from "react";
-import { prepareMandateAction } from "@/app/console/[vault]/mandates/actions";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { checkPayeeAction, prepareMandateAction } from "@/app/console/[vault]/mandates/actions";
 import { Field, inputClass, Notice } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
-import { consoleOutOfNear } from "@/lib/console/display";
+import { createButtonProps, payeeLine } from "@/lib/console/mandate-create";
 import {
   approvalSummary,
   backstopWarning,
+  blankForm,
   buildMandateInput,
-  checkPrepared,
   FIELD_LABEL,
   type FloatRead,
   floatFor,
   floatWarning,
   type MandateForm,
+  nearPayeeWarnings,
+  type PayeeExists,
+  payeeToCheck,
   tryUsdcUnits,
 } from "@/lib/console/mandates";
-import { actionKey } from "@/lib/near/lock";
-import type { TxResult } from "@/lib/near/outcome";
-import { createMandateTx, MANDATE_STORAGE_DEPOSIT } from "@/lib/near/tx";
+import { expiryText } from "@/lib/console/mandates-view";
+import { MANDATE_STORAGE_DEPOSIT } from "@/lib/near/tx";
 import { formatNear, formatUsdc } from "@/lib/near/units";
 import { parseBaseAddress } from "@/lib/near/validate";
 import { sha256HexOf } from "./sha256";
 
 /** A purpose document is read into memory to hash it: a PO is a few pages, so this is generous. */
 const MAX_PURPOSE_FILE_BYTES = 25 * 1024 * 1024;
+/** How long the owner stops typing before the console asks whether the payee account exists. */
+const PAYEE_CHECK_DELAY_MS = 500;
 
 const muted = "text-[#0B0B0C]/60";
 
@@ -37,6 +41,9 @@ export function MandateFormPanel(props: {
   network: Network;
   baseAsset: string;
   allowedAssets: string[];
+  /** The vault's USDC, Intents contract and allowed POA assets: not payees. */
+  protocolAccounts: string[];
+  /** `label` is already safe to show (safeChainText); `public_key` is the exact chain string. */
   agentKeys: { public_key: string; label: string }[];
   /** The vault's daily backstop, base units. */
   dailyBackstop: string;
@@ -44,20 +51,22 @@ export function MandateFormPanel(props: {
   floats: { near: FloatRead; base: FloatRead };
   /** The SDK's out-of-NEAR codes, from the server. */
   outOfNearCodes: string[];
+  /** Fields to start with (a link, a test). A new form after a confirmed create starts blank. */
+  initialForm?: Partial<MandateForm>;
 }) {
+  const firstAgent = props.agentKeys[0]?.public_key ?? "";
   const [form, setForm] = useState<MandateForm>({
-    payeeKind: "near",
-    payee: "",
-    purposeHash: "",
-    maxPerPaymentUsdc: "100",
-    maxTotalUsdc: "1000",
-    maxUses: "10",
-    expiresOn: "",
-    approvalAboveUsdc: "100",
-    agentPk: props.agentKeys[0]?.public_key ?? "",
-    label: "",
+    ...blankForm(firstAgent),
+    ...props.initialForm,
   });
   const [fileNote, setFileNote] = useState<string | null>(null);
+  // The file input is uncontrolled, so a new form needs a new input: changing its key makes React mount a
+  // fresh one, and the old file name does not stay on screen beside a blank hash.
+  const [fileKey, setFileKey] = useState(0);
+  const [payeeCheck, setPayeeCheck] = useState<{
+    account: string;
+    exists: boolean | null;
+  } | null>(null);
   const set = (k: keyof MandateForm) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const value = e.target.value;
     setForm((cur) => ({ ...cur, [k]: value }));
@@ -71,25 +80,47 @@ export function MandateFormPanel(props: {
         baseAsset: props.baseAsset,
         allowedAssets: props.allowedAssets,
         agentKeys: props.agentKeys.map((k) => k.public_key),
+        protocolAccounts: props.protocolAccounts,
       }),
-    [form, props.vault, props.baseAsset, props.allowedAssets, props.agentKeys],
+    [
+      form,
+      props.vault,
+      props.baseAsset,
+      props.allowedAssets,
+      props.agentKeys,
+      props.protocolAccounts,
+    ],
   );
   const err = (k: keyof MandateForm) => (!check.ok && form[k] !== "" ? check.errors[k] : undefined);
   const missing = check.ok
     ? []
     : (Object.keys(check.errors) as (keyof MandateForm)[]).filter((k) => form[k] === "");
 
-  // What the owner reviewed is exactly what the wallet is asked to sign: the lock is named by that
-  // transaction, and the server's answer must be the same transaction or nothing is signed.
-  const expected = useMemo(() => {
-    if (!check.ok) return null;
-    try {
-      return createMandateTx(props.vault, check.input);
-    } catch {
-      return null;
-    }
-  }, [check, props.vault]);
-  const lockKey = expected ? actionKey(expected) : null;
+  // Does the NEAR account typed as the payee exist? Asked on the server once the owner stops typing.
+  // Only a note: the vault accepts any valid account id.
+  const payeeAccount = payeeToCheck(form.payeeKind, form.payee);
+  useEffect(() => {
+    if (payeeAccount === null) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      let exists: boolean | null = null;
+      try {
+        const r = await checkPayeeAction(props.vault, payeeAccount);
+        if ("exists" in r) exists = r.exists;
+      } catch {
+        exists = null;
+      }
+      if (!cancelled) setPayeeCheck({ account: payeeAccount, exists });
+    }, PAYEE_CHECK_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [payeeAccount, props.vault]);
+  const seen = payeeCheck !== null && payeeCheck.account === payeeAccount ? payeeCheck : null;
+  const exists: PayeeExists =
+    seen === null ? null : seen.exists === null ? "unreadable" : seen.exists;
+  const payeeNotes = nearPayeeWarnings({ payeeKind: form.payeeKind, payee: form.payee, exists });
 
   const perPaymentUnits = tryUsdcUnits(form.maxPerPaymentUsdc);
   const warnings = [
@@ -120,7 +151,21 @@ export function MandateFormPanel(props: {
     }
   }
 
-  const prepare = async () => checkPrepared(await prepareMandateAction(props.vault, form), lockKey);
+  const button = createButtonProps({
+    vault: props.vault,
+    owner: props.owner,
+    network: props.network,
+    form,
+    check,
+    prepareOnServer: prepareMandateAction,
+    outOfNearCodes: props.outOfNearCodes,
+    onCreated: () => {
+      setForm(blankForm(firstAgent));
+      setFileNote(null);
+      setFileKey((k) => k + 1);
+      setPayeeCheck(null);
+    },
+  });
 
   return (
     <div>
@@ -154,11 +199,16 @@ export function MandateFormPanel(props: {
           Will be sent as <span className="mono break-all">{checksummed}</span> (checksummed).
         </p>
       ) : null}
+      {payeeNotes.map((n) => (
+        <Notice key={n} tone="warn">
+          {n}
+        </Notice>
+      ))}
       <Field
         label="Purpose document (PO or contract)"
         hint="Hashed in your browser: the file never leaves your device and only its sha256 goes on-chain. Keep this same document: you attach it to the invoices it covers later, and an invoice is only paid when its PO hashes to this value."
       >
-        <input type="file" onChange={onFile} />
+        <input key={fileKey} type="file" onChange={onFile} />
       </Field>
       {fileNote ? <p className={`-mt-2 mb-3 text-xs ${muted}`}>{fileNote}</p> : null}
       <Field label="Purpose hash (sha256, 64 hex)" error={err("purposeHash")}>
@@ -223,7 +273,7 @@ export function MandateFormPanel(props: {
             ) : null}
             {props.agentKeys.map((k) => (
               <option key={k.public_key} value={k.public_key}>
-                {k.label || k.public_key.slice(0, 20)}
+                {k.label}
               </option>
             ))}
           </select>
@@ -254,11 +304,7 @@ export function MandateFormPanel(props: {
             <dt>Name</dt>
             <dd>{check.input.label}</dd>
             <dt>Pays</dt>
-            <dd className="mono break-all">
-              {check.input.payee.type === "near"
-                ? `${check.input.payee.account_id} (USDC on NEAR)`
-                : `${check.input.payee.address} (USDC on Base)`}
-            </dd>
+            <dd className="mono break-all">{payeeLine(check.input.payee)}</dd>
             <dt>Per payment</dt>
             <dd>up to {formatUsdc(check.input.max_per_payment)} USDC</dd>
             <dt>In all</dt>
@@ -267,7 +313,7 @@ export function MandateFormPanel(props: {
               payments
             </dd>
             <dt>Until</dt>
-            <dd>{form.expiresOn.trim()} 23:59:59 UTC</dd>
+            <dd>{expiryText(check.input.expires_at_ns, true)}</dd>
             <dt>Approval</dt>
             <dd>{approvalSummary(check.input)}</dd>
             <dt>Purpose hash</dt>
@@ -290,33 +336,9 @@ export function MandateFormPanel(props: {
         <p className={`mb-2 text-xs ${muted}`}>Fix the highlighted fields to continue.</p>
       )}
 
-      {check.ok && lockKey !== null ? (
-        <TxButton
-          label="Sign mandate in my wallet"
-          network={props.network}
-          expectedSigner={props.owner}
-          confirm={`Create mandate "${check.input.label}"?\n\nPays ${
-            check.input.payee.type === "near"
-              ? check.input.payee.account_id
-              : check.input.payee.address
-          } up to ${formatUsdc(check.input.max_per_payment)} USDC per payment and ${formatUsdc(check.input.max_total)} USDC in all, at most ${check.input.max_uses} payments, until ${form.expiresOn.trim()} UTC.\n\nThe payee can never be changed. Your wallet attaches ${formatNear(MANDATE_STORAGE_DEPOSIT)} NEAR; the vault refunds what the storage does not use.`}
-          prepare={prepare}
-          lockKey={lockKey}
-          describe={(r: TxResult) => {
-            // The owner's own account pays this call's gas and deposit: name it first.
-            const v = consoleOutOfNear(r.code, props.outOfNearCodes, false);
-            return v === null ? undefined : { detail: v.text };
-          }}
-        />
-      ) : (
-        <button
-          type="button"
-          className="my-2 rounded-full bg-[#0B0B0C] px-4 py-1.5 text-sm text-[#F7F6F3] opacity-50"
-          disabled
-        >
-          Sign mandate in my wallet
-        </button>
-      )}
+      {/* Always rendered, so a create that may have gone through stays locked (and says so) after a
+          reload or an edit, whether or not the form is complete. */}
+      <TxButton {...button} />
     </div>
   );
 }

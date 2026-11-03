@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { KNOWN_VAULT_CODE_HASHES } from "@probarion/core";
 import { describe, expect, it } from "vitest";
 import type { AccessKeyState } from "@/lib/near/reader";
 import {
@@ -8,8 +10,12 @@ import {
   KEY_METHOD,
   type KeyPurpose,
   type KeyStatus,
+  keepResultText,
   nextStatus,
   scopeProblem,
+  stuckText,
+  VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY,
+  vaultCodeOf,
 } from "./rules";
 
 const VAULT = "acme.vaults.probarion.near";
@@ -361,7 +367,8 @@ describe("describeCheck", () => {
       expect(text).not.toMatch(/again in a minute|check again/i);
     }
     expect(agent).toMatch(/Remove it/);
-    expect(ledger).toMatch(/a contract fix is needed to recover/);
+    // Without the vault's code the page cannot say whether a new ledger key recovers it.
+    expect(ledger).toMatch(/could not be read/);
     // A revoked key's remedy is the one the page offers for its purpose.
     expect(describeCheck({ ...check("scope_full_access", "revoked"), from: "active" })).toMatch(
       /Remove/,
@@ -373,5 +380,87 @@ describe("describeCheck", () => {
         purpose: "ledger",
       }),
     ).toMatch(/Set a new ledger key/);
+  });
+});
+
+describe("a stuck ledger key, by what the vault's code can do (W-T10-R3)", () => {
+  it("knows the two builds from before the set_ledger_key fix, exactly as contracts/code-hashes.json records them", () => {
+    const recorded = JSON.parse(
+      readFileSync(new URL("../../../../../contracts/code-hashes.json", import.meta.url), "utf8"),
+    ) as { entries: { crate: string; commit: string; code_hash: string }[] };
+    const before = recorded.entries
+      .filter((e) => e.crate === "probarion-vault")
+      .filter((e) =>
+        [
+          "3bd8189612a43b1063745c80fd053527ef8e19f9",
+          "ba654353fa5af4cf2b023badf7e56ddf4caff491",
+        ].includes(e.commit),
+      )
+      .map((e) => e.code_hash);
+    expect([...VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY].sort()).toEqual([...before].sort());
+    for (const h of VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY)
+      expect(KNOWN_VAULT_CODE_HASHES).toContain(h);
+  });
+
+  it("reads the code identity: old, current or unknown", () => {
+    for (const h of VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY) expect(vaultCodeOf(h)).toBe("old");
+    expect(vaultCodeOf("11111111111111111111111111111111")).toBe("current");
+    expect(vaultCodeOf(null)).toBe("unknown");
+    expect(vaultCodeOf(undefined)).toBe("unknown");
+    expect(vaultCodeOf("")).toBe("unknown");
+  });
+
+  it("tells an old vault it needs a new vault, a current one to set a new ledger key (topped up), and never waits for a fix", () => {
+    const old = stuckText("ledger", "old");
+    const current = stuckText("ledger", "current");
+    const unknown = stuckText("ledger", "unknown");
+    expect(old).toMatch(/This vault's code cannot replace a stuck ledger key/);
+    expect(old).toMatch(/needs a new vault/);
+    expect(current).toMatch(/Set a new ledger key/);
+    expect(current).toMatch(/no free NEAR, top it up first/);
+    expect(unknown).toMatch(/could not be read/);
+    for (const text of [old, current, unknown, stuckText("agent", "old")]) {
+      expect(text).toMatch(/registered in the vault but its access key was never added/);
+      expect(text).not.toMatch(/contract fix/i);
+      expect(text).not.toMatch(/again in a minute/);
+    }
+    // An agent key recovers by Remove, whatever the code.
+    for (const code of ["old", "current", "unknown"] as const) {
+      expect(stuckText("agent", code)).toMatch(/Remove it, then generate a new agent key/);
+    }
+    // describeCheck words a stuck ledger key by the code it is given.
+    const c = {
+      id: "k",
+      public_key: "ed25519:ABCDEFGHJKLMNPQRSTUVWXYZ",
+      purpose: "ledger" as const,
+      from: "pending" as const,
+      to: "pending" as const,
+      reason: "registered_without_key" as const,
+    };
+    expect(describeCheck(c, "old")).toMatch(/needs a new vault/);
+    expect(describeCheck(c, "current")).toMatch(/Set a new ledger key/);
+  });
+});
+
+describe("keepResultText", () => {
+  it("always says what happened, and that nothing changed when Keep refused", () => {
+    expect(keepResultText({ kept: true, reason: "reactivated" })).toEqual({
+      ok: true,
+      message: "Kept: the key is active again.",
+    });
+    for (const [reason, text] of [
+      ["not_found", /not one of this vault's keys/],
+      ["not_discarded", /not a discarded one/],
+      ["unreadable", /could not be read/],
+      ["registered_without_key", /access key is missing/],
+      ["not_registered", /does not register this key/],
+      ["scope_gas_key", /gas key/],
+      ["scope_full_access", /full-access/],
+    ] as const) {
+      const r = keepResultText({ kept: false, reason });
+      expect(r?.ok, reason).toBe(false);
+      expect(r?.message, reason).toMatch(text);
+      expect(r?.message, reason).toMatch(/^Not kept: .*Nothing changed\.$/);
+    }
   });
 });

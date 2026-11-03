@@ -4,7 +4,7 @@ Probarion lets an AI agent pay people and services only inside mandates a human 
 
 ## Setup
 
-- Unit tests, `cargo fmt`, `cargo clippy` and the Node script tests run on native Windows (Git Bash) or Linux. The near-workspaces sandbox tests and the reproducible Docker build run in CI (GitHub Actions, ubuntu).
+- Unit tests, `cargo fmt`, `cargo clippy` and the Node script tests run on native Windows (Git Bash) or Linux; on Windows set `AWS_LC_SYS_PREBUILT_NASM=1` (or install NASM) so `aws-lc-sys` builds. The near-workspaces sandbox tests and the reproducible Docker build run in CI (GitHub Actions, ubuntu).
 - Rust comes from `rust-toolchain.toml` (rustup installs it on first use), target `wasm32-unknown-unknown`.
 - Node.js 24 (`.nvmrc`) and pnpm 10.
 - Contract builds need `cargo-near` 0.22.0. Reproducible builds need Docker (CI runs them). Deploys (humans only) need `near-cli-rs` 0.30.1.
@@ -39,7 +39,7 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
 | `contracts/intents-stub` | Sandbox/testnet stand-in for `intents.near`; never on mainnet |
 | `contracts/test-ft` | NEP-141 test token; never on mainnet |
 | `contracts/integration-tests` | near-workspaces sandbox tests |
-| `docs/specs` | Pre-hackathon spec and interfaces, copied unchanged |
+| `docs/specs` | Pre-hackathon spec and interfaces, amended since in place: the interfaces file lists each change as a dated ICR line, and git history has every edit |
 | `docs/runbooks` | Deploy runbooks; human steps are marked OWNER / OWNER SIGNS |
 
 ## Rules for agents

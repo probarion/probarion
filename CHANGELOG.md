@@ -79,6 +79,20 @@ The software is an unaudited beta.
 - Web console: a payment is signed with the key its mandate is bound to; a key made active again keeps
   its first activation date; and a discarded key that shows up on chain is reported, for the owner to
   keep or remove.
+- Web console, keys: only the ledger key can be loaded as "the active key"; every payment loads the
+  agent key named by its mandate, not the ledger key. A ledger key that is
+  stuck now says what to do for this vault's code: a vault built before the `set_ledger_key` fix needs
+  a new vault, and a vault on the fixed code can set a new ledger key. A `set_ledger_key` that
+  recovers a stuck key, whose only failed receipt is the delete of the missing old key, is shown as
+  done, after the page checks that the new anchor-only key is on the vault.
+- Web console, mandates: an expired mandate that still has payments waiting for approval shows
+  Revoke, because the contract can still approve them. The "Sign mandate" button stays locked after
+  a reload or an edit while an earlier create may have landed, so a mandate cannot be created twice
+  by accident. The form refuses an expiry less than an hour away and a payee that is the vault's own
+  USDC, Intents or asset contract; it warns when a 0x address is typed as a NEAR account (that is
+  not a Base payout) or when the NEAR account does not exist; and it says plainly when the vault does
+  not allow Base payouts. Revoke and the form appear only when your account is the vault's owner on
+  chain.
 - The SDK's chain reads fail closed: a malformed node answer is an error, and a node's own error is
   kept after the read fails over to another endpoint rather than reported as an outage.
 

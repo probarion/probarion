@@ -300,7 +300,8 @@ describe("rotateAll: verified dry run, then an atomic apply", () => {
       ).rejects.toBeInstanceOf(RotationRefusedError);
       expect(await sealedState(f.pg), name).toEqual(before);
     }
-  });
+    // Six fresh databases, one per re-seal shape: well over the 20 s default on a loaded CI runner.
+  }, 120_000);
 
   it("refuses equal masters before reading anything", async () => {
     let calls = 0;
