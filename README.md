@@ -94,6 +94,17 @@ No wallet, no key and no account: every step either runs offline or reads public
      d fail: spend 2 does not match its decision seq 2 (spend vs decision): amount 40000000 vs 1
    ```
 
+   The CLI runs the same checks over the same fixture, offline, and exits 0:
+
+   ```bash
+   node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json
+   ```
+
+   ```text
+   9 passed, 0 failed, 0 unproven
+   RESULT: PASS
+   ```
+
 3. **Check the testnet vault on chain.** These read public RPC data, with no key.
 
    ```bash
@@ -175,7 +186,7 @@ What exists at this commit, and what does not yet.
 | `@probarion/sdk`: RPC with failover, vault clients, ledger stores, `Probarion` class, `snapshot()` and `verify()` with online O1/O2 | **Shipped** in source | [`packages/sdk`](packages/sdk) |
 | NEAR AI Cloud adapter (private TEE model, nonce-bound attestation, `provider_tee` signature) | **Built** and tested against a fake NEAR AI Cloud. A real attested decision, recorded and verified in this repository: **In progress** | [`packages/sdk/src/nearai.ts`](packages/sdk/src/nearai.ts) |
 | `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` needs a deployed factory, so it waits for the factory | [`packages/cli`](packages/cli) |
-| CLI `check`, `verify` and `ledger export` | **In progress**. Use `verify()` from the SDK meanwhile | [`packages/cli`](packages/cli) |
+| CLI `check`, `verify` and `ledger export` | **Shipped** in source. `verify` exits 0 when every check passes, 1 when one fails or verify cannot run, 2 when a burn is unproven | [`packages/cli`](packages/cli) |
 | npm release 0.1.0 of the packages | **Planned**. The tag-driven release pipeline is in place; nothing is published | [`.github/workflows/release.yml`](.github/workflows/release.yml) |
 | Web console (Next.js 16 and Supabase): wallet sign-in, vault overview, freeze, approvals, keys, mandates | **In progress**, not deployed: there is no live URL yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
 | Mainnet vault `v0.probarion.near` | **Planned**. The runbook is ready; the owner signs every step | [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) |
