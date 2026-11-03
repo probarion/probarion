@@ -3,6 +3,7 @@ import {
   assetMatchesChain,
   isEvmAddress,
   isNearAccountId,
+  isNearTxHash,
   isSolanaAddress,
 } from "../src/formats.js";
 import { canonicalJson, sha256Hex } from "../src/hash.js";
@@ -560,5 +561,29 @@ describe("proposalRequestInputsProblem: payee formats (Task 14 B1, ICR-9)", () =
     expect(isSolanaAddress(sol.address)).toBe(true);
     expect(assetMatchesChain("base", base.asset)).toBe(true);
     expect(assetMatchesChain("solana", base.asset)).toBe(false);
+  });
+});
+
+describe("isNearTxHash (T14 follow-up 2): base58 that decodes to exactly 32 bytes", () => {
+  it("accepts a NEAR tx hash and refuses anything that can never be one", () => {
+    const good = "3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe"; // the live testnet stub burn tx
+    expect(isNearTxHash(good)).toBe(true);
+    expect(isNearTxHash("11111111111111111111111111111111")).toBe(true); // 32 zero bytes
+    for (const bad of [
+      "",
+      "T1",
+      "not a hash",
+      `${good}1`, // 45 characters
+      "z".repeat(44), // 44 base58 characters, but 33 bytes
+      "2".repeat(32), // 32 base58 characters, but 23 bytes
+      good.slice(0, 20), // too short
+      `0${good.slice(1)}`, // 0 is not base58
+      `l${good.slice(1)}`,
+      "ab".repeat(32), // 64 hex is not base58 of 32 bytes
+      5,
+      null,
+    ]) {
+      expect(isNearTxHash(bad), String(bad)).toBe(false);
+    }
   });
 });

@@ -11,8 +11,11 @@ import {
   type MandateView,
   NETWORKS,
   type SpendView,
+  sha256Bytes,
   sha256Hex,
+  utf8,
 } from "@probarion/core";
+import { baseEncode } from "near-api-js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ConfigError, TxOutcomeUnknownError } from "../src/errors.js";
 import { InMemoryLedgerStore } from "../src/ledger-store.js";
@@ -525,6 +528,9 @@ describe("non-factory vaults", () => {
 // ---------- mainnet v0: the Day-4 vault whose spends predate the ledger ----------
 
 const V0 = "v0.probarion.near";
+/** Well-formed NEAR tx hashes (base58 of 32 bytes) for the Day-4 Base payout and a tx without a burn pair. */
+const V0BURN = baseEncode(sha256Bytes(utf8("TEST DOUBLE v0 Base payout tx")));
+const V0OTHER = baseEncode(sha256Bytes(utf8("TEST DOUBLE v0 tx without a burn pair")));
 const M = NETWORKS.mainnet;
 const V0_BASE_ADDRESS = "0x3333333333333333333333333333333333333333";
 
@@ -682,25 +688,25 @@ describe("mainnet v0: documented pre-ledger spends (carries A, R7)", () => {
   });
 
   it("proves the burn from a supplied tx (docs/mainnet-proof.json hints) and fails one whose tx holds no pair", async () => {
-    server.chain.txs.set("V0BURN", v0BurnTx("V0BURN"));
-    server.chain.txs.set("V0OTHER", v0BurnTx("V0OTHER", false));
-    const proven = await v0({ burnTxHints: new Map([[2, ["V0BURN"]]]) }).verify();
+    server.chain.txs.set(V0BURN, v0BurnTx(V0BURN));
+    server.chain.txs.set(V0OTHER, v0BurnTx(V0OTHER, false));
+    const proven = await v0({ burnTxHints: new Map([[2, [V0BURN]]]) }).verify();
     expect(proven.ok).toBe(true);
     expect(proven.checks.find((c) => c.id === "h")?.detail).toContain(
       "1 burned spend has a matched burn pair",
     );
-    const wrong = await v0({ burnTxHints: new Map([[2, ["V0OTHER"]]]) }).verify();
+    const wrong = await v0({ burnTxHints: new Map([[2, [V0OTHER]]]) }).verify();
     expect(wrong.checks.find((c) => c.id === "h")).toMatchObject({
       status: "fail",
-      detail: expect.stringContaining("spend 2: no burn event observed in tx V0OTHER"),
+      detail: expect.stringContaining(`spend 2: no burn event observed in tx ${V0OTHER}`),
     });
   });
 
   it("takes the hashes from deps.preLedgerDecisionHashes, and fails d without them", async () => {
-    server.chain.txs.set("V0BURN", v0BurnTx("V0BURN"));
+    server.chain.txs.set(V0BURN, v0BurnTx(V0BURN));
     const supplied = await v0({
       preLedgerDecisionHashes: [sha256Hex(RECORD_1), sha256Hex(RECORD_2)],
-      burnTxHints: new Map([[2, ["V0BURN"]]]),
+      burnTxHints: new Map([[2, [V0BURN]]]),
     }).verify();
     expect(supplied.ok).toBe(true);
     expect(supplied.checks.find((c) => c.id === "d")?.detail).toContain(

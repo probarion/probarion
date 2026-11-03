@@ -2,6 +2,7 @@
 // from the vault, intents and the factory, plus the burn pairs of burned spends found in their transactions.
 import {
   type Hex32,
+  isNearTxHash,
   KNOWN_VAULT_CODE_HASHES,
   type LedgerEntry,
   NETWORKS,
@@ -343,7 +344,15 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
     let read: string | null = null;
     let absent: string | null = null;
     let unavailable: string | null = null;
+    let malformed: string | null = null;
     for (const hash of hashes) {
+      // Follow-up 2: a hash that is not base58 of 32 bytes can never name a tx. A node answers it with a parse error,
+      // not UNKNOWN_TRANSACTION, which would read as "unavailable": it is absent, and fails h, with no RPC call.
+      if (!isNearTxHash(hash)) {
+        absent ??= hash;
+        malformed ??= hash;
+        continue;
+      }
       const signer = signerOf.get(hash);
       const from = signer === undefined ? senders : [...new Set([signer, ...senders])];
       const lookup = await lookUp(clients, hash, from);
@@ -387,7 +396,7 @@ export async function collectBurns(args: CollectBurnsArgs): Promise<Snapshot["ch
           ? "; it is older than about 2.5 days and archival lookups are disabled, so the regular RPC may no longer hold its tx"
           : "";
       args.notes?.push(
-        `spend ${spend.id}: no burn pair in the ${hashes.length} tx hash(es) tried (${where})${read === null ? "" : `; tx ${read} was read and holds none`}${absent === null ? "" : `; tx ${absent} does not exist on chain`}${failing === null && unavailable !== null ? `; tx ${unavailable} could not be read right now; re-run, or add an archival RPC` : ""}${held && failing === null && unavailable === null ? "; it was held, so its burn is in the approver's tx, which the ledger does not record" : ""}${archivalNote}`,
+        `spend ${spend.id}: no burn pair in the ${hashes.length} tx hash(es) tried (${where})${read === null ? "" : `; tx ${read} was read and holds none`}${absent === null ? "" : absent === malformed ? `; tx ${absent} is not a NEAR tx hash (base58 of 32 bytes), so no tx can have it` : `; tx ${absent} does not exist on chain`}${failing === null && unavailable !== null ? `; tx ${unavailable} could not be read right now; re-run, or add an archival RPC` : ""}${held && failing === null && unavailable === null ? "; it was held, so its burn is in the approver's tx, which the ledger does not record" : ""}${archivalNote}`,
       );
     }
   }

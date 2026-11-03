@@ -1,6 +1,7 @@
 // Chain formats of the values a mandate payee holds (Task 14 B1): the NEAR AccountId grammar and the address
 // and asset checks of contracts/vault/src/validate.rs. A8's strict shape uses them, so that a directive cannot
 // ride in a payee field the model is shown.
+import bs58 from "bs58";
 import type { Chain } from "./types.js";
 
 /**
@@ -46,4 +47,19 @@ export function assetMatchesChain(chain: Chain, asset: unknown): asset is string
 /** `base-` or `sol-`: the prefix a POA asset id of `chain` starts with. */
 export function assetPrefixOf(chain: Chain): string {
   return ASSET_PREFIX[chain];
+}
+
+/**
+ * A NEAR transaction hash: base58 (Bitcoin alphabet) that decodes to exactly 32 bytes (T14 follow-up 2). Anything
+ * else can never name a transaction, whatever a node answers when asked about it.
+ */
+export function isNearTxHash(value: unknown): value is string {
+  // Every 32-byte value is 32 to 44 base58 characters, so this only bounds the cost of decoding; the decoded
+  // length is what decides.
+  if (typeof value !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) return false;
+  try {
+    return bs58.decode(value).length === 32;
+  } catch {
+    return false;
+  }
 }

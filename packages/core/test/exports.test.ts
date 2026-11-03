@@ -58,6 +58,7 @@ describe("@probarion/core root exports (plan 04 ICR 7, plan 05 ICR 3)", () => {
       "isEvmAddress",
       "isSolanaAddress",
       "assetMatchesChain",
+      "isNearTxHash",
     ] as const;
     const exported: Record<string, unknown> = { ...core };
     for (const name of functions) expect(typeof exported[name], name).toBe("function");

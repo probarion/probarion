@@ -3,8 +3,11 @@ import {
   type LedgerEntry,
   NETWORKS,
   type SpendView,
+  sha256Bytes,
+  utf8,
   type VaultConfig,
 } from "@probarion/core";
+import { baseEncode } from "near-api-js";
 import { describe, expect, it } from "vitest";
 import { RpcError, RpcMalformedError } from "../src/errors.js";
 import type { RpcClient, TxStatusResult } from "../src/rpc.js";
@@ -232,6 +235,39 @@ describe("resolveArchivalRpcUrls", () => {
 });
 
 describe("collectBurns: where a burn tx is looked for (R7)", () => {
+  /** Well-formed NEAR tx hashes (base58 of 32 bytes), one per label: a malformed one is never looked up. */
+  const TX = Object.fromEntries(
+    [
+      "T1",
+      "HINT",
+      "SPEND_TX",
+      "BURN",
+      "ANSWERED",
+      "GONE",
+      "A",
+      "B",
+      "RESERVE",
+      "LATER",
+      "BOGUS",
+      "DOWN",
+      "OLD",
+    ].map((label) => [label, baseEncode(sha256Bytes(utf8(`TEST DOUBLE tx ${label}`)))]),
+  ) as Record<
+    | "T1"
+    | "HINT"
+    | "SPEND_TX"
+    | "BURN"
+    | "ANSWERED"
+    | "GONE"
+    | "A"
+    | "B"
+    | "RESERVE"
+    | "LATER"
+    | "BOGUS"
+    | "DOWN"
+    | "OLD",
+    string
+  >;
   const NOW = new Date("2026-11-05T12:00:00.000Z");
   const nowNs = BigInt(NOW.getTime()) * 1_000_000n;
   const config = {
@@ -300,7 +336,7 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
   const noBurn = () => tx([receipt(VAULT, [])]);
 
   it("tries the hints first, then the ledger's tx hashes, as the vault and then each approver", async () => {
-    const { rpc, calls } = fakeRpc({ HINT: { signer: "approver.testnet", tx: burnTx() } });
+    const { rpc, calls } = fakeRpc({ [TX.HINT]: { signer: "approver.testnet", tx: burnTx() } });
     const notes: string[] = [];
     const burns = await collectBurns({
       rpc,
@@ -309,14 +345,14 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [spend(1)],
-      ledger: [payment(spend(1).decision_hash, "SPEND-TX")],
-      burnTxHints: new Map([[1, ["HINT"]]]),
+      ledger: [payment(spend(1).decision_hash, TX.SPEND_TX)],
+      burnTxHints: new Map([[1, [TX.HINT]]]),
       notes,
     });
     expect(burns).toEqual([
       {
         spend_id: 1,
-        tx_hash: "HINT",
+        tx_hash: TX.HINT,
         memo: MEMO,
         intents_owner: VAULT,
         amount: "25000000",
@@ -324,16 +360,16 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       },
     ]);
     expect(calls).toEqual([
-      ["HINT", VAULT],
-      ["HINT", "approver.testnet"],
+      [TX.HINT, VAULT],
+      [TX.HINT, "approver.testnet"],
     ]);
     expect(notes).toEqual([]);
   });
 
   it("does not rely on payment entries alone: a by-ref spend (no burn tx in the ledger) is found through the hints", async () => {
     const { rpc } = fakeRpc({
-      BURN: { signer: VAULT, tx: burnTx() },
-      ANSWERED: { signer: VAULT, tx: noBurn() },
+      [TX.BURN]: { signer: VAULT, tx: burnTx() },
+      [TX.ANSWERED]: { signer: VAULT, tx: noBurn() },
     });
     const burns = await collectBurns({
       rpc,
@@ -342,14 +378,14 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [spend(1)],
-      ledger: [payment(spend(1).decision_hash, "ANSWERED")],
-      burnTxHints: new Map([[1, ["BURN"]]]),
+      ledger: [payment(spend(1).decision_hash, TX.ANSWERED)],
+      burnTxHints: new Map([[1, [TX.BURN]]]),
     });
-    expect(burns[0]).toMatchObject({ tx_hash: "BURN", status: "ok" });
+    expect(burns[0]).toMatchObject({ tx_hash: TX.BURN, status: "ok" });
   });
 
   it("uses the burn_tx_hash and tx_hash the ledger records, and one tx for at most one spend", async () => {
-    const { rpc } = fakeRpc({ T1: { signer: VAULT, tx: burnTx() } });
+    const { rpc } = fakeRpc({ [TX.T1]: { signer: VAULT, tx: burnTx() } });
     const notes: string[] = [];
     const burns = await collectBurns({
       rpc,
@@ -358,18 +394,21 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [spend(2), spend(1)],
-      ledger: [payment(spend(1).decision_hash, null, "T1"), payment(spend(2).decision_hash, "T1")],
+      ledger: [
+        payment(spend(1).decision_hash, null, TX.T1),
+        payment(spend(2).decision_hash, TX.T1),
+      ],
       notes,
     });
     expect(burns).toEqual([
-      expect.objectContaining({ spend_id: 1, tx_hash: "T1", status: "ok" }),
+      expect.objectContaining({ spend_id: 1, tx_hash: TX.T1, status: "ok" }),
       expect.objectContaining({ spend_id: 2, tx_hash: "", status: "missing" }),
     ]);
     expect(notes[0]).toContain("spend 2: no burn pair in the 0 tx hash(es) tried");
   });
 
   it("records a tx that was read and holds no pair, and says what was tried", async () => {
-    const { rpc } = fakeRpc({ T1: { signer: VAULT, tx: noBurn() } });
+    const { rpc } = fakeRpc({ [TX.T1]: { signer: VAULT, tx: noBurn() } });
     const notes: string[] = [];
     const burns = await collectBurns({
       rpc,
@@ -378,18 +417,18 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [spend(1)],
-      ledger: [payment(spend(1).decision_hash, "T1"), payment(spend(1).decision_hash, "GONE")],
+      ledger: [payment(spend(1).decision_hash, TX.T1), payment(spend(1).decision_hash, TX.GONE)],
       notes,
     });
-    expect(burns[0]).toMatchObject({ tx_hash: "T1", status: "missing", memo: "", amount: "" });
+    expect(burns[0]).toMatchObject({ tx_hash: TX.T1, status: "missing", memo: "", amount: "" });
     expect(notes[0]).toBe(
-      "spend 1: no burn pair in the 2 tx hash(es) tried (0 hinted, 2 from the ledger); tx T1 was read and holds none; tx GONE does not exist on chain",
+      `spend 1: no burn pair in the 2 tx hash(es) tried (0 hinted, 2 from the ledger); tx ${TX.T1} was read and holds none; tx ${TX.GONE} does not exist on chain`,
     );
   });
 
   it("orders the RPCs by age (archival first after ~2.5 days) and notes when archival lookups are disabled", async () => {
     const regular = fakeRpc({});
-    const archival = fakeRpc({ T1: { signer: VAULT, tx: burnTx() } });
+    const archival = fakeRpc({ [TX.T1]: { signer: VAULT, tx: burnTx() } });
     const old = spend(1, { created_at_ns: (nowNs - ARCHIVAL_AFTER_NS - 1n).toString() });
     const burns = await collectBurns({
       rpc: regular.rpc,
@@ -399,12 +438,12 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [old],
-      ledger: [payment(old.decision_hash, "T1")],
+      ledger: [payment(old.decision_hash, TX.T1)],
     });
     expect(burns[0]?.status).toBe("ok");
     expect(regular.calls).toEqual([]); // archival first, and it had the tx
     const fresh = fakeRpc({});
-    const freshArchival = fakeRpc({ T1: { signer: VAULT, tx: burnTx() } });
+    const freshArchival = fakeRpc({ [TX.T1]: { signer: VAULT, tx: burnTx() } });
     await collectBurns({
       rpc: fresh.rpc,
       archivalRpc: freshArchival.rpc,
@@ -413,9 +452,9 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [spend(1)],
-      ledger: [payment(spend(1).decision_hash, "T1")],
+      ledger: [payment(spend(1).decision_hash, TX.T1)],
     });
-    expect(fresh.calls[0]).toEqual(["T1", VAULT]); // the regular RPC first for a new spend
+    expect(fresh.calls[0]).toEqual([TX.T1, VAULT]); // the regular RPC first for a new spend
     const notes: string[] = [];
     await collectBurns({
       rpc: fakeRpc({}).rpc,
@@ -425,7 +464,7 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [old],
-      ledger: [payment(old.decision_hash, "T1")],
+      ledger: [payment(old.decision_hash, TX.T1)],
       notes,
     });
     expect(notes[0]).toContain("archival lookups are disabled");
@@ -433,13 +472,13 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
 
   it("looks in the tx index only when one is given, and attributes a tx by its own burn pair", async () => {
     const { rpc } = fakeRpc({
-      A: { signer: VAULT, tx: burnTx("1") },
-      B: { signer: "approver.testnet", tx: burnTx("25000000") },
+      [TX.A]: { signer: VAULT, tx: burnTx("1") },
+      [TX.B]: { signer: "approver.testnet", tx: burnTx("25000000") },
     });
     const index: TxIndex = {
       accountTxs: async () => [
-        { hash: "A", isSigner: true },
-        { hash: "B", isSigner: false },
+        { hash: TX.A, isSigner: true },
+        { hash: TX.B, isSigner: false },
       ],
     };
     const notes: string[] = [];
@@ -454,8 +493,13 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       txIndex: index,
       notes,
     });
-    expect(burns[0]).toMatchObject({ spend_id: 1, tx_hash: "B", status: "ok", amount: "25000000" });
-    expect(notes.at(-1)).toBe("spend 1: burn tx B found through the tx index (online)");
+    expect(burns[0]).toMatchObject({
+      spend_id: 1,
+      tx_hash: TX.B,
+      status: "ok",
+      amount: "25000000",
+    });
+    expect(notes.at(-1)).toBe(`spend 1: burn tx ${TX.B} found through the tx index (online)`);
     const offline = await collectBurns({
       rpc,
       now: NOW,
@@ -485,7 +529,7 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
   });
 
   it("tries a hint's own signer first (docs/mainnet-proof.json signer_id)", async () => {
-    const { rpc, calls } = fakeRpc({ HINT: { signer: "owner.testnet", tx: burnTx() } });
+    const { rpc, calls } = fakeRpc({ [TX.HINT]: { signer: "owner.testnet", tx: burnTx() } });
     const burns = await collectBurns({
       rpc,
       now: NOW,
@@ -494,15 +538,15 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       config,
       spends: [spend(1)],
       ledger: [],
-      burnTxHints: new Map([[1, [{ hash: "HINT", signer: "owner.testnet" }]]]),
+      burnTxHints: new Map([[1, [{ hash: TX.HINT, signer: "owner.testnet" }]]]),
     });
-    expect(burns[0]).toMatchObject({ tx_hash: "HINT", status: "ok" });
-    expect(calls).toEqual([["HINT", "owner.testnet"]]);
+    expect(burns[0]).toMatchObject({ tx_hash: TX.HINT, status: "ok" });
+    expect(calls).toEqual([[TX.HINT, "owner.testnet"]]);
   });
 
   it("looks up only the network's intents contract and POA assets (T14-R1)", async () => {
     // The vault names another intents contract: the lookup still reads the network's own one.
-    const { rpc } = fakeRpc({ T1: { signer: VAULT, tx: burnTx() } });
+    const { rpc } = fakeRpc({ [TX.T1]: { signer: VAULT, tx: burnTx() } });
     const evil = { ...config, intents: "evil-intents.testnet" } as VaultConfig;
     const burns = await collectBurns({
       rpc,
@@ -511,11 +555,11 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config: evil,
       spends: [spend(1)],
-      ledger: [payment(spend(1).decision_hash, "T1")],
+      ledger: [payment(spend(1).decision_hash, TX.T1)],
     });
     expect(burns[0]).toMatchObject({ status: "ok" });
     // An asset that is not a POA asset of the network is not looked up at all.
-    const lookups = fakeRpc({ T1: { signer: VAULT, tx: burnTx() } });
+    const lookups = fakeRpc({ [TX.T1]: { signer: VAULT, tx: burnTx() } });
     const notes: string[] = [];
     const foreign = spend(1, {
       destination: { type: "intents", chain: "base", address: ADDRESS, asset: "base-evil.near" },
@@ -527,7 +571,7 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [foreign],
-      ledger: [payment(foreign.decision_hash, "T1")],
+      ledger: [payment(foreign.decision_hash, TX.T1)],
       notes,
     });
     expect(none[0]).toMatchObject({ status: "missing", tx_hash: "" });
@@ -538,7 +582,7 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
   });
 
   it("T14-R2: never counts a held spend's reservation tx as read, but does count a hinted one", async () => {
-    const { rpc } = fakeRpc({ RESERVE: { signer: VAULT, tx: noBurn() } });
+    const { rpc } = fakeRpc({ [TX.RESERVE]: { signer: VAULT, tx: noBurn() } });
     const held = spend(1, { held_until_ns: "1793900000000000000" });
     const fromLedger = await collectBurns({
       rpc,
@@ -547,7 +591,7 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [held],
-      ledger: [payment(held.decision_hash, "RESERVE", null, "held")],
+      ledger: [payment(held.decision_hash, TX.RESERVE, null, "held")],
     });
     expect(fromLedger[0]).toMatchObject({ status: "missing", tx_hash: "" }); // unproven in check h, not failed
     const hinted = await collectBurns({
@@ -558,9 +602,9 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       config,
       spends: [held],
       ledger: [],
-      burnTxHints: new Map([[1, ["RESERVE"]]]),
+      burnTxHints: new Map([[1, [TX.RESERVE]]]),
     });
-    expect(hinted[0]).toMatchObject({ status: "missing", tx_hash: "RESERVE" }); // read and holds no pair: fails
+    expect(hinted[0]).toMatchObject({ status: "missing", tx_hash: TX.RESERVE }); // read and holds no pair: fails
     const notHeld = await collectBurns({
       rpc,
       now: NOW,
@@ -568,15 +612,15 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [spend(1)],
-      ledger: [payment(spend(1).decision_hash, "RESERVE")],
+      ledger: [payment(spend(1).decision_hash, TX.RESERVE)],
     });
-    expect(notHeld[0]).toMatchObject({ status: "missing", tx_hash: "RESERVE" });
+    expect(notHeld[0]).toMatchObject({ status: "missing", tx_hash: TX.RESERVE });
   });
 
   it("follow-up: skips only a held spend's reservation entry; another ledger tx without a pair fails", async () => {
     const { rpc } = fakeRpc({
-      RESERVE: { signer: VAULT, tx: noBurn() },
-      LATER: { signer: VAULT, tx: noBurn() },
+      [TX.RESERVE]: { signer: VAULT, tx: noBurn() },
+      [TX.LATER]: { signer: VAULT, tx: noBurn() },
     });
     const held = spend(1, { held_until_ns: "1793900000000000000" });
     const reservationOnly = await collectBurns({
@@ -586,7 +630,7 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [held],
-      ledger: [payment(held.decision_hash, "RESERVE", null, "held")],
+      ledger: [payment(held.decision_hash, TX.RESERVE, null, "held")],
     });
     expect(reservationOnly[0]).toMatchObject({ status: "missing", tx_hash: "" }); // unproven: approver_tx
     const later = await collectBurns({
@@ -597,11 +641,11 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       config,
       spends: [held],
       ledger: [
-        payment(held.decision_hash, "RESERVE", null, "held"),
-        payment(held.decision_hash, "LATER", null, "burned"),
+        payment(held.decision_hash, TX.RESERVE, null, "held"),
+        payment(held.decision_hash, TX.LATER, null, "burned"),
       ],
     });
-    expect(later[0]).toMatchObject({ status: "missing", tx_hash: "LATER" }); // read, no pair: fails h
+    expect(later[0]).toMatchObject({ status: "missing", tx_hash: TX.LATER }); // read, no pair: fails h
   });
 
   it("follow-up: a tx the node says does not exist fails (a bogus hint too); an unreadable one is unavailable", async () => {
@@ -614,11 +658,11 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       config,
       spends: [spend(1, { held_until_ns: "1" })],
       ledger: [],
-      burnTxHints: new Map([[1, ["BOGUS"]]]),
+      burnTxHints: new Map([[1, [TX.BOGUS]]]),
       notes,
     });
-    expect(bogus[0]).toMatchObject({ status: "missing", tx_hash: "BOGUS" });
-    expect(notes[0]).toContain("tx BOGUS does not exist on chain");
+    expect(bogus[0]).toMatchObject({ status: "missing", tx_hash: TX.BOGUS });
+    expect(notes[0]).toContain(`tx ${TX.BOGUS} does not exist on chain`);
     const outage = new RpcError(
       "tx: all 2 RPC endpoint(s) failed after 6 attempts; last error: HTTP 503",
       [{ url: "https://a.test", error: "HTTP 503" }],
@@ -630,30 +674,32 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
     ]) {
       const n: string[] = [];
       const down = await collectBurns({
-        rpc: fakeRpc({}, { DOWN: error }).rpc,
+        rpc: fakeRpc({}, { [TX.DOWN]: error }).rpc,
         now: NOW,
         vaultId: VAULT,
         network: "testnet",
         config,
         spends: [spend(1)],
-        ledger: [payment(spend(1).decision_hash, "DOWN")],
+        ledger: [payment(spend(1).decision_hash, TX.DOWN)],
         notes: n,
       });
-      expect(down[0], error.message).toMatchObject({ status: "unavailable", tx_hash: "DOWN" });
-      expect(n[0]).toContain("tx DOWN could not be read right now; re-run, or add an archival RPC");
+      expect(down[0], error.message).toMatchObject({ status: "unavailable", tx_hash: TX.DOWN });
+      expect(n[0]).toContain(
+        `tx ${TX.DOWN} could not be read right now; re-run, or add an archival RPC`,
+      );
     }
     // A definitive answer wins over an unavailable one.
     const both = await collectBurns({
-      rpc: fakeRpc({}, { DOWN: outage }).rpc,
+      rpc: fakeRpc({}, { [TX.DOWN]: outage }).rpc,
       now: NOW,
       vaultId: VAULT,
       network: "testnet",
       config,
       spends: [spend(1)],
       ledger: [],
-      burnTxHints: new Map([[1, ["DOWN", "BOGUS"]]]),
+      burnTxHints: new Map([[1, [TX.DOWN, TX.BOGUS]]]),
     });
-    expect(both[0]).toMatchObject({ status: "missing", tx_hash: "BOGUS" });
+    expect(both[0]).toMatchObject({ status: "missing", tx_hash: TX.BOGUS });
   });
 
   it("follow-up: an old tx the regular RPC no longer has is unavailable when archival lookups are disabled", async () => {
@@ -666,9 +712,9 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [old],
-      ledger: [payment(old.decision_hash, "OLD")],
+      ledger: [payment(old.decision_hash, TX.OLD)],
     });
-    expect(disabled[0]).toMatchObject({ status: "unavailable", tx_hash: "OLD" });
+    expect(disabled[0]).toMatchObject({ status: "unavailable", tx_hash: TX.OLD });
     // With an archival RPC that does not have it either, the answer is definitive.
     const both = await collectBurns({
       rpc: fakeRpc({}).rpc,
@@ -678,9 +724,64 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [old],
-      ledger: [payment(old.decision_hash, "OLD")],
+      ledger: [payment(old.decision_hash, TX.OLD)],
     });
-    expect(both[0]).toMatchObject({ status: "missing", tx_hash: "OLD" });
+    expect(both[0]).toMatchObject({ status: "missing", tx_hash: TX.OLD });
+  });
+
+  it("follow-up 2: a malformed tx hash in the ledger or a hint is absent without any RPC call, so h fails", async () => {
+    const outage = new RpcError(
+      "tx: all 2 RPC endpoint(s) failed after 6 attempts; last error: HTTP 503",
+      [{ url: "https://a.test", error: "HTTP 503" }],
+    );
+    for (const bad of ["not-base58!", "T1", `${TX.T1}1`, "ab".repeat(32)]) {
+      // Every lookup would fail as an outage: the malformed hash must not reach the RPC at all.
+      const { rpc, calls } = fakeRpc({}, { [bad]: outage });
+      const notes: string[] = [];
+      const ledger = await collectBurns({
+        rpc,
+        now: NOW,
+        vaultId: VAULT,
+        network: "testnet",
+        config,
+        spends: [spend(1)],
+        ledger: [payment(spend(1).decision_hash, bad)],
+        notes,
+      });
+      expect(ledger[0], bad).toMatchObject({ status: "missing", tx_hash: bad });
+      expect(calls, bad).toEqual([]);
+      expect(notes[0]).toContain(`tx ${bad} is not a NEAR tx hash`);
+      const hinted = await collectBurns({
+        rpc,
+        now: NOW,
+        vaultId: VAULT,
+        network: "testnet",
+        config,
+        spends: [spend(1, { held_until_ns: "1" })],
+        ledger: [],
+        burnTxHints: new Map([[1, [bad]]]),
+      });
+      expect(hinted[0], bad).toMatchObject({ status: "missing", tx_hash: bad });
+    }
+  });
+
+  it("follow-up 2: a well-formed hash during an outage stays unavailable (unproven), never failed", async () => {
+    const outage = new RpcError(
+      "tx: all 2 RPC endpoint(s) failed after 6 attempts; last error: HTTP 503",
+      [{ url: "https://a.test", error: "HTTP 503" }],
+    );
+    const { rpc, calls } = fakeRpc({}, { [TX.DOWN]: outage });
+    const burns = await collectBurns({
+      rpc,
+      now: NOW,
+      vaultId: VAULT,
+      network: "testnet",
+      config,
+      spends: [spend(1)],
+      ledger: [payment(spend(1).decision_hash, TX.DOWN)],
+    });
+    expect(burns[0]).toMatchObject({ status: "unavailable", tx_hash: TX.DOWN });
+    expect(calls.length).toBeGreaterThan(0);
   });
 
   it("records a burned spend to a NEAR account as missing without any lookup", async () => {
@@ -693,7 +794,7 @@ describe("collectBurns: where a burn tx is looked for (R7)", () => {
       network: "testnet",
       config,
       spends: [near],
-      ledger: [payment(near.decision_hash, "T1")],
+      ledger: [payment(near.decision_hash, TX.T1)],
     });
     expect(burns[0]).toMatchObject({ status: "missing", tx_hash: "" });
     expect(calls).toEqual([]);
