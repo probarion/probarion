@@ -3,6 +3,7 @@ target/
 contracts/target/
 dist/
 .next/
+.vercel/
 next-env.d.ts
 coverage/
 .env
