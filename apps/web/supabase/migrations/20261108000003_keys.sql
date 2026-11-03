@@ -10,8 +10,9 @@
 -- 'removed' (Task 10 ruling): the chain answered, definitively, that the access key is gone (NO_KEY), or the owner
 -- discarded a key that was still pending. 'revoked' stays for a key the vault no longer accepts while its access key may
 -- still be there. Neither is final (W-T10-R1): a later sync that sees the full activation state again (the exact scoped
--- key, registered) makes the key active again, so a lagging node's NO_KEY never sticks. revoked_at is when a key last
--- left 'active' (or was discarded).
+-- key, registered) makes the key active again, so a lagging node's NO_KEY never sticks. The one exception is a key the
+-- owner discarded (discarded_at, W-T10-R2): a sync never makes it active; only the owner's Keep does, after the same
+-- full check. revoked_at is when a key last left 'active' (or was discarded).
 alter table public.agent_keys drop constraint agent_keys_status_check;
 alter table public.agent_keys add constraint agent_keys_status_check
   check (status in ('pending', 'active', 'revoked', 'removed'));
@@ -30,6 +31,9 @@ alter table public.agent_keys add column chain_registered boolean;
 alter table public.agent_keys add column chain_has_key boolean;
 alter table public.agent_keys add column chain_checked_at timestamptz;
 alter table public.agent_keys add column chain_seen boolean not null default false;
+-- What the last sync saw: the access key is exactly the one the vault adds for this purpose (plain FunctionCall, the
+-- vault as receiver, one method). With chain_registered, this is the full activation check (W-T10-R3).
+alter table public.agent_keys add column chain_scoped boolean;
 
 -- When the owner discarded the key (W-T10-R2). A discarded key is never made active by a sync, even if it later shows
 -- up on chain exactly as the vault adds it: that is the discarded_on_chain state, and only the owner's Keep
@@ -95,28 +99,38 @@ language sql stable set search_path = public, pg_temp as $$
       'id', k.id, 'tenant_id', k.tenant_id, 'purpose', k.purpose, 'public_key', k.public_key, 'label', k.label,
       'status', k.status, 'key_version', k.key_version, 'created_by', k.created_by, 'created_at', k.created_at,
       'activated_at', k.activated_at, 'revoked_at', k.revoked_at, 'chain_registered', k.chain_registered,
-      'chain_has_key', k.chain_has_key, 'chain_checked_at', k.chain_checked_at, 'chain_seen', k.chain_seen,
-      'discarded_at', k.discarded_at)
+      'chain_has_key', k.chain_has_key, 'chain_scoped', k.chain_scoped, 'chain_checked_at', k.chain_checked_at,
+      'chain_seen', k.chain_seen, 'discarded_at', k.discarded_at)
       order by k.created_at, k.id), '[]'::jsonb)
   from public.agent_keys k where k.tenant_id = public.agent_key_uuid(p->>'tenant_id')
 $$;
 
--- The sealed secret of the tenant's active key for a purpose: THE ledger key (at most one is active,
--- agent_keys_one_active_ledger), or the agent key whose FIRST activation is the most recent. Null when there is none.
--- A Payables / Canary cycle signs a spend with the key its mandate is bound to (agent_key_secret_for), never with
--- "the newest" agent key. Only the server cycles call these, and they open the secret in memory.
+-- The sealed secret of the tenant's ledger key: { tenant_id, purpose: 'ledger' }. At most one ledger key is active
+-- (agent_keys_one_active_ledger); null when there is none. Any other purpose is invalid_input (W-T10-R3): there is no
+-- "the" agent key. A Payables / Canary cycle signs a spend with the agent key its mandate is bound to
+-- (agent_key_secret_for). Only the server cycles call these, and they open the secret in memory.
 create or replace function public.agent_key_secret(p jsonb) returns jsonb
-language sql stable set search_path = public, pg_temp as $$
+language plpgsql stable set search_path = public, pg_temp as $$
+declare
+  v_tenant uuid := public.agent_key_uuid(p->>'tenant_id');
+  v_out jsonb;
+begin
+  if p->>'purpose' is distinct from 'ledger' then
+    raise exception 'invalid_input';
+  end if;
   select jsonb_build_object('public_key', k.public_key, 'secret_ciphertext', k.secret_ciphertext,
                             'secret_nonce', k.secret_nonce, 'key_version', k.key_version)
-  from public.agent_keys k
-  where k.tenant_id = public.agent_key_uuid(p->>'tenant_id') and k.purpose = p->>'purpose' and k.status = 'active'
-  order by k.activated_at desc, k.created_at desc, k.id
-  limit 1
-$$;
+    into v_out
+    from public.agent_keys k
+    where k.tenant_id = v_tenant and k.purpose = 'ledger' and k.status = 'active'
+    order by k.activated_at desc, k.created_at desc, k.id
+    limit 1;
+  return v_out;
+end $$;
 
--- The sealed secret of exactly this key: { tenant_id, public_key }, and only while it is active for this tenant (W-T10-R2).
--- Null otherwise (not this tenant's, not active, unknown). A malformed public key is invalid_input.
+-- The sealed secret of exactly this AGENT key: { tenant_id, public_key }, and only while it is active for this tenant
+-- (W-T10-R2). Null otherwise (not this tenant's, not active, unknown, or not an agent key: a mandate's agent_pk equal to
+-- the ledger key never hands out the ledger secret, W-T10-R3). A malformed public key is invalid_input.
 create or replace function public.agent_key_secret_for(p jsonb) returns jsonb
 language plpgsql stable set search_path = public, pg_temp as $$
 declare
@@ -130,7 +144,7 @@ begin
                             'secret_nonce', k.secret_nonce, 'key_version', k.key_version)
     into v_out
     from public.agent_keys k
-    where k.tenant_id = v_tenant and k.public_key = p->>'public_key' and k.status = 'active';
+    where k.tenant_id = v_tenant and k.public_key = p->>'public_key' and k.purpose = 'agent' and k.status = 'active';
   return v_out;
 end $$;
 
@@ -191,7 +205,7 @@ begin
   return jsonb_build_object('id', v_id, 'status', v_to, 'changed', true);
 end $$;
 
--- What one sync saw: { tenant_id, keys: [{ id, registered, has_key }] }, both booleans, for keys of this tenant only
+-- What one sync saw: { tenant_id, keys: [{ id, registered, has_key, scoped }] }, all booleans, for keys of this tenant only
 -- (an id of another tenant is not_found, and then nothing of the batch is written).
 create or replace function public.agent_key_observe(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
@@ -206,12 +220,14 @@ begin
   end if;
   for r in select value from jsonb_array_elements(p->'keys') loop
     if jsonb_typeof(r->'registered') is distinct from 'boolean'
-       or jsonb_typeof(r->'has_key') is distinct from 'boolean' then
+       or jsonb_typeof(r->'has_key') is distinct from 'boolean'
+       or jsonb_typeof(r->'scoped') is distinct from 'boolean' then
       raise exception 'invalid_input';
     end if;
     update public.agent_keys set
         chain_registered = (r->>'registered')::boolean,
         chain_has_key = (r->>'has_key')::boolean,
+        chain_scoped = (r->>'scoped')::boolean,
         chain_checked_at = now(),
         chain_seen = chain_seen or (r->>'registered')::boolean or (r->>'has_key')::boolean
       where id = public.agent_key_uuid(r->>'id') and tenant_id = v_tenant;
