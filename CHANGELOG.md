@@ -14,6 +14,15 @@ The software is an unaudited beta.
 
 ### Added
 
+- Community files: a pull request template with Safety and Review sections, bug and feature issue
+  forms (blank issues are off; vulnerabilities go to the private channel SECURITY.md names),
+  `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
+- CI: one `verify` check that needs every other job and passes only when each one succeeded (a
+  skipped or cancelled job fails it), for branch rules to require. When a gate in the TypeScript,
+  Rust unit or sandbox job fails, the job posts the last 60 lines of that gate's log as one annotation
+  and in the job summary.
+- A 1280×640 social preview image for the repository page, rendered from the brand by a script that
+  refuses any other size.
 - Vault contract (`probarion-vault` 0.1.0). The owner creates mandates, each with a payee fixed at
   creation (a NEAR account, or a Base or Solana address paid out through NEAR Intents), a limit per
   payment, a total, a number of uses, an expiry and an amount above which an approver must confirm.
