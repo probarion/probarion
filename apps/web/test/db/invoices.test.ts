@@ -1,0 +1,258 @@
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Db } from "@/lib/db/port";
+import {
+  getInvoice,
+  insertInvoice,
+  listInvoices,
+  type NewInvoice,
+  setInvoiceOutcome,
+} from "@/lib/payables/store";
+import { asRole, freshDb, seedTenant } from "./harness";
+import { pgliteDb } from "./pglite-db";
+
+// The invoice functions of migration 0006, on their own (the pipeline's tests use them end to end).
+
+const H = (c: string) => c.repeat(64);
+const SEALED = { ciphertext: "Y2lwaGVy", nonce: "bm9uY2U=" };
+const OUTCOME = {
+  status: "paid",
+  spendId: 1,
+  code: null,
+  txHash: "TX1",
+  ledgerSeq: 1,
+  decisionHash: H("d"),
+  anchorTxHash: null,
+};
+
+describe("invoice functions (migration 0006)", () => {
+  let pg: PGlite;
+  let db: Db;
+  let a: string;
+  let b: string;
+  let n = 0;
+
+  beforeAll(async () => {
+    pg = await freshDb();
+    db = pgliteDb(pg);
+    a = await seedTenant(pg, { vault: "a.vaults.probarion.near", owner: "alice.near" });
+    b = await seedTenant(pg, { vault: "b.vaults.probarion.near", owner: "bob.near" });
+  });
+  afterAll(async () => {
+    await pg.close();
+  });
+
+  /** A new invoice with its own hash and ref. */
+  function invoice(over: Partial<NewInvoice> = {}): NewInvoice {
+    n += 1;
+    const hash = n.toString(16).padStart(64, "0");
+    return {
+      invoiceHash: hash,
+      ref: `inv-${hash.slice(-24)}`,
+      filename: "inv.pdf",
+      mediaType: "application/pdf",
+      documentSha256: H("f"),
+      sealed: SEALED,
+      facts: {
+        invoice_hash: hash,
+        amount: "1",
+        po_ref: null,
+        purpose_hash: null,
+        payee_hint: null,
+        invoice_number: null,
+      },
+      requestId: "r",
+      createdBy: "alice.near",
+      ...over,
+    };
+  }
+
+  it("is executable by the service role only", async () => {
+    for (const role of ["anon", "authenticated"] as const) {
+      for (const fn of ["invoice_insert", "invoice_set_outcome", "invoice_list", "invoice_get"]) {
+        await expect(pgliteDb(pg, role, "alice.near").rpc(fn, { tenant_id: a })).rejects.toThrow(
+          /permission denied/,
+        );
+      }
+    }
+  });
+
+  it("inserts once per ref and answers a duplicate with the row's status", async () => {
+    const inv = invoice();
+    const first = await insertInvoice(db, a, inv);
+    expect(first).toMatchObject({ duplicate: false, retry: false });
+    expect(await insertInvoice(db, a, inv)).toEqual({
+      id: first.id,
+      duplicate: true,
+      status: "processing",
+    });
+    // The same ref under another tenant is another invoice.
+    expect(await insertInvoice(db, b, inv)).toMatchObject({ duplicate: false });
+  });
+
+  it("refuses malformed input as invalid_input, not as a constraint error", async () => {
+    const bad: Partial<NewInvoice>[] = [
+      { invoiceHash: "XYZ" },
+      { ref: "" },
+      { ref: "r".repeat(65) },
+      { mediaType: "image/png" as NewInvoice["mediaType"] },
+      { filename: "f".repeat(201) },
+      { documentSha256: "nope" },
+      { requestId: "" },
+      { createdBy: "" },
+      { sealed: null }, // zero retention with facts and a file name
+      { sealed: null, facts: null }, // zero retention with a file name (R18)
+      { sealed: { ciphertext: "", nonce: "" } },
+    ];
+    for (const over of bad) {
+      await expect(insertInvoice(db, a, invoice(over))).rejects.toMatchObject({
+        code: "invalid_input",
+      });
+    }
+    await expect(
+      insertInvoice(db, a, invoice({ sealed: null, facts: null, filename: null })),
+    ).resolves.toMatchObject({ duplicate: false });
+    await expect(db.rpc("invoice_insert", { tenant_id: "not-a-uuid" })).rejects.toMatchObject({
+      code: "invalid_input",
+    });
+  });
+
+  it("keeps no file name for a zero-retention row, even written by hand (R18)", async () => {
+    await expect(
+      pg.query(
+        `insert into invoices (tenant_id, invoice_hash, ref, filename, media_type, retained, request_id, created_by)
+         values ($1, $2, 'inv-hand', 'secret-name.pdf', 'application/pdf', false, 'r', 'x')`,
+        [a, H("9")],
+      ),
+    ).rejects.toThrow(/invoices_retention/);
+  });
+
+  it("sets the outcome once, only while processing, and only on the tenant's own row", async () => {
+    const { id } = await insertInvoice(db, a, invoice());
+    await expect(
+      setInvoiceOutcome(db, b, id, {
+        status: "decided",
+        outcome: OUTCOME as never,
+        anchorTxHash: null,
+        promptTokens: null,
+        completionTokens: null,
+      }),
+    ).rejects.toMatchObject({ code: "not_found" });
+    const r = await setInvoiceOutcome(db, a, id, {
+      status: "decided",
+      outcome: OUTCOME as never,
+      anchorTxHash: "A".repeat(44),
+      promptTokens: 10,
+      completionTokens: 2,
+    });
+    expect(r).toEqual({ id, status: "decided", changed: true });
+    // A late writer never overwrites it.
+    expect(await setInvoiceOutcome(db, a, id, { status: "error", error: "late" })).toEqual({
+      id,
+      status: "decided",
+      changed: false,
+    });
+    expect(await getInvoice(db, a, id)).toMatchObject({
+      status: "decided",
+      error: null,
+      anchor_tx_hash: "A".repeat(44),
+      model_prompt_tokens: 10,
+      model_completion_tokens: 2,
+      outcome: { status: "paid", txHash: "TX1" },
+    });
+  });
+
+  it("refuses an outcome that hides an unconfirmed payment, or that is malformed", async () => {
+    const { id } = await insertInvoice(db, a, invoice());
+    const base = { tenant_id: a, id, outcome: OUTCOME, error: null };
+    for (const p of [
+      { ...base, status: "decided", outcome: { ...OUTCOME, status: "unconfirmed" } },
+      { ...base, status: "decided", outcome: null },
+      { ...base, status: "error", error: "" },
+      { ...base, status: "error" }, // an error carries no outcome
+      { ...base, status: "paid" },
+      { ...base, status: "decided", anchor_tx_hash: "not base58!" },
+      { ...base, status: "decided", model_prompt_tokens: -1 },
+    ]) {
+      await expect(db.rpc("invoice_set_outcome", p)).rejects.toMatchObject({
+        code: "invalid_input",
+      });
+    }
+    await expect(
+      db.rpc("invoice_set_outcome", {
+        ...base,
+        status: "unconfirmed",
+        outcome: { ...OUTCOME, status: "unconfirmed" },
+      }),
+    ).resolves.toMatchObject({ status: "unconfirmed", changed: true });
+  });
+
+  it("takes over only an `error` row of the same invoice (R24)", async () => {
+    const inv = invoice();
+    const { id } = await insertInvoice(db, a, inv);
+    await setInvoiceOutcome(db, a, id, { status: "error", error: "rpc down" });
+    const retry = await insertInvoice(db, a, { ...inv, requestId: "r2", filename: "again.pdf" });
+    expect(retry).toEqual({ id, duplicate: false, retry: true });
+    expect(await getInvoice(db, a, id)).toMatchObject({
+      status: "processing",
+      error: null,
+      request_id: "r2",
+      filename: "again.pdf",
+    });
+    // Once decided (or unconfirmed), it is a duplicate for good.
+    await setInvoiceOutcome(db, a, id, {
+      status: "unconfirmed",
+      outcome: { ...OUTCOME, status: "unconfirmed" } as never,
+      anchorTxHash: null,
+      promptTokens: null,
+      completionTokens: null,
+    });
+    expect(await insertInvoice(db, a, inv)).toMatchObject({
+      duplicate: true,
+      status: "unconfirmed",
+    });
+    // An error row whose ref collides with another text's hash is not taken over.
+    const other = invoice();
+    const { id: otherId } = await insertInvoice(db, a, other);
+    await setInvoiceOutcome(db, a, otherId, { status: "error", error: "x" });
+    expect(await insertInvoice(db, a, { ...other, invoiceHash: H("7") })).toMatchObject({
+      duplicate: true,
+      status: "error",
+    });
+  });
+
+  it("reads only the tenant's own invoices, newest first, and never their sealed content", async () => {
+    const mine = await insertInvoice(db, b, invoice({ requestId: "only-b" }));
+    expect(await getInvoice(db, a, mine.id)).toBeNull();
+    await expect(getInvoice(db, a, "nope")).rejects.toMatchObject({ code: "invalid_input" });
+    const list = await listInvoices(db, b, 500);
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.every((i) => !("content_ciphertext" in i) && !("content_nonce" in i))).toBe(true);
+    expect((await listInvoices(db, b, 1)).map((i) => i.id)).toEqual([mine.id]);
+    const all = await listInvoices(db, a, 500);
+    const times = all.map((i) => i.created_at);
+    expect([...times].sort().reverse()).toEqual(times);
+    expect(all.some((i) => i.id === mine.id)).toBe(false);
+  });
+
+  it("lets a member read the new columns but never the sealed content", async () => {
+    const { id } = await insertInvoice(db, a, invoice());
+    const seen = await asRole(pg, "authenticated", "alice.near", (tx) =>
+      tx.query<{ document_sha256: string; anchor_tx_hash: string | null }>(
+        "select document_sha256, anchor_tx_hash from public.invoices where id = $1",
+        [id],
+      ),
+    );
+    expect(seen.rows[0]?.document_sha256).toBe(H("f"));
+    await expect(
+      asRole(pg, "authenticated", "bob.near", (tx) =>
+        tx.query("select id from public.invoices where id = $1", [id]),
+      ).then((r) => r.rows.length),
+    ).resolves.toBe(0);
+    await expect(
+      asRole(pg, "authenticated", "alice.near", (tx) =>
+        tx.query("select content_nonce from public.invoices"),
+      ),
+    ).rejects.toThrow(/permission denied/);
+  });
+});
