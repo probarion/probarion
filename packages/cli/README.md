@@ -79,7 +79,7 @@ probarion verify --vault <vault> --snapshot snapshot.json   # also saves the sna
 probarion verify --offline snapshot.json                    # checks a saved snapshot, with no network
 probarion verify --vault <vault> --online                   # adds O1 and O2 to check e
 probarion verify --vault <vault> --burn-tx 2=<tx hash>@<approver account>
-probarion verify --vault <vault> --proof docs/mainnet-proof.json
+probarion verify --vault <vault> --proof evidence.json
 probarion ledger export --out ledger-copy.jsonl
 ```
 
@@ -92,7 +92,8 @@ node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid
 
 ```text
 Probarion verify: x.vaults.probarion.testnet (testnet)
-entries 5, anchors 3, generated 2026-11-03T08:42:13.473Z
+entries 5, anchors 3, generated 2026-11-03T09:41:13.810Z
+snapshot taken 2026-11-05T12:00:00.000Z: its chain data is the file's and was not read from the chain again
 
 a  ledger-signatures      PASS      5 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key ...
 b  hash-links             PASS      5 entries: every body_hash and link recomputes, chained from the zero link
@@ -113,8 +114,9 @@ RESULT: PASS
 approval threshold) or `REFUSED: PROBARION:<Code>`, for example `OverPerPayment` or
 `DuplicateInvoice`. `--json` prints the request, the signer and the verdict.
 
-- `--invoice` is a file: the sha256 of its bytes is the `invoice_hash`. Give it the text the agent
-  processes, since that is what the SDK hashes.
+- `--invoice` takes the extracted invoice text, the text the agent processes, as a UTF-8 file. Its
+  `invoice_hash` is computed the way the SDK computes it. A file that is not UTF-8 text (a PDF, a
+  scan) is a usage error (exit 64): extract its text first.
 - The check runs as `--agent-pk`, else as the public key of `PROBARION_AGENT_KEY`, else as the
   mandate's agent. Only the public key is printed.
 - `--ref` is 1 to 64 bytes. The vault refuses a ref or an invoice it has already seen.
@@ -123,7 +125,7 @@ approval threshold) or `REFUSED: PROBARION:<Code>`, for example `OverPerPayment`
 |---|---|
 | 0 | the vault would accept the spend (it may hold it for an approver) |
 | 1 | the vault would refuse it, or the check could not run (`error:` on stderr) |
-| 64 | usage error: a missing, malformed or conflicting flag |
+| 64 | usage error: a missing, malformed or conflicting flag, or an `--invoice` that is not UTF-8 text |
 
 ### verify
 
@@ -174,13 +176,23 @@ The flags:
 - `--online` also runs O1 and O2 on every attested decision and looks burns up in FastNEAR's
   transaction index. O1 checks that the TDX quote is DCAP-genuine and bound to this request; the
   measurement is not pinned yet, so O1 does not show which image the TEE runs. O2 checks that the GPU
-  payload carries the request nonce and that NVIDIA NRAS verifies it. Both use
-  `@nearai/inference-sdk`, an optional peer of `@probarion/sdk` (which documents Node 24.22.1 or newer
-  for it). When it cannot be loaded, check e says `online: unavailable` and O1 and O2 do not run.
-- `--snapshot <file>` writes the snapshot that was verified (any file but the ledger itself).
-  `--offline <file>` verifies such a
-  snapshot as it is, with no network, so it refuses `--vault`, `--ledger`, `--evidence`, `--burn-tx`,
-  `--proof`, `--archival-rpc`, `--online`, `--rpc` and `--network`.
+  payload carries the request nonce and that NVIDIA NRAS verifies it. Check e's row says how many
+  quotes and GPU payloads were checked.
+  - What it needs: the network, and `@nearai/inference-sdk`. `probarion` lists that package as an
+    optional dependency, so `npm install --global probarion` installs it too, unless npm cannot (an
+    optional dependency that fails to install is left out). The package declares Node 24.22.1 or newer.
+  - When the package cannot be loaded, verify prints `online: O1 and O2 did not run (<reason>)`, in the
+    report and on stderr, and check e keeps its offline result.
+  - When O1 or O2 ran, the report adds an `online legend` line that says what each one checks. When
+    there was nothing to check (no attested decision, or no GPU payload), it says that O1 and O2, or O2,
+    did not run.
+- `--snapshot <file>` writes the snapshot that was verified to a new file. It refuses a file that
+  already exists, and the ledger file under any name (exit 64).
+- `--offline <file>` verifies such a snapshot as it is, with no network, so it refuses `--vault`,
+  `--ledger`, `--evidence`, `--burn-tx`, `--proof`, `--archival-rpc`, `--online`, `--rpc` and
+  `--network`. It runs every check on what the file holds: it shows that the ledger and the chain data
+  recorded in the snapshot agree with each other, as of the time the snapshot was taken (the report
+  prints it). It does not read the chain, so it takes the file's chain data as it is.
 - `--ledger <path>` is the ledger file. It defaults to `PROBARION_LEDGER_PATH`, else
   `.probarion/ledger.jsonl`; an empty `PROBARION_LEDGER_PATH` counts as unset. verify warns when the
   file is not there, and then fails the spends it cannot bind to a decision.
