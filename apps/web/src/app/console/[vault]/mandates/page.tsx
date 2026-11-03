@@ -7,17 +7,19 @@ import { VaultNav } from "@/components/console/VaultNav";
 import { AccountLink, Badge, Card, Notice } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import type { Network } from "@/lib/config";
+import { type FloatRead, floatFromRead } from "@/lib/console/mandates";
 import {
+  DIGITS,
   expiryText,
-  type FloatRead,
   mandateState,
   type PayeeView,
   payeeView,
   purposeShort,
+  purposeTitle,
   remainingUnits,
   safeChainText,
   usdcText,
-} from "@/lib/console/mandates";
+} from "@/lib/console/mandates-view";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { isVaultConfig, type Read } from "@/lib/console/vaults";
 import { getEnv } from "@/lib/env";
@@ -43,8 +45,18 @@ async function attempt<T>(what: string, vault: string, run: () => Promise<T>): P
   }
 }
 
-const floatOf = (r: Read<string>): FloatRead =>
-  r.ok ? { ok: true, units: r.value } : { ok: false };
+/** A list of agent keys as the contract's `list_agents` returns them, or null when it is anything else. */
+function agentList(value: unknown): { public_key: string; label: string }[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: { public_key: string; label: string }[] = [];
+  for (const a of value) {
+    if (typeof a !== "object" || a === null) return null;
+    const { public_key, label } = a as Record<string, unknown>;
+    if (typeof public_key !== "string" || public_key === "") return null;
+    out.push({ public_key, label: typeof label === "string" ? label : "" });
+  }
+  return out;
+}
 
 function payeeText(v: PayeeView): string {
   switch (v.kind) {
@@ -103,14 +115,17 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
     ),
   ]);
   const config = configRead.ok && isVaultConfig(configRead.value) ? configRead.value : null;
-  const agents = agentsRead.ok ? agentsRead.value : null;
+  // Anything but a list of keys is "unavailable", not an empty list.
+  const agents = agentsRead.ok ? agentList(agentsRead.value) : null;
   const mandates: MandateView[] | null = mandatesRead.ok ? mandatesRead.value : null;
   const networkUsdc = config !== null && config.usdc === consts.usdc;
   // The chain decides who may sign: the membership row says owner, the contract's owner must agree.
   const chainOwner = config !== null && config.owner === session.accountId;
+  // Creating and revoking need both: the role in our records and the owner the contract will accept.
+  const canAct = isOwner && chainOwner;
 
   // R3: what the vault holds to pay from, only needed for the form.
-  const canForm = isOwner && chainOwner && networkUsdc && agents !== null && agents.length > 0;
+  const canForm = canAct && networkUsdc && agents !== null && agents.length > 0;
   let floats: { near: FloatRead; base: FloatRead } = {
     near: { ok: false },
     base: { ok: false },
@@ -124,13 +139,15 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
           )
         : Promise.resolve<Read<string>>({ ok: false, kind: "not_allowed" }),
     ]);
-    floats = { near: floatOf(near), base: floatOf(base) };
+    floats = { near: floatFromRead(near), base: floatFromRead(base) };
   }
 
   const nowMs = Date.now();
   // Amounts are USDC (6 decimals) only for the network's USDC; any other token is shown in base units.
   const amount = (units: string) =>
-    networkUsdc ? `${usdcText(units)} USDC` : `${units} base units (decimals unknown)`;
+    networkUsdc
+      ? `${usdcText(units)} USDC`
+      : `${DIGITS.test(units) ? units : "unreadable"} base units (decimals unknown)`;
 
   return (
     <div>
@@ -142,9 +159,9 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
 
       {config !== null && !networkUsdc ? (
         <Notice tone="warn">
-          This vault&apos;s token is {config.usdc}, not this network&apos;s USDC. The console does
-          not know its decimals, so amounts are shown in base units and mandates are not created
-          here.
+          This vault&apos;s token is {safeChainText(config.usdc)}, not this network&apos;s USDC. The
+          console does not know its decimals, so amounts are shown in base units and mandates are
+          not created here.
         </Notice>
       ) : null}
       {config === null ? (
@@ -186,7 +203,7 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
                   const view = payeeView(m.payee);
                   const left = remainingUnits(m);
                   const label = safeChainText(m.label) || "(no name)";
-                  const tx = isOwner && state.canRevoke ? revokeTx(vault, m.id) : null;
+                  const tx = canAct && state.canRevoke ? revokeTx(vault, m.id) : null;
                   const held =
                     /^[0-9]+$/.test(m.approval_above) &&
                     /^[0-9]+$/.test(m.max_per_payment) &&
@@ -196,7 +213,10 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
                       <td>{m.id}</td>
                       <td>
                         {label}
-                        <div className={`mono text-xs ${muted}`} title={m.purpose_hash}>
+                        <div
+                          className={`mono text-xs ${muted}`}
+                          title={purposeTitle(m.purpose_hash)}
+                        >
                           PO {purposeShort(m.purpose_hash)}
                         </div>
                       </td>
@@ -233,6 +253,7 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
                             mandateId={m.id}
                             mandateLabel={label}
                             payeeText={payeeText(view)}
+                            note={state.revokeNote}
                             network={network}
                             signer={session.accountId}
                             tx={tx}
@@ -261,8 +282,9 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
             </Notice>
           ) : !chainOwner ? (
             <Notice tone="bad">
-              The vault&apos;s owner on chain is {config.owner}, not the account you are signed in
-              as ({session.accountId}), so the vault would refuse a mandate from you.
+              The vault&apos;s owner on chain is {safeChainText(config.owner)}, not the account you
+              are signed in as ({session.accountId}), so the vault would refuse a mandate or a
+              revoke from you.
             </Notice>
           ) : !networkUsdc ? (
             <Notice tone="warn">
@@ -288,7 +310,11 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
               network={network}
               baseAsset={consts.allowedAssets.base}
               allowedAssets={config.allowed_assets}
-              agentKeys={agents.map((a) => ({ public_key: a.public_key, label: a.label }))}
+              protocolAccounts={[config.usdc, config.intents, ...config.allowed_assets]}
+              agentKeys={agents.map((a) => ({
+                public_key: a.public_key,
+                label: safeChainText(a.label, 40) || safeChainText(a.public_key, 20),
+              }))}
               dailyBackstop={config.daily_backstop}
               floats={floats}
               outOfNearCodes={OUT_OF_NEAR.codes}

@@ -14,19 +14,28 @@
  *  - an Intents payee: `0x` + 40 hex, and an asset the vault allows whose prefix names the chain (`base-`).
  *
  * Where it is stricter than the contract (each is a deliberate choice, named here so nobody mistakes it
- * for a contract rule): a mixed-case Base address must be a valid EIP-55 checksum and the zero address is
- * refused (parseBaseAddress); the label is not empty and has no control, direction or lone-surrogate
- * characters; `max_uses` is at most 10,000 and the expiry at most 366 days ahead during the beta; and the
- * agent key must be one of the vault's active agent keys (the contract does not check it at creation, but
- * a mandate for a key that cannot spend is useless).
+ * for a contract rule):
+ *  - a mixed-case Base address must be a valid EIP-55 checksum, and the zero address is refused
+ *    (parseBaseAddress);
+ *  - the label is not empty and has no control character, no line break, no lone surrogate and no
+ *    FORMAT character (\p{Cf}): that bars direction marks and overrides and the zero-width space, and also
+ *    the zero-width joiner and non-joiner, so a label cannot hold an emoji ZWJ sequence (a family or a
+ *    skin-tone emoji) or text that needs ZWNJ (some Persian and Indic words). It is a label, not prose;
+ *  - `max_uses` is at most 10,000 and the expiry at most 366 days ahead during the beta;
+ *  - the expiry is at least ONE HOUR from now (the contract only needs it to be in the future), so a
+ *    date chosen near midnight, or a slow wallet, cannot make the call fail on chain after it was signed;
+ *  - a NEAR payee may not be this vault's USDC, its Intents contract or one of its allowed POA asset
+ *    contracts (a token contract is not a payee: what is sent there is lost);
+ *  - the agent key must be one of the vault's active agent keys (the contract does not check it at
+ *    creation, but a mandate for a key that cannot spend is useless).
+ *
+ * Warnings that do not block (nearPayeeWarnings, floatWarning, backstopWarning): a `0x` address typed as a
+ * NEAR account, a NEAR account that does not exist yet, a cap above the vault's balance or its daily backstop.
  *
  * The console offers NEAR and Base payees. The contract also knows Solana; it is not offered here.
  */
-import type { MandateView } from "@probarion/core";
-import type { Tone } from "@/components/ui";
-import { mandateStatusView } from "@/lib/console/display";
-import { actionKey } from "@/lib/near/lock";
-import type { MandateInputJson, WalletTx } from "@/lib/near/tx";
+import { DIGITS, UNSAFE_TEXT } from "@/lib/console/mandates-view";
+import type { MandateInputJson } from "@/lib/near/tx";
 import { AmountError, dateToNs, formatUsdc, parseUsdc } from "@/lib/near/units";
 import { isNearAccountId, parseBaseAddress } from "@/lib/near/validate";
 
@@ -49,6 +58,27 @@ export interface MandateContext {
   baseAsset: string; // NETWORKS[net].allowedAssets.base
   allowedAssets: readonly string[]; // from the vault's get_config()
   agentKeys: readonly string[]; // from list_agents()
+  /**
+   * Accounts that are contracts of this vault's money, not people: its USDC token, its Intents contract
+   * and every allowed POA asset (from get_config()). A NEAR payee may not be one of them.
+   */
+  protocolAccounts: readonly string[];
+}
+
+/** The form as it starts, and as it starts again after a confirmed create. Nothing here can be signed as it is. */
+export function blankForm(firstAgent: string): MandateForm {
+  return {
+    payeeKind: "near",
+    payee: "",
+    purposeHash: "",
+    maxPerPaymentUsdc: "100",
+    maxTotalUsdc: "1000",
+    maxUses: "10",
+    expiresOn: "",
+    approvalAboveUsdc: "100",
+    agentPk: firstAgent,
+    label: "",
+  };
 }
 
 export type MandateErrors = Partial<Record<keyof MandateForm, string>>;
@@ -63,13 +93,11 @@ export const LABEL_MAX_BYTES = 64;
 export const MAX_USES_BETA = 10_000;
 /** A beta limit, not the contract's. */
 export const MAX_EXPIRY_AHEAD_MS = 366 * 24 * 3600_000;
+/** Not the contract's rule (it needs only "in the future"): room for the owner to sign before it passes. */
+export const MIN_EXPIRY_AHEAD_MS = 3600_000;
 
 const U64_MAX = 2n ** 64n - 1n;
 const NS_PER_MS = 1_000_000n;
-const DIGITS = /^(0|[1-9][0-9]*)$/;
-/** Control, format (direction marks, zero-width), surrogate, and line/paragraph separator characters. */
-const UNSAFE_TEXT = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
-const UNSAFE_TEXT_ALL = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/gu;
 
 export const FIELD_LABEL: Record<keyof MandateForm, string> = {
   payeeKind: "Payee type",
@@ -152,6 +180,9 @@ export function buildMandateInput(form: MandateForm, ctx: MandateContext): Manda
       errors.payee = "Not a NEAR account id (they are lowercase, e.g. designer.near)";
     } else if (rawPayee === ctx.vault) {
       errors.payee = "A vault cannot pay itself";
+    } else if (ctx.protocolAccounts.includes(rawPayee)) {
+      errors.payee =
+        "That is a token or bridge contract of this vault (USDC, Intents or a POA asset), not a payee: what is sent there is lost";
     } else {
       payee = { type: "near", account_id: rawPayee };
     }
@@ -204,7 +235,10 @@ export function buildMandateInput(form: MandateForm, ctx: MandateContext): Manda
     const expires = BigInt(expiresNs);
     const nowNs = BigInt(ctx.now.getTime()) * NS_PER_MS;
     if (expires <= nowNs) errors.expiresOn = "Expiry must be in the future";
-    else if (expires - nowNs > BigInt(MAX_EXPIRY_AHEAD_MS) * NS_PER_MS) {
+    else if (expires - nowNs < BigInt(MIN_EXPIRY_AHEAD_MS) * NS_PER_MS) {
+      errors.expiresOn =
+        "Expiry must be at least one hour from now, so there is time to sign before it passes";
+    } else if (expires - nowNs > BigInt(MAX_EXPIRY_AHEAD_MS) * NS_PER_MS) {
       errors.expiresOn = "At most one year ahead during the beta";
     } else if (expires > U64_MAX) errors.expiresOn = "Too far ahead";
   } catch (e) {
@@ -266,8 +300,23 @@ export function approvalSummary(input: MandateInputJson): string {
 
 // ---- R3: warnings that do not block ---------------------------------------------------------------
 
-/** A vault balance that was read (base units), or one that could not be. Never a stand-in zero. */
-export type FloatRead = { ok: true; units: string } | { ok: false };
+/**
+ * A vault balance that was read (base units), or one that could not be. Never a stand-in zero.
+ * `notAllowed` says the vault does not allow the asset at all (so there is no balance to read), which is
+ * not the same as a failed read.
+ */
+export type FloatRead = { ok: true; units: string } | { ok: false; notAllowed?: boolean };
+
+/**
+ * A balance read as the console's `Read` records it, as a FloatRead. A read that failed because the vault
+ * does not allow the asset (`not_allowed`) is said so; every other failure is just a failed read. Never a zero.
+ */
+export function floatFromRead(
+  r: { ok: true; value: string } | { ok: false; kind: string },
+): FloatRead {
+  if (r.ok) return { ok: true, units: r.value };
+  return r.kind === "not_allowed" ? { ok: false, notAllowed: true } : { ok: false };
+}
 
 const FLOAT_SOURCE = { near: "USDC on NEAR", base: "Base USDC in Intents" } as const;
 
@@ -283,6 +332,9 @@ export function floatWarning(a: {
   float: FloatRead;
 }): string | null {
   const source = FLOAT_SOURCE[a.payeeKind];
+  if (!a.float.ok && a.float.notAllowed === true) {
+    return "This vault does not allow Base USDC payouts, so a Base payee cannot be paid from it.";
+  }
   if (!a.float.ok || !DIGITS.test(a.float.units)) {
     return `Balance unavailable: the console could not read the vault's ${source}, so it cannot tell whether a payment up to this cap could be paid.`;
   }
@@ -296,27 +348,6 @@ export function floatWarning(a: {
 /** R3: a NEAR payee is paid from the vault's USDC on NEAR, a Base payee from its Base USDC in Intents. */
 export function floatFor<T>(kind: "near" | "base", floats: { near: T; base: T }): T {
   return kind === "base" ? floats.base : floats.near;
-}
-
-export const CHANGED_SINCE_REVIEW =
-  "The vault changed since you reviewed this form, so nothing was signed. Check the fields and try again.";
-
-/**
- * The server prepares the transaction again from the chain as it is now. What the wallet is asked to
- * sign must be exactly the transaction the owner reviewed (`expectedKey` is the lock key of that
- * transaction: its receiver, methods, arguments, gas and deposit). The server's own refusal passes
- * through; with nothing reviewed to compare against, nothing is signed.
- */
-export function checkPrepared(
-  answer: WalletTx | { error: string; status?: number },
-  expectedKey: string | null,
-): WalletTx | { error: string; status?: number } {
-  if ("error" in answer) return answer;
-  // (a null key equals no transaction's key, so "nothing reviewed" refuses too)
-  if (actionKey(answer) !== expectedKey) {
-    return { error: CHANGED_SINCE_REVIEW };
-  }
-  return answer;
 }
 
 /** checks.rs `OverDailyBackstop`: a day's total, with the payment, may not pass the vault's daily backstop. */
@@ -344,121 +375,36 @@ export function tryUsdcUnits(text: string): string | null {
   }
 }
 
-// ---- reading a mandate back from the chain --------------------------------------------------------
+// ---- warnings about a NEAR payee that do not block ------------------------------------------------
 
-/** Text that came from the chain, made safe to show: controls and direction marks replaced, length cut. */
-export function safeChainText(value: unknown, max = 64): string {
-  if (typeof value !== "string") return "unreadable";
-  const clean = value.replace(UNSAFE_TEXT_ALL, "�");
-  const chars = Array.from(clean);
-  return chars.length > max ? `${chars.slice(0, max).join("")}…` : clean;
-}
+/** What the console knows about whether the typed NEAR account exists: not asked yet, asked, or could not be asked. */
+export type PayeeExists = boolean | "unreadable" | null;
 
-/** Base units as USDC text, or "unreadable" for anything that is not a decimal (never a throw, never 0). */
-export function usdcText(units: string): string {
-  return typeof units === "string" && DIGITS.test(units) ? formatUsdc(units) : "unreadable";
-}
+export const ETH_IMPLICIT_WARNING =
+  "This is a 0x address typed as a NEAR account. On NEAR it is an ETH-implicit account, not a Base payout. To pay an address on Base, choose Base address.";
+export const MISSING_ACCOUNT_WARNING =
+  "No account with this name exists on NEAR yet. If the name is a typo, the USDC would sit with an account nobody controls until someone creates that name.";
+export const UNCHECKED_ACCOUNT_NOTE = "The console could not check whether this account exists.";
 
-/** `max_total - spent - reserved`: what the contract still lets through (`OverMandateTotal`). */
-export function remainingUnits(
-  m: Pick<MandateView, "max_total" | "spent" | "reserved">,
-): string | null {
-  const parts = [m.max_total, m.spent, m.reserved];
-  if (!parts.every((p) => typeof p === "string" && DIGITS.test(p))) return null;
-  const left = BigInt(m.max_total) - BigInt(m.spent) - BigInt(m.reserved);
-  return (left < 0n ? 0n : left).toString();
-}
-
-export interface MandateState {
-  key: "active" | "expired" | "revoked" | "exhausted" | "unknown";
-  label: string;
-  tone: Tone;
-  /** Revoke is offered only for a mandate that can still pay: not revoked, not expired, readable. */
-  canRevoke: boolean;
-}
+const EVM_SHAPED = /^0x[0-9a-fA-F]{40}$/;
+const IMPLICIT_64 = /^[0-9a-f]{64}$/;
 
 /**
- * The chain's `status` is active, revoked or exhausted; it never says expired, because expiry is a
- * time. The contract stops spending when `now >= expires_at_ns` (checks.rs), so that is when this says
- * expired, even though the chain still says `active`. Revoked wins over expired. Exhausted keeps its
- * Revoke: a released spend gives its use back, so an exhausted mandate can pay again. A status or time
- * that cannot be read offers nothing.
+ * Notes under a NEAR payee. A `0x` + 40 hex string is valid as a NEAR account id (an ETH-implicit
+ * account) but is almost always meant as a Base address, so it is called out. A named account that does
+ * not exist yet is called out too; implicit accounts (64 hex, or the `0x` form) do not exist until they
+ * are funded, so they get no such note. Neither blocks: the vault accepts both.
  */
-export function mandateState(
-  m: Pick<MandateView, "status" | "expires_at_ns">,
-  nowMs: number,
-): MandateState {
-  const status: string = m.status;
-  if (status === "revoked")
-    return { key: "revoked", ...mandateStatusView("revoked"), canRevoke: false };
-  if (status !== "active" && status !== "exhausted") {
-    return {
-      key: "unknown",
-      tone: "neutral",
-      label: safeChainText(status, 39) || "unknown",
-      canRevoke: false,
-    };
-  }
-  if (typeof m.expires_at_ns !== "string" || !DIGITS.test(m.expires_at_ns)) {
-    return { key: "unknown", tone: "warn", label: "expiry unreadable", canRevoke: false };
-  }
-  if (BigInt(Math.floor(nowMs)) * NS_PER_MS >= BigInt(m.expires_at_ns)) {
-    return { key: "expired", tone: "neutral", label: "expired", canRevoke: false };
-  }
-  return { key: status, ...mandateStatusView(status), canRevoke: true };
-}
-
-export type PayeeView =
-  /** A valid account id: safe to build an explorer link from. */
-  | { kind: "near"; account: string }
-  /** The address matches its chain's format (validate.rs). */
-  | { kind: "intents"; chain: "base" | "solana"; address: string }
-  /** Anything else, as text already made safe. Never linked. */
-  | { kind: "unreadable"; text: string };
-
-const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-
-/**
- * A payee read from the chain, checked before it is shown or linked: an account id must fit the NEAR
- * grammar, an address its chain's format. What does not fit is shown as plain safe text with no link.
- */
-export function payeeView(payee: unknown): PayeeView {
-  if (typeof payee !== "object" || payee === null) {
-    return { kind: "unreadable", text: "unreadable payee" };
-  }
-  const p = payee as Record<string, unknown>;
-  if (p.type === "near") {
-    return typeof p.account_id === "string" && isNearAccountId(p.account_id)
-      ? { kind: "near", account: p.account_id }
-      : { kind: "unreadable", text: safeChainText(p.account_id) };
-  }
-  if (p.type === "intents" && typeof p.address === "string") {
-    if (p.chain === "base" && EVM_ADDRESS.test(p.address)) {
-      return { kind: "intents", chain: "base", address: p.address };
-    }
-    if (p.chain === "solana" && SOLANA_ADDRESS.test(p.address)) {
-      return { kind: "intents", chain: "solana", address: p.address };
-    }
-    return {
-      kind: "unreadable",
-      text: `${safeChainText(p.chain, 16)}:${safeChainText(p.address)}`,
-    };
-  }
-  return { kind: "unreadable", text: "unreadable payee" };
-}
-
-/** `2026-12-31 23:59 UTC` for an expiry in nanoseconds, or "unreadable" (never a throw). */
-export function expiryText(ns: string): string {
-  if (typeof ns !== "string" || !DIGITS.test(ns)) return "unreadable";
-  const date = new Date(Number(BigInt(ns) / NS_PER_MS));
-  if (Number.isNaN(date.getTime())) return "unreadable";
-  return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
-
-/** The start and end of a purpose sha256 (64 lowercase hex), or "unreadable". */
-export function purposeShort(hash: string): string {
-  return typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)
-    ? `${hash.slice(0, 8)}…${hash.slice(-6)}`
-    : "unreadable";
+export function nearPayeeWarnings(a: {
+  payeeKind: "near" | "base";
+  payee: string;
+  exists: PayeeExists;
+}): string[] {
+  if (a.payeeKind !== "near") return [];
+  const payee = a.payee.trim();
+  if (EVM_SHAPED.test(payee)) return [ETH_IMPLICIT_WARNING];
+  if (!isNearAccountId(payee) || IMPLICIT_64.test(payee)) return [];
+  if (a.exists === false) return [MISSING_ACCOUNT_WARNING];
+  if (a.exists === "unreadable") return [UNCHECKED_ACCOUNT_NOTE];
+  return [];
 }

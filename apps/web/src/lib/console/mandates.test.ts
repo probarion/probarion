@@ -1,31 +1,26 @@
-import type { MandateView } from "@probarion/core";
 import { NETWORKS } from "@probarion/core";
 import { describe, expect, it } from "vitest";
-import { actionKey } from "@/lib/near/lock";
-import { createMandateTx } from "@/lib/near/tx";
 import {
   approvalSummary,
   asMandateForm,
   backstopWarning,
+  blankForm,
   buildMandateInput,
-  CHANGED_SINCE_REVIEW,
-  checkPrepared,
   describeErrors,
-  expiryText,
+  ETH_IMPLICIT_WARNING,
   floatFor,
+  floatFromRead,
   floatWarning,
   LABEL_MAX_BYTES,
   MAX_EXPIRY_AHEAD_MS,
   MAX_USES_BETA,
   type MandateContext,
   type MandateForm,
-  mandateState,
-  payeeView,
-  purposeShort,
-  remainingUnits,
-  safeChainText,
+  MIN_EXPIRY_AHEAD_MS,
+  MISSING_ACCOUNT_WARNING,
+  nearPayeeWarnings,
   tryUsdcUnits,
-  usdcText,
+  UNCHECKED_ACCOUNT_NOTE,
 } from "./mandates";
 
 // Every contract boundary below is read from contracts/vault/src/validate.rs and mandates.rs
@@ -46,6 +41,7 @@ const ctx: MandateContext = {
   baseAsset: BASE_ASSET,
   allowedAssets: [BASE_ASSET],
   agentKeys: [AGENT],
+  protocolAccounts: [NETWORKS.mainnet.usdc, NETWORKS.mainnet.intents, BASE_ASSET, SOL_ASSET],
 };
 const form: MandateForm = {
   payeeKind: "near",
@@ -237,6 +233,22 @@ describe("payee: NEAR account", () => {
     expect(errorsOf({ payee: `  ${ctx.vault} ` }).payee).toMatch(/itself/);
   });
 
+  it.each([
+    ["the vault's USDC", NETWORKS.mainnet.usdc],
+    ["its Intents contract", NETWORKS.mainnet.intents],
+    ["its Base POA asset", BASE_ASSET],
+    ["its Solana POA asset", SOL_ASSET],
+  ])("refuses %s: a token or bridge contract is not a payee", (_what, payee) => {
+    expect(errorsOf({ payee }).payee).toMatch(/token or bridge contract/);
+    expect(errorsOf({ payee: `  ${payee} ` }).payee).toMatch(/token or bridge contract/);
+  });
+
+  it("refuses only the accounts it is told are protocol accounts, and not their sub-accounts", () => {
+    expect(check({ payee: NETWORKS.mainnet.intents }, { protocolAccounts: [] }).ok).toBe(true);
+    expect(check({ payee: "pay.intents.near" }).ok).toBe(true);
+    expect(check({ payee: "designer.near" }).ok).toBe(true);
+  });
+
   it("does not need the Base asset to be allowed", () => {
     expect(check({}, { allowedAssets: [] }).ok).toBe(true);
   });
@@ -301,6 +313,21 @@ describe("payee: Base address through NEAR Intents", () => {
     // 40 hex digits behind 0x is a valid NEAR implicit account too, but a Base payee is never read as one
     const r = base(`0x${"ab".repeat(20)}`);
     expect(r.ok && r.input.payee.type).toBe("intents");
+  });
+});
+
+describe("floatFromRead: a balance that was read, or why there is none", () => {
+  it("keeps a read balance", () => {
+    expect(floatFromRead({ ok: true, value: "5" })).toEqual({ ok: true, units: "5" });
+  });
+  it("tells an asset the vault does not allow from a read that failed", () => {
+    expect(floatFromRead({ ok: false, kind: "not_allowed" })).toEqual({
+      ok: false,
+      notAllowed: true,
+    });
+    for (const kind of ["transport", "rpc", "contract", "error", "skipped"]) {
+      expect(floatFromRead({ ok: false, kind }), kind).toEqual({ ok: false });
+    }
   });
 });
 
@@ -416,9 +443,8 @@ describe("expires_at_ns", () => {
     expect(inputOf({ expiresOn: "2026-11-09" }).expires_at_ns).toBe(endOfDayNs(2026, 11, 9));
   });
 
-  it("must be strictly after now (the contract: expires_at_ns > block_timestamp)", () => {
-    // today's date: ends at 23:59:59 UTC
-    expect(check({ expiresOn: "2026-11-08" }, at("2026-11-08T23:59:58.999Z")).ok).toBe(true);
+  it("must be after now (the contract: expires_at_ns > block_timestamp): the edge says 'future'", () => {
+    // today's date ends at 23:59:59 UTC
     expect(errorsOf({ expiresOn: "2026-11-08" }, at("2026-11-08T23:59:59.000Z")).expiresOn).toMatch(
       /future/,
     );
@@ -427,6 +453,19 @@ describe("expires_at_ns", () => {
     );
     expect(errorsOf({ expiresOn: "2026-11-07" }).expiresOn).toMatch(/future/);
     expect(errorsOf({ expiresOn: "1970-01-01" }).expiresOn).toBeTruthy();
+  });
+
+  it("must be at least one hour from now (the console's rule, with its own message)", () => {
+    expect(MIN_EXPIRY_AHEAD_MS).toBe(3_600_000);
+    // today's date ends at 23:59:59 UTC: exactly one hour before that is allowed, a millisecond later is not
+    expect(check({ expiresOn: "2026-11-08" }, at("2026-11-08T22:59:59.000Z")).ok).toBe(true);
+    const e = errorsOf({ expiresOn: "2026-11-08" }, at("2026-11-08T22:59:59.001Z"));
+    expect(e.expiresOn).toMatch(/at least one hour/);
+    expect(e.expiresOn).not.toMatch(/future/);
+    // just before the contract's own edge it is the hour rule that speaks, not the future rule
+    expect(errorsOf({ expiresOn: "2026-11-08" }, at("2026-11-08T23:59:58.999Z")).expiresOn).toMatch(
+      /at least one hour/,
+    );
   });
 
   it("is at most 366 days ahead during the beta (a product limit, not the contract's)", () => {
@@ -664,6 +703,20 @@ describe("R3: the float warning", () => {
     ).toMatch(/balance unavailable/i);
   });
 
+  it("says the asset is not allowed, and not 'unavailable', when the vault does not allow Base USDC", () => {
+    const w = floatWarning({
+      payeeKind: "base",
+      maxPerPaymentUnits: units("100"),
+      float: { ok: false, notAllowed: true },
+    });
+    expect(w).toMatch(/does not allow Base USDC/);
+    expect(w).not.toMatch(/unavailable|could not read/i);
+    // a failed read is still a failed read
+    expect(
+      floatWarning({ payeeKind: "base", maxPerPaymentUnits: units("100"), float: { ok: false } }),
+    ).toMatch(/Balance unavailable/);
+  });
+
   it("treats a balance that is not a decimal as unavailable, not as zero", () => {
     for (const bad of ["", "abc", "-5", "1.5", "1e3"]) {
       const w = floatWarning({
@@ -702,189 +755,6 @@ describe("backstopWarning", () => {
   });
 });
 
-describe("honest mandate status", () => {
-  const NOW_MS = Date.parse("2026-11-08T12:00:00Z");
-  const ns = (iso: string) => String(BigInt(Date.parse(iso)) * 1_000_000n);
-  const st = (status: string, expires: string) =>
-    mandateState({ status: status as MandateView["status"], expires_at_ns: expires }, NOW_MS);
-
-  it("an active mandate in date can be revoked", () => {
-    expect(st("active", ns("2026-12-31T23:59:59Z"))).toMatchObject({
-      key: "active",
-      label: "active",
-      canRevoke: true,
-    });
-  });
-
-  it("an expired mandate says expired and has no Revoke, even though the chain still says active", () => {
-    const s = st("active", ns("2026-11-01T23:59:59Z"));
-    expect(s).toMatchObject({ key: "expired", canRevoke: false });
-    expect(s.label).toMatch(/expired/);
-  });
-
-  it("expires exactly when the contract stops spending: now >= expires_at_ns", () => {
-    expect(st("active", String(BigInt(NOW_MS) * 1_000_000n + 1n)).key).toBe("active");
-    expect(st("active", String(BigInt(NOW_MS) * 1_000_000n)).key).toBe("expired");
-    expect(st("active", String(BigInt(NOW_MS) * 1_000_000n - 1n)).key).toBe("expired");
-  });
-
-  it("a revoked mandate says revoked and has no Revoke, also when it is past its date", () => {
-    expect(st("revoked", ns("2026-12-31T23:59:59Z"))).toMatchObject({
-      key: "revoked",
-      canRevoke: false,
-    });
-    expect(st("revoked", ns("2026-01-01T00:00:00Z"))).toMatchObject({
-      key: "revoked",
-      canRevoke: false,
-    });
-  });
-
-  it("an exhausted mandate in date can still be revoked (a released spend gives its use back)", () => {
-    expect(st("exhausted", ns("2026-12-31T23:59:59Z"))).toMatchObject({
-      key: "exhausted",
-      canRevoke: true,
-    });
-    expect(st("exhausted", ns("2026-01-01T00:00:00Z"))).toMatchObject({
-      key: "expired",
-      canRevoke: false,
-    });
-  });
-
-  it("offers no Revoke for a status or a time it cannot read", () => {
-    expect(st("frozen", ns("2026-12-31T23:59:59Z"))).toMatchObject({
-      key: "unknown",
-      canRevoke: false,
-    });
-    expect(st("active", "tomorrow")).toMatchObject({ key: "unknown", canRevoke: false });
-    expect(st("active", "-1")).toMatchObject({ key: "unknown", canRevoke: false });
-    expect(st("active", "")).toMatchObject({ key: "unknown", canRevoke: false });
-    expect(st("<b>x</b>".repeat(20), ns("2026-12-31T23:59:59Z")).label.length).toBeLessThanOrEqual(
-      40,
-    );
-  });
-});
-
-describe("remaining", () => {
-  it("is max_total - spent - reserved, from the chain's own figures", () => {
-    expect(remainingUnits({ max_total: "1000", spent: "300", reserved: "200" })).toBe("500");
-    expect(remainingUnits({ max_total: "1000", spent: "1000", reserved: "0" })).toBe("0");
-  });
-  it("never goes below zero and is null when a figure is not a decimal", () => {
-    expect(remainingUnits({ max_total: "10", spent: "8", reserved: "8" })).toBe("0");
-    expect(remainingUnits({ max_total: "10", spent: "x", reserved: "0" })).toBeNull();
-    expect(remainingUnits({ max_total: "", spent: "0", reserved: "0" })).toBeNull();
-  });
-});
-
-describe("text from the chain", () => {
-  it("usdcText formats base units and says unreadable instead of throwing", () => {
-    expect(usdcText("1500000")).toBe("1.5");
-    expect(usdcText("0")).toBe("0");
-    expect(usdcText("abc")).toBe("unreadable");
-    expect(usdcText("-5")).toBe("unreadable");
-    expect(usdcText("")).toBe("unreadable");
-  });
-
-  it("safeChainText strips controls and direction marks, and cuts the length", () => {
-    expect(safeChainText("Acme‮ gnisid\nline")).not.toMatch(/[‮\n]/);
-    expect(safeChainText("a\u0000b")).toBe("a�b");
-    expect(safeChainText("x".repeat(500), 64)).toHaveLength(65); // 64 characters and an ellipsis
-    expect(safeChainText("<script>alert(1)</script>")).toBe("<script>alert(1)</script>"); // React escapes; nothing is rewritten here
-    expect(safeChainText(undefined)).toBe("unreadable");
-    expect(safeChainText(42)).toBe("unreadable");
-    expect(safeChainText("\uD800")).toBe("�");
-  });
-});
-
-describe("payeeView (a payee read from the chain, before it is shown or linked)", () => {
-  const ADDR = "0x52908400098527886E0F7030069857D2E4169EE7";
-  it("a NEAR payee with a valid account id can be linked", () => {
-    expect(payeeView({ type: "near", account_id: "designer.near" })).toEqual({
-      kind: "near",
-      account: "designer.near",
-    });
-  });
-
-  it("a NEAR payee that is not an account id is shown as text and never linked", () => {
-    for (const bad of [
-      "../../etc",
-      "a b",
-      "Designer.near",
-      "x/y?z=1",
-      "javascript:alert(1)",
-      "a".repeat(80),
-    ]) {
-      const v = payeeView({ type: "near", account_id: bad });
-      expect(v.kind, bad).toBe("unreadable");
-    }
-  });
-
-  it("a Base payee needs 0x and 40 hex; a Solana payee needs 32 to 44 base58 characters", () => {
-    expect(payeeView({ type: "intents", chain: "base", address: ADDR, asset: BASE_ASSET })).toEqual(
-      {
-        kind: "intents",
-        chain: "base",
-        address: ADDR,
-      },
-    );
-    expect(
-      payeeView({ type: "intents", chain: "solana", address: "7".repeat(40), asset: SOL_ASSET }),
-    ).toEqual({
-      kind: "intents",
-      chain: "solana",
-      address: "7".repeat(40),
-    });
-    expect(
-      payeeView({ type: "intents", chain: "base", address: "0x12", asset: BASE_ASSET }).kind,
-    ).toBe("unreadable");
-    expect(
-      payeeView({ type: "intents", chain: "solana", address: ADDR, asset: SOL_ASSET }).kind,
-    ).toBe("unreadable");
-    expect(
-      payeeView({ type: "intents", chain: "ethereum", address: ADDR, asset: BASE_ASSET }).kind,
-    ).toBe("unreadable");
-  });
-
-  it("anything else is unreadable and its text is made safe", () => {
-    for (const bad of [
-      null,
-      undefined,
-      5,
-      "x",
-      [],
-      {},
-      { type: "wire" },
-      { type: "near" },
-      { type: "near", account_id: 5 },
-    ]) {
-      expect(payeeView(bad).kind).toBe("unreadable");
-    }
-    const v = payeeView({ type: "near", account_id: "evil‮.near" });
-    expect(v.kind === "unreadable" && v.text).not.toMatch(/‮/);
-  });
-});
-
-describe("expiryText", () => {
-  it("shows the UTC date and minute of an expiry in nanoseconds", () => {
-    expect(expiryText(endOfDayNs(2026, 12, 31))).toBe("2026-12-31 23:59 UTC");
-  });
-  it("says unreadable for anything that is not a time, instead of throwing", () => {
-    for (const bad of ["", "abc", "-1", "1.5", "99999999999999999999999999999999"]) {
-      expect(expiryText(bad), bad).toBe("unreadable");
-    }
-  });
-});
-
-describe("purposeShort", () => {
-  it("shortens a sha256, and says unreadable for anything else", () => {
-    expect(purposeShort(`${"ab".repeat(4)}${"c".repeat(50)}${"de".repeat(3)}`)).toBe(
-      `${"ab".repeat(4)}…${"de".repeat(3)}`,
-    );
-    for (const bad of ["", "xyz", "AB".repeat(32), "a".repeat(63)])
-      expect(purposeShort(bad)).toBe("unreadable");
-  });
-});
-
 describe("floatFor: which balance a payee kind is paid from", () => {
   it("a NEAR payee is paid from the USDC on NEAR, a Base payee from the Base USDC in Intents", () => {
     const floats = {
@@ -896,32 +766,65 @@ describe("floatFor: which balance a payee kind is paid from", () => {
   });
 });
 
-describe("checkPrepared: what the owner signs is what they reviewed", () => {
-  const reviewed = createMandateTx(ctx.vault, inputOf({}));
-  const key = actionKey(reviewed);
+describe("nearPayeeWarnings: notes under a NEAR payee that never block", () => {
+  const w = (
+    payee: string,
+    exists: Parameters<typeof nearPayeeWarnings>[0]["exists"],
+    payeeKind: "near" | "base" = "near",
+  ) => nearPayeeWarnings({ payeeKind, payee, exists });
+  const ETH_IMPLICIT = `0x${"ab".repeat(20)}`;
 
-  it("passes the transaction the server built when it is the one reviewed", () => {
-    expect(checkPrepared(createMandateTx(ctx.vault, inputOf({})), key)).toEqual(reviewed);
+  it("calls a 0x address typed as a NEAR account an ETH-implicit account, not a Base payout", () => {
+    expect(w(ETH_IMPLICIT, null)).toEqual([ETH_IMPLICIT_WARNING]);
+    expect(w(`  ${ETH_IMPLICIT}  `, null)).toEqual([ETH_IMPLICIT_WARNING]);
+    expect(w(`0x${"AB".repeat(20)}`, null)).toEqual([ETH_IMPLICIT_WARNING]); // also when typed in capitals
+    expect(ETH_IMPLICIT_WARNING).toMatch(/ETH-implicit/);
+    expect(ETH_IMPLICIT_WARNING).toMatch(/not a Base payout/);
   });
 
-  it("refuses a transaction that differs in any field the owner reviewed", () => {
-    const changed = [
-      createMandateTx(ctx.vault, inputOf({ payee: "someone.near" })),
-      createMandateTx(ctx.vault, inputOf({ maxTotalUsdc: "1001" })),
-      createMandateTx(ctx.vault, inputOf({ label: "Other" })),
-      createMandateTx("other.vaults.probarion.near", inputOf({})), // another vault
-    ];
-    for (const tx of changed) {
-      expect(checkPrepared(tx, key)).toEqual({ error: CHANGED_SINCE_REVIEW });
-    }
+  it("says nothing about a 0x address for a Base payee (that is what it is for)", () => {
+    expect(w(ETH_IMPLICIT, null, "base")).toEqual([]);
+    expect(w("designer.near", false, "base")).toEqual([]);
   });
 
-  it("passes the server's own refusal through, whatever the key", () => {
-    expect(checkPrepared({ error: "no", status: 403 }, key)).toEqual({ error: "no", status: 403 });
-    expect(checkPrepared({ error: "no" }, null)).toEqual({ error: "no" });
+  it("warns that a named account does not exist, only when the console was told so", () => {
+    expect(w("desinger.near", false)).toEqual([MISSING_ACCOUNT_WARNING]);
+    expect(w("desinger.near", true)).toEqual([]);
+    expect(w("desinger.near", null)).toEqual([]); // not asked yet
+    expect(MISSING_ACCOUNT_WARNING).toMatch(/No account with this name exists/);
   });
 
-  it("signs nothing when there is no reviewed transaction to compare with", () => {
-    expect(checkPrepared(reviewed, null)).toEqual({ error: CHANGED_SINCE_REVIEW });
+  it("says when it could not be checked, rather than saying nothing", () => {
+    expect(w("designer.near", "unreadable")).toEqual([UNCHECKED_ACCOUNT_NOTE]);
+  });
+
+  it("gives an implicit account no 'does not exist' note: it does not exist until it is funded", () => {
+    expect(w("0".repeat(64), false)).toEqual([]);
+    expect(w(ETH_IMPLICIT, false)).toEqual([ETH_IMPLICIT_WARNING]); // the 0x note, not a missing-account note
+  });
+
+  it("has nothing to say about text that is not an account id (the field already shows an error)", () => {
+    expect(w("Not An Account", false)).toEqual([]);
+    expect(w("", false)).toEqual([]);
+  });
+});
+
+describe("blankForm: the form after a confirmed create", () => {
+  it("has no payee, purpose, date or name, and the defaults for the rest", () => {
+    expect(blankForm(AGENT)).toEqual({
+      payeeKind: "near",
+      payee: "",
+      purposeHash: "",
+      maxPerPaymentUsdc: "100",
+      maxTotalUsdc: "1000",
+      maxUses: "10",
+      expiresOn: "",
+      approvalAboveUsdc: "100",
+      agentPk: AGENT,
+      label: "",
+    });
+  });
+  it("cannot be signed as it is: a finished mandate does not leave a ready-to-sign copy behind", () => {
+    expect(buildMandateInput(blankForm(AGENT), ctx).ok).toBe(false);
   });
 });
