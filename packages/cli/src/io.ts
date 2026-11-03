@@ -1,3 +1,5 @@
+import type { OnlineAttestationVerifier, TxIndex } from "@probarion/sdk";
+
 export interface CliIo {
   out(text: string): void;
   err(text: string): void;
@@ -7,6 +9,14 @@ export interface CliIo {
   setExitCode(code: number): void;
   /** Defaults to the running platform; only the Windows-specific warnings read it. */
   platform?: NodeJS.Platform;
+  /**
+   * Tests and hosts only: what `verify --online` uses instead of the SDK's defaults (`@nearai/inference-sdk` for
+   * O1/O2 and FastNEAR's tx index). The `probarion` binary passes nothing.
+   */
+  verifyDeps?: {
+    onlineVerifier?: OnlineAttestationVerifier | null;
+    txIndex?: TxIndex | null;
+  };
 }
 
 export function processIo(): CliIo {

@@ -1,7 +1,18 @@
+import { stat, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { FileLedgerStore } from "@probarion/sdk";
 import type { Command } from "commander";
-import { type GlobalOpts, optionalAccount, requireVault, resolveNetwork } from "../context.js";
+import {
+  type GlobalOpts,
+  ledgerFile,
+  optionalAccount,
+  requireVault,
+  resolveNetwork,
+  sameFile,
+} from "../context.js";
+import { CliError } from "../errors.js";
 import type { CliIo } from "../io.js";
-import { ONE_YOCTO, printOwnerTx } from "../owner-tx.js";
+import { displayPath, ONE_YOCTO, printOwnerTx } from "../owner-tx.js";
 import { assertPositive, nearToYocto } from "../units.js";
 import { checkedPublicKey } from "./agent.js";
 
@@ -12,6 +23,12 @@ type SetKeyOpts = GlobalOpts & {
   signAs?: string;
   outDir: string;
 };
+
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null
+    ? (error as { code?: unknown }).code
+    : undefined;
+}
 
 export function registerLedger(program: Command, io: CliIo): Command {
   const ledger = program.command("ledger").description("ledger commands");
@@ -45,6 +62,41 @@ export function registerLedger(program: Command, io: CliIo): Command {
         },
         o.outDir,
       );
+    });
+  ledger
+    .command("export")
+    .description("export the ledger as JSONL, one entry per line, to a new file")
+    .requiredOption("--out <file>", "output file; it must not exist yet")
+    .option(
+      "--ledger <path>",
+      "ledger JSONL file (default: PROBARION_LEDGER_PATH, else .probarion/ledger.jsonl)",
+    )
+    .action(async (options: { out: string; ledger?: string }) => {
+      const source = ledgerFile(options.ledger, io.env, io.cwd);
+      const target = resolve(io.cwd, options.out);
+      if (await sameFile(source, target, io.platform ?? process.platform)) {
+        throw new CliError("--out must be a different file from the ledger (--ledger)");
+      }
+      try {
+        await stat(source);
+      } catch {
+        throw new CliError(`the ledger file ${displayPath(io.cwd, source)} does not exist`);
+      }
+      const entries = await new FileLedgerStore(source).all();
+      try {
+        // "wx": a ledger is an audit trail; never write over a file that is already there.
+        await writeFile(target, entries.map((e) => `${JSON.stringify(e)}\n`).join(""), {
+          encoding: "utf8",
+          flag: "wx",
+        });
+      } catch (error) {
+        if (errorCode(error) === "EEXIST") {
+          throw new CliError(`--out ${options.out} already exists: choose a new file`);
+        }
+        throw error;
+      }
+      const noun = entries.length === 1 ? "entry" : "entries";
+      io.out(`exported ${entries.length} ${noun} to ${displayPath(io.cwd, target)}\n`);
     });
   return ledger;
 }

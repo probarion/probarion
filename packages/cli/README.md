@@ -12,6 +12,10 @@ the matching [`near-cli-rs`](https://github.com/near/near-cli-rs) command, so th
 arguments and sign with your own wallet, keychain or Ledger. Where the vault requires exactly 1
 yoctoNEAR, the printed command carries it.
 
+Three commands only read: `check` dry-runs a spend against the vault's own rules, `verify` checks a
+vault's ledger against the chain (or a saved snapshot, with no network at all), and `ledger export`
+copies the ledger. They do not sign or send anything either.
+
 ## Install
 
 ```sh
@@ -66,8 +70,126 @@ to the terminal, where it stays in your scrollback. Give the public key to the v
 it with `agent add` (for the agent's `spend` key) or `ledger set-key` (for the key that signs the
 ledger and anchors it). Keep the secret on your server and out of the repository.
 
-### In progress
+## Check a spend, verify a vault
 
-The commands that read a vault, `check`, `verify` and `ledger export`, are not in this version yet.
-For now, use `verify()` from [`@probarion/sdk`](https://www.npmjs.com/package/@probarion/sdk).
-<!-- TODO(release): replace this section when the check, verify and ledger export commands land (plan 03 Task 16), add them to CHANGELOG.md, and restore the description in packages/cli/package.json (dry-run spends, verify a vault's ledger, anchors, attestations and keys) -->
+```text
+probarion check --vault <vault> --mandate 1 --amount 25 --invoice invoice.txt --ref INV-002
+probarion verify --vault <vault>
+probarion verify --vault <vault> --snapshot snapshot.json   # also saves the snapshot it verified
+probarion verify --offline snapshot.json                    # checks a saved snapshot, with no network
+probarion verify --vault <vault> --online                   # adds O1 and O2 to check e
+probarion verify --vault <vault> --burn-tx 2=<tx hash>@<approver account>
+probarion verify --vault <vault> --proof docs/mainnet-proof.json
+probarion ledger export --out ledger-copy.jsonl
+```
+
+To try `verify` with nothing set up, run it on the TEST FIXTURE snapshot in a clone of the repository
+(after `pnpm install` and `pnpm build`). It needs no network and no keys, and exits 0:
+
+```sh
+node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json
+```
+
+```text
+Probarion verify: x.vaults.probarion.testnet (testnet)
+entries 5, anchors 3, generated 2026-11-03T08:42:13.473Z
+
+a  ledger-signatures      PASS      5 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key ...
+b  hash-links             PASS      5 entries: every body_hash and link recomputes, chained from the zero link
+...
+h  burn-memos             PASS      1 burned spend has a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> ...
+i  factory-version        PASS      created by vaults.probarion.testnet at version 1
+
+9 passed, 0 failed, 0 unproven
+RESULT: PASS
+```
+
+(Rows c to g and the ends of the long details are cut here.)
+
+### check
+
+`check` asks the vault's free `check_spend` view whether it would accept a spend, and prints
+`OK: the vault would accept this spend.` (with `and hold it for an approver` above the mandate's
+approval threshold) or `REFUSED: PROBARION:<Code>`, for example `OverPerPayment` or
+`DuplicateInvoice`. `--json` prints the request, the signer and the verdict.
+
+- `--invoice` is a file: the sha256 of its bytes is the `invoice_hash`. Give it the text the agent
+  processes, since that is what the SDK hashes.
+- The check runs as `--agent-pk`, else as the public key of `PROBARION_AGENT_KEY`, else as the
+  mandate's agent. Only the public key is printed.
+- `--ref` is 1 to 64 bytes. The vault refuses a ref or an invoice it has already seen.
+
+| Exit code | `check` |
+|---|---|
+| 0 | the vault would accept the spend (it may hold it for an approver) |
+| 1 | the vault would refuse it, or the check could not run (`error:` on stderr) |
+| 64 | usage error: a missing, malformed or conflicting flag |
+
+### verify
+
+`verify` runs the nine checks of the verifier on the vault's chain state and your ledger file:
+ledger signatures (a), hash links (b), anchors (c), a decision for every spend (d), attestations (e),
+the vault's keys and code (f), its intents keys (g), the burn of every cross-chain payout (h) and the
+factory version (i). It prints one row per check with what it found, then the counts and the result.
+`--json` prints the report instead.
+
+| Exit code | `verify` |
+|---|---|
+| 0 | every check passes |
+| 1 | a check fails (a fail always wins over unproven), or verify could not run (`error:` on stderr, no `RESULT` line) |
+| 2 | no check fails, but at least one is unproven |
+| 64 | usage error: a missing, malformed or conflicting flag |
+
+**UNPROVEN** is not a pass. It means that verify could not look at what a check needs. Today only
+check h can be unproven: a payout's burn is in a transaction that verify did not read. The row lists
+the spends, the reason and what to do:
+
+```text
+h  burn-memos             UNPROVEN  0 of 1 burned spend has a proven burn pair; not proven, so the report is not ok: ...
+   unproven: spend 2 (approver_tx): supply the burn tx with --burn-tx or --proof
+
+8 passed, 0 failed, 1 unproven
+RESULT: UNPROVEN (no check failed; what the UNPROVEN rows name is not proven)
+```
+
+| Reason | What happened | What to do |
+|---|---|---|
+| `approver_tx` | a held payout that an approver paid: its burn is in the approver's tx, which your ledger does not record | `--burn-tx` or `--proof` |
+| `not_recorded` | a spend bound to its decision, with no payment entry naming its tx | `--burn-tx` or `--proof` |
+| `pre_ledger_no_tx` | a mainnet v0 spend from before the ledger, with no tx supplied | `--burn-tx` or `--proof` |
+| `tx_unavailable` | the tx could not be read right now: no node gave a definite answer (for example, the archival node was unreachable) | re-run, or add `--archival-rpc` |
+
+The flags:
+
+- `--burn-tx <spend_id>=<tx hash>[@<signer>]` names a transaction that holds a spend's burn, for
+  example the approver's `approve` tx. It can be repeated. verify still reads each transaction and
+  looks for the burn in it: when none of the transactions it reads holds the burn, check h fails.
+  A malformed value exits 64.
+- `--proof <file>` takes the vault's transactions from an evidence file in the format of
+  `docs/mainnet-proof.json`. They are tried after the `--burn-tx` ones. Without `--proof`, verify
+  reads no evidence file, not even a `docs/mainnet-proof.json` in the working directory. A `--proof`
+  file that is not there is an error.
+- `--archival-rpc <urls>` is the archival node used for burn transactions older than about 2.5 days.
+  It defaults to `NEAR_ARCHIVAL_RPC_URLS`, else FastNEAR's archival node.
+- `--online` also runs O1 and O2 on every attested decision and looks burns up in FastNEAR's
+  transaction index. O1 checks that the TDX quote is DCAP-genuine and bound to this request; the
+  measurement is not pinned yet, so O1 does not show which image the TEE runs. O2 checks that the GPU
+  payload carries the request nonce and that NVIDIA NRAS verifies it. Both use
+  `@nearai/inference-sdk`, an optional peer of `@probarion/sdk` (which documents Node 24.22.1 or newer
+  for it). When it cannot be loaded, check e says `online: unavailable` and O1 and O2 do not run.
+- `--snapshot <file>` writes the snapshot that was verified (any file but the ledger itself).
+  `--offline <file>` verifies such a
+  snapshot as it is, with no network, so it refuses `--vault`, `--ledger`, `--evidence`, `--burn-tx`,
+  `--proof`, `--archival-rpc`, `--online`, `--rpc` and `--network`.
+- `--ledger <path>` is the ledger file. It defaults to `PROBARION_LEDGER_PATH`, else
+  `.probarion/ledger.jsonl`; an empty `PROBARION_LEDGER_PATH` counts as unset. verify warns when the
+  file is not there, and then fails the spends it cannot bind to a decision.
+- `--evidence <dir>` (default `docs/evidence`) holds the Day-4 decision records of
+  `v0.probarion.near`, whose first spends predate the ledger. It is read for that vault on mainnet
+  only. Run verify from the repository, or pass the directory: without the records, check d fails
+  those spends.
+
+### ledger export
+
+`ledger export --out <file>` writes the ledger as JSONL, one entry per line. It reads the same
+`--ledger` file as verify. It refuses an `--out` file that already exists, and the ledger itself.
