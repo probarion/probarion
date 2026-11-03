@@ -39,6 +39,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # No TS packages exist until plan 03; this runs Biome and the repo script tests.
       - run: pnpm run verify:ts
+      - run: pnpm verify:launch
 
   gitleaks:
     name: Secret scan

@@ -1,0 +1,51 @@
+{
+  "name": "probarion",
+  "version": "0.1.0",
+  "description": "Probarion CLI: print the owner and approver transactions of a Probarion vault for near-cli-rs to sign, and generate ed25519 keys.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "probarion": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build",
+    "prepublishOnly": "node -e \"if(process.env.CI!=='true'||process.env.GITHUB_WORKFLOW!=='release'){console.error('Refusing to publish: only the GitHub release workflow publishes. Push a tag such as sdk-v0.1.0 instead.');process.exit(1)}\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/probarion/probarion.git",
+    "directory": "packages/cli"
+  },
+  "dependencies": {
+    "@probarion/core": "workspace:*",
+    "@probarion/sdk": "workspace:*",
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

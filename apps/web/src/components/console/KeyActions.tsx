@@ -1,0 +1,171 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import { buttonClass, Field, inputClass, Notice } from "@/components/ui";
+import { TxButton } from "@/components/wallet/TxButton";
+import type { Network } from "@/lib/config";
+import { consoleOutOfNear } from "@/lib/console/display";
+import type { KeyPurpose, KeySyncState } from "@/lib/keys/rules";
+import { lockKeyFor } from "@/lib/near/lock";
+import type { DescribeResult, TxResult } from "@/lib/near/outcome";
+import type { WalletTx } from "@/lib/near/tx";
+
+// The keys page's client parts. They hold no secret and never could: the server actions they call
+// return a public key inside a transaction, or a status message.
+
+type Generate = (
+  purpose: KeyPurpose,
+  label: string,
+) => Promise<WalletTx | { error: string; status?: 401 | 403 }>;
+type Sync = (prev: KeySyncState, formData?: FormData) => Promise<KeySyncState>;
+
+/**
+ * The owner signs every key call, so an out-of-NEAR refusal names the signer first (W-T8-R1). The
+ * keys page does not read the vault's free NEAR, so it never adds the top-up suggestion. Set at
+ * display time, so a result read back after a reload says the same.
+ */
+function signerFirst(outOfNearCodes: string[]): DescribeResult {
+  return (r) => {
+    const v = consoleOutOfNear(r.code, outOfNearCodes, false);
+    return v === null ? undefined : { detail: v.text };
+  };
+}
+
+/** After any key transaction: re-read the chain, so the table shows the new status. */
+function afterTx(sync: Sync) {
+  return async (_r: TxResult) => {
+    await sync(null);
+  };
+}
+
+/** A wallet button for one existing key (add it on chain, or remove it), signed by the session account. */
+export function KeyTxButton(props: {
+  label: string;
+  network: Network;
+  signer: string;
+  tx: WalletTx;
+  lockKey: string;
+  confirm?: string;
+  outOfNearCodes: string[];
+  sync: Sync;
+}) {
+  return (
+    <TxButton
+      label={props.label}
+      network={props.network}
+      expectedSigner={props.signer}
+      tx={props.tx}
+      lockKey={props.lockKey}
+      confirm={props.confirm}
+      describe={signerFirst(props.outOfNearCodes)}
+      onResult={afterTx(props.sync)}
+    />
+  );
+}
+
+/** "Check on-chain status": any member. Shows what changed and why a key stayed pending. */
+export function KeySyncButton({ sync }: { sync: Sync }) {
+  const [state, action, pending] = useActionState(sync, null);
+  return (
+    <form action={action}>
+      <button className={buttonClass} type="submit" disabled={pending}>
+        {pending ? "Checking…" : "Check on-chain status"}
+      </button>
+      {state?.ok === false ? <p className="mt-1 text-xs text-rose-700">{state.error}</p> : null}
+      {state?.ok ? (
+        <div className="mt-1 text-xs text-stone-600">
+          <p>{state.message}</p>
+          {state.notes.length > 0 ? (
+            <ul className="list-disc pl-4">
+              {state.notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+    </form>
+  );
+}
+
+/** Owner only (the page renders it for the owner; the actions check again). */
+export function KeyActions(props: {
+  vault: string;
+  signer: string;
+  network: Network;
+  ledgerActive: boolean;
+  /** The vault's ledger key is registered without its access key: no new ledger key is offered. */
+  ledgerStuck: boolean;
+  outOfNearCodes: string[];
+  generate: Generate;
+  sync: Sync;
+}) {
+  const [label, setLabel] = useState("payables");
+  const onResult = afterTx(props.sync);
+  const describe = signerFirst(props.outOfNearCodes);
+  return (
+    <div className="grid gap-6 md:grid-cols-2">
+      <div>
+        <Field
+          label="Agent key label"
+          hint="At most 64 bytes. It is stored on the vault with the key."
+        >
+          <input
+            className={inputClass}
+            value={label}
+            maxLength={64}
+            onChange={(e) => setLabel(e.target.value)}
+          />
+        </Field>
+        <TxButton
+          label="Generate agent key and add it in my wallet"
+          network={props.network}
+          expectedSigner={props.signer}
+          lockKey={lockKeyFor(`keys:new-agent:${props.vault}`)}
+          prepare={() => props.generate("agent", label)}
+          describe={describe}
+          onResult={onResult}
+        />
+      </div>
+      <div>
+        <p className="mb-2 text-sm text-stone-600">
+          The ledger key signs ledger entries and anchors their root on chain. Setting a new one
+          removes the old one from the vault.
+        </p>
+        {props.ledgerStuck ? (
+          // W-T10-R2: set_ledger_key first deletes the current ledger key, which is missing here, so the
+          // whole call fails after the vault already points at the new key. Offering it would only move
+          // the stuck pointer.
+          <Notice tone="bad">
+            The vault&apos;s ledger key is stuck: it is registered, but its access key was never
+            added. Setting a new ledger key now would fail the same way and only move the stuck
+            pointer to the new key, so it is turned off here until a contract fix is available.
+          </Notice>
+        ) : (
+          <>
+            {props.ledgerActive ? (
+              <Notice tone="warn">
+                This vault already has an active ledger key. A new one replaces it: the old key can
+                no longer anchor.
+              </Notice>
+            ) : null}
+            <TxButton
+              label="Generate ledger key and set it in my wallet"
+              network={props.network}
+              expectedSigner={props.signer}
+              lockKey={lockKeyFor(`keys:new-ledger:${props.vault}`)}
+              prepare={() => props.generate("ledger", "ledger")}
+              confirm={
+                props.ledgerActive
+                  ? "Replace the vault's ledger key? The current one is removed from the vault."
+                  : undefined
+              }
+              describe={describe}
+              onResult={onResult}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

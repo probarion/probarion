@@ -1,0 +1,4 @@
+TEST FIXTURE invoice A
+Fixture Vendor (vendor.fixture.testnet)
+PO-1001 design work
+Total due: 25.00 USDC

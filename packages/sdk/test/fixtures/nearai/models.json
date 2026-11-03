@@ -1,0 +1,53 @@
+{
+  "models": [
+    {
+      "modelId": "test-double/incognito-model",
+      "inputCostPerToken": { "amount": 0, "scale": 9, "currency": "USD" },
+      "outputCostPerToken": { "amount": 0, "scale": 9, "currency": "USD" },
+      "costPerImage": { "amount": 0, "scale": 9, "currency": "USD" },
+      "cacheReadCostPerToken": { "amount": 0, "scale": 9, "currency": "USD" },
+      "metadata": {
+        "verifiable": false,
+        "contextLength": 8192,
+        "modelDisplayName": "TEST FIXTURE incognito model",
+        "modelDescription": "TEST FIXTURE: shaped like a GET /v1/model/list row of an external provider. Not a real model.",
+        "ownedBy": "test-double",
+        "aliases": ["test-double-incognito"],
+        "providerType": "external",
+        "providerConfig": { "backend": "test-double", "model_name": "incognito-model" },
+        "attestationSupported": false,
+        "architecture": { "inputModalities": ["text"], "outputModalities": ["text"] },
+        "maxOutputLength": 4096,
+        "supportedSamplingParameters": ["temperature", "max_tokens"],
+        "supportedFeatures": ["tools", "structured_outputs"]
+      }
+    },
+    {
+      "modelId": "test-double/private-tee-model",
+      "inputCostPerToken": { "amount": 0, "scale": 9, "currency": "USD" },
+      "outputCostPerToken": { "amount": 0, "scale": 9, "currency": "USD" },
+      "costPerImage": { "amount": 0, "scale": 9, "currency": "USD" },
+      "cacheReadCostPerToken": { "amount": 0, "scale": 9, "currency": "USD" },
+      "metadata": {
+        "verifiable": true,
+        "contextLength": 8192,
+        "modelDisplayName": "TEST FIXTURE private TEE model",
+        "modelDescription": "TEST FIXTURE: shaped like a GET /v1/model/list row of a private vLLM TEE model. Not a real model.",
+        "ownedBy": "test-double",
+        "aliases": ["test-double-private"],
+        "providerType": "vllm",
+        "providerConfig": {},
+        "attestationSupported": true,
+        "architecture": { "inputModalities": ["text"], "outputModalities": ["text"] },
+        "quantization": "fp8",
+        "maxOutputLength": 4096,
+        "supportedSamplingParameters": ["temperature", "top_p", "max_tokens", "seed"],
+        "supportedFeatures": ["structured_outputs"],
+        "isReady": true
+      }
+    }
+  ],
+  "limit": 100,
+  "offset": 0,
+  "total": 2
+}

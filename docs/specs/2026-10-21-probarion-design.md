@@ -239,7 +239,7 @@ await pb.verify({ account: "acme.vaults.probarion.near" });
 
 The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
 
-1. Compute `nonce = sha256("probarion/v1" ‖ prev_link ‖ invoice_hash ‖ mandate_id ‖ seq)`, then fetch the model's attestation report with that nonce.
+1. Compute `nonce = sha256("probarion/v1" ‖ prev_link ‖ invoice_hash ‖ mandate_id ‖ seq ‖ u32be(len) ‖ vault)` (exact byte layout: interfaces §6; the vault account id is bound in by ICR-1), then fetch the model's attestation report with that nonce.
 2. Call a **Private TEE** model on NEAR AI Cloud with `x-no-aliasing: true`. The invoice text is passed as data, and the output is structured (`pay | hold | refuse`, `mandate_id`, `amount`, `reasoning`, `confidence`). Fetch the `provider_tee` signature immediately, because its retention period is not published.
 3. Run the rules: `mandate.none`, `mandate.payee_mismatch`, `mandate.over_total`, `invoice.duplicate`, `invoice.po_mismatch`, `model.attestation_invalid`, `model.low_confidence`, `intents.balance_low`. Then call `check_spend`.
 4. Submit `spend` with the agent FC key. The contract re-checks everything.
@@ -323,7 +323,7 @@ The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
 
 1. **Before 2026-11-01:** a no-code waitlist form plus direct outreach (`prep/pilot-outreach.md`). Goal: 8–10 committed pilots, so that 3+ actually run.
 2. **Days 8–12:** white-glove onboarding of 30 minutes per pilot. The pilot creates their own vault from their own wallet, adds one mandate, and pays one real invoice of a small amount.
-3. **Every day from Day 1:** a build-in-public post on X with what shipped and one mainnet transaction link, tagging @NEAR_hckthn. This builds distribution and leaves a timestamped trail the judges can see.
+3. **Every day from Day 1:** a build-in-public post on X with what shipped and one mainnet transaction link, tagging @NEARProtocol #NEARHackathon. This builds distribution and leaves a timestamped trail the judges can see.
 
 ### 14.3 Probarion Canary (growth, demo and security proof in one)
 

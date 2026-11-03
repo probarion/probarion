@@ -1,7 +1,15 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-  "files": { "includes": ["**", "!**/*.md", "!docs/evidence"] },
+  "files": {
+    "includes": [
+      "**",
+      "!**/*.md",
+      "!docs/evidence",
+      "!packages/core/test/fixtures/valid-snapshot.json",
+      "!packages/core/test/fixtures/valid-ledger.jsonl"
+    ]
+  },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "linter": { "enabled": true, "rules": { "recommended": true } },
   "javascript": { "formatter": { "quoteStyle": "double" } }

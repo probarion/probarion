@@ -1,0 +1,144 @@
+name: release
+
+# Publishing is an OWNER action. Pushing a tag sdk-v<version> starts this workflow:
+#   git tag -a sdk-v0.1.0 -m "SDK v0.1.0" && git push origin sdk-v0.1.0
+# The tag must match the version of every published package, have a "## <version>" section in
+# CHANGELOG.md (scripts/release-check.ts enforces both), and point at a commit that is on main.
+#
+# Two jobs, so that the job that can publish runs no repository code:
+#   verify   contents: read. Checks, tests and packs the packages, and uploads the tarballs.
+#   publish  contents: read + id-token: write, in the "npm-release" environment. Downloads exactly
+#            those tarballs and runs `npm publish`.
+# The Rust contracts are not rebuilt here, because only the TypeScript packages are published; the ci
+# workflow runs the contract jobs on the branch commit that gets tagged.
+#
+# OWNER setup, once (Settings > Environments):
+#   1. Create the environment "npm-release".
+#   2. Deployment branches and tags: only the tag pattern sdk-v*.
+#   3. Required reviewers: the owner, so that a pushed tag waits for a second look before it publishes.
+#   4. Store NPM_TOKEN as an environment secret of "npm-release" (not as a repository secret).
+#   5. After 0.1.0 is on npm, switch each package to npm trusted publishing (OIDC, no token) and
+#      revoke NPM_TOKEN.
+#
+# If a run fails, re-run it from the Actions page:
+#   "Re-run failed jobs" keeps the tarballs of the first verify job and runs only what failed (for
+#     example publish, after a network error). This is the normal choice.
+#   "Re-run all jobs" packs again. If `pnpm pack` does not give the same bytes, the publish step stops
+#     at any package that is already on npm with different content, and publishes nothing after it.
+#     A package that was published is skipped when npm holds the same bytes.
+# No step in this file may swallow a failure (no continue-on-error, no if:, no `|| true`):
+# scripts/ci-workflow.test.mjs refuses such an edit, and pins the sha256 of this whole file, so every
+# change here needs a reviewed change to RELEASE_YML_SHA256 there.
+on:
+  push:
+    tags: ["sdk-v*"]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# Naming the shell makes GitHub run every script as `bash --noprofile --norc -eo pipefail {0}`. Without
+# it the default is `bash -e {0}`, and `pnpm run verify:ts | tee log` would pass when verify:ts fails.
+defaults:
+  run:
+    shell: bash
+
+# Third-party actions are pinned by full commit SHA, with the tag in a trailing comment, because a
+# tag can be moved. Use the same SHAs as ci.yml (scripts/ci-workflow.test.mjs checks that they agree).
+# Resolve a SHA with: gh api repos/<owner>/<repo>/commits/<tag-or-branch> -q .sha
+
+jobs:
+  verify:
+    name: Check, test and pack
+    runs-on: ubuntu-latest
+    steps:
+      # Full history, so that origin/main is there for the check below. No credentials are left behind.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the tagged commit to be on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::the tagged commit $GITHUB_SHA is not on main; a release is cut from main"
+            exit 1
+          }
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+      - run: pnpm install --frozen-lockfile
+      # Fails fast on the tag, the versions and the changelog, before the slow steps.
+      - run: pnpm run release:check -- "$GITHUB_REF_NAME"
+      - run: pnpm run verify:ts
+      - run: pnpm run verify:launch
+      # Packs every package with `pnpm pack` and checks the tarballs: every exports/main/types/bin
+      # target is in them, nothing but dist/, README.md and LICENSE is, there are no source maps and
+      # no workspace: specifiers. Writes packages.json, the publish list in dependency order.
+      - run: pnpm run release:check -- --pack --out "$RUNNER_TEMP/release" "$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-tarballs
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to npm
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write # npm provenance (Sigstore); this job only
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-tarballs
+          path: ${{ runner.temp }}/release
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Publish core, sdk, cli (and mcp once it exists), in dependency order
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+          RELEASE_DIR: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          base_args=(--access public --provenance)
+          if [ "$REPO_PRIVATE" = "true" ]; then
+            echo "::warning::the repository is private; npm provenance needs a public repository, so this publish has no provenance"
+            base_args=(--access public)
+          fi
+          list=$(node -e 'for (const p of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).packages) console.log([p.file, p.name, p.version].join("\t"))' "$RELEASE_DIR/packages.json")
+          [ -n "$list" ] || { echo "::error::empty publish list"; exit 1; }
+          while IFS=$'\t' read -r file name version; do
+            if view=$(npm view "$name@$version" version 2>&1 </dev/null); then
+              published=$(npm view "$name@$version" dist.integrity </dev/null)
+              local_integrity="sha512-$(openssl dgst -sha512 -binary "$RELEASE_DIR/$file" | base64 -w0)"
+              if [ "$published" = "$local_integrity" ]; then
+                echo "::notice::$name@$version is already on npm with the same content as this tarball; skipping"
+                continue
+              fi
+              echo "::error::$name@$version is already on npm with different content (npm: $published, this run: $local_integrity); nothing after it is published"
+              exit 1
+            else
+              # Only "not found" means "not published yet"; any other failure (network, registry) stops here.
+              case "$view" in
+                *E404*) ;;
+                *) echo "::error::cannot tell whether $name@$version is on npm: $view"; exit 1 ;;
+              esac
+            fi
+            args=("${base_args[@]}")
+            # npm refuses a prerelease without a dist-tag, and a prerelease must not become "latest".
+            case "$version" in *-*) args+=(--tag next) ;; esac
+            echo "publishing $name@$version"
+            npm publish "$RELEASE_DIR/$file" "${args[@]}" </dev/null
+          done <<<"$list"

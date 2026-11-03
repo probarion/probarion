@@ -191,6 +191,8 @@ test("the optional factory lock deletes one key that a guard has checked", () =>
 
 test("the signing story matches mainnet-v0.md: keychain or Ledger, keys written only there", () => {
   assert.ok(factory.includes("sign-with-ledger"));
+  // near-cli-rs 0.30.1 rejects `sign-with-ledger send`; the Ledger transport word `usb` is required.
+  assert.ok(factory.includes("`sign-with-keychain send` with `sign-with-ledger usb send`"));
   assert.ok(!factory.includes("Keys are kept only in the OS keychain"));
   assert.match(factory, /written only to the OS keychain/);
   const mainnet = read("docs/runbooks/mainnet-v0.md");

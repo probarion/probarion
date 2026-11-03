@@ -3,6 +3,7 @@ target/
 contracts/target/
 dist/
 .next/
+next-env.d.ts
 coverage/
 .env
 .env.*
@@ -11,3 +12,6 @@ coverage/
 .probarion/
 *.pem
 .DS_Store
+docs/mainnet-proof.json.*.tmp
+*.tsbuildinfo
+probarion-tx/

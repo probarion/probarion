@@ -1,0 +1,64 @@
+{
+  "name": "@probarion/sdk",
+  "version": "0.1.0",
+  "description": "Probarion SDK: let any agent pay on NEAR only inside owner-signed mandates, with attested decisions and a verifiable ledger.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build",
+    "prepublishOnly": "node -e \"if(process.env.CI!=='true'||process.env.GITHUB_WORKFLOW!=='release'){console.error('Refusing to publish: only the GitHub release workflow publishes. Push a tag such as sdk-v0.1.0 instead.');process.exit(1)}\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "record:nearai": "tsx scripts/record-nearai.ts"
+  },
+  "peerDependencies": {
+    "@nearai/inference-sdk": ">=0.1.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "@nearai/inference-sdk": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/probarion/probarion.git",
+    "directory": "packages/sdk"
+  },
+  "dependencies": {
+    "@probarion/core": "workspace:*",
+    "near-api-js": "^7.4.0",
+    "viem": "^2.57.14"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

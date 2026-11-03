@@ -141,6 +141,7 @@ Calls that cascade into cross-contract promises need explicit gas, and the owner
 | `freeze` | owner | `'0 NEAR'` | `'30 Tgas'` |
 | `create_mandate` | owner | at least the storage cost, `'0.05 NEAR'` is plenty (the excess is refunded) | `'100 Tgas'` |
 | `spend` | the agent key | `'0 NEAR'` | `'200 Tgas'` (an Intents payee cascades into `ft_withdraw`, 100 Tgas, and a callback) |
+| `anchor` | the ledger key | `'0 NEAR'` | `'30 Tgas'` (one record and one event; the ledger key attaches no deposit) |
 | `approve` | approver | `'1 yoctoNEAR'` | `'150 Tgas'` (the payout and its callback; at least 130) |
 | `withdraw` | owner | `'1 yoctoNEAR'` | `'100 Tgas'` |
 | `withdraw_intents` | owner | `'1 yoctoNEAR'` | `'150 Tgas'` (at least 130) |

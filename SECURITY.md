@@ -1,0 +1,113 @@
+# Security policy
+
+Probarion lets an AI agent move USDC out of a NEAR contract, so we want to hear about any weakness in
+it. This page says how to report one, what is in scope, and what the code does and does not protect
+today.
+
+**Unaudited beta.** No third party has audited the contracts or the packages. Today the vault runs on
+NEAR testnet only, with test tokens. A mainnet vault with small amounts is planned, and its owner signs
+every transaction that creates, funds or configures it.
+
+## Supported versions
+
+| Version | Supported |
+| --- | --- |
+| The `dev` branch, where work lands, and `main` | Yes. A fix lands on `dev` first |
+| The npm packages `@probarion/core`, `@probarion/sdk` and `probarion` | None released yet: 0.1.0 is planned |
+| The testnet vault `v0.probarion.testnet` | A test deployment. A vault has no upgrade method, so a fix ships as a new vault |
+
+## Reporting a vulnerability
+
+**Please do not put the details of a vulnerability in a public issue, pull request or post.**
+
+- **On X:** send a direct message to [@probarionhq](https://x.com/probarionhq) that says you have a
+  security report, with no details. We answer with a private channel for them.
+- **On GitHub:** once private vulnerability reporting is switched on for this repository, use
+  **Security → Report a vulnerability**, which opens a private
+  [security advisory](https://docs.github.com/en/code-security/security-advisories/working-with-repository-security-advisories/about-repository-security-advisories)
+  that only you and the maintainers can see.
+
+Say what is affected (a contract, a package, the web console, a script or a workflow), how to
+reproduce it, and what an attacker could do with it. We aim to acknowledge a report within 72 hours,
+fix a confirmed issue on `dev`, and credit you in the advisory and the changelog if you wish. There is
+no bug bounty.
+
+Test only against vaults you deployed yourself, on testnet or in the near-workspaces sandbox. Do not
+try to move funds that are not yours.
+
+## Scope
+
+In scope:
+
+- the vault and factory contracts, [`contracts/vault`](contracts/vault) and
+  [`contracts/factory`](contracts/factory);
+- the packages [`@probarion/core`](packages/core), [`@probarion/sdk`](packages/sdk) and the
+  [`probarion` CLI](packages/cli);
+- the web console in [`apps/web`](apps/web), its database migrations and its key sealing (in
+  progress and not deployed, so report against the code);
+- the build, deploy and release scripts in [`scripts`](scripts) and the workflows in
+  [`.github/workflows`](.github/workflows).
+
+Out of scope:
+
+- [`contracts/intents-stub`](contracts/intents-stub) and [`contracts/test-ft`](contracts/test-ft),
+  which are test stand-ins for `intents.near` and USDC and are not deployed on mainnet;
+- weaknesses in services Probarion uses (the NEAR protocol, `intents.near`, the POA bridge, NEAR AI
+  Cloud, Supabase), which go to that service;
+- findings that need a compromised device, social engineering or physical access, denial of service
+  by volume, and scanner output without a demonstrated impact.
+
+## Threat model
+
+The vault holds the USDC. The agent holds one function-call key. A spend is checked by code off chain
+and again by the contract on chain, and every decision goes into a signed, hash-chained ledger.
+
+| Who or what | Can | Cannot, and what stops it |
+| --- | --- | --- |
+| **The agent key** (a function-call key the vault adds to itself, method `spend` only) | Call `spend` against a mandate that names this key | Choose the payee: `SpendRequest` has no address field and the destination comes from the mandate in storage. Go past the mandate's `max_per_payment`, `max_total` (spent plus reserved), `max_uses` or `expires_at_ns`, or the vault's UTC-day `daily_backstop`. Pay one `invoice_hash` twice or reuse a `ref`. Call any other method, or attach a deposit: the NEAR protocol limits a function-call key to its method list and to calls without deposit |
+| **The ledger key** (function-call key, method `anchor` only) | Anchor the next ledger range, `seq` exactly one above the last | Spend, or change a mandate or a key |
+| **Whoever holds the agent key**, for example a breached server | Spend inside open mandates, with invoice hashes of its choosing | Pay anyone a mandate does not name, or exceed a mandate's limits or the daily backstop. Hide a rewritten ledger range that was anchored: `verify` names the first entry that does not match |
+| **The owner** (a full-access key on the owner's account) | Create and revoke mandates, add and remove keys, set the ledger key, freeze, unfreeze, withdraw USDC and the Intents balance to the owner's own account | Change a mandate's payee (a new payee needs a new mandate), change the owner or the approvers, or upgrade the vault: there is no method for any of these |
+| **A function-call key on the owner's or the approver's account**, such as a dapp login key | On the owner's account, call `freeze`, which takes no deposit so that any owner key can stop the vault | Call `add_agent`, `remove_agent`, `set_ledger_key`, `revoke_mandate`, `approve`, `reject`, `unfreeze`, `withdraw` or `withdraw_intents`: each needs exactly 1 yoctoNEAR attached, which only a full-access key can attach |
+| **An approver** | Approve or reject a held spend (1 yoctoNEAR) | Approve while the vault is frozen, after the hold expired, or for a revoked mandate |
+| **The factory owner** | Publish a new vault version | Change, upgrade or take funds from a vault the factory created: such a vault starts with no access keys and has no upgrade method |
+| **The model** (NEAR AI Cloud, private TEE) | Propose `pay`, `hold` or `refuse` for one invoice | Decide alone. Its proposal is advice: the code rules run on every decision and the contract checks every spend, so text injected into an invoice cannot widen a mandate |
+
+### What `verify` proves
+
+`runChecks` in `@probarion/core`, and `verify()` in `@probarion/sdk`, run checks a to i over a
+snapshot of the ledger and the chain:
+
+| Check | Passes when |
+| --- | --- |
+| a, b | Every ledger entry is signed by the vault's ledger key, and the hash links recompute |
+| c | Every on-chain anchor root equals the ledger link at its count |
+| d | Every on-chain spend is bound to exactly one decision with the same invoice, mandate and amount, which allowed it (or held it, for a spend that went through an approver) |
+| e | Every decision with model evidence passes the attestation checks A1 to A7 (and A8 when the invoice text is supplied) |
+| f | The vault has no full-access key, its other keys are only `spend` and `anchor` keys, and its code hash is a known reproducible build or a version of the canonical factory |
+| g | The vault names the network's own intents contract, holds no public key there, and predecessor authentication is on |
+| h | Every cross-chain spend has a burn whose memo is `WITHDRAW_TO:` and the mandate's address. A burn it cannot prove is `unproven`, and the report is then not `ok` |
+| i | A factory vault's version is in the factory's registry |
+
+### What is not proven yet
+
+- **The TEE measurement is not pinned (O1b, deferred).** Offline, A1 to A7 show that the signature,
+  the response and the recorded proposal agree, and that the attestation report is bound to the
+  ledger position. The online check O1 verifies the TDX quote through Intel DCAP, and O2 checks the
+  NVIDIA payload through NRAS. Neither pins the measurements of NEAR AI's published image yet, so
+  `quote_verified` stays false and Probarion says "attested and signed", not "proven to run a
+  given model image".
+- **A8 needs the invoice text.** The ledger stores no invoice text, so only an auditor who holds the
+  invoices can show that the model saw the standard request for that invoice. A8 does not show that
+  an invoice is authentic.
+- **Entries after the last anchor** are checked against the ledger key only; no anchor pins them yet.
+- **Historical mandate state.** A mandate's `remaining` and `status` at decision time need archival
+  chain state, so `verify` reports a difference there as a note.
+- **Testnet has no real bridge.** On testnet `intents-stub` stands in for `intents.near`, and a
+  cross-chain burn does not leave NEAR.
+- **No recorded real decision yet.** The NEAR AI Cloud adapter is tested against a fake NEAR AI
+  Cloud. A real attested decision, recorded and verified, is in progress.
+
+The full design is in [`docs/specs/2026-10-21-probarion-design.md`](docs/specs/2026-10-21-probarion-design.md)
+(§7, §10, §11 and §12), and the exact checks are in
+[`docs/specs/2026-10-21-probarion-interfaces.md`](docs/specs/2026-10-21-probarion-interfaces.md) (§7 and §10).
