@@ -77,6 +77,7 @@ vi.mock("@/components/wallet/TxButton", () => ({
 import {
   discardKeyAction,
   generateKeyAction,
+  keepKeyAction,
   syncKeysAction,
 } from "@/app/console/[vault]/keys/actions";
 import KeysPage, { maxDuration } from "@/app/console/[vault]/keys/page";
@@ -413,6 +414,7 @@ describe("pending, registered and stuck keys (W-T10-R1)", () => {
     const goneAgent = await mk("agent"); // removed here, but still listed (and keyless)
     const plainAgent = await mk("agent"); // pending, not on chain at all
     const stuckLedger = await mk("ledger"); // get_config names it, no access key
+    const plainLedger = await mk("ledger"); // pending, not on chain: still not offered while stuck
     await pg.query(
       "update agent_keys set status = 'removed', revoked_at = now() where public_key = $1",
       [goneAgent],
@@ -443,8 +445,15 @@ describe("pending, registered and stuck keys (W-T10-R1)", () => {
       .filter((b) => b.label === "Add on-chain")
       .map((b) => publicKeyOf(b.tx));
     expect(addFor).toEqual([plainAgent]);
+    expect(out).toContain(plainLedger);
     expect(h.buttons.filter((b) => b.label === "Set as ledger key")).toEqual([]);
     for (const b of h.buttons) expect(b.expectedSigner, b.label).toBe("acme.near");
+    // The ledger key is stuck: no new ledger key is offered (it would only move the stuck pointer).
+    expect(h.buttons.map((b) => b.label)).not.toContain(
+      "Generate ledger key and set it in my wallet",
+    );
+    expect(out).toContain("would fail the same way and only move the stuck pointer");
+    expect(h.buttons.map((b) => b.label)).toContain("Generate agent key and add it in my wallet");
 
     // An approver sees the same state, with no button.
     await signInAs("cfo.near");
@@ -453,6 +462,79 @@ describe("pending, registered and stuck keys (W-T10-R1)", () => {
     expect(seen.match(/Stuck: this key/g)?.length).toBe(3);
     expect(h.buttons).toEqual([]);
     expect(seen).not.toContain("Discard");
+  });
+
+  it("shows a discarded key that is on chain, and lets only the owner Keep it, through the full check", async () => {
+    const { vault, tenantId } = await ownVault();
+    const k = await generateKey(h.db, MASTER, {
+      tenantId,
+      purpose: "agent",
+      label: "x",
+      createdBy: "acme.near",
+    });
+    await pg.query(
+      "update agent_keys set status = 'removed', revoked_at = now(), discarded_at = now() where id = $1",
+      [k.id],
+    );
+    const onChain = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", ledger_key: null }),
+      listAgents: async () => [{ public_key: k.publicKey, label: "x", added_at_ns: "1" }],
+      accessKey: async () => ({ ...fc(["spend"]), receiverId: vault }),
+    });
+    h.reader = onChain;
+    await signInAs("acme.near");
+    const sync = await syncKeysAction(vault, null);
+    expect(sync?.ok ? sync.notes.join("\n") : "").toMatch(/on the vault although you discarded it/);
+    expect(await statusOf(k.publicKey)).toBe("removed"); // a sync never makes it active
+
+    h.buttons.length = 0;
+    const out = await html(vault);
+    expect(out).toContain(
+      "Discarded, but on chain: this key is on the vault although you discarded it",
+    );
+    expect(out).toContain(">Keep<");
+    expect(h.buttons.filter((b) => b.label === "Remove").map((b) => publicKeyOf(b.tx))).toEqual([
+      k.publicKey,
+    ]);
+
+    // Keep: not for a signed-out visitor, a non-member, an approver, or another vault's owner.
+    for (const [who, at] of [
+      [null, vault],
+      ["mallory.near", vault],
+      ["cfo.near", vault],
+      ["mallory.near", OTHER],
+    ] as const) {
+      h.jar.clear();
+      if (who) await signInAs(who);
+      await keepKeyAction(at, k.id);
+      expect(await statusOf(k.publicKey), `${who} ${at}`).toBe("removed");
+    }
+    // The owner, while the chain does not show the full state: still not kept.
+    await signInAs("acme.near");
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", ledger_key: null }),
+      listAgents: async () => [],
+      accessKey: async () => ({ ...fc(["spend"]), receiverId: vault }),
+    });
+    await keepKeyAction(vault, k.id);
+    expect(await statusOf(k.publicKey)).toBe("removed");
+    // The owner, with the full state on chain: kept, active.
+    h.reader = onChain;
+    await keepKeyAction(vault, k.id);
+    expect(await statusOf(k.publicKey)).toBe("active");
+    expect(h.revalidated).toContain(`/console/${vault}/keys`);
+
+    // An approver sees the note but no Keep.
+    await pg.query(
+      "update agent_keys set status = 'removed', revoked_at = now(), discarded_at = now() where id = $1",
+      [k.id],
+    );
+    await signInAs("cfo.near");
+    h.buttons.length = 0;
+    const seen = await html(vault);
+    expect(seen).toContain("Discarded, but on chain");
+    expect(seen).not.toContain(">Keep<");
+    expect(h.buttons).toEqual([]);
   });
 });
 
@@ -596,7 +678,9 @@ describe("static guards: only server code can reach a secret", () => {
     const offenders = [...files(join(SRC, "app")), ...files(join(SRC, "components"))]
       .filter((f) => !/\.test\.tsx?$/.test(f))
       .filter((f) =>
-        /loadActiveSecret|openAgentSecret|agent_key_secret|key_rotation_rows/.test(source(f)),
+        /loadActiveSecret|loadActiveSecretFor|openAgentSecret|agent_key_secret|key_rotation_rows/.test(
+          source(f),
+        ),
       )
       .map((f) => relative(SRC, f));
     expect(offenders).toEqual([]);

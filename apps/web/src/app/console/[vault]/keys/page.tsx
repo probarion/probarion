@@ -7,13 +7,13 @@ import { VAULT_DEFAULTS } from "@/lib/config";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { serviceDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
-import { type KeyStatus, STUCK_TEXT } from "@/lib/keys/rules";
+import { DISCARDED_ON_CHAIN_TEXT, type KeyStatus, STUCK_TEXT } from "@/lib/keys/rules";
 import { type AllowanceView, type KeyView, loadKeysView } from "@/lib/keys/view";
 import { lockKeyFor } from "@/lib/near/lock";
 import { getReader } from "@/lib/near/server";
 import { addAgentTx, removeAgentTx, setLedgerKeyTx } from "@/lib/near/tx";
 import { formatNear } from "@/lib/near/units";
-import { discardKeyAction, generateKeyAction, syncKeysAction } from "./actions";
+import { discardKeyAction, generateKeyAction, keepKeyAction, syncKeysAction } from "./actions";
 
 export const metadata: Metadata = { title: "Keys" };
 /** The wallet buttons confirm their transaction on chain (FINAL) through a server action. */
@@ -55,11 +55,17 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
 
   // Owner only. A pending key can be added (unless the vault already registers it) or discarded; an
   // agent key the last sync saw registered in list_agents can be removed whatever its status here,
-  // so a stuck or revoked registration can always be cleared (W-T10-R1).
+  // so a stuck or revoked registration can always be cleared (W-T10-R1). A discarded key that is on
+  // the vault after all can be removed there or kept (W-T10-R2). While the vault's ledger key is
+  // stuck, no ledger key is offered for setting: set_ledger_key would fail the same way and only move
+  // the stuck pointer.
   const ownerButtons = (k: KeyView) => {
     if (!isOwner) return null;
     const common = { network, signer: session.accountId, outOfNearCodes: codes, sync };
-    const canAdd = k.status === "pending" && k.registered !== true;
+    const canAdd =
+      k.status === "pending" &&
+      k.registered !== true &&
+      !(k.purpose === "ledger" && view.ledgerStuck);
     const canRemove = k.purpose === "agent" && (k.registered === true || k.status === "active");
     return (
       <>
@@ -92,6 +98,13 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             lockKey={lockKeyFor(`keys:remove:${vault}:${k.public_key}`)}
             confirm="Remove this agent key from the vault? Payables stops using it at once."
           />
+        ) : null}
+        {k.discardedOnChain ? (
+          <form action={keepKeyAction.bind(null, vault, k.id)}>
+            <button type="submit" className="text-xs text-stone-600 underline">
+              Keep
+            </button>
+          </form>
         ) : null}
         {k.status === "pending" ? (
           <form action={discardKeyAction.bind(null, vault, k.id)}>
@@ -145,6 +158,11 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
                         Stuck: this key {STUCK_TEXT[k.purpose]}
                       </p>
                     ) : null}
+                    {k.discardedOnChain ? (
+                      <p className="mt-1 text-xs text-amber-900">
+                        Discarded, but on chain: this key {DISCARDED_ON_CHAIN_TEXT[k.purpose]}
+                      </p>
+                    ) : null}
                   </td>
                   <td>{allowanceText(k.allowance)}</td>
                   <td>{ownerButtons(k)}</td>
@@ -154,8 +172,9 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
           </table>
         )}
         <p className={`mt-2 text-xs ${muted}`}>
-          Payables uses your most recently activated agent key: bind new mandates to that key. A key
-          becomes active only when the chain shows it on the vault, limited to its one method.
+          Payables signs each payment with the agent key its mandate is bound to, so a mandate keeps
+          working only while its key is active. A key becomes active only when the chain shows it on
+          the vault, limited to its one method.
         </p>
       </Card>
       {isOwner ? (
@@ -165,6 +184,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             signer={session.accountId}
             network={network}
             ledgerActive={view.ledgerActive}
+            ledgerStuck={view.ledgerStuck}
             outOfNearCodes={codes}
             generate={generateKeyAction.bind(null, vault)}
             sync={sync}

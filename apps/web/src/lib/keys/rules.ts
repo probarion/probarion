@@ -83,7 +83,9 @@ export type CheckReason =
   | "removed_on_chain"
   | "unregistered"
   | "still_active"
-  | "inactive";
+  | "inactive"
+  /** On chain exactly as the vault adds it, but the owner discarded it: never made active by a sync (W-T10-R2). */
+  | "discarded_on_chain";
 
 export interface Verdict {
   to: KeyStatus;
@@ -95,7 +97,7 @@ export interface Verdict {
  * A key goes to `active` only through the one full check (`usable`): the exact scoped key, registered.
  */
 export function nextStatus(
-  row: { purpose: KeyPurpose; status: KeyStatus },
+  row: { purpose: KeyPurpose; status: KeyStatus; discarded?: boolean },
   vault: string,
   view: ChainView,
 ): Verdict {
@@ -110,6 +112,8 @@ export function nextStatus(
     if (problem !== null) return { to: "revoked", reason: `scope_${problem}` };
     return { to: "active", reason: "still_active" };
   }
+  // A discarded key stays where it is even then: only the owner's Keep makes it active (W-T10-R2).
+  if (usable && row.discarded === true) return { to: row.status, reason: "discarded_on_chain" };
   if (usable)
     return { to: "active", reason: row.status === "pending" ? "activated" : "reactivated" };
   if (!key.exists && registered) return { to: row.status, reason: "registered_without_key" };
@@ -158,6 +162,14 @@ const SCOPE_TEXT: Readonly<Record<ScopeProblem, string>> = {
 };
 
 /** The stuck state (W-T10-R1), worded by what can be done about it on the keys page. */
+/** A discarded key that is on chain after all (W-T10-R2), worded by what the keys page offers. */
+export const DISCARDED_ON_CHAIN_TEXT: Readonly<Record<KeyPurpose, string>> = {
+  agent:
+    "is on the vault although you discarded it. Remove it from the vault, or Keep it to use it again.",
+  ledger:
+    "is the vault's ledger key although you discarded it. Keep it to use it again, or generate and set a new ledger key.",
+};
+
 export const STUCK_TEXT: Readonly<Record<KeyPurpose, string>> = {
   // remove_agent clears the registry even when the access key is missing, so Remove recovers.
   agent:
@@ -180,6 +192,7 @@ export function describeCheck(c: KeyCheck): string | null {
   if (r === "reactivated")
     return `${name} is on the vault again, limited to its one method: active again.`;
   if (r === "registered_without_key") return `${name} ${STUCK_TEXT[c.purpose]}`;
+  if (r === "discarded_on_chain") return `${name} ${DISCARDED_ON_CHAIN_TEXT[c.purpose]}`;
   if (r === "unreadable") {
     return inUse ? `${name}: the chain could not be read, so its status is unchanged.` : null;
   }

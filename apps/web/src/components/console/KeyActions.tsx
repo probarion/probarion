@@ -94,6 +94,8 @@ export function KeyActions(props: {
   signer: string;
   network: Network;
   ledgerActive: boolean;
+  /** The vault's ledger key is registered without its access key: no new ledger key is offered. */
+  ledgerStuck: boolean;
   outOfNearCodes: string[];
   generate: Generate;
   sync: Sync;
@@ -130,26 +132,39 @@ export function KeyActions(props: {
           The ledger key signs ledger entries and anchors their root on chain. Setting a new one
           removes the old one from the vault.
         </p>
-        {props.ledgerActive ? (
-          <Notice tone="warn">
-            This vault already has an active ledger key. A new one replaces it: the old key can no
-            longer anchor.
+        {props.ledgerStuck ? (
+          // W-T10-R2: set_ledger_key first deletes the current ledger key, which is missing here, so the
+          // whole call fails after the vault already points at the new key. Offering it would only move
+          // the stuck pointer.
+          <Notice tone="bad">
+            The vault&apos;s ledger key is stuck: it is registered, but its access key was never
+            added. Setting a new ledger key now would fail the same way and only move the stuck
+            pointer to the new key, so it is turned off here until a contract fix is available.
           </Notice>
-        ) : null}
-        <TxButton
-          label="Generate ledger key and set it in my wallet"
-          network={props.network}
-          expectedSigner={props.signer}
-          lockKey={lockKeyFor(`keys:new-ledger:${props.vault}`)}
-          prepare={() => props.generate("ledger", "ledger")}
-          confirm={
-            props.ledgerActive
-              ? "Replace the vault's ledger key? The current one is removed from the vault."
-              : undefined
-          }
-          describe={describe}
-          onResult={onResult}
-        />
+        ) : (
+          <>
+            {props.ledgerActive ? (
+              <Notice tone="warn">
+                This vault already has an active ledger key. A new one replaces it: the old key can
+                no longer anchor.
+              </Notice>
+            ) : null}
+            <TxButton
+              label="Generate ledger key and set it in my wallet"
+              network={props.network}
+              expectedSigner={props.signer}
+              lockKey={lockKeyFor(`keys:new-ledger:${props.vault}`)}
+              prepare={() => props.generate("ledger", "ledger")}
+              confirm={
+                props.ledgerActive
+                  ? "Replace the vault's ledger key? The current one is removed from the vault."
+                  : undefined
+              }
+              describe={describe}
+              onResult={onResult}
+            />
+          </>
+        )}
       </div>
     </div>
   );

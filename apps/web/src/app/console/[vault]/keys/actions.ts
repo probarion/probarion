@@ -12,7 +12,7 @@ import {
   type KeyPurpose,
   type KeySyncState,
 } from "@/lib/keys/rules";
-import { discardKey, reuseOrGenerateKey, syncKeyStatuses } from "@/lib/keys/service";
+import { discardKey, keepKey, reuseOrGenerateKey, syncKeyStatuses } from "@/lib/keys/service";
 import { log } from "@/lib/log";
 import { getReader } from "@/lib/near/server";
 import { addAgentTx, setLedgerKeyTx, type WalletTx } from "@/lib/near/tx";
@@ -79,6 +79,31 @@ export async function discardKeyAction(
     log.info("keys.discarded", { tenant: member.tenant_id, id: r.id, changed: r.changed });
   } catch (error) {
     log.warn("keys.discard_failed", {
+      tenant: member.tenant_id,
+      error: error instanceof Error ? error.name : "unknown",
+    });
+  }
+  revalidatePath(`/console/${member.vault_id}/keys`);
+}
+
+/**
+ * Owner only. Keeps a key the owner discarded but that is on the vault after all (W-T10-R2): it
+ * becomes active only if the chain shows it exactly as the vault adds it, registered (the same full
+ * check a sync runs). A form action: it answers nothing; the page shows the new status.
+ */
+export async function keepKeyAction(
+  vault: string,
+  keyId: string,
+  _formData?: FormData,
+): Promise<void> {
+  const auth = await memberForAction(vault, ["owner"]);
+  if (isDenied(auth)) return;
+  const { member } = auth;
+  try {
+    const r = await keepKey(serviceDb(), getReader(), member, keyId);
+    log.info("keys.keep", { tenant: member.tenant_id, id: keyId, kept: r.kept, reason: r.reason });
+  } catch (error) {
+    log.warn("keys.keep_failed", {
       tenant: member.tenant_id,
       error: error instanceof Error ? error.name : "unknown",
     });

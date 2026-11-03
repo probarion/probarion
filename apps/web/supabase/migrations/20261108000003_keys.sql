@@ -31,11 +31,19 @@ alter table public.agent_keys add column chain_has_key boolean;
 alter table public.agent_keys add column chain_checked_at timestamptz;
 alter table public.agent_keys add column chain_seen boolean not null default false;
 
+-- When the owner discarded the key (W-T10-R2). A discarded key is never made active by a sync, even if it later shows
+-- up on chain exactly as the vault adds it: that is the discarded_on_chain state, and only the owner's Keep
+-- (agent_key_keep, after the same full check) makes it active.
+alter table public.agent_keys add column discarded_at timestamptz;
+
 comment on column public.agent_keys.key_version is
   'Rotation counter: 1 when the key is sealed, +1 each time scripts/rotate-keys.ts re-seals the row. It does not name '
   'the master that sealed the row (a row the live app seals under a new master starts at 1 again), so the rotation '
   'finds which master opens a row by trial decryption: the old one, then the new one.';
 comment on column public.agent_keys.revoked_at is 'When the key left active, as revoked or as removed.';
+comment on column public.agent_keys.activated_at is
+  'When the key FIRST became active. A key made active again (removed/revoked -> active) keeps this date, so an older '
+  'key coming back never looks newer than the key that replaced it (W-T10-R2).';
 
 -- A canonical uuid, or invalid_input: a malformed id must fail loudly, never as a cast error or an empty answer.
 create or replace function public.agent_key_uuid(v text) returns uuid
@@ -87,14 +95,16 @@ language sql stable set search_path = public, pg_temp as $$
       'id', k.id, 'tenant_id', k.tenant_id, 'purpose', k.purpose, 'public_key', k.public_key, 'label', k.label,
       'status', k.status, 'key_version', k.key_version, 'created_by', k.created_by, 'created_at', k.created_at,
       'activated_at', k.activated_at, 'revoked_at', k.revoked_at, 'chain_registered', k.chain_registered,
-      'chain_has_key', k.chain_has_key, 'chain_checked_at', k.chain_checked_at, 'chain_seen', k.chain_seen)
+      'chain_has_key', k.chain_has_key, 'chain_checked_at', k.chain_checked_at, 'chain_seen', k.chain_seen,
+      'discarded_at', k.discarded_at)
       order by k.created_at, k.id), '[]'::jsonb)
   from public.agent_keys k where k.tenant_id = public.agent_key_uuid(p->>'tenant_id')
 $$;
 
--- The sealed secret of the tenant's active key for a purpose: the most recently activated agent key, or THE ledger key
--- (at most one is active, agent_keys_one_active_ledger). Null when there is none. Only the server cycles (Payables,
--- Canary) call it, and they open the secret in memory.
+-- The sealed secret of the tenant's active key for a purpose: THE ledger key (at most one is active,
+-- agent_keys_one_active_ledger), or the agent key whose FIRST activation is the most recent. Null when there is none.
+-- A Payables / Canary cycle signs a spend with the key its mandate is bound to (agent_key_secret_for), never with
+-- "the newest" agent key. Only the server cycles call these, and they open the secret in memory.
 create or replace function public.agent_key_secret(p jsonb) returns jsonb
 language sql stable set search_path = public, pg_temp as $$
   select jsonb_build_object('public_key', k.public_key, 'secret_ciphertext', k.secret_ciphertext,
@@ -105,12 +115,47 @@ language sql stable set search_path = public, pg_temp as $$
   limit 1
 $$;
 
+-- The sealed secret of exactly this key: { tenant_id, public_key }, and only while it is active for this tenant (W-T10-R2).
+-- Null otherwise (not this tenant's, not active, unknown). A malformed public key is invalid_input.
+create or replace function public.agent_key_secret_for(p jsonb) returns jsonb
+language plpgsql stable set search_path = public, pg_temp as $$
+declare
+  v_tenant uuid := public.agent_key_uuid(p->>'tenant_id');
+  v_out jsonb;
+begin
+  if coalesce(p->>'public_key', '') !~ '^ed25519:[1-9A-HJ-NP-Za-km-z]{32,44}$' then
+    raise exception 'invalid_input';
+  end if;
+  select jsonb_build_object('public_key', k.public_key, 'purpose', k.purpose, 'secret_ciphertext', k.secret_ciphertext,
+                            'secret_nonce', k.secret_nonce, 'key_version', k.key_version)
+    into v_out
+    from public.agent_keys k
+    where k.tenant_id = v_tenant and k.public_key = p->>'public_key' and k.status = 'active';
+  return v_out;
+end $$;
+
+-- The one way a key becomes active (both agent_key_set_status and agent_key_keep use it). A ledger key retires any other
+-- active ledger key of the tenant in the same statement (set_ledger_key deleted it on chain). activated_at keeps the
+-- FIRST activation date. Not a (p jsonb) entry point: no caller but these two functions.
+create or replace function public.agent_key_make_active(p_tenant uuid, p_id uuid, p_purpose text) returns void
+language plpgsql set search_path = public, pg_temp as $$
+begin
+  if p_purpose = 'ledger' then
+    update public.agent_keys set status = 'revoked', revoked_at = now()
+      where tenant_id = p_tenant and purpose = 'ledger' and status = 'active' and id <> p_id;
+  end if;
+  update public.agent_keys set
+      status = 'active', activated_at = coalesce(activated_at, now()), revoked_at = null, discarded_at = null
+    where id = p_id and tenant_id = p_tenant;
+end $$;
+
 -- Compare-and-set: { tenant_id, id, from, status }. The transitions are pending -> active, active -> revoked, active ->
 -- removed, and revoked/removed -> active (anything else is invalid_input). The caller (syncKeyStatuses) asks for
 -- "-> active" only after the full activation check on exact chain state. A row whose status is no longer `from` is
--- left as it is and answered with changed = false (another sync got there first). Activating a ledger key retires any
--- other active ledger key of the tenant in the same statement: set_ledger_key deleted it on chain. (Should a stale read
--- retire the true key, the next sync activates the true key again the same way.)
+-- left as it is and answered with changed = false (another sync got there first). A discarded key is never made active
+-- here (discarded: only agent_key_keep does that). Activation goes through agent_key_make_active: a ledger key retires
+-- the other active one, and activated_at keeps the first activation date (W-T10-R2). (Should a stale read retire the
+-- true ledger key, the next sync activates it again the same way.)
 create or replace function public.agent_key_set_status(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
 declare
@@ -120,12 +165,13 @@ declare
   v_to text := p->>'status';
   v_purpose text;
   v_status text;
+  v_discarded timestamptz;
 begin
   if coalesce(v_from, '') || '>' || coalesce(v_to, '')
      not in ('pending>active', 'active>revoked', 'active>removed', 'revoked>active', 'removed>active') then
     raise exception 'invalid_input';
   end if;
-  select k.purpose, k.status into v_purpose, v_status
+  select k.purpose, k.status, k.discarded_at into v_purpose, v_status, v_discarded
     from public.agent_keys k where k.id = v_id and k.tenant_id = v_tenant
     for update;
   if not found then
@@ -134,15 +180,14 @@ begin
   if v_status <> v_from then
     return jsonb_build_object('id', v_id, 'status', v_status, 'changed', false);
   end if;
-  if v_to = 'active' and v_purpose = 'ledger' then
-    update public.agent_keys set status = 'revoked', revoked_at = now()
-      where tenant_id = v_tenant and purpose = 'ledger' and status = 'active' and id <> v_id;
+  if v_to = 'active' then
+    if v_discarded is not null then
+      raise exception 'discarded';
+    end if;
+    perform public.agent_key_make_active(v_tenant, v_id, v_purpose);
+  else
+    update public.agent_keys set status = v_to, revoked_at = now() where id = v_id;
   end if;
-  update public.agent_keys set
-      status = v_to,
-      activated_at = case when v_to = 'active' then now() else activated_at end,
-      revoked_at = case when v_to in ('revoked', 'removed') then now() else null end
-    where id = v_id;
   return jsonb_build_object('id', v_id, 'status', v_to, 'changed', true);
 end $$;
 
@@ -206,8 +251,9 @@ begin
   return v_out;
 end $$;
 
--- The owner discards a key that is still pending: pending -> removed (W-T10-R1). Any other status is left as it is and
--- answered with changed = false. Like any removed key, it is active again only if a sync sees it fully on chain.
+-- The owner discards a key that is still pending: pending -> removed, marked discarded (W-T10-R1, W-T10-R2). Any other
+-- status is left as it is and answered with changed = false. A sync never makes a discarded key active again; if it
+-- shows up on chain, the owner either removes it there or keeps it (agent_key_keep).
 create or replace function public.agent_key_discard(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
 declare
@@ -222,8 +268,33 @@ begin
   if v_status <> 'pending' then
     return jsonb_build_object('id', v_id, 'status', v_status, 'changed', false);
   end if;
-  update public.agent_keys set status = 'removed', revoked_at = now() where id = v_id;
+  update public.agent_keys set status = 'removed', revoked_at = now(), discarded_at = now() where id = v_id;
   return jsonb_build_object('id', v_id, 'status', 'removed', 'changed', true);
+end $$;
+
+-- The owner keeps a discarded key that is on chain after all (W-T10-R2): { tenant_id, id }. The caller (keepKey) asks
+-- only after the same full activation check a sync runs. Clears the discard marker and makes the key active through
+-- agent_key_make_active. A key that is not discarded, or already active, is answered with changed = false.
+create or replace function public.agent_key_keep(p jsonb) returns jsonb
+language plpgsql set search_path = public, pg_temp as $$
+declare
+  v_tenant uuid := public.agent_key_uuid(p->>'tenant_id');
+  v_id uuid := public.agent_key_uuid(p->>'id');
+  v_purpose text;
+  v_status text;
+  v_discarded timestamptz;
+begin
+  select k.purpose, k.status, k.discarded_at into v_purpose, v_status, v_discarded
+    from public.agent_keys k where k.id = v_id and k.tenant_id = v_tenant
+    for update;
+  if not found then
+    raise exception 'not_found';
+  end if;
+  if v_discarded is null or v_status = 'active' then
+    return jsonb_build_object('id', v_id, 'status', v_status, 'changed', false);
+  end if;
+  perform public.agent_key_make_active(v_tenant, v_id, v_purpose);
+  return jsonb_build_object('id', v_id, 'status', 'active', 'changed', true);
 end $$;
 
 -- Every active key of every tenant, with its vault, for the watcher's allowance check (Task 20). No sealed column.
@@ -297,12 +368,14 @@ end $$;
 revoke execute on function
   public.agent_key_uuid(text), public.agent_key_insert(jsonb), public.agent_key_list(jsonb),
   public.agent_key_secret(jsonb), public.agent_key_set_status(jsonb), public.agent_key_observe(jsonb),
-  public.agent_key_reuse_pending(jsonb), public.agent_key_discard(jsonb), public.agent_keys_active_all(jsonb),
+  public.agent_key_reuse_pending(jsonb), public.agent_key_discard(jsonb), public.agent_key_keep(jsonb),
+  public.agent_key_secret_for(jsonb), public.agent_key_make_active(uuid, uuid, text), public.agent_keys_active_all(jsonb),
   public.key_rotation_rows(jsonb), public.key_rotation_apply(jsonb)
   from public, anon, authenticated;
 grant execute on function
   public.agent_key_uuid(text), public.agent_key_insert(jsonb), public.agent_key_list(jsonb),
   public.agent_key_secret(jsonb), public.agent_key_set_status(jsonb), public.agent_key_observe(jsonb),
-  public.agent_key_reuse_pending(jsonb), public.agent_key_discard(jsonb), public.agent_keys_active_all(jsonb),
+  public.agent_key_reuse_pending(jsonb), public.agent_key_discard(jsonb), public.agent_key_keep(jsonb),
+  public.agent_key_secret_for(jsonb), public.agent_key_make_active(uuid, uuid, text), public.agent_keys_active_all(jsonb),
   public.key_rotation_rows(jsonb), public.key_rotation_apply(jsonb)
   to service_role;

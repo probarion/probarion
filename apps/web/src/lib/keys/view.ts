@@ -31,12 +31,20 @@ export interface KeyView {
   registered: boolean | null;
   /** The vault registers it, but its access key was never added (W-T10-R1). */
   stuck: boolean;
+  /** The owner discarded it, yet the last sync saw it registered with its access key (W-T10-R2). */
+  discardedOnChain: boolean;
 }
 
 export interface KeysView {
   keys: KeyView[];
   /** The tenant has an active ledger key (a new one replaces it). */
   ledgerActive: boolean;
+  /**
+   * The vault's ledger key is stuck (registered, its access key never added). set_ledger_key would
+   * try to delete that missing key and fail, so setting a new ledger key only moves the stuck
+   * pointer: the page turns ledger generation off until a contract fix (W-T10-R2).
+   */
+  ledgerStuck: boolean;
 }
 
 async function allowanceOf(
@@ -74,6 +82,8 @@ export async function loadKeysView(
         revoked_at: k.revoked_at,
         registered: k.chain_registered,
         stuck: k.chain_registered === true && k.chain_has_key === false,
+        discardedOnChain:
+          k.discarded_at !== null && k.chain_registered === true && k.chain_has_key === true,
         allowance:
           k.status === "active" ? await allowanceOf(reader, member.vault_id, k.public_key) : null,
       }),
@@ -82,5 +92,6 @@ export async function loadKeysView(
   return {
     keys,
     ledgerActive: keys.some((k) => k.purpose === "ledger" && k.status === "active"),
+    ledgerStuck: keys.some((k) => k.purpose === "ledger" && k.stuck),
   };
 }

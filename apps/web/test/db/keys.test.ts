@@ -6,9 +6,12 @@ import { openAgentSecret, sealAgentSecret } from "@/lib/crypto/secrets";
 import {
   discardKey,
   generateKey,
+  KeyMismatchError,
   type KeyRow,
+  keepKey,
   listKeys,
   loadActiveSecret,
+  loadActiveSecretFor,
   PENDING_REUSE_SECONDS,
   reuseOrGenerateKey,
   SYNC_READ_CONCURRENCY,
@@ -59,6 +62,7 @@ const KEY_ROW_FIELDS: (keyof KeyRow)[] = [
   "chain_seen",
   "created_at",
   "created_by",
+  "discarded_at",
   "id",
   "key_version",
   "label",
@@ -1023,6 +1027,220 @@ describe("agent and ledger keys (service + SQL)", () => {
     });
   });
 
+  describe("W-T10-R2: the key a payment signs with", () => {
+    const activate = (tenantId: string, id: string, from = "pending") =>
+      db().rpc("agent_key_set_status", { tenant_id: tenantId, id, from, status: "active" });
+    const activatedAt = async (id: string) =>
+      (
+        await pg.query<{ a: string }>(
+          "select activated_at::text as a from agent_keys where id = $1",
+          [id],
+        )
+      ).rows[0]?.a;
+    const pause = () => new Promise((r) => setTimeout(r, 5));
+
+    it("a reactivated older key keeps its first activation date and never displaces the current key", async () => {
+      const t = await tenant();
+      const tt = { tenant_id: t.id, vault_id: t.vault };
+      const k1 = await pending("agent", t);
+      const k2 = await pending("agent", t);
+      await activate(t.id, k1.keyId);
+      await pause();
+      await activate(t.id, k2.keyId); // K2 is the current key: the mandates are bound to it
+      const k1First = await activatedAt(k1.keyId);
+      const k2First = await activatedAt(k2.keyId);
+      expect((await loadActiveSecret(db(), MASTER, t.id, "agent"))?.publicKey).toBe(k2.publicKey);
+
+      // A lagging node: K1 is gone, then back, through the full check.
+      const keys = {
+        [k1.publicKey]: fc(t.vault, ["spend"]),
+        [k2.publicKey]: fc(t.vault, ["spend"]),
+      };
+      const agents = [k1.publicKey, k2.publicKey];
+      await syncKeyStatuses(
+        db(),
+        chainReader(t.vault, { agents, keys: { ...keys, [k1.publicKey]: NO_KEY } }),
+        tt,
+      );
+      expect(await statusOf(k1.keyId)).toBe("removed");
+      await pause();
+      const r = await syncKeyStatuses(db(), chainReader(t.vault, { agents, keys }), tt);
+      expect(r.checks.find((c) => c.id === k1.keyId)?.reason).toBe("reactivated");
+      expect(await activatedAt(k1.keyId)).toBe(k1First);
+      expect((await loadActiveSecret(db(), MASTER, t.id, "agent"))?.publicKey).toBe(k2.publicKey);
+
+      // The same for K2: gone and back, it is still the current key, with its first date.
+      await syncKeyStatuses(
+        db(),
+        chainReader(t.vault, { agents, keys: { ...keys, [k2.publicKey]: NO_KEY } }),
+        tt,
+      );
+      await pause();
+      await syncKeyStatuses(db(), chainReader(t.vault, { agents, keys }), tt);
+      expect(await statusOf(k2.keyId)).toBe("active");
+      expect(await activatedAt(k2.keyId)).toBe(k2First);
+      expect((await loadActiveSecret(db(), MASTER, t.id, "agent"))?.publicKey).toBe(k2.publicKey);
+    });
+
+    it("loadActiveSecretFor opens exactly the bound key while it is active, and refuses everything else", async () => {
+      const t = await tenant();
+      const bound = await pending("agent", t);
+      const newer = await pending("agent", t);
+      await activate(t.id, bound.keyId);
+      await pause();
+      await activate(t.id, newer.keyId);
+      // The mandate's key, though not the newest.
+      expect(await loadActiveSecretFor(db(), MASTER, t.id, bound.publicKey)).toEqual({
+        publicKey: bound.publicKey,
+        secret: bound.secret,
+      });
+      expect((await loadActiveSecretFor(db(), MASTER, t.id, newer.publicKey))?.secret).toBe(
+        newer.secret,
+      );
+      // Pending, removed, another tenant's, unknown: null.
+      const p = await pending("agent", t);
+      expect(await loadActiveSecretFor(db(), MASTER, t.id, p.publicKey)).toBeNull();
+      await db().rpc("agent_key_set_status", {
+        tenant_id: t.id,
+        id: bound.keyId,
+        from: "active",
+        status: "removed",
+      });
+      expect(await loadActiveSecretFor(db(), MASTER, t.id, bound.publicKey)).toBeNull();
+      const other = await tenant();
+      expect(await loadActiveSecretFor(db(), MASTER, other.id, newer.publicKey)).toBeNull();
+      const unknown = KeyPair.fromRandom("ed25519").getPublicKey().toString();
+      expect(await loadActiveSecretFor(db(), MASTER, t.id, unknown)).toBeNull();
+      await expect(loadActiveSecretFor(db(), MASTER, t.id, "ed25519:short")).rejects.toMatchObject({
+        code: "invalid_input",
+      });
+      // A ciphertext in the wrong row is refused, never opened as another key.
+      await pg.query(
+        `update agent_keys set secret_ciphertext = s.secret_ciphertext, secret_nonce = s.secret_nonce
+           from (select secret_ciphertext, secret_nonce from agent_keys where id = $1) s where id = $2`,
+        [p.keyId, newer.keyId],
+      );
+      const e = await loadActiveSecretFor(db(), MASTER, t.id, newer.publicKey).catch(
+        (x: unknown) => x,
+      );
+      expect(e).toBeInstanceOf(KeyMismatchError);
+      expectNoSecret(String((e as Error).message), p.secret);
+    });
+
+    it("a discarded key that appears on chain is never made active by a sync, and set_status refuses it", async () => {
+      const t = await tenant();
+      const k = await pending("agent", t);
+      await discardKey(db(), t.id, k.keyId);
+      const on = { agents: [k.publicKey], keys: { [k.publicKey]: fc(t.vault, ["spend"]) } };
+      const r = await syncKeyStatuses(db(), chainReader(t.vault, on), {
+        tenant_id: t.id,
+        vault_id: t.vault,
+      });
+      expect(r.checks[0]).toMatchObject({
+        from: "removed",
+        to: "removed",
+        reason: "discarded_on_chain",
+      });
+      expect(r.keys[0]).toMatchObject({
+        status: "removed",
+        chain_registered: true,
+        chain_has_key: true,
+      });
+      expect(r.keys[0]?.discarded_at).not.toBeNull();
+      expect(await loadActiveSecret(db(), MASTER, t.id, "agent")).toBeNull();
+      await expect(activate(t.id, k.keyId, "removed")).rejects.toMatchObject({ code: "discarded" });
+      expect(await statusOf(k.keyId)).toBe("removed");
+    });
+
+    it("Keep makes a discarded key active only through the same full check", async () => {
+      const t = await tenant();
+      const k = await pending("agent", t);
+      await discardKey(db(), t.id, k.keyId);
+      const tt = { tenant_id: t.id, vault_id: t.vault };
+      // Short of the full check: nothing changes.
+      const partials: Chain[] = [
+        { agents: [], keys: { [k.publicKey]: fc(t.vault, ["spend"]) } },
+        {
+          agents: [k.publicKey],
+          keys: { [k.publicKey]: fc(t.vault, ["spend"], { kind: "GasKeyFunctionCall" }) },
+        },
+        { agents: [k.publicKey] },
+        { agents: [k.publicKey], keys: { [k.publicKey]: transportError() } },
+      ];
+      for (const partial of partials) {
+        expect((await keepKey(db(), chainReader(t.vault, partial), tt, k.keyId)).kept).toBe(false);
+        expect(await statusOf(k.keyId)).toBe("removed");
+      }
+      const on = { agents: [k.publicKey], keys: { [k.publicKey]: fc(t.vault, ["spend"]) } };
+      expect(await keepKey(db(), chainReader(t.vault, on), tt, k.keyId)).toEqual({
+        kept: true,
+        reason: "reactivated",
+      });
+      const row = (await listKeys(db(), t.id))[0];
+      expect(row).toMatchObject({ status: "active", discarded_at: null, revoked_at: null });
+      expect(row?.activated_at).not.toBeNull();
+      expect((await loadActiveSecretFor(db(), MASTER, t.id, k.publicKey))?.secret).toBe(k.secret);
+      // A key that is not discarded is never kept; another tenant's id is not found.
+      expect((await keepKey(db(), chainReader(t.vault, on), tt, k.keyId)).reason).toBe(
+        "not_discarded",
+      );
+      const other = await tenant();
+      const theirs = { tenant_id: other.id, vault_id: t.vault };
+      expect((await keepKey(db(), chainReader(t.vault, on), theirs, k.keyId)).reason).toBe(
+        "not_found",
+      );
+      // agent_key_keep itself: another tenant is not_found, a non-discarded key is changed:false.
+      await expect(
+        db().rpc("agent_key_keep", { tenant_id: other.id, id: k.keyId }),
+      ).rejects.toMatchObject({ code: "not_found" });
+      expect(await db().rpc("agent_key_keep", { tenant_id: t.id, id: k.keyId })).toMatchObject({
+        changed: false,
+      });
+    });
+
+    it("Keep refuses a key the owner never discarded, even one on chain (only a sync activates that)", async () => {
+      const t = await tenant();
+      const tt = { tenant_id: t.id, vault_id: t.vault };
+      const k = await pending("agent", t);
+      await activate(t.id, k.keyId);
+      await db().rpc("agent_key_set_status", {
+        tenant_id: t.id,
+        id: k.keyId,
+        from: "active",
+        status: "removed",
+      });
+      const on = { agents: [k.publicKey], keys: { [k.publicKey]: fc(t.vault, ["spend"]) } };
+      expect(await keepKey(db(), chainReader(t.vault, on), tt, k.keyId)).toEqual({
+        kept: false,
+        reason: "not_discarded",
+      });
+      expect(await statusOf(k.keyId)).toBe("removed");
+      // agent_key_keep itself leaves a removed key that was never discarded as it is.
+      expect(await db().rpc("agent_key_keep", { tenant_id: t.id, id: k.keyId })).toEqual({
+        id: k.keyId,
+        status: "removed",
+        changed: false,
+      });
+      expect(await statusOf(k.keyId)).toBe("removed");
+    });
+
+    it("Keep of a discarded ledger key retires the other active ledger key", async () => {
+      const t = await tenant();
+      const a = await pending("ledger", t);
+      const b = await pending("ledger", t);
+      await activate(t.id, a.keyId);
+      await discardKey(db(), t.id, b.keyId);
+      const on = {
+        ledgerKey: b.publicKey,
+        keys: { [a.publicKey]: NO_KEY, [b.publicKey]: fc(t.vault, ["anchor"]) },
+      };
+      const tt = { tenant_id: t.id, vault_id: t.vault };
+      expect((await keepKey(db(), chainReader(t.vault, on), tt, b.keyId)).kept).toBe(true);
+      expect(await statusOf(b.keyId)).toBe("active");
+      expect(await statusOf(a.keyId)).toBe("revoked");
+    });
+  });
+
   describe("privileges: the secret never leaves through the database API", () => {
     const FUNCTIONS = [
       "agent_key_uuid(text)",
@@ -1033,6 +1251,9 @@ describe("agent and ledger keys (service + SQL)", () => {
       "agent_key_observe(jsonb)",
       "agent_key_reuse_pending(jsonb)",
       "agent_key_discard(jsonb)",
+      "agent_key_keep(jsonb)",
+      "agent_key_secret_for(jsonb)",
+      "agent_key_make_active(uuid, uuid, text)",
       "agent_keys_active_all(jsonb)",
       "key_rotation_rows(jsonb)",
       "key_rotation_apply(jsonb)",
@@ -1074,6 +1295,8 @@ describe("agent and ledger keys (service + SQL)", () => {
           "agent_key_observe",
           "agent_key_reuse_pending",
           "agent_key_discard",
+          "agent_key_keep",
+          "agent_key_secret_for",
           "agent_keys_active_all",
           "key_rotation_rows",
           "key_rotation_apply",

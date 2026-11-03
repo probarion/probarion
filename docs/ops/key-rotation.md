@@ -120,7 +120,9 @@ is why the command uses trial decryption.
    console Keys page, for each agent key: Remove (sign in your wallet), then generate a new agent key
    and add it. For the ledger key: generate a new ledger key and set it (this removes the old one from
    the vault). Then re-check that no old key is still `active`. Do this after step 5, so the new keys
-   are sealed under the new master.
+   are sealed under the new master. **Then create new mandates for the new agent key:** every mandate
+   is bound to one agent key (`agent_pk`), and the old ones are bound to the key you removed, so the
+   vault refuses every spend under them. Revoke the old mandates once the new ones are in place.
 
 ## If something goes wrong
 

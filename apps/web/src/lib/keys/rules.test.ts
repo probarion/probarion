@@ -228,6 +228,32 @@ describe("nextStatus", () => {
     });
   });
 
+  it("never makes a discarded key active, even on the full check: it reports it on chain instead", () => {
+    const discarded = { purpose: "agent" as const, status: "removed" as const, discarded: true };
+    expect(nextStatus(discarded, VAULT, seen(fc(["spend"])))).toEqual({
+      to: "removed",
+      reason: "discarded_on_chain",
+    });
+    expect(nextStatus({ ...discarded, purpose: "ledger" }, VAULT, seen(fc(["anchor"])))).toEqual({
+      to: "removed",
+      reason: "discarded_on_chain",
+    });
+    // Short of the full check it is an ordinary key out of use (or stuck).
+    expect(nextStatus(discarded, VAULT, seen(fc(["spend"]), false))).toEqual({
+      to: "removed",
+      reason: "inactive",
+    });
+    expect(nextStatus(discarded, VAULT, seen(NO_KEY, true))).toEqual({
+      to: "removed",
+      reason: "registered_without_key",
+    });
+    // Not discarded: the same chain state makes it active again.
+    expect(nextStatus({ ...discarded, discarded: false }, VAULT, seen(fc(["spend"])))).toEqual({
+      to: "active",
+      reason: "reactivated",
+    });
+  });
+
   it("makes a revoked or removed key active again only through the full activation check", () => {
     for (const status of ["revoked", "removed"] as const) {
       expect(nextStatus(row("agent", status), VAULT, seen(fc(["spend"])))).toEqual({
@@ -311,6 +337,16 @@ describe("describeCheck", () => {
     expect(describeCheck(check("still_active", "active"))).toBeNull();
     // A key out of use whose read failed is not worth a note.
     expect(describeCheck({ ...check("unreadable", "removed"), from: "removed" })).toBeNull();
+  });
+
+  it("words a discarded key on chain by what the page offers", () => {
+    const agent = describeCheck(check("discarded_on_chain", "removed"));
+    expect(agent).toMatch(/on the vault although you discarded it/);
+    expect(agent).toMatch(/Remove it/);
+    expect(agent).toMatch(/Keep it/);
+    const ledger = describeCheck({ ...check("discarded_on_chain", "removed"), purpose: "ledger" });
+    expect(ledger).toMatch(/ledger key although you discarded it/);
+    expect(ledger).toMatch(/Keep it/);
   });
 
   it("words the stuck state by what the page can do, and never says to wait", () => {
