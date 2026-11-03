@@ -71,7 +71,7 @@ The software is an unaudited beta.
   its first activation date; and a discarded key that shows up on chain is reported, for the owner to
   keep or remove.
 - Web console, keys: only the ledger key can be loaded as "the active key"; every payment loads the
-  agent key named by its mandate, so a ledger key can never sign a payment. A ledger key that is
+  agent key named by its mandate, not the ledger key. A ledger key that is
   stuck now says what to do for this vault's code: a vault built before the `set_ledger_key` fix needs
   a new vault, and a vault on the fixed code can set a new ledger key. A `set_ledger_key` that
   recovers a stuck key, whose only failed receipt is the delete of the missing old key, is shown as
