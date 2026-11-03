@@ -3,6 +3,7 @@ import { NETWORKS } from "@probarion/core";
 import { describe, expect, it } from "vitest";
 import {
   EXPIRED_REVOKE_NOTE,
+  EXPIRED_REVOKE_NOTE_UNKNOWN,
   expiryText,
   mandateState,
   payeeView,
@@ -49,21 +50,49 @@ describe("honest mandate status", () => {
       expect(s, status).toMatchObject({ key: "expired", canRevoke: true });
       expect(s.revokeNote, status).toBe(EXPIRED_REVOKE_NOTE);
     }
-    expect(EXPIRED_REVOKE_NOTE).toContain("stops its held payments from being approved");
+    expect(EXPIRED_REVOKE_NOTE).toContain("stops any held payments from being approved");
   });
 
-  it("an expired mandate offers Revoke for any positive reserved figure, and none for zero or an unreadable one", () => {
+  it("the notes promise only what Revoke does, and never that funds come back", () => {
+    // reserved > 0 can also be a payout already pending, or a hold already past its held_until: those are
+    // not changed by a revoke, so the notes speak of "any held payments" and nothing else
+    for (const note of [EXPIRED_REVOKE_NOTE, EXPIRED_REVOKE_NOTE_UNKNOWN]) {
+      expect(note).toContain("stops any held payments from being approved");
+      expect(note).not.toMatch(/refund|back to|returned|released|recover/i);
+    }
+    expect(EXPIRED_REVOKE_NOTE_UNKNOWN).toMatch(/could not be read/);
+    expect(EXPIRED_REVOKE_NOTE).not.toMatch(/could not be read/);
+  });
+
+  it("an expired mandate offers Revoke for any positive reserved figure, none for zero, and fails open when the figure cannot be read", () => {
     const expired = ns("2026-11-01T23:59:59Z");
-    expect(st("active", expired, "340282366920938463463374607431768211455").canRevoke).toBe(true);
-    expect(st("active", expired, "0").canRevoke).toBe(false);
+    expect(st("active", expired, "340282366920938463463374607431768211455")).toMatchObject({
+      canRevoke: true,
+      revokeNote: EXPIRED_REVOKE_NOTE,
+    });
+    expect(st("active", expired, "0")).toMatchObject({ canRevoke: false, revokeNote: null });
+    // Revoking an expired mandate costs gas and nothing else, so a figure nobody can read errs towards offering it
     for (const bad of ["", "x", "-1", "1.5", "01"]) {
-      expect(st("active", expired, bad), bad).toMatchObject({ canRevoke: false, revokeNote: null });
+      expect(st("active", expired, bad), bad).toMatchObject({
+        key: "expired",
+        canRevoke: true,
+        revokeNote: EXPIRED_REVOKE_NOTE_UNKNOWN,
+      });
     }
     expect(
       mandateState({ status: "active", expires_at_ns: expired } as never, NOW_MS),
-    ).toMatchObject({
-      canRevoke: false,
+    ).toMatchObject({ canRevoke: true, revokeNote: EXPIRED_REVOKE_NOTE_UNKNOWN });
+    expect(st("exhausted", expired, "x")).toMatchObject({
+      canRevoke: true,
+      revokeNote: EXPIRED_REVOKE_NOTE_UNKNOWN,
     });
+  });
+
+  it("failing open stops at what cannot be Revoked: revoked, and a status or an expiry nobody can read", () => {
+    const expired = ns("2026-11-01T23:59:59Z");
+    expect(st("revoked", expired, "x")).toMatchObject({ key: "revoked", canRevoke: false });
+    expect(st("frozen", expired, "x")).toMatchObject({ key: "unknown", canRevoke: false });
+    expect(st("active", "soon", "x")).toMatchObject({ key: "unknown", canRevoke: false });
   });
 
   it("a mandate in date never carries the expired note, whatever is reserved", () => {

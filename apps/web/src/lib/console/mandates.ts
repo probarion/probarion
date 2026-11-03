@@ -390,6 +390,24 @@ const EVM_SHAPED = /^0x[0-9a-fA-F]{40}$/;
 const IMPLICIT_64 = /^[0-9a-f]{64}$/;
 
 /**
+ * An implicit account: 64 hex, or the `0x` + 40 hex (ETH-implicit) form. It does not exist on chain until
+ * it is funded, so asking whether it exists tells nothing, and nearPayeeWarnings already decides these.
+ */
+export function isImplicitAccount(name: string): boolean {
+  return IMPLICIT_64.test(name) || EVM_SHAPED.test(name);
+}
+
+/**
+ * The NEAR account the console asks the chain about for a payee field, or null when it asks nothing: a
+ * Base payee, text that is not an account id, and every implicit account.
+ */
+export function payeeToCheck(payeeKind: "near" | "base", payee: string): string | null {
+  if (payeeKind !== "near") return null;
+  const name = payee.trim();
+  return isNearAccountId(name) && !isImplicitAccount(name) ? name : null;
+}
+
+/**
  * Notes under a NEAR payee. A `0x` + 40 hex string is valid as a NEAR account id (an ETH-implicit
  * account) but is almost always meant as a Base address, so it is called out. A named account that does
  * not exist yet is called out too; implicit accounts (64 hex, or the `0x` form) do not exist until they
@@ -403,7 +421,7 @@ export function nearPayeeWarnings(a: {
   if (a.payeeKind !== "near") return [];
   const payee = a.payee.trim();
   if (EVM_SHAPED.test(payee)) return [ETH_IMPLICIT_WARNING];
-  if (!isNearAccountId(payee) || IMPLICIT_64.test(payee)) return [];
+  if (!isNearAccountId(payee) || isImplicitAccount(payee)) return [];
   if (a.exists === false) return [MISSING_ACCOUNT_WARNING];
   if (a.exists === "unreadable") return [UNCHECKED_ACCOUNT_NOTE];
   return [];

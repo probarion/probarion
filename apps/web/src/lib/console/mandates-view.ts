@@ -57,7 +57,10 @@ export interface MandateState {
 
 /** W-T9-R1: what Revoke does on an expired mandate that still has funds reserved. */
 export const EXPIRED_REVOKE_NOTE =
-  "Expired, but part of it is still reserved by held or pending payments. Revoking stops its held payments from being approved.";
+  "Expired, but part of it is still reserved by held or pending payments. Revoking stops any held payments from being approved.";
+/** The same offer when the reserved figure could not be read: it says so, and claims no amount. */
+export const EXPIRED_REVOKE_NOTE_UNKNOWN =
+  "Expired, and how much of it is still reserved could not be read. Revoking stops any held payments from being approved.";
 
 /**
  * The chain's `status` is active, revoked or exhausted; it never says expired, because expiry is a
@@ -68,12 +71,16 @@ export const EXPIRED_REVOKE_NOTE =
  *  - active or exhausted, in date: offered. (A released spend gives its use back, so an exhausted
  *    mandate can pay again.)
  *  - revoked: never. Revoked wins over expired.
- *  - expired: offered only while funds are still reserved (`reserved > 0`, held or pending
- *    payments). `approve` does not look at the mandate's expiry, only that it is not revoked, so a spend
- *    that was held before the expiry can still be paid after it. Revoking is what stops that (it makes
- *    `approve` fail with MandateInactive). A payout already pending still settles either way. With
- *    nothing reserved there is nothing left to stop, so no Revoke.
- *  - a status, expiry or reserved figure that cannot be read: nothing is offered.
+ *  - expired: offered while funds are reserved (`reserved > 0`), and ALSO when the reserved figure
+ *    cannot be read. `approve` does not look at the mandate's expiry, only that it is not revoked, so a
+ *    spend that was held before the expiry can still be paid after it. Revoking is what stops that (it
+ *    makes `approve` fail with MandateInactive). It changes nothing else: a payout already pending still
+ *    settles, and a hold already past its `held_until` is refused by `approve` anyway. So `reserved > 0`
+ *    does not promise a held payment exists, and the notes say "stops any held payments from being
+ *    approved", never that funds come back. Revoking an expired mandate costs gas and nothing else, so an
+ *    unreadable figure fails open (the offer comes with a note that says the figure was unreadable). A
+ *    figure that reads as 0 leaves nothing to stop: no Revoke.
+ *  - a status or an expiry that cannot be read: nothing is offered.
  */
 export function mandateState(
   m: Pick<MandateView, "status" | "expires_at_ns" | "reserved">,
@@ -102,14 +109,19 @@ export function mandateState(
     };
   }
   if (BigInt(Math.floor(nowMs)) * NS_PER_MS >= BigInt(m.expires_at_ns)) {
-    const held =
-      typeof m.reserved === "string" && DIGITS.test(m.reserved) && BigInt(m.reserved) > 0n;
+    const reserved =
+      typeof m.reserved === "string" && DIGITS.test(m.reserved) ? BigInt(m.reserved) : null;
     return {
       key: "expired",
       tone: "neutral",
       label: "expired",
-      canRevoke: held,
-      revokeNote: held ? EXPIRED_REVOKE_NOTE : null,
+      canRevoke: reserved !== 0n,
+      revokeNote:
+        reserved === 0n
+          ? null
+          : reserved === null
+            ? EXPIRED_REVOKE_NOTE_UNKNOWN
+            : EXPIRED_REVOKE_NOTE,
     };
   }
   return { key: status, ...mandateStatusView(status), canRevoke: true, revokeNote: null };

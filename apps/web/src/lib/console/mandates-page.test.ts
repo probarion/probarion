@@ -101,7 +101,7 @@ import { MANDATE_STORAGE_DEPOSIT, TGAS, type WalletTx } from "@/lib/near/tx";
 import { formatNear } from "@/lib/near/units";
 import { CHANGED_SINCE_REVIEW, createLockKey } from "./mandate-create";
 import type { MandateForm } from "./mandates";
-import { EXPIRED_REVOKE_NOTE } from "./mandates-view";
+import { EXPIRED_REVOKE_NOTE, EXPIRED_REVOKE_NOTE_UNKNOWN } from "./mandates-view";
 
 // stderr stays clean, and the events are asserted
 const warn = vi.spyOn(log, "warn").mockImplementation(() => {});
@@ -783,9 +783,23 @@ describe("W-T9-R1: Revoke where it still changes what the contract does, and onl
     const out = await html();
     expect(revoked()).toEqual([1]);
     expect(out.split(EXPIRED_REVOKE_NOTE).length - 1).toBe(1); // the note sits with that one button
-    expect(out).toContain("stops its held payments from being approved");
+    expect(out).toContain("stops any held payments from being approved");
     expect(out).toContain(">expired<");
     expect(out).toContain(">revoked<");
+  });
+
+  it("offers Revoke on an expired mandate whose reserved figure cannot be read, with the note that says so", async () => {
+    chain({
+      mandates: [
+        mandate({ id: 1, expires_at_ns: nsIn(-DAY), reserved: "not a number" }),
+        mandate({ id: 2, expires_at_ns: nsIn(-DAY), reserved: "0" }),
+      ],
+    });
+    await signInAs("acme.near");
+    const out = await html();
+    expect(revoked()).toEqual([1]);
+    expect(out.split(EXPIRED_REVOKE_NOTE_UNKNOWN).length - 1).toBe(1);
+    expect(out).not.toContain(EXPIRED_REVOKE_NOTE); // not the note that claims a reserved amount
   });
 
   it("shows an approver neither the Revoke nor the note", async () => {

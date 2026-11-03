@@ -11,6 +11,7 @@ import {
   floatFor,
   floatFromRead,
   floatWarning,
+  isImplicitAccount,
   LABEL_MAX_BYTES,
   MAX_EXPIRY_AHEAD_MS,
   MAX_USES_BETA,
@@ -19,6 +20,7 @@ import {
   MIN_EXPIRY_AHEAD_MS,
   MISSING_ACCOUNT_WARNING,
   nearPayeeWarnings,
+  payeeToCheck,
   tryUsdcUnits,
   UNCHECKED_ACCOUNT_NOTE,
 } from "./mandates";
@@ -826,5 +828,53 @@ describe("blankForm: the form after a confirmed create", () => {
   });
   it("cannot be signed as it is: a finished mandate does not leave a ready-to-sign copy behind", () => {
     expect(buildMandateInput(blankForm(AGENT), ctx).ok).toBe(false);
+  });
+});
+
+describe("isImplicitAccount and payeeToCheck: which NEAR payees are looked up", () => {
+  const SIXTY_FOUR = "ab".repeat(32);
+  const ETH_IMPLICIT = `0x${"ab".repeat(20)}`;
+
+  it("knows an implicit account: 64 hex, or 0x and 40 hex", () => {
+    expect(isImplicitAccount(SIXTY_FOUR)).toBe(true);
+    expect(isImplicitAccount(ETH_IMPLICIT)).toBe(true);
+    for (const named of [
+      "designer.near",
+      "ab",
+      `${"ab".repeat(31)}a`,
+      `${SIXTY_FOUR}0`,
+      `0x${"ab".repeat(19)}`,
+    ]) {
+      expect(isImplicitAccount(named), named).toBe(false);
+    }
+  });
+
+  it("looks up a named NEAR account, trimmed", () => {
+    expect(payeeToCheck("near", "designer.near")).toBe("designer.near");
+    expect(payeeToCheck("near", "  designer.near \n")).toBe("designer.near");
+  });
+
+  it("looks up nothing for an implicit account: nearPayeeWarnings already decides those", () => {
+    expect(payeeToCheck("near", SIXTY_FOUR)).toBeNull();
+    expect(payeeToCheck("near", ETH_IMPLICIT)).toBeNull();
+    expect(payeeToCheck("near", `  ${ETH_IMPLICIT} `)).toBeNull();
+  });
+
+  it("looks up nothing for a Base payee, an empty field, or text that is not an account id", () => {
+    expect(payeeToCheck("base", "designer.near")).toBeNull();
+    expect(payeeToCheck("base", ETH_IMPLICIT)).toBeNull();
+    for (const bad of ["", "   ", "a", "Designer.near", "al ice.near", `${"x".repeat(70)}`]) {
+      expect(payeeToCheck("near", bad), bad).toBeNull();
+    }
+  });
+
+  it("agrees with the notes: every payee it skips is one the notes already decide, or not an account at all", () => {
+    for (const p of [SIXTY_FOUR, ETH_IMPLICIT]) {
+      expect(payeeToCheck("near", p)).toBeNull();
+      // the note never depends on a lookup for these
+      expect(nearPayeeWarnings({ payeeKind: "near", payee: p, exists: false })).toEqual(
+        nearPayeeWarnings({ payeeKind: "near", payee: p, exists: null }),
+      );
+    }
   });
 });

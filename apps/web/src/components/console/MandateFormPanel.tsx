@@ -18,12 +18,13 @@ import {
   type MandateForm,
   nearPayeeWarnings,
   type PayeeExists,
+  payeeToCheck,
   tryUsdcUnits,
 } from "@/lib/console/mandates";
 import { expiryText } from "@/lib/console/mandates-view";
 import { MANDATE_STORAGE_DEPOSIT } from "@/lib/near/tx";
 import { formatNear, formatUsdc } from "@/lib/near/units";
-import { isNearAccountId, parseBaseAddress } from "@/lib/near/validate";
+import { parseBaseAddress } from "@/lib/near/validate";
 import { sha256HexOf } from "./sha256";
 
 /** A purpose document is read into memory to hash it: a PO is a few pages, so this is generous. */
@@ -59,6 +60,9 @@ export function MandateFormPanel(props: {
     ...props.initialForm,
   });
   const [fileNote, setFileNote] = useState<string | null>(null);
+  // The file input is uncontrolled, so a new form needs a new input: changing its key makes React mount a
+  // fresh one, and the old file name does not stay on screen beside a blank hash.
+  const [fileKey, setFileKey] = useState(0);
   const [payeeCheck, setPayeeCheck] = useState<{
     account: string;
     exists: boolean | null;
@@ -94,9 +98,9 @@ export function MandateFormPanel(props: {
 
   // Does the NEAR account typed as the payee exist? Asked on the server once the owner stops typing.
   // Only a note: the vault accepts any valid account id.
-  const payeeAccount = form.payeeKind === "near" ? form.payee.trim() : "";
+  const payeeAccount = payeeToCheck(form.payeeKind, form.payee);
   useEffect(() => {
-    if (!isNearAccountId(payeeAccount)) return;
+    if (payeeAccount === null) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       let exists: boolean | null = null;
@@ -158,6 +162,7 @@ export function MandateFormPanel(props: {
     onCreated: () => {
       setForm(blankForm(firstAgent));
       setFileNote(null);
+      setFileKey((k) => k + 1);
       setPayeeCheck(null);
     },
   });
@@ -203,7 +208,7 @@ export function MandateFormPanel(props: {
         label="Purpose document (PO or contract)"
         hint="Hashed in your browser: the file never leaves your device and only its sha256 goes on-chain. Keep this same document: you attach it to the invoices it covers later, and an invoice is only paid when its PO hashes to this value."
       >
-        <input type="file" onChange={onFile} />
+        <input key={fileKey} type="file" onChange={onFile} />
       </Field>
       {fileNote ? <p className={`-mt-2 mb-3 text-xs ${muted}`}>{fileNote}</p> : null}
       <Field label="Purpose hash (sha256, 64 hex)" error={err("purposeHash")}>
