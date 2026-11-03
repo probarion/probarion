@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability privately
+    url: https://github.com/probarion/probarion/security/advisories/new
+    about: "Never in a public issue. As SECURITY.md says, DM @probarionhq on X that you have a report (no details), or use this private form once private reporting is switched on."
+  - name: Questions and build updates on X
+    url: https://x.com/probarionhq
+    about: "Follow the build, or ask a question, at @probarionhq on X."

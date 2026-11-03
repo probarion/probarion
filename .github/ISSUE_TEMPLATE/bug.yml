@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in Probarion does not work as its docs say.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste a private key, a seed phrase, an API key or a value from `.env`.** Account ids, transaction hashes and code hashes are fine.
+        A security weakness does not go here: [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md) says how to report one privately.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: "The npm package version, or the git commit (`git rev-parse --short HEAD`)."
+      placeholder: "dev at c7d192b"
+    validations:
+      required: true
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network
+      options:
+        - testnet
+        - mainnet
+        - sandbox or local only
+    validations:
+      required: true
+  - type: input
+    id: vault
+    attributes:
+      label: Vault account
+      description: The vault's NEAR account, if a vault is involved.
+      placeholder: v0.probarion.testnet
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The command, call or page, the steps, and what you saw (errors as text, not screenshots).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: verify-output
+    attributes:
+      label: Verifier output, if relevant
+      description: "The `VerifyReport` JSON from `verify()` in `@probarion/sdk`, or `probarion verify --json` once the CLI ships that command. It holds account ids, public keys and hashes, no secret."
+      render: json
