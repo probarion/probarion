@@ -1,8 +1,7 @@
 // R5 parity: what /proof shows is what `probarion verify --offline snapshot.json` reports on the file the page
 // lets you download. The bytes come from the snapshot route's own response; they are parsed back, checked by core,
 // and verified by the CLI itself (its `--offline` input checks included), in-process and with no network.
-import { execFile } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +20,7 @@ import { makeProofReader } from "@/lib/proof/reader";
 import { clearProofCache, loadProof, type ProofDeps, type ProofOk } from "@/lib/proof/service";
 import { snapshotFileName, snapshotResponse } from "@/lib/proof/snapshot-file";
 import { headline } from "@/lib/proof/view";
+import { runBuiltCli, shownArgs } from "./fixtures/cli-bin";
 import { appendBody } from "./fixtures/ledger";
 import { noServiceDb, type ProofState, proofSnapshot, publicDbFor } from "./fixtures/proof";
 import { type ChainRpc, startChainRpc } from "./fixtures/rpc";
@@ -197,27 +197,17 @@ describe("snapshot.json parity with probarion verify --offline", () => {
 // Child processes of the built CLI: give them room on a slow machine.
 vi.setConfig({ testTimeout: 60_000 });
 
-/** The repository folder the page's command runs from: this checkout. */
-const REPO = fileURLToPath(new URL("../../../", import.meta.url));
-
 /**
- * The page's own command, `node packages/cli/dist/bin.js verify --offline <file>`, run as a child process of the
- * built CLI in a folder that holds the downloaded file under its served name. Offline: no RPC, no network.
+ * The page's own command, `cli("verify --offline <file>")` in either form, run through the built CLI as a child
+ * process, in a folder that holds the downloaded file under its served name. Offline: no RPC, no network.
  */
 async function runPageCommand(vault: string, bytes: string): Promise<number> {
-  const command = cli(`verify --offline ${snapshotFileName(vault)}`);
-  const words = command.split(" ");
-  expect(words.slice(0, 4)).toEqual(["node", "packages/cli/dist/bin.js", "verify", "--offline"]);
-  const bin = join(REPO, words[1] ?? "");
-  if (!existsSync(bin)) throw new Error(`${bin} is missing: run pnpm build first`);
+  const args = shownArgs(cli(`verify --offline ${snapshotFileName(vault)}`));
+  expect(args).toEqual(["verify", "--offline", snapshotFileName(vault)]);
   const dir = mkdtempSync(join(tmpdir(), "probarion-proof-bin-"));
   try {
     writeFileSync(join(dir, snapshotFileName(vault)), bytes);
-    return await new Promise((resolve) => {
-      execFile(process.execPath, [bin, ...words.slice(2)], { cwd: dir }, (error) => {
-        resolve(error === null ? 0 : typeof error.code === "number" ? error.code : -1);
-      });
-    });
+    return (await runBuiltCli(args, { cwd: dir })).code;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -11,11 +11,12 @@ export const maxDuration = 60;
 
 /**
  * A snapshot of the vault (its ledger and chain data), for `probarion verify --offline <file>` (interfaces §11), with
- * the page's access rules. It is this route's own snapshot: one it gathered up to 60 s ago, or a fresh one. It is not
- * guaranteed to be the page's. In the production build the page and this route run in separate runtimes with separate
- * caches, and instances differ too, so the page asks the visitor to compare the taken_at the verifier prints with its
- * own. An id that is not a NEAR account is a 404 before any database or RPC call, so only a validated id reaches the
- * file name.
+ * the page's access rules. It is this route's own snapshot, taken when the visitor clicks or shortly before: one this
+ * runtime gathered within the last 60 s (counted from the start of its gather), or a fresh one. It is not guaranteed to
+ * be the page's, and it can be older or newer than the page's: the page and this route run in separate runtimes with
+ * separate caches, and instances differ too. So the page gives its own taken_at to compare with the one the verifier
+ * prints. The response is not reused by a browser. An id that is not a NEAR account is a 404 before any database or
+ * RPC call, so only a validated id reaches the file name.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ vault: string }> }) {
   const { vault } = await params;

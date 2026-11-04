@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Db, DbError } from "@/lib/db/port";
 import { makeSnapshot } from "../../../test/fixtures/snapshot";
 import { ProofEvidenceError } from "./evidence";
-import { clearProofCache, loadProof, type ProofDeps } from "./service";
+import { clearProofCache, loadLedger, loadProof, type ProofDeps } from "./service";
 
 // The cache and the log, with fake databases: any vault id is a public mainnet vault with an empty ledger.
 const anyPublic: Db = {
@@ -210,5 +210,134 @@ describe("loadProof under concurrent cold requests", () => {
     expect(makeReader).toHaveBeenCalledTimes(1);
     expect((await loadProof(d, vault(3))).status).toBe("error");
     expect(makeReader).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("loadProof: how old a cached result can be", () => {
+  beforeEach(() => {
+    clearProofCache();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("counts a cached result's 60 s from the start of its gather, not its end", async () => {
+    let t = 1_000_000;
+    let open: () => void = () => {};
+    const { d } = deps(() => t);
+    const makeReader = vi.fn((v: string) => ({
+      snapshot: async () => {
+        if (makeReader.mock.calls.length === 1) {
+          await new Promise<void>((resolve) => {
+            open = resolve;
+          });
+        }
+        return makeSnapshot({ vault: v, ledger: [], ledgerKey: "ed25519:LK" });
+      },
+    }));
+    d.makeReader = makeReader;
+    const first = loadProof(d, vault(5)); // starts at t0
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    t += 10_000; // the gather takes 10 s
+    open();
+    await first;
+    t = 1_000_000 + 59_999;
+    await loadProof(d, vault(5));
+    expect(makeReader).toHaveBeenCalledTimes(1);
+    t = 1_000_000 + 60_000; // 60 s after the start, though only 50 s after the end
+    await loadProof(d, vault(5));
+    expect(makeReader).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a newer cached result when a late, older gather lands after the 30 s limit", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let t = Date.parse("2026-11-08T12:00:00.000Z");
+    let openA: () => void = () => {};
+    const { d } = deps(() => t);
+    const makeReader = vi.fn((v: string) => {
+      const n = makeReader.mock.calls.length;
+      return {
+        snapshot: async () => {
+          const takenAt = new Date(t).toISOString(); // stamped at the start, as the SDK does
+          if (n === 1) {
+            await new Promise<void>((resolve) => {
+              openA = resolve;
+            });
+          }
+          return {
+            ...makeSnapshot({ vault: v, ledger: [], ledgerKey: "ed25519:LK" }),
+            taken_at: takenAt,
+          };
+        },
+      };
+    });
+    d.makeReader = makeReader;
+    const a = loadProof(d, vault(6)); // gather A: stuck
+    await vi.advanceTimersByTimeAsync(30_000); // its sharing ends
+    t += 31_000;
+    const b = await loadProof(d, vault(6)); // gather B lands and is cached
+    expect(makeReader).toHaveBeenCalledTimes(2);
+    t += 14_000;
+    openA();
+    const late = await a;
+    expect(late.status === "ok" && late.snapshot.taken_at).toBe("2026-11-08T12:00:00.000Z");
+    const next = await loadProof(d, vault(6));
+    expect(makeReader).toHaveBeenCalledTimes(2);
+    expect(next).toBe(b);
+    expect(next.status === "ok" && next.snapshot.taken_at).toBe("2026-11-08T12:00:31.000Z");
+  });
+});
+
+describe("loadLedger (ledger.jsonl)", () => {
+  beforeEach(() => vi.spyOn(console, "warn").mockImplementation(() => {}));
+  afterEach(() => vi.restoreAllMocks());
+
+  const ledgerDeps = (publicDb: Db, network: "mainnet" | "testnet" = "mainnet") => ({
+    network,
+    publicDb,
+    serviceDb: unused,
+    sessionAccount: null,
+  });
+
+  it("serves a public vault's ledger with the page's access rules", async () => {
+    expect(await loadLedger(ledgerDeps(anyPublic), vault(1))).toEqual({
+      status: "ok",
+      vault: vault(1),
+      network: "mainnet",
+      audience: "public",
+      entries: [],
+    });
+  });
+
+  it("answers not_found for an invalid id (asking nothing), a hidden vault, and the other network", async () => {
+    const calls: string[] = [];
+    const counted: Db = {
+      rpc: async <T>(fn: string, p?: Record<string, unknown>) => {
+        calls.push(fn);
+        return anyPublic.rpc<T>(fn, p);
+      },
+    };
+    expect(await loadLedger(ledgerDeps(counted), "../etc")).toEqual({ status: "not_found" });
+    expect(calls).toEqual([]);
+    const hidden: Db = { rpc: async <T>() => null as T };
+    expect(await loadLedger(ledgerDeps(hidden), vault(1))).toEqual({ status: "not_found" });
+    expect(await loadLedger(ledgerDeps(anyPublic, "testnet"), vault(1))).toEqual({
+      status: "not_found",
+    });
+  });
+
+  it("says the ledger could not be read when the database answers badly", async () => {
+    const broken: Db = {
+      rpc: async <T>(fn: string, p?: Record<string, unknown>) =>
+        fn === "public_ledger" ? ([{ seq: 0 }] as T) : anyPublic.rpc<T>(fn, p),
+    };
+    expect(await loadLedger(ledgerDeps(broken), vault(1))).toEqual({
+      status: "error",
+      reason: "ledger",
+      vault: vault(1),
+      network: "mainnet",
+    });
   });
 });

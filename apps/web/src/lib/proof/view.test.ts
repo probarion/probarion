@@ -9,6 +9,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { proofSnapshot, txHash } from "../../../test/fixtures/proof";
 import { makeSnapshot } from "../../../test/fixtures/snapshot";
+import { cli, PRE_LEDGER_FLAGS } from "./cli";
 import {
   burnRows,
   HEADLINE_TEXT,
@@ -358,25 +359,33 @@ describe("unproven burns (T14-R2)", () => {
     expect(rows[0]).toMatchObject({
       spendId: "1",
       why: "Its burn transaction could not be read right now (a node outage, or a transaction old enough to need an archival RPC).",
-      hint: "node packages/cli/dist/bin.js verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --archival-rpc <archival RPC URLs>",
+      hint: cli(
+        "verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --archival-rpc <archival RPC URLs>",
+      ),
     });
     expect(rows[1]).toMatchObject({
       spendId: "2",
       why: "An approver paid this held spend out. Its burn is in the approver's transaction, which was not read.",
-      hint: "node packages/cli/dist/bin.js verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --burn-tx 2=<tx hash>",
+      hint: cli(
+        "verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --burn-tx 2=<tx hash>",
+      ),
     });
     expect(rows[2]?.why).toBe(
       "No payment entry in the ledger names the transaction that burned it.",
     );
     expect(rows[2]?.hint).toBe(
-      "node packages/cli/dist/bin.js verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --burn-tx 3=<tx hash>",
+      cli(
+        "verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --burn-tx 3=<tx hash>",
+      ),
     );
     expect(rows[3]?.why).toBe(
       "It predates the signed ledger, and nobody has supplied the transaction that burned it.",
     );
     // Mainnet v0 only: the CLI needs the documented Day-4 decisions, which are in the repository at docs/evidence.
     expect(rows[3]?.hint).toBe(
-      "node packages/cli/dist/bin.js verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --evidence docs/evidence --burn-tx 4=<tx hash>",
+      cli(
+        `verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl ${PRE_LEDGER_FLAGS} --burn-tx 4=<tx hash>`,
+      ),
     );
   });
 
@@ -391,7 +400,9 @@ describe("unproven burns (T14-R2)", () => {
     expect(row?.reason).toBe("new\uFFFDreason");
     expect(row?.why).toBe("This page does not know the reason new\uFFFDreason.");
     expect(row?.hint).toBe(
-      `node packages/cli/dist/bin.js verify --network mainnet --vault ${V} --ledger ledger.jsonl --burn-tx <spend_id>=<tx hash>`,
+      cli(
+        `verify --network mainnet --vault ${V} --ledger ledger.jsonl --burn-tx <spend_id>=<tx hash>`,
+      ),
     );
     expect(row?.spendId).toBe("1;rm -rf /\uFFFD");
   });
@@ -405,7 +416,7 @@ describe("unproven burns (T14-R2)", () => {
         expect(row.hint, row.reason).toContain(" --ledger ledger.jsonl --");
         expect(
           row.hint.startsWith(
-            `node packages/cli/dist/bin.js verify --network ${network} --vault ${V} --ledger ledger.jsonl --`,
+            cli(`verify --network ${network} --vault ${V} --ledger ledger.jsonl --`),
           ),
           row.hint,
         ).toBe(true);
@@ -674,7 +685,7 @@ describe("decisions made with model output (the line under check e)", () => {
     const rulesOnly = makeSnapshot({
       vault: V,
       ledgerKey: "k",
-      ledger: [entry(0, "decision", null)],
+      ledger: [decision("rules-only", null)],
     });
     expect(modelDecisionCount(rulesOnly)).toBe(0);
     // A rules-only decision that carries the caller's evidence (SDK raw mode) is still not model output.
@@ -698,6 +709,25 @@ describe("decisions made with model output (the line under check e)", () => {
       ],
     });
     expect(modelDecisionCount(mixed)).toBe(2);
+    // A decision whose decided_by is null or unknown is not rules-only: check e fails it, so it counts.
+    const odd = (decided_by: unknown, kind = "decision") =>
+      ({ body: { seq: 0, kind, decided_by, evidence: null } }) as never;
+    for (const value of [null, undefined, "model-only", ""]) {
+      expect(
+        modelDecisionCount(makeSnapshot({ vault: V, ledgerKey: "k", ledger: [odd(value)] })),
+        String(value),
+      ).toBe(1);
+    }
+    // Other entries count only when they say model+rules (core attests those whatever their kind).
+    expect(
+      modelDecisionCount(
+        makeSnapshot({
+          vault: V,
+          ledgerKey: "k",
+          ledger: [odd(null, "payment"), odd(undefined, "anchor"), odd("model+rules", "payment")],
+        }),
+      ),
+    ).toBe(1);
     expect(modelDecisionCount({ ...rulesOnly, ledger: "x" } as never)).toBe(0);
   });
 });

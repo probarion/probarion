@@ -12,15 +12,17 @@ export function snapshotFileName(vault: string): string {
 }
 
 /**
- * The snapshot.json download, for `probarion verify --offline <file>` (see ./cli.ts for how the site writes it). A public vault's file may be cached for
- * the same 60 s the page's result is; a member's view of a private vault is never stored by anyone.
+ * The snapshot.json download, for `probarion verify --offline <file>` (./cli.ts writes the command). A browser does
+ * not reuse it: each click asks the route again (ruling W-T16-R3), so the file is the route's current snapshot. A
+ * member's view of a private vault is never stored by anyone.
  */
 export function snapshotResponse(r: ProofOk): Response {
   return new Response(snapshotFileText(r.snapshot), {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "content-disposition": `attachment; filename="${snapshotFileName(r.vault)}"`,
-      "cache-control": r.audience === "public" ? "public, max-age=60" : "private, no-store",
+      "cache-control":
+        r.audience === "public" ? "private, max-age=0, must-revalidate" : "private, no-store",
     },
   });
 }

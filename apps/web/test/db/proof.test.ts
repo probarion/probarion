@@ -4,7 +4,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type Db, DbError } from "@/lib/db/port";
 import { PublicLedgerStore, SupabaseLedgerStore } from "@/lib/ledger/store";
 import { ProofEvidenceError } from "@/lib/proof/evidence";
-import { clearProofCache, loadProof, type ProofDeps, publicDemoTarget } from "@/lib/proof/service";
+import {
+  clearProofCache,
+  loadLedger,
+  loadProof,
+  type ProofDeps,
+  publicDemoTarget,
+} from "@/lib/proof/service";
 import { appendBody, testSigner } from "../fixtures/ledger";
 import { makeSnapshot } from "../fixtures/snapshot";
 import { freshDb, seedTenant } from "./harness";
@@ -261,6 +267,28 @@ describe("loadProof", () => {
         network: "mainnet",
       });
     }
+  });
+  it("serves ledger.jsonl with the same rules: anon for a public vault, the tenant ledger for a member", async () => {
+    const pub = deps(null);
+    const r = await loadLedger(pub.d, PUBLIC);
+    expect(r).toMatchObject({
+      status: "ok",
+      vault: PUBLIC,
+      network: "mainnet",
+      audience: "public",
+    });
+    if (r.status === "ok") expect(r.entries).toHaveLength(1);
+    expect(pub.publicCalls).toEqual(["public_vault", "public_ledger"]);
+    expect(pub.serviceCalls).toEqual([]);
+
+    expect((await loadLedger(deps(null).d, PRIVATE)).status).toBe("not_found");
+    expect((await loadLedger(deps("mallory.near").d, PRIVATE)).status).toBe("not_found");
+    const member = await loadLedger(deps("s.near").d, PRIVATE);
+    expect(member).toMatchObject({ status: "ok", audience: "member" });
+    if (member.status === "ok") expect(member.entries[0]?.body.vault).toBe(PRIVATE);
+    expect((await loadLedger(deps("s.near", { network: "testnet" }).d, PRIVATE)).status).toBe(
+      "not_found",
+    );
   });
 });
 

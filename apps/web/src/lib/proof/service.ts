@@ -1,4 +1,10 @@
-import { isNearAccountId, runChecks, type Snapshot, type VerifyReport } from "@probarion/core";
+import {
+  isNearAccountId,
+  type LedgerEntry,
+  runChecks,
+  type Snapshot,
+  type VerifyReport,
+} from "@probarion/core";
 import { LedgerError, type LedgerStore } from "@probarion/sdk";
 import type { Network } from "@/lib/config";
 import { type Db, DbError } from "@/lib/db/port";
@@ -49,15 +55,20 @@ const TTL_MS = 60_000;
 /** Bounds the cache: only vaults with a public page or a member's view get here, but keep it small anyway. */
 const MAX_ENTRIES = 500;
 const NOT_FOUND = { status: "not_found" } as const;
+/** `ok` results by key; `at` is when their gather started, so a result is at most 60 s older than its snapshot. */
 const cache = new Map<string, { at: number; value: ProofOk }>();
-/** Gathers under way, by cache key: visitors who arrive while one runs share it instead of starting their own. */
 /** How long a gather is shared. A stuck read (a database call has no timeout) then stops holding later visitors. */
 const IN_FLIGHT_MS = 30_000;
+/** Gathers under way, by cache key: visitors who arrive while one runs share it instead of starting their own. */
 const inFlight = new Map<string, Promise<ProofResult>>();
+/** The number of the latest gather started per key. Only that gather may store its result. */
+const latest = new Map<string, number>();
+let gathers = 0;
 
 export function clearProofCache(): void {
   cache.clear();
   inFlight.clear();
+  latest.clear();
 }
 
 function remember(key: string, at: number, value: ProofOk): void {
@@ -109,7 +120,11 @@ function errorReason(error: unknown): ProofErrorReason {
   return "chain";
 }
 
-/** One gather and its checks. Only an `ok` result is stored in the cache. */
+/**
+ * One gather and its checks. Only an `ok` result is stored, and only by the latest gather of its key: a late one,
+ * started before a newer gather (after the 30 s sharing ended), does not replace that newer result. Its age counts
+ * from its start, because the SDK stamps `taken_at` before it reads the chain.
+ */
 async function gather(
   deps: ProofDeps,
   vault: string,
@@ -117,6 +132,9 @@ async function gather(
   key: string,
   now: () => number,
 ): Promise<ProofResult> {
+  const startedAt = now();
+  const id = ++gathers;
+  latest.set(key, id);
   let snapshot: Snapshot;
   try {
     snapshot = await deps.makeReader(vault, who.store).snapshot();
@@ -139,7 +157,7 @@ async function gather(
     snapshot,
     report,
   };
-  remember(key, now(), value);
+  if (latest.get(key) === id) remember(key, startedAt, value);
   return value;
 }
 
@@ -148,9 +166,13 @@ async function gather(
  * same function `probarion verify --offline` runs. An id that is not a NEAR account is not looked up at all.
  *
  * Who may see the vault is decided on every call, BEFORE the cache, so a member's view never reaches anyone else and
- * a page its owner made private is hidden at once. Only `ok` results are cached: 60 s per network, vault and audience.
- * Visitors who miss the cache while a gather for the same key is under way wait for that one, so many cold requests
- * cost one snapshot. The cache is per server instance: another instance, or a request after 60 s, gathers anew.
+ * a page its owner made private is hidden at once. Only `ok` results are cached: 60 s per network, vault and audience,
+ * counted from the start of the gather. Visitors who miss the cache while a gather for the same key is under way share
+ * it for at most 30 s; after that the next visitor starts a new one.
+ *
+ * The cache and the sharing are per runtime and per instance. In the production build the page and snapshot.json run
+ * in separate runtimes, so a download is that route's own snapshot, not the page's: the page says so, and gives its
+ * own `taken_at` to compare.
  */
 export async function loadProof(deps: ProofDeps, vault: string): Promise<ProofResult> {
   if (!isNearAccountId(vault)) return NOT_FOUND;
@@ -192,3 +214,55 @@ export async function publicDemoTarget(
   const pub = await deps.publicDb.rpc<PublicVault | null>("public_vault", { vault_id: demoVault });
   return pub && pub.vault_id === demoVault && pub.network === deps.network ? target : null;
 }
+
+export interface LedgerDeps {
+  network: Network;
+  publicDb: Db;
+  serviceDb: Db;
+  sessionAccount: string | null;
+}
+
+export interface LedgerOk {
+  status: "ok";
+  vault: string;
+  network: Network;
+  audience: "public" | "member";
+  entries: LedgerEntry[];
+}
+
+export type LedgerResult =
+  | LedgerOk
+  | { status: "not_found" }
+  | { status: "error"; reason: "ledger"; vault: string; network: Network };
+
+/**
+ * The vault's signed ledger, for ledger.jsonl (the file the page's commands pass as `--ledger`). The same rules as
+ * `loadProof`: a valid id, then public through the anon key or a member through the tenant's ledger, on this network.
+ * It reads the database only, never the chain, and is not cached.
+ */
+export async function loadLedger(deps: LedgerDeps, vault: string): Promise<LedgerResult> {
+  if (!isNearAccountId(vault)) return NOT_FOUND;
+  const who = await access({ ...deps, makeReader: unreachableReader }, vault);
+  if (who === null || who.network !== deps.network) return NOT_FOUND;
+  try {
+    return {
+      status: "ok",
+      vault,
+      network: deps.network,
+      audience: who.audience,
+      entries: await who.store.all(),
+    };
+  } catch (error) {
+    log.warn("proof.unavailable", {
+      vault,
+      reason: "ledger",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { status: "error", reason: "ledger", vault, network: deps.network };
+  }
+}
+
+/** `access` takes full ProofDeps; reading a ledger needs no reader. */
+const unreachableReader = (): SnapshotSource => {
+  throw new Error("loadLedger reads no snapshot");
+};

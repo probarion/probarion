@@ -1,16 +1,14 @@
 // The "To prove it" commands under an unproven burn really prove it. Each scenario makes a burn the page cannot
 // prove, on the SDK's fake chain over loopback JSON-RPC: the page shows the hint; the test follows it as a visitor
-// would (the snapshot's ledger saved as ledger.jsonl, the placeholder filled in) and runs the exact command shown,
-// `node packages/cli/dist/bin.js verify …`, as a child process of the built CLI (the repository folder is this
-// checkout). Only --rpc is added, to point the CLI at the fake node instead of the network's default. Loopback only.
-import { execFile } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+// would (ledger.jsonl downloaded from the page's ledger route, the placeholder filled in) and runs the exact command
+// shown, through the built CLI as a child process (the repository folder is this checkout). Only --rpc is added, to
+// point the CLI at the fake node instead of the network's default. Loopback only.
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { type Snapshot, sha256Hex, type VerifyReport } from "@probarion/core";
+import { sha256Hex, type VerifyReport } from "@probarion/core";
 import {
   InMemoryLedgerStore,
   NearApiJsSender,
@@ -28,16 +26,16 @@ import {
   TEST_KEYS,
 } from "@probarion/sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Db } from "@/lib/db/port";
 import { cli } from "@/lib/proof/cli";
+import { ledgerResponse } from "@/lib/proof/ledger-file";
 import { makeProofReader } from "@/lib/proof/reader";
-import { clearProofCache, loadProof, type ProofOk } from "@/lib/proof/service";
-import { snapshotFileText } from "@/lib/proof/snapshot-file";
+import { clearProofCache, loadLedger, loadProof, type ProofOk } from "@/lib/proof/service";
 import { headline, unprovenRows } from "@/lib/proof/view";
+import { runBuiltCli, shownArgs } from "./fixtures/cli-bin";
 import { noServiceDb, publicDbFor } from "./fixtures/proof";
 import { type ChainRpc, startChainRpc } from "./fixtures/rpc";
 
-/** The repository folder the displayed command runs from: this checkout. */
-const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 const NOW = new Date(Number(SCENARIO_NOW / 1_000_000n));
 const none = { preLedgerDecisionHashes: [], burnTxHints: new Map() };
 
@@ -45,10 +43,10 @@ const none = { preLedgerDecisionHashes: [], burnTxHints: new Map() };
 vi.setConfig({ testTimeout: 60_000 });
 
 /**
- * Runs a displayed `node packages/cli/dist/bin.js …` command (its `<…>` placeholders filled) with `extra` flags after
- * `verify`, in a fresh folder holding `files`. The bin is the one `pnpm build` (or the page's set-up line) builds.
- * The child gets no NEAR_ or PROBARION_ variable of this machine, and `archivalEnv` as its default archival RPC, so
- * it never reaches past loopback.
+ * Runs a displayed command (its `<…>` placeholders filled) through the built CLI, with `extra` flags after its first
+ * word (`verify`), in a fresh folder holding `files`. Either form of the command works (`npx probarion` or the
+ * repository's bin), so these tests hold whichever way CLI_ON_NPM is set. The child gets no NEAR_ or PROBARION_
+ * variable of this machine, and `archivalEnv` as its default archival RPC, so it reaches nothing past loopback.
  */
 async function runShown(
   command: string,
@@ -56,10 +54,8 @@ async function runShown(
   files: Record<string, string>,
   archivalEnv: string,
 ): Promise<{ code: number; report: VerifyReport | null; err: string }> {
-  const words = command.split(" ");
-  expect(words.slice(0, 3)).toEqual(["node", "packages/cli/dist/bin.js", "verify"]);
-  const bin = join(REPO, words[1] ?? "");
-  if (!existsSync(bin)) throw new Error(`${bin} is missing: run pnpm build first`);
+  const [verb, ...rest] = shownArgs(command);
+  expect(verb).toBe("verify");
   const dir = mkdtempSync(join(tmpdir(), "probarion-proof-hint-"));
   try {
     for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
@@ -67,33 +63,27 @@ async function runShown(
       Object.entries(process.env).filter(([k]) => !/^(NEAR_|PROBARION_)/i.test(k)),
     );
     env.NEAR_ARCHIVAL_RPC_URLS = archivalEnv;
-    const argv = [bin, "verify", ...extra, ...words.slice(3), "--json"];
-    return await new Promise((resolve) => {
-      execFile(
-        process.execPath,
-        argv,
-        { cwd: dir, env: env as NodeJS.ProcessEnv },
-        (error, stdout, stderr) => {
-          const code = error === null ? 0 : typeof error.code === "number" ? error.code : -1;
-          let report: VerifyReport | null = null;
-          try {
-            report = JSON.parse(stdout) as VerifyReport;
-          } catch {
-            report = null;
-          }
-          resolve({ code, report, err: stderr });
-        },
-      );
-    });
+    const r = await runBuiltCli(["verify", ...extra, ...rest, "--json"], { cwd: dir, env });
+    let report: VerifyReport | null = null;
+    try {
+      report = JSON.parse(r.stdout) as VerifyReport;
+    } catch {
+      report = null;
+    }
+    return { code: r.code, report, err: r.stderr };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-/** What the page tells the visitor to save first: the downloaded snapshot's ledger, one entry per line. */
-function ledgerJsonl(downloaded: string): string {
-  const s = JSON.parse(downloaded) as Snapshot;
-  return s.ledger.map((e) => `${JSON.stringify(e)}\n`).join("");
+/** ledger.jsonl as the page's ledger route serves it for `publicDb`'s vault. */
+async function downloadedLedger(publicDb: Db): Promise<string> {
+  const r = await loadLedger(
+    { network: "testnet", publicDb, serviceDb: noServiceDb, sessionAccount: null },
+    SCENARIO_VAULT,
+  );
+  if (r.status !== "ok") throw new Error(`the ledger route gave ${r.status}`);
+  return ledgerResponse(r).text();
 }
 
 /** A loopback JSON-RPC proxy to `target` that answers every `tx` call with 503: a node that cannot read txs now. */
@@ -176,13 +166,15 @@ describe("the unproven-burn hints, run as shown through the built CLI", () => {
     await node.close();
   });
 
+  /** The vault's public ledger, as the database serves it to /proof. */
+  const publicDb = async () => publicDbFor(SCENARIO_VAULT, "testnet", await store.all());
+
   /** The page's result for the scenario vault, read with `rpc` (the page's own RPC client). */
   async function pageResult(rpc: RpcClient): Promise<ProofOk> {
-    const ledger = await store.all();
     const r = await loadProof(
       {
         network: "testnet",
-        publicDb: publicDbFor(SCENARIO_VAULT, "testnet", ledger),
+        publicDb: await publicDb(),
         serviceDb: noServiceDb,
         sessionAccount: null,
         makeReader: (vault, s) =>
@@ -231,7 +223,7 @@ describe("the unproven-burn hints, run as shown through the built CLI", () => {
       ),
     );
 
-    const files = { "ledger.jsonl": ledgerJsonl(snapshotFileText(r.snapshot)) };
+    const files = { "ledger.jsonl": await downloadedLedger(await publicDb()) };
     const shown = (row?.hint ?? "").replace("<tx hash>", approvedTx);
     const followed = await runShown(shown, ["--rpc", node.server.url], files, proxy.url);
     expect(followed.err).not.toMatch(/^error:/m);
@@ -262,7 +254,7 @@ describe("the unproven-burn hints, run as shown through the built CLI", () => {
     );
 
     // The visitor's regular RPC (the proxy) still cannot read `tx`, and neither can the default archival RPC.
-    const files = { "ledger.jsonl": ledgerJsonl(snapshotFileText(r.snapshot)) };
+    const files = { "ledger.jsonl": await downloadedLedger(await publicDb()) };
     const asIs = await runShown(
       (row?.hint ?? "").replace(" --archival-rpc <archival RPC URLs>", ""),
       ["--rpc", proxy.url],

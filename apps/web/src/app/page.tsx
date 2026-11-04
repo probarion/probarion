@@ -30,7 +30,7 @@ export default function Home() {
             Proof page
           </RouteLink>
           : a vault&apos;s checks (a) to (i) with explorer links, and a snapshot you can verify
-          yourself with <code>{cli("verify --offline")}</code>
+          yourself with <code>{cli("verify --offline probarion-<vault>-snapshot.json")}</code>
           {CLI_ON_NPM ? "" : " from a clone of the repository (the npm package is coming)"}.{" "}
           <RouteLink className="underline" route="/open">
             Open metrics

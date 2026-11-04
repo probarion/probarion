@@ -5,7 +5,7 @@ import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/lib/db/port";
-import { CLI_NOTE, CLI_SETUP } from "@/lib/proof/cli";
+import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 import { ProofEvidenceError } from "@/lib/proof/evidence";
 import { clearProofCache, type ProofDeps } from "@/lib/proof/service";
 import { noServiceDb, type ProofState, proofSnapshot, publicDbFor, txHash } from "./fixtures/proof";
@@ -61,6 +61,7 @@ vi.mock("@/lib/proof/deps", () => ({
 vi.mock("@/lib/env", () => ({ getEnv: () => h.env }));
 
 import Home from "@/app/page";
+import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
 import ProofPage, { generateMetadata } from "@/app/proof/[vault]/page";
 import { GET } from "@/app/proof/[vault]/snapshot.json/route";
 import ProofIndex from "@/app/proof/page";
@@ -104,6 +105,8 @@ function serve(snapshot: Snapshot, over: Partial<ProofDeps> = {}) {
     serviceDb: noServiceDb,
     sessionAccount: null,
     makeReader: () => ({ snapshot: async () => structuredClone(snapshot) }),
+    // A fixed clock, so nothing the page prints depends on when the test runs.
+    now: () => Date.parse("2026-11-09T10:00:00.000Z"),
     ...over,
   };
   h.env.NEAR_NETWORK = snapshot.network;
@@ -199,6 +202,21 @@ describe("/proof/[vault]", () => {
     }
   });
 
+  it("does not say 'no model output' for a decision whose decided_by is null or unknown", async () => {
+    for (const decidedBy of [null, "model-only"]) {
+      clearProofCache();
+      const snapshot = await proofSnapshot("ok");
+      const entry = snapshot.ledger[0] as LedgerEntry;
+      entry.body = { ...entry.body, decided_by: decidedBy as never };
+      serve(snapshot);
+      const t = text(await html(snapshot.vault));
+      expect(t, String(decidedBy)).toContain(
+        "For each attested decision, check (e) here proves the signatures",
+      );
+      expect(t).not.toContain("decided with model output");
+    }
+  });
+
   it("calls a rules-only decision that carries evidence what it is: not model output", async () => {
     const snapshot = await proofSnapshot("ok");
     const entry = snapshot.ledger[0] as LedgerEntry;
@@ -223,13 +241,16 @@ describe("/proof/[vault]", () => {
     expect(t).toContain("Spend #1");
     expect(t).toContain("No payment entry in the ledger names the transaction that burned it.");
     expect(t).toContain(
-      "Save the snapshot&#x27;s ledger as ledger.jsonl in the repository folder (step 3 below), then run:",
+      `Download ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}(step 3 below), then run:`,
     );
+    expect(out).toContain(`href="/proof/${snapshot.vault}/ledger.jsonl"`);
     expect(t).toContain(
       "Find the tx hash on the vault&#x27;s explorer page: the transaction that paid the spend, or the approver&#x27;s approve transaction.",
     );
     expect(t).toContain(
-      `node packages/cli/dist/bin.js verify --network mainnet --vault ${snapshot.vault} --ledger ledger.jsonl --burn-tx 1=&lt;tx hash&gt;`,
+      cli(
+        `verify --network mainnet --vault ${snapshot.vault} --ledger ledger.jsonl --burn-tx 1=&lt;tx hash&gt;`,
+      ),
     );
   });
 
@@ -252,13 +273,15 @@ describe("/proof/[vault]", () => {
     expect(out).not.toContain("https://nearblocks.io/");
     expect(out).toContain(`href="/proof/${snapshot.vault}/snapshot.json"`);
     const t = text(out);
+    expect(t).toContain(cli(`verify --offline probarion-${snapshot.vault}-snapshot.json`));
     expect(t).toContain(
-      `node packages/cli/dist/bin.js verify --offline probarion-${snapshot.vault}-snapshot.json`,
+      cli(`verify --network testnet --vault ${snapshot.vault} --ledger ledger.jsonl`),
     );
     expect(t).toContain(
-      `node packages/cli/dist/bin.js verify --network testnet --vault ${snapshot.vault} --ledger ledger.jsonl`,
+      `To read the chain half again instead of trusting the file, download ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}and run:`,
     );
-    expect(t).not.toContain("npx probarion");
+    expect(out).toContain(`href="/proof/${snapshot.vault}/ledger.jsonl"`);
+    if (!CLI_ON_NPM) expect(t).not.toContain("npx probarion");
   });
 
   it("promises no identity between the page and the download: it gives the full time to compare", async () => {
@@ -266,26 +289,36 @@ describe("/proof/[vault]", () => {
     const t = text(out);
     // The page's taken_at in full, as the CLI prints it ("snapshot taken <taken_at>").
     expect(snapshot.taken_at).toBe("2026-11-08T12:00:00.000Z");
-    expect(t).toContain(
-      "a snapshot of this vault (its ledger and chain data), taken when you click or up to a minute before. The verifier prints when it was taken. If it prints 2026-11-08T12:00:00.000Z , it is the very snapshot these checks used; otherwise it is a newer one, and its result matches this page unless the vault changed in between.",
-    );
+    const step1 =
+      "a snapshot of this vault (its ledger and chain data), taken when you click or shortly before. The verifier prints when it was taken. If it prints 2026-11-08T12:00:00.000Z , it is the very snapshot these checks used; otherwise it is another snapshot of this vault, older or newer, and its result matches this page unless the vault changed in between.";
+    expect(t).toContain(step1);
     expect(t).toContain("snapshot taken 2026-11-08T12:00:00.000Z");
-    expect(t).not.toContain("Within a minute of this page");
-    expect(t).not.toContain("2026-11-08 12:00 UTC");
-    expect(t).not.toContain("the chain data these checks used, taken");
+    expect(t).toContain("Checked 2026-11-09 10:00 UTC");
+    for (const gone of [
+      "newer one",
+      "up to a minute",
+      "Within a minute of this page",
+      "2026-11-08 12:00 UTC",
+      "the chain data these checks used, taken",
+    ]) {
+      expect(t, gone).not.toContain(gone);
+    }
   });
 
   it("shows the command that runs today: the repository, until the npm package is out", async () => {
     const { snapshot, out } = await served("ok");
     const t = text(out);
+    expect(t).toContain(cli(`verify --offline probarion-${snapshot.vault}-snapshot.json`));
+    if (CLI_ON_NPM) {
+      expect(t).not.toContain(CLI_NOTE);
+      return;
+    }
     expect(t).toContain(CLI_NOTE);
-    // As React writes it into the HTML: & and " escaped.
-    expect(t).toContain(CLI_SETUP.replaceAll("&", "&amp;").replaceAll('"', "&quot;"));
+    // The four set-up commands, one per line (as React writes them: & and " escaped).
+    const setup = CLI_SETUP_LINES.map((l) => l.replaceAll('"', "&quot;"));
+    expect(out).toContain(setup.map((l) => `<span class="block">${l}</span>`).join(""));
     expect(t).toContain(
       "From the repository folder, with the file in it, run the open-source verifier. It needs no network and no keys, and prints the result per check for that snapshot:",
-    );
-    expect(t).toContain(
-      `node packages/cli/dist/bin.js verify --offline probarion-${snapshot.vault}-snapshot.json`,
     );
     expect(t).not.toContain("npx probarion");
   });
@@ -389,6 +422,14 @@ describe("/proof/[vault]", () => {
     expect(t).not.toContain("RPC down");
     expect(t).not.toContain("All offline checks pass");
     expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "chain" }]);
+    // The chain command comes after the set-up, and runs from the repository folder.
+    const command = cli("verify --network mainnet --vault acme.vaults.probarion.near");
+    expect(t).toContain(command);
+    if (!CLI_ON_NPM) {
+      expect(t.indexOf(CLI_NOTE)).toBeGreaterThan(-1);
+      expect(t.indexOf(CLI_NOTE)).toBeLessThan(t.indexOf(command));
+      expect(t).toContain("From the repository folder, you can check the vault");
+    }
   });
 
   it("names the ledger, not the chain, when the vault's ledger cannot be read", async () => {
@@ -443,7 +484,8 @@ describe("/proof/[vault]/snapshot.json", () => {
     expect(res.headers.get("content-disposition")).toBe(
       `attachment; filename="probarion-${snapshot.vault}-snapshot.json"`,
     );
-    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
+    // Never reused by a browser: each click asks the route again.
+    expect(res.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
     expect(await res.text()).toBe(`${JSON.stringify(snapshot, null, 2)}\n`);
     expect(h.limitCalls).toEqual(["snapshot:203.0.113.7"]);
   });
@@ -534,9 +576,91 @@ describe("the landing page and the menu", () => {
     const out = renderToStaticMarkup(createElement(Home));
     expect(out).toContain(`href="/proof"`);
     expect(text(out)).not.toMatch(/are coming/);
-    expect(text(out)).toContain("node packages/cli/dist/bin.js verify --offline");
-    expect(text(out)).toContain("from a clone of the repository (the npm package is coming)");
-    expect(text(out)).not.toContain("npx probarion");
+    expect(text(out)).toContain(cli("verify --offline probarion-&lt;vault&gt;-snapshot.json"));
+    if (!CLI_ON_NPM) {
+      expect(text(out)).toContain("from a clone of the repository (the npm package is coming)");
+      expect(text(out)).not.toContain("npx probarion");
+    }
     expect(SITE_NAV).toContainEqual({ route: "/proof", label: "Proof" });
+  });
+});
+
+describe("/proof/[vault]/ledger.jsonl", () => {
+  const getLedger = (vault: string) =>
+    GET_LEDGER(
+      new Request(`https://probarion.xyz/proof/${vault}/ledger.jsonl`, {
+        headers: { "x-forwarded-for": "203.0.113.7" },
+      }),
+      params(vault),
+    );
+
+  it("answers 404 for an invalid vault id, before any database call", async () => {
+    for (const bad of ["..", "Not A Vault", "a", 'x"; filename="evil']) {
+      const res = await getLedger(bad);
+      expect(res.status, bad).toBe(404);
+      expect(await res.json()).toEqual({ error: "not_found" });
+    }
+    expect(h.limitCalls).toEqual([]);
+    expect(h.depsCalls).toBe(0);
+  });
+
+  it("downloads the vault's ledger as ledger.jsonl: one entry per line, as the CLI reads it", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    const res = await getLedger(snapshot.vault);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/x-ndjson; charset=utf-8");
+    expect(res.headers.get("content-disposition")).toBe('attachment; filename="ledger.jsonl"');
+    expect(res.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
+    expect(await res.text()).toBe(snapshot.ledger.map((e) => `${JSON.stringify(e)}\n`).join(""));
+    expect(h.limitCalls).toEqual(["ledger:203.0.113.7"]);
+  });
+
+  it("answers 404 for a hidden vault, 429 when rate-limited, and 503 when the ledger cannot be read", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    expect((await getLedger("nobody.vaults.probarion.near")).status).toBe(404);
+
+    h.allowed = false;
+    const limited = await getLedger(snapshot.vault);
+    expect(limited.status).toBe(429);
+    h.allowed = true;
+
+    const pub = publicDbFor(snapshot.vault, "mainnet", []);
+    serve(snapshot, {
+      publicDb: {
+        rpc: async <T>(fn: string, p?: Record<string, unknown>) =>
+          fn === "public_ledger" ? ([{ seq: 0 }] as T) : pub.rpc<T>(fn, p),
+      },
+    });
+    const down = await getLedger(snapshot.vault);
+    expect(down.status).toBe(503);
+    expect(await down.json()).toEqual({ error: "unavailable" });
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "ledger" }]);
+  });
+
+  it("is never cached for a member's view of a private vault", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot, {
+      publicDb: { rpc: async <T>() => null as T },
+      serviceDb: {
+        rpc: async <T>(fn: string) =>
+          (fn === "member_role"
+            ? {
+                tenant_id: "00000000-0000-0000-0000-000000000001",
+                vault_id: snapshot.vault,
+                network: "mainnet",
+                kind: "external",
+                role: "owner",
+              }
+            : fn === "ledger_all"
+              ? []
+              : null) as T,
+      },
+      sessionAccount: "owner.near",
+    });
+    const res = await getLedger(snapshot.vault);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
   });
 });

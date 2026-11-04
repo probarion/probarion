@@ -8,7 +8,7 @@ import {
 } from "@probarion/core";
 import { explorerAccountUrl, explorerTxUrl, type Network } from "@/lib/config";
 import { formatUsdc } from "@/lib/near/units";
-import { CLI_ON_NPM, cli } from "./cli";
+import { cli, PRE_LEDGER_FLAGS } from "./cli";
 import { safeText } from "./sanitize";
 
 // What /proof shows, as plain data. Every string that came from the ledger or the chain goes through `safeText`, and
@@ -195,9 +195,6 @@ const WHY: ReadonlyMap<string, string> = new Map([
   ],
 ]);
 
-/** Where the documented Day-4 decisions are: the repository's own folder, or a copy of it once the CLI is on npm. */
-const EVIDENCE_DIR = CLI_ON_NPM ? "<a copy of the repository's docs/evidence>" : "docs/evidence";
-
 /** Each burn check h could not prove, why, and how to prove it (T14-R2). */
 export function unprovenRows(report: VerifyReport, network: Network, vault: string): UnprovenRow[] {
   // The ledger of a web vault is in the database, not on the visitor's disk: without --ledger the CLI would check
@@ -220,7 +217,7 @@ export function unprovenRows(report: VerifyReport, network: Network, vault: stri
             ? `${verify} --archival-rpc <archival RPC URLs>`
             : reason === "pre_ledger_no_tx"
               ? // Mainnet v0 only: check d needs the documented Day-4 decisions, in the repository's docs/evidence.
-                `${verify} --evidence ${EVIDENCE_DIR} --burn-tx ${id}=<tx hash>`
+                `${verify} ${PRE_LEDGER_FLAGS} --burn-tx ${id}=<tx hash>`
               : `${verify} --burn-tx ${id}=<tx hash>`,
       };
     });
@@ -273,12 +270,17 @@ export function proofIndexTarget(demoVault: string | null): string | null {
 }
 
 /**
- * How many ledger entries were decided by model and rules, with or without an attestation: the decisions check e is
- * about. With none (every decision rules-only, even one that carries evidence), the line under the checks says check
- * e has no model output to prove.
+ * How many ledger entries check e may hold to a model's output: every decision that is not exactly rules-only (a null
+ * or unknown `decided_by` included, which check e fails), and any entry decided by model and rules, whatever its
+ * kind. With none, every decision is rules-only (even one that carries evidence), and the line under the checks says
+ * check e has no model output to prove.
  */
 export function modelDecisionCount(s: Snapshot): number {
   return listOf(s.ledger).filter(
-    (e) => isObject(e) && isObject(e.body) && e.body.decided_by === "model+rules",
+    (e) =>
+      isObject(e) &&
+      isObject(e.body) &&
+      ((e.body.kind === "decision" && e.body.decided_by !== "rules-only") ||
+        e.body.decided_by === "model+rules"),
   ).length;
 }

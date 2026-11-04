@@ -13,7 +13,7 @@ import {
 } from "@/components/ui";
 import type { Network } from "@/lib/config";
 import type { TenantKind } from "@/lib/db/tenants";
-import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP, cli } from "@/lib/proof/cli";
+import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 import { safeText } from "@/lib/proof/sanitize";
 import type { ProofErrorReason, ProofOk } from "@/lib/proof/service";
 import { snapshotFileName } from "@/lib/proof/snapshot-file";
@@ -105,7 +105,18 @@ function Evidence({ links }: { links: readonly ProofLink[] }) {
   );
 }
 
-function Unproven({ rows }: { rows: readonly UnprovenRow[] }) {
+/** The ledger.jsonl link the commands pass as `--ledger`: a download, so it works in every shell. */
+function LedgerLink({ vault }: { vault: string }) {
+  return (
+    <a className={link} href={`/proof/${vault}/ledger.jsonl`} download="ledger.jsonl">
+      ledger.jsonl
+    </a>
+  );
+}
+
+const INTO_REPO = CLI_ON_NPM ? "" : "into the repository folder ";
+
+function Unproven({ vault, rows }: { vault: string; rows: readonly UnprovenRow[] }) {
   if (rows.length === 0) return null;
   return (
     <ul className="mt-3 space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
@@ -115,8 +126,7 @@ function Unproven({ rows }: { rows: readonly UnprovenRow[] }) {
             <span className="font-medium">Spend #{u.spendId}</span> ({u.reason}): {u.why}
           </p>
           <p className="mt-1 text-xs">
-            Save the snapshot&apos;s ledger as ledger.jsonl
-            {CLI_ON_NPM ? "" : " in the repository folder"} (step 3 below), then run:
+            Download <LedgerLink vault={vault} /> {INTO_REPO}(step 3 below), then run:
           </p>
           <code className={codeBlock}>{u.hint}</code>
           {u.hint.includes("<tx hash>") ? (
@@ -131,7 +141,15 @@ function Unproven({ rows }: { rows: readonly UnprovenRow[] }) {
   );
 }
 
-function CheckItem({ row, unproven }: { row: ProofRow; unproven: readonly UnprovenRow[] }) {
+function CheckItem({
+  vault,
+  row,
+  unproven,
+}: {
+  vault: string;
+  row: ProofRow;
+  unproven: readonly UnprovenRow[];
+}) {
   const status = STATUS[row.status] ?? STATUS.unknown;
   return (
     <li className="py-4" data-check={row.id} data-status={row.status} id={`check-${row.id}`}>
@@ -149,7 +167,7 @@ function CheckItem({ row, unproven }: { row: ProofRow; unproven: readonly Unprov
         </p>
       ) : null}
       <Evidence links={row.links} />
-      {row.id === "h" ? <Unproven rows={unproven} /> : null}
+      {row.id === "h" ? <Unproven vault={vault} rows={unproven} /> : null}
     </li>
   );
 }
@@ -280,10 +298,10 @@ function VerifyYourself({
           <a className={link} href={`/proof/${vault}/snapshot.json`} download={file}>
             Download {file}
           </a>
-          : a snapshot of this vault (its ledger and chain data), taken when you click or up to a
-          minute before. The verifier prints when it was taken. If it prints <code>{takenAt}</code>,
-          it is the very snapshot these checks used; otherwise it is a newer one, and its result
-          matches this page unless the vault changed in between.
+          : a snapshot of this vault (its ledger and chain data), taken when you click or shortly
+          before. The verifier prints when it was taken. If it prints <code>{takenAt}</code>, it is
+          the very snapshot these checks used; otherwise it is another snapshot of this vault, older
+          or newer, and its result matches this page unless the vault changed in between.
         </li>
         <li>
           {CLI_ON_NPM ? "Run" : "From the repository folder, with the file in it, run"} the
@@ -292,9 +310,8 @@ function VerifyYourself({
           <code className={codeBlock}>{cli(`verify --offline ${file}`)}</code>
         </li>
         <li>
-          To read the chain half again instead of trusting the file, save the snapshot&apos;s{" "}
-          <code>ledger</code> as ledger.jsonl (one entry per line)
-          {CLI_ON_NPM ? "" : " in the repository folder"} and run:
+          To read the chain half again instead of trusting the file, download{" "}
+          <LedgerLink vault={vault} /> {INTO_REPO}and run:
           <code className={codeBlock}>
             {cli(`verify --network ${network} --vault ${vault} --ledger ledger.jsonl`)}
           </code>
@@ -320,8 +337,14 @@ function CliSetup() {
   if (CLI_ON_NPM) return null;
   return (
     <p className="mt-3 text-sm text-ink/80">
-      {CLI_NOTE} Set up once:
-      <code className={codeBlock}>{CLI_SETUP}</code>
+      {CLI_NOTE} Set up once, one command per line:
+      <code className={codeBlock}>
+        {CLI_SETUP_LINES.map((line) => (
+          <span key={line} className="block">
+            {line}
+          </span>
+        ))}
+      </code>
     </p>
   );
 }
@@ -406,7 +429,7 @@ export function ProofView({ result }: { result: ProofOk }) {
         </p>
         <ol className="mt-2 divide-y divide-ink/10">
           {rows.map((row) => (
-            <CheckItem key={row.id} row={row} unproven={unproven} />
+            <CheckItem key={row.id} vault={vault} row={row} unproven={unproven} />
           ))}
         </ol>
         <AttestationLine modelDecisions={modelDecisionCount(snapshot)} />
@@ -451,12 +474,12 @@ export function ProofUnavailable({
 function ChainCommand({ vault, network }: { vault: string; network: Network }) {
   return (
     <>
+      <CliSetup />
       <p className="mt-3 text-sm">
-        You can check the vault&apos;s chain data yourself (without its ledger file, the ledger
-        checks see an empty ledger):
+        {CLI_ON_NPM ? "You" : "From the repository folder, you"} can check the vault&apos;s chain
+        data yourself (without its ledger file, the ledger checks see an empty ledger):
       </p>
       <code className={codeBlock}>{cli(`verify --network ${network} --vault ${vault}`)}</code>
-      <CliSetup />
     </>
   );
 }
