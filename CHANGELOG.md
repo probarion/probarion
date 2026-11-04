@@ -82,6 +82,11 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The repository pins pnpm 10.34.9 through `packageManager` in the root `package.json`. CI, the
+  release job and Vercel builds run exactly that version, which is patched against the pnpm advisories
+  GHSA-vq4v-j7r6-jq4m, GHSA-c59q-g84q-2gj5 and GHSA-vx52-2968-3vc6. The pinned tests refuse a
+  workflow that names its own pnpm version, and they refuse a pin outside pnpm 10. The web deploy
+  runbook sets `ENABLE_EXPERIMENTAL_COREPACK=1` on Vercel and checks the build log for that version.
 - `verify`: check h reports a burn it cannot prove as `unproven`, lists it in `VerifyReport.unproven`,
   and `VerifyReport.ok` is false while any check fails or is unproven. A burn transaction that cannot
   be read right now is unproven (`tx_unavailable`). A burn record that names a transaction holding no
