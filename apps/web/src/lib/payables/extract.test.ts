@@ -108,6 +108,19 @@ describe("extractText", () => {
     expect(more.truncated).toBe("pages");
   });
 
+  it("reads a lone surrogate in a PDF text layer as U+FFFD, as the hash and the ledger see it", async () => {
+    const lone = () => ({
+      getText: async () => ({ text: "Invoice INV-77\nNote \ud800\nTotal: $7.70", total: 1 }),
+      destroy: async () => {},
+    });
+    const { text } = await extractInvoice(
+      { bytes: tinyPdf("Total 5"), mediaType: "application/pdf" },
+      { makeParser: lone },
+    );
+    expect(text).toBe("Invoice INV-77\nNote \ufffd\nTotal: $7.70");
+    expect(new TextDecoder().decode(new TextEncoder().encode(text))).toBe(text);
+  });
+
   it("gives up on a PDF that takes too long to read, and destroys its parser", async () => {
     let destroyed = 0;
     const stuck = () => ({

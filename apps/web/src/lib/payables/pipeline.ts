@@ -1,5 +1,6 @@
 import "server-only";
-import type { CustomRule, InvoiceFacts, MandateView } from "@probarion/core";
+import { createHmac, hkdfSync } from "node:crypto";
+import type { CustomRule, InvoiceFacts, MandateView, Payee } from "@probarion/core";
 import { hashInvoice, type SpendOutcome } from "@probarion/sdk";
 import { sealInvoice } from "@/lib/crypto/secrets";
 import { DecryptError, sha256Hex } from "@/lib/crypto/sodium";
@@ -13,7 +14,7 @@ import {
 } from "@/lib/keys/service";
 import { log, scrubText } from "@/lib/log";
 import { extractInvoice, type InvoiceMediaType } from "./extract";
-import { type AmountIssue, extractFacts, fingerprintText, refFor } from "./facts";
+import { type AmountIssue, extractFacts, fingerprintText, numberKeyText, refFor } from "./facts";
 import { signingMandate } from "./mandate";
 import { OWNER_CONFIRMS_RULE, ownerConfirmsRule } from "./owner-confirms";
 import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
@@ -124,6 +125,34 @@ async function openKey(
 
 const messageOf = (e: unknown): string =>
   scrubText(e instanceof Error ? e.message : String(e)).slice(0, 500) || "unknown error";
+
+/** The HKDF label of the invoice-number key: a key of its own, derived from KEY_ENCRYPTION_SECRET. */
+const NUMBER_KEY_INFO = "probarion/payables/invoice-number-key/v1";
+
+/** The payee as one string: a NEAR account, or an Intents chain, address and asset. */
+const payeeId = (p: Payee): string =>
+  (p.type === "near"
+    ? `near:${p.account_id}`
+    : `intents:${p.chain}:${p.address}:${p.asset}`
+  ).toLowerCase();
+
+/**
+ * The duplicate guard's second key: HMAC-SHA256, under a server-side key derived from the master key with HKDF, of
+ * the vault, the mandate's payee and the invoice number (its skeleton, so case and look-alikes do not matter).
+ * Keyed, so the zero-retention mode keeps nothing a member could enumerate back to the number; scoped by payee, so
+ * two vendors' "#1001" do not block each other.
+ */
+export function invoiceNumberKey(
+  master: Uint8Array,
+  vault: string,
+  payee: Payee,
+  invoiceNumber: string,
+): string {
+  const key = Buffer.from(hkdfSync("sha256", master, new Uint8Array(0), NUMBER_KEY_INFO, 32));
+  return createHmac("sha256", key)
+    .update(`${vault}\n${payeeId(payee)}\n${numberKeyText(invoiceNumber)}`)
+    .digest("hex");
+}
 
 /** A NEAR transaction hash (base58): anything else stays in `outcome` but not in the anchor column. */
 const TX_HASH = /^[1-9A-HJ-NP-Za-km-z]{32,64}$/;
@@ -253,12 +282,12 @@ export async function processInvoice(
         sealed: zero ? null : await sealInvoice(deps.master, tenant.tenant_id, upload.bytes),
         facts: zero ? null : { ...facts, invoice_number: invoiceNumber },
         amountIssue,
-        // The duplicate guard: another text of the same invoice (other line ends or spaces), or the same number.
+        // The duplicate guard: another text that renders the same invoice, or the same number for the same payee.
         fingerprint: sha256Hex(fingerprintText(text)),
-        invoiceNumberHash:
+        invoiceNumberKey:
           invoiceNumber === null
             ? null
-            : sha256Hex(`${tenant.tenant_id}:${invoiceNumber.normalize("NFKC").toUpperCase()}`),
+            : invoiceNumberKey(deps.master, tenant.vault_id, mandate.payee, invoiceNumber),
         requestId,
         createdBy: input.actor,
       });

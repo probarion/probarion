@@ -12,6 +12,7 @@ import { MAX_PDF_PAGES, MAX_TEXT_CHARS } from "@/lib/payables/extract";
 import { refFor } from "@/lib/payables/facts";
 import { OWNER_CONFIRMS_RULE } from "@/lib/payables/owner-confirms";
 import {
+  invoiceNumberKey,
   invoiceStatusOf,
   type PipelineDeps,
   PROCESS_LEASE_SECONDS,
@@ -689,6 +690,74 @@ describe("processInvoice", () => {
       expect(await rows(t.member.tenant_id)).toHaveLength(1);
     },
   );
+
+  it.each([
+    ["a zero-width space in the number", "INV-10\u200b01"],
+    ["a soft hyphen in the number", "INV-10\u00ad01"],
+    ["a non-breaking hyphen", "INV\u20111001"],
+    ["a minus sign", "INV\u22121001"],
+    ["a Cyrillic I", "\u0406NV-1001"],
+  ])(
+    "answers a re-upload of a paid INV-1001 that writes %s as a duplicate, by its fingerprint and by its number",
+    async (_why, number) => {
+      const t = await tenant({ zero: true });
+      const ms = [mandate(1, t.agent?.publicKey ?? "")];
+      const base = "Acme Design LLC\nInvoice INV-1001\nLogo design $7.00\nTotal: $7.00\n";
+      expect(await run(deps(ms), t, base)).toMatchObject({ outcome: { status: "paid" } });
+      // The same text with the number rendered alike: the fingerprint matches.
+      const d = deps(ms);
+      expect(await run(d, t, base.replace("INV-1001", number))).toMatchObject({
+        status: "duplicate",
+      });
+      // Another text with the same number (another amount): the number key matches. A number written with a
+      // Cyrillic letter is no number the guard reads; the fingerprint above is what catches that re-upload.
+      if (!number.startsWith("\u0406")) {
+        const other = `Acme Design LLC\nInvoice ${number}\nLogo design $9.00\nTotal: $9.00`;
+        expect(await run(d, t, other)).toMatchObject({ status: "duplicate" });
+      }
+      expect(d.make).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keys the invoice number with an HMAC under a server-side key, per payee, which members cannot read", async () => {
+    const t = await tenant({ zero: true });
+    const other = new TextEncoder().encode("Purchase order PO-2002, Beta hosting");
+    const ms = [
+      mandate(1, t.agent?.publicKey ?? ""),
+      mandate(2, t.agent?.publicKey ?? "", {
+        payee: { type: "near", account_id: "beta-hosting.near" },
+        purpose_hash: sha256Hex(other),
+      }),
+    ];
+    // Two vendors' "#1001": different payees, so neither blocks the other.
+    const acme = await run(deps(ms), t, "From: Acme Design LLC\nInvoice #1001\nTotal: $7.00");
+    const beta = await run(deps(ms), t, "From: Beta Hosting Inc\nInvoice #1001\nTotal: $8.00", {
+      purpose: other,
+    });
+    expect(acme).toMatchObject({ status: "decided" });
+    expect(beta).toMatchObject({ status: "decided" });
+    // The same vendor's #1001 again is a duplicate.
+    expect(
+      await run(deps(ms), t, "From: Acme Design LLC\nInvoice #1001\nTotal: $9.00"),
+    ).toMatchObject({ status: "duplicate" });
+    const keys = (
+      await pg.query<{ k: string }>(
+        "select invoice_number_hmac as k from invoices where tenant_id = $1 order by created_at",
+        [t.member.tenant_id],
+      )
+    ).rows.map((r) => r.k);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).not.toBe(keys[1]);
+    // Not the unkeyed hash of the number, and another master key gives another key.
+    expect(keys[0]).not.toBe(sha256Hex(`${t.member.tenant_id}:1001`));
+    const acmePayee = { type: "near", account_id: "vendor.near" } as const;
+    expect(invoiceNumberKey(MASTER, t.member.vault_id, acmePayee, "1001")).toBe(keys[0]);
+    expect(invoiceNumberKey(LOST_MASTER, t.member.vault_id, acmePayee, "1001")).not.toBe(keys[0]);
+    // Case and look-alikes do not change the key.
+    expect(invoiceNumberKey(MASTER, t.member.vault_id, acmePayee, "inv-1001")).toBe(
+      invoiceNumberKey(MASTER, t.member.vault_id, acmePayee, "INV-1001"),
+    );
+  });
 
   it("answers empty for a file with no text", async () => {
     const t = await tenant();

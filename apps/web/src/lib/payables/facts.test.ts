@@ -81,6 +81,17 @@ describe("extractFacts", () => {
     ["INVOICE NO. 123", "123"],
     ["Invoice\nTotal 25", null],
     ["Invoice date: 2026-11-01", null],
+    // Invisible characters and other dashes are not part of the number.
+    ["Invoice INV-10\u200b01\nTotal 25", "INV-1001"],
+    ["Invoice INV\u20111001\nTotal 25", "INV-1001"],
+    ["Invoice INV\u22121001\nTotal 25", "INV-1001"],
+    // More ways to write the number.
+    ["Invoice: #1001", "1001"],
+    ["Bill #1001", "1001"],
+    ["Inv. No. 1001", "1001"],
+    ["Invoice n\u00b0 1001", "1001"],
+    ["Invoice Number\t# 1067", "1067"],
+    ["Bill to: Globex Corp", null],
   ])("invoiceNumber of %j is %j", (text, n) =>
     expect(extractFacts(text, H, null).invoiceNumber).toBe(n),
   );
@@ -116,6 +127,11 @@ describe("fingerprintText", () => {
       "Invoice\u00a0INV-1\n\nTotal  5\tUSDC",
       "  Invoice INV-1\nTotal 5 USDC  ",
       "\uff29nvoice INV-1\nTotal \uff15 USDC",
+      // It renders the same: invisible characters, other dashes, look-alike letters, combining marks.
+      "Invoice INV\u2011\u200b1\nTotal 5 USDC",
+      "Inv\u043eice INV-1\nTotal 5 USDC",
+      "Invoice INV\u22121\nTot\u00adal 5 USDC",
+      "Invoice INV-1\nTotal 5 US\u034fDC",
     ]) {
       expect(fingerprintText(variant)).toBe(base);
     }

@@ -5,11 +5,15 @@
 -- What is stored per invoice:
 --   - invoice_hash: sha256 of the extracted invoice TEXT, exactly as the model is shown it (`hashInvoice`). `ref`
 --     (the spend's idempotency key) is derived from it, so the same invoice text is one invoice.
---   - fingerprint_sha256: sha256 of that text after NFKC, lower case and every run of whitespace as one space. A
---     re-upload that differs only by line ends, a final newline or a no-break space has another invoice_hash (and
---     ref) but the same fingerprint, and invoice_insert answers it as a duplicate.
---   - invoice_number_sha256: sha256 of "<tenant id>:<invoice number>" (null when the text states none), so the same
---     invoice number is a duplicate too, in zero-retention mode as well, without keeping the number itself.
+--   - fingerprint_sha256: sha256 of that text after NFKC, with invisible characters and combining marks removed,
+--     every dash as "-", look-alike letters folded and lower-cased (the amount reader's skeleton), and every run of
+--     whitespace as one space (src/lib/payables/facts.ts fingerprintText). A re-upload that renders the same (other
+--     line ends, a no-break or zero-width space, a Unicode hyphen, a look-alike letter) has another invoice_hash
+--     (and ref) but the same fingerprint, and invoice_insert answers it as a duplicate.
+--   - invoice_number_hmac: HMAC-SHA256 of the vault, the mandate's payee and the invoice number, under a server-side
+--     key derived from KEY_ENCRYPTION_SECRET with HKDF (null when the text states no number). The same number for
+--     the same payee is a duplicate too, in zero-retention mode as well, without keeping anything a member could
+--     enumerate back to the number; another vendor's "#1001" is another key. Members cannot read it.
 --   - document_sha256: sha256 of the uploaded file's bytes (a PDF's file hash is never the invoice hash).
 --   - retained: the file sealed with the tenant's invoice key, plus the extracted facts; or, in zero-retention mode
 --     (tenants.zero_retention), neither, and no file name either, which can carry details: only hashes, the ref and
@@ -60,8 +64,8 @@ alter table public.invoices
   add column suggested_amount text check (suggested_amount is null or suggested_amount ~ '^[1-9][0-9]{0,38}$'),
   add column document_sha256 text check (document_sha256 is null or document_sha256 ~ '^[0-9a-f]{64}$'),
   add column fingerprint_sha256 text check (fingerprint_sha256 is null or fingerprint_sha256 ~ '^[0-9a-f]{64}$'),
-  add column invoice_number_sha256 text
-    check (invoice_number_sha256 is null or invoice_number_sha256 ~ '^[0-9a-f]{64}$'),
+  add column invoice_number_hmac text
+    check (invoice_number_hmac is null or invoice_number_hmac ~ '^[0-9a-f]{64}$'),
   add column anchor_tx_hash text check (anchor_tx_hash is null or anchor_tx_hash ~ '^[1-9A-HJ-NP-Za-km-z]{32,64}$'),
   add column amount_issue text check (amount_issue is null or amount_issue in (
     'not_found', 'ambiguous', 'unreadable', 'currency', 'truncated', 'zero', 'not_payable'));
@@ -72,9 +76,9 @@ comment on column public.invoices.suggested_amount is
 comment on column public.invoices.invoice_hash is
   'sha256 of the extracted invoice text, exactly as the model is shown it. Not the file hash.';
 comment on column public.invoices.fingerprint_sha256 is
-  'sha256 of the invoice text after NFKC, lower case and collapsed whitespace: the duplicate guard''s key.';
-comment on column public.invoices.invoice_number_sha256 is
-  'sha256 of "<tenant id>:<invoice number>", or null: the duplicate guard''s second key.';
+  'sha256 of the invoice text as it renders (NFKC, no invisible characters, dashes and look-alikes folded, lower case, collapsed whitespace): the duplicate guard''s key.';
+comment on column public.invoices.invoice_number_hmac is
+  'HMAC-SHA256 of the vault, the payee and the invoice number under a server-side key, or null: the duplicate guard''s second key.';
 comment on column public.invoices.document_sha256 is 'sha256 of the uploaded file''s bytes (for a PDF, the file hash).';
 comment on column public.invoices.anchor_tx_hash is
   'The cycle''s anchor transaction (SpendOutcome.anchorTxHash). Never stored in a ledger entry.';
@@ -82,16 +86,16 @@ comment on column public.invoices.amount_issue is
   'Why the code read the amount as "0" (refused by rule invoice.amount_invalid), or null when it read one.';
 create index invoices_tenant_fingerprint on public.invoices (tenant_id, fingerprint_sha256)
   where fingerprint_sha256 is not null;
-create index invoices_tenant_invoice_number on public.invoices (tenant_id, invoice_number_sha256)
-  where invoice_number_sha256 is not null;
+create index invoices_tenant_invoice_number on public.invoices (tenant_id, invoice_number_hmac)
+  where invoice_number_hmac is not null;
 
 -- Members read these like the other non-secret columns (0001: the sealed content and its nonce are never granted).
-grant select (document_sha256, fingerprint_sha256, invoice_number_sha256, anchor_tx_hash, amount_issue,
-              suggested_amount)
+-- The invoice-number key is the server's alone: members never need it.
+grant select (document_sha256, fingerprint_sha256, anchor_tx_hash, amount_issue, suggested_amount)
   on public.invoices to authenticated;
 
 -- A new invoice, status processing: { tenant_id, invoice_hash, ref, filename, media_type, document_sha256,
--- fingerprint_sha256, invoice_number_sha256, retained, content_ciphertext, content_nonce, facts, amount_issue,
+-- fingerprint_sha256, invoice_number_hmac, retained, content_ciphertext, content_nonce, facts, amount_issue,
 -- request_id, created_by }. Answers { id, duplicate: false, retry } for a row this call will process (retry: an
 -- earlier attempt of the same invoice ended in `error` and is taken over), or { id, duplicate: true, status } for an
 -- invoice that already has a row in any other state, or for another text of the same invoice:
@@ -108,7 +112,7 @@ declare
   v_hash text := p->>'invoice_hash';
   v_doc text := p->>'document_sha256';
   v_fp text := p->>'fingerprint_sha256';
-  v_num text := p->>'invoice_number_sha256';
+  v_num text := p->>'invoice_number_hmac';
   v_filename text := p->>'filename';
   v_issue text := p->>'amount_issue';
   v_retained boolean;
@@ -155,7 +159,7 @@ begin
   select i.id, i.status into v_id, v_status from public.invoices i
     where i.tenant_id = v_tenant and i.ref <> v_ref
       and ((v_fp is not null and i.fingerprint_sha256 = v_fp)
-           or (v_num is not null and i.invoice_number_sha256 = v_num))
+           or (v_num is not null and i.invoice_number_hmac = v_num))
       and (i.status in ('processing', 'unconfirmed', 'awaiting_owner')
            or (i.status = 'decided' and i.outcome->>'status' in ('paid', 'held', 'burned', 'settled')))
     order by i.created_at, i.id
@@ -165,7 +169,7 @@ begin
   end if;
 
   insert into public.invoices (tenant_id, invoice_hash, ref, filename, media_type, document_sha256,
-                               fingerprint_sha256, invoice_number_sha256, retained, content_ciphertext,
+                               fingerprint_sha256, invoice_number_hmac, retained, content_ciphertext,
                                content_nonce, facts, amount_issue, status, request_id, created_by)
   values (v_tenant, v_hash, v_ref, v_filename, p->>'media_type', v_doc, v_fp, v_num, v_retained,
           p->>'content_ciphertext', p->>'content_nonce', v_facts, v_issue, 'processing', p->>'request_id',
@@ -179,7 +183,7 @@ begin
   -- An attempt that ended in `error` sent nothing, so the same invoice may run again on the same row and ref.
   update public.invoices set
       filename = v_filename, media_type = p->>'media_type', document_sha256 = v_doc, fingerprint_sha256 = v_fp,
-      invoice_number_sha256 = v_num, retained = v_retained,
+      invoice_number_hmac = v_num, retained = v_retained,
       content_ciphertext = p->>'content_ciphertext', content_nonce = p->>'content_nonce', facts = v_facts,
       amount_issue = v_issue, status = 'processing', outcome = null, suggested_amount = null, error = null,
       request_id = p->>'request_id', created_by = p->>'created_by',

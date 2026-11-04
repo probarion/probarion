@@ -1,6 +1,6 @@
 import "pdf-parse/worker"; // must load before pdf-parse on Node/Vercel (pdf-parse troubleshooting doc)
 import { PDFParse } from "pdf-parse";
-import { normaliseLineEnds } from "./amount";
+import { normaliseLineEnds, wellFormed } from "./amount";
 
 /**
  * The largest invoice file read. The route caps the whole request at this plus 64 KiB for the form, which stays
@@ -46,7 +46,8 @@ export class ExtractError extends Error {
  * same input always gives the same text, hence the same invoice hash.
  */
 function asModelText(raw: string): { text: string; cut: boolean } {
-  const text = normaliseLineEnds(raw).replaceAll("\u0000", "\ufffd");
+  // A lone surrogate becomes U+FFFD here, as UTF-8 encodes it for the hash and the ledger: the reader sees it too.
+  const text = wellFormed(normaliseLineEnds(raw)).replaceAll("\u0000", "\ufffd");
   if (text.length <= MAX_TEXT_CHARS) return { text, cut: false };
   const last = text.charCodeAt(MAX_TEXT_CHARS - 1);
   const end = last >= 0xd800 && last <= 0xdbff ? MAX_TEXT_CHARS - 1 : MAX_TEXT_CHARS;

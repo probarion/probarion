@@ -64,7 +64,7 @@ describe("invoice functions (migration 0006)", () => {
       },
       amountIssue: null,
       fingerprint: hash.split("").reverse().join(""),
-      invoiceNumberHash: null,
+      invoiceNumberKey: null,
       requestId: "r",
       createdBy: "alice.near",
       ...over,
@@ -111,7 +111,7 @@ describe("invoice functions (migration 0006)", () => {
   );
 
   it("refuses an invoice whose number matches one that is unconfirmed, but not one that ended in error", async () => {
-    const { id } = await insertInvoice(db, a, invoice({ invoiceNumberHash: H("b") }));
+    const { id } = await insertInvoice(db, a, invoice({ invoiceNumberKey: H("b") }));
     await setInvoiceOutcome(db, a, id, {
       status: "unconfirmed",
       outcome: { ...OUTCOME, status: "unconfirmed" } as never,
@@ -119,20 +119,20 @@ describe("invoice functions (migration 0006)", () => {
       promptTokens: null,
       completionTokens: null,
     });
-    expect(await insertInvoice(db, a, invoice({ invoiceNumberHash: H("b") }))).toEqual({
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberKey: H("b") }))).toEqual({
       id,
       duplicate: true,
       status: "unconfirmed",
     });
-    const { id: failed } = await insertInvoice(db, a, invoice({ invoiceNumberHash: H("c") }));
+    const { id: failed } = await insertInvoice(db, a, invoice({ invoiceNumberKey: H("c") }));
     await setInvoiceOutcome(db, a, failed, { status: "error", error: "rpc down" });
-    expect(await insertInvoice(db, a, invoice({ invoiceNumberHash: H("c") }))).toMatchObject({
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberKey: H("c") }))).toMatchObject({
       duplicate: false,
     });
   });
 
   it("refuses a malformed fingerprint or invoice-number hash", async () => {
-    for (const over of [{ fingerprint: "nope" }, { invoiceNumberHash: "XYZ" }]) {
+    for (const over of [{ fingerprint: "nope" }, { invoiceNumberKey: "XYZ" }]) {
       await expect(insertInvoice(db, a, invoice(over))).rejects.toMatchObject({
         code: "invalid_input",
       });
@@ -366,7 +366,7 @@ describe("invoice functions (migration 0006)", () => {
     const { id } = await insertInvoice(
       db,
       a,
-      invoice({ fingerprint: fp, invoiceNumberHash: H("8") }),
+      invoice({ fingerprint: fp, invoiceNumberKey: H("8") }),
     );
     await setInvoiceOutcome(db, a, id, {
       status: "awaiting_owner",
@@ -381,7 +381,7 @@ describe("invoice functions (migration 0006)", () => {
       duplicate: true,
       status: "awaiting_owner",
     });
-    expect(await insertInvoice(db, a, invoice({ invoiceNumberHash: H("8") }))).toEqual({
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberKey: H("8") }))).toEqual({
       id,
       duplicate: true,
       status: "awaiting_owner",
@@ -472,6 +472,12 @@ describe("invoice functions (migration 0006)", () => {
     await expect(
       asRole(pg, "authenticated", "alice.near", (tx) =>
         tx.query("select content_nonce from public.invoices"),
+      ),
+    ).rejects.toThrow(/permission denied/);
+    // The invoice-number key is the server's alone.
+    await expect(
+      asRole(pg, "authenticated", "alice.near", (tx) =>
+        tx.query("select invoice_number_hmac from public.invoices"),
       ),
     ).rejects.toThrow(/permission denied/);
   });

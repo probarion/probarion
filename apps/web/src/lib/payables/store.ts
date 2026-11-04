@@ -65,8 +65,8 @@ export interface NewInvoice {
   amountIssue: AmountIssue | null;
   /** sha256 of the normalised text (fingerprintText): the duplicate guard's key. */
   fingerprint: string;
-  /** sha256 of "<tenant id>:<invoice number>", or null when the text states none. */
-  invoiceNumberHash: string | null;
+  /** HMAC of the vault, the payee and the invoice number (pipeline.ts invoiceNumberKey), or null when none. */
+  invoiceNumberKey: string | null;
   requestId: string;
   createdBy: string;
 }
@@ -84,7 +84,7 @@ export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<
     media_type: i.mediaType,
     document_sha256: i.documentSha256,
     fingerprint_sha256: i.fingerprint,
-    invoice_number_sha256: i.invoiceNumberHash,
+    invoice_number_hmac: i.invoiceNumberKey,
     retained: i.sealed !== null,
     content_ciphertext: i.sealed?.ciphertext ?? null,
     content_nonce: i.sealed?.nonce ?? null,

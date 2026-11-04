@@ -169,6 +169,9 @@ function skeletonOf(line: string): string {
   return out;
 }
 
+/** The skeleton of a whole text (the duplicate guard reads its fingerprint through it). */
+export const skeleton = (text: string): string => skeletonOf(text);
+
 /** Runs of three or more single letters, one separator apart: "t o t a l", "t.o.t.a.l", "p a l d". */
 const SPACED = /(?<![a-z])[a-z](?:[ .'\u00b7\u2019-][a-z]){2,}(?![a-z])/g;
 /** The skeleton with letter-spaced words joined ("t o t a l   $5" -> "total   $5"). */

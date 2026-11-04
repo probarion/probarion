@@ -1,5 +1,5 @@
 import type { InvoiceFacts, PayeeHint } from "@probarion/core";
-import { type AmountIssue, readAmount } from "./amount";
+import { type AmountIssue, numberView, readAmount, skeleton } from "./amount";
 import { EVM_ADDRESS, INVOICE_NO, nearAccounts, PO_LABELLED, PO_TOKEN } from "./lexicon";
 
 export { AMOUNT_ISSUES, type AmountIssue } from "./amount";
@@ -19,14 +19,29 @@ function poRef(text: string): string | null {
 }
 
 /**
- * The text an invoice's fingerprint is the hash of: NFKC, lower case, every run of whitespace as one space, and
- * trimmed. A re-upload that differs only by its line ends, a final newline, a no-break space or letter case has
- * the same fingerprint, so the pipeline answers it as a duplicate before anything is sent. (The ledger's
- * invoice_hash stays the hash of the exact text the model is shown.)
+ * The text an invoice's fingerprint is the hash of: NFKC; invisible characters (format and default-ignorable
+ * characters) and combining marks removed; every dash as "-"; look-alike letters folded through the amount
+ * reader's skeleton (which also lower-cases); every run of whitespace as one space; trimmed. A re-upload that
+ * renders the same (other line ends, a no-break space, a zero-width space, a Unicode hyphen, a Cyrillic letter for
+ * a Latin one) has the same fingerprint, so the pipeline answers it as a duplicate before anything is sent. (The
+ * ledger's invoice_hash stays the hash of the exact text the model is shown.)
  */
 export function fingerprintText(text: string): string {
-  return text.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+  return skeleton(numberView(text.normalize("NFKC")))
+    .replace(/\s+/g, " ")
+    .trim();
 }
+
+/**
+ * The invoice number as the text states it, read with invisible characters removed and every dash as "-": the
+ * number of "INV-10<ZWSP>01" or "INV<U+2011>1001" is INV-1001. For display and for the duplicate guard's key.
+ */
+export function invoiceNumberOf(text: string): string | null {
+  return INVOICE_NO.exec(numberView(text.normalize("NFKC")))?.[1] ?? null;
+}
+
+/** The form of an invoice number the duplicate guard keys: the skeleton, so case and look-alikes do not matter. */
+export const numberKeyText = (number: string): string => skeleton(number.normalize("NFKC"));
 
 /**
  * Deterministic, code-level facts. `invoiceNumber` and `amountIssue` are for display and for the duplicate guard:
@@ -57,7 +72,7 @@ export function extractFacts(
     po_ref: poRef(text),
     purpose_hash: purposeHash,
     payee_hint: Object.keys(hint).length > 0 ? hint : null,
-    invoiceNumber: INVOICE_NO.exec(text)?.[1] ?? null,
+    invoiceNumber: invoiceNumberOf(text),
     amountIssue: read.issue,
   };
 }
