@@ -251,7 +251,13 @@ describe("the duplicate guard's keys", () => {
     ["No. in the header", "INVOICE\nAcme\nNo. 5520\nTotal $5.00", "5520"],
     ["n\u00b0 in the header", "INVOICE\nAcme\nn\u00b0 5520\nTotal $5.00", "5520"],
     ["the line after the label", "Invoice number:\nINV-1001\nTotal $5.00", "INV-1001"],
+    [
+      "the line after the label, with no INV",
+      "Invoice number:\n2026-0451\nTotal $5.00",
+      "2026-0451",
+    ],
     ["under a header cell", "Invoice #\tDate\nINV-1001\t2026-10-01\nTotal $5.00", "INV-1001"],
+    ["under a header cell, with no INV", "Invoice #\tDate\n5520\t2026-10-01\nTotal $5.00", "5520"],
     ["an -INV- segment", "INVOICE CCC-INV-4410\nTotal $5.00", "CCC-INV-4410"],
     ["look-alike digits", "Invoice # 1OO1\nTotal $5.00", "1001"],
     ["a ref. label", "Invoice ref. A-1\nTotal $5.00", "A-1"],
