@@ -13,7 +13,7 @@ import {
 } from "@/lib/keys/service";
 import { log, scrubText } from "@/lib/log";
 import { extractInvoice, type InvoiceMediaType } from "./extract";
-import { type AmountIssue, extractFacts, refFor } from "./facts";
+import { type AmountIssue, extractFacts, fingerprintText, refFor } from "./facts";
 import { signingMandate } from "./mandate";
 import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
 
@@ -24,7 +24,7 @@ import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
 /**
  * How long one cycle holds the tenant's `process` lease. It must outlast the longest cycle (the route's
  * `maxDuration`, 60 s) with a margin: the lease fence stops a late release, not an overrun that overlaps the next
- * cycle (T3 carry). route.test.ts checks it against the route's `maxDuration`.
+ * cycle. route.test.ts checks it against the route's `maxDuration`.
  */
 export const PROCESS_LEASE_SECONDS = 90;
 
@@ -99,7 +99,7 @@ export interface PipelineInput {
 
 type Opened = { key: { publicKey: string; secret: string } } | { problem: KeyProblem };
 
-/** The key, or why it cannot be used (T10: null, decrypt_failed and key_mismatch are a skipped cycle). */
+/** The key, or why it cannot be used (null, decrypt_failed and key_mismatch are a skipped cycle). */
 async function openKey(
   load: () => Promise<{ publicKey: string; secret: string } | null>,
 ): Promise<Opened> {
@@ -122,7 +122,7 @@ const messageOf = (e: unknown): string =>
 const TX_HASH = /^[1-9A-HJ-NP-Za-km-z]{32,64}$/;
 
 /**
- * The invoice status for an SDK outcome. "unconfirmed", and any status this code does not know (ICR-6
+ * The invoice status for an SDK outcome. "unconfirmed", and any status this code does not know (the
  * `default:` arm), may have paid: it is recorded as `unconfirmed`, shown as "payment sent, confirmation
  * pending" and never sent again (the SDK's UNKNOWN_SETTLE_MS guard and rule `ledger.unresolved` hold it).
  */
@@ -149,7 +149,7 @@ export async function processInvoice(
   const at = { request_id: requestId, tenant: tenant.tenant_id, vault: tenant.vault_id };
   const now = (deps.now ?? (() => new Date()))();
 
-  // The text the model is shown, and its hash: the invoice hash is never the file hash (ICR-3b).
+  // The text the model is shown, and its hash: the invoice hash is never the file hash.
   const { text, truncated } = await extractInvoice(upload);
   if (text.trim() === "") return { status: "empty" };
   const invoiceHash = hashInvoice(text);
@@ -157,7 +157,7 @@ export async function processInvoice(
     input.purposeBytes !== null && input.purposeBytes.length > 0
       ? sha256Hex(input.purposeBytes)
       : null;
-  // R26: only the five InvoiceFacts keys reach the SDK; the invoice number is kept for display.
+  // Only the five InvoiceFacts keys reach the SDK; the invoice number is kept for display.
   // A text cut short (more pages than are read, or past the length limit) gives the amount "0": its final total
   // may be on the part that was not read.
   const { invoiceNumber, amountIssue, ...facts } = extractFacts(text, invoiceHash, purposeHash, {
@@ -207,7 +207,7 @@ export async function processInvoice(
     log.warn("payables.chain_unavailable", { ...at, error: messageOf(e) });
     return { status: "chain_unavailable" };
   }
-  // The mandate decides the key (T10): the payment signs with mandate.agent_pk, or the cycle does not run.
+  // The mandate decides the key: the payment signs with mandate.agent_pk, or the cycle does not run.
   const mandate = signingMandate(mandates, purposeHash, now, activeAgentKeys);
   if (mandate === null) return { status: "no_mandate", purposeHash };
   const agent = await openKey(() =>
@@ -225,12 +225,18 @@ export async function processInvoice(
       const inserted = await insertInvoice(deps.db, tenant.tenant_id, {
         invoiceHash,
         ref,
-        filename: zero ? null : upload.filename, // R18: a file name can carry details
+        filename: zero ? null : upload.filename, // a file name can carry details
         mediaType: upload.mediaType,
         documentSha256: sha256Hex(upload.bytes),
         sealed: zero ? null : await sealInvoice(deps.master, tenant.tenant_id, upload.bytes),
         facts: zero ? null : { ...facts, invoice_number: invoiceNumber },
         amountIssue,
+        // The duplicate guard: another text of the same invoice (other line ends or spaces), or the same number.
+        fingerprint: sha256Hex(fingerprintText(text)),
+        invoiceNumberHash:
+          invoiceNumber === null
+            ? null
+            : sha256Hex(`${tenant.tenant_id}:${invoiceNumber.normalize("NFKC").toUpperCase()}`),
         requestId,
         createdBy: input.actor,
       });

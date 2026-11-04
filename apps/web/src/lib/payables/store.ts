@@ -17,10 +17,10 @@ export type StoredFacts = InvoiceFacts & { invoice_number: string | null };
 /** One invoice as `invoice_list` / `invoice_get` return it: never the sealed content or its nonce. */
 export interface InvoiceRow {
   id: string;
-  /** sha256 of the extracted text the model was shown (ICR-3b). */
+  /** sha256 of the extracted text the model was shown. */
   invoice_hash: string;
   ref: string;
-  /** Null for pasted text, and always null in zero-retention mode (R18). */
+  /** Null for pasted text, and always null in zero-retention mode. */
   filename: string | null;
   media_type: InvoiceMediaType;
   /** sha256 of the uploaded file's bytes. */
@@ -32,7 +32,7 @@ export interface InvoiceRow {
   status: InvoiceStatus;
   outcome: SpendOutcome | null;
   error: string | null;
-  /** The cycle's anchor transaction (R20); the ledger never holds it. */
+  /** The cycle's anchor transaction; the ledger never holds it. */
   anchor_tx_hash: string | null;
   request_id: string;
   model_prompt_tokens: number | null;
@@ -52,6 +52,10 @@ export interface NewInvoice {
   sealed: Sealed | null;
   facts: StoredFacts | null;
   amountIssue: AmountIssue | null;
+  /** sha256 of the normalised text (fingerprintText): the duplicate guard's key. */
+  fingerprint: string;
+  /** sha256 of "<tenant id>:<invoice number>", or null when the text states none. */
+  invoiceNumberHash: string | null;
   requestId: string;
   createdBy: string;
 }
@@ -68,6 +72,8 @@ export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<
     filename: i.filename,
     media_type: i.mediaType,
     document_sha256: i.documentSha256,
+    fingerprint_sha256: i.fingerprint,
+    invoice_number_sha256: i.invoiceNumberHash,
     retained: i.sealed !== null,
     content_ciphertext: i.sealed?.ciphertext ?? null,
     content_nonce: i.sealed?.nonce ?? null,

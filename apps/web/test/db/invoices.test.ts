@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "@/lib/db/port";
-import { AMOUNT_ISSUES } from "@/lib/payables/facts";
+import { AMOUNT_ISSUES } from "@/lib/payables/amount";
 import {
   getInvoice,
   insertInvoice,
@@ -63,11 +63,81 @@ describe("invoice functions (migration 0006)", () => {
         invoice_number: null,
       },
       amountIssue: null,
+      fingerprint: hash.split("").reverse().join(""),
+      invoiceNumberHash: null,
       requestId: "r",
       createdBy: "alice.near",
       ...over,
     };
   }
+
+  const decide = (tenant: string, id: string, status: string) =>
+    setInvoiceOutcome(db, tenant, id, {
+      status: "decided",
+      outcome: { ...OUTCOME, status } as never,
+      anchorTxHash: null,
+      promptTokens: null,
+      completionTokens: null,
+    });
+
+  it("refuses an invoice whose normalised text matches one that is processing or paid", async () => {
+    const { id } = await insertInvoice(db, a, invoice({ fingerprint: H("a") }));
+    // Another text (another hash and ref) with the same fingerprint: a re-upload with other spaces or line ends.
+    const again = () => insertInvoice(db, a, invoice({ fingerprint: H("a") }));
+    expect(await again()).toEqual({ id, duplicate: true, status: "processing" });
+    await decide(a, id, "paid");
+    expect(await again()).toEqual({ id, duplicate: true, status: "decided" });
+    // Another vault may hold the same text.
+    expect(await insertInvoice(db, b, invoice({ fingerprint: H("a") }))).toMatchObject({
+      duplicate: false,
+    });
+  });
+
+  it.each([
+    ["held", true],
+    ["burned", true],
+    ["settled", true],
+    ["refused_by_code", false],
+    ["refused_by_contract", false],
+    ["failed", false],
+  ])(
+    "after a decided outcome %s, a matching re-upload is a duplicate: %s",
+    async (status, blocks) => {
+      const fp = (n + 7000).toString(16).padStart(64, "0");
+      const { id } = await insertInvoice(db, a, invoice({ fingerprint: fp }));
+      await decide(a, id, status);
+      expect((await insertInvoice(db, a, invoice({ fingerprint: fp }))).duplicate).toBe(blocks);
+    },
+  );
+
+  it("refuses an invoice whose number matches one that is unconfirmed, but not one that ended in error", async () => {
+    const { id } = await insertInvoice(db, a, invoice({ invoiceNumberHash: H("b") }));
+    await setInvoiceOutcome(db, a, id, {
+      status: "unconfirmed",
+      outcome: { ...OUTCOME, status: "unconfirmed" } as never,
+      anchorTxHash: null,
+      promptTokens: null,
+      completionTokens: null,
+    });
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberHash: H("b") }))).toEqual({
+      id,
+      duplicate: true,
+      status: "unconfirmed",
+    });
+    const { id: failed } = await insertInvoice(db, a, invoice({ invoiceNumberHash: H("c") }));
+    await setInvoiceOutcome(db, a, failed, { status: "error", error: "rpc down" });
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberHash: H("c") }))).toMatchObject({
+      duplicate: false,
+    });
+  });
+
+  it("refuses a malformed fingerprint or invoice-number hash", async () => {
+    for (const over of [{ fingerprint: "nope" }, { invoiceNumberHash: "XYZ" }]) {
+      await expect(insertInvoice(db, a, invoice(over))).rejects.toMatchObject({
+        code: "invalid_input",
+      });
+    }
+  });
 
   it("is executable by the service role only", async () => {
     for (const role of ["anon", "authenticated"] as const) {
@@ -103,7 +173,7 @@ describe("invoice functions (migration 0006)", () => {
       { requestId: "" },
       { createdBy: "" },
       { sealed: null }, // zero retention with facts and a file name
-      { sealed: null, facts: null }, // zero retention with a file name (R18)
+      { sealed: null, facts: null }, // zero retention with a file name
       { sealed: { ciphertext: "", nonce: "" } },
       { amountIssue: "made_up" as NewInvoice["amountIssue"] },
     ];
@@ -142,7 +212,7 @@ describe("invoice functions (migration 0006)", () => {
       facts: null,
       amount_issue: "ambiguous",
     });
-    // An error row is not taken over with retained content either (R24 path).
+    // An error row is not taken over with retained content either (the retry path).
     await setInvoiceOutcome(db, z, hashOnly.id, { status: "error", error: "x" });
     const row = await getInvoice(db, z, hashOnly.id);
     await expect(
@@ -161,7 +231,7 @@ describe("invoice functions (migration 0006)", () => {
     ).rejects.toMatchObject({ code: "not_found" });
   });
 
-  it("keeps no file name for a zero-retention row, even written by hand (R18)", async () => {
+  it("keeps no file name for a zero-retention row, even written by hand", async () => {
     await expect(
       pg.query(
         `insert into invoices (tenant_id, invoice_hash, ref, filename, media_type, retained, request_id, created_by)
@@ -231,7 +301,7 @@ describe("invoice functions (migration 0006)", () => {
     ).resolves.toMatchObject({ status: "unconfirmed", changed: true });
   });
 
-  it("takes over only an `error` row of the same invoice (R24)", async () => {
+  it("takes over only an `error` row of the same invoice", async () => {
     const inv = invoice();
     const { id } = await insertInvoice(db, a, inv);
     await setInvoiceOutcome(db, a, id, { status: "error", error: "rpc down" });
@@ -279,7 +349,8 @@ describe("invoice functions (migration 0006)", () => {
     expect(all.some((i) => i.id === mine.id)).toBe(false);
   });
 
-  it("lets a member read why the amount was refused, for every reason the reader gives (W-T13-R2 g)", async () => {
+  it("lets a member read why the amount was refused, for every reason the reader gives", async () => {
+    expect(AMOUNT_ISSUES).toContain("not_payable");
     for (const reason of AMOUNT_ISSUES) {
       const { id } = await insertInvoice(db, a, invoice({ amountIssue: reason }));
       const seen = await asRole(pg, "authenticated", "alice.near", (tx) =>

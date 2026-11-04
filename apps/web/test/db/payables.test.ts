@@ -210,7 +210,7 @@ describe("processInvoice", () => {
       ledgerKey: t.ledger?.secret,
       requestId: "req-42",
     });
-    // The SDK gets the text, exactly the five facts (R26), and the ref derived from the TEXT hash (ICR-3b).
+    // The SDK gets the text, exactly the five facts, and the ref derived from the TEXT hash.
     const call = at(d.process.mock.calls)[0];
     const invoiceHash = hashInvoice(body);
     expect(call).toEqual({
@@ -251,7 +251,7 @@ describe("processInvoice", () => {
     expect(lease.rows[0]?.l).toBeNull();
   });
 
-  it("hashes a PDF's extracted text as the invoice, and its bytes as the document (ICR-3b)", async () => {
+  it("hashes a PDF's extracted text as the invoice, and its bytes as the document", async () => {
     const t = await tenant();
     const pdf = tinyPdf("Invoice INV-9 PO-1001\nTotal 12.50 USDC");
     const d = deps([mandate(1, t.agent?.publicKey ?? "")]);
@@ -282,7 +282,7 @@ describe("processInvoice", () => {
     expect(sha256Hex(clear)).toBe(sha256Hex(pdf));
   });
 
-  it("keeps only hashes in zero-retention mode, and no file name (R18)", async () => {
+  it("keeps only hashes in zero-retention mode, and no file name", async () => {
     const t = await tenant({ zero: true });
     const r = await run(deps([mandate(1, t.agent?.publicKey ?? "")]), t, "Total 9 USDC", {
       filename: "acme-salary-review.txt",
@@ -312,7 +312,7 @@ describe("processInvoice", () => {
     expect(await rows(t.member.tenant_id)).toHaveLength(1);
   });
 
-  it("answers busy while another cycle holds the tenant lease (Review Focus #2)", async () => {
+  it("answers busy while another cycle holds the tenant lease", async () => {
     const t = await tenant();
     const held = await db.rpc<{ acquired: boolean; until: string | null }>("tenant_lease", {
       tenant_id: t.member.tenant_id,
@@ -349,7 +349,7 @@ describe("processInvoice", () => {
     expect(leftSeconds).toBeLessThanOrEqual(PROCESS_LEASE_SECONDS);
   });
 
-  it("records failures, releases the lease, and runs the same invoice again on its row (R24)", async () => {
+  it("records failures, releases the lease, and runs the same invoice again on its row", async () => {
     const t = await tenant();
     const ms = [mandate(1, t.agent?.publicKey ?? "")];
     const boom = deps(ms, async () => {
@@ -524,7 +524,7 @@ describe("processInvoice", () => {
     expect(logs.lines.some((l) => l.includes("payables.outcome_not_recorded"))).toBe(true);
   });
 
-  it("refuses the amount of a text cut short, and says why (W-T13-R1)", async () => {
+  it("refuses the amount of a text cut short, and says why", async () => {
     const t = await tenant();
     const ms = [mandate(1, t.agent?.publicKey ?? "")];
     const long = `Total 5 USDC\n${"x".repeat(MAX_TEXT_CHARS)}`;
@@ -577,6 +577,40 @@ describe("processInvoice", () => {
       status: "duplicate",
     });
   });
+
+  it("refuses a figure that holds a NUL: the NUL becomes U+FFFD, so its digits do not join", async () => {
+    const t = await tenant();
+    const d = deps([mandate(1, t.agent?.publicKey ?? "")]);
+    const r = await run(d, t, "Total 2\u00005 USDC");
+    expect(r).toMatchObject({ status: "decided", amountIssue: "unreadable" });
+    const call = at(d.process.mock.calls)[0];
+    expect(call.text).toBe("Total 2\ufffd5 USDC");
+    expect(call.facts.amount).toBe("0");
+  });
+
+  it.each([
+    ["a final newline", "Invoice INV-50\nTotal 5 USDC\n"],
+    ["CRLF line ends", "Invoice INV-50\r\nTotal 5 USDC"],
+    ["a no-break space", "Invoice\u00a0INV-50\nTotal  5 USDC"],
+    ["the same invoice number and another amount", "Invoice INV-50\nTotal 6 USDC"],
+  ])(
+    "answers a re-upload that differs by %s as a duplicate, before anything is sent",
+    async (_why, body) => {
+      const t = await tenant();
+      const ms = [mandate(1, t.agent?.publicKey ?? "")];
+      expect(await run(deps(ms), t, "Invoice INV-50\nTotal 5 USDC")).toMatchObject({
+        status: "decided",
+        outcome: { status: "paid" },
+      });
+      const d = deps(ms);
+      expect(await run(d, t, body)).toMatchObject({
+        status: "duplicate",
+        invoiceStatus: "decided",
+      });
+      expect(d.make).not.toHaveBeenCalled();
+      expect(await rows(t.member.tenant_id)).toHaveLength(1);
+    },
+  );
 
   it("answers empty for a file with no text", async () => {
     const t = await tenant();

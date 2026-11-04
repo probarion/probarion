@@ -1,5 +1,6 @@
 import "pdf-parse/worker"; // must load before pdf-parse on Node/Vercel (pdf-parse troubleshooting doc)
 import { PDFParse } from "pdf-parse";
+import { normaliseLineEnds } from "./amount";
 
 /**
  * The largest invoice file read. The route caps the whole request at this plus 64 KiB for the form, which stays
@@ -17,7 +18,7 @@ export const MAX_PDF_PAGES = 20;
  * pdfjs (decoding a large stream, laying out a costly page) runs to its end first. The real bounds on a crafted
  * PDF are the input caps, MAX_INVOICE_BYTES (4 MiB) and MAX_PDF_PAGES (20; only those pages are read), and the
  * route's `maxDuration` (60 s), after which the platform ends the invocation. A worker thread that could be
- * terminated mid-parse is out of scope (ruling W-T13-R2 j).
+ * terminated mid-parse is out of scope.
  */
 export const PDF_TIMEOUT_MS = 20_000;
 
@@ -37,13 +38,15 @@ export class ExtractError extends Error {
 }
 
 /**
- * The text as the model will see it, and the hash is taken of exactly this text. CRLF becomes LF (the same text
- * whichever way it was typed or saved), NUL characters go (Postgres jsonb cannot hold U+0000, and the ledger is
- * jsonb), and a cut at MAX_TEXT_CHARS never splits a surrogate pair, so the text always has a well-formed UTF-8
- * encoding and the same input always gives the same text, hence the same invoice hash.
+ * The text as the model will see it, and the hash is taken of exactly this text, and the amount reader reads it.
+ * Every line end (CRLF, CR, VT, FF, NEL, LS, PS) becomes LF, so all three see the same lines however the file was
+ * saved. A NUL becomes U+FFFD: Postgres jsonb cannot hold U+0000 (the ledger is jsonb), and deleting it would join
+ * the characters on either side ("2<NUL>5" would read as 25); the amount reader refuses a text holding U+FFFD. A
+ * cut at MAX_TEXT_CHARS never splits a surrogate pair, so the text always has a well-formed UTF-8 encoding and the
+ * same input always gives the same text, hence the same invoice hash.
  */
 function asModelText(raw: string): { text: string; cut: boolean } {
-  const text = raw.replaceAll("\r\n", "\n").replaceAll("\u0000", "");
+  const text = normaliseLineEnds(raw).replaceAll("\u0000", "\ufffd");
   if (text.length <= MAX_TEXT_CHARS) return { text, cut: false };
   const last = text.charCodeAt(MAX_TEXT_CHARS - 1);
   const end = last >= 0xd800 && last <= 0xdbff ? MAX_TEXT_CHARS - 1 : MAX_TEXT_CHARS;

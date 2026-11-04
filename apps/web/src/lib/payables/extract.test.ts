@@ -51,10 +51,19 @@ describe("extractText", () => {
     ).rejects.toThrow(/PDF or plain text/);
   });
 
-  it("drops NUL characters, which Postgres jsonb cannot hold", async () => {
-    expect(await extractText({ bytes: utf8("Total\u0000 5"), mediaType: "text/plain" })).toBe(
-      "Total 5",
+  it("replaces a NUL with U+FFFD rather than deleting it, so the digits on either side stay apart", async () => {
+    // Postgres jsonb cannot hold U+0000; deleting it would join "2" and "5" into a figure the text never showed.
+    expect(await extractText({ bytes: utf8("Total 2\u00005 USDC"), mediaType: "text/plain" })).toBe(
+      "Total 2\ufffd5 USDC",
     );
+  });
+
+  it("writes every line end as LF: CRLF, CR, VT, FF, NEL, LS and PS", async () => {
+    const text = await extractText({
+      bytes: utf8("a\r\nb\rc\u000bd\fe\u0085f\u2028g\u2029h"),
+      mediaType: "text/plain",
+    });
+    expect(text).toBe("a\nb\nc\nd\ne\nf\ng\nh");
   });
 
   it("cuts long text without splitting a surrogate pair", async () => {
