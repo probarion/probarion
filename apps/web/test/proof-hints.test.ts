@@ -1,8 +1,8 @@
 // The "To prove it" commands under an unproven burn really prove it. Each scenario makes a burn the page cannot
 // prove, on the SDK's fake chain over loopback JSON-RPC: the page shows the hint; the test follows it as a visitor
-// would (ledger.jsonl downloaded from the page's ledger route, the placeholder filled in) and runs the exact command
-// shown, through the built CLI as a child process (the repository folder is this checkout). Only --rpc is added, to
-// point the CLI at the fake node instead of the network's default. Loopback only.
+// would (probarion-<vault>-ledger.jsonl downloaded from the page's ledger route, the placeholder filled in) and runs
+// the exact command shown, through the built CLI as a child process (the repository folder is this checkout). Only
+// --rpc is added, to point the CLI at the fake node instead of the network's default. Loopback only.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -78,7 +78,7 @@ async function runShown(
   }
 }
 
-/** ledger.jsonl as the page's ledger route serves it for `publicDb`'s vault. */
+/** probarion-<vault>-ledger.jsonl as the page's ledger route serves it for `publicDb`'s vault. */
 async function downloadedLedger(publicDb: Db): Promise<string> {
   const r = await loadLedger(
     { network: "testnet", publicDb, serviceDb: noServiceDb, sessionAccount: null },

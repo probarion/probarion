@@ -13,9 +13,12 @@ const REASONS = {
 export type CliFallbackReason = keyof typeof REASONS;
 
 /**
- * The lines to show, each one runnable as it is in bash and in Windows PowerShell 5.1 (`#` is a comment in both; no
- * `VAR=value` prefix, no `\` line continuation). The CLI has no flag for the factory: it reads PROBARION_FACTORY_ID,
- * else the network's own factory, so the variable is set only for another factory, with one labelled line per shell.
+ * The lines to show, for bash and Windows PowerShell 5.1 (`#` is a comment in both; there is no `VAR=value` prefix
+ * and no `\` line continuation). While the CLI is not on npm, the repository setup comes first as comment lines: run
+ * each command after its `#` once, in either shell. Only for a factory other than the network's own come the two
+ * labelled lines that set it, one per shell (the `export` line for bash, the `$env:` line for PowerShell; the CLI has
+ * no flag for the factory, it reads PROBARION_FACTORY_ID, else the network's factory). The command line then runs as
+ * it is in both shells once its `<…>` placeholders (the name, the approver and the signing account) are filled in.
  */
 export function cliFallbackLines(factory: string, network: Network): string[] {
   const lines: string[] = [];

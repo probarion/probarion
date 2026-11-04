@@ -24,7 +24,7 @@ export const CLI_SETUP_LINES: readonly string[] = [
 
 /** The short line the pages show while the package is not on npm (package.json engines: Node >=24, pnpm 10). */
 export const CLI_NOTE =
-  "The probarion npm package is coming; until then, the commands below run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10.";
+  "The probarion npm package is coming; until then, the commands below run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10. If you cloned it before, run git pull and the build line again.";
 
 /**
  * What a pre-ledger spend (mainnet v0 only) also needs: the documented Day-4 decisions and the recorded burn

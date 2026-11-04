@@ -49,7 +49,12 @@ export type ProofResult =
    */
   | { status: "error"; reason: ProofErrorReason; vault: string; network: Network };
 
-export type ProofErrorReason = "evidence" | "ledger" | "chain";
+/**
+ * Why the checks did not run: the evidence file is malformed; the vault's ledger could not be read; its chain data
+ * could not be read; or the access check itself failed (`database`), so the page cannot even say whether the vault has
+ * a proof page.
+ */
+export type ProofErrorReason = "evidence" | "ledger" | "chain" | "database";
 
 const TTL_MS = 60_000;
 /** Bounds the cache: only vaults with a public page or a member's view get here, but keep it small anyway. */
@@ -119,8 +124,12 @@ async function access(
 }
 
 /** The checks did not run: logged with the reason, answered as an error (never a pass, never a crash). */
-function unavailable(deps: ProofDeps, vault: string, error: unknown): ProofResult {
-  const reason = errorReason(error);
+function unavailable(
+  deps: ProofDeps,
+  vault: string,
+  error: unknown,
+  reason: ProofErrorReason = errorReason(error),
+): ProofResult {
   log.warn("proof.unavailable", {
     vault,
     reason,
@@ -188,7 +197,7 @@ export async function loadProof(deps: ProofDeps, vault: string): Promise<ProofRe
   try {
     who = await access(deps, vault);
   } catch (error) {
-    return unavailable(deps, vault, error);
+    return unavailable(deps, vault, error, "database");
   }
   if (who === null || who.network !== deps.network) return NOT_FOUND;
 
@@ -224,8 +233,19 @@ export async function publicDemoTarget(
 ): Promise<string | null> {
   const target = proofIndexTarget(demoVault);
   if (target === null || demoVault === null) return null;
-  const pub = await deps.publicDb.rpc<PublicVault | null>("public_vault", { vault_id: demoVault });
-  return pub && pub.vault_id === demoVault && pub.network === deps.network ? target : null;
+  try {
+    const pub = await deps.publicDb.rpc<PublicVault | null>("public_vault", {
+      vault_id: demoVault,
+    });
+    return pub && pub.vault_id === demoVault && pub.network === deps.network ? target : null;
+  } catch (error) {
+    // The database cannot say: /proof explains how to open a vault instead of failing.
+    log.warn("proof.demo_unavailable", {
+      vault: demoVault,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 export interface LedgerDeps {
@@ -246,19 +266,33 @@ export interface LedgerOk {
 export type LedgerResult =
   | LedgerOk
   | { status: "not_found" }
-  | { status: "error"; reason: "ledger"; vault: string; network: Network };
+  | { status: "error"; reason: "ledger" | "database"; vault: string; network: Network };
 
 /**
- * The vault's signed ledger, for ledger.jsonl (the file the page's commands pass as `--ledger`). The same rules as
- * `loadProof`: a valid id, then public through the anon key or a member through the tenant's ledger, on this network.
- * It reads the database only, never the chain, and is not cached.
+ * The vault's signed ledger, served at /proof/<vault>/ledger.jsonl and saved as probarion-<vault>-ledger.jsonl
+ * (`ledgerFileName`), the file the page's commands pass as `--ledger`. The same rules as `loadProof`: a valid id,
+ * then public through the anon key or a member through the tenant's ledger, on this network. It reads the database
+ * only, never the chain, and is not cached.
  */
 export async function loadLedger(deps: LedgerDeps, vault: string): Promise<LedgerResult> {
   if (!isNearAccountId(vault)) return NOT_FOUND;
+  const failed = (reason: "ledger" | "database", error: unknown): LedgerResult => {
+    log.warn("proof.unavailable", {
+      vault,
+      reason,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { status: "error", reason, vault, network: deps.network };
+  };
+  let who: Awaited<ReturnType<typeof access>>;
   try {
-    // Inside the try: a database error in the access check is an answer too (503), not a crash.
-    const who = await access({ ...deps, makeReader: unreachableReader }, vault);
-    if (who === null || who.network !== deps.network) return NOT_FOUND;
+    // A database error in the access check is an answer too (503), not a crash.
+    who = await access({ ...deps, makeReader: unreachableReader }, vault);
+  } catch (error) {
+    return failed("database", error);
+  }
+  if (who === null || who.network !== deps.network) return NOT_FOUND;
+  try {
     return {
       status: "ok",
       vault,
@@ -267,12 +301,7 @@ export async function loadLedger(deps: LedgerDeps, vault: string): Promise<Ledge
       entries: await who.store.all(),
     };
   } catch (error) {
-    log.warn("proof.unavailable", {
-      vault,
-      reason: "ledger",
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { status: "error", reason: "ledger", vault, network: deps.network };
+    return failed("ledger", error);
   }
 }
 

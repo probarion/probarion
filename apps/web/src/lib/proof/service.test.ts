@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Db, DbError } from "@/lib/db/port";
 import { makeSnapshot } from "../../../test/fixtures/snapshot";
 import { ProofEvidenceError } from "./evidence";
-import { clearProofCache, loadLedger, loadProof, type ProofDeps } from "./service";
+import {
+  clearProofCache,
+  loadLedger,
+  loadProof,
+  type ProofDeps,
+  publicDemoTarget,
+} from "./service";
 
 // The cache and the log, with fake databases: any vault id is a public mainnet vault with an empty ledger.
 const anyPublic: Db = {
@@ -290,7 +296,7 @@ describe("loadProof: how old a cached result can be", () => {
   });
 });
 
-describe("loadLedger (ledger.jsonl)", () => {
+describe("loadLedger (the ledger file, saved as probarion-<vault>-ledger.jsonl)", () => {
   // A block body: an arrow that returns the spy would hand vitest a function to call as teardown.
   beforeEach(() => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -432,9 +438,10 @@ describe("a database error before the access check", () => {
   it("is an answer with a reason, not a crash, for the page and both downloads", async () => {
     const { d } = deps(() => 1);
     d.publicDb = down;
+    // Its own reason: the page cannot even say whether the vault has a proof page.
     expect(await loadProof(d, vault(11))).toEqual({
       status: "error",
-      reason: "ledger",
+      reason: "database",
       vault: vault(11),
       network: "mainnet",
     });
@@ -443,12 +450,19 @@ describe("a database error before the access check", () => {
         { network: "mainnet", publicDb: down, serviceDb: down, sessionAccount: "s.near" },
         vault(11),
       ),
-    ).toEqual({ status: "error", reason: "ledger", vault: vault(11), network: "mainnet" });
+    ).toEqual({ status: "error", reason: "database", vault: vault(11), network: "mainnet" });
     // A member's lookup that fails is the same.
     const member = deps(() => 1).d;
     member.publicDb = { rpc: async <T>() => null as T };
     member.serviceDb = down;
     member.sessionAccount = "s.near";
-    expect((await loadProof(member, vault(11))).status).toBe("error");
+    expect(await loadProof(member, vault(11))).toMatchObject({
+      status: "error",
+      reason: "database",
+    });
+  });
+
+  it("sends /proof to the notice, not an error, when the demo vault cannot be looked up", async () => {
+    expect(await publicDemoTarget({ publicDb: down, network: "mainnet" }, vault(12))).toBeNull();
   });
 });

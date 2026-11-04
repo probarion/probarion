@@ -744,4 +744,29 @@ describe("the vault's ledger file and the chain command", () => {
       cli(`verify --network testnet --vault ${V} --ledger probarion-${V}-ledger.jsonl`),
     );
   });
+
+  it("adds the pre-ledger evidence for mainnet v0, the one vault whose check d needs it, and nowhere else", () => {
+    const v0 = "v0.probarion.near";
+    expect(chainCommand("mainnet", v0)).toBe(
+      cli(
+        `verify --network mainnet --vault ${v0} --ledger probarion-${v0}-ledger.jsonl ${PRE_LEDGER_FLAGS}`,
+      ),
+    );
+    expect(chainCommand("testnet", "v0.probarion.testnet")).not.toContain("--evidence");
+    expect(chainCommand("mainnet", V)).not.toContain("--evidence");
+  });
+
+  it("builds every hint on the chain command, so a flag added there reaches the hints", () => {
+    const v0 = "v0.probarion.near";
+    const r = {
+      ...report,
+      unproven: [{ check: "h", spend_id: 2, reason: "not_recorded" }],
+    } as never as VerifyReport;
+    const [row] = unprovenRows(r, "mainnet", v0);
+    expect(row?.hint).toBe(`${chainCommand("mainnet", v0)} --burn-tx 2=<tx hash>`);
+    const [plain] = unprovenRows(r, "testnet", "v0.probarion.testnet");
+    expect(plain?.hint).toBe(
+      `${chainCommand("testnet", "v0.probarion.testnet")} --burn-tx 2=<tx hash>`,
+    );
+  });
 });

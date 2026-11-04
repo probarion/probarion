@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * `/proof` with no vault: the demo vault (PROBARION_VAULT_ID), when its proof page is public on this network.
- * Otherwise, rather than a redirect to a 404, it says how to open a vault's page.
+ * Otherwise, and when the database cannot say (`publicDemoTarget` catches the error), rather than a redirect to a 404
+ * or an error page, it says how to open a vault's page.
  */
 export default async function ProofIndex() {
   const env = getEnv();

@@ -120,7 +120,7 @@ function LedgerLink({ vault }: { vault: string }) {
 const INTO_REPO = CLI_ON_NPM ? "" : "into the repository folder ";
 /** The ledger is live: fetch it right before the command, and again once the vault has acted. */
 const JUST_BEFORE =
-  "just before you run the command (again if the vault has acted since), then run:";
+  "just before you run the command (replace any earlier copy; again if the vault has acted since), then run:";
 
 function Unproven({ vault, rows }: { vault: string; rows: readonly UnprovenRow[] }) {
   if (rows.length === 0) return null;
@@ -132,7 +132,8 @@ function Unproven({ vault, rows }: { vault: string; rows: readonly UnprovenRow[]
             <span className="font-medium">Spend #{u.spendId}</span> ({u.reason}): {u.why}
           </p>
           <p className="mt-1 text-xs">
-            Download <LedgerLink vault={vault} /> {INTO_REPO}
+            Download <LedgerLink vault={vault} />{" "}
+            {CLI_ON_NPM ? "" : "into the repository folder (set up below) "}
             {JUST_BEFORE}
           </p>
           <code className={codeBlock}>{u.hint}</code>
@@ -307,8 +308,9 @@ function VerifyYourself({
           </a>
           : a snapshot of this vault (its ledger and chain data), taken when you click or shortly
           before. The verifier prints when it was taken. If it prints <code>{takenAt}</code>, it is
-          the very snapshot these checks used, and it gives the same result; otherwise it is another
-          snapshot of this vault, and its result can differ from this page.
+          the very snapshot these checks used, and a verifier built from the current repository
+          gives the same result; otherwise it is another snapshot of this vault, and its result can
+          differ from this page.
         </li>
         <li>
           {CLI_ON_NPM ? "Run" : "From the repository folder, with the file in it, run"} the
@@ -344,8 +346,11 @@ function CliSetup() {
   return (
     <p className="mt-3 text-sm text-ink/80">
       {CLI_NOTE} Set up once, one command per line:
-      {/* Real newlines between the commands, so the text keeps them apart even without styles. */}
+      {/* Real newlines between the commands, and before the first and after the last, so text without styles keeps
+          them apart from each other and from the prose around them. Outside the <code> they render as a space. */}
+      {"\n"}
       <code className={`${codeBlock} whitespace-pre-wrap`}>{CLI_SETUP_LINES.join("\n")}</code>
+      {"\n"}
     </p>
   );
 }
@@ -442,13 +447,28 @@ export function ProofView({ result }: { result: ProofOk }) {
   );
 }
 
-const UNAVAILABLE: Readonly<Record<ProofErrorReason, string>> = {
-  evidence:
-    "This deployment's evidence file (content/proof-evidence.json) is malformed, so the checks were not run. Nothing on this page is a pass.",
-  ledger:
-    "This vault's signed ledger could not be read from Probarion's database right now, so the checks were not run. Nothing on this page is a pass. Try again in a minute.",
-  chain:
-    "The vault's chain data could not be read right now, so the checks were not run. Nothing on this page is a pass. Try again in a minute.",
+function unavailableText(reason: ProofErrorReason, vault: string): string {
+  switch (reason) {
+    case "evidence":
+      return "This deployment's evidence file (content/proof-evidence.json) is malformed, so the checks were not run. Nothing on this page is a pass.";
+    case "ledger":
+      return "This vault's signed ledger could not be read from Probarion's database right now, so the checks were not run. Nothing on this page is a pass. Try again in a minute.";
+    case "database":
+      return `Probarion's database could not be reached right now, so this page cannot say whether ${vault} has a proof page. Nothing on this page is a pass. Try again in a minute.`;
+    default:
+      return "The vault's chain data could not be read right now, so the checks were not run. Nothing on this page is a pass. Try again in a minute.";
+  }
+}
+
+/**
+ * The ledger download reads the same database: when the database is what failed (`ledger`, `database`), neither the
+ * download nor the command that needs it can be followed, so they are not offered.
+ */
+const OFFERS_CHAIN_COMMAND: Readonly<Record<ProofErrorReason, boolean>> = {
+  evidence: true,
+  chain: true,
+  ledger: false,
+  database: false,
 };
 
 /** The checks did not run. Never shown as a pass, and never as a failed check either. */
@@ -465,8 +485,8 @@ export function ProofUnavailable({
     <div className="mx-auto max-w-3xl">
       <Header vault={vault} eyebrow="Proof" />
       <Panel state="error" title="No result: the checks did not run">
-        <p className="mt-3 text-sm">{UNAVAILABLE[reason]}</p>
-        <ChainCommand vault={vault} network={network} />
+        <p className="mt-3 text-sm">{unavailableText(reason, vault)}</p>
+        {OFFERS_CHAIN_COMMAND[reason] ? <ChainCommand vault={vault} network={network} /> : null}
       </Panel>
     </div>
   );

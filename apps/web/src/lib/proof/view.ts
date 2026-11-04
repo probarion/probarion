@@ -6,6 +6,7 @@ import {
   type Snapshot,
   type VerifyReport,
 } from "@probarion/core";
+import { isPreLedgerVault } from "@probarion/sdk";
 import { explorerAccountUrl, explorerTxUrl, type Network } from "@/lib/config";
 import { formatUsdc } from "@/lib/near/units";
 import { cli, PRE_LEDGER_FLAGS } from "./cli";
@@ -197,20 +198,27 @@ const WHY: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * The command that re-reads the vault's chain with its signed ledger (the error views offer it). Without `--ledger`
- * the CLI would check the chain against an empty ledger, and any vault with an anchor would fail.
+ * The command that re-reads the vault's chain with its signed ledger: the error views offer it, and every unproven
+ * hint is built on it. Without `--ledger` the CLI would check the chain against an empty ledger, and any vault with an
+ * anchor would fail. The one vault whose check d needs the documented Day-4 decisions (mainnet v0, the SDK's
+ * `isPreLedgerVault`) also gets the evidence flags, as does a hint for a pre-ledger spend (`preLedger`).
  */
-export function chainCommand(network: Network, vault: string): string {
-  return cli(`verify --network ${network} --vault ${vault} --ledger ${ledgerFileName(vault)}`);
+export function chainCommand(
+  network: Network,
+  vault: string,
+  preLedger: boolean = isPreLedgerVault(network, vault),
+): string {
+  const evidence = preLedger ? ` ${PRE_LEDGER_FLAGS}` : "";
+  return cli(
+    `verify --network ${network} --vault ${vault} --ledger ${ledgerFileName(vault)}${evidence}`,
+  );
 }
 
 /** Each burn check h could not prove, why, and how to prove it (T14-R2). */
 export function unprovenRows(report: VerifyReport, network: Network, vault: string): UnprovenRow[] {
   // The ledger of a web vault is in the database, not on the visitor's disk: without --ledger the CLI would check
-  // the chain against an empty ledger and fail. The page links the vault's ledger file for it.
-  const verify = cli(
-    `verify --network ${network} --vault ${vault} --ledger ${ledgerFileName(vault)}`,
-  );
+  // the chain against an empty ledger and fail. The page links the vault's ledger file for it. One source: every
+  // hint starts with chainCommand, so a flag added there reaches the hints too.
   return listOf(report.unproven)
     .filter(isObject)
     .map((u) => {
@@ -219,6 +227,12 @@ export function unprovenRows(report: VerifyReport, network: Network, vault: stri
         typeof u.spend_id === "number" && Number.isSafeInteger(u.spend_id) && u.spend_id >= 0
           ? String(u.spend_id)
           : "<spend_id>";
+      // A pre-ledger spend (mainnet v0 only) needs the documented Day-4 decisions, in the repository's docs/evidence.
+      const verify = chainCommand(
+        network,
+        vault,
+        reason === "pre_ledger_no_tx" || isPreLedgerVault(network, vault),
+      );
       return {
         spendId: safeText(u.spend_id),
         reason,
@@ -226,10 +240,7 @@ export function unprovenRows(report: VerifyReport, network: Network, vault: stri
         hint:
           reason === "tx_unavailable"
             ? `${verify} --archival-rpc <archival RPC URLs>`
-            : reason === "pre_ledger_no_tx"
-              ? // Mainnet v0 only: check d needs the documented Day-4 decisions, in the repository's docs/evidence.
-                `${verify} ${PRE_LEDGER_FLAGS} --burn-tx ${id}=<tx hash>`
-              : `${verify} --burn-tx ${id}=<tx hash>`,
+            : `${verify} --burn-tx ${id}=<tx hash>`,
       };
     });
 }

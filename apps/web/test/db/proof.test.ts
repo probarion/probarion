@@ -268,7 +268,7 @@ describe("loadProof", () => {
       });
     }
   });
-  it("serves ledger.jsonl with the same rules: anon for a public vault, the tenant ledger for a member", async () => {
+  it("serves the ledger file (probarion-<vault>-ledger.jsonl) with the same rules: anon for a public vault, the tenant ledger for a member", async () => {
     const pub = deps(null);
     const r = await loadLedger(pub.d, PUBLIC);
     expect(r).toMatchObject({

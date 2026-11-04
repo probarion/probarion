@@ -19,6 +19,8 @@ const h = vi.hoisted(() => ({
   /** The vault public_vault answers for (/proof with no vault), and the anon calls made. */
   publicVault: null as { vault_id: string; network: string } | null,
   publicCalls: [] as string[],
+  /** The anon client fails (a database outage seen by /proof with no vault). */
+  publicDown: false,
   /** Structured warn lines (proof.unavailable), kept off the test output. */
   warned: [] as string[],
 }));
@@ -31,6 +33,7 @@ vi.mock("@/lib/db/clients", () => ({
   publicDb: (): Db => ({
     rpc: async <T>(fn: string, p: Record<string, unknown> = {}) => {
       h.publicCalls.push(fn);
+      if (h.publicDown) throw new DbError("db_error", "connection reset");
       if (fn !== "public_vault") throw new Error(`unexpected ${fn}`);
       const v = h.publicVault;
       return (
@@ -130,6 +133,7 @@ beforeEach(() => {
   h.env = { NEAR_NETWORK: "mainnet", PROBARION_VAULT_ID: null };
   h.publicVault = null;
   h.publicCalls = [];
+  h.publicDown = false;
   h.warned = [];
   vi.spyOn(console, "warn").mockImplementation((line: unknown) => {
     h.warned.push(String(line));
@@ -241,7 +245,7 @@ describe("/proof/[vault]", () => {
     expect(t).toContain("Spend #1");
     expect(t).toContain("No payment entry in the ledger names the transaction that burned it.");
     expect(t).toContain(
-      `Download probarion-${snapshot.vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}just before you run the command (again if the vault has acted since), then run:`,
+      `Download probarion-${snapshot.vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder (set up below) "}just before you run the command (replace any earlier copy; again if the vault has acted since), then run:`,
     );
     expect(out).toContain(`href="/proof/${snapshot.vault}/ledger.jsonl"`);
     expect(out).toContain(`download="probarion-${snapshot.vault}-ledger.jsonl"`);
@@ -281,7 +285,7 @@ describe("/proof/[vault]", () => {
       ),
     );
     expect(t).toContain(
-      `To read the chain half again instead of trusting the file, download probarion-${snapshot.vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}just before you run the command (again if the vault has acted since), then run:`,
+      `To read the chain half again instead of trusting the file, download probarion-${snapshot.vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}just before you run the command (replace any earlier copy; again if the vault has acted since), then run:`,
     );
     expect(out).toContain(`href="/proof/${snapshot.vault}/ledger.jsonl"`);
     if (!CLI_ON_NPM) expect(t).not.toContain("npx probarion");
@@ -293,7 +297,7 @@ describe("/proof/[vault]", () => {
     // The page's taken_at in full, as the CLI prints it ("snapshot taken <taken_at>").
     expect(snapshot.taken_at).toBe("2026-11-08T12:00:00.000Z");
     const step1 =
-      "a snapshot of this vault (its ledger and chain data), taken when you click or shortly before. The verifier prints when it was taken. If it prints 2026-11-08T12:00:00.000Z , it is the very snapshot these checks used, and it gives the same result; otherwise it is another snapshot of this vault, and its result can differ from this page.";
+      "a snapshot of this vault (its ledger and chain data), taken when you click or shortly before. The verifier prints when it was taken. If it prints 2026-11-08T12:00:00.000Z , it is the very snapshot these checks used, and a verifier built from the current repository gives the same result; otherwise it is another snapshot of this vault, and its result can differ from this page.";
     expect(t).toContain(step1);
     expect(t).toContain("snapshot taken 2026-11-08T12:00:00.000Z");
     expect(t).toContain("Checked 2026-11-09 10:00 UTC");
@@ -322,7 +326,9 @@ describe("/proof/[vault]", () => {
     // The four set-up commands, one per line (as React writes them: & and " escaped).
     // Four commands separated by real newlines, so text without styles (an AI reading the page, say) keeps them apart.
     const raw = out.replace(/<[^>]+>/g, "").replaceAll("&quot;", '"');
-    expect(raw).toContain(CLI_SETUP_LINES.join("\n"));
+    // A newline before the first command and after the last, so neither runs into the prose around it.
+    expect(raw).toContain(`\n${CLI_SETUP_LINES.join("\n")}\n`);
+    expect(raw).not.toContain(`:${CLI_SETUP_LINES[0]}`);
     expect(out).toMatch(/whitespace-pre-wrap/);
     expect(t).toContain(
       "From the repository folder, with the file in it, run the open-source verifier. It needs no network and no keys, and prints the result per check for that snapshot:",
@@ -436,7 +442,7 @@ describe("/proof/[vault]", () => {
     );
     expect(t).toContain(command);
     expect(t).toContain(
-      `download probarion-${vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}just before you run the command (again if the vault has acted since), then run:`,
+      `download probarion-${vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}just before you run the command (replace any earlier copy; again if the vault has acted since), then run:`,
     );
     if (!CLI_ON_NPM) {
       expect(t.indexOf(CLI_NOTE)).toBeGreaterThan(-1);
@@ -467,6 +473,10 @@ describe("/proof/[vault]", () => {
     );
     expect(t).not.toContain("chain data could not be read");
     expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "ledger" }]);
+    // The ledger download reads the same database, so neither it nor the command needing it is offered.
+    const out = await html(snapshot.vault);
+    expect(out).not.toContain(`/proof/${snapshot.vault}/ledger.jsonl`);
+    expect(t).not.toContain("--ledger");
   });
 
   it("names the vault in the title only when it is a valid account id", async () => {
@@ -582,6 +592,14 @@ describe("/proof", () => {
     // A missing id, and one that is not an account, are never looked up.
     expect(h.publicCalls).toEqual(["public_vault", "public_vault"]);
   });
+
+  it("explains how to open a vault, instead of an error page, when the database cannot be reached", async () => {
+    h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: "demo.vaults.probarion.testnet" };
+    h.publicDown = true;
+    const out = text(renderToStaticMarkup((await ProofIndex()) as ReactElement));
+    expect(out).toContain("Open /proof/&lt;vault account&gt; to see a vault&#x27;s checks.");
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.demo_unavailable" }]);
+  });
 });
 
 describe("the landing page and the menu", () => {
@@ -617,7 +635,7 @@ describe("/proof/[vault]/ledger.jsonl", () => {
     expect(h.depsCalls).toBe(0);
   });
 
-  it("downloads the vault's ledger as ledger.jsonl: one entry per line, as the CLI reads it", async () => {
+  it("downloads the vault's ledger, saved as probarion-<vault>-ledger.jsonl: one entry per line, as the CLI reads it", async () => {
     const snapshot = await proofSnapshot("ok");
     serve(snapshot);
     const res = await getLedger(snapshot.vault);
@@ -690,9 +708,16 @@ describe("a database error before the access check", () => {
         },
       },
     });
-    const t = text(await html(snapshot.vault));
+    const out = await html(snapshot.vault);
+    const t = text(out);
     expect(t).toContain("No result: the checks did not run");
-    expect(t).toContain("could not be read from Probarion&#x27;s database right now");
+    expect(t).toContain(
+      `Probarion&#x27;s database could not be reached right now, so this page cannot say whether ${snapshot.vault} has a proof page. Nothing on this page is a pass. Try again in a minute.`,
+    );
+    expect(t).not.toContain("signed ledger");
+    expect(out).not.toContain(`/proof/${snapshot.vault}/ledger.jsonl`);
+    expect(t).not.toContain("--ledger");
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "database" }]);
     const snap = await GET(
       new Request(`https://probarion.xyz/proof/${snapshot.vault}/snapshot.json`, {
         headers: { "x-forwarded-for": "203.0.113.7" },

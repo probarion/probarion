@@ -2,8 +2,9 @@ import type { LedgerEntry } from "@probarion/core";
 import type { LedgerOk } from "./service";
 
 /**
- * The ledger as `probarion verify --ledger ledger.jsonl` reads it: one entry per line, each `JSON.stringify(entry)`,
- * the same line the SDK's FileLedgerStore writes.
+ * The ledger as `probarion verify --ledger probarion-<vault>-ledger.jsonl` reads it (the file is served at
+ * /proof/<vault>/ledger.jsonl and saved under `ledgerFileName`): one entry per line, each `JSON.stringify(entry)`, the
+ * same line the SDK's FileLedgerStore writes.
  */
 export function ledgerFileText(entries: readonly LedgerEntry[]): string {
   return entries.map((e) => `${JSON.stringify(e)}\n`).join("");

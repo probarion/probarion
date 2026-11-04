@@ -29,7 +29,7 @@ describe("the probarion command the site shows (CLI_ON_NPM)", () => {
 
   it("says the package is coming, and what the repository command needs", () => {
     expect(CLI_NOTE).toBe(
-      "The probarion npm package is coming; until then, the commands below run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10.",
+      "The probarion npm package is coming; until then, the commands below run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10. If you cloned it before, run git pull and the build line again.",
     );
     const engines = (JSON.parse(read("package.json")) as { engines: Record<string, string> })
       .engines;
@@ -69,10 +69,11 @@ describe("the probarion command the site shows (CLI_ON_NPM)", () => {
         .split("\n")
         .find((l) => l.startsWith("  7. ")) ?? "";
     expect(step7).toContain("taken when you click or shortly before");
-    // The only claim: the same snapshot gives the same result; another one can differ (W-T16-R4).
+    // The only claim: the same snapshot gives the same result with a current verifier; another one can differ.
     expect(step7).toContain(
-      "it is the very snapshot the page checked, and it gives the same result",
+      "it is the very snapshot the page checked, and a verifier built from the current repository gives the same result",
     );
+    expect(step7).toContain("an existing clone needs `git pull` and the build line again");
     expect(step7).toContain("its result can differ from the page");
     expect(step7).not.toMatch(
       /up to a minute|newer one|matches this page unless|unless the vault changed/,
