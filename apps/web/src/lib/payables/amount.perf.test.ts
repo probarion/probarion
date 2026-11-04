@@ -36,6 +36,13 @@ function bestOf(run: () => unknown): number {
   return ms;
 }
 
+/** A read invoice whose total is followed by a line (a money-figure scan runs on every line after the total). */
+const HQ =
+  "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nLogo design $700.00\nTotal: $700.00\nThank you\n";
+/** Serial numbers after the total: a long run of digits and commas. */
+const serials = (count: number) =>
+  `${HQ}Serials: ${Array.from({ length: count }, (_, i) => String(100000 + i)).join(",")}`;
+
 /** 19 distinct word-like codes, then a digit run: each code's contexts are read around the code. */
 const CODES = "ALL AMD BAM BOB BTN CAD CUP CVE GEL MAD MDL MOP NEAR PEN PHP SOL SOS SVC TOP TRY ";
 
@@ -112,6 +119,8 @@ describe("extractFacts on adversarial text", () => {
     ],
     ["blank-rendering characters", (n) => "Logo\u2800design ".repeat(n / 12)],
     ["dash-like characters in numbers", (n) => "INV\u27961001 ".repeat(n / 9)],
+    ["a digit-and-comma run after the total", (n) => `${HQ}${"1,".repeat(n / 2)}1`.slice(0, n)],
+    ["serial numbers after the total", (n) => serials(Math.floor(n / 7)).slice(0, n)],
   ];
 
   it.each(shapes)("grows linearly on %s", (_why, shape) => {
@@ -149,6 +158,8 @@ describe("extractFacts on adversarial text", () => {
     ],
     ["characters NFKC doubles, up to the cap", "\ufb00".repeat(25_000)],
     ["characters NFKC expands past the cap", "\ufdfa".repeat(2_777)],
+    ["a digit-and-comma run after the total", `${HQ}${"1,".repeat(24_954)}1`.slice(0, 50_000)],
+    ["serial numbers after the total", serials(7_000).slice(0, 50_000)],
   ])("reads %s (50,000 characters) in under 100 ms", (_why, text) => {
     expect(text.length).toBeLessThanOrEqual(MAX_READ_UNITS);
     expect(best(text)).toBeLessThan(100);

@@ -3692,8 +3692,9 @@
       "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nRefunded $400.00",
       "expect": {
         "amount": "0",
-        "issue": "unreadable"
-      }
+        "issue": "not_payable"
+      },
+      "why": "Breaker ruling W-T13-B6: \"Refunded\" starting a line is a stamp, as \"Paid\" is, so the reason is not_payable."
     },
     {
       "id": "r4-open-2.7",
@@ -12191,6 +12192,2866 @@
         "issue": "unreadable"
       },
       "why": "refused (any reason)"
+    },
+    {
+      "id": "r6-S1.T1:Invoice #1001 (Paid)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice #1001 (Paid)\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T1:Invoice #1001 · Paid",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice #1001 · Paid\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T1:Invoice INV-1001 (void)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice INV-1001 (void)\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T1:Invoice INV-1001 (refunded)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice INV-1001 (refunded)\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T1:Invoice INV-1001 (test)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice INV-1001 (test)\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T1:Invoice INV-1001 (cancelled)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice INV-1001 (cancelled)\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T1:Invoice INV-1001 void",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice INV-1001 void\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T1:Invoice INV-1001 Void",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice INV-1001 Void\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T1:Invoice INV-1001 [void]",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice INV-1001 [void]\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T1:Invoice INV-1001 (voided)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice INV-1001 (voided)\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice INV-1001 (Paid)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice INV-1001 (Paid)\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice #1001 (Draft)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice #1001 (Draft)\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice #1001 Draft",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice #1001 Draft\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice #1001 (Void)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice #1001 (Void)\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice #1001 cancelled",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice #1001 cancelled\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice #1001 voided",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice #1001 voided\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice #1001 • Paid",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice #1001 • Paid\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice #1001 / Paid",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice #1001 / Paid\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice (Sample) INV-1001",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice (Sample) INV-1001\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice Template v2",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice Template v2\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice #1001 (Refunded)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice #1001 (Refunded)\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice #1001 (Duplicate)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice #1001 (Duplicate)\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice INV-1001 (receipted)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice INV-1001 (receipted)\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.T2:Invoice INV-1001 (draft)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Invoice INV-1001 (draft)\nAcme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.receipted",
+      "source": "final re-review, judge probe group S1",
+      "text": "RECEIPTED INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.noPaid",
+      "source": "final re-review, judge probe group S1",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001 (Paid)\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.invVoid",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nINVOICE INV-1001\nLogo design $100.00\nTotal $100.00\nInvoice void",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.marked",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nMarked as paid",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.marked2",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nInvoice marked paid",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.sp9",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nP         A         I         D",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S1.ctl:Invoice #1001 — Paid",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice #1001 — Paid\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.ctl:Invoice INV-1001 (VOID)",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice INV-1001 (VOID)\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.ctl:Invoice #1001 | Paid",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nInvoice #1001 | Paid\nLogo design $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S1.ctl:sp8",
+      "source": "final re-review, judge probe group S1",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nP        A        I        D",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (stamps on the title line), B7, B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.G:Paid in USDC, thank you",
+      "source": "final re-review, judge probe group S2",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPaid in USDC, thank you",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.G:Paid in USDC.",
+      "source": "final re-review, judge probe group S2",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPaid in USDC.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.G:Paid in USDC ✓",
+      "source": "final re-review, judge probe group S2",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPaid in USDC ✓",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.G:Paid in USDC (thanks!)",
+      "source": "final re-review, judge probe group S2",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPaid in USDC (thanks!)",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.G:Paid in USDC to acme.near",
+      "source": "final re-review, judge probe group S2",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPaid in USDC to acme.near",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.G:Paid in USDC on NEAR by Globex Corp",
+      "source": "final re-review, judge probe group S2",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPaid in USDC on NEAR by Globex Corp",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.G:Paid in USDC already",
+      "source": "final re-review, judge probe group S2",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPaid in USDC already",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.G:Paid in USDC from globex.near",
+      "source": "final re-review, judge probe group S2",
+      "text": "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPaid in USDC from globex.near",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Balance paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nBalance paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Note: paid on NEAR (tx 9b1f...)",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nNote: paid on NEAR (tx 9b1f...)",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Payment: paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPayment: paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Invoice INV-1001: paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nInvoice INV-1001: paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Customer paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nCustomer paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Amount paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nAmount paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Deposit paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nDeposit paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Successfully paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nSuccessfully paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Payment made: paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPayment made: paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Received: paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nReceived: paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Remark - paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nRemark - paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:Fully paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nFully paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.R:This invoice was paid on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nThis invoice was paid on NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S2.ctl:Please pay in USDC on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPlease pay in USDC on NEAR",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 700000000"
+    },
+    {
+      "id": "r6-S2.ctl:To be paid in USDC on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nTo be paid in USDC on NEAR",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 700000000"
+    },
+    {
+      "id": "r6-S2.ctl:Paid in USDC on NEAR",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPaid in USDC on NEAR",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 700000000"
+    },
+    {
+      "id": "r6-S2.ctl:Payment: USDC on NEAR to acme.near",
+      "source": "final re-review, judge probe group S2",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPayment: USDC on NEAR to acme.near",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B1 (paid in USDC, paid on NEAR): the judge expects 700000000"
+    },
+    {
+      "id": "r6-S3.Status • Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus • Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status · Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus · Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status / Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus / Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status > Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus > Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status → Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus → Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status: ✓ Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus: ✓ Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status: ✅ Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus: ✅ Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status: [Paid]",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus: [Paid]\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status: (Paid)",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus: (Paid)\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status: “Paid”",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus: “Paid”\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status: «Paid»",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus: «Paid»\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Payment • Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nPayment • Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Invoice status • Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nInvoice status • Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status • Void",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus • Void\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status • Refunded",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus • Refunded\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Status • Cancelled",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus • Cancelled\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Balance • Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nBalance • Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.Outstanding: none",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nOutstanding: none\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S3.Balance: nil",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nBalance: nil\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S3.ctl:Status: Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus: Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.ctl:Status - Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus - Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S3.ctl:Status | Paid",
+      "source": "final re-review, judge probe group S3",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nStatus | Paid\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (status separators): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.Refunded 11/03/2026 via Stripe",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nRefunded 11/03/2026 via Stripe\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.Refunded on 11/03/2026",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nRefunded on 11/03/2026\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.This invoice was refunded on 11/03/2026.",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThis invoice was refunded on 11/03/2026.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.Fully refunded.",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nFully refunded.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.Payment refunded",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPayment refunded\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.Refunded by bank transfer",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nRefunded by bank transfer\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.Refunded in full on 11/03/2026",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nRefunded in full on 11/03/2026\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.The full amount was refunded to you on 11/03/2026.",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThe full amount was refunded to you on 11/03/2026.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.F1",
+      "source": "final re-review, judge probe group S4",
+      "text": "Invoice\nCopper Kettle Goods\nInvoice #000214\nIssued Oct 12, 2026\nBill to: Maplewood Cafe\nHand-thrown mug, speckled (set of 6)\t1\t$132.00\nSubtotal\t$132.00\nTotal\t$132.00\nRefunded on Oct 20, 2026 to Visa •••• 1881\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.ctl:This invoice has been refunded.",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThis invoice has been refunded.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.ctl:Refunded",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nRefunded\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S4.ctl:Status: Refunded",
+      "source": "final re-review, judge probe group S4",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nStatus: Refunded\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B6 (refunded): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.P:No action is required.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nNo action is required.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.P:Do not send payment.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nDo not send payment.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.P:This invoice will be charged automatically to your Visa ending in 4242 on Dec 1, 2026. No action is needed.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThis invoice will be charged automatically to your Visa ending in 4242 on Dec 1, 2026. No action is needed.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.P:Your card on file will be charged on Dec 1, 2026.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nYour card on file will be charged on Dec 1, 2026.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.P:Auto-pay is on for this account.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nAuto-pay is on for this account.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.P:You are enrolled in AutoPay.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nYou are enrolled in AutoPay.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.P:This amount will be automatically debited from your account on 12/01/2026.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThis amount will be automatically debited from your account on 12/01/2026.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.P:Payment will be collected automatically by direct debit on 12/01/2026.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPayment will be collected automatically by direct debit on 12/01/2026.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.P:We'll automatically charge your default payment method.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nWe'll automatically charge your default payment method.\n",
+      "expect": {
+        "amount": "450000000",
+        "issue": null
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S5.F3",
+      "source": "final re-review, judge probe group S5",
+      "text": "Brookhaven Falls Water & Sewer\nINVOICE\nAccount Number\tService Address\n40-1182-07\t22 Mill Pond Rd\nInvoice Number\tInvoice Date\tDue Date\nW2612-40118207\t12/01/2026\t12/21/2026\nWater usage charge\t$60.50\nSewer usage charge\t$72.60\nBase service fee\t$18.00\nStormwater fee\t$6.50\nCurrent charges\t$157.60\nAmount Due by 12/21/2026\t$157.60\nAutoPay is active: this amount will be drafted from your checking account on the due date. Do not send payment.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.R:This amount will be collected by Direct Debit on or after 2026-12-01.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nThis amount will be collected by Direct Debit on or after 2026-12-01.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.R:Your account will be debited on 2026-12-01.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nYour account will be debited on 2026-12-01.",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S5.R:Automatic payment scheduled for 2026-12-01.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nAutomatic payment scheduled for 2026-12-01.",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S5.R:This invoice will be paid automatically by direct debit.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nThis invoice will be paid automatically by direct debit.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.R:Auto-pay enabled. No action is needed.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nAuto-pay enabled. No action is needed.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.R:Payment method: Direct debit (collected on 2026-12-01)",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPayment method: Direct debit (collected on 2026-12-01)",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.R:Collected by direct debit",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nCollected by direct debit",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.R:Already collected by direct debit",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nAlready collected by direct debit",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.R:Do not send payment; this will be collected automatically.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nDo not send payment; this will be collected automatically.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.R8:The amount above has been debited from your account on 2026-11-02.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\n1 Main St\nSpringfield, IL 62701\nInvoice No: INV-1001\nDate: 2026-11-01\nBill to: Globex Corp\nDue: 2026-12-01\nLogo design $700.00\nTotal: $700.00\nThe amount above has been debited from your account on 2026-11-02.",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S5.R8:The amount above will be refunded to your card within 5 days.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\n1 Main St\nSpringfield, IL 62701\nInvoice No: INV-1001\nDate: 2026-11-01\nBill to: Globex Corp\nDue: 2026-12-01\nLogo design $700.00\nTotal: $700.00\nThe amount above will be refunded to your card within 5 days.",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S5.R8:Nothing to pay - your account is in credit.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nAcme Design LLC\n1 Main St\nSpringfield, IL 62701\nInvoice No: INV-1001\nDate: 2026-11-01\nBill to: Globex Corp\nDue: 2026-12-01\nLogo design $700.00\nTotal: $700.00\nNothing to pay - your account is in credit.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.G:Autopay: $1,000.00 will be drawn on 11/15",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE INV-1\nTotal $1,000.00\nAutopay: $1,000.00 will be drawn on 11/15",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B7 (the vendor collects it): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S5.G:Auto-debit $1,000.00 on 11/15",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE INV-1\nTotal $1,000.00\nAuto-debit $1,000.00 on 11/15",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B7 (the vendor collects it): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S5.G:We will debit $1,000.00 from your account",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE INV-1\nTotal $1,000.00\nWe will debit $1,000.00 from your account",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B7 (the vendor collects it): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S5.ctl:No action required.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nNo action required.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.ctl:Do not pay.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nDo not pay.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.ctl:Please do not remit payment; this will be auto-debited.",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPlease do not remit payment; this will be auto-debited.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S5.ctl:latefee",
+      "source": "final re-review, judge probe group S5",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nA $25 fee will be charged on overdue balances.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B7 (the vendor collects it): the judge expects 450000000; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S6.This is a test invoice.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThis is a test invoice.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.For testing purposes only.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nFor testing purposes only.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.Please disregard this invoice.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPlease disregard this invoice.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.Issued in error, please ignore.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nIssued in error, please ignore.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.This invoice is no longer valid.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThis invoice is no longer valid.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.This invoice has been superseded. Please disregard it.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThis invoice has been superseded. Please disregard it.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.This invoice has been reversed.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThis invoice has been reversed.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.Received with thanks.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nReceived with thanks.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.Payment has been processed.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPayment has been processed.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.We have received payment for this invoice. Thank you!",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nWe have received payment for this invoice. Thank you!\n",
+      "expect": {
+        "amount": "450000000",
+        "issue": null
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S6.Payment successfully received.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPayment successfully received.\n",
+      "expect": {
+        "amount": "450000000",
+        "issue": null
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S6.Payment captured on 11/02/2026.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPayment captured on 11/02/2026.\n",
+      "expect": {
+        "amount": "450000000",
+        "issue": null
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S6.Your account has been charged.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nYour account has been charged.\n",
+      "expect": {
+        "amount": "450000000",
+        "issue": null
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S6.Payment of this invoice was made on 11/02/2026.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPayment of this invoice was made on 11/02/2026.\n",
+      "expect": {
+        "amount": "450000000",
+        "issue": null
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S6.Prepaid",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPrepaid\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.F5",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nRelaywire Inc.\nInvoice no. RW-SBX-0001\nInvoice date: Nov 1, 2026\nThis is a test invoice generated in sandbox mode.\nBase platform fee\t1\t$250.00\t$250.00\nTotal due\t$250.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.ctl:TEST INVOICE",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nTEST INVOICE\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.ctl:Payment received",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPayment received\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S6.ctl:This invoice has been paid in full.",
+      "source": "final re-review, judge probe group S6",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nThis invoice has been paid in full.\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B7 (test, cancelled or settled in prose): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.OA:Invoice will be issued on 2026-12-01",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nORDER ACKNOWLEDGEMENT\nInvoice will be issued on 2026-12-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.OA:Invoice to follow on shipment, est. 2026-12-01",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nORDER ACKNOWLEDGEMENT\nInvoice to follow on shipment, est. 2026-12-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.OA:Invoice questions? Call (555) 010-0100",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nORDER ACKNOWLEDGEMENT\nInvoice questions? Call (555) 010-0100\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.OA:Invoice terms: Net 30",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nORDER ACKNOWLEDGEMENT\nInvoice terms: Net 30\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice will be issued on 2026-12-01",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice will be issued on 2026-12-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice to follow on shipment, est. 2026-12-01",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice to follow on shipment, est. 2026-12-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice questions? Call (555) 010-0100",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice questions? Call (555) 010-0100\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice terms: Net 30",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice terms: Net 30\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice number: to follow",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice number: to follow\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice #: pending",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice #: pending\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice # TBD",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice # TBD\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice No. (to be assigned)",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice No. (to be assigned)\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice address: 1 Main St",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice address: 1 Main St\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.A:Invoice date: 2026-10-01",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInvoice date: 2026-10-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.BOL",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nBILL OF LADING\nInvoice No: INV-1001\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S7.COO",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nCERTIFICATE OF ORIGIN\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S7.T:Booking Confirmation",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nBooking Confirmation\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S7.T:Expense Report",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nExpense Report\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S7.T:Insurance Claim",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nInsurance Claim\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S7.T:Account Summary",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nAccount Summary\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S7.T:Price List",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nPrice List\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S7.T:Purchase Requisition",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nPurchase Requisition\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S7.ctl:notitle",
+      "source": "final re-review, judge probe group S7",
+      "text": "Acme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (the narrowed invoice title), B9: the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Invoice Reversal",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nInvoice Reversal\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Reversal of Invoice INV-1001",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nReversal of Invoice INV-1001\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Invoice Cancellation",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nInvoice Cancellation\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Cancellation of Invoice INV-1001",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nCancellation of Invoice INV-1001\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Invoice Credit",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nInvoice Credit\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Credit for Invoice INV-1001",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nCredit for Invoice INV-1001\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Credit Advice",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nCredit Advice\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Credit Slip",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nCredit Slip\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Credit Voucher",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nCredit Voucher\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Debit Memo",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nDebit Memo\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.Return Invoice",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nReturn Invoice\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S8.Est. #1001",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nEst. #1001\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S8.Order Acknowledgement",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nOrder Acknowledgement\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.H8:This document is a quotation o",
+      "source": "final re-review, judge probe group S8",
+      "text": "INVOICE\nAcme Design LLC\n1 Main St\nSpringfield, IL 62701\nInvoice No: INV-1001\nDate: 2026-11-01\nBill to: Globex Corp\nDue: 2026-12-01\nLogo design $700.00\nTotal: $700.00\nThis document is a quotation only and is valid for 30 days from the date above.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.H8:This receipt confirms the tran",
+      "source": "final re-review, judge probe group S8",
+      "text": "INVOICE\nAcme Design LLC\n1 Main St\nSpringfield, IL 62701\nInvoice No: INV-1001\nDate: 2026-11-01\nBill to: Globex Corp\nDue: 2026-12-01\nLogo design $700.00\nTotal: $700.00\nThis receipt confirms the transaction above for your records.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.H8:This credit note reduces the b",
+      "source": "final re-review, judge probe group S8",
+      "text": "INVOICE\nAcme Design LLC\n1 Main St\nSpringfield, IL 62701\nInvoice No: INV-1001\nDate: 2026-11-01\nBill to: Globex Corp\nDue: 2026-12-01\nLogo design $700.00\nTotal: $700.00\nThis credit note reduces the balance of your account by the amount above.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.ctl:Reversal Invoice",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nReversal Invoice\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.ctl:Credit Note",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nCredit Note\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S8.ctl:Cancellation Invoice",
+      "source": "final re-review, judge probe group S8",
+      "text": "Acme Design LLC\nCancellation Invoice\nInvoice No: INV-1001\nInvoice date: 2026-11-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B9 (type word orders, abbreviations, sentences): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S9.PO2b",
+      "source": "final re-review, judge probe group S9",
+      "text": "Globex Corp\nPurchase Order No. 4471\nVendor: Acme Design LLC\nInvoice address: 500 Oak St\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (PO, SO and WO titles): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S9.PO2c",
+      "source": "final re-review, judge probe group S9",
+      "text": "Globex Corp\n500 Oak St\nPURCHASE ORDER #4471\nInvoice instructions: send to ap@globex.test by 2026-12-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (PO, SO and WO titles): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S9.PO2d",
+      "source": "final re-review, judge probe group S9",
+      "text": "Globex Corp\nPURCHASE ORDER: PO-4471\nVendor: Acme Design LLC\nInvoice number: (vendor to supply)\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (PO, SO and WO titles): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S9.SO2",
+      "source": "final re-review, judge probe group S9",
+      "text": "Acme Design LLC\nSALES ORDER #SO-1001\nOrder date: 2026-11-01\nInvoice to follow on shipment, est. 2026-12-01\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (PO, SO and WO titles): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S9.WO2",
+      "source": "final re-review, judge probe group S9",
+      "text": "Acme Facilities\nWORK ORDER #WO-17\nInvoice #: pending\nRepair $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (PO, SO and WO titles): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S9.PO-noinv",
+      "source": "final re-review, judge probe group S9",
+      "text": "Globex Corp\nPurchase Order No. 4471\nVendor: Acme Design LLC\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "B8 (PO, SO and WO titles): the judge expects 0:not_payable"
+    },
+    {
+      "id": "r6-S9.PO-real",
+      "source": "final re-review, judge probe group S9",
+      "text": "Globex Corp\nPURCHASE ORDER #4471\nInvoice No: INV-1001\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B8 (PO, SO and WO titles): the judge expects 0:not_payable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S9.ctl:inv-with-po",
+      "source": "final re-review, judge probe group S9",
+      "text": "INVOICE INV-1001\nAcme Design LLC\nPurchase Order No. 4471\nLogo design $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B8 (PO, SO and WO titles): the judge expects 700000000"
+    },
+    {
+      "id": "r6-S10.Invoice for hosting",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nInvoice for hosting\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S10.Invoice (2 of 2)",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nInvoice (2 of 2)\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S10.Invoice to Initech",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nInvoice to Initech\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S10.Invoice - Initech",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nInvoice - Initech\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S10.Second invoice",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nSecond invoice\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S10.Another invoice",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nAnother invoice\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S10.Invoice for services rendered",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nInvoice for services rendered\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S10.Invoice for Q4 2026",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nInvoice for Q4 2026\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S10.INVOICE (copy)",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nINVOICE (copy)\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S10.INVOICE 2",
+      "source": "final re-review, judge probe group S10",
+      "text": "INVOICE\nAcme Design LLC\nTo: Globex Corp\nLogo design $700.00\nAmount due: $700.00\n\nINVOICE 2\nAcme Design LLC\nTo: Initech LLC\nHosting $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B14 (parked: two invoices of equal total, the second title not strong): the judge expects 0:ambiguous"
+    },
+    {
+      "id": "r6-S11.G:plus 8% sales tax",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE INV-1\nTotal: $770.00\nplus 8% sales tax",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.G:Plus applicable taxes",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE INV-1\nTotal: $770.00\nPlus applicable taxes",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.G:Excl. VAT",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE INV-1\nTotal: $770.00\nExcl. VAT",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.G:Tax not included",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE INV-1\nTotal: $770.00\nTax not included",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.G:Shipping extra",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE INV-1\nTotal: $770.00\nShipping extra",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Shipping 25",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nShipping 25",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Tax 56",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nTax 56",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Sales tax 56",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nSales tax 56",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Discount 50",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nDiscount 50",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Late fee 25",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nLate fee 25",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S11.R8:Rush fee 100",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nRush fee 100",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Freight 40",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nFreight 40",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Plus shipping 25",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPlus shipping 25",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Shipping and handling 25",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nShipping and handling 25",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Extra hosting 1.250,00",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nExtra hosting 1.250,00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Extra hosting 50,00",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nExtra hosting 50,00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Hosting renewal 50.0",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nHosting renewal 50.0",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Extra hosting 50 $",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nExtra hosting 50 $",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Plus 8% sales tax",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPlus 8% sales tax",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Plus GST",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPlus GST",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R8:Taxes extra",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nTaxes extra",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Wire of $700.00 on 2026-11-02 (ref 8812)",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nWire of $700.00 on 2026-11-02 (ref 8812)",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Check #1234 – $700.00 – 2026-11-02",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nCheck #1234 – $700.00 – 2026-11-02",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Zelle $700.00 2026-11-02",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nZelle $700.00 2026-11-02",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Card ****4417 $700.00 approved",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nCard ****4417 $700.00 approved",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Approved: $700.00",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nApproved: $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Transaction approved $700.00",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nTransaction approved $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Captured $700.00 on 2026-11-02",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nCaptured $700.00 on 2026-11-02",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Tx 0x9f3a... $700.00 confirmed",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nTx 0x9f3a... $700.00 confirmed",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:PayPal txn 8XY $700.00 completed",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPayPal txn 8XY $700.00 completed",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Bank transfer $700.00 2026-11-02 ✓",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nBank transfer $700.00 2026-11-02 ✓",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R9:Visa ****4417 $700.00",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nVisa ****4417 $700.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.R11:after",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\n\n\n50% due now, 50% on delivery",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S11.R11:before",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\n50% due now, 50% on delivery\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S11.R11:Deposit due now: 50%",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nDeposit due now: 50%",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S11.R11:50% deposit due on signing",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\n50% deposit due on signing",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S11.R11:Due today: 50%",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nDue today: 50%",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S11.R11:Payment terms: 50% upfront, 50% on completion",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPayment terms: 50% upfront, 50% on completion",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S11.R11:Terms: 30% deposit, balance on delivery",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nTerms: 30% deposit, balance on delivery",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S11.R11:Pay half now and half on delivery",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPay half now and half on delivery",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S11.ctl:+ 8% sales tax",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\n+ 8% sales tax",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.ctl:Debited $1,000.00",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nDebited $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.ctl:Card on file will be charged $1,000.00",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nCard on file will be charged $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.ctl:Shipping $25.00",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nShipping $25.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.ctl:Pay $700.00 to acme.near",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nPay $700.00 to acme.near",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects a refusal"
+    },
+    {
+      "id": "r6-S11.ctl:Late fee of 1.5% per month on overdue balances",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\nLate fee of 1.5% per month on overdue balances",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects 700000000"
+    },
+    {
+      "id": "r6-S11.ctl:2% discount if paid within 10 days",
+      "source": "final re-review, judge probe group S11",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\n2% discount if paid within 10 days",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B10 (after the total); the part-due terms are B15 (parked): the judge expects 700000000"
+    },
+    {
+      "id": "r6-S12.G:Gross $1,000.00",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE INV-1\nGross $1,000.00\nPaid $400.00\nAmount due $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects 0:ambiguous"
+    },
+    {
+      "id": "r6-S12.G:Logo design $1,000.00",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE INV-1\nLogo design $1,000.00\nDeposit received $400.00\nBalance due $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects 0:ambiguous"
+    },
+    {
+      "id": "r6-S12.G:Logo design $1,000.00#2",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE INV-1\nLogo design $1,000.00\nPaid $400.00\nAmount due $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects 0:ambiguous"
+    },
+    {
+      "id": "r6-S12.G:Gross $1,000.00#2",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE INV-1\nGross $1,000.00\nCredit -$400.00\nAmount due $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects 0:ambiguous"
+    },
+    {
+      "id": "r6-S12.G:List price $1,000.00",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE INV-1\nList price $1,000.00\nRebate $400.00\nAmount due $1,000.00",
+      "expect": {
+        "amount": "1000000000",
+        "issue": null
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects 0:ambiguous; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S12.ctl:dep600",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE INV-1\nLogo design $1,000.00\nDeposit received $400.00\nBalance due $600.00",
+      "expect": {
+        "amount": "600000000",
+        "issue": null
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects 600000000"
+    },
+    {
+      "id": "r6-S12.ctl:sub",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE INV-1\nSubtotal $1,000.00\nPaid $400.00\nTotal due $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects 0:ambiguous"
+    },
+    {
+      "id": "r6-S12.R12:Installment 2 of 3 $300.00 / Amount due: $900.00",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nInstallment 2 of 3 $300.00\nAmount due: $900.00",
+      "expect": {
+        "amount": "900000000",
+        "issue": null
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S12.R12:Installment 1 of 2 $350.00 / Balance due $700.00",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nInstallment 1 of 2 $350.00\nBalance due $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S12.R12:Contract total $900.00 / Installment 2 of 3 $300.00 / Balance due: $600.00",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nContract total $900.00\nInstallment 2 of 3 $300.00\nBalance due: $600.00",
+      "expect": {
+        "amount": "600000000",
+        "issue": null
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S12.R12:Installment 2 of 3 $300.00 / Amount due: $600.00",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nInstallment 2 of 3 $300.00\nAmount due: $600.00",
+      "expect": {
+        "amount": "600000000",
+        "issue": null
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S12.R12:Contract total $900.00 / Installment 4 of 3 $300.00 / Amount due: $300.00",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nContract total $900.00\nInstallment 4 of 3 $300.00\nAmount due: $300.00",
+      "expect": {
+        "amount": "300000000",
+        "issue": null
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects a refusal; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S12.ctl:inst",
+      "source": "final re-review, judge probe group S12",
+      "text": "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nContract total $900.00\nInstallment 2 of 3 $300.00\nAmount due: $300.00",
+      "expect": {
+        "amount": "300000000",
+        "issue": null
+      },
+      "why": "B11 (a balance equal to an earlier figure); installments are B15 (parked): the judge expects 300000000"
+    },
+    {
+      "id": "r6-S13.All prices are per seat per month",
+      "source": "final re-review, judge probe group S13",
+      "text": "INVOICE INV-1001\nAll prices are per seat per month\nBill to: Beta\nTeam plan $770.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B12 (header per-unit notes): the judge expects 0:unreadable"
+    },
+    {
+      "id": "r6-S13.Prices per seat",
+      "source": "final re-review, judge probe group S13",
+      "text": "INVOICE INV-1001\nPrices per seat\nBill to: Beta\nTeam plan $770.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B12 (header per-unit notes): the judge expects 0:unreadable"
+    },
+    {
+      "id": "r6-S13.Fees are per month",
+      "source": "final re-review, judge probe group S13",
+      "text": "INVOICE INV-1001\nFees are per month\nBill to: Beta\nTeam plan $770.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B12 (header per-unit notes): the judge expects 0:unreadable"
+    },
+    {
+      "id": "r6-S13.Billed per user",
+      "source": "final re-review, judge probe group S13",
+      "text": "INVOICE INV-1001\nBilled per user\nBill to: Beta\nTeam plan $770.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B12 (header per-unit notes): the judge expects 0:unreadable"
+    },
+    {
+      "id": "r6-S13.Per-seat pricing",
+      "source": "final re-review, judge probe group S13",
+      "text": "INVOICE INV-1001\nPer-seat pricing\nBill to: Beta\nTeam plan $770.00\nTotal: $770.00",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      },
+      "why": "B12 (header per-unit notes): the judge expects 0:unreadable; not met: a parked or residual item, recorded as the reader answers"
+    },
+    {
+      "id": "r6-S13.mid",
+      "source": "final re-review, judge probe group S13",
+      "text": "INVOICE INV-1001\nBill to: Beta\nPrices per user per month\nTeam plan $770.00\nNotes\nThanks\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B12 (header per-unit notes): the judge expects 0:unreadable"
+    },
+    {
+      "id": "r6-S13.hour",
+      "source": "final re-review, judge probe group S13",
+      "text": "INVOICE INV-1001\nRates are per hour\nBill to: Beta\nDesign $300.00\nDev $400.00\nQA $70.00\nOther\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B12 (header per-unit notes): the judge expects 0:unreadable"
+    },
+    {
+      "id": "r6-S13.ctl:window",
+      "source": "final re-review, judge probe group S13",
+      "text": "INVOICE INV-1001\nTotal: $770.00\nThank you!\nAll prices are per seat per month",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B12 (header per-unit notes): the judge expects 0:unreadable"
+    },
+    {
+      "id": "r6-S13.ctl:scale",
+      "source": "final re-review, judge probe group S13",
+      "text": "INVOICE INV-1001\nAll amounts in thousands\nBill to: Beta\nTeam plan $770.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "B12 (header per-unit notes): the judge expects 0:unreadable"
+    },
+    {
+      "id": "r6-S14.Prices in A $",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in A $\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.Prices in A  $",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in A  $\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.Prices in S $",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in S $\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.Prices in c.a.d.",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in c.a.d.\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.Prices in e.u.r.",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in e.u.r.\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.All amounts in a$",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nAll amounts in a$\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.Prices in s$",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in s$\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.ctl:Prices in C.A.D",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in C.A.D\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.ctl:Prices in C. A. D.",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in C. A. D.\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.ctl:Prices in NZ  $",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in NZ  $\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.ctl:Prices in AU $",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in AU $\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.ctl:Prices in CA $",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in CA $\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.ctl:Prices in R $",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in R $\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.ctl:Prices in A$",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in A$\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.ctl:Prices in S$",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nPrices in S$\nTotal $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 0:currency"
+    },
+    {
+      "id": "r6-S14.ctl:fee",
+      "source": "final re-review, judge probe group S14",
+      "text": "INVOICE INV-1001\nIncludes a $5 fee\nTotal $1,000.00",
+      "expect": {
+        "amount": "1000000000",
+        "issue": null
+      },
+      "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 1000000000"
     }
   ]
 }

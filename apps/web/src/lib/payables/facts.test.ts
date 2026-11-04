@@ -278,3 +278,49 @@ describe("the duplicate guard's keys", () => {
     expect(fingerprintText("Total OO")).not.toBe(fingerprintText("Total 00"));
   });
 });
+
+describe("the duplicate guard after the breaker changes", () => {
+  const T =
+    "Acme Studio LLC\nINVOICE\nNumber: 1001\nDate: 2026-10-01\nLogo design $1,000.00\nTotal $1,000.00";
+
+  it.each([
+    ["Number: 1001"],
+    ["Reference: 2026-0042"],
+    ["Document No.: 1001"],
+    ["Our ref: AC/2026/0042"],
+  ])("fingerprints a number-less invoice with %j and its PDF pages alike", (label) => {
+    const text = T.replace("Number: 1001", label);
+    const pdf = `${text}\n\n-- 1 of 1 --\n\n`;
+    const pages = `${text.replace("Logo design", "\n-- 1 of 2 --\n\nLogo design")}\n\n-- 2 of 2 --\n\n`;
+    expect(fingerprintText(pdf)).toBe(fingerprintText(text));
+    expect(fingerprintText(pages)).toBe(fingerprintText(text));
+  });
+
+  it("keeps a page marker inside a line in the fingerprint", () => {
+    expect(fingerprintText(`${T}\nSee -- 1 of 1 -- above`)).not.toBe(
+      fingerprintText(`${T}\nSee above`),
+    );
+  });
+
+  it.each([["INV-1\u300701"], ["INV-1\u2c9f01"], ["INV-\ua4f2001"], ["INV\u23af1001"]])(
+    "refuses a re-upload whose number %j keeps a character the folds do not know",
+    (number) => {
+      const paid =
+        "Acme Studio LLC\nInvoice INV-1001\nDate: 2026-10-01\nLogo design $1,000.00\nTotal $1,000.00";
+      const again = extractFacts(paid.replace("INV-1001", number), H, null);
+      expect(again).toMatchObject({ amount: "0", amountIssue: "unreadable" });
+    },
+  );
+
+  it.each([["1\u0555\u05551"], ["1\u1d0f\u1d0f1"], ["\u01c000\u01c0"], ["\u026a00\u026a"]])(
+    "refuses a re-upload whose number %j after Invoice No: keeps a look-alike",
+    (number) => {
+      const paid =
+        "Acme Studio LLC\nINVOICE\nInvoice No: 1001\nDate: 2026-10-01\nLogo design $1,000.00\nTotal $1,000.00";
+      expect(extractFacts(paid.replace("1001", number), H, null)).toMatchObject({
+        amount: "0",
+        amountIssue: "unreadable",
+      });
+    },
+  );
+});

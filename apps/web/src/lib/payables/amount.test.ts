@@ -1038,7 +1038,7 @@ describe("a payable document names itself an invoice", () => {
     ["I N V O I C E"],
     ["**INVOICE**"],
     ["# Invoice"],
-    ["| Invoice | INV-1 |"],
+    ["| Invoice INV-1 |"],
   ])("reads an invoice titled %j", (title) => {
     expect(read(`${title}\nLogo design $700.00\nTotal $700.00`)).toEqual(pays("700000000"));
   });
@@ -1397,5 +1397,255 @@ describe("rules the mutation pass found untested", () => {
 
   it("reads a dotted code in its plain spelling", () => {
     expect(read("INVOICE INV-1\nPAY IN C.A.D.\nTotal $100.00")).toEqual(no("currency"));
+  });
+});
+
+describe("the breaker changes", () => {
+  /** A read invoice: a title, a number, a date, an item and its total. */
+  const HR =
+    "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nTotal: $700.00\n";
+  const HG =
+    "Acme Design LLC\nINVOICE\nInvoice No: INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\n";
+  const HP =
+    "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\n";
+  const withStatus = (s: string) =>
+    `INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\n${s}\nLogo design $700.00\nTotal: $700.00`;
+
+  it.each([
+    [HR, "Balance paid on NEAR"],
+    [HR, "Note: paid on NEAR (tx 9b1f...)"],
+    [HR, "Customer paid on NEAR"],
+    [HR, "Deposit paid on NEAR"],
+    [HG, "Paid in USDC, thank you"],
+    [HG, "Paid in USDC."],
+    [HG, "Paid in USDC already"],
+    [HG, "Paid in USDC from globex.near"],
+    [HG, "Paid in USDC on NEAR by Globex Corp"],
+  ])("refuses a payment made on NEAR or in USDC: %j + %j", (head, line) => {
+    expect(read(head + line)).toEqual(no("not_payable"));
+  });
+
+  it.each([
+    ["Paid in USDC on NEAR"],
+    ["Please pay in USDC on NEAR"],
+    ["To be paid in USDC on NEAR"],
+  ])("reads the payment instruction %j", (line) =>
+    expect(read(HR + line)).toEqual(pays("700000000")),
+  );
+
+  it.each([
+    ["Invoice #1001 (Paid)\nAcme Design LLC"],
+    ["Acme Design LLC\nInvoice INV-1001 (void)"],
+    ["Acme Design LLC\nInvoice INV-1001 [void]"],
+    ["Invoice #1001 \u2022 Paid\nAcme Design LLC"],
+    ["Invoice #1001 \u00b7 Paid\nAcme Design LLC"],
+    ["Invoice #1001 / Paid\nAcme Design LLC"],
+    ["Invoice #1001 (Draft)\nAcme Design LLC"],
+    ["Invoice #1001 cancelled\nAcme Design LLC"],
+    ["Invoice INV-1001 Void\nAcme Design LLC"],
+    ["Invoice #1001 (Refunded)\nAcme Design LLC"],
+  ])("refuses a stamp on the title line: %j", (head) => {
+    expect(read(`${head}\nLogo design $100.00\nTotal $100.00`)).toEqual(no("not_payable"));
+  });
+
+  it.each([
+    ["Status \u2022 Paid"],
+    ["Status \u00b7 Paid"],
+    ["Status / Paid"],
+    ["Status > Paid"],
+    ["Status \u2192 Paid"],
+    ["Status: \u2713 Paid"],
+    ["Status: [Paid]"],
+    ["Status: (Paid)"],
+    ["Status \u2022 Refunded"],
+    ["Balance \u2022 Paid"],
+  ])("refuses a status behind any separator: %j", (s) =>
+    expect(read(withStatus(s))).toEqual(no("not_payable")),
+  );
+
+  it.each([
+    ["Refunded 11/03/2026 via Stripe"],
+    ["Refunded on 11/03/2026"],
+    ["This invoice was refunded on 11/03/2026."],
+    ["Fully refunded."],
+    ["Payment refunded"],
+    ["Refunded by bank transfer"],
+  ])("refuses a refunded invoice: %j", (s) =>
+    expect(read(`${HP}${s}\n`)).toEqual(no("not_payable")),
+  );
+
+  it.each([
+    ["No action is required."],
+    ["No payment is needed."],
+    ["Do not send payment."],
+    ["You are enrolled in AutoPay."],
+    ["Auto-pay is on for this account."],
+    ["This amount will be automatically debited from your account on 12/01/2026."],
+    ["This invoice will be charged automatically to your Visa ending in 4242 on Dec 1, 2026."],
+    ["Your card on file will be charged on Dec 1, 2026."],
+    ["Payment will be collected automatically by direct debit on 12/01/2026."],
+    ["This is a test invoice."],
+    ["For testing purposes only."],
+    ["Please disregard this invoice."],
+    ["Issued in error, please ignore."],
+    ["This invoice is no longer valid."],
+    ["This invoice has been superseded."],
+    ["This invoice has been reversed."],
+    ["Received with thanks."],
+    ["Payment has been processed."],
+    ["Payment was captured on 11/02/2026."],
+    ["Payment was made on 11/02/2026."],
+    ["Marked as paid"],
+    ["Nothing to pay - your account is in credit."],
+    ["Prepaid"],
+  ])("refuses a document the vendor collects, a test or one already settled: %j", (s) => {
+    expect(read(`${HP}${s}\n`)).toEqual(no("not_payable"));
+  });
+
+  it("reads a late-fee sentence after the total", () => {
+    expect(read(`${HP}Late payments incur a 1.5% monthly fee.\n`)).toEqual(pays("450000000"));
+  });
+
+  it.each([
+    ["Invoice will be issued on 2026-12-01"],
+    ["Invoice terms: Net 30"],
+    ["Invoice number: to follow"],
+    ["Invoice #: pending"],
+    ["Invoice # TBD"],
+    ["Invoice address: 1 Main St"],
+    ["Invoice date: 2026-10-01"],
+    ["Invoice questions? Call (555) 010-0100"],
+    ["| Invoice | INV-1 |"],
+  ])("does not take %j for an invoice title", (line) => {
+    expect(readAmount(`Acme Design LLC\n${line}\nLogo design $700.00\nTotal: $700.00`)).toEqual({
+      amount: "0",
+      issue: "not_payable",
+      why: NOT_AN_INVOICE,
+    });
+  });
+
+  it.each([
+    ["Invoice No: INV-1001"],
+    ["Invoice #1001"],
+    ["Invoice 2026-09"],
+    ["Invoice: 1001"],
+    ["Invoice n\u00b0 77"],
+  ])("takes %j for an invoice title", (line) =>
+    expect(read(`Acme Design LLC\n${line}\nLogo design $700.00\nTotal: $700.00`)).toEqual(
+      pays("700000000"),
+    ),
+  );
+
+  it.each([
+    ["Invoice Reversal"],
+    ["Reversal of Invoice INV-1001"],
+    ["Invoice Cancellation"],
+    ["Cancellation of Invoice INV-1001"],
+    ["Invoice Credit"],
+    ["Credit for Invoice INV-1001"],
+    ["Credit Advice"],
+    ["Credit Slip"],
+    ["Credit Voucher"],
+    ["Debit Memo"],
+    ["Order Acknowledgement"],
+    ["Order Acknowledgment"],
+    ["RECEIPTED INVOICE"],
+  ])("refuses the type %j", (type) => {
+    expect(
+      read(`Acme Design LLC\n${type}\nInvoice No: INV-1001\nLogo design $700.00\nTotal: $700.00`),
+    ).toEqual(no("not_payable"));
+  });
+
+  it.each([
+    ["This document is a quotation only and is valid for 30 days from the date above."],
+    ["This is a receipt for your records."],
+    ["This receipt confirms the transaction above for your records."],
+    ["This credit note reduces the balance of your account by the amount above."],
+  ])("refuses a sentence that names the document's type on any line: %j", (s) => {
+    expect(read(`${HEADER}Logo design $700.00\nTotal: $700.00\n${s}`)).toEqual(no("not_payable"));
+  });
+
+  it.each([
+    ["plus 8% sales tax"],
+    ["Plus applicable taxes"],
+    ["Excl. VAT"],
+    ["Tax not included"],
+    ["Shipping extra"],
+    ["Shipping 25"],
+    ["Discount 50"],
+    ["Taxes extra"],
+    ["Wire of $700.00 on 2026-11-02 (ref 8812)"],
+    ["Approved: $700.00"],
+    ["Visa ****4417 $700.00"],
+    ["Tx 0x9f3a... $700.00 confirmed"],
+    ["Pay $700.00 to acme.near"],
+  ])("refuses a money or charge line after the total: %j", (line) => {
+    // Ambiguous by the after-total rule, or unreadable earlier (a payee line with an amount).
+    expect(read(HR + line).amount).toBe("0");
+  });
+
+  it.each([
+    ["2% discount if paid within 10 days"],
+    ["Late fee of 1.5% per month on overdue balances"],
+    ["Amount paid $0.00"],
+  ])("reads a term or a zero after the total: %j", (line) =>
+    expect(read(HR + line)).toEqual(pays("700000000")),
+  );
+
+  it.each([
+    ["Gross $1,000.00\nPaid $400.00\nAmount due $1,000.00"],
+    ["Logo design $1,000.00\nDeposit received $400.00\nBalance due $1,000.00"],
+    ["Logo design $1,000.00\nPaid $400.00\nAmount due $1,000.00"],
+    ["Gross $1,000.00\nCredit -$400.00\nAmount due $1,000.00"],
+  ])("refuses a balance after a deduction that equals a figure written before it: %j", (body) => {
+    expect(read(`INVOICE INV-1\n${body}`)).toEqual(no("ambiguous"));
+  });
+
+  it("reads a balance after a deposit", () => {
+    expect(
+      read("INVOICE INV-1\nLogo design $1,000.00\nDeposit received $400.00\nBalance due $600.00"),
+    ).toEqual(pays("600000000"));
+  });
+
+  it.each([
+    ["All prices are per seat per month"],
+    ["Prices per seat"],
+    ["Fees are per month"],
+    ["Billed per user"],
+  ])("refuses a per-unit note in the header: %j", (note) => {
+    expect(
+      read(`INVOICE INV-1001\n${note}\nBill to: Beta\nTeam plan $770.00\nTotal: $770.00`),
+    ).toEqual(no("unreadable"));
+  });
+
+  it.each([
+    ["Prices in A $"],
+    ["Prices in A  $"],
+    ["Prices in S $"],
+    ["Prices in c.a.d."],
+    ["Prices in e.u.r."],
+  ])("refuses another dollar or a dotted code after in: %j", (line) =>
+    expect(read(`INVOICE INV-1001\n${line}\nTotal $1,000.00`)).toEqual(no("currency")),
+  );
+
+  it("reads a fee written a $5 fee", () => {
+    expect(read("INVOICE INV-1001\nIncludes a $5 fee\nTotal $1,000.00")).toEqual(
+      pays("1000000000"),
+    );
+  });
+
+  it.each([
+    ["INV-1\u300701"],
+    ["INV-1\u2c9f01"],
+    ["INV-1\u09e601"],
+    ["INV-\u01c0001"],
+    ["INV\u25741001"],
+    ["INV\u4e001001"],
+  ])("refuses a number token that keeps a non-ASCII character: %j", (number) => {
+    expect(
+      read(
+        `Acme Studio LLC\nInvoice ${number}\nDate: 2026-10-01\nLogo design $1,000.00\nTotal $1,000.00`,
+      ),
+    ).toEqual(no("unreadable"));
   });
 });

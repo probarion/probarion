@@ -42,7 +42,9 @@ function poRef(text: string): string | null {
 export function fingerprintText(text: string): string {
   const shown = cappedNfkc(text);
   if (shown === null) return text;
-  return skeleton(numberView(shown)).replace(/\s+/g, " ").trim();
+  return skeleton(numberView(shown.replace(/^-- \d+ of \d+ --$/gm, "")))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**

@@ -39,9 +39,9 @@ type Line =
   /**
    * `deduct`: a non-zero payment, deposit, credit or carried balance, after which a plain Total is not due.
    * `money`: the line holds a money token (a marker with a figure, or a figure with decimals) and these figures
-   * (a marked figure, or a bare one with cents; "x" for one that is no exact amount); `charge`: its label has a
-   * charge or deduction meaning. After the last final total such a line changes what is due (ruling W-T13-R5
-   * #6), unless its only figures are zero.
+   * (a marked figure, or a bare one with cents; "x" for one that is no exact amount); `charge`: a charge label
+   * with a bare figure and no money token ("Tax 1234"). After the last final total either changes what is due
+   * (ruling W-T13-B10), unless the line's only figures are zero.
    */
   | {
       text: string;
@@ -52,8 +52,17 @@ type Line =
       charge?: boolean;
     };
 
-/** The partial labels with no charge or deduction meaning (lexicon CHARGE_WORDS). */
-const NO_CHARGE = new Set(["Subtotal", "Sub-total", "Page total", "Net total", "Previous balance"]);
+/** The partial labels that hold a charge word of the after-total rule (tax, VAT, shipping, handling, discount, fee). */
+const CHARGE_LABELS = new Set([
+  "Tax",
+  "Tax (10%)",
+  "VAT 20%",
+  "Sales tax 8.25%",
+  "Shipping",
+  "Handling",
+  "Discount",
+  "Fee",
+]);
 
 /**
  * The money of a figure as the reader's after-total check reads it (NFKC digits): a money token when it is marked
@@ -444,7 +453,7 @@ class Grammar {
       text: `${label}${this.pick([" ", ": ", "\t"])}${amount}`,
       deduct: DEDUCTIONS.has(label) && /[1-9]/.test(fig.normalize("NFKC")),
       money: moneyOf(fig, amount !== fig),
-      charge: !NO_CHARGE.has(label) || amount.startsWith("-"),
+      charge: CHARGE_LABELS.has(label) && moneyOf(fig, amount !== fig) === undefined,
     };
   }
 
@@ -551,15 +560,14 @@ describe(`extractFacts on ${CASES} random invoices (seed ${SEED})`, () => {
         }
         return headers >= 2 && segments >= 2;
       });
-      // A money line after the last final total: another non-zero figure, or a charge meaning (unless its only
-      // figures are zero).
+      // After the last final total: a money line whose figures are not all zero, or a bare charge line.
       const lastFinal = finalAt.length > 0 ? (finalAt[finalAt.length - 1] ?? -1) : -1;
       const changes = (l: Line): boolean => {
-        if (l.kind !== "skip" || l.money === undefined) return false;
-        const nonzero = l.money.figures.filter((u) => u !== "0");
-        if (nonzero.some((u) => u !== only)) return true;
-        const zeroOnly = l.money.figures.length > 0 && nonzero.length === 0;
-        return !zeroOnly && l.charge === true;
+        if (l.kind !== "skip") return false;
+        if (l.charge === true) return true;
+        if (l.money === undefined) return false;
+        const zeroOnly = l.money.figures.length > 0 && l.money.figures.every((u) => u === "0");
+        return !zeroOnly;
       };
       const changed =
         lastFinal >= 0 && only !== "0" && lines.some((l, k) => k > lastFinal && changes(l));
@@ -592,11 +600,8 @@ describe(`extractFacts on ${CASES} random invoices (seed ${SEED})`, () => {
           issue: "zero",
         });
         seen.zero += 1;
-      } else if (
-        lines[0]?.text === "" &&
-        !lines.slice(1, 9).some((l) => l.text.startsWith("Invoice date:"))
-      ) {
-        // No invoice title in the first eight lines (the noise line "Invoice date: ..." is one).
+      } else if (lines[0]?.text === "") {
+        // No invoice title ("Invoice date: ..." is none: after the word only a number label and an id may follow).
         expect({ amount: f.amount, issue: f.amountIssue }, where).toEqual({
           amount: "0",
           issue: "not_payable",

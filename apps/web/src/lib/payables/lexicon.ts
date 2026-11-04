@@ -526,10 +526,77 @@ export const DOCUMENT_TYPES: readonly string[] = [
   "reversal invoice",
   "preliminary invoice",
   "pre-invoice",
+  "reversal of invoice",
+  "reversal for invoice",
+  "cancellation of invoice",
+  "cancellation for invoice",
+  "credit of invoice",
+  "credit for invoice",
+  "credit advice",
+  "credit slip",
+  "credit voucher",
+  "debit memo",
+  "order acknowledgement",
+  "order acknowledgment",
+  "receipted",
 ];
 
-/** Types that count only in the title (the first lines): an invoice may carry a remittance or payment slip. */
-export const TITLE_ONLY_TYPES: readonly string[] = ["remittance", "payment advice"];
+/**
+ * Types that count only in the title (the first lines): an invoice may carry a remittance or payment slip, and a
+ * heading "INVOICE" over a "Credit card payments accepted." line is no "invoice credit".
+ */
+export const TITLE_ONLY_TYPES: readonly string[] = [
+  "remittance",
+  "payment advice",
+  "invoice reversal",
+  "invoice cancellation",
+  "invoice credit",
+];
+
+/**
+ * Wordings that say nothing is owed from this document (ruling W-T13-B7): the vendor collects it itself, it is a
+ * test or cancelled in prose, or it was settled. Read per line, on a line with no money token.
+ */
+export const NOT_OWED_PHRASES: readonly string[] = [
+  "no action is needed",
+  "no action is required",
+  "no payment needed",
+  "no payment is needed",
+  "no payment is required",
+  "do not send payment",
+  "autopay",
+  "auto-pay",
+  "direct debit",
+  "automatically charged",
+  "automatically debited",
+  "automatically drafted",
+  "automatically collected",
+  "charged automatically",
+  "debited automatically",
+  "drafted automatically",
+  "collected automatically",
+  "card on file will be charged",
+  "will be drawn",
+  "test invoice",
+  "testing purposes",
+  "disregard this invoice",
+  "issued in error",
+  "no longer valid",
+  "superseded",
+  "has been reversed",
+  "received with thanks",
+  "payment has been processed",
+  "payment was processed",
+  "payment has been captured",
+  "payment was captured",
+  "payment has been made",
+  "payment was made",
+  "marked paid",
+  "marked as paid",
+  "nothing to pay",
+  "in credit",
+  "prepaid",
+];
 
 /** Stamps: a line that holds only one of these (decorated or not) makes the document not payable. */
 export const STAMPS: readonly string[] = [
@@ -576,6 +643,7 @@ export const CAPITAL_STAMPS: readonly string[] = [
  */
 export const FIRST_WORD_STAMPS: readonly string[] = [
   "paid",
+  "refunded",
   "void",
   "voided",
   "cancelled",
@@ -588,6 +656,9 @@ export const FIRST_WORD_STAMPS: readonly string[] = [
 
 /** Phrases that count anywhere, in any case. */
 export const STATUS_PHRASES: readonly string[] = [
+  "fully refunded",
+  "payment refunded",
+  "was refunded",
   "do not pay",
   "don't pay",
   "don\u2019t pay",

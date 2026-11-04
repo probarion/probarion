@@ -59,6 +59,11 @@ describe("the regression corpus", () => {
     const titled = corpus.cases.filter((c) => c.id.endsWith(".titled"));
     expect(titled.length).toBeGreaterThan(40);
     for (const t of titled) expect(corpus.cases.some((c) => `${c.id}.titled` === t.id)).toBe(true);
+    // The final re-review: the judge's probe groups S1 to S14 for the breaker rulings.
+    for (let n = 1; n <= 14; n++) {
+      expect(corpus.cases.some((c) => c.id.startsWith(`r6-S${n}.`))).toBe(true);
+    }
+    expect(corpus.cases.filter((c) => c.id.startsWith("r6-")).length).toBeGreaterThan(280);
   });
 
   it.each(corpus.cases.map((c) => [c.id, c] as const))("%s", (_id, c) => {
@@ -133,6 +138,57 @@ describe("the fresh corpus", () => {
       issue: "not_payable",
     });
   });
+});
+
+/**
+ * A second fresh corpus, written for the final re-review: corpus5 (35 invoices a careful person pays, 21 they
+ * refuse) and corpus5b (realistic traps: 19 and 26). The reader pays exactly what a careful person pays, or refuses.
+ */
+const fresh2 = JSON.parse(
+  readFileSync(new URL("../../../test/fixtures/fresh-invoices-2.json", import.meta.url), "utf8"),
+) as {
+  cases: {
+    id: string;
+    set: "corpus5" | "corpus5b";
+    kind: "pay" | "refuse";
+    pays: string;
+    text: string;
+    expect: Case["expect"];
+  }[];
+};
+
+describe("the second fresh corpus", () => {
+  it.each(fresh2.cases.map((c) => [`${c.set} ${c.id}`, c] as const))("%s", (_id, c) => {
+    const got = read(c.text);
+    expect(got).toEqual(c.expect);
+    expect(
+      got.amount === "0"
+        ? got.issue !== null
+        : c.kind === "pay" && got.amount === c.pays && got.issue === null,
+    ).toBe(true);
+  });
+
+  it.each([
+    ["corpus5", 56, 35, 18],
+    ["corpus5b", 45, 19, 3],
+  ] as const)(
+    "%s: %i documents; reads at least the floor of its %i payable ones (%i), refuses the rest, pays none a wrong amount",
+    (set, total, payable, floor) => {
+      const results = fresh2.cases
+        .filter((c) => c.set === set)
+        .map((c) => ({ c, got: read(c.text) }));
+      expect(results).toHaveLength(total);
+      const pay = results.filter(({ c }) => c.kind === "pay");
+      expect(pay).toHaveLength(payable);
+      expect(pay.filter(({ c, got }) => got.amount === c.pays).length).toBeGreaterThanOrEqual(
+        floor,
+      );
+      expect(results.filter(({ c, got }) => c.kind === "refuse" && got.amount !== "0")).toEqual([]);
+      expect(results.filter(({ c, got }) => got.amount !== "0" && got.amount !== c.pays)).toEqual(
+        [],
+      );
+    },
+  );
 });
 
 /** A plain invoice: header, items, partial lines, the final line(s), notes and terms. */
