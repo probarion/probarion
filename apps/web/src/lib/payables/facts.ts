@@ -1,6 +1,15 @@
 import type { InvoiceFacts, PayeeHint } from "@probarion/core";
-import { type AmountIssue, numberView, readAmount, skeleton } from "./amount";
-import { EVM_ADDRESS, INVOICE_NO, nearAccounts, PO_LABELLED, PO_TOKEN } from "./lexicon";
+import {
+  type AmountIssue,
+  cappedNfkc,
+  MAX_READ_UNITS,
+  numberKey,
+  numberView,
+  readAmount,
+  readInvoiceNumbers,
+  skeleton,
+} from "./amount";
+import { EVM_ADDRESS, nearAccounts, PO_LABELLED, PO_TOKEN } from "./lexicon";
 
 export { AMOUNT_ISSUES, type AmountIssue } from "./amount";
 
@@ -19,29 +28,41 @@ function poRef(text: string): string | null {
 }
 
 /**
- * The text an invoice's fingerprint is the hash of: NFKC; invisible characters (format and default-ignorable
- * characters) and combining marks removed; every dash as "-"; look-alike letters folded through the amount
- * reader's skeleton (which also lower-cases); every run of whitespace as one space; trimmed. A re-upload that
- * renders the same (other line ends, a no-break space, a zero-width space, a Unicode hyphen, a Cyrillic letter for
- * a Latin one) has the same fingerprint, so the pipeline answers it as a duplicate before anything is sent. (The
- * ledger's invoice_hash stays the hash of the exact text the model is shown.)
+ * The text an invoice's fingerprint is the hash of: NFKC; blank-rendering characters as spaces; invisible
+ * characters (format and default-ignorable characters) and combining marks removed; every dash-like character as
+ * "-"; digit look-alikes inside a number as digits; look-alike letters folded through the amount reader's skeleton
+ * (which also lower-cases); every run of whitespace as one space; trimmed. A re-upload that renders the same (other
+ * line ends, a no-break or zero-width space, a Braille blank, a Unicode hyphen or box line, "1OO1" for 1001, a
+ * Cyrillic letter for a Latin one) has the same fingerprint, so the pipeline answers it as a duplicate before
+ * anything is sent. (The ledger's invoice_hash stays the hash of the exact text the model is shown.)
+ *
+ * Capped as the reader is: past MAX_READ_UNITS, or when NFKC would expand the text past its bounds, the reader
+ * refuses the text anyway, and the fingerprint is the text itself (no per-character work on it).
  */
 export function fingerprintText(text: string): string {
-  return skeleton(numberView(text.normalize("NFKC")))
-    .replace(/\s+/g, " ")
-    .trim();
+  const shown = cappedNfkc(text);
+  if (shown === null) return text;
+  return skeleton(numberView(shown)).replace(/\s+/g, " ").trim();
 }
 
 /**
- * The invoice number as the text states it, read with invisible characters removed and every dash as "-": the
- * number of "INV-10<ZWSP>01" or "INV<U+2011>1001" is INV-1001. For display and for the duplicate guard's key.
+ * The invoice number as the text states it (one number, the first the reader finds), read on the number view:
+ * "INV-10<ZWSP>01", "INV<U+2011>1001" and "INV-1OO1" are INV-1001; "# INV-000415", "INV 2026-0451", a bare "No. 5520"
+ * in the header, a number on the line after "Invoice number:" and one under an "Invoice #" cell are read too. For
+ * display and for the duplicate guard's key. Only the first MAX_READ_UNITS units are read, and a text that NFKC would
+ * expand past its bounds has no number (the reader refuses it).
  */
 export function invoiceNumberOf(text: string): string | null {
-  return INVOICE_NO.exec(numberView(text.normalize("NFKC")))?.[1] ?? null;
+  const shown = cappedNfkc(text.length > MAX_READ_UNITS ? text.slice(0, MAX_READ_UNITS) : text);
+  if (shown === null) return null;
+  return readInvoiceNumbers(numberView(shown))[0] ?? null;
 }
 
-/** The form of an invoice number the duplicate guard keys: the skeleton, so case and look-alikes do not matter. */
-export const numberKeyText = (number: string): string => skeleton(number.normalize("NFKC"));
+/**
+ * The form of an invoice number the duplicate guard keys: its skeleton in capitals, letters and digits only, so
+ * case, look-alikes, dashes and spaces do not matter ("INV 1001", "inv-1001" and "INV-1001" are one key).
+ */
+export const numberKeyText = (number: string): string => numberKey(number);
 
 /**
  * Deterministic, code-level facts. `invoiceNumber` and `amountIssue` are for display and for the duplicate guard:

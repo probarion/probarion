@@ -266,6 +266,13 @@ export const MONEY_WORDS: readonly string[] = [
   "less",
   "minus",
   "withholding",
+  "unpaid",
+  "overpaid",
+  "repaid",
+  "repayment",
+  "repayments",
+  "arrears",
+  "charged",
   "late fee",
   "gift card",
   "remaining",
@@ -274,6 +281,57 @@ export const MONEY_WORDS: readonly string[] = [
   "tot",
   "value",
   "send",
+];
+
+/**
+ * Words with a charge or deduction meaning. A money line holding one after the last final total (and no final total
+ * after it) changes what is due, so the invoice is ambiguous.
+ */
+export const CHARGE_WORDS: readonly string[] = [
+  "discount",
+  "coupon",
+  "credit",
+  "credits",
+  "fee",
+  "fees",
+  "tax",
+  "taxes",
+  "vat",
+  "gst",
+  "hst",
+  "pst",
+  "shipping",
+  "handling",
+  "freight",
+  "delivery",
+  "installment",
+  "instalment",
+  "milestone",
+  "adjustment",
+  "adjustments",
+  "charge",
+  "charges",
+  "charged",
+  "surcharge",
+  "interest",
+  "penalty",
+  "late",
+  "billed",
+  "retainage",
+  "deposit",
+  "deposits",
+  "payment",
+  "payments",
+  "paid",
+  "unpaid",
+  "arrears",
+  "deduction",
+  "rebate",
+  "refund",
+  "withholding",
+  "plus",
+  "less",
+  "minus",
 ];
 
 /** Compound nouns that hold a payable word but never state what is owed ("Due diligence", "Balance sheet"). */
@@ -366,6 +424,21 @@ export const SCALE_WORDS: readonly string[] = [
 export const NOTE_SCALE_WORDS: readonly string[] = [
   "cent",
   "cents",
+  "penny",
+  "pennies",
+  "pence",
+  "minor unit",
+  "minor units",
+  "atomic unit",
+  "atomic units",
+  "smallest unit",
+  "smallest units",
+  "sub-unit",
+  "sub-units",
+  "subunit",
+  "subunits",
+  "decimal places",
+  "dp",
   "base unit",
   "base units",
   "decimal",
@@ -437,6 +510,22 @@ export const DOCUMENT_TYPES: readonly string[] = [
   "pro forma",
   "pro-forma",
   "proforma",
+  "proposal",
+  "bid",
+  "tender",
+  "sales order",
+  "order confirmation",
+  "order summary",
+  "packing slip",
+  "packing list",
+  "delivery note",
+  "work order",
+  "payment confirmation",
+  "credit invoice",
+  "cancellation invoice",
+  "reversal invoice",
+  "preliminary invoice",
+  "pre-invoice",
 ];
 
 /** Types that count only in the title (the first lines): an invoice may carry a remittance or payment slip. */
@@ -455,6 +544,11 @@ export const STAMPS: readonly string[] = [
   "draft",
   "duplicate",
   "do not pay",
+  "refunded",
+  "test",
+  "example",
+  "template",
+  "demo",
 ];
 
 /** Stamp words that count anywhere when written in capitals ("INVOICE INV-90 - VOID"). */
@@ -468,10 +562,20 @@ export const CAPITAL_STAMPS: readonly string[] = [
   "DRAFT",
   "DUPLICATE",
   "PAID",
+  "REFUNDED",
+  "TEST",
+  "EXAMPLE",
+  "TEMPLATE",
+  "DEMO",
 ];
 
-/** Stamp words that refuse a line they start, in any case ("Draft invoice", "Void - reissued"). */
+/**
+ * Stamp words that refuse a line they start, in any case ("Draft invoice", "Void - reissued", "Paid, thank you").
+ * "Paid" is exempt on a non-final money line ("Paid $400.00"), in an item row ("Paid search $500.00"), in a terms
+ * sentence and in an instruction ("Paid in USDC on NEAR"): amount.ts reads those.
+ */
 export const FIRST_WORD_STAMPS: readonly string[] = [
+  "paid",
   "void",
   "voided",
   "cancelled",
@@ -524,11 +628,26 @@ export const STATUS_PHRASES: readonly string[] = [
   "do not remit",
   "for your records only",
   "for reference only",
+  "date paid",
+  "invoice paid",
+  "payment was received",
+  "payment has been received",
+  "received your payment",
+  "thanks for your payment",
+  "thank you for paying",
+  "payment successful",
+  "payment succeeded",
+  "payment confirmed",
+  "payment processed",
+  "charged to",
 ];
 
 /** The values of a "Status:" line that make the document not payable. */
 export const STATUS_VALUES: readonly string[] = [
   "paid",
+  "succeeded",
+  "closed",
+  "processed",
   "paid in full",
   "fully paid",
   "payment received",
@@ -601,6 +720,8 @@ export const WORDLIKE_CODES: ReadonlySet<string> = new Set([
   "SVC",
   "TOP",
   "TRY",
+  "RUB",
+  "STD",
 ]);
 
 /** Words that put a code on their line in a currency context ("All prices CAD", "Amounts are PHP"). */
@@ -614,6 +735,13 @@ export const CURRENCY_CONTEXT_WORDS: readonly string[] = [
   "amount",
   "amounts",
   "billed",
+  "payable",
+  "payment",
+  "only",
+  "funds",
+  "figures",
+  "settle",
+  "settlement",
 ];
 
 /** Currency words, matched whole-word in any case. */
@@ -697,6 +825,16 @@ export const CURRENCY_WORDS: readonly string[] = [
   "loonies",
   "toonie",
   "toonies",
+  "koruna",
+  "koruny",
+  "korun",
+  "leva",
+  "kuna",
+  "kune",
+  "dalasi",
+  "birr",
+  "ouguiya",
+  "rufiyaa",
 ];
 
 /** "<country> dollar(s)", "<country> $", "<country> funds", "<country> currency": another country's money. */
@@ -784,9 +922,13 @@ export const LOOK_ALIKES: Readonly<Record<string, string>> = {
  * dashes folded (facts.ts `invoiceView`).
  */
 export const INVOICE_NO =
-  /\b(?:invoice|inv\.|inv(?=[ \t]{1,4}(?:#|no\b|number\b))|bill(?![a-z]))[ \t]{0,40}(?:(?:#|no\.?|n[\u00b0\u00ba]|number|num\.?|id|ref)[ \t]{0,40})?(?:[:#-][ \t]{0,40}){0,3}((?=[A-Z0-9/-]{0,31}[0-9])[A-Z0-9][A-Z0-9/-]{0,31})(?![A-Z0-9/-])/i;
-/** An invoice-number token on its own: "INV-2026-07". */
-export const INVOICE_TOKEN = /\bINV[-#]?[0-9][A-Z0-9/-]{0,30}(?![A-Z0-9/-])/i;
+  /\b(?:invoice|inv\.|inv(?=[ \t]{1,4}(?:#|no\b|number\b))|bill(?![a-z]))[ \t]{0,40}(?:(?:#|no\.?|n[\u00b0\u00ba]|number|num\.?|id|ref\.?)[ \t]{0,40})?(?:[:#-][ \t]{0,40}){0,3}((?=[A-Z0-9/-]{0,31}[0-9])[A-Z0-9][A-Z0-9/-]{0,31})(?![A-Z0-9/-])/i;
+/**
+ * An invoice-number token on its own: "INV-2026-07", "# INV-000415", "INV 2026-0451"; not the "-INV-" segment of
+ * another id ("CCC-INV-4410" is one number, read whole by INVOICE_NO).
+ */
+export const INVOICE_TOKEN =
+  /(?<![A-Z0-9/-])INV(?:[-#]|[ \t]{1,4})?[0-9][A-Z0-9/-]{0,30}(?![A-Z0-9/-])/i;
 
 /** A reference that starts with PO itself: "PO-4471", "PO4471" ("PO" must be a word, and hold a digit). */
 export const PO_TOKEN = /\b(PO[-#]?[0-9][A-Z0-9-]{1,30})(?![A-Z0-9-])/i;

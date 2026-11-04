@@ -1,5 +1,6 @@
 import {
   CAPITAL_STAMPS,
+  CHARGE_WORDS,
   CURRENCY_CONTEXT_WORDS,
   CURRENCY_WORDS,
   DEDUCTION_LABELS,
@@ -39,12 +40,12 @@ import {
   WORDLIKE_CODES,
 } from "./lexicon";
 
-// The invoice amount reader. The amount it returns is one of two readers the Payables agent needs before it pays
-// on its own (the other is an attested model, see owner-confirms.ts), so it is an allowlist: it pays only a total
-// stated on a line written in a plain, closed grammar, and refuses everything else as "0" with a reason. The
-// order is fixed:
+// The invoice amount reader. The Payables agent pays on its own only when an attested model confirms the amount
+// this code read (see owner-confirms.ts); the model is shown that amount, so the reader carries the weight and is an
+// allowlist: it pays only a total stated on a line written in a plain, closed grammar, and refuses everything else
+// as "0" with a reason. The order is fixed:
 //   1. gates on the whole document: text it cannot trust, a document that is not a payable invoice, another
-//      currency, more than one invoice;
+//      currency, more than one invoice, and (last, before paying) a document that does not say it is an invoice;
 //   2. every final-total line must match the final grammar;
 //   3. every other line that looks payable must match the non-final grammar;
 //   4. all final totals must agree, and a deduction must be settled by a balance written after it.
@@ -70,10 +71,25 @@ export interface AmountRead {
   /** USDC base units as a canonical non-negative integer string; "0" when refused. */
   amount: string;
   issue: AmountIssue | null;
+  /** For some refusals, why in words (a not_payable document with no invoice title). */
+  why?: string;
 }
 
-/** Past this many UTF-16 units, before or after NFKC, nothing is read. The pipeline passes at most 50,000. */
-export const MAX_READ_UNITS = 200_000;
+/** Why a document with no invoice title in its first eight lines is not_payable. */
+export const NOT_AN_INVOICE = "the document does not say it is an invoice";
+
+/**
+ * Past this many UTF-16 units nothing is read: the pipeline's MAX_TEXT_CHARS (extract.ts), so a direct call is
+ * capped as the pipeline is. NFKC may expand the text to at most twice its length and at most MAX_NFKC_UNITS.
+ */
+export const MAX_READ_UNITS = 50_000;
+export const MAX_NFKC_UNITS = 100_000;
+/** The NFKC text, or null when NFKC expands it past twice its length or past MAX_NFKC_UNITS. */
+export function cappedNfkc(text: string): string | null {
+  if (text.length > MAX_READ_UNITS) return null;
+  const out = text.normalize("NFKC");
+  return out.length > 2 * Math.max(text.length, 1) || out.length > MAX_NFKC_UNITS ? null : out;
+}
 /** The largest total paid: 10^12 USDC. */
 const MAX_UNITS = 10n ** 18n;
 
@@ -119,7 +135,43 @@ function nfkc(text: string): string {
 
 /** The line without invisible characters and combining marks: "V\u200bOID" is VOID, "E\u00adUR" is EUR. */
 const cleanOf = (line: string): string =>
-  ASCII.test(line) ? line : line.replace(INVISIBLE_G, "").replace(MARK_G, "");
+  ASCII.test(line)
+    ? line
+    : line
+        .replace(INVISIBLE_G, "")
+        .replace(MARK_G, "")
+        .replace(SMALL_CAPITALS, (ch) => SMALL_CAPITAL_OF.get(ch) ?? ch);
+
+/** Small capitals ("\u1d20\u1d0f\u026a\u1d05", "\u1d07\u1d1c\u0280") are capitals as far as stamps and codes go. */
+const SMALL_CAPITAL_OF: ReadonlyMap<string, string> = new Map(
+  [
+    ["\u1d00", "A"],
+    ["\u0299", "B"],
+    ["\u1d04", "C"],
+    ["\u1d05", "D"],
+    ["\u1d07", "E"],
+    ["\ua730", "F"],
+    ["\u0262", "G"],
+    ["\u029c", "H"],
+    ["\u026a", "I"],
+    ["\u1d0a", "J"],
+    ["\u1d0b", "K"],
+    ["\u029f", "L"],
+    ["\u1d0d", "M"],
+    ["\u0274", "N"],
+    ["\u1d0f", "O"],
+    ["\u1d18", "P"],
+    ["\u0280", "R"],
+    ["\ua731", "S"],
+    ["\u1d1b", "T"],
+    ["\u1d1c", "U"],
+    ["\u1d20", "V"],
+    ["\u1d21", "W"],
+    ["\u028f", "Y"],
+    ["\u1d22", "Z"],
+  ].map(([k, v]) => [k, v] as [string, string]),
+);
+const SMALL_CAPITALS = new RegExp(`[${[...SMALL_CAPITAL_OF.keys()].join("")}]`, "gu");
 
 const FOLD = new Map<string, string>();
 for (const [to, from] of Object.entries(LOOK_ALIKES)) for (const c of from) FOLD.set(c, to);
@@ -172,10 +224,22 @@ function skeletonOf(line: string): string {
 /** The skeleton of a whole text (the duplicate guard reads its fingerprint through it). */
 export const skeleton = (text: string): string => skeletonOf(text);
 
-/** Runs of three or more single letters, one separator apart: "t o t a l", "t.o.t.a.l", "p a l d". */
-const SPACED = /(?<![a-z])[a-z](?:[ .'\u00b7\u2019-][a-z]){2,}(?![a-z])/g;
+/** What may stand between the letters of a letter-spaced word: spaces, tabs, dots, commas, slashes, quotes, bullets, dashes. */
+const SPACING = "[\\s.,/'\\u00b7\\u2019\\u2022\\u2027~_-]{1,8}";
+/** Runs of three or more single letters, separators apart: "t o t a l", "t.o.t.a.l", "p  a  l  d", "p\ta\tl\td". */
+const SPACED = new RegExp(`(?<![a-z])[a-z](?:${SPACING}[a-z](?![a-z])){2,}`, "g");
+const SEPARATOR_RUN = new RegExp(SPACING, "g");
+/**
+ * A letter-spaced run joined: the shortest separator of the run is the space between letters, and a longer one is
+ * the space between words ("p a l d  l n  f u l l" -> "pald ln full").
+ */
+function joinSpaced(run: string): string {
+  let shortest = Number.POSITIVE_INFINITY;
+  for (const x of run.match(SEPARATOR_RUN) ?? []) if (x.length < shortest) shortest = x.length;
+  return run.replace(SEPARATOR_RUN, (x) => (x.length > shortest ? " " : ""));
+}
 /** The skeleton with letter-spaced words joined ("t o t a l   $5" -> "total   $5"). */
-const unspaced = (s: string): string => s.replace(SPACED, (m) => m.replace(/[^a-z]/g, ""));
+const unspaced = (s: string): string => s.replace(SPACED, joinSpaced);
 
 /** A 0 or a 1 written among letters, read as the letter it looks like ("pa1d" -> "pald", "v0id" -> "vold"). */
 const digitLetters = (s: string) =>
@@ -233,8 +297,18 @@ const labelWords = (s: string): number =>
 const JOIN_TARGETS: ReadonlySet<string> = new Set(
   [...PAYABLE_WORDS, ...MONEY_WORDS.filter((w) => !w.includes(" ") && w.length >= 4)].map(sk),
 );
-/** Two words, one separator apart, as (first, second) with the second taken by a lookahead (pairs overlap). */
-const WORD_PAIR = /(?<![a-z])([a-z]{2,12})(?=[ .'\u00b7\u2019-]([a-z]{2,12})(?![a-z]))/g;
+/**
+ * Two words, a separator run apart (spaces, tabs, dots, quotes, bullets, dashes), as (first, second), with the
+ * second taken by a lookahead so the pairs overlap.
+ */
+const WORD_PAIR =
+  /(?<![a-z])([a-z]{1,12})(?=[\s.'\u00b7\u2019\u2022\u2027~_-]{1,8}([a-z]{1,12})(?![a-z]))/g;
+/**
+ * A pair joins into a hidden label when the join is a payable or money word and each piece has two letters, or the
+ * join is a label of five letters or more ("T otal", "Tota l"; "year's end" does not join into "send").
+ */
+const joinsLabel = (a: string, b: string): boolean =>
+  JOIN_TARGETS.has(`${a}${b}`) && ((a.length >= 2 && b.length >= 2) || a.length + b.length >= 5);
 
 /**
  * 11. A label written so that it reads only once its pieces are joined: letter-spaced ("T o t a l"), split by a
@@ -248,7 +322,7 @@ function oddLabel(s: string, unspacedLine: string): boolean {
     if (variant !== s && labelWords(variant) > labelWords(s)) return true;
   }
   for (const m of s.matchAll(WORD_PAIR)) {
-    if (JOIN_TARGETS.has(`${m[1]}${m[2]}`)) return true;
+    if (joinsLabel(m[1] ?? "", m[2] ?? "")) return true;
   }
   return false;
 }
@@ -287,14 +361,67 @@ interface Views {
   u: readonly string[];
   /** Each line's match of the non-final grammar (a money line, which no status phrase refuses), or null. */
   nonFinal: readonly (RegExpExecArray | null)[];
+  /** Each line's match of the final grammar, or null. */
+  finalLine: readonly (RegExpExecArray | null)[];
   /** Each clean line with letter-spaced capitals joined ("V O I D" -> "VOID"), and its words in capitals. */
   cu: readonly string[];
   capitals: readonly CapitalWord[][];
 }
 
 const STAMP_LINES: ReadonlySet<string> = new Set(STAMPS.map(sk));
-/** "Paid by", "paid on", "paid via", "paid with": a payment already made ("to be paid by" is an instruction). */
-const PAID_HOW = /(?<![a-z])(?<!\bbe\s{1,4})pald\s{1,4}(?:by|on|vla|wlth)(?![a-z])/;
+/**
+ * "Paid by", "paid on", "paid via", "paid with", "paid through", with up to three words between ("Paid 2026-11-01 via
+ * ACH", "Paid today by card"): a payment already made.
+ */
+const PAID_HOW_G =
+  /(?<![a-z])pald(?:[ \t]{1,4}[^\s]{1,24}){0,3}?[ \t]{1,4}(?:by|on|vla|wlth|through|thru)(?![a-z])/g;
+/** Before "paid", an instruction or a term: "to be paid by", "if not paid by the due date", "discount if paid by". */
+const PAID_TERM =
+  /(?:^|[^a-z])(?:be|lf|unless|not|when|once|untll)(?:[ \t]{1,4}[^\s]{1,24}){0,2}[ \t]{1,4}$/;
+/** After "paid ... on": the network ("Paid in USDC on NEAR"), not a date. */
+const ON_NETWORK = /^\s+(?:the\s+)?near(?![a-z.])/;
+function paidHow(u: string): boolean {
+  for (const m of u.matchAll(PAID_HOW_G)) {
+    const at = m.index ?? 0;
+    if (m[0].endsWith("on") && ON_NETWORK.test(u.slice(at + m[0].length, at + m[0].length + 12)))
+      continue;
+    if (!PAID_TERM.test(u.slice(Math.max(0, at - 60), at))) return true;
+  }
+  return false;
+}
+/** "This invoice has now been paid", "was fully paid", "is paid": a payment already made. */
+const PAID_STATE =
+  /(?<![a-z])(?:has|have|had|was|were|ls)(?:\s+(?:now|already|been|fully|partlally|since|then))*\s+pald(?![a-z])/;
+/** "Payment made in full on 11/02/2026", "Payment was made on Nov 2, 2026". */
+const PAYMENT_MADE =
+  /(?<![a-z])payment\s+(?:was\s+|has\s+been\s+)?made\s+(?:ln\s+full|on\s+\d|on\s+[a-z]{3,9}\.?\s+\d)/;
+/** A "Status:" label alone on its line; its value is on the next line. */
+const STATUS_LABEL = /^[\W_]{0,10}(?:(?:lnvolce|payment)\s+)?status[\s:=|*-]*$/;
+/** "Paid in USDC", "Paid in native USDC on NEAR": how to pay, not a payment made. */
+const PAID_INSTRUCTION = /^\W{0,4}pald\s+ln\s+(?:natlve\s+)?usdc?(?![a-z])/;
+/** "Paid search $500.00", "Paid social management": an item named with a money word, before any final total. */
+const ITEM_NAMED =
+  /^\W{0,4}(?:pald|deposlt)\s+(?!(?:by|on|vla|wlth|through|thru|ln|to|from|at|for|date|amount|lnvolce|thank|thanks|recelved|applled|ln\s+full)(?![a-z]))[a-z]{3,}/;
+const ITEM_FIRST = /^\W{0,4}(?:pald|deposlt)(?![a-z])/;
+const ITEM_DEDUCTS =
+  /(?<![a-z])(?:recelved|refund|refunded|returned|held|applled|balance)(?![a-z])/;
+/**
+ * Minor 7. "Paid search $500.00", "Paid social management", "Deposit box rental $50.00": a line item named with a
+ * money word, written before any final total, with no other money or payable word, no credit cue and no negative
+ * figure after its first word. It is read as an item, not as a payment or a stamp.
+ */
+function itemRow(s: string, beforeFinal: boolean): boolean {
+  if (!beforeFinal || !ITEM_NAMED.test(s)) return false;
+  const rest = s.slice(ITEM_FIRST.exec(s)?.[0].length ?? 0);
+  return (
+    !MONEY_WORD_BUT_RETAINER.test(rest) &&
+    !PAYABLE.test(rest) &&
+    !CREDIT_CUE.test(rest) &&
+    !ITEM_DEDUCTS.test(rest)
+  );
+}
+/** "Balance<TAB>Paid", "Balance: paid": a balance stated as paid. */
+const BALANCE_PAID = /^\W{0,4}balance[\s:|=-]{1,12}pald\W*$/;
 const STATUS_PHRASE = phrases(STATUS_PHRASES);
 /** "Status: Paid", "| Status | Paid |", "Status \u2013 Paid", "Status:     **Paid**". */
 const STATUS_LINE = new RegExp(
@@ -310,15 +437,25 @@ const PO_FIELD =
   /(?<![a-z])purchase\s+order\s*(?:no\.?|number|#|:)[\s:#.-]{0,6}[a-z0-9][a-z0-9/-]{0,31}\d/;
 /** Off the first line, "Purchase order PO-1001" cites the PO too (on the first line it is the title). */
 const PO_LOOSE = /(?<![a-z])purchase\s+order\s+(?:po)?-?\d[a-z0-9-]{0,30}/;
-/** "Payment due upon receipt", "Due on receipt": a payment term, not a receipt. */
-const ON_RECEIPT = /(?<![a-z])(?:upon|on|of)\s+recelpt(?![a-z])/g;
+/** "Purchase order: PO-1001": a field with a colon, which cites the PO on any line, the first one too. */
+const PO_COLON = /(?<![a-z])purchase\s+order\s*:\s*[a-z0-9][a-z0-9/-]{0,31}\d/;
+/** "Sales order: SO-1001", "Work order #WO-17": an invoice citing its order, off the first line. */
+const ORDER_FIELD =
+  /(?<![a-z])(?:sales|work)\s+order\s*(?:no\.?|number|#|:)[\s:#.-]{0,6}[a-z0-9][a-z0-9/-]{0,31}\d/;
+/** "Payment due upon receipt", "Due on receipt": a payment term, not a receipt ("Proof of receipt" is one). */
+const ON_RECEIPT = /(?<![a-z])(?:upon|on)\s+recelpt(?![a-z])/g;
 /** "From: Quote Masters Inc", "Vendor: ...": a name field, which may hold any word. */
 const NAME_FIELD =
   /^\W{0,4}(?:from|vendor|suppller|payee|blll\s+from|blll\s+to|bllled\s+to|shlp\s+to|cllent|customer|company|attn)\s*:/;
-/** A type word written as the title of what follows: "Credit Note for invoice INV-1", "Receipt #1234". */
+/**
+ * A type word written as the title or field of what follows: "Credit Note for invoice INV-1", "Receipt #1234",
+ * "Quotation No.: Q-88120", "Quote Number: Q-1", "Quote Ref: Q-77", "Statement Date: 10/31/2026".
+ */
 const DOCUMENT_REF = new RegExp(
-  `(?<![a-z])(?:${alternation(DOCUMENT_TYPES)})\\s*(?:for\\s+(?:lnvolce|lnv)|#|no\\.?\\s*\\d|number\\s*\\d)`,
+  `(?<![a-z])(?:${alternation(DOCUMENT_TYPES)})\\s*(?:for\\s+(?:lnvolce|lnv)|(?:#|no\\.?|number|num\\.?|ref\\.?|ld|date|valld(?:\\s+untll)?)\\s*[:#.\\t-]?\\s*[a-z0-9])`,
 );
+/** Where a name field's exemption ends: a tab, a dash or bar between spaces, or a second "label:". */
+const NAME_FIELD_END = /\t| [-\u2013\u2014|] |\s[a-z][a-z ]{1,20}:/;
 /** The line is only a document type, with an optional number: "Quotation", "Receipt 1234", "Credit note CN-7". */
 const DOCUMENT_ALONE = new RegExp(
   `^(?:${alternation(DOCUMENT_TYPES)})(?:[ \\t]{1,4}(?:no\\.?|#)?[ \\t]{0,4}[a-z0-9-]{0,30}\\d[a-z0-9-]{0,30})?$`,
@@ -411,18 +548,44 @@ const CAPITAL_STAMP: ReadonlySet<string> = new Set(CAPITAL_STAMPS);
 function notPayable(v: Views): boolean {
   let n = 0;
   let previousHeading: string | null = null;
+  /** The previous non-blank line, for a phrase wrapped across a line end ("Paid in" / "full"). */
+  let previous: { u: string; money: boolean } | null = null;
+  /** The cell of the previous line that is a "Status" header cell, or -1. */
+  let statusCell = -1;
+  /** The previous non-blank line is a "Status:" label alone. */
+  let statusAbove = false;
+  const firstFinal = v.finalLine.findIndex((m) => m !== null);
   for (let i = 0; i < v.g.length; i++) {
     const u = (v.u[i] ?? "").trim();
     if (u === "") continue;
     n++;
     const money = v.nonFinal[i] !== null;
+    // An item named with a money word ("Paid search $500.00"), written before any final total.
+    const item = itemRow(u, firstFinal < 0 || i < firstFinal) && moneyToken(v.g[i] ?? "");
     const capitals = v.capitals[i] ?? [];
     if (
       capitals.some((w) =>
-        w.spellings.some((s) => CAPITAL_STAMP.has(s) && !(s === "PAID" && money)),
+        w.spellings.some((s) => CAPITAL_STAMP.has(s) && !(s === "PAID" && (money || item))),
       )
     )
       return true;
+    // A Paid or Void cell under a "Status" header cell.
+    const cells = (v.g[i] ?? "").includes("\t") ? (v.g[i] ?? "").split("\t") : null;
+    if (
+      statusCell >= 0 &&
+      STATUS_CELL.test(skeletonOf((cells ?? [v.g[i] ?? ""])[statusCell] ?? "").trim())
+    )
+      return true;
+    statusCell = cells ? cells.findIndex((c) => skeletonOf(c).trim() === "status") : -1;
+    if (statusAbove && STATUS_CELL.test(u)) return true;
+    statusAbove = STATUS_LABEL.test(u);
+    const wrapped = previous;
+    previous = { u, money };
+    // A stamp cut by a pipe ("VO|D"): the skeleton reads the pipe as an l.
+    if ((v.g[i] ?? "").includes("|")) {
+      const sb = (v.s[i] ?? "").trim();
+      if (!/\d/.test(sb) && STAMP_LINES.has(sb.replace(/[^a-z]+/g, " ").trim())) return true;
+    }
     // Every check below looks for one of these words; most lines (items, totals) hold none.
     if (!wordsOf(u).some((w) => STATUS_OR_TYPE.has(w))) {
       previousHeading = null;
@@ -431,43 +594,63 @@ function notPayable(v: Views): boolean {
     // A stamp may carry a date ("PAID 2026-11-01") but no other figure: "Paid 40" is a payment line.
     const undated = u.replace(DATES, " ");
     const bare = /\d/.test(undated) ? "" : undated.replace(/[^a-z]+/g, " ").trim();
-    if (STAMP_LINES.has(bare) || STATUS_LINE.test(u)) return true;
+    if (STAMP_LINES.has(bare) || STATUS_LINE.test(u) || BALANCE_PAID.test(u)) return true;
+
+    // "Paid" starting a line is a stamp, except on a money line, in an item row and in "Paid in USDC".
+    const first = FIRST_WORD_STAMP.exec(u);
+    const paidFirst = first !== null && /^\W{0,10}pald/.test(u);
+    if (first && !(paidFirst && (money || item || PAID_INSTRUCTION.test(u)))) return true;
     if (
       !money &&
       (STATUS_PHRASE.test(u) ||
-        PAID_HOW.test(u) ||
-        FIRST_WORD_STAMP.test(u) ||
+        paidHow(u) ||
+        PAID_STATE.test(u) ||
+        PAYMENT_MADE.test(u) ||
         SEPARATED_STAMP.test(undated))
     )
       return true;
-    // Titles. Markdown heading marks go; a name field and a cited PO are not titles; "upon receipt" is a term.
+    // A phrase wrapped across a line end: it reads only once the two lines are joined.
+    if (wrapped && !wrapped.money && !money) {
+      const joined = `${wrapped.u} ${u}`;
+      if (
+        (STATUS_PHRASE.test(joined) && !STATUS_PHRASE.test(wrapped.u)) ||
+        (paidHow(joined) && !paidHow(wrapped.u))
+      )
+        return true;
+    }
+    // Titles. Markdown heading marks go; a name field (up to a tab, a dash or a second label) and a cited PO or
+    // order are not titles; "upon receipt" is a term.
     const text = u.replace(/^#+\s*/, "").replace(ON_RECEIPT, " ");
     const named = NAME_FIELD.test(text);
-    const withoutPo = (n > 1 ? text.replace(PO_LOOSE, " ") : text).replace(PO_FIELD, " ");
-    // The first five lines are the title, but a money line among them (lines 2 to 5) is no title.
-    const titleLine = n === 1 || (n <= 5 && !moneyToken(v.g[i] ?? ""));
-    if (!named && titleLine && TITLE_DOCUMENT.test(withoutPo)) return true;
-    if (!named && DOCUMENT_REF.test(withoutPo)) return true;
-    if (
-      !text.includes(":") &&
-      DOCUMENT_ALONE.test(withoutPo.replace(/[^a-z0-9#. -]+/g, " ").trim())
-    )
+    const end = named ? text.slice(1).search(NAME_FIELD_END) : -1;
+    const own = named ? (end >= 0 ? text.slice(end + 2) : "") : text;
+    const cited = own.replace(PO_COLON, " ");
+    const withoutPo =
+      n > 1 ? cited.replace(PO_LOOSE, " ").replace(PO_FIELD, " ").replace(ORDER_FIELD, " ") : cited;
+    // The first eight lines are the title, beside an amount too ("RECEIPT 100.00 USDC").
+    if (n <= HEADER_LINES && TITLE_DOCUMENT.test(withoutPo)) return true;
+    if (DOCUMENT_REF.test(withoutPo)) return true;
+    if (!own.includes(":") && DOCUMENT_ALONE.test(withoutPo.replace(/[^a-z0-9#. -]+/g, " ").trim()))
       return true;
-    const heading = isHeading(withoutPo);
-    if (heading && !named && DOCUMENT.test(withoutPo)) return true;
+    const heading = !named && isHeading(withoutPo);
+    if (heading && DOCUMENT.test(withoutPo)) return true;
     // A title split over two heading lines ("CREDIT" / "NOTE").
     if (heading && previousHeading !== null && DOCUMENT.test(`${previousHeading} ${withoutPo}`))
       return true;
-    previousHeading = heading && !named ? withoutPo : null;
+    previousHeading = heading ? withoutPo : null;
   }
   return false;
 }
 
-/** Letter-spaced capitals joined ("V O I D" -> "VOID"), on the clean view. */
-const unspacedCapitals = (c: string): string =>
-  c.replace(/(?<![\p{L}\p{N}])\p{Lu}(?:[ .'\u00b7-]\p{Lu}){2,}(?![\p{L}\p{N}])/gu, (m) =>
-    m.replace(/[^\p{Lu}]/gu, ""),
-  );
+/** A status value alone in a cell ("Paid", "Void", "Refunded"). */
+const STATUS_CELL = new RegExp(`^[\\W_]{0,4}(?:${alternation(STATUS_VALUES)})[\\W_]{0,4}$`);
+
+/** Letter-spaced capitals joined ("V O I D", "S  E  T  T  L  E  D", "C.A.D." -> "VOID", "SETTLED", "CAD"), on the clean view. */
+const SPACED_CAPITALS = new RegExp(
+  `(?<![\\p{L}\\p{N}])\\p{Lu}(?:${SPACING}\\p{Lu}(?![\\p{L}\\p{N}])){2,}`,
+  "gu",
+);
+const unspacedCapitals = (c: string): string => c.replace(SPACED_CAPITALS, joinSpaced);
 
 const CURRENCY_WORD = phrases(CURRENCY_WORDS);
 /** "Canadian dollars", "Australian $", "Canadian funds", "AU dollars", "Kiwi dollars", "dollars canadiens". */
@@ -475,18 +658,54 @@ const OTHER_DOLLAR = new RegExp(
   `(?<![a-z])(?:(?:${alternation(OTHER_DOLLARS.filter((w) => w.length > 2))})\\.?\\s*(?:dollars?|\\$|funds|currency)|(?:${alternation(OTHER_DOLLARS.filter((w) => w.length <= 2))})\\s+dollars?|dollars?\\s+(?:canad|austral|n[e\u00e9]o)[a-z]*)(?![a-z])`,
 );
 const OTHER_SYMBOL = /[^\P{Sc}$]/u;
+/** On the raw text: the full-width and small dollar signs are "$" once NFKC has run. */
+const OTHER_RAW_SYMBOL = /[^\P{Sc}$\uff04\ufe69]/u;
 const LETTER_SIGN = new RegExp(`[${LETTER_CURRENCY_SIGNS}]`);
 /** "C$100", "HK$100", "NT$100", "Cdn.$": a dollar sign glued to a country's letters. */
 const PREFIXED_DOLLAR = /(?<![A-Za-z])([A-Za-z]{1,3})\.?\$/g;
 /** "C $100", "NZ $", "$ CA", "$AU": another dollar written with one space, or after the sign. */
 const SPACED_DOLLAR =
-  /(?<![A-Za-z])(?:C|CA|CAD|CDN|Cdn|AU|NZ|HK|SG|NT|MX|R)\s\$|\$\s?(?:CA|AU|NZ|HK|SG|NT|MX)(?![A-Za-z])/;
+  /(?<![A-Za-z])(?:C|CA|CAN|CAD|CDN|Cdn|AU|NZ|HK|SG|NT|MX|R)\s+\$|\$\s*(?:A|CA|CAN|AU|NZ|HK|SG|NT|MX)(?![A-Za-z])/;
 /** "Rs 500", "in Rs.", "500 kr", "RM 20", "Rp 10.000", "z\u0142", "K\u010d", "CDN": a currency written short. */
 const SHORT_CURRENCY =
-  /(?:(?<![A-Za-z])(?:Rs|Rs\.|kr|kr\.|Kr|RM|Rp|CDN|Cdn)(?=\s?\d)|(?<=\d\s?)(?:Rs|kr|RM|Rp)(?![A-Za-z])|(?<![A-Za-z])(?:in|en|are)\s(?:Rs|kr|RM|Rp|CDN|Cdn)\b\.?|z\u0142(?![a-z])|K\u010d(?![a-z]))/;
+  /(?:(?<![A-Za-z])(?:Rs|Rs\.|kr|kr\.|Kr|RM|Rp|CDN|Cdn|KSh|USh|TSh|TL)(?=\s?\d)|(?<=\d\s?)(?:Rs|kr|RM|Rp|KSh|USh|TSh|TL)(?![A-Za-z])|(?<![A-Za-z])(?:in|en|are)\s(?:Rs|kr|KR|Kr|RM|Rp|CDN|Cdn|KSh|USh|TSh|TL)\b\.?|z\u0142(?![a-z])|K\u010d(?![a-z])|(?<!\p{L})\u043b\u0432\.?(?!\p{L}))/u;
 /** "Currency: EUR", "Currency code - CAD", "CURRENCY\tPHP", "Invoice currency = eur" (on the skeleton). */
 const CURRENCY_FIELD =
-  /(?<![a-z])currenc(?:y|les)(?:\s+(?:code|type))?(\s*[:=]\s*|[\s|\-\u2013\u2014]+)([^\s,;]+)(?:\s+([a-z]+))?/;
+  /(?<![a-z])(currenc(?:y|les)(?:\s+(?:code|type))?|curr\.?|cur\.|ccy|money|(?:settlement|payment)\s+(?:currency|asset|token)|settlement|asset|token)(\s*[:=]\s*|[\s|\-\u2013\u2014]+)([^\s,;]+)(?:\s+([a-z]+))?/;
+/** Other dollars named by their country's adjective ("Canadian", "Australian"), in skeleton spelling. */
+const DOLLAR_ADJECTIVES: ReadonlySet<string> = new Set(
+  OTHER_DOLLARS.filter((w) => /(?:an|ese|ie)$/.test(w) || w === "cdn").map(sk),
+);
+/** "All amounts are in Canadian", "in Australian": another dollar by its adjective. */
+const IN_OTHER_DOLLAR = new RegExp(
+  `(?<![a-z])(?:ln|are)\\s+(?:${alternation([...DOLLAR_ADJECTIVES])})(?![a-z])`,
+);
+/** "Pay in BNB", "payable in USDt", "settled in EURC": the currency named after "in"; US dollars are USD or USDC. */
+const PAY_IN_G =
+  /(?<![A-Za-z])(?:pay|payable|paid|settle|settled|settlement|remit|remitted|denominated|invoiced|billed|priced)\s+in\s+([A-Za-z]{2,7})(?![A-Za-z0-9])/gi;
+/** A word written like a code: capitals, with at most one small letter at either end ("BNB", "USDt", "wBTC"). */
+const CODE_SHAPE = /^[A-Za-z]?[A-Z]{2,5}[a-z]?$/;
+/** Words in capitals that may follow "pay in" and name no currency. */
+const PAY_IN_WORDS: ReadonlySet<string> = new Set([
+  "USD",
+  "USDC",
+  "US",
+  "FULL",
+  "ONE",
+  "TWO",
+  "THREE",
+  "FOUR",
+  "FIVE",
+  "SIX",
+  "EQUAL",
+  "ADVANCE",
+  "ARREARS",
+  "PERSON",
+  "KIND",
+  "PARTS",
+  "TOTAL",
+  "CASH",
+]);
 /** The value of a currency field that names US dollars. */
 const US_VALUE = /^(?:usdc?|us\$?|u\.s\.?|\$)$/;
 /** NEAR used as a currency: next to a figure, "in NEAR", "NEAR token(s)"; never ".near" in an account id. */
@@ -531,32 +750,86 @@ function codeUse(code: string): RegExp {
   return re;
 }
 
-const isCode = (s: string) => ISO_CODES.has(s) || TOKEN_CODES.has(s);
+/** Currency names written like codes that ISO does not list (the renminbi, the CFA franc). */
+const CODE_ALIASES: ReadonlySet<string> = new Set(["RMB", "FCFA", "CFA"]);
+const isCode = (s: string) => ISO_CODES.has(s) || TOKEN_CODES.has(s) || CODE_ALIASES.has(s);
+/** Word-like codes beyond ISO's: CFA is also a professional title. */
+const isWordLike = (s: string) => WORDLIKE_CODES.has(s) || s === "CFA";
+/** The spellings an l-for-I folded word may stand for ("lnr" -> "INR"). */
+const codeOf = (upper: string): string | undefined => {
+  if (isCode(upper)) return upper;
+  if (!upper.includes("L")) return undefined;
+  const alt = upper.replace(/L/g, "I");
+  return isCode(alt) ? alt : undefined;
+};
 
 /**
  * A word in capitals on this line that is a code used as a currency (see otherCurrency). `prose`: some other word
  * of the document is written in capitals. Each code is tested once per line, so the line is read in linear time.
  */
+/** The line with each non-ASCII letter folded to the plain letter it looks like ("\u0441ad" -> "cad"). */
+const foldedLetters = (c: string): string => {
+  let out = "";
+  for (const ch of c) out += ch.charCodeAt(0) < 0x80 || !LETTER.test(ch) ? ch : foldChar(ch);
+  return out;
+};
+
+/** A capital word that is a code, and where it stands in the plain line. */
+interface CodeSpan {
+  code: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * The clean line with each capital word replaced by its first spelling (a code, if it is one), and where each code
+ * stands in it.
+ */
+function plainCapitals(
+  cu: string,
+  words: readonly CapitalWord[],
+): { text: string; spans: CodeSpan[] } {
+  let out = "";
+  let at = 0;
+  const spans: CodeSpan[] = [];
+  for (const w of words) {
+    const start = w.end - w.word.length;
+    out += cu.slice(at, start);
+    const code = w.spellings.find(isCode);
+    if (code !== undefined) spans.push({ code, start: out.length, end: out.length + code.length });
+    out += code ?? w.spellings[0] ?? w.word;
+    at = w.end;
+  }
+  return { text: out + cu.slice(at), spans };
+}
+
+/** The text around a word, which holds every strict context of a code (a figure of up to 34 characters before it). */
+const around = (c: string, span: CodeSpan): string =>
+  c.slice(Math.max(0, span.start - 40), span.end + 16);
+
 function wordInCapitalsIsCurrency(
   c: string,
+  spans: readonly CodeSpan[],
   sl: string,
   words: readonly CapitalWord[],
   prose: boolean,
 ): boolean {
   const codes = words.flatMap((w) => w.spellings.filter(isCode).slice(0, 1));
   if (codes.length === 0) return false;
+  // A line of codes: any code but NEAR, or NEAR written twice or more ("NEAR NEAR NEAR").
   const onlyCodes =
     codes.length === words.length &&
-    codes.some((x) => x !== "NEAR") &&
+    (codes.some((x) => x !== "NEAR") || codes.length >= 2) &&
     c.replace(/[\p{Lu}\s\t|,/;:.()-]+/gu, "") === "";
   const cells =
     !/\d/.test(c) && c.includes("\t") ? new Set(c.split("\t").map((x) => x.trim())) : null;
   const context = CONTEXT_WORD.test(sl) || /(?<![a-z])are\s/.test(sl);
+  if (onlyCodes) return true; // a line of codes
   for (const code of new Set(codes)) {
-    if (!WORDLIKE_CODES.has(code)) return true;
-    if (codeUse(code).test(c)) return true;
+    if (!isWordLike(code)) return true;
+    const use = codeUse(code);
+    if (spans.some((sp) => sp.code === code && use.test(around(c, sp)))) return true;
     if (code === "NEAR") continue;
-    if (onlyCodes) return true; // a line of codes
     if (cells?.has(code)) return true; // a cell of a header row
     if (code === "ALL") continue; // "ALL PRICES IN USD": only the strict contexts above
     if (context || !prose) return true;
@@ -576,7 +849,8 @@ function wordInCapitalsIsCurrency(
  * own narrow contexts, so "USDC on NEAR" is the network.
  */
 function otherCurrency(v: Views, shown: string): boolean {
-  if (OTHER_SYMBOL.test(v.raw) || OTHER_SYMBOL.test(shown) || LETTER_SIGN.test(shown)) return true;
+  if (OTHER_RAW_SYMBOL.test(v.raw) || OTHER_SYMBOL.test(shown) || LETTER_SIGN.test(shown))
+    return true;
   // On the skeleton too, so a look-alike letter ("\u0421$") is seen.
   for (const view of [shown, v.s.join("\n")]) {
     for (const m of view.matchAll(PREFIXED_DOLLAR)) {
@@ -584,7 +858,9 @@ function otherCurrency(v: Views, shown: string): boolean {
       if (letters !== "US" && letters !== "USD") return true;
     }
   }
-  if (SPACED_DOLLAR.test(shown) || SHORT_CURRENCY.test(shown)) return true;
+  // On the clean view, so an invisible character between "C" and "$" does not hide it.
+  const clean = v.c.join("\n");
+  if (SPACED_DOLLAR.test(clean) || SHORT_CURRENCY.test(shown)) return true;
 
   // Words in capitals per line, once; "upper-case prose" is a capital word that is no code and no identifier.
   const capitals = v.capitals;
@@ -599,38 +875,53 @@ function otherCurrency(v: Views, shown: string): boolean {
     }
   }
 
+  const done = new Set<string>();
   for (let i = 0; i < v.g.length; i++) {
+    const line = v.g[i] ?? "";
+    if (done.has(line)) continue; // an equal line was read and did not refuse
+    if (line.length <= MEMO_LINE) done.add(line);
     const c = v.c[i] ?? "";
     const sl = v.s[i] ?? "";
     const words = capitals[i] ?? [];
-    if (words.length > 0 && wordInCapitalsIsCurrency(c, sl, words, prose)) return true;
+    // The contexts are read on the line with each capital word in its plain spelling ("Payable in C\u0410D", "C.A.D.").
+    if (words.length > 0) {
+      const plain = plainCapitals(v.cu[i] ?? "", words);
+      if (wordInCapitalsIsCurrency(plain.text, plain.spans, sl, words, prose)) return true;
+    }
     // Glued to a figure, in any case of the letters ISO writes in capitals.
     for (const m of /[A-Z]\d|\d[A-Z]/.test(c) ? c.matchAll(GLUED_CODE) : []) {
       const code = m[1] ?? m[2] ?? "";
       if (isCode(code) && code !== "USDC" && code !== "USD") return true;
     }
     // Lower or title case: after "in", next to a figure, in a field; a word-like code also needs a context word.
-    for (const m of c.matchAll(WORD)) {
+    // Look-alike letters are folded first, so "\u0441ad" is "cad".
+    const folded = !ASCII.test(c);
+    const lw = folded ? foldedLetters(c) : c;
+    for (const m of lw.matchAll(WORD)) {
       const w = m[0];
-      if (w === w.toUpperCase()) continue; // capitals were read above
-      const code = w.toUpperCase();
-      if (!isCode(code)) continue;
-      const before = c.slice(Math.max(0, (m.index ?? 0) - 6), m.index ?? 0);
-      const after = c.slice((m.index ?? 0) + w.length, (m.index ?? 0) + w.length + 4);
+      if (!folded && w === w.toUpperCase()) continue; // capitals were read above
+      const upper = w.toUpperCase();
+      const code = folded ? codeOf(upper) : isCode(upper) ? upper : undefined;
+      if (code === undefined) continue;
+      const before = lw.slice(Math.max(0, (m.index ?? 0) - 6), m.index ?? 0);
+      const after = lw.slice((m.index ?? 0) + w.length, (m.index ?? 0) + w.length + 4);
       const used =
         /(?:^|\W)(?:in|en)\s{1,3}$/i.test(before) || /\d\s?$/.test(before) || /^\s?\d/.test(after);
-      if (!used) continue;
       if (code === "NEAR") continue; // NEAR_CURRENCY reads it below
-      if (!WORDLIKE_CODES.has(code) || CONTEXT_WORD.test(sl)) return true;
+      // A code that is no word ("Eur", "gbp") counts with a context word too ("All prices Eur").
+      if (!used && !isWordLike(code) && CONTEXT_WORD.test(sl)) return true;
+      if (!used) continue;
+      if (!isWordLike(code) || CONTEXT_WORD.test(sl)) return true;
     }
-    const field = sl.includes("currenc") ? CURRENCY_FIELD.exec(sl) : null;
+    const field = /cur|ccy|settlement|money|asset|token/.test(sl) ? CURRENCY_FIELD.exec(sl) : null;
     if (field) {
-      const value = (field[2] ?? "").replace(/[*_]+/g, "");
-      const strict = /[:=]/.test(field[1] ?? "");
+      const value = (field[3] ?? "").replace(/[*_]+/g, "");
+      // "Currency: X", "Curr: X", "Ccy: X" name the currency; "Settlement: X" may name a date or a method.
+      const strict = /[:=]/.test(field[2] ?? "") && !/^settlement$/.test(field[1] ?? "");
       const named = value.replace(/^\$/, "");
       const isUs =
         US_VALUE.test(value) ||
-        (value === "us" && /^dollars?$/.test(field[3] ?? "")) ||
+        (value === "us" && /^dollars?$/.test(field[4] ?? "")) ||
         value === "";
       // "Currency: X" names the currency: anything but US dollars refuses. "Currency X" (no colon) refuses a
       // code, a currency word, or a "$" with letters ("$CAD").
@@ -639,11 +930,17 @@ function otherCurrency(v: Views, shown: string): boolean {
         !strict &&
         (isCode(named.toUpperCase()) ||
           CURRENCY_WORD.test(named) ||
+          DOLLAR_ADJECTIVES.has(named) ||
           (/^\$[a-z]/.test(value) && !/^\$us/.test(value)))
       )
         return true;
     }
     if (wordsOf(sl).some((w) => CURRENCY_TRIGGERS.has(w)) && CURRENCY_TEXT.test(sl)) return true;
+    if (IN_OTHER_DOLLAR.test(sl)) return true;
+    for (const m of /\sin\s/i.test(c) ? c.matchAll(PAY_IN_G) : []) {
+      const w = m[1] ?? "";
+      if (CODE_SHAPE.test(w) && !PAY_IN_WORDS.has(w.toUpperCase())) return true;
+    }
   }
   return false;
 }
@@ -651,34 +948,169 @@ function otherCurrency(v: Views, shown: string): boolean {
 const INVOICE_NOS = new RegExp(INVOICE_NO.source, "gi");
 const INVOICE_TOKENS = new RegExp(INVOICE_TOKEN.source, "gi");
 
-/** 1d. The invoice numbers a text states (read on the view without invisible characters and with dashes folded). */
-export function invoiceNumbers(text: string): Set<string> {
-  const out = new Set<string>();
-  for (const m of text.matchAll(INVOICE_NOS)) out.add((m[1] ?? "").toUpperCase());
-  for (const m of text.matchAll(INVOICE_TOKENS)) out.add(m[0].toUpperCase());
+/**
+ * Every dash-like character, read as "-": the Unicode dashes and the minus sign, the modifier minus, the hyphen
+ * bullet, box-drawing lines, the heavy minus, the long-vowel marks, the small and full-width hyphen-minus and the
+ * Ogham space mark (drawn as a dash).
+ */
+const DASHES =
+  /[\p{Pd}\u2212\u02d7\u2043\u2500\u2501\u2796\u30fc\uff70\ufe63\uff0d\u1680\u2010-\u2015]/gu;
+/** Characters that render as a blank space but are no space: Hangul fillers and the Braille blank. */
+const BLANKS = /[\u115f\u1160\u3164\uffa0\u2800]/gu;
+/** A run of digits and digit look-alikes: O, o, Cyrillic and Greek O, l, I, |, Cyrillic and Greek I. */
+const DIGIT_RUN = /[0-9Oo\u041e\u043e\u039f\u03bflI|\u0406\u0456\u0399\u03b9\u04c0\u04cf]+/g;
+const ZERO_LIKE = /[Oo\u041e\u043e\u039f\u03bf]/g;
+const ONE_LIKE = /[lI|\u0406\u0456\u0399\u03b9\u04c0\u04cf]/g;
+/** In a run that holds a real digit, a look-alike is the digit it looks like: "1OO1" is 1001, "l00l" is 1001. */
+const foldDigitLookAlikes = (text: string): string =>
+  text.replace(DIGIT_RUN, (run) =>
+    /[0-9]/.test(run) ? run.replace(ZERO_LIKE, "0").replace(ONE_LIKE, "1") : run,
+  );
+
+/**
+ * The text an invoice number and the fingerprint are read from: blank-rendering characters as spaces, invisible
+ * characters removed, every dash-like character as "-", every space as " ", and digit look-alikes inside a number
+ * as digits.
+ */
+export const numberView = (text: string): string =>
+  foldDigitLookAlikes(
+    ASCII.test(text)
+      ? text
+      : text
+          .replace(BLANKS, " ")
+          .replace(INVISIBLE_G, "")
+          .replace(DASHES, "-")
+          .replace(/\p{Zs}/gu, " "),
+  );
+
+/** The key form of an invoice number: its skeleton in capitals, letters and digits only ("INV 1001" is INV-1001). */
+export const numberKey = (n: string): string =>
+  skeletonOf(numberView(n.normalize("NFKC")))
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "");
+
+/** "No. 5520", "N\u00b0 5520": a bare number label at the start of a header line. */
+const BARE_NUMBER =
+  /^\W{0,3}(?:no\.?|n[\u00b0\u00ba]|nr\.?)[ \t]{0,4}[:#]?[ \t]{0,4}((?=[A-Z0-9/-]{0,31}[0-9])[A-Z0-9][A-Z0-9/-]{0,31})(?![A-Z0-9/-])/i;
+/** A line that is only an invoice-number label, its value on the next line: "Invoice number:", "Invoice #". */
+const NUMBER_LABEL_ALONE =
+  /^\W{0,3}(?:invoice|inv\.?)[ \t]{0,4}(?:#|no\.?|n[\u00b0\u00ba]|number|num\.?|id|ref\.?)?[ \t]{0,4}[:#]?\W{0,3}$/i;
+/** An invoice-number cell of a header row: "Invoice #", "Invoice No.", "Invoice Number". */
+const NUMBER_CELL =
+  /^(?:invoice|inv\.?)[ \t]{0,4}(?:#|no\.?|n[\u00b0\u00ba]|number|num\.?)[ \t]{0,4}:?$/i;
+const ID = /^[#: \t]{0,3}((?=[A-Z0-9/-]{0,31}[0-9])[A-Z0-9][A-Z0-9/-]{0,31})(?![A-Z0-9/-])/i;
+/** How many non-blank lines are the header, where a bare "No. N" is the invoice number. */
+const HEADER_LINES = 8;
+
+/**
+ * The invoice numbers a text states, in order, read on the number view: after an invoice label ("Invoice INV-1",
+ * "Invoice: #1001", "Bill #1001", "Invoice ref. A-1"), as a token ("INV-2026-07", "# INV-000415", "INV 2026-0451"),
+ * as a bare "No. N" in the header, on the line after an "Invoice number:" label, and under an "Invoice #" cell of a
+ * header row. Each pass is linear in the text.
+ */
+export function readInvoiceNumbers(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(INVOICE_NOS)) out.push(m[1] ?? "");
+  for (const m of text.matchAll(INVOICE_TOKENS)) out.push(m[0]);
+  const lines = text.split("\n").filter((l) => l.trim() !== "");
+  for (let k = 0; k < lines.length; k++) {
+    const line = (lines[k] ?? "").trim();
+    if (k < HEADER_LINES) {
+      const bare = BARE_NUMBER.exec(line)?.[1];
+      if (bare !== undefined) out.push(bare);
+    }
+    const next = (lines[k + 1] ?? "").trim();
+    if (NUMBER_LABEL_ALONE.test(line)) {
+      const id = ID.exec(next)?.[1];
+      if (id !== undefined) out.push(id);
+    }
+    // A header row of labels only ("Invoice #\tDate"): its values are on the next line.
+    if (line.includes("\t") && !/\d/.test(line)) {
+      const cells = line.split("\t").map((c) => c.trim());
+      const at = cells.findIndex((c) => NUMBER_CELL.test(c));
+      if (at >= 0) {
+        const id = ID.exec((next.split("\t")[at] ?? "").trim())?.[1];
+        if (id !== undefined) out.push(id);
+      }
+    }
+  }
   return out;
 }
 
-/** Every Unicode dash and the minus sign, read as "-". */
-const DASHES = /[\p{Pd}\u2212]/gu;
-/** The text a number is read from: invisible characters removed, every dash as "-", every space as " ". */
-export const numberView = (text: string): string =>
-  ASCII.test(text)
-    ? text
-    : text
-        .replace(INVISIBLE_G, "")
-        .replace(DASHES, "-")
-        .replace(/\p{Zs}/gu, " ");
+/** 1d. The invoice numbers a text states, in their key form: two different ones are two documents. */
+export function invoiceNumbers(text: string): Set<string> {
+  return new Set(
+    readInvoiceNumbers(text)
+      .map(numberKey)
+      .filter((k) => k !== ""),
+  );
+}
 
-/** A document header: an "INVOICE" or "BILL" title (alone or with a number), a "From:" or a "Bill to:" line. */
+/** "jan", "aprll", "september": a month in skeleton spelling. */
+const MONTH_SK =
+  "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:ll)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+/** "Invoice", "Tax invoice", "Commercial invoice", "Sales invoice" (skeleton spelling). */
+const INVOICE_WORD = "(?:(?:tax|commerclal|sales)\\s+)?lnvolce";
+/** Before a title: decoration only, or a name and a dash or a bar ("Acme Ltd \u2014 Invoice"). */
+const TITLE_LEAD = "(?:[^a-z0-9]{0,10}|[^\\n]{1,60}?\\s[-\\u2013\\u2014|:\\u00b7\\u2022]\\s{1,4})";
+/**
+ * A title that starts a document, for two invoices in one text: "INVOICE" alone, "Sales Invoice", "Commercial
+ * Invoice #12", "Acme Ltd \u2014 Invoice", "Invoice for October".
+ */
+const STRONG_TITLE = new RegExp(
+  `^(?:${TITLE_LEAD}${INVOICE_WORD}[^a-z0-9]*$|[^a-z0-9]{0,10}(?:tax|commerclal|sales)\\s+lnvolce(?![a-z])|[^a-z0-9]{0,10}lnvolce\\s+for\\s+(?:the\\s+month\\s+of\\s+)?${MONTH_SK}(?![a-z]))`,
+);
+/** A document header: an invoice title, a "From:", "Bill to:" or customer line. */
 const HEADER_KINDS: readonly [string, RegExp][] = [
   [
     "title",
-    /^\W{0,4}(?:tax\s+)?(?:lnvolce|blll)(?:[ \t]{0,4}#?[ \t]{0,4}[a-z0-9/-]{0,32}\d[a-z0-9/-]{0,32})?\W{0,4}$/,
+    /^\W{0,4}(?:(?:tax|commerclal|sales)\s+)?(?:lnvolce|blll)(?:[ \t]{0,4}#?[ \t]{0,4}[a-z0-9/-]{0,32}\d[a-z0-9/-]{0,32})?\W{0,4}$/,
   ],
+  ["strong title", STRONG_TITLE],
+  ["number label", /^\W{0,3}lnvolce[ \t]{0,4}(?:#|no\.?|number|num\.?)[ \t]{0,4}:?\W{0,3}$/],
   ["from", /^\W{0,4}from\s*:/],
   ["bill to", /^\W{0,4}(?:blll|bllled)\s+to(?![a-z])/],
+  ["customer", /^\W{0,4}(?:customer|cllent|sold\s+to|shlp\s+to)\s*:/],
 ];
+/** A page marker: "Page 2", "Page 2 of 3", "(continued)". */
+const PAGE_MARK =
+  /(?<![a-z])(?:page\s{1,4}\d{1,3}(?:\s{1,4}of\s{1,4}\d{1,3})?|contlnued|cont'd)(?![a-z])|^\W{0,4}\d{1,3}\s{1,4}of\s{1,4}\d{1,3}\W{0,4}$/;
+/** A line as a title is read: heading marks gone, trimmed (the unspaced view already reads table pipes as dashes). */
+const titleText = (u: string): string => u.trim().replace(/^#{1,6}\s*/, "");
+
+/**
+ * 1d. Two invoice titles in one text ("Sales Invoice" twice, "Acme Ltd \u2014 Invoice" twice). A two-page invoice that
+ * repeats its title on each page reads when it has page markers and states its total only after the last title.
+ */
+function twoTitles(
+  u: readonly string[],
+  lines: readonly number[],
+  finalAt: readonly number[],
+): boolean {
+  const titles = lines.filter((i) => STRONG_TITLE.test(titleText(u[i] ?? "")));
+  if (titles.length < 2) return false;
+  const last = titles[titles.length - 1] ?? 0;
+  const paged = lines.some((i) => PAGE_MARK.test(u[i] ?? ""));
+  return !(paged && finalAt.every((f) => f > last));
+}
+
+/**
+ * The invoice title a payable document must have in its first eight non-blank lines, on the unspaced skeleton: the
+ * title alone ("INVOICE", "Tax Invoice", "Commercial invoice", "Sales invoice", "Acme Ltd \u2014 Invoice"), with a
+ * number label ("Invoice #", "Invoice No.", "Invoice number"), or with a number on the line ("Invoice INV-1001",
+ * "Invoice: 1001", "Invoice 2026-09").
+ */
+const INVOICE_TITLE = new RegExp(
+  `^${TITLE_LEAD}${INVOICE_WORD}(?![a-z])(?:[^a-z0-9]*$|\\s*(?:#|no\\.?(?![a-z])|number|num\\.?(?![a-z])|n\\u00b0)|.*\\d)`,
+);
+function invoiceTitled(v: Views, lines: readonly number[]): boolean {
+  for (const i of lines.slice(0, HEADER_LINES)) {
+    // A total or partial line ("Invoice total $700.00", "Invoice amount: $700.00") states an amount, not a title.
+    if (v.finalLine[i] !== null || v.nonFinal[i] !== null) continue;
+    if (INVOICE_TITLE.test(titleText(v.u[i] ?? ""))) return true;
+  }
+  return false;
+}
 
 /**
  * 1d. Two documents in one text: a header repeated, with a final total after each copy. A two-page invoice that
@@ -1009,7 +1441,11 @@ function payableIsh(g: string, s: string): boolean {
     const cuts = [gs.indexOf("\t", start), second < 0 ? -1 : second + start].filter((x) => x >= 0);
     if (cuts.length === 0) return NUMBER_WORD.test(s); // the whole line names the payee
     const cut = Math.min(...cuts);
-    return payableIsh(gs.slice(cut), ss.slice(cut));
+    // The rest of the line is read as any line, once, with no second payee exemption: one pass, no recursion.
+    const rest = gs.slice(cut);
+    const restS = ss.slice(cut);
+    if (!PAYABLE.test(restS) && !GLUED.test(restS)) return false;
+    return (/\p{N}/u.test(rest) && /\p{N}/u.test(masked(rest))) || NUMBER_WORD.test(restS);
   }
   return (/\p{N}/u.test(g) && /\p{N}/u.test(masked(g))) || NUMBER_WORD.test(s);
 }
@@ -1055,15 +1491,84 @@ const continuesFigure = (line: string) =>
   /^(?:[.,]\d|[+=])/.test(line) ||
   orphanFigure(line) ||
   /^\(?(?:\$|us\$|usdc?[ \t]?)?\d{1,3}(?:,\d{3})+(?![\d/-])/i.test(line) ||
-  /^\(?(?:\$|us\$|usdc?[ \t]?)?\d+\.\d/i.test(line);
+  /^\(?(?:\$|us\$|usdc?[ \t]?)?\d+\.\d/i.test(line) ||
+  continuedAmount(line);
+
+/** Commas that look like a comma: the low quote, the Arabic and ideographic commas, the small and full-width ones. */
+const COMMA_LIKE = /[\u201a\u066c\u060c\u3001\ufe50\uff0c]/g;
+/** Decoration around a value: spaces, brackets, stars, bars, quotes, dashes. */
+const DECORATION: ReadonlySet<string> = new Set([..." \t[](){}*|_'\"!>\u2013\u2014-"]);
+/** The text without decoration at either end (by hand: a regex anchored at the end would scan the line again). */
+function trimDecoration(t: string): string {
+  let a = 0;
+  let b = t.length;
+  while (a < b && DECORATION.has(t[a] ?? "")) a++;
+  while (b > a && DECORATION.has(t[b - 1] ?? "")) b--;
+  return t.slice(a, b);
+}
+/** A value as a continuation or an orphan is read: the clean line, comma look-alikes as ",", decoration and "only" gone. */
+function figureView(clean: string): string {
+  const t = trimDecoration(clean.replace(COMMA_LIKE, ","));
+  const lower = t.toLowerCase();
+  const only =
+    lower.endsWith(" only") || lower.endsWith("\tonly") ? 5 : lower.endsWith(" only.") ? 6 : 0;
+  return only > 0 ? trimDecoration(t.slice(0, t.length - only)) : t;
+}
+const CURRENCY_FIRST = new RegExp(`^(?:${alternation(CURRENCY_WORDS)})(?![a-z])`);
+/**
+ * "500 dollars", "500 USD only", "000 000.00", "500": a figure (grouped by spaces, commas, dots or quotes) followed
+ * by a currency word, a marker, "only" or nothing. A street number is followed by a name ("1200 Congress Avenue").
+ */
+function continuedAmount(line: string): boolean {
+  const m = /^\d{1,15}(?:[ ,.'\u066c]\d{3}){0,6}(?:\.\d{1,6})?/.exec(line);
+  if (!m) return false;
+  const rest = line.slice(m[0].length).trim();
+  return (
+    rest === "" ||
+    /^(?:only|usdc?|us|dollars?)(?![a-z])|^[$\p{Sc}]/iu.test(rest) ||
+    CURRENCY_FIRST.test(sk(rest))
+  );
+}
 
 const NOTE_SCALE = phrases(NOTE_SCALE_WORDS);
 /** k, m, mn, bn next to a figure ("1.2m", "250 k") or "in k". */
 const LETTER_SCALE =
   /\d\s?(?:k|m|mm|mn|bn)(?![a-z])|(?<![a-z])(?:k|m|mm|mn|bn)\s?\$?\d|(?<![a-z])ln\s+(?:k|m|mn|bn)(?![a-z])/;
+/** "$k", "USD MM", "'000", "000s": a scale written short (on the skeleton). */
+const SHORT_SCALE =
+  /\$\s?(?:k|m|mm|mn|bn)(?![a-z])|'000(?!\d)|(?<![\d,.])000s(?![a-z])|(?<![a-z])usd\s?(?:k|m|mm|mn|bn)(?![a-z])/;
+/** "\u00b5USDC", "\u03bc$": a micro unit before a currency (on the NFKC text). */
+const MICRO = /[\u00b5\u03bc]\s?(?:usdc?|\$|dollars?|near)/i;
+const SCALE_ALT = alternation(NOTE_SCALE_WORDS);
+/** "in cents", "as thousands", "in USD '000": a scale after "in" or "as" (a header note). */
+const IN_SCALE = new RegExp(
+  `(?<![a-z])(?:ln|as)\\s+(?:usd\\s+|us\\s+dollars\\s+|\\$\\s?)?(?:(?:${SCALE_ALT})(?![a-z])|'000|000s|k(?![a-z])|mm?(?![a-z])|mn(?![a-z])|bn(?![a-z]))`,
+);
+/** "All amounts are shown in cents", "Prices quoted in thousands": a denomination note, on any line. */
+const DENOMINATION = new RegExp(
+  `(?<![a-z])(?:amounts?|flgures|prlces|values|totals?|numbers)(?![a-z])[^.\\n]{0,40}?${IN_SCALE.source}`,
+);
+/** Words with a charge or deduction meaning (lexicon CHARGE_WORDS), on the unspaced skeleton. */
+const CHARGE = phrases(CHARGE_WORDS);
+/** The money figures of a line: after $ or USD(C), before USD(C) or dollars, or with cents. */
+const MONEY_FIGURES =
+  /(?:\$|usdc?)[ \t]?\$?[ \t]?(\d[\d,]*(?:\.\d{1,6})?)|(\d[\d,]*(?:\.\d{1,6})?)[ \t]?(?:usdc?|dollars?)(?![a-z])|(?<![A-Za-z\d.,/:-])(\d[\d,]*\.\d{2})(?![\d.,/-])/gi;
+/** Status words of a line after the total ("Debited from your account $1,000.00"), on the unspaced skeleton. */
+const AFTER_TOTAL =
+  /(?<![a-z])(?:deblted|deducted|remltted|recelved|settled|collected|wlthdrawn|refunded|applled|transferred|sent|remalnder|remalnlng|owlng|outstandlng|left|carrled)(?![a-z])/;
+/** A negative or bracketed amount: "-$400.00", "\u2212 400.00", "($300.00)", "(400.00)". */
+const NEGATIVE =
+  /(?<![\w-])[-\u2212]\s?(?:\$|usdc?\s?)?\d|\(\s?(?:\$|usdc?\s?)\d|\(\s?\d[\d,]*\.\d{2}\s?\)/i;
 /** "per month", "per seat", "/ month", "x 20", "\u00d7 12", "20 x": a per-unit or multiplier note. */
 const PER_UNIT =
-  /(?<![a-z])per\s+[a-z]|^\s*\/\s*[a-z]|(?<![a-z])(?:x|\u00d7)\s*\d|\d\s*(?:x|\u00d7)(?![a-z])/;
+  /(?<![a-z])per\s+[a-z]|^\s*\/\s*[a-z]|(?<![a-z\d])(?:x|\u00d7)\s*\d|\d\s*(?:x|\u00d7)(?![a-z\d])|\d\s*\/\s*(?:mo|mth|month|yr|year|hr|hour|wk|week|day|seat|user|unit)(?![a-z])/;
+/** A late-fee, interest or finance-charge term, in skeleton spelling. */
+const LATE_TERM = /(?<![a-z])(?:late|overdue|lnterest|flnance|penalty|past\s+due)(?![a-z])/;
+/** "per month", "per annum": a period, which on a late-fee term is the rate's. */
+const PER_PERIOD_PHRASE = /(?<![a-z])per\s+(?:month|annum|year|day|week|quarter)(?![a-z])/g;
+/** "monthly, billed annually": a frequency, which after a total says the total is per period. */
+const PER_PERIOD =
+  /(?<![a-z])(?:monthly|annually|yearly|weekly|blweekly|quarterly|hourly|dally)(?![a-z])/;
 
 // ---------------------------------------------------------------------------------------------------------------
 // The reader
@@ -1077,37 +1582,93 @@ function withoutBorders(line: string): string {
   return row;
 }
 
+/** Lines up to this long share their views and checks with equal lines (longer ones are rare and read alone). */
+const MEMO_LINE = 512;
+
+/** One line's views (see Views). */
+interface LineViews {
+  row: string;
+  s: string;
+  c: string;
+  cu: string;
+  u: string;
+  nonFinal: RegExpExecArray | null;
+  finalLine: RegExpExecArray | null;
+  capitals: CapitalWord[];
+}
+
+function lineViews(line: string): LineViews {
+  const row = withoutBorders(line.trim());
+  // Blanked to the same length, so an ASCII line and its skeleton stay aligned.
+  const s = skeletonOf(line).replace(NOT_PAYABLE, (m) => " ".repeat(m.length));
+  const c = cleanOf(line);
+  const cu = unspacedCapitals(c);
+  // Table pipes are separators in the unspaced view (the skeleton would read a "|" as an l).
+  const u = digitLetters(
+    unspaced(
+      line.includes("|") ? skeletonOf(line.replace(/\|/g, " - ")).replace(NOT_PAYABLE, " ") : s,
+    ),
+  );
+  return {
+    row,
+    s,
+    c,
+    cu,
+    u,
+    nonFinal: NON_FINAL_LINE.exec(row),
+    finalLine: FINAL_LINE.exec(row),
+    capitals: capitalWords(cu),
+  };
+}
+
 function read(text: string): AmountRead {
   if (text.length > MAX_READ_UNITS) return refuse("unreadable"); // before any NFKC or numeral work
   const lf = wellFormed(normaliseLineEnds(text));
   // 1a. Text the reader cannot trust.
   if (UNTRUSTED.test(lf)) return refuse("unreadable");
   const shown = nfkc(lf);
-  if (shown.length > MAX_READ_UNITS) return refuse("unreadable");
+  // NFKC that expands the text ("\ufdfa" is 18 letters) would multiply the work: such a text is not read.
+  if (shown.length > 2 * Math.max(lf.length, 1) || shown.length > MAX_NFKC_UNITS)
+    return refuse("unreadable");
   const g = shown.split("\n");
-  const rows = g.map((line) => withoutBorders(line.trim()));
-  // Blanked to the same length, so an ASCII line and its skeleton stay aligned.
-  const s = g.map((line) => skeletonOf(line).replace(NOT_PAYABLE, (m) => " ".repeat(m.length)));
-  const c = g.map(cleanOf);
-  const cu = c.map(unspacedCapitals);
+  // Each distinct line's views are computed once: a text of many equal lines costs one line's work for each.
+  const memo = new Map<string, LineViews>();
+  const lv = g.map((line) => {
+    let x = memo.get(line);
+    if (x === undefined) {
+      x = lineViews(line);
+      if (line.length <= MEMO_LINE) memo.set(line, x);
+    }
+    return x;
+  });
+  const rows = lv.map((x) => x.row);
+  const s = lv.map((x) => x.s);
+  const c = lv.map((x) => x.c);
   const v: Views = {
     raw: lf,
     g,
     c,
     s,
-    // Table pipes are separators here (the skeleton would read a "|" as an l).
-    u: g.map((line, i) =>
-      digitLetters(
-        unspaced(
-          line.includes("|")
-            ? skeletonOf(line.replace(/\|/g, " - ")).replace(NOT_PAYABLE, " ")
-            : (s[i] ?? ""),
-        ),
-      ),
-    ),
-    nonFinal: rows.map((row) => NON_FINAL_LINE.exec(row)),
-    cu,
-    capitals: cu.map(capitalWords),
+    u: lv.map((x) => x.u),
+    nonFinal: lv.map((x) => x.nonFinal),
+    finalLine: lv.map((x) => x.finalLine),
+    cu: lv.map((x) => x.cu),
+    capitals: lv.map((x) => x.capitals),
+  };
+  /** The pure checks of a line, once per distinct line (keyed by the line as written), one table per check. */
+  const tables: Map<string, boolean>[] = [];
+  const once = (slot: number, key: string, check: () => boolean): boolean => {
+    let table = tables[slot];
+    if (table === undefined) {
+      table = new Map();
+      tables[slot] = table;
+    }
+    let r = table.get(key);
+    if (r === undefined) {
+      r = check();
+      if (key.length <= MEMO_LINE) table.set(key, r);
+    }
+    return r;
   };
   // 1b, 1c, 1d (the numbers).
   if (notPayable(v)) return refuse("not_payable");
@@ -1123,6 +1684,12 @@ function read(text: string): AmountRead {
   let labelAbove = false;
   // The last line that deducts a payment, deposit, credit, carried balance or installment.
   let lastDeduction = -1;
+  /**
+   * The non-final amounts (partial totals, payments, deposits), for the deduction arithmetic; `paid`: an amount
+   * already paid (a payment, deposit or credit; an installment is due, not paid).
+   */
+  const partials: { at: number; units: string | null; paid: boolean }[] = [];
+  const firstFinal = v.finalLine.findIndex((m) => m !== null);
   /** After a final or non-final line, the next non-blank line must not continue its figure. */
   let continues = false;
   const lines: number[] = [];
@@ -1133,12 +1700,21 @@ function read(text: string): AmountRead {
     const line = (g[i] ?? "").trim();
     const sl = s[i] ?? "";
     const row = rows[i] ?? "";
-    if (continues && continuesFigure(row)) finals.push({ issue: "unreadable" });
+    // A line with no letter or digit ("," or "..." or an invisible character) does not end a figure: the line
+    // after it may continue it.
+    if (continues && !/[\p{L}\p{N}]/u.test(c[i] ?? "")) continue;
+    let figure: string | undefined;
+    const figureOfLine = (): string => {
+      figure ??= figureView(withoutBorders((c[i] ?? "").trim()));
+      return figure;
+    };
+    if (continues && (continuesFigure(row) || continuesFigure(figureOfLine())))
+      finals.push({ issue: "unreadable" });
     continues = false;
     const next = lines[k + 1];
     if (next !== undefined && splitAcrossLines(sl, s[next] ?? ""))
       finals.push({ issue: "unreadable" });
-    if (oddLabel(sl, v.u[i] ?? "")) finals.push({ issue: "unreadable" });
+    if (once(0, g[i] ?? "", () => oddLabel(sl, v.u[i] ?? ""))) finals.push({ issue: "unreadable" });
 
     const due = /due/i.test(row) ? DUE_BY.exec(row) : null;
     if (due) {
@@ -1148,7 +1724,7 @@ function read(text: string): AmountRead {
         !/[$]|usd/i.test(due.groups?.amount ?? "") ||
         units === null ||
         numbers.size === 0 ||
-        (ref !== undefined && !numbers.has(ref.toUpperCase()))
+        (ref !== undefined && !numbers.has(numberKey(ref)))
       )
         finals.push({ issue: "unreadable" });
       else {
@@ -1166,7 +1742,7 @@ function read(text: string): AmountRead {
       continue;
     }
 
-    const final = FINAL_LINE.exec(row);
+    const final = v.finalLine[i] ?? null;
     const partial = final ? null : (v.nonFinal[i] ?? null);
     let ignored = false;
     if (final) {
@@ -1175,19 +1751,23 @@ function read(text: string): AmountRead {
       if ("units" in f) finalAt.push(i);
       continues = true;
     } else if (partial) {
-      if (isDeduction(partial)) lastDeduction = i; // a partial total or a payment line: never paid
+      const deduction = isDeduction(partial);
+      if (deduction) lastDeduction = i; // a partial total or a payment line: never paid
+      const paid = deduction && partial.groups?.installment === undefined;
+      partials.push({ at: i, units: unitsOf(figureOf(partial.groups?.amount ?? "")), paid });
       continues = true;
-    } else if (isTableHeader(line)) {
+    } else if (once(3, g[i] ?? "", () => isTableHeader(line))) {
       labelAbove = true; // a column header: a lone amount under it is a value with no label
       continue;
     } else if (
       hasFinalLabel(sl) ||
-      ((!ASCII.test(line) || /[A-Za-z]\d|\d[A-Za-z]/.test(line)) && hasLookAlike(line)) ||
-      payableIsh(line, sl) ||
-      moneyLine(line, sl, finalAt.length > 0)
+      ((!ASCII.test(line) || /[A-Za-z]\d|\d[A-Za-z]/.test(line)) &&
+        once(1, g[i] ?? "", () => hasLookAlike(line))) ||
+      once(2, g[i] ?? "", () => payableIsh(line, sl)) ||
+      (moneyLine(line, sl, finalAt.length > 0) && !itemRow(sl, firstFinal < 0 || i < firstFinal))
     ) {
       finals.push({ issue: "unreadable" }); // a payable line the grammar cannot read
-    } else if (labelAbove && (orphanFigure(row) || moneyRow(row))) {
+    } else if (labelAbove && (orphanFigure(row) || orphanFigure(figureOfLine()) || moneyRow(row))) {
       finals.push({ issue: "unreadable" });
     } else ignored = true;
     if (!ignored) labelAbove = false;
@@ -1195,32 +1775,49 @@ function read(text: string): AmountRead {
     else if (/\p{N}/u.test(line)) labelAbove = false;
   }
 
-  // 4. A scale or per-unit note near a final total, or in brackets anywhere.
+  // 4. A scale or per-unit note within two lines of a final total; a scale note in brackets or in the header (the
+  // first eight lines); a denomination note anywhere. Before the total, a per-unit note on a line with an amount
+  // of its own is a line item ("Rate: $100.00 per hour").
   const near = new Set<number>();
   const position = new Map<number, number>(lines.map((line, k) => [line, k]));
   for (const f of finalAt) {
     const k = position.get(f) ?? -10;
     for (let d = -2; d <= 2; d++) {
       const at = lines[k + d];
-      if (at !== undefined && at !== f) near.add(at);
+      if (at === undefined || at === f) continue;
+      near.add(at);
+      const sl = s[at] ?? "";
+      // A late-fee, interest or finance-charge term ("A 1.5% monthly finance charge", "1.5% per month on late
+      // payments") states a rate per period, not a note on the total; any other per-unit phrase on it still counts.
+      const term = LATE_TERM.test(sl);
+      const unit = term ? sl.replace(PER_PERIOD_PHRASE, " ") : sl;
+      if (PER_UNIT.test(unit) && (d > 0 || !moneyToken(g[at] ?? ""))) return refuse("unreadable");
+      if (d > 0 && !term && PER_PERIOD.test(sl)) return refuse("unreadable");
     }
-    const after = lines[k + 1];
-    if (after !== undefined && PER_UNIT.test(s[after] ?? "")) return refuse("unreadable");
   }
-  for (const i of lines) {
+  for (let k = 0; k < lines.length; k++) {
+    const i = lines[k] ?? 0;
     const sl = s[i] ?? "";
     const note = /^\s*\(.*\)\s*$/.test(sl);
-    if ((near.has(i) || note) && (NOTE_SCALE.test(sl) || LETTER_SCALE.test(sl)))
+    const scale =
+      NOTE_SCALE.test(sl) ||
+      LETTER_SCALE.test(sl) ||
+      SHORT_SCALE.test(sl) ||
+      MICRO.test(g[i] ?? "");
+    if ((near.has(i) || note) && scale) return refuse("unreadable");
+    if (k < HEADER_LINES && (IN_SCALE.test(sl) || SHORT_SCALE.test(sl) || MICRO.test(g[i] ?? "")))
       return refuse("unreadable");
+    if (DENOMINATION.test(sl)) return refuse("unreadable");
   }
 
   const totals = finals.flatMap((f) => ("units" in f ? [f] : []));
   const marked = totals.filter((f) => f.marked);
   const markedKeys = new Set(marked.map((f) => f.key));
   if (markedKeys.size < marked.length) return refuse("ambiguous"); // the same final label twice: two documents
-  if (twoDocuments(s, finalAt)) return refuse("ambiguous");
+  if (twoDocuments(v.u, finalAt) || twoTitles(v.u, lines, finalAt)) return refuse("ambiguous");
   const issue = finals.find((f): f is { issue: AmountIssue } => "issue" in f);
   if (issue) return refuse(issue.issue);
+
   // An unmarked figure only corroborates a marked total: equal to it, and under a label of its own.
   const unmarked = totals.filter((f) => !f.marked);
   const values = new Set(marked.map((f) => f.units));
@@ -1241,6 +1838,37 @@ function read(text: string): AmountRead {
   if (only === undefined) return refuse("not_found");
   if (more.length > 0) return refuse("ambiguous");
   if (only === "0") return refuse("zero");
+  // 6. A money line after the last final total changes what is due when it states another figure, a negative or
+  // bracketed one, or has a charge, deduction or status meaning ("Discount -$400.00", "Shipping $50.00", "Debited
+  // from your account $1,000.00"); no later total settles it. A line restating the total ("Pay $1,000.00 to
+  // acme.near") reads.
+  let lastFinal = -1;
+  for (const f of finalAt) if (f > lastFinal) lastFinal = f;
+  if (lastFinal >= 0) {
+    for (const i of lines) {
+      if (i <= lastFinal || !moneyToken(g[i] ?? "")) continue;
+      // Dates and percentages are no figures; a zero ("Amount paid $0.00") changes nothing.
+      const row = (rows[i] ?? "").replace(DATES, " ").replace(PERCENT, " ");
+      const figures = [...row.matchAll(MONEY_FIGURES)].map((m) =>
+        unitsOf(m[1] ?? m[2] ?? m[3] ?? ""),
+      );
+      const nonzero = figures.filter((u) => u !== "0");
+      if (nonzero.some((u) => u !== only)) return refuse("ambiguous");
+      const zeroOnly = figures.length > 0 && nonzero.length === 0;
+      const meaning =
+        CHARGE.test(v.u[i] ?? "") || AFTER_TOTAL.test(v.u[i] ?? "") || NEGATIVE.test(c[i] ?? "");
+      if (!zeroOnly && meaning) return refuse("ambiguous");
+    }
+  }
+  // 10. After a deduction, the balance is neither the amount before it (a partial total written before the
+  // deduction) nor an amount already paid.
+  if (
+    lastDeduction >= 0 &&
+    partials.some((p) => p.units === only && (p.paid || p.at < lastDeduction))
+  )
+    return refuse("ambiguous");
+  // 1e. Last: a document pays only when it says it is an invoice.
+  if (!invoiceTitled(v, lines)) return { amount: "0", issue: "not_payable", why: NOT_AN_INVOICE };
   return { amount: only, issue: null };
 }
 

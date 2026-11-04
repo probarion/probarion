@@ -36,8 +36,38 @@ function prng(seed: number): () => number {
 type Line =
   | { text: string; kind: "final"; key: string; balance: boolean; units: string }
   | { text: string; kind: "bad" }
-  /** `deduct`: a non-zero payment, deposit, credit or carried balance, after which a plain Total is not due. */
-  | { text: string; kind: "skip"; deduct?: boolean; header?: "from" | "bill to" };
+  /**
+   * `deduct`: a non-zero payment, deposit, credit or carried balance, after which a plain Total is not due.
+   * `money`: the line holds a money token (a marker with a figure, or a figure with decimals) and these figures
+   * (a marked figure, or a bare one with cents; "x" for one that is no exact amount); `charge`: its label has a
+   * charge or deduction meaning. After the last final total such a line changes what is due (ruling W-T13-R5
+   * #6), unless its only figures are zero.
+   */
+  | {
+      text: string;
+      kind: "skip";
+      deduct?: boolean;
+      header?: "from" | "bill to";
+      money?: { figures: string[] };
+      charge?: boolean;
+    };
+
+/** The partial labels with no charge or deduction meaning (lexicon CHARGE_WORDS). */
+const NO_CHARGE = new Set(["Subtotal", "Sub-total", "Page total", "Net total", "Previous balance"]);
+
+/**
+ * The money of a figure as the reader's after-total check reads it (NFKC digits): a money token when it is marked
+ * or has a decimal point or comma; its figure when it is marked or bare with exactly two decimals.
+ */
+function moneyOf(fig: string, marked: boolean): { figures: string[] } | undefined {
+  const plain = fig.normalize("NFKC");
+  if (!marked && !/\d[.,]\d/.test(plain)) return undefined;
+  if (!marked && !/^\d[\d,]*\.\d{2}$/.test(plain)) return { figures: [] };
+  const [whole = "", frac = ""] = plain.split(".");
+  const int = whole.replace(/,/g, "");
+  if (!whole.includes(",") && frac.length === 3) return { figures: ["x"] }; // no exact amount: never the total
+  return { figures: [(BigInt(int) * 1_000_000n + BigInt(frac.padEnd(6, "0") || "0")).toString()] };
+}
 
 /** The deduction labels of the partial lines below (an installment is a part of the whole, so it counts too). */
 const DEDUCTIONS = new Set([
@@ -161,7 +191,7 @@ class Grammar {
     const sep = this.pick(SEPS);
     const big = String(this.int(1000, 999_999_999));
     const text = ((): string => {
-      switch (this.int(0, 34)) {
+      switch (this.int(0, 40)) {
         case 0: // a sign or a bracket
           return `${label}${sep}${this.pick(["-", "\u2212", "+", "(", "- ", "\u2013 "])}$${fig}`;
         case 1: // no currency marker
@@ -321,6 +351,55 @@ class Grammar {
             "Payable to: ACME LLC\tAmount: 9999",
             "Remit to vendor.near the sum of 9999",
           ]);
+        case 34: // a document type of the fourth re-review's list, as a heading
+          return this.pick([
+            "Proposal",
+            "BID",
+            "Sales Order",
+            "Order confirmation",
+            "Packing slip",
+            "Delivery note",
+            "Work order",
+            "Payment confirmation",
+            "Credit invoice",
+            "Pre-invoice",
+          ]);
+        case 35: // a status letter-spaced with tabs or runs of spaces, dated, in prose, under its label, cut, in small capitals
+          return this.pick([
+            "P\tA\tI\tD",
+            "P   A   I   D",
+            "Paid 2026-11-01 via ACH",
+            "This invoice has now been paid.",
+            "Status:\nPaid",
+            "VO|D",
+            "\u1d20\u1d0f\u026a\u1d05",
+          ]);
+        case 36: // a total whose figure goes on below it, with a currency word, "only" or invisible characters
+          return `${label}${sep}$${this.int(1, 99)}\n${this.pick(["500 dollars", "500 USD only", "000 000.00", "(,500.00)", "\u200b,250.00"])}`;
+        case 37: // a final label split by a tab, one letter, a middle dot or slashes
+          return this.pick([
+            `To\ttal${sep}$${fig}`,
+            `T otal${sep}$${fig}`,
+            `T\u00b7otal${sep}$${fig}`,
+            `T/o/t/a/l $${fig}`,
+          ]);
+        case 38: // a scale or per-unit note two lines after a total
+          return `${label}${sep}$${fig}\nThank you!\n${this.pick([
+            "All prices are per seat per month",
+            "Amounts shown in pennies",
+            "(in $k)",
+            "USD MM",
+          ])}`;
+        case 39: // another currency in a folded, dotted, spaced, abbreviated or token form
+          return this.pick([
+            "Payable in C\u0410D",
+            "Curr: EUR",
+            "Prices in C   $",
+            "Prices in RMB",
+            "Pay in BNB",
+            "Settlement asset: USDt (Tron)",
+            "Prices in \u1d07\u1d1c\u0280",
+          ]);
         default: // two documents in one text
           return this.pick([
             "INVOICE\nFrom: Acme\nTotal 500 USDC\n\nINVOICE\nFrom: Beta\nAmount due 500 USDC",
@@ -334,7 +413,8 @@ class Grammar {
 
   /** A partial or payment line, which never pays. */
   partial(): Line {
-    const fig = this.figure(this.amount());
+    const a = this.amount();
+    const fig = this.figure(a);
     const label = this.pick([
       "Subtotal",
       "Sub-total",
@@ -363,11 +443,14 @@ class Grammar {
       kind: "skip",
       text: `${label}${this.pick([" ", ": ", "\t"])}${amount}`,
       deduct: DEDUCTIONS.has(label) && /[1-9]/.test(fig.normalize("NFKC")),
+      money: moneyOf(fig, amount !== fig),
+      charge: !NO_CHARGE.has(label) || amount.startsWith("-"),
     };
   }
 
   noise(): Line {
-    const fig = this.figure(this.amount());
+    const a = this.amount();
+    const fig = this.figure(a);
     const text = this.pick([
       `Logo design $${fig}`,
       `Consulting, 10 hours ${fig} USDC`,
@@ -389,7 +472,12 @@ class Grammar {
       : text.startsWith("Bill to:")
         ? "bill to"
         : undefined;
-    return header === undefined ? { kind: "skip", text } : { kind: "skip", text, header };
+    // Only the two priced items state a money figure.
+    const priced = text.startsWith("Logo design") || text.startsWith("Consulting");
+    const money = priced ? moneyOf(fig, true) : undefined;
+    return header === undefined
+      ? { kind: "skip", text, money, charge: false }
+      : { kind: "skip", text, header };
   }
 
   invoice(): { text: string; lines: Line[] } {
@@ -407,7 +495,16 @@ class Grammar {
     }
     const title: Line = {
       kind: "skip",
-      text: this.pick(["INVOICE", "Invoice INV-2026-07", "Tax invoice"]),
+      // "": no invoice title (the reader refuses an invoice that does not say it is one).
+      text: this.pick([
+        "INVOICE",
+        "Invoice INV-2026-07",
+        "Tax invoice",
+        "Sales invoice",
+        "COMMERCIAL INVOICE",
+        "Acme Ltd \u2014 Invoice",
+        "",
+      ]),
     };
     const lines = [title, ...body];
     return { text: lines.map((l) => l.text).join(this.pick(["\n", "\n", "\n\n"])), lines };
@@ -417,7 +514,7 @@ class Grammar {
 describe(`extractFacts on ${CASES} random invoices (seed ${SEED})`, () => {
   it("returns the single agreed readable final total, or 0 with a reason, never another figure", () => {
     const g = new Grammar(prng(SEED));
-    const seen = { read: 0, refused: 0, ambiguous: 0, notFound: 0, zero: 0 };
+    const seen = { read: 0, refused: 0, ambiguous: 0, notFound: 0, zero: 0, untitled: 0 };
     for (let n = 0; n < CASES; n++) {
       const { text, lines } = g.invoice();
       const f = extractFacts(text, H, null);
@@ -454,6 +551,18 @@ describe(`extractFacts on ${CASES} random invoices (seed ${SEED})`, () => {
         }
         return headers >= 2 && segments >= 2;
       });
+      // A money line after the last final total: another non-zero figure, or a charge meaning (unless its only
+      // figures are zero).
+      const lastFinal = finalAt.length > 0 ? (finalAt[finalAt.length - 1] ?? -1) : -1;
+      const changes = (l: Line): boolean => {
+        if (l.kind !== "skip" || l.money === undefined) return false;
+        const nonzero = l.money.figures.filter((u) => u !== "0");
+        if (nonzero.some((u) => u !== only)) return true;
+        const zeroOnly = l.money.figures.length > 0 && nonzero.length === 0;
+        return !zeroOnly && l.charge === true;
+      };
+      const changed =
+        lastFinal >= 0 && only !== "0" && lines.some((l, k) => k > lastFinal && changes(l));
       if (lines.some((l) => l.kind === "bad")) {
         expect(f.amount, where).toBe("0");
         seen.refused += 1;
@@ -467,10 +576,11 @@ describe(`extractFacts on ${CASES} random invoices (seed ${SEED})`, () => {
         more.length > 0 ||
         keys.size < finals.length ||
         (finals.length > 0 && unsettled) ||
-        twoDocuments
+        twoDocuments ||
+        changed
       ) {
-        // Totals that disagree, the same final label twice or a repeated header (two documents), or a deduction
-        // that no balance written after it settles.
+        // Totals that disagree, the same final label twice or a repeated header (two documents), a deduction
+        // that no balance written after it settles, or a money line after the last total.
         expect({ amount: f.amount, issue: f.amountIssue }, where).toEqual({
           amount: "0",
           issue: "ambiguous",
@@ -482,6 +592,16 @@ describe(`extractFacts on ${CASES} random invoices (seed ${SEED})`, () => {
           issue: "zero",
         });
         seen.zero += 1;
+      } else if (
+        lines[0]?.text === "" &&
+        !lines.slice(1, 9).some((l) => l.text.startsWith("Invoice date:"))
+      ) {
+        // No invoice title in the first eight lines (the noise line "Invoice date: ..." is one).
+        expect({ amount: f.amount, issue: f.amountIssue }, where).toEqual({
+          amount: "0",
+          issue: "not_payable",
+        });
+        seen.untitled += 1;
       } else {
         expect({ amount: f.amount, issue: f.amountIssue }, where).toEqual({
           amount: only,

@@ -50,6 +50,15 @@ describe("the regression corpus", () => {
     }
     expect(corpus.cases.filter((c) => c.id.startsWith("r4-p")).length).toBeGreaterThan(200);
     expect(corpus.cases.filter((c) => c.id.startsWith("r4-widen-")).length).toBeGreaterThan(100);
+    // The fourth re-review: the inputs of its open findings on the reader (3 to 12) and the judge's probes. Each
+    // input the invoice-title gate now refuses has a twin with a title, which keeps its earlier result.
+    for (let n = 3; n <= 12; n++) {
+      expect(corpus.cases.some((c) => c.id.startsWith(`r5-open-${n}.`))).toBe(true);
+    }
+    expect(corpus.cases.filter((c) => /^r5-p[a-z]+\./.test(c.id)).length).toBeGreaterThan(250);
+    const titled = corpus.cases.filter((c) => c.id.endsWith(".titled"));
+    expect(titled.length).toBeGreaterThan(40);
+    for (const t of titled) expect(corpus.cases.some((c) => `${c.id}.titled` === t.id)).toBe(true);
   });
 
   it.each(corpus.cases.map((c) => [c.id, c] as const))("%s", (_id, c) => {
@@ -80,6 +89,49 @@ describe("realistic invoice layouts", () => {
     expect(layouts.cases).toHaveLength(49);
     expect(results.filter(({ c, got }) => got.amount === c.pays).length).toBeGreaterThanOrEqual(35);
     expect(results.filter(({ c, got }) => got.amount !== "0" && got.amount !== c.pays)).toEqual([]);
+  });
+});
+
+/**
+ * Seventy invoices written fresh for the fourth re-review (48 a careful person pays, 22 they refuse). The reader
+ * pays exactly what a careful person pays, or refuses with a reason; the quotation R04 (its type only as a
+ * "Quotation No.:" field on line 7) refuses.
+ */
+const fresh = JSON.parse(
+  readFileSync(new URL("../../../test/fixtures/fresh-invoices.json", import.meta.url), "utf8"),
+) as {
+  cases: {
+    id: string;
+    kind: "pay" | "refuse";
+    pays: string;
+    text: string;
+    expect: Case["expect"];
+  }[];
+};
+
+describe("the fresh corpus", () => {
+  it.each(fresh.cases.map((c) => [c.id, c] as const))("%s", (_id, c) => {
+    const got = read(c.text);
+    expect(got).toEqual(c.expect);
+    expect(
+      got.amount === "0"
+        ? got.issue !== null
+        : c.kind === "pay" && got.amount === c.pays && got.issue === null,
+    ).toBe(true);
+  });
+
+  it("reads at least 24 of the 48 payable invoices, refuses all 22 others, and pays none a wrong amount", () => {
+    expect(fresh.cases).toHaveLength(70);
+    const results = fresh.cases.map((c) => ({ c, got: read(c.text) }));
+    const payable = results.filter(({ c }) => c.kind === "pay");
+    expect(payable).toHaveLength(48);
+    expect(payable.filter(({ c, got }) => got.amount === c.pays).length).toBeGreaterThanOrEqual(24);
+    expect(results.filter(({ c, got }) => c.kind === "refuse" && got.amount !== "0")).toEqual([]);
+    expect(results.filter(({ c, got }) => got.amount !== "0" && got.amount !== c.pays)).toEqual([]);
+    expect(results.find(({ c }) => c.id === "R04")?.got).toEqual({
+      amount: "0",
+      issue: "not_payable",
+    });
   });
 });
 
@@ -248,7 +300,7 @@ const POSITIVE: [string, string, string][] = [
   [
     "an order total with an equals sign",
     invoice([
-      "Order confirmation and invoice",
+      "Acme Office Supply",
       "Invoice INV-2026-084",
       "Printer paper, 10 boxes $310.40",
       "Order total = $310.40",

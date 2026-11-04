@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { MAX_READ_UNITS } from "./amount";
 import { MAX_TEXT_CHARS } from "./extract";
-import { extractFacts } from "./facts";
+import { extractFacts, fingerprintText, invoiceNumberOf } from "./facts";
 
 // The facts are read in linear time, whatever the text. One wall-clock case stays from the first ReDoS fix (50,000
 // spaces after "Total" in under 100 ms); every heavier shape is checked by how its time grows instead, which does
@@ -13,15 +13,31 @@ const RUNS = 5;
 /** An invoice head before a long line of codes (the shape of the re-review's inputs). */
 const HEAD = "Invoice INV-1\nTotal 5 USDC\n";
 
+/** The best of five runs of extractFacts and the fingerprint together (the pipeline computes both). */
 function best(text: string): number {
   let ms = Number.POSITIVE_INFINITY;
   for (let i = 0; i < RUNS; i++) {
     const t0 = performance.now();
     extractFacts(text, H, null);
+    fingerprintText(text);
     ms = Math.min(ms, performance.now() - t0);
   }
   return ms;
 }
+
+/** The best of five runs of one function. */
+function bestOf(run: () => unknown): number {
+  let ms = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < RUNS; i++) {
+    const t0 = performance.now();
+    run();
+    ms = Math.min(ms, performance.now() - t0);
+  }
+  return ms;
+}
+
+/** 19 distinct word-like codes, then a digit run: each code's contexts are read around the code. */
+const CODES = "ALL AMD BAM BOB BTN CAD CUP CVE GEL MAD MDL MOP NEAR PEN PHP SOL SOS SVC TOP TRY ";
 
 describe("extractFacts on adversarial text", () => {
   beforeAll(() => {
@@ -77,10 +93,29 @@ describe("extractFacts on adversarial text", () => {
     ["labels with no figure", (n) => "Balance\n".repeat(n / 8)],
     ["a long underscore run inside a word", (n) => `a${"_".repeat(n - 2)}a`],
     ["a long space run after a stamp separator", (n) => `Invoice -${" ".repeat(n)}x`],
+    // The fourth re-review's shapes.
+    ["a payee line of percentages", (n) => "Pay to 1% ".repeat(n / 10)],
+    ["a payee line of signed figures", (n) => "Pay to +5 ".repeat(n / 10)],
+    ["characters NFKC doubles", (n) => "\ufb00".repeat(n / 2)],
+    ["short lines of an I look-alike", (n) => `Total $5\n${"\u0406\u0406\u0406\n".repeat(n / 4)}`],
+    [
+      "short letter-spaced Cyrillic lines",
+      (n) => `INVOICE\nTotal $1\n${"\u0410 \u0412 \u0421\n".repeat(n / 6)}`,
+    ],
+    [
+      "distinct short lines of non-ASCII capitals",
+      (n) => Array.from({ length: n / 10 }, (_, i) => `\u0406\u0406 ${i}`).join("\n"),
+    ],
+    [
+      "many word-like codes before a digit run",
+      (n) => `INVOICE\n${CODES}${"5".repeat(n)}`.slice(0, n),
+    ],
+    ["blank-rendering characters", (n) => "Logo\u2800design ".repeat(n / 12)],
+    ["dash-like characters in numbers", (n) => "INV\u27961001 ".repeat(n / 9)],
   ];
 
   it.each(shapes)("grows linearly on %s", (_why, shape) => {
-    const n = 12_500;
+    const n = 12_000;
     expect(shape(4 * n).length).toBeLessThanOrEqual(MAX_READ_UNITS);
     const small = best(shape(n));
     const large = best(shape(4 * n));
@@ -96,6 +131,62 @@ describe("extractFacts on adversarial text", () => {
   ])("reads a 50,000-character line of the code %s in under 100 ms", (_code, text, issue) => {
     expect(extractFacts(text, H, null).amountIssue).toBe(issue);
     expect(best(text)).toBeLessThan(100);
+  });
+
+  it.each([
+    ["a payee line of percentages", "Pay to 1% ".repeat(4995)],
+    [
+      "short lines of an I look-alike",
+      `Total $5\n${"\u0406\u0406\u0406\n".repeat(12_500)}`.slice(0, 50_000),
+    ],
+    [
+      "short letter-spaced Cyrillic lines",
+      `INVOICE INV-1001\nFrom: Acme\nTotal due: $100.00\n${"\u0410 \u0412 \u0421\n".repeat(8325)}`,
+    ],
+    [
+      "many word-like codes before a digit run",
+      `INVOICE\n${CODES}${"5".repeat(50_000)}`.slice(0, 50_000),
+    ],
+    ["characters NFKC doubles, up to the cap", "\ufb00".repeat(25_000)],
+    ["characters NFKC expands past the cap", "\ufdfa".repeat(2_777)],
+  ])("reads %s (50,000 characters) in under 100 ms", (_why, text) => {
+    expect(text.length).toBeLessThanOrEqual(MAX_READ_UNITS);
+    expect(best(text)).toBeLessThan(100);
+  });
+
+  it("refuses a text that NFKC expands past twice its length, before reading it", () => {
+    expect(extractFacts(`Total 5 USDC\n${"\ufdfa".repeat(100)}`, H, null)).toMatchObject({
+      amount: "0",
+      amountIssue: "unreadable",
+    });
+    // Twice its length is still read.
+    expect(extractFacts(`INVOICE\nTotal 5 USDC\n${"\ufb00".repeat(100)}`, H, null).amount).toBe(
+      "5000000",
+    );
+  });
+
+  it.each([
+    ["ASCII", "a".repeat(50_000)],
+    ["characters NFKC expands", "\ufdfa".repeat(50_000)],
+    ["blank-rendering characters and dashes", "\u2800\u2796".repeat(25_000)],
+  ])(
+    "fingerprints and reads the number of 50,000 characters of %s in under 100 ms",
+    (_why, text) => {
+      expect(bestOf(() => fingerprintText(text))).toBeLessThan(100);
+      expect(bestOf(() => invoiceNumberOf(text))).toBeLessThan(100);
+    },
+  );
+
+  it.each([
+    ["ASCII", `Invoice INV-1\nTotal 5 USDC\n${"a".repeat(4 * 1024 * 1024)}`],
+    ["characters NFKC expands", "\ufdfa".repeat(4 * 1024 * 1024)],
+    ["short lines of an I look-alike", "\u0406\u0406\u0406\n".repeat(1024 * 1024)],
+  ])("reads, fingerprints and numbers 4 MiB of %s in under a second", (_why, text) => {
+    const t0 = performance.now();
+    expect(extractFacts(text, H, null).amount).toBe("0");
+    fingerprintText(text);
+    invoiceNumberOf(text);
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it("reads a 4 MiB text in under a second, without throwing", () => {

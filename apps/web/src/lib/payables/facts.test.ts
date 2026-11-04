@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractFacts, fingerprintText, refFor } from "./facts";
+import { extractFacts, fingerprintText, invoiceNumberOf, numberKeyText, refFor } from "./facts";
 import { nearAccounts } from "./lexicon";
 
 // The facts other than the amount (amount.test.ts and its corpora cover the amount reader), and the shape
@@ -136,5 +136,139 @@ describe("fingerprintText", () => {
       expect(fingerprintText(variant)).toBe(base);
     }
     expect(fingerprintText("Invoice INV-1\nTotal 6 USDC")).not.toBe(base);
+  });
+});
+
+/**
+ * The duplicate guard's two keys for a text, as the pipeline computes them: the fingerprint, and the invoice
+ * number in its key form (pipeline.ts keys an HMAC of it with the vault and the payee).
+ */
+const keysOf = (text: string) => {
+  const number = invoiceNumberOf(text);
+  return {
+    fingerprint: fingerprintText(text),
+    number: number === null ? null : numberKeyText(number),
+  };
+};
+/** Either key equal: the guard answers the second text as a duplicate of the first. */
+const guarded = (paid: string, again: string): boolean => {
+  const a = keysOf(paid);
+  const b = keysOf(again);
+  return a.fingerprint === b.fingerprint || (a.number !== null && a.number === b.number);
+};
+
+describe("the duplicate guard's keys", () => {
+  const P =
+    "Acme Studio LLC\nInvoice INV-1001\nDate: 2026-10-01\nLogo design $1,000.00\nTotal $1,000.00";
+
+  it.each([
+    ["O for zero", "INV-1OO1"],
+    ["l for one", "INV-l00l"],
+    ["Cyrillic O for zero", "INV-1\u041e\u041e1"],
+    ["a modifier minus", "INV\u02d71001"],
+    ["a heavy minus", "INV\u27961001"],
+    ["a box-drawing line", "INV\u25001001"],
+    ["a long-vowel mark", "INV\u30fc1001"],
+    ["a hyphen bullet", "INV\u20431001"],
+    ["a space", "INV 1001"],
+    ["a zero-width space", "INV-10\u200b01"],
+    ["a non-breaking hyphen", "INV\u20111001"],
+  ])("keys a re-upload whose number is written with %s as the paid original", (_why, written) => {
+    expect(guarded(P, P.replace("INV-1001", written))).toBe(true);
+  });
+
+  it.each([
+    [
+      "a number with look-alike digits after #",
+      "Invoice # 1001\nLogo design $1,000.00\nTotal $1,000.00",
+      "Invoice # 1OO1\nLogo design $1,000.00\nTotal $1,000.00",
+    ],
+    [
+      "a Braille blank in an item, the number under a header cell",
+      "Acme Studio LLC\nINVOICE\nInvoice #\tDate\nINV-1001\t2026-10-01\nLogo design $1,000.00\nTotal $1,000.00",
+      "Acme Studio LLC\nINVOICE\nInvoice #\tDate\nINV-1001\t2026-10-01\nLogo\u2800design $1,000.00\nTotal $1,000.00",
+    ],
+    [
+      "a Hangul filler in an item, the number on the line after its label",
+      "Acme Studio LLC\nInvoice number:\nINV-1001\nLogo design $1,000.00\nTotal $1,000.00",
+      "Acme Studio LLC\nInvoice number:\nINV-1001\nLogo\u3164design $1,000.00\nTotal $1,000.00",
+    ],
+    [
+      "a reminder line, the number as a token",
+      "Acme Studio LLC\nReference INV-1001\nLogo design $1,000.00\nTotal $1,000.00",
+      "Acme Studio LLC\nReference INV-1001\nLogo design $1,000.00\nTotal $1,000.00\nReminder: overdue",
+    ],
+    [
+      "a reminder line, the number after #",
+      "INVOICE\nKestrel IT Services\n# INV-000415\nInvoice Date : 02 Nov 2026\nManaged IT support - November\t$750.00\nTotal\t$750.00\n",
+      "INVOICE\nKestrel IT Services\n# INV-000415\nInvoice Date : 02 Nov 2026\nReminder: this invoice is now 15 days overdue.\nManaged IT support - November\t$750.00\nTotal\t$750.00\n",
+    ],
+    [
+      "a second notice, the number as INV and a space",
+      "INVOICE\nOak & Anvil Furniture Restoration\nINV 2026-0451\nCustomer: Bellweather Inn\nRefinish 12 dining chairs\t$1,140.00\nInvoice Total: $1,800.00\n",
+      "INVOICE\nOak & Anvil Furniture Restoration\nINV 2026-0451\nCustomer: Bellweather Inn\nSecond notice - please remit\nRefinish 12 dining chairs\t$1,140.00\nInvoice Total: $1,800.00\n",
+    ],
+    [
+      "a reminder line, the number as No.",
+      "INVOICE\nAcme\nNo. 5520\nLogo design\t$750.00\nTotal\t$750.00\n",
+      "INVOICE\nAcme\nNo. 5520\nLogo design\t$750.00\nReminder: overdue\nTotal\t$750.00\n",
+    ],
+    [
+      "a reminder line, the number as n\u00b0",
+      "INVOICE\nAcme\nn\u00b0 5520\nLogo design\t$750.00\nTotal\t$750.00\n",
+      "INVOICE\nAcme\nn\u00b0 5520\nLogo design\t$750.00\nReminder: overdue\nTotal\t$750.00\n",
+    ],
+    [
+      "a reminder line, the number after Invoice #:",
+      "INVOICE\nAcme\nInvoice #: INV-000415\nLogo design\t$750.00\nTotal\t$750.00\n",
+      "INVOICE\nAcme\nInvoice #: INV-000415\nLogo design\t$750.00\nReminder: overdue\nTotal\t$750.00\n",
+    ],
+  ])("keys a re-upload with %s as the paid original", (_why, paid, again) => {
+    expect(guarded(paid, again)).toBe(true);
+  });
+
+  it.each([
+    ["the next number", P, P.replace("INV-1001", "INV-1002")],
+    ["a longer number", P, P.replace("INV-1001", "INV-10010")],
+    ["a number with a suffix", P, P.replace("INV-1001", "INV-1001A")],
+    [
+      "another No.",
+      "INVOICE\nAcme\nNo. 5520\nTotal\t$750.00\n",
+      "INVOICE\nAcme\nNo. 5521\nTotal\t$750.00\n",
+    ],
+    [
+      "another amount and no number",
+      "INVOICE\nAcme\nLogo design $700.00\nTotal $700.00",
+      "INVOICE\nAcme\nLogo design $800.00\nTotal $800.00",
+    ],
+  ])("keys %s as another invoice", (_why, a, b) => {
+    expect(guarded(a, b)).toBe(false);
+  });
+
+  it.each([
+    ["# INV-000415", "INVOICE\n# INV-000415\nTotal $5.00", "INV-000415"],
+    ["INV and a space", "INVOICE\nINV 2026-0451\nTotal $5.00", "INV 2026-0451"],
+    ["No. in the header", "INVOICE\nAcme\nNo. 5520\nTotal $5.00", "5520"],
+    ["n\u00b0 in the header", "INVOICE\nAcme\nn\u00b0 5520\nTotal $5.00", "5520"],
+    ["the line after the label", "Invoice number:\nINV-1001\nTotal $5.00", "INV-1001"],
+    ["under a header cell", "Invoice #\tDate\nINV-1001\t2026-10-01\nTotal $5.00", "INV-1001"],
+    ["an -INV- segment", "INVOICE CCC-INV-4410\nTotal $5.00", "CCC-INV-4410"],
+    ["look-alike digits", "Invoice # 1OO1\nTotal $5.00", "1001"],
+    ["a ref. label", "Invoice ref. A-1\nTotal $5.00", "A-1"],
+  ])("reads one invoice number written as %s", (_why, text, number) => {
+    expect(invoiceNumberOf(text)).toBe(number);
+  });
+
+  it("keys INV 1001, inv-1001 and INV-1001 as one number", () => {
+    expect(numberKeyText("INV 1001")).toBe(numberKeyText("INV-1001"));
+    expect(numberKeyText("inv-1001")).toBe(numberKeyText("INV-1001"));
+    expect(numberKeyText("INV-1002")).not.toBe(numberKeyText("INV-1001"));
+  });
+
+  it("folds blank-rendering characters and digit look-alikes into the fingerprint", () => {
+    expect(fingerprintText("Logo\u2800design 1OO1")).toBe(fingerprintText("Logo design 1001"));
+    expect(fingerprintText("Logo\u3164design")).toBe(fingerprintText("Logo design"));
+    // A look-alike digit is a digit only beside a real one: "OO" alone stays letters.
+    expect(fingerprintText("Total OO")).not.toBe(fingerprintText("Total 00"));
   });
 });
