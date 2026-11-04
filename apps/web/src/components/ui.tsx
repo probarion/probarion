@@ -14,6 +14,38 @@ export const inputClass = "w-full rounded border border-stone-300 bg-white px-2 
 export const buttonClass =
   "rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50";
 
+// Brand v2 (light): ink pills, hairline cards with a large radius, and status panels whose colour carries meaning
+// (green passed, amber not proven or no result, red failed). The colours are the tokens in app/globals.css.
+const pill =
+  "inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-colors";
+export const inkPillClass = `${pill} bg-ink text-paper hover:bg-ink/85`;
+export const linePillClass = `${pill} border border-ink/15 text-ink hover:bg-ink/5`;
+export const brandCardClass = "mb-6 rounded-3xl border border-ink/10 bg-white p-5 sm:p-7";
+export type PanelTone = "good" | "warn" | "bad";
+export const PANEL_TONES: Readonly<Record<PanelTone, { box: string; dot: string }>> = {
+  good: { box: "border-emerald-200 bg-emerald-50 text-emerald-950", dot: "bg-emerald-600" },
+  warn: { box: "border-amber-200 bg-amber-50 text-amber-950", dot: "bg-amber-500" },
+  bad: { box: "border-rose-200 bg-rose-50 text-rose-950", dot: "bg-rose-600" },
+};
+
+/** A link that opens in a new tab, and says so to a screen reader. */
+export function ExternalLink({
+  href,
+  className,
+  children,
+}: {
+  href: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <a className={className} href={href} target="_blank" rel="noreferrer">
+      {children}
+      <span className="sr-only"> (opens in a new tab)</span>
+    </a>
+  );
+}
+
 export function Badge({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
   return (
     <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${TONES[tone]}`}>

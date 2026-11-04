@@ -141,6 +141,7 @@ describe("redaction: an Env-shaped object", () => {
   const envLike: Record<keyof Env, unknown> = {
     NEAR_NETWORK: sentinel("NEAR_NETWORK"),
     NEAR_RPC_URLS: [sentinel("NEAR_RPC_URLS_1"), sentinel("NEAR_RPC_URLS_2")],
+    NEAR_ARCHIVAL_RPC_URLS: [sentinel("NEAR_ARCHIVAL_RPC_URLS_1")],
     PROBARION_FACTORY_ID: sentinel("PROBARION_FACTORY_ID"),
     PROBARION_VAULT_ID: sentinel("PROBARION_VAULT_ID"),
     NEARAI_API_KEY: sentinel("NEARAI_API_KEY"),

@@ -94,6 +94,17 @@ No wallet, no key and no account: every step either runs offline or reads public
      d fail: spend 2 does not match its decision seq 2 (spend vs decision): amount 40000000 vs 1
    ```
 
+   The CLI runs the same checks over the same fixture, offline, and exits 0:
+
+   ```bash
+   node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json
+   ```
+
+   ```text
+   9 passed, 0 failed, 0 unproven
+   RESULT: PASS
+   ```
+
 3. **Check the testnet vault on chain.** These read public RPC data, with no key.
 
    ```bash
@@ -175,14 +186,14 @@ What exists at this commit, and what does not yet.
 | `@probarion/sdk`: RPC with failover, vault clients, ledger stores, `Probarion` class, `snapshot()` and `verify()` with online O1/O2 | **Shipped** in source | [`packages/sdk`](packages/sdk) |
 | NEAR AI Cloud adapter (private TEE model, nonce-bound attestation, `provider_tee` signature) | **Built** and tested against a fake NEAR AI Cloud. A real attested decision, recorded and verified in this repository: **In progress** | [`packages/sdk/src/nearai.ts`](packages/sdk/src/nearai.ts) |
 | `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` needs a deployed factory, so it waits for the factory | [`packages/cli`](packages/cli) |
-| CLI `check`, `verify` and `ledger export` | **In progress**. Use `verify()` from the SDK meanwhile | [`packages/cli`](packages/cli) |
+| CLI `check`, `verify` and `ledger export` | **Shipped** in source. `verify` exits 0 when every check passes, 1 when one fails or verify cannot run, 2 when a burn is unproven | [`packages/cli`](packages/cli) |
 | npm release 0.1.0 of the packages | **Planned**. The tag-driven release pipeline is in place; nothing is published | [`.github/workflows/release.yml`](.github/workflows/release.yml) |
-| Web console (Next.js 16 and Supabase): wallet sign-in, vault overview, freeze, approvals, keys, mandates | **In progress**, not deployed: there is no live URL yet | [`apps/web`](apps/web) |
+| Web console (Next.js 16 and Supabase): wallet sign-in, vault overview, freeze, approvals, keys, mandates, the public proof page | **In progress**, not deployed: there is no live URL yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
 | Mainnet vault `v0.probarion.near` | **Planned**. The runbook is ready; the owner signs every step | [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) |
 | MCP server `@probarion/mcp` | **Planned** | |
 | Payables, the reference agent that pays invoices in USDC | **Planned** | |
 | Canary, a public vault anyone may try to trick into paying them | **Planned** | |
-| Public `/proof` page | **Planned** | |
+| Public `/proof/<vault>` page: checks a to i with explorer links, the snapshot and the signed ledger as downloads for the offline verifier | **Built** and tested, not deployed: there is no live URL yet. Every command it shows runs from a clone of this repository until the npm package is published, and its tests run those commands as shown | [`apps/web/src/app/proof`](apps/web/src/app/proof) |
 
 ## What Probarion does
 
@@ -356,7 +367,7 @@ mainnet claim.
 | [`apps/web`](apps/web) | The web console (Next.js 16, Supabase with row-level security), in progress |
 | [`scripts`](scripts) | Contract builds, the reproducible build and code-hash record, testnet deploy and smoke, the proof file and the release check |
 | [`docs/specs`](docs/specs) | The design spec and the shared interfaces |
-| [`docs/runbooks`](docs/runbooks), [`docs/ops`](docs/ops) | Deploy runbooks (testnet, factory, mainnet v0) and the key rotation procedure |
+| [`docs/runbooks`](docs/runbooks), [`docs/ops`](docs/ops) | Deploy runbooks (testnet, factory, mainnet v0, the web console) and the key rotation procedure |
 | [`docs/evidence`](docs/evidence) | The purchase order and invoices prepared for the planned mainnet v0 run |
 
 ## Quick start
@@ -403,8 +414,8 @@ stores.
 | --- | --- |
 | **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy and threat model](SECURITY.md) |
 | **Packages** | [`@probarion/core`](packages/core/README.md) · [`@probarion/sdk`](packages/sdk/README.md) · [`probarion` CLI](packages/cli/README.md) · [`intents-stub`](contracts/intents-stub/README.md) |
-| **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Key rotation](docs/ops/key-rotation.md) |
-| **This repository** | [AGENTS.md](AGENTS.md), for AI agents and humans who build here · [Changelog](CHANGELOG.md) · [CI runs](https://github.com/probarion/probarion/actions/workflows/ci.yml) |
+| **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Web deploy runbook](docs/runbooks/web-deploy.md) · [Key rotation](docs/ops/key-rotation.md) |
+| **This repository** | [AGENTS.md](AGENTS.md), for AI agents and humans who build here · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Changelog](CHANGELOG.md) · [CI runs](https://github.com/probarion/probarion/actions/workflows/ci.yml) |
 
 ## Development
 
@@ -419,7 +430,7 @@ pnpm verify:ts     # the TypeScript part only, no Rust needed
 
 As of 2026-11-03, `pnpm verify` runs 301 Rust tests (227 vault unit tests, 2 error-coverage
 tests, 2 property tests that take about two minutes, 53 factory, 12 intents-stub and 5 test-ft tests)
-and 3,808 TypeScript tests: 200 Node script tests, 806 in `@probarion/core`, 767 in `@probarion/sdk`,
+and 3,878 TypeScript tests: 270 Node script tests, 806 in `@probarion/core`, 767 in `@probarion/sdk`,
 230 in the CLI, 1,641 in the web console and 164 launch checks. Skipped in that run: the two tests of
 a recorded real NEAR AI Cloud decision, which wait for that recording, and, on Windows, one
 file-permission test.
@@ -434,6 +445,9 @@ ubuntu) on every push:
 | Reproducible build and code hash | Builds the vault and the factory in Docker with cargo-near 0.22.0 and compares each code hash with `contracts/code-hashes.json` |
 | TS lint, typecheck and tests | `pnpm verify:ts` and `pnpm verify:launch` |
 | Secret scan | gitleaks over the whole history |
+| `verify` | Passes only when every job above succeeded; a skipped or cancelled job fails it. This is the one check a branch rule requires |
+
+When a gate fails, the job's last step posts the last 60 lines of that gate's log as an annotation and in the job summary, so the cause is readable without signing in.
 
 A local `pnpm contracts:build` (cargo-near 0.22.0) is not reproducible and is not a source of code
 hashes; [AGENTS.md](AGENTS.md#reproducible-builds-and-code-hashes) describes how a CI build is

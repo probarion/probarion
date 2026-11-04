@@ -109,7 +109,7 @@ const usesSha = (line) => /@([0-9a-f]{40})/.exec(line)?.[1];
 // The whole file is pinned. A reviewed change to release.yml needs a reviewed change to this hash, which
 // is the point: the structural checks below explain what is wrong, the pin refuses everything else.
 // Update it with: node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync(".github/workflows/release.yml","utf8").replace(/\r\n/g,"\n")).digest("hex"))'
-const RELEASE_YML_SHA256 = "f58673e15ed0df05372b03a105ca30fcf24ec8f3f09e200fa120263ca4d73e45";
+const RELEASE_YML_SHA256 = "09ea64589e940cec6be2013512e10676427510be5fe9ba37fc246d03e82daf9a";
 const releaseSha = (text) => createHash("sha256").update(text.replace(/\r\n/g, "\n")).digest("hex");
 
 // The publish script and the run steps of the verify job, exactly as reviewed (comments and blank lines
@@ -184,6 +184,39 @@ function stepsOf(jobLines) {
     else steps.at(-1)?.push(line);
   }
   return steps;
+}
+
+/**
+ * Every way the pnpm/action-setup steps of a workflow differ from the pin; the empty list means none.
+ * The pnpm version has one source, `packageManager` in the root package.json, which pnpm/action-setup and
+ * Vercel (with ENABLE_EXPERIMENTAL_COREPACK=1) both read. So the step is the bare `uses:` line with no
+ * `with:` block: a `version:` that differs from packageManager makes the action fail ("Multiple versions of
+ * pnpm specified"), and one that equals it is a second place to edit. `package_json_file` would point the
+ * action at another file. Used for ci.yml and release.yml alike.
+ */
+function pnpmSetupProblems(text) {
+  const problems = [];
+  const jobs = blockLines(codeLines(text.replace(/\r\n/g, "\n")), "jobs") ?? [];
+  const ids = jobs.filter((l) => /^ {2}[\w-]+:$/.test(l)).map((l) => l.trim().slice(0, -1));
+  let found = 0;
+  for (const id of ids) {
+    for (const step of stepsOf(blockLines(jobs, id, 2) ?? [])) {
+      // Found loosely (any case, quoted), judged strictly: a PNPM/action-setup or a quoted step is refused too.
+      if (!step.some((l) => /\buses:\s*["']?pnpm\/action-setup@/i.test(l))) continue;
+      found += 1;
+      if (step.length !== 1 || !/^ {6}- uses: pnpm\/action-setup@[0-9a-f]{40}$/.test(step[0])) {
+        problems.push(
+          `${id}: the pnpm/action-setup step must be exactly "- uses: pnpm/action-setup@<sha>" with no with: block, so that the pnpm version comes only from packageManager in package.json (a version: input that differs makes the action fail, and one that is equal is a second place to edit)`,
+        );
+      }
+    }
+  }
+  if (found === 0) {
+    problems.push(
+      "no pnpm/action-setup step: the workflow must install pnpm through it, at the version packageManager names",
+    );
+  }
+  return problems;
 }
 
 /** Every problem with a release workflow; the empty list means it has the shape the release relies on. */
@@ -369,9 +402,8 @@ function checkReleaseWorkflow(crlfOrLf, ciText) {
       "the verify job must check out, require main, install, check the tag, verify, pack, then upload",
     );
   }
-  if (!/uses: pnpm\/action-setup@[0-9a-f]{40}\n\s+with:\n\s+version: 10(\n|$)/.test(verifyText)) {
-    fail("pnpm/action-setup needs with: version: 10");
-  }
+  // pnpm comes from packageManager (pinned in gateProblems below), so the step takes no version input.
+  for (const problem of pnpmSetupProblems(text)) fail(problem);
 
   // --- pins: every action by full SHA, at the SHA ci.yml uses
   const uses = text.split(/\r?\n/).filter((l) => /^\s*-?\s*uses:/.test(l));
@@ -497,6 +529,31 @@ function checkReleaseWorkflow(crlfOrLf, ciText) {
 test("release.yml has exactly the shape the release relies on", () => {
   assert.deepEqual(checkReleaseWorkflow(release, ci), []);
 });
+
+/** The pnpm version packageManager names in the root package.json (`workspace` is read further down). */
+function pinnedPnpmVersion() {
+  const packageManager = workspace.manifests.get("package.json")?.packageManager;
+  assert.ok(
+    typeof packageManager === "string" && packageManager.startsWith("pnpm@"),
+    "the root package.json has no pnpm packageManager to build a mutant from",
+  );
+  return packageManager.slice("pnpm@".length);
+}
+
+/** A workflow with one more input on its (first) pnpm/action-setup step. */
+const addPnpmInput = (text, input) =>
+  text.replace(
+    /( {6}- uses: pnpm\/action-setup@[0-9a-f]{40} # \S+\n)/,
+    `$1        with:\n          ${input}\n`,
+  );
+
+/** A workflow with a second pnpm/action-setup step (another case, or quoted) after the real one. */
+const addPnpmStep = (text, action, input, quote = "") =>
+  text.replace(
+    /( {6}- uses: pnpm\/action-setup@([0-9a-f]{40}) # \S+\n)/,
+    (_match, step, sha) =>
+      `${step}      - uses: ${action}@${sha}${quote} # v4.3.0\n        with:\n          ${input}\n`,
+  );
 
 // Each mutation is a change a careless edit, or an attacker with a pull request, could make. The checker
 // must refuse every one of them, and for the stated reason.
@@ -720,10 +777,36 @@ const mutations = [
       ),
     "no dependency cache",
   ],
+  // pnpm comes from packageManager, so the step takes no inputs (the inverse of the old "version: 10" pin)
   [
-    "pnpm version removed",
-    (t) => t.replace("        with:\n          version: 10\n", ""),
-    "version: 10",
+    "a version input added to pnpm/action-setup (the action then fails, or names a second version)",
+    (t) => addPnpmInput(t, "version: 10"),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a version input equal to packageManager added to pnpm/action-setup",
+    (t) => addPnpmInput(t, `version: ${pinnedPnpmVersion()}`),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "package_json_file pointing the action at another file",
+    (t) => addPnpmInput(t, "package_json_file: apps/web/package.json"),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a second, upper-case PNPM/action-setup step with a version input",
+    (t) => addPnpmStep(t, "PNPM/action-setup", "version: 9"),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a second, quoted pnpm/action-setup step with a version input",
+    (t) => addPnpmStep(t, '"pnpm/action-setup', "version: 9", '"'),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "the pnpm/action-setup step removed",
+    (t) => t.replace(/ {6}- uses: pnpm\/action-setup@[0-9a-f]{40} # \S+\n/, ""),
+    "no pnpm/action-setup step",
   ],
   [
     "packing before the tests",
@@ -1235,6 +1318,15 @@ const ROOT_PINNED = {
   "release:check": "tsx scripts/release-check.ts",
 };
 
+/**
+ * The pnpm that CI and Vercel install is the one `packageManager` names in the root package.json:
+ * pnpm/action-setup reads it (the workflows give it no version), and Vercel does with
+ * ENABLE_EXPERIMENTAL_COREPACK=1. This file pins the major line (pnpm 10, which the lockfile and
+ * engines.pnpm need); release-manifests.test.ts pins the exact value, so moving to another major
+ * needs a reviewed change in both files, and a patch bump a reviewed change in that one.
+ */
+const PNPM_PACKAGE_MANAGER = /^pnpm@10\.\d+\.\d+$/;
+
 const PACKAGE_BUILD =
   "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json";
 /**
@@ -1373,6 +1465,12 @@ function gateProblems(repo) {
     for (const [name, want] of Object.entries(scripts)) pinned(file, name, want);
   }
   for (const file of GUARDED) pinned(file, "prepublishOnly", PREPUBLISH_GUARD);
+  const packageManager = repo.manifests.get("package.json")?.packageManager;
+  if (typeof packageManager !== "string" || !PNPM_PACKAGE_MANAGER.test(packageManager)) {
+    fail(
+      `package.json: packageManager must be pnpm@10.x.y (pnpm/action-setup and Vercel install the version it names; the lockfile and engines.pnpm need pnpm 10), now ${show(packageManager ?? null)}; review the change, then update the pattern in ${SELF}`,
+    );
+  }
 
   for (const [file, manifest] of repo.manifests) {
     for (const [name, script] of Object.entries(manifest.scripts ?? {})) {
@@ -1708,6 +1806,59 @@ const gateMutations = [
       'packages/cli/package.json: scripts["test"] contains "--dangerouslyIgnoreUnhandledErrors"',
     ],
   ],
+  // packageManager is what pnpm/action-setup and Vercel install
+  [
+    "packageManager set to pnpm 9",
+    (r) => {
+      r.manifests.get("package.json").packageManager = "pnpm@9.15.9";
+    },
+    ["package.json: packageManager must be pnpm@10.x.y", 'now "pnpm@9.15.9"'],
+  ],
+  [
+    "packageManager set to npm",
+    (r) => {
+      r.manifests.get("package.json").packageManager = "npm@10.9.0";
+    },
+    ["package.json: packageManager must be pnpm@10.x.y", 'now "npm@10.9.0"'],
+  ],
+  [
+    "packageManager set to yarn",
+    (r) => {
+      r.manifests.get("package.json").packageManager = "yarn@4.5.0";
+    },
+    ["package.json: packageManager must be pnpm@10.x.y", 'now "yarn@4.5.0"'],
+  ],
+  [
+    "packageManager set to pnpm 11",
+    (r) => {
+      r.manifests.get("package.json").packageManager = "pnpm@11.0.0";
+    },
+    ["package.json: packageManager must be pnpm@10.x.y"],
+  ],
+  [
+    "packageManager with a range instead of a version",
+    (r) => {
+      r.manifests.get("package.json").packageManager = `pnpm@^${pinnedPnpmVersion()}`;
+    },
+    ["package.json: packageManager must be pnpm@10.x.y"],
+  ],
+  [
+    "packageManager removed",
+    (r) => {
+      delete r.manifests.get("package.json").packageManager;
+    },
+    ["package.json: packageManager must be pnpm@10.x.y", "now absent"],
+  ],
+  [
+    "packageManager not a string",
+    (r) => {
+      r.manifests.get("package.json").packageManager = {
+        name: "pnpm",
+        version: pinnedPnpmVersion(),
+      };
+    },
+    ["package.json: packageManager must be pnpm@10.x.y"],
+  ],
 ];
 
 test("the gate scripts release.yml runs are the pinned ones, and none can swallow a failure (T17-R4)", () => {
@@ -1733,6 +1884,12 @@ test("the gate scripts are read from every workspace package and every config fi
   }
 });
 
+test("the major-line check here accepts a pnpm 10 bump: the exact value is pinned in release-manifests.test.ts", () => {
+  const bumped = cloneRepo(workspace);
+  bumped.manifests.get("package.json").packageManager = "pnpm@10.99.0";
+  assert.deepEqual(gateProblems(bumped), []);
+});
+
 for (const [name, edit, reasons] of gateMutations) {
   test(`the gate scripts check refuses: ${name}`, () => {
     const before = JSON.stringify([...workspace.manifests, ...workspace.files]);
@@ -1754,3 +1911,505 @@ for (const [name, edit, reasons] of gateMutations) {
     assert.equal(JSON.stringify([...workspace.manifests, ...workspace.files]), before);
   });
 }
+
+// ---------- ci.yml: the one `verify` check, and the failure explainer ----------
+//
+// A ruleset on dev and main requires one check, `verify`, rather than a list of job names that changes
+// whenever a job is renamed or added. That check means "every job succeeded" only while the verify job
+// has the shape below: it needs every other job, runs even when one of them failed, was skipped or was
+// cancelled (if: always(); GitHub counts a skipped required check as passed), and fails unless each
+// result is `success`. The long jobs tee each gate to a log under pipefail and end with the failure
+// explainer (scripts/ci-failure-note.mjs). `checkVerifyJob` and `checkExplainers` return every way
+// ci.yml differs from that; the tests run them on the real file and on in-memory mutants.
+
+// biome-ignore-start lint/suspicious/noTemplateCurlyInString: GitHub Actions expressions are text here, not templates
+
+/** The job ids of a workflow (as code lines), in file order. */
+const jobIdsOf = (workflowLines) =>
+  (blockLines(workflowLines, "jobs") ?? [])
+    .filter((l) => /^ {2}[\w-]+:$/.test(l))
+    .map((l) => l.trim().slice(0, -1));
+
+const resultVar = (id) => id.toUpperCase().replace(/-/g, "_");
+const hasIfKey = (l) => /(^|[{,]\s*)["']?if["']?\s*:/.test(l.replace(/^\s*(-\s+)?/, ""));
+
+// The result check, exactly as reviewed: the body of the step's `run: |`, without its indentation.
+const VERIFY_SCRIPT = [
+  'failed=""',
+  'echo "| Job | Result |" >> "$GITHUB_STEP_SUMMARY"',
+  'echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"',
+  'for pair in "ts=$TS" "gitleaks=$GITLEAKS" "rust-unit=$RUST_UNIT" "sandbox=$SANDBOX" "reproducible=$REPRODUCIBLE"; do',
+  '  job="${pair%%=*}"',
+  '  result="${pair#*=}"',
+  '  echo "$job: $result"',
+  '  echo "| $job | $result |" >> "$GITHUB_STEP_SUMMARY"',
+  '  if [ "$result" != "success" ]; then',
+  '    failed="$failed $job ($result)"',
+  "  fi",
+  "done",
+  'if [ -n "$failed" ]; then',
+  '  echo "::error title=verify failed::Not every job succeeded:$failed. A skipped or cancelled job counts as a failure."',
+  "  exit 1",
+  "fi",
+  'echo "Every job succeeded."',
+];
+
+/** Every way ci.yml's verify job differs from the reviewed shape; the empty list means none. */
+function checkVerifyJob(text) {
+  const problems = [];
+  const fail = (message) => problems.push(message);
+  const lines = codeLines(text.replace(/\r\n/g, "\n"));
+  const ids = jobIdsOf(lines);
+  const jobs = blockLines(lines, "jobs") ?? [];
+  const job = blockLines(jobs, "verify", 2);
+  if (!job) return ["there is no verify job"];
+  const others = ids.filter((id) => id !== "verify");
+  if (ids.at(-1) !== "verify") fail("verify must be the last job");
+
+  const keys = job.filter((l) => /^ {4}[\w-]+:/.test(l)).map((l) => l.trim().split(":")[0]);
+  const wantKeys = ["name", "needs", "if", "runs-on", "timeout-minutes", "permissions", "steps"];
+  if (JSON.stringify(keys) !== JSON.stringify(wantKeys)) {
+    fail(`the verify job's keys must be exactly ${wantKeys.join(", ")}`);
+  }
+  if (!job.includes("    name: verify")) {
+    fail("the job must be named verify: that is the check name the ruleset requires");
+  }
+  if (jobs.filter((l) => /^ {4}name: ["']?verify["']?$/.test(l)).length !== 1) {
+    fail("only the verify job may be named verify");
+  }
+  const needsLine = job.find((l) => /^ {4}needs:/.test(l)) ?? "";
+  const needs = /^ {4}needs: \[(.*)\]$/.exec(needsLine)?.[1];
+  if (JSON.stringify(needs?.split(", ")) !== JSON.stringify(others)) {
+    fail(`needs: must list every other job, in file order (${others.join(", ")})`);
+  }
+  if (JSON.stringify(job.filter(hasIfKey)) !== JSON.stringify(["    if: always()"])) {
+    fail(
+      "the job needs if: always(), and no other if:, so that a failed, skipped or cancelled job still reaches it",
+    );
+  }
+  if (!job.includes("    runs-on: ubuntu-latest")) fail("the job runs on ubuntu-latest");
+  if (
+    !job.includes("    permissions: {}") ||
+    job.filter((l) => /permissions/.test(l)).length !== 1
+  ) {
+    fail("the job needs permissions: {} and no other permissions");
+  }
+  const timeoutLine = job.find((l) => /timeout-minutes/.test(l)) ?? "";
+  const timeout = Number(/^ {4}timeout-minutes: (\d+)$/.exec(timeoutLine)?.[1]);
+  if (!(timeout >= 1 && timeout <= 10)) fail("the job needs a short timeout-minutes, at most 10");
+  if (job.some((l) => /continue-on-error/.test(l))) {
+    fail("continue-on-error is not allowed in the verify job: its failure must fail the check");
+  }
+  if (job.some((l) => /\buses:/.test(l)))
+    fail("the verify job checks out nothing and uses no action");
+  if (job.some((l) => /\bsecrets\b|github\.token|GITHUB_TOKEN/.test(l))) {
+    fail("the verify job must not touch a secret or the token");
+  }
+
+  const steps = stepsOf(job);
+  if (steps.length !== 1) fail("the verify job has exactly one step");
+  const step = steps[0] ?? [];
+  const stepKeys = step
+    .filter((l) => /^ {6}- [\w-]+:|^ {8}[\w-]+:/.test(l))
+    .map((l) => l.trim().replace(/^- /, "").split(":")[0]);
+  if (JSON.stringify(stepKeys) !== JSON.stringify(["name", "env", "run"])) {
+    fail("the result step's keys must be exactly name, env and run");
+  }
+  const env = blockLines(step, "env", 8);
+  const wantEnv = [
+    "        env:",
+    ...others.map((id) => `          ${resultVar(id)}: \${{ needs.${id}.result }}`),
+  ];
+  if (JSON.stringify(env) !== JSON.stringify(wantEnv)) {
+    fail("the result check must read needs.<id>.result of every other job, and nothing else");
+  }
+  const runAt = step.indexOf("        run: |");
+  const body = runAt < 0 ? [] : step.slice(runAt + 1).map((l) => l.slice(10));
+  const loop = `for pair in ${others.map((id) => `"${id}=$${resultVar(id)}"`).join(" ")}; do`;
+  if (!body.includes(loop)) fail("the result check must test every job in needs");
+  if (JSON.stringify(body) !== JSON.stringify(VERIFY_SCRIPT)) {
+    fail("the result check must equal the reviewed copy: it fails unless every result is success");
+  }
+  return problems;
+}
+
+// The gate commands of each explained job, in order, with the name of each one's log.
+const EXPLAINED = {
+  ts: [
+    ["pnpm install --frozen-lockfile", "install"],
+    ["pnpm run verify:ts", "verify-ts"],
+    ["pnpm verify:launch", "verify-launch"],
+  ],
+  "rust-unit": [
+    ["cargo fmt --manifest-path contracts/Cargo.toml --all -- --check", "fmt"],
+    [
+      "cargo clippy --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests --all-targets -- -D warnings",
+      "clippy",
+    ],
+    [
+      "cargo test --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests",
+      "test",
+    ],
+  ],
+  sandbox: [
+    ["bash scripts/build-contracts.sh", "build"],
+    [
+      "cargo clippy --manifest-path contracts/Cargo.toml -p integration-tests --all-targets -- -D warnings",
+      "clippy",
+    ],
+    [
+      "cargo test --manifest-path contracts/Cargo.toml -p integration-tests -- --test-threads=2",
+      "test",
+    ],
+  ],
+};
+
+/** Every way the gate steps and the failure explainer of the long jobs differ from the reviewed shape. */
+function checkExplainers(text) {
+  const problems = [];
+  const fail = (message) => problems.push(message);
+  const jobs = blockLines(codeLines(text.replace(/\r\n/g, "\n")), "jobs") ?? [];
+  for (const [id, gates] of Object.entries(EXPLAINED)) {
+    const job = blockLines(jobs, id, 2);
+    if (!job) {
+      fail(`${id}: the job is missing`);
+      continue;
+    }
+    const steps = stepsOf(job);
+    const explainer = [
+      "      - name: Explain the failure",
+      "        if: failure()",
+      `        run: node scripts/ci-failure-note.mjs ${id}`,
+    ];
+    if (JSON.stringify(steps.at(-1)) !== JSON.stringify(explainer)) {
+      fail(
+        `${id}: the last step must be the failure explainer, with if: failure() and run: node scripts/ci-failure-note.mjs ${id}`,
+      );
+    }
+    const gateSteps = steps.slice(-1 - gates.length, -1);
+    for (const [i, [command, log]] of gates.entries()) {
+      const tee = `          ${command} 2>&1 | tee "$RUNNER_TEMP/gate-${i + 1}-${log}.log"`;
+      const step = gateSteps[i] ?? [];
+      const shape = ["        run: |", "          set -o pipefail", tee];
+      if (
+        !/^ {6}- name: \S/.test(step[0] ?? "") ||
+        JSON.stringify(step.slice(1)) !== JSON.stringify(shape)
+      ) {
+        fail(
+          `${id}: gate ${i + 1} must be a named step that runs exactly: set -o pipefail, then ${tee.trim()}`,
+        );
+      }
+    }
+    if (JSON.stringify(job.filter(hasIfKey)) !== JSON.stringify(["        if: failure()"])) {
+      fail(`${id}: only the explainer may have an if:, and it is if: failure()`);
+    }
+    if (job.some((l) => /continue-on-error/.test(l))) {
+      fail(`${id}: continue-on-error is not allowed: a failed gate must fail the job`);
+    }
+    if (job.some((l) => /\bsecrets\b/.test(l))) {
+      fail(`${id}: the explainer posts this job's log, so the job must use no secret`);
+    }
+  }
+  return problems;
+}
+
+test("ci.yml: the verify job has the reviewed shape, and needs every other job", () => {
+  assert.deepEqual(checkVerifyJob(ci), []);
+  assert.deepEqual(jobIdsOf(codeLines(ci)), [
+    "ts",
+    "gitleaks",
+    "rust-unit",
+    "sandbox",
+    "reproducible",
+    "verify",
+  ]);
+});
+
+test("ci.yml: every gate of the long jobs keeps its exit status through tee, and a failure is explained", () => {
+  assert.deepEqual(checkExplainers(ci), []);
+});
+
+test("ci.yml and release.yml install pnpm through pnpm/action-setup with no inputs: packageManager names the version", () => {
+  assert.deepEqual(pnpmSetupProblems(ci), []);
+  assert.deepEqual(pnpmSetupProblems(release), []);
+});
+
+/** Every check that runs on ci.yml text: the verify job, the explainers and the pnpm setup. */
+const ciProblems = (text) => [
+  ...checkVerifyJob(text),
+  ...checkExplainers(text),
+  ...pnpmSetupProblems(text),
+];
+
+const VERIFY_STEP_RUN = '        run: |\n          failed=""\n';
+const ciMutations = [
+  // pnpm comes from packageManager, so the step takes no inputs
+  [
+    "a version input added to pnpm/action-setup (the action then fails, or names a second version)",
+    (t) => addPnpmInput(t, "version: 10"),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a version input equal to packageManager added to pnpm/action-setup",
+    (t) => addPnpmInput(t, `version: ${pinnedPnpmVersion()}`),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "package_json_file pointing the action at another file",
+    (t) => addPnpmInput(t, "package_json_file: apps/web/package.json"),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a second, upper-case PNPM/action-setup step with a version input",
+    (t) => addPnpmStep(t, "PNPM/action-setup", "version: 9"),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a second, quoted pnpm/action-setup step with a version input",
+    (t) => addPnpmStep(t, '"pnpm/action-setup', "version: 9", '"'),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "the pnpm/action-setup step removed",
+    (t) => t.replace(/ {6}- uses: pnpm\/action-setup@[0-9a-f]{40} # \S+\n/, ""),
+    "no pnpm/action-setup step",
+  ],
+  // The four the brief names
+  ["a verify job without if: always()", (t) => t.replace("    if: always()\n", ""), "if: always()"],
+  [
+    "a result check that ignores a skipped need (only failure fails)",
+    (t) => t.replace('if [ "$result" != "success" ]; then', 'if [ "$result" = "failure" ]; then'),
+    "result check must equal the reviewed copy",
+  ],
+  [
+    "a need dropped from needs",
+    (t) =>
+      t.replace(
+        "needs: [ts, gitleaks, rust-unit, sandbox, reproducible]",
+        "needs: [ts, gitleaks, rust-unit, reproducible]",
+      ),
+    "needs: must list every other job",
+  ],
+  [
+    "continue-on-error on the verify job",
+    (t) => t.replace("    if: always()\n", "    if: always()\n    continue-on-error: true\n"),
+    "continue-on-error is not allowed in the verify job",
+  ],
+  // More ways to make the check pass when a job did not succeed
+  [
+    "if: success() instead of always()",
+    (t) => t.replace("    if: always()", "    if: success()"),
+    "if: always()",
+  ],
+  [
+    "if: !cancelled() instead of always()",
+    (t) => t.replace("    if: always()", "    if: ${{ !cancelled() }}"),
+    "if: always()",
+  ],
+  [
+    "a result check that also accepts skipped",
+    (t) =>
+      t.replace(
+        'if [ "$result" != "success" ]; then',
+        'if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then',
+      ),
+    "result check must equal the reviewed copy",
+  ],
+  [
+    "a need dropped from the result loop",
+    (t) => t.replace(' "sandbox=$SANDBOX" "reproducible', ' "reproducible'),
+    "must test every job in needs",
+  ],
+  [
+    "a need's result read from another job",
+    (t) => t.replace("SANDBOX: ${{ needs.sandbox.result }}", "SANDBOX: ${{ needs.ts.result }}"),
+    "needs.<id>.result of every other job",
+  ],
+  [
+    "continue-on-error on the result step",
+    (t) => t.replace(VERIFY_STEP_RUN, `        continue-on-error: true\n${VERIFY_STEP_RUN}`),
+    "continue-on-error is not allowed in the verify job",
+  ],
+  [
+    "exit 0 instead of exit 1",
+    (t) =>
+      t.replace(
+        'counts as a failure."\n            exit 1',
+        'counts as a failure."\n            exit 0',
+      ),
+    "result check must equal the reviewed copy",
+  ],
+  [
+    "a checkout in the verify job",
+    (t) =>
+      t.replace(
+        "      - name: Require every job to have succeeded\n",
+        "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0\n      - name: Require every job to have succeeded\n",
+      ),
+    "checks out nothing",
+  ],
+  [
+    "a secret in the verify job",
+    (t) =>
+      t.replace(
+        "          TS: ${{ needs.ts.result }}\n",
+        "          TS: ${{ needs.ts.result }}\n          TOKEN: ${{ secrets.GITHUB_TOKEN }}\n",
+      ),
+    "must not touch a secret",
+  ],
+  [
+    "permissions widened",
+    (t) => t.replace("    permissions: {}\n", "    permissions:\n      contents: write\n"),
+    "permissions: {}",
+  ],
+  [
+    "permissions removed (the job would inherit contents: read)",
+    (t) => t.replace("    permissions: {}\n", ""),
+    "permissions: {}",
+  ],
+  ["no timeout", (t) => t.replace("    timeout-minutes: 5\n", ""), "timeout-minutes"],
+  [
+    "a long timeout",
+    (t) => t.replace("    timeout-minutes: 5\n", "    timeout-minutes: 360\n"),
+    "timeout-minutes",
+  ],
+  ["the check renamed", (t) => t.replace("    name: verify\n", "    name: CI\n"), "named verify"],
+  [
+    "another job named verify",
+    (t) => t.replace("    name: Secret scan\n", "    name: verify\n"),
+    "only the verify job may be named verify",
+  ],
+  [
+    "a new job that verify does not need",
+    (t) =>
+      t.replace(
+        "\n  verify:\n",
+        "\n  docs:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo docs\n\n  verify:\n",
+      ),
+    "needs: must list every other job",
+  ],
+  [
+    "a job after verify",
+    (t) => `${t}\n  late:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo late\n`,
+    "verify must be the last job",
+  ],
+  // The gates and the explainer
+  [
+    "pipefail dropped from a gate",
+    (t) =>
+      t.replace(
+        "          set -o pipefail\n          pnpm run verify:ts 2>&1",
+        "          pnpm run verify:ts 2>&1",
+      ),
+    "ts: gate 2 must be a named step that runs exactly",
+  ],
+  [
+    "a gate that tees outside $RUNNER_TEMP",
+    (t) => t.replace('| tee "$RUNNER_TEMP/gate-2-clippy.log"', "| tee gate-2-clippy.log"),
+    "rust-unit: gate 2",
+  ],
+  [
+    "|| true after a gate",
+    (t) =>
+      t.replace(
+        'tee "$RUNNER_TEMP/gate-3-verify-launch.log"\n',
+        'tee "$RUNNER_TEMP/gate-3-verify-launch.log" || true\n',
+      ),
+    "ts: gate 3",
+  ],
+  [
+    "a gate dropped",
+    (t) =>
+      t.replace(
+        '      - name: Launch checks (pnpm verify:launch)\n        run: |\n          set -o pipefail\n          pnpm verify:launch 2>&1 | tee "$RUNNER_TEMP/gate-3-verify-launch.log"\n',
+        "",
+      ),
+    "ts: gate",
+  ],
+  [
+    "gate logs numbered out of order",
+    (t) => t.replace("gate-1-fmt.log", "gate-4-fmt.log"),
+    "rust-unit: gate 1",
+  ],
+  [
+    "the explainer without if: failure()",
+    (t) =>
+      t.replace(
+        "        if: failure()\n        run: node scripts/ci-failure-note.mjs rust-unit",
+        "        run: node scripts/ci-failure-note.mjs rust-unit",
+      ),
+    "rust-unit: the last step must be the failure explainer",
+  ],
+  [
+    "the explainer on if: always()",
+    (t) =>
+      t.replace(
+        "        if: failure()\n        run: node scripts/ci-failure-note.mjs ts",
+        "        if: always()\n        run: node scripts/ci-failure-note.mjs ts",
+      ),
+    "ts: only the explainer may have an if:",
+  ],
+  [
+    "a step after the explainer",
+    (t) =>
+      t.replace(
+        "        run: node scripts/ci-failure-note.mjs sandbox\n",
+        "        run: node scripts/ci-failure-note.mjs sandbox\n      - run: echo after\n",
+      ),
+    "sandbox: the last step must be the failure explainer",
+  ],
+  [
+    "the explainer removed",
+    (t) =>
+      t.replace(
+        "      - name: Explain the failure\n        if: failure()\n        run: node scripts/ci-failure-note.mjs sandbox\n",
+        "",
+      ),
+    "sandbox: the last step must be the failure explainer",
+  ],
+  [
+    "continue-on-error on a gate",
+    (t) =>
+      t.replace(
+        "      - name: Unit and property tests (cargo test)\n",
+        "      - name: Unit and property tests (cargo test)\n        continue-on-error: true\n",
+      ),
+    "rust-unit: continue-on-error is not allowed",
+  ],
+  [
+    "a secret in an explained job",
+    (t) =>
+      t.replace(
+        "      - name: Install (pnpm install --frozen-lockfile)\n",
+        "      - name: Install (pnpm install --frozen-lockfile)\n        env:\n          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}\n",
+      ),
+    "ts: the explainer posts this job's log, so the job must use no secret",
+  ],
+];
+
+for (const [name, mutate, expected] of ciMutations) {
+  test(`ci.yml check refuses: ${name}`, () => {
+    const mutated = mutate(ci);
+    assert.notEqual(mutated, ci, `the mutation "${name}" changed nothing`);
+    const problems = ciProblems(mutated);
+    assert.ok(
+      problems.some((p) => p.includes(expected)),
+      `"${name}" was not refused for "${expected}": ${problems.join(" | ") || "accepted"}`,
+    );
+  });
+}
+
+test("ci.yml: a CRLF copy has the same shape, and every mutant is still refused", () => {
+  const crlf = (text) => text.replace(/\n/g, "\r\n");
+  assert.deepEqual(ciProblems(crlf(ci)), []);
+  for (const [name, mutate, expected] of ciMutations) {
+    const mutated = crlf(mutate(ci));
+    const problems = ciProblems(mutated);
+    assert.ok(
+      problems.some((p) => p.includes(expected)),
+      `CRLF copy of "${name}" not refused for "${expected}": ${problems.join(" | ")}`,
+    );
+  }
+});
+
+// biome-ignore-end lint/suspicious/noTemplateCurlyInString: see biome-ignore-start above

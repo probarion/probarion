@@ -1,7 +1,19 @@
+import { resolve } from "node:path";
+import { FileLedgerStore } from "@probarion/sdk";
 import type { Command } from "commander";
-import { type GlobalOpts, optionalAccount, requireVault, resolveNetwork } from "../context.js";
+import {
+  fileExists,
+  type GlobalOpts,
+  ledgerFile,
+  optionalAccount,
+  requireVault,
+  resolveNetwork,
+  sameFile,
+  writeNewFile,
+} from "../context.js";
+import { CliError } from "../errors.js";
 import type { CliIo } from "../io.js";
-import { ONE_YOCTO, printOwnerTx } from "../owner-tx.js";
+import { displayPath, ONE_YOCTO, printOwnerTx } from "../owner-tx.js";
 import { assertPositive, nearToYocto } from "../units.js";
 import { checkedPublicKey } from "./agent.js";
 
@@ -45,6 +57,30 @@ export function registerLedger(program: Command, io: CliIo): Command {
         },
         o.outDir,
       );
+    });
+  ledger
+    .command("export")
+    .description("export the ledger as JSONL, one entry per line, to a new file")
+    .requiredOption("--out <file>", "output file; it must not exist yet")
+    .option(
+      "--ledger <path>",
+      "ledger JSONL file (default: PROBARION_LEDGER_PATH, else .probarion/ledger.jsonl)",
+    )
+    .action(async (options: { out: string; ledger?: string }) => {
+      const source = ledgerFile(options.ledger, io.env, io.cwd);
+      const target = resolve(io.cwd, options.out);
+      if (await sameFile(source, target, io.platform ?? process.platform)) {
+        throw new CliError("--out must be a different file from the ledger (--ledger)");
+      }
+      if (!(await fileExists(source))) {
+        throw new CliError(`the ledger file ${displayPath(io.cwd, source)} does not exist`);
+      }
+      const entries = await new FileLedgerStore(source).all();
+      // A ledger is an audit trail: the export goes to a new file, never over one that is there.
+      const text = entries.map((e) => `${JSON.stringify(e)}\n`).join("");
+      await writeNewFile(target, text, "--out", options.out);
+      const noun = entries.length === 1 ? "entry" : "entries";
+      io.out(`exported ${entries.length} ${noun} to ${displayPath(io.cwd, target)}\n`);
     });
   return ledger;
 }

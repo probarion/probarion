@@ -58,9 +58,12 @@ function toEntry(r: unknown): LedgerEntry {
   }
   // body_text is the body as the SDK serialised it, key order included, so the entry re-serialises to the same line as
   // FileLedgerStore's; the jsonb column is only the fallback for a row made by hand.
-  const body = (
-    typeof r.body_text === "string" ? JSON.parse(r.body_text) : r.body
-  ) as LedgerEntryBody;
+  let body: LedgerEntryBody;
+  try {
+    body = (typeof r.body_text === "string" ? JSON.parse(r.body_text) : r.body) as LedgerEntryBody;
+  } catch {
+    throw new LedgerError("the database returned a ledger row whose body is not JSON");
+  }
   // Same key order as core's buildEntry, so JSON.stringify gives the same line as the SDK's FileLedgerStore.
   return {
     body,
