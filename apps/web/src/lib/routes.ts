@@ -7,7 +7,6 @@
 export const PLANNED_ROUTES: readonly string[] = [
   "/canary",
   "/open",
-  "/proof/[vault]",
   "/security",
   "/status",
   "/terms",

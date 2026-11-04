@@ -9,6 +9,8 @@ const CANARY_MODES: readonly CanaryMode[] = ["live", "code-only", "replay", "off
 export interface Env {
   NEAR_NETWORK: Network;
   NEAR_RPC_URLS: string[];
+  /** /proof's burn lookups for txs older than about 2.5 days. Empty (unset) means no archival lookup (R5). */
+  NEAR_ARCHIVAL_RPC_URLS: string[];
   PROBARION_FACTORY_ID: string;
   PROBARION_VAULT_ID: string | null; // the demo vault /proof shows by default
   NEARAI_API_KEY: string | null;
@@ -120,6 +122,12 @@ export function loadEnv(src: Source): Env {
   rpc.forEach((u, i) => {
     if (!isAllowedServiceUrl(u)) problems.push(`NEAR_RPC_URLS entry ${i + 1} ${HTTPS_OR_LOCAL}`);
   });
+  // No network default here: unset (or only commas) means /proof makes no archival lookup.
+  const archival = list(src.NEAR_ARCHIVAL_RPC_URLS);
+  archival.forEach((u, i) => {
+    if (!isAllowedServiceUrl(u))
+      problems.push(`NEAR_ARCHIVAL_RPC_URLS entry ${i + 1} ${HTTPS_OR_LOCAL}`);
+  });
 
   const master = req("KEY_ENCRYPTION_SECRET");
   const masterProblem = master ? masterKeyProblem(master) : null;
@@ -146,6 +154,7 @@ export function loadEnv(src: Source): Env {
   const env: Env = {
     NEAR_NETWORK: network,
     NEAR_RPC_URLS: rpc,
+    NEAR_ARCHIVAL_RPC_URLS: archival,
     PROBARION_FACTORY_ID: opt(src.PROBARION_FACTORY_ID) ?? NETWORKS[network].factory,
     PROBARION_VAULT_ID: opt(src.PROBARION_VAULT_ID),
     NEARAI_API_KEY: opt(src.NEARAI_API_KEY),
