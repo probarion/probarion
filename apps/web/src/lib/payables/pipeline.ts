@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac, hkdfSync } from "node:crypto";
-import type { CustomRule, InvoiceFacts, MandateView, Payee } from "@probarion/core";
+import type { CustomRule, InvoiceFacts, MandateView, Payee, RuleResult } from "@probarion/core";
 import { hashInvoice, type SpendOutcome } from "@probarion/sdk";
 import { sealInvoice } from "@/lib/crypto/secrets";
 import { DecryptError, sha256Hex } from "@/lib/crypto/sodium";
@@ -16,7 +16,7 @@ import { log, scrubText } from "@/lib/log";
 import { extractInvoice, type InvoiceMediaType } from "./extract";
 import { type AmountIssue, extractFacts, fingerprintText, numberKeyText, refFor } from "./facts";
 import { signingMandate } from "./mandate";
-import { OWNER_CONFIRMS_RULE, ownerConfirmsRule } from "./owner-confirms";
+import { OWNER_CONFIRMS_RULE, ownerConfirms } from "./owner-confirms";
 import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
 
 // The Payables cycle (spec §8, plan 04 Task 13): extract the invoice text, read its facts, store it sealed or as
@@ -33,7 +33,10 @@ export const PROCESS_LEASE_SECONDS = 90;
 /** What the pipeline needs from the SDK's `Probarion` (and what tests fake). */
 export interface ProbarionLike {
   process(invoice: { text: string; facts: InvoiceFacts; ref: string }): Promise<SpendOutcome>;
-  /** The SDK's custom rules: the pipeline adds the two-readers-or-the-owner rule (owner-confirms.ts). */
+  /**
+   * The SDK's custom rules: the pipeline adds the rule that the owner confirms the amount unless an attested model
+   * does (owner-confirms.ts).
+   */
   rules: { add(rule: CustomRule): void };
 }
 
@@ -64,7 +67,7 @@ export type KeyProblem = "inactive" | "decrypt_failed" | "key_mismatch";
 export type PipelineResult =
   /**
    * The cycle ran. `invoiceStatus` "unconfirmed": the payment was sent and its confirmation is pending.
-   * "awaiting_owner": no attested model read the same amount, so nothing was sent; the row keeps the code's
+   * "awaiting_owner": no attested model confirmed the amount the code read, so nothing was sent; the row keeps the code's
    * amount as a suggestion for the owner to confirm.
    */
   | {
@@ -178,18 +181,20 @@ export function invoiceStatusOf(outcome: Pick<SpendOutcome, "status">): "decided
 }
 
 /**
- * True when the two-readers-or-the-owner rule decided the outcome and nothing was sent: the invoice waits for
- * the owner. Any other refusal or hold is recorded as decided, as before.
+ * True when nothing was sent and the owner-confirms rule held or refused the cycle: the invoice waits for the
+ * owner. `owner` is the rule's own verdict in this cycle (null when it did not run). A hold counts when another
+ * rule held first (intents.balance_low, model.low_confidence) and the owner rule held too; a refusal counts only
+ * when it is the owner rule's (another rule's refusal stands). Any other outcome is recorded as decided.
  */
 export function waitsForOwner(
   outcome: Pick<SpendOutcome, "status" | "code" | "spendId" | "txHash">,
+  owner: RuleResult["outcome"] | null = null,
 ): boolean {
-  return (
-    outcome.code === OWNER_CONFIRMS_RULE &&
-    (outcome.status === "held" || outcome.status === "refused_by_code") &&
-    outcome.spendId === null &&
-    outcome.txHash === null
-  );
+  if (outcome.spendId !== null || outcome.txHash !== null) return false;
+  if (outcome.code === OWNER_CONFIRMS_RULE) {
+    return outcome.status === "held" || outcome.status === "refused_by_code";
+  }
+  return outcome.status === "held" && owner === "hold";
 }
 
 export async function processInvoice(
@@ -296,6 +301,8 @@ export async function processInvoice(
       }
 
       let outcome: SpendOutcome;
+      // The owner confirms the amount unless an attested model does: without that, nothing is sent.
+      const owner = ownerConfirms();
       try {
         const pb = deps.makeProbarion({
           tenant,
@@ -303,8 +310,7 @@ export async function processInvoice(
           ledgerKey: ledger.key.secret,
           requestId,
         });
-        // Two readers or the owner: without an attested model that read the same amount, nothing is sent.
-        pb.rules.add(ownerConfirmsRule());
+        pb.rules.add(owner.rule);
         outcome = await pb.process({ text, facts, ref });
       } catch (e) {
         // The SDK sends a spend only after a decision and never throws once it has: nothing went out.
@@ -330,7 +336,9 @@ export async function processInvoice(
         return { status: "failed", invoiceId: inserted.id, error };
       }
 
-      const invoiceStatus = waitsForOwner(outcome) ? "awaiting_owner" : invoiceStatusOf(outcome);
+      const invoiceStatus = waitsForOwner(outcome, owner.outcome())
+        ? "awaiting_owner"
+        : invoiceStatusOf(outcome);
       const fields = {
         ...at,
         invoice: inserted.id,

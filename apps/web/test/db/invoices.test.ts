@@ -110,6 +110,25 @@ describe("invoice functions (migration 0006)", () => {
     },
   );
 
+  it("does not block a re-upload of an invoice a rule held by code: nothing was sent for it", async () => {
+    const fp = (n + 9000).toString(16).padStart(64, "0");
+    const { id } = await insertInvoice(db, a, invoice({ fingerprint: fp }));
+    await setInvoiceOutcome(db, a, id, {
+      status: "decided",
+      outcome: {
+        ...OUTCOME,
+        status: "held",
+        spendId: null,
+        txHash: null,
+        code: "intents.balance_low",
+      } as never,
+      anchorTxHash: null,
+      promptTokens: null,
+      completionTokens: null,
+    });
+    expect((await insertInvoice(db, a, invoice({ fingerprint: fp }))).duplicate).toBe(false);
+  });
+
   it("refuses an invoice whose number matches one that is unconfirmed, but not one that ended in error", async () => {
     const { id } = await insertInvoice(db, a, invoice({ invoiceNumberKey: H("b") }));
     await setInvoiceOutcome(db, a, id, {
@@ -301,7 +320,7 @@ describe("invoice functions (migration 0006)", () => {
     ).resolves.toMatchObject({ status: "unconfirmed", changed: true });
   });
 
-  /** An outcome the two-readers-or-the-owner rule decided: nothing was sent. */
+  /** An outcome the owner-confirms rule decided: nothing was sent. */
   const WAITING = {
     ...OUTCOME,
     status: "held",

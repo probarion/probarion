@@ -7,6 +7,7 @@ import {
   FAKE_NEARAI_BASE_URL,
   type FakeChatRequest,
   type FakeRpcServer,
+  SCENARIO_BASE_ADDRESS,
   SCENARIO_NEAR_PAYEE,
   SCENARIO_NOW,
   SCENARIO_VAULT,
@@ -53,19 +54,35 @@ const NOW = new Date(Number(SCENARIO_NOW / 1_000_000n));
 const PO_1001 = new TextEncoder().encode("TEST DOUBLE PO-1001");
 const BAD = "0xBAD0000000000000000000000000000000000001";
 
-/** An honest TEST DOUBLE model: it proposes the mandate it was shown, for the amount the code read. */
-function honestModel(request: FakeChatRequest, amount?: (read: string) => string | null): string {
+/** The total a TEST DOUBLE model reads from the invoice text itself ("Total 25.00 USDC"), in base units, or null. */
+function totalIn(invoiceText: string): string | null {
+  const m = /^Total[ \t]+(\d+)(?:\.(\d{1,6}))?[ \t]+USDC$/m.exec(invoiceText);
+  if (!m) return null;
+  return (BigInt(m[1] ?? "0") * 1_000_000n + BigInt((m[2] ?? "").padEnd(6, "0") || "0")).toString();
+}
+
+/**
+ * A TEST DOUBLE model: it proposes the mandate it was shown, for the total it reads from the invoice text (not
+ * from the facts, which show it the code's amount). `echo`: it states the code's amount from the facts instead.
+ */
+function testModel(
+  request: FakeChatRequest,
+  amount?: (read: string) => string | null,
+  echo = false,
+): string {
   const lines = (request.messages[1]?.content ?? "").split("\n");
   const facts = JSON.parse((lines[2] ?? "").slice("facts: ".length)) as { amount: string };
   const mandates = JSON.parse((lines[3] ?? "").slice("mandates: ".length)) as {
     id: number;
     payee: { account_id?: string };
   }[];
+  const text = lines.slice(lines.indexOf("invoice_text:") + 1).join("\n");
+  const read = echo ? facts.amount : totalIn(text);
   const m = mandates[0];
   return JSON.stringify({
     action: "pay",
     mandate_id: m?.id ?? null,
-    amount: amount === undefined ? facts.amount : amount(facts.amount),
+    amount: amount === undefined || read === null ? read : amount(read),
     payee_hint: { near_account: m?.payee.account_id ?? "" },
     reasoning: "The invoice matches the PO.",
     confidence: 0.95,
@@ -81,6 +98,8 @@ describe("a Payables cycle on the fake chain", () => {
   let store: SupabaseLedgerStore;
   /** How the TEST DOUBLE model states the amount; each test may change it. */
   let modelAmount: ((read: string) => string | null) | undefined;
+  /** The TEST DOUBLE model echoes the code's amount from the facts instead of reading the text. */
+  let modelEchoes = false;
   /** The model's transport: the fake NEAR AI, or one that is down. */
   let modelDown = false;
 
@@ -113,7 +132,7 @@ describe("a Payables cycle on the fake chain", () => {
     member = m;
     store = new SupabaseLedgerStore(h.db, tenantId);
     const reader = createVaultReader(new RpcClient({ urls: [server.url] }));
-    const nearai = createFakeNearAi({ respond: (r) => honestModel(r, modelAmount) });
+    const nearai = createFakeNearAi({ respond: (r) => testModel(r, modelAmount, modelEchoes) });
     deps = {
       db: h.db,
       master: MASTER,
@@ -284,7 +303,7 @@ describe("a Payables cycle on the fake chain", () => {
     }
   });
 
-  it("an attested model that states no amount is no second reader: nothing is sent", async () => {
+  it("an attested model that states no amount confirms nothing: nothing is sent", async () => {
     modelAmount = () => null;
     try {
       const { r, sent, decision, owner } = await cycle(
@@ -318,10 +337,10 @@ describe("a Payables cycle on the fake chain", () => {
     }
   });
 
-  it("two readers that agree: an attested model with the code's amount pays", async () => {
+  it("pays on its own when an attested model confirms the amount the code read, reading it from the text", async () => {
     const { r, sent, decision, owner } = await cycle(
       `Invoice INV-16\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 24.00 USDC`,
-      "req-two-readers",
+      "req-model-confirms",
     );
     expect(sent).toBe(1);
     expect(r.invoiceStatus).toBe("decided");
@@ -329,6 +348,72 @@ describe("a Payables cycle on the fake chain", () => {
     expect(decision).toMatchObject({ verdict: "allow", decided_by: "model+rules" });
     expect(owner).toMatchObject({ outcome: "pass" });
     expect(server.chain.spends.at(-1)).toMatchObject({ amount: "24000000", status: "paid" });
+  });
+
+  it("a model that reads no total from the text confirms nothing: the invoice waits for the owner", async () => {
+    // The code reads "Amount due"; this model looks for a "Total" line and states no amount.
+    const { r, sent, owner } = await cycle(
+      `Invoice INV-17\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nAmount due 26.00 USDC`,
+      "req-model-reads-nothing",
+    );
+    expect(sent).toBe(0);
+    expect(r.invoiceStatus).toBe("awaiting_owner");
+    expect(owner).toMatchObject({ outcome: "hold" });
+  });
+
+  it("residual risk: a model that echoes the code's amount from the facts is accepted as a confirmation", async () => {
+    // The same invoice shape: a model that copies facts.amount (proposal template v1 shows it) instead of reading
+    // the text confirms whatever the code read, so a code misreading would pay. Plan 03 carries a template that
+    // leaves the amount out.
+    modelEchoes = true;
+    try {
+      const { r, sent, owner } = await cycle(
+        `Invoice INV-18\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nAmount due 27.00 USDC`,
+        "req-model-echoes",
+      );
+      expect(sent).toBe(1);
+      expect(r.outcome).toMatchObject({ status: "paid", code: null });
+      expect(owner).toMatchObject({ outcome: "pass" });
+      expect(server.chain.spends.at(-1)).toMatchObject({ amount: "27000000" });
+    } finally {
+      modelEchoes = false;
+    }
+  });
+
+  it("rules-only, another rule holding first: nothing is sent, and the invoice still waits for the owner", async () => {
+    // An Intents payee whose POA balance is too low: intents.balance_low holds before the owner rule does.
+    const balances = server.chain.intents.balances;
+    const saved = { ...balances };
+    for (const k of Object.keys(balances)) balances[k] = "0";
+    h.key = null;
+    try {
+      const po = new TextEncoder().encode("TEST DOUBLE PO-2002");
+      const spends = server.chain.spends.length;
+      const r = await run(
+        `Invoice INV-19\nPO: PO-2002\nPay to ${SCENARIO_BASE_ADDRESS}\nTotal 19.00 USDC`,
+        po,
+        "req-rules-only-other-hold",
+      );
+      if (r.status !== "decided") throw new Error(`not decided: ${JSON.stringify(r)}`);
+      const decision = (await store.all()).filter((e) => e.body.kind === "decision").at(-1)?.body;
+      expect(server.chain.spends.length - spends).toBe(0);
+      expect(r.outcome).toMatchObject({
+        status: "held",
+        code: "intents.balance_low",
+        spendId: null,
+      });
+      expect(decision?.rules.find((x) => x.id === OWNER_CONFIRMS_RULE)).toMatchObject({
+        outcome: "hold",
+      });
+      expect(r.invoiceStatus).toBe("awaiting_owner");
+      expect(await getInvoice(h.db, member.tenant_id, r.invoiceId)).toMatchObject({
+        status: "awaiting_owner",
+        suggested_amount: "19000000",
+      });
+    } finally {
+      h.key = NEARAI_KEY;
+      Object.assign(balances, saved);
+    }
   });
 
   it("skips a mandate bound to a key this console does not hold: no entry, no transaction", async () => {
@@ -341,7 +426,11 @@ describe("a Payables cycle on the fake chain", () => {
       purpose_hash: sha256Hex(po),
       agent_pk: TEST_KEYS.other.publicKey,
     });
-    const before = { entries: (await store.all()).length, methods: server.methods.length };
+    const before = {
+      entries: (await store.all()).length,
+      methods: server.methods.length,
+      spends: server.chain.spends.length,
+    };
     const r = await run("Invoice INV-3\nTotal 5 USDC", po, "req-key");
     expect(r).toMatchObject({
       status: "key_unavailable",
@@ -351,6 +440,6 @@ describe("a Payables cycle on the fake chain", () => {
     });
     expect((await store.all()).length).toBe(before.entries);
     expect(server.methods.slice(before.methods).filter((m) => m !== "query")).toEqual([]);
-    expect(server.chain.spends).toHaveLength(2);
+    expect(server.chain.spends).toHaveLength(before.spends);
   });
 });

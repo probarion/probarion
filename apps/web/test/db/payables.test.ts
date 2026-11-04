@@ -18,6 +18,7 @@ import {
   PROCESS_LEASE_SECONDS,
   type ProbarionLike,
   processInvoice,
+  waitsForOwner,
 } from "@/lib/payables/pipeline";
 import { getInvoice, listInvoices } from "@/lib/payables/store";
 import { tinyPdf } from "../fixtures/pdf";
@@ -214,7 +215,7 @@ describe("processInvoice", () => {
     });
     // The payment signs with the key the mandate is bound to, and the request id travels into the SDK.
     expect(d.make).toHaveBeenCalledTimes(1);
-    // Two readers or the owner: the rule is on the Probarion before the cycle runs.
+    // The owner confirms unless an attested model does: the rule is on the Probarion before the cycle runs.
     expect(d.added).toEqual([OWNER_CONFIRMS_RULE]);
     expect(at(d.make.mock.calls)[0]).toMatchObject({
       agentKey: t.agent?.secret,
@@ -415,7 +416,7 @@ describe("processInvoice", () => {
     ["held off-chain", "held"],
     ["refused, because a hold above the approval threshold would send it", "refused_by_code"],
   ] as const)(
-    "waits for the owner when no attested model read the same amount (%s), keeping the code's amount",
+    "waits for the owner when no attested model confirmed the amount the code read (%s), keeping the code's amount",
     async (_why, status) => {
       const t = await tenant({ zero: true });
       const ms = [mandate(1, t.agent?.publicKey ?? "")];
@@ -776,5 +777,51 @@ describe("processInvoice", () => {
       retained: true,
       anchor_tx_hash: ANCHOR_TX,
     });
+  });
+});
+
+describe("waitsForOwner", () => {
+  const sent = { spendId: null, txHash: null };
+  it.each([
+    ["the owner rule held", { status: "held", code: OWNER_CONFIRMS_RULE, ...sent }, null, true],
+    [
+      "the owner rule refused",
+      { status: "refused_by_code", code: OWNER_CONFIRMS_RULE, ...sent },
+      "refuse",
+      true,
+    ],
+    [
+      "another rule held first, the owner rule held too",
+      { status: "held", code: "intents.balance_low", ...sent },
+      "hold",
+      true,
+    ],
+    [
+      "another rule held, the owner rule passed",
+      { status: "held", code: "model.low_confidence", ...sent },
+      "pass",
+      false,
+    ],
+    [
+      "another rule held, the owner rule did not run",
+      { status: "held", code: "intents.balance_low", ...sent },
+      null,
+      false,
+    ],
+    [
+      "another rule refused, the owner rule held",
+      { status: "refused_by_code", code: "mandate.payee_mismatch", ...sent },
+      "hold",
+      false,
+    ],
+    [
+      "a spend the contract holds",
+      { status: "held", code: OWNER_CONFIRMS_RULE, spendId: 4, txHash: "TXH" },
+      "hold",
+      false,
+    ],
+    ["a payment", { status: "paid", code: null, spendId: 4, txHash: "TXH" }, "pass", false],
+  ] as const)("%s", (_why, outcome, owner, waits) => {
+    expect(waitsForOwner(outcome, owner)).toBe(waits);
   });
 });

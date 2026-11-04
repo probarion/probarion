@@ -10,7 +10,7 @@ import type { AmountIssue } from "./facts";
 
 /**
  * received -> processing -> decided | unconfirmed | awaiting_owner | error (0006's check and functions).
- * awaiting_owner: no attested model read the same amount as the code, so nothing was sent; the owner confirms.
+ * awaiting_owner: no attested model confirmed the amount the code read, so nothing was sent; the owner confirms.
  */
 export type InvoiceStatus =
   | "received"

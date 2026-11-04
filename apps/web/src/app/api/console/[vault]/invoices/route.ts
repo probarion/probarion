@@ -28,9 +28,9 @@ const MAX_REQUEST_BYTES = MAX_INVOICE_BYTES + 64 * 1024;
 const PAYMENT_PENDING =
   "Payment sent, confirmation pending. Do not send it again: the spend is confirmed from the chain.";
 
-/** Shown when no attested model read the same amount as the code: nothing was sent, the owner confirms. */
+/** Shown when no attested model confirmed the amount the code read: nothing was sent, the owner confirms. */
 const OWNER_CONFIRMS =
-  "Nothing was sent. No attested model read the same amount as the code, so this invoice waits for the owner to confirm the amount.";
+  "Nothing was sent. No attested model confirmed the amount the code read, so this invoice waits for the owner to confirm the amount.";
 
 /** 4259840 -> "4,259,840". */
 const bytes = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");

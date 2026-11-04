@@ -5,12 +5,15 @@
 -- What is stored per invoice:
 --   - invoice_hash: sha256 of the extracted invoice TEXT, exactly as the model is shown it (`hashInvoice`). `ref`
 --     (the spend's idempotency key) is derived from it, so the same invoice text is one invoice.
---   - fingerprint_sha256: sha256 of that text after NFKC, with invisible characters and combining marks removed,
---     every dash as "-", look-alike letters folded and lower-cased (the amount reader's skeleton), and every run of
+--   - fingerprint_sha256: sha256 of that text after NFKC, with blank-rendering characters as spaces, invisible
+--     characters and combining marks removed, every dash-like character as "-", look-alike digits inside a number
+--     as digits, look-alike letters folded and lower-cased (the amount reader's skeleton), and every run of
 --     whitespace as one space (src/lib/payables/facts.ts fingerprintText). A re-upload that renders the same (other
---     line ends, a no-break or zero-width space, a Unicode hyphen, a look-alike letter) has another invoice_hash
---     (and ref) but the same fingerprint, and invoice_insert answers it as a duplicate.
---   - invoice_number_hmac: HMAC-SHA256 of the vault, the mandate's payee and the invoice number, under a server-side
+--     line ends, a no-break or zero-width space, a Braille blank, a Unicode hyphen or box line, "1OO1" for 1001, a
+--     look-alike letter) has another invoice_hash (and ref) but the same fingerprint, and invoice_insert answers it
+--     as a duplicate.
+--   - invoice_number_hmac: HMAC-SHA256 of the vault, the mandate's payee and the invoice number (one number, in its
+--     key form: capitals, letters and digits only, read through the same folds), under a server-side
 --     key derived from KEY_ENCRYPTION_SECRET with HKDF (null when the text states no number). The same number for
 --     the same payee is a duplicate too, in zero-retention mode as well, without keeping anything a member could
 --     enumerate back to the number; another vendor's "#1001" is another key. Members cannot read it.
@@ -24,10 +27,10 @@
 --
 -- Status: received -> processing (invoice_insert) -> decided | unconfirmed | awaiting_owner | error
 -- (invoice_set_outcome).
---   - awaiting_owner: two readers or the owner. No attested model read the same amount as the code (no model key,
---     a model that failed or is not attested, or one that stated no amount), so the pipeline's rule
---     custom.owner_confirms_without_model held or refused the cycle and nothing was sent. suggested_amount keeps
---     the code's amount for the owner to confirm.
+--   - awaiting_owner: the owner confirms the amount, since no attested model confirmed the amount the code read (no
+--     model key, a model that failed or is not attested, or one that stated no amount). The pipeline's rule
+--     custom.owner_confirms_without_model held or refused the cycle (another rule may have held first) and nothing
+--     was sent. suggested_amount keeps the code's amount for the owner to confirm.
 --   - unconfirmed: the spend was sent and its outcome is not known yet (SDK status "unconfirmed", tx hash in
 --     `outcome`). It is shown as "payment sent, confirmation pending" and is never sent again.
 --   - error: the cycle threw before any spend was sent (the SDK sends a spend only from a decision, and never throws
@@ -100,8 +103,9 @@ grant select (document_sha256, fingerprint_sha256, anchor_tx_hash, amount_issue,
 -- earlier attempt of the same invoice ended in `error` and is taken over), or { id, duplicate: true, status } for an
 -- invoice that already has a row in any other state, or for another text of the same invoice:
 --   - the duplicate guard: a row of the tenant with the same fingerprint or the same invoice number that may have
---     paid or may still pay (processing, unconfirmed, awaiting_owner, or decided with the SDK outcome paid, held,
---     burned or settled). A refused, failed or `error` row does not block: nothing was paid for it.
+--     paid or may still pay (processing, unconfirmed, awaiting_owner, or decided with the SDK outcome paid, burned,
+--     settled, or held on chain with a spend id). A refused, failed or `error` row does not block: nothing was paid
+--     for it; nor does a hold by code (no spend id), which sent nothing.
 -- `retained` must agree with the tenant's setting as stored now: a tenant in zero-retention mode never gets a
 -- retained row, even from a caller that read the setting before the owner turned it on.
 create or replace function public.invoice_insert(p jsonb) returns jsonb
@@ -161,7 +165,10 @@ begin
       and ((v_fp is not null and i.fingerprint_sha256 = v_fp)
            or (v_num is not null and i.invoice_number_hmac = v_num))
       and (i.status in ('processing', 'unconfirmed', 'awaiting_owner')
-           or (i.status = 'decided' and i.outcome->>'status' in ('paid', 'held', 'burned', 'settled')))
+           or (i.status = 'decided'
+               and (i.outcome->>'status' in ('paid', 'burned', 'settled')
+                    -- held on chain (a spend was sent for its approver); a hold by code sent nothing
+                    or (i.outcome->>'status' = 'held' and i.outcome->>'spendId' is not null))))
     order by i.created_at, i.id
     limit 1;
   if v_id is not null then
