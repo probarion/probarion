@@ -26,6 +26,8 @@ name: release
 #   "Re-run all jobs" packs again. If `pnpm pack` does not give the same bytes, the publish step stops
 #     at any package that is already on npm with different content, and publishes nothing after it.
 #     A package that was published is skipped when npm holds the same bytes.
+# pnpm: the version is "packageManager" in the root package.json, as in ci.yml; the pnpm/action-setup
+# step has no with: block (scripts/ci-workflow.test.mjs refuses one).
 # No step in this file may swallow a failure (no continue-on-error, no if:, no `|| true`):
 # scripts/ci-workflow.test.mjs refuses such an edit, and pins the sha256 of this whole file, so every
 # change here needs a reviewed change to RELEASE_YML_SHA256 there.
@@ -67,8 +69,6 @@ jobs:
             exit 1
           }
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
-        with:
-          version: 10
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
