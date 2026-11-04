@@ -79,6 +79,30 @@ The software is an unaudited beta.
   `probarion` package is on npm, every command on the site and in the deploy runbook is shown as run
   from a clone of this repository (four set-up commands, then `node packages/cli/dist/bin.js`), and
   the tests run those commands as shown.
+- Web console, Payables pipeline (built and tested, not deployed; the console page with the owner's
+  Confirm button comes next): `POST /api/console/[vault]/invoices` takes an invoice (a PDF, a text
+  file or pasted text) together with the purchase-order document hashed into a mandate, and runs
+  the reference agent. Code rules decide, the vault contract pays the mandate's payee, and each
+  payment is signed with the agent key its mandate is bound to.
+- Payables pays an invoice by itself only when an attested private model on NEAR AI Cloud confirms
+  the amount the code read. Without such a model (rules-only), nothing is sent: the invoice waits for
+  the owner with the amount the code suggests. The model is shown the code's amount, so it confirms
+  that amount rather than reading the invoice independently. A later SDK change will hide the
+  amount from the model.
+- Payables amount reader: it reads an amount only from a document that names itself an invoice, and
+  only from a plainly written final total line in USD or USDC. It refuses everything else with a
+  reason the console shows (`not_found`, `ambiguous`, `unreadable`, `currency`, `truncated`, `zero`
+  or `not_payable`). That covers receipts, quotes, statements, credit notes, purchase orders, paid,
+  void or test stamps, other currencies, totals in columns or split across lines, amounts after the
+  total, and look-alike or hidden characters. Its tests hold 1,572 adversarial inputs, a ReDoS
+  sweep of every pattern it uses, and three corpora of realistic invoices, with no wrong amount. On
+  realistic invoices it reads about half and refuses the rest with the reason.
+- Payables storage and duplicates: an invoice is stored sealed with a per-vault key, or as hashes
+  only in zero-retention mode. A payment whose confirmation is pending is not sent again. A
+  re-upload of a paid or pending invoice is answered as a duplicate when its normalised text, or
+  its invoice number for the same payee (kept as a keyed HMAC), matches. Uploads are limited to
+  4 MiB per file and 4 MiB + 64 KiB per request. The migration
+  `apps/web/supabase/migrations/20261108000006_invoices.sql` adds the invoice tables.
 
 ### Changed
 
