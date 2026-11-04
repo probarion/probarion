@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { tinyPdf } from "../../../test/fixtures/pdf";
 
-// What extract.ts hands pdf-parse for an untrusted file (W-T13-R1): checked on the real constructor call.
+// What extract.ts hands pdf-parse for an untrusted file: checked on the real constructor call.
 const h = vi.hoisted(() => ({ options: [] as Record<string, unknown>[], destroyed: 0 }));
 vi.mock("pdf-parse/worker", () => ({}));
 vi.mock("pdf-parse", () => ({

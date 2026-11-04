@@ -18,13 +18,13 @@ export const maxDuration = 60;
 
 /**
  * The whole multipart body (the invoice, the optional purpose document and the framing) is at most the invoice cap
- * plus 64 KiB (W-T13-R2 h), 4,259,840 bytes: a maximum-size invoice fits with its form, and the limit stays under
+ * plus 64 KiB, 4,259,840 bytes: a maximum-size invoice fits with its form, and the limit stays under
  * Vercel's 4.5 MB body cap, which refuses a larger body before this code runs. A request must state its length
  * (Content-Length), so the limit is checked before any of the body is read.
  */
 const MAX_REQUEST_BYTES = MAX_INVOICE_BYTES + 64 * 1024;
 
-/** Shown for an unconfirmed outcome (F6/R6): the spend was sent and is never sent again. */
+/** Shown for an unconfirmed outcome: the spend was sent and is never sent again. */
 const PAYMENT_PENDING =
   "Payment sent, confirmation pending. Do not send it again: the spend is confirmed from the chain.";
 
@@ -46,7 +46,7 @@ const fileTooLarge = (what: string) =>
 
 /**
  * What a stored file name must not keep: C0 and C1 controls, format characters (U+202E reverses how the rest of
- * a name is shown), and the line and paragraph separators (W-T13-R2 i).
+ * a name is shown), and the line and paragraph separators.
  */
 const UNSAFE_NAME_CHAR = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 

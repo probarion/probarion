@@ -15,7 +15,7 @@ export function spendableNow(m: MandateView, now: Date): boolean {
 }
 
 /**
- * The mandate a Payables cycle runs for, and so the agent key it signs with (`mandate.agent_pk`, T10 ruling:
+ * The mandate a Payables cycle runs for, and so the agent key it signs with (`mandate.agent_pk`:
  * never another key). Null when no mandate has the invoice's purpose (or the invoice has none): there is then
  * no key to sign with, and nothing is run.
  *

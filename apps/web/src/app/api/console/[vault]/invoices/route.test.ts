@@ -222,7 +222,7 @@ describe("POST /api/console/[vault]/invoices", () => {
     expect(row.rows[0]).toEqual({ filename: "inv.txt", media_type: "text/plain" });
   });
 
-  it("drops C1 controls and line or paragraph separators from the file name (W-T13-R2 i)", async () => {
+  it("drops C1 controls and line or paragraph separators from the file name", async () => {
     const r = await post(
       invoiceForm({
         file: new File([fresh()], "re\u0085c\u009bei\u2028p\u2029t.txt", { type: "text/plain" }),
@@ -235,7 +235,7 @@ describe("POST /api/console/[vault]/invoices", () => {
     expect(row.rows[0]?.filename).toBe("receipt.txt");
   });
 
-  it("accepts a maximum-size invoice with its purpose document and the form around it (W-T13-R2 h)", async () => {
+  it("accepts a maximum-size invoice with its purpose document and the form around it", async () => {
     const head = new TextEncoder().encode(fresh("Total 5 USDC\n"));
     const bytes = new Uint8Array(MAX_INVOICE_BYTES).fill(0x78); // "x"
     bytes.set(head);
@@ -247,7 +247,7 @@ describe("POST /api/console/[vault]/invoices", () => {
     expect(await body(r)).toMatchObject({ status: "decided", amountIssue: "truncated" });
   }, 60_000);
 
-  it("refuses a request over the invoice cap plus 64 KiB, and says the limit (W-T13-R2 h)", async () => {
+  it("refuses a request over the invoice cap plus 64 KiB, and says the limit", async () => {
     const cap = MAX_INVOICE_BYTES + 64 * 1024;
     expect(cap).toBeLessThan(4_500_000); // Vercel refuses a body over 4.5 MB before the route runs
     const r = await post(invoiceForm({ text: fresh() }), { "content-length": String(cap + 1) });

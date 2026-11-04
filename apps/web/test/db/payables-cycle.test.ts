@@ -172,7 +172,7 @@ describe("a Payables cycle on the fake chain", () => {
     expect(entries.every((e) => e.signer === TEST_KEYS.ledger.publicKey)).toBe(true);
     expect(entries.every(verifyEntrySignature)).toBe(true);
     expect(server.chain.anchors[0]?.root).toBe(entries.at(-1)?.link);
-    // The invoice row keeps the outcome and the anchor tx hash, which no ledger entry holds (R20).
+    // The invoice row keeps the outcome and the anchor tx hash, which no ledger entry holds.
     expect(await getInvoice(h.db, member.tenant_id, r.invoiceId)).toMatchObject({
       status: "decided",
       outcome: { status: "paid", spendId: 1 },
