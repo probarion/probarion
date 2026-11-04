@@ -1341,3 +1341,61 @@ describe("notes, status and money lines around a total", () => {
     ["an adjective of another dollar", "INVOICE INV-1\nAll amounts are in Canadian\nTotal $100.00"],
   ])("refuses %s as another currency", (_why, text) => expect(read(text)).toEqual(no("currency")));
 });
+
+describe("rules the mutation pass found untested", () => {
+  it("reads an I look-alike in a capital stamp inside a line as I", () => {
+    expect(read("INVOICE INV-1\nLogo design VO\u0406D\t$100.00\nTotal $100.00")).toEqual(
+      no("not_payable"),
+    );
+  });
+
+  it("refuses a document type in a heading after the first eight lines", () => {
+    expect(read(`${HEADER}Logo design $700.00\nPAYMENT RECEIPT DETAILS\nTotal $700.00`)).toEqual(
+      no("not_payable"),
+    );
+  });
+
+  it("refuses two invoice titles with one total, and reads a title repeated per page", () => {
+    expect(
+      read(
+        "Sales Invoice\nAcme Ltd\nWeb hosting $100.00\n\nSales Invoice\nAcme Ltd\nDomain renewal $100.00\nTotal $100.00",
+      ),
+    ).toEqual(no("ambiguous"));
+    expect(
+      read(
+        "Sales Invoice\nAcme Ltd\nWeb hosting $100.00\nPage 1 of 2\nSales Invoice\nAcme Ltd\nDomain renewal $100.00\nTotal $200.00\nPage 2 of 2",
+      ),
+    ).toEqual(pays("200000000"));
+  });
+
+  it("reads an agency item written in capitals that starts with PAID", () => {
+    expect(read("INVOICE INV-1\nPAID SEARCH\t$60.00\nDesign $40.00\nTotal $100.00")).toEqual(
+      pays("100000000"),
+    );
+  });
+
+  it("refuses a scale note in the header, far from the total", () => {
+    expect(
+      read(
+        "INVOICE INV-1001\nIn cents\nBill to: Beta\nDesign $125,000\nHosting $25,000\nSubtotal $150,000\nTax $0\nTotal $150,000",
+      ),
+    ).toEqual(no("unreadable"));
+  });
+
+  it("refuses a denomination note after the header, far from the total", () => {
+    expect(
+      read(
+        `${HEADER}All figures are stated in thousands\nLogo design $1.00\nHosting $1.00\nSubtotal $2.00\nTotal $2.00`,
+      ),
+    ).toEqual(no("unreadable"));
+  });
+
+  it("refuses the total restated after it as a discount, and a refunded stamp line", () => {
+    expect(read("INVOICE INV-1\nTotal $1,000.00\nDiscount $1,000.00")).toEqual(no("ambiguous"));
+    expect(read("INVOICE INV-1\nRefunded\nTotal $100.00")).toEqual(no("not_payable"));
+  });
+
+  it("reads a dotted code in its plain spelling", () => {
+    expect(read("INVOICE INV-1\nPAY IN C.A.D.\nTotal $100.00")).toEqual(no("currency"));
+  });
+});
