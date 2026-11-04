@@ -5,6 +5,7 @@ import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/lib/db/port";
+import { CLI_NOTE, CLI_SETUP } from "@/lib/proof/cli";
 import { ProofEvidenceError } from "@/lib/proof/evidence";
 import { clearProofCache, type ProofDeps } from "@/lib/proof/service";
 import { noServiceDb, type ProofState, proofSnapshot, publicDbFor, txHash } from "./fixtures/proof";
@@ -178,20 +179,36 @@ describe("/proof/[vault]", () => {
     expect(t).not.toMatch(/the same ones/);
     // This vault decides by rules only: no decision carries an attestation, and the line says so.
     expect(t).toContain(
-      "No decision in this snapshot carries an attestation, so check (e) has no model output to prove here. For an attested decision it proves the signatures, the response and the ledger position agree; it does not verify the TDX quote (needs --online , and even then the measurement is not pinned) or the request (needs the invoice, A8).",
+      "No decision in this snapshot was decided with model output, so check (e) has none to prove here. For a decision that is, it proves the signatures, the response and the ledger position agree; it does not verify the TDX quote (needs --online , and even then the measurement is not pinned) or the request (needs the invoice, A8).",
     );
   });
 
-  it("phrases the check (e) line per attested decision when there are some", async () => {
+  it("phrases the check (e) line per attested decision when a decision used the model, attested or not", async () => {
+    for (const evidence of [{ quote: "q" }, null]) {
+      clearProofCache();
+      const snapshot = await proofSnapshot("ok");
+      const entry = snapshot.ledger[0] as LedgerEntry;
+      entry.body = { ...entry.body, decided_by: "model+rules", evidence: evidence as never };
+      serve(snapshot);
+      const t = text(await html(snapshot.vault));
+      expect(t, String(evidence)).toContain(
+        "For each attested decision, check (e) here proves the signatures, the response and the ledger position agree; it does not verify the TDX quote (needs --online , and even then the measurement is not pinned) or the request (needs the invoice, A8).",
+      );
+      expect(t).not.toContain("decided with model output");
+      expect(t).not.toContain("carries an attestation");
+    }
+  });
+
+  it("calls a rules-only decision that carries evidence what it is: not model output", async () => {
     const snapshot = await proofSnapshot("ok");
     const entry = snapshot.ledger[0] as LedgerEntry;
-    entry.body = { ...entry.body, decided_by: "model+rules", evidence: { quote: "q" } as never };
+    entry.body = { ...entry.body, decided_by: "rules-only", evidence: { quote: "q" } as never };
     serve(snapshot);
     const t = text(await html(snapshot.vault));
     expect(t).toContain(
-      "For each attested decision (1 in this snapshot), check (e) here proves the signatures, the response and the ledger position agree; it does not verify the TDX quote (needs --online , and even then the measurement is not pinned) or the request (needs the invoice, A8).",
+      "No decision in this snapshot was decided with model output, so check (e) has none to prove here.",
     );
-    expect(t).not.toContain("No decision in this snapshot carries an attestation");
+    expect(t).not.toContain("carries an attestation");
   });
 
   it("unproven: an amber 'Not proven yet', the spend, why, and how to prove it", async () => {
@@ -205,9 +222,14 @@ describe("/proof/[vault]", () => {
     expect(t).toContain("not proven");
     expect(t).toContain("Spend #1");
     expect(t).toContain("No payment entry in the ledger names the transaction that burned it.");
-    expect(t).toContain("Save the snapshot&#x27;s ledger as JSONL (step 3 below), then run:");
     expect(t).toContain(
-      `npx probarion verify --network mainnet --vault ${snapshot.vault} --ledger ledger.jsonl --burn-tx 1=&lt;tx hash&gt;`,
+      "Save the snapshot&#x27;s ledger as ledger.jsonl in the repository folder (step 3 below), then run:",
+    );
+    expect(t).toContain(
+      "Find the tx hash on the vault&#x27;s explorer page: the transaction that paid the spend, or the approver&#x27;s approve transaction.",
+    );
+    expect(t).toContain(
+      `node packages/cli/dist/bin.js verify --network mainnet --vault ${snapshot.vault} --ledger ledger.jsonl --burn-tx 1=&lt;tx hash&gt;`,
     );
   });
 
@@ -230,24 +252,42 @@ describe("/proof/[vault]", () => {
     expect(out).not.toContain("https://nearblocks.io/");
     expect(out).toContain(`href="/proof/${snapshot.vault}/snapshot.json"`);
     const t = text(out);
-    expect(t).toContain(`npx probarion verify --offline probarion-${snapshot.vault}-snapshot.json`);
     expect(t).toContain(
-      `npx probarion verify --network testnet --vault ${snapshot.vault} --ledger ledger.jsonl`,
+      `node packages/cli/dist/bin.js verify --offline probarion-${snapshot.vault}-snapshot.json`,
     );
+    expect(t).toContain(
+      `node packages/cli/dist/bin.js verify --network testnet --vault ${snapshot.vault} --ledger ledger.jsonl`,
+    );
+    expect(t).not.toContain("npx probarion");
   });
 
-  it("says the download is a fresh snapshot, to compare by its time, that matches unless the vault changed", async () => {
+  it("promises no identity between the page and the download: it gives the full time to compare", async () => {
     const { snapshot, out } = await served("ok");
     const t = text(out);
+    // The page's taken_at in full, as the CLI prints it ("snapshot taken <taken_at>").
+    expect(snapshot.taken_at).toBe("2026-11-08T12:00:00.000Z");
     expect(t).toContain(
-      "a fresh snapshot of this vault (its ledger and chain data). Within a minute of this page it is the snapshot these checks used; the verifier prints when it was taken, so compare it with 2026-11-08 12:00 UTC.",
+      "a snapshot of this vault (its ledger and chain data), taken when you click or up to a minute before. The verifier prints when it was taken. If it prints 2026-11-08T12:00:00.000Z , it is the very snapshot these checks used; otherwise it is a newer one, and its result matches this page unless the vault changed in between.",
     );
-    expect(t).toContain(
-      "Run it through the open-source verifier. It needs no network and no keys, and prints the result per check for that snapshot; it matches this page unless the vault changed in between:",
-    );
-    expect(t).toContain(`npx probarion verify --offline probarion-${snapshot.vault}-snapshot.json`);
+    expect(t).toContain("snapshot taken 2026-11-08T12:00:00.000Z");
+    expect(t).not.toContain("Within a minute of this page");
+    expect(t).not.toContain("2026-11-08 12:00 UTC");
     expect(t).not.toContain("the chain data these checks used, taken");
-    expect(t).not.toContain("prints the same result per check as this page");
+  });
+
+  it("shows the command that runs today: the repository, until the npm package is out", async () => {
+    const { snapshot, out } = await served("ok");
+    const t = text(out);
+    expect(t).toContain(CLI_NOTE);
+    // As React writes it into the HTML: & and " escaped.
+    expect(t).toContain(CLI_SETUP.replaceAll("&", "&amp;").replaceAll('"', "&quot;"));
+    expect(t).toContain(
+      "From the repository folder, with the file in it, run the open-source verifier. It needs no network and no keys, and prints the result per check for that snapshot:",
+    );
+    expect(t).toContain(
+      `node packages/cli/dist/bin.js verify --offline probarion-${snapshot.vault}-snapshot.json`,
+    );
+    expect(t).not.toContain("npx probarion");
   });
 
   it("tells a screen reader which links open a new tab", async () => {
@@ -266,6 +306,8 @@ describe("/proof/[vault]", () => {
     const out = await html(snapshot.vault);
     const newTab = out.match(/target="_blank"/g)?.length ?? 0;
     expect(newTab).toBeGreaterThan(5);
+    // The withdrawal link says it opens the burn tx.
+    expect(text(out)).toContain("Spend #1 burn tx (opens in a new tab)");
     expect(out.match(/<span class="sr-only"> \(opens in a new tab\)<\/span>/g)?.length).toBe(
       newTab,
     );
@@ -492,7 +534,9 @@ describe("the landing page and the menu", () => {
     const out = renderToStaticMarkup(createElement(Home));
     expect(out).toContain(`href="/proof"`);
     expect(text(out)).not.toMatch(/are coming/);
-    expect(text(out)).toContain("npx probarion verify --offline");
+    expect(text(out)).toContain("node packages/cli/dist/bin.js verify --offline");
+    expect(text(out)).toContain("from a clone of the repository (the npm package is coming)");
+    expect(text(out)).not.toContain("npx probarion");
     expect(SITE_NAV).toContainEqual({ route: "/proof", label: "Proof" });
   });
 });

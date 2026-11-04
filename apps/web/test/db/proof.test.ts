@@ -235,6 +235,12 @@ describe("loadProof", () => {
     for (const [why, answer] of [
       ["a row that is not an entry", async () => [{ seq: 0 }]],
       [
+        "a row whose body is not JSON",
+        async () => [
+          { seq: 0, body_text: "{not json", body_hash: "h", sig: "s", signer: "k", link: "l" },
+        ],
+      ],
+      [
         "a database error",
         async () => {
           throw new DbError("db_error", "connection reset");

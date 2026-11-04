@@ -183,6 +183,24 @@ describe("loadProof under concurrent cold requests", () => {
     expect(makeReader).toHaveBeenCalledTimes(2);
   });
 
+  it("stops sharing a gather that is stuck for 30 s: the next visitor starts a new one", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { d, makeReader } = gated(); // never opened: the first gather is stuck
+      void loadProof(d, vault(4));
+      await vi.advanceTimersByTimeAsync(29_999);
+      void loadProof(d, vault(4));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(makeReader).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      void loadProof(d, vault(4));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(makeReader).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shares a failure with those who waited for it, then lets the next visitor try again", async () => {
     const { d, makeReader, open } = gated(true);
     const pending = Array.from({ length: 3 }, () => loadProof(d, vault(3)));

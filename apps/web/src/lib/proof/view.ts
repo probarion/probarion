@@ -8,6 +8,7 @@ import {
 } from "@probarion/core";
 import { explorerAccountUrl, explorerTxUrl, type Network } from "@/lib/config";
 import { formatUsdc } from "@/lib/near/units";
+import { CLI_ON_NPM, cli } from "./cli";
 import { safeText } from "./sanitize";
 
 // What /proof shows, as plain data. Every string that came from the ledger or the chain goes through `safeText`, and
@@ -194,11 +195,14 @@ const WHY: ReadonlyMap<string, string> = new Map([
   ],
 ]);
 
+/** Where the documented Day-4 decisions are: the repository's own folder, or a copy of it once the CLI is on npm. */
+const EVIDENCE_DIR = CLI_ON_NPM ? "<a copy of the repository's docs/evidence>" : "docs/evidence";
+
 /** Each burn check h could not prove, why, and how to prove it (T14-R2). */
 export function unprovenRows(report: VerifyReport, network: Network, vault: string): UnprovenRow[] {
   // The ledger of a web vault is in the database, not on the visitor's disk: without --ledger the CLI would check
   // the chain against an empty ledger and fail. The page tells the visitor to save it from the snapshot first.
-  const verify = `npx probarion verify --network ${network} --vault ${vault} --ledger ledger.jsonl`;
+  const verify = cli(`verify --network ${network} --vault ${vault} --ledger ledger.jsonl`);
   return listOf(report.unproven)
     .filter(isObject)
     .map((u) => {
@@ -214,7 +218,10 @@ export function unprovenRows(report: VerifyReport, network: Network, vault: stri
         hint:
           reason === "tx_unavailable"
             ? `${verify} --archival-rpc <archival RPC URLs>`
-            : `${verify} --burn-tx ${id}=<tx hash>`,
+            : reason === "pre_ledger_no_tx"
+              ? // Mainnet v0 only: check d needs the documented Day-4 decisions, in the repository's docs/evidence.
+                `${verify} --evidence ${EVIDENCE_DIR} --burn-tx ${id}=<tx hash>`
+              : `${verify} --burn-tx ${id}=<tx hash>`,
       };
     });
 }
@@ -266,16 +273,12 @@ export function proofIndexTarget(demoVault: string | null): string | null {
 }
 
 /**
- * How many ledger entries carry an attestation and were not decided by rules only: what check e proves something
- * about. With none, the line under the checks says check e has no model output to prove.
+ * How many ledger entries were decided by model and rules, with or without an attestation: the decisions check e is
+ * about. With none (every decision rules-only, even one that carries evidence), the line under the checks says check
+ * e has no model output to prove.
  */
-export function attestedCount(s: Snapshot): number {
+export function modelDecisionCount(s: Snapshot): number {
   return listOf(s.ledger).filter(
-    (e) =>
-      isObject(e) &&
-      isObject(e.body) &&
-      e.body.evidence !== null &&
-      e.body.evidence !== undefined &&
-      e.body.decided_by !== "rules-only",
+    (e) => isObject(e) && isObject(e.body) && e.body.decided_by === "model+rules",
   ).length;
 }

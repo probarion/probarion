@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { RouteLink } from "@/components/RouteLink";
 import { Card } from "@/components/ui";
+import { CLI_ON_NPM, cli } from "@/lib/proof/cli";
 
 export default function Home() {
   return (
@@ -29,7 +30,8 @@ export default function Home() {
             Proof page
           </RouteLink>
           : a vault&apos;s checks (a) to (i) with explorer links, and a snapshot you can verify
-          yourself with <code>npx probarion verify --offline</code>.{" "}
+          yourself with <code>{cli("verify --offline")}</code>
+          {CLI_ON_NPM ? "" : " from a clone of the repository (the npm package is coming)"}.{" "}
           <RouteLink className="underline" route="/open">
             Open metrics
           </RouteLink>

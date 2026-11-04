@@ -10,11 +10,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * A snapshot of the vault (its ledger and chain data), for `npx probarion verify --offline <file>` (interfaces §11).
- * Same access rules as the page. While the page's result is in this instance's 60 s cache, it is the very snapshot the
- * page checked; after that, or on another instance, it is a freshly gathered one. The page says so: the verifier
- * prints the snapshot's taken_at, and its result matches the page unless the vault changed in between. An id that is
- * not a NEAR account is a 404 before any database or RPC call, so only a validated id reaches the file name.
+ * A snapshot of the vault (its ledger and chain data), for `probarion verify --offline <file>` (interfaces §11), with
+ * the page's access rules. It is this route's own snapshot: one it gathered up to 60 s ago, or a fresh one. It is not
+ * guaranteed to be the page's. In the production build the page and this route run in separate runtimes with separate
+ * caches, and instances differ too, so the page asks the visitor to compare the taken_at the verifier prints with its
+ * own. An id that is not a NEAR account is a 404 before any database or RPC call, so only a validated id reaches the
+ * file name.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ vault: string }> }) {
   const { vault } = await params;

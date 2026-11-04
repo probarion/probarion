@@ -12,7 +12,7 @@ export function snapshotFileName(vault: string): string {
 }
 
 /**
- * The snapshot.json download, for `npx probarion verify --offline <file>`. A public vault's file may be cached for
+ * The snapshot.json download, for `probarion verify --offline <file>` (see ./cli.ts for how the site writes it). A public vault's file may be cached for
  * the same 60 s the page's result is; a member's view of a private vault is never stored by anyone.
  */
 export function snapshotResponse(r: ProofOk): Response {

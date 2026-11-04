@@ -1,7 +1,8 @@
-// R5 parity: what /proof shows is what `npx probarion verify --offline snapshot.json` reports on the file the page
+// R5 parity: what /proof shows is what `probarion verify --offline snapshot.json` reports on the file the page
 // lets you download. The bytes come from the snapshot route's own response; they are parsed back, checked by core,
 // and verified by the CLI itself (its `--offline` input checks included), in-process and with no network.
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,11 +14,12 @@ import {
 } from "@probarion/core";
 import { InMemoryLedgerStore } from "@probarion/sdk";
 import { createScenarioChain, SCENARIO_VAULT, TEST_KEYS } from "@probarion/sdk/testing";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cli } from "@/lib/proof/cli";
 import { evidenceFor } from "@/lib/proof/evidence";
 import { makeProofReader } from "@/lib/proof/reader";
 import { clearProofCache, loadProof, type ProofDeps, type ProofOk } from "@/lib/proof/service";
-import { snapshotResponse } from "@/lib/proof/snapshot-file";
+import { snapshotFileName, snapshotResponse } from "@/lib/proof/snapshot-file";
 import { headline } from "@/lib/proof/view";
 import { appendBody } from "./fixtures/ledger";
 import { noServiceDb, type ProofState, proofSnapshot, publicDbFor } from "./fixtures/proof";
@@ -189,5 +191,60 @@ describe("snapshot.json parity with probarion verify --offline", () => {
     expect(parsed.network).toBe("mainnet");
     expect(parsed.taken_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/);
     expect(Array.isArray(parsed.pre_ledger_decision_hashes)).toBe(true);
+  });
+});
+
+// Child processes of the built CLI: give them room on a slow machine.
+vi.setConfig({ testTimeout: 60_000 });
+
+/** The repository folder the page's command runs from: this checkout. */
+const REPO = fileURLToPath(new URL("../../../", import.meta.url));
+
+/**
+ * The page's own command, `node packages/cli/dist/bin.js verify --offline <file>`, run as a child process of the
+ * built CLI in a folder that holds the downloaded file under its served name. Offline: no RPC, no network.
+ */
+async function runPageCommand(vault: string, bytes: string): Promise<number> {
+  const command = cli(`verify --offline ${snapshotFileName(vault)}`);
+  const words = command.split(" ");
+  expect(words.slice(0, 4)).toEqual(["node", "packages/cli/dist/bin.js", "verify", "--offline"]);
+  const bin = join(REPO, words[1] ?? "");
+  if (!existsSync(bin)) throw new Error(`${bin} is missing: run pnpm build first`);
+  const dir = mkdtempSync(join(tmpdir(), "probarion-proof-bin-"));
+  try {
+    writeFileSync(join(dir, snapshotFileName(vault)), bytes);
+    return await new Promise((resolve) => {
+      execFile(process.execPath, [bin, ...words.slice(2)], { cwd: dir }, (error) => {
+        resolve(error === null ? 0 : typeof error.code === "number" ? error.code : -1);
+      });
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe("the command the page shows, run through the built CLI", () => {
+  beforeEach(() => clearProofCache());
+
+  it("exits 0 on an ok snapshot, 2 on an unproven one and 1 on a failed one, as the headline says", async () => {
+    for (const state of ["ok", "unproven", "failed"] as ProofState[]) {
+      clearProofCache();
+      const snapshot = await proofSnapshot(state, { network: "testnet" });
+      const r = await loadProof(
+        {
+          network: "testnet",
+          publicDb: publicDbFor(snapshot.vault, "testnet", snapshot.ledger),
+          serviceDb: noServiceDb,
+          sessionAccount: null,
+          makeReader: () => ({ snapshot: async () => structuredClone(snapshot) }),
+        },
+        snapshot.vault,
+      );
+      if (r.status !== "ok") throw new Error(r.status);
+      const bytes = await snapshotResponse(r).text();
+      expect(await runPageCommand(r.vault, bytes), state).toBe(
+        { ok: 0, unproven: 2, failed: 1 }[state],
+      );
+    }
   });
 });

@@ -51,6 +51,8 @@ const MAX_ENTRIES = 500;
 const NOT_FOUND = { status: "not_found" } as const;
 const cache = new Map<string, { at: number; value: ProofOk }>();
 /** Gathers under way, by cache key: visitors who arrive while one runs share it instead of starting their own. */
+/** How long a gather is shared. A stuck read (a database call has no timeout) then stops holding later visitors. */
+const IN_FLIGHT_MS = 30_000;
 const inFlight = new Map<string, Promise<ProofResult>>();
 
 export function clearProofCache(): void {
@@ -162,9 +164,16 @@ export async function loadProof(deps: ProofDeps, vault: string): Promise<ProofRe
   const running = inFlight.get(key);
   if (running !== undefined) return running;
 
-  const job = gather(deps, vault, who, key, now).finally(() => {
+  const forget = () => {
     if (inFlight.get(key) === job) inFlight.delete(key);
+  };
+  const job = gather(deps, vault, who, key, now).finally(() => {
+    clearTimeout(deadline);
+    forget();
   });
+  // After the deadline the next visitor starts a new gather; whoever already waits keeps waiting for this one.
+  const deadline = setTimeout(forget, IN_FLIGHT_MS);
+  deadline.unref?.();
   inFlight.set(key, job);
   return job;
 }

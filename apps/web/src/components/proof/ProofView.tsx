@@ -13,17 +13,18 @@ import {
 } from "@/components/ui";
 import type { Network } from "@/lib/config";
 import type { TenantKind } from "@/lib/db/tenants";
+import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP, cli } from "@/lib/proof/cli";
 import { safeText } from "@/lib/proof/sanitize";
 import type { ProofErrorReason, ProofOk } from "@/lib/proof/service";
 import { snapshotFileName } from "@/lib/proof/snapshot-file";
 import {
-  attestedCount,
   type BurnRow,
   burnRows,
   HEADLINE_TEXT,
   type Headline,
   headline,
   headlineNote,
+  modelDecisionCount,
   type ProofLink,
   type ProofRow,
   type ProofStatus,
@@ -114,9 +115,16 @@ function Unproven({ rows }: { rows: readonly UnprovenRow[] }) {
             <span className="font-medium">Spend #{u.spendId}</span> ({u.reason}): {u.why}
           </p>
           <p className="mt-1 text-xs">
-            Save the snapshot&apos;s ledger as JSONL (step 3 below), then run:
+            Save the snapshot&apos;s ledger as ledger.jsonl
+            {CLI_ON_NPM ? "" : " in the repository folder"} (step 3 below), then run:
           </p>
           <code className={codeBlock}>{u.hint}</code>
+          {u.hint.includes("<tx hash>") ? (
+            <p className="mt-1 text-xs">
+              Find the tx hash on the vault&apos;s explorer page: the transaction that paid the
+              spend, or the approver&apos;s approve transaction.
+            </p>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -174,7 +182,7 @@ function Burns({ burns }: { burns: readonly BurnRow[] }) {
                     </>
                   ) : (
                     <ExternalLink className={link} href={b.txUrl}>
-                      Spend #{b.spendId}
+                      Spend #{b.spendId} burn tx
                     </ExternalLink>
                   )}
                 </p>
@@ -266,26 +274,29 @@ function VerifyYourself({
       <h2 id="verify-title" className={sectionTitle}>
         Verify it yourself, offline
       </h2>
+      <CliSetup />
       <ol className="mt-3 list-decimal space-y-4 pl-5 text-sm text-ink/80">
         <li>
           <a className={link} href={`/proof/${vault}/snapshot.json`} download={file}>
             Download {file}
           </a>
-          : a fresh snapshot of this vault (its ledger and chain data). Within a minute of this page
-          it is the snapshot these checks used; the verifier prints when it was taken, so compare it
-          with {takenAt}.
+          : a snapshot of this vault (its ledger and chain data), taken when you click or up to a
+          minute before. The verifier prints when it was taken. If it prints <code>{takenAt}</code>,
+          it is the very snapshot these checks used; otherwise it is a newer one, and its result
+          matches this page unless the vault changed in between.
         </li>
         <li>
-          Run it through the open-source verifier. It needs no network and no keys, and prints the
-          result per check for that snapshot; it matches this page unless the vault changed in
-          between:
-          <code className={codeBlock}>npx probarion verify --offline {file}</code>
+          {CLI_ON_NPM ? "Run" : "From the repository folder, with the file in it, run"} the
+          open-source verifier. It needs no network and no keys, and prints the result per check for
+          that snapshot:
+          <code className={codeBlock}>{cli(`verify --offline ${file}`)}</code>
         </li>
         <li>
           To read the chain half again instead of trusting the file, save the snapshot&apos;s{" "}
-          <code>ledger</code> as JSONL (one entry per line) and run:
+          <code>ledger</code> as ledger.jsonl (one entry per line)
+          {CLI_ON_NPM ? "" : " in the repository folder"} and run:
           <code className={codeBlock}>
-            npx probarion verify --network {network} --vault {vault} --ledger ledger.jsonl
+            {cli(`verify --network ${network} --vault ${vault} --ledger ledger.jsonl`)}
           </code>
         </li>
       </ol>
@@ -304,11 +315,23 @@ function VerifyYourself({
   );
 }
 
+/** While the CLI is not on npm: one line saying so, and the one-time set-up of the repository command. */
+function CliSetup() {
+  if (CLI_ON_NPM) return null;
+  return (
+    <p className="mt-3 text-sm text-ink/80">
+      {CLI_NOTE} Set up once:
+      <code className={codeBlock}>{CLI_SETUP}</code>
+    </p>
+  );
+}
+
 /**
- * The fixed line under the checks (R19), true to what check e did on this snapshot: per attested decision, what A1 to
- * A7 prove and what they do not; with no attested decision, that check e had no model output to prove.
+ * The fixed line under the checks (R19), true to what check e did on this snapshot. With no decision made with model
+ * output (every one rules-only, even one that carries evidence), check e has none to prove. Otherwise it is said per
+ * attested decision, and a decision that used the model without an attestation shows as a failed check e above.
  */
-function AttestationLine({ attested }: { attested: number }) {
+function AttestationLine({ modelDecisions }: { modelDecisions: number }) {
   const limits = (
     <>
       it does not verify the TDX quote (needs <code>--online</code>, and even then the measurement
@@ -317,16 +340,16 @@ function AttestationLine({ attested }: { attested: number }) {
   );
   return (
     <p className={`mt-2 border-t border-ink/10 pt-4 text-xs ${muted}`}>
-      {attested === 0 ? (
+      {modelDecisions === 0 ? (
         <>
-          No decision in this snapshot carries an attestation, so check (e) has no model output to
-          prove here. For an attested decision it proves the signatures, the response and the ledger
+          No decision in this snapshot was decided with model output, so check (e) has none to prove
+          here. For a decision that is, it proves the signatures, the response and the ledger
           position agree; {limits}
         </>
       ) : (
         <>
-          For each attested decision ({attested} in this snapshot), check (e) here proves the
-          signatures, the response and the ledger position agree; {limits}
+          For each attested decision, check (e) here proves the signatures, the response and the
+          ledger position agree; {limits}
         </>
       )}
     </p>
@@ -340,7 +363,8 @@ export function ProofView({ result }: { result: ProofOk }) {
   const burns = burnRows(snapshot, network);
   const unproven = unprovenRows(report, network, vault);
   const state = headline(report);
-  const takenAt = when(snapshot.taken_at);
+  // In full, exactly as the verifier prints it ("snapshot taken <taken_at>"), so the two can be compared.
+  const takenAt = safeText(snapshot.taken_at);
   return (
     <div className="mx-auto max-w-3xl">
       <Header
@@ -385,7 +409,7 @@ export function ProofView({ result }: { result: ProofOk }) {
             <CheckItem key={row.id} row={row} unproven={unproven} />
           ))}
         </ol>
-        <AttestationLine attested={attestedCount(snapshot)} />
+        <AttestationLine modelDecisions={modelDecisionCount(snapshot)} />
       </section>
 
       <Burns burns={burns} />
@@ -431,9 +455,8 @@ function ChainCommand({ vault, network }: { vault: string; network: Network }) {
         You can check the vault&apos;s chain data yourself (without its ledger file, the ledger
         checks see an empty ledger):
       </p>
-      <code className={codeBlock}>
-        npx probarion verify --network {network} --vault {vault}
-      </code>
+      <code className={codeBlock}>{cli(`verify --network ${network} --vault ${vault}`)}</code>
+      <CliSetup />
     </>
   );
 }
