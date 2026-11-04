@@ -464,7 +464,7 @@ const NAME_FIELD =
  * "Quotation No.: Q-88120", "Quote Number: Q-1", "Quote Ref: Q-77", "Statement Date: 10/31/2026".
  */
 const DOCUMENT_REF = new RegExp(
-  `(?<![a-z])(?:${alternation(DOCUMENT_TYPES)})\\s*(?:for\\s+(?:lnvolce|lnv)|(?:#|no\\.?|number|num\\.?|ref\\.?|ld|date|valld(?:\\s+untll)?)\\s*[:#.\\t-]?\\s*[a-z0-9])`,
+  `(?<![a-z])(?:${alternation(DOCUMENT_TYPES)})\\s*(?:for\\s+(?:lnvolce|lnv)|(?:#|no\\.?|number|num\\.?|ref\\.?|ld|date|valld(?:\\s+untll)?)\\s*(?:[:#.-]\\s*)?[a-z0-9])`,
 );
 /**
  * A sentence that names the document's type, on any line: "This document is a quotation", "This is a receipt",
