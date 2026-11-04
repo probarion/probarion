@@ -116,6 +116,15 @@ const ROOT_PINNED: Record<string, string> = {
   typecheck: "pnpm -r --if-present run typecheck",
 };
 
+/**
+ * The pnpm that CI and Vercel install: the exact `packageManager` of the root package.json.
+ * pnpm/action-setup reads it (the workflows give it no version) and Vercel does with
+ * ENABLE_EXPERIMENTAL_COREPACK=1, so it is the pnpm that reads pnpm-lock.yaml in CI and on Vercel.
+ * ci-workflow.test.mjs pins the major line (pnpm 10) and the workflows; this file pins the exact
+ * value, so that another major needs a reviewed change in both files and a patch bump one in this file.
+ */
+const PACKAGE_MANAGER = "pnpm@10.10.0";
+
 const PACKAGE_BUILD =
   "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json";
 type PinnedScripts = Record<"test" | "build" | "typecheck" | "lint", string | null>;
@@ -184,7 +193,7 @@ const WORKSPACE_YAML = 'packages:\n  - "packages/*"\n  - "apps/*"\n  - "eval"\n'
 // node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync("scripts/vitest.config.ts","utf8").replace(/\r\n/g,"\n")).digest("hex"))'
 const SCRIPTS_VITEST_SHA256 = "b2c667b89f365ece33ad8b5fdb0024cd6ce82b64bd6916cb5b5696776e8f9b70";
 
-type Manifest = { scripts?: Record<string, unknown> };
+type Manifest = { scripts?: Record<string, unknown>; packageManager?: unknown };
 /** The workspace manifests by path, and the config files that decide how the scripts run (null: absent). */
 type Repo = { manifests: Map<string, Manifest>; files: Map<string, string | null> };
 
@@ -255,6 +264,12 @@ function gateProblems(repo: Repo): string[] {
     for (const [name, want] of Object.entries(scripts)) pinned(file, name, want);
   }
   for (const file of GUARDED) pinned(file, "prepublishOnly", PREPUBLISH_GUARD);
+  const packageManager = repo.manifests.get("package.json")?.packageManager;
+  if (packageManager !== PACKAGE_MANAGER) {
+    fail(
+      `package.json: packageManager changed (pinned ${show(PACKAGE_MANAGER)}, now ${show(packageManager ?? null)}); pnpm/action-setup and Vercel install the version it names; review the change, then update the pinned value in ${SELF}`,
+    );
+  }
 
   for (const [file, manifest] of repo.manifests) {
     for (const [name, script] of Object.entries(manifest.scripts ?? {})) {
@@ -322,6 +337,11 @@ const scriptsIn = (of: Repo, file: string): Record<string, unknown> => {
   const scripts = of.manifests.get(file)?.scripts;
   if (!scripts) throw new Error(`${file} has no scripts`);
   return scripts;
+};
+const rootManifest = (of: Repo): Manifest => {
+  const manifest = of.manifests.get("package.json");
+  if (!manifest) throw new Error("package.json is not read");
+  return manifest;
 };
 const append = (of: Repo, file: string, name: string, tail: string) => {
   const scripts = scriptsIn(of, file);
@@ -569,6 +589,42 @@ const GATE_MUTATIONS: Array<[string, (r: Repo) => void, string[]]> = [
       'packages/cli/package.json: scripts["test"] changed',
       'packages/cli/package.json: scripts["test"] contains "--dangerouslyIgnoreUnhandledErrors"',
     ],
+  ],
+  // packageManager is what pnpm/action-setup and Vercel install
+  [
+    "packageManager set to pnpm 9",
+    (r) => {
+      rootManifest(r).packageManager = "pnpm@9.15.9";
+    },
+    ["package.json: packageManager changed", 'now "pnpm@9.15.9"'],
+  ],
+  [
+    "packageManager set to npm",
+    (r) => {
+      rootManifest(r).packageManager = "npm@10.9.0";
+    },
+    ["package.json: packageManager changed", 'now "npm@10.9.0"'],
+  ],
+  [
+    "packageManager set to yarn",
+    (r) => {
+      rootManifest(r).packageManager = "yarn@4.5.0";
+    },
+    ["package.json: packageManager changed", 'now "yarn@4.5.0"'],
+  ],
+  [
+    "packageManager moved to another pnpm 10 version without reviewing the pin",
+    (r) => {
+      rootManifest(r).packageManager = "pnpm@10.11.0";
+    },
+    ["package.json: packageManager changed", 'now "pnpm@10.11.0"'],
+  ],
+  [
+    "packageManager removed",
+    (r) => {
+      delete rootManifest(r).packageManager;
+    },
+    ["package.json: packageManager changed", "now absent"],
   ],
 ];
 

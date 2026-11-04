@@ -109,7 +109,7 @@ const usesSha = (line) => /@([0-9a-f]{40})/.exec(line)?.[1];
 // The whole file is pinned. A reviewed change to release.yml needs a reviewed change to this hash, which
 // is the point: the structural checks below explain what is wrong, the pin refuses everything else.
 // Update it with: node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync(".github/workflows/release.yml","utf8").replace(/\r\n/g,"\n")).digest("hex"))'
-const RELEASE_YML_SHA256 = "f58673e15ed0df05372b03a105ca30fcf24ec8f3f09e200fa120263ca4d73e45";
+const RELEASE_YML_SHA256 = "09ea64589e940cec6be2013512e10676427510be5fe9ba37fc246d03e82daf9a";
 const releaseSha = (text) => createHash("sha256").update(text.replace(/\r\n/g, "\n")).digest("hex");
 
 // The publish script and the run steps of the verify job, exactly as reviewed (comments and blank lines
@@ -184,6 +184,38 @@ function stepsOf(jobLines) {
     else steps.at(-1)?.push(line);
   }
   return steps;
+}
+
+/**
+ * Every way the pnpm/action-setup steps of a workflow differ from the pin; the empty list means none.
+ * The pnpm version has one source, `packageManager` in the root package.json, which pnpm/action-setup and
+ * Vercel (with ENABLE_EXPERIMENTAL_COREPACK=1) both read. So the step is the bare `uses:` line with no
+ * `with:` block: a `version:` that differs from packageManager makes the action fail ("Multiple versions of
+ * pnpm specified"), and one that equals it is a second place to edit. `package_json_file` would point the
+ * action at another file. Used for ci.yml and release.yml alike.
+ */
+function pnpmSetupProblems(text) {
+  const problems = [];
+  const jobs = blockLines(codeLines(text.replace(/\r\n/g, "\n")), "jobs") ?? [];
+  const ids = jobs.filter((l) => /^ {2}[\w-]+:$/.test(l)).map((l) => l.trim().slice(0, -1));
+  let found = 0;
+  for (const id of ids) {
+    for (const step of stepsOf(blockLines(jobs, id, 2) ?? [])) {
+      if (!step.some((l) => /\buses:\s*pnpm\/action-setup@/.test(l))) continue;
+      found += 1;
+      if (step.length !== 1 || !/^ {6}- uses: pnpm\/action-setup@[0-9a-f]{40}$/.test(step[0])) {
+        problems.push(
+          `${id}: the pnpm/action-setup step must be exactly "- uses: pnpm/action-setup@<sha>" with no with: block, so that the pnpm version comes only from packageManager in package.json (a version: input that differs makes the action fail, and one that is equal is a second place to edit)`,
+        );
+      }
+    }
+  }
+  if (found === 0) {
+    problems.push(
+      "no pnpm/action-setup step: the workflow must install pnpm through it, at the version packageManager names",
+    );
+  }
+  return problems;
 }
 
 /** Every problem with a release workflow; the empty list means it has the shape the release relies on. */
@@ -369,9 +401,8 @@ function checkReleaseWorkflow(crlfOrLf, ciText) {
       "the verify job must check out, require main, install, check the tag, verify, pack, then upload",
     );
   }
-  if (!/uses: pnpm\/action-setup@[0-9a-f]{40}\n\s+with:\n\s+version: 10(\n|$)/.test(verifyText)) {
-    fail("pnpm/action-setup needs with: version: 10");
-  }
+  // pnpm comes from packageManager (pinned in gateProblems below), so the step takes no version input.
+  for (const problem of pnpmSetupProblems(text)) fail(problem);
 
   // --- pins: every action by full SHA, at the SHA ci.yml uses
   const uses = text.split(/\r?\n/).filter((l) => /^\s*-?\s*uses:/.test(l));
@@ -497,6 +528,13 @@ function checkReleaseWorkflow(crlfOrLf, ciText) {
 test("release.yml has exactly the shape the release relies on", () => {
   assert.deepEqual(checkReleaseWorkflow(release, ci), []);
 });
+
+/** A workflow with one more input on its (first) pnpm/action-setup step. */
+const addPnpmInput = (text, input) =>
+  text.replace(
+    /( {6}- uses: pnpm\/action-setup@[0-9a-f]{40} # \S+\n)/,
+    `$1        with:\n          ${input}\n`,
+  );
 
 // Each mutation is a change a careless edit, or an attacker with a pull request, could make. The checker
 // must refuse every one of them, and for the stated reason.
@@ -720,10 +758,26 @@ const mutations = [
       ),
     "no dependency cache",
   ],
+  // pnpm comes from packageManager, so the step takes no inputs (the inverse of the old "version: 10" pin)
   [
-    "pnpm version removed",
-    (t) => t.replace("        with:\n          version: 10\n", ""),
-    "version: 10",
+    "a version input added to pnpm/action-setup (the action then fails, or names a second version)",
+    (t) => addPnpmInput(t, "version: 10"),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a version input equal to packageManager added to pnpm/action-setup",
+    (t) => addPnpmInput(t, "version: 10.10.0"),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "package_json_file pointing the action at another file",
+    (t) => addPnpmInput(t, "package_json_file: apps/web/package.json"),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "the pnpm/action-setup step removed",
+    (t) => t.replace(/ {6}- uses: pnpm\/action-setup@[0-9a-f]{40} # \S+\n/, ""),
+    "no pnpm/action-setup step",
   ],
   [
     "packing before the tests",
@@ -1235,6 +1289,15 @@ const ROOT_PINNED = {
   "release:check": "tsx scripts/release-check.ts",
 };
 
+/**
+ * The pnpm that CI and Vercel install is the one `packageManager` names in the root package.json:
+ * pnpm/action-setup reads it (the workflows give it no version), and Vercel does with
+ * ENABLE_EXPERIMENTAL_COREPACK=1. This file pins the major line (pnpm 10, which the lockfile and
+ * engines.pnpm need); release-manifests.test.ts pins the exact value, so moving to another major
+ * needs a reviewed change in both files, and a patch bump a reviewed change in that one.
+ */
+const PNPM_PACKAGE_MANAGER = /^pnpm@10\.\d+\.\d+$/;
+
 const PACKAGE_BUILD =
   "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json";
 /**
@@ -1373,6 +1436,12 @@ function gateProblems(repo) {
     for (const [name, want] of Object.entries(scripts)) pinned(file, name, want);
   }
   for (const file of GUARDED) pinned(file, "prepublishOnly", PREPUBLISH_GUARD);
+  const packageManager = repo.manifests.get("package.json")?.packageManager;
+  if (typeof packageManager !== "string" || !PNPM_PACKAGE_MANAGER.test(packageManager)) {
+    fail(
+      `package.json: packageManager must be pnpm@10.x.y (pnpm/action-setup and Vercel install the version it names; the lockfile and engines.pnpm need pnpm 10), now ${show(packageManager ?? null)}; review the change, then update the pattern in ${SELF}`,
+    );
+  }
 
   for (const [file, manifest] of repo.manifests) {
     for (const [name, script] of Object.entries(manifest.scripts ?? {})) {
@@ -1708,6 +1777,56 @@ const gateMutations = [
       'packages/cli/package.json: scripts["test"] contains "--dangerouslyIgnoreUnhandledErrors"',
     ],
   ],
+  // packageManager is what pnpm/action-setup and Vercel install
+  [
+    "packageManager set to pnpm 9",
+    (r) => {
+      r.manifests.get("package.json").packageManager = "pnpm@9.15.9";
+    },
+    ["package.json: packageManager must be pnpm@10.x.y", 'now "pnpm@9.15.9"'],
+  ],
+  [
+    "packageManager set to npm",
+    (r) => {
+      r.manifests.get("package.json").packageManager = "npm@10.9.0";
+    },
+    ["package.json: packageManager must be pnpm@10.x.y", 'now "npm@10.9.0"'],
+  ],
+  [
+    "packageManager set to yarn",
+    (r) => {
+      r.manifests.get("package.json").packageManager = "yarn@4.5.0";
+    },
+    ["package.json: packageManager must be pnpm@10.x.y", 'now "yarn@4.5.0"'],
+  ],
+  [
+    "packageManager set to pnpm 11",
+    (r) => {
+      r.manifests.get("package.json").packageManager = "pnpm@11.0.0";
+    },
+    ["package.json: packageManager must be pnpm@10.x.y"],
+  ],
+  [
+    "packageManager with a range instead of a version",
+    (r) => {
+      r.manifests.get("package.json").packageManager = "pnpm@^10.10.0";
+    },
+    ["package.json: packageManager must be pnpm@10.x.y"],
+  ],
+  [
+    "packageManager removed",
+    (r) => {
+      delete r.manifests.get("package.json").packageManager;
+    },
+    ["package.json: packageManager must be pnpm@10.x.y", "now absent"],
+  ],
+  [
+    "packageManager not a string",
+    (r) => {
+      r.manifests.get("package.json").packageManager = { name: "pnpm", version: "10.10.0" };
+    },
+    ["package.json: packageManager must be pnpm@10.x.y"],
+  ],
 ];
 
 test("the gate scripts release.yml runs are the pinned ones, and none can swallow a failure (T17-R4)", () => {
@@ -1731,6 +1850,12 @@ test("the gate scripts are read from every workspace package and every config fi
   ]) {
     assert.ok(workspace.files.has(path), `${path} is not read`);
   }
+});
+
+test("the major-line check here accepts a pnpm 10 bump: the exact value is pinned in release-manifests.test.ts", () => {
+  const bumped = cloneRepo(workspace);
+  bumped.manifests.get("package.json").packageManager = "pnpm@10.99.0";
+  assert.deepEqual(gateProblems(bumped), []);
 });
 
 for (const [name, edit, reasons] of gateMutations) {
@@ -1972,8 +2097,41 @@ test("ci.yml: every gate of the long jobs keeps its exit status through tee, and
   assert.deepEqual(checkExplainers(ci), []);
 });
 
+test("ci.yml and release.yml install pnpm through pnpm/action-setup with no inputs: packageManager names the version", () => {
+  assert.deepEqual(pnpmSetupProblems(ci), []);
+  assert.deepEqual(pnpmSetupProblems(release), []);
+});
+
+/** Every check that runs on ci.yml text: the verify job, the explainers and the pnpm setup. */
+const ciProblems = (text) => [
+  ...checkVerifyJob(text),
+  ...checkExplainers(text),
+  ...pnpmSetupProblems(text),
+];
+
 const VERIFY_STEP_RUN = '        run: |\n          failed=""\n';
 const ciMutations = [
+  // pnpm comes from packageManager, so the step takes no inputs
+  [
+    "a version input added to pnpm/action-setup (the action then fails, or names a second version)",
+    (t) => addPnpmInput(t, "version: 10"),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a version input equal to packageManager added to pnpm/action-setup",
+    (t) => addPnpmInput(t, "version: 10.10.0"),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "package_json_file pointing the action at another file",
+    (t) => addPnpmInput(t, "package_json_file: apps/web/package.json"),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "the pnpm/action-setup step removed",
+    (t) => t.replace(/ {6}- uses: pnpm\/action-setup@[0-9a-f]{40} # \S+\n/, ""),
+    "no pnpm/action-setup step",
+  ],
   // The four the brief names
   ["a verify job without if: always()", (t) => t.replace("    if: always()\n", ""), "if: always()"],
   [
@@ -2191,7 +2349,7 @@ for (const [name, mutate, expected] of ciMutations) {
   test(`ci.yml check refuses: ${name}`, () => {
     const mutated = mutate(ci);
     assert.notEqual(mutated, ci, `the mutation "${name}" changed nothing`);
-    const problems = [...checkVerifyJob(mutated), ...checkExplainers(mutated)];
+    const problems = ciProblems(mutated);
     assert.ok(
       problems.some((p) => p.includes(expected)),
       `"${name}" was not refused for "${expected}": ${problems.join(" | ") || "accepted"}`,
@@ -2201,10 +2359,10 @@ for (const [name, mutate, expected] of ciMutations) {
 
 test("ci.yml: a CRLF copy has the same shape, and every mutant is still refused", () => {
   const crlf = (text) => text.replace(/\n/g, "\r\n");
-  assert.deepEqual([...checkVerifyJob(crlf(ci)), ...checkExplainers(crlf(ci))], []);
+  assert.deepEqual(ciProblems(crlf(ci)), []);
   for (const [name, mutate, expected] of ciMutations) {
     const mutated = crlf(mutate(ci));
-    const problems = [...checkVerifyJob(mutated), ...checkExplainers(mutated)];
+    const problems = ciProblems(mutated);
     assert.ok(
       problems.some((p) => p.includes(expected)),
       `CRLF copy of "${name}" not refused for "${expected}": ${problems.join(" | ")}`,

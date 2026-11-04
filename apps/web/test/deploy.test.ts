@@ -187,6 +187,18 @@ describe("vercel.json", () => {
     expect(VERCEL.installCommand).toBeUndefined();
   });
 
+  it("pins pnpm through packageManager, and the runbook sets the Corepack switch that makes Vercel read it", () => {
+    // Without the pin Vercel picks pnpm 9 or 10 for a version 9.0 lockfile, and pnpm 9 fails engines.pnpm.
+    const root = JSON.parse(text(ROOT, "package.json")) as { packageManager?: string };
+    const version = /^pnpm@(10\.\d+\.\d+)$/.exec(root.packageManager ?? "")?.[1];
+    expect(version, "root package.json packageManager is pnpm@10.x.y").toBeDefined();
+    const runbook = text(ROOT, "docs", "runbooks", "web-deploy.md");
+    expect(runbook).toContain("ENABLE_EXPERIMENTAL_COREPACK");
+    expect(runbook, "the build-log check names the pinned version").toContain(`pnpm ${version}`);
+    // A Vercel build setting the console never reads: .env.example lists what the console reads.
+    expect(parseDotenv(ENV_EXAMPLE).has("ENABLE_EXPERIMENTAL_COREPACK")).toBe(false);
+  });
+
   it("builds the workspace packages that the app loads from dist, before next build", () => {
     const build = VERCEL.buildCommand ?? "";
     expect(PACKAGE.scripts.build).toBe("next build");

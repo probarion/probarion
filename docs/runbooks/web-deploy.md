@@ -6,6 +6,7 @@ Plan for about an hour. Do the steps in order: the Vercel build does not need th
 
 Where things are defined (you do not edit these to deploy):
 
+- `package.json` (repo root): `packageManager` is `pnpm@10.10.0`. CI and Vercel install exactly that pnpm (step 3.2 switches Vercel to it), and `engines.pnpm` stays `>=10 <11`.
 - `apps/web/vercel.json`: framework, region `iad1` (Washington DC, next to Supabase `us-east-1`), and the build command.
 - `.env.example` (repo root): every variable the console reads. `docs/specs/2026-10-21-probarion-interfaces.md` section 14 lists the same names.
 - `apps/web/next.config.ts`: the security headers. They are not repeated in `vercel.json`.
@@ -75,13 +76,17 @@ Where things are defined (you do not edit these to deploy):
   - **Framework Preset:** Next.js (detected).
   - **Root Directory:** `apps/web`.
   - **Include source files outside of the Root Directory in the Build Step:** on (the default). The build needs `packages/core` and `packages/sdk`.
-  - **Build, Install and Output commands:** leave them on their defaults and leave every Override toggle **off**. The build command comes from `apps/web/vercel.json`: it builds `@probarion/core` and `@probarion/sdk` (the app loads both from their `dist` folders), then runs `next build`. Do not override the install command: with an override such as `pnpm install`, Vercel uses the oldest pnpm in its image, and the lockfile needs pnpm 10.
+  - **Build, Install and Output commands:** leave them on their defaults and leave every Override toggle **off**. The build command comes from `apps/web/vercel.json`: it builds `@probarion/core` and `@probarion/sdk` (the app loads both from their `dist` folders), then runs `next build`. Do not override the install command: with an override such as `pnpm install`, Vercel uses the oldest pnpm in its image, and the lockfile needs pnpm 10. Which pnpm 10 it runs comes from `packageManager` in the root `package.json`, once step 3.2 has set the Corepack switch.
 - [ ] **OWNER:** after the project exists, Settings, General: **Node.js Version 24.x**. Settings, Git: **Production Branch `main`**. Leave "Automatically expose System Environment Variables" on. Do not set `NODE_ENV` yourself; the build needs the dev dependencies.
 - [ ] **OWNER:** leave the Git integration as it is. Vercel then makes a Preview deployment for every pull request and a Production deployment for every push to `main`.
 
 ### 3.2 Environment variables
 
-- [ ] **OWNER:** Settings, Environment Variables. Add each row for **Production** and **Preview** separately (use the Environment checkboxes). Tick **Sensitive** where the table says so: Sensitive values cannot be read back after saving.
+- [ ] **OWNER:** Settings, Environment Variables. First add the one **build setting**: `ENABLE_EXPERIMENTAL_COREPACK` = `1`, for **Production** and **Preview**, not Sensitive.
+  - Why it has its own line: it is a switch for Vercel's build, not a variable the console reads. So it is not in `.env.example` (which lists what the console reads; `deploy.test.ts` keeps it out) and not in the tables below.
+  - What it does: it makes Vercel install the pnpm that `packageManager` in the root `package.json` names (`pnpm@10.10.0`), through Corepack. Vercel's documentation calls Corepack experimental and gives this variable as the way to turn it on (<https://vercel.com/docs/builds/configure-a-build#corepack>).
+  - Why you need it: without it Vercel chooses pnpm from `pnpm-lock.yaml`, and a `lockfileVersion: 9.0` file fits pnpm 9 or 10 (<https://vercel.com/docs/package-managers>). With pnpm 9 the install fails with `ERR_PNPM_UNSUPPORTED_ENGINE`, because `engines.pnpm` is `>=10 <11`.
+- [ ] **OWNER:** Then add each row below for **Production** and **Preview** separately (use the Environment checkboxes). Tick **Sensitive** where the table says so: Sensitive values cannot be read back after saving.
 
   Required for the console to start. With one missing or malformed, the sign-in routes answer a bare 503 `unavailable` and the console pages show an error page; the cause is in Vercel, Logs, where the message names the variable (never its value):
 
@@ -133,7 +138,7 @@ This is advice, not a rule of the code. The code does not stop you from pointing
 ## 4. First deploy and smoke test
 
 - [ ] **OWNER:** Deploy (the first import deploys by itself), or push to `main`. Open the build log and check, in order:
-  - the install step prints a pnpm 10.x version. If it prints 9.x and fails with `ERR_PNPM_UNSUPPORTED_ENGINE`, stop and tell the controller: the root `package.json` needs a pinned pnpm for Vercel (Corepack), and that is a repository change;
+  - the install step prints pnpm 10.10.0 (from `packageManager`). If it prints 9.x and fails with `ERR_PNPM_UNSUPPORTED_ENGINE`, check that `ENABLE_EXPERIMENTAL_COREPACK` is `1` for this environment (step 3.2), then redeploy; a changed variable applies to the next build only. If it still prints 9.x, stop and tell the controller: that is a repository change;
   - `packages/core build` and `packages/sdk build` finish with "Done";
   - `next build` finishes and lists the routes `/`, `/login`, `/console`, `/console/[vault]`, `/console/[vault]/keys`, `/console/[vault]/mandates`, `/proof`, `/proof/[vault]`, `/proof/[vault]/snapshot.json`, `/proof/[vault]/ledger.jsonl` and `/api/auth/*`.
 - [ ] **OWNER:** smoke test, on the deployment URL:
@@ -197,6 +202,7 @@ Shape, one entry per vault, keyed by `"<network>:<vault>"`; both fields are opti
 
 ## When a later task changes this page
 
+- A new pnpm version: change `packageManager` in the root `package.json` (CI and Vercel both follow it), the pinned value in `scripts/test/release-manifests.test.ts`, and the version named in step 4. The script tests and `deploy.test.ts` fail until they agree. The workflows carry no version of their own.
 - A new environment variable: it goes into `.env.example` first (`deploy.test.ts` fails otherwise), then into the tables in 3.2.
 - A new Vercel cron: add it to `apps/web/vercel.json`. `deploy.test.ts` requires a `GET` route at that path that checks `CRON_SECRET`. Per-minute and hourly schedules need Vercel Pro; the Hobby plan rejects them at deploy time.
 - A new migration: one new file, next sequence number, no gaps. The test applies the folder to a fresh database and refuses extensions, role changes, owners and Supabase-only features.
