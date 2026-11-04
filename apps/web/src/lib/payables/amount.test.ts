@@ -1649,3 +1649,28 @@ describe("the breaker changes", () => {
     ).toEqual(no("unreadable"));
   });
 });
+
+describe("breaker rules the mutation pass found untested", () => {
+  const HP =
+    "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\n";
+
+  it.each([
+    ["Amount refunded on 11/03/2026"],
+    ["This invoice has now been refunded."],
+    ["Nothing to pay."],
+  ])("refuses %j", (line) => expect(read(`${HP}${line}\n`)).toEqual(no("not_payable")));
+
+  it("refuses a balance stated as paid behind an arrow", () => {
+    expect(
+      read(
+        "INVOICE\nAcme Design LLC\nInvoice No: INV-1001\nDate: 2026-11-01\nBalance \u2192 Paid\nLogo design $700.00\nTotal: $700.00",
+      ),
+    ).toEqual(no("not_payable"));
+  });
+
+  it("reads US dollars written as a dotted code after in", () => {
+    expect(read("INVOICE INV-1001\nAll amounts in u.s.d.\nTotal $1,000.00")).toEqual(
+      pays("1000000000"),
+    );
+  });
+});
