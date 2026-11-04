@@ -1,0 +1,3383 @@
+{
+  "about": "Regression inputs for the invoice amount reader, with the result each must give.",
+  "cases": [
+    {
+      "id": "sweep-1.0",
+      "source": "sweep #1 (Important)",
+      "text": "Amount due: 2500000 (USDC base units, 6 decimals)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-1.1",
+      "source": "sweep #1 (Important)",
+      "text": "Total 2,000,000 (IDR)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "sweep-1.2",
+      "source": "sweep #1 (Important)",
+      "text": "Total 15000 USD cents",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-1.3",
+      "source": "sweep #1 (Important)",
+      "text": "Invoice INV-5\nTotal 1,000.00 USDC paid on 2026-10-30, thank you",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-1.4",
+      "source": "sweep #1 (Important)",
+      "text": "Total 1,000 (approx. USD 680)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-1.5",
+      "source": "sweep #1 (Important)",
+      "text": "Total 100 USDC (nine thousand USDC)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-1.6",
+      "source": "sweep #1 (Important)",
+      "text": "Total 100 (eur)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-1.7",
+      "source": "sweep #1 (Important)",
+      "text": "Total 2.5 USD million",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-2.0",
+      "source": "sweep #2 (Important)",
+      "text": "JPY Total 150,000",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "sweep-2.1",
+      "source": "sweep #2 (Important)",
+      "text": "\u20ac Total: 1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "sweep-2.2",
+      "source": "sweep #2 (Important)",
+      "text": "Invoice currency: EUR      Total: 1,250.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "sweep-2.3",
+      "source": "sweep #2 (Important)",
+      "text": "Total 100 USD\nEUR Amount due 100",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "sweep-2.4",
+      "source": "sweep #2 (Important)",
+      "text": "Subtotal 1,000.00\nTax total 80.00\nAmount payable 1,080.00 USDC",
+      "expect": {
+        "amount": "1080000000",
+        "issue": null
+      },
+      "why": "Subtotal and Tax total are non-final lines; Amount payable is the one final total"
+    },
+    {
+      "id": "sweep-2.5",
+      "source": "sweep #2 (Important)",
+      "text": "REFUND STATEMENT\nRefund amount due 100.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "sweep-2.6",
+      "source": "sweep #2 (Important)",
+      "text": "Credit balance due 250.00 USD",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-2.7",
+      "source": "sweep #2 (Important)",
+      "text": "Sub_total 900 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-3.0",
+      "source": "sweep #3 (Important)",
+      "text": "Subtotal\nTax\nTotal\n$90.00\n$10.00\n$100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-3.1",
+      "source": "sweep #3 (Important)",
+      "text": "Invoice INV-2026-044\nFrom: ACME Design LLC\nLogo design $700.00\nSubtotal\nTax (10%)\nTotal\n$700.00\n$70.00\n$770.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-3.2",
+      "source": "sweep #3 (Important)",
+      "text": "$700.00\nSubtotal\n$70.00\nTax\n$770.00\nTotal\n$300.00\nDeposit paid\n$470.00\nBalance due",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-3.3",
+      "source": "sweep #3 (Important)",
+      "text": "Item\nDesign\nHosting\nTotal\n$40.00\n$60.00\nAmount payable: $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-4.0",
+      "source": "sweep #4 (Important)",
+      "text": "Total 10,000.00 USDC\nAmount due\ntoday 5,000.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-4.1",
+      "source": "sweep #4 (Important)",
+      "text": "Total in EUR\n9,999.00\nBalance due 100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "sweep-4.2",
+      "source": "sweep #4 (Important)",
+      "text": "Total\n= $9,999.00\nAmount due 5.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-4.3",
+      "source": "sweep #4 (Important)",
+      "text": "Invoice INV-2026-048\nTotal $100.00\nDeposit received -$40.00\nBalance due\n= $60.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-4.4",
+      "source": "sweep #4 (Important)",
+      "text": "Total:\nnine thousand USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-5.0",
+      "source": "sweep #5 (Important)",
+      "text": "Grand total 9,000.00 USDC\nInstallment amount due 3,000.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-5.1",
+      "source": "sweep #5 (Important)",
+      "text": "Order total 12,000 USDC\nContract amount due this month: 1,000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-5.2",
+      "source": "sweep #5 (Important)",
+      "text": "Total 5,000 USDC\nSee page - Amount due 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-5.3",
+      "source": "sweep #5 (Important)",
+      "text": "Continued on next page\tTotal $9,999.00\nAmount due $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-5.4",
+      "source": "sweep #5 (Important)",
+      "text": "Terms: net 30, see contract          Total due    770.00 USDC\nBalance due 470.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-6.0",
+      "source": "sweep #6 (Important)",
+      "text": "T\u0966tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-6.1",
+      "source": "sweep #6 (Important)",
+      "text": "T\u0e50tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-6.2",
+      "source": "sweep #6 (Important)",
+      "text": "Tota\u0661 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-6.3",
+      "source": "sweep #6 (Important)",
+      "text": "T\ud83a\udd50tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-6.4",
+      "source": "sweep #6 (Important)",
+      "text": "Am\u0966unt due 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-7.0",
+      "source": "sweep #7 (Important)",
+      "text": "Total 10,000.00 USD\nDeposit paid 5,000.00 USD\nBalance remaining 5,000.00 USD",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "sweep-7.1",
+      "source": "sweep #7 (Important)",
+      "text": "Subtotal $1,000.00\nTotal $1,000.00\nAmount paid $900.00\nAmount remaining $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "sweep-7.2",
+      "source": "sweep #7 (Important)",
+      "text": "TOTAL $1,000.00\nDEPOSIT $500.00\nBALANCE: $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-7.3",
+      "source": "sweep #7 (Important)",
+      "text": "Total 1,000.00 USDC\nWithholding tax 10% 100.00 USDC\nNet amount payable 900.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-7.4",
+      "source": "sweep #7 (Important)",
+      "text": "> On Oct 1, Acme wrote:\n> Total 500 USDC\n\nUpdated invoice: amount payable 450 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-8.0",
+      "source": "sweep #8 (Important)",
+      "text": "REMITTANCE ADVICE\nWe have paid the following invoices today:\nINV-101 500.00\nINV-102 250.00\nTotal 750.00 USD\nPaid by transfer on 2026-11-03",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "sweep-8.1",
+      "source": "sweep #8 (Important)",
+      "text": "INVOICE INV-90 - VOID\nThis invoice has been cancelled. Do not pay.\nTotal 800 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "sweep-8.2",
+      "source": "sweep #8 (Important)",
+      "text": "QUOTATION Q-2026-11\nValid for 30 days. This is not an invoice.\nTotal 5,000.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "sweep-8.3",
+      "source": "sweep #8 (Important)",
+      "text": "INVOICE INV-77\nStatus: PAID\nTotal 1,250.00 USD\nPayment received 2026-11-01\nBalance 0.00 USD",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "sweep-9.0",
+      "source": "sweep #9 (Important)",
+      "text": "TIMESHEET INVOICE TS-11\nDate\tHours\n2026-11-02\t8\n2026-11-03\t4\nTotal\t12\nRate: 50 USDC per hour",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-9.1",
+      "source": "sweep #9 (Important)",
+      "text": "Item\tQty\nT-shirt\t40\nMug\t20\nTotal\t60\nUnit price 5 USDC\nInvoice amount 300 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-9.2",
+      "source": "sweep #9 (Important)",
+      "text": "Line items\nTotal: 3\nAmount payable: 450.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-9.3",
+      "source": "sweep #9 (Important)",
+      "text": "Total: 40\nhours",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-10.0",
+      "source": "sweep #10 (Important)",
+      "text": "INVOICE INV-201\nDesign, October\nTotal 500 USDC\n\n-----\n\nINVOICE INV-202\nDesign, November\nTotal 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "sweep-10.1",
+      "source": "sweep #10 (Important)",
+      "text": "STATEMENT OF ACCOUNT\nInvoice INV-101 (September)\nTotal 500.00 USD\nInvoice INV-102 (October)\nTotal 500.00 USD\nPlease remit 1,000.00 USD",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "the title names a statement, which is checked before the invoice numbers"
+    },
+    {
+      "id": "sweep-10.2",
+      "source": "sweep #10 (Important)",
+      "text": "Retainer September: Total 100 USDC\nRetainer October: Total 100 USDC\nRetainer November: Total 100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-11.0",
+      "source": "sweep #11 (Important)",
+      "text": "Total: $1,\n250.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-11.1",
+      "source": "sweep #11 (Important)",
+      "text": "Invoice INV-2026-047\nSubtotal $1,200.00\nTax $50.00\nTotal $1,\n250.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-11.2",
+      "source": "sweep #11 (Important)",
+      "text": "Total 1,000\n,000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-11.3",
+      "source": "sweep #11 (Important)",
+      "text": "Total 100.\n2. Payment terms",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-11.4",
+      "source": "sweep #11 (Important)",
+      "text": "Total: 1,\n250.00 EUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "sweep-12.0",
+      "source": "sweep #12 (Important)",
+      "text": "Total: $1,OOO.OO",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-12.1",
+      "source": "sweep #12 (Important)",
+      "text": "INVOICE INV-88\nDesign work 1,OOO.OO\nTotal: $1,OOO.OO",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-12.2",
+      "source": "sweep #12 (Important)",
+      "text": "Total 1,\u041e\u041e\u041e USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-12.3",
+      "source": "sweep #12 (Important)",
+      "text": "Total 1,_000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-13.0",
+      "source": "sweep #13 (Important)",
+      "text": "Invoice INV-7010\nPO: PO-1001\nPay to vendor.testnet\nTotal 2\u00005 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-13.1",
+      "source": "sweep #13 (Important)",
+      "text": "Total 100\u0000200 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-13.2",
+      "source": "sweep #13 (Important)",
+      "text": "Amount due: 4\u0000\u00000 USD",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-13.3",
+      "source": "sweep #13 (Important)",
+      "text": "Total $1\u00009.99",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-14.0",
+      "source": "sweep #14 (Important)",
+      "text": "\u202e\u2028Total 19 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-14.1",
+      "source": "sweep #14 (Important)",
+      "text": "\u202e\u000bTotal 19 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-14.2",
+      "source": "sweep #14 (Important)",
+      "text": "\u202e\fTotal 19 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-14.3",
+      "source": "sweep #14 (Important)",
+      "text": "Invoice \u202eref\u2028Total 15 USDC\nAmount due 15 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-15.0",
+      "source": "sweep #15 (Important)",
+      "build": {
+        "parts": [
+          {
+            "text": "a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-.",
+            "repeat": 794
+          }
+        ],
+        "slice": 50000
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "not_found"
+      },
+      "why": "no label at all"
+    },
+    {
+      "id": "sweep-15.1",
+      "source": "sweep #15 (Important)",
+      "build": {
+        "parts": [
+          {
+            "text": "a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-.",
+            "repeat": 7940
+          }
+        ],
+        "slice": 500000
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "500,000 units is past the read cap"
+    },
+    {
+      "id": "sweep-15.2",
+      "source": "sweep #15 (Important)",
+      "build": {
+        "parts": [
+          {
+            "text": "Invoice INV-1\nTotal 5 USDC\n"
+          },
+          {
+            "text": "a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-a-.",
+            "repeat": 794,
+            "slice": 50000
+          }
+        ]
+      },
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      },
+      "why": "the payee-hint noise holds no payable word"
+    },
+    {
+      "id": "sweep-16.0",
+      "source": "sweep #16 (Minor)",
+      "text": "Total: $1,250.50\nAmount Due (USD): $1,250.50",
+      "expect": {
+        "amount": "1250500000",
+        "issue": null
+      }
+    },
+    {
+      "id": "sweep-16.1",
+      "source": "sweep #16 (Minor)",
+      "text": "Invoice Total $1,250.50\nAmount Paid $0.00\nAmount Due (USD) $1,250.50",
+      "expect": {
+        "amount": "1250500000",
+        "issue": null
+      }
+    },
+    {
+      "id": "sweep-16.2",
+      "source": "sweep #16 (Minor)",
+      "text": "Total in USD: 1,250.50",
+      "expect": {
+        "amount": "1250500000",
+        "issue": null
+      }
+    },
+    {
+      "id": "sweep-16.3",
+      "source": "sweep #16 (Minor)",
+      "text": "Subtotal ........ $700.00\nTax ............. $70.00\nTotal ........... $770.00",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "sweep-16.4",
+      "source": "sweep #16 (Minor)",
+      "text": "| Subtotal | $700.00 |\n| Total | $770.00 |",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "sweep-17.0",
+      "source": "sweep #17 (Minor)",
+      "text": "#\tItem\tQty\tPrice\tTotal\n1\tLogo design\t1\t400.00\t400.00\n2\tBrand guide\t2\t150.00\t300.00\nTotal\t700.00 USDC",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "sweep-17.1",
+      "source": "sweep #17 (Minor)",
+      "text": "Date\tDescription\tHours\tTotal\n2026-11-02\tDesign\t4\t200.00\nTotal\t200.00 USDC",
+      "expect": {
+        "amount": "200000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "sweep-17.2",
+      "source": "sweep #17 (Minor)",
+      "text": "Qty\tItem\tTotal\n2\tMug\t20.00\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "sweep-17.3",
+      "source": "sweep #17 (Minor)",
+      "text": "Description\tTotal (USD)\nDesign\t400.00\nTotal\t400.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "a header of two words is not a table header, so 'Total (USD)' is a final label without its figure"
+    },
+    {
+      "id": "sweep-18.0",
+      "source": "sweep #18 (Minor)",
+      "build": {
+        "parts": [
+          {
+            "text": "\u2460a",
+            "repeat": 1048576
+          }
+        ]
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-18.1",
+      "source": "sweep #18 (Minor)",
+      "build": {
+        "parts": [
+          {
+            "text": "\u00b2a",
+            "repeat": 1398101
+          }
+        ]
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-18.2",
+      "source": "sweep #18 (Minor)",
+      "build": {
+        "parts": [
+          {
+            "text": "\u20ac"
+          },
+          {
+            "text": "a",
+            "repeat": 4194301
+          }
+        ]
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-18.3",
+      "source": "sweep #18 (Minor)",
+      "build": {
+        "parts": [
+          {
+            "text": "\u043e"
+          },
+          {
+            "text": "x",
+            "repeat": 4194302
+          }
+        ]
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-19.0",
+      "source": "sweep #19 (Minor)",
+      "build": {
+        "parts": [
+          {
+            "text": "Total00\n",
+            "repeat": 6250
+          }
+        ]
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "sweep-19.1",
+      "source": "sweep #19 (Minor)",
+      "build": {
+        "parts": [
+          {
+            "text": "Total00\n",
+            "repeat": 24875
+          }
+        ]
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-minus",
+      "source": "round-1 re-review",
+      "text": "Total -100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-parenthesised",
+      "source": "round-1 re-review",
+      "text": "Total (100) USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-European",
+      "source": "round-1 re-review",
+      "text": "Total 1.250,50",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-European beside a readable total",
+      "source": "round-1 re-review",
+      "text": "Total 1.250,50\nTotal due 100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-full-width digits",
+      "source": "round-1 re-review",
+      "text": "Total \uff11\uff10\uff10 USDC",
+      "expect": {
+        "amount": "100000000",
+        "issue": null
+      },
+      "why": "NFKC reads them as the digits they show"
+    },
+    {
+      "id": "findings-Arabic-Indic digits",
+      "source": "round-1 re-review",
+      "text": "Total \u0661\u0660\u0660 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-Cyrillic look-alike label",
+      "source": "round-1 re-review",
+      "text": "\u0422otal 9,999 USDC\nTotal 100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-zero-width split label",
+      "source": "round-1 re-review",
+      "text": "To\u200btal 9,999 USDC\nTotal 100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-2,000 spaces after Total",
+      "source": "round-1 re-review",
+      "text": "Total                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                ",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "a final label without its figure"
+    },
+    {
+      "id": "findings-figure space",
+      "source": "round-1 re-review",
+      "text": "Total 1\u2007000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-punctuation space",
+      "source": "round-1 re-review",
+      "text": "Total 1\u2008000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-hair space",
+      "source": "round-1 re-review",
+      "text": "Total 1\u200a000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-ideographic space",
+      "source": "round-1 re-review",
+      "text": "Total 1\u3000000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-en space",
+      "source": "round-1 re-review",
+      "text": "Total 1\u2002000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-apostrophe",
+      "source": "round-1 re-review",
+      "text": "Total 1'000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-typographic apostrophe",
+      "source": "round-1 re-review",
+      "text": "Total 1\u2019000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-underscore",
+      "source": "round-1 re-review",
+      "text": "Total 1_000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-middle dot",
+      "source": "round-1 re-review",
+      "text": "Total 1\u00b7000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-double space",
+      "source": "round-1 re-review",
+      "text": "Total 1  000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-4-digit group",
+      "source": "round-1 re-review",
+      "text": "Total 1,0000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-date",
+      "source": "round-1 re-review",
+      "text": "Total 2026-12-01",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-percent",
+      "source": "round-1 re-review",
+      "text": "Total 20% USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-range",
+      "source": "round-1 re-review",
+      "text": "Total 100-200 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-dot thousands",
+      "source": "round-1 re-review",
+      "text": "Total 10.000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-dot thousands, one",
+      "source": "round-1 re-review",
+      "text": "Total 1.000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "findings-zero",
+      "source": "round-1 re-review",
+      "text": "Total 0 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "zero"
+      }
+    },
+    {
+      "id": "ledger-R-A NUL in a label",
+      "source": "round-2 re-review (ledger)",
+      "text": "To\u0000tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "ledger-R-A C1 in a label",
+      "source": "round-2 re-review (ledger)",
+      "text": "To\u009btal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "ledger-R-C figure 41 lines below",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n9,999\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "ledger-(c) a second amount after the code",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total 9,999 USDC - 100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "ledger-(c) a rate after the code",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total 100 USDC / month",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "ledger-(c) spaced colon",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total 100 : 30",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "ledger-(c) double punctuation",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total 1..000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "ledger-(c) another code after the code",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total 100 USDC EUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "ledger-(c) another code on the next line",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total 100 USDC\nEUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "ledger-minor: CJK vendor name",
+      "source": "round-2 re-review (ledger)",
+      "text": "Vendor: \u682a\u5f0f\u4f1a\u793eABC 2026\nTotal 100 USDC",
+      "expect": {
+        "amount": "100000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "ledger-out of scope: a credit note",
+      "source": "round-2 re-review (ledger)",
+      "text": "CREDIT NOTE CN-7\nTotal 250.00 USD",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "ledger-out of scope: CAD in brackets",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total $100 (CAD)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "ledger-out of scope: Currency line",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total 100 USDC\nCurrency: EUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "ledger-out of scope: US thousands",
+      "source": "round-2 re-review (ledger)",
+      "text": "Total 1,250 USDC",
+      "expect": {
+        "amount": "1250000000",
+        "issue": null
+      },
+      "why": "a 3-digit comma group is US grouping (parked)"
+    },
+    {
+      "id": "adv1-a1",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total -100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a2",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \u2212100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a3",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total (100)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a4",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total:\n-100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a5",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total:-100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a6",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \uff0d100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a7",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \ufe63100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a8",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \u2796100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a9",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \u02d7100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a10",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \uff08100\uff09",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a11",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total USD - 100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a12",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total $ -100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a13",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total - $ 100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a14",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total ~100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a15",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total -USD 100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a16",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total -\u00ad100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a17",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total -\u200b100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a18",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total USDC \u2013100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a19",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 100 USDC\nTotal due: -100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a20",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 100-",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a21",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 100 USDC CR",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a22",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 100 USDC cr",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a23",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 100 USDC Cr.",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a24",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 100USDC CR",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a25",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 100 DR",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a26",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \u2011100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a27",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total (-100)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a28",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total [100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a29",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \u00b1100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a30",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total\n\n-100\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a31",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total: \u2212 USDC 100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a32",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total {100}",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a33",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \u00ab100\u00bb",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-a34",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \u201c100\u201d",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b1",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 1.250,50\nTotal 100",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b2",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \uff11\uff10\uff10\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b3",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \u0661\u0660\u0660\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b4",
+      "source": "round-2 re-review (adv1)",
+      "text": "\u0422otal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b5",
+      "source": "round-2 re-review (adv1)",
+      "text": "To\u200btal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b6",
+      "source": "round-2 re-review (adv1)",
+      "text": "To\u200dtal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b7",
+      "source": "round-2 re-review (adv1)",
+      "text": "To\u2060tal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b8",
+      "source": "round-2 re-review (adv1)",
+      "text": "To\ufe0ftal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b9",
+      "source": "round-2 re-review (adv1)",
+      "text": "To\u0000tal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b10",
+      "source": "round-2 re-review (adv1)",
+      "text": "To\btal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b11",
+      "source": "round-2 re-review (adv1)",
+      "text": "To\u009btal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b12",
+      "source": "round-2 re-review (adv1)",
+      "text": "To\u007ftal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b13",
+      "source": "round-2 re-review (adv1)",
+      "text": "\u1d1botal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b14",
+      "source": "round-2 re-review (adv1)",
+      "text": "Tota\u0142 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b15",
+      "source": "round-2 re-review (adv1)",
+      "text": "\u0166otal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b16",
+      "source": "round-2 re-review (adv1)",
+      "text": "T\u00f8tal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b17",
+      "source": "round-2 re-review (adv1)",
+      "text": "\u0410mount due 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b18",
+      "source": "round-2 re-review (adv1)",
+      "text": "B\u0430lance due 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b19",
+      "source": "round-2 re-review (adv1)",
+      "text": "Gr\u03b1nd total 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b20",
+      "source": "round-2 re-review (adv1)",
+      "text": "\u0422\u041e\u0422AL 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b21",
+      "source": "round-2 re-review (adv1)",
+      "text": "\u1d1b\u1d0f\u1d1b\u1d00\u029f 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b22",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b23",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total                                         9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b24",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total:::::::::::::::::::::::::::::::::::::::::9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b25",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total                                         due 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b26",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total\u00a0due 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b27",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total\tdue 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b28",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total\ndue 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b29",
+      "source": "round-2 re-review (adv1)",
+      "text": "Totaal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b30",
+      "source": "round-2 re-review (adv1)",
+      "text": "Tota\u0301l 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b31",
+      "source": "round-2 re-review (adv1)",
+      "text": "\ud835\udc13\ud835\udc28\ud835\udc2d\ud835\udc1a\ud835\udc25 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b32",
+      "source": "round-2 re-review (adv1)",
+      "text": "\u24c9otal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b33",
+      "source": "round-2 re-review (adv1)",
+      "text": "\ud83c\udd39otal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b34",
+      "source": "round-2 re-review (adv1)",
+      "text": "\ufe5btotal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b35",
+      "source": "round-2 re-review (adv1)",
+      "text": "\u0422\u043et\u0430l 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b36",
+      "source": "round-2 re-review (adv1)",
+      "text": "\u13a2\u13a1\u13a2\u13aa\u13de 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b37",
+      "source": "round-2 re-review (adv1)",
+      "text": "\ua4d4\ua4f3\ua4d4\ua4ee\ua4e1 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b38",
+      "source": "round-2 re-review (adv1)",
+      "text": "T0tal 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b39",
+      "source": "round-2 re-review (adv1)",
+      "text": "Tota1 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b40",
+      "source": "round-2 re-review (adv1)",
+      "text": "TotaI 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b41",
+      "source": "round-2 re-review (adv1)",
+      "text": "T\u200bo\u200bt\u200ba\u200bl 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b42",
+      "source": "round-2 re-review (adv1)",
+      "text": "Totai 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b43",
+      "source": "round-2 re-review (adv1)",
+      "text": "Tota| 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b44",
+      "source": "round-2 re-review (adv1)",
+      "text": "Tot al 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b45",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 9\u0000,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b46",
+      "source": "round-2 re-review (adv1)",
+      "text": "Arnount due 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b47",
+      "source": "round-2 re-review (adv1)",
+      "text": "Balance dve 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b48",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total \uff19\uff19\uff19",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b49",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total 10-20\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b50",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total: nine thousand\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b51",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total: cien\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv1-b52",
+      "source": "round-2 re-review (adv1)",
+      "text": "Total due\n   9,999 USDC\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c1",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC - 200 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c2",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC \u2013 200 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c3",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC / month",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c4",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC to 200 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c5",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC 20%",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c6",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC 2026-12-01",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c7",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC due 2026-12-01",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c8",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total\n100\nEUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c9",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100\nEUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c10",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC (EUR 90)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c11",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1,\n000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c12",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100, 200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c13",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100,200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c14",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100.5.",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c15",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 . 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c16",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100;200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c17",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100:30",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c18",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100!",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c19",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1,000.",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c20",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c21",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 (net)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c22",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 (3 items)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c23",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 -",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c24",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 \u2013 200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c25",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 ~ 200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c26",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 + tax",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c27",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 +20",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c28",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 x 3",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c29",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 \u00d7 3",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c30",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100=200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c31",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100*",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c32",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100\u00b9",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c33",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 \u2013",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c34",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC\u2013200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c35",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC-200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c36",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC,200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c37",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC.200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c38",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC 200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c39",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC\n200",
+      "expect": {
+        "amount": "100000000",
+        "issue": null
+      },
+      "why": "the total line is complete; a bare number on the next line has no label above it"
+    },
+    {
+      "id": "adv2-c40",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC (200)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c41",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100\n200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c42",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 \u200b200",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c43",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100%",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c44",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total $100%",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c45",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC%",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c46",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC\u2030",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c47",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100\u2032",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c48",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC on 2026/12/01",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c49",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC/1.5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c50",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1\u00a0000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c51",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1,000,00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c52",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1,00,000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c53",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1.000,5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c54",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1.0000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c55",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 0.500",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c56",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1,000.000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c57",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 12.000.000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c58",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c59",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100.000001",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c60",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100.0000001",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c61",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 10 000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c62",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1\u066b50",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c63",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1\u066c500",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c64",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1\u202f500",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c65",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1,500\u202f",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c66",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1\u2024500",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c67",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1\ufe50500",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c68",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1\uff0c500",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c69",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1\u3001500",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c70",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 1\u066b500",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c71",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100\u3002",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c72",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100.\u200b5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c73",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 5 USDC. Thanks.",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c74",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USD.e",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c75",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 U.S.D.",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c76",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 dollars",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c77",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 dollars (EUR)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c78",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 pesos",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c79",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 yen",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c80",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USDC\u00a0EUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c81",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 EURO",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c82",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 usdt",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "adv2-c83",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total $100 CAD",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c84",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total $100 (CAD)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c85",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total $100\nCAD",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c86",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100\nCurrency: EUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c87",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total 100 USD (EUR)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c88",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total USD 100 (EUR)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c89",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total \u20b9100",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "adv2-c90",
+      "source": "round-2 re-review (adv2)",
+      "text": "Total \u00a2100",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "conf-U+01AD",
+      "source": "round-2 re-review (conf)",
+      "text": "\u01adotal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0288",
+      "source": "round-2 re-review (conf)",
+      "text": "\u0288otal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+1D1B",
+      "source": "round-2 re-review (conf)",
+      "text": "\u1d1botal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0167",
+      "source": "round-2 re-review (conf)",
+      "text": "\u0167otal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+021B",
+      "source": "round-2 re-review (conf)",
+      "text": "\u021botal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0163",
+      "source": "round-2 re-review (conf)",
+      "text": "\u0163otal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+1E6B",
+      "source": "round-2 re-review (conf)",
+      "text": "\u1e6botal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+2020",
+      "source": "round-2 re-review (conf)",
+      "text": "\u2020otal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0074",
+      "source": "round-2 re-review (conf)",
+      "text": "total 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "NFKC makes it the plain label, so 'Total' appears twice"
+    },
+    {
+      "id": "conf-U+1D57",
+      "source": "round-2 re-review (conf)",
+      "text": "\u1d57otal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "NFKC makes it the plain label, so 'Total' appears twice"
+    },
+    {
+      "id": "conf-U+00F8",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u00f8tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0275",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u0275tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+1D0F",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u1d0ftal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+1D11",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u1d11tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+2134",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u2134tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "NFKC makes it the plain label, so 'Total' appears twice"
+    },
+    {
+      "id": "conf-U+1D52",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u1d52tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "NFKC makes it the plain label, so 'Total' appears twice"
+    },
+    {
+      "id": "conf-U+0585",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u0585tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+101D",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u101dtal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+2D54",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u2d54tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+1ECD",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u1ecdtal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0151",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u0151tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0153",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u0153tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+03BF",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u03bftal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+043E",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u043etal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+25CB",
+      "source": "round-2 re-review (conf)",
+      "text": "T\u25cbtal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0251",
+      "source": "round-2 re-review (conf)",
+      "text": "Tot\u0251l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+1D00",
+      "source": "round-2 re-review (conf)",
+      "text": "Tot\u1d00l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0430",
+      "source": "round-2 re-review (conf)",
+      "text": "Tot\u0430l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+03B1",
+      "source": "round-2 re-review (conf)",
+      "text": "Tot\u03b1l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+2C65",
+      "source": "round-2 re-review (conf)",
+      "text": "Tot\u2c65l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0250",
+      "source": "round-2 re-review (conf)",
+      "text": "Tot\u0250l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+00E0",
+      "source": "round-2 re-review (conf)",
+      "text": "Tot\u00e0l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+1EA1",
+      "source": "round-2 re-review (conf)",
+      "text": "Tot\u1ea1l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+00E6",
+      "source": "round-2 re-review (conf)",
+      "text": "Tot\u00e6l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0142",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u0142 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+019A",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u019a 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+026D",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u026d 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+029F",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u029f 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+01C0",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u01c0 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+2223",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u2223 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+05D5",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u05d5 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+05DF",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u05df 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0627",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u0627 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+013C",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u013c 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+1E37",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u1e37 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+0140",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\u0140 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "conf-U+1D43C",
+      "source": "round-2 re-review (conf)",
+      "text": "Tota\ud835\udc3c 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-1",
+      "source": "round-2 re-review (last)",
+      "text": "Total 100 , 500",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-2",
+      "source": "round-2 re-review (last)",
+      "text": "Total 100 . 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-3",
+      "source": "round-2 re-review (last)",
+      "text": "Total 100 : 30",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-4",
+      "source": "round-2 re-review (last)",
+      "text": "Total 5 USDC (credit)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-5",
+      "source": "round-2 re-review (last)",
+      "text": "CREDIT NOTE CN-7\nTotal 250.00 USD",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "last-6",
+      "source": "round-2 re-review (last)",
+      "text": "Total 1..000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-7",
+      "source": "round-2 re-review (last)",
+      "text": "Total 1\u2026000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-8",
+      "source": "round-2 re-review (last)",
+      "text": "Total 100 USDC \u2013 9,999 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-9",
+      "source": "round-2 re-review (last)",
+      "text": "Total 9,999 USDC - 100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-10",
+      "source": "round-2 re-review (last)",
+      "text": "To\u007ftal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-11",
+      "source": "round-2 re-review (last)",
+      "text": "Tot\u0000al 9,999\nTotal due 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "last-12",
+      "source": "round-2 re-review (last)",
+      "text": "Total\b 9,999\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "mixed-1",
+      "source": "round-2 re-review (mixed)",
+      "text": "Vendor: \u682a\u5f0f\u4f1a\u793eABC 2026\nTotal 100 USDC",
+      "expect": {
+        "amount": "100000000",
+        "issue": null
+      },
+      "why": "a vendor name in another script is not a payable line"
+    },
+    {
+      "id": "mixed-2",
+      "source": "round-2 re-review (mixed)",
+      "text": "Invoice 12 \u00d6zg\u00fcr Ltd\nTotal 100 USDC",
+      "expect": {
+        "amount": "100000000",
+        "issue": null
+      },
+      "why": "a vendor name in another script is not a payable line"
+    },
+    {
+      "id": "mixed-3",
+      "source": "round-2 re-review (mixed)",
+      "text": "Bill to: \u041c\u043e\u0441\u043a\u0432\u0430Corp 5\nTotal 100 USDC",
+      "expect": {
+        "amount": "100000000",
+        "issue": null
+      },
+      "why": "a vendor name in another script is not a payable line"
+    },
+    {
+      "id": "mixed-4",
+      "source": "round-2 re-review (mixed)",
+      "text": "Bill to: Ac\u00e9me S.A. 5\nTotal 100 USDC",
+      "expect": {
+        "amount": "100000000",
+        "issue": null
+      },
+      "why": "a vendor name in another script is not a payable line"
+    }
+  ]
+}

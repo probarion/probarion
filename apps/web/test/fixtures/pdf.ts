@@ -1,9 +1,10 @@
 /**
  * Builds a minimal, valid PDF with correct xref offsets: `pages` pages (default 1), each with `text` as its text
- * layer.
+ * layer. Each line of `text` is set on its own line of the page, 14 points below the one before.
  */
 export function tinyPdf(text: string, pages = 1): Uint8Array {
-  const stream = `BT /F1 12 Tf 20 100 Td (${text}) Tj ET`;
+  const lines = text.split("\n").map((line, i) => `${i === 0 ? "" : "0 -14 Td "}(${line}) Tj`);
+  const stream = `BT /F1 12 Tf 20 120 Td ${lines.join(" ")} ET`;
   // 1 catalog, 2 page tree, 3 content stream, 4 font, then one object per page.
   const pageIds = Array.from({ length: pages }, (_, i) => i + 5);
   const objs = [
