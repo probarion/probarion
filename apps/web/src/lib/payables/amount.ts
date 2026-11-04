@@ -2108,3 +2108,9 @@ export const REGEXES_FOR_TESTS: Readonly<Record<string, RegExp>> = {
   CODE_USE_CAD: codeUse("CAD"),
   CODE_USE_NEAR: codeUse("NEAR"),
 };
+
+/**
+ * `codeUse` and the code aliases, for the ReDoS battery's completeness check: it compiles the pattern of every
+ * currency code and sweeps each distinct template. Not for use in code.
+ */
+export const CODE_USE_FOR_TESTS = { codeUse, aliases: CODE_ALIASES } as const;

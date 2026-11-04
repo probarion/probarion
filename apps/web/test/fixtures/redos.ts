@@ -264,3 +264,55 @@ export function readerRegexes(
     ...Object.entries(namespace).map(([n, re]) => ({ where: `amount.ts ${n}`, re })),
   ]);
 }
+
+/** One distinct pattern a per-code builder compiles, the code abstracted away, and a code that compiles it. */
+export interface CodeTemplate {
+  template: string;
+  flags: string;
+  code: string;
+  re: RegExp;
+}
+
+/**
+ * The distinct templates `build` compiles over `codes`: each pattern's source with its code replaced by a marker. A
+ * new branch for one code (code === "ZED" ? ...) is a new template, and so is swept.
+ */
+export function codeTemplates(
+  build: (code: string) => RegExp,
+  codes: Iterable<string>,
+): CodeTemplate[] {
+  const seen = new Map<string, CodeTemplate>();
+  for (const code of codes) {
+    const re = build(code);
+    // Codes are capitals and digits, so the code is written in the source as it is.
+    const template = re.source.split(code).join("\u0000CODE\u0000");
+    const key = `${re.flags}/${template}`;
+    if (!seen.has(key)) seen.set(key, { template, flags: re.flags, code, re });
+  }
+  return [...seen.values()];
+}
+
+/**
+ * The codes a module's source names for a per-code builder: the string arguments of its calls, and the code-like
+ * strings (capitals and digits) written in its body (code === "NEAR").
+ */
+export function codesNamedFor(url: URL, name: string, builder: string): string[] {
+  const text = readFileSync(url, "utf8");
+  const src = ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true);
+  const out = new Set<string>();
+  const CODE = /^[A-Z][A-Z0-9]{1,7}$/;
+  const inBody = (n: ts.Node) => {
+    if (ts.isStringLiteral(n) && CODE.test(n.text)) out.add(n.text);
+    ts.forEachChild(n, inBody);
+  };
+  const visit = (n: ts.Node) => {
+    if (ts.isCallExpression(n) && n.expression.getText(src) === builder) {
+      const arg = n.arguments[0];
+      if (arg && ts.isStringLiteral(arg)) out.add(arg.text);
+    }
+    if (ts.isFunctionDeclaration(n) && n.name?.getText(src) === builder && n.body) inBody(n.body);
+    ts.forEachChild(n, visit);
+  };
+  visit(src);
+  return [...out];
+}

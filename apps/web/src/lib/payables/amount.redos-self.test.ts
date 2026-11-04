@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkRegex } from "../../../test/fixtures/redos";
-import { REGEXES_FOR_TESTS } from "./amount";
+import { checkRegex, codeTemplates } from "../../../test/fixtures/redos";
+import { CODE_USE_FOR_TESTS, REGEXES_FOR_TESTS } from "./amount";
 
 // The battery's checker on planted regexes (ruling W-T13-B19): each slow one must be flagged, each control must
 // pass. The old forms of three regexes the reader fixed are rebuilt from the current sources, so the test also
@@ -63,6 +63,22 @@ describe("the ReDoS battery's checker", () => {
     },
     120_000,
   );
+
+  it("finds a new code-specific branch of codeUse as a new template, and flags it", () => {
+    const real = CODE_USE_FOR_TESTS.codeUse;
+    // The verifier's planted branch: code === "ZED" ? "\\(\\s*\\s*ZED" : ...
+    const source = real("CAD").source.split("CAD").join("ZED");
+    if (!source.includes("\\(ZED\\)")) throw new Error("codeUse no longer writes the bracket form");
+    const zed = new RegExp(source.replace("\\(ZED\\)", "\\(\\s*\\s*ZED"), real("CAD").flags);
+    const planted = (code: string): RegExp => (code === "ZED" ? zed : real(code));
+    const codes = ["CAD", "EUR", "NEAR"];
+    const before = codeTemplates(real, codes);
+    const after = codeTemplates(planted, [...codes, "ZED"]);
+    expect(after).toHaveLength(before.length + 1);
+    const found = after.find((t) => t.code === "ZED");
+    expect(found).toBeDefined();
+    expect(checkRegex(found?.re ?? /(?:)/)).not.toBeNull();
+  }, 120_000);
 
   it.each(CONTROLS)(
     "passes %s",

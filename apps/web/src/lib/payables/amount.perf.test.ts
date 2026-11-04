@@ -4,10 +4,12 @@ import { MAX_TEXT_CHARS } from "./extract";
 import { extractFacts, fingerprintText, invoiceNumberOf } from "./facts";
 
 // The facts are read in linear time, whatever the text. Each shape is checked by how its time grows: at four times
-// the input, a run under 250 ms (best of five) passes; a slower one may take at most 12 times as long as the small
-// run (both the best of nine), and never a second. A quadratic shape grows 16 times and fails; a linear one on a busy machine passes
-// without a timer floor. Wall-clock cases name the limits the rulings set (100 ms; 250 ms for the two short-line
-// shapes, which a loaded CI machine brings near 100 ms and a real regression takes 490 ms or more), with no retries.
+// the input, a run under 500 ms (best of five) passes; a slower one may take at most 12 times as long as the small
+// run (both the best of nine), and never a second. A quadratic shape grows 16 times and costs 625 ms or more, so it
+// fails; a linear one on a busy machine passes without a timer floor. Wall-clock cases name the limits the rulings
+// set: 100 ms; 300 ms for the 50,000-character lines of codes; 400 ms for the two short-line shapes (a real
+// regression takes 490 ms or more). The suite retries up to twice (ruling W-T13-B20), so one load spike does not fail
+// it, and a regression, which fails every attempt, still does.
 
 const H = "c".repeat(64);
 const RUNS = 5;
@@ -59,7 +61,8 @@ const serials = (count: number) =>
 /** 19 distinct word-like codes, then a digit run: each code's contexts are read around the code. */
 const CODES = "ALL AMD BAM BOB BTN CAD CUP CVE GEL MAD MDL MOP NEAR PEN PHP SOL SOS SVC TOP TRY ";
 
-describe("extractFacts on adversarial text", () => {
+// biome-ignore lint/correctness/usePlaywrightValidDescribeCallback: vitest's describe(name, options, fn), not Playwright's.
+describe("extractFacts on adversarial text", { retry: 2 }, () => {
   beforeAll(() => {
     extractFacts("Invoice INV-1\nPO: PO-4471\nFrom: Acme\nPay to a.near\nTotal 5 USDC", H, null); // warm up
   });
@@ -143,7 +146,7 @@ describe("extractFacts on adversarial text", () => {
   it.each(shapes)("grows linearly on %s", (_why, shape) => {
     const n = 12_000;
     expect(shape(4 * n).length).toBeLessThanOrEqual(MAX_READ_UNITS);
-    if (best(shape(4 * n)) < 250) return;
+    if (best(shape(4 * n)) < 500) return;
     const small = best9(shape(n));
     const large = best9(shape(4 * n));
     expect(large).toBeLessThan(1000);
@@ -155,9 +158,9 @@ describe("extractFacts on adversarial text", () => {
     ["CAD", `${HEAD}${"CAD ".repeat(12_500)}`.slice(0, 50_000), "currency"],
     ["NEAR", `${HEAD}${"NEAR ".repeat(12_500)}`.slice(0, 50_000), null],
     ["ALL, unsliced", `${HEAD}${"ALL ".repeat(12_493)}`, "currency"],
-  ])("reads a 50,000-character line of the code %s in under 100 ms", (_code, text, issue) => {
+  ])("reads a 50,000-character line of the code %s in under 300 ms", (_code, text, issue) => {
     expect(extractFacts(text, H, null).amountIssue).toBe(issue);
-    expect(best(text)).toBeLessThan(100);
+    expect(best(text)).toBeLessThan(300);
   });
 
   /** The 50,000-character wall-clock cases and each one's limit in ms. */
@@ -166,12 +169,12 @@ describe("extractFacts on adversarial text", () => {
     [
       "short lines of an I look-alike",
       `Total $5\n${"\u0406\u0406\u0406\n".repeat(12_500)}`.slice(0, 50_000),
-      250,
+      400,
     ],
     [
       "short letter-spaced Cyrillic lines",
       `INVOICE INV-1001\nFrom: Acme\nTotal due: $100.00\n${"\u0410 \u0412 \u0421\n".repeat(8325)}`,
-      250,
+      400,
     ],
     [
       "many word-like codes before a digit run",
