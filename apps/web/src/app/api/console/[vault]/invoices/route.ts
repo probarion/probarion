@@ -28,6 +28,10 @@ const MAX_REQUEST_BYTES = MAX_INVOICE_BYTES + 64 * 1024;
 const PAYMENT_PENDING =
   "Payment sent, confirmation pending. Do not send it again: the spend is confirmed from the chain.";
 
+/** Shown when no attested model read the same amount as the code: nothing was sent, the owner confirms. */
+const OWNER_CONFIRMS =
+  "Nothing was sent. No attested model read the same amount as the code, so this invoice waits for the owner to confirm the amount.";
+
 /** 4259840 -> "4,259,840". */
 const bytes = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
@@ -120,6 +124,7 @@ function respond(r: PipelineResult, requestId: string): Response {
         amountIssue: r.amountIssue,
         requestId,
         ...(r.invoiceStatus === "unconfirmed" ? { notice: PAYMENT_PENDING } : {}),
+        ...(r.invoiceStatus === "awaiting_owner" ? { notice: OWNER_CONFIRMS } : {}),
       });
     case "duplicate":
       return json(
@@ -130,7 +135,9 @@ function respond(r: PipelineResult, requestId: string): Response {
               ? `This invoice was already sent. ${PAYMENT_PENDING}`
               : r.invoiceStatus === "processing"
                 ? "This invoice is being processed, or its outcome is still being confirmed."
-                : "This invoice was already processed.",
+                : r.invoiceStatus === "awaiting_owner"
+                  ? "This invoice is already waiting for the owner to confirm its amount."
+                  : "This invoice was already processed.",
           invoiceId: r.invoiceId,
           status: r.invoiceStatus,
         },

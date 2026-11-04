@@ -1,5 +1,5 @@
 import "server-only";
-import type { InvoiceFacts, MandateView } from "@probarion/core";
+import type { CustomRule, InvoiceFacts, MandateView } from "@probarion/core";
 import { hashInvoice, type SpendOutcome } from "@probarion/sdk";
 import { sealInvoice } from "@/lib/crypto/secrets";
 import { DecryptError, sha256Hex } from "@/lib/crypto/sodium";
@@ -15,6 +15,7 @@ import { log, scrubText } from "@/lib/log";
 import { extractInvoice, type InvoiceMediaType } from "./extract";
 import { type AmountIssue, extractFacts, fingerprintText, refFor } from "./facts";
 import { signingMandate } from "./mandate";
+import { OWNER_CONFIRMS_RULE, ownerConfirmsRule } from "./owner-confirms";
 import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
 
 // The Payables cycle (spec §8, plan 04 Task 13): extract the invoice text, read its facts, store it sealed or as
@@ -31,6 +32,8 @@ export const PROCESS_LEASE_SECONDS = 90;
 /** What the pipeline needs from the SDK's `Probarion` (and what tests fake). */
 export interface ProbarionLike {
   process(invoice: { text: string; facts: InvoiceFacts; ref: string }): Promise<SpendOutcome>;
+  /** The SDK's custom rules: the pipeline adds the two-readers-or-the-owner rule (owner-confirms.ts). */
+  rules: { add(rule: CustomRule): void };
 }
 
 export interface PipelineDeps {
@@ -58,11 +61,15 @@ export interface InvoiceUpload {
 export type KeyProblem = "inactive" | "decrypt_failed" | "key_mismatch";
 
 export type PipelineResult =
-  /** The cycle ran. `invoiceStatus` "unconfirmed": the payment was sent and its confirmation is pending. */
+  /**
+   * The cycle ran. `invoiceStatus` "unconfirmed": the payment was sent and its confirmation is pending.
+   * "awaiting_owner": no attested model read the same amount, so nothing was sent; the row keeps the code's
+   * amount as a suggestion for the owner to confirm.
+   */
   | {
       status: "decided";
       invoiceId: string;
-      invoiceStatus: "decided" | "unconfirmed";
+      invoiceStatus: "decided" | "unconfirmed" | "awaiting_owner";
       outcome: SpendOutcome;
       /** False when the outcome could not be written to the invoice row (it stays `processing`). */
       recorded: boolean;
@@ -139,6 +146,21 @@ export function invoiceStatusOf(outcome: Pick<SpendOutcome, "status">): "decided
     default:
       return "unconfirmed";
   }
+}
+
+/**
+ * True when the two-readers-or-the-owner rule decided the outcome and nothing was sent: the invoice waits for
+ * the owner. Any other refusal or hold is recorded as decided, as before.
+ */
+export function waitsForOwner(
+  outcome: Pick<SpendOutcome, "status" | "code" | "spendId" | "txHash">,
+): boolean {
+  return (
+    outcome.code === OWNER_CONFIRMS_RULE &&
+    (outcome.status === "held" || outcome.status === "refused_by_code") &&
+    outcome.spendId === null &&
+    outcome.txHash === null
+  );
 }
 
 export async function processInvoice(
@@ -252,6 +274,8 @@ export async function processInvoice(
           ledgerKey: ledger.key.secret,
           requestId,
         });
+        // Two readers or the owner: without an attested model that read the same amount, nothing is sent.
+        pb.rules.add(ownerConfirmsRule());
         outcome = await pb.process({ text, facts, ref });
       } catch (e) {
         // The SDK sends a spend only after a decision and never throws once it has: nothing went out.
@@ -277,7 +301,7 @@ export async function processInvoice(
         return { status: "failed", invoiceId: inserted.id, error };
       }
 
-      const invoiceStatus = invoiceStatusOf(outcome);
+      const invoiceStatus = waitsForOwner(outcome) ? "awaiting_owner" : invoiceStatusOf(outcome);
       const fields = {
         ...at,
         invoice: inserted.id,
@@ -295,6 +319,8 @@ export async function processInvoice(
         const r = await setInvoiceOutcome(deps.db, tenant.tenant_id, inserted.id, {
           status: invoiceStatus,
           outcome,
+          // The code's amount, kept for the owner to confirm (Task 14's Confirm button).
+          suggestedAmount: invoiceStatus === "awaiting_owner" ? facts.amount : null,
           anchorTxHash:
             outcome.anchorTxHash && TX_HASH.test(outcome.anchorTxHash)
               ? outcome.anchorTxHash

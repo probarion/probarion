@@ -21,6 +21,7 @@ import { type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { generateKey } from "@/lib/keys/service";
 import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { createVaultReader, listAll } from "@/lib/near/reader";
+import { OWNER_CONFIRMS_RULE } from "@/lib/payables/owner-confirms";
 import { type PipelineDeps, processInvoice } from "@/lib/payables/pipeline";
 import { getInvoice } from "@/lib/payables/store";
 import { quietLogs } from "../fixtures/quiet-logs";
@@ -32,14 +33,14 @@ import { pgliteDb } from "./pglite-db";
 // fake chain over JSON-RPC and its fake NEAR AI, with the ledger in Postgres (PGlite) and the keys sealed in
 // agent_keys. TEST DOUBLE keys only: they are derived from public strings and never hold funds.
 
-const h = vi.hoisted(() => ({ url: "", db: null as unknown as Db }));
+const h = vi.hoisted(() => ({ url: "", db: null as unknown as Db, key: "" as string | null }));
 /** Built at run time, so no secret-shaped literal sits in the source (gitleaks). */
 const NEARAI_KEY = ["test", "double", "nearai", "key"].join("-");
 vi.mock("@/lib/env", () => ({
   getEnv: () => ({
     NEAR_NETWORK: "testnet",
     NEAR_RPC_URLS: [h.url],
-    NEARAI_API_KEY: NEARAI_KEY,
+    NEARAI_API_KEY: h.key,
     NEARAI_MODEL: null,
   }),
 }));
@@ -53,7 +54,7 @@ const PO_1001 = new TextEncoder().encode("TEST DOUBLE PO-1001");
 const BAD = "0xBAD0000000000000000000000000000000000001";
 
 /** An honest TEST DOUBLE model: it proposes the mandate it was shown, for the amount the code read. */
-function honestModel(request: FakeChatRequest): string {
+function honestModel(request: FakeChatRequest, amount?: (read: string) => string | null): string {
   const lines = (request.messages[1]?.content ?? "").split("\n");
   const facts = JSON.parse((lines[2] ?? "").slice("facts: ".length)) as { amount: string };
   const mandates = JSON.parse((lines[3] ?? "").slice("mandates: ".length)) as {
@@ -64,7 +65,7 @@ function honestModel(request: FakeChatRequest): string {
   return JSON.stringify({
     action: "pay",
     mandate_id: m?.id ?? null,
-    amount: facts.amount,
+    amount: amount === undefined ? facts.amount : amount(facts.amount),
     payee_hint: { near_account: m?.payee.account_id ?? "" },
     reasoning: "The invoice matches the PO.",
     confidence: 0.95,
@@ -78,8 +79,13 @@ describe("a Payables cycle on the fake chain", () => {
   let member: MemberTenant;
   let deps: PipelineDeps;
   let store: SupabaseLedgerStore;
+  /** How the TEST DOUBLE model states the amount; each test may change it. */
+  let modelAmount: ((read: string) => string | null) | undefined;
+  /** The model's transport: the fake NEAR AI, or one that is down. */
+  let modelDown = false;
 
   beforeAll(async () => {
+    h.key = NEARAI_KEY;
     server = await startFakeRpcServer(createScenarioChain());
     h.url = server.url;
     pg = await freshDb();
@@ -107,7 +113,7 @@ describe("a Payables cycle on the fake chain", () => {
     member = m;
     store = new SupabaseLedgerStore(h.db, tenantId);
     const reader = createVaultReader(new RpcClient({ urls: [server.url] }));
-    const nearai = createFakeNearAi({ respond: honestModel });
+    const nearai = createFakeNearAi({ respond: (r) => honestModel(r, modelAmount) });
     deps = {
       db: h.db,
       master: MASTER,
@@ -117,13 +123,19 @@ describe("a Payables cycle on the fake chain", () => {
         makeTenantProbarion(o, {
           now: () => NOW,
           archivalRpc: null,
-          proposer: new NearAiProposer({
-            apiKey: NEARAI_KEY,
-            baseUrl: FAKE_NEARAI_BASE_URL,
-            fetch: nearai.fetch,
-            now: () => NOW,
-            sleep: async () => {},
-          }),
+          // With no NEARAI_API_KEY the factory configures no model, so no proposer is injected either.
+          ...(h.key === null
+            ? {}
+            : {
+                proposer: new NearAiProposer({
+                  apiKey: NEARAI_KEY,
+                  baseUrl: FAKE_NEARAI_BASE_URL,
+                  fetch: (input, init) =>
+                    modelDown ? Promise.reject(new Error("model down")) : nearai.fetch(input, init),
+                  now: () => NOW,
+                  sleep: async () => {},
+                }),
+              }),
         }),
     };
   });
@@ -196,6 +208,129 @@ describe("a Payables cycle on the fake chain", () => {
     });
   });
 
+  /** What the chain and the ledger show of one cycle: the spends sent, and the cycle's decision entry. */
+  async function cycle(text: string, requestId: string) {
+    const spends = server.chain.spends.length;
+    const r = await run(text, PO_1001, requestId);
+    if (r.status !== "decided") throw new Error(`not decided: ${JSON.stringify(r)}`);
+    const decision = (await store.all()).filter((e) => e.body.kind === "decision").at(-1);
+    const owner = decision?.body.rules.find((x) => x.id === OWNER_CONFIRMS_RULE);
+    return { r, sent: server.chain.spends.length - spends, decision: decision?.body, owner };
+  }
+
+  it("rules-only (no model key): nothing is sent, and the invoice waits for the owner with the code's amount", async () => {
+    h.key = null;
+    try {
+      const { r, sent, decision, owner } = await cycle(
+        `Invoice INV-11\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 20.00 USDC`,
+        "req-rules-only",
+      );
+      expect(sent).toBe(0);
+      expect(r.invoiceStatus).toBe("awaiting_owner");
+      expect(r.outcome).toMatchObject({
+        status: "held",
+        spendId: null,
+        txHash: null,
+        code: OWNER_CONFIRMS_RULE,
+      });
+      expect(decision).toMatchObject({
+        verdict: "hold",
+        decided_by: "rules-only",
+        amount: "20000000",
+      });
+      expect(owner).toMatchObject({ outcome: "hold" });
+      expect(await getInvoice(h.db, member.tenant_id, r.invoiceId)).toMatchObject({
+        status: "awaiting_owner",
+        suggested_amount: "20000000",
+      });
+    } finally {
+      h.key = NEARAI_KEY;
+    }
+  });
+
+  it("rules-only above the approval threshold: refused by the rule instead of held on chain, nothing sent", async () => {
+    h.key = null;
+    try {
+      // 60 USDC is above the mandate's approval_above (50): a hold would send the spend for approval.
+      const { r, sent, decision, owner } = await cycle(
+        `Invoice INV-12\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 60.00 USDC`,
+        "req-rules-only-above",
+      );
+      expect(sent).toBe(0);
+      expect(r.invoiceStatus).toBe("awaiting_owner");
+      expect(r.outcome).toMatchObject({ status: "refused_by_code", code: OWNER_CONFIRMS_RULE });
+      expect(decision).toMatchObject({ verdict: "refuse", decided_by: "rules-only" });
+      expect(owner).toMatchObject({ outcome: "refuse" });
+      expect(await getInvoice(h.db, member.tenant_id, r.invoiceId)).toMatchObject({
+        suggested_amount: "60000000",
+      });
+    } finally {
+      h.key = NEARAI_KEY;
+    }
+  });
+
+  it("a model that is down decides rules-only: nothing is sent, and the invoice waits for the owner", async () => {
+    modelDown = true;
+    try {
+      const { r, sent, decision } = await cycle(
+        `Invoice INV-13\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 21.00 USDC`,
+        "req-model-down",
+      );
+      expect(sent).toBe(0);
+      expect(r.invoiceStatus).toBe("awaiting_owner");
+      expect(decision).toMatchObject({ verdict: "hold", decided_by: "rules-only" });
+    } finally {
+      modelDown = false;
+    }
+  });
+
+  it("an attested model that states no amount is no second reader: nothing is sent", async () => {
+    modelAmount = () => null;
+    try {
+      const { r, sent, decision, owner } = await cycle(
+        `Invoice INV-14\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 22.00 USDC`,
+        "req-model-no-amount",
+      );
+      expect(sent).toBe(0);
+      expect(r.invoiceStatus).toBe("awaiting_owner");
+      expect(decision).toMatchObject({ decided_by: "model+rules", verdict: "hold" });
+      expect(owner).toMatchObject({ outcome: "hold" });
+    } finally {
+      modelAmount = undefined;
+    }
+  });
+
+  it("an attested model that reads another amount refuses the invoice by code: nothing is sent", async () => {
+    modelAmount = (read) => (BigInt(read) * 10n).toString();
+    try {
+      const { r, sent } = await cycle(
+        `Invoice INV-15\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 23.00 USDC`,
+        "req-model-disagrees",
+      );
+      expect(sent).toBe(0);
+      expect(r.invoiceStatus).toBe("decided");
+      expect(r.outcome).toMatchObject({
+        status: "refused_by_code",
+        code: "invoice.amount_invalid",
+      });
+    } finally {
+      modelAmount = undefined;
+    }
+  });
+
+  it("two readers that agree: an attested model with the code's amount pays", async () => {
+    const { r, sent, decision, owner } = await cycle(
+      `Invoice INV-16\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 24.00 USDC`,
+      "req-two-readers",
+    );
+    expect(sent).toBe(1);
+    expect(r.invoiceStatus).toBe("decided");
+    expect(r.outcome).toMatchObject({ status: "paid", code: null });
+    expect(decision).toMatchObject({ verdict: "allow", decided_by: "model+rules" });
+    expect(owner).toMatchObject({ outcome: "pass" });
+    expect(server.chain.spends.at(-1)).toMatchObject({ amount: "24000000", status: "paid" });
+  });
+
   it("skips a mandate bound to a key this console does not hold: no entry, no transaction", async () => {
     const po = new TextEncoder().encode("TEST DOUBLE PO-3003");
     const one = server.chain.mandates[0];
@@ -216,6 +351,6 @@ describe("a Payables cycle on the fake chain", () => {
     });
     expect((await store.all()).length).toBe(before.entries);
     expect(server.methods.slice(before.methods).filter((m) => m !== "query")).toEqual([]);
-    expect(server.chain.spends).toHaveLength(1);
+    expect(server.chain.spends).toHaveLength(2);
   });
 });

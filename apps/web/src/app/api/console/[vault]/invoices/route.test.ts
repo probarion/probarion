@@ -23,6 +23,8 @@ const h = vi.hoisted(() => ({
   mandates: (async () => []) as (vault: string, from: number, limit: number) => Promise<unknown[]>,
   process: (async () => null) as (i: unknown) => Promise<unknown>,
   made: [] as Record<string, unknown>[],
+  /** The custom rules the pipeline added to the Probarion it made. */
+  rules: [] as string[],
   failDb: null as null | string,
 }));
 
@@ -45,7 +47,10 @@ vi.mock("@/lib/near/server", () => ({
 vi.mock("@/lib/sdk/factory", () => ({
   makeTenantProbarion: (o: Record<string, unknown>) => {
     h.made.push(o);
-    return { process: (i: unknown) => h.process(i) };
+    return {
+      process: (i: unknown) => h.process(i),
+      rules: { add: (rule: { id: string }) => h.rules.push(rule.id) },
+    };
   },
 }));
 
@@ -125,6 +130,7 @@ beforeEach(() => {
   h.auth = null;
   h.roles = [];
   h.made = [];
+  h.rules = [];
   h.failDb = null;
   h.mandates = async (_v, from) => (from === 0 ? [mandate(1, agentPk)] : []);
   h.process = async () => PAID;
@@ -354,6 +360,30 @@ describe("POST /api/console/[vault]/invoices", () => {
       error: "duplicate",
       status: "unconfirmed",
       detail: expect.stringMatching(/already sent/),
+    });
+  });
+
+  it("shows an invoice that waits for the owner: nothing was sent, and the code's amount is kept", async () => {
+    h.process = async () => ({
+      ...PAID,
+      status: "held",
+      spendId: null,
+      txHash: null,
+      code: "custom.owner_confirms_without_model",
+    });
+    const text = fresh();
+    const r = await post(invoiceForm({ text }));
+    expect(r.status).toBe(200);
+    expect(h.rules).toEqual(["custom.owner_confirms_without_model"]);
+    expect(await body(r)).toMatchObject({
+      status: "awaiting_owner",
+      notice: expect.stringMatching(/^Nothing was sent/),
+    });
+    const again = await body(await post(invoiceForm({ text })));
+    expect(again).toMatchObject({
+      error: "duplicate",
+      status: "awaiting_owner",
+      detail: expect.stringMatching(/waiting for the owner/),
     });
   });
 

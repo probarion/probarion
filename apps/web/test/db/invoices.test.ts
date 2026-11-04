@@ -301,6 +301,93 @@ describe("invoice functions (migration 0006)", () => {
     ).resolves.toMatchObject({ status: "unconfirmed", changed: true });
   });
 
+  /** An outcome the two-readers-or-the-owner rule decided: nothing was sent. */
+  const WAITING = {
+    ...OUTCOME,
+    status: "held",
+    spendId: null,
+    code: "custom.owner_confirms_without_model",
+    txHash: null,
+  };
+
+  it("records an invoice waiting for the owner only with a sent-nothing outcome and the code's amount", async () => {
+    const { id } = await insertInvoice(db, a, invoice());
+    const base = { tenant_id: a, id, status: "awaiting_owner", outcome: WAITING, error: null };
+    for (const p of [
+      { ...base, suggested_amount: null }, // the suggestion is required
+      { ...base, suggested_amount: "0" }, // and is a non-zero canonical amount
+      { ...base, suggested_amount: "007" },
+      { ...base, suggested_amount: "12.5" },
+      { ...base, suggested_amount: "5", outcome: { ...WAITING, status: "paid" } },
+      { ...base, suggested_amount: "5", outcome: { ...WAITING, spendId: 3 } }, // a spend was sent
+      { ...base, suggested_amount: "5", outcome: { ...WAITING, txHash: "TX9" } },
+      { ...base, suggested_amount: "5", outcome: null },
+      // No other status keeps a suggestion.
+      { ...base, status: "decided", suggested_amount: "5" },
+      {
+        ...base,
+        status: "unconfirmed",
+        outcome: { ...OUTCOME, status: "unconfirmed" },
+        suggested_amount: "5",
+      },
+    ]) {
+      await expect(db.rpc("invoice_set_outcome", p), JSON.stringify(p)).rejects.toMatchObject({
+        code: "invalid_input",
+      });
+    }
+    await expect(
+      setInvoiceOutcome(db, a, id, {
+        status: "awaiting_owner",
+        outcome: WAITING as never,
+        suggestedAmount: "770000000",
+        anchorTxHash: null,
+        promptTokens: null,
+        completionTokens: null,
+      }),
+    ).resolves.toMatchObject({ status: "awaiting_owner", changed: true });
+    expect(await getInvoice(db, a, id)).toMatchObject({
+      status: "awaiting_owner",
+      suggested_amount: "770000000",
+      outcome: { code: "custom.owner_confirms_without_model", spendId: null },
+    });
+    // The table holds the same rule: a waiting row always has its suggestion.
+    await expect(
+      pg.query("update invoices set suggested_amount = null where id = $1", [id]),
+    ).rejects.toThrow(/invoices_awaiting_owner_amount/);
+    // A member reads the suggestion; a member of another vault sees no row.
+    const seen = await asRole(pg, "authenticated", "alice.near", (tx) =>
+      tx.query("select suggested_amount from public.invoices where id = $1", [id]),
+    );
+    expect(seen.rows).toEqual([{ suggested_amount: "770000000" }]);
+  });
+
+  it("refuses a re-upload of an invoice that waits for the owner, by fingerprint or by number", async () => {
+    const fp = H("7");
+    const { id } = await insertInvoice(
+      db,
+      a,
+      invoice({ fingerprint: fp, invoiceNumberHash: H("8") }),
+    );
+    await setInvoiceOutcome(db, a, id, {
+      status: "awaiting_owner",
+      outcome: WAITING as never,
+      suggestedAmount: "5",
+      anchorTxHash: null,
+      promptTokens: null,
+      completionTokens: null,
+    });
+    expect(await insertInvoice(db, a, invoice({ fingerprint: fp }))).toEqual({
+      id,
+      duplicate: true,
+      status: "awaiting_owner",
+    });
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberHash: H("8") }))).toEqual({
+      id,
+      duplicate: true,
+      status: "awaiting_owner",
+    });
+  });
+
   it("takes over only an `error` row of the same invoice", async () => {
     const inv = invoice();
     const { id } = await insertInvoice(db, a, inv);

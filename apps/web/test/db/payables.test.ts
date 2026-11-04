@@ -10,6 +10,7 @@ import { type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { generateKey } from "@/lib/keys/service";
 import { MAX_PDF_PAGES, MAX_TEXT_CHARS } from "@/lib/payables/extract";
 import { refFor } from "@/lib/payables/facts";
+import { OWNER_CONFIRMS_RULE } from "@/lib/payables/owner-confirms";
 import {
   invoiceStatusOf,
   type PipelineDeps,
@@ -128,6 +129,8 @@ describe("processInvoice", () => {
   type Deps = PipelineDeps & {
     make: Mock<PipelineDeps["makeProbarion"]>;
     process: Mock<ProbarionLike["process"]>;
+    /** Every custom rule the pipeline added, by id. */
+    added: string[];
   };
   function deps(
     mandates: MandateView[] | (() => Promise<MandateView[]>),
@@ -135,7 +138,11 @@ describe("processInvoice", () => {
     over: Partial<PipelineDeps> = {},
   ): Deps {
     const proc = vi.fn(process);
-    const make = vi.fn<PipelineDeps["makeProbarion"]>(() => ({ process: proc }));
+    const added: string[] = [];
+    const make = vi.fn<PipelineDeps["makeProbarion"]>(() => ({
+      process: proc,
+      rules: { add: (rule) => added.push(rule.id) },
+    }));
     return {
       db,
       master: MASTER,
@@ -144,6 +151,7 @@ describe("processInvoice", () => {
       now: () => NOW,
       make,
       process: proc,
+      added,
       ...over,
     };
   }
@@ -205,6 +213,8 @@ describe("processInvoice", () => {
     });
     // The payment signs with the key the mandate is bound to, and the request id travels into the SDK.
     expect(d.make).toHaveBeenCalledTimes(1);
+    // Two readers or the owner: the rule is on the Probarion before the cycle runs.
+    expect(d.added).toEqual([OWNER_CONFIRMS_RULE]);
     expect(at(d.make.mock.calls)[0]).toMatchObject({
       agentKey: t.agent?.secret,
       ledgerKey: t.ledger?.secret,
@@ -398,6 +408,74 @@ describe("processInvoice", () => {
     const again = await run(d, t, "Total 6 USDC");
     expect(again).toMatchObject({ status: "duplicate", invoiceStatus: "unconfirmed" });
     expect(d.make).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["held off-chain", "held"],
+    ["refused, because a hold above the approval threshold would send it", "refused_by_code"],
+  ] as const)(
+    "waits for the owner when no attested model read the same amount (%s), keeping the code's amount",
+    async (_why, status) => {
+      const t = await tenant({ zero: true });
+      const ms = [mandate(1, t.agent?.publicKey ?? "")];
+      const waiting = outcome({ status, spendId: null, code: OWNER_CONFIRMS_RULE, txHash: null });
+      const r = await run(
+        deps(ms, async () => waiting),
+        t,
+        "Invoice INV-31\nTotal 31 USDC",
+      );
+      expect(r).toMatchObject({
+        status: "decided",
+        invoiceStatus: "awaiting_owner",
+        recorded: true,
+        amountIssue: null,
+      });
+      // In zero-retention mode too: the row keeps no facts, but the suggestion for the owner.
+      expect(at(await rows(t.member.tenant_id))).toMatchObject({
+        status: "awaiting_owner",
+        facts: null,
+        outcome: { status, code: OWNER_CONFIRMS_RULE, spendId: null },
+      });
+      const row = await getInvoice(
+        db,
+        t.member.tenant_id,
+        r.status === "decided" ? r.invoiceId : "",
+      );
+      expect(row).toMatchObject({ status: "awaiting_owner", suggested_amount: "31000000" });
+      // A re-upload of the same invoice waits on the same row: the owner confirms it once.
+      const d = deps(ms);
+      const again = await run(d, t, "Invoice INV-31\nTotal 31 USDC\n");
+      expect(again).toMatchObject({ status: "duplicate", invoiceStatus: "awaiting_owner" });
+      expect(d.make).not.toHaveBeenCalled();
+    },
+  );
+
+  it("records another rule's hold or refusal as decided, with no suggestion", async () => {
+    const t = await tenant();
+    const ms = [mandate(1, t.agent?.publicKey ?? "")];
+    for (const [n, o] of [
+      outcome({ status: "held", spendId: null, code: "intents.balance_low", txHash: null }),
+      outcome({
+        status: "refused_by_code",
+        spendId: null,
+        code: "mandate.over_per_payment",
+        txHash: null,
+      }),
+      // A spend the contract holds for its approver was sent: never "waiting for the owner" here.
+      outcome({ status: "held", spendId: 4, code: OWNER_CONFIRMS_RULE, txHash: "TXH" }),
+    ].entries()) {
+      const r = await run(
+        deps(ms, async () => o),
+        t,
+        `Total ${40 + n} USDC`,
+      );
+      expect(r).toMatchObject({ status: "decided", invoiceStatus: "decided" });
+      if (r.status !== "decided") throw new Error("unexpected");
+      expect(await getInvoice(db, t.member.tenant_id, r.invoiceId)).toMatchObject({
+        status: "decided",
+        suggested_amount: null,
+      });
+    }
   });
 
   it("treats an outcome status it does not know as unconfirmed (never as done, never re-sent)", async () => {

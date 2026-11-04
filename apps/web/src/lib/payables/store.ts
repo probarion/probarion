@@ -8,8 +8,17 @@ import type { AmountIssue } from "./facts";
 // The invoices rows as the service-role functions of migration 0006 read and write them. `tenantId` must come
 // from the session's membership (memberRole) or a server job's own tenant row, never from a request.
 
-/** received -> processing -> decided | unconfirmed | error (0001's check, 0006's functions). */
-export type InvoiceStatus = "received" | "processing" | "decided" | "unconfirmed" | "error";
+/**
+ * received -> processing -> decided | unconfirmed | awaiting_owner | error (0006's check and functions).
+ * awaiting_owner: no attested model read the same amount as the code, so nothing was sent; the owner confirms.
+ */
+export type InvoiceStatus =
+  | "received"
+  | "processing"
+  | "decided"
+  | "unconfirmed"
+  | "awaiting_owner"
+  | "error";
 
 /** The facts kept for a retained invoice: the five `InvoiceFacts` plus the invoice number, for display. */
 export type StoredFacts = InvoiceFacts & { invoice_number: string | null };
@@ -30,6 +39,8 @@ export interface InvoiceRow {
   /** Why the amount was read as "0" (refused by invoice.amount_invalid), or null. Kept in zero-retention mode too. */
   amount_issue: AmountIssue | null;
   status: InvoiceStatus;
+  /** The code's amount (USDC base units) the owner is asked to confirm; set only when awaiting_owner. */
+  suggested_amount: string | null;
   outcome: SpendOutcome | null;
   error: string | null;
   /** The cycle's anchor transaction; the ledger never holds it. */
@@ -86,8 +97,10 @@ export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<
 
 export type OutcomeRecord =
   | {
-      status: "decided" | "unconfirmed";
+      status: "decided" | "unconfirmed" | "awaiting_owner";
       outcome: SpendOutcome;
+      /** The code's amount for the owner to confirm: required for awaiting_owner, null otherwise. */
+      suggestedAmount?: string | null;
       anchorTxHash: string | null;
       promptTokens: number | null;
       completionTokens: number | null;
@@ -109,6 +122,7 @@ export function setInvoiceOutcome(
       ? { outcome: null, error: r.error }
       : {
           outcome: r.outcome,
+          suggested_amount: r.suggestedAmount ?? null,
           error: null,
           anchor_tx_hash: r.anchorTxHash,
           model_prompt_tokens: r.promptTokens,

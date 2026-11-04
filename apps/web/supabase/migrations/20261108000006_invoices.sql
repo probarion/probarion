@@ -18,7 +18,12 @@
 --     returns that hash; it is never written into a ledger entry (an entry cannot hold the hash of the transaction
 --     that anchors it), so this row is where it lives.
 --
--- Status: received -> processing (invoice_insert) -> decided | unconfirmed | error (invoice_set_outcome).
+-- Status: received -> processing (invoice_insert) -> decided | unconfirmed | awaiting_owner | error
+-- (invoice_set_outcome).
+--   - awaiting_owner: two readers or the owner. No attested model read the same amount as the code (no model key,
+--     a model that failed or is not attested, or one that stated no amount), so the pipeline's rule
+--     custom.owner_confirms_without_model held or refused the cycle and nothing was sent. suggested_amount keeps
+--     the code's amount for the owner to confirm.
 --   - unconfirmed: the spend was sent and its outcome is not known yet (SDK status "unconfirmed", tx hash in
 --     `outcome`). It is shown as "payment sent, confirmation pending" and is never sent again.
 --   - error: the cycle threw before any spend was sent (the SDK sends a spend only from a decision, and never throws
@@ -46,7 +51,13 @@ alter table public.invoices add constraint invoices_retention check (
   or (not retained and content_ciphertext is null and content_nonce is null and facts is null and filename is null)
 );
 
+-- awaiting_owner joins the statuses of 0001.
+alter table public.invoices drop constraint invoices_status_check;
+alter table public.invoices add constraint invoices_status_check check (status in (
+  'received', 'processing', 'decided', 'unconfirmed', 'awaiting_owner', 'error'));
+
 alter table public.invoices
+  add column suggested_amount text check (suggested_amount is null or suggested_amount ~ '^[1-9][0-9]{0,38}$'),
   add column document_sha256 text check (document_sha256 is null or document_sha256 ~ '^[0-9a-f]{64}$'),
   add column fingerprint_sha256 text check (fingerprint_sha256 is null or fingerprint_sha256 ~ '^[0-9a-f]{64}$'),
   add column invoice_number_sha256 text
@@ -54,6 +65,10 @@ alter table public.invoices
   add column anchor_tx_hash text check (anchor_tx_hash is null or anchor_tx_hash ~ '^[1-9A-HJ-NP-Za-km-z]{32,64}$'),
   add column amount_issue text check (amount_issue is null or amount_issue in (
     'not_found', 'ambiguous', 'unreadable', 'currency', 'truncated', 'zero', 'not_payable'));
+alter table public.invoices add constraint invoices_awaiting_owner_amount
+  check (status <> 'awaiting_owner' or suggested_amount is not null);
+comment on column public.invoices.suggested_amount is
+  'The code''s amount (USDC base units) that an invoice awaiting_owner asks the owner to confirm.';
 comment on column public.invoices.invoice_hash is
   'sha256 of the extracted invoice text, exactly as the model is shown it. Not the file hash.';
 comment on column public.invoices.fingerprint_sha256 is
@@ -71,7 +86,8 @@ create index invoices_tenant_invoice_number on public.invoices (tenant_id, invoi
   where invoice_number_sha256 is not null;
 
 -- Members read these like the other non-secret columns (0001: the sealed content and its nonce are never granted).
-grant select (document_sha256, fingerprint_sha256, invoice_number_sha256, anchor_tx_hash, amount_issue)
+grant select (document_sha256, fingerprint_sha256, invoice_number_sha256, anchor_tx_hash, amount_issue,
+              suggested_amount)
   on public.invoices to authenticated;
 
 -- A new invoice, status processing: { tenant_id, invoice_hash, ref, filename, media_type, document_sha256,
@@ -80,8 +96,8 @@ grant select (document_sha256, fingerprint_sha256, invoice_number_sha256, anchor
 -- earlier attempt of the same invoice ended in `error` and is taken over), or { id, duplicate: true, status } for an
 -- invoice that already has a row in any other state, or for another text of the same invoice:
 --   - the duplicate guard: a row of the tenant with the same fingerprint or the same invoice number that may have
---     paid or may still pay (processing, unconfirmed, or decided with the SDK outcome paid, held, burned or
---     settled). A refused, failed or `error` row does not block: nothing was paid for it.
+--     paid or may still pay (processing, unconfirmed, awaiting_owner, or decided with the SDK outcome paid, held,
+--     burned or settled). A refused, failed or `error` row does not block: nothing was paid for it.
 -- `retained` must agree with the tenant's setting as stored now: a tenant in zero-retention mode never gets a
 -- retained row, even from a caller that read the setting before the owner turned it on.
 create or replace function public.invoice_insert(p jsonb) returns jsonb
@@ -140,7 +156,7 @@ begin
     where i.tenant_id = v_tenant and i.ref <> v_ref
       and ((v_fp is not null and i.fingerprint_sha256 = v_fp)
            or (v_num is not null and i.invoice_number_sha256 = v_num))
-      and (i.status in ('processing', 'unconfirmed')
+      and (i.status in ('processing', 'unconfirmed', 'awaiting_owner')
            or (i.status = 'decided' and i.outcome->>'status' in ('paid', 'held', 'burned', 'settled')))
     order by i.created_at, i.id
     limit 1;
@@ -165,7 +181,8 @@ begin
       filename = v_filename, media_type = p->>'media_type', document_sha256 = v_doc, fingerprint_sha256 = v_fp,
       invoice_number_sha256 = v_num, retained = v_retained,
       content_ciphertext = p->>'content_ciphertext', content_nonce = p->>'content_nonce', facts = v_facts,
-      amount_issue = v_issue, status = 'processing', outcome = null, error = null, request_id = p->>'request_id', created_by = p->>'created_by',
+      amount_issue = v_issue, status = 'processing', outcome = null, suggested_amount = null, error = null,
+      request_id = p->>'request_id', created_by = p->>'created_by',
       model_prompt_tokens = null, model_completion_tokens = null, anchor_tx_hash = null, decided_at = null
     where tenant_id = v_tenant and ref = v_ref and invoice_hash = v_hash and status = 'error'
     returning id into v_id;
@@ -180,10 +197,12 @@ begin
   return jsonb_build_object('id', v_id, 'duplicate', true, 'status', v_status);
 end $$;
 
--- The end of one attempt: { tenant_id, id, status: decided | unconfirmed | error, outcome, error, anchor_tx_hash,
--- model_prompt_tokens, model_completion_tokens }. Compare-and-set: only a row still in `processing` changes, so a
--- late writer never overwrites an outcome; it gets { changed: false } and the row's status. An SDK outcome of
--- "unconfirmed" must be recorded as `unconfirmed` (a payment that may have gone out never reads as plain decided).
+-- The end of one attempt: { tenant_id, id, status: decided | unconfirmed | awaiting_owner | error, outcome,
+-- suggested_amount, error, anchor_tx_hash, model_prompt_tokens, model_completion_tokens }. Compare-and-set: only a
+-- row still in `processing` changes, so a late writer never overwrites an outcome; it gets { changed: false } and
+-- the row's status. An SDK outcome of "unconfirmed" must be recorded as `unconfirmed` (a payment that may have gone
+-- out never reads as plain decided). awaiting_owner records an outcome that sent nothing (held or refused by code,
+-- with no spend id and no tx hash) and needs the code's amount as suggested_amount; no other status keeps one.
 create or replace function public.invoice_set_outcome(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
 declare
@@ -192,11 +211,17 @@ declare
   v_status text := p->>'status';
   v_outcome jsonb := case when jsonb_typeof(p->'outcome') = 'object' then p->'outcome' end;
   v_anchor text := nullif(p->>'anchor_tx_hash', '');
+  v_suggested text := p->>'suggested_amount';
   v_changed boolean;
   v_now text;
 begin
-  if coalesce(v_status, '') not in ('decided', 'unconfirmed', 'error')
-     or (v_status in ('decided', 'unconfirmed') and v_outcome is null)
+  if coalesce(v_status, '') not in ('decided', 'unconfirmed', 'awaiting_owner', 'error')
+     or (v_status in ('decided', 'unconfirmed', 'awaiting_owner') and v_outcome is null)
+     or (v_status = 'awaiting_owner' and (coalesce(v_suggested, '') !~ '^[1-9][0-9]{0,38}$'
+         or coalesce(v_outcome->>'status', '') not in ('held', 'refused_by_code')
+         or jsonb_typeof(v_outcome->'spendId') is distinct from 'null'
+         or jsonb_typeof(v_outcome->'txHash') is distinct from 'null'))
+     or (v_status <> 'awaiting_owner' and v_suggested is not null)
      or (v_status = 'error' and (v_outcome is not null or coalesce(p->>'error', '') = '' or v_anchor is not null))
      or (v_outcome->>'status' = 'unconfirmed' and v_status <> 'unconfirmed')
      or (v_anchor is not null and v_anchor !~ '^[1-9A-HJ-NP-Za-km-z]{32,64}$')
@@ -207,6 +232,7 @@ begin
   update public.invoices set
       status = v_status,
       outcome = v_outcome,
+      suggested_amount = v_suggested,
       error = case when v_status = 'error' then left(p->>'error', 500) end,
       anchor_tx_hash = v_anchor,
       model_prompt_tokens = (p->>'model_prompt_tokens')::integer,
@@ -229,7 +255,8 @@ create or replace function public.invoice_json(i public.invoices) returns jsonb
 language sql stable set search_path = public, pg_temp as $$
   select jsonb_build_object('id', i.id, 'invoice_hash', i.invoice_hash, 'ref', i.ref, 'filename', i.filename,
       'media_type', i.media_type, 'document_sha256', i.document_sha256, 'retained', i.retained, 'facts', i.facts,
-      'amount_issue', i.amount_issue, 'status', i.status, 'outcome', i.outcome, 'error', i.error,
+      'amount_issue', i.amount_issue, 'status', i.status, 'suggested_amount', i.suggested_amount,
+      'outcome', i.outcome, 'error', i.error,
       'anchor_tx_hash', i.anchor_tx_hash,
       'request_id', i.request_id, 'model_prompt_tokens', i.model_prompt_tokens,
       'model_completion_tokens', i.model_completion_tokens, 'created_by', i.created_by, 'created_at', i.created_at,
