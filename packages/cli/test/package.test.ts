@@ -21,4 +21,20 @@ describe("package.json", () => {
       "commander",
     ]);
   });
+
+  it("installs @nearai/inference-sdk as an optional dependency, in the SDK's peer range, so verify --online can load it", async () => {
+    const read = async (path: string) =>
+      JSON.parse(await readFile(new URL(path, import.meta.url), "utf8")) as {
+        optionalDependencies?: Record<string, string>;
+        peerDependencies?: Record<string, string>;
+        peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+      };
+    const cli = await read("../package.json");
+    const sdk = await read("../../sdk/package.json");
+    expect(cli.optionalDependencies).toEqual({
+      "@nearai/inference-sdk": sdk.peerDependencies?.["@nearai/inference-sdk"],
+    });
+    expect(cli.optionalDependencies?.["@nearai/inference-sdk"]).toBe(">=0.1.0 <1");
+    expect(sdk.peerDependenciesMeta?.["@nearai/inference-sdk"]?.optional).toBe(true);
+  });
 });

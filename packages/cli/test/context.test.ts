@@ -1,13 +1,17 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { NETWORKS } from "@probarion/core";
 import { TEST_KEYS } from "@probarion/sdk/testing";
 import { describe, expect, it } from "vitest";
 import {
   factoryIdFor,
+  fileExists,
   readPurpose,
   requireVault,
   resolveNetwork,
   rpcUrlsFor,
   splitList,
+  writeNewFile,
 } from "../src/context.js";
 import { CliError } from "../src/errors.js";
 import { runCli } from "../src/program.js";
@@ -118,5 +122,20 @@ describe("the environment reaches the commands (R12, end to end)", () => {
     ).toBe(0);
     expect(state.out).toContain(`"token": "${NETWORKS.mainnet.allowedAssets.base}"`);
     expect(state.out).toContain("network-config mainnet");
+  });
+});
+
+describe("writeNewFile: an export or a snapshot goes to a new file, never over one", () => {
+  it("writes a file that is not there, and refuses one that is (written meanwhile, too)", async () => {
+    const dir = await tempDir();
+    const path = join(dir, "out.json");
+    expect(await fileExists(path)).toBe(false);
+    await writeNewFile(path, "first\n", "--snapshot", "out.json");
+    expect(await readFile(path, "utf8")).toBe("first\n");
+    expect(await fileExists(path)).toBe(true);
+    const refused = writeNewFile(path, "second\n", "--snapshot", "out.json");
+    await expect(refused).rejects.toThrow("--snapshot out.json already exists: choose a new file");
+    await expect(refused).rejects.toBeInstanceOf(CliError);
+    expect(await readFile(path, "utf8")).toBe("first\n");
   });
 });

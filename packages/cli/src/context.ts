@@ -1,7 +1,13 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isHex32, NETWORKS, type NetworkId, sha256Hex } from "@probarion/core";
-import { envValue, RpcClient, resolveRpcUrls } from "@probarion/sdk";
+import {
+  DEFAULT_LEDGER_PATH,
+  envValue,
+  ledgerPathFromEnv,
+  RpcClient,
+  resolveRpcUrls,
+} from "@probarion/sdk";
 import { CliError } from "./errors.js";
 import { NEAR_ACCOUNT_RE } from "./payee.js";
 
@@ -24,17 +30,81 @@ export function splitList(value: string): string[] {
     .filter((item) => item.length > 0);
 }
 
-export function rpcUrlsFor(opts: GlobalOpts, env: Env, network: NetworkId): string[] {
+/** `flag` names the option in the error (`--rpc`, or `--archival-rpc` when verify passes that one as `rpc`). */
+export function rpcUrlsFor(
+  opts: GlobalOpts,
+  env: Env,
+  network: NetworkId,
+  flag = "--rpc",
+): string[] {
   if (opts.rpc !== undefined) {
     const urls = splitList(opts.rpc);
-    if (urls.length === 0) throw new CliError("--rpc needs at least one URL");
+    if (urls.length === 0) throw new CliError(`${flag} needs at least one URL`);
     return urls;
   }
   return resolveRpcUrls(network, undefined, env);
 }
 
-export function makeRpc(opts: GlobalOpts, env: Env, network: NetworkId): RpcClient {
-  return new RpcClient({ urls: rpcUrlsFor(opts, env, network) });
+export function makeRpc(opts: GlobalOpts, env: Env, network: NetworkId, flag = "--rpc"): RpcClient {
+  return new RpcClient({ urls: rpcUrlsFor(opts, env, network, flag) });
+}
+
+/**
+ * The ledger file: `--ledger`, else PROBARION_LEDGER_PATH, else `.probarion/ledger.jsonl`, resolved against the
+ * working directory. An empty PROBARION_LEDGER_PATH counts as unset (R12); an empty `--ledger` is refused.
+ */
+export function ledgerFile(option: string | undefined, env: Env, cwd: string): string {
+  if (option !== undefined && option.trim() === "") throw new CliError("--ledger needs a path");
+  return resolve(cwd, option ?? ledgerPathFromEnv(env, DEFAULT_LEDGER_PATH));
+}
+
+/**
+ * Whether two absolute paths name one file: the same path (letter case aside on Windows), or, when both exist,
+ * the same device and inode (a hard link, a symlink, another spelling of the same file).
+ */
+export async function sameFile(a: string, b: string, platform: NodeJS.Platform): Promise<boolean> {
+  const fold = (p: string) => (platform === "win32" ? resolve(p).toLowerCase() : resolve(p));
+  if (fold(a) === fold(b)) return true;
+  try {
+    const [x, y] = await Promise.all([stat(a, { bigint: true }), stat(b, { bigint: true })]);
+    return x.ino !== 0n && x.dev === y.dev && x.ino === y.ino;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether anything (a file, a directory) is at `path`. */
+export async function fileExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The error for an output file that is already there, worded the same for every command. */
+export function alreadyExists(flag: string, given: string): CliError {
+  return new CliError(`${flag} ${given} already exists: choose a new file`);
+}
+
+/**
+ * Writes `text` to a new file ("wx"): an export or a snapshot never replaces a file that is there. `flag` and
+ * `given` name the option and its value in the error.
+ */
+export async function writeNewFile(
+  path: string,
+  text: string,
+  flag: string,
+  given: string,
+): Promise<void> {
+  try {
+    await writeFile(path, text, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    const code = typeof error === "object" && error !== null ? Reflect.get(error, "code") : null;
+    if (code === "EEXIST") throw alreadyExists(flag, given);
+    throw error;
+  }
 }
 
 export function requireVault(vault: string | undefined, env: Env): string {
