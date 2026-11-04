@@ -23,8 +23,9 @@
 --     Its cycle may have sent a spend, so reconciliation moves it only to `decided` or `unconfirmed` from what the
 --     chain shows for that ref, and never writes `error` for it: `error` is the one status a new upload may run
 --     again.
---   - amount_issue: why the code read the amount as "0" (no final total, totals that disagree, a figure it cannot
---     read, another currency, or text cut short), so the console can say why rule invoice.amount_invalid refused.
+--   - amount_issue: why the code read the amount as "0" (no final total, totals that disagree, a total it cannot
+--     read, another currency, text cut short, or a total of zero), so the console can say why rule
+--     invoice.amount_invalid refused. The list is AMOUNT_ISSUES in src/lib/payables/facts.ts.
 --
 -- Every function here is `(p jsonb) returns jsonb` (Decision D2), runs as its caller and is executable by the
 -- service role only. The server calls them after its own membership check, so `tenant_id` is the session's tenant.
@@ -42,7 +43,7 @@ alter table public.invoices
   add column document_sha256 text check (document_sha256 is null or document_sha256 ~ '^[0-9a-f]{64}$'),
   add column anchor_tx_hash text check (anchor_tx_hash is null or anchor_tx_hash ~ '^[1-9A-HJ-NP-Za-km-z]{32,64}$'),
   add column amount_issue text check (amount_issue is null or amount_issue in (
-    'not_found', 'ambiguous', 'unreadable', 'currency', 'truncated'));
+    'not_found', 'ambiguous', 'unreadable', 'currency', 'truncated', 'zero'));
 comment on column public.invoices.invoice_hash is
   'sha256 of the extracted invoice text, exactly as the model is shown it (ICR-3b). Not the file hash.';
 comment on column public.invoices.document_sha256 is 'sha256 of the uploaded file''s bytes (for a PDF, the file hash).';
@@ -76,7 +77,8 @@ declare
   v_status text;
 begin
   if jsonb_typeof(p->'retained') is distinct from 'boolean'
-     or (v_issue is not null and v_issue not in ('not_found', 'ambiguous', 'unreadable', 'currency', 'truncated'))
+     or (v_issue is not null and v_issue not in ('not_found', 'ambiguous', 'unreadable', 'currency', 'truncated',
+                                                 'zero'))
      or coalesce(v_hash, '') !~ '^[0-9a-f]{64}$'
      or (v_doc is not null and v_doc !~ '^[0-9a-f]{64}$')
      or coalesce(octet_length(v_ref), 0) not between 1 and 64

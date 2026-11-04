@@ -1,6 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "@/lib/db/port";
+import { AMOUNT_ISSUES } from "@/lib/payables/facts";
 import {
   getInvoice,
   insertInvoice,
@@ -276,6 +277,24 @@ describe("invoice functions (migration 0006)", () => {
     const times = all.map((i) => i.created_at);
     expect([...times].sort().reverse()).toEqual(times);
     expect(all.some((i) => i.id === mine.id)).toBe(false);
+  });
+
+  it("lets a member read why the amount was refused, for every reason the reader gives (W-T13-R2 g)", async () => {
+    for (const reason of AMOUNT_ISSUES) {
+      const { id } = await insertInvoice(db, a, invoice({ amountIssue: reason }));
+      const seen = await asRole(pg, "authenticated", "alice.near", (tx) =>
+        tx.query<{ amount_issue: string | null }>(
+          "select amount_issue from public.invoices where id = $1",
+          [id],
+        ),
+      );
+      expect(seen.rows, reason).toEqual([{ amount_issue: reason }]);
+      // A member of another vault sees no row at all.
+      const other = await asRole(pg, "authenticated", "bob.near", (tx) =>
+        tx.query("select amount_issue from public.invoices where id = $1", [id]),
+      );
+      expect(other.rows, reason).toEqual([]);
+    }
   });
 
   it("lets a member read the new columns but never the sealed content", async () => {
