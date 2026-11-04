@@ -44,8 +44,9 @@ export type ProofResult =
   | ProofOk
   | { status: "not_found" }
   /**
-   * The checks did not run: the evidence file is malformed, the vault ledger could not be read from the database,
-   * or its chain data could not be read. Never a pass.
+   * The checks did not run, for one of the reasons in `ProofErrorReason`: the evidence file is malformed
+   * (`evidence`), the vault ledger could not be read from the database (`ledger`), its chain data could not be read
+   * (`chain`), or the access check itself failed (`database`). Never a pass.
    */
   | { status: "error"; reason: ProofErrorReason; vault: string; network: Network };
 

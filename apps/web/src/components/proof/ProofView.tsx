@@ -346,8 +346,9 @@ function CliSetup() {
   return (
     <p className="mt-3 text-sm text-ink/80">
       {CLI_NOTE} Set up once, one command per line:
-      {/* Real newlines between the commands, and before the first and after the last, so text without styles keeps
-          them apart from each other and from the prose around them. Outside the <code> they render as a space. */}
+      {/* Real newlines between the commands (whitespace-pre-wrap keeps them on screen), and one before the first and
+          one after the last. A browser collapses those two, since the <code> is a block: they matter only in extracted
+          text, where they keep the commands apart from the prose around them. */}
       {"\n"}
       <code className={`${codeBlock} whitespace-pre-wrap`}>{CLI_SETUP_LINES.join("\n")}</code>
       {"\n"}
@@ -447,6 +448,7 @@ export function ProofView({ result }: { result: ProofOk }) {
   );
 }
 
+/** One sentence per reason. No default branch: a new reason without its own copy fails typecheck. */
 function unavailableText(reason: ProofErrorReason, vault: string): string {
   switch (reason) {
     case "evidence":
@@ -455,7 +457,7 @@ function unavailableText(reason: ProofErrorReason, vault: string): string {
       return "This vault's signed ledger could not be read from Probarion's database right now, so the checks were not run. Nothing on this page is a pass. Try again in a minute.";
     case "database":
       return `Probarion's database could not be reached right now, so this page cannot say whether ${vault} has a proof page. Nothing on this page is a pass. Try again in a minute.`;
-    default:
+    case "chain":
       return "The vault's chain data could not be read right now, so the checks were not run. Nothing on this page is a pass. Try again in a minute.";
   }
 }
