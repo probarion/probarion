@@ -128,7 +128,7 @@ const POSITIVE: [string, string, string][] = [
   ],
   [
     "six decimals",
-    invoice(["Invoice INV-2026-075", "API credits 2.000000 USDC", "Total due 2.000000 USDC"]),
+    invoice(["Invoice INV-2026-075", "API usage 2.000000 USDC", "Total due 2.000000 USDC"]),
     "2000000",
   ],
   [

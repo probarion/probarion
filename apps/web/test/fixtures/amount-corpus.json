@@ -34,8 +34,9 @@
       "text": "Invoice INV-5\nTotal 1,000.00 USDC paid on 2026-10-30, thank you",
       "expect": {
         "amount": "0",
-        "issue": "unreadable"
-      }
+        "issue": "not_payable"
+      },
+      "why": "\"paid on\" states the invoice was paid (a status in prose), so it is not payable"
     },
     {
       "id": "sweep-1.4",
@@ -2340,10 +2341,10 @@
       "source": "round-2 re-review (adv2)",
       "text": "Total 100 USDC\n200",
       "expect": {
-        "amount": "100000000",
-        "issue": null
+        "amount": "0",
+        "issue": "unreadable"
       },
-      "why": "the total line is complete; a bare number on the next line has no label above it"
+      "why": "a bare figure on the line right after a total may continue it, so the invoice is unreadable"
     },
     {
       "id": "adv2-c40",
@@ -2729,8 +2730,9 @@
       "text": "Total 100 usdt",
       "expect": {
         "amount": "0",
-        "issue": "unreadable"
-      }
+        "issue": "currency"
+      },
+      "why": "usdt in lower case next to a figure names another currency"
     },
     {
       "id": "adv2-c83",

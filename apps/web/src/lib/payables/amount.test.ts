@@ -149,6 +149,8 @@ describe("gate: any currency other than US dollars", () => {
     ["CAD next to a dollar figure", "Total $100 CAD"],
     ["CAD in brackets", "Total $100 (CAD)"],
     ["CAD alone on a line", "Total $100\nCAD"],
+    // With no other word in capitals, a word-like code is read as the currency it names.
+    ["CAD in a document with no other capitals", "CAD drawings and site plans\nTotal 100 USDC"],
     ["another country's dollar", "Total 100 USDC\nAll prices in Canadian dollars"],
     ["a disguised code (Cyrillic E)", "Total 100 USDC\nCurrency \u0415UR"],
   ])("refuses %s", (_why, text) => expect(read(text)).toEqual(no("currency")));
@@ -196,7 +198,8 @@ describe("gate: any currency other than US dollars", () => {
     ["NEAR as the network", "Total 100 USDC\nPaid in native USDC on NEAR"],
     ["a NEAR account", "Total 100 USDC\nPay to acme1.near"],
     ["ALL in a sentence in capitals", "ALL PRICES IN USD\nTotal 100 USDC"],
-    ["CAD as drawings", "CAD drawings and site plans\nTotal 100 USDC"],
+    // A document written with capital headings: CAD among them is a word, not a currency.
+    ["CAD as drawings", "INVOICE INV-1\nCAD drawings and site plans\nTotal 100 USDC"],
     ["US$", "Total US$100"],
     ["a Currency: USD line", "Currency: USD\nTotal 100 USDC"],
   ])("reads %s", (_why, text) => expect(read(text)).toEqual(pays("100000000")));
@@ -359,7 +362,7 @@ describe("the final grammar", () => {
 
   it.each([
     ["a full stop right after the figure", "Total $100."],
-    ["a date", "Total 100 USDC paid on 2026-10-30"],
+    ["a date", "Total 100 USDC on 2026-10-30"],
     ["a status", "Total 100 USDC refunded"],
     ["a conversion", "Total 100 USDC (approx. 92)"],
     ["a rate", "Total 100 USDC / month"],
@@ -447,7 +450,6 @@ describe("every other line that looks payable", () => {
     ["Amount paid $0.00"],
     ["Previous balance $0.00"],
     ["Page total $90.00"],
-    ["Installment 3 of 9 $11.11"],
     ["Year-to-date total $900.00"],
     ["Contract total $9,000.00"],
   ])("ignores the non-final line %j", (line) =>
@@ -480,6 +482,8 @@ describe("every other line that looks payable", () => {
     ["a payment received", "Invoice total $1,000.00\nPayment received $1.00"],
     ["a previous balance", "Total $100.00\nPrevious balance $500.00"],
     ["a credit", "Total amount $1,000.00\nCredit applied $50.00"],
+    // An installment is a part of the contract total: a plain Total after it is not what is due now.
+    ["an installment", "Total $100.00\nInstallment 3 of 9 $11.11"],
   ])("refuses a total that comes before %s, with no balance stated", (_why, text) =>
     expect(read(text)).toEqual(no("ambiguous")),
   );

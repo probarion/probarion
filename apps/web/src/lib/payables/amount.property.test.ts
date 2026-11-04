@@ -34,15 +34,16 @@ type Line =
   | { text: string; kind: "final"; key: string; balance: boolean; units: string }
   | { text: string; kind: "bad" }
   /** `deduct`: a non-zero payment, deposit, credit or carried balance, after which a plain Total is not due. */
-  | { text: string; kind: "skip"; deduct?: boolean };
+  | { text: string; kind: "skip"; deduct?: boolean; header?: "from" | "bill to" };
 
-/** The deduction labels of the partial lines below. */
+/** The deduction labels of the partial lines below (an installment is a part of the whole, so it counts too). */
 const DEDUCTIONS = new Set([
   "Deposit paid",
   "Amount paid",
   "Payment received",
   "Credit applied",
   "Previous balance",
+  "Installment 2 of 3",
 ]);
 
 const LABELS = [
@@ -127,7 +128,8 @@ class Grammar {
     const a = this.amount();
     const label = this.pick(LABELS);
     const prefix = this.pick(PREFIXES);
-    const key = `${prefix}${label}`.toLowerCase().replace(/\s+/g, " ").trim();
+    // The key is the label alone: "Total" and "Grand total" are the same label written twice.
+    const key = label.toLowerCase();
     const infix = this.pick(["", "", "", " (USD)", " (USDC)", " in USD"]);
     const m = this.marked(this.figure(a));
     // After a currency infix the figure may stand without its own marker.
@@ -262,25 +264,28 @@ class Grammar {
 
   noise(): Line {
     const fig = this.figure(this.amount());
-    return {
-      kind: "skip",
-      text: this.pick([
-        `Logo design $${fig}`,
-        `Consulting, 10 hours ${fig} USDC`,
-        "From: Acme Design LLC",
-        "Bill to: Globex Corp",
-        "Invoice date: 2026-11-04",
-        "Due date: 2026-12-01",
-        "Payment due within 30 days",
-        "Payment terms: Net 30",
-        "Pay to acme-design.near",
-        "PO: PO-4471",
-        "Thank you for your business",
-        "Late payments incur a 1.5% monthly fee.",
-        "Item Qty Price Total",
-        `Vendor: \u682a\u5f0f\u4f1a\u793eABC ${this.int(1, 9999)}`,
-      ]),
-    };
+    const text = this.pick([
+      `Logo design $${fig}`,
+      `Consulting, 10 hours ${fig} USDC`,
+      "From: Acme Design LLC",
+      "Bill to: Globex Corp",
+      "Invoice date: 2026-11-04",
+      "Due date: 2026-12-01",
+      "Payment due within 30 days",
+      "Payment terms: Net 30",
+      "Pay to acme-design.near",
+      "PO: PO-4471",
+      "Thank you for your business",
+      "Late payments incur a 1.5% monthly fee.",
+      "Item Qty Price Total",
+      `Vendor: \u682a\u5f0f\u4f1a\u793eABC ${this.int(1, 9999)}`,
+    ]);
+    const header = text.startsWith("From:")
+      ? "from"
+      : text.startsWith("Bill to:")
+        ? "bill to"
+        : undefined;
+    return header === undefined ? { kind: "skip", text } : { kind: "skip", text, header };
   }
 
   invoice(): { text: string; lines: Line[] } {
@@ -320,6 +325,31 @@ describe(`extractFacts on ${CASES} random invoices (seed ${SEED})`, () => {
       expect(f.amount === "0" || values.has(f.amount), where).toBe(true);
       if (f.amount === "0") expect(f.amountIssue, where).not.toBeNull();
       const [only, ...more] = [...values];
+      // A deduction is settled only by a balance-type label after the last one, with no total before it.
+      const lastDeduct = lines.reduce((at, l, k) => (l.kind === "skip" && l.deduct ? k : at), -1);
+      const finalAt = lines.flatMap((l, k) => (l.kind === "final" ? [k] : []));
+      const unsettled =
+        lastDeduct >= 0 &&
+        (finalAt.some((k) => k < lastDeduct) ||
+          !finalAt.some(
+            (k) => k > lastDeduct && (lines[k] as { balance?: boolean }).balance === true,
+          ));
+      // A header repeated, with a final total after each copy: two documents.
+      const twoDocuments = (["from", "bill to"] as const).some((kind) => {
+        let open = false;
+        let headers = 0;
+        let segments = 0;
+        for (const l of lines) {
+          if (l.kind === "skip" && l.header === kind) {
+            headers++;
+            open = true;
+          } else if (open && l.kind === "final") {
+            segments++;
+            open = false;
+          }
+        }
+        return headers >= 2 && segments >= 2;
+      });
       if (lines.some((l) => l.kind === "bad")) {
         expect(f.amount, where).toBe("0");
         seen.refused += 1;
@@ -332,9 +362,11 @@ describe(`extractFacts on ${CASES} random invoices (seed ${SEED})`, () => {
       } else if (
         more.length > 0 ||
         keys.size < finals.length ||
-        (lines.some((l) => l.kind === "skip" && l.deduct) && !finals.some((l) => l.balance))
+        (finals.length > 0 && unsettled) ||
+        twoDocuments
       ) {
-        // Totals that disagree, the same final label twice (two documents), or a plain Total before a deduction.
+        // Totals that disagree, the same final label twice or a repeated header (two documents), or a deduction
+        // that no balance written after it settles.
         expect({ amount: f.amount, issue: f.amountIssue }, where).toEqual({
           amount: "0",
           issue: "ambiguous",

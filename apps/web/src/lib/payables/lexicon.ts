@@ -3,7 +3,7 @@
 // guessed at. Words are written plainly and lower-case; amount.ts compiles them to its look-alike skeleton.
 
 // ---------------------------------------------------------------------------------------------------------------
-// Final-total lines: [prefix] label [infix] sep amount [tail]
+// Final-total lines: [prefix] label [qualifier] [infix] sep amount [tail]
 // ---------------------------------------------------------------------------------------------------------------
 
 /** The labels of a payable total. A line counts as a final total only when its whole text matches the grammar. */
@@ -14,7 +14,9 @@ export const FINAL_LABELS: readonly string[] = [
   "total to pay",
   "total owing",
   "total due",
+  "total for this invoice",
   "total",
+  "invoice amount",
   "amount due",
   "amount payable",
   "amount remaining",
@@ -39,14 +41,67 @@ export const FINAL_PREFIXES: readonly string[] = ["invoice", "order", "grand", "
 /** The only words allowed between a label and its separator: they state the currency. */
 export const INFIXES: readonly string[] = ["(usd)", "(usdc)", "in usd", "in usdc"];
 
+/**
+ * The final labels that state the whole invoice, before anything it deducts. Every other final label states what
+ * is left to pay, and only such a label, after the last deduction, settles one.
+ */
+export const GROSS_LABELS: ReadonlySet<string> = new Set([
+  "total",
+  "total amount",
+  "invoice amount",
+  "total for this invoice",
+]);
+
 // ---------------------------------------------------------------------------------------------------------------
 // Non-final lines: label sep amount [tail]. They never pay; they only keep a payable-looking line from refusing.
 // ---------------------------------------------------------------------------------------------------------------
+
+/** Partial totals named with "Total" first: the same as "Sales tax" or "Subtotal", never what is due. */
+const TOTAL_PARTIALS: readonly string[] = [
+  "total sales tax",
+  "total excluding tax",
+  "total excl. tax",
+  "total excl tax",
+  "total before tax",
+  "total pre-tax",
+];
+
+/**
+ * Lines that change what is left to pay: a payment, deposit or credit already made, or a balance carried over.
+ * With a non-zero figure on one of them, only a balance-type label written after it says what is due.
+ */
+export const DEDUCTION_LABELS: ReadonlySet<string> = new Set([
+  "deposit paid",
+  "deposit received",
+  "deposit applied",
+  "deposits",
+  "deposit",
+  "less deposit",
+  "amount paid",
+  "paid to date",
+  "paid",
+  "payments received",
+  "payment received",
+  "less payments",
+  "less payment",
+  "payments",
+  "payment",
+  "down payment",
+  "partial payment",
+  "prepayment",
+  "retainer applied",
+  "credits applied",
+  "credit applied",
+  "credits",
+  "credit",
+  "previous balance",
+]);
 
 export const NON_FINAL_LABELS: readonly string[] = [
   "subtotal",
   "sub-total",
   "sub total",
+  ...TOTAL_PARTIALS,
   "sales tax",
   "tax total",
   "total tax",
@@ -63,54 +118,11 @@ export const NON_FINAL_LABELS: readonly string[] = [
   "handling",
   "fees",
   "fee",
-  "deposit paid",
-  "deposit received",
-  "deposits",
-  "deposit",
-  "less deposit",
-  "amount paid",
-  "paid to date",
-  "payments received",
-  "payment received",
-  "less payments",
-  "less payment",
-  "payments",
-  "payment",
-  "credits applied",
-  "credit applied",
-  "previous balance",
+  ...DEDUCTION_LABELS,
   "page total",
   "year-to-date total",
   "contract total",
 ];
-
-/**
- * Non-final lines that change what is left to pay: a payment, deposit or credit already made, or a balance carried
- * over. With a non-zero figure on one of them, a plain "Total" is not what is due: a balance-type label must say it.
- */
-export const DEDUCTION_LABELS: ReadonlySet<string> = new Set([
-  "deposit paid",
-  "deposit received",
-  "deposits",
-  "deposit",
-  "less deposit",
-  "amount paid",
-  "paid to date",
-  "payments received",
-  "payment received",
-  "less payments",
-  "less payment",
-  "payments",
-  "payment",
-  "credits applied",
-  "credit applied",
-  "previous balance",
-]);
-
-/** The final labels that state what is left to pay after deductions (every final label but a plain total). */
-export const BALANCE_LABELS: ReadonlySet<string> = new Set(
-  FINAL_LABELS.filter((l) => l !== "total" && l !== "total amount"),
-);
 
 /**
  * Phrases that contain a final-label word but name a partial total; they are removed before a line is searched
@@ -119,6 +131,7 @@ export const BALANCE_LABELS: ReadonlySet<string> = new Set(
 export const PARTIAL_PHRASES: readonly string[] = [
   "sub total",
   "sub-total",
+  ...TOTAL_PARTIALS,
   "tax total",
   "total tax",
   "total vat",
@@ -168,6 +181,37 @@ export const HEADER_WORDS: ReadonlySet<string> = new Set([
   "(usdc)",
 ]);
 
+/** A header is a column header only with one of these: a column of items or quantities, not of sums. */
+export const ITEM_COLUMNS: ReadonlySet<string> = new Set([
+  "item",
+  "items",
+  "description",
+  "desc",
+  "details",
+  "service",
+  "services",
+  "product",
+  "products",
+  "sku",
+  "qty",
+  "quantity",
+  "unit",
+  "units",
+  "rate",
+  "hours",
+  "hrs",
+]);
+
+/** Summary columns: a header that names one of these lines up sums, and its next row would be their values. */
+export const SUMMARY_COLUMNS: ReadonlySet<string> = new Set([
+  "subtotal",
+  "sub-total",
+  "tax",
+  "vat",
+  "gst",
+  "discount",
+]);
+
 // ---------------------------------------------------------------------------------------------------------------
 // Payable-looking lines
 // ---------------------------------------------------------------------------------------------------------------
@@ -183,6 +227,62 @@ export const PAYABLE_WORDS: readonly string[] = [
   "outstanding",
   "remit",
   "pay",
+  "sum",
+];
+
+/**
+ * Words of money that changes hands or is still owed: payments, credits, deposits, refunds, adjustments, what is
+ * owed or remaining. A line holding one of these and a money token (a currency marker and a figure, or a figure
+ * with decimals) must be a final or a non-final line, or the invoice is unreadable.
+ */
+export const MONEY_WORDS: readonly string[] = [
+  "paid",
+  "payment",
+  "payments",
+  "credit",
+  "credits",
+  "you owe",
+  "owe",
+  "owed",
+  "adjustment",
+  "adjustments",
+  "refund",
+  "refunds",
+  "refunded",
+  "deposit",
+  "deposits",
+  "received",
+  "applied",
+  "settle",
+  "settled",
+  "retainer",
+  "write-off",
+  "write off",
+  "writeoff",
+  "prepaid",
+  "prepayment",
+  "prepayments",
+  "advance",
+  "less",
+  "minus",
+  "withholding",
+  "late fee",
+  "gift card",
+  "remaining",
+  "amt",
+  "bal",
+  "tot",
+  "value",
+  "send",
+];
+
+/** Compound nouns that hold a payable word but never state what is owed ("Due diligence", "Balance sheet"). */
+export const NOT_PAYABLE_PHRASES: readonly string[] = [
+  "due diligence",
+  "pay-per-click",
+  "pay per click",
+  "balance sheet",
+  "balance sheets",
 ];
 
 /** Numbers written in words count as digits ("Amount in words: nine thousand"). */
@@ -221,7 +321,7 @@ export const NUMBER_WORDS: readonly string[] = [
   "billion",
 ];
 
-/** Words that change what a figure means; on a final-total line they make it unreadable. */
+/** Words that change what a figure means; on a final-total line, or in its "(incl. ...)", they make it unreadable. */
 export const SCALE_WORDS: readonly string[] = [
   "cent",
   "cents",
@@ -236,9 +336,12 @@ export const SCALE_WORDS: readonly string[] = [
   "lamports",
   "yocto",
   "yoctonear",
+  "micro",
   "satoshi",
   "satoshis",
   "sats",
+  "hundred",
+  "hundreds",
   "thousand",
   "thousands",
   "million",
@@ -256,20 +359,61 @@ export const SCALE_WORDS: readonly string[] = [
   "bn",
 ];
 
+/**
+ * Scale and denomination words of a note on another line ("(USDC base units, 6 decimals)", "All figures in
+ * thousands"): near a final total, or in a note in brackets, they make the invoice unreadable.
+ */
+export const NOTE_SCALE_WORDS: readonly string[] = [
+  "cent",
+  "cents",
+  "base unit",
+  "base units",
+  "decimal",
+  "decimals",
+  "wei",
+  "gwei",
+  "lamport",
+  "lamports",
+  "yocto",
+  "yoctonear",
+  "micro",
+  "satoshi",
+  "satoshis",
+  "sats",
+  "hundred",
+  "hundreds",
+  "thousand",
+  "thousands",
+  "million",
+  "millions",
+  "billion",
+  "billions",
+  "lakh",
+  "lakhs",
+  "crore",
+  "crores",
+];
+
 /** Words that may not stand in an "(incl. ...)" tail: they state a status, not what the total includes. */
 export const STATUS_WORDS: readonly string[] = [
   "paid",
   "void",
   "voided",
   "refund",
+  "refunds",
   "refunded",
   "cancelled",
   "canceled",
   "credit",
+  "credits",
   "credited",
   "deposit",
+  "deposits",
   "estimate",
   "estimated",
+  "prior",
+  "sample",
+  "draft",
 ];
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -279,7 +423,6 @@ export const STATUS_WORDS: readonly string[] = [
 /** A title or heading naming one of these makes the document not payable. */
 export const DOCUMENT_TYPES: readonly string[] = [
   "remittance advice",
-  "remittance",
   "receipt",
   "quotation",
   "quote",
@@ -295,6 +438,9 @@ export const DOCUMENT_TYPES: readonly string[] = [
   "pro-forma",
   "proforma",
 ];
+
+/** Types that count only in the title (the first lines): an invoice may carry a remittance or payment slip. */
+export const TITLE_ONLY_TYPES: readonly string[] = ["remittance", "payment advice"];
 
 /** Stamps: a line that holds only one of these (decorated or not) makes the document not payable. */
 export const STAMPS: readonly string[] = [
@@ -321,14 +467,44 @@ export const CAPITAL_STAMPS: readonly string[] = [
   "SPECIMEN",
   "DRAFT",
   "DUPLICATE",
+  "PAID",
+];
+
+/** Stamp words that refuse a line they start, in any case ("Draft invoice", "Void - reissued"). */
+export const FIRST_WORD_STAMPS: readonly string[] = [
+  "void",
+  "voided",
+  "cancelled",
+  "canceled",
+  "sample",
+  "specimen",
+  "draft",
+  "duplicate",
 ];
 
 /** Phrases that count anywhere, in any case. */
 export const STATUS_PHRASES: readonly string[] = [
   "do not pay",
+  "don't pay",
+  "don\u2019t pay",
+  "dont pay",
   "this is not an invoice",
   "not an invoice",
+  "not for payment",
+  "not a tax invoice",
   "paid in full",
+  "fully paid",
+  "already paid",
+  "payment received",
+  "received in full",
+  "payment complete",
+  "payment completed",
+  "thank you for your payment",
+  "no action needed",
+  "no action required",
+  "no payment required",
+  "no payment due",
+  "settled",
   "for illustration only",
   "has been cancelled",
   "has been canceled",
@@ -354,6 +530,11 @@ export const STATUS_PHRASES: readonly string[] = [
 export const STATUS_VALUES: readonly string[] = [
   "paid",
   "paid in full",
+  "fully paid",
+  "payment received",
+  "settled",
+  "complete",
+  "completed",
   "void",
   "voided",
   "cancelled",
@@ -397,8 +578,7 @@ export const TOKEN_CODES: ReadonlySet<string> = new Set([
 
 /**
  * Codes that are also ordinary words or abbreviations ("ALL PRICES", "CAD drawings", "AMD", "PHP", "NEAR" as a
- * network): they count only where they are used as a currency, next to a figure, in brackets, after "in", before
- * "token(s)", or as a "Currency:" value.
+ * network): they count only where they are used as a currency (amount.ts lists the forms).
  */
 export const WORDLIKE_CODES: ReadonlySet<string> = new Set([
   "ALL",
@@ -422,6 +602,19 @@ export const WORDLIKE_CODES: ReadonlySet<string> = new Set([
   "TOP",
   "TRY",
 ]);
+
+/** Words that put a code on their line in a currency context ("All prices CAD", "Amounts are PHP"). */
+export const CURRENCY_CONTEXT_WORDS: readonly string[] = [
+  "currency",
+  "currencies",
+  "price",
+  "prices",
+  "pricing",
+  "priced",
+  "amount",
+  "amounts",
+  "billed",
+];
 
 /** Currency words, matched whole-word in any case. */
 export const CURRENCY_WORDS: readonly string[] = [
@@ -500,23 +693,30 @@ export const CURRENCY_WORDS: readonly string[] = [
   "bitcoins",
   "ether",
   "tether",
+  "loonie",
+  "loonies",
+  "toonie",
+  "toonies",
 ];
 
-/** "<country> dollar(s)": another country's dollar. */
+/** "<country> dollar(s)", "<country> $", "<country> funds", "<country> currency": another country's money. */
 export const OTHER_DOLLARS: readonly string[] = [
   "australian",
+  "aussie",
   "bahamian",
   "barbadian",
   "belize",
   "bermudian",
   "brunei",
   "canadian",
+  "cdn",
   "caymanian",
   "east caribbean",
   "fijian",
   "guyanese",
   "hong kong",
   "jamaican",
+  "kiwi",
   "liberian",
   "namibian",
   "new taiwan",
@@ -529,7 +729,15 @@ export const OTHER_DOLLARS: readonly string[] = [
   "taiwanese",
   "trinidad and tobago",
   "zimbabwean",
+  "au",
+  "nz",
+  "ca",
+  "hk",
+  "sg",
 ];
+
+/** Currency signs that are letters, not `\p{Sc}`: yen and yuan (CJK), won (Hangul). */
+export const LETTER_CURRENCY_SIGNS = "\u5186\u5143\u5706\u5713\uc6d0";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Look-alike letters: folded to the plain letter they look like, so a disguised word is still seen. Accented
@@ -570,9 +778,13 @@ export const LOOK_ALIKES: Readonly<Record<string, string>> = {
 // figure. Every quantifier is bounded, and no two of them can share the same run of characters.
 // ---------------------------------------------------------------------------------------------------------------
 
-/** "Invoice INV-1", "Invoice # 12", "INVOICE NO. 123": the number after an invoice label. */
+/**
+ * The number after an invoice label: "Invoice INV-1", "Invoice # 12", "INVOICE NO. 123", "Invoice: #1001",
+ * "Invoice n\u00b0 1001", "Inv. No. 1001", "Bill #1001". Read it from the text with invisible characters removed and
+ * dashes folded (facts.ts `invoiceView`).
+ */
 export const INVOICE_NO =
-  /\binvoice[ \t]{0,40}(?:(?:#|no\.?|number|num\.?|id)[ \t]{0,40})?(?:[:-][ \t]{0,40})?((?=[A-Z0-9/-]{0,31}[0-9])[A-Z0-9][A-Z0-9/-]{0,31})(?![A-Z0-9/-])/i;
+  /\b(?:invoice|inv\.|inv(?=[ \t]{1,4}(?:#|no\b|number\b))|bill(?![a-z]))[ \t]{0,40}(?:(?:#|no\.?|n[\u00b0\u00ba]|number|num\.?|id|ref)[ \t]{0,40})?(?:[:#-][ \t]{0,40}){0,3}((?=[A-Z0-9/-]{0,31}[0-9])[A-Z0-9][A-Z0-9/-]{0,31})(?![A-Z0-9/-])/i;
 /** An invoice-number token on its own: "INV-2026-07". */
 export const INVOICE_TOKEN = /\bINV[-#]?[0-9][A-Z0-9/-]{0,30}(?![A-Z0-9/-])/i;
 
