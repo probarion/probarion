@@ -102,7 +102,8 @@ Where things are defined (you do not edit these to deploy):
   | Variable | Notes | Sensitive |
   |---|---|---|
   | `TEAM_VAULT_IDS` | comma-separated vault accounts the team runs; they register as tenant kind `team` (step 5) | no |
-  | `PROBARION_VAULT_ID` | the demo vault the `/proof` page shows by default | no |
+  | `PROBARION_VAULT_ID` | the demo vault `/proof` opens. Use a public team vault created through the factory, with a signed, anchored ledger and "Public proof page" on (step 5). **Not** `v0.probarion.testnet`: it fails check (d) by design (its smoke spends predate the ledger), so `/proof` would show it in red. A vault whose proof page is not public is not opened: `/proof` then says how to open a vault | no |
+  | `NEAR_ARCHIVAL_RPC_URLS` | comma-separated archival NEAR RPCs, in failover order, for example `https://archival-rpc.testnet.fastnear.com`. `/proof` reads burn transactions older than about 2.5 days through them. Unset: no archival lookup, and such a burn shows as "not proven" (`tx_unavailable`), never as a pass | no (yes if a URL carries an API key) |
   | `NEARAI_API_KEY` | NEAR AI Cloud key; set a spend cap in the NEAR AI dashboard first | **yes** |
   | `NEARAI_MODEL` | leave unset: the SDK resolves a default | no |
   | `ONECLICK_JWT` | 1Click top-up quotes (mainnet only) | **yes** |
@@ -115,7 +116,7 @@ Where things are defined (you do not edit these to deploy):
   Do **not** set these on Vercel:
 
   - `PROBARION_AGENT_KEY`, `PROBARION_LEDGER_KEY`: the console keeps each vault's keys sealed in the database. These two are for the SDK and CLI on a developer machine.
-  - `PROBARION_LEDGER_PATH`, `NEAR_ARCHIVAL_RPC_URLS`: for the SDK, CLI and verifier; the console does not read them.
+  - `PROBARION_LEDGER_PATH`: for the SDK, CLI and verifier; the console does not read it.
   - `OLD_KEY_ENCRYPTION_SECRET`, `NEW_KEY_ENCRYPTION_SECRET`: inputs of the one-off rotation command, never stored.
   - Any variable with a `NEXT_PUBLIC_` prefix beyond the two in the table. The prefix publishes the value to every visitor's browser. `next.config.ts` derives the two it needs (`NEXT_PUBLIC_NEAR_NETWORK` and `NEXT_PUBLIC_SENTRY_DSN`) from `NEAR_NETWORK` and `SENTRY_DSN`.
 
@@ -134,7 +135,7 @@ This is advice, not a rule of the code. The code does not stop you from pointing
 - [ ] **OWNER:** Deploy (the first import deploys by itself), or push to `main`. Open the build log and check, in order:
   - the install step prints a pnpm 10.x version. If it prints 9.x and fails with `ERR_PNPM_UNSUPPORTED_ENGINE`, stop and tell the controller: the root `package.json` needs a pinned pnpm for Vercel (Corepack), and that is a repository change;
   - `packages/core build` and `packages/sdk build` finish with "Done";
-  - `next build` finishes and lists the routes `/`, `/login`, `/console`, `/console/[vault]`, `/console/[vault]/keys`, `/console/[vault]/mandates` and `/api/auth/*`.
+  - `next build` finishes and lists the routes `/`, `/login`, `/console`, `/console/[vault]`, `/console/[vault]/keys`, `/console/[vault]/mandates`, `/proof`, `/proof/[vault]`, `/proof/[vault]/snapshot.json`, `/proof/[vault]/ledger.jsonl` and `/api/auth/*`.
 - [ ] **OWNER:** smoke test, on the deployment URL:
   1. `/` loads with the amber "Unaudited beta" banner and three cards. The Canary and Open metrics entries read "(coming soon)" and are not links; no link on the page, in the menu or in the footer leads to a 404.
   2. `/console` while signed out sends you to `/login?next=%2Fconsole`.
@@ -142,6 +143,7 @@ This is advice, not a rule of the code. The code does not stop you from pointing
   4. `/console`: register a vault you own, signed in as its on-chain owner. On testnet that is `v0.probarion.testnet` (`contracts/deployments/testnet.json`). The vault page opens with Overview, Mandates and Keys tabs.
   5. Security headers: `curl -sI https://<deployment-url>/` shows `x-content-type-options`, `referrer-policy`, `x-frame-options`, `permissions-policy` and `cross-origin-opener-policy`.
   6. There is no `/api/health` route yet; plan 05 adds the health probes. Skip it until then.
+  7. `/proof/<vault>` for a vault whose "Public proof page" is on (step 5), ideally the `PROBARION_VAULT_ID` demo vault (a factory team vault, never `v0.probarion.testnet`, which is red by design): the result comes first ("All offline checks pass", "Not proven yet" or "A check failed"), then checks (a) to (i) with explorer links. `/proof` alone redirects to `PROBARION_VAULT_ID` when that vault's proof page is public on this network, and otherwise says how to open a vault. Download `snapshot.json` from the page. On another machine, set the CLI up from the public repository (the `probarion` npm package is not published yet; needs git, Node 24 or later and pnpm 10; if you cloned it before, run `git pull`, `pnpm install` and the build line again), one command per line: `git clone https://github.com/probarion/probarion`, then `cd probarion`, then `pnpm install`, then `pnpm --filter "{packages/cli}..." build`. Put the downloaded file in that folder and run `node packages/cli/dist/bin.js verify --offline <the downloaded file>`. The download is a snapshot of the vault taken when you click or shortly before, not necessarily the page's own: the verifier prints its `taken_at`. When that is the `taken_at` the page shows, it is the very snapshot the page checked, and a verifier built from the current repository gives the same result; otherwise it is another snapshot of the vault, and its result can differ from the page's (a transaction that could not be read during one of the two reads is enough). The page's `probarion-<vault>-ledger.jsonl` link downloads the ledger its prove-it commands pass as `--ledger`; download it just before running them, replacing any earlier copy. A vault id that is not a NEAR account, and a vault whose page is private, answer 404.
 - [ ] If sign-in answers 503 or `/console` shows an error page: Vercel, Logs. The message names the variable that is missing or malformed (for example "KEY_ENCRYPTION_SECRET must be 32 bytes encoded as base64"), never its value. Fix the variable, then redeploy.
 
 ## 5. Team vaults
@@ -172,6 +174,26 @@ Do this only after the transaction exists, once per transaction, each in its own
 | `first_payables_payout` | `near_payment` (for a Base payee: `base_payout`, plus `--base-tx` once the Base transfer is visible) | the vault | the vault | `agent_key` (add `--spend-id` and `--amount`) | the Payables agent pays an invoice (the Payables page is not built yet) |
 
 Give each one a `--what` line in plain words, for example "First vault created through the console (factory create_vault)".
+
+## 8. Later: the proof page's evidence file, after mainnet v0
+
+`/proof` reads no file at runtime (Vercel has no `docs/` then). What the CLI takes from `docs/evidence` and `docs/mainnet-proof.json` comes instead from one committed file, `apps/web/content/proof-evidence.json`. It ships as `{}`: there is no mainnet v0 yet. A malformed file is never ignored: every proof page then shows "No result: the checks did not run" until it is fixed (`apps/web/src/lib/proof/evidence.test.ts` checks the committed file).
+
+Shape, one entry per vault, keyed by `"<network>:<vault>"`; both fields are optional:
+
+```json
+{
+  "mainnet:v0.probarion.near": {
+    "preLedgerDecisionHashes": ["<64 lowercase hex>"],
+    "burnTxHints": { "<spend id>": ["<tx hash>", { "hash": "<tx hash>", "signer": "<account>" }] }
+  }
+}
+```
+
+- [ ] **OWNER** (after the mainnet v0 Day-4 spends are recorded): fill the `mainnet:v0.probarion.near` entry, in its own commit.
+  - `preLedgerDecisionHashes`: from the repository root, after `pnpm install && pnpm build`, run `node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --evidence docs/evidence --snapshot v0-snapshot.json` and copy the snapshot's `pre_ledger_decision_hashes` list. These are the sha256 of the `docs/evidence/v0-decision-*.json` files. The SDK applies them to `v0.probarion.near` on mainnet only; an entry for any other vault has no effect on check (d).
+  - `burnTxHints`: from `docs/mainnet-proof.json`, every entry in `txs` with `network` `mainnet`, `receiver_id` the vault, a `spend_id`, and an `expect` other than `failure`. Add `{ "hash": <its hash>, "signer": <its signer_id> }` under its `spend_id`. This is the list the CLI builds from `--proof docs/mainnet-proof.json`.
+  - Then run `pnpm --filter @probarion/web test src/lib/proof` and deploy. The page's checks (d) and (h) should then match what `node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --evidence docs/evidence --proof docs/mainnet-proof.json --ledger <the vault's ledger as JSONL>` reports (`npx probarion …` once the package is on npm).
 
 ## When a later task changes this page
 

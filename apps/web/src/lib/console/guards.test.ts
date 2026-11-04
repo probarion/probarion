@@ -97,6 +97,7 @@ import { refreshMembersAction, updateSettingsAction } from "@/app/console/[vault
 import VaultPage, { maxDuration as vaultMaxDuration } from "@/app/console/[vault]/page";
 import { prepareCreateVaultAction, registerVaultAction } from "@/app/console/actions";
 import ConsolePage, { maxDuration as homeMaxDuration } from "@/app/console/page";
+import { cli } from "@/lib/proof/cli";
 import { SIGNER_OUT_OF_NEAR, VAULT_LOW_SUGGESTION } from "./display";
 
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
@@ -333,7 +334,8 @@ describe("console home guard (requireSession)", () => {
     await signInAs("acme.near");
     const out = renderToStaticMarkup((await ConsolePage()) as ReactElement);
     expect(out).toContain(VAULT);
-    expect(out).toContain("npx probarion --network mainnet vault create");
+    // The command a visitor can run today (the repository build until the npm package is out).
+    expect(out).toContain(cli("--network mainnet vault create"));
     expect(out).not.toContain("Create vault in my wallet");
   });
 });

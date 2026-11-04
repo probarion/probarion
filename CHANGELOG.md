@@ -63,6 +63,22 @@ The software is an unaudited beta.
   the agent and ledger keys from their wallet with the public key only; mandate creation for a NEAR
   or Base payee, with the same validation in the browser and on the server, and revocation; and a
   Postgres ledger store whose entries core's `runChecks` verifies.
+- Web console, the public proof page (built and tested, not deployed): `/proof/<vault>` shows a vault
+  whose owner made its proof public. The result comes first: "All offline checks pass" (green), "Not
+  proven yet" (amber) or "A check failed" (red). Then come checks (a) to (i), each with explorer links
+  on the vault's own network, and the vault's cross-chain burns. When a burn is not proven, the page
+  names the spend and the reason and gives the command that proves it. A private vault's page is
+  shown only to its members, and anyone else gets a 404. `/proof` opens the demo vault set in
+  `PROBARION_VAULT_ID` when its page is public. `NEAR_ARCHIVAL_RPC_URLS`, which is optional, lets the
+  page read older burn transactions.
+- Proof page downloads: `snapshot.json` (the ledger and chain data the checks ran on, for
+  `probarion verify --offline`) and the vault's signed ledger as `probarion-<vault>-ledger.jsonl`
+  (for `probarion verify --ledger`). Both have the page's access rules and rate limit, and a
+  browser does not reuse an old copy. The page shows its snapshot's `taken_at` exactly as the verifier
+  prints it, so a reader can tell when a download is the very snapshot the page checked. Until the
+  `probarion` package is on npm, every command on the site and in the deploy runbook is shown as run
+  from a clone of this repository (four set-up commands, then `node packages/cli/dist/bin.js`), and
+  the tests run those commands as shown.
 
 ### Changed
 
@@ -78,9 +94,15 @@ The software is an unaudited beta.
 
 ### Fixed
 
-- Web console: pages that are not built yet (Canary, open metrics, the proof page, Payables, Top-up,
-  Alerts, Security, Status, Terms, Privacy) show as "coming soon" instead of a link that answers 404,
-  and the landing page no longer presents them or the offline `probarion verify` as available.
+- Web console: pages that are not built yet (Canary, open metrics, Payables, Top-up, Alerts,
+  Security, Status, Terms, Privacy) show as "coming soon" instead of a link that answers 404, and the
+  landing page does not present them as available.
+- Proof page: text from a ledger or the chain cannot disguise a result. Bidi and control characters
+  are replaced, long values are cut, and only well-formed transaction hashes and account ids become
+  links. A database or chain failure shows "No result" with the reason, and it is not shown as a pass.
+- SDK: a Next.js app that uses `@probarion/sdk` keeps its own source tree out of its server
+  functions. The file ledger store's dynamic path carries a `turbopackIgnore` hint. With it, the proof
+  page's server functions trace a few dozen files instead of the whole app (about 225 files before).
 - Vault: `set_ledger_key` deletes the old ledger key and adds the new one in two separate receipts,
   the delete first. A failed delete no longer rolls back the new key and leaves the vault unable to
   anchor, and a rotation fits on a vault with no spare NEAR. The testnet vault runs the build from

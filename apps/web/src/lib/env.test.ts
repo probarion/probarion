@@ -427,3 +427,39 @@ describe("loadEnv: TEAM_VAULT_IDS (R11)", () => {
     expect(message).not.toContain("SENTINEL");
   });
 });
+
+describe("loadEnv: NEAR_ARCHIVAL_RPC_URLS (/proof, R5)", () => {
+  it("is an empty list when unset, blank or only commas: no archival lookup (R12)", () => {
+    for (const v of [undefined, "", "   ", ",", " , ,"]) {
+      expect(
+        loadEnv({ ...base, NEAR_ARCHIVAL_RPC_URLS: v }).NEAR_ARCHIVAL_RPC_URLS,
+        String(v),
+      ).toEqual([]);
+    }
+  });
+
+  it("splits and trims the list in failover order", () => {
+    expect(
+      loadEnv({
+        ...base,
+        NEAR_ARCHIVAL_RPC_URLS:
+          " https://archival-rpc.testnet.fastnear.com ,, http://localhost:3031 ,",
+      }).NEAR_ARCHIVAL_RPC_URLS,
+    ).toEqual(["https://archival-rpc.testnet.fastnear.com", "http://localhost:3031"]);
+  });
+
+  it("rejects an entry that is not https (or http on localhost), by position and without its value", () => {
+    let message = "";
+    try {
+      loadEnv({
+        ...base,
+        NEAR_ARCHIVAL_RPC_URLS: "https://ok.example,http://SENTINEL-archival.example",
+      });
+    } catch (e) {
+      expect(e).toBeInstanceOf(EnvError);
+      message = (e as Error).message;
+    }
+    expect(message).toMatch(/NEAR_ARCHIVAL_RPC_URLS entry 2 must be https/);
+    expect(message).not.toContain("SENTINEL");
+  });
+});

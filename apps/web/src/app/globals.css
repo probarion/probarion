@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/*
+ * Brand v2 (light): paper and ink. Gold is an accent, never body text on paper. The two deep golds are for small
+ * accents on paper: gold-deep (#a57a26) for marks and rules, gold-ink (#5e4210) for small text, where it has the
+ * contrast. The name "gold" alone is kept for the metallic gold of the coin and hero.
+ */
+@theme {
+  --color-paper: #f7f6f3;
+  --color-ink: #0b0b0c;
+  --color-gold-deep: #a57a26;
+  --color-gold-ink: #5e4210;
+}
+
 a {
   text-underline-offset: 2px;
 }
