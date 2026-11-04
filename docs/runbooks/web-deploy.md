@@ -2,11 +2,11 @@
 
 **OWNER** does every step on this page, in a browser or a terminal on your own machine. Claude prepares the code and checks it, but never creates a project, never deploys and never calls the Vercel or Supabase APIs. Nothing here sends a NEAR transaction: the sign-in in the smoke test is a message signature.
 
-Plan for about an hour. Do the steps in order: the Vercel build does not need the Supabase values, but the running console does.
+Plan for about an hour. Do the steps in order: the Vercel build does not need the Supabase values, but the running console does. The build does need one Vercel setting, the pnpm switch in step 3.2, which is why step 4 checks a build made after it.
 
 Where things are defined (you do not edit these to deploy):
 
-- `package.json` (repo root): `packageManager` is `pnpm@10.10.0`. CI and Vercel install exactly that pnpm (step 3.2 switches Vercel to it), and `engines.pnpm` stays `>=10 <11`.
+- `package.json` (repo root): `packageManager` is `pnpm@10.34.9`. CI and Vercel install exactly that pnpm (step 3.2 switches Vercel to it), and `engines.pnpm` stays `>=10 <11`.
 - `apps/web/vercel.json`: framework, region `iad1` (Washington DC, next to Supabase `us-east-1`), and the build command.
 - `.env.example` (repo root): every variable the console reads. `docs/specs/2026-10-21-probarion-interfaces.md` section 14 lists the same names.
 - `apps/web/next.config.ts`: the security headers. They are not repeated in `vercel.json`.
@@ -21,6 +21,11 @@ Where things are defined (you do not edit these to deploy):
   git ls-tree origin/main apps/web/vercel.json
   ```
   It must print one line. If it prints nothing, stop: without `vercel.json` the first build has no `buildCommand`, cannot find `@probarion/core` and `@probarion/sdk` (they are loaded from `dist`), and fails. A Preview deployment of another branch is not a substitute for this check.
+  Then check that the pnpm pin is on `main` as well (the pattern includes the version, so it fails on any other):
+  ```bash
+  git show origin/main:package.json | grep '"packageManager": "pnpm@10.34.9"'
+  ```
+  It must print one line. If it prints nothing, stop: Vercel would build a commit with no root `packageManager`. Merge the pin into `main` first.
 - [ ] **OWNER:** decide the network. Read `contracts/deployments/mainnet.json`. While its `factory.deploy_tx` is `null`, the mainnet factory `vaults.probarion.near` is not deployed, so the console cannot create or register a mainnet vault. Deploy against **testnet** first (`NEAR_NETWORK=testnet`) and move Production to mainnet when the factory is live (`docs/runbooks/factory.md`).
 - [ ] **OWNER:** check the testnet factory `vaults.probarion.testnet` is deployed (`docs/runbooks/factory.md`). Without it the console shows the Create vault panel as unavailable. Registering an existing vault still works.
 
@@ -76,16 +81,17 @@ Where things are defined (you do not edit these to deploy):
   - **Framework Preset:** Next.js (detected).
   - **Root Directory:** `apps/web`.
   - **Include source files outside of the Root Directory in the Build Step:** on (the default). The build needs `packages/core` and `packages/sdk`.
+  - **Environment Variables:** if the configure screen has this section, add `ENABLE_EXPERIMENTAL_COREPACK` = `1` here, before you click Deploy (step 3.2 says what it is). If it has not, add it in step 3.2 and check a build made after it (step 4).
   - **Build, Install and Output commands:** leave them on their defaults and leave every Override toggle **off**. The build command comes from `apps/web/vercel.json`: it builds `@probarion/core` and `@probarion/sdk` (the app loads both from their `dist` folders), then runs `next build`. Do not override the install command: with an override such as `pnpm install`, Vercel uses the oldest pnpm in its image, and the lockfile needs pnpm 10. Which pnpm 10 it runs comes from `packageManager` in the root `package.json`, once step 3.2 has set the Corepack switch.
-- [ ] **OWNER:** after the project exists, Settings, General: **Node.js Version 24.x**. Settings, Git: **Production Branch `main`**. Leave "Automatically expose System Environment Variables" on. Do not set `NODE_ENV` yourself; the build needs the dev dependencies.
+- [ ] **OWNER:** after the project exists, Settings, General: **Node.js Version 24.x**. Keep 24.x while `ENABLE_EXPERIMENTAL_COREPACK` is set: Node.js 25 and later no longer bundle Corepack. Before you move to 26.x, check the Corepack line in a Preview build log (step 4). Settings, Git: **Production Branch `main`**. Leave "Automatically expose System Environment Variables" on. Do not set `NODE_ENV` yourself; the build needs the dev dependencies.
 - [ ] **OWNER:** leave the Git integration as it is. Vercel then makes a Preview deployment for every pull request and a Production deployment for every push to `main`.
 
 ### 3.2 Environment variables
 
-- [ ] **OWNER:** Settings, Environment Variables. First add the one **build setting**: `ENABLE_EXPERIMENTAL_COREPACK` = `1`, for **Production** and **Preview**, not Sensitive.
+- [ ] **OWNER:** Settings, Environment Variables. First add the one **build setting**: `ENABLE_EXPERIMENTAL_COREPACK` = `1`, for **Production** and **Preview**, Type **Config** (not Secret).
   - Why it has its own line: it is a switch for Vercel's build, not a variable the console reads. So it is not in `.env.example` (which lists what the console reads; `deploy.test.ts` keeps it out) and not in the tables below.
-  - What it does: it makes Vercel install the pnpm that `packageManager` in the root `package.json` names (`pnpm@10.10.0`), through Corepack. Vercel's documentation calls Corepack experimental and gives this variable as the way to turn it on (<https://vercel.com/docs/builds/configure-a-build#corepack>).
-  - Why you need it: without it Vercel chooses pnpm from `pnpm-lock.yaml`, and a `lockfileVersion: 9.0` file fits pnpm 9 or 10 (<https://vercel.com/docs/package-managers>). With pnpm 9 the install fails with `ERR_PNPM_UNSUPPORTED_ENGINE`, because `engines.pnpm` is `>=10 <11`.
+  - What it does: it makes Vercel install the pnpm that `packageManager` in the root `package.json` names (`pnpm@10.34.9`), through Corepack. Vercel's documentation calls Corepack experimental and gives this variable as the way to turn it on (<https://vercel.com/docs/builds/configure-a-build#corepack>).
+  - Why you set it: without it, current Vercel builders still pick a pnpm 10 for this project (from the `packageManager` pin, or from the project's creation date), but that is not documented behaviour. The variable keeps the build on the documented path, at exactly the pinned pnpm. Vercel's own rule for a `lockfileVersion: 9.0` lockfile is "pnpm 9 or 10" (<https://vercel.com/docs/package-managers>), and a pnpm 9 would fail the install with `ERR_PNPM_UNSUPPORTED_ENGINE`, because `engines.pnpm` is `>=10 <11`.
 - [ ] **OWNER:** Then add each row below for **Production** and **Preview** separately (use the Environment checkboxes). Tick **Sensitive** where the table says so: Sensitive values cannot be read back after saving.
 
   Required for the console to start. With one missing or malformed, the sign-in routes answer a bare 503 `unavailable` and the console pages show an error page; the cause is in Vercel, Logs, where the message names the variable (never its value):
@@ -137,8 +143,12 @@ This is advice, not a rule of the code. The code does not stop you from pointing
 
 ## 4. First deploy and smoke test
 
-- [ ] **OWNER:** Deploy (the first import deploys by itself), or push to `main`. Open the build log and check, in order:
-  - the install step prints pnpm 10.10.0 (from `packageManager`). If it prints 9.x and fails with `ERR_PNPM_UNSUPPORTED_ENGINE`, check that `ENABLE_EXPERIMENTAL_COREPACK` is `1` for this environment (step 3.2), then redeploy; a changed variable applies to the next build only. If it still prints 9.x, stop and tell the controller: that is a repository change;
+- [ ] **OWNER:** make a build that starts after step 3.2: Deployments, the latest Production deployment, Redeploy (the import build ran before the variables existed and does not count), or push to `main`. Open that build's log and check, in order:
+  - the log shows `Detected ENABLE_EXPERIMENTAL_COREPACK=1 and "pnpm@10.34.9" in package.json`, and the install then ends with `Done in ... using pnpm v10.34.9`: the install step uses pnpm 10.34.9, from `packageManager`. If it does not:
+    - `Could not enable corepack because package.json is missing "packageManager" property`, or `Using pnpm@9.x based on project creation date`: the commit that was built has no pin. Merge it (step 0), then redeploy.
+    - No Corepack line at all: the variable is missing for that environment. Add it (step 3.2), then redeploy; a changed variable applies to the next build only.
+    - The Corepack line is there but the install fails: remove the variable, redeploy, and tell the controller. Without Corepack, current builders still follow the pin, and pnpm switches to the pinned version by itself.
+    - It still prints 9.x and fails with `ERR_PNPM_UNSUPPORTED_ENGINE`: stop and tell the controller: that is a repository change;
   - `packages/core build` and `packages/sdk build` finish with "Done";
   - `next build` finishes and lists the routes `/`, `/login`, `/console`, `/console/[vault]`, `/console/[vault]/keys`, `/console/[vault]/mandates`, `/proof`, `/proof/[vault]`, `/proof/[vault]/snapshot.json`, `/proof/[vault]/ledger.jsonl` and `/api/auth/*`.
 - [ ] **OWNER:** smoke test, on the deployment URL:
@@ -202,7 +212,7 @@ Shape, one entry per vault, keyed by `"<network>:<vault>"`; both fields are opti
 
 ## When a later task changes this page
 
-- A new pnpm version: change `packageManager` in the root `package.json` (CI and Vercel both follow it), the pinned value in `scripts/test/release-manifests.test.ts`, and the version named in step 4. The script tests and `deploy.test.ts` fail until they agree. The workflows carry no version of their own.
+- A new pnpm version: change `packageManager` in the root `package.json` (CI and Vercel both follow it), the pinned value in `scripts/test/release-manifests.test.ts`, and every pnpm version named on this page (`deploy.test.ts` fails on any that differs from `packageManager`). The script tests fail until the first two agree. The workflows carry no version of their own.
 - A new environment variable: it goes into `.env.example` first (`deploy.test.ts` fails otherwise), then into the tables in 3.2.
 - A new Vercel cron: add it to `apps/web/vercel.json`. `deploy.test.ts` requires a `GET` route at that path that checks `CRON_SECRET`. Per-minute and hourly schedules need Vercel Pro; the Hobby plan rejects them at deploy time.
 - A new migration: one new file, next sequence number, no gaps. The test applies the folder to a fresh database and refuses extensions, role changes, owners and Supabase-only features.

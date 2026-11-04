@@ -201,7 +201,8 @@ function pnpmSetupProblems(text) {
   let found = 0;
   for (const id of ids) {
     for (const step of stepsOf(blockLines(jobs, id, 2) ?? [])) {
-      if (!step.some((l) => /\buses:\s*pnpm\/action-setup@/.test(l))) continue;
+      // Found loosely (any case, quoted), judged strictly: a PNPM/action-setup or a quoted step is refused too.
+      if (!step.some((l) => /\buses:\s*["']?pnpm\/action-setup@/i.test(l))) continue;
       found += 1;
       if (step.length !== 1 || !/^ {6}- uses: pnpm\/action-setup@[0-9a-f]{40}$/.test(step[0])) {
         problems.push(
@@ -529,11 +530,29 @@ test("release.yml has exactly the shape the release relies on", () => {
   assert.deepEqual(checkReleaseWorkflow(release, ci), []);
 });
 
+/** The pnpm version packageManager names in the root package.json (`workspace` is read further down). */
+function pinnedPnpmVersion() {
+  const packageManager = workspace.manifests.get("package.json")?.packageManager;
+  assert.ok(
+    typeof packageManager === "string" && packageManager.startsWith("pnpm@"),
+    "the root package.json has no pnpm packageManager to build a mutant from",
+  );
+  return packageManager.slice("pnpm@".length);
+}
+
 /** A workflow with one more input on its (first) pnpm/action-setup step. */
 const addPnpmInput = (text, input) =>
   text.replace(
     /( {6}- uses: pnpm\/action-setup@[0-9a-f]{40} # \S+\n)/,
     `$1        with:\n          ${input}\n`,
+  );
+
+/** A workflow with a second pnpm/action-setup step (another case, or quoted) after the real one. */
+const addPnpmStep = (text, action, input, quote = "") =>
+  text.replace(
+    /( {6}- uses: pnpm\/action-setup@([0-9a-f]{40}) # \S+\n)/,
+    (_match, step, sha) =>
+      `${step}      - uses: ${action}@${sha}${quote} # v4.3.0\n        with:\n          ${input}\n`,
   );
 
 // Each mutation is a change a careless edit, or an attacker with a pull request, could make. The checker
@@ -766,12 +785,22 @@ const mutations = [
   ],
   [
     "a version input equal to packageManager added to pnpm/action-setup",
-    (t) => addPnpmInput(t, "version: 10.10.0"),
+    (t) => addPnpmInput(t, `version: ${pinnedPnpmVersion()}`),
     "pnpm/action-setup step must be exactly",
   ],
   [
     "package_json_file pointing the action at another file",
     (t) => addPnpmInput(t, "package_json_file: apps/web/package.json"),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a second, upper-case PNPM/action-setup step with a version input",
+    (t) => addPnpmStep(t, "PNPM/action-setup", "version: 9"),
+    "pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a second, quoted pnpm/action-setup step with a version input",
+    (t) => addPnpmStep(t, '"pnpm/action-setup', "version: 9", '"'),
     "pnpm/action-setup step must be exactly",
   ],
   [
@@ -1809,7 +1838,7 @@ const gateMutations = [
   [
     "packageManager with a range instead of a version",
     (r) => {
-      r.manifests.get("package.json").packageManager = "pnpm@^10.10.0";
+      r.manifests.get("package.json").packageManager = `pnpm@^${pinnedPnpmVersion()}`;
     },
     ["package.json: packageManager must be pnpm@10.x.y"],
   ],
@@ -1823,7 +1852,10 @@ const gateMutations = [
   [
     "packageManager not a string",
     (r) => {
-      r.manifests.get("package.json").packageManager = { name: "pnpm", version: "10.10.0" };
+      r.manifests.get("package.json").packageManager = {
+        name: "pnpm",
+        version: pinnedPnpmVersion(),
+      };
     },
     ["package.json: packageManager must be pnpm@10.x.y"],
   ],
@@ -2119,12 +2151,22 @@ const ciMutations = [
   ],
   [
     "a version input equal to packageManager added to pnpm/action-setup",
-    (t) => addPnpmInput(t, "version: 10.10.0"),
+    (t) => addPnpmInput(t, `version: ${pinnedPnpmVersion()}`),
     "ts: the pnpm/action-setup step must be exactly",
   ],
   [
     "package_json_file pointing the action at another file",
     (t) => addPnpmInput(t, "package_json_file: apps/web/package.json"),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a second, upper-case PNPM/action-setup step with a version input",
+    (t) => addPnpmStep(t, "PNPM/action-setup", "version: 9"),
+    "ts: the pnpm/action-setup step must be exactly",
+  ],
+  [
+    "a second, quoted pnpm/action-setup step with a version input",
+    (t) => addPnpmStep(t, '"pnpm/action-setup', "version: 9", '"'),
     "ts: the pnpm/action-setup step must be exactly",
   ],
   [

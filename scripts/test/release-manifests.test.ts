@@ -123,7 +123,12 @@ const ROOT_PINNED: Record<string, string> = {
  * ci-workflow.test.mjs pins the major line (pnpm 10) and the workflows; this file pins the exact
  * value, so that another major needs a reviewed change in both files and a patch bump one in this file.
  */
-const PACKAGE_MANAGER = "pnpm@10.10.0";
+const PACKAGE_MANAGER = "pnpm@10.34.9";
+/** The pinned version with its minor raised by one: a bump of the field that nobody reviewed in this file. */
+const NEXT_MINOR = PACKAGE_MANAGER.replace(
+  /^pnpm@(\d+)\.(\d+)\.\d+$/,
+  (_match, major: string, minor: string) => `pnpm@${major}.${Number(minor) + 1}.0`,
+);
 
 const PACKAGE_BUILD =
   "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json";
@@ -615,9 +620,9 @@ const GATE_MUTATIONS: Array<[string, (r: Repo) => void, string[]]> = [
   [
     "packageManager moved to another pnpm 10 version without reviewing the pin",
     (r) => {
-      rootManifest(r).packageManager = "pnpm@10.11.0";
+      rootManifest(r).packageManager = NEXT_MINOR;
     },
-    ["package.json: packageManager changed", 'now "pnpm@10.11.0"'],
+    ["package.json: packageManager changed", `now "${NEXT_MINOR}"`],
   ],
   [
     "packageManager removed",

@@ -188,13 +188,22 @@ describe("vercel.json", () => {
   });
 
   it("pins pnpm through packageManager, and the runbook sets the Corepack switch that makes Vercel read it", () => {
-    // Without the pin Vercel picks pnpm 9 or 10 for a version 9.0 lockfile, and pnpm 9 fails engines.pnpm.
+    // Vercel documents Corepack plus packageManager as the way to name the pnpm of a build. Without the
+    // variable, builders pick a pnpm 10 on their own (from the pin, or from the project's creation date):
+    // that is not documented, and not necessarily the pinned version.
     const root = JSON.parse(text(ROOT, "package.json")) as { packageManager?: string };
     const version = /^pnpm@(10\.\d+\.\d+)$/.exec(root.packageManager ?? "")?.[1];
     expect(version, "root package.json packageManager is pnpm@10.x.y").toBeDefined();
     const runbook = text(ROOT, "docs", "runbooks", "web-deploy.md");
     expect(runbook).toContain("ENABLE_EXPERIMENTAL_COREPACK");
     expect(runbook, "the build-log check names the pinned version").toContain(`pnpm ${version}`);
+    // Every pnpm version the page names is the pinned one, so a bump cannot leave a stale mention.
+    const named = [...runbook.matchAll(/pnpm[@ ]v?(10\.\d+\.\d+)/g)].map((m) => m[1]);
+    expect(named.length, "the runbook names the pinned version").toBeGreaterThan(0);
+    expect(
+      named.filter((v) => v !== version),
+      `pnpm versions on the page other than ${version}`,
+    ).toEqual([]);
     // A Vercel build setting the console never reads: .env.example lists what the console reads.
     expect(parseDotenv(ENV_EXAMPLE).has("ENABLE_EXPERIMENTAL_COREPACK")).toBe(false);
   });
