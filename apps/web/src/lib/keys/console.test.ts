@@ -38,6 +38,8 @@ const h = vi.hoisted(() => ({
   reader: null as unknown as VaultReader,
   revalidated: [] as string[],
   buttons: [] as Captured[],
+  /** The vault account's code identity the page reads; null makes the read fail. */
+  codeHash: null as string | null,
 }));
 
 vi.mock("next/headers", () => ({
@@ -62,7 +64,21 @@ vi.mock("@/lib/crypto/server", async () => {
 });
 vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
 vi.mock("@/lib/env", () => ({ getEnv: () => ({ NEAR_NETWORK: "mainnet" }) }));
-vi.mock("@/lib/near/server", () => ({ getReader: () => h.reader }));
+vi.mock("@/lib/near/server", () => ({
+  getReader: () => h.reader,
+  getRpc: () => ({
+    viewAccount: async () => {
+      if (h.codeHash === null) throw new Error("no account read in this test");
+      return {
+        amount: "1",
+        locked: "0",
+        code_hash: h.codeHash,
+        global_contract_hash: null,
+        storage_usage: 1,
+      };
+    },
+  }),
+}));
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
   useRouter: () => ({ refresh: () => {}, push: () => {} }),
@@ -83,6 +99,7 @@ import {
 import KeysPage, { maxDuration } from "@/app/console/[vault]/keys/page";
 import { SIGNER_OUT_OF_NEAR } from "@/lib/console/display";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
+import { VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY } from "@/lib/keys/rules";
 import type { TxResult } from "@/lib/near/outcome";
 import { generateKey } from "./service";
 import { loadKeysView } from "./view";
@@ -142,6 +159,7 @@ beforeEach(() => {
   h.revalidated.length = 0;
   h.buttons.length = 0;
   h.reader = chainWithAllKeys();
+  h.codeHash = null;
 });
 
 async function signInAs(account: string) {
@@ -429,8 +447,15 @@ describe("pending, registered and stuck keys (W-T10-R1)", () => {
     const sync = await syncKeysAction(vault, null);
     const notes = sync?.ok ? sync.notes.join("\n") : "";
     expect(notes).toMatch(/registered in the vault but its access key was never added/);
-    expect(notes).toMatch(/a contract fix is needed to recover/);
+    // The vault's code could not be read here, so the ledger note says so (W-T10-R3).
+    expect(notes).toMatch(/code could not be read/);
+    expect(notes).not.toMatch(/contract fix/i);
     expect(notes).not.toMatch(/check again in a minute.*(registered|contract)/);
+    // With old vault code, the sync says the vault needs a new one.
+    h.codeHash = VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY[0] ?? null;
+    const oldSync = await syncKeysAction(vault, null);
+    expect(oldSync?.ok ? oldSync.notes.join("\n") : "").toMatch(/needs a new vault/);
+    h.codeHash = null;
 
     h.buttons.length = 0;
     const out = await html(vault);
@@ -448,12 +473,36 @@ describe("pending, registered and stuck keys (W-T10-R1)", () => {
     expect(out).toContain(plainLedger);
     expect(h.buttons.filter((b) => b.label === "Set as ledger key")).toEqual([]);
     for (const b of h.buttons) expect(b.expectedSigner, b.label).toBe("acme.near");
-    // The ledger key is stuck: no new ledger key is offered (it would only move the stuck pointer).
+    // The ledger key is stuck, and the vault's code could not be read: no new ledger key is offered.
     expect(h.buttons.map((b) => b.label)).not.toContain(
       "Generate ledger key and set it in my wallet",
     );
-    expect(out).toContain("would fail the same way and only move the stuck pointer");
+    expect(out).toContain("could not be read, so a new");
+    expect(out).not.toMatch(/contract fix/i);
     expect(h.buttons.map((b) => b.label)).toContain("Generate agent key and add it in my wallet");
+
+    // Old vault code (before the set_ledger_key fix): a stuck ledger key cannot be replaced there.
+    h.codeHash = VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY[0] ?? null;
+    h.buttons.length = 0;
+    const onOld = await html(vault);
+    expect(onOld).toContain("This vault&#x27;s code cannot replace a stuck ledger key");
+    expect(onOld).toContain("needs a new vault");
+    expect(h.buttons.map((b) => b.label)).not.toContain(
+      "Generate ledger key and set it in my wallet",
+    );
+    expect(h.buttons.filter((b) => b.label === "Set as ledger key")).toEqual([]);
+    // Current code: setting a new ledger key recovers it, so it is offered, with the top-up advice.
+    h.codeHash = "11111111111111111111111111111111";
+    h.buttons.length = 0;
+    const onCurrent = await html(vault);
+    expect(onCurrent).toContain("Setting a new ledger key recovers it");
+    expect(onCurrent).toContain("top it up");
+    expect(h.buttons.map((b) => b.label)).toContain("Generate ledger key and set it in my wallet");
+    expect(
+      h.buttons.filter((b) => b.label === "Set as ledger key").map((b) => publicKeyOf(b.tx)),
+    ).toEqual([plainLedger]);
+    expect(onCurrent).not.toMatch(/contract fix/i);
+    h.codeHash = null;
 
     // An approver sees the same state, with no button.
     await signInAs("cfo.near");
@@ -506,7 +555,9 @@ describe("pending, registered and stuck keys (W-T10-R1)", () => {
     ] as const) {
       h.jar.clear();
       if (who) await signInAs(who);
-      await keepKeyAction(at, k.id);
+      const r = await keepKeyAction(at, k.id);
+      expect(r?.ok, `${who} ${at}`).toBe(false);
+      expect(r?.message, `${who} ${at}`).toBeTruthy();
       expect(await statusOf(k.publicKey), `${who} ${at}`).toBe("removed");
     }
     // The owner, while the chain does not show the full state: still not kept.
@@ -516,11 +567,17 @@ describe("pending, registered and stuck keys (W-T10-R1)", () => {
       listAgents: async () => [],
       accessKey: async () => ({ ...fc(["spend"]), receiverId: vault }),
     });
-    await keepKeyAction(vault, k.id);
+    expect(await keepKeyAction(vault, k.id)).toEqual({
+      ok: false,
+      message: "Not kept: the vault does not register this key. Nothing changed.",
+    });
     expect(await statusOf(k.publicKey)).toBe("removed");
     // The owner, with the full state on chain: kept, active.
     h.reader = onChain;
-    await keepKeyAction(vault, k.id);
+    expect(await keepKeyAction(vault, k.id)).toEqual({
+      ok: true,
+      message: "Kept: the key is active again.",
+    });
     expect(await statusOf(k.publicKey)).toBe("active");
     expect(h.revalidated).toContain(`/console/${vault}/keys`);
 
@@ -535,6 +592,23 @@ describe("pending, registered and stuck keys (W-T10-R1)", () => {
     expect(seen).toContain("Discarded, but on chain");
     expect(seen).not.toContain(">Keep<");
     expect(h.buttons).toEqual([]);
+
+    // On chain, registered, but as a gas key: Keep would refuse, so it is not offered.
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", ledger_key: null }),
+      listAgents: async () => [{ public_key: k.publicKey, label: "x", added_at_ns: "1" }],
+      accessKey: async () => ({
+        ...fc(["spend"]),
+        receiverId: vault,
+        kind: "GasKeyFunctionCall" as const,
+      }),
+    });
+    await signInAs("acme.near");
+    await syncKeysAction(vault, null);
+    h.buttons.length = 0;
+    const gas = await html(vault);
+    expect(gas).not.toContain("Discarded, but on chain");
+    expect(gas).not.toContain(">Keep<");
   });
 });
 

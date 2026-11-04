@@ -22,6 +22,13 @@ env:
 
 # Third-party actions are pinned by full commit SHA, with the tag in a trailing comment, because a
 # tag can be moved. Resolve a SHA with: gh api repos/<owner>/<repo>/commits/<tag-or-branch> -q .sha
+#
+# Failure explainer (jobs ts, rust-unit and sandbox): each gate step tees its output to
+# $RUNNER_TEMP/gate-<n>-<name>.log under `set -o pipefail`, so the step keeps the command's exit
+# status. If a gate fails, the job's last step (if: failure()) runs scripts/ci-failure-note.mjs, which
+# posts the failing log's last 60 lines as one annotation and in the job summary (rust-unit and
+# sandbox run it on the Node that comes with the ubuntu runner image). These jobs use no secret, so a
+# log holds none. scripts/ci-workflow.test.mjs pins this shape.
 
 jobs:
   ts:
@@ -36,10 +43,22 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # No TS packages exist until plan 03; this runs Biome and the repo script tests.
-      - run: pnpm run verify:ts
-      - run: pnpm verify:launch
+      - name: Install (pnpm install --frozen-lockfile)
+        run: |
+          set -o pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee "$RUNNER_TEMP/gate-1-install.log"
+      # Biome, the build, the typechecks, and every TS and Node script test.
+      - name: Lint, build, typecheck and test (pnpm run verify:ts)
+        run: |
+          set -o pipefail
+          pnpm run verify:ts 2>&1 | tee "$RUNNER_TEMP/gate-2-verify-ts.log"
+      - name: Launch checks (pnpm verify:launch)
+        run: |
+          set -o pipefail
+          pnpm verify:launch 2>&1 | tee "$RUNNER_TEMP/gate-3-verify-launch.log"
+      - name: Explain the failure
+        if: failure()
+        run: node scripts/ci-failure-note.mjs ts
 
   gitleaks:
     name: Secret scan
@@ -63,9 +82,21 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: contracts
-      - run: cargo fmt --manifest-path contracts/Cargo.toml --all -- --check
-      - run: cargo clippy --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests --all-targets -- -D warnings
-      - run: cargo test --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests
+      - name: Format check (cargo fmt --check)
+        run: |
+          set -o pipefail
+          cargo fmt --manifest-path contracts/Cargo.toml --all -- --check 2>&1 | tee "$RUNNER_TEMP/gate-1-fmt.log"
+      - name: Lints (cargo clippy -D warnings)
+        run: |
+          set -o pipefail
+          cargo clippy --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/gate-2-clippy.log"
+      - name: Unit and property tests (cargo test)
+        run: |
+          set -o pipefail
+          cargo test --manifest-path contracts/Cargo.toml --workspace --exclude integration-tests 2>&1 | tee "$RUNNER_TEMP/gate-3-test.log"
+      - name: Explain the failure
+        if: failure()
+        run: node scripts/ci-failure-note.mjs rust-unit
 
   sandbox:
     name: Sandbox integration tests
@@ -91,9 +122,21 @@ jobs:
           tar -xzf "$archive" --no-same-owner --strip-components 1 -C "$RUNNER_TEMP/cargo-near"
           install -m 0755 "$RUNNER_TEMP/cargo-near/cargo-near" "$HOME/.cargo/bin/cargo-near"
           cargo near --version
-      - run: bash scripts/build-contracts.sh
-      - run: cargo clippy --manifest-path contracts/Cargo.toml -p integration-tests --all-targets -- -D warnings
-      - run: cargo test --manifest-path contracts/Cargo.toml -p integration-tests -- --test-threads=2
+      - name: Build every contract (scripts/build-contracts.sh)
+        run: |
+          set -o pipefail
+          bash scripts/build-contracts.sh 2>&1 | tee "$RUNNER_TEMP/gate-1-build.log"
+      - name: Lints (cargo clippy -p integration-tests)
+        run: |
+          set -o pipefail
+          cargo clippy --manifest-path contracts/Cargo.toml -p integration-tests --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/gate-2-clippy.log"
+      - name: Sandbox tests (cargo test -p integration-tests)
+        run: |
+          set -o pipefail
+          cargo test --manifest-path contracts/Cargo.toml -p integration-tests -- --test-threads=2 2>&1 | tee "$RUNNER_TEMP/gate-3-test.log"
+      - name: Explain the failure
+        if: failure()
+        run: node scripts/ci-failure-note.mjs sandbox
 
   reproducible:
     name: Reproducible build and code hash (${{ matrix.dir }})
@@ -174,3 +217,42 @@ jobs:
           OUT: ${{ steps.pick.outputs.src }}/contracts/target/reproducible/${{ matrix.dir }}
           REQUIRE_RECORDED: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
         run: node scripts/code-hash.mjs check ${{ matrix.crate }} ${{ matrix.dir }} "$OUT/${{ matrix.lib }}.wasm"
+
+  # The one check a branch ruleset requires. It needs every other job and runs after them even when
+  # one failed, was skipped or was cancelled (if: always()), and it passes only when each of them
+  # succeeded. GitHub counts a skipped required check as passed, so without always() a failed job
+  # would skip this check and let a pull request merge. It checks out nothing, and its token has no
+  # permissions. scripts/ci-workflow.test.mjs pins this job.
+  verify:
+    name: verify
+    needs: [ts, gitleaks, rust-unit, sandbox, reproducible]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every job to have succeeded
+        env:
+          TS: ${{ needs.ts.result }}
+          GITLEAKS: ${{ needs.gitleaks.result }}
+          RUST_UNIT: ${{ needs.rust-unit.result }}
+          SANDBOX: ${{ needs.sandbox.result }}
+          REPRODUCIBLE: ${{ needs.reproducible.result }}
+        run: |
+          failed=""
+          echo "| Job | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          for pair in "ts=$TS" "gitleaks=$GITLEAKS" "rust-unit=$RUST_UNIT" "sandbox=$SANDBOX" "reproducible=$REPRODUCIBLE"; do
+            job="${pair%%=*}"
+            result="${pair#*=}"
+            echo "$job: $result"
+            echo "| $job | $result |" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$result" != "success" ]; then
+              failed="$failed $job ($result)"
+            fi
+          done
+          if [ -n "$failed" ]; then
+            echo "::error title=verify failed::Not every job succeeded:$failed. A skipped or cancelled job counts as a failure."
+            exit 1
+          fi
+          echo "Every job succeeded."

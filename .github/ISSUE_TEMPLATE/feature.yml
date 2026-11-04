@@ -1,0 +1,26 @@
+name: Feature request
+description: A change or a new capability you would like in Probarion.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Probarion is a solo hackathon project, so a request may wait or be declined. Open the issue before you start a large pull request.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what stops you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Effect on funds, keys and mandates
+      description: Would it change who can move funds, what a key can call or what a mandate allows? "None" is a fine answer.

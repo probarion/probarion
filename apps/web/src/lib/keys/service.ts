@@ -39,6 +39,8 @@ export interface KeyRow {
   chain_registered: boolean | null;
   /** What the last sync saw: its access key exists (null = never read). */
   chain_has_key: boolean | null;
+  /** What the last sync saw: the access key is exactly the one the vault adds (null = never read). */
+  chain_scoped: boolean | null;
   chain_checked_at: string | null;
   /** Ever registered or with an access key. A pending key never seen on chain may be handed out again. */
   chain_seen: boolean;
@@ -129,7 +131,12 @@ export class KeyMismatchError extends Error {
   }
 }
 
-type SealedRow = { public_key: string; secret_ciphertext: string; secret_nonce: string };
+type SealedRow = {
+  public_key: string;
+  purpose?: KeyPurpose;
+  secret_ciphertext: string;
+  secret_nonce: string;
+};
 
 /**
  * Opens `row` and returns the secret only if it is the secret of `expected`: a ciphertext written to
@@ -155,30 +162,30 @@ async function openFor(
 }
 
 /**
- * The tenant's active key for `purpose`, opened: `secret` is `"ed25519:<secret>"` (IF §9 `agentKey` /
- * `ledgerKey`). Null when there is no active key. Server code only (the Payables / Canary cycles): never
+ * The tenant's LEDGER key, opened: `secret` is `"ed25519:<secret>"` (IF §9 `ledgerKey`). At most one
+ * ledger key is active; null when there is none. Server code only (the cycle that anchors): never
  * return it from an action or a route, never log it.
  *
- * Exact semantics: for `ledger`, THE active ledger key (at most one is active). For `agent`, the active
- * agent key whose FIRST activation is the most recent: a key made active again keeps its first date, so
- * an older key coming back never takes over (W-T10-R2). A cycle that signs a spend must not rely on
- * that choice: it uses `loadActiveSecretFor(…, mandate.agent_pk)`, the key the mandate is bound to.
+ * Ledger only, by type and in SQL (W-T10-R3): there is no "the" agent key. A payment signs with the key
+ * its mandate is bound to: `loadActiveSecretFor(db, master, tenantId, mandate.agent_pk)`.
  */
 export async function loadActiveSecret(
   db: Db,
   master: Uint8Array,
   tenantId: string,
-  purpose: KeyPurpose,
+  purpose: "ledger",
 ): Promise<{ publicKey: string; secret: string } | null> {
   const row = await db.rpc<SealedRow | null>("agent_key_secret", { tenant_id: tenantId, purpose });
   return row ? openFor(master, row, row.public_key) : null;
 }
 
 /**
- * Exactly `publicKey`, opened, and only while it is active for this tenant (W-T10-R2): the key a
- * mandate is bound to (`mandate.agent_pk`), which Tasks 13 and 17 sign with. Null when that key is not
- * this tenant's active key (pending, removed, revoked, another tenant's, unknown); a malformed key is a
- * DbError `invalid_input`. Throws KeyMismatchError when the stored secret is not this key's.
+ * Exactly the AGENT key `publicKey`, opened, and only while it is active for this tenant (W-T10-R2):
+ * the key a mandate is bound to (`mandate.agent_pk`), which a payment signs with (Tasks 13 and 17).
+ * Null when that key is not this tenant's active agent key (pending, removed, revoked, another
+ * tenant's, unknown, or the LEDGER key: a mandate naming the ledger key never gets its secret,
+ * W-T10-R3); a malformed key is a DbError `invalid_input`. Throws KeyMismatchError when the stored
+ * secret is not this key's.
  */
 export async function loadActiveSecretFor(
   db: Db,
@@ -190,7 +197,9 @@ export async function loadActiveSecretFor(
     tenant_id: tenantId,
     public_key: publicKey,
   });
-  return row ? openFor(master, row, publicKey) : null;
+  // The SQL selects agent keys only; refusing anything else here too keeps that true if it ever changes.
+  if (row?.purpose !== "agent") return null;
+  return openFor(master, row, publicKey);
 }
 
 type Read<T> = { ok: true; value: T } | { ok: false };
@@ -259,20 +268,6 @@ async function mapLimit<T, R>(
   return out;
 }
 
-/**
- * Brings each key's status in line with the chain (Task 10 ruling, W-T10-R1).
- *
- * A key becomes active only through the one full check: the chain shows exactly the key the vault
- * hands out (a plain FunctionCall key, receiver the vault, methods exactly [spend] / [anchor]) AND the
- * vault registers it (list_agents for an agent key; get_config().ledger_key for the ledger key). That
- * holds for a pending key and for a revoked or removed one (so a lagging node's NO_KEY never sticks).
- * An active key becomes `removed` on a definite NO_KEY, and `revoked` when the vault no longer
- * registers it or its permission changed. A read that fails leaves the key as it is.
- *
- * What each readable key looked like is stored (agent_key_observe): the page offers Remove for every
- * agent key the vault registers, and shows a key the vault registers without its access key as stuck.
- * Every status write is compare-and-set on the status this call read, so two syncs never fight.
- */
 /**
  * What the chain shows for each of `rows` (one list_agents and one get_config, only if a row needs
  * it; access keys at most SYNC_READ_CONCURRENCY at a time). A failed read gives `readable: false` for
@@ -357,7 +352,9 @@ export async function syncKeyStatuses(
   const views = await readChainViews(reader, tenant, all);
   const observed = all.flatMap((k, i) => {
     const v = views[i];
-    return v?.readable ? [{ id: k.id, registered: v.registered, has_key: v.key.exists }] : [];
+    if (!v?.readable) return [];
+    const scoped = scopeProblem(k.purpose, vault, v.key) === null;
+    return [{ id: k.id, registered: v.registered, has_key: v.key.exists, scoped }];
   });
   if (observed.length > 0) {
     await db.rpc("agent_key_observe", { tenant_id: tenant.tenant_id, keys: observed });
@@ -422,7 +419,16 @@ export async function keepKey(
     tenant.vault_id,
     view ?? { readable: false },
   );
-  if (verdict.to !== "active") return { kept: false, reason: verdict.reason };
+  if (verdict.to !== "active") {
+    // Name what is missing: a key out of use reads "inactive" in the sync, which says nothing here.
+    let reason: CheckReason = verdict.reason;
+    if (reason === "inactive" && view?.readable) {
+      const problem = scopeProblem(row.purpose, tenant.vault_id, view.key);
+      if (problem !== null) reason = `scope_${problem}`;
+      else if (!view.registered) reason = "not_registered";
+    }
+    return { kept: false, reason };
+  }
   const r = await db.rpc<{ changed: boolean }>("agent_key_keep", {
     tenant_id: tenant.tenant_id,
     id: row.id,

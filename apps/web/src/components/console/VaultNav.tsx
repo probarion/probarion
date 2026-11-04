@@ -1,30 +1,30 @@
-import Link from "next/link";
+import { RouteLink } from "@/components/RouteLink";
+import { VAULT_TABS } from "@/lib/routes";
 
-// Mandates, Keys, Payables, Top-up and Alerts are Tasks 9, 10, 11, 13 and 21: their pages land with them.
-const TABS = [
-  ["", "Overview"],
-  ["/mandates", "Mandates"],
-  ["/keys", "Keys"],
-  ["/payables", "Payables"],
-  ["/topup", "Top-up"],
-  ["/alerts", "Alerts"],
-] as const;
-
+// A tab whose page is not built yet (Payables, Top-up, Alerts: see PLANNED_ROUTES) is left out until it lands.
 export function VaultNav({ vault }: { vault: string }) {
   const base = `/console/${encodeURIComponent(vault)}`;
   return (
     <nav className="mb-6 flex flex-wrap gap-4 border-b border-[#0B0B0C]/10 pb-2 text-sm">
-      {TABS.map(([path, label]) => (
-        <Link key={path} href={`${base}${path}`} className="text-[#0B0B0C]/70 hover:underline">
+      {VAULT_TABS.map(({ path, label }) => (
+        <RouteLink
+          key={path}
+          route={`/console/[vault]${path}`}
+          href={`${base}${path}`}
+          whenPlanned="hide"
+          className="text-[#0B0B0C]/70 hover:underline"
+        >
           {label}
-        </Link>
+        </RouteLink>
       ))}
-      <Link
+      <RouteLink
+        route="/proof/[vault]"
         href={`/proof/${encodeURIComponent(vault)}`}
+        whenPlanned="hide"
         className="text-[#0B0B0C]/70 hover:underline"
       >
         Proof ↗
-      </Link>
+      </RouteLink>
     </nav>
   );
 }

@@ -1,0 +1,21 @@
+<svg role="img" aria-label="Probarion: spend by mandate, prove every payment. Mandates for AI agents on NEAR." xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640"><title>Probarion: spend by mandate, prove every payment. Mandates for AI agents on NEAR.</title><defs>
+  <linearGradient id="sp-sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5E4210"/><stop offset="0.28" stop-color="#B8892E"/><stop offset="0.42" stop-color="#E2BD5E"/><stop offset="0.56" stop-color="#C99A35"/><stop offset="0.8" stop-color="#A57A26"/><stop offset="1" stop-color="#5E4210"/></linearGradient>
+  <radialGradient id="sp-hi" cx="24%" cy="20%" r="45%"><stop offset="0" stop-color="#FFF0C2" stop-opacity="0.4"/><stop offset="1" stop-color="#FFF0C2" stop-opacity="0"/></radialGradient>
+  <radialGradient id="sp-warm" cx="86%" cy="82%" r="45%"><stop offset="0" stop-color="#EFCB6B" stop-opacity="0.55"/><stop offset="1" stop-color="#EFCB6B" stop-opacity="0"/></radialGradient>
+  <radialGradient id="sp-deep" cx="55%" cy="112%" r="58%"><stop offset="0" stop-color="#5E4210" stop-opacity="0.9"/><stop offset="1" stop-color="#5E4210" stop-opacity="0"/></radialGradient>
+  <linearGradient id="sp-bar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#A57A26"/><stop offset="0.35" stop-color="#C99A35"/><stop offset="0.5" stop-color="#E2BD5E"/><stop offset="0.7" stop-color="#D4A640"/><stop offset="1" stop-color="#A57A26"/></linearGradient>
+  <filter id="sp-grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.95" numOctaves="3" seed="7" stitchTiles="stitch" result="n"/>
+    <feColorMatrix in="n" type="saturate" values="0" result="g"/>
+    <feBlend in="g" in2="SourceGraphic" mode="soft-light" result="b"/>
+    <feComposite in="b" in2="SourceAlpha" operator="in"/>
+  </filter><linearGradient id="sp-text" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8A6420"/><stop offset="0.3333333333333333" stop-color="#C08F32"/><stop offset="0.6666666666666666" stop-color="#9A6E1E"/><stop offset="1" stop-color="#7A5518"/></linearGradient></defs><rect width="1280" height="640" fill="#F7F6F3"/>
+     <path d="M0 40 H1280 M0 600 H1280 M40 0 V640 M1240 0 V640" stroke="#DAD7D0" stroke-width="1"/>
+     <path d="M33 40 H47 M40 33 V47" stroke="#6B6A66" stroke-width="1.2"/><path d="M1233 40 H1247 M1240 33 V47" stroke="#6B6A66" stroke-width="1.2"/><path d="M33 600 H47 M40 593 V607" stroke="#6B6A66" stroke-width="1.2"/><path d="M1233 600 H1247 M1240 593 V607" stroke="#6B6A66" stroke-width="1.2"/>
+     <g transform="translate(104 212) scale(0.5)"><path d="M6.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M7.5 -100 V42 M125.5 -100 V0 M125.5 -50 A42.5 42.5 0 0 1 191.77 -85.23 M213.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M331.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M332.5 -150 V0 M449.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M535.5 -100 V0 M568.5 -100 V0 M568.5 -50 A42.5 42.5 0 0 1 634.77 -85.23 M657.5 -100 V0 M689.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M808.5 -100 V0 M808.5 -50 A42.5 42.5 0 0 1 893.5 -50 V0" fill="none" stroke="#0B0B0C" stroke-width="15" stroke-linecap="butt"/><circle cx="657.5" cy="-130" r="9.3" fill="#0B0B0C"/></g>
+     <text x="100" y="336" font-family="Segoe UI Semilight" font-size="70" letter-spacing="-2.4" fill="#0B0B0C">Spend by mandate.</text>
+     <text x="100" y="420" font-family="Segoe UI Semilight" font-size="70" letter-spacing="-2.4" fill="url(#sp-text)">Prove every payment.</text>
+     <text x="104" y="494" font-family="Segoe UI" font-size="27" letter-spacing="0.2" fill="#6B6A66">Mandates for AI agents on NEAR</text>
+     <g transform="translate(905.5999999999999 420) scale(1.85)"><clipPath id="sp-disc"><circle cx="72" cy="-72" r="50"/></clipPath>
+    <g clip-path="url(#sp-disc)"><g filter="url(#sp-grain)"><rect x="12" y="-132" width="120" height="120" fill="url(#sp-sheen)"/><rect x="12" y="-132" width="120" height="120" fill="url(#sp-deep)"/><rect x="12" y="-132" width="120" height="120" fill="url(#sp-warm)"/><rect x="12" y="-132" width="120" height="120" fill="url(#sp-hi)"/></g></g>
+    <rect x="0" y="-16" width="144" height="16" rx="2" fill="#0B0B0C"/></g></svg>

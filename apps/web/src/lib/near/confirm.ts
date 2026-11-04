@@ -343,7 +343,109 @@ export async function confirmTx(request: unknown, rpc: RpcLike = getRpc()): Prom
   } catch {
     return unknown(hash, "The network's answer could not be read; confirm on the explorer.");
   }
+  if (method === "set_ledger_key" && chain.ok && chain.receiptFailed) {
+    if (await isLedgerKeyRecovery(raw, parsed, rpc)) chain = { ...chain, receiptFailed: false };
+  }
   return interpretChain(method, chain);
+}
+
+/** The failed receipts of a transaction (`outcome.status` is a Failure). */
+function failedReceipts(raw: Record<string, unknown>): Record<string, unknown>[] {
+  if (!Array.isArray(raw.receipts_outcome)) return [];
+  return raw.receipts_outcome.filter((r: unknown): r is Record<string, unknown> => {
+    const status = isRecord(r) && isRecord(r.outcome) ? r.outcome.status : undefined;
+    return isRecord(status) && status.Failure !== undefined;
+  });
+}
+
+/** The bytes of a `call_function` query result, as JSON, or undefined. */
+function viewJson(result: unknown): unknown {
+  if (!isRecord(result) || !Array.isArray(result.result)) return undefined;
+  if (!result.result.every((b) => Number.isInteger(b) && b >= 0 && b <= 255)) return undefined;
+  try {
+    return JSON.parse(Buffer.from(result.result as number[]).toString("utf8")) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * W-T10-R3. A vault on the fixed code (3dde545, delete first since 64ac3c0) runs `set_ledger_key` as two
+ * independent receipts: DeleteKey(previous ledger key), then AddKey(new key, anchor only). When the
+ * previous key was never added (a stuck ledger key), the DeleteKey fails alone with
+ * DeleteKeyDoesNotExist and the AddKey lands: that is the recovery, and it succeeded. Only that exact
+ * shape counts:
+ *  - exactly one receipt failed; it ran on the vault itself (the transaction's receiver), and its error
+ *    is exactly `ActionError { index: 0, kind: DeleteKeyDoesNotExist { account_id: vault, public_key } }`;
+ *  - that public key is the vault's ledger key BEFORE this call (`get_config` at the block the
+ *    transaction is in), and is not the new key;
+ *  - the new key (the call's `public_key`) is now on the vault exactly as set_ledger_key adds it: a
+ *    plain FunctionCall key, receiver the vault, methods exactly `[anchor]`.
+ * Anything else, or any read that fails, is not a recovery (the result stays unknown or failed).
+ */
+async function isLedgerKeyRecovery(
+  raw: Record<string, unknown>,
+  req: ConfirmRequest,
+  rpc: RpcLike,
+): Promise<boolean> {
+  const vault = req.tx.receiverId;
+  const last = req.tx.actions[req.tx.actions.length - 1];
+  if (req.tx.actions.length !== 1 || last?.type !== "FunctionCall") return false;
+  if (last.methodName !== "set_ledger_key") return false;
+  const newKey = last.args.public_key;
+  if (typeof newKey !== "string" || newKey === "") return false;
+
+  const failed = failedReceipts(raw);
+  const only = failed[0];
+  if (failed.length !== 1 || only === undefined || !isRecord(only.outcome)) return false;
+  if (only.outcome.executor_id !== vault) return false;
+  const status = only.outcome.status;
+  const error = isRecord(status) ? status.Failure : undefined;
+  const action = isRecord(error) ? error.ActionError : undefined;
+  if (!isRecord(error) || Object.keys(error).length !== 1 || !isRecord(action)) return false;
+  if (action.index !== 0 || !isRecord(action.kind) || Object.keys(action.kind).length !== 1)
+    return false;
+  const missing = action.kind.DeleteKeyDoesNotExist;
+  if (!isRecord(missing) || missing.account_id !== vault) return false;
+  const previous = missing.public_key;
+  if (typeof previous !== "string" || previous === newKey) return false;
+
+  try {
+    // The vault's ledger key before this call: state at the end of the block the transaction is in
+    // (the call itself runs in a later block).
+    const included = isRecord(raw.transaction_outcome) ? raw.transaction_outcome.block_hash : null;
+    if (typeof included !== "string" || included === "") return false;
+    const before = viewJson(
+      await rpc.call<unknown>("query", {
+        request_type: "call_function",
+        block_id: included,
+        account_id: vault,
+        method_name: "get_config",
+        args_base64: Buffer.from("{}").toString("base64"),
+      }),
+    );
+    if (!isRecord(before) || before.ledger_key !== previous) return false;
+
+    const key = await rpc.call<unknown>("query", {
+      request_type: "view_access_key",
+      finality: "final",
+      account_id: vault,
+      public_key: newKey,
+    });
+    const permission = isRecord(key) ? key.permission : undefined;
+    const fc = isRecord(permission) ? permission.FunctionCall : undefined;
+    return (
+      isRecord(permission) &&
+      Object.keys(permission).length === 1 &&
+      isRecord(fc) &&
+      fc.receiver_id === vault &&
+      Array.isArray(fc.method_names) &&
+      fc.method_names.length === 1 &&
+      fc.method_names[0] === "anchor"
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Did any receipt of the transaction end in a Failure? (Only `outcome.status` counts, never the logs.) */

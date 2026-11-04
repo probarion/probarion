@@ -1,7 +1,7 @@
 {
   "name": "probarion",
   "version": "0.1.0",
-  "description": "Probarion CLI: print the owner and approver transactions of a Probarion vault for near-cli-rs to sign, and generate ed25519 keys.",
+  "description": "Probarion CLI: dry-run spends, verify a vault's ledger, anchors, attestation records and keys, print the owner and approver transactions of a vault for near-cli-rs to sign, and generate ed25519 keys.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -42,6 +42,9 @@
     "@probarion/core": "workspace:*",
     "@probarion/sdk": "workspace:*",
     "commander": "^15.0.0"
+  },
+  "optionalDependencies": {
+    "@nearai/inference-sdk": ">=0.1.0 <1"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

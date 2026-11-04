@@ -5,8 +5,10 @@ const at = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
   resolve: {
-    // Array form, exact matches first: tests read the workspace packages' source, so they do not
-    // need `dist`. CI still builds first (`pnpm build`), which is what `next build` consumes.
+    // Array form, exact matches first: tests read the workspace packages' source. The exceptions are the
+    // tests that run the built CLI as a child process, the way the proof page tells a visitor to
+    // (test/fixtures/cli-bin.ts): they need `packages/{core,sdk,cli}/dist` built and not older than
+    // their sources, and say so when it is not. CI builds first (`pnpm build` in `verify:ts`).
     alias: [
       { find: /^@probarion\/core$/, replacement: at("../../packages/core/src/index.ts") },
       { find: /^@probarion\/sdk$/, replacement: at("../../packages/sdk/src/index.ts") },

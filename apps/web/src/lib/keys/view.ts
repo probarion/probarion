@@ -1,7 +1,9 @@
 import "server-only";
+import { type ChainReads, codeIdentity } from "@/lib/console/vaults";
 import type { Db } from "@/lib/db/port";
+import { log } from "@/lib/log";
 import { type ChainErrorKind, chainErrorKind, type VaultReader } from "@/lib/near/reader";
-import type { KeyPurpose, KeyStatus } from "./rules";
+import { type KeyPurpose, type KeyStatus, type VaultCode, vaultCodeOf } from "./rules";
 import { listKeys } from "./service";
 
 /**
@@ -31,7 +33,11 @@ export interface KeyView {
   registered: boolean | null;
   /** The vault registers it, but its access key was never added (W-T10-R1). */
   stuck: boolean;
-  /** The owner discarded it, yet the last sync saw it registered with its access key (W-T10-R2). */
+  /**
+   * The owner discarded it, yet the last sync saw it pass the full activation check: registered, with
+   * exactly the access key the vault adds (W-T10-R2, W-T10-R3). Keep is offered only then, so it is
+   * never offered when it would refuse.
+   */
   discardedOnChain: boolean;
 }
 
@@ -39,12 +45,14 @@ export interface KeysView {
   keys: KeyView[];
   /** The tenant has an active ledger key (a new one replaces it). */
   ledgerActive: boolean;
-  /**
-   * The vault's ledger key is stuck (registered, its access key never added). set_ledger_key would
-   * try to delete that missing key and fail, so setting a new ledger key only moves the stuck
-   * pointer: the page turns ledger generation off until a contract fix (W-T10-R2).
-   */
+  /** The vault's ledger key is stuck: registered, its access key never added (W-T10-R1). */
   ledgerStuck: boolean;
+  /**
+   * What the vault's code can do about a stuck ledger key (W-T10-R3). Read only while the ledger key
+   * is stuck (else `unknown`, and unused): on `old` code a new ledger key can never land, on `current`
+   * code setting one recovers.
+   */
+  vaultCode: VaultCode;
 }
 
 async function allowanceOf(
@@ -62,11 +70,29 @@ async function allowanceOf(
   }
 }
 
-/** The keys page's data: the tenant's keys and, for each active one, its allowance on chain. */
+/** The vault's code, from its account's code identity; `unknown` when it cannot be read. */
+export async function readVaultCode(
+  chain: Pick<ChainReads, "viewAccount"> | undefined,
+  vault: string,
+): Promise<VaultCode> {
+  if (!chain) return "unknown";
+  try {
+    return vaultCodeOf(codeIdentity(await chain.viewAccount(vault)));
+  } catch (error) {
+    log.warn("keys.vault_code_unreadable", { vault, kind: chainErrorKind(error) ?? "unknown" });
+    return "unknown";
+  }
+}
+
+/**
+ * The keys page's data: the tenant's keys, the allowance of each active one, and, while the ledger key
+ * is stuck, what the vault's code can do about it (`chain` reads the vault account).
+ */
 export async function loadKeysView(
   db: Db,
   reader: VaultReader,
   member: { tenant_id: string; vault_id: string },
+  chain?: Pick<ChainReads, "viewAccount">,
 ): Promise<KeysView> {
   const rows = await listKeys(db, member.tenant_id);
   const keys = await Promise.all(
@@ -83,15 +109,17 @@ export async function loadKeysView(
         registered: k.chain_registered,
         stuck: k.chain_registered === true && k.chain_has_key === false,
         discardedOnChain:
-          k.discarded_at !== null && k.chain_registered === true && k.chain_has_key === true,
+          k.discarded_at !== null && k.chain_registered === true && k.chain_scoped === true,
         allowance:
           k.status === "active" ? await allowanceOf(reader, member.vault_id, k.public_key) : null,
       }),
     ),
   );
+  const ledgerStuck = keys.some((k) => k.purpose === "ledger" && k.stuck);
   return {
     keys,
     ledgerActive: keys.some((k) => k.purpose === "ledger" && k.status === "active"),
-    ledgerStuck: keys.some((k) => k.purpose === "ledger" && k.stuck),
+    ledgerStuck,
+    vaultCode: ledgerStuck ? await readVaultCode(chain, member.vault_id) : "unknown",
   };
 }

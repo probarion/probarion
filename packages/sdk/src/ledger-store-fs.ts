@@ -61,8 +61,10 @@ export function withoutNamespacePrefix(path: string): string {
 export async function ensureDirectory(dir: string): Promise<void> {
   const created = await mkdir(dir, { recursive: true });
   if (created === undefined) return; // it existed: nothing new to make durable
-  const first = resolve(withoutNamespacePrefix(created));
-  let current = resolve(dir);
+  // The paths are only known at run time. The hint keeps a bundler (Next.js Turbopack) from tracing a whole app
+  // into its output because of them; it is a comment, so nothing else changes.
+  const first = resolve(/* turbopackIgnore: true */ withoutNamespacePrefix(created));
+  let current = resolve(/* turbopackIgnore: true */ dir);
   for (;;) {
     const parent = dirname(current);
     await syncDirectory(parent);

@@ -14,6 +14,21 @@ The software is an unaudited beta.
 
 ### Added
 
+- Web console deploy checks, run with its tests: every environment variable the console reads is
+  listed in `.env.example` with secrets left empty, no secret can reach the browser through a
+  `NEXT_PUBLIC_` name, migrations stay ordered and portable to a hosted Supabase, every scheduled job
+  has a GET route that reads `CRON_SECRET`, and no browser code can import server-only code.
+- `apps/web/vercel.json` and a first-deploy checklist for the owner, `docs/runbooks/web-deploy.md`
+  (Supabase, secrets, Vercel settings, a smoke test).
+- Community files: a pull request template with Safety and Review sections, bug and feature issue
+  forms (blank issues are off; vulnerabilities go to the private channel SECURITY.md names),
+  `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
+- CI: one `verify` check that needs every other job and passes only when each one succeeded (a
+  skipped or cancelled job fails it), for branch rules to require. When a gate in the TypeScript,
+  Rust unit or sandbox job fails, the job posts the last 60 lines of that gate's log as one annotation
+  and in the job summary.
+- A 1280×640 social preview image for the repository page, rendered from the brand by a script that
+  refuses any other size.
 - Vault contract (`probarion-vault` 0.1.0). The owner creates mandates, each with a payee fixed at
   creation (a NEAR account, or a Base or Solana address paid out through NEAR Intents), a limit per
   payment, a total, a number of uses, an expiry and an amount above which an approver must confirm.
@@ -48,6 +63,22 @@ The software is an unaudited beta.
   the agent and ledger keys from their wallet with the public key only; mandate creation for a NEAR
   or Base payee, with the same validation in the browser and on the server, and revocation; and a
   Postgres ledger store whose entries core's `runChecks` verifies.
+- Web console, the public proof page (built and tested, not deployed): `/proof/<vault>` shows a vault
+  whose owner made its proof public. The result comes first: "All offline checks pass" (green), "Not
+  proven yet" (amber) or "A check failed" (red). Then come checks (a) to (i), each with explorer links
+  on the vault's own network, and the vault's cross-chain burns. When a burn is not proven, the page
+  names the spend and the reason and gives the command that proves it. A private vault's page is
+  shown only to its members, and anyone else gets a 404. `/proof` opens the demo vault set in
+  `PROBARION_VAULT_ID` when its page is public. `NEAR_ARCHIVAL_RPC_URLS`, which is optional, lets the
+  page read older burn transactions.
+- Proof page downloads: `snapshot.json` (the ledger and chain data the checks ran on, for
+  `probarion verify --offline`) and the vault's signed ledger as `probarion-<vault>-ledger.jsonl`
+  (for `probarion verify --ledger`). Both have the page's access rules and rate limit, and a
+  browser does not reuse an old copy. The page shows its snapshot's `taken_at` exactly as the verifier
+  prints it, so a reader can tell when a download is the very snapshot the page checked. Until the
+  `probarion` package is on npm, every command on the site and in the deploy runbook is shown as run
+  from a clone of this repository (four set-up commands, then `node packages/cli/dist/bin.js`), and
+  the tests run those commands as shown.
 
 ### Changed
 
@@ -63,6 +94,15 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- Web console: pages that are not built yet (Canary, open metrics, Payables, Top-up, Alerts,
+  Security, Status, Terms, Privacy) show as "coming soon" instead of a link that answers 404, and the
+  landing page does not present them as available.
+- Proof page: text from a ledger or the chain cannot disguise a result. Bidi and control characters
+  are replaced, long values are cut, and only well-formed transaction hashes and account ids become
+  links. A database or chain failure shows "No result" with the reason, and it is not shown as a pass.
+- SDK: a Next.js app that uses `@probarion/sdk` keeps its own source tree out of its server
+  functions. The file ledger store's dynamic path carries a `turbopackIgnore` hint. With it, the proof
+  page's server functions trace a few dozen files instead of the whole app (about 225 files before).
 - Vault: `set_ledger_key` deletes the old ledger key and adds the new one in two separate receipts,
   the delete first. A failed delete no longer rolls back the new key and leaves the vault unable to
   anchor, and a rotation fits on a vault with no spare NEAR. The testnet vault runs the build from
@@ -70,6 +110,20 @@ The software is an unaudited beta.
 - Web console: a payment is signed with the key its mandate is bound to; a key made active again keeps
   its first activation date; and a discarded key that shows up on chain is reported, for the owner to
   keep or remove.
+- Web console, keys: only the ledger key can be loaded as "the active key"; every payment loads the
+  agent key named by its mandate, not the ledger key. A ledger key that is
+  stuck now says what to do for this vault's code: a vault built before the `set_ledger_key` fix needs
+  a new vault, and a vault on the fixed code can set a new ledger key. A `set_ledger_key` that
+  recovers a stuck key, whose only failed receipt is the delete of the missing old key, is shown as
+  done, after the page checks that the new anchor-only key is on the vault.
+- Web console, mandates: an expired mandate that still has payments waiting for approval shows
+  Revoke, because the contract can still approve them. The "Sign mandate" button stays locked after
+  a reload or an edit while an earlier create may have landed, so a mandate cannot be created twice
+  by accident. The form refuses an expiry less than an hour away and a payee that is the vault's own
+  USDC, Intents or asset contract; it warns when a 0x address is typed as a NEAR account (that is
+  not a Base payout) or when the NEAR account does not exist; and it says plainly when the vault does
+  not allow Base payouts. Revoke and the form appear only when your account is the vault's owner on
+  chain.
 - The SDK's chain reads fail closed: a malformed node answer is an error, and a node's own error is
   kept after the read fails over to another endpoint rather than reported as an outage.
 
@@ -98,6 +152,6 @@ The software is an unaudited beta.
 
 - `@probarion/core`: TypeScript mirrors of the vault and factory contract views; RFC 8785 canonical hashing; ed25519 keys; the signed, hash-chained ledger with the ledger-derived attestation nonce (bound to the vault account); the deterministic policy engine `decide()` with its built-in rules and custom rules; the model proposal parser; offline attestation checks A1 to A7, and the request-binding check A8 for auditors; and the snapshot verifier `runChecks` with checks a to i.
 - `@probarion/sdk`: a NEAR JSON-RPC client with failover and backoff; vault, intents and factory clients; function-call key signing through near-api-js 7; the NEAR AI Cloud adapter (private TEE models, a nonce-bound attestation report, the `provider_tee` signature); the JSONL file ledger store (locked, which needs a local file system with hard links) and the in-memory store; the `Probarion` class with `process`, `requestSpend`, `checkSpend`, `mandates`, `spends`, `anchors`, `rules`, `snapshot` and `verify` (with optional online TEE quote checks through `@nearai/inference-sdk`); and `@probarion/sdk/testing` test doubles (fake chain, fake NEAR JSON-RPC server, fake NEAR AI Cloud).
-- `probarion` CLI: `vault create`, `mandate create`, `mandate revoke`, `agent add`, `agent remove`, `ledger set-key`, `spend approve`, `spend reject`, `vault freeze`, `vault unfreeze`, `vault withdraw` and `vault withdraw-intents` check their input against the contract and print the transaction for the owner or approver to sign with `near-cli-rs` (1 yoctoNEAR where the contract requires it); the CLI does not sign. `agent keygen` makes an ed25519 key pair (`--out <file>` or `--print-secret`).
+- `probarion` CLI: `vault create`, `mandate create`, `mandate revoke`, `agent add`, `agent remove`, `ledger set-key`, `spend approve`, `spend reject`, `vault freeze`, `vault unfreeze`, `vault withdraw` and `vault withdraw-intents` check their input against the contract and print the transaction for the owner or approver to sign with `near-cli-rs` (1 yoctoNEAR where the contract requires it); the CLI does not sign. `agent keygen` makes an ed25519 key pair (`--out <file>` or `--print-secret`). `check` dry-runs a spend against the contract; `verify` runs checks a to i on a live vault or, with `--offline`, on a saved snapshot, prints a table or `--json`, and exits 0 (pass), 1 (a check fails or verify cannot run), 2 (a burn is unproven) or 64 (usage); `--online` adds the TEE quote checks O1 and O2 when `@nearai/inference-sdk` is installed and says when they did not run. `ledger export` copies the ledger to a new file.
 - Packaging: ESM only, Node 24 or newer. Each tarball holds `dist/` (without source maps), `README.md` and `LICENSE`, and is published from CI with npm provenance when the repository is public.
-<!-- TODO(release): add the CLI check, verify and ledger export commands when plan 03 Task 16 lands, restore the cli package.json description (dry-run spends, verify a vault's ledger, anchors, attestations and keys), and set the date above to the day the tag is pushed -->
+<!-- TODO(release): set the date above to the day the tag is pushed -->
