@@ -41,7 +41,7 @@ Where things are defined (you do not edit these to deploy):
   | Secret key | `sb_secret_...` | `SUPABASE_SERVICE_ROLE_KEY` (server only) |
 
   The secret key bypasses row-level security. It goes into one variable, as Sensitive, and nowhere else: not in git, not in chat, not behind a `NEXT_PUBLIC_` prefix.
-- [ ] **OWNER:** apply the migrations **in filename order**. Today they are `20261108000001_core.sql` to `20261108000005_register_update.sql`; any later file in `apps/web/supabase/migrations/` follows the same rule (the sequence number in the name is the order, with no gaps). Either way, stop at the first error and do not run a file twice:
+- [ ] **OWNER:** apply the migrations **in filename order**. Today they are `20261108000001_core.sql` to `20261108000006_invoices.sql` (0006 adds the Payables invoice tables; if you applied 0001 to 0005 before it existed, apply 0006 now); any later file in `apps/web/supabase/migrations/` follows the same rule (the sequence number in the name is the order, with no gaps). Either way, stop at the first error and do not run a file twice:
   - **With the Supabase CLI**, from `apps/web`:
     ```bash
     cd apps/web

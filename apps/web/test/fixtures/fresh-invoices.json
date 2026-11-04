@@ -1,0 +1,845 @@
+{
+  "about": "Seventy invoices written fresh for the fourth re-review's product seat (48 a careful person pays, 22 they refuse), none copied from another fixture. Bank names, a routing number and a BIC are neutralised. `pays` is what a careful person pays in USDC base units (\"0\": nothing); `expect` is what the reader returns.",
+  "cases": [
+    {
+      "id": "F01",
+      "title": "freelance copywriter, hourly table, Total",
+      "kind": "pay",
+      "pays": "1875000000",
+      "why": "single Total",
+      "text": "Maya Okafor — Copywriting\nmaya@okafor-words.example | +1 (646) 555-0198\nBrooklyn, NY 11215\nINVOICE\nInvoice number: MO-2026-031\nDate: November 3, 2026\nDue: November 17, 2026\nBill to\nLarkspur Coffee Roasters\nAttn: Marketing\n4410 Fremont Ave N, Seattle, WA 98103\nDescription\tHours\tRate\tAmount\nWebsite homepage copy\t6\t$95.00\t$570.00\nProduct descriptions (14 SKUs)\t9\t$95.00\t$855.00\nEmail welcome sequence (4 emails)\t5\t$90.00\t$450.00\nTotal\t$1,875.00\nPayment via ACH or Zelle to maya@okafor-words.example.\nThank you!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1875000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F02",
+      "title": "agency retainer, accounting-tool layout with TOTAL USD and a payment advice slip",
+      "kind": "pay",
+      "pays": "7000000000",
+      "why": "TOTAL USD; slip repeats it",
+      "text": "TAX INVOICE\nBrightline Digital Agency\nInvoice Date\n1 Nov 2026\nInvoice Number\nINV-0587\nReference\nRetainer Nov\nBrightline Digital Agency LLC\n77 West Wacker Drive, Floor 12\nChicago IL 60601\nDescription\tQuantity\tUnit Price\tTax\tAmount USD\nMonthly retainer - SEO & content (November 2026)\t1.00\t5,800.00\tTax Exempt\t5,800.00\nPaid social management\t1.00\t1,200.00\tTax Exempt\t1,200.00\nSubtotal\t7,000.00\nTOTAL USD\t7,000.00\nDue Date: 15 Nov 2026\nPlease pay by bank transfer to the account below.\nBank: Example Bank N.A.\nAccount: 4429 1180 0221\nABA: 000000000\nPAYMENT ADVICE\nTo:\tBrightline Digital Agency LLC\nCustomer\tHalcyon Outdoor Co.\nInvoice Number\tINV-0587\nAmount Due\t7,000.00\nDue Date\t15 Nov 2026\nAmount Enclosed\nEnter the amount you are paying above\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "7000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F03",
+      "title": "SaaS payment-platform invoice, amount due summary line and footer",
+      "kind": "pay",
+      "pays": "1188000000",
+      "why": "same figure throughout",
+      "text": "Invoice\nInvoice number\tA1B2C3D4-0007\nDate of issue\tNovember 1, 2026\nDate due\tNovember 1, 2026\nFieldnote Analytics, Inc.\n548 Market St PMB 90211\nSan Francisco, California 94104\nUnited States\nsupport@fieldnote.example\nBill to\nOrchid Labs\nap@orchidlabs.example\n$1,188.00 USD due November 1, 2026\nPay online\nDescription\tQty\tUnit price\tAmount\nGrowth plan\nNov 1 – Dec 1, 2026\n12\t$99.00\t$1,188.00\nSubtotal\t$1,188.00\nTotal\t$1,188.00\nAmount due\t$1,188.00 USD\nPage 1 of 1\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1188000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F04",
+      "title": "contractor, labor and materials, sales tax on materials, TOTAL DUE",
+      "kind": "pay",
+      "pays": "3751670000",
+      "why": "TOTAL DUE",
+      "text": "RIVERBEND CONTRACTING, INC.\nLicense #CSLB 1048832\n2290 Alder Way, Sacramento, CA 95816\n(916) 555-0127\nINVOICE #2026-1188\nDate: 10/28/2026\nCustomer: Dana & Luis Ortega\nJob site: 1512 Poplar St, Sacramento, CA 95818\nLABOR\nDemolition of existing bathroom\t16 hrs\t$65.00\t$1,040.00\nTile installation\t22 hrs\t$70.00\t$1,540.00\nMATERIALS\nPorcelain tile (180 sq ft)\t$4.25/sq ft\t$765.00\nThinset, grout, backer board\t$312.40\nSubtotal labor\t$2,580.00\nSubtotal materials\t$1,077.40\nSales tax on materials (8.75%)\t$94.27\nTOTAL DUE\t$3,751.67\nPayment due upon completion. Checks payable to Riverbend Contracting, Inc.\nA 1.5% monthly finance charge applies to balances over 30 days.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "3751670000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F05",
+      "title": "marketplace freelancer invoice, hourly @ rate, Total then Amount due",
+      "kind": "pay",
+      "pays": "1417500000",
+      "why": "Total = Amount due",
+      "text": "INVOICE\nInvoice # T812-55091\nDate: Oct 31, 2026\nFrom:\nPriya Raman\nBengaluru, Karnataka, India\nBill To:\nCedarline Software LLC\n1401 Lavaca St, Austin, TX 78701, US\nDescription\tAmount\nHourly contract: Backend API work (Oct 20 - Oct 26, 2026)\n31:30 hrs @ $45.00/hr\t$1,417.50\nTotal\t$1,417.50\nAmount due\t$1,417.50\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1417500000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F06",
+      "title": "USDC on NEAR freelancer, plain text upload",
+      "kind": "pay",
+      "pays": "3000000000",
+      "why": "Total due in USDC",
+      "text": "INVOICE 0042\nFrom: Tomas Lindqvist (tomas.near)\nTo: Aurora DAO Grants Committee\nDate: 2026-11-02\n\nSmart contract audit, phase 1 (scope: vault + escrow)    2,400.00 USDC\nFollow-up review after fixes                              600.00 USDC\n\nTotal due: 3,000.00 USDC\n\nPay to: tomas.near\nNetwork: NEAR (native USDC)\nDue within 7 days.\n",
+      "expect": {
+        "amount": "3000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F07",
+      "title": "printer, 2/10 net 30 terms and a discount note, no discounted figure",
+      "kind": "pay",
+      "pays": "916900000",
+      "why": "Total; discount note has no figure",
+      "text": "Invoice\nGranite Peak Printing Co.\nInvoice No: GP-44817\nDate: 11/01/2026\nTerms: 2/10 Net 30\nSold To: Willow & Pine Bakery\nQty\tItem\tUnit\tExt.\n500\tBusiness cards, 16pt matte\t0.12\t60.00\n2,000\tTri-fold menus, 100# gloss\t0.38\t760.00\n1\tDesign proof\t45.00\t45.00\nSubtotal\t865.00\nSales Tax 6%\t51.90\nTotal\t$916.90\nTake 2% discount if paid by 11/11/2026.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "916900000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F08",
+      "title": "wholesale goods, two-column ship/bill to, discount and shipping, Invoice total",
+      "kind": "pay",
+      "pays": "799350000",
+      "why": "Invoice total after discount and shipping",
+      "text": "SALES INVOICE\nHarbor Lane Ceramics\nInvoice: HLC-2026-0912\nOrder: #10457\nDate: 3-Nov-2026\nShip To:\tBill To:\nThe Gilded Fern\tThe Gilded Fern\n88 Main St\tPO Box 212\nWoodstock, VT 05091\tWoodstock, VT 05091\nSKU\tDescription\tQty\tPrice\tTotal\nMUG-12-SG\t12oz mug, sage glaze\t24\t$14.00\t$336.00\nBWL-08-WH\t8in bowl, white\t12\t$22.50\t$270.00\nPLT-10-SP\t10in plate, speckle\t12\t$19.00\t$228.00\nMerchandise total\t$834.00\nWholesale discount (10%)\t-$83.40\nShipping (UPS Ground, 3 boxes)\t$48.75\nInvoice total\t$799.35\nPayment terms: Net 30. We accept checks and ACH.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F09",
+      "title": "wedding photographer, retainer paid then Balance due",
+      "kind": "pay",
+      "pays": "3650000000",
+      "why": "Balance due after the deduction",
+      "text": "INVOICE\nLumen & Lace Photography\nhello@lumenlace.example\nInvoice #: LL-1107\nEvent date: October 18, 2026\nClient: Jordan Pierce\nWedding collection — 8 hours coverage\t$4,200.00\nSecond shooter\t$600.00\nEngagement session\t$350.00\nTotal\t$5,150.00\nRetainer paid (Jun 2, 2026)\t-$1,500.00\nBalance due\t$3,650.00\nBalance is due 14 days after the event.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F10",
+      "title": "HVAC, small-business accounting layout with PAYMENT row, BALANCE DUE",
+      "kind": "pay",
+      "pays": "814000000",
+      "why": "BALANCE DUE after PAYMENT",
+      "text": "Coastal Breeze HVAC\n610 Shoreline Dr\nWilmington, NC 28401\nINVOICE\nBILL TO\nMarina Point Condominiums\nINVOICE # 3127\nDATE 10/30/2026\nDUE DATE 11/29/2026\nTERMS Net 30\nDATE\tACTIVITY\tDESCRIPTION\tQTY\tRATE\tAMOUNT\n10/12/2026\tService\tQuarterly maintenance, 6 rooftop units\t6\t145.00\t870.00\n10/12/2026\tParts\tReplacement filters, MERV 13\t24\t18.50\t444.00\nSUBTOTAL\t1,314.00\nTAX\t0.00\nTOTAL\t1,314.00\nPAYMENT\t500.00\nBALANCE DUE\t$814.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F11",
+      "title": "yoga studio, invoicing tool, Amount Due (USD) in the header and the footer",
+      "kind": "pay",
+      "pays": "1560000000",
+      "why": "same figure twice",
+      "text": "INVOICE\nSolstice Yoga Collective\nInvoice Number: 219\nInvoice Date: November 2, 2026\nPayment Due: November 16, 2026\nAmount Due (USD): $1,560.00\nBILL TO\nMeridian Tech Wellness Program\nItems\tQuantity\tPrice\tAmount\nCorporate yoga class (weekly, 60 min)\t8\t$150.00\t$1,200.00\nMeditation workshop\t1\t$360.00\t$360.00\nTotal:\t$1,560.00\nAmount Due (USD):\t$1,560.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "F12",
+      "title": "bookkeeper, invoicing tool with header block and Amount Paid 0.00",
+      "kind": "pay",
+      "pays": "2250000000",
+      "why": "Amount Due (USD)",
+      "text": "Northfield Bookkeeping\nInvoice Number\n0000143\nDate of Issue\n11/01/2026\nDue Date\n12/01/2026\nAmount Due (USD)\n$2,250.00\nBilled To\nPemberton Dental Group\nDescription\tRate\tQty\tLine Total\nMonthly bookkeeping - October\t$1,800.00\t1\t$1,800.00\nPayroll processing (2 runs)\t$225.00\t2\t$450.00\nSubtotal\t2,250.00\nTax\t0.00\nTotal\t2,250.00\nAmount Paid\t0.00\nAmount Due (USD)\t$2,250.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F13",
+      "title": "IT services, Balance Due box on top and at the bottom",
+      "kind": "pay",
+      "pays": "980000000",
+      "why": "Balance Due = Total",
+      "text": "INVOICE\nKestrel IT Services\n# INV-000412\nBalance Due\n$980.00\nInvoice Date : 02 Nov 2026\nTerms : Due on Receipt\nDue Date : 02 Nov 2026\nBill To\nAshgrove Veterinary Clinic\n#\tItem & Description\tQty\tRate\tAmount\n1\tManaged IT support - November\t1.00\t750.00\t750.00\n2\tMicrosoft 365 Business licenses\t10.00\t23.00\t230.00\nSub Total\t980.00\nTotal\t$980.00\nBalance Due\t$980.00\nThanks for your business.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F14",
+      "title": "video production, TOTAL SALES TAX, TOTAL USD, Less Amount Paid, AMOUNT DUE USD",
+      "kind": "pay",
+      "pays": "4212000000",
+      "why": "AMOUNT DUE USD",
+      "text": "TAX INVOICE\nInvoice Date\tInvoice Number\tReference\n28 Oct 2026\tINV-2291\tSpring campaign\nBluewater Media Inc.\nAttention: Accounts Payable\nDescription\tQuantity\tUnit Price\tAmount USD\nVideo production day rate\t2.00\t1,500.00\t3,000.00\nEditing & colour\t1.00\t900.00\t900.00\nSubtotal\t3,900.00\nTOTAL SALES TAX 8%\t312.00\nTOTAL USD\t4,212.00\nLess Amount Paid\t0.00\nAMOUNT DUE USD\t4,212.00\nDue Date: 11 Nov 2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F15",
+      "title": "design studio, time-tracking tool, Amount Due only",
+      "kind": "pay",
+      "pays": "3210000000",
+      "why": "Amount Due",
+      "text": "INVOICE\nFrom\tFable & Fern Studio\n\t2101 N Lamar Blvd\n\tAustin, TX 78705\nInvoice ID\t1093\nIssue Date\t11/03/2026\nDue Date\t11/17/2026 (Net 14)\nSubject\tBrand refresh – October\nInvoice For\tCopper Kettle Brewing\nItem Type\tDescription\tQuantity\tUnit Price\tAmount\nService\tArt direction\t12.50\t$120.00\t$1,500.00\nService\tIllustration\t18.00\t$95.00\t$1,710.00\nAmount Due\t$3,210.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "3210000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F16",
+      "title": "podcast editor, e-mail style text invoice with arithmetic lines",
+      "kind": "pay",
+      "pays": "1060000000",
+      "why": "Total: $1,060",
+      "text": "Hi Sam,\n\nHere's my invoice for the October podcast edits.\n\nInvoice #17\nEpisodes 41-44 editing, 4 x $225 = $900\nShow notes, 4 x $40 = $160\n\nTotal: $1,060\n\nPayment by ACH or USDC is fine. Thanks!\nRiley\n",
+      "expect": {
+        "amount": "1060000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F17",
+      "title": "law firm, fees and expenses sections with partial totals, Total amount due",
+      "kind": "pay",
+      "pays": "1423000000",
+      "why": "Total amount due",
+      "text": "INVOICE\nCobalt Street Legal Services, PLLC\nInvoice No. 7714\nMatter: Lease review – 220 Cobalt St\nDate: November 2, 2026\nProfessional services\n10/14\tReview commercial lease draft\t2.4\t$310.00\t$744.00\n10/19\tCall with client re: indemnity clause\t0.6\t$310.00\t$186.00\n10/22\tRevise and send redline\t1.5\t$310.00\t$465.00\nTotal fees\t$1,395.00\nExpenses\nCourier\t$28.00\nTotal expenses\t$28.00\nTotal amount due\t$1,423.00\nInvoices unpaid after 30 days accrue interest at 1% per month.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F18",
+      "title": "dev shop, Total due payable in USDC, NEAR wallet line",
+      "kind": "pay",
+      "pays": "5000000000",
+      "why": "Total due",
+      "text": "Invoice INV-88\nDate: 2026-10-30\nVendor: Stackfold Labs\nClient: Nimbus Exchange\nFrontend integration (wallet connect, swap UI)\t$4,500.00\nQA and bug fixes\t$500.00\nTotal due: $5,000.00 (payable in USDC)\nWallet: stackfold.near\nMemo: INV-88\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F19",
+      "title": "event rentals, two pages, header repeated, total on page 2",
+      "kind": "pay",
+      "pays": "4568280000",
+      "why": "Total on page 2",
+      "text": "INVOICE\nIronwood Event Rentals\nInvoice # IER-30418\nEvent: Hollis Foundation Gala, Oct 24, 2026\nItem\tQty\tDays\tRate\tAmount\n60\" round tables\t30\t1\t$12.00\t$360.00\nChiavari chairs, gold\t240\t1\t$6.50\t$1,560.00\nLinens, ivory\t30\t1\t$14.00\t$420.00\nDance floor 20x20\t1\t1\t$850.00\t$850.00\nContinued on next page\n\n-- 1 of 2 --\n\nInvoice # IER-30418 (continued)\nItem\tQty\tDays\tRate\tAmount\nUplighting, 24 fixtures\t1\t1\t$480.00\t$480.00\nDelivery & pickup\t1\t1\t$325.00\t$325.00\nSubtotal\t$3,995.00\nDamage waiver (8%)\t$319.60\nSales tax (6.35%)\t$253.68\nTotal\t$4,568.28\n\n-- 2 of 2 --\n\n",
+      "expect": {
+        "amount": "4568280000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F20",
+      "title": "consultant abroad billing in USD, amount in words, USDC to a NEAR account",
+      "kind": "pay",
+      "pays": "3400000000",
+      "why": "Total: USD 3,400.00",
+      "text": "INVOICE No. 2026/118\nDate: 01.11.2026\nSeller: Arkady Volkov, software consultant\nBuyer: Tidewater Logistics Inc.\nConsulting services, October 2026 (40 hours x USD 85)\tUSD 3,400.00\nTotal: USD 3,400.00\nAmount in words: three thousand four hundred US dollars 00 cents\nPayment: USDC to arkady.near\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F21",
+      "title": "construction progress billing with retainage, CURRENT PAYMENT DUE",
+      "kind": "pay",
+      "pays": "28612500000",
+      "why": "current payment due",
+      "text": "APPLICATION FOR PAYMENT / INVOICE\nSummit Ridge Builders\nInvoice 0921\nProject: Lakeview Clinic Tenant Improvement\nPeriod ending: 10/31/2026\nOriginal contract sum\t$186,000.00\nChange orders to date\t$4,250.00\nContract sum to date\t$190,250.00\nTotal completed & stored to date\t$95,125.00\nRetainage (10%)\t$9,512.50\nTotal earned less retainage\t$85,612.50\nLess previous certificates for payment\t$57,000.00\nCURRENT PAYMENT DUE\t$28,612.50\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F22",
+      "title": "hosting, service credit line item, Total",
+      "kind": "pay",
+      "pays": "93600000",
+      "why": "Total after a credit item",
+      "text": "Invoice\nPixelwise Hosting\nInvoice #PW-77310\nBilling period: Oct 1 – Oct 31, 2026\nAccount: 55120\nManaged WordPress (Business)\t$89.00\nDaily offsite backups\t$15.00\nService credit (outage Oct 9)\t-$10.40\nTotal\t$93.60\nDue by Nov 15, 2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F23",
+      "title": "furniture restorer, Invoice Total only",
+      "kind": "pay",
+      "pays": "1800000000",
+      "why": "Invoice Total",
+      "text": "INVOICE\nOak & Anvil Furniture Restoration\nINV 2026-0451\nCustomer: Bellweather Inn\nRefinish 12 dining chairs\t$1,140.00\nReupholster seats (customer fabric)\t$660.00\nInvoice Total: $1,800.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1800000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F24",
+      "title": "translator, word count @ rate, Please pay",
+      "kind": "pay",
+      "pays": "1296000000",
+      "why": "Please pay",
+      "text": "Invoice 1182\nHarlow Translation Services\nTo: Quill & Ink Publishing\nTranslation EN>ES, 12,400 words @ $0.09\t$1,116.00\nProofreading\t$180.00\nPlease pay: $1,296.00\nby November 20, 2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1296000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F25",
+      "title": "audio engineer, code after each figure",
+      "kind": "pay",
+      "pays": "2150000000",
+      "why": "Total 2,150.00 USD",
+      "text": "INVOICE\nDriftwood Audio\nNo. 5520\nMixing (6 songs)\t1,800.00 USD\nMastering (6 songs)\t350.00 USD\nTotal\t2,150.00 USD\nBank wire or USDC accepted.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "2150000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F26",
+      "title": "caterer, service charge and tax, Grand Total, deposit received, Balance due",
+      "kind": "pay",
+      "pays": "2189340000",
+      "why": "Balance due after deposit",
+      "text": "CATERING INVOICE\nSaffron Table Catering\nInvoice #: ST-2026-338\nEvent: Delmar Partners offsite lunch, 11/05/2026\nGuests: 45\nBuffet lunch package\t45\t$32.00\t$1,440.00\nBeverage station\t45\t$6.00\t$270.00\nService staff (3 x 4 hrs)\t12\t$35.00\t$420.00\nSubtotal\t$2,130.00\nService charge (18%)\t$383.40\nSales tax (7%)\t$175.94\nGrand Total\t$2,689.34\nDeposit received\t-$500.00\nBalance due\t$2,189.34\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "F27",
+      "title": "UX milestone invoice, contract value in a parenthetical",
+      "kind": "pay",
+      "pays": "9600000000",
+      "why": "Amount due for the milestone",
+      "text": "Invoice #M2-0310\nNorthstar UX Partners\nClient: Vela Health\nSOW: Patient portal redesign (total contract value $24,000.00)\nMilestone 2 of 3 — High-fidelity designs delivered 10/30/2026\nMilestone amount\t$9,600.00\nAmount due\t$9,600.00\nNet 15\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F28",
+      "title": "landscaper, header row with Amount due and Due, Total at the bottom",
+      "kind": "pay",
+      "pays": "1050000000",
+      "why": "same figure",
+      "text": "Invoice\nBramble Lane Landscaping\nInvoice 6631\tAmount due $1,050.00\tDue Nov 30, 2026\nCustomer: Rowan Hills HOA\nMonthly grounds maintenance (Nov)\t$850.00\nLeaf removal\t$200.00\nTotal\t$1,050.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F29",
+      "title": "QA contractor timesheet invoice, total hours and rate per hour",
+      "kind": "pay",
+      "pays": "9500000000",
+      "why": "Total",
+      "text": "TIMESHEET INVOICE\nContractor: Elena Brooks (QA engineer)\nClient: Harborview Systems\nInvoice: EB-2026-10\nWeek\tHours\nOct 5 – Oct 11\t38.5\nOct 12 – Oct 18\t40\nOct 19 – Oct 25\t41.5\nOct 26 – Oct 31\t32\nTotal hours\t152\nRate\t$62.50/hr\nTotal\t$9,500.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "9500000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F30",
+      "title": "woodworker, Total (USD):",
+      "kind": "pay",
+      "pays": "3000000000",
+      "why": "Total (USD)",
+      "text": "Invoice\nQuarry Hill Woodworks\nInvoice no: QHW-112\nCustom walnut desk\t1\t$2,850.00\nDelivery\t1\t$150.00\nTotal (USD): $3,000.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "3000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F31",
+      "title": "water co-op bill, previous balance and payment received, Total amount due",
+      "kind": "pay",
+      "pays": "73050000",
+      "why": "Total amount due (current charges)",
+      "text": "Ridgeview Water Co-op\nAccount number: 00-4471-22\nService address: 19 Larch Ct\nBill date: 10/31/2026\nPrevious balance\t$64.20\nPayment received 10/12 – thank you\t-$64.20\nCurrent charges\nWater usage (4,100 gal)\t$38.95\nSewer\t$22.10\nBase service fee\t$12.00\nTotal current charges\t$73.05\nTotal amount due\t$73.05\nDue by 11/20/2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "F32",
+      "title": "enterprise software license, six-figure Total Due, customer PO",
+      "kind": "pay",
+      "pays": "145200000000",
+      "why": "Total Due",
+      "text": "INVOICE\nVantage Data Systems, Inc.\nRemit to: Vantage Data Systems, Inc., Dept 4410, Dallas, TX 75312\nInvoice Number: VDS-INV-2026-00981\nCustomer PO: 4500018832\nInvoice Date: 10/29/2026\nPayment Terms: Net 45\nDescription\tTerm\tAmount\nEnterprise platform license (500 users)\t12/01/2026 – 11/30/2027\t$118,000.00\nPremium support\t12/01/2026 – 11/30/2027\t$17,700.00\nImplementation services (fixed fee)\t\t$9,500.00\nSubtotal\t$145,200.00\nTax\t$0.00\nTotal Due\t$145,200.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "145200000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F33",
+      "title": "florist, dollar sign in its own cell",
+      "kind": "pay",
+      "pays": "1250000000",
+      "why": "TOTAL $ 1,250.00",
+      "text": "INVOICE\nMarigold Event Florals\nInvoice # 2026-87\nCenterpieces (18)\t$\t1,080.00\nBridal bouquet\t$\t170.00\nTOTAL\t$\t1,250.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1250000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F34",
+      "title": "overseas illustrator, US$ prefix",
+      "kind": "pay",
+      "pays": "2400000000",
+      "why": "Total US$",
+      "text": "INVOICE\nTanaka Design Office\nInvoice No.: TDO-2026-019\nClient: Brightwater Games LLC\nCharacter concept art (5 characters)\tUS$ 2,000.00\nRevisions (2 rounds)\tUS$ 400.00\nTotal\tUS$ 2,400.00\nBank transfer fees to be borne by the client.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "2400000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F35",
+      "title": "EU freelancer billing in USD, reverse-charge VAT 0, IBAN",
+      "kind": "pay",
+      "pays": "4800000000",
+      "why": "Total amount USD",
+      "text": "INVOICE\nLukas Hoffmann – Motion Design\nKastanienallee 12, 10435 Berlin, Germany\nVAT ID: DE298765432\nInvoice no.: 2026-044\nInvoice date: 02.11.2026\nClient: Parkside Creative Inc., 210 5th Ave, New York, NY 10010, USA\nExplainer video animation (90 s)\tUSD 4,800.00\nNet amount\tUSD 4,800.00\nVAT 0% (reverse charge)\tUSD 0.00\nTotal amount\tUSD 4,800.00\nIBAN: DE89 3704 0044 0532 0130 00\nBIC: EXAMDEFFXXX\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "4800000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F36",
+      "title": "office supply, Total excl. tax and Total incl. tax",
+      "kind": "pay",
+      "pays": "703540000",
+      "why": "Total incl. tax",
+      "text": "Invoice\nPinecrest Office Supply\nInvoice: 448812\nToner cartridges (HP 58A)\t6\t$89.99\t$539.94\nCopy paper, 10 reams\t2\t$54.99\t$109.98\nTotal excl. tax\t$649.92\nSales tax 8.25%\t$53.62\nTotal incl. tax\t$703.54\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "703540000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F37",
+      "title": "engineering firm, phase totals then Total",
+      "kind": "pay",
+      "pays": "5100000000",
+      "why": "Total",
+      "text": "INVOICE\nLattice Engineering Group\nInvoice No. LEG-5590\nPhase 1 – Site survey\nField crew (2 days)\t$2,400.00\nPhase 1 total\t$2,400.00\nPhase 2 – Structural analysis\nEngineering hours (18)\t$2,700.00\nPhase 2 total\t$2,700.00\nTotal\t$5,100.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F38",
+      "title": "window cleaner, tear-off remittance stub with Amount enclosed blank",
+      "kind": "pay",
+      "pays": "385000000",
+      "why": "Total = stub Amount due",
+      "text": "INVOICE\nSunbeam Window Cleaning\nInvoice 30419\nCustomer: Larch Street Dental\nExterior window cleaning – 2 story\t$340.00\nScreen cleaning\t$45.00\nTotal\t$385.00\n- - - - - - - - - - - - - - - - - - - -\nPlease detach and return this portion with your payment\nInvoice 30419\nAmount due\t$385.00\nAmount enclosed\t$________\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "F39",
+      "title": "dog walker, card surcharge figure in prose",
+      "kind": "pay",
+      "pays": "420000000",
+      "why": "Total; surcharge only if paying by card",
+      "text": "INVOICE\nHappy Trails Dog Walking\nInvoice #: HT-1031\nClient: M. Castillo\nWeekday walks, October (21 x $20.00)\t$420.00\nTotal\t$420.00\nCard payments incur a 3% surcharge ($12.60).\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F40",
+      "title": "dental lab payment plan, installment 2 of 3, Amount due now",
+      "kind": "pay",
+      "pays": "2100000000",
+      "why": "installment due now",
+      "text": "INVOICE\nOrchard Hill Dental Lab\nInvoice #: OH-2026-4471\nPayment plan: 3 installments\nTotal treatment cost\t$6,300.00\nInstallment 2 of 3\t$2,100.00\nAmount due now\t$2,100.00\nRemaining after this payment\t$2,100.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F41",
+      "title": "cabinet maker deposit invoice, Project total and Deposit due (50%)",
+      "kind": "pay",
+      "pays": "9200000000",
+      "why": "deposit due now",
+      "text": "DEPOSIT INVOICE\nCascade Custom Cabinets\nInvoice #: CCC-0388\nProject: Kitchen cabinets, 1840 Birch Ave\nProject total\t$18,400.00\nDeposit due (50%)\t$9,200.00\nThe balance of $9,200.00 is due on installation.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F42",
+      "title": "cleaner, total due by a date and a higher total with a late fee",
+      "kind": "pay",
+      "pays": "420000000",
+      "why": "on-time total (or refuse)",
+      "text": "Invoice 2210\nHearthstone Property Services\nUnit 4B monthly cleaning\t$420.00\nTotal due by Dec 1, 2026\t$420.00\nTotal due after Dec 1, 2026 (incl. $25 late fee)\t$445.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F43",
+      "title": "seed supplier, discounted early-payment figure in prose",
+      "kind": "pay",
+      "pays": "1375000000",
+      "why": "Total (early-pay figure is optional)",
+      "text": "INVOICE\nTallgrass Seed Supply\nInvoice No: TS-90311\nNative prairie seed mix, 40 lb\t$1,280.00\nFreight\t$95.00\nTotal\t$1,375.00\nPay $1,347.50 if paid within 10 days (2% discount).\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F44",
+      "title": "SaaS proration and account credit applied, Amount due",
+      "kind": "pay",
+      "pays": "180000000",
+      "why": "Amount due after credit",
+      "text": "Invoice\nHollow Pine Software\nInvoice number: HP-2026-11-0042\nBilling period: Nov 1 – Nov 30, 2026\nTeam plan, 8 seats × $25.00\t$200.00\nAdded 2 seats (prorated, Oct 18–31)\t$21.67\nUnused time on 1 removed seat (prorated)\t-$11.67\nSubtotal\t$210.00\nAccount credit applied\t-$30.00\nAmount due\t$180.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "F45",
+      "title": "tutors collective, USDC on NEAR with the token contract id",
+      "kind": "pay",
+      "pays": "1500000000",
+      "why": "Total USDC",
+      "text": "INVOICE #2026-11-A\nBitwise Tutors Collective\nBill to: Learnloop DAO\nRust workshop series (3 sessions)\t1,500 USDC\nTotal: 1,500 USDC\nPayment details\nToken: USDC (native, NEAR)\nToken contract: 17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1\nRecipient: bitwise-tutors.near\n",
+      "expect": {
+        "amount": "1500000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F46",
+      "title": "plumber, plain one-pager, Amount Due with $ and no cents",
+      "kind": "pay",
+      "pays": "275000000",
+      "why": "Amount Due",
+      "text": "Invoice\nRapid Rooter Plumbing\nInv #: 88213\nService call\t$95\nDrain clearing, kitchen\t$180\nAmount Due:\t$275\nThank you for choosing Rapid Rooter!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "275000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F47",
+      "title": "translation agency, discount code line, Total due",
+      "kind": "pay",
+      "pays": "1530000000",
+      "why": "Total due after a promo discount",
+      "text": "INVOICE\nPolyglot Bridge Agency\nInvoice: PBA-6610\nLegal translation, 6,000 words\t$1,800.00\nDiscount (code RETURN15, 15%)\t-$270.00\nTotal due\t$1,530.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1530000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "F48",
+      "title": "tutor, plain text with spaces, AMOUNT DUE right aligned",
+      "kind": "pay",
+      "pays": "640000000",
+      "why": "AMOUNT DUE",
+      "text": "                         INVOICE\nChen Math Tutoring                       Invoice # 2026-58\nStudent: A. Whitfield                    Date: Nov 3, 2026\n\nOct 2026 sessions (8 x 1 hr @ $80)                 $640.00\n\n                                AMOUNT DUE:        $640.00\n",
+      "expect": {
+        "amount": "640000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "R01",
+      "title": "cafe point-of-sale receipt with a tip and card line",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "receipt, already paid",
+      "text": "Receipt\nThistle & Thyme Café\n#4F2K-9921\nNov 2, 2026 12:41 PM\n2 x Oat latte\t$11.00\n1 x Avocado toast\t$9.50\nSubtotal\t$20.50\nTax\t$1.84\nTip\t$4.00\nTotal\t$26.34\nVisa •••• 4417\t$26.34\nThank you for your visit!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R02",
+      "title": "paid invoice, PAID stamp and paid-by-check line",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "already paid",
+      "text": "INVOICE\nGreenleaf Arborists\nInvoice #: GA-1022\nTree removal (2 oaks)\t$1,900.00\nStump grinding\t$300.00\nTotal\t$2,200.00\nPAID\nPaid on 10/28/2026 by check #4471\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R03",
+      "title": "painter's estimate",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "estimate, not an invoice",
+      "text": "ESTIMATE\nBluebird Painting Co.\nEstimate #: E-2026-155\nValid until: 12/01/2026\nInterior painting, 3 bedrooms\t$2,850.00\nTrim and doors\t$640.00\nTotal\t$3,490.00\nA 30% deposit is required to schedule.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R04",
+      "title": "security quotation, type word only on line 7 as 'Quotation No.:'",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "quotation",
+      "text": "Halberd Security Systems\n1100 Commerce Pkwy\nIrving, TX 75063\n(972) 555-0110\nsales@halberd.example\nPrepared for: Eastgate Storage LLC\nQuotation No.: Q-88120\nDate: 11/01/2026\n8-camera NVR system\t$3,200.00\nInstallation\t$900.00\nTotal\t$4,100.00\nPrices valid for 30 days.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R05",
+      "title": "French studio invoice in euros",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "EUR",
+      "text": "INVOICE\nAtelier Moreau SARL\nInvoice no. F-2026-0187\nClient: Brightwater Games LLC\nIllustration package\t€2,400.00\nTotal\t€2,400.00\nPayment by SEPA transfer.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "R06",
+      "title": "UK consultancy invoice in pounds with VAT",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "GBP",
+      "text": "INVOICE\nHawthorn & Co Consulting Ltd\nInvoice: HC-0915\nStrategy workshop (2 days)\t£3,000.00\nVAT @ 20%\t£600.00\nTotal\t£3,600.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "R07",
+      "title": "Canadian studio, $ figures, 'All amounts in CAD'",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "CAD",
+      "text": "INVOICE\nMaple Ridge Web Studio\nVancouver, BC V6B 1A1\nGST/HST No. 812345678RT0001\nInvoice #: MR-2290\nAll amounts in CAD\nWebsite build\t$4,000.00\nGST 5%\t$200.00\nTotal\t$4,200.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "R08",
+      "title": "hosting credit note",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "credit note",
+      "text": "Credit Note\nPixelwise Hosting\nCredit note #: CN-2026-014\nRefers to invoice: PW-77310\nReason: SLA breach, October\nCredit amount\t$45.00\nTotal credit\t$45.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R09",
+      "title": "statement of account listing two invoices and a payment",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "statement",
+      "text": "Statement of Account\nCoastal Breeze HVAC\nCustomer: Marina Point Condominiums\nStatement date: 10/31/2026\nDate\tTransaction\tAmount\tBalance\n09/15/2026\tInvoice #3088\t$870.00\t$870.00\n09/30/2026\tPayment\t-$870.00\t$0.00\n10/30/2026\tInvoice #3127\t$1,314.00\t$1,314.00\nAmount due\t$1,314.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R10",
+      "title": "two sign-shop invoices in one PDF (one per page)",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "two documents",
+      "text": "INVOICE\nJuniper Signs\nInvoice # 5501\nCustomer: Fern & Fig\nStorefront vinyl lettering\t$640.00\nTotal\t$640.00\n\n-- 1 of 2 --\n\nINVOICE\nJuniper Signs\nInvoice # 5502\nCustomer: Fern & Fig\nA-frame sidewalk sign\t$280.00\nTotal\t$280.00\n\n-- 2 of 2 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "R11",
+      "title": "payment-platform receipt, Amount paid and Date paid",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "receipt",
+      "text": "Receipt from Fieldnote Analytics, Inc.\nReceipt #2451-0098\nAmount paid\t$1,188.00\nDate paid\tNovember 1, 2026\nPayment method\tVisa – 4242\nSummary\nGrowth plan × 12\t$1,188.00\nAmount charged\t$1,188.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R12",
+      "title": "invoice settled in full, Balance Due $0.00",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "zero balance",
+      "text": "INVOICE\nKestrel IT Services\n# INV-000398\nManaged IT support - October\t$750.00\nTotal\t$750.00\nPayment Made\t(-) $750.00\nBalance Due\t$0.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "R13",
+      "title": "Australian drone survey, A$ figures and GST",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "AUD",
+      "text": "TAX INVOICE\nSouthern Cross Drone Works\nABN 51 824 753 556\nInvoice 1182\nAerial survey\tA$2,000.00\nGST\tA$200.00\nTotal\tA$2,200.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "R14",
+      "title": "purchase order sent to a vendor",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "purchase order",
+      "text": "PURCHASE ORDER\nDelmar Partners LLC\nPO Number: 4500019921\nVendor: Saffron Table Catering\nBuffet lunch package\t45\t$32.00\t$1,440.00\nTotal\t$1,440.00\nPlease reference this PO number on your invoice.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R15",
+      "title": "pro forma invoice before shipment",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "pro forma",
+      "text": "Pro Forma Invoice\nTidewater Marine Supply\nPFI-2026-07\n2 x Outboard motor 9.9HP\t$5,980.00\nTotal\t$5,980.00\nPayment required before shipment.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R16",
+      "title": "payment confirmation e-mail, paid in full in prose",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "already paid",
+      "text": "Hi Dana,\n\nThank you for your payment of $500.00 received on November 2, 2026.\nInvoice #1182 is now paid in full.\n\nInvoice total: $500.00\nBalance remaining: $0.00\n\nHarlow Translation Services\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R17",
+      "title": "Mexican vendor, MXN total with an approximate USD note",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "MXN",
+      "text": "FACTURA / INVOICE\nTalavera Azul S.A. de C.V.\nInvoice: TA-3381\nHand-painted tiles (300 pcs)\tMXN 18,500.00\nTotal\tMXN 18,500.00\n(approx. USD 1,000.00 at today's rate)\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "R18",
+      "title": "Total and Amount due disagree, nothing explains the gap",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "ambiguous",
+      "text": "INVOICE\nCorvid Courier Co.\nInvoice No. 4410\nSame-day deliveries, October (24)\t$1,200.00\nTotal\t$1,200.00\nAmount due\t$1,100.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "R19",
+      "title": "Indian agency invoice in rupees",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "INR",
+      "text": "TAX INVOICE\nSaptarishi Web Solutions Pvt Ltd\nGSTIN: 29ABCDE1234F1Z5\nInvoice No: SWS/26-27/114\nWebsite development\t₹70,000.00\nIGST 18%\t₹12,600.00\nTotal\t₹82,600.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "R20",
+      "title": "invoice with a has-been-paid-in-full note",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "already paid",
+      "text": "INVOICE\nWildflower Wedding Films\nInvoice #: WWF-2026-12\nHighlight film\t$2,800.00\nTotal\t$2,800.00\nThis invoice has been paid in full. Thank you!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "R21",
+      "title": "Japanese vendor in yen with the 円 sign",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "JPY",
+      "text": "INVOICE\nKumo Print Works\nInvoice No. KP-2026-07\nRisograph prints (200)\t48,000円\nTotal\t48,000円\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "R22",
+      "title": "Swiss vendor, CHF code in the header row",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "CHF",
+      "text": "INVOICE\nAlpenglow Watch Repair GmbH\nInvoice: AW-511\nDescription\tCHF\nMovement overhaul\t420.00\nCrystal replacement\t85.00\nTotal\t505.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    }
+  ]
+}

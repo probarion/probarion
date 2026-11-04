@@ -1,0 +1,1318 @@
+{
+  "about": "A second fresh corpus, written for the final re-review's product seat (corpus5: 35 invoices a careful person pays and 21 documents they refuse; corpus5b: realistic traps, 19 and 26), none copied from another fixture. `pays` is what a careful person pays in USDC base units (\"0\": nothing); `expect` is what the reader returns.",
+  "cases": [
+    {
+      "id": "P01",
+      "set": "corpus5",
+      "title": "freelance illustrator, FreshBooks-style header box + Amount Due (USD) twice",
+      "kind": "pay",
+      "pays": "2340000000",
+      "why": "Amount Due (USD) in the header box and at the foot, same figure",
+      "text": "Invoice\nLena Varga Illustration\nlena@vargadraws.example\nPortland, OR 97214\nBilled To\tDate of Issue\tInvoice Number\tAmount Due (USD)\nPinecone Books\t10/28/2026\t0000047\t$2,340.00\n212 Alder St\tDue Date\nEugene, OR 97401\t11/27/2026\nDescription\tRate\tQty\tLine Total\nCover illustration – \"The Salt Road\"\t$1,800.00\t1\t$1,800.00\nInterior spot illustrations\t$90.00\t6\t$540.00\nSubtotal\t2,340.00\nTax\t0.00\nTotal\t2,340.00\nAmount Paid\t0.00\nAmount Due (USD)\t$2,340.00\nTerms\nPayment due within 30 days. Thank you for your business.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P02",
+      "set": "corpus5",
+      "title": "brand agency, QuickBooks-style, discount before total",
+      "kind": "pay",
+      "pays": "11925000000",
+      "why": "BALANCE DUE after discount",
+      "text": "INVOICE\nNorthbeam Creative Co.\n1450 Market St Suite 300\nSan Francisco, CA 94103\nhello@northbeam.example\nBill to\tShip to\nHalcyon Health Inc.\tHalcyon Health Inc.\n2200 Broadway\t2200 Broadway\nOakland, CA 94612\tOakland, CA 94612\nINVOICE #\t1093\nDATE\t11/02/2026\nDUE DATE\t12/02/2026\nTERMS\tNet 30\nDATE\tACTIVITY\tDESCRIPTION\tQTY\tRATE\tAMOUNT\n11/01/2026\tBrand Strategy\tBrand workshop (2 days)\t2\t3,500.00\t7,000.00\n11/01/2026\tDesign\tLogo system & guidelines\t1\t6,250.00\t6,250.00\nSUBTOTAL\t13,250.00\nDISCOUNT 10%\t-1,325.00\nTOTAL\t11,925.00\nBALANCE DUE\t$11,925.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "11925000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P03",
+      "set": "corpus5",
+      "title": "SaaS, Stripe-style invoice with 'due' header line",
+      "kind": "pay",
+      "pays": "1188000000",
+      "why": "Amount due $1,188.00 USD",
+      "text": "Invoice\nInvoice number\t8F2C1A07-0012\nDate of issue\tNovember 1, 2026\nDate due\tNovember 15, 2026\nCloudmeter, Inc.\n548 Market Street PMB 72310\nSan Francisco, California 94104\nUnited States\nbilling@cloudmeter.example\nBill to\nFernhill Analytics LLC\n1910 Pike Pl\nSeattle, Washington 98101\n$1,188.00 USD due November 15, 2026\nPay online\nDescription\tQty\tUnit price\tAmount\nTeam plan\nNov 1 – Nov 30, 2026\t12\t$99.00\t$1,188.00\nSubtotal\t$1,188.00\nTotal\t$1,188.00\nAmount due\t$1,188.00 USD\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1188000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P04",
+      "set": "corpus5",
+      "title": "API SaaS, usage-based with sales tax",
+      "kind": "pay",
+      "pays": "812210000",
+      "why": "Total due",
+      "text": "INVOICE\nRelaywire Inc.\n300 Delaware Ave, Wilmington DE 19801\nInvoice no. RW-2026-10-4471\nInvoice date: Nov 1, 2026\nDue date: Nov 30, 2026\nCustomer: Tallgrass Telehealth, 501 Main St, Lincoln NE 68508\nUsage period: Oct 1 – Oct 31, 2026\nItem\tQuantity\tUnit price\tAmount\nAPI calls (per 1,000)\t1,240\t$0.40\t$496.00\nBase platform fee\t1\t$250.00\t$250.00\nSubtotal\t$746.00\nSales tax (8.875%)\t$66.21\nTotal due\t$812.21\nQuestions? billing@relaywire.example\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "812210000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P05",
+      "set": "corpus5",
+      "title": "handyman contractor, deposit deducted",
+      "kind": "pay",
+      "pays": "1290600000",
+      "why": "Balance due after deposit",
+      "text": "INVOICE #2026-118\nOrtega Home Repair\nLicense #CSLB 1048832\nPhone (512) 555-0143\nCustomer: Priya Nandakumar\nJob address: 7811 Shoal Creek Blvd, Austin TX 78757\nDate: 11/03/2026\nLabor - replace water heater (6 hrs @ $85/hr)\t$510.00\nMaterials - 50 gal water heater, fittings\t$1,145.60\nPermit fee\t$75.00\nHaul away old unit\t$60.00\nSubtotal\t$1,790.60\nLess deposit received 10/27/2026\t-$500.00\nBalance due\t$1,290.60\nMake checks payable to Ortega Home Repair. Thank you!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P06",
+      "set": "corpus5",
+      "title": "marketplace freelancer, hourly contract, USDC wallet",
+      "kind": "pay",
+      "pays": "1451250000",
+      "why": "Total Amount",
+      "text": "INVOICE\nInvoice # T812345678\nDate: Nov 02, 2026\nFROM:\nDaniel Mwangi\nNairobi, Kenya\nBILL TO:\nQuarry Labs Inc.\n88 Spear St, San Francisco CA 94105\nDescription\tAmount\nHourly contract: React Native app, week of Oct 26, 2026 (32:15 hrs @ $45.00/hr)\t$1,451.25\nTotal Amount\t$1,451.25\nUSDC accepted at quarrydev.near\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1451250000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P07",
+      "set": "corpus5",
+      "title": "coworking utility invoice, metered usage",
+      "kind": "pay",
+      "pays": "743330000",
+      "why": "Total amount due",
+      "text": "Harborview Workspace\nUTILITY INVOICE\nAccount: HVW-2210-B\nInvoice No. UT-26-1104\nBilling period: 10/01/2026 – 10/31/2026\nService address: Suite 410, 95 Harbor Way, Boston MA 02210\nService\tUsage\tAmount\nElectricity\t1,842 kWh @ $0.1840\t$338.93\nWater/sewer\t12 CCF @ $11.20\t$134.40\nHVAC after-hours\t6 hrs @ $45.00\t$270.00\nCurrent charges\t$743.33\nPrevious balance\t$0.00\nTotal amount due\t$743.33\nDue by 11/20/2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "743330000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P08",
+      "set": "corpus5",
+      "title": "law firm, trust retainer applied",
+      "kind": "pay",
+      "pays": "2786500000",
+      "why": "Amount Due This Invoice",
+      "text": "CALDER & PRIESTLEY LLP\nAttorneys at Law\n600 Congress Avenue, Suite 1400\nAustin, Texas 78701\nINVOICE\nClient: Meridian Robotics, Inc.\nMatter: 2026-0412 Series A financing\nInvoice No.: 44871\nInvoice Date: October 31, 2026\nPROFESSIONAL SERVICES\nDate\tTimekeeper\tDescription\tHours\tAmount\n10/05/26\tJLP\tReview term sheet; call with client\t1.6\t$1,040.00\n10/12/26\tRKC\tDraft stock purchase agreement\t4.2\t$1,890.00\n10/19/26\tJLP\tNegotiate SPA with investor counsel\t2.5\t$1,625.00\nTotal Professional Services\t8.3\t$4,555.00\nDISBURSEMENTS\nDelaware filing fee\t$189.00\nCourier\t$42.50\nTotal Disbursements\t$231.50\nTotal Current Invoice\t$4,786.50\nLess: Retainer applied from trust\t($2,000.00)\nAmount Due This Invoice\t$2,786.50\nPayment due upon receipt. Please reference Invoice No. 44871.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P09",
+      "set": "corpus5",
+      "title": "occupational health clinic billing an employer",
+      "kind": "pay",
+      "pays": "333000000",
+      "why": "Amount Due",
+      "text": "Summit Occupational Health, PLLC\nNPI 1528064713 | Tax ID 84-2219034\n1200 Grant St, Denver, CO 80203\nINVOICE\nInvoice #: SOH-118842\nDate: 11/01/2026\nBill To: Ridgeline Logistics LLC, Attn: HR\nEmployee\tService\tCPT\tDate\tCharge\nJ. Alvarez\tDOT physical\t99455\t10/06/2026\t$125.00\nM. Chen\tDrug screen (5-panel)\t80305\t10/06/2026\t$48.00\nT. Okonkwo\tDOT physical\t99455\t10/14/2026\t$125.00\nT. Okonkwo\tAudiogram\t92552\t10/14/2026\t$35.00\nTotal Charges\t$333.00\nAmount Due\t$333.00\nRemit to: Summit Occupational Health, PO Box 4410, Denver CO 80201\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P10",
+      "set": "corpus5",
+      "title": "physical therapy patient invoice, insurance columns",
+      "kind": "pay",
+      "pays": "80000000",
+      "why": "Amount due from patient",
+      "text": "INVOICE\nLakeside Physical Therapy\n410 Lakeshore Dr, Madison WI 53703\nPatient: Robert Haines\tAccount #: 00381127\nInvoice date: 10/30/2026\nDate of Service\tDescription\tCharges\tInsurance Paid\tAdjustment\tPatient Resp.\n10/02/2026\tPT evaluation (97161)\t$210.00\t$118.40\t$51.60\t$40.00\n10/09/2026\tTherapeutic exercise (97110) x2\t$180.00\t$96.00\t$44.00\t$40.00\nTotals\t$390.00\t$214.40\t$95.60\t$80.00\nAmount due from patient\t$80.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P11",
+      "set": "corpus5",
+      "title": "freelance smart-contract dev, USDC columns, NEAR wallet",
+      "kind": "pay",
+      "pays": "2400000000",
+      "why": "Total (USDC)",
+      "text": "INVOICE\nNo. 2026-11-007\nIssued: 4 November 2026\nFrom: Kai Tanaka (kaitanaka.near)\nTo: Driftwood DAO\nWork\tHours\tRate (USDC)\tAmount (USDC)\nSmart contract audit fixes\t14\t120\t1,680.00\nIndexer integration\t6\t120\t720.00\nTotal (USDC)\t2,400.00\nPay to: kaitanaka.near (USDC on NEAR)\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "2400000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P12",
+      "set": "corpus5",
+      "title": "web studio final invoice, 50% deposit invoiced earlier",
+      "kind": "pay",
+      "pays": "8350000000",
+      "why": "Balance due after deposit",
+      "text": "Fieldnote Studio\nINVOICE 1188\nProject: Website redesign, final payment\nDate: 2026-11-02 | Due: 2026-11-16\nBill to: Orchard Lane Dental, 88 Elm St, Madison WI 53703\nItem\tAmount\nWebsite design & build (fixed fee)\t$14,000.00\nAdditional page templates (3)\t$1,350.00\nProject total\t$15,350.00\nLess 50% deposit paid (Invoice 1142)\t-$7,000.00\nBalance due\t$8,350.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "P13",
+      "set": "corpus5",
+      "title": "solar distributor, freight + sales tax, item code INV-7K",
+      "kind": "pay",
+      "pays": "8114680000",
+      "why": "Invoice Total",
+      "text": "INVOICE\nBrightwater Solar Supply\n4100 Industrial Pkwy, Fresno CA 93725\nInvoice No: BSS-30418\tDate: 10/29/2026\nCustomer PO: 7781-A\nSold To: Valley Roofing Co.\nShip To: 18 Orchard Rd, Clovis CA 93612\nItem #\tDescription\tQty\tUnit Price\tExt. Price\nMOD-410\t410W mono panel\t24\t$212.00\t$5,088.00\nINV-7K\t7.6kW string inverter\t1\t$1,640.00\t$1,640.00\nRAIL-14\tRacking rail 14ft\t16\t$38.50\t$616.00\nMerchandise\t$7,344.00\nFreight\t$185.00\nSales Tax 7.975%\t$585.68\nInvoice Total\t$8,114.68\nTerms: Net 15\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "P14",
+      "set": "corpus5",
+      "title": "SaaS annual prepay, discount line",
+      "kind": "pay",
+      "pays": "6375000000",
+      "why": "Total due",
+      "text": "INVOICE\nQuillform Software, Inc.\nInvoice ID: QF-2026-55120\nBilling date: November 1, 2026\nBill to: Tidewater Realty Group, 12 Harbor Sq, Norfolk VA 23510\nPlan\tPeriod\tAmount\nBusiness plan, annual (25 users)\tNov 1, 2026 – Oct 31, 2027\t$7,500.00\nAnnual prepay discount (15%)\t-$1,125.00\nSubtotal\t$6,375.00\nTax\t$0.00\nTotal due\t$6,375.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "6375000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P15",
+      "set": "corpus5",
+      "title": "wedding photographer, retainer received after Total",
+      "kind": "pay",
+      "pays": "2942040000",
+      "why": "Amount due after retainer",
+      "text": "INVOICE\nJuniper Reyes Photography\nINVOICE NO. JR-0921\nDATE: 10/30/2026\nCLIENT: Wren & Co. Events\nEVENT: Holloway–Kim wedding, 10/24/2026\nWedding coverage (8 hrs)\t$3,200.00\nSecond shooter\t$600.00\nTravel (212 mi @ $0.67/mi)\t$142.04\nTotal\t$3,942.04\nRetainer received 06/12/2026\t($1,000.00)\nAmount due\t$2,942.04\nPayable by 11/14/2026 via Zelle or check.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P16",
+      "set": "corpus5",
+      "title": "ceramics wholesale invoice, shipping + tax, Order # reference",
+      "kind": "pay",
+      "pays": "740400000",
+      "why": "Amount due",
+      "text": "Invoice\nCopper Kettle Goods\nInvoice number: CKG-2026-0311\nOrder #4419820317\nInvoice date: Nov 3, 2026\nPayment terms: Net 30\nShip to: Maplewood Cafe, 301 Main St, Montclair NJ 07042\nItem\tQty\tPrice\tTotal\nHand-thrown mug, speckled (set of 6)\t4\t$132.00\t$528.00\nPour-over stand, walnut\t2\t$64.00\t$128.00\nItems subtotal\t$656.00\nShipping (UPS Ground)\t$38.40\nSales tax (6.625%)\t$46.00\nOrder total\t$740.40\nAmount due\t$740.40\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "740400000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P17",
+      "set": "corpus5",
+      "title": "GC progress billing with retainage",
+      "kind": "pay",
+      "pays": "35405100000",
+      "why": "Current amount due",
+      "text": "INVOICE\nGranite Peak Builders, Inc.\nInvoice # GPB-2611\nProject: Tenant improvement, 2nd floor, 410 Pine St\nApplication period ending: 10/31/2026\nOriginal contract sum\t$186,000.00\nChange orders to date\t$7,450.00\nContract sum to date\t$193,450.00\nWork completed to date (62%)\t$119,939.00\nLess retainage (10%)\t($11,993.90)\nTotal earned less retainage\t$107,945.10\nLess previous invoices\t($72,540.00)\nCurrent amount due\t$35,405.10\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P18",
+      "set": "corpus5",
+      "title": "translator, per-word rate, slash invoice number",
+      "kind": "pay",
+      "pays": "1124000000",
+      "why": "Total",
+      "text": "INVOICE\nSofia Marchetti, Translation Services\nInvoice number: 2026/044\nDate: 3 Nov 2026\nClient: Lumen Medical Devices Inc., Boston MA\nProject\tWords\tRate\tAmount\nIFU translation EN>IT\t8,450\t$0.12\t$1,014.00\nProofreading (hours)\t2\t$55.00\t$110.00\nTotal\t$1,124.00\nAll amounts in USD. Payment by wire within 30 days.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P19",
+      "set": "corpus5",
+      "title": "managed IT monthly, per-device line",
+      "kind": "pay",
+      "pays": "1710000000",
+      "why": "Balance Due",
+      "text": "INVOICE\nBluepine Managed IT\nInvoice #: 100482\nInvoice Date: 11/01/2026\nDue Date: 11/15/2026\nCustomer: Carver & Diaz CPAs\nDescription\tQty\tPrice\tTotal\nManaged workstation (per device)\t18\t$45.00\t$810.00\nManaged server\t2\t$150.00\t$300.00\nMicrosoft 365 Business Standard\t18\t$12.50\t$225.00\nOnsite support (Oct 14)\t3\t$125.00\t$375.00\nSubtotal\t$1,710.00\nTax\t$0.00\nTotal\t$1,710.00\nBalance Due\t$1,710.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1710000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P20",
+      "set": "corpus5",
+      "title": "minimal Google Docs freelancer invoice, no cents",
+      "kind": "pay",
+      "pays": "2100000000",
+      "why": "Total: $2,100",
+      "text": "Invoice\nTom Becker\ntom.becker.design@example.com\nInvoice #12\nNovember 4, 2026\nTo: Saltbox Brewing\nLogo refresh — $1,200\nCan label design (3 SKUs) — $900\nTotal: $2,100\nPlease pay within 14 days. Thanks!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "2100000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P21",
+      "set": "corpus5",
+      "title": "consultant, expenses with receipts attached, EVM + NEAR wallet",
+      "kind": "pay",
+      "pays": "8301460000",
+      "why": "Total due",
+      "text": "INVOICE\nAurelio Consulting LLC\nInvoice: AC-2026-19\nDate: 2026-11-01\nBill to: Keystone Protocol Foundation\nServices (October 2026)\nAdvisory retainer\t$6,000.00\nWorkshop facilitation (Oct 22)\t$1,500.00\nExpenses\nFlight SFO–DEN (receipt attached)\t$412.30\nHotel, 2 nights (receipt attached)\t$389.16\nTotal due\t$8,301.46\nPayment: USDC to 0x7a3F9c21B4e08D5a6C1f2E3b4D5c6A7b8C9d0E1f (Base) or NEAR account aurelio.near\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P22",
+      "set": "corpus5",
+      "title": "performance agency, media passthrough, 'Paid Search' campaign",
+      "kind": "pay",
+      "pays": "31495020000",
+      "why": "Total Due",
+      "text": "INVOICE\nKestrel Media Partners\nInvoice No. KMP-7720\nDate: Oct 31, 2026\nClient: Northwind Outdoor Co.\nCampaign: Fall 2026 Paid Search & Social\nMedia spend, Search (Oct)\t$18,240.55\nMedia spend, Social (Oct)\t$9,880.00\nManagement fee (12% of media)\t$3,374.47\nTotal Due\t$31,495.02\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "31495020000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P23",
+      "set": "corpus5",
+      "title": "electrician, 'Status: Unpaid' field",
+      "kind": "pay",
+      "pays": "1645000000",
+      "why": "Total",
+      "text": "INVOICE\nVoltline Electric LLC\nMaster Electrician Lic. ME-20931\nInvoice # 5531\nDate 10/30/2026\nStatus: Unpaid\nCustomer\nGreenleaf Montessori School\n900 W Oak St, Louisville KY 40210\nDescription\tQty\tUnit\tAmount\nInstall LED panel fixtures, classroom B\t6\t$145.00\t$870.00\nReplace 200A main breaker\t1\t$680.00\t$680.00\nService call\t1\t$95.00\t$95.00\nSubtotal\t$1,645.00\nTotal\t$1,645.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1645000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P24",
+      "set": "corpus5",
+      "title": "SaaS invoice after a failed card charge, space-joined cells",
+      "kind": "pay",
+      "pays": "299000000",
+      "why": "Amount due",
+      "text": "Invoice\nPagecraft Labs, Inc.\nInvoice number PCL-00093312\nDate of issue Nov 1, 2026\nDate due Nov 8, 2026\nBill to Morrow & Finch Interiors\n$299.00 due Nov 8, 2026\nYour card payment failed. Please pay this invoice online.\nDescription Qty Unit price Amount\nPro plan Nov 1 – Dec 1, 2026 1 $299.00 $299.00\nSubtotal $299.00\nTotal $299.00\nAmount due $299.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "299000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P25",
+      "set": "corpus5",
+      "title": "bookkeeper, early-payment discount terms sentence",
+      "kind": "pay",
+      "pays": "870000000",
+      "why": "Total",
+      "text": "INVOICE\nLedgerline Bookkeeping\nInvoice #: LB-1031\nDate: 11/01/2026\nBill to: Crescent Yoga Studio LLC\nMonthly bookkeeping, October 2026\t$650.00\nPayroll processing (2 runs)\t$120.00\n1099 prep (4 contractors)\t$100.00\nTotal\t$870.00\nTerms: Net 15. 2% discount if paid within 7 days.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "870000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P26",
+      "set": "corpus5",
+      "title": "floral wholesale, Bill To/Ship To, partial payment received",
+      "kind": "pay",
+      "pays": "604040000",
+      "why": "Balance Due",
+      "text": "INVOICE\nSaguaro Supply Co.\n2250 E Indian School Rd, Phoenix AZ 85016\nInvoice No.\tSSC-88104\nOrder date\t10/20/2026\nInvoice date\t10/28/2026\nBill To\tShip To\nDesert Bloom Florist\tDesert Bloom Florist\nSKU\tItem\tQty\tPrice\tAmount\nCR-12\tCeramic cylinder vase 12in\t40\t$9.75\t$390.00\nRB-W\tSatin ribbon, white (100 yd)\t10\t$14.20\t$142.00\nFO-8\tFloral foam brick (case of 48)\t3\t$54.00\t$162.00\nSubtotal\t$694.00\nShipping & handling\t$62.50\nSales tax\t$47.54\nTotal\t$804.04\nPayment received 10/20/2026\t-$200.00\nBalance Due\t$604.04\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "P27",
+      "set": "corpus5",
+      "title": "municipal water utility invoice, meter readings",
+      "kind": "pay",
+      "pays": "163100000",
+      "why": "Amount Due by date",
+      "text": "Brookhaven Falls Water & Sewer\nINVOICE\nAccount Number\tService Address\n40-1182-07\t22 Mill Pond Rd\nInvoice Number\tInvoice Date\tDue Date\nW2611-40118207\t11/01/2026\t11/21/2026\nMeter\tPrevious\tCurrent\tUsage (gal)\n88213\t1,204,300\t1,216,900\t12,600\nWater usage charge\t$63.00\nSewer usage charge\t$75.60\nBase service fee\t$18.00\nStormwater fee\t$6.50\nCurrent charges\t$163.10\nAmount Due by 11/21/2026\t$163.10\nA late fee of 10% applies after the due date.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "163100000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P28",
+      "set": "corpus5",
+      "title": "IP law firm flat fee + filing fees",
+      "kind": "pay",
+      "pays": "2150000000",
+      "why": "Total",
+      "text": "INVOICE\nHollis IP Law PC\nInvoice No. 2026-3318\nDate: November 2, 2026\nClient: Banyan Bicycle Works LLC\nRe: U.S. trademark application, BANYAN (word mark), Classes 12 and 35\nFlat fee: trademark search & application\t$1,450.00\nUSPTO filing fees (2 classes x $350)\t$700.00\nTotal\t$2,150.00\nPayment due within 30 days of invoice date.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "2150000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P29",
+      "set": "corpus5",
+      "title": "dental lab to a practice, previous balance 0",
+      "kind": "pay",
+      "pays": "680000000",
+      "why": "Total amount due",
+      "text": "INVOICE\nPrecision Arch Dental Laboratory\nInvoice #: 0074419\nDate: 10/31/2026\nDoctor: Dr. Amara Liu, Liu Family Dentistry\nCase\tPatient\tDescription\tUnits\tFee\n26-8812\tK.M.\tZirconia crown #19\t1\t$165.00\n26-8840\tD.R.\tPFM bridge #3-5\t3\t$420.00\n26-8857\tS.T.\tNight guard, hard\t1\t$95.00\nTotal this invoice\t$680.00\nPrevious balance\t$0.00\nTotal amount due\t$680.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P30",
+      "set": "corpus5",
+      "title": "video editor, Amount (USD) column, NEAR wallet",
+      "kind": "pay",
+      "pays": "1570000000",
+      "why": "TOTAL",
+      "text": "Invoice\nInvoice no: 0031\nDate: 01 Nov 2026\nFrom: Rafael Costa\nWallet (USDC on NEAR): rcosta-edits.near\nTo: Lighthouse Podcast Network\nItem\tQty\tRate\tAmount (USD)\nEpisode edit (60 min)\t4\t250.00\t1,000.00\nShorts / reels cutdowns\t12\t35.00\t420.00\nRush fee\t1\t150.00\t150.00\nTOTAL\t1,570.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P31",
+      "set": "corpus5",
+      "title": "events agency, Zoho-style, Payment Made deducted",
+      "kind": "pay",
+      "pays": "9600000000",
+      "why": "Balance Due",
+      "text": "INVOICE\nCoastline Events Group\n# INV-000771\nBalance Due\n$9,600.00\nBill To\nPacific Rim Dental Conference\nInvoice Date :\t30 Oct 2026\nTerms :\tDue on Receipt\nDue Date :\t30 Oct 2026\n#\tItem & Description\tQty\tRate\tAmount\n1\tVenue coordination\t1.00\t4,500.00\t4,500.00\n2\tAV production package\t1.00\t6,800.00\t6,800.00\n3\tRegistration desk staffing (per day)\t3.00\t600.00\t1,800.00\nSub Total\t13,100.00\nTotal\t$13,100.00\nPayment Made\t(-) 3,500.00\nBalance Due\t$9,600.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P32",
+      "set": "corpus5",
+      "title": "web shop, Wave-style, Amount Due (USD) twice",
+      "kind": "pay",
+      "pays": "3250000000",
+      "why": "Amount Due (USD)",
+      "text": "INVOICE\nElmstreet Web Co.\n41 Elm St, Burlington VT 05401\nInvoice Number: 412\nInvoice Date: November 1, 2026\nPayment Due: November 15, 2026\nAmount Due (USD): $3,250.00\nBILL TO\nHarper Family Law\nItems\tQuantity\tPrice\tAmount\nWebsite maintenance, Q4 2026\t1\t$750.00\t$750.00\nLanding page build\t1\t$2,500.00\t$2,500.00\nTotal:\t$3,250.00\nAmount Due (USD):\t$3,250.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "P33",
+      "set": "corpus5",
+      "title": "plain-text email invoice with dot leaders",
+      "kind": "pay",
+      "pays": "6000000000",
+      "why": "TOTAL DUE",
+      "text": "INVOICE 2026-07\n\nFrom: Priya Shah, UX Research\nTo: Bramble Health\nDate: 2 November 2026\n\nUsability study (8 participants), October 2026\n  Recruiting & incentives ...... $1,200.00\n  Sessions & synthesis ......... $4,800.00\n                               ----------\n  TOTAL DUE .................... $6,000.00\n\nPlease send USDC to priyashah.near or ACH (details on request).\n",
+      "expect": {
+        "amount": "6000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "P34",
+      "set": "corpus5",
+      "title": "landscaper, previous balance and payment after Total",
+      "kind": "pay",
+      "pays": "600000000",
+      "why": "Amount due",
+      "text": "Green Thumb Landscaping\nINVOICE\nInvoice # 22914\nDate: 11/01/2026\nService location: 14 Birch Ln, Westport CT 06880\nOctober 2026 weekly lawn maintenance (4 visits @ $65)\t$260.00\nLeaf cleanup (2 visits)\t$340.00\nTotal\t$600.00\nPrevious balance\t$260.00\nPayments received - thank you\t-$260.00\nAmount due\t$600.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "P35",
+      "set": "corpus5",
+      "title": "DAO contributor milestone invoice in USDC",
+      "kind": "pay",
+      "pays": "3000000000",
+      "why": "Total payable 3,000 USDC",
+      "text": "INVOICE\nInvoice ID: HD-M2-2026\nDate: 2026-11-03\nContributor: Lina Petrova (linap.near)\nPayer: Hearth DAO Treasury\nMilestone 2, subgraph and dashboard delivery\t3,000 USDC\nTotal payable\t3,000 USDC\nSend to linap.near (USDC, NEAR mainnet)\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "3000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "X01",
+      "set": "corpus5",
+      "title": "SaaS receipt that carries an invoice number",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "receipt: already paid",
+      "text": "Receipt from Cloudmeter, Inc.\nReceipt #2214-6630\nInvoice number\t8F2C1A07-0012\nAmount paid\t$1,188.00\nDate paid\tNovember 1, 2026\nPayment method\tVisa – 4242\nSummary\nTeam plan Nov 1 – Nov 30, 2026\t12\t$99.00\t$1,188.00\nTotal\t$1,188.00\nAmount paid\t$1,188.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X02",
+      "set": "corpus5",
+      "title": "invoice with PAID stamp, balance 0",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "paid",
+      "text": "INVOICE\nLedgerline Bookkeeping\nInvoice #: LB-0988\nDate: 10/01/2026\nPAID\nBill to: Crescent Yoga Studio LLC\nMonthly bookkeeping, September 2026\t$650.00\nTotal\t$650.00\nPaid on 10/06/2026 by ACH. Thank you!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X03",
+      "set": "corpus5",
+      "title": "voided invoice",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "void",
+      "text": "INVOICE\nVoltline Electric LLC\nInvoice # 5498\nDate 10/02/2026\n*** VOID ***\nCustomer: Greenleaf Montessori School\nPanel upgrade\t$2,450.00\nTotal\t$2,450.00\nThis invoice has been voided and replaced by invoice 5531.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X04",
+      "set": "corpus5",
+      "title": "contractor estimate",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "estimate",
+      "text": "ESTIMATE\nOrtega Home Repair\nEstimate # E-2026-044\nDate: 10/20/2026\nValid for 30 days\nCustomer: Priya Nandakumar\nReplace water heater, labor\t$510.00\nWater heater + fittings\t$1,145.60\nPermit\t$75.00\nEstimated total\t$1,730.60\nSign below to accept this estimate.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X05",
+      "set": "corpus5",
+      "title": "quotation that says an invoice will follow",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "quotation",
+      "text": "QUOTATION\nBrightwater Solar Supply\nQuote No.: Q-55102\nDate: 10/18/2026\nPrepared for: Valley Roofing Co.\n410W mono panel\t24\t$212.00\t$5,088.00\n7.6kW string inverter\t1\t$1,640.00\t$1,640.00\nTotal\t$6,728.00\nPrices valid 14 days. An invoice will be issued when the order ships.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X06",
+      "set": "corpus5",
+      "title": "project proposal with investment total",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "proposal",
+      "text": "Proposal: Website Redesign\nPrepared for: Orchard Lane Dental\nPrepared by: Fieldnote Studio\nDate: September 2, 2026\nScope\nDiscovery, design, build, launch\nInvestment\nDesign & build\t$14,000.00\nTotal investment\t$14,000.00\n50% deposit due on signing; the balance is invoiced at launch.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X07",
+      "set": "corpus5",
+      "title": "statement of account listing invoices",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "statement",
+      "text": "STATEMENT\nSaguaro Supply Co.\nStatement date: 10/31/2026\nCustomer: Desert Bloom Florist\nDate\tTransaction\tAmount\tBalance\n09/28/2026\tInvoice #SSC-87710\t$412.00\t$412.00\n10/05/2026\tPayment - thank you\t-$412.00\t$0.00\n10/28/2026\tInvoice #SSC-88104\t$804.04\t$804.04\nCurrent\t1-30 Days\t31-60 Days\tOver 60\n$804.04\t$0.00\t$0.00\t$0.00\nAmount Due\t$804.04\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X08",
+      "set": "corpus5",
+      "title": "German studio invoice in EUR",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "EUR",
+      "text": "RECHNUNG / INVOICE\nStudio Nordlicht GmbH\nTorstrasse 140, 10119 Berlin\nInvoice No. 2026-1187\nDate: 02.11.2026\nClient: Fernhill Analytics LLC\nMotion design package\t€4,000.00\nVAT 19%\t€760.00\nTotal\t€4,760.00\nIBAN DE00 1234 5678 9012 3456 78\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "X09",
+      "set": "corpus5",
+      "title": "Toronto studio invoice in CAD written with $",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "CAD",
+      "text": "INVOICE\nMaple Pixel Studio Inc.\n220 King St W, Toronto, ON M5V 2T6\nInvoice # MP-3302\nHST # 81234 5678 RT0001\nBill to: Northbeam Creative Co.\nIllustration set (12)\t$4,000.00\nSubtotal\t$4,000.00\nHST (13%)\t$520.00\nTotal (CAD)\t$4,520.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "X10",
+      "set": "corpus5",
+      "title": "London agency invoice in GBP",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "GBP",
+      "text": "INVOICE\nHarrow & Finch Ltd\n14 Old St, London EC1V 9HX\nVAT Reg No. GB 123 4567 89\nInvoice No. HF-0442\nClient: Kestrel Media Partners\nStrategy workshop\t£2,500.00\nSubtotal\t£2,500.00\nVAT @ 20%\t£500.00\nTotal due\t£3,000.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "X11",
+      "set": "corpus5",
+      "title": "two invoices in one PDF",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "two documents",
+      "text": "INVOICE\nGreen Thumb Landscaping\nInvoice # 22915\nDate: 11/01/2026\nCustomer: Birch Lane HOA\nOctober common-area mowing\t$1,200.00\nTotal\t$1,200.00\n\n-- 1 of 2 --\n\nINVOICE\nGreen Thumb Landscaping\nInvoice # 22916\nDate: 11/01/2026\nCustomer: Birch Lane HOA\nIrrigation repair\t$850.00\nTotal\t$850.00\n\n-- 2 of 2 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "X12",
+      "set": "corpus5",
+      "title": "credit note against an invoice",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "credit note",
+      "text": "CREDIT NOTE\nBluepine Managed IT\nCredit Note #: CN-0091\nAgainst Invoice #: 100482\nDate: 11/04/2026\nCustomer: Carver & Diaz CPAs\nMicrosoft 365 licences billed in error\t18\t$12.50\t$225.00\nTotal credit\t$225.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X13",
+      "set": "corpus5",
+      "title": "invoice fully paid through Payment Made, balance 0",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "balance 0",
+      "text": "INVOICE\nCoastline Events Group\n# INV-000702\nBill To\nPacific Rim Dental Conference\nInvoice Date :\t02 Sep 2026\n#\tItem & Description\tQty\tRate\tAmount\n1\tVenue deposit\t1.00\t5,000.00\t5,000.00\nSub Total\t5,000.00\nTotal\t$5,000.00\nPayment Made\t(-) 5,000.00\nBalance Due\t$0.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "X14",
+      "set": "corpus5",
+      "title": "web-shop order confirmation",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "order confirmation, charged",
+      "text": "Order Confirmation\nCopper Kettle Goods\nOrder #4419820317\nThank you for your order!\nHand-thrown mug, speckled (set of 6)\t4\t$528.00\nPour-over stand, walnut\t2\t$128.00\nShipping\t$38.40\nTax\t$46.00\nOrder total\t$740.40\nCharged to Visa ending 1881\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X15",
+      "set": "corpus5",
+      "title": "buyer's purchase order",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "purchase order",
+      "text": "PURCHASE ORDER\nValley Roofing Co.\nPO Number: 7781-A\nDate: 10/22/2026\nVendor: Brightwater Solar Supply\n410W mono panel\t24\t$212.00\t$5,088.00\n7.6kW string inverter\t1\t$1,640.00\t$1,640.00\nTotal\t$6,728.00\nPlease reference this PO number on your invoice.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X16",
+      "set": "corpus5",
+      "title": "remittance advice",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "remittance (payer's own record)",
+      "text": "Remittance Advice\nFrom: Ridgeline Logistics LLC\nTo: Summit Occupational Health, PLLC\nPayment date: 11/03/2026\nInvoice\tInvoice Date\tAmount Paid\nSOH-118842\t11/01/2026\t$333.00\nTotal paid\t$333.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X17",
+      "set": "corpus5",
+      "title": "Mexican factura in MXN written with $",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "MXN",
+      "text": "FACTURA / INVOICE\nDiseno Colibri S.A. de C.V.\nFolio: A-2291\nMoneda: MXN\nCliente: Quarry Labs Inc.\nDiseno de interfaz\t$20,000.00\nSubtotal\t$20,000.00\nIVA 16%\t$3,200.00\nTotal\t$23,200.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "X18",
+      "set": "corpus5",
+      "title": "pro forma invoice",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "pro forma",
+      "text": "PROFORMA INVOICE\nSaguaro Supply Co.\nProforma No. PF-1120\nDate: 11/02/2026\nCustomer: Desert Bloom Florist\nCeramic cylinder vase 12in\t40\t$9.75\t$390.00\nTotal\t$390.00\nGoods ship after payment of this pro forma.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X19",
+      "set": "corpus5",
+      "title": "DRAFT invoice",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "draft",
+      "text": "DRAFT\nINVOICE\nFieldnote Studio\nInvoice 1189 (draft, not for payment)\nBill to: Orchard Lane Dental\nMaintenance plan, Q1 2027\t$1,200.00\nTotal\t$1,200.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "X20",
+      "set": "corpus5",
+      "title": "two unexplained totals",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "Total and Amount due disagree without a reason",
+      "text": "INVOICE\nTom Becker\nInvoice #13\nNovember 4, 2026\nTo: Saltbox Brewing\nMenu board design\t$450\nTotal: $450.00\nAmount due: $540.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "X21",
+      "set": "corpus5",
+      "title": "receipt for a paid invoice (thank-you)",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "receipt",
+      "text": "PAYMENT RECEIPT\nJuniper Reyes Photography\nReceipt No. R-0921\nReceived from: Wren & Co. Events\nFor: Invoice JR-0921\nAmount received\t$2,942.04\nPayment method: Zelle\nBalance remaining\t$0.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B01",
+      "set": "corpus5b",
+      "title": "European decimals, USD suffix",
+      "kind": "pay",
+      "pays": "1250000000",
+      "why": "1.250,00 USD is 1,250.00",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nBrand illustration\t1.250,00 USD\nTotal\t1.250,00 USD\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B02",
+      "set": "corpus5b",
+      "title": "European thousands dot, no decimals, USD prefix",
+      "kind": "pay",
+      "pays": "2400000000",
+      "why": "USD 2.400 is 2,400",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nDevelopment sprint\tUSD 2.400\nTotal\tUSD 2.400\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B03",
+      "set": "corpus5b",
+      "title": "French spacing $1 250,00",
+      "kind": "pay",
+      "pays": "1250000000",
+      "why": "1 250,00 $ is 1,250.00",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nTraduction / Translation\t1 250,00 $\nTotal\t1 250,00 $ US\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B04",
+      "set": "corpus5b",
+      "title": "Indian lakh grouping",
+      "kind": "pay",
+      "pays": "125000000000",
+      "why": "$1,25,000.00",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nOffshore dev team, October\t$1,25,000.00\nTotal\t$1,25,000.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B05",
+      "set": "corpus5b",
+      "title": "European decimals with $ prefix",
+      "kind": "pay",
+      "pays": "980500000",
+      "why": "$980,50 is 980.50",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nConsulting\t$980,50\nTotal\t$980,50\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B06",
+      "set": "corpus5b",
+      "title": "Swiss apostrophe grouping",
+      "kind": "pay",
+      "pays": "12500000000",
+      "why": "USD 12'500.00",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nAdvisory, Q4\tUSD 12'500.00\nTotal\tUSD 12'500.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B07",
+      "set": "corpus5b",
+      "title": "trailing-minus deduction then balance",
+      "kind": "pay",
+      "pays": "700000000",
+      "why": "1,000.00 less 300.00-",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nDesign work\t$1,000.00\nSubtotal\t$1,000.00\nDeposit\t300.00-\nBalance due\t$700.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B08",
+      "set": "corpus5b",
+      "title": "deposit invoice: project total stated, 50% due now",
+      "kind": "pay",
+      "pays": "5000000000",
+      "why": "Deposit due now",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nKitchen remodel, project total\t$10,000.00\nDeposit due now (50%)\t$5,000.00\nRemaining balance due on completion\t$5,000.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B09",
+      "set": "corpus5b",
+      "title": "deposit invoice, 'Amount due today'",
+      "kind": "pay",
+      "pays": "3000000000",
+      "why": "Amount due today",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nBrand identity project, total fee\t$12,000.00\nDeposit (25%) due on signing\t$3,000.00\nAmount due today\t$3,000.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B10",
+      "set": "corpus5b",
+      "title": "early-payment total alongside full total",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "two candidate totals: 1,200 or 1,176",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nWebsite care plan, Q4\t$1,200.00\nTotal due\t$1,200.00\nTotal if paid by 11/10/2026 (2% discount)\t$1,176.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B11",
+      "set": "corpus5b",
+      "title": "installment 1 of 3 due now",
+      "kind": "pay",
+      "pays": "3000000000",
+      "why": "Installment due now",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nAnnual retainer, 2027\t$9,000.00\nInstallment 1 of 3 due 11/15/2026\t$3,000.00\nAmount due\t$3,000.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B12",
+      "set": "corpus5b",
+      "title": "'of $2,000.00 total' inline",
+      "kind": "pay",
+      "pays": "500000000",
+      "why": "Amount due: $500.00",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nMilestone 2 of 4\nAmount due: $500.00 (of $2,000.00 total)\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B13",
+      "set": "corpus5b",
+      "title": "total plus applicable taxes (tax not computed)",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "the total is not final",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nWorkshop facilitation\t$1,000.00\nTotal\t$1,000.00 plus applicable sales tax\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B14",
+      "set": "corpus5b",
+      "title": "recurring: total per month",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "per-month total, no period",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nManaged hosting\nTotal due: $1,200.00 per month\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B15",
+      "set": "corpus5b",
+      "title": "late notice, new balance with late fee",
+      "kind": "pay",
+      "pays": "840000000",
+      "why": "New balance due",
+      "text": "PAST DUE INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-090\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nOriginal invoice amount\t$800.00\nLate fee (5%)\t$40.00\nNew balance due\t$840.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B16",
+      "set": "corpus5b",
+      "title": "Stripe-style paid invoice header",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "paid on date",
+      "text": "Invoice\nInvoice number\t8F2C1A07-0011\nDate of issue\tOctober 1, 2026\nCloudmeter, Inc.\nBill to\nFernhill Analytics LLC\n$1,188.00 USD paid on October 1, 2026\nDescription\tQty\tUnit price\tAmount\nTeam plan\t12\t$99.00\t$1,188.00\nSubtotal\t$1,188.00\nTotal\t$1,188.00\nAmount paid\t$1,188.00\nAmount remaining\t$0.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B17",
+      "set": "corpus5b",
+      "title": "auto-charged card on file",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "will be charged automatically: paying it doubles",
+      "text": "Invoice\nPagecraft Labs, Inc.\nInvoice number PCL-00093313\nDate of issue Dec 1, 2026\nBill to Morrow & Finch Interiors\nPro plan Dec 1 – Jan 1, 2027\t1\t$299.00\t$299.00\nTotal\t$299.00\nAmount due\t$299.00\nThis invoice will be charged automatically to your Visa ending in 4242 on Dec 1, 2026. No action is needed.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B18",
+      "set": "corpus5b",
+      "title": "'Paid in full - thank you' footer",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "paid in full",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nMonthly bookkeeping\t$650.00\nTotal\t$650.00\nPaid in full - thank you!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B19",
+      "set": "corpus5b",
+      "title": "Payment status: Paid field",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "paid",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nPayment status: Paid\nLogo animation\t$450.00\nTotal\t$450.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B20",
+      "set": "corpus5b",
+      "title": "Status cell Paid under header",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "paid",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nInvoice Date\tDue Date\tStatus\n11/01/2026\t11/15/2026\tPaid\nLogo animation\t$450.00\nTotal\t$450.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B21",
+      "set": "corpus5b",
+      "title": "covered by prepaid credits, total due 0",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "nothing due",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nAPI usage, October\t$240.00\nSubtotal\t$240.00\nPrepaid credits applied\t-$240.00\nTotal due\t$0.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B22",
+      "set": "corpus5b",
+      "title": "credit balance in brackets",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "a credit, nothing due",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nPrevious balance\t$500.00\nPayment received, thank you\t-$700.00\nBalance\t($200.00) credit\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B23",
+      "set": "corpus5b",
+      "title": "'please disregard, already paid' note",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "already paid",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nContent strategy\t$980.00\nTotal due\t$980.00\nIf you have already paid this invoice, please disregard this notice. Our records show payment received on 11/02/2026.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B24",
+      "set": "corpus5b",
+      "title": "EUR total with USD approximation",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "billed in EUR",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nMotion design\tEUR 4,000.00\nTotal\tEUR 4,000.00 (approx. USD 4,320.00)\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "B25",
+      "set": "corpus5b",
+      "title": "AUD total with $",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "AUD",
+      "text": "TAX INVOICE\nWattle & Gum Creative Pty Ltd\nABN 51 824 753 556\nInvoice #: WG-0412\nDate: 04/11/2026\nIllustration\t$3,000.00\nGST\t$300.00\nTotal (AUD)\t$3,300.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "B26",
+      "set": "corpus5b",
+      "title": "USDT token",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "USDT, not USDC",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nSmart contract review\t1,000 USDT\nTotal\t1,000 USDT\nPay to 0x7a3F9c21B4e08D5a6C1f2E3b4D5c6A7b8C9d0E1f (USDT, Ethereum)\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "B27",
+      "set": "corpus5b",
+      "title": "pay in NEAR token equivalent",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "payable in NEAR",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nFrontend build\t$1,500.00\nTotal\t$1,500.00\nPayable in NEAR at the spot rate on the due date to marlow.near\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "B28",
+      "set": "corpus5b",
+      "title": "SGD invoice with S$",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "SGD",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nUX audit\tS$2,000.00\nGST 9%\tS$180.00\nTotal\tS$2,180.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "B29",
+      "set": "corpus5b",
+      "title": "'All amounts in Canadian dollars' footer",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "CAD",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nCopywriting\t$1,500.00\nTotal\t$1,500.00\nAll amounts are in Canadian dollars.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "B30",
+      "set": "corpus5b",
+      "title": "USD and EUR both shown, EUR the billed",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "two currencies",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nTotal (EUR)\t€1,000.00\nTotal (USD)\t$1,080.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "B31",
+      "set": "corpus5b",
+      "title": "receipt heading below an invoice header",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "receipt",
+      "text": "Marlow Design Studio\nInvoice #: MDS-2026-133\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\n\nPAYMENT RECEIPT\nReceived with thanks: $450.00 by card on 11/04/2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B32",
+      "set": "corpus5b",
+      "title": "credit card style statement with minimum payment",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "statement",
+      "text": "Account Summary\nMarlow Business Card\nPrevious balance\t$900.00\nNew charges\t$300.00\nNew balance\t$1,200.00\nMinimum payment due\t$50.00\nPayment due date\t11/25/2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B33",
+      "set": "corpus5b",
+      "title": "invoice/estimate dual template, estimate checked",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "estimate",
+      "text": "ESTIMATE\nMarlow Design Studio\nEstimate #: E-2026-31\nDate: 11/04/2026\nPrepared for: Quarry Labs Inc.\nWebsite build\t$2,600.00\nTotal\t$2,600.00\nOnce approved, we will send an invoice for the deposit.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B34",
+      "set": "corpus5b",
+      "title": "two invoices in one text file, no page markers",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "two invoices",
+      "text": "INVOICE\nInvoice #: MDS-2026-141\nBill to: Quarry Labs Inc.\nIcon set\t$300.00\nTotal\t$300.00\n\nINVOICE\nInvoice #: MDS-2026-142\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "B35",
+      "set": "corpus5b",
+      "title": "invoice for another customer's copy ('customer copy')",
+      "kind": "pay",
+      "pays": "450000000",
+      "why": "an invoice; copy wording",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nCUSTOMER COPY\nLogo animation\t$450.00\nTotal\t$450.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "450000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "B36",
+      "set": "corpus5b",
+      "title": "sample invoice template",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "sample",
+      "text": "SAMPLE INVOICE\nYour Company Name\nInvoice #: 0001\nDate: MM/DD/YYYY\nBill to: Client Name\nService description\t$1,234.56\nTotal\t$1,234.56\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B37",
+      "set": "corpus5b",
+      "title": "cancelled invoice",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "cancelled",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nStatus: Cancelled\nLogo animation\t$450.00\nTotal\t$450.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B38",
+      "set": "corpus5b",
+      "title": "refunded invoice",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "refunded",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nRefunded in full on 11/03/2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "B39",
+      "set": "corpus5b",
+      "title": "total on page 2 after carried-forward subtotal",
+      "kind": "pay",
+      "pays": "5400000000",
+      "why": "Total on page 2",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-143\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nDiscovery\t$3,000.00\nSubtotal carried forward\t$3,000.00\n\n-- 1 of 2 --\n\nMarlow Design Studio, Invoice MDS-2026-143 (continued)\nBrought forward\t$3,000.00\nDesign system\t$2,400.00\nTotal\t$5,400.00\n\n-- 2 of 2 --\n\n",
+      "expect": {
+        "amount": "5400000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "B40",
+      "set": "corpus5b",
+      "title": "amount wrapped from label line to next",
+      "kind": "pay",
+      "pays": "1800000000",
+      "why": "Total Due on one line, figure on next",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nPhotography, half-day\t$1,800.00\nTotal Due\n$1,800.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B41",
+      "set": "corpus5b",
+      "title": "total row with hours and amount columns",
+      "kind": "pay",
+      "pays": "2250000000",
+      "why": "Total row: 15 hrs, $2,250.00",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nDate\tTask\tHours\tAmount\n10/06\tWireframes\t6\t$900.00\n10/13\tPrototype\t9\t$1,350.00\nTotal\t15\t$2,250.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B42",
+      "set": "corpus5b",
+      "title": "'Total' with quantity before money",
+      "kind": "pay",
+      "pays": "780000000",
+      "why": "Total 12 items $780.00",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nItem\tQty\tAmount\nPrinted menus\t12\t$780.00\nTotal\t12\t$780.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B43",
+      "set": "corpus5b",
+      "title": "tip line after total, not added",
+      "kind": "refuse",
+      "pays": "0",
+      "why": "gratuity optional: total uncertain",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nCatering, 40 guests\t$1,600.00\nTotal\t$1,600.00\nSuggested gratuity (18%)\t$288.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "B44",
+      "set": "corpus5b",
+      "title": "balance after deposit equals deposit",
+      "kind": "pay",
+      "pays": "1000000000",
+      "why": "Balance due after deposit",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nProject fee\t$2,000.00\nLess deposit paid\t-$1,000.00\nBalance due\t$1,000.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B45",
+      "set": "corpus5b",
+      "title": "Amount enclosed remittance stub",
+      "kind": "pay",
+      "pays": "450000000",
+      "why": "Total; the stub blank is for the payer",
+      "text": "INVOICE\nMarlow Design Studio\nInvoice #: MDS-2026-140\nDate: 11/04/2026\nBill to: Quarry Labs Inc.\nLogo animation\t$450.00\nTotal\t$450.00\nPlease detach and return with payment\nAmount enclosed: $________\nCustomer #: 4410\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "450000000",
+        "issue": null
+      }
+    }
+  ]
+}
