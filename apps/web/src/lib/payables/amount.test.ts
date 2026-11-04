@@ -1477,6 +1477,11 @@ describe("the breaker changes", () => {
   it.each([
     ["No action is required."],
     ["No payment is needed."],
+    ["No action or payment is needed."],
+    ["No action or payment required."],
+    ["Auto pay is on for this account."],
+    ["Paid by direct-debit on the due date."],
+    ["Collected by direct-debit."],
     ["Do not send payment."],
     ["You are enrolled in AutoPay."],
     ["Auto-pay is on for this account."],

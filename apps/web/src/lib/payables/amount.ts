@@ -1629,9 +1629,10 @@ function withoutBorders(line: string): string {
 /**
  * B4: an invoice-number token (after "Invoice #/No./n\u00b0/number/num.", "INV" or "#") that still holds a non-ASCII
  * character once the number view has folded dashes, blanks and look-alike digits ("INV-1\u3007 01", "1\u0555\u05551").
+ * The token is read up to 64 characters, so the check stays linear on a long run with no space.
  */
 const UNFOLDED_NUMBER =
-  /(?:(?<![a-z])invoice\s*(?:#|no\.?|n\u00b0|number|num\.?)\s*[:#.]?\s*|(?<![a-z])inv|(?:^|\s)#\s*)[^\s]*[^\p{ASCII}\s]/imu;
+  /(?:(?<![a-z])invoice\s*(?:#|no\.?|n\u00b0|number|num\.?)\s*[:#.]?\s*|(?<![a-z])inv|(?:^|\s)#\s*)[^\s]{0,64}[^\p{ASCII}\s]/imu;
 
 /** Lines up to this long share their views and checks with equal lines (longer ones are rare and read alone). */
 const MEMO_LINE = 512;
@@ -1941,8 +1942,7 @@ function read(text: string): AmountRead {
         if (unitsOf(m[1] ?? m[2] ?? m[3] ?? "") === only) return refuse("ambiguous");
     }
   }
-  // 10. After a deduction, the balance is neither the amount before it (a partial total written before the
-  // deduction) nor an amount already paid.
+  // Nor is it a partial total written before the deduction, or an amount already paid.
   if (
     lastDeduction >= 0 &&
     partials.some((p) => p.units === only && (p.paid || p.at < lastDeduction))

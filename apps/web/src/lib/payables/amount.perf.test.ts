@@ -121,6 +121,10 @@ describe("extractFacts on adversarial text", () => {
     ["dash-like characters in numbers", (n) => "INV\u27961001 ".repeat(n / 9)],
     ["a digit-and-comma run after the total", (n) => `${HQ}${"1,".repeat(n / 2)}1`.slice(0, n)],
     ["serial numbers after the total", (n) => serials(Math.floor(n / 7)).slice(0, n)],
+    // Number-token shapes with no space (ruling W-T13-B17): the unfolded-number check reads a bounded token.
+    ["inv1 repeated", (n) => "inv1".repeat(n / 4)],
+    ["invoice# repeated", (n) => "invoice#".repeat(n / 8)],
+    ["inv#1 repeated", (n) => "inv#1".repeat(n / 5)],
   ];
 
   it.each(shapes)("grows linearly on %s", (_why, shape) => {
@@ -160,6 +164,9 @@ describe("extractFacts on adversarial text", () => {
     ["characters NFKC expands past the cap", "\ufdfa".repeat(2_777)],
     ["a digit-and-comma run after the total", `${HQ}${"1,".repeat(24_954)}1`.slice(0, 50_000)],
     ["serial numbers after the total", serials(7_000).slice(0, 50_000)],
+    ["inv1 repeated", "inv1".repeat(12_500)],
+    ["invoice# repeated", "invoice#".repeat(6_250)],
+    ["inv#1 repeated", "inv#1".repeat(10_000)],
   ])("reads %s (50,000 characters) in under 100 ms", (_why, text) => {
     expect(text.length).toBeLessThanOrEqual(MAX_READ_UNITS);
     expect(best(text)).toBeLessThan(100);
