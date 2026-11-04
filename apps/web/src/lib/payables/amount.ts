@@ -241,9 +241,12 @@ const WORD_PAIR = /(?<![a-z])([a-z]{2,12})(?=[ .'\u00b7\u2019-]([a-z]{2,12})(?![
  * space, a dot, a hyphen or an apostrophe ("To tal", "To-tal"), or with "rn" for "m" ("Arnount"). It is odd, so
  * the invoice is unreadable.
  */
-function oddLabel(s: string): boolean {
-  const variant = unspaced(s).replace(/rn/g, "m");
-  if (variant !== s && labelWords(variant) > labelWords(s)) return true;
+function oddLabel(s: string, unspacedLine: string): boolean {
+  // The unspaced view is computed once per line; only a line it changes, or one with "rn", can hide a label.
+  if (unspacedLine !== s || s.includes("rn")) {
+    const variant = unspaced(s).replace(/rn/g, "m");
+    if (variant !== s && labelWords(variant) > labelWords(s)) return true;
+  }
   for (const m of s.matchAll(WORD_PAIR)) {
     if (JOIN_TARGETS.has(`${m[1]}${m[2]}`)) return true;
   }
@@ -252,10 +255,18 @@ function oddLabel(s: string): boolean {
 
 /** A label split across a line end: "Tot-" or "To" at the end of one line, "al" or "tal" opening the next. */
 function splitAcrossLines(s: string, next: string): boolean {
-  if (!/[a-z-]/.test(s.trimEnd().slice(-1))) return false; // the line ends with no word fragment
-  const tail = /(?<![a-z])([a-z]{1,4})-?\s*$/.exec(s)?.[1] ?? /([a-z]{1,12})-\s*$/.exec(s)?.[1];
+  // The last word of the line, read backwards by hand (a regex anchored at the end would scan the whole line).
+  const isLetter = (c: number) => c >= 97 && c <= 122;
+  let end = s.length;
+  while (end > 0 && /\s/.test(s[end - 1] ?? "")) end--;
+  const hyphen = end > 0 && s[end - 1] === "-";
+  if (hyphen) end--;
+  let start = end;
+  while (start > 0 && isLetter(s.charCodeAt(start - 1))) start--;
+  const tail = s.slice(start, end);
+  if (tail === "" || tail.length > 12 || (!hyphen && tail.length > 4)) return false;
   const head = /^\s*([a-z]{1,12})(?![a-z])/.exec(next)?.[1];
-  return tail !== undefined && head !== undefined && JOIN_TARGETS.has(`${tail}${head}`);
+  return head !== undefined && JOIN_TARGETS.has(`${tail}${head}`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -523,6 +534,37 @@ function codeUse(code: string): RegExp {
 const isCode = (s: string) => ISO_CODES.has(s) || TOKEN_CODES.has(s);
 
 /**
+ * A word in capitals on this line that is a code used as a currency (see otherCurrency). `prose`: some other word
+ * of the document is written in capitals. Each code is tested once per line, so the line is read in linear time.
+ */
+function wordInCapitalsIsCurrency(
+  c: string,
+  sl: string,
+  words: readonly CapitalWord[],
+  prose: boolean,
+): boolean {
+  const codes = words.flatMap((w) => w.spellings.filter(isCode).slice(0, 1));
+  if (codes.length === 0) return false;
+  const onlyCodes =
+    codes.length === words.length &&
+    codes.some((x) => x !== "NEAR") &&
+    c.replace(/[\p{Lu}\s\t|,/;:.()-]+/gu, "") === "";
+  const cells =
+    !/\d/.test(c) && c.includes("\t") ? new Set(c.split("\t").map((x) => x.trim())) : null;
+  const context = CONTEXT_WORD.test(sl) || /(?<![a-z])are\s/.test(sl);
+  for (const code of new Set(codes)) {
+    if (!WORDLIKE_CODES.has(code)) return true;
+    if (codeUse(code).test(c)) return true;
+    if (code === "NEAR") continue;
+    if (onlyCodes) return true; // a line of codes
+    if (cells?.has(code)) return true; // a cell of a header row
+    if (code === "ALL") continue; // "ALL PRICES IN USD": only the strict contexts above
+    if (context || !prose) return true;
+  }
+  return false;
+}
+
+/**
  * 1c. Any currency other than US dollars, anywhere:
  *   - a currency sign other than $ (in the raw text and after NFKC), or a CJK or Hangul currency letter;
  *   - an X$ other than US$, another country's dollar, its abbreviation or nickname;
@@ -561,24 +603,7 @@ function otherCurrency(v: Views, shown: string): boolean {
     const c = v.c[i] ?? "";
     const sl = v.s[i] ?? "";
     const words = capitals[i] ?? [];
-    const seen = new Set<string>();
-    const codes = words.flatMap((w) => w.spellings.filter(isCode).slice(0, 1));
-    const onlyCodes =
-      words.length > 0 &&
-      codes.length === words.length &&
-      c.replace(/[\p{Lu}\s\t|,/;:.()-]+/gu, "") === "";
-    for (const code of codes) {
-      if (seen.has(code)) continue; // each code once per line: linear in the line
-      seen.add(code);
-      if (!WORDLIKE_CODES.has(code)) return true;
-      if (codeUse(code).test(c)) return true;
-      if (code === "NEAR") continue;
-      if (onlyCodes && codes.some((x) => x !== "NEAR")) return true;
-      if (!/\d/.test(c) && c.includes("\t") && c.split("\t").some((cell) => cell.trim() === code))
-        return true; // a cell of a header row
-      if (code === "ALL") continue; // "ALL PRICES IN USD": only the strict contexts above
-      if (CONTEXT_WORD.test(sl) || /(?<![a-z])are\s/.test(sl) || !prose) return true;
-    }
+    if (words.length > 0 && wordInCapitalsIsCurrency(c, sl, words, prose)) return true;
     // Glued to a figure, in any case of the letters ISO writes in capitals.
     for (const m of /[A-Z]\d|\d[A-Z]/.test(c) ? c.matchAll(GLUED_CODE) : []) {
       const code = m[1] ?? m[2] ?? "";
@@ -1113,7 +1138,7 @@ function read(text: string): AmountRead {
     const next = lines[k + 1];
     if (next !== undefined && splitAcrossLines(sl, s[next] ?? ""))
       finals.push({ issue: "unreadable" });
-    if (oddLabel(sl)) finals.push({ issue: "unreadable" });
+    if (oddLabel(sl, v.u[i] ?? "")) finals.push({ issue: "unreadable" });
 
     const due = /due/i.test(row) ? DUE_BY.exec(row) : null;
     if (due) {
