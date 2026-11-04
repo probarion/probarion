@@ -972,8 +972,10 @@ const foldDigitLookAlikes = (text: string): string =>
  * characters removed, every dash-like character as "-", every space as " ", and digit look-alikes inside a number
  * as digits.
  */
-export const numberView = (text: string): string =>
-  foldDigitLookAlikes(
+export function numberView(text: string): string {
+  // The reader, extractFacts and the fingerprint read the same text in turn: the last view is kept.
+  if (text === lastNumberView.text) return lastNumberView.view;
+  const view = foldDigitLookAlikes(
     ASCII.test(text)
       ? text
       : text
@@ -982,6 +984,10 @@ export const numberView = (text: string): string =>
           .replace(DASHES, "-")
           .replace(/\p{Zs}/gu, " "),
   );
+  lastNumberView = { text, view };
+  return view;
+}
+let lastNumberView = { text: "", view: "" };
 
 /** The key form of an invoice number: its skeleton in capitals, letters and digits only ("INV 1001" is INV-1001). */
 export const numberKey = (n: string): string =>
@@ -1009,6 +1015,14 @@ const HEADER_LINES = 8;
  * header row. Each pass is linear in the text.
  */
 export function readInvoiceNumbers(text: string): string[] {
+  if (text === lastNumbers.text) return [...lastNumbers.numbers];
+  const numbers = readNumbers(text);
+  lastNumbers = { text, numbers };
+  return [...numbers];
+}
+let lastNumbers: { text: string; numbers: readonly string[] } = { text: "", numbers: [] };
+
+function readNumbers(text: string): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(INVOICE_NOS)) out.push(m[1] ?? "");
   for (const m of text.matchAll(INVOICE_TOKENS)) out.push(m[0]);
@@ -1712,7 +1726,10 @@ function read(text: string): AmountRead {
       finals.push({ issue: "unreadable" });
     continues = false;
     const next = lines[k + 1];
-    if (next !== undefined && splitAcrossLines(sl, s[next] ?? ""))
+    if (
+      next !== undefined &&
+      once(4, `${g[i]}\n${g[next]}`, () => splitAcrossLines(sl, s[next] ?? ""))
+    )
       finals.push({ issue: "unreadable" });
     if (once(0, g[i] ?? "", () => oddLabel(sl, v.u[i] ?? ""))) finals.push({ issue: "unreadable" });
 
@@ -1760,18 +1777,22 @@ function read(text: string): AmountRead {
       labelAbove = true; // a column header: a lone amount under it is a value with no label
       continue;
     } else if (
-      hasFinalLabel(sl) ||
+      once(5, g[i] ?? "", () => hasFinalLabel(sl)) ||
       ((!ASCII.test(line) || /[A-Za-z]\d|\d[A-Za-z]/.test(line)) &&
         once(1, g[i] ?? "", () => hasLookAlike(line))) ||
       once(2, g[i] ?? "", () => payableIsh(line, sl)) ||
-      (moneyLine(line, sl, finalAt.length > 0) && !itemRow(sl, firstFinal < 0 || i < firstFinal))
+      ((finalAt.length > 0
+        ? once(6, g[i] ?? "", () => moneyLine(line, sl, true))
+        : once(7, g[i] ?? "", () => moneyLine(line, sl, false))) &&
+        !itemRow(sl, firstFinal < 0 || i < firstFinal))
     ) {
       finals.push({ issue: "unreadable" }); // a payable line the grammar cannot read
     } else if (labelAbove && (orphanFigure(row) || orphanFigure(figureOfLine()) || moneyRow(row))) {
       finals.push({ issue: "unreadable" });
     } else ignored = true;
     if (!ignored) labelAbove = false;
-    else if (PAYABLE.test(sl) || MONEY_WORD.test(sl) || GLUED.test(sl)) labelAbove = true;
+    else if (once(8, g[i] ?? "", () => PAYABLE.test(sl) || MONEY_WORD.test(sl) || GLUED.test(sl)))
+      labelAbove = true;
     else if (/\p{N}/u.test(line)) labelAbove = false;
   }
 
@@ -1799,15 +1820,15 @@ function read(text: string): AmountRead {
     const i = lines[k] ?? 0;
     const sl = s[i] ?? "";
     const note = /^\s*\(.*\)\s*$/.test(sl);
-    const scale =
+    const scale = () =>
       NOTE_SCALE.test(sl) ||
       LETTER_SCALE.test(sl) ||
       SHORT_SCALE.test(sl) ||
       MICRO.test(g[i] ?? "");
-    if ((near.has(i) || note) && scale) return refuse("unreadable");
+    if ((near.has(i) || note) && scale()) return refuse("unreadable");
     if (k < HEADER_LINES && (IN_SCALE.test(sl) || SHORT_SCALE.test(sl) || MICRO.test(g[i] ?? "")))
       return refuse("unreadable");
-    if (DENOMINATION.test(sl)) return refuse("unreadable");
+    if (once(9, g[i] ?? "", () => DENOMINATION.test(sl))) return refuse("unreadable");
   }
 
   const totals = finals.flatMap((f) => ("units" in f ? [f] : []));
