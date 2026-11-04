@@ -1,3 +1,4 @@
+import { NETWORKS } from "@probarion/core";
 import type { Network } from "@/lib/config";
 import { CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 
@@ -11,13 +12,39 @@ const REASONS = {
 
 export type CliFallbackReason = keyof typeof REASONS;
 
-/** While the CLI is not on npm, the command runs from a clone of the repository: set it up first (./lib/proof/cli). */
-const SETUP = CLI_ON_NPM
-  ? ""
-  : `# From a clone of the repository (the probarion npm package is coming), set up once:
-${CLI_SETUP_LINES.map((l) => `#   ${l}`).join("\n")}
-# then, from that folder:
-`;
+/**
+ * The lines to show, each one runnable as it is in bash and in Windows PowerShell 5.1 (`#` is a comment in both; no
+ * `VAR=value` prefix, no `\` line continuation). The CLI has no flag for the factory: it reads PROBARION_FACTORY_ID,
+ * else the network's own factory, so the variable is set only for another factory, with one labelled line per shell.
+ */
+export function cliFallbackLines(factory: string, network: Network): string[] {
+  const lines: string[] = [];
+  if (!CLI_ON_NPM) {
+    lines.push(
+      "# From a clone of the repository (the probarion npm package is coming), set up once:",
+      ...CLI_SETUP_LINES.map((l) => `#   ${l}`),
+      "# then, from that folder:",
+    );
+  }
+  if (factory !== NETWORKS[network].factory) {
+    lines.push(
+      `# This console uses the factory ${factory}. Set it first, with the line for your shell:`,
+      "# bash:",
+      `export PROBARION_FACTORY_ID=${factory}`,
+      "# Windows PowerShell:",
+      `$env:PROBARION_FACTORY_ID = "${factory}"`,
+    );
+  }
+  lines.push(
+    cli(
+      `--network ${network} vault create --name <name> --approvers <approver.near> --daily-backstop 500 --held-ttl-hours 72 --sign-as <you.near>`,
+    ),
+    "# Add --deposit <near> for an embedded factory version.",
+    "# It reads the factory's min_deposit and mode, and prints the near-cli-rs command.",
+    "# You sign it with your own key (OWNER SIGNS).",
+  );
+  return lines;
+}
 
 /**
  * Spec §17 cut line 6: if the factory cannot be used from here, create the vault white-glove with
@@ -40,11 +67,7 @@ export function CliFallback({
         or signed. You can create the vault with the CLI instead, then register it below:
       </p>
       <pre className="overflow-x-auto rounded-2xl bg-[#0B0B0C] p-4 text-xs text-[#F7F6F3]">
-        {`${SETUP}PROBARION_FACTORY_ID=${factory} ${cli(`--network ${network} vault create`)} \\
-  --name <name> --approvers <approver.near> --daily-backstop 500 --held-ttl-hours 72 \\
-  --sign-as <you.near> [--deposit <near>]
-# It reads the factory's min_deposit and mode, and prints the near-cli-rs command.
-# You sign it with your own key (OWNER SIGNS). --deposit is required for an embedded version.`}
+        {cliFallbackLines(factory, network).join("\n")}
       </pre>
     </div>
   );

@@ -291,7 +291,10 @@ describe("loadProof: how old a cached result can be", () => {
 });
 
 describe("loadLedger (ledger.jsonl)", () => {
-  beforeEach(() => vi.spyOn(console, "warn").mockImplementation(() => {}));
+  // A block body: an arrow that returns the spy would hand vitest a function to call as teardown.
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
   afterEach(() => vi.restoreAllMocks());
 
   const ledgerDeps = (publicDb: Db, network: "mainnet" | "testnet" = "mainnet") => ({
@@ -339,5 +342,113 @@ describe("loadLedger (ledger.jsonl)", () => {
       vault: vault(1),
       network: "mainnet",
     });
+  });
+});
+
+describe("loadProof when every gather is slow", () => {
+  beforeEach(() => {
+    clearProofCache();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("still caches: with a visitor every 10 s and 45 s gathers, some visitors are answered from the cache", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(Date.parse("2026-11-08T12:00:00.000Z"));
+    const { d } = deps(() => Date.now());
+    const makeReader = vi.fn((v: string) => ({
+      snapshot: async () => {
+        const takenAt = new Date().toISOString(); // stamped at the start, as the SDK does
+        await new Promise((resolve) => setTimeout(resolve, 45_000));
+        return {
+          ...makeSnapshot({ vault: v, ledger: [], ledgerKey: "ed25519:LK" }),
+          taken_at: takenAt,
+        };
+      },
+    }));
+    d.makeReader = makeReader;
+    let answeredAtOnce = 0;
+    for (let visit = 0; visit < 12; visit++) {
+      let done = false;
+      void loadProof(d, vault(9)).then(() => {
+        done = true;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      if (done) answeredAtOnce++;
+      await vi.advanceTimersByTimeAsync(10_000);
+    }
+    expect(answeredAtOnce).toBeGreaterThan(0);
+  });
+
+  it("keeps a cached result whose snapshot is newer than a late gather's", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(Date.parse("2026-11-08T12:00:00.000Z"));
+    const { d } = deps(() => Date.now());
+    const durations = [50_000, 1_000]; // the first gather is slow, the second quick
+    const makeReader = vi.fn((v: string) => {
+      const wait = durations.shift() ?? 1_000;
+      return {
+        snapshot: async () => {
+          const takenAt = new Date().toISOString();
+          await new Promise((resolve) => setTimeout(resolve, wait));
+          return {
+            ...makeSnapshot({ vault: v, ledger: [], ledgerKey: "ed25519:LK" }),
+            taken_at: takenAt,
+          };
+        },
+      };
+    });
+    d.makeReader = makeReader;
+    const slow = loadProof(d, vault(10)); // taken 12:00:00, lands at 12:00:50
+    await vi.advanceTimersByTimeAsync(31_000);
+    const quick = loadProof(d, vault(10)); // sharing ended: taken 12:00:31, lands at 12:00:32
+    await vi.advanceTimersByTimeAsync(1_000);
+    const newer = await quick;
+    await vi.advanceTimersByTimeAsync(20_000);
+    await slow;
+    const next = await loadProof(d, vault(10));
+    expect(makeReader).toHaveBeenCalledTimes(2);
+    expect(next).toBe(newer);
+    expect(next.status === "ok" && next.snapshot.taken_at).toBe("2026-11-08T12:00:31.000Z");
+  });
+});
+
+describe("a database error before the access check", () => {
+  beforeEach(() => {
+    clearProofCache();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const down: Db = {
+    rpc: async () => {
+      throw new DbError("db_error", "connection reset");
+    },
+  };
+
+  it("is an answer with a reason, not a crash, for the page and both downloads", async () => {
+    const { d } = deps(() => 1);
+    d.publicDb = down;
+    expect(await loadProof(d, vault(11))).toEqual({
+      status: "error",
+      reason: "ledger",
+      vault: vault(11),
+      network: "mainnet",
+    });
+    expect(
+      await loadLedger(
+        { network: "mainnet", publicDb: down, serviceDb: down, sessionAccount: "s.near" },
+        vault(11),
+      ),
+    ).toEqual({ status: "error", reason: "ledger", vault: vault(11), network: "mainnet" });
+    // A member's lookup that fails is the same.
+    const member = deps(() => 1).d;
+    member.publicDb = { rpc: async <T>() => null as T };
+    member.serviceDb = down;
+    member.sessionAccount = "s.near";
+    expect((await loadProof(member, vault(11))).status).toBe("error");
   });
 });

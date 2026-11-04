@@ -55,23 +55,28 @@ const TTL_MS = 60_000;
 /** Bounds the cache: only vaults with a public page or a member's view get here, but keep it small anyway. */
 const MAX_ENTRIES = 500;
 const NOT_FOUND = { status: "not_found" } as const;
-/** `ok` results by key; `at` is when their gather started, so a result is at most 60 s older than its snapshot. */
+/** `ok` results by key; `at` is when their gather started, so a served result's snapshot was taken less than 60 s ago. */
 const cache = new Map<string, { at: number; value: ProofOk }>();
 /** How long a gather is shared. A stuck read (a database call has no timeout) then stops holding later visitors. */
 const IN_FLIGHT_MS = 30_000;
 /** Gathers under way, by cache key: visitors who arrive while one runs share it instead of starting their own. */
 const inFlight = new Map<string, Promise<ProofResult>>();
-/** The number of the latest gather started per key. Only that gather may store its result. */
-const latest = new Map<string, number>();
-let gathers = 0;
-
 export function clearProofCache(): void {
   cache.clear();
   inFlight.clear();
-  latest.clear();
 }
 
+/** The snapshot time of a result, or NaN when it cannot be read (then it never counts as newer). */
+const takenAt = (r: ProofOk): number => Date.parse(String(r.snapshot.taken_at));
+
+/**
+ * Stores a result, unless the cache already holds a result for the key whose snapshot is newer: a gather that lands
+ * late (it outran the 30 s sharing, and a newer gather has landed since) does not replace that newer result. A slow
+ * gather's result is still stored when nothing newer is there, so a vault whose gathers take long is still cached.
+ */
 function remember(key: string, at: number, value: ProofOk): void {
+  const held = cache.get(key);
+  if (held && takenAt(held.value) > takenAt(value)) return;
   if (cache.size >= MAX_ENTRIES) {
     for (const [k, v] of cache) if (at - v.at >= TTL_MS) cache.delete(k);
     if (cache.size >= MAX_ENTRIES) cache.clear();
@@ -113,6 +118,17 @@ async function access(
   };
 }
 
+/** The checks did not run: logged with the reason, answered as an error (never a pass, never a crash). */
+function unavailable(deps: ProofDeps, vault: string, error: unknown): ProofResult {
+  const reason = errorReason(error);
+  log.warn("proof.unavailable", {
+    vault,
+    reason,
+    error: error instanceof Error ? error.message : String(error),
+  });
+  return { status: "error", reason, vault, network: deps.network };
+}
+
 /** Why a gather failed, for the page: the evidence file, the ledger in the database, or else the chain. */
 function errorReason(error: unknown): ProofErrorReason {
   if (error instanceof ProofEvidenceError) return "evidence";
@@ -121,9 +137,9 @@ function errorReason(error: unknown): ProofErrorReason {
 }
 
 /**
- * One gather and its checks. Only an `ok` result is stored, and only by the latest gather of its key: a late one,
- * started before a newer gather (after the 30 s sharing ended), does not replace that newer result. Its age counts
- * from its start, because the SDK stamps `taken_at` before it reads the chain.
+ * One gather and its checks. Only an `ok` result is stored, and a late one whose snapshot is older than the cached one
+ * does not replace it (see `remember`). Its age counts from its start,
+ * because the SDK stamps `taken_at` before it reads the chain.
  */
 async function gather(
   deps: ProofDeps,
@@ -133,19 +149,11 @@ async function gather(
   now: () => number,
 ): Promise<ProofResult> {
   const startedAt = now();
-  const id = ++gathers;
-  latest.set(key, id);
   let snapshot: Snapshot;
   try {
     snapshot = await deps.makeReader(vault, who.store).snapshot();
   } catch (error) {
-    const reason = errorReason(error);
-    log.warn("proof.unavailable", {
-      vault,
-      reason,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { status: "error", reason, vault, network: deps.network };
+    return unavailable(deps, vault, error);
   }
   const report = await runChecks(snapshot, { now: new Date(now()) });
   const value: ProofOk = {
@@ -157,7 +165,7 @@ async function gather(
     snapshot,
     report,
   };
-  if (latest.get(key) === id) remember(key, startedAt, value);
+  remember(key, startedAt, value);
   return value;
 }
 
@@ -176,7 +184,12 @@ async function gather(
  */
 export async function loadProof(deps: ProofDeps, vault: string): Promise<ProofResult> {
   if (!isNearAccountId(vault)) return NOT_FOUND;
-  const who = await access(deps, vault);
+  let who: Awaited<ReturnType<typeof access>>;
+  try {
+    who = await access(deps, vault);
+  } catch (error) {
+    return unavailable(deps, vault, error);
+  }
   if (who === null || who.network !== deps.network) return NOT_FOUND;
 
   const now = deps.now ?? Date.now;
@@ -242,9 +255,10 @@ export type LedgerResult =
  */
 export async function loadLedger(deps: LedgerDeps, vault: string): Promise<LedgerResult> {
   if (!isNearAccountId(vault)) return NOT_FOUND;
-  const who = await access({ ...deps, makeReader: unreachableReader }, vault);
-  if (who === null || who.network !== deps.network) return NOT_FOUND;
   try {
+    // Inside the try: a database error in the access check is an answer too (503), not a crash.
+    const who = await access({ ...deps, makeReader: unreachableReader }, vault);
+    if (who === null || who.network !== deps.network) return NOT_FOUND;
     return {
       status: "ok",
       vault,

@@ -69,13 +69,34 @@ describe("the probarion command the site shows (CLI_ON_NPM)", () => {
         .split("\n")
         .find((l) => l.startsWith("  7. ")) ?? "";
     expect(step7).toContain("taken when you click or shortly before");
-    expect(step7).toContain("older or newer");
-    expect(step7).not.toMatch(/up to a minute|newer one/);
+    // The only claim: the same snapshot gives the same result; another one can differ (W-T16-R4).
+    expect(step7).toContain(
+      "it is the very snapshot the page checked, and it gives the same result",
+    );
+    expect(step7).toContain("its result can differ from the page");
+    expect(step7).not.toMatch(
+      /up to a minute|newer one|matches this page unless|unless the vault changed/,
+    );
     // While the package is not on npm, step 7 shows the repository commands. After the flip, update it by hand.
     if (!CLI_ON_NPM) {
       for (const line of CLI_SETUP_LINES) expect(step7).toContain(`\`${line}\``);
       expect(step7).toContain(cli("verify --offline"));
       expect(step7).not.toContain("npx probarion");
+    }
+  });
+
+  it("lists every proof route in the deploy runbook's build check", () => {
+    const routes =
+      read("docs/runbooks/web-deploy.md")
+        .split("\n")
+        .find((l) => l.includes("`next build` finishes and lists the routes")) ?? "";
+    for (const route of [
+      "/proof",
+      "/proof/[vault]",
+      "/proof/[vault]/snapshot.json",
+      "/proof/[vault]/ledger.jsonl",
+    ]) {
+      expect(routes, route).toContain(`\`${route}\``);
     }
   });
 });

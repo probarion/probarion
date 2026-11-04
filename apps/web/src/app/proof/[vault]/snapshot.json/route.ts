@@ -15,7 +15,9 @@ export const maxDuration = 60;
  * runtime gathered within the last 60 s (counted from the start of its gather), or a fresh one. It is not guaranteed to
  * be the page's, and it can be older or newer than the page's: the page and this route run in separate runtimes with
  * separate caches, and instances differ too. So the page gives its own taken_at to compare with the one the verifier
- * prints. The response is not reused by a browser. An id that is not a NEAR account is a 404 before any database or
+ * prints: the same taken_at is the same snapshot and gives the same result; another snapshot's result can differ, even
+ * on an unchanged vault (a transaction that could not be read during one of the two gathers is enough). The response
+ * is not reused by a browser. An id that is not a NEAR account is a 404 before any database or
  * RPC call, so only a validated id reaches the file name.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ vault: string }> }) {

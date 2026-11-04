@@ -9,15 +9,20 @@ export function ledgerFileText(entries: readonly LedgerEntry[]): string {
   return entries.map((e) => `${JSON.stringify(e)}\n`).join("");
 }
 
+/** The download's file name, as every `--ledger` command on the page names it. `vault` is a validated id. */
+export function ledgerFileName(vault: string): string {
+  return `probarion-${vault}-ledger.jsonl`;
+}
+
 /**
- * The ledger.jsonl download, named exactly as the page's commands use it. A browser does not reuse it (each click asks
+ * The ledger download, named exactly as the page's commands use it. A browser does not reuse it (each click asks
  * again); a member's view of a private vault is never stored by anyone.
  */
 export function ledgerResponse(r: LedgerOk): Response {
   return new Response(ledgerFileText(r.entries), {
     headers: {
       "content-type": "application/x-ndjson; charset=utf-8",
-      "content-disposition": 'attachment; filename="ledger.jsonl"',
+      "content-disposition": `attachment; filename="${ledgerFileName(r.vault)}"`,
       "cache-control":
         r.audience === "public" ? "private, max-age=0, must-revalidate" : "private, no-store",
     },

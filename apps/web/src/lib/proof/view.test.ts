@@ -10,8 +10,10 @@ import { describe, expect, it } from "vitest";
 import { proofSnapshot, txHash } from "../../../test/fixtures/proof";
 import { makeSnapshot } from "../../../test/fixtures/snapshot";
 import { cli, PRE_LEDGER_FLAGS } from "./cli";
+import { ledgerFileName } from "./ledger-file";
 import {
   burnRows,
+  chainCommand,
   HEADLINE_TEXT,
   headline,
   headlineNote,
@@ -360,14 +362,14 @@ describe("unproven burns (T14-R2)", () => {
       spendId: "1",
       why: "Its burn transaction could not be read right now (a node outage, or a transaction old enough to need an archival RPC).",
       hint: cli(
-        "verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --archival-rpc <archival RPC URLs>",
+        "verify --network testnet --vault v0.probarion.testnet --ledger probarion-v0.probarion.testnet-ledger.jsonl --archival-rpc <archival RPC URLs>",
       ),
     });
     expect(rows[1]).toMatchObject({
       spendId: "2",
       why: "An approver paid this held spend out. Its burn is in the approver's transaction, which was not read.",
       hint: cli(
-        "verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --burn-tx 2=<tx hash>",
+        "verify --network testnet --vault v0.probarion.testnet --ledger probarion-v0.probarion.testnet-ledger.jsonl --burn-tx 2=<tx hash>",
       ),
     });
     expect(rows[2]?.why).toBe(
@@ -375,7 +377,7 @@ describe("unproven burns (T14-R2)", () => {
     );
     expect(rows[2]?.hint).toBe(
       cli(
-        "verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --burn-tx 3=<tx hash>",
+        "verify --network testnet --vault v0.probarion.testnet --ledger probarion-v0.probarion.testnet-ledger.jsonl --burn-tx 3=<tx hash>",
       ),
     );
     expect(rows[3]?.why).toBe(
@@ -384,7 +386,7 @@ describe("unproven burns (T14-R2)", () => {
     // Mainnet v0 only: the CLI needs the documented Day-4 decisions, which are in the repository at docs/evidence.
     expect(rows[3]?.hint).toBe(
       cli(
-        `verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl ${PRE_LEDGER_FLAGS} --burn-tx 4=<tx hash>`,
+        `verify --network testnet --vault v0.probarion.testnet --ledger probarion-v0.probarion.testnet-ledger.jsonl ${PRE_LEDGER_FLAGS} --burn-tx 4=<tx hash>`,
       ),
     );
   });
@@ -401,22 +403,22 @@ describe("unproven burns (T14-R2)", () => {
     expect(row?.why).toBe("This page does not know the reason new\uFFFDreason.");
     expect(row?.hint).toBe(
       cli(
-        `verify --network mainnet --vault ${V} --ledger ledger.jsonl --burn-tx <spend_id>=<tx hash>`,
+        `verify --network mainnet --vault ${V} --ledger probarion-${V}-ledger.jsonl --burn-tx <spend_id>=<tx hash>`,
       ),
     );
     expect(row?.spendId).toBe("1;rm -rf /\uFFFD");
   });
 
-  it("tells the visitor to save the ledger first: every hint passes --ledger ledger.jsonl", () => {
+  it("The page links the vault's ledger file for it: every hint passes --ledger <that file>", () => {
     const reasons = ["tx_unavailable", "approver_tx", "not_recorded", "pre_ledger_no_tx", "other"];
     for (const network of ["mainnet", "testnet"] as const) {
       const rows = unprovenRows(unprovenReport(reasons), network, V);
       expect(rows).toHaveLength(reasons.length);
       for (const row of rows) {
-        expect(row.hint, row.reason).toContain(" --ledger ledger.jsonl --");
+        expect(row.hint, row.reason).toContain(` --ledger probarion-${V}-ledger.jsonl --`);
         expect(
           row.hint.startsWith(
-            cli(`verify --network ${network} --vault ${V} --ledger ledger.jsonl --`),
+            cli(`verify --network ${network} --vault ${V} --ledger probarion-${V}-ledger.jsonl --`),
           ),
           row.hint,
         ).toBe(true);
@@ -729,5 +731,17 @@ describe("decisions made with model output (the line under check e)", () => {
       ),
     ).toBe(1);
     expect(modelDecisionCount({ ...rulesOnly, ledger: "x" } as never)).toBe(0);
+  });
+});
+
+describe("the vault's ledger file and the chain command", () => {
+  it("names the ledger file after the vault", () => {
+    expect(ledgerFileName(V)).toBe(`probarion-${V}-ledger.jsonl`);
+  });
+
+  it("passes that file as --ledger in the chain command, so an anchored vault checks out", () => {
+    expect(chainCommand("testnet", V)).toBe(
+      cli(`verify --network testnet --vault ${V} --ledger probarion-${V}-ledger.jsonl`),
+    );
   });
 });

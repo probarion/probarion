@@ -14,12 +14,14 @@ import {
 import type { Network } from "@/lib/config";
 import type { TenantKind } from "@/lib/db/tenants";
 import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
+import { ledgerFileName } from "@/lib/proof/ledger-file";
 import { safeText } from "@/lib/proof/sanitize";
 import type { ProofErrorReason, ProofOk } from "@/lib/proof/service";
 import { snapshotFileName } from "@/lib/proof/snapshot-file";
 import {
   type BurnRow,
   burnRows,
+  chainCommand,
   HEADLINE_TEXT,
   type Headline,
   headline,
@@ -105,16 +107,20 @@ function Evidence({ links }: { links: readonly ProofLink[] }) {
   );
 }
 
-/** The ledger.jsonl link the commands pass as `--ledger`: a download, so it works in every shell. */
+/** The vault's ledger file the commands pass as `--ledger`: a download, so it works in every shell. */
 function LedgerLink({ vault }: { vault: string }) {
+  const file = ledgerFileName(vault);
   return (
-    <a className={link} href={`/proof/${vault}/ledger.jsonl`} download="ledger.jsonl">
-      ledger.jsonl
+    <a className={link} href={`/proof/${vault}/ledger.jsonl`} download={file}>
+      {file}
     </a>
   );
 }
 
 const INTO_REPO = CLI_ON_NPM ? "" : "into the repository folder ";
+/** The ledger is live: fetch it right before the command, and again once the vault has acted. */
+const JUST_BEFORE =
+  "just before you run the command (again if the vault has acted since), then run:";
 
 function Unproven({ vault, rows }: { vault: string; rows: readonly UnprovenRow[] }) {
   if (rows.length === 0) return null;
@@ -126,7 +132,8 @@ function Unproven({ vault, rows }: { vault: string; rows: readonly UnprovenRow[]
             <span className="font-medium">Spend #{u.spendId}</span> ({u.reason}): {u.why}
           </p>
           <p className="mt-1 text-xs">
-            Download <LedgerLink vault={vault} /> {INTO_REPO}(step 3 below), then run:
+            Download <LedgerLink vault={vault} /> {INTO_REPO}
+            {JUST_BEFORE}
           </p>
           <code className={codeBlock}>{u.hint}</code>
           {u.hint.includes("<tx hash>") ? (
@@ -300,8 +307,8 @@ function VerifyYourself({
           </a>
           : a snapshot of this vault (its ledger and chain data), taken when you click or shortly
           before. The verifier prints when it was taken. If it prints <code>{takenAt}</code>, it is
-          the very snapshot these checks used; otherwise it is another snapshot of this vault, older
-          or newer, and its result matches this page unless the vault changed in between.
+          the very snapshot these checks used, and it gives the same result; otherwise it is another
+          snapshot of this vault, and its result can differ from this page.
         </li>
         <li>
           {CLI_ON_NPM ? "Run" : "From the repository folder, with the file in it, run"} the
@@ -311,10 +318,9 @@ function VerifyYourself({
         </li>
         <li>
           To read the chain half again instead of trusting the file, download{" "}
-          <LedgerLink vault={vault} /> {INTO_REPO}and run:
-          <code className={codeBlock}>
-            {cli(`verify --network ${network} --vault ${vault} --ledger ledger.jsonl`)}
-          </code>
+          <LedgerLink vault={vault} /> {INTO_REPO}
+          {JUST_BEFORE}
+          <code className={codeBlock}>{chainCommand(network, vault)}</code>
         </li>
       </ol>
       <p className={`mt-5 border-t border-ink/10 pt-4 text-xs ${muted}`}>
@@ -338,13 +344,8 @@ function CliSetup() {
   return (
     <p className="mt-3 text-sm text-ink/80">
       {CLI_NOTE} Set up once, one command per line:
-      <code className={codeBlock}>
-        {CLI_SETUP_LINES.map((line) => (
-          <span key={line} className="block">
-            {line}
-          </span>
-        ))}
-      </code>
+      {/* Real newlines between the commands, so the text keeps them apart even without styles. */}
+      <code className={`${codeBlock} whitespace-pre-wrap`}>{CLI_SETUP_LINES.join("\n")}</code>
     </p>
   );
 }
@@ -476,10 +477,11 @@ function ChainCommand({ vault, network }: { vault: string; network: Network }) {
     <>
       <CliSetup />
       <p className="mt-3 text-sm">
-        {CLI_ON_NPM ? "You" : "From the repository folder, you"} can check the vault&apos;s chain
-        data yourself (without its ledger file, the ledger checks see an empty ledger):
+        {CLI_ON_NPM ? "You" : "From the repository folder, you"} can check this vault yourself,
+        reading its chain again: download <LedgerLink vault={vault} /> {INTO_REPO}
+        {JUST_BEFORE}
       </p>
-      <code className={codeBlock}>{cli(`verify --network ${network} --vault ${vault}`)}</code>
+      <code className={codeBlock}>{chainCommand(network, vault)}</code>
     </>
   );
 }

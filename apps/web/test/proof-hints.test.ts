@@ -20,18 +20,20 @@ import {
   createScenarioChain,
   SCENARIO_APPROVER,
   SCENARIO_BASE_ADDRESS,
+  SCENARIO_NEAR_PAYEE,
   SCENARIO_NOW,
   SCENARIO_PURPOSE_BASE,
+  SCENARIO_PURPOSE_NEAR,
   SCENARIO_VAULT,
   TEST_KEYS,
 } from "@probarion/sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/lib/db/port";
 import { cli } from "@/lib/proof/cli";
-import { ledgerResponse } from "@/lib/proof/ledger-file";
+import { ledgerFileName, ledgerResponse } from "@/lib/proof/ledger-file";
 import { makeProofReader } from "@/lib/proof/reader";
 import { clearProofCache, loadLedger, loadProof, type ProofOk } from "@/lib/proof/service";
-import { headline, unprovenRows } from "@/lib/proof/view";
+import { chainCommand, headline, unprovenRows } from "@/lib/proof/view";
 import { runBuiltCli, shownArgs } from "./fixtures/cli-bin";
 import { noServiceDb, publicDbFor } from "./fixtures/proof";
 import { type ChainRpc, startChainRpc } from "./fixtures/rpc";
@@ -193,7 +195,7 @@ describe("the unproven-burn hints, run as shown through the built CLI", () => {
     return r;
   }
 
-  it("approver_tx: --ledger ledger.jsonl --burn-tx <spend>=<the approver's tx> exits 0, and without --ledger it fails", async () => {
+  it("approver_tx: --ledger <the vault's ledger file> --burn-tx <spend>=<the approver's tx> exits 0, and without --ledger it fails", async () => {
     const held: SpendOutcome = await agent.process(
       invoice("Invoice B-9 for PO-2002", "B-9", "60000000"),
     );
@@ -219,11 +221,11 @@ describe("the unproven-burn hints, run as shown through the built CLI", () => {
     const [row] = unprovenRows(r.report, "testnet", SCENARIO_VAULT);
     expect(row?.hint).toBe(
       cli(
-        `verify --network testnet --vault ${SCENARIO_VAULT} --ledger ledger.jsonl --burn-tx 1=<tx hash>`,
+        `verify --network testnet --vault ${SCENARIO_VAULT} --ledger ${ledgerFileName(SCENARIO_VAULT)} --burn-tx 1=<tx hash>`,
       ),
     );
 
-    const files = { "ledger.jsonl": await downloadedLedger(await publicDb()) };
+    const files = { [ledgerFileName(SCENARIO_VAULT)]: await downloadedLedger(await publicDb()) };
     const shown = (row?.hint ?? "").replace("<tx hash>", approvedTx);
     const followed = await runShown(shown, ["--rpc", node.server.url], files, proxy.url);
     expect(followed.err).not.toMatch(/^error:/m);
@@ -231,8 +233,8 @@ describe("the unproven-burn hints, run as shown through the built CLI", () => {
     expect(followed.report?.ok).toBe(true);
 
     // Without --ledger, the CLI verifies the chain against an empty ledger and fails.
-    const withoutLedger = shown.replace(" --ledger ledger.jsonl", "");
-    expect(withoutLedger).not.toContain("ledger.jsonl");
+    const withoutLedger = shown.replace(` --ledger ${ledgerFileName(SCENARIO_VAULT)}`, "");
+    expect(withoutLedger).not.toContain("--ledger");
     expect((await runShown(withoutLedger, ["--rpc", node.server.url], {}, proxy.url)).code).toBe(1);
   });
 
@@ -249,12 +251,12 @@ describe("the unproven-burn hints, run as shown through the built CLI", () => {
     const [row] = unprovenRows(r.report, "testnet", SCENARIO_VAULT);
     expect(row?.hint).toBe(
       cli(
-        `verify --network testnet --vault ${SCENARIO_VAULT} --ledger ledger.jsonl --archival-rpc <archival RPC URLs>`,
+        `verify --network testnet --vault ${SCENARIO_VAULT} --ledger ${ledgerFileName(SCENARIO_VAULT)} --archival-rpc <archival RPC URLs>`,
       ),
     );
 
     // The visitor's regular RPC (the proxy) still cannot read `tx`, and neither can the default archival RPC.
-    const files = { "ledger.jsonl": await downloadedLedger(await publicDb()) };
+    const files = { [ledgerFileName(SCENARIO_VAULT)]: await downloadedLedger(await publicDb()) };
     const asIs = await runShown(
       (row?.hint ?? "").replace(" --archival-rpc <archival RPC URLs>", ""),
       ["--rpc", proxy.url],
@@ -267,5 +269,31 @@ describe("the unproven-burn hints, run as shown through the built CLI", () => {
     expect(followed.err).not.toMatch(/^error:/m);
     expect(followed.code).toBe(0);
     expect(followed.report?.ok).toBe(true);
+  });
+
+  it("the error views' chain command, with the vault's ledger file, exits 0 on an anchored vault (and 1 without it)", async () => {
+    const text = "Invoice INV-1 for PO-1001";
+    const paid = await agent.process({
+      text,
+      ref: "INV-1",
+      facts: {
+        invoice_hash: sha256Hex(text),
+        amount: "25000000",
+        po_ref: "PO-1001",
+        purpose_hash: SCENARIO_PURPOSE_NEAR,
+        payee_hint: { near_account: SCENARIO_NEAR_PAYEE },
+      },
+    });
+    expect(paid.status).toBe("paid");
+    expect(node.chain.anchors.length).toBeGreaterThan(0);
+    const files = { [ledgerFileName(SCENARIO_VAULT)]: await downloadedLedger(await publicDb()) };
+    const shown = chainCommand("testnet", SCENARIO_VAULT);
+    const followed = await runShown(shown, ["--rpc", node.server.url], files, proxy.url);
+    expect(followed.err).not.toMatch(/^error:/m);
+    expect(followed.code).toBe(0);
+    expect(followed.report?.ok).toBe(true);
+    // The command as the error views showed it before: no ledger, so the anchor has nothing to match.
+    const bare = shown.replace(` --ledger ${ledgerFileName(SCENARIO_VAULT)}`, "");
+    expect((await runShown(bare, ["--rpc", node.server.url], {}, proxy.url)).code).toBe(1);
   });
 });

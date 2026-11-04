@@ -4,7 +4,7 @@ import type { LedgerEntry, Snapshot } from "@probarion/core";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Db } from "@/lib/db/port";
+import { type Db, DbError } from "@/lib/db/port";
 import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 import { ProofEvidenceError } from "@/lib/proof/evidence";
 import { clearProofCache, type ProofDeps } from "@/lib/proof/service";
@@ -241,15 +241,16 @@ describe("/proof/[vault]", () => {
     expect(t).toContain("Spend #1");
     expect(t).toContain("No payment entry in the ledger names the transaction that burned it.");
     expect(t).toContain(
-      `Download ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}(step 3 below), then run:`,
+      `Download probarion-${snapshot.vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}just before you run the command (again if the vault has acted since), then run:`,
     );
     expect(out).toContain(`href="/proof/${snapshot.vault}/ledger.jsonl"`);
+    expect(out).toContain(`download="probarion-${snapshot.vault}-ledger.jsonl"`);
     expect(t).toContain(
       "Find the tx hash on the vault&#x27;s explorer page: the transaction that paid the spend, or the approver&#x27;s approve transaction.",
     );
     expect(t).toContain(
       cli(
-        `verify --network mainnet --vault ${snapshot.vault} --ledger ledger.jsonl --burn-tx 1=&lt;tx hash&gt;`,
+        `verify --network mainnet --vault ${snapshot.vault} --ledger probarion-${snapshot.vault}-ledger.jsonl --burn-tx 1=&lt;tx hash&gt;`,
       ),
     );
   });
@@ -275,10 +276,12 @@ describe("/proof/[vault]", () => {
     const t = text(out);
     expect(t).toContain(cli(`verify --offline probarion-${snapshot.vault}-snapshot.json`));
     expect(t).toContain(
-      cli(`verify --network testnet --vault ${snapshot.vault} --ledger ledger.jsonl`),
+      cli(
+        `verify --network testnet --vault ${snapshot.vault} --ledger probarion-${snapshot.vault}-ledger.jsonl`,
+      ),
     );
     expect(t).toContain(
-      `To read the chain half again instead of trusting the file, download ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}and run:`,
+      `To read the chain half again instead of trusting the file, download probarion-${snapshot.vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}just before you run the command (again if the vault has acted since), then run:`,
     );
     expect(out).toContain(`href="/proof/${snapshot.vault}/ledger.jsonl"`);
     if (!CLI_ON_NPM) expect(t).not.toContain("npx probarion");
@@ -290,11 +293,13 @@ describe("/proof/[vault]", () => {
     // The page's taken_at in full, as the CLI prints it ("snapshot taken <taken_at>").
     expect(snapshot.taken_at).toBe("2026-11-08T12:00:00.000Z");
     const step1 =
-      "a snapshot of this vault (its ledger and chain data), taken when you click or shortly before. The verifier prints when it was taken. If it prints 2026-11-08T12:00:00.000Z , it is the very snapshot these checks used; otherwise it is another snapshot of this vault, older or newer, and its result matches this page unless the vault changed in between.";
+      "a snapshot of this vault (its ledger and chain data), taken when you click or shortly before. The verifier prints when it was taken. If it prints 2026-11-08T12:00:00.000Z , it is the very snapshot these checks used, and it gives the same result; otherwise it is another snapshot of this vault, and its result can differ from this page.";
     expect(t).toContain(step1);
     expect(t).toContain("snapshot taken 2026-11-08T12:00:00.000Z");
     expect(t).toContain("Checked 2026-11-09 10:00 UTC");
     for (const gone of [
+      "matches this page unless",
+      "unless the vault changed",
       "newer one",
       "up to a minute",
       "Within a minute of this page",
@@ -315,8 +320,10 @@ describe("/proof/[vault]", () => {
     }
     expect(t).toContain(CLI_NOTE);
     // The four set-up commands, one per line (as React writes them: & and " escaped).
-    const setup = CLI_SETUP_LINES.map((l) => l.replaceAll('"', "&quot;"));
-    expect(out).toContain(setup.map((l) => `<span class="block">${l}</span>`).join(""));
+    // Four commands separated by real newlines, so text without styles (an AI reading the page, say) keeps them apart.
+    const raw = out.replace(/<[^>]+>/g, "").replaceAll("&quot;", '"');
+    expect(raw).toContain(CLI_SETUP_LINES.join("\n"));
+    expect(out).toMatch(/whitespace-pre-wrap/);
     expect(t).toContain(
       "From the repository folder, with the file in it, run the open-source verifier. It needs no network and no keys, and prints the result per check for that snapshot:",
     );
@@ -423,12 +430,18 @@ describe("/proof/[vault]", () => {
     expect(t).not.toContain("All offline checks pass");
     expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "chain" }]);
     // The chain command comes after the set-up, and runs from the repository folder.
-    const command = cli("verify --network mainnet --vault acme.vaults.probarion.near");
+    const vault = "acme.vaults.probarion.near";
+    const command = cli(
+      `verify --network mainnet --vault ${vault} --ledger probarion-${vault}-ledger.jsonl`,
+    );
     expect(t).toContain(command);
+    expect(t).toContain(
+      `download probarion-${vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}just before you run the command (again if the vault has acted since), then run:`,
+    );
     if (!CLI_ON_NPM) {
       expect(t.indexOf(CLI_NOTE)).toBeGreaterThan(-1);
       expect(t.indexOf(CLI_NOTE)).toBeLessThan(t.indexOf(command));
-      expect(t).toContain("From the repository folder, you can check the vault");
+      expect(t).toContain("From the repository folder, you can check this vault yourself");
     }
   });
 
@@ -610,7 +623,9 @@ describe("/proof/[vault]/ledger.jsonl", () => {
     const res = await getLedger(snapshot.vault);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/x-ndjson; charset=utf-8");
-    expect(res.headers.get("content-disposition")).toBe('attachment; filename="ledger.jsonl"');
+    expect(res.headers.get("content-disposition")).toBe(
+      `attachment; filename="probarion-${snapshot.vault}-ledger.jsonl"`,
+    );
     expect(res.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
     expect(await res.text()).toBe(snapshot.ledger.map((e) => `${JSON.stringify(e)}\n`).join(""));
     expect(h.limitCalls).toEqual(["ledger:203.0.113.7"]);
@@ -662,5 +677,36 @@ describe("/proof/[vault]/ledger.jsonl", () => {
     const res = await getLedger(snapshot.vault);
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+});
+
+describe("a database error before the access check", () => {
+  it("shows the page's no-result state, and both downloads answer 503", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot, {
+      publicDb: {
+        rpc: async () => {
+          throw new DbError("db_error", "connection reset");
+        },
+      },
+    });
+    const t = text(await html(snapshot.vault));
+    expect(t).toContain("No result: the checks did not run");
+    expect(t).toContain("could not be read from Probarion&#x27;s database right now");
+    const snap = await GET(
+      new Request(`https://probarion.xyz/proof/${snapshot.vault}/snapshot.json`, {
+        headers: { "x-forwarded-for": "203.0.113.7" },
+      }),
+      params(snapshot.vault),
+    );
+    expect(snap.status).toBe(503);
+    const ledger = await GET_LEDGER(
+      new Request(`https://probarion.xyz/proof/${snapshot.vault}/ledger.jsonl`, {
+        headers: { "x-forwarded-for": "203.0.113.7" },
+      }),
+      params(snapshot.vault),
+    );
+    expect(ledger.status).toBe(503);
+    expect(await ledger.json()).toEqual({ error: "unavailable" });
   });
 });

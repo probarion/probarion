@@ -9,6 +9,7 @@ import {
 import { explorerAccountUrl, explorerTxUrl, type Network } from "@/lib/config";
 import { formatUsdc } from "@/lib/near/units";
 import { cli, PRE_LEDGER_FLAGS } from "./cli";
+import { ledgerFileName } from "./ledger-file";
 import { safeText } from "./sanitize";
 
 // What /proof shows, as plain data. Every string that came from the ledger or the chain goes through `safeText`, and
@@ -195,11 +196,21 @@ const WHY: ReadonlyMap<string, string> = new Map([
   ],
 ]);
 
+/**
+ * The command that re-reads the vault's chain with its signed ledger (the error views offer it). Without `--ledger`
+ * the CLI would check the chain against an empty ledger, and any vault with an anchor would fail.
+ */
+export function chainCommand(network: Network, vault: string): string {
+  return cli(`verify --network ${network} --vault ${vault} --ledger ${ledgerFileName(vault)}`);
+}
+
 /** Each burn check h could not prove, why, and how to prove it (T14-R2). */
 export function unprovenRows(report: VerifyReport, network: Network, vault: string): UnprovenRow[] {
   // The ledger of a web vault is in the database, not on the visitor's disk: without --ledger the CLI would check
-  // the chain against an empty ledger and fail. The page tells the visitor to save it from the snapshot first.
-  const verify = cli(`verify --network ${network} --vault ${vault} --ledger ledger.jsonl`);
+  // the chain against an empty ledger and fail. The page links the vault's ledger file for it.
+  const verify = cli(
+    `verify --network ${network} --vault ${vault} --ledger ${ledgerFileName(vault)}`,
+  );
   return listOf(report.unproven)
     .filter(isObject)
     .map((u) => {
