@@ -17,7 +17,7 @@ const NETWORK = process.env.NEXT_PUBLIC_NEAR_NETWORK === "mainnet" ? "mainnet" :
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-stone-50 text-stone-900 antialiased">
+      <body className="min-h-screen bg-paper text-ink antialiased">
         {/* The wallet context wraps the whole page, so a nav or footer widget can use it too. */}
         <WalletProvider network={NETWORK}>
           <div className="bg-amber-100 px-4 py-1 text-center text-xs text-amber-900">

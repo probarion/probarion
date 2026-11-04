@@ -1,15 +1,23 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Notice } from "@/components/ui";
+import { publicDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
-import { proofIndexTarget } from "@/lib/proof/view";
+import { publicDemoTarget } from "@/lib/proof/service";
 
 export const metadata: Metadata = { title: "Proof" };
 export const dynamic = "force-dynamic";
 
-/** `/proof` with no vault: the demo vault (PROBARION_VAULT_ID), when one is set. */
-export default function ProofIndex() {
-  const target = proofIndexTarget(getEnv().PROBARION_VAULT_ID);
+/**
+ * `/proof` with no vault: the demo vault (PROBARION_VAULT_ID), when its proof page is public on this network.
+ * Otherwise, rather than a redirect to a 404, it says how to open a vault's page.
+ */
+export default async function ProofIndex() {
+  const env = getEnv();
+  const target = await publicDemoTarget(
+    { publicDb: publicDb(), network: env.NEAR_NETWORK },
+    env.PROBARION_VAULT_ID,
+  );
   if (target) redirect(target);
   return (
     <div className="mx-auto max-w-3xl">

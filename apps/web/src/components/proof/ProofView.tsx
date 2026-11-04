@@ -1,12 +1,23 @@
 import type { ReactNode } from "react";
 import { RouteLink } from "@/components/RouteLink";
-import { Badge, Notice, type Tone } from "@/components/ui";
+import {
+  Badge,
+  brandCardClass,
+  ExternalLink,
+  inkPillClass,
+  linePillClass,
+  Notice,
+  PANEL_TONES,
+  type PanelTone,
+  type Tone,
+} from "@/components/ui";
 import type { Network } from "@/lib/config";
 import type { TenantKind } from "@/lib/db/tenants";
 import { safeText } from "@/lib/proof/sanitize";
-import type { ProofOk } from "@/lib/proof/service";
+import type { ProofErrorReason, ProofOk } from "@/lib/proof/service";
 import { snapshotFileName } from "@/lib/proof/snapshot-file";
 import {
+  attestedCount,
   type BurnRow,
   burnRows,
   HEADLINE_TEXT,
@@ -30,12 +41,12 @@ const KIND_LABEL: Readonly<Record<TenantKind, string>> = {
   canary: "Canary challenge",
 };
 
-/** Status colours carry meaning: green passed, amber not proven, red failed. Nothing else uses them here. */
-const PANEL: Readonly<Record<Headline | "error", { box: string; dot: string }>> = {
-  ok: { box: "border-emerald-200 bg-emerald-50 text-emerald-950", dot: "bg-emerald-600" },
-  unproven: { box: "border-amber-200 bg-amber-50 text-amber-950", dot: "bg-amber-500" },
-  failed: { box: "border-rose-200 bg-rose-50 text-rose-950", dot: "bg-rose-600" },
-  error: { box: "border-amber-200 bg-amber-50 text-amber-950", dot: "bg-amber-500" },
+/** Status colours carry meaning: green passed, amber not proven (or no result), red failed. */
+const PANEL: Readonly<Record<Headline | "error", PanelTone>> = {
+  ok: "good",
+  unproven: "warn",
+  failed: "bad",
+  error: "warn",
 };
 
 const STATUS: Readonly<Record<ProofStatus, { tone: Tone; label: string }>> = {
@@ -53,12 +64,8 @@ const BURN_STATUS: Readonly<Record<BurnRow["status"], { tone: Tone; label: strin
   unknown: { tone: "neutral", label: "unknown" },
 };
 
-const pill =
-  "inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-colors";
-const inkPill = `${pill} bg-ink text-paper hover:bg-ink/85`;
-const linePill = `${pill} border border-ink/15 text-ink hover:bg-ink/5`;
 const link = "text-ink underline decoration-ink/30 hover:decoration-ink";
-const section = "mb-6 rounded-3xl border border-ink/10 bg-white p-5 sm:p-7";
+const section = brandCardClass;
 const sectionTitle = "text-lg font-light tracking-tight text-ink sm:text-xl";
 const muted = "text-ink/60";
 const codeBlock =
@@ -81,13 +88,15 @@ function Evidence({ links }: { links: readonly ProofLink[] }) {
           </li>
         ) : (
           <li key={l.href}>
-            <a
-              className={link}
-              href={l.href}
-              {...(l.href.startsWith("/") ? {} : { target: "_blank", rel: "noreferrer" })}
-            >
-              {l.label}
-            </a>
+            {l.href.startsWith("/") ? (
+              <a className={link} href={l.href}>
+                {l.label}
+              </a>
+            ) : (
+              <ExternalLink className={link} href={l.href}>
+                {l.label}
+              </ExternalLink>
+            )}
           </li>
         ),
       )}
@@ -104,7 +113,9 @@ function Unproven({ rows }: { rows: readonly UnprovenRow[] }) {
           <p>
             <span className="font-medium">Spend #{u.spendId}</span> ({u.reason}): {u.why}
           </p>
-          <p className="mt-1 text-xs">To prove it, supply what is missing:</p>
+          <p className="mt-1 text-xs">
+            Save the snapshot&apos;s ledger as JSONL (step 3 below), then run:
+          </p>
           <code className={codeBlock}>{u.hint}</code>
         </li>
       ))}
@@ -162,9 +173,9 @@ function Burns({ burns }: { burns: readonly BurnRow[] }) {
                       <span className={`font-normal ${muted}`}>({b.txNote})</span>
                     </>
                   ) : (
-                    <a className={link} href={b.txUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink className={link} href={b.txUrl}>
                       Spend #{b.spendId}
-                    </a>
+                    </ExternalLink>
                   )}
                 </p>
                 <Badge tone={status.tone}>{status.label}</Badge>
@@ -179,9 +190,9 @@ function Burns({ burns }: { burns: readonly BurnRow[] }) {
                   {b.intentsOwnerUrl === null ? (
                     b.intentsOwner
                   ) : (
-                    <a className={link} href={b.intentsOwnerUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink className={link} href={b.intentsOwnerUrl}>
                       {b.intentsOwner}
-                    </a>
+                    </ExternalLink>
                   )}
                 </dd>
               </dl>
@@ -204,7 +215,7 @@ function Header({
 }) {
   return (
     <header className="mb-6">
-      <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-gold-deep">
+      <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-gold-ink">
         {eyebrow}
       </p>
       <h1 className="font-mono text-2xl font-light tracking-tight text-ink break-all sm:text-3xl">
@@ -224,7 +235,7 @@ function Panel({
   title: string;
   children: ReactNode;
 }) {
-  const p = PANEL[state];
+  const p = PANEL_TONES[PANEL[state]];
   return (
     <section
       className={`mb-6 rounded-3xl border p-5 sm:p-7 ${p.box}`}
@@ -260,11 +271,14 @@ function VerifyYourself({
           <a className={link} href={`/proof/${vault}/snapshot.json`} download={file}>
             Download {file}
           </a>
-          : the ledger plus the chain data these checks used, taken {takenAt}.
+          : a fresh snapshot of this vault (its ledger and chain data). Within a minute of this page
+          it is the snapshot these checks used; the verifier prints when it was taken, so compare it
+          with {takenAt}.
         </li>
         <li>
           Run it through the open-source verifier. It needs no network and no keys, and prints the
-          same result per check as this page:
+          result per check for that snapshot; it matches this page unless the vault changed in
+          between:
           <code className={codeBlock}>npx probarion verify --offline {file}</code>
         </li>
         <li>
@@ -287,6 +301,35 @@ function VerifyYourself({
           : null}
       </p>
     </section>
+  );
+}
+
+/**
+ * The fixed line under the checks (R19), true to what check e did on this snapshot: per attested decision, what A1 to
+ * A7 prove and what they do not; with no attested decision, that check e had no model output to prove.
+ */
+function AttestationLine({ attested }: { attested: number }) {
+  const limits = (
+    <>
+      it does not verify the TDX quote (needs <code>--online</code>, and even then the measurement
+      is not pinned) or the request (needs the invoice, A8).
+    </>
+  );
+  return (
+    <p className={`mt-2 border-t border-ink/10 pt-4 text-xs ${muted}`}>
+      {attested === 0 ? (
+        <>
+          No decision in this snapshot carries an attestation, so check (e) has no model output to
+          prove here. For an attested decision it proves the signatures, the response and the ledger
+          position agree; {limits}
+        </>
+      ) : (
+        <>
+          For each attested decision ({attested} in this snapshot), check (e) here proves the
+          signatures, the response and the ledger position agree; {limits}
+        </>
+      )}
+    </p>
   );
 }
 
@@ -318,13 +361,13 @@ export function ProofView({ result }: { result: ProofOk }) {
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           <a
-            className={inkPill}
+            className={inkPillClass}
             href={`/proof/${vault}/snapshot.json`}
             download={snapshotFileName(vault)}
           >
             Download snapshot.json
           </a>
-          <a className={linePill} href="#verify">
+          <a className={linePillClass} href="#verify">
             Verify it yourself
           </a>
         </div>
@@ -342,11 +385,7 @@ export function ProofView({ result }: { result: ProofOk }) {
             <CheckItem key={row.id} row={row} unproven={unproven} />
           ))}
         </ol>
-        <p className={`mt-2 border-t border-ink/10 pt-4 text-xs ${muted}`}>
-          Check (e) here proves the signatures, the response and the ledger position agree; it does
-          not verify the TDX quote (needs <code>--online</code>, and even then the measurement is
-          not pinned) or the request (needs the invoice, A8).
-        </p>
+        <AttestationLine attested={attestedCount(snapshot)} />
       </section>
 
       <Burns burns={burns} />
@@ -355,9 +394,11 @@ export function ProofView({ result }: { result: ProofOk }) {
   );
 }
 
-const UNAVAILABLE: Readonly<Record<"evidence" | "chain", string>> = {
+const UNAVAILABLE: Readonly<Record<ProofErrorReason, string>> = {
   evidence:
     "This deployment's evidence file (content/proof-evidence.json) is malformed, so the checks were not run. Nothing on this page is a pass.",
+  ledger:
+    "This vault's signed ledger could not be read from Probarion's database right now, so the checks were not run. Nothing on this page is a pass. Try again in a minute.",
   chain:
     "The vault's chain data could not be read right now, so the checks were not run. Nothing on this page is a pass. Try again in a minute.",
 };
@@ -370,7 +411,7 @@ export function ProofUnavailable({
 }: {
   vault: string;
   network: Network;
-  reason: "evidence" | "chain";
+  reason: ProofErrorReason;
 }) {
   return (
     <div className="mx-auto max-w-3xl">

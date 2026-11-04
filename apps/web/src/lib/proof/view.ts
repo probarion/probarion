@@ -34,6 +34,8 @@ export interface ProofRow {
 const STATUSES: readonly string[] = ["pass", "fail", "skip", "unproven"];
 const DIGITS = /^(0|[1-9][0-9]*)$/;
 const ATTESTATION_DOCS = "https://docs.near.ai/cloud/verification";
+/** A check detail is core's own sentence with values in it, so it gets more room than one value. */
+const DETAIL_MAX = 1000;
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -53,7 +55,7 @@ function accountLink(network: Network, account: unknown, label?: string): ProofL
     : { label: `${safeText(account)}: not an account id`, href: null };
 }
 
-/** The last `n` ledger entries of `kind` that name a contract tx, linked by their seq. */
+/** The last `n` ledger entries of `kind` that name a contract tx, labelled by kind and seq ("payment tx, seq 3"). */
 function lastTxs(s: Snapshot, kind: string, network: Network, n = 3): ProofLink[] {
   return listOf(s.ledger)
     .filter(
@@ -65,7 +67,9 @@ function lastTxs(s: Snapshot, kind: string, network: Network, n = 3): ProofLink[
         named(e.body.contract.tx_hash),
     )
     .slice(-n)
-    .map((e) => txLink(network, e.body.contract.tx_hash, `seq ${safeText(e.body.seq)}`));
+    .map((e) =>
+      txLink(network, e.body.contract.tx_hash, `${kind} tx, seq ${safeText(e.body.seq)}`),
+    );
 }
 
 function burnsOf(s: Snapshot): Record<string, unknown>[] {
@@ -98,7 +102,7 @@ export function proofRows(report: VerifyReport, s: Snapshot, network: Network): 
     h: burnsOf(s)
       .filter((b) => named(b.tx_hash))
       .slice(-3)
-      .map((b) => txLink(network, b.tx_hash, `burn for spend #${safeText(b.spend_id)}`)),
+      .map((b) => txLink(network, b.tx_hash, `burn tx for spend #${safeText(b.spend_id)}`)),
     i:
       config.factory === null || config.factory === undefined
         ? []
@@ -115,7 +119,7 @@ export function proofRows(report: VerifyReport, s: Snapshot, network: Network): 
         id,
         name: safeText(c.name),
         status: status as ProofStatus,
-        detail: safeText(c.detail),
+        detail: safeText(c.detail, DETAIL_MAX),
         ...(typeof c.firstBrokenSeq === "number" ? { firstBrokenSeq: c.firstBrokenSeq } : {}),
         links: Object.hasOwn(links, id) ? links[id] : [],
       };
@@ -192,7 +196,9 @@ const WHY: ReadonlyMap<string, string> = new Map([
 
 /** Each burn check h could not prove, why, and how to prove it (T14-R2). */
 export function unprovenRows(report: VerifyReport, network: Network, vault: string): UnprovenRow[] {
-  const verify = `npx probarion verify --network ${network} --vault ${vault}`;
+  // The ledger of a web vault is in the database, not on the visitor's disk: without --ledger the CLI would check
+  // the chain against an empty ledger and fail. The page tells the visitor to save it from the snapshot first.
+  const verify = `npx probarion verify --network ${network} --vault ${vault} --ledger ledger.jsonl`;
   return listOf(report.unproven)
     .filter(isObject)
     .map((u) => {
@@ -234,7 +240,11 @@ export function headline(report: VerifyReport): Headline {
 export function headlineNote(report: VerifyReport): string {
   const state = headline(report);
   if (state === "ok") {
-    return "Every check ran on the snapshot below, and none failed or is unproven.";
+    // Only check i can skip (a vault outside the factory); say so rather than imply it ran.
+    const skipped = listOf(report.checks)
+      .filter((c): c is Record<string, unknown> => isObject(c) && c.status === "skip")
+      .map((c) => ` Check (${safeText(c.id)}) was skipped: ${safeText(c.detail)}.`);
+    return `No check failed or is unproven on this snapshot.${skipped.join("")}`;
   }
   if (state === "unproven") {
     const n = listOf(report.unproven).length;
@@ -253,4 +263,19 @@ export function headlineNote(report: VerifyReport): string {
 /** `/proof` with no vault shows the demo vault (PROBARION_VAULT_ID), as plan 05 documents. */
 export function proofIndexTarget(demoVault: string | null): string | null {
   return demoVault !== null && isNearAccountId(demoVault) ? `/proof/${demoVault}` : null;
+}
+
+/**
+ * How many ledger entries carry an attestation and were not decided by rules only: what check e proves something
+ * about. With none, the line under the checks says check e has no model output to prove.
+ */
+export function attestedCount(s: Snapshot): number {
+  return listOf(s.ledger).filter(
+    (e) =>
+      isObject(e) &&
+      isObject(e.body) &&
+      e.body.evidence !== null &&
+      e.body.evidence !== undefined &&
+      e.body.decided_by !== "rules-only",
+  ).length;
 }

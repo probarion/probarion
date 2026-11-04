@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import type { LedgerStore } from "@probarion/sdk";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Db } from "@/lib/db/port";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Db, DbError } from "@/lib/db/port";
 import { PublicLedgerStore, SupabaseLedgerStore } from "@/lib/ledger/store";
 import { ProofEvidenceError } from "@/lib/proof/evidence";
-import { clearProofCache, loadProof, type ProofDeps } from "@/lib/proof/service";
+import { clearProofCache, loadProof, type ProofDeps, publicDemoTarget } from "@/lib/proof/service";
 import { appendBody, testSigner } from "../fixtures/ledger";
 import { makeSnapshot } from "../fixtures/snapshot";
 import { freshDb, seedTenant } from "./harness";
@@ -46,7 +46,16 @@ describe("loadProof", () => {
   afterAll(async () => {
     await pg.close();
   });
-  beforeEach(() => clearProofCache());
+  /** Lines the service logs (proof.unavailable); kept off the test output and asserted where they matter. */
+  let warned: string[] = [];
+  beforeEach(() => {
+    clearProofCache();
+    warned = [];
+    vi.spyOn(console, "warn").mockImplementation((line: unknown) => {
+      warned.push(String(line));
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
 
   const deps = (account: string | null, over: Partial<ProofDeps> = {}) => {
     const publicCalls: string[] = [];
@@ -181,7 +190,7 @@ describe("loadProof", () => {
   it("shows an error, never a pass, when the evidence file is malformed, and caches nothing", async () => {
     const broken = deps(null, {
       makeReader: vi.fn(() => {
-        throw new ProofEvidenceError("content/proof-evidence.json: the file is not a JSON object");
+        throw new ProofEvidenceError("the file is not a JSON object");
       }),
     });
     expect(await loadProof(broken.d, PUBLIC)).toEqual({
@@ -190,6 +199,13 @@ describe("loadProof", () => {
       vault: PUBLIC,
       network: "mainnet",
     });
+    expect(warned.map((l) => JSON.parse(l))).toMatchObject([
+      {
+        msg: "proof.unavailable",
+        reason: "evidence",
+        error: "content/proof-evidence.json: the file is not a JSON object",
+      },
+    ]);
     const { d, makeReader } = deps(null);
     expect((await loadProof(d, PUBLIC)).status).toBe("ok");
     expect(makeReader).toHaveBeenCalledTimes(1);
@@ -209,6 +225,80 @@ describe("loadProof", () => {
       vault: PUBLIC,
       network: "mainnet",
     });
+    expect(warned.map((l) => JSON.parse(l))).toMatchObject([
+      { msg: "proof.unavailable", reason: "chain" },
+    ]);
     expect((await loadProof(deps(null).d, PUBLIC)).status).toBe("ok");
+  });
+
+  it("says the ledger could not be read when the public ledger is malformed or the database fails", async () => {
+    for (const [why, answer] of [
+      ["a row that is not an entry", async () => [{ seq: 0 }]],
+      [
+        "a database error",
+        async () => {
+          throw new DbError("db_error", "connection reset");
+        },
+      ],
+    ] as const) {
+      clearProofCache();
+      const { d } = deps(null);
+      const real = d.publicDb;
+      d.publicDb = {
+        rpc: async <T>(fn: string, p?: Record<string, unknown>) =>
+          fn === "public_ledger" ? ((await answer()) as T) : real.rpc<T>(fn, p),
+      };
+      expect(await loadProof(d, PUBLIC), why).toEqual({
+        status: "error",
+        reason: "ledger",
+        vault: PUBLIC,
+        network: "mainnet",
+      });
+    }
+  });
+});
+
+describe("publicDemoTarget (/proof with no vault)", () => {
+  let pg: PGlite;
+  beforeAll(async () => {
+    pg = await freshDb();
+    await seedTenant(pg, {
+      vault: PUBLIC,
+      owner: "probarion.near",
+      kind: "team",
+      proofPublic: true,
+    });
+    await seedTenant(pg, { vault: PRIVATE, owner: "s.near", proofPublic: false });
+  });
+  afterAll(async () => {
+    await pg.close();
+  });
+
+  it("sends the visitor to the demo vault only when its proof page is public on this network", async () => {
+    const anon = pgliteDb(pg, "anon");
+    expect(await publicDemoTarget({ publicDb: anon, network: "mainnet" }, PUBLIC)).toBe(
+      `/proof/${PUBLIC}`,
+    );
+    expect(await publicDemoTarget({ publicDb: anon, network: "testnet" }, PUBLIC)).toBeNull();
+    expect(await publicDemoTarget({ publicDb: anon, network: "mainnet" }, PRIVATE)).toBeNull();
+    expect(
+      await publicDemoTarget(
+        { publicDb: anon, network: "mainnet" },
+        "nobody.vaults.probarion.near",
+      ),
+    ).toBeNull();
+    expect(await publicDemoTarget({ publicDb: anon, network: "mainnet" }, null)).toBeNull();
+  });
+
+  it("asks the database nothing for a missing or invalid demo vault", async () => {
+    const calls: string[] = [];
+    const db = counted(pgliteDb(pg, "anon"), calls);
+    for (const demo of [null, "", "../etc", "Not A Vault"]) {
+      expect(
+        await publicDemoTarget({ publicDb: db, network: "mainnet" }, demo),
+        String(demo),
+      ).toBeNull();
+    }
+    expect(calls).toEqual([]);
   });
 });

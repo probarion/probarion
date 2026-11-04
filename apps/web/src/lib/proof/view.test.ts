@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { proofSnapshot, txHash } from "../../../test/fixtures/proof";
 import { makeSnapshot } from "../../../test/fixtures/snapshot";
 import {
+  attestedCount,
   burnRows,
   HEADLINE_TEXT,
   headline,
@@ -102,8 +103,9 @@ describe("proof rows", () => {
     expect(hrefs(rows, "g")).toEqual(["https://nearblocks.io/address/intents.near"]);
     expect(hrefs(rows, "h")).toContain(`https://nearblocks.io/txns/${BURN}`);
     expect(hrefs(rows, "i")).toEqual(["https://nearblocks.io/address/vaults.probarion.near"]);
-    expect(by.d?.links.find((l) => l.href?.endsWith(PAY))?.label).toBe("seq 1");
-    expect(by.h?.links[0]?.label).toBe("burn for spend #1");
+    expect(by.d?.links.find((l) => l.href?.endsWith(PAY))?.label).toBe("payment tx, seq 1");
+    expect(by.h?.links[0]?.label).toBe("burn tx for spend #1");
+    expect(by.c?.links[0]?.label).toBe("anchor tx, seq 2");
   });
 
   it("keeps each check's name, detail and status", () => {
@@ -193,9 +195,9 @@ describe("proof rows", () => {
       ],
     });
     const by = byId(proofRows(report, bad, "mainnet"));
-    expect(by.d?.links).toEqual([{ label: "seq 0: malformed tx hash", href: null }]);
-    expect(by.c?.links[0]).toEqual({ label: "seq 1: malformed tx hash", href: null });
-    expect(by.h?.links).toEqual([{ label: "burn for spend #4: malformed tx hash", href: null }]);
+    expect(by.d?.links).toEqual([{ label: "payment tx, seq 0: malformed tx hash", href: null }]);
+    expect(by.c?.links[0]).toEqual({ label: "anchor tx, seq 1: malformed tx hash", href: null });
+    expect(by.h?.links).toEqual([{ label: "burn tx for spend #4: malformed tx hash", href: null }]);
     const burn = burnRows(bad, "mainnet")[0];
     expect(burn?.txUrl).toBeNull();
     expect(burn?.txNote).toBe("malformed tx hash");
@@ -269,7 +271,7 @@ describe("proof rows", () => {
     const [row, h] = proofRows(r, s, "mainnet");
     const shown = [row?.name, row?.detail, ...(row?.links ?? []).map((l) => l.label)].join("|");
     // The burn link of check h is labelled with the spend id the chain gave.
-    expect(h?.links[0]?.label).toBe("burn for spend #7pass\uFFFDliaf\uFFFD\uFFFD");
+    expect(h?.links[0]?.label).toBe("burn tx for spend #7pass\uFFFDliaf\uFFFD\uFFFD");
     const burn = burnRows(s, "mainnet")[0];
     const burnShown = Object.values(burn ?? {}).join("|");
     for (const text of [shown, burnShown]) {
@@ -356,18 +358,18 @@ describe("unproven burns (T14-R2)", () => {
     expect(rows[0]).toMatchObject({
       spendId: "1",
       why: "Its burn transaction could not be read right now (a node outage, or a transaction old enough to need an archival RPC).",
-      hint: "npx probarion verify --network testnet --vault v0.probarion.testnet --archival-rpc <archival RPC URLs>",
+      hint: "npx probarion verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --archival-rpc <archival RPC URLs>",
     });
     expect(rows[1]).toMatchObject({
       spendId: "2",
       why: "An approver paid this held spend out. Its burn is in the approver's transaction, which was not read.",
-      hint: "npx probarion verify --network testnet --vault v0.probarion.testnet --burn-tx 2=<tx hash>",
+      hint: "npx probarion verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --burn-tx 2=<tx hash>",
     });
     expect(rows[2]?.why).toBe(
       "No payment entry in the ledger names the transaction that burned it.",
     );
     expect(rows[2]?.hint).toBe(
-      "npx probarion verify --network testnet --vault v0.probarion.testnet --burn-tx 3=<tx hash>",
+      "npx probarion verify --network testnet --vault v0.probarion.testnet --ledger ledger.jsonl --burn-tx 3=<tx hash>",
     );
     expect(rows[3]?.why).toBe(
       "It predates the signed ledger, and nobody has supplied the transaction that burned it.",
@@ -386,9 +388,26 @@ describe("unproven burns (T14-R2)", () => {
     expect(row?.reason).toBe("new\uFFFDreason");
     expect(row?.why).toBe("This page does not know the reason new\uFFFDreason.");
     expect(row?.hint).toBe(
-      `npx probarion verify --network mainnet --vault ${V} --burn-tx <spend_id>=<tx hash>`,
+      `npx probarion verify --network mainnet --vault ${V} --ledger ledger.jsonl --burn-tx <spend_id>=<tx hash>`,
     );
     expect(row?.spendId).toBe("1;rm -rf /\uFFFD");
+  });
+
+  it("tells the visitor to save the ledger first: every hint passes --ledger ledger.jsonl", () => {
+    const reasons = ["tx_unavailable", "approver_tx", "not_recorded", "pre_ledger_no_tx", "other"];
+    for (const network of ["mainnet", "testnet"] as const) {
+      const rows = unprovenRows(unprovenReport(reasons), network, V);
+      expect(rows).toHaveLength(reasons.length);
+      for (const row of rows) {
+        expect(row.hint, row.reason).toContain(" --ledger ledger.jsonl --");
+        expect(
+          row.hint.startsWith(
+            `npx probarion verify --network ${network} --vault ${V} --ledger ledger.jsonl --`,
+          ),
+          row.hint,
+        ).toBe(true);
+      }
+    }
   });
 
   it("lists none when nothing is unproven, or when the list is not a list", () => {
@@ -577,18 +596,29 @@ describe("the sentence under the headline", () => {
     ...over,
   });
 
-  it("ok: says every check ran and none failed or is unproven", () => {
+  it("ok: says no check failed or is unproven on this snapshot, and names a skipped check", () => {
     expect(
       headlineNote(
         withChecks(
           [
             ["a", "pass"],
-            ["i", "skip"],
+            ["i", "pass"],
           ],
           { ok: true },
         ),
       ),
-    ).toBe("Every check ran on the snapshot below, and none failed or is unproven.");
+    ).toBe("No check failed or is unproven on this snapshot.");
+    const skipped = withChecks(
+      [
+        ["a", "pass"],
+        ["i", "skip"],
+      ],
+      { ok: true },
+    );
+    (skipped.checks[1] as { detail: string }).detail = "not a factory vault";
+    expect(headlineNote(skipped)).toBe(
+      "No check failed or is unproven on this snapshot. Check (i) was skipped: not a factory vault.",
+    );
   });
 
   it("unproven: counts the burned spends, in the singular and the plural", () => {
@@ -631,5 +661,27 @@ describe("the sentence under the headline", () => {
     const evil = withChecks([["c", "fail"]]);
     (evil.checks[0] as { id: string }).id = `c${String.fromCharCode(0x202e)}`;
     expect(headlineNote(evil)).toBe("Failed: check (c\uFFFD).");
+  });
+});
+
+describe("attested decisions (the line under check e)", () => {
+  it("counts the ledger entries that carry an attestation and are not decided by rules only", () => {
+    const att = (decided_by: unknown, evidence: unknown) =>
+      ({ body: { seq: 0, kind: "decision", decided_by, evidence } }) as never;
+    const none = makeSnapshot({ vault: V, ledgerKey: "k", ledger: [entry(0, "decision", null)] });
+    expect(attestedCount(none)).toBe(0);
+    const mixed = makeSnapshot({
+      vault: V,
+      ledgerKey: "k",
+      ledger: [
+        att("model+rules", { quote: "q" }),
+        att("rules-only", { quote: "q" }),
+        att("model+rules", null),
+        att("model+rules", undefined),
+        "junk" as never,
+      ],
+    });
+    expect(attestedCount(mixed)).toBe(1);
+    expect(attestedCount({ ...none, ledger: "x" } as never)).toBe(0);
   });
 });

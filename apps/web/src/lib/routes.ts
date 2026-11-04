@@ -28,6 +28,7 @@ export interface NavItem {
 
 export const SITE_NAV: readonly NavItem[] = [
   { route: "/console", label: "Console" },
+  { route: "/proof", label: "Proof" },
   { route: "/canary", label: "Canary" },
   { route: "/open", label: "Open metrics" },
   { route: "/security", label: "Security" },

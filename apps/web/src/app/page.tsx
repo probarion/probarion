@@ -25,11 +25,15 @@ export default function Home() {
           : make a gullible agent pay you. The contract decides.
         </Card>
         <Card title="Verify">
+          <RouteLink className="underline" route="/proof">
+            Proof page
+          </RouteLink>
+          : a vault&apos;s checks (a) to (i) with explorer links, and a snapshot you can verify
+          yourself with <code>npx probarion verify --offline</code>.{" "}
           <RouteLink className="underline" route="/open">
             Open metrics
           </RouteLink>
-          : public numbers anyone can check. A proof page for every vault and{" "}
-          <code>probarion verify --offline</code> are coming.
+          : public numbers anyone can check.
         </Card>
       </div>
     </div>

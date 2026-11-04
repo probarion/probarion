@@ -10,9 +10,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * The snapshot the proof page checked, for `npx probarion verify --offline <file>` (interfaces §11). Same access
- * rules and the same 60 s result as the page. An id that is not a NEAR account is a 404 before any database or RPC
- * call, so only a validated id ever reaches the file name.
+ * A snapshot of the vault (its ledger and chain data), for `npx probarion verify --offline <file>` (interfaces §11).
+ * Same access rules as the page. While the page's result is in this instance's 60 s cache, it is the very snapshot the
+ * page checked; after that, or on another instance, it is a freshly gathered one. The page says so: the verifier
+ * prints the snapshot's taken_at, and its result matches the page unless the vault changed in between. An id that is
+ * not a NEAR account is a 404 before any database or RPC call, so only a validated id reaches the file name.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ vault: string }> }) {
   const { vault } = await params;
