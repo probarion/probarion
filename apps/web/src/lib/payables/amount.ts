@@ -1142,10 +1142,11 @@ function twoTitles(
  * The invoice title a payable document must have in its first eight non-blank lines, on the unspaced skeleton: the
  * title alone ("INVOICE", "Tax Invoice", "Commercial invoice", "Sales invoice", "Acme Ltd \u2014 Invoice"), with a
  * number label ("Invoice #", "Invoice No.", "Invoice number"), or with a number on the line ("Invoice INV-1001",
- * "Invoice: 1001", "Invoice 2026-09").
+ * "Invoice: 1001", "Invoice 2026-09"). Each blank run is read by one quantifier only and the id is looked for within
+ * 64 characters, so a title line of long blank runs reads in linear time (ruling W-T13-B18).
  */
 const INVOICE_TITLE = new RegExp(
-  `^${TITLE_LEAD}${INVOICE_WORD}(?![a-z])(?:[^a-z0-9]*$|[ \\t]*(?:#|no\\.?(?![a-z])|number|num\\.?(?![a-z])|n\\u00b0)?[ \\t:#.]*(?:[^a-z0-9]*$|(?=[^\\s]*\\d)[^\\s(]+))`,
+  `^${TITLE_LEAD}${INVOICE_WORD}(?![a-z])(?:[^a-z0-9]*$|(?:[ \\t]*(?:#|no\\.?(?![a-z])|number|num\\.?(?![a-z])|n\\u00b0))?(?:[^a-z0-9]*$|[ \\t:#.]*(?=[^\\s]{0,64}\\d)[^\\s(]))`,
 );
 function invoiceTitled(v: Views, lines: readonly number[]): boolean {
   for (const i of lines.slice(0, HEADER_LINES)) {
@@ -1629,10 +1630,11 @@ function withoutBorders(line: string): string {
 /**
  * B4: an invoice-number token (after "Invoice #/No./n\u00b0/number/num.", "INV" or "#") that still holds a non-ASCII
  * character once the number view has folded dashes, blanks and look-alike digits ("INV-1\u3007 01", "1\u0555\u05551").
- * The token is read up to 64 characters, so the check stays linear on a long run with no space.
+ * The token is read up to 64 characters and the blanks after the label by one quantifier, so the check stays linear
+ * on a long run with no space and on a long run of blanks or line ends.
  */
 const UNFOLDED_NUMBER =
-  /(?:(?<![a-z])invoice\s*(?:#|no\.?|n\u00b0|number|num\.?)\s*[:#.]?\s*|(?<![a-z])inv|(?:^|\s)#\s*)[^\s]{0,64}[^\p{ASCII}\s]/imu;
+  /(?:(?<![a-z])invoice\s*(?:#|no\.?|n\u00b0|number|num\.?)\s*(?:[:#.]\s*)?|(?<![a-z])inv|(?:^|\s)#\s*)[^\s]{0,64}[^\p{ASCII}\s]/imu;
 
 /** Lines up to this long share their views and checks with equal lines (longer ones are rare and read alone). */
 const MEMO_LINE = 512;
@@ -1964,3 +1966,145 @@ export function readAmount(text: string): AmountRead {
     return refuse("unreadable");
   }
 }
+
+/**
+ * Every RegExp this module declares at the top level, by name, plus the strict contexts `codeUse` compiles for a
+ * word-like code and for NEAR: for the ReDoS battery (amount.redos.test.ts), which also reads each regex literal
+ * from the source. Not for use in code.
+ */
+export const REGEXES_FOR_TESTS: Readonly<Record<string, RegExp>> = {
+  LINE_ENDS,
+  LONE_SURROGATE,
+  ASCII,
+  UNTRUSTED,
+  NUMERAL_RUNS,
+  NUMERAL,
+  INVISIBLE,
+  INVISIBLE_G,
+  MARK,
+  MARK_G,
+  LETTER,
+  ASCII_LETTER,
+  SMALL_CAPITALS,
+  SPACED,
+  SEPARATOR_RUN,
+  PAYABLE,
+  PAYABLE_G,
+  MONEY_WORD,
+  MONEY_WORD_G,
+  NOT_PAYABLE,
+  GLUED,
+  GLUED_G,
+  NUMBER_WORD,
+  PARTIAL,
+  NOUN_LABEL,
+  NOUN_LABEL_G,
+  VERB_LABEL,
+  WORD_PAIR,
+  PAID_HOW_G,
+  PAID_TERM,
+  ON_NETWORK,
+  PAID_STATE,
+  PAYMENT_MADE,
+  STATUS_LABEL,
+  PAID_INSTRUCTION,
+  ITEM_NAMED,
+  ITEM_FIRST,
+  ITEM_DEDUCTS,
+  BALANCE_PAID,
+  STATUS_PHRASE,
+  NOT_OWED,
+  STATUS_LINE,
+  FIRST_WORD_STAMP,
+  SEPARATED_STAMP,
+  TITLE_STAMP,
+  DOCUMENT,
+  TITLE_DOCUMENT,
+  PO_FIELD,
+  PO_LOOSE,
+  PO_COLON,
+  ORDER_FIELD,
+  ON_RECEIPT,
+  NAME_FIELD,
+  DOCUMENT_REF,
+  THIS_TYPE,
+  NAME_FIELD_END,
+  DOCUMENT_ALONE,
+  CAPITAL_RUN,
+  PLAIN_CAPITALS,
+  STATUS_CELL,
+  SPACED_CAPITALS,
+  CURRENCY_WORD,
+  OTHER_DOLLAR,
+  OTHER_SYMBOL,
+  OTHER_RAW_SYMBOL,
+  LETTER_SIGN,
+  PREFIXED_DOLLAR,
+  SPACED_DOLLAR,
+  SHORT_CURRENCY,
+  CURRENCY_FIELD,
+  IN_SPACED_DOLLAR,
+  IN_DOTTED,
+  IN_OTHER_DOLLAR,
+  PAY_IN_G,
+  CODE_SHAPE,
+  US_VALUE,
+  NEAR_CURRENCY,
+  CONTEXT_WORD,
+  CURRENCY_TEXT,
+  GLUED_CODE,
+  WORD,
+  INVOICE_NOS,
+  INVOICE_TOKENS,
+  DASHES,
+  BLANKS,
+  DIGIT_RUN,
+  ZERO_LIKE,
+  ONE_LIKE,
+  BARE_NUMBER,
+  NUMBER_LABEL_ALONE,
+  NUMBER_CELL,
+  ID,
+  STRONG_TITLE,
+  PAGE_MARK,
+  INVOICE_TITLE,
+  DATES,
+  FINAL_LINE,
+  NON_FINAL_LINE,
+  COUNT_LINE,
+  DUE_BY,
+  WORD_BREAK,
+  NOT_A_FIGURE,
+  PO_LABELLED_G,
+  STREET,
+  SUITE,
+  ZIP,
+  PHONE,
+  LABELLED_ID,
+  LINK,
+  MARKER,
+  PERCENT,
+  PAYEE_LINE,
+  RETAINER,
+  CREDIT_CUE,
+  MONEY_WORD_BUT_RETAINER,
+  COMMA_LIKE,
+  CURRENCY_FIRST,
+  NOTE_SCALE,
+  LETTER_SCALE,
+  SHORT_SCALE,
+  MICRO,
+  IN_SCALE,
+  DENOMINATION,
+  AFTER_TOTAL_CHARGE,
+  AFTER_TOTAL_OPEN,
+  AFTER_TOTAL_TERM,
+  MONEY_FIGURES,
+  PER_UNIT,
+  LATE_TERM,
+  PER_PERIOD_PHRASE,
+  PER_PERIOD,
+  UNFOLDED_NUMBER,
+  CODE_USE_CAD: codeUse("CAD"),
+  CODE_USE_NEAR: codeUse("NEAR"),
+};

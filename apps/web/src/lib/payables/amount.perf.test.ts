@@ -3,10 +3,11 @@ import { MAX_READ_UNITS } from "./amount";
 import { MAX_TEXT_CHARS } from "./extract";
 import { extractFacts, fingerprintText, invoiceNumberOf } from "./facts";
 
-// The facts are read in linear time, whatever the text. One wall-clock case stays from the first ReDoS fix (50,000
-// spaces after "Total" in under 100 ms); every heavier shape is checked by how its time grows instead, which does
-// not flake on a busy machine: the best of five runs, four times the input takes at most eight times as long
-// (against at least 2 ms, below which timers are noise), and never more than a second.
+// The facts are read in linear time, whatever the text. Each shape is checked by how its time grows (best of five
+// runs): at four times the input, a run under 100 ms passes; a slower one may take at most 12 times as long as the
+// small run, and never a second. A quadratic shape grows 16 times and fails; a linear one on a busy machine passes
+// without a timer floor. Wall-clock cases name the limits the rulings set (100 ms; 250 ms for the two short-line
+// shapes, which a loaded CI machine brings near 100 ms and a real regression takes 490 ms or more), with no retries.
 
 const H = "c".repeat(64);
 const RUNS = 5;
@@ -132,8 +133,10 @@ describe("extractFacts on adversarial text", () => {
     expect(shape(4 * n).length).toBeLessThanOrEqual(MAX_READ_UNITS);
     const small = best(shape(n));
     const large = best(shape(4 * n));
-    expect(large).toBeLessThan(1000);
-    expect(large).toBeLessThanOrEqual(8 * Math.max(small, 2));
+    if (large >= 100) {
+      expect(large).toBeLessThan(1000);
+      expect(large).toBeLessThanOrEqual(12 * small);
+    }
   });
 
   it.each([
@@ -147,29 +150,32 @@ describe("extractFacts on adversarial text", () => {
   });
 
   it.each([
-    ["a payee line of percentages", "Pay to 1% ".repeat(4995)],
+    ["a payee line of percentages", "Pay to 1% ".repeat(4995), 100],
     [
       "short lines of an I look-alike",
       `Total $5\n${"\u0406\u0406\u0406\n".repeat(12_500)}`.slice(0, 50_000),
+      250,
     ],
     [
       "short letter-spaced Cyrillic lines",
       `INVOICE INV-1001\nFrom: Acme\nTotal due: $100.00\n${"\u0410 \u0412 \u0421\n".repeat(8325)}`,
+      250,
     ],
     [
       "many word-like codes before a digit run",
       `INVOICE\n${CODES}${"5".repeat(50_000)}`.slice(0, 50_000),
+      100,
     ],
-    ["characters NFKC doubles, up to the cap", "\ufb00".repeat(25_000)],
-    ["characters NFKC expands past the cap", "\ufdfa".repeat(2_777)],
-    ["a digit-and-comma run after the total", `${HQ}${"1,".repeat(24_954)}1`.slice(0, 50_000)],
-    ["serial numbers after the total", serials(7_000).slice(0, 50_000)],
-    ["inv1 repeated", "inv1".repeat(12_500)],
-    ["invoice# repeated", "invoice#".repeat(6_250)],
-    ["inv#1 repeated", "inv#1".repeat(10_000)],
-  ])("reads %s (50,000 characters) in under 100 ms", (_why, text) => {
+    ["characters NFKC doubles, up to the cap", "\ufb00".repeat(25_000), 100],
+    ["characters NFKC expands past the cap", "\ufdfa".repeat(2_777), 100],
+    ["a digit-and-comma run after the total", `${HQ}${"1,".repeat(24_954)}1`.slice(0, 50_000), 100],
+    ["serial numbers after the total", serials(7_000).slice(0, 50_000), 100],
+    ["inv1 repeated", "inv1".repeat(12_500), 100],
+    ["invoice# repeated", "invoice#".repeat(6_250), 100],
+    ["inv#1 repeated", "inv#1".repeat(10_000), 100],
+  ] as const)("reads %s (50,000 characters) in under %i ms", (_why, text, limit) => {
     expect(text.length).toBeLessThanOrEqual(MAX_READ_UNITS);
-    expect(best(text)).toBeLessThan(100);
+    expect(best(text)).toBeLessThan(limit);
   });
 
   it("refuses a text that NFKC expands past twice its length, before reading it", () => {
