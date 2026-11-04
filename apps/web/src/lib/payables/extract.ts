@@ -1,13 +1,24 @@
 import "pdf-parse/worker"; // must load before pdf-parse on Node/Vercel (pdf-parse troubleshooting doc)
 import { PDFParse } from "pdf-parse";
 
-/** The largest invoice file read. The route caps the whole request lower still (Vercel's 4.5 MB body cap). */
+/**
+ * The largest invoice file read. The route caps the whole request at this plus 64 KiB for the form, which stays
+ * under Vercel's 4.5 MB body cap.
+ */
 export const MAX_INVOICE_BYTES = 4 * 1024 * 1024;
 /** The text the model is shown is at most this many UTF-16 units; the invoice hash is the hash of exactly that text. */
 export const MAX_TEXT_CHARS = 50_000;
 /** An invoice is a few pages: anything past this is not read (and not hashed), and the amount is refused. */
 export const MAX_PDF_PAGES = 20;
-/** A PDF that takes longer than this to read is refused (a crafted file must not hold the function). */
+/**
+ * How long extractInvoice waits for pdf-parse before it refuses the PDF. This timeout guards only against a hung
+ * promise: a parse that waits forever (on its worker, on a stream) is given up and torn down. It cannot pre-empt a
+ * CPU-bound parse: the timer's callback runs only when the event loop is free, so a long synchronous step of
+ * pdfjs (decoding a large stream, laying out a costly page) runs to its end first. The real bounds on a crafted
+ * PDF are the input caps, MAX_INVOICE_BYTES (4 MiB) and MAX_PDF_PAGES (20; only those pages are read), and the
+ * route's `maxDuration` (60 s), after which the platform ends the invocation. A worker thread that could be
+ * terminated mid-parse is out of scope (ruling W-T13-R2 j).
+ */
 export const PDF_TIMEOUT_MS = 20_000;
 
 export type InvoiceMediaType = "application/pdf" | "text/plain";
@@ -97,7 +108,7 @@ export async function extractInvoice(
   opts: { pdfTimeoutMs?: number; makeParser?: (data: Uint8Array) => PdfParser } = {},
 ): Promise<{ text: string; truncated: Truncation | null }> {
   if (u.bytes.length === 0) throw new ExtractError("The file is empty");
-  if (u.bytes.length > MAX_INVOICE_BYTES) throw new ExtractError("The file is larger than 4 MB");
+  if (u.bytes.length > MAX_INVOICE_BYTES) throw new ExtractError("The file is larger than 4 MiB");
   if (u.mediaType === "text/plain") {
     let raw: string;
     try {

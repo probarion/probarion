@@ -7,6 +7,7 @@ import { sha256Hex } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import { type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { generateKey } from "@/lib/keys/service";
+import { MAX_INVOICE_BYTES } from "@/lib/payables/extract";
 import { PROCESS_LEASE_SECONDS } from "@/lib/payables/pipeline";
 import { LIMITS } from "@/lib/ratelimit";
 import { freshDb, seedTenant } from "../../../../../../test/db/harness";
@@ -221,6 +222,43 @@ describe("POST /api/console/[vault]/invoices", () => {
     expect(row.rows[0]).toEqual({ filename: "inv.txt", media_type: "text/plain" });
   });
 
+  it("drops C1 controls and line or paragraph separators from the file name (W-T13-R2 i)", async () => {
+    const r = await post(
+      invoiceForm({
+        file: new File([fresh()], "re\u0085c\u009bei\u2028p\u2029t.txt", { type: "text/plain" }),
+      }),
+    );
+    expect(r.status).toBe(200);
+    const row = await pg.query<{ filename: string }>(
+      "select filename from invoices order by created_at desc limit 1",
+    );
+    expect(row.rows[0]?.filename).toBe("receipt.txt");
+  });
+
+  it("accepts a maximum-size invoice with its purpose document and the form around it (W-T13-R2 h)", async () => {
+    const head = new TextEncoder().encode(fresh("Total 5 USDC\n"));
+    const bytes = new Uint8Array(MAX_INVOICE_BYTES).fill(0x78); // "x"
+    bytes.set(head);
+    const r = await post(
+      invoiceForm({ file: new File([bytes], "big.txt", { type: "text/plain" }) }),
+    );
+    expect(r.status).toBe(200);
+    // The text past MAX_TEXT_CHARS is not read, so its total cannot be trusted.
+    expect(await body(r)).toMatchObject({ status: "decided", amountIssue: "truncated" });
+  }, 60_000);
+
+  it("refuses a request over the invoice cap plus 64 KiB, and says the limit (W-T13-R2 h)", async () => {
+    const cap = MAX_INVOICE_BYTES + 64 * 1024;
+    expect(cap).toBeLessThan(4_500_000); // Vercel refuses a body over 4.5 MB before the route runs
+    const r = await post(invoiceForm({ text: fresh() }), { "content-length": String(cap + 1) });
+    expect(r.status).toBe(413);
+    expect(await body(r)).toMatchObject({
+      error: "too_large",
+      detail: expect.stringContaining("4,259,840 bytes"),
+    });
+    expect(h.made).toEqual([]);
+  });
+
   it("runs the cycle for pasted text", async () => {
     const r = await post(invoiceForm({ text: fresh() }));
     expect(r.status).toBe(200);
@@ -250,7 +288,7 @@ describe("POST /api/console/[vault]/invoices", () => {
       (await post(invoiceForm({ text: fresh() }), { "content-length": String(20 * 1024 * 1024) }))
         .status,
     ).toBe(413);
-    // The invoice and the purpose document together must fit in 4 MiB (Vercel's body cap is 4.5 MB).
+    // The invoice and the purpose document together must fit in 4 MiB + 64 KiB (Vercel's body cap is 4.5 MB).
     const both = new FormData();
     both.set(
       "file",

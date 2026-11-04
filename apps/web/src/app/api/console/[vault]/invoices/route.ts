@@ -17,31 +17,47 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * The whole multipart body (the invoice, the optional purpose document and the framing) is at most 4 MiB: Vercel
- * refuses a request body over 4.5 MB before this code runs, so a larger limit here would promise what the
- * platform does not deliver. A request must state its length (Content-Length), so the limit is checked before
- * any of the body is read.
+ * The whole multipart body (the invoice, the optional purpose document and the framing) is at most the invoice cap
+ * plus 64 KiB (W-T13-R2 h), 4,259,840 bytes: a maximum-size invoice fits with its form, and the limit stays under
+ * Vercel's 4.5 MB body cap, which refuses a larger body before this code runs. A request must state its length
+ * (Content-Length), so the limit is checked before any of the body is read.
  */
-const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
+const MAX_REQUEST_BYTES = MAX_INVOICE_BYTES + 64 * 1024;
 
 /** Shown for an unconfirmed outcome (F6/R6): the spend was sent and is never sent again. */
 const PAYMENT_PENDING =
   "Payment sent, confirmation pending. Do not send it again: the spend is confirmed from the chain.";
 
+/** 4259840 -> "4,259,840". */
+const bytes = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
 const tooLarge = () =>
-  problem(413, "too_large", "The invoice and its purpose document must be 4 MB at most together");
+  problem(
+    413,
+    "too_large",
+    `The request must be ${bytes(MAX_REQUEST_BYTES)} bytes (4 MiB + 64 KiB) at most: the invoice, its purpose document and the form together.`,
+  );
+const fileTooLarge = (what: string) =>
+  problem(
+    413,
+    "too_large",
+    `The ${what} is larger than 4 MiB (${bytes(MAX_INVOICE_BYTES)} bytes).`,
+  );
 
-/** An invisible format character, such as U+202E, which reverses how the rest of a name is shown. */
-const FORMAT_CHAR = /\p{Cf}/u;
+/**
+ * What a stored file name must not keep: C0 and C1 controls, format characters (U+202E reverses how the rest of
+ * a name is shown), and the line and paragraph separators (W-T13-R2 i).
+ */
+const UNSAFE_NAME_CHAR = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
-/** Only the base name, without control or format characters, at most 200 characters (the column's limit). */
+/** Only the base name, without unsafe characters, at most 200 characters (the column's limit). */
 function cleanName(name: string): string | null {
   const last = name.split(/[\\/]/).pop() ?? "";
   const base = [...last]
-    .filter((c) => c > "\u001f" && c !== "\u007f" && !FORMAT_CHAR.test(c))
+    .filter((c) => !UNSAFE_NAME_CHAR.test(c))
     .join("")
     .trim();
-  return base === "" ? null : base.slice(0, 200);
+  return base === "" ? null : [...base].slice(0, 200).join("");
 }
 
 function mediaTypeOf(file: File): InvoiceMediaType | null {
@@ -60,7 +76,7 @@ async function readUpload(form: FormData): Promise<Read> {
   const purpose = form.get("purpose");
   let upload: InvoiceUpload;
   if (file instanceof File && file.size > 0) {
-    if (file.size > MAX_INVOICE_BYTES) return tooLarge();
+    if (file.size > MAX_INVOICE_BYTES) return fileTooLarge("invoice");
     const mediaType = mediaTypeOf(file);
     if (mediaType === null) {
       return problem(415, "unsupported", "Upload the invoice as a PDF or a plain text (.txt) file");
@@ -71,17 +87,15 @@ async function readUpload(form: FormData): Promise<Read> {
       filename: cleanName(file.name),
     };
   } else if (typeof pasted === "string" && pasted.trim() !== "") {
-    const bytes = new TextEncoder().encode(pasted);
-    if (bytes.length > MAX_INVOICE_BYTES) return tooLarge();
-    upload = { bytes, mediaType: "text/plain", filename: null };
+    const encoded = new TextEncoder().encode(pasted);
+    if (encoded.length > MAX_INVOICE_BYTES) return fileTooLarge("invoice text");
+    upload = { bytes: encoded, mediaType: "text/plain", filename: null };
   } else {
     return problem(400, "invalid_input", "Attach a PDF/text file or paste the invoice text");
   }
   let purposeBytes: Uint8Array | null = null;
   if (purpose instanceof File && purpose.size > 0) {
-    if (purpose.size > MAX_INVOICE_BYTES) {
-      return problem(413, "too_large", "The purpose document is larger than 4 MB");
-    }
+    if (purpose.size > MAX_INVOICE_BYTES) return fileTooLarge("purpose document");
     purposeBytes = new Uint8Array(await purpose.arrayBuffer());
   }
   return { upload, purposeBytes };
