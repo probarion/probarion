@@ -1903,10 +1903,10 @@ function read(text: string): AmountRead {
   if (only === undefined) return refuse("not_found");
   if (more.length > 0) return refuse("ambiguous");
   if (only === "0") return refuse("zero");
-  // 6. A money line after the last final total changes what is due when it states another figure, a negative or
-  // bracketed one, or has a charge, deduction or status meaning ("Discount -$400.00", "Shipping $50.00", "Debited
-  // from your account $1,000.00"); no later total settles it. A line restating the total ("Pay $1,000.00 to
-  // acme.near") reads.
+  // 6. After the last final total, a money-token line whose figures are not all zero changes what is due, the total
+  // restated too ("Pay $1,000.00 to acme.near", "Visa ****4417 $700.00"), and so does a charge line with a bare
+  // figure or a plus, excl. or extra note ("Shipping 25", "Excl. VAT") unless it is a term (ruling W-T13-B10); no
+  // later total settles it.
   let lastFinal = -1;
   for (const f of finalAt) if (f > lastFinal) lastFinal = f;
   if (lastFinal >= 0) {
