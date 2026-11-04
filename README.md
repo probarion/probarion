@@ -188,12 +188,12 @@ What exists at this commit, and what does not yet.
 | `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` needs a deployed factory, so it waits for the factory | [`packages/cli`](packages/cli) |
 | CLI `check`, `verify` and `ledger export` | **Shipped** in source. `verify` exits 0 when every check passes, 1 when one fails or verify cannot run, 2 when a burn is unproven | [`packages/cli`](packages/cli) |
 | npm release 0.1.0 of the packages | **Planned**. The tag-driven release pipeline is in place; nothing is published | [`.github/workflows/release.yml`](.github/workflows/release.yml) |
-| Web console (Next.js 16 and Supabase): wallet sign-in, vault overview, freeze, approvals, keys, mandates | **In progress**, not deployed: there is no live URL yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
+| Web console (Next.js 16 and Supabase): wallet sign-in, vault overview, freeze, approvals, keys, mandates, the public proof page | **In progress**, not deployed: there is no live URL yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
 | Mainnet vault `v0.probarion.near` | **Planned**. The runbook is ready; the owner signs every step | [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) |
 | MCP server `@probarion/mcp` | **Planned** | |
 | Payables, the reference agent that pays invoices in USDC | **Planned** | |
 | Canary, a public vault anyone may try to trick into paying them | **Planned** | |
-| Public `/proof` page | **Planned** | |
+| Public `/proof/<vault>` page: checks a to i with explorer links, the snapshot and the signed ledger as downloads for the offline verifier | **Built** and tested, not deployed: there is no live URL yet. Every command it shows runs from a clone of this repository until the npm package is published, and its tests run those commands as shown | [`apps/web/src/app/proof`](apps/web/src/app/proof) |
 
 ## What Probarion does
 
