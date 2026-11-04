@@ -1,0 +1,446 @@
+{
+  "about": "Realistic USD and USDC invoices in the text layouts common tools export. pays: what a careful person pays; expect: what the reader answers (that amount, or 0 with a reason, never another figure).",
+  "cases": [
+    {
+      "id": "A01 word simple invoice, TOTAL with $",
+      "pays": "1302350000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nINVOICE #: 1042\nDATE: November 1, 2026\nBILL TO:\nGlobex Corporation\n500 Market Street\nSan Francisco, CA 94105\nDESCRIPTION\tQTY\tUNIT PRICE\tAMOUNT\nLogo design\t1\t$700.00\t$700.00\nBrand guidelines\t1\t$480.00\t$480.00\nSUBTOTAL\t$1,180.00\nTAX RATE\t8.25%\nSALES TAX\t$97.35\nSHIPPING\t$25.00\nTOTAL\t$1,302.35\nMake all checks payable to Northwind Studio LLC\nPayment is due within 30 days.\nIf you have any questions concerning this invoice, contact billing@northwind.example\nTHANK YOU FOR YOUR BUSINESS!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1302350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "A02 freelancer hours, Total due, bank details",
+      "pays": "2400000000",
+      "text": "Invoice\nJane Rivera Design\n88 Elm Street, Apt 3B\nPortland, OR 97205\nInvoice #2026-014\nIssued: October 31, 2026\nDue: November 14, 2026\nBilled to: Initech Inc.\nDescription\tHours\tRate\tAmount\nUX research\t12\t$100.00\t$1,200.00\nWireframes\t8\t$100.00\t$800.00\nPrototype\t4\t$100.00\t$400.00\nTotal due\t$2,400.00\nPayment Details\nBank: Example National Bank\nAccount Name: Northwind Studio LLC\nAccount Number: 000123456789\nRouting Number (ACH): 110000000\nSWIFT/BIC: EXNBUS44\nPayment due within 14 days. Thank you!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "2400000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "A03 discount and tax, Total",
+      "pays": "1944000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice No. 1043\nInvoice Date: 11/02/2026\nDue Date: 12/02/2026\nBill To: Umbrella Health\nItem\tQty\tUnit Price\tTotal\nWebsite redesign\t1\t$2,000.00\t$2,000.00\nSubtotal\t$2,000.00\nDiscount (10%)\t-$200.00\nTax (8%)\t$144.00\nTotal\t$1,944.00\nTerms: Net 30\nNotes: Thank you for choosing Northwind.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1944000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "A04 deposit paid then balance due (Total differs)",
+      "pays": "2500000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice # 1044\nDate: Nov 3, 2026\nBill To: Hooli LLC\nDescription\tQty\tRate\tAmount\nBrand identity package\t1\t$5,000.00\t$5,000.00\nSubtotal\t$5,000.00\nTotal\t$5,000.00\nDeposit paid\t-$2,500.00\nBalance due\t$2,500.00\nThe deposit was received on October 1, 2026.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "A05 amount paid $0.00 then balance due equal to total",
+      "pays": "1180000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice Number: INV-1045\nInvoice Date: 2026-11-01\nBill To: Stark Industries\nDescription\tQty\tPrice\tAmount\nConsulting\t10\t$118.00\t$1,180.00\nSubtotal\t$1,180.00\nTotal\t$1,180.00\nAmount paid\t$0.00\nBalance due\t$1,180.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1180000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "A06 bill-to and ship-to columns with Accounts Payable",
+      "pays": "990000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice #: 1046\nDate: November 4, 2026\nBILL TO\tSHIP TO\nGlobex Corporation\tGlobex Corporation\nAttn: Accounts Payable\t500 Market Street\n500 Market Street\tSan Francisco, CA 94105\nSan Francisco, CA 94105\nDESCRIPTION\tQTY\tUNIT PRICE\tAMOUNT\nPrinted brochures\t1,000\t$0.90\t$900.00\nSUBTOTAL\t$900.00\nSHIPPING\t$90.00\nTOTAL\t$990.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "990000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "A07 late-fee note quoting a dollar fee",
+      "pays": "1500000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice #: 1047\nDate: November 4, 2026\nBill To: Wayne Enterprises\nDescription\tAmount\nMonthly retainer, November 2026\t$1,500.00\nTotal\t$1,500.00\nPayment terms: Net 15\nA late fee of $25.00 will be charged on payments received after the due date.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "A08 header in two columns (dates and invoice number)",
+      "pays": "640000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice No.\t1048\tInvoice Date\tNov 1, 2026\nCustomer ID\tC-0042\tDue Date\tDec 1, 2026\nBill To: Soylent Corp\nDescription\tQty\tUnit Price\tLine Total\nPhotography, half day\t1\t$600.00\t$600.00\nTravel\t1\t$40.00\t$40.00\nSubtotal\t$640.00\nTax\t$0.00\nTotal\t$640.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "640000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "A09 spreadsheet template: total shown big without a label",
+      "pays": "1130000000",
+      "text": "Northwind Studio LLC\n1200 Congress Avenue, Suite 400, Austin, TX 78701\nInvoice\nSubmitted on 11/01/2026\nInvoice for\tPayable to\tInvoice #\nGlobex Corp\tNorthwind Studio LLC\t1049\nProject\tDue date\nBrand refresh\t12/01/2026\nDescription\tQty\tUnit price\tTotal price\nLogo design\t1\t$700.00\t$700.00\nBrand guide\t1\t$480.00\t$480.00\nNotes:\tSubtotal\t$1,180.00\nAdjustments\t-$50.00\n$1,130.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "A10 crypto freelancer, USDC on NEAR, plain text",
+      "pays": "2500000000",
+      "text": "INVOICE INV-2026-050\nFrom: Kai Tanaka (kai.near)\nTo: Probably Labs\nDate: 2026-11-01\nDue: 2026-11-15\n\nSmart-contract audit, 25 hours @ 100 USDC\t2,500.00 USDC\n\nTotal: 2,500.00 USDC\n\nPay with USDC on NEAR to kai.near\nThank you!\n",
+      "expect": {
+        "amount": "2500000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "A11 crypto payment block naming the network in brackets",
+      "pays": "1200000000",
+      "text": "INVOICE\nInvoice # INV-2026-051\nFrom: Orbit Dev Shop\nBill to: Probably Labs\nItem\tQty\tPrice\tTotal\nAPI integration\t1\t1,200.00\t1,200.00\nTotal (USDC)\t1,200.00\nPayment method: USDC (NEAR)\nWallet: orbitdev.near\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1200000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "A12 crypto payment block, network on its own line",
+      "pays": "1200000000",
+      "text": "INVOICE\nInvoice # INV-2026-052\nFrom: Orbit Dev Shop\nItem\tQty\tPrice\tTotal\nAPI integration\t1\t$1,200.00\t$1,200.00\nTotal\t$1,200.00 USDC\nPay in\tNetwork\nUSDC\tNEAR\nWallet: orbitdev.near\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1200000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "B01 accounting tool: TOTAL without $, BALANCE DUE with $",
+      "pays": "1277350000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nBILL TO\tSHIP TO\nGlobex Corp\tGlobex Corp\n500 Market Street\t500 Market Street\nSan Francisco, CA 94105\tSan Francisco, CA 94105\nINVOICE #\t1050\nDATE\t11/01/2026\nDUE DATE\t12/01/2026\nTERMS\tNet 30\nDATE\tACTIVITY\tDESCRIPTION\tQTY\tRATE\tAMOUNT\n11/01/2026\tDesign\tLogo design\t1\t700.00\t700.00\n11/01/2026\tDesign\tBrand guide\t1\t480.00\t480.00\nSUBTOTAL\t1,180.00\nTAX (8.25%)\t97.35\nTOTAL\t1,277.35\nBALANCE DUE\t$1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "B02 accounting tool with BALANCE DUE box at the top",
+      "pays": "1277350000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nINVOICE #\t1051\tDATE\t11/01/2026\tTOTAL DUE\t$1,277.35\nDUE DATE\t12/01/2026\tENCLOSED\nBILL TO\nGlobex Corp\nACTIVITY\tQTY\tRATE\tAMOUNT\nLogo design\t1\t700.00\t700.00\nBrand guide\t1\t480.00\t480.00\nSUBTOTAL\t1,180.00\nTAX\t97.35\nTOTAL\t1,277.35\nBALANCE DUE\t$1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B03 accounting tool: Amount Due (USD) in the header row, figures below",
+      "pays": "1277350000",
+      "text": "Northwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nBilled To\tDate of Issue\tInvoice Number\tAmount Due (USD)\nGlobex Corp\t11/01/2026\t0000052\t$1,277.35\n500 Market Street\tDue Date\nSan Francisco, CA 94105\t12/01/2026\nDescription\tRate\tQty\tLine Total\nLogo design\t$700.00\t1\t$700.00\nBrand guide\t$480.00\t1\t$480.00\nSubtotal\t1,180.00\nTax\t97.35\nTotal\t1,277.35\nAmount Paid\t0.00\nAmount Due (USD)\t$1,277.35\nNotes\nThank you for your business.\nTerms\nPayment due within 30 days.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B04 accounting tool: Amount Due (USD) in the header and the footer",
+      "pays": "1277350000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nBILL TO\tInvoice Number:\t53\nGlobex Corp\tInvoice Date:\tNovember 1, 2026\n500 Market Street\tPayment Due:\tDecember 1, 2026\n\tAmount Due (USD):\t$1,277.35\nItems\tQuantity\tPrice\tAmount\nLogo design\t1\t$700.00\t$700.00\nBrand guide\t1\t$480.00\t$480.00\nSubtotal:\t$1,180.00\nSales Tax 8.25%:\t$97.35\nTotal:\t$1,277.35\nAmount Due (USD):\t$1,277.35\nNotes / Terms\nThank you for your business.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "B05 accounting tool: TOTAL USD, payment advice slip with Amount Due",
+      "pays": "1277350000",
+      "text": "INVOICE\nGlobex Corp\tInvoice Date\tNorthwind Studio LLC\n500 Market Street\t1 Nov 2026\t1200 Congress Avenue\nSan Francisco CA 94105\tInvoice Number\tAustin TX 78701\n\tINV-0054\n\tReference\n\tPO-1001\nDescription\tQuantity\tUnit Price\tTax\tAmount USD\nLogo design\t1.00\t700.00\t8.25%\t700.00\nBrand guide\t1.00\t480.00\t8.25%\t480.00\nSubtotal\t1,180.00\nTOTAL SALES TAX 8.25%\t97.35\nTOTAL USD\t1,277.35\nDue Date: 1 Dec 2026\nPAYMENT ADVICE\nTo: Northwind Studio LLC\tCustomer\tGlobex Corp\n\tInvoice Number\tINV-0054\n\tAmount Due\t1,277.35\n\tDue Date\t1 Dec 2026\n\tAmount Enclosed\n\tEnter the amount you are paying above\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "B06 accounting tool without the slip",
+      "pays": "1277350000",
+      "text": "INVOICE\nGlobex Corp\tInvoice Date\tNorthwind Studio LLC\n\t1 Nov 2026\n\tInvoice Number\n\tINV-0055\nDescription\tQuantity\tUnit Price\tAmount USD\nLogo design\t1.00\t700.00\t700.00\nBrand guide\t1.00\t480.00\t480.00\nSubtotal\t1,180.00\nTOTAL SALES TAX 8.25%\t97.35\nTOTAL USD\t1,277.35\nDue Date: 1 Dec 2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "B07 accounting tool: Balance Due box on top, dd-Mon-yyyy dates",
+      "pays": "1277350000",
+      "text": "Northwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin Texas 78701\nU.S.A\nINVOICE\n# INV-000056\nBalance Due\n$1,277.35\nBill To\nGlobex Corp\nInvoice Date :\t01-Nov-2026\nTerms :\tNet 30\nDue Date :\t01-Dec-2026\n#\tItem & Description\tQty\tRate\tAmount\n1\tLogo design\t1.00\t700.00\t700.00\n2\tBrand guide\t1.00\t480.00\t480.00\nSub Total\t1,180.00\nTax (8.25%)\t97.35\nTotal\t$1,277.35\nBalance Due\t$1,277.35\nNotes\nThanks for your business.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "B08 accounting tool, dd-Mon-yyyy due date, single total",
+      "pays": "1277350000",
+      "text": "INVOICE\n# INV-000057\nBill To: Globex Corp\nInvoice Date :\t01-Nov-2026\nDue Date :\t01-Dec-2026\nItem\tQty\tRate\tAmount\nLogo design\t1.00\t700.00\t700.00\nBrand guide\t1.00\t480.00\t480.00\nSub Total\t1,180.00\nTax (8.25%)\t97.35\nTotal\t$1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "B09 time-tracking tool: Amount Due once",
+      "pays": "1277350000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice ID\t58\nIssue Date\t11/01/2026\nDue Date\t12/01/2026 (Net 30)\nSubject\tOctober design work\nBill To\tGlobex Corp\nItem Type\tDescription\tQuantity\tUnit Price\tAmount\nService\tLogo design\t10.00\t$70.00\t$700.00\nService\tBrand guide\t6.00\t$80.00\t$480.00\nSubtotal\t$1,180.00\nTax (8.25%)\t$97.35\nAmount Due\t$1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "B10 invoicing tool: Balance Due in the header and the footer",
+      "pays": "1277350000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice Number:\t0059\nPO Number:\tPO-1001\nInvoice Date:\tNov 1, 2026\nDue Date:\tDec 1, 2026\nBalance Due:\t$1,277.35\nItem\tDescription\tUnit Cost\tQuantity\tLine Total\nDesign\tLogo design\t$700.00\t1\t$700.00\nDesign\tBrand guide\t$480.00\t1\t$480.00\nSubtotal\t$1,180.00\nTax 8.25%\t$97.35\nPaid to Date\t$0.00\nBalance Due\t$1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "B11 freelancer tool: Total Due",
+      "pays": "1277350000",
+      "text": "Invoice\nNorthwind Studio LLC\nInvoice #0060\nIssued: Nov 1, 2026\nDue: Dec 1, 2026\nBill To: Globex Corp\nDescription\tRate\tQty\tLine total\nLogo design\t$700.00\t1\t$700.00\nBrand guide\t$480.00\t1\t$480.00\nSubtotal\t$1,180.00\nTax (8.25%)\t$97.35\nTotal Due\t$1,277.35\nPayment instructions\nPay by ACH to the account below.\nPayment Details\nBank: Example National Bank\nAccount Name: Northwind Studio LLC\nAccount Number: 000123456789\nRouting Number (ACH): 110000000\nSWIFT/BIC: EXNBUS44\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "C01 payment platform invoice: amount due line, total excluding tax, footer",
+      "pays": "1277350000",
+      "text": "Invoice\nInvoice number\tA1B2C3D4-0061\nDate of issue\tNovember 1, 2026\nDate due\tDecember 1, 2026\nNorthwind Studio LLC\tBill to\n1200 Congress Avenue\tGlobex Corp\nAustin, Texas 78701\tap@globex.example\n$1,277.35 USD due December 1, 2026\nPay online\nDescription\tQty\tUnit price\tAmount\nPro plan (Nov 1 - Dec 1, 2026)\t10\t$118.00\t$1,180.00\nSubtotal\t$1,180.00\nTotal excluding tax\t$1,180.00\nSales Tax - Texas (8.25% on $1,180.00)\t$97.35\nTotal\t$1,277.35\nAmount due\t$1,277.35 USD\nA1B2C3D4-0061 \u00b7 $1,277.35 USD due December 1, 2026 \u00b7 Page 1 of 1\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "C02 payment platform invoice, minimal (no tax)",
+      "pays": "1180000000",
+      "text": "Invoice\nInvoice number\tA1B2C3D4-0062\nDate of issue\tNovember 1, 2026\nDate due\tDecember 1, 2026\nNorthwind Studio LLC\tBill to\n$1,180.00 USD due December 1, 2026\nDescription\tQty\tUnit price\tAmount\nPro plan\t10\t$118.00\t$1,180.00\nSubtotal\t$1,180.00\nTotal\t$1,180.00\nAmount due\t$1,180.00 USD\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1180000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "C03 payment platform: Amount due in the summary and the footer",
+      "pays": "1277350000",
+      "text": "Northwind Studio LLC\nInvoice\nInvoice number: 0063\nInvoice date: Nov 1, 2026\nPayment terms: Due on receipt\nDue date: Nov 1, 2026\nBill to\nap@globex.example\nAmount due: $1,277.35 USD\nDescription\tQuantity\tPrice\tAmount\nLogo design\t1\t$700.00\t$700.00\nBrand guide\t1\t$480.00\t$480.00\nSubtotal\t$1,180.00\nTax (8.25%)\t$97.35\nTotal\t$1,277.35 USD\nAmount due\t$1,277.35 USD\nNote to recipient\nThanks for your business!\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "C04 point-of-sale platform: line items with price only",
+      "pays": "1277350000",
+      "text": "Northwind Studio LLC\nInvoice #000064\nInvoice date\tNov 1, 2026\nDue date\tDec 1, 2026\nCustomer\tGlobex Corp\nLogo design\t$700.00\nBrand guide\t$480.00\nSubtotal\t$1,180.00\nSales tax (8.25%)\t$97.35\nTotal\t$1,277.35\nAmount due\t$1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "D01 cloud billing: TOTAL AMOUNT DUE ON <date>",
+      "pays": "1277350000",
+      "text": "Invoice\nInvoice Number: 2026110065\nInvoice Date: November 2, 2026\nAccount number: 123456789012\nTOTAL AMOUNT DUE ON December 2, 2026\tUSD 1,277.35\nInvoice Summary\nItem\tAmount\nCharges\tUSD 1,180.00\nCredits\tUSD 0.00\nTax\tUSD 97.35\nTotal for this invoice\tUSD 1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "D02 hosting billing: usage charges then Total due",
+      "pays": "1277350000",
+      "text": "Invoice\nFinal invoice for the October 2026 billing period\nInvoice number: 66\nDate of issue: November 1, 2026\nPayment due on: November 15, 2026\nSummary\nTotal usage charges\t$1,180.00\nTaxes\t$97.35\nTotal due\t$1,277.35\nUsage details\nCompute\t$900.00\nStorage\t$280.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "D03 subscription-billing style: Invoice Amount in the header",
+      "pays": "1277350000",
+      "text": "INVOICE\nInvoice Number\t# 1067\nInvoice Date\tNov 01, 2026\nInvoice Amount\t$1,277.35 (USD)\nBilling Period\tNov 01 to Nov 30, 2026\nBILLED TO\nGlobex Corp\nDESCRIPTION\tUNITS\tUNIT PRICE\tAMOUNT(USD)\nPro plan\t10\t$118.00\t$1,180.00\nSub Total\t$1,180.00\nSales Tax (8.25%)\t$97.35\nTotal\t$1,277.35\nAmount Due (USD)\t$1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "D04 SaaS plain: Total in USD and a page footer",
+      "pays": "499000000",
+      "text": "INVOICE\nAcme Analytics, Inc.\nInvoice # INV-2026-1068\nPeriod: Nov 1, 2026 - Nov 30, 2026\nPlan\tSeats\tPrice\tAmount\nTeam plan\t10\t$49.90\t$499.00\nSubtotal\t$499.00\nTax\t$0.00\nTotal in USD:\t$499.00\nPage 1 of 1\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "499000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E01 law firm: Due diligence line item",
+      "pays": "3500000000",
+      "text": "INVOICE\nBaker & Cole LLP\nInvoice No. 1069\nDate: November 1, 2026\nClient: Globex Corp\nMatter: Series A financing\nDate\tDescription\tHours\tRate\tAmount\n10/12/2026\tDue diligence review\t5.0\t$400.00\t$2,000.00\n10/19/2026\tDraft stock purchase agreement\t3.75\t$400.00\t$1,500.00\nTotal fees\t$3,500.00\nTotal\t$3,500.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "E02 bookkeeper: balance-sheet and accounts-payable line items",
+      "pays": "900000000",
+      "text": "INVOICE\nLedgerly Bookkeeping\nInvoice # 1070\nDate: 11/01/2026\nBill to: Initech Inc.\nService\tQty\tRate\tAmount\nMonthly bookkeeping\t1\t$400.00\t$400.00\nBalance sheet preparation\t1\t$300.00\t$300.00\nAccounts payable reconciliation\t1\t$200.00\t$200.00\nSubtotal\t$900.00\nTotal\t$900.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "900000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E03 agency: Pay-per-click line item",
+      "pays": "2750000000",
+      "text": "INVOICE\nBrightline Marketing\nInvoice # 1071\nDate: 11/01/2026\nBill to: Hooli LLC\nDescription\tAmount\nPay-per-click campaign management\t$1,500.00\nSEO retainer\t$1,250.00\nTotal\t$2,750.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "2750000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E04 contractor timesheet: Total hours line",
+      "pays": "4000000000",
+      "text": "INVOICE\nSam Okafor, Contractor\nInvoice # 1072\nPeriod: October 1 - October 31, 2026\nDate\tTask\tHours\n10/05/2026\tBackend work\t20\n10/12/2026\tCode review\t20\nTotal hours: 40\nRate: $100.00 per hour\nAmount due:\t$4,000.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "4000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E05 note about what the total includes",
+      "pays": "1650000000",
+      "text": "INVOICE\nField & Frame Photography\nInvoice # 1073\nDate: 11/01/2026\nWedding package\t$1,500.00\nSecond shooter\t$150.00\nTotal:\t$1,650.00\nNote: the total includes a 10% early-booking discount.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "E06 pay-online link with digits in the URL",
+      "pays": "800000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice # 1074\nDate: 11/01/2026\nCopywriting, 4 articles\t$800.00\nTotal due:\t$800.00\nPay online: https://pay.northwind.example/i/1074\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "800000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E07 header row with due date and amount due side by side",
+      "pays": "1250000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice #: 1075\tInvoice Date: 11/01/2026\nDue Date: 12/01/2026\tAmount Due: $1,250.00\nDescription\tAmount\nVideo edit\t$1,250.00\nTotal\t$1,250.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "E08 vendor whose name holds a payable word, address on one line",
+      "pays": "450000000",
+      "text": "INVOICE\nBalance Physical Therapy, 220 Oak Street, Denver, CO 80203\nInvoice # 1076\nDate: 11/01/2026\nPatient: J. Smith\nTherapy session x 3\t$450.00\nTotal:\t$450.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "450000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E09 amount in words line",
+      "pays": "1277350000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice # 1077\nLogo design\t$700.00\nBrand guide\t$480.00\nTax\t$97.35\nTotal\t$1,277.35\nAmount in words: One thousand two hundred seventy-seven dollars and 35/100\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "E10 total incl. tax label",
+      "pays": "1277350000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice # 1078\nLogo design\t$700.00\nBrand guide\t$480.00\nSubtotal\t$1,180.00\nSales tax (8.25%)\t$97.35\nTotal incl. tax\t$1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E11 retainer with a recurring-due note",
+      "pays": "3000000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice # 1079\nDate: 11/01/2026\nMonthly retainer, November 2026\t$3,000.00\nTotal\t$3,000.00\nPayment is due on the 1st of each month.\nPayment terms: 50% due upfront, 50% on delivery.\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "3000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E12 statement-like utility layout: previous balance, payments, total amount due",
+      "pays": "1277350000",
+      "text": "INVOICE\nMetro Fiber Internet\nInvoice # 1080\nAccount: 55-0192\nPrevious balance\t$500.00\nPayments received\t-$500.00\nNew charges\t$1,277.35\nTotal amount due\t$1,277.35\nDue date: December 1, 2026\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E13 shipping & handling and freight",
+      "pays": "1385000000",
+      "text": "INVOICE\nLone Star Supply Co.\nInvoice # 1081\nPO Number: PO-7781\nShip Date: 11/02/2026\nItem #\tDescription\tQty\tUnit Price\tExtended\nSKU-100\tSteel brackets\t100\t$12.00\t$1,200.00\nSubtotal\t$1,200.00\nShipping & Handling\t$85.00\nFreight\t$100.00\nTotal\t$1,385.00\nTerms: Net 30\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1385000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E14 total items count beside the total",
+      "pays": "120000000",
+      "text": "INVOICE\nPrint Hub\nInvoice # 1082\nItem\tQty\tPrice\tTotal\nPosters\t3\t$40.00\t$120.00\nTotal items: 3\nTotal:\t$120.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "120000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E15 two-page invoice: header repeated on page 2, total on page 2",
+      "pays": "4200000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice # INV-2026-1083\nDate: 11/01/2026\nDescription\tQty\tRate\tAmount\nSprint 1\t1\t$1,400.00\t$1,400.00\nSprint 2\t1\t$1,400.00\t$1,400.00\nPage 1 of 2\n\n-- 1 of 2 --\n\nINVOICE\nInvoice # INV-2026-1083\nDescription\tQty\tRate\tAmount\nSprint 3\t1\t$1,400.00\t$1,400.00\nSubtotal\t$4,200.00\nTotal\t$4,200.00\nPage 2 of 2\n\n-- 2 of 2 --\n\n",
+      "expect": {
+        "amount": "4200000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E16 USD $ before the figure",
+      "pays": "1277350000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice # 1084\nLogo design\tUSD $700.00\nBrand guide\tUSD $480.00\nSubtotal\tUSD $1,180.00\nTax\tUSD $97.35\nTotal\tUSD $1,277.35\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E17 total due upon receipt",
+      "pays": "600000000",
+      "text": "INVOICE\nNorthwind Studio LLC\n1200 Congress Avenue, Suite 400\nAustin, TX 78701\nPhone: (512) 555-0142\nbilling@northwind.example\nInvoice # 1085\nTuning session\t$600.00\nTotal due upon receipt:\t$600.00\n\n-- 1 of 1 --\n\n",
+      "expect": {
+        "amount": "600000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "E18 plain text email invoice, Amount due with a period",
+      "pays": "750000000",
+      "text": "Invoice INV-2026-1086\nHi team, here is my invoice for October.\nTranslation, 15,000 words at $0.05/word: $750.00\nAmount due: $750.00\nBank: Example Bank, Account 123456789, Routing 020000000.\nThanks, Ana\n",
+      "expect": {
+        "amount": "750000000",
+        "issue": null
+      }
+    }
+  ]
+}

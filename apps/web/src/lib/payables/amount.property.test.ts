@@ -5,7 +5,10 @@ import { extractFacts } from "./facts";
 //   - readable final-total lines (labels, prefixes, infixes, separators, amount forms, tails);
 //   - final-total lines and documents the reader must refuse: signs, other formats and digits, look-alike or
 //     hidden labels, trailers after the amount, a label whose figure is in a column block or split across lines,
-//     a document type, a status stamp, another currency anywhere, a second invoice, a NUL or a bidi control;
+//     a document type, a status stamp, another currency anywhere, a second invoice, a NUL or a bidi control; and
+//     money lines outside the grammar, scale and per-unit notes, paid status in prose, letter-spaced or split
+//     labels and titles, stamps with invisible characters, word-like and glued codes, other dollars, a figure
+//     continued below its total, a summary header row, masked amounts and two documents in one text;
 //   - partial and payment lines (subtotal, tax, shipping, discount, amount paid, ...), which never pay;
 //   - noise: line items, notes, terms, payees.
 // For every invoice the reader returns the one readable final total all final lines agree on, or "0" with a
@@ -44,6 +47,9 @@ const DEDUCTIONS = new Set([
   "Credit applied",
   "Previous balance",
   "Installment 2 of 3",
+  "Paid",
+  "Credits",
+  "Retainer applied",
 ]);
 
 const LABELS = [
@@ -155,7 +161,7 @@ class Grammar {
     const sep = this.pick(SEPS);
     const big = String(this.int(1000, 999_999_999));
     const text = ((): string => {
-      switch (this.int(0, 21)) {
+      switch (this.int(0, 34)) {
         case 0: // a sign or a bracket
           return `${label}${sep}${this.pick(["-", "\u2212", "+", "(", "- ", "\u2013 "])}$${fig}`;
         case 1: // no currency marker
@@ -224,8 +230,103 @@ class Grammar {
           return `${label}${sep}$${this.int(1, 9)}${this.digits(12)}.01`;
         case 20: // a tail that is not allowed
           return `${label}${sep}$${fig} (incl. ${this.pick(["thousands", "refund", "20% VAT"])})`;
-        default: // a full stop right after a dollar figure
+        case 21: // a full stop right after a dollar figure
           return `${label}${sep}$${fig}.`;
+        case 22: // a money line outside both grammars: a payment, credit, deposit, refund or what is owed
+          return this.pick([
+            `Payment of $${fig} received, thank you`,
+            `You owe: $${fig}`,
+            `Remaining: $${fig}`,
+            `Withholding tax -$${fig}`,
+            `Refunded $${fig}`,
+            `Gift card: -$${fig}`,
+            `Less: Deposit $${fig}`,
+            `Deposit paid 10/01/2026\t-$${fig}`,
+            `Bal: $${fig}`,
+          ]);
+        case 23: // a scale, denomination or per-unit note right after a total
+          return `${label}${sep}$${fig}\n${this.pick([
+            "(USDC base units, 6 decimals)",
+            "Note: all amounts are in cents.",
+            "(figures in thousands)",
+            "All figures in wei",
+            "per seat x 20 seats",
+            "/ month",
+          ])}`;
+        case 24: // a paid status in prose, letter-spaced, dated or behind a separator
+          return this.pick([
+            "Paid by bank transfer on 2026-11-03. Thank you!",
+            "Payment received in full. Thank you.",
+            "This invoice was settled on 2026-10-30.",
+            "P A I D",
+            "Status \u2013 Paid",
+            "| Status | Paid |",
+            "PAID ON 2026-10-15 - THANK YOU",
+            "Thank you for your payment!",
+          ]);
+        case 25: // another document type as a heading, letter-spaced, with a digit for a letter, or "<type> #"
+          return this.pick([
+            "Sales Receipt",
+            "Price Quote",
+            "Purchase Order",
+            "Customer statement",
+            "R E C E I P T",
+            "RECE1PT",
+            "# Receipt",
+            "Payment Receipt #1234",
+          ]);
+        case 26: // a capital stamp with an invisible character or an I look-alike in it
+          return this.pick(["V\u200bOID", "DUPL\u0406CATE", "V\u00adOID copy", "SPEC\u0399MEN"]);
+        case 27: // a word-like currency code in a field form
+          return this.pick([
+            "Currency\tCAD",
+            "Currency CAD",
+            "Currency - TRY",
+            "All prices CAD",
+            "Prices are in $CAD",
+            "Currency code: PHP",
+          ]);
+        case 28: // another currency glued to a figure, in lower case, as a raw sign or another dollar
+          return this.pick([
+            "Hourly rate EUR70",
+            "Hourly rate 100GBP",
+            "Prices in Eur",
+            "All amounts in \u20a8",
+            "Amounts in \u5186",
+            "Prices in Canadian $",
+            "Amounts in Canadian funds",
+            "Prices in C $",
+          ]);
+        case 29: // a total whose figure goes on below it
+          return `${label}${sep}$${this.int(1, 99)}\n${this.pick([",500.00", ".50", "250.00", "$9,999.00", "+ $9,999.00"])}`;
+        case 30: // a row of sums under a summary header
+          return "Subtotal\tTax\tTotal\n$4.50\t$0.50\t$5.00";
+        case 31: // a final label split or letter-spaced
+          return this.pick([
+            `T o t a l${sep}$${fig}`,
+            `T O T A L   $${fig}`,
+            `To tal${sep}$${fig}`,
+            `To-tal: $${fig}`,
+            `T.o.t.a.l $${fig}`,
+            `Arnount due: $${fig}`,
+            `Tot-\nal $${fig}`,
+          ]);
+        case 32: // a look-alike word that keeps few plain letters
+          return `${this.pick(["\u0422\u043et\u0430\u16c1", "\u0422\u041e\u0422\u0410\u0141", "\u0412\u0430\u16c1\u0430\u0578\u0441\u0435"])} $${fig}`;
+        case 33: // a payable word with an amount that an identifier or a payee line hides
+          return this.pick([
+            `Balance net ${this.int(1, 999)} USDC`,
+            `Amount: Marketing ${this.int(1000, 9999)} USDC`,
+            `Pay to ACME ${this.int(1000, 9999)} dollars`,
+            "Payable to: ACME LLC\tAmount: 9999",
+            "Remit to vendor.near the sum of 9999",
+          ]);
+        default: // two documents in one text
+          return this.pick([
+            "INVOICE\nFrom: Acme\nTotal 500 USDC\n\nINVOICE\nFrom: Beta\nAmount due 500 USDC",
+            "Bill #1001\nDesign\nTotal: $500.00\n-----\nBill #1002\nDesign\nAmount due: $500.00",
+            "Invoice: #1001\nTotal: $500.00\n-----\nInvoice: #1002\nAmount due: $500.00",
+          ]);
       }
     })();
     return { kind: "bad", text };
@@ -250,6 +351,9 @@ class Grammar {
       "Payment received",
       "Credit applied",
       "Previous balance",
+      "Paid",
+      "Credits",
+      "Retainer applied",
       "Page total",
       "Net total",
       "Installment 2 of 3",

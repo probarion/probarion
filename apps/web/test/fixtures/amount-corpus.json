@@ -3380,6 +3380,4540 @@
         "issue": null
       },
       "why": "a vendor name in another script is not a payable line"
+    },
+    {
+      "id": "r4-open-1.0",
+      "source": "re-review open finding 1: The currency gate is quadratic on a line of word-like ISO co",
+      "build": {
+        "parts": [
+          {
+            "text": "Invoice INV-1\nTotal 5 USDC\n"
+          },
+          {
+            "text": "ALL ",
+            "repeat": 12500
+          }
+        ],
+        "slice": 50000
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-1.1",
+      "source": "re-review open finding 1: The currency gate is quadratic on a line of word-like ISO co",
+      "build": {
+        "parts": [
+          {
+            "text": "Invoice INV-1\nTotal 5 USDC\n"
+          },
+          {
+            "text": "CAD ",
+            "repeat": 12500
+          }
+        ],
+        "slice": 50000
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-1.2",
+      "source": "re-review open finding 1: The currency gate is quadratic on a line of word-like ISO co",
+      "build": {
+        "parts": [
+          {
+            "text": "Invoice INV-1\nTotal 5 USDC\n"
+          },
+          {
+            "text": "NEAR ",
+            "repeat": 12500
+          }
+        ],
+        "slice": 50000
+      },
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-open-1.3",
+      "source": "re-review open finding 1: The currency gate is quadratic on a line of word-like ISO co",
+      "build": {
+        "parts": [
+          {
+            "text": "Invoice INV-1\nTotal 5 USDC\n"
+          },
+          {
+            "text": "ALL ",
+            "repeat": 12493
+          }
+        ]
+      },
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-2.0",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nPaid $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-2.1",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nPayment of $400.00 received on 2026-10-01, thank you.",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.2",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nDeposit paid $400.00 on 2026-10-01",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.3",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nLess: Deposit $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.4",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nRetainer applied ($400.00)",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-2.5",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nWithholding tax -$100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.6",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nRefunded $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.7",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "INVOICE\nInvoice # 1044\nWebsite build\t$1,000.00\nTotal\t$1,000.00\nDeposit paid 10/01/2026\t-$400.00\nThank you!",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.8",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "Invoice INV-1\nTotal: $9,999.00\nYou owe: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.9",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "Invoice INV-1\nTotal: $9,999.00\nRemaining: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.10",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "Total: $5.00\nBal: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.11",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "Total $1,000.00 (incl. deposits)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-2.12",
+      "source": "re-review open finding 2: A money line whose wording is outside the 9 payable words is",
+      "text": "Total $1,000.00 (including payments received)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-3.0",
+      "source": "re-review open finding 3: The deduction rule is order-blind and treats 'Total due' or ",
+      "text": "INVOICE INV-1\nAmount due $1,000.00\nPayments received $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-3.1",
+      "source": "re-review open finding 3: The deduction rule is order-blind and treats 'Total due' or ",
+      "text": "INVOICE INV-1\nTotal due $10,000.00\nDeposit (50%) $5,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-3.2",
+      "source": "re-review open finding 3: The deduction rule is order-blind and treats 'Total due' or ",
+      "text": "INVOICE INV-1\nBalance due $1,000.00\nCredits applied $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-3.3",
+      "source": "re-review open finding 3: The deduction rule is order-blind and treats 'Total due' or ",
+      "text": "INVOICE INV-1001\nAmount due $1,000.00\nAmount paid $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-3.4",
+      "source": "re-review open finding 3: The deduction rule is order-blind and treats 'Total due' or ",
+      "text": "Logo design $1,000.00\nTotal payable: $1,000.00\nDeposit paid: $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-3.5",
+      "source": "re-review open finding 3: The deduction rule is order-blind and treats 'Total due' or ",
+      "text": "Logo design $1,000.00\nTotal: $1,000.00\nDeposit paid: $400.00\nBalance due: $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-3.6",
+      "source": "re-review open finding 3: The deduction rule is order-blind and treats 'Total due' or ",
+      "text": "INVOICE INV-1\nInstallment 2 of 3: $300.00\nTotal $900.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-4.0",
+      "source": "re-review open finding 4: A scale, denomination or per-unit note on another line is ne",
+      "text": "INVOICE INV-1001\nAmount due: 2,500,000 USDC\n(USDC base units, 6 decimals)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-4.1",
+      "source": "re-review open finding 4: A scale, denomination or per-unit note on another line is ne",
+      "text": "INVOICE INV-1001\nTotal: $250,000\nNote: all amounts are in cents.",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-4.2",
+      "source": "re-review open finding 4: A scale, denomination or per-unit note on another line is ne",
+      "text": "INVOICE INV-1001\nTotal $1,250\n(figures in thousands)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-4.3",
+      "source": "re-review open finding 4: A scale, denomination or per-unit note on another line is ne",
+      "text": "INVOICE INV-1001\nTotal 1,000,000 USDC\nAll figures in wei",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-4.4",
+      "source": "re-review open finding 4: A scale, denomination or per-unit note on another line is ne",
+      "text": "Invoice INV-5\nAPI usage\nTotal: 1500000 USDC\nAmounts above are in micro-USDC (1e-6).",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-4.5",
+      "source": "re-review open finding 4: A scale, denomination or per-unit note on another line is ne",
+      "text": "Total: 770 USDC\nper seat x 20 seats",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-4.6",
+      "source": "re-review open finding 4: A scale, denomination or per-unit note on another line is ne",
+      "text": "INVOICE INV-1\nTotal 100 USDC\n/ month",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-4.7",
+      "source": "re-review open finding 4: A scale, denomination or per-unit note on another line is ne",
+      "text": "Total $100 (incl. hundred)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-5.0",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "INVOICE INV-1001\nTotal 100.00 USDC\nPaid by bank transfer on 2026-11-03. Thank you!",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-5.1",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "INVOICE INV-1001\nTotal $100.00\nPayment received in full. Thank you.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-5.2",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "INVOICE INV-1001\nTotal $100.00\nThis invoice was settled on 2026-10-30.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-5.3",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "INVOICE INV-1001\nTotal $100.00\nP A I D",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-5.4",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "Jane Doe Design\nINVOICE\nInvoice No: 1001\nDate: 2026-10-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPAID ON 2026-10-15 - THANK YOU",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-5.5",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nStatus \u2013 Paid",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-5.6",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\n| Status | Paid |",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-5.7",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nStatus:     Paid",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-5.8",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPAYMENT RECEIVED",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-5.9",
+      "source": "re-review open finding 5: A paid or void status in prose, letter-spaced, with a date, ",
+      "text": "INVOICE INV-90 - PAID\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.0",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "Acme Design LLC\nCredit Note for invoice INV-1\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.1",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "Acme Design LLC\nSales Receipt\nDesign work $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.2",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "Acme Design LLC\nPayment Receipt #1234\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.3",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "Acme Design LLC\nPrice Quote\nTotal $5,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.4",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "Acme Design LLC\nPurchase Order\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.5",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "Acme Design LLC\nCustomer statement\nRef 1001  Oct design  $300.00\nRef 1002  Nov design  $200.00\nTotal due: $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.6",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "Jane Doe Design\nPro Forma Invoice\nInvoice No: PF-17\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nThis is not a tax invoice",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.7",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "Acme\n# Receipt\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.8",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "R E C E I P T\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.9",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "RECE1PT\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-6.10",
+      "source": "re-review open finding 6: A document-type title that is not on line 1, not in capitals",
+      "text": "Contoso Ltd\nPayment Advice\nWe have paid the following invoices today:\nINV-101 500.00\nTotal: $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-7.0",
+      "source": "re-review open finding 7: The capital-stamp and ISO-code checks run on the NFKC text, ",
+      "text": "INVOICE INV-90 - V\u200bOID\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-7.1",
+      "source": "re-review open finding 7: The capital-stamp and ISO-code checks run on the NFKC text, ",
+      "text": "INVOICE INV-90 - VO\u00adID\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-7.2",
+      "source": "re-review open finding 7: The capital-stamp and ISO-code checks run on the NFKC text, ",
+      "text": "INVOICE INV-90 - VO\u0406D\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-7.3",
+      "source": "re-review open finding 7: The capital-stamp and ISO-code checks run on the NFKC text, ",
+      "text": "INVOICE INV-90 - DUPL\u0406CATE\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-open-7.4",
+      "source": "re-review open finding 7: The capital-stamp and ISO-code checks run on the NFKC text, ",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAll amounts in \u0406NR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-7.5",
+      "source": "re-review open finding 7: The capital-stamp and ISO-code checks run on the NFKC text, ",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAll amounts in E\u200bUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-8.0",
+      "source": "re-review open finding 8: Deviation 6: a word-like code (CAD, PHP, TRY, PEN) outside s",
+      "text": "INVOICE INV-1\nCurrency\tCAD\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-8.1",
+      "source": "re-review open finding 8: Deviation 6: a word-like code (CAD, PHP, TRY, PEN) outside s",
+      "text": "INVOICE INV-1\nCurrency CAD\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-8.2",
+      "source": "re-review open finding 8: Deviation 6: a word-like code (CAD, PHP, TRY, PEN) outside s",
+      "text": "INVOICE INV-1\nCurrency\tPHP\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-8.3",
+      "source": "re-review open finding 8: Deviation 6: a word-like code (CAD, PHP, TRY, PEN) outside s",
+      "text": "INVOICE INV-1\nCurrency - TRY\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-8.4",
+      "source": "re-review open finding 8: Deviation 6: a word-like code (CAD, PHP, TRY, PEN) outside s",
+      "text": "INVOICE INV-1\nAll prices CAD\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-8.5",
+      "source": "re-review open finding 8: Deviation 6: a word-like code (CAD, PHP, TRY, PEN) outside s",
+      "text": "Maple Design Inc.\nINVOICE\nInvoice No: 2026-114\nBill to: Contoso Ltd\nLogo design $700.00\nSubtotal $700.00\nHST (13%) $91.00\nTotal: $791.00\nCurrency code: CAD\nGST/HST No. 123456789 RT0001",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-8.6",
+      "source": "re-review open finding 8: Deviation 6: a word-like code (CAD, PHP, TRY, PEN) outside s",
+      "text": "Maple Design Inc.\nINVOICE\nInvoice No: 2026-114\nBill to: Contoso Ltd\nLogo design $700.00\nSubtotal $700.00\nHST (13%) $91.00\nTotal: $791.00\nPrices are in $CAD\nGST/HST No. 123456789 RT0001",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-8.7",
+      "source": "re-review open finding 8: Deviation 6: a word-like code (CAD, PHP, TRY, PEN) outside s",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nCurrency: $CAD",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.0",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Studio GmbH\nINVOICE\nInvoice No: 2026-114\nWebsite build 50h x 70EUR\nSubtotal $3,500.00\nTax $0.00\nTotal: $3,500.00\n",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.1",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nHourly rate 100GBP",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.2",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPrices in Eur",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.3",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Kumar Software Pvt Ltd\nINVOICE\nInvoice No: 2026-114\nDevelopment $1,000.00\nTotal: $1,000.00\nAll amounts in \u20a8",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.4",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Tanaka KK\nINVOICE\nInvoice No: 2026-114\nDesign $1,000.00\nTotal: $1,000.00\nAmounts in \u5186",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.5",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAmounts in Rs.",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.6",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Total: $100\nPrices in Canadian $",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.7",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Total: $100\nAll amounts in Aussie dollars",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.8",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Total: $100\nAmounts in Canadian funds",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-9.9",
+      "source": "re-review open finding 9: Other common ways of naming a foreign currency pass the gate",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPrices in C $",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-open-10.0",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "INVOICE INV-1\nAmount due: $12\n,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.1",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "INVOICE INV-1\nTotal $1,000\n,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.2",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "INVOICE INV-1\nTotal $1\n250.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.3",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "INVOICE INV-1\nTotal $1,250\n.50",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.4",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "Total: $770.00\n$9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.5",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "Total: $5.00\nBalance\n$9,999.00*",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.6",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "Total: $5.00\nBalance\nUSD $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.7",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "Total: $5.00\nBalance\n| $9,999.00 |",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.8",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "Subtotal\tTax\tTotal\n$4.50\t$0.50\t$5.00\nAmount due: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.9",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "Subtotal Tax Total\n$9,000.00 $999.00 $9,999.00\nAmount due: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-10.10",
+      "source": "re-review open finding 10: A value on the line below its label is seen in only one shap",
+      "text": "Item Amount Total\n$9,999.00\nTotal: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.0",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "T o t a l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.1",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "T O T A L   $9,999.00\nTotal: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.2",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "A m o u n t  d u e: $9,999.00\nTotal: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.3",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "Invoice INV-1\nT O T A L   $5.00\nTotal: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.4",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "Invoice INV-7\nWebsite build $9,999.00\nG R A N D   T O T A L   $9,999.00\nTotal: $99.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.5",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "Invoice INV-1\nLogo $9,999.00\nTo\u200atal $9,999.00\nAmount due: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.6",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "To-tal: $9,999.00\nAmount due: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.7",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "T.o.t.a.l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.8",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "Tot-\nal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.9",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "To\u000btal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.10",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "To\u0085tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-11.11",
+      "source": "re-review open finding 11: A final label split by spaces, dots, hyphens, apostrophes or",
+      "text": "Arnount: 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-12.0",
+      "source": "re-review open finding 12: The look-alike wildcard skips words with fewer than 2 plain ",
+      "text": "\u0422\u043et\u0430\u16c1 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-12.1",
+      "source": "re-review open finding 12: The look-alike wildcard skips words with fewer than 2 plain ",
+      "text": "\u0422\u043et\u0430\u2502 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-12.2",
+      "source": "re-review open finding 12: The look-alike wildcard skips words with fewer than 2 plain ",
+      "text": "\u0422\u1040t\u0430\u04cf 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-12.3",
+      "source": "re-review open finding 12: The look-alike wildcard skips words with fewer than 2 plain ",
+      "text": "\u0422\u041e\u0422\u0410\u0141 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-12.4",
+      "source": "re-review open finding 12: The look-alike wildcard skips words with fewer than 2 plain ",
+      "text": "\u0412\u0430\u16c1\u0430\u0578\u0441\u0435 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-12.5",
+      "source": "re-review open finding 12: The look-alike wildcard skips words with fewer than 2 plain ",
+      "text": "\u0391\u039c\u039f\u222a\u039d\u03a4: 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-13.0",
+      "source": "re-review open finding 13: The payable-ish exemptions ignore a money marker: identifier",
+      "text": "Invoice INV-1\nTotal: $9,999.00\nBalance net 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-13.1",
+      "source": "re-review open finding 13: The payable-ish exemptions ignore a money marker: identifier",
+      "text": "Logo design $5.00\nTotal: $5.00\nDue for this invoice: 9999 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-13.2",
+      "source": "re-review open finding 13: The payable-ish exemptions ignore a money marker: identifier",
+      "text": "Logo design $5.00\nTotal: $5.00\nAmount PO 2500 USD",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-13.3",
+      "source": "re-review open finding 13: The payable-ish exemptions ignore a money marker: identifier",
+      "text": "Logo design $5.00\nTotal: $5.00\nAmount: Marketing 2500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-13.4",
+      "source": "re-review open finding 13: The payable-ish exemptions ignore a money marker: identifier",
+      "text": "Logo design $5.00\nTotal: $5.00\nAmount $750 day rate",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-13.5",
+      "source": "re-review open finding 13: The payable-ish exemptions ignore a money marker: identifier",
+      "text": "Total: $5.00\nPay to ACME 9999 dollars",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-13.6",
+      "source": "re-review open finding 13: The payable-ish exemptions ignore a money marker: identifier",
+      "text": "Total: $5.00\nPayable to: ACME LLC\tAmount: 9999",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-13.7",
+      "source": "re-review open finding 13: The payable-ish exemptions ignore a money marker: identifier",
+      "text": "Total: $5.00\nRemit to vendor.near the sum of 9999",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-open-14.0",
+      "source": "re-review open finding 14: Two documents in one text are paid once when their numbers a",
+      "text": "INVOICE\nFrom: Acme\nTotal 500 USDC\n\nINVOICE\nFrom: Beta\nAmount due 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-14.1",
+      "source": "re-review open finding 14: Two documents in one text are paid once when their numbers a",
+      "text": "INVOICE\nDesign, October\nTotal 500 USDC\n\n-----\n\nINVOICE\nDesign, November\nGrand total 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-14.2",
+      "source": "re-review open finding 14: Two documents in one text are paid once when their numbers a",
+      "text": "Invoice: #1001\nDesign, October\nTotal: $500.00\n\n-----\n\nInvoice: #1002\nDesign, November\nAmount due: $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-14.3",
+      "source": "re-review open finding 14: Two documents in one text are paid once when their numbers a",
+      "text": "Bill #1001\nDesign\nTotal: $500.00\n-----\nBill #1002\nDesign\nAmount due: $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-14.4",
+      "source": "re-review open finding 14: Two documents in one text are paid once when their numbers a",
+      "text": "Inv. No. 1001\nDesign\nTotal: $500.00\n-----\nInv. No. 1002\nDesign\nAmount due: $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-14.5",
+      "source": "re-review open finding 14: Two documents in one text are paid once when their numbers a",
+      "text": "Invoice INV-1001\nTotal: $500.00\n-----\nInvoice I\u200bNV-1002\nAmount due: $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-14.6",
+      "source": "re-review open finding 14: Two documents in one text are paid once when their numbers a",
+      "text": "INVOICE INV-1\nTotal 500 USDC\nGrand total 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-open-15.0",
+      "source": "re-review open finding 15: Duplicate guard: one invisible character or a Unicode hyphen",
+      "text": "Acme Design LLC\nInvoice INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal: $700.00\nTax: $70.00\nTotal: $770.00\nThank you for your business.\n",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-open-15.1",
+      "source": "re-review open finding 15: Duplicate guard: one invisible character or a Unicode hyphen",
+      "text": "Acme Design LLC\nInvoice INV-10\u200b01\nDate: 2026-11-01\nLogo design $700.00\nSubtotal: $700.00\nTax: $70.00\nTotal: $770.00\nThank you for your business.\n",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-open-15.2",
+      "source": "re-review open finding 15: Duplicate guard: one invisible character or a Unicode hyphen",
+      "text": "Acme Design LLC\nInvoice INV-10\u00ad01\nDate: 2026-11-01\nLogo design $700.00\nSubtotal: $700.00\nTax: $70.00\nTotal: $770.00\nThank you for your business.\n",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-open-15.3",
+      "source": "re-review open finding 15: Duplicate guard: one invisible character or a Unicode hyphen",
+      "text": "Acme Design LLC\nInvoice INV\u20111001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal: $700.00\nTax: $70.00\nTotal: $770.00\nThank you for your business.\n",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-open-15.4",
+      "source": "re-review open finding 15: Duplicate guard: one invisible character or a Unicode hyphen",
+      "text": "Acme Design LLC\nInvoice INV\u22121001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal: $700.00\nTax: $70.00\nTotal: $770.00\nThank you for your business.\n",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-open-15.5",
+      "source": "re-review open finding 15: Duplicate guard: one invisible character or a Unicode hyphen",
+      "text": "Acme Design LLC\nInvoice\u00a0INV-1001\nDate: 2026-11-01\nLogo design $700.00\nSubtotal: $700.00\nTax: $70.00\nTotal: $770.00\nThank\u200b you for your business.\n",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p1.B.2",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal: $1,000.00\nPaid: $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p1.B.3",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nLess: payment received $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p1.B.4",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nCredit -$400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p1.B.6",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nDown payment $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p1.B.7",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nPrepaid $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.B.8",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nAdvance received $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.B.9",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal 1,000.00 USDC\nAlready received: 400.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.B.12",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nDeposit paid $400.00 (Oct 1)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.B.14",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nPayment received $400.00 - thank you",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p1.B.16",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nDeposit paid 10/01/2026\t$400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.B.17",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nGift card: -$400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.B.18",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nPartial payment: $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p1.B.19",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nLate fee $50.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.B-ctl.20",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\nAmount paid $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p1.S.22",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nYou owe: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S.23",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nOwed: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S.24",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nRemaining: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S.25",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nTo be paid: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S.26",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nAmt: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S.28",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nTot. $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S.29",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nInvoice value: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S.30",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nPlease send 9,999.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S.31",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nPayment required: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S2.32",
+      "source": "judge probe p1",
+      "text": "Order Total: $5.00\nFinal payment: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.S-ctl.33",
+      "source": "judge probe p1",
+      "text": "Total: $5.00\nTo pay: $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.C.37",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1001\nTotal due $1,000.00\nDeposit paid $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p1.C-ctl1.41",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1\nAmount paid $400.00\nAmount due $600.00",
+      "expect": {
+        "amount": "600000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p1.C-ctl2.42",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1\nSubtotal $1,000.00\nAmount paid $400.00\nBalance due $600.00",
+      "expect": {
+        "amount": "600000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p1.D.47",
+      "source": "judge probe p1",
+      "text": "Total: 15000 USD\n(in cents)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.D.48",
+      "source": "judge probe p1",
+      "text": "Total: 15000 USD\ncents",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.D.50",
+      "source": "judge probe p1",
+      "text": "Total: $770.00\nper month, 12 months",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.D.51",
+      "source": "judge probe p1",
+      "text": "Total: $770.00\n(in thousands)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.D-ctl.53",
+      "source": "judge probe p1",
+      "text": "Amount due: 2500000 USDC (base units)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.J2.55",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1\nInstallment 2 of 3 $300.00\nTotal $900.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p1.J3.56",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1\nTotal $1,000.00\nNet amount $900.00",
+      "expect": {
+        "amount": "1000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p1.J4.57",
+      "source": "judge probe p1",
+      "text": "INVOICE INV-1\nNet amount $900.00\nVAT (11.11%) $100.00\nTotal $1,000.00",
+      "expect": {
+        "amount": "1000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p1.J-ctl.58",
+      "source": "judge probe p1",
+      "text": "Contract total $900.00\nInstallment 2 of 3 $300.00\nAmount due $300.00",
+      "expect": {
+        "amount": "300000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p1.K1.59",
+      "source": "judge probe p1",
+      "text": "Page total: $9,999.00\nAmount due: $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p1.R.61",
+      "source": "judge probe p1",
+      "text": "Total $1,000.00 (incl. prior payments)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.R.63",
+      "source": "judge probe p1",
+      "text": "Total $1,000.00 (incl. credits)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.R.64",
+      "source": "judge probe p1",
+      "text": "Total $100 (incl. refunds)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.R.65",
+      "source": "judge probe p1",
+      "text": "Total $1,000 (including prepayment)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.R.67",
+      "source": "judge probe p1",
+      "text": "Total $100 (incl. in hundreds)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.R.68",
+      "source": "judge probe p1",
+      "text": "Total $1,000 (incl. sample)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.R-ctl.69",
+      "source": "judge probe p1",
+      "text": "Total $1,000.00 (incl. deposit)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p1.R-ctl2.70",
+      "source": "judge probe p1",
+      "text": "Total $1,000.00 (incl. VAT)",
+      "expect": {
+        "amount": "1000000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p2.F.76",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nOfficial Receipt No. 55\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.78",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nEstimate for website redesign\nTotal $5,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.79",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nQuote: Q-1001\nTotal $5,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.81",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nMonthly Statement\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.82",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nProforma Invoice PF-1\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.84",
+      "source": "judge probe p2",
+      "text": "Jane Doe Design\nProject Quote\nQuote No: Q-17\nValid until 2026-12-01\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.86",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nPayment Receipt\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.87",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nCredit Note: CN-7\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.88",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nPURCHASE ORDER\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.90",
+      "source": "judge probe p2",
+      "text": "Document: Receipt\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.92",
+      "source": "judge probe p2",
+      "text": "CREDIT\nNOTE\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F.93",
+      "source": "judge probe p2",
+      "text": "Logo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPro forma - not for payment",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F-ctl1.96",
+      "source": "judge probe p2",
+      "text": "Credit Note\nTotal 100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F-ctl2.97",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nCredit Note CN-7\nTotal 100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.F-ctl3.98",
+      "source": "judge probe p2",
+      "text": "Acme Design LLC\nINVOICE\nPurchase order: PO-1001\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p2.E.100",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-1001\nTotal $100.00\nAlready paid by card - no action needed.",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E.102",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-1001\nTotal $100.00\nPaid on 2026-11-01 by card ending 4242",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.106",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\n$770.00 paid on November 1, 2026",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.108",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPAID PAID",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.109",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nV O I D",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.113",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nStatus: **Paid**",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.114",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nStatus: Settled",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.115",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nStatus: Fully paid",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.116",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nStatus: PA1D",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.117",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nThis invoice has been pa1d",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.118",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nSample invoice",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.119",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nDraft invoice",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.120",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPlease don't pay this invoice",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E2.121",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nNo payment required",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E3b.123",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - Void\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E-ctl.124",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\n*** PAID ***",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E-ctl2.125",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPAID IN FULL",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.E-ctl3.126",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAmount paid $0.00",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p2.U.129",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - V\u2060OID\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.U.130",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - V\ufeffOID\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.U.131",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - V\u034fOID\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.U.133",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - VO\u0399D\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.U.134",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - VO\u0130D\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.U.135",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - VO\u00cdD\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.U.136",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - VOlD\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.U.138",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - SPEC\u0406MEN\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.U-ctl.139",
+      "source": "judge probe p2",
+      "text": "INVOICE INV-90 - VOID\nInvoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p2.U-cur.141",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAll amounts in \u0130DR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p2.U-cur.142",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAll amounts in \u00cdSK",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p2.U-cur.143",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAll amounts in EU\u00adR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p2.U-cur-ctl.145",
+      "source": "judge probe p2",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAll amounts in INR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p3.M.149",
+      "source": "judge probe p3",
+      "text": "B a l a n c e  d u e  $9,999.00\nTotal: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.M.153",
+      "source": "judge probe p3",
+      "text": "Tot'al 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.M.154",
+      "source": "judge probe p3",
+      "text": "T\u00b7o\u00b7t\u00b7a\u00b7l 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.M.157",
+      "source": "judge probe p3",
+      "text": "Invoice INV-1\nLogo $9,999.00\nTo\u2009tal $9,999.00\nAmount due: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.M.159",
+      "source": "judge probe p3",
+      "text": "Invoice INV-1\nLogo $9,999.00\nTOT AL $9,999.00\nAmount due: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.N-ctl.167",
+      "source": "judge probe p3",
+      "text": "Tot\u0430\u16c1 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.N-ctl2.168",
+      "source": "judge probe p3",
+      "text": "\u0422\u041e\u0422\u0410\u216c $9,999.00\nTotal: $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.L.170",
+      "source": "judge probe p3",
+      "text": "Logo design $5.00\nTotal: $5.00\nPlease pay invoice: 2500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.L.171",
+      "source": "judge probe p3",
+      "text": "Logo design $5.00\nTotal: $5.00\nOutstanding on invoice 9999 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.L.172",
+      "source": "judge probe p3",
+      "text": "Logo design $5.00\nTotal: $5.00\nBalance net 750 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.L.173",
+      "source": "judge probe p3",
+      "text": "Logo design $5.00\nTotal: $5.00\nRemit net 999 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.L.174",
+      "source": "judge probe p3",
+      "text": "Logo design $5.00\nTotal: $5.00\nAmount per P.O.: 2500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.L.178",
+      "source": "judge probe p3",
+      "text": "Logo design $5.00\nTotal: $5.00\nAmount: 1250.near USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.L-ctl.180",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nAmount owing on invoice 9999",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.O.181",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nBalance\n(USD)\n$9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.O.183",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nBalance\n9,999.00 USDC.",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.O.184",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nBalance\n$9,999.00 (USD)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.O.186",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nBalance:\nUSD\n9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.O.187",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nBalance\n$9,999.00 (incl. VAT)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.O.188",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nBalance\n**$9,999.00**",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.O.190",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nOutstanding\n- - -\n$9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.O-ctl.191",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nBalance\n$9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.P.194",
+      "source": "judge probe p3",
+      "text": "| Subtotal | Tax | Total |\n| $90.00 | $10.00 | $100.00 |\n| Amount due | | $5.00 |",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.P.196",
+      "source": "judge probe p3",
+      "text": "Total Total Total\n$9,999.00\nAmount due $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.P.197",
+      "source": "judge probe p3",
+      "text": "Total (USD) Amount Price\n9,999.00\nAmount due $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.P-ctl.198",
+      "source": "judge probe p3",
+      "text": "Item Qty Price Total\nLogo 1 $700.00 $700.00\nTotal: $700.00",
+      "expect": {
+        "amount": "700000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p3.Q.199",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nPay to ACME 9999 US dollars",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.Q.200",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nMake checks payable to ACME Inc. for 9999 US dollars",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.Q.203",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nPay to: alice.near\tBalance 9999",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.Q-flip.205",
+      "source": "judge probe p3",
+      "text": "Invoice INV-1\nTotal: $9,999.00\nPayable to: ACME LLC\tAmount due: 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p3.Q-ctl.206",
+      "source": "judge probe p3",
+      "text": "Total: $5.00\nPay to ACME 9,999 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.H.209",
+      "source": "judge probe p4",
+      "text": "INVOICE INV-1\nTotal: $1,000\n000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.H.211",
+      "source": "judge probe p4",
+      "text": "INVOICE INV-1\nTotal $5\n6",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.H.213",
+      "source": "judge probe p4",
+      "text": "Total: $1\n,250.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.H.214",
+      "source": "judge probe p4",
+      "text": "Invoice INV-1\nSubtotal $1,200.00\nTax $50.00\nTotal $1\n,250.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.H.215",
+      "source": "judge probe p4",
+      "text": "Total: $1\n.50",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.H.216",
+      "source": "judge probe p4",
+      "text": "Total $100\n.50 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.H.217",
+      "source": "judge probe p4",
+      "text": "Total: $1\n\n,250.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.H.219",
+      "source": "judge probe p4",
+      "text": "Total: $770.00\n+ $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.I.222",
+      "source": "judge probe p4",
+      "text": "To\ftal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.I.224",
+      "source": "judge probe p4",
+      "text": "To\u2028tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.I.225",
+      "source": "judge probe p4",
+      "text": "To\rtal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.I.226",
+      "source": "judge probe p4",
+      "text": "Total 5 USDC\u000b9,999 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.I-LF.227",
+      "source": "judge probe p4",
+      "text": "To\ntal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p4.K.230",
+      "source": "judge probe p4",
+      "text": "INVOICE #A-1\nTotal 500 USDC\n\nBILL #B-2\nAmount due 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p4.K.232",
+      "source": "judge probe p4",
+      "text": "INVOICE INV-201\nDesign, October\nTotal 500 USDC\n\n-----\n\nINVOICE\nDesign, November\nInvoice total 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p4.K.233",
+      "source": "judge probe p4",
+      "text": "Retainer September\nTotal 100 USDC\nRetainer October\nInvoice total 100 USDC\nRetainer November\nOrder total 100 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p4.K.234",
+      "source": "judge probe p4",
+      "text": "Bill 201\nTotal 500 USDC\nBill 202\nTotal due 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p4.K.235",
+      "source": "judge probe p4",
+      "text": "Invoice: #1001\nLogo design $500.00\nTotal: $500.00\n\n-- page 2 --\n\nInvoice: #1002\nBrand guide $500.00\nInvoice total: $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p4.K.239",
+      "source": "judge probe p4",
+      "text": "Invoice n\u00b0 1001\nTotal: $500.00\n-----\nInvoice n\u00b0 1002\nAmount due: $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p4.K-ctl.241",
+      "source": "judge probe p4",
+      "text": "INVOICE #201\nTotal 500 USDC\nINVOICE #202\nGrand total 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p4.K-ctl2.242",
+      "source": "judge probe p4",
+      "text": "Invoice INV-201\nTotal 500 USDC\nInvoice INV-202\nTotal 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p4.K-unequal.243",
+      "source": "judge probe p4",
+      "text": "INVOICE\nFrom: Acme\nTotal 500 USDC\n\nINVOICE\nFrom: Beta\nAmount due 700 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p5.G.249",
+      "source": "judge probe p5",
+      "text": "INVOICE INV-1\nCAD pricing applies\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-can.250",
+      "source": "judge probe p5",
+      "text": "Maple Design Inc.\nINVOICE\nInvoice No: 2026-114\nBill to: Contoso Ltd\nLogo design $700.00\nSubtotal $700.00\nHST (13%) $91.00\nTotal: $791.00\nAll amounts CAD\nGST/HST No. 123456789 RT0001",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-can.253",
+      "source": "judge probe p5",
+      "text": "Maple Design Inc.\nINVOICE\nInvoice No: 2026-114\nBill to: Contoso Ltd\nLogo design $700.00\nSubtotal $700.00\nHST (13%) $91.00\nTotal: $791.00\nCurrency - CAD\nGST/HST No. 123456789 RT0001",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-can.254",
+      "source": "judge probe p5",
+      "text": "Maple Design Inc.\nINVOICE\nInvoice No: 2026-114\nBill to: Contoso Ltd\nLogo design $700.00\nSubtotal $700.00\nHST (13%) $91.00\nTotal: $791.00\nPrices: CAD\nGST/HST No. 123456789 RT0001",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-B.255",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPrices are PHP",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-B.256",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAmounts are TRY",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-B.257",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAmounts are PEN",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-B.259",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nCurrency: $ CAD",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-B.260",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nCURRENCY CAD",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-B.261",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nNote: USD equivalent of PHP",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-ctl.262",
+      "source": "judge probe p5",
+      "text": "INVOICE INV-1\nCurrency: CAD\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-ctl.263",
+      "source": "judge probe p5",
+      "text": "INVOICE INV-1\nCurrency\tEUR\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-ctl.264",
+      "source": "judge probe p5",
+      "text": "INVOICE INV-1\nPrices quoted in CAD.\nTotal $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.G-ok.265",
+      "source": "judge probe p5",
+      "text": "INVOICE INV-1\nCAD drawings $100.00\nTotal $100.00",
+      "expect": {
+        "amount": "100000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p5.glue.267",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nHourly rate EUR70",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.glue.268",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nHourly rate EUR100",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.glue.270",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nRate: 1.000,00EUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.glue.271",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nJPY150000 / CHF120",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.glue.272",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\n700EUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-can.275",
+      "source": "judge probe p5",
+      "text": "Maple Design Inc.\nINVOICE\nInvoice No: 2026-114\nBill to: Contoso Ltd\nLogo design $700.00\nSubtotal $700.00\nHST (13%) $91.00\nTotal: $791.00\nAll amounts in CDN funds\nGST/HST No. 123456789 RT0001",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-can.276",
+      "source": "judge probe p5",
+      "text": "Maple Design Inc.\nINVOICE\nInvoice No: 2026-114\nBill to: Contoso Ltd\nLogo design $700.00\nSubtotal $700.00\nHST (13%) $91.00\nTotal: $791.00\nAmounts shown in Canadian funds\nGST/HST No. 123456789 RT0001",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-can.277",
+      "source": "judge probe p5",
+      "text": "Maple Design Inc.\nINVOICE\nInvoice No: 2026-114\nBill to: Contoso Ltd\nLogo design $700.00\nSubtotal $700.00\nHST (13%) $91.00\nTotal: $791.00\nMontants en $ CA\nGST/HST No. 123456789 RT0001",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-B.278",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAmounts in \ufdfc",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-B.280",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAmounts in kr",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-B.281",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAmounts in z\u0142",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-B.283",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPrices in NZ $",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-B.284",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPrices in Cdn.$",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-B.285",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPrices in \u0421$",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-B.286",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nTous les montants sont en dollars canadiens",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.od.288",
+      "source": "judge probe p5",
+      "text": "Total: $100\nAll amounts in AU dollars",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.od.290",
+      "source": "judge probe p5",
+      "text": "Total: $100\nAll prices in Kiwi dollars",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.od.292",
+      "source": "judge probe p5",
+      "text": "Total: $100\nAll figures are CDN",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.od.293",
+      "source": "judge probe p5",
+      "text": "Total: $100\nFigures in Australian currency",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.sym-ctl.294",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAmounts in \u20b1",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.od-ctl.295",
+      "source": "judge probe p5",
+      "text": "Total: $100\nAll prices in NZD",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.lc.297",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nLogo design Eur 700",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.lc.298",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nLogo design 700 eur",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.lc.299",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nAll amounts in eur",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.lc.300",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nprices in gbp",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.lc.301",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPrices in Cad",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.near.302",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPay in $NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.near.303",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nSettle in native NEAR",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      },
+      "why": "a ruled Minor (not required this round): the reader's answer is kept as it is",
+      "judged": "0:currency"
+    },
+    {
+      "id": "r4-p5.near.304",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPay with NEAR",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      },
+      "why": "a ruled Minor (not required this round): the reader's answer is kept as it is",
+      "judged": "0:currency"
+    },
+    {
+      "id": "r4-p5.near.305",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nEquivalent: 25 wNEAR",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      },
+      "why": "a ruled Minor (not required this round): the reader's answer is kept as it is",
+      "judged": "0:currency"
+    },
+    {
+      "id": "r4-p5.near.306",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPayment in $SOL",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p5.near.307",
+      "source": "judge probe p5",
+      "text": "Invoice INV-90\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00\nPayment in BNB",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      },
+      "why": "a ruled Minor (not required this round): the reader's answer is kept as it is",
+      "judged": "0:currency"
+    },
+    {
+      "id": "r4-p6.1d-prefix2.309",
+      "source": "judge probe p6",
+      "text": "INVOICE INV-1\nTotal 500 USDC\nInvoice total 500 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-p6.1d-ctl.310",
+      "source": "judge probe p6",
+      "text": "INVOICE INV-1\nTotal 500 USDC\nAmount due 500 USDC",
+      "expect": {
+        "amount": "500000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p6.minor-receipt.311",
+      "source": "judge probe p6",
+      "text": "Acme Design LLC\nINVOICE\nInvoice # 1001\nPAYMENT DUE UPON RECEIPT\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "770000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p6.minor-vendor.312",
+      "source": "judge probe p6",
+      "text": "Quote Masters Inc.\nINVOICE\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "a ruled Minor (not required this round): the reader's answer is kept as it is",
+      "judged": "770000000"
+    },
+    {
+      "id": "r4-p6.minor-RON.313",
+      "source": "judge probe p6",
+      "text": "Acme Design LLC\nINVOICE\nInvoice # 1001\nContact: RON SMITH\nLogo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      },
+      "why": "a ruled Minor (not required this round): the reader's answer is kept as it is",
+      "judged": "770000000"
+    },
+    {
+      "id": "r4-p6.minor-usdcnear.315",
+      "source": "judge probe p6",
+      "text": "INVOICE\nInvoice # INV-2026-051\nItem\tQty\tPrice\tTotal\nAPI integration\t1\t1,200.00\t1,200.00\nTotal (USDC)\t1,200.00\nPayment method: USDC (NEAR)\nWallet: orbitdev.near",
+      "expect": {
+        "amount": "1200000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p6.minor-deposit.316",
+      "source": "judge probe p6",
+      "text": "INVOICE INV-1\nTotal\t$5,000.00\nDeposit paid\t-$2,500.00\nBalance due\t$2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "a ruled Minor (not required this round): the reader's answer is kept as it is",
+      "judged": "2500000000"
+    },
+    {
+      "id": "r4-p6.minor-qb.317",
+      "source": "judge probe p6",
+      "text": "INVOICE INV-1\nSUBTOTAL\t1,180.00\nTAX (8.25%)\t97.35\nTOTAL\t1,277.35\nBALANCE DUE\t$1,277.35",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p6.minor-wave.318",
+      "source": "judge probe p6",
+      "text": "INVOICE INV-1\nAmount Due (USD):\t$1,277.35\nLogo design\t$1,277.35\nTotal:\t$1,277.35\nAmount Due (USD):\t$1,277.35",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "a ruled Minor (not required this round): the reader's answer is kept as it is",
+      "judged": "1277350000"
+    },
+    {
+      "id": "r4-p6.minor-stripe.319",
+      "source": "judge probe p6",
+      "text": "Invoice INV-1\n$1,180.00 USD due December 1, 2026\nPro plan\t10\t$118.00\t$1,180.00\nSubtotal\t$1,180.00\nTotal\t$1,180.00\nAmount due\t$1,180.00 USD",
+      "expect": {
+        "amount": "1180000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p6.minor-ddmon.320",
+      "source": "judge probe p6",
+      "text": "INVOICE INV-1\nDue Date :\t01-Dec-2026\nTotal\t$1,277.35",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p6.minor-2col.321",
+      "source": "judge probe p6",
+      "text": "INVOICE\nInvoice No.\t1048\tInvoice Date\tNov 1, 2026\nCustomer ID\tC-0042\tDue Date\tDec 1, 2026\nTotal\t$640.00",
+      "expect": {
+        "amount": "640000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p7.dev3.322",
+      "source": "judge probe p7",
+      "text": "Invoice INV-1\nTotal $5.00\nPlease pay within 30 days $9,999",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p7.dev3b.323",
+      "source": "judge probe p7",
+      "text": "Invoice INV-1\nTotal $5.00\nPlease pay the amount of 9,999 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p7.dev3c.324",
+      "source": "judge probe p7",
+      "text": "Invoice INV-1\nPlease pay within 30 days.\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p7.dev1-ok.325",
+      "source": "judge probe p7",
+      "text": "Invoice INV-1\nDue date: 2026-12-01\nPayment due within 30 days\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p7.dev2-ok.326",
+      "source": "judge probe p7",
+      "text": "Invoice INV-1\nPay to: Acme LLC, 1200 Congress Ave, Austin TX 78701\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p7.dev2-ctl.327",
+      "source": "judge probe p7",
+      "text": "Invoice INV-1\nRemit to 9,999 USDC\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p7.dev10.328",
+      "source": "judge probe p7",
+      "text": "Invoice INV-1\nTotal $100.",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p7.dev12.329",
+      "source": "judge probe p7",
+      "text": "Invoice INV-1\nDescription\tTotal (USD)\nWork\t$100.00\nTotal (USD): $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p7.dev13.330",
+      "source": "judge probe p7",
+      "text": "Invoice INV-1\nTotal $100.00\nDRAFT",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-p8.RB.333",
+      "source": "judge probe p8",
+      "text": "\u0166otal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.RB.334",
+      "source": "judge probe p8",
+      "text": "\u1d1b\u1d0f\u1d1b\u1d00\u029f 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.RB.337",
+      "source": "judge probe p8",
+      "text": "T\u00f3tal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.RB.338",
+      "source": "judge probe p8",
+      "text": "\u0442\u043e\u0442\u0430\u04cf 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.RB.339",
+      "source": "judge probe p8",
+      "text": "T\u0335otal 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.RB.344",
+      "source": "judge probe p8",
+      "text": "Am\u0966unt 9,999 USDC\nTotal 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.RC.345",
+      "source": "judge probe p8",
+      "text": "Total\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n9,999 USDC\nAmount due 5 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.c.349",
+      "source": "judge probe p8",
+      "text": "Total 1..000 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.c.350",
+      "source": "judge probe p8",
+      "text": "Total 100 USDC \u00b7 month",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.mixed2.354",
+      "source": "judge probe p8",
+      "text": "\u041e\u041e\u041e \u0420\u043e\u043c\u0430\u0448\u043a\u0430 2026\nTotal 100 USDC",
+      "expect": {
+        "amount": "100000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p8.near-net.357",
+      "source": "judge probe p8",
+      "text": "Invoice INV-1\nPaid in native USDC on NEAR\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p8.near-cur.358",
+      "source": "judge probe p8",
+      "text": "Invoice INV-1\nTotal $5.00 or 25 NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p8.cad.360",
+      "source": "judge probe p8",
+      "text": "INVOICE INV-1\nTotal $100 (CAD)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-p8.zero.363",
+      "source": "judge probe p8",
+      "text": "INVOICE INV-1\nTotal 0.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "zero"
+      }
+    },
+    {
+      "id": "r4-p8.big.364",
+      "source": "judge probe p8",
+      "text": "Total 1,000,000,000,001 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-p8.grammar.365",
+      "source": "judge probe p8",
+      "text": "Amount Due (USD): 1,250.50",
+      "expect": {
+        "amount": "1250500000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-p8.hdr.366",
+      "source": "judge probe p8",
+      "text": "Item Qty Price Total\nLogo 1 1,250.50 1,250.50\nTotal $1,250.50",
+      "expect": {
+        "amount": "1250500000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w1.3",
+      "source": "re-review widening probe w1",
+      "text": "Total 9,999\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w1.4",
+      "source": "re-review widening probe w1",
+      "text": "Total 5\nAmount due $5.00\nTotal 5",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w1.5",
+      "source": "re-review widening probe w1",
+      "text": "Total 1.000\nAmount due $1.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w1.6",
+      "source": "re-review widening probe w1",
+      "text": "Total 100 (hours)\nAmount due $100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w1.7",
+      "source": "re-review widening probe w1",
+      "text": "Total 1,277.35\nAmount paid $500.00\nBalance due 777.35",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w1.8",
+      "source": "re-review widening probe w1",
+      "text": "Total 100\nAmount due $100.00 CAD",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w1.9",
+      "source": "re-review widening probe w1",
+      "text": "Total 1,277.35\nAmount paid $500.00\nBalance due $777.35",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w1.10",
+      "source": "re-review widening probe w1",
+      "text": "SUBTOTAL\t1,180.00\nTAX\t97.35\nTOTAL\t1,277.35\nBALANCE DUE\t$1,277.35",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w1.11",
+      "source": "re-review widening probe w1",
+      "text": "Subtotal 9,999.00\nTotal 5.00\nAmount due $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w1.12",
+      "source": "re-review widening probe w1",
+      "text": "Total 1,000.00\nAmount paid $500.00\nBalance due $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w4.13",
+      "source": "re-review widening probe w4",
+      "text": "Total USD $1,\n250.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w4.14",
+      "source": "re-review widening probe w4",
+      "text": "Total USD $1,OOO.OO",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w4.15",
+      "source": "re-review widening probe w4",
+      "text": "Total USD $100 CAD",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w4.16",
+      "source": "re-review widening probe w4",
+      "text": "Total USD $100\nAmount due $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w4.17",
+      "source": "re-review widening probe w4",
+      "text": "Total USD $1.000",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w4.18",
+      "source": "re-review widening probe w4",
+      "text": "Total USD -$100.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w4.19",
+      "source": "re-review widening probe w4",
+      "text": "Total\tUSD $1,277.35",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w5.20",
+      "source": "re-review widening probe w5",
+      "text": "$500.00 USD due December 1, 2026\n$500.00 USD due January 1, 2027",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "a due-by line counts only in a document that states its invoice number; this one states none",
+      "judged": "0:ambiguous"
+    },
+    {
+      "id": "r4-widen-w5.21",
+      "source": "re-review widening probe w5",
+      "text": "$9,999.00 USD due December 1, 2026\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "a due-by line counts only in a document that states its invoice number; this one states none",
+      "judged": "0:ambiguous"
+    },
+    {
+      "id": "r4-widen-w5.22",
+      "source": "re-review widening probe w5",
+      "text": "$5.00 USD due December 1, 2026 (first installment)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w5.23",
+      "source": "re-review widening probe w5",
+      "text": "$5.00 USD due today",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w5.24",
+      "source": "re-review widening probe w5",
+      "text": "5.00 due December 1, 2026",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w5.25",
+      "source": "re-review widening probe w5",
+      "text": "ZZZZ-0001 \u00b7 $5.00 USD due December 1, 2026\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w5.26",
+      "source": "re-review widening probe w5",
+      "text": "Invoice INV-8\nINV-9 \u00b7 $5.00 USD due December 1, 2026 \u00b7 Page 1 of 1\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w5.27",
+      "source": "re-review widening probe w5",
+      "text": "Total $1,000.00\nAmount paid $500.00\n$1,000.00 USD due December 1, 2026",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "a due-by line counts only in a document that states its invoice number; this one states none",
+      "judged": "0:ambiguous"
+    },
+    {
+      "id": "r4-widen-w5.28",
+      "source": "re-review widening probe w5",
+      "text": "$1,277.35 USD due December 1, 2026\nAmount due $1,277.35 EUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w5.29",
+      "source": "re-review widening probe w5",
+      "text": "$1.00 due December 1, 2026 \u00b7 Page 1 of 2\n-- 1 of 2 --\n$1.00 due December 1, 2026 \u00b7 Page 2 of 2",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "a due-by line counts only in a document that states its invoice number; this one states none",
+      "judged": "0:ambiguous"
+    },
+    {
+      "id": "r4-widen-w5.30",
+      "source": "re-review widening probe w5",
+      "text": "$1,277.35 USD due December 1, 2026\nTotal $1,277.35\nAmount due $1,277.35 USD",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "a due-by line counts only in a document that states its invoice number; this one states none",
+      "judged": "1277350000"
+    },
+    {
+      "id": "r4-widen-w6.31",
+      "source": "re-review widening probe w6",
+      "text": "Total 100 (NEAR)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w6.32",
+      "source": "re-review widening probe w6",
+      "text": "Total 100 USDC (NEAR)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w6.33",
+      "source": "re-review widening probe w6",
+      "text": "Payment method: USDC (NEAR)\nTotal 5 NEAR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w6.34",
+      "source": "re-review widening probe w6",
+      "text": "Payment method: USDC (NEAR)\nPrices in NEAR\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w6.35",
+      "source": "re-review widening probe w6",
+      "text": "Payment method: USDT (NEAR)\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w6.36",
+      "source": "re-review widening probe w6",
+      "text": "Pay in (NEAR)\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w6.37",
+      "source": "re-review widening probe w6",
+      "text": "Payment method: USDC (NEAR)\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w7.38",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nDeposit paid -$2,500.00\nBalance due $2,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.39",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nDeposit $2,500.00\nBalance due $2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.40",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nPrevious balance $2,500.00\nBalance due $2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.41",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nAmount paid $2,500.00\nBalance due $2,500.00\nAmount due $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.42",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nAmount paid $5,000.00\nBalance due $0.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.43",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nAmount paid $2,500.00\nBalance due $2,500.00\nTotal due $5,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.44",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nAmount paid $6,000.00\nBalance due $1,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.45",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nAmount paid $2,500.00\nAmount paid $2,500.00\nBalance due $2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.46",
+      "source": "re-review widening probe w7",
+      "text": "Grand total $5,000.00\nTotal $4,000.00\nAmount paid $1,000.00\nBalance due $3,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.47",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nDiscount -$500.00\nAmount paid $2,000.00\nBalance due $2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.48",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nAmount paid $2,500.00\nBalance due $2,500.00\nRefund amount $2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w7.49",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nPayment $2,500.00\nBalance due $2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w7.50",
+      "source": "re-review widening probe w7",
+      "text": "Total 5,000.00\nAmount paid $2,500.00\nBalance due $2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w7.51",
+      "source": "re-review widening probe w7",
+      "text": "Total $5,000.00\nDeposit paid -$2,500.00\nBalance due $2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "the arithmetic widening (total minus payments equals the balance) is not adopted, so the deduction stays ambiguous",
+      "judged": "2500000000"
+    },
+    {
+      "id": "r4-widen-w7.52",
+      "source": "re-review widening probe w7",
+      "text": "Total $1,000.00\nAmount paid $250.00\nCredit applied $250.00\nAmount remaining $500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      },
+      "why": "the arithmetic widening (total minus payments equals the balance) is not adopted, so the deduction stays ambiguous",
+      "judged": "500000000"
+    },
+    {
+      "id": "r4-widen-fixd.53",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nDeposit paid $400.00 on 2026-10-01",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.54",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nDeposit paid $400.00 (Oct 1)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.55",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nPayment received $400.00 - thank you",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.56",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nPayment received on Oct 1, 2026: $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.57",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nDeposit received via ACH $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.58",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nLess: Deposit $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.59",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nPaid on Oct 1: $400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.60",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nRetainer applied -$400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.61",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nPrepayment -$400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.62",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nCredit applied (CM-12) -$400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.63",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nDeposit paid 10/01/2026\t$400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.64",
+      "source": "re-review widening probe fixd",
+      "text": "Total $1,000.00\nCredits\tUSD 400.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.65",
+      "source": "re-review widening probe fixd",
+      "text": "Total $5,000.00\nAmount paid $2,500.00\nDeposit paid $1,000.00 on Oct 1\nBalance due $2,500.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-fixd.67",
+      "source": "re-review widening probe fixd",
+      "text": "Payment terms: Net 30\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-fixd.68",
+      "source": "re-review widening probe fixd",
+      "text": "Payments received after 12/01/2026 incur a late fee.\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-fixd.69",
+      "source": "re-review widening probe fixd",
+      "text": "Credit card payments accepted.\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-fixd.70",
+      "source": "re-review widening probe fixd",
+      "text": "Please include invoice # 1042 with your payment.\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-fixd.71",
+      "source": "re-review widening probe fixd",
+      "text": "Credits\tUSD 0.00\nTotal\tUSD 5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w8.72",
+      "source": "re-review widening probe w8",
+      "text": "Due 9999 USDC st\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.73",
+      "source": "re-review widening probe w8",
+      "text": "Payment due is 12345\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.74",
+      "source": "re-review widening probe w8",
+      "text": "PAYMENT DUE, IN 12345\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.75",
+      "source": "re-review widening probe w8",
+      "text": "Balance 9,999 Main Street\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.76",
+      "source": "re-review widening probe w8",
+      "text": "Remit 9,999.00 to 500 Market Street\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.77",
+      "source": "re-review widening probe w8",
+      "text": "Pay 9999 at https://pay.example\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.78",
+      "source": "re-review widening probe w8",
+      "text": "Balance due 220 Oak Street\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.79",
+      "source": "re-review widening probe w8",
+      "text": "Outstanding 9999 USD at 1 Main St\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.80",
+      "source": "re-review widening probe w8",
+      "text": "Due $9,999 Customer ID C-1\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.81",
+      "source": "re-review widening probe w8",
+      "text": "Amount: nine thousand, 1 Main St\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w8.82",
+      "source": "re-review widening probe w8",
+      "text": "Attn: Accounts Payable\t500 Market Street\nTotal $990.00",
+      "expect": {
+        "amount": "990000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w8.83",
+      "source": "re-review widening probe w8",
+      "text": "Customer ID\tC-0042\tDue Date\tDec 1, 2026\nTotal $640.00",
+      "expect": {
+        "amount": "640000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w8.84",
+      "source": "re-review widening probe w8",
+      "text": "Pay online: https://pay.northwind.example/i/1074\nTotal due: $800.00",
+      "expect": {
+        "amount": "800000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w9.85",
+      "source": "re-review widening probe w9",
+      "text": "Payment due 15-Dec-2026 9,999 USDC\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w9.86",
+      "source": "re-review widening probe w9",
+      "text": "Due 1-Jan-2026\t$9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w9.87",
+      "source": "re-review widening probe w9",
+      "text": "Amount due 01-Dec-2026\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w9.88",
+      "source": "re-review widening probe w9",
+      "text": "PAID 01-Nov-2026\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      }
+    },
+    {
+      "id": "r4-widen-w9.89",
+      "source": "re-review widening probe w9",
+      "text": "Due 01-Dec-2026 $\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "a $ beside a date is a money token, so the line is not masked and stays payable-looking",
+      "judged": "5000000"
+    },
+    {
+      "id": "r4-widen-w9.90",
+      "source": "re-review widening probe w9",
+      "text": "Due Date :\t01-Dec-2026\nTotal\t$1,277.35",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w10.91",
+      "source": "re-review widening probe w10",
+      "text": "Total sales tax due\t$97.35\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w10.92",
+      "source": "re-review widening probe w10",
+      "text": "Total sales tax\t$1,277.35",
+      "expect": {
+        "amount": "0",
+        "issue": "not_found"
+      }
+    },
+    {
+      "id": "r4-widen-w10.93",
+      "source": "re-review widening probe w10",
+      "text": "TOTAL SALES TAX 8.25% payable\t$97.35\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w10.94",
+      "source": "re-review widening probe w10",
+      "text": "TOTAL SALES TAX 8.25%\t$9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w11.95",
+      "source": "re-review widening probe w11",
+      "text": "Total excluding tax\t$1,180.00",
+      "expect": {
+        "amount": "0",
+        "issue": "not_found"
+      }
+    },
+    {
+      "id": "r4-widen-w11.96",
+      "source": "re-review widening probe w11",
+      "text": "Total excluding tax due\t$1,180.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w11.97",
+      "source": "re-review widening probe w11",
+      "text": "Total excluding tax payable\t$1,180.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w11.98",
+      "source": "re-review widening probe w11",
+      "text": "Total excluding tax\t$9,999.00\nTotal\t$5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w13.99",
+      "source": "re-review widening probe w13",
+      "text": "$9,999.00\tTotal\t$5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w13.100",
+      "source": "re-review widening probe w13",
+      "text": "9999\tTotal\t$5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w13.101",
+      "source": "re-review widening probe w13",
+      "text": "Total\t$5.00\tAmount due\t$9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w13.102",
+      "source": "re-review widening probe w13",
+      "text": "Due Date: 12/01/2026\tAmount Due: $1,250.00\nTotal $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "splitting a tabbed row at a final-label cell is not adopted, so the row stays unreadable",
+      "judged": "0:ambiguous"
+    },
+    {
+      "id": "r4-widen-w13.103",
+      "source": "re-review widening probe w13",
+      "text": "nine thousand\tTotal\t$5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w13.104",
+      "source": "re-review widening probe w13",
+      "text": "T0tal\tTotal\t$5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w13.105",
+      "source": "re-review widening probe w13",
+      "text": "Invoice # 1\tTotal\t$5.00\nInvoice # 2",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w13.106",
+      "source": "re-review widening probe w13",
+      "text": "Balance\n$9,999.00\tTotal\t$5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w13.107",
+      "source": "re-review widening probe w13",
+      "text": "INVOICE #\t1051\tDATE\t11/01/2026\tTOTAL DUE\t$1,277.35\nBALANCE DUE\t$1,277.35",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      },
+      "why": "splitting a tabbed row at a final-label cell is not adopted, so the row stays unreadable",
+      "judged": "1277350000"
+    },
+    {
+      "id": "r4-widen-w14.108",
+      "source": "re-review widening probe w14",
+      "text": "Total $5.00 (USD)\nTotal $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w14.109",
+      "source": "re-review widening probe w14",
+      "text": "Total $5.00 (CAD)",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w14.110",
+      "source": "re-review widening probe w14",
+      "text": "Total $5.00 (USD) thank you",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w14.111",
+      "source": "re-review widening probe w14",
+      "text": "Total $1, (USD)\n250.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w14.112",
+      "source": "re-review widening probe w14",
+      "text": "Total 5.00 (USD)",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w14.113",
+      "source": "re-review widening probe w14",
+      "text": "Amount payable\t$1,277.35 (USD)\nTotal\t$1,277.35",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w15.114",
+      "source": "re-review widening probe w15",
+      "text": "Total hours: $9,999.00\nAmount due $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w15.115",
+      "source": "re-review widening probe w15",
+      "text": "Total hours: 9999 USDC\nAmount due $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w15.116",
+      "source": "re-review widening probe w15",
+      "text": "Total units 3 x $100\nTotal $300.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w15.117",
+      "source": "re-review widening probe w15",
+      "text": "Total hours: 40\n$4,000.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w15.118",
+      "source": "re-review widening probe w15",
+      "text": "Total hours due: 40\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w15.119",
+      "source": "re-review widening probe w15",
+      "text": "Total items: 9999\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w16.120",
+      "source": "re-review widening probe w16",
+      "text": "Invoice amount $9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w16.121",
+      "source": "re-review widening probe w16",
+      "text": "Total for this invoice $5.00\nTotal for this invoice $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w16.122",
+      "source": "re-review widening probe w16",
+      "text": "Total amount due on December 2, 2026 USD 5.00\nTotal amount due USD 9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w16.123",
+      "source": "re-review widening probe w16",
+      "text": "Amount due by 12/01/2026: $5.00\nTotal $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w16.124",
+      "source": "re-review widening probe w16",
+      "text": "Invoice amount (estimated) $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w16.125",
+      "source": "re-review widening probe w16",
+      "text": "Invoice amount $5.00\nAmount paid $5.00\nBalance due $0.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w16.126",
+      "source": "re-review widening probe w16",
+      "text": "Total amount due on December 2, 2026 9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w16.127",
+      "source": "re-review widening probe w16",
+      "text": "TOTAL AMOUNT DUE ON December 2, 2026\tUSD 1,277.35\nTotal for this invoice\tUSD 1,277.35",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w17.128",
+      "source": "re-review widening probe w17",
+      "text": "Total incl. tax $5.00\nTotal $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w17.129",
+      "source": "re-review widening probe w17",
+      "text": "Invoice\nTotal incl. refund $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w17.130",
+      "source": "re-review widening probe w17",
+      "text": "Invoice\nTotal due upon receipt $5.00\nTotal due $9,999.00",
+      "expect": {
+        "amount": "0",
+        "issue": "ambiguous"
+      }
+    },
+    {
+      "id": "r4-widen-w17.131",
+      "source": "re-review widening probe w17",
+      "text": "Total incl. tax 5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w17.132",
+      "source": "re-review widening probe w17",
+      "text": "Total incl. tax $5.00 EUR",
+      "expect": {
+        "amount": "0",
+        "issue": "currency"
+      }
+    },
+    {
+      "id": "r4-widen-w17.133",
+      "source": "re-review widening probe w17",
+      "text": "Total incl. tax\t$1,277.35",
+      "expect": {
+        "amount": "1277350000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w18.134",
+      "source": "re-review widening probe w18",
+      "text": "Due diligence fee due\t$9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w18.135",
+      "source": "re-review widening probe w18",
+      "text": "Accounts payable: $9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w18.136",
+      "source": "re-review widening probe w18",
+      "text": "Accounts payable 9999\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w18.137",
+      "source": "re-review widening probe w18",
+      "text": "Balance sheet balance $9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w18.138",
+      "source": "re-review widening probe w18",
+      "text": "Pay-per-click total $9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w18.139",
+      "source": "re-review widening probe w18",
+      "text": "Balance sheets due\t$9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w18.140",
+      "source": "re-review widening probe w18",
+      "text": "Due dil1gence 9,999 USDC\nTotal $5.00",
+      "expect": {
+        "amount": "0",
+        "issue": "unreadable"
+      }
+    },
+    {
+      "id": "r4-widen-w18.141",
+      "source": "re-review widening probe w18",
+      "text": "Due diligence 9,999 USDC\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
+    },
+    {
+      "id": "r4-widen-w18.142",
+      "source": "re-review widening probe w18",
+      "text": "Balance sheet\n$9,999.00\nTotal $5.00",
+      "expect": {
+        "amount": "5000000",
+        "issue": null
+      }
     }
   ]
 }

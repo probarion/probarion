@@ -39,15 +39,47 @@ function textOf(c: Case): string {
 }
 
 describe("the regression corpus", () => {
-  it("holds every input of the sweep and of both re-reviews", () => {
-    expect(corpus.cases.length).toBeGreaterThanOrEqual(350);
+  it("holds every input of the sweep and of the re-reviews", () => {
+    expect(corpus.cases.length).toBeGreaterThanOrEqual(850);
     for (let n = 1; n <= 19; n++) {
       expect(corpus.cases.some((c) => c.id.startsWith(`sweep-${n}.`))).toBe(true);
     }
+    // The third re-review: the inputs of its 15 open findings, its probes and its widening probes.
+    for (let n = 1; n <= 15; n++) {
+      expect(corpus.cases.some((c) => c.id.startsWith(`r4-open-${n}.`))).toBe(true);
+    }
+    expect(corpus.cases.filter((c) => c.id.startsWith("r4-p")).length).toBeGreaterThan(200);
+    expect(corpus.cases.filter((c) => c.id.startsWith("r4-widen-")).length).toBeGreaterThan(100);
   });
 
   it.each(corpus.cases.map((c) => [c.id, c] as const))("%s", (_id, c) => {
     expect(read(textOf(c)), c.why).toEqual(c.expect);
+  });
+});
+
+/**
+ * Realistic USD and USDC invoices, as the text layers of common tools export them (cells joined by tabs, a page
+ * footer per page). Each states what a careful person pays; the reader pays exactly that, or refuses with a reason.
+ */
+const layouts = JSON.parse(
+  readFileSync(new URL("../../../test/fixtures/invoice-layouts.json", import.meta.url), "utf8"),
+) as { cases: { id: string; pays: string; text: string; expect: Case["expect"] }[] };
+
+describe("realistic invoice layouts", () => {
+  it.each(layouts.cases.map((c) => [c.id, c] as const))("%s", (_id, c) => {
+    const got = read(c.text);
+    expect(got).toEqual(c.expect);
+    // Never another figure: the amount a careful person pays, or "0" with a reason.
+    expect(
+      got.amount === "0" ? got.issue !== null : got.amount === c.pays && got.issue === null,
+    ).toBe(true);
+  });
+
+  it("reads at least 35 of the 49 layouts, and pays none of them a wrong amount", () => {
+    const results = layouts.cases.map((c) => ({ c, got: read(c.text) }));
+    expect(layouts.cases).toHaveLength(49);
+    expect(results.filter(({ c, got }) => got.amount === c.pays).length).toBeGreaterThanOrEqual(35);
+    expect(results.filter(({ c, got }) => got.amount !== "0" && got.amount !== c.pays)).toEqual([]);
   });
 });
 

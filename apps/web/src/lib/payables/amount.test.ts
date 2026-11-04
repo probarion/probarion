@@ -609,3 +609,365 @@ describe("robustness", () => {
     expect(readAmount("\ufdfa".repeat(12_000))).toEqual(no("unreadable"));
   });
 });
+
+describe("money lines outside the grammar", () => {
+  const BODY = "INVOICE INV-1001\nDesign work $1,000.00\nTotal $1,000.00\n";
+  it.each([
+    ["a payment in prose", "Payment of $400.00 received on 2026-10-01, thank you."],
+    ["a deposit with a date", "Deposit paid $400.00 on 2026-10-01"],
+    ["a deposit after a colon", "Less: Deposit $400.00"],
+    ["withholding", "Withholding tax -$100.00"],
+    ["a refund", "Refunded $400.00"],
+    ["a gift card", "Gift card: -$400.00"],
+    ["a late fee", "Late fee $50.00"],
+    ["what is owed", "You owe: $5.00"],
+    ["what remains", "Remaining: $5.00"],
+    ["a short balance", "Bal: $5.00"],
+    ["a retainer credit after the total", "Retainer $400.00"],
+  ])("refuses %s", (_why, line) => expect(read(BODY + line).amount).toBe("0"));
+
+  it("refuses a plain Total before a payment line written as Paid", () => {
+    expect(read(`${BODY}Paid $400.00`)).toEqual(no("ambiguous"));
+  });
+
+  it("reads a retainer charged as a line item before the total", () => {
+    expect(
+      read("INVOICE INV-1\nMonthly retainer, November 2026\t$3,000.00\nTotal\t$3,000.00"),
+    ).toEqual(pays("3000000000"));
+  });
+
+  it("refuses the plural and stem forms inside (incl. ...)", () => {
+    for (const w of [
+      "deposits",
+      "payments received",
+      "credits",
+      "refunds",
+      "prior payments",
+      "hundred",
+    ]) {
+      expect(read(`Total $1,000.00 (incl. ${w})`)).toEqual(no("unreadable"));
+    }
+  });
+});
+
+describe("a deduction settles only with a balance written after it", () => {
+  it.each([
+    [
+      "Amount due before payments",
+      "INVOICE INV-1\nAmount due $1,000.00\nPayments received $400.00",
+    ],
+    ["Total due before a deposit", "INVOICE INV-1\nTotal due $10,000.00\nDeposit (50%) $5,000.00"],
+    [
+      "a total before a deposit, then a balance",
+      "Logo $1,000.00\nTotal: $1,000.00\nDeposit paid: $400.00\nBalance due: $1,000.00",
+    ],
+    [
+      "an installment, then a plain Total",
+      "INVOICE INV-1\nInstallment 2 of 3: $300.00\nTotal $900.00",
+    ],
+  ])("refuses %s", (_why, text) => expect(read(text)).toEqual(no("ambiguous")));
+
+  it.each([
+    [
+      "a balance after a payment",
+      "INVOICE INV-1\nSubtotal $1,000.00\nAmount paid $400.00\nBalance due $600.00",
+      "600000000",
+    ],
+    [
+      "the amount due after an installment",
+      "Contract total $900.00\nInstallment 2 of 3 $300.00\nAmount due $300.00",
+      "300000000",
+    ],
+  ])("reads %s", (_why, text, amount) => expect(read(text)).toEqual(pays(amount)));
+});
+
+describe("notes and figures around a total", () => {
+  it.each([
+    [
+      "base units on the next line",
+      "INVOICE INV-1001\nAmount due: 2,500,000 USDC\n(USDC base units, 6 decimals)",
+    ],
+    [
+      "cents on the next line",
+      "INVOICE INV-1001\nTotal: $250,000\nNote: all amounts are in cents.",
+    ],
+    [
+      "thousands in brackets anywhere",
+      "(figures in thousands)\nINVOICE INV-1001\nLogo $1.25\nX\nY\nTotal $1,250",
+    ],
+    ["a per-unit note", "Total: 770 USDC\nper seat x 20 seats"],
+    ["a figure continued after a comma", "INVOICE INV-1\nAmount due: $12\n,500.00"],
+    ["a figure continued after a decimal point", "INVOICE INV-1\nTotal $1,250\n.50"],
+    ["a bare figure below a total", "Total: $770.00\n$9,999.00"],
+    ["a decorated value under its label", "Total: $5.00\nBalance\n$9,999.00*"],
+    ["a value two lines under its label", "Total: $5.00\nBalance:\nUSD\n9,999.00"],
+    [
+      "a row of sums under a summary header",
+      "Subtotal\tTax\tTotal\n$4.50\t$0.50\t$5.00\nAmount due: $9,999.00",
+    ],
+  ])("refuses %s", (_why, text) => expect(read(text)).toEqual(no("unreadable")));
+
+  it("reads an item table whose header has an item column and one Total", () => {
+    expect(read("Item Qty Price Total\nLogo 1 $700.00 $700.00\nTotal: $700.00")).toEqual(
+      pays("700000000"),
+    );
+  });
+});
+
+describe("a status or document type anywhere it is written", () => {
+  const BODY = "Logo design $700.00\nSubtotal $700.00\nTax $70.00\nTotal: $770.00";
+  it.each([
+    ["paid by", `INVOICE INV-1001\n${BODY}\nPaid by bank transfer on 2026-11-03. Thank you!`],
+    ["payment received", `INVOICE INV-1001\n${BODY}\nPAYMENT RECEIVED`],
+    ["settled", `INVOICE INV-1001\n${BODY}\nThis invoice was settled on 2026-10-30.`],
+    ["a letter-spaced stamp", `INVOICE INV-1001\n${BODY}\nP A I D`],
+    ["a stamp behind a dash", `INVOICE INV-90 - Void\n${BODY}`],
+    ["a status in a table", `Invoice INV-90\n${BODY}\n| Status | Paid |`],
+    ["a status behind an en dash", `Invoice INV-90\n${BODY}\nStatus \u2013 Paid`],
+    ["thank you for your payment", `Invoice INV-90\n${BODY}\nThank you for your payment!`],
+    ["a receipt on the second line", `Acme Design LLC\nSales Receipt\n${BODY}`],
+    ["a quote heading", `Acme Design LLC\nPrice Quote\n${BODY}`],
+    ["a purchase order heading", `Acme Design LLC\nPurchase Order\n${BODY}`],
+    ["a statement", `Acme Design LLC\nCustomer statement\n${BODY}`],
+    ["a pro forma", `Jane Doe Design\nPro Forma Invoice\n${BODY}`],
+    ["a letter-spaced title", `R E C E I P T\n${BODY}`],
+    ["a digit in the title", `RECE1PT\n${BODY}`],
+    ["a Markdown title", `Acme\n# Receipt\n${BODY}`],
+    ["a credit note for an invoice", `Acme Design LLC\nCredit Note for invoice INV-1\n${BODY}`],
+    ["a title split over two lines", `CREDIT\nNOTE\n${BODY}`],
+    ["a stamp with a zero-width space", `INVOICE INV-90 - V\u200bOID\n${BODY}`],
+    ["a stamp with a Cyrillic I", `INVOICE INV-90 - VO\u0406D\n${BODY}`],
+    ["a stamp with a dotted I", `INVOICE INV-90 - VO\u0130D\n${BODY}`],
+  ])("refuses %s as not payable", (_why, text) => expect(read(text)).toEqual(no("not_payable")));
+
+  it.each([
+    ["a cited purchase order", `Acme Design LLC\nINVOICE\nPurchase order: PO-1001\n${BODY}`],
+    [
+      "a cited purchase order with no colon, below the title",
+      `INVOICE\nPurchase order PO-1001\n${BODY}`,
+    ],
+    ["a payment term upon receipt", `INVOICE\nPayment due upon receipt\n${BODY}`],
+    ["a vendor name field", `From: Quote Masters Inc\nINVOICE\n${BODY}`],
+    ["an amount paid of zero", `INVOICE INV-90\n${BODY}\nAMOUNT PAID $0.00`],
+    ["a payment instruction", `INVOICE\n${BODY}\nTo be paid by bank transfer.`],
+  ])("reads an invoice with %s", (_why, text) => expect(read(text)).toEqual(pays("770000000")));
+});
+
+describe("another currency in every form", () => {
+  const BODY = "Invoice INV-90\nLogo design $700.00\nTotal: $770.00\n";
+  it.each([
+    ["a word-like code after a tab", "Currency\tCAD"],
+    ["a word-like code after a dash", "Currency - TRY"],
+    ["a word-like code in a currency field", "Currency code: CAD"],
+    ["a word-like code beside a currency word", "All prices CAD"],
+    ["a dollar sign before a code", "Prices are in $CAD"],
+    ["a code glued to a figure", "Hourly rate EUR70"],
+    ["a figure glued to a code", "Hourly rate 100GBP"],
+    ["a title-case code", "Prices in Eur"],
+    ["a lower-case code", "Logo design 700 eur"],
+    ["a sign that NFKC turns into letters", "All amounts in \u20a8"],
+    ["a CJK yen sign", "Amounts in \u5186"],
+    ["a Hangul won sign", "Amounts in \uc6d0"],
+    ["another dollar written with a space", "Prices in C $"],
+    ["another dollar by its country", "Prices in Canadian $"],
+    ["another country's funds", "Amounts in Canadian funds"],
+    ["a nickname", "Paid in loonies"],
+    ["an abbreviation", "Amounts in Rs."],
+    ["a code with a zero-width space", "All amounts in E\u200bUR"],
+    ["a code with a Cyrillic I", "All amounts in \u0406NR"],
+    ["a dollar with a Cyrillic letter", "Prices in \u0421$"],
+  ])("refuses %s", (_why, line) => expect(read(BODY + line)).toEqual(no("currency")));
+
+  it.each([
+    ["USDC on NEAR as the network", "Pay with USDC on NEAR to kai.near"],
+    ["USDC (NEAR) as the network", "Payment method: USDC (NEAR)"],
+  ])("reads %s", (_why, line) => expect(read(BODY + line)).toEqual(pays("770000000")));
+
+  it("reads CAD as drawings in a document written with capital headings, and as a currency in one without", () => {
+    const text = "Logo design $700.00\nTotal: $770.00\nCAD drawings and site plans";
+    expect(read(`INVOICE INV-90\n${text}`)).toEqual(pays("770000000"));
+    expect(read(`Invoice INV-90\n${text}`)).toEqual(no("currency"));
+  });
+});
+
+describe("labels written to hide", () => {
+  it.each([
+    ["letter-spaced", "T o t a l 9,999 USDC\nTotal 5 USDC"],
+    ["letter-spaced, the other way round", "Invoice INV-1\nT O T A L   $5.00\nTotal: $9,999.00"],
+    ["split by a space", "Invoice INV-1\nLogo $9,999.00\nTo tal $9,999.00\nAmount due: $5.00"],
+    ["split by a hyphen", "To-tal: $9,999.00\nAmount due: $5.00"],
+    ["split by dots", "T.o.t.a.l 9,999 USDC\nTotal 5 USDC"],
+    ["split across a line end", "Tot-\nal 9,999 USDC\nTotal 5 USDC"],
+    ["split across a vertical tab", "To\u000btal 9,999 USDC\nTotal 5 USDC"],
+    ["rn for m", "Arnount: 9,999 USDC\nTotal 5 USDC"],
+    [
+      "look-alikes with one letter outside the table",
+      "\u0422\u043et\u0430\u16c1 9,999 USDC\nTotal 5 USDC",
+    ],
+    ["a capital outside the table", "\u0422\u041e\u0422\u0410\u0141 9,999 USDC\nTotal 5 USDC"],
+    ["a payee line with a second column", "Total: $5.00\nPayable to: ACME LLC\tAmount: 9999"],
+    ["a payee line with dollars", "Total: $5.00\nPay to ACME 9999 dollars"],
+    ["an amount behind net terms", "Invoice INV-1\nTotal: $9,999.00\nBalance net 5 USDC"],
+    [
+      "an amount behind a word that starts like a month",
+      "Logo $5.00\nTotal: $5.00\nAmount: Marketing 2500 USDC",
+    ],
+  ])("refuses a label %s", (_why, text) => expect(read(text)).toEqual(no("unreadable")));
+});
+
+describe("two documents in one text", () => {
+  it.each([
+    ["Total and Grand total", "INVOICE INV-1\nTotal 500 USDC\nGrand total 500 USDC"],
+    [
+      "repeated titles, each with a total",
+      "INVOICE\nFrom: Acme\nTotal 500 USDC\n\nINVOICE\nFrom: Beta\nAmount due 500 USDC",
+    ],
+    [
+      "numbers after a colon and a hash",
+      "Invoice: #1001\nTotal: $500.00\n-----\nInvoice: #1002\nAmount due: $500.00",
+    ],
+    ["bill numbers", "Bill #1001\nTotal: $500.00\n-----\nBill #1002\nAmount due: $500.00"],
+    [
+      "abbreviated numbers",
+      "Inv. No. 1001\nTotal: $500.00\n-----\nInv. No. 1002\nAmount due: $500.00",
+    ],
+    [
+      "a number with a zero-width space",
+      "Invoice INV-1001\nTotal: $500.00\n-----\nInvoice I\u200bNV-1002\nAmount due: $500.00",
+    ],
+  ])("refuses %s", (_why, text) => expect(read(text)).toEqual(no("ambiguous")));
+
+  it("reads a two-page invoice that repeats its title and states its total once", () => {
+    const page = (lines: string[], n: number) => `${lines.join("\n")}\n-- ${n} of 2 --\n`;
+    const text =
+      page(
+        ["INVOICE", "Invoice # INV-2026-1083", "Sprint 1\t$1,400.00", "Sprint 2\t$1,400.00"],
+        1,
+      ) +
+      page(["INVOICE", "Invoice # INV-2026-1083", "Sprint 3\t$1,400.00", "Total\t$4,200.00"], 2);
+    expect(read(text)).toEqual(pays("4200000000"));
+  });
+});
+
+describe("safe widenings", () => {
+  it.each([
+    [
+      "an unmarked total that a marked balance corroborates",
+      "INVOICE INV-1\nSUBTOTAL\t1,180.00\nTOTAL\t1,277.35\nBALANCE DUE\t$1,277.35",
+      "1277350000",
+    ],
+    ["USD $F", "Total\tUSD $1,277.35", "1277350000"],
+    [
+      "a due-by headline in a numbered invoice",
+      "Invoice number\tA1-0062\n$1,180.00 USD due December 1, 2026\nTotal\t$1,180.00",
+      "1180000000",
+    ],
+    [
+      "USDC (NEAR)",
+      "INVOICE INV-1\nTotal (USDC)\t1,200.00\nPayment method: USDC (NEAR)",
+      "1200000000",
+    ],
+    [
+      "an address on a payable line",
+      "Balance Physical Therapy, 220 Oak Street, Denver, CO 80203\nTotal:\t$450.00",
+      "450000000",
+    ],
+    [
+      "a dd-Mon-yyyy date",
+      "INVOICE INV-1\nDue Date :\t01-Dec-2026\nTotal\t$1,277.35",
+      "1277350000",
+    ],
+    [
+      "Total sales tax as a partial",
+      "Subtotal\t1,180.00\nTOTAL SALES TAX 8.25%\t97.35\nTOTAL USD\t1,277.35",
+      "1277350000",
+    ],
+    [
+      "Total excluding tax as a partial",
+      "Total excluding tax\t$1,180.00\nTotal\t$1,277.35",
+      "1277350000",
+    ],
+    ["a (USD) tail", "Invoice Amount\t$1,277.35 (USD)", "1277350000"],
+    ["a count line", "Total hours: 40\nAmount due:\t$4,000.00", "4000000000"],
+    ["Total for this invoice", "Total for this invoice\tUSD 1,277.35", "1277350000"],
+    ["a due-on qualifier", "TOTAL AMOUNT DUE ON December 2, 2026\tUSD 1,277.35", "1277350000"],
+    ["an incl. tax qualifier", "Total incl. tax\t$1,277.35", "1277350000"],
+    ["an upon-receipt qualifier", "Total due upon receipt:\t$600.00", "600000000"],
+    [
+      "due diligence and balance sheet as items",
+      "Due diligence review\t$2,000.00\nBalance sheet preparation\t$300.00\nTotal\t$2,300.00",
+      "2300000000",
+    ],
+  ])("reads %s", (_why, text, amount) => expect(read(text)).toEqual(pays(amount)));
+
+  it.each([
+    ["an unmarked total alone", "Total 1,277.35"],
+    ["an unmarked total that disagrees", "Total 9,999\nTotal $5.00"],
+    [
+      "a due-by line in a text that states no invoice number",
+      "$9,999.00 USD due December 1, 2026\nTotal $5.00",
+    ],
+    ["a count line with a value under it", "Total hours: 40\n$4,000.00"],
+  ])("still refuses %s", (_why, text) => expect(read(text).amount).toBe("0"));
+});
+
+describe("the reader's own views", () => {
+  it("reads a lone surrogate as U+FFFD, the text the hash and the ledger see, and refuses it", () => {
+    expect(readAmount("Acme Design LLC\nInvoice INV-77\nNote \ud800\nTotal: $770.00")).toEqual(
+      no("unreadable"),
+    );
+  });
+
+  it("folds a capital outside the look-alike table through its lower case", () => {
+    // U+0196 is a capital iota; only its lower case (U+0269) is in the table, as an l.
+    expect(read("INVOICE INV-90 - VO\u0196D\nTotal: $770.00")).toEqual(no("not_payable"));
+    expect(read("Total: $770.00\nAll amounts in \u0196NR")).toEqual(no("currency"));
+  });
+
+  it("refuses a type written as <type> # below the title lines", () => {
+    const head =
+      "Acme Design LLC\nINVOICE INV-1\nDate: 2026-11-01\nBill to: Globex\nTerms: Net 30\n";
+    expect(read(`${head}Logo $700.00\nPayment Receipt #1234 issued\nTotal: $700.00`)).toEqual(
+      no("not_payable"),
+    );
+    expect(
+      read(`${head}Logo $700.00\nCredit Note for invoice INV-1 attached\nTotal: $700.00`),
+    ).toEqual(no("not_payable"));
+  });
+
+  it('reads a Markdown title below the title lines: "# Receipt 1234"', () => {
+    const head =
+      "Acme Design LLC\nINVOICE INV-1\nDate: 2026-11-01\nBill to: Globex\nTerms: Net 30\n";
+    expect(read(`${head}Logo $700.00\n# Receipt 1234\nTotal: $700.00`)).toEqual(no("not_payable"));
+  });
+
+  it("reads a word-like code as a cell of a header row as the currency of that column", () => {
+    expect(read("INVOICE INV-1\nItem\tQty\tCAD\nLogo design\t1\t$100.00\nTotal $100.00")).toEqual(
+      no("currency"),
+    );
+  });
+
+  it.each([
+    ["two Total columns", "Item\tTotal\tTotal"],
+    ["no item or quantity column", "Price\tAmount\tTotal"],
+    ["a summary column", "Item\tSubtotal\tTotal"],
+  ])("refuses a header row with %s: Total there is a label without its figure", (_why, header) => {
+    expect(read(`${header}\nLogo design\t$700.00\t$700.00\nTotal: $700.00`)).toEqual(
+      no("unreadable"),
+    );
+  });
+
+  it("refuses a total that includes a retainer: what it includes is not stated", () => {
+    expect(read("Total $1,000.00 (incl. retainer)")).toEqual(no("unreadable"));
+  });
+
+  it.each([
+    ["Invoice amount", "Deposit paid $400.00\nInvoice amount $1,000.00"],
+    ["Total for this invoice", "Deposit paid $400.00\nTotal for this invoice $1,000.00"],
+  ])(
+    "refuses %s after a deduction: it states the whole invoice, not what is left",
+    (_why, text) => {
+      expect(read(text)).toEqual(no("ambiguous"));
+    },
+  );
+});

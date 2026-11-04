@@ -5,11 +5,13 @@ import { extractFacts } from "./facts";
 
 // The facts are read in linear time, whatever the text. One wall-clock case stays from the first ReDoS fix (50,000
 // spaces after "Total" in under 100 ms); every heavier shape is checked by how its time grows instead, which does
-// not flake on a busy machine: the best of three runs, four times the input takes at most eight times as long
+// not flake on a busy machine: the best of five runs, four times the input takes at most eight times as long
 // (against at least 2 ms, below which timers are noise), and never more than a second.
 
 const H = "c".repeat(64);
-const RUNS = 3;
+const RUNS = 5;
+/** An invoice head before a long line of codes (the shape of the re-review's inputs). */
+const HEAD = "Invoice INV-1\nTotal 5 USDC\n";
 
 function best(text: string): number {
   let ms = Number.POSITIVE_INFINITY;
@@ -56,6 +58,25 @@ describe("extractFacts on adversarial text", () => {
     ["capital words", (n) => "ABC ".repeat(n / 4)],
     ["text in another script", (n) => "\u682a\u5f0f\u4f1a\u793e ".repeat(n / 5)],
     ["characters NFKC expands", (n) => "\ufdfa".repeat(n / 18)],
+    // Word-like currency codes on one long line (each code is tested once per line).
+    ["the word-like code ALL", (n) => `${HEAD}${"ALL ".repeat(n / 4)}`.slice(0, n)],
+    ["the word-like code CAD", (n) => `${HEAD}${"CAD ".repeat(n / 4)}`.slice(0, n)],
+    ["the word NEAR", (n) => `${HEAD}${"NEAR ".repeat(n / 5)}`.slice(0, n)],
+    ["lower-case codes next to figures", (n) => "eur 1 ".repeat(n / 6)],
+    ["codes glued to figures", (n) => "70EUR ".repeat(n / 6)],
+    ["letter-spaced labels", (n) => "T o t a l ".repeat(n / 10)],
+    ["labels split by a space", (n) => "To tal ".repeat(n / 7)],
+    ["labels split across lines", (n) => "Tot-\nal\n".repeat(n / 8)],
+    ["status words", (n) => "Status: ".repeat(n / 8)],
+    ["stamps behind separators", (n) => "- void ".repeat(n / 7)],
+    ["currency fields", (n) => "Currency ".repeat(n / 9)],
+    ["repeated headers with totals", (n) => "INVOICE\nTotal 1 USDC\n".repeat(n / 21)],
+    ["repeated payee headers with totals", (n) => "From: a\nTotal 1 USDC\n".repeat(n / 21)],
+    ["repeated deductions and balances", (n) => "Deposit paid $1\nBalance due $1\n".repeat(n / 31)],
+    ["rows of sums", (n) => "$1 ".repeat(n / 3)],
+    ["labels with no figure", (n) => "Balance\n".repeat(n / 8)],
+    ["a long underscore run inside a word", (n) => `a${"_".repeat(n - 2)}a`],
+    ["a long space run after a stamp separator", (n) => `Invoice -${" ".repeat(n)}x`],
   ];
 
   it.each(shapes)("grows linearly on %s", (_why, shape) => {
@@ -65,6 +86,23 @@ describe("extractFacts on adversarial text", () => {
     const large = best(shape(4 * n));
     expect(large).toBeLessThan(1000);
     expect(large).toBeLessThanOrEqual(8 * Math.max(small, 2));
+  });
+
+  it.each([
+    ["ALL", `${HEAD}${"ALL ".repeat(12_500)}`.slice(0, 50_000), "currency"],
+    ["CAD", `${HEAD}${"CAD ".repeat(12_500)}`.slice(0, 50_000), "currency"],
+    ["NEAR", `${HEAD}${"NEAR ".repeat(12_500)}`.slice(0, 50_000), null],
+    ["ALL, unsliced", `${HEAD}${"ALL ".repeat(12_493)}`, "currency"],
+  ])("reads a 50,000-character line of the code %s in under 100 ms", (_code, text, issue) => {
+    expect(extractFacts(text, H, null).amountIssue).toBe(issue);
+    expect(best(text)).toBeLessThan(100);
+  });
+
+  it("reads a 4 MiB text in under a second, without throwing", () => {
+    const text = `Total 5 USDC\n${"a".repeat(4 * 1024 * 1024 - 13)}`;
+    const t0 = performance.now();
+    expect(extractFacts(text, H, null)).toMatchObject({ amount: "0", amountIssue: "unreadable" });
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it("scans 500 KB of the NEAR-account shape for payee hints in well under 200 ms", () => {
