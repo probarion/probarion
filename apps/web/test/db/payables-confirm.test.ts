@@ -1147,6 +1147,119 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       expect(await send(`${text}\nCorrected`, "req-same-3")).toMatchObject({ status: "decided" });
     });
 
+    /** A confirmed row whose cycle was cut off before any decision, and whose abort was not written. */
+    async function cutOff(total: string) {
+      const row = await upload(total);
+      const p = await prepared(row);
+      const r = await confirmInvoice(
+        {
+          ...deps,
+          db: {
+            rpc: ((fn: string, q: Record<string, unknown>) =>
+              fn === "invoice_confirm_abort"
+                ? Promise.reject(new Error("database down"))
+                : h.db.rpc(fn, q)) as Db["rpc"],
+          },
+          makeProbarion: () => ({
+            rules: { add: () => {} },
+            requestSpend: async () => {
+              throw new Error("rpc down before the decision");
+            },
+          }),
+        },
+        { member, account: OWNER, invoiceId: row.id, nonce: p.nonce, signed: sign(p) },
+      );
+      expect(r).toMatchObject({ ok: false, reason: "failed_unknown" });
+      const cut = await getInvoice(h.db, member.tenant_id, row.id);
+      expect(cut).toMatchObject({ status: "processing", confirmed_by: OWNER });
+      return cut as InvoiceRow;
+    }
+
+    it("does not say the ledger holds a confirmation whose cycle did not finish", async () => {
+      const row = await cutOff("21.00");
+      // This is why the sentence would be false: the signature reached the row, and no ledger entry.
+      expect(JSON.stringify(await store.all())).not.toContain(row.confirm_signature);
+      await signInAs(OWNER);
+      const out = await html(row.id);
+      expect(out).toMatch(
+        /The owner confirmed this at [^;<]+; the cycle did not finish, so the ledger may hold no record of it\./,
+      );
+      expect(out).not.toContain("the signed ledger");
+      expect(out).not.toContain("Confirmed by the owner");
+    });
+
+    it("keeps the ledger sentence for a row sent and waiting on the chain", async () => {
+      const row = await cutOff("22.00");
+      await pg.query("update invoices set status = 'unconfirmed' where id = $1", [row.id]);
+      await signInAs(OWNER);
+      const out = await html(row.id);
+      expect(out).toContain("Confirmed by the owner");
+      expect(out).toContain("the signed ledger");
+      expect(out).not.toContain("the cycle did not finish");
+    });
+
+    it.each([
+      ["bytes that are not UTF-8", new Uint8Array([0xff, 0xfe, 0x80, 0x81]), "text/plain"],
+      [
+        "text bytes recorded as a PDF",
+        new TextEncoder().encode("Invoice INV-9\nTotal 99.00 USDC"),
+        "application/pdf",
+      ],
+    ])(
+      "offers no Confirm when the retained file cannot be re-read: %s",
+      async (_why, bytes, media) => {
+        const row = await upload("57.00");
+        const sealed = await sealInvoice(MASTER, member.tenant_id, bytes);
+        await pg.query(
+          "update invoices set content_ciphertext = $2, content_nonce = $3, media_type = $4 where id = $1",
+          [row.id, sealed.ciphertext, sealed.nonce, media],
+        );
+        await signInAs(OWNER);
+        const out = await html(row.id);
+        expect(out).toContain("could not be opened");
+        expect(out).not.toContain("99.00");
+        expect(out).not.toContain("The amount was read from line");
+        // The panel is rendered only when Reject is offered.
+        expect(h.panels).toHaveLength(1);
+        expect(h.panels[0]).toMatchObject({ canConfirm: false });
+        expect(String(h.panels[0]?.whyNot)).toMatch(/checked against its hash/);
+      },
+    );
+
+    it("still offers Confirm in zero-retention, where no text is kept to check", async () => {
+      await setTenantSettings(h.db, member.tenant_id, { zeroRetention: true });
+      try {
+        member = (await memberRole(h.db, SCENARIO_VAULT, OWNER)) as MemberTenant;
+        const row = await upload("23.00");
+        await signInAs(OWNER);
+        const out = await html(row.id);
+        expect(out).toContain("only the hashes are kept");
+        expect(h.panels[0]).toMatchObject({ canConfirm: true, whyNot: null });
+      } finally {
+        await setTenantSettings(h.db, member.tenant_id, { zeroRetention: false });
+        member = (await memberRole(h.db, SCENARIO_VAULT, OWNER)) as MemberTenant;
+      }
+    });
+
+    it("keeps the invoice's text verbatim and trims only the named source line", async () => {
+      const text = `Invoice INV-7100\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\n    Note\t\tkept  as   written  \n   Total    24.00 USDC`;
+      const r = await processInvoice(pipeline, {
+        tenant: member,
+        upload: { bytes: new TextEncoder().encode(text), mediaType: "text/plain", filename: null },
+        purposeBytes: PO_1001,
+        actor: OWNER,
+        requestId: "req-verbatim",
+      });
+      if (r.status !== "decided") throw new Error(JSON.stringify(r));
+      await signInAs(OWNER);
+      const out = await html(r.invoiceId);
+      expect(out).toContain("    Note\t\tkept  as   written  ");
+      expect(out).toContain(
+        'The amount was read from line 5: <code class="wrap-anywhere">Total 24.00 USDC</code>',
+      );
+      expect(out).toMatch(/\nTotal 24\.00 USDC<\/pre>/);
+    });
+
     it("the confirmed notice follows the row's state", async () => {
       await signInAs(OWNER);
       // Paid: green.

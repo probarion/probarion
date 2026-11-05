@@ -13,7 +13,7 @@ import { REFUSAL_TEXT } from "./confirm";
 import { payeeText } from "./confirm-message";
 import { extractInvoice } from "./extract";
 import { payeeId } from "./payee";
-import { invoiceLines, shownLine, sourceLine } from "./source-line";
+import { invoiceLines, sourceLine, verbatimLine } from "./source-line";
 import { type InvoiceRow, invoiceContent, listPayeeRecent, type RowSnapshot } from "./store";
 import { type PayeeRow, payeeOf, recentPayeeRows, type ShownRule, waitReasons } from "./view";
 
@@ -130,7 +130,7 @@ async function invoiceShown(
       kind: "text",
       lines: all
         .slice(0, MAX_LINES)
-        .map((l, i) => (i + 1 === source?.number ? source.text : shownLine(l))),
+        .map((l, i) => (i + 1 === source?.number ? source.text : verbatimLine(l))),
       more: Math.max(0, all.length - MAX_LINES),
       amountLine: source,
     };
@@ -235,9 +235,11 @@ export async function loadWaitingView(
               ? "This invoice does not wait for you."
               : invoice.kind === "mismatch"
                 ? "The stored invoice does not match the hash you would sign, so Confirm is not offered."
-                : list.payeeProblem !== null
-                  ? "Confirm is not offered until this payee's other invoices can be listed."
-                  : null;
+                : invoice.kind === "unreadable"
+                  ? "The stored invoice could not be re-read and checked against its hash, so Confirm is not offered. Reload to try again."
+                  : list.payeeProblem !== null
+                    ? "Confirm is not offered until this payee's other invoices can be listed."
+                    : null;
   return {
     amount: row.suggested_amount ?? "0",
     reasons: row.outcome ? waitReasons(a.entries, row.outcome) : { owner: null, before: [] },

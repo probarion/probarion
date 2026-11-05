@@ -13,9 +13,20 @@ const MAX_SHOWN = 300;
 const BEFORE_FIGURE = 120;
 const CUT = "…";
 
-/** One invoice line as the page shows it: no blanks at its ends, a run of tabs as one space, made safe. */
-export const shownLine = (line: string): string =>
-  safeText(line.trim().replace(/\t+/g, " "), MAX_SHOWN);
+/**
+ * One line of the invoice's text as the page shows it: as written, blanks included, made safe and capped. A tab is
+ * kept: in the page's <pre> it is layout and cannot forge a row, and safeText would show it as U+FFFD.
+ */
+export function verbatimLine(line: string): string {
+  const points = Array.from(line);
+  const cut = points.length > MAX_SHOWN;
+  const kept = cut ? points.slice(0, MAX_SHOWN).join("") : line;
+  const safe = kept
+    .split("\t")
+    .map((part) => safeText(part, MAX_SHOWN))
+    .join("\t");
+  return cut ? `${safe}${CUT}` : safe;
+}
 
 /** The spellings of a total of `units` (USDC base units), longest first: "1,277.350000" ... "1277.35", "20". */
 function figureForms(units: string): string[] {

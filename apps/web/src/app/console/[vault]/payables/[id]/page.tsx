@@ -199,8 +199,8 @@ function Waiting({
         </Notice>
       ) : (
         <Notice tone="warn">
-          The stored invoice could not be opened, so the line the amount was read from cannot be
-          shown. Check the invoice you hold.
+          The stored invoice could not be opened, so it cannot be checked against its hash and the
+          line the amount was read from cannot be shown.
         </Notice>
       )}
 
@@ -302,13 +302,17 @@ export default async function InvoiceCyclePage({
           An earlier confirmation by {safeText(inv.confirmed_by, 64)}
           {inv.confirmed_at ? ` at ${utcMinute(inv.confirmed_at)}` : ""} sent nothing.
         </Notice>
-      ) : inv.confirmed_by && inv.status !== "awaiting_owner" ? (
+      ) : inv.confirmed_by && (inv.status === "decided" || inv.status === "unconfirmed") ? (
         <Notice tone={result.tone}>
           Confirmed by the owner {safeText(inv.confirmed_by, 64)}
           {inv.confirmed_at ? ` at ${utcMinute(inv.confirmed_at)}` : ""} with a NEP-413 signature;
           the signed ledger&apos;s rule custom.owner_confirmed holds the signature, the key and the
           message. The block of the key check in that record is the server&apos;s, not signed by the
           owner.
+        </Notice>
+      ) : inv.confirmed_by && inv.status !== "awaiting_owner" ? (
+        <Notice tone={result.tone}>
+          {`The owner confirmed this${inv.confirmed_at ? ` at ${utcMinute(inv.confirmed_at)}` : ""}; the cycle did not finish, so the ledger may hold no record of it.`}
         </Notice>
       ) : null}
 

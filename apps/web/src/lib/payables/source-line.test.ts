@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aroundFigure, invoiceLines, shownLine, sourceLine } from "./source-line";
+import { aroundFigure, invoiceLines, sourceLine, verbatimLine } from "./source-line";
 
 // The exact line the amount was read from (ruling W-T14-R2): the reader's own answer, re-run on the retained text,
 // not a search for the figure.
@@ -58,7 +58,6 @@ describe("sourceLine", () => {
       number: 4,
       text: "Total 20.00 USDC",
     });
-    expect(shownLine(`${" ".repeat(400)}Item\t\tA  `)).toBe("Item A");
   });
 
   it("numbers the lines the way the page shows them, whatever the line ends", () => {
@@ -109,5 +108,27 @@ describe("aroundFigure", () => {
     // encodeURIComponent throws on half a surrogate pair.
     expect(() => encodeURIComponent(shown)).not.toThrow();
     expect(shown).not.toContain("\u0007");
+  });
+});
+
+describe("verbatimLine", () => {
+  it("keeps a line as written, blanks and tabs included", () => {
+    expect(verbatimLine("    Note\t\tkept  as   written  ")).toBe(
+      "    Note\t\tkept  as   written  ",
+    );
+  });
+
+  it("still removes what safeText removes, on either side of a tab", () => {
+    const bell = String.fromCodePoint(7);
+    const override = String.fromCodePoint(0x202e);
+    const removed = String.fromCodePoint(0xfffd);
+    expect(verbatimLine(`a${bell}\t${override}b`)).toBe(`a${removed}\t${removed}b`);
+  });
+
+  it("caps a long line in code points, tabs counted, and marks the cut", () => {
+    const shown = verbatimLine(`${"\t".repeat(10)}${"x".repeat(400)}`);
+    expect(Array.from(shown)).toHaveLength(301);
+    expect(shown.startsWith("\t".repeat(10))).toBe(true);
+    expect(shown.endsWith("…")).toBe(true);
   });
 });
