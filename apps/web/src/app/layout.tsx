@@ -5,6 +5,8 @@ import { BetaStrip } from "@/components/site/BetaStrip";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import s from "@/components/site/site.module.css";
+import { appOrigin } from "@/lib/config";
+import { OG_IMAGE, SITE_DESCRIPTION, SITE_TITLE } from "@/lib/site/facts";
 import { BUILD_NETWORK } from "@/lib/site/network";
 import "./globals.css";
 
@@ -25,8 +27,22 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Probarion", template: "%s · Probarion" },
-  description: "Spend by mandate. Prove every payment.",
+  metadataBase: new URL(appOrigin()),
+  title: { default: SITE_TITLE, template: "%s · Probarion" },
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "Probarion",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE],
+  },
 };
 
 // The wallet context lives on the routes that sign (/console and /login). A page that only reads loads no wallet code.
