@@ -15412,6 +15412,506 @@
         "issue": null
       },
       "why": "W-T14-R3 items 1 and 2 control: an id keeps reading"
+    },
+    {
+      "id": "r9-lead.Test24 Labs - Invoice 1001",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Test24 Labs - Invoice 1001\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 3: the vendor's name before the invoice word is not read for stamps"
+    },
+    {
+      "id": "r9-lead.Demo360 Ltd | INVOICE INV-1001",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Demo360 Ltd | INVOICE INV-1001\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 3: the vendor's name before the invoice word is not read for stamps"
+    },
+    {
+      "id": "r9-lead.Statement1 Co - Invoice 1001",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Statement1 Co - Invoice 1001\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 3: the vendor's name before the invoice word is not read for stamps"
+    },
+    {
+      "id": "r9-lead.Sample1 LLC - Invoice INV-1001",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Sample1 LLC - Invoice INV-1001\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 3: the vendor's name before the invoice word is not read for stamps"
+    },
+    {
+      "id": "r9-glued.Invoice DEM01",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice DEM01\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice 1DEM0",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice 1DEM0\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice INV-DEM01",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-DEM01\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice 1pr0p0sa1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice 1pr0p0sa1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice RECEIPTO2",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice RECEIPTO2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice VOIDI2",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice VOIDI2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice TESTO1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice TESTO1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice 2PA|D",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice 2PA|D\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice VO|D2",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice VO|D2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice INV-1001 PA|D",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001 PA|D\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice REMITTANCE1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice REMITTANCE1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice 1001REMITTANCE",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice 1001REMITTANCE\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice INV-1001 SETTLED1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001 SETTLED1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice INV-1001 PREPAID1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001 PREPAID1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-glued.Invoice INV-1001 CREDITNOTE1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001 CREDITNOTE1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word with look-alikes or digits, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice void-2",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice void-2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice Void-2",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice Void-2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice Draft-2",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice Draft-2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice cancelled-12",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice cancelled-12\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice sample-3",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice sample-3\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice test-1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice test-1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice INV-void-1001",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-void-1001\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice INV-paid-2",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-paid-2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice INV-1001 paid-2",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001 paid-2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice INV-1001 Void 2",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001 Void 2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice INV-1001 void and reissued",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001 void and reissued\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice INV-1001 draft copy",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001 draft copy\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-word.Invoice INV-1001 cancelled by customer",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001 cancelled by customer\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 4: a stamp or document word as its own token, after the invoice word"
+    },
+    {
+      "id": "r9-id.Invoice INV-C1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-C1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice INV-I0",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-I0\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice INV-O1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-O1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice INV-B1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-B1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice INV-1A",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1A\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice INV-C0",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-C0\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice C1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice C1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice No. B1",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice No. B1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice INV-1001",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-1001\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice #1001",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice #1001\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice INV-2026-0451",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice INV-2026-0451\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice No. 5520",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice No. 5520\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-id.Invoice 2026-114",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice 2026-114\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R4 item 4 control: a real id keeps reading"
+    },
+    {
+      "id": "r9-shape.Invoice F0r services",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice F0r services\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 5: a Title-case look-alike or a digit-first word is no id on the second title reading"
+    },
+    {
+      "id": "r9-shape.Invoice C0py",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice C0py\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 5: a Title-case look-alike or a digit-first word is no id on the second title reading"
+    },
+    {
+      "id": "r9-shape.Invoice N0t payable",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice N0t payable\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 5: a Title-case look-alike or a digit-first word is no id on the second title reading"
+    },
+    {
+      "id": "r9-shape.Invoice Rem1nder",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice Rem1nder\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 5: a Title-case look-alike or a digit-first word is no id on the second title reading"
+    },
+    {
+      "id": "r9-shape.Invoice 0VERDUE",
+      "source": "Task 14 follow-up 2, title line",
+      "text": "Invoice 0VERDUE\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R4 item 5: a Title-case look-alike or a digit-first word is no id on the second title reading"
     }
   ]
 }

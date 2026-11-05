@@ -1162,15 +1162,15 @@ const INVOICE_TITLE_WORD = new RegExp(`^${TITLE_LEAD}${INVOICE_WORD}(?![a-z])`);
 const INVOICE_TITLE_ID = new RegExp(
   `^${TITLE_LEAD}${INVOICE_WORD}(?![a-z])((?:[ \\t]*(?:#|no\\.?(?![a-z])|number|num\\.?(?![a-z])|n\\u00b0))?[ \\t:#.]*)(?=[^\\s]{0,64}\\d)([^\\s(][^\\s]{0,63})`,
 );
-/** A digit-first id with more letters than this is a word with a look-alike ("0verdue"), not an id. */
+/** A digit-first id with more letters than this is a word with a look-alike ("0verdue", "0VERDUE"), not an id. */
 const MAX_LETTERS_AFTER_DIGIT = 2;
 
 /**
- * The second reading of a title (rulings W-T14-R2 m17 and R3): the id's digit is read on the skeleton before a 0 or 1
- * among letters is read as a letter, so "INV-C1", "INV-I0" and "INV-O1" keep their digit. Only a token shaped like an id
- * passes: it holds a capital, a hyphen or a "#", or starts with a digit and has at most two letters. A lower-case word
- * with one look-alike digit ("f0r", "c0py", "rem1nder", "0verdue") is not an id. Capitals exist only as written, so the
- * token is looked up on the clean line.
+ * The second reading of a title (rulings W-T14-R2 m17, R3 and R4): the id's digit is read on the skeleton before a 0 or
+ * 1 among letters is read as a letter, so "INV-C1", "INV-I0" and "INV-O1" keep their digit. Only a token shaped like an
+ * id passes: it holds a hyphen or a "#", or it starts with a digit and has at most two letters, or it holds a capital
+ * and is not written like a word. "f0r", "rem1nder", "F0r", "Rem1nder" and "0VERDUE" are words with one look-alike
+ * digit. Capitals exist only as written, so the token is looked up on the clean line.
  */
 function idShapedTitle(v: Views, i: number): boolean {
   const m = INVOICE_TITLE_ID.exec(titleText(v.t[i] ?? ""));
@@ -1183,57 +1183,135 @@ function idShapedTitle(v: Views, i: number): boolean {
     .split(/\s+/)
     .find((w) => skeletonOf(w) === folded);
   if (raw === undefined) return false;
-  if (/\p{Lu}/u.test(raw)) return true;
-  return /^\d/.test(raw) && raw.replace(/\P{L}/gu, "").length <= MAX_LETTERS_AFTER_DIGIT;
+  const letters = raw.replace(/\P{L}/gu, "");
+  if (/^\d/.test(raw)) return letters.length <= MAX_LETTERS_AFTER_DIGIT;
+  return /\p{Lu}/u.test(letters) && !/^\p{Lu}\p{Ll}+$/u.test(letters);
+}
+
+function readsAsTitle(v: Views, i: number): boolean {
+  const u = titleText(v.u[i] ?? "");
+  if (INVOICE_TITLE.test(u)) return true;
+  // The word "Invoice" and its end are still read on the folded view.
+  return INVOICE_TITLE_WORD.test(u) && idShapedTitle(v, i);
 }
 
 function invoiceTitled(v: Views, lines: readonly number[]): boolean {
   for (const i of lines.slice(0, HEADER_LINES)) {
     // A total or partial line ("Invoice total $700.00", "Invoice amount: $700.00") states an amount, not a title.
     if (v.finalLine[i] !== null || v.nonFinal[i] !== null) continue;
-    const u = titleText(v.u[i] ?? "");
-    if (INVOICE_TITLE.test(u)) return true;
-    // The word "Invoice" and its end are still read on the folded view.
-    if (INVOICE_TITLE_WORD.test(u) && idShapedTitle(v, i)) return true;
+    if (readsAsTitle(v, i)) return true;
   }
   return false;
 }
 
-/** Why a title line with a stamp or a document-type word glued to digits is not an invoice to pay. */
+/** Why a title line with a stamp or a document-type word in a token with digits is not an invoice to pay. */
 export const GLUED_TO_TITLE = "a status or document word is glued to digits on the invoice's title";
+/** Why a title line with a stamp or a document-type word as its own token is not an invoice to pay. */
+export const STAMP_ON_TITLE = "a status or document word stands on the invoice's title";
 
-/** The one-word stamps and document types, as the skeleton writes them. */
-const GLUED_WORDS: ReadonlySet<string> = new Set(
-  [...STAMPS, ...DOCUMENT_TYPES].filter((w) => /^[a-z]+$/.test(w)).map(sk),
+const oneWord = (list: readonly string[]) => list.filter((w) => /^[a-z]+$/.test(w));
+/**
+ * The words the title scan refuses, as the skeleton writes them, with blanks and hyphens gone so that a word written
+ * whole is found ("CREDITNOTE1"). The other lists' phrases are read elsewhere; only their one-word entries are here.
+ */
+const TITLE_WORDS: ReadonlySet<string> = new Set(
+  [
+    ...STAMPS,
+    ...DOCUMENT_TYPES,
+    ...oneWord(TITLE_ONLY_TYPES),
+    ...oneWord(STATUS_PHRASES),
+    ...oneWord(NOT_OWED_PHRASES),
+  ].map((w) => sk(w).replace(/[^a-z]/g, "")),
 );
-/** Longer than any word of GLUED_WORDS: a longer run of letters is not compared. */
-const MAX_GLUED_WORD = 32;
+/** Longer than this, a token's middle is no word of TITLE_WORDS. */
+const MAX_TITLE_WORD = Math.max(...[...TITLE_WORDS].map((w) => w.length));
+/** The most look-alike letters a word of TITLE_WORDS has at one end ("paldlnfull"); amount.test.ts holds this. */
+const MAX_WORD_EDGE = 2;
 
-const isAsciiDigit = (code: number): boolean => code >= 48 && code <= 57;
+/** An "o" or an "l": what a 0 or a 1 is when written as a letter (the skeleton writes i as l). */
+const isLookAlike = (code: number): boolean => code === 111 || code === 108;
 
-/** True for a token of a stamp or a document type with digits on either side ("pald1001", "1statement", "0vold"). */
-function gluedWord(token: string): boolean {
-  let a = 0;
-  let b = token.length;
-  while (a < b && isAsciiDigit(token.charCodeAt(a))) a++;
-  while (b > a && isAsciiDigit(token.charCodeAt(b - 1))) b--;
-  if ((a === 0 && b === token.length) || a === b || b - a > MAX_GLUED_WORD) return false;
-  return GLUED_WORDS.has(digitLetters(token.slice(a, b)));
+/**
+ * True for a word of TITLE_WORDS, alone or with look-alike letters at either end ("recelpto" for RECEIPTO2, "ldemo" for
+ * 1DEM0). A few slices of each string, so a token of long runs costs its own length.
+ */
+function wordAmongLookAlikes(letters: string): boolean {
+  const n = letters.length;
+  let x = 0;
+  while (x < n && isLookAlike(letters.charCodeAt(x))) x++;
+  if (x === n) return false;
+  let y = 0;
+  while (isLookAlike(letters.charCodeAt(n - 1 - y))) y++;
+  if (n - x - y > MAX_TITLE_WORD) return false;
+  for (let k = 0; k <= Math.min(x, MAX_WORD_EDGE); k++) {
+    for (let m = 0; m <= Math.min(y, MAX_WORD_EDGE); m++) {
+      if (TITLE_WORDS.has(letters.slice(x - k, n - y + m))) return true;
+    }
+  }
+  return false;
 }
 
 /**
- * 1e. On an invoice-title line, a status stamp or a document-type word glued to digits on either side refuses ("Invoice
- * PAID1001", "Invoice void2", "Invoice 2void", "Invoice 1002 QUOTE1"). The stamp checks read the folded view, where a
- * glued 0 or 1 hides the word, and a longer id passes the title check, so it is read here on the unfolded view (ruling
- * W-T14-R3). Real ids are untouched: "INV-1001", "#1001", "INV-C1".
+ * True for a token with a digit that reads as a word of TITLE_WORDS, read three ways: each run of letters between its
+ * digits ("INV1001PAID"), its digits stripped ("PAID1001", "2void"), and its 0s and 1s among letters folded first
+ * ("DEM01", "1pr0p0sa1").
  */
-function gluedToTitle(v: Views, lines: readonly number[]): boolean {
+function wordInToken(token: string): boolean {
+  for (const m of token.matchAll(/[a-z]+/g)) if (wordAmongLookAlikes(m[0])) return true;
+  return (
+    wordAmongLookAlikes(token.replace(/\d+/g, "")) ||
+    wordAmongLookAlikes(digitLetters(token).replace(/\d+/g, ""))
+  );
+}
+
+/**
+ * Why the text after the invoice word is refused, token by token, or null. A plain word counts only on a line that
+ * reads as a title: "Invoice instructions: send to ap@globex.test" names no document. A word in a token with digits
+ * counts on any line that starts with the invoice word.
+ */
+function stampInTail(tail: string, title: boolean): string | null {
+  for (const m of tail.matchAll(/[a-z0-9]+/g)) {
+    const token = m[0];
+    if (/\d/.test(token)) {
+      if (wordInToken(token)) return GLUED_TO_TITLE;
+    } else if (title && TITLE_WORDS.has(token)) {
+      return STAMP_ON_TITLE;
+    }
+  }
+  return null;
+}
+
+/** A party label names someone ("Invoice to: Demo Corp"): it is not a title, and its name is not read for stamps. */
+const PARTY_LABEL = /^\s*(?:to|from)\s*:/;
+/** A "|" with no blank on either side, on the line as written: it may be the l of a word ("PA|D"). */
+const PIPE_IN_TOKEN = /[^\s|]\|[^\s|]/;
+/** The same "|" in the unspaced view, which reads every "|" as " - ". */
+const PIPE_AS_SEPARATOR = /(?<=\S) - (?=\S)/g;
+
+/**
+ * 1e. On an invoice-title line, the text after the invoice word holds no status stamp or document-type word (rulings
+ * W-T14-R3 and R4): "Invoice PAID1001", "Invoice DEM01", "Invoice void-2", "Invoice 1002 QUOTE1", "Invoice 2PA|D". The
+ * stamp checks read the folded view, where a glued 0 or 1 hides the word, so it is read here on the unfolded view. The
+ * text before the word is the vendor's name ("Test24 Labs - Invoice 1001") and is not read. Real ids hold no such word:
+ * "INV-1001", "#1001", "INV-C1".
+ */
+function stampOnTitle(v: Views, lines: readonly number[]): string | null {
   for (const i of lines.slice(0, HEADER_LINES)) {
     if (v.finalLine[i] !== null || v.nonFinal[i] !== null) continue;
-    if (!INVOICE_TITLE_WORD.test(titleText(v.u[i] ?? ""))) continue;
-    for (const m of (v.t[i] ?? "").matchAll(/[a-z0-9]+/g)) if (gluedWord(m[0])) return true;
+    const word = INVOICE_TITLE_WORD.exec(titleText(v.u[i] ?? ""));
+    if (!word) continue;
+    // The folded view only reads digits as letters, so the word ends at the same place in both.
+    const tail = titleText(v.t[i] ?? "").slice(word[0].length);
+    if (PARTY_LABEL.test(tail)) continue;
+    const title = readsAsTitle(v, i);
+    const why =
+      stampInTail(tail, title) ??
+      (PIPE_IN_TOKEN.test(v.g[i] ?? "")
+        ? stampInTail(tail.replace(PIPE_AS_SEPARATOR, "l"), title)
+        : null);
+    if (why !== null) return why;
   }
-  return false;
+  return null;
 }
 
 /**
@@ -2032,9 +2110,8 @@ function read(text: string): AmountRead {
   )
     return refuse("ambiguous");
   // 1e. Last: a document pays only when it says it is an invoice, with nothing glued to its title.
-  if (gluedToTitle(v, lines)) {
-    return { amount: "0", issue: "not_payable", why: GLUED_TO_TITLE, line: null };
-  }
+  const stamp = stampOnTitle(v, lines);
+  if (stamp !== null) return { amount: "0", issue: "not_payable", why: stamp, line: null };
   if (!invoiceTitled(v, lines)) {
     return { amount: "0", issue: "not_payable", why: NOT_AN_INVOICE, line: null };
   }
@@ -2159,6 +2236,9 @@ export const REGEXES_FOR_TESTS: Readonly<Record<string, RegExp>> = {
   INVOICE_TITLE,
   INVOICE_TITLE_WORD,
   INVOICE_TITLE_ID,
+  PARTY_LABEL,
+  PIPE_IN_TOKEN,
+  PIPE_AS_SEPARATOR,
   DATES,
   FINAL_LINE,
   NON_FINAL_LINE,

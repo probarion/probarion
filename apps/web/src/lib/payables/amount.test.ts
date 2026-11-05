@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { GLUED_TO_TITLE, MAX_READ_UNITS, NOT_AN_INVOICE, readAmount } from "./amount";
+import {
+  GLUED_TO_TITLE,
+  MAX_READ_UNITS,
+  NOT_AN_INVOICE,
+  readAmount,
+  STAMP_ON_TITLE,
+  sk,
+} from "./amount";
 import { extractFacts } from "./facts";
+import { DOCUMENT_TYPES, STAMPS, TITLE_ONLY_TYPES } from "./lexicon";
 
 // The invoice amount reader, rule by rule, through the public extractFacts. It pays only a total written in the
 // closed final grammar; everything else is "0" with a reason.
@@ -1812,4 +1820,152 @@ describe("what stands beside the invoice's title (ruling W-T14-R3)", () => {
       });
     },
   );
+});
+
+describe("what stands after the invoice word on a title line (ruling W-T14-R4)", () => {
+  const BODY = "\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC";
+  const reads = { amount: "20000000", issue: null, line: 3 };
+  const refused = (why: string) => ({ amount: "0", issue: "not_payable", why, line: null });
+
+  it.each([
+    ["Test24 Labs - Invoice 1001"],
+    ["Demo360 Ltd | INVOICE INV-1001"],
+    ["Statement1 Co - Invoice 1001"],
+    ["Sample1 LLC - Invoice INV-1001"],
+    ["De|mo360 Ltd - Invoice 1001"],
+  ])("does not read the vendor's name before the invoice word: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(reads);
+  });
+
+  it.each([
+    ["Test24 Labs - Invoice PAID1"],
+    ["Demo360 Ltd | INVOICE INV-1001 void-2"],
+    ["Acme|Invoice INV-1001 PA|D"],
+  ])("still reads what stands after the word when a vendor leads: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toMatchObject({ amount: "0", issue: "not_payable" });
+  });
+
+  it.each([
+    ["Invoice DEM01"],
+    ["Invoice 1DEM0"],
+    ["Invoice INV-DEM01"],
+    ["Invoice 1pr0p0sa1"],
+    ["Invoice RECEIPTO2"],
+    ["Invoice VOIDI2"],
+    ["Invoice TESTO1"],
+    ["Invoice 2PA|D"],
+    ["Invoice VO|D2"],
+    ["Invoice REMITTANCE1"],
+    ["Invoice 1001REMITTANCE"],
+    ["Invoice INV-1001 SETTLED1"],
+    ["Invoice INV-1001 PREPAID1"],
+    ["Invoice INV-1001 CREDITNOTE1"],
+    ["Invoice INV1001PAID"],
+    ["Invoice 1DEMO1"],
+  ])("refuses a word with digits or look-alikes in its token: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(refused(GLUED_TO_TITLE));
+  });
+
+  it.each([
+    ["Invoice void-2"],
+    ["Invoice Void-2"],
+    ["Invoice Draft-2"],
+    ["Invoice cancelled-12"],
+    ["Invoice sample-3"],
+    ["Invoice test-1"],
+    ["Invoice INV-void-1001"],
+    ["Invoice INV-paid-2"],
+    ["Invoice INV-1001 paid-2"],
+    ["Invoice INV-1001 Void 2"],
+    ["Invoice INV-1001 void and reissued"],
+    ["Invoice INV-1001 draft copy"],
+    ["Invoice INV-1001 cancelled by customer"],
+    ["Invoice INV-1001 PA|D"],
+    ["Invoice INV-1001 void (2)"],
+  ])("refuses a word that is its own token: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toMatchObject({ amount: "0", issue: "not_payable" });
+  });
+
+  it("names a plain word as standing on the title, not as glued to digits", () => {
+    expect(readAmount(`Invoice INV-1001 void and reissued${BODY}`)).toEqual(
+      refused(STAMP_ON_TITLE),
+    );
+  });
+
+  it.each([
+    ["Invoice INV-C1"],
+    ["Invoice INV-I0"],
+    ["Invoice INV-O1"],
+    ["Invoice INV-B1"],
+    ["Invoice INV-1A"],
+    ["Invoice INV-C0"],
+    ["Invoice C1"],
+    ["Invoice No. B1"],
+    ["Invoice INV-1001"],
+    ["Invoice #1001"],
+    ["Invoice INV-2026-0451"],
+    ["Invoice No. 5520"],
+    ["Invoice 2026-114"],
+    ["Invoice 1001 for services"],
+    ["Invoice INV-1001 Oldest"],
+    ["Invoice 1001 A|B"],
+  ])("keeps a real id reading: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(reads);
+  });
+
+  it.each([["Invoice PAIDINFULL1"], ["Invoice ORDERCONFIRMATION2"], ["Invoice 1DONOTPAY"]])(
+    "reads a multi-word entry written whole: %j",
+    (title) => {
+      expect(readAmount(`${title}${BODY}`)).toEqual(refused(GLUED_TO_TITLE));
+    },
+  );
+
+  it("holds every word's look-alike ends within what the scan tries", () => {
+    for (const word of [...STAMPS, ...DOCUMENT_TYPES, ...TITLE_ONLY_TYPES]) {
+      const letters = sk(word).replace(/[^a-z]/g, "");
+      expect(/^[ol]{0,2}(?![ol])/.test(letters), word).toBe(true);
+      expect(/(?<![ol])[ol]{0,2}$/.test(letters), word).toBe(true);
+    }
+  });
+
+  it.each([
+    ["Invoice (Sample) INV-1001"],
+    ["Invoice Template v2"],
+    ["Invoice instructions: send to ap@globex.test by 2026-12-01"],
+  ])("reads a plain word only on a line that reads as a title: %j", (line) => {
+    // A line like this is no title of its own; under another title it is left to the other gates, as before.
+    expect(readAmount(`${line}${BODY}`)).toEqual(refused(NOT_AN_INVOICE));
+    expect(readAmount(`INVOICE INV-1001\n${line}${BODY}`)).toEqual({ ...reads, line: 4 });
+  });
+
+  it("reads a whole word with no digit only as it is written", () => {
+    // "ovoid" is no "void": the look-alike letters at a token's ends count only beside a digit.
+    expect(readAmount(`Invoice 1001 Ovoid${BODY}`)).toEqual(reads);
+  });
+
+  it.each([
+    ["Invoice to: Demo Corp"],
+    ["Invoice to: Test24 Labs"],
+    ["Invoice from: Sample Studio"],
+    ["INVOICE TO : Demo Corp"],
+  ])("does not take a party label for a title: %j", (label) => {
+    expect(readAmount(`INVOICE INV-1001\n${label}${BODY}`)).toEqual({ ...reads, line: 4 });
+  });
+
+  it("a party label is still no title of its own, and does not hide a stamped title", () => {
+    expect(readAmount(`Invoice to: Demo Corp${BODY}`)).toEqual(refused(NOT_AN_INVOICE));
+    expect(readAmount(`Invoice PAID1\nInvoice to: Demo Corp${BODY}`)).toEqual(
+      refused(GLUED_TO_TITLE),
+    );
+  });
+
+  it.each([
+    ["Invoice F0r services"],
+    ["Invoice C0py"],
+    ["Invoice N0t payable"],
+    ["Invoice Rem1nder"],
+    ["Invoice 0VERDUE"],
+  ])("a look-alike word in Title case or capitals is no id: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(refused(NOT_AN_INVOICE));
+  });
 });
