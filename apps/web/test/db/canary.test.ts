@@ -725,11 +725,15 @@ describe("runAttempt", () => {
     expect(feed).toHaveLength(1);
     expect(Object.keys(at(feed))).not.toContain("visitor_hash");
     expect(Object.keys(at(feed))).not.toContain("ip_hash");
-    const board = await pgliteDb(pg, "anon").rpc<{
-      participants: number;
+    // the leaderboard is read on the server only
+    await expect(pgliteDb(pg, "anon").rpc("public_canary_leaderboard", {})).rejects.toThrow(
+      /permission denied/,
+    );
+    const board = await pgliteDb(pg).rpc<{
+      browsers: number;
       contract_codes: { code: string; n: number }[];
     }>("public_canary_leaderboard", {});
-    expect(board.participants).toBe(1);
+    expect(board.browsers).toBe(1);
     expect(board.contract_codes).toEqual([{ code: "NoMandate", n: 1 }]);
   });
 

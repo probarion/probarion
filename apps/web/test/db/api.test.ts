@@ -175,7 +175,7 @@ describe("api functions", () => {
     ).rejects.toMatchObject({ code: "owner_mismatch" });
   });
 
-  it("makes team and canary proofs public by default and stores settings", async () => {
+  it("makes team proofs public by default, keeps a canary proof private, and stores settings", async () => {
     const db = pgliteDb(pg);
     const { tenant_id } = await registerTenant(db, {
       vaultId: "canary.vaults.probarion.near",
@@ -187,9 +187,20 @@ describe("api functions", () => {
     });
     expect(
       (await memberRole(db, "canary.vaults.probarion.near", "probarion.near"))?.proof_public,
-    ).toBe(true);
+    ).toBe(false);
     const s = await setTenantSettings(db, tenant_id, { zeroRetention: true });
-    expect(s).toEqual({ zero_retention: true, proof_public: true });
+    expect(s).toEqual({ zero_retention: true, proof_public: false });
+    await registerTenant(db, {
+      vaultId: "teamv.vaults.probarion.near",
+      network: "mainnet",
+      kind: "team",
+      displayName: "Team",
+      owner: "probarion.near",
+      approvers: [],
+    });
+    expect(
+      (await memberRole(db, "teamv.vaults.probarion.near", "probarion.near"))?.proof_public,
+    ).toBe(true);
   });
 
   it("leases are exclusive, expire, and are released even when the work throws", async () => {

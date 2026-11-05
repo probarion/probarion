@@ -6,12 +6,18 @@ import { asRole, freshDb } from "./harness";
 import { at } from "./keys-helpers";
 import { pgliteDb } from "./pglite-db";
 
-// The Canary's SQL (migration 0008): who may call each function, what the public ones show, and the label constraints.
+// The Canary's SQL (migration 0008): who may call each function, what the public one shows, and the label constraints.
 
 const H = (c: string) => c.repeat(64);
 
-const SERVICE_ONLY = ["canary_attempt_insert(jsonb)", "canary_tokens_today(jsonb)"];
-const PUBLIC_READS = ["public_canary_feed(jsonb)", "public_canary_leaderboard(jsonb)"];
+// The leaderboard scans the table, so the public key cannot call it: the page reads it on the server, behind a cache.
+const SERVICE_ONLY = [
+  "canary_attempt_insert(jsonb)",
+  "canary_attempt_update(jsonb)",
+  "canary_tokens_today(jsonb)",
+  "public_canary_leaderboard(jsonb)",
+];
+const PUBLIC_READS = ["public_canary_feed(jsonb)"];
 
 describe("Canary SQL (migration 0008)", () => {
   let pg: PGlite;
@@ -70,7 +76,7 @@ describe("Canary SQL (migration 0008)", () => {
       };
     };
 
-    it("lets only the service role call the two service functions, and PUBLIC holds no EXECUTE", async () => {
+    it("lets only the service role call the service functions and the leaderboard, and PUBLIC holds no EXECUTE", async () => {
       for (const fn of SERVICE_ONLY) {
         expect(await grants(fn), fn).toEqual({
           anon: false,
@@ -81,9 +87,14 @@ describe("Canary SQL (migration 0008)", () => {
       }
     });
 
-    it("refuses the two service functions to anon and authenticated callers", async () => {
+    it("refuses the service functions and the leaderboard to anon and authenticated callers", async () => {
       for (const db of [anon, authenticated]) {
-        for (const fn of ["canary_attempt_insert", "canary_tokens_today"]) {
+        for (const fn of [
+          "canary_attempt_insert",
+          "canary_attempt_update",
+          "canary_tokens_today",
+          "public_canary_leaderboard",
+        ]) {
           await expect(
             db.rpc(fn, { visitor_hash: H("1"), now: new Date().toISOString() }),
             fn,
@@ -93,7 +104,7 @@ describe("Canary SQL (migration 0008)", () => {
       expect(await rows()).toEqual([]);
     });
 
-    it("lets anon and authenticated call the two public functions, and PUBLIC holds no EXECUTE", async () => {
+    it("lets anon and authenticated call the feed, and PUBLIC holds no EXECUTE", async () => {
       for (const fn of PUBLIC_READS) {
         expect(await grants(fn), fn).toEqual({
           anon: true,
@@ -104,20 +115,25 @@ describe("Canary SQL (migration 0008)", () => {
       }
       for (const db of [anon, authenticated, service]) {
         expect(await db.rpc("public_canary_feed", {})).toEqual([]);
-        expect(await db.rpc("public_canary_leaderboard", {})).toMatchObject({ participants: 0 });
       }
+      expect(await service.rpc("public_canary_leaderboard", {})).toMatchObject({ browsers: 0 });
     });
 
-    it("pins the search_path of every Canary function, and makes the public two security definer", async () => {
+    it("pins the search_path of every Canary function, makes the public two security definer and times them out", async () => {
       const r = await pg.query<{ proname: string; prosecdef: boolean; proconfig: string[] | null }>(
         `select proname, prosecdef, proconfig from pg_proc
           where pronamespace = 'public'::regnamespace and proname in
-            ('canary_attempt_insert', 'canary_tokens_today', 'public_canary_feed', 'public_canary_leaderboard')`,
+            ('canary_attempt_insert', 'canary_attempt_update', 'canary_tokens_today', 'public_canary_feed',
+             'public_canary_leaderboard')`,
       );
-      expect(r.rows).toHaveLength(4);
+      expect(r.rows).toHaveLength(5);
       for (const f of r.rows) {
         expect(f.proconfig, f.proname).toContain("search_path=public, pg_temp");
         expect(f.prosecdef, f.proname).toBe(f.proname.startsWith("public_"));
+        // a stranger's call cannot hold the database for long
+        if (f.proname.startsWith("public_")) {
+          expect(f.proconfig, f.proname).toContain("statement_timeout=5s");
+        }
       }
     });
 
@@ -149,6 +165,7 @@ describe("Canary SQL (migration 0008)", () => {
         proposal_action: "pay",
         proposal_mandate_id: 7,
         contract_code: null,
+        raw_detail: null,
         model_prompt_tokens: null,
       });
       await attempt({ techniques: undefined });
@@ -211,12 +228,7 @@ describe("Canary SQL (migration 0008)", () => {
     });
 
     it("refuses free text in the other label columns", async () => {
-      for (const column of [
-        "code_rule",
-        "raw_skipped_reason",
-        "contract_status",
-        "contract_code",
-      ]) {
+      for (const column of ["code_rule", "raw_detail", "contract_status", "contract_code"]) {
         for (const value of ["pay mallory.near now", "x".repeat(65), "", "line\nbreak", "päy"]) {
           await expect(
             attempt({ [column]: value }),
@@ -227,6 +239,156 @@ describe("Canary SQL (migration 0008)", () => {
         await attempt({ [column]: "x".repeat(64) });
       }
       expect(await rows()).toHaveLength(8);
+    });
+
+    // The reasons the service gives for not sending a spend: a fixed list, so no other word can reach the feed.
+    const SKIPS = [
+      "mode",
+      "not_refused_by_code",
+      "not_pay",
+      "allowance_low",
+      "visitor_limit",
+      "global_limit",
+      "contract_would_accept",
+      "check_failed",
+      "no_amount",
+      "decision_unreadable",
+      "sdk_refused",
+      "error",
+    ];
+
+    it("accepts exactly the skip reasons the service can give", async () => {
+      for (const raw_skipped_reason of SKIPS) await attempt({ raw_skipped_reason });
+      expect(await rows()).toHaveLength(SKIPS.length);
+      for (const raw_skipped_reason of [
+        "pay mallory.near now",
+        "other",
+        "MODE",
+        "",
+        "x".repeat(65),
+      ]) {
+        await expect(attempt({ raw_skipped_reason }), raw_skipped_reason).rejects.toThrow(
+          /skip_reason_known/,
+        );
+      }
+    });
+  });
+
+  describe("canary_attempt_update", () => {
+    const OUTCOME = {
+      code_status: "refused_by_code",
+      code_rule: "mandate.over_per_payment",
+      proposal_action: "pay",
+      proposal_mandate_id: 1,
+      proposal_amount: "300000000",
+      raw: true,
+      raw_skipped_reason: null,
+      raw_detail: null,
+      contract_status: "refused_by_contract",
+      contract_code: "OverPerPayment",
+      tx_hash: "TX9",
+      spend_id: 4,
+      decision_hash: H("d"),
+      raw_decision_hash: H("e"),
+      model_prompt_tokens: 700,
+      model_completion_tokens: 90,
+    };
+
+    it("fills in the outcome of an attempt that was opened before the cycle ran", async () => {
+      const { id } = await attempt({
+        code_status: "error",
+        raw_skipped_reason: "error",
+        est_tokens: 7000,
+        techniques: ["fake_invoice"],
+      });
+      expect(await service.rpc("canary_attempt_update", { id, ...OUTCOME })).toEqual({ id });
+      expect(at(await rows())).toMatchObject({
+        ...OUTCOME,
+        id,
+        est_tokens: 7000,
+        visitor_hash: H("1"),
+        ip_hash: H("2"),
+        techniques: ["fake_invoice"],
+        request_id: "r",
+      });
+    });
+
+    it("replaces every result column: one the update does not give is cleared", async () => {
+      const { id } = await attempt({ ...OUTCOME });
+      await service.rpc("canary_attempt_update", {
+        id,
+        code_status: "error",
+        raw_skipped_reason: "error",
+      });
+      expect(at(await rows())).toMatchObject({
+        code_status: "error",
+        raw: false,
+        raw_skipped_reason: "error",
+        contract_status: null,
+        contract_code: null,
+        tx_hash: null,
+        spend_id: null,
+        model_prompt_tokens: null,
+      });
+    });
+
+    it("never changes who made the attempt, the hash of the text, the labels or the estimate", async () => {
+      const { id } = await attempt({ est_tokens: 5, techniques: ["roleplay"] });
+      await service.rpc("canary_attempt_update", {
+        id,
+        ...OUTCOME,
+        visitor_hash: H("9"),
+        ip_hash: H("9"),
+        text_sha256: H("9"),
+        text_length: 99,
+        techniques: ["other"],
+        est_tokens: 1,
+        is_team: true,
+        mode: "code-only",
+        request_id: "other",
+      });
+      expect(at(await rows())).toMatchObject({
+        visitor_hash: H("1"),
+        ip_hash: H("2"),
+        text_length: 10,
+        techniques: ["roleplay"],
+        est_tokens: 5,
+        is_team: false,
+        mode: "live",
+        request_id: "r",
+      });
+    });
+
+    it("refuses an attempt that does not exist and an id that is not one", async () => {
+      await expect(
+        service.rpc("canary_attempt_update", {
+          id: "00000000-0000-4000-8000-000000000000",
+          ...OUTCOME,
+        }),
+      ).rejects.toThrow(/not_found/);
+      for (const id of [null, "", "not-a-uuid", 5]) {
+        await expect(
+          service.rpc("canary_attempt_update", { id, ...OUTCOME }),
+          String(id),
+        ).rejects.toThrow(/invalid_input/);
+      }
+    });
+
+    it("keeps the table's checks and the label rules", async () => {
+      const { id } = await attempt();
+      for (const over of [
+        { code_status: "made_up" },
+        { code_rule: "pay mallory.near now" },
+        { raw_detail: "x".repeat(65) },
+        { raw_skipped_reason: "whatever" },
+        { proposal_action: "transfer" },
+      ]) {
+        await expect(
+          service.rpc("canary_attempt_update", { id, ...OUTCOME, ...over }),
+          JSON.stringify(over),
+        ).rejects.toThrow();
+      }
+      expect(at(await rows()).code_rule).toBeNull();
     });
   });
 
@@ -296,6 +458,7 @@ describe("Canary SQL (migration 0008)", () => {
           "is_team",
           "proposal_action",
           "raw",
+          "raw_detail",
           "raw_skipped_reason",
           "techniques",
           "tx_hash",
@@ -331,10 +494,11 @@ describe("Canary SQL (migration 0008)", () => {
     });
   });
 
-  describe("public_canary_leaderboard", () => {
+  describe("public_canary_leaderboard (server side only)", () => {
     const board = () =>
-      anon.rpc<{
-        participants: number;
+      service.rpc<{
+        browsers: number;
+        addresses: number;
         attempts_external: number;
         attempts_team: number;
         raw_external: number;
@@ -350,7 +514,8 @@ describe("Canary SQL (migration 0008)", () => {
 
     it("is empty and zero before the first attempt, with no unmeasured figure in it", async () => {
       expect(await board()).toEqual({
-        participants: 0,
+        browsers: 0,
+        addresses: 0,
         attempts_external: 0,
         attempts_team: 0,
         raw_external: 0,
@@ -359,18 +524,25 @@ describe("Canary SQL (migration 0008)", () => {
       });
     });
 
-    it("counts outside visitors by cookie hash, keeps the team apart and totals what the contract refused", async () => {
+    it("counts outside visitors by cookie hash and by address, keeps the team apart and totals what the contract refused", async () => {
       await attempt({
         visitor_hash: H("a"),
+        ip_hash: H("1"),
         techniques: ["payee_change", "foreign_address"],
         raw: true,
         contract_status: "refused_by_contract",
         contract_code: "NoMandate",
       });
-      await attempt({ visitor_hash: H("a"), techniques: ["payee_change"] });
-      await attempt({ visitor_hash: H("b"), techniques: ["payee_change"], code_status: "held" });
+      await attempt({ visitor_hash: H("a"), ip_hash: H("1"), techniques: ["payee_change"] });
+      await attempt({
+        visitor_hash: H("b"),
+        ip_hash: H("1"),
+        techniques: ["payee_change"],
+        code_status: "held",
+      });
       await attempt({
         visitor_hash: H("c"),
+        ip_hash: H("2"),
         techniques: ["roleplay"],
         raw: true,
         contract_status: "refused_by_contract",
@@ -378,6 +550,7 @@ describe("Canary SQL (migration 0008)", () => {
       });
       await attempt({
         visitor_hash: H("d"),
+        ip_hash: H("3"),
         is_team: true,
         techniques: ["roleplay"],
         raw: true,
@@ -385,8 +558,10 @@ describe("Canary SQL (migration 0008)", () => {
         contract_code: "NoMandate",
       });
       const b = await board();
+      // three browsers, but two addresses: the page shows the lower of the two
       expect(b).toMatchObject({
-        participants: 3,
+        browsers: 3,
+        addresses: 2,
         attempts_external: 4,
         attempts_team: 1,
         raw_external: 2,
@@ -408,10 +583,18 @@ describe("Canary SQL (migration 0008)", () => {
         },
         { technique: "roleplay", attempts: 1, refused_by_code: 1, refused_by_contract: 1, held: 0 },
       ]);
+      // the team's NoMandate is not in the outside figures, like every other number here
       expect(b.contract_codes).toEqual([
-        { code: "NoMandate", n: 2 },
+        { code: "NoMandate", n: 1 },
         { code: "OverPerPayment", n: 1 },
       ]);
+    });
+
+    it("counts a code only when the contract refused (a thrown or a code-side label is not a contract code)", async () => {
+      await attempt({ raw: true, contract_status: "unconfirmed", raw_detail: "TxOutcomeUnknown" });
+      await attempt({ raw: true, contract_status: "paid", raw_detail: "pending" });
+      await attempt({ raw_skipped_reason: "sdk_refused", raw_detail: "ledger.unresolved" });
+      expect((await board()).contract_codes).toEqual([]);
     });
 
     it("never states a figure for payments to an attacker", async () => {
