@@ -15142,6 +15142,26 @@
         "issue": null
       },
       "why": "W-T14-R2 m17 control: a look-alike title still reads on the folded view"
+    },
+    {
+      "id": "r7-m17.ctl:Invoice1001",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "Invoice1001\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R2 m17 control: the word and its end stay on the folded view, so a number glued to the word is still no title"
+    },
+    {
+      "id": "r7-m17.ctl:INVOICE0",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "INVOICE0\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R2 m17 control: the word and its end stay on the folded view, so a number glued to the word is still no title"
     }
   ]
 }
