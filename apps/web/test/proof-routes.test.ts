@@ -21,6 +21,14 @@ const h = vi.hoisted(() => ({
   publicCalls: [] as string[],
   /** The anon client fails (a database outage seen by /proof with no vault). */
   publicDown: false,
+  /** The service database client cannot be built (no or a malformed environment). */
+  serviceDown: false,
+  /** The rate limiter's database call fails. */
+  limitDown: false,
+  /** Building the proof page's dependencies fails. */
+  depsDown: false,
+  /** The server's environment does not parse. */
+  envDown: false,
   /** Structured warn lines (proof.unavailable), kept off the test output. */
   warned: [] as string[],
 }));
@@ -43,31 +51,42 @@ vi.mock("@/lib/db/clients", () => ({
       ) as T;
     },
   }),
-  serviceDb: (): Db => ({
-    rpc: async <T>(fn: string, p: Record<string, unknown> = {}) => {
-      if (fn !== "rate_limit_take") throw new Error(`unexpected ${fn}`);
-      h.limitCalls.push(String(p.bucket));
-      return {
-        allowed: h.allowed,
-        remaining: 0,
-        reset_at: new Date(Date.now() + 30_000).toISOString(),
-      } as T;
-    },
-  }),
+  serviceDb: (): Db => {
+    if (h.serviceDown) throw new Error("Invalid environment: SUPABASE_URL is required");
+    return {
+      rpc: async <T>(fn: string, p: Record<string, unknown> = {}) => {
+        if (fn !== "rate_limit_take") throw new Error(`unexpected ${fn}`);
+        h.limitCalls.push(String(p.bucket));
+        if (h.limitDown) throw new DbError("db_error", "connection reset");
+        return {
+          allowed: h.allowed,
+          remaining: 0,
+          reset_at: new Date(Date.now() + 30_000).toISOString(),
+        } as T;
+      },
+    };
+  },
 }));
 vi.mock("@/lib/proof/deps", () => ({
   proofDeps: async () => {
     h.depsCalls++;
+    if (h.depsDown) throw new Error("the database client could not be built");
     return h.deps;
   },
 }));
-vi.mock("@/lib/env", () => ({ getEnv: () => h.env }));
+vi.mock("@/lib/env", () => ({
+  getEnv: () => {
+    if (h.envDown) throw new Error("Invalid environment: SUPABASE_URL is required");
+    return h.env;
+  },
+}));
 
 import Home from "@/app/page";
 import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
 import ProofPage, { generateMetadata } from "@/app/proof/[vault]/page";
 import { GET } from "@/app/proof/[vault]/snapshot.json/route";
 import ProofIndex from "@/app/proof/page";
+import { SiteHeader } from "@/components/site/SiteHeader";
 import { SITE_NAV } from "@/lib/routes";
 
 /** True when the text still holds a right-to-left override, a line separator or a BEL. */
@@ -134,6 +153,10 @@ beforeEach(() => {
   h.publicVault = null;
   h.publicCalls = [];
   h.publicDown = false;
+  h.serviceDown = false;
+  h.limitDown = false;
+  h.depsDown = false;
+  h.envDown = false;
   h.warned = [];
   vi.spyOn(console, "warn").mockImplementation((line: unknown) => {
     h.warned.push(String(line));
@@ -162,6 +185,44 @@ describe("/proof/[vault]", () => {
     expect(out).toContain("Too many proof requests from your address");
     expect(h.limitCalls).toEqual(["proof:203.0.113.7"]);
     expect(h.depsCalls).toBe(0);
+  });
+
+  describe("when the database or the server's environment fails", () => {
+    const unavailable = async () => {
+      const out = text(await html("acme.vaults.probarion.near"));
+      expect(out).toContain("No result: the checks did not run");
+      expect(out).toContain("database could not be reached right now");
+      expect(out).toContain("Nothing on this page is a pass.");
+      expect(out).not.toContain("All offline checks pass");
+      expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "database" }]);
+    };
+
+    it("says the checks did not run when the rate limiter's database call fails", async () => {
+      serve(await proofSnapshot("ok"));
+      h.limitDown = true;
+      await unavailable();
+      expect(h.depsCalls).toBe(0);
+    });
+
+    it("says the checks did not run when the page's dependencies cannot be built", async () => {
+      h.depsDown = true;
+      await unavailable();
+    });
+
+    it("says the checks did not run when the environment does not parse", async () => {
+      h.depsDown = true;
+      h.envDown = true;
+      await unavailable();
+    });
+
+    it("still answers 404 for a private vault and for an id that is not an account", async () => {
+      serve(await proofSnapshot("ok"));
+      expect(await digest(page("nobody.vaults.probarion.near"))).toBe(
+        "NEXT_HTTP_ERROR_FALLBACK;404",
+      );
+      h.limitDown = true;
+      expect(await digest(page("Not A Vault"))).toBe("NEXT_HTTP_ERROR_FALLBACK;404");
+    });
   });
 
   it("ok: a green 'All offline checks pass', never 'All checks pass'", async () => {
@@ -585,9 +646,8 @@ describe("/proof", () => {
       h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: demo };
       h.publicVault = row;
       const out = text(renderToStaticMarkup((await ProofIndex()) as ReactElement));
-      expect(out, String(demo)).toContain(
-        "Open /proof/&lt;vault account&gt; to see a vault&#x27;s checks.",
-      );
+      expect(out, String(demo)).toContain("No public vault is listed here yet.");
+      expect(out, String(demo)).toContain("A vault&#x27;s owner must make its proof page public");
     }
     // A missing id, and one that is not an account, are never looked up.
     expect(h.publicCalls).toEqual(["public_vault", "public_vault"]);
@@ -597,19 +657,111 @@ describe("/proof", () => {
     h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: "demo.vaults.probarion.testnet" };
     h.publicDown = true;
     const out = text(renderToStaticMarkup((await ProofIndex()) as ReactElement));
-    expect(out).toContain("Open /proof/&lt;vault account&gt; to see a vault&#x27;s checks.");
+    expect(out).toContain("No public vault is listed here yet.");
+    expect(out).toContain("A vault&#x27;s owner must make its proof page public");
     expect(warnedReasons()).toMatchObject([{ msg: "proof.demo_unavailable" }]);
+  });
+
+  it("is still a page when the server's environment does not parse", async () => {
+    h.envDown = true;
+    const out = text(renderToStaticMarkup((await ProofIndex()) as ReactElement));
+    expect(out).toContain("No public vault is listed here yet.");
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.demo_unavailable" }]);
+  });
+
+  describe("with no public demo vault", () => {
+    const index = (vault?: string | string[]) =>
+      ProofIndex(vault === undefined ? {} : { searchParams: Promise.resolve({ vault }) });
+    const render = async (vault?: string | string[]) =>
+      renderToStaticMarkup((await index(vault)) as ReactElement);
+
+    beforeEach(() => {
+      h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: null };
+      h.publicVault = null;
+    });
+
+    it("is a real page: what a proof page shows, that none is listed, and that an owner must make one public", async () => {
+      const out = text(await render());
+      expect(out).toContain("checks a to i with explorer links");
+      expect(out).toContain("a ledger and a snapshot file you can download");
+      expect(out).toContain("Offline, the verifier checks that file against itself.");
+      expect(out).toContain("The page also gives the command that reads the chain again.");
+      expect(out).toContain("No public vault is listed here yet.");
+      expect(out).toContain("A vault&#x27;s owner must make its proof page public first.");
+      expect(out).toContain("If the owner has not, that address answers page not found.");
+      expect(out).not.toContain("to see a vault&#x27;s checks");
+    });
+
+    it("has a labelled GET form that works with no JavaScript", async () => {
+      const out = await render();
+      expect(out).toContain('method="get"');
+      expect(out).toContain('action="/proof"');
+      expect(out).toContain('for="proof-vault"');
+      expect(out).toContain('id="proof-vault"');
+      expect(out).toContain('name="vault"');
+      expect(out).not.toContain("proof-vault-error");
+      expect(out).not.toContain("autofocus");
+    });
+
+    it("stays quiet on an empty submit", async () => {
+      expect(await render("")).not.toContain("proof-vault-error");
+    });
+
+    it("sends a NEAR account on to its proof page", async () => {
+      expect(await digest(() => index("alice.testnet"))).toMatch(
+        /^NEXT_REDIRECT;[a-z]+;\/proof\/alice\.testnet;/,
+      );
+      expect(await digest(() => index("  alice.testnet "))).toMatch(
+        /^NEXT_REDIRECT;[a-z]+;\/proof\/alice\.testnet;/,
+      );
+    });
+
+    it("shows an inline error for anything else, instead of a 404", async () => {
+      const typed = ["Not A Vault", "a", "../etc/passwd", "x".repeat(65), ["a b", "c"], " ", "   "];
+      for (const bad of typed) {
+        const out = await render(bad);
+        expect(out, String(bad)).toContain('id="proof-vault-error"');
+        expect(out, String(bad)).toContain('aria-invalid="true"');
+        // Focus lands on the input, so a screen reader reads its label and the error.
+        expect(out, String(bad)).toContain("autofocus");
+        expect(text(out), String(bad)).toContain("That is not a NEAR account.");
+      }
+    });
+
+    it("escapes what was typed, and never makes it a link", async () => {
+      const out = await render('"><script>alert(1)</script>');
+      expect(out).not.toContain("<script>");
+      expect(out).not.toContain('href="&quot;');
+    });
+
+    it("keeps the ledger test on the page, so it does not dead-end", async () => {
+      const out = text(await render());
+      expect(out).toContain("Try the verifier here");
+      expect(out).toContain("Change an amount");
+      expect(out).toContain("9 passed, 0 failed, 0 unproven");
+    });
+
+    it("still prefers the public demo vault to the form", async () => {
+      h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: "demo.vaults.probarion.testnet" };
+      h.publicVault = { vault_id: "demo.vaults.probarion.testnet", network: "testnet" };
+      expect(await digest(() => index("alice.testnet"))).toMatch(
+        /^NEXT_REDIRECT;[a-z]+;\/proof\/demo\.vaults\.probarion\.testnet;/,
+      );
+    });
   });
 });
 
 describe("the landing page and the menu", () => {
   it("link the proof page, and no longer call it coming", () => {
     const out = renderToStaticMarkup(createElement(Home));
-    expect(out).toContain(`href="/proof"`);
+    expect(renderToStaticMarkup(createElement(SiteHeader))).toContain(`href="/proof"`);
     expect(text(out)).not.toMatch(/are coming/);
-    expect(text(out)).toContain(cli("verify --offline probarion-&lt;vault&gt;-snapshot.json"));
+    expect(text(out)).toContain(cli("verify --offline"));
+    expect(text(out)).toContain("packages/core/test/fixtures/valid-snapshot.json");
     if (!CLI_ON_NPM) {
-      expect(text(out)).toContain("from a clone of the repository (the npm package is coming)");
+      expect(text(out)).toContain(
+        "The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture. Build it from a clone first (README step 1).",
+      );
       expect(text(out)).not.toContain("npx probarion");
     }
     expect(SITE_NAV).toContainEqual({ route: "/proof", label: "Proof" });
@@ -733,5 +885,75 @@ describe("a database error before the access check", () => {
     );
     expect(ledger.status).toBe(503);
     expect(await ledger.json()).toEqual({ error: "unavailable" });
+  });
+});
+
+describe.each([
+  { name: "snapshot.json", route: GET },
+  { name: "ledger.jsonl", route: GET_LEDGER },
+])("/proof/[vault]/$name when the database fails", ({ name, route }) => {
+  const answer = (vault: string) =>
+    route(
+      new Request(`https://probarion.xyz/proof/${vault}/${name}`, {
+        headers: { "x-forwarded-for": "203.0.113.7" },
+      }),
+      params(vault),
+    );
+  const expectUnavailable = async (res: Response) => {
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "database" }]);
+  };
+
+  it("answers 503 when the rate limiter's call fails, and does not go on to the load", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    h.limitDown = true;
+    await expectUnavailable(await answer(snapshot.vault));
+    expect(h.depsCalls).toBe(0);
+  });
+
+  it("answers 503 when the database client cannot be built", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    h.serviceDown = true;
+    await expectUnavailable(await answer(snapshot.vault));
+    expect(h.limitCalls).toEqual([]);
+  });
+
+  it("answers 503 when the load's dependencies cannot be built", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    h.depsDown = true;
+    await expectUnavailable(await answer(snapshot.vault));
+  });
+
+  it("still answers 404 for an id that is not an account, before any database call", async () => {
+    h.serviceDown = true;
+    const res = await answer("Not A Vault");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    expect(h.warned).toEqual([]);
+  });
+
+  it("still answers 404 for a vault that is not public, on a healthy database", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot, {
+      publicDb: {
+        rpc: async <T>() => null as T,
+      },
+    });
+    const res = await answer(snapshot.vault);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("still answers 429 when the limiter refuses", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    h.allowed = false;
+    const res = await answer(snapshot.vault);
+    expect(res.status).toBe(429);
+    expect(h.depsCalls).toBe(0);
   });
 });

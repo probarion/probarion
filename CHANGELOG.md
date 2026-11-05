@@ -7,13 +7,26 @@ The MCP server `@probarion/mcp` is planned and does not exist yet.
 Versions follow semver. The npm packages share one version, released by the tag `sdk-v<version>`;
 none is published yet. A contract crate carries its own version, and each build of it is identified
 by the code hash of its reproducible build in `contracts/code-hashes.json`. The web console is not
-versioned yet and is not deployed. While the version is 0.x, a minor version may change the API.
+versioned yet, and it deploys from `main` to <https://probarion.vercel.app>. While the version is 0.x, a minor version may change the API.
 The software is an unaudited beta.
 
 ## Unreleased
 
 ### Added
 
+- Public site in the light brand design, deployed at <https://probarion.vercel.app>: a landing page
+  with real testnet transactions, the path of one payment and a list of what works and what does not;
+  a beta strip on every page, a header with a phone menu that works with no JavaScript, a footer, and
+  plain sign-in, not-found and error pages. Open Graph and Twitter cards, an icon, `robots.txt` and
+  `sitemap.xml`.
+- The site's ledger test runs the real `runChecks` from `@probarion/core` in the visitor's browser on
+  a committed test fixture of five entries signed with test keys. Three edits (an amount, an erased
+  refusal, a refusal turned into an approval) each show what the verifier catches when an edit was
+  not re-signed.
+- `/proof` with no public vault is a real page, with a form that opens `/proof/<account>`, an inline
+  error for an invalid account, and the ledger test.
+- Tests that hold the site's named facts to the deployment record, the README, `SECURITY.md` and the
+  contract source.
 - Web console deploy checks, run with its tests: every environment variable the console reads is
   listed in `.env.example` with secrets left empty, no secret can reach the browser through a
   `NEXT_PUBLIC_` name, migrations stay ordered and portable to a hosted Supabase, every scheduled job
@@ -56,14 +69,14 @@ The software is an unaudited beta.
   `contracts/deployments/testnet.json`.
 - Deploy and smoke scripts for testnet, runbooks for testnet, the factory and the planned mainnet
   vault (each signing step is the owner's), and `pnpm proof` for the mainnet evidence file.
-- Web console, in progress and not deployed: wallet sign-in with near-connect and NEP-413, checked on
+- Web console, in progress: wallet sign-in with near-connect and NEP-413, checked on
   the server, with a signed session cookie; a Supabase schema with row-level security on every table,
   tested in PGlite; vault creation through the factory, with the CLI as a fallback; a vault overview
   with balances, NEAR runway, freeze and the held spends to approve; a keys page where the owner adds
   the agent and ledger keys from their wallet with the public key only; mandate creation for a NEAR
   or Base payee, with the same validation in the browser and on the server, and revocation; and a
   Postgres ledger store whose entries core's `runChecks` verifies.
-- Web console, the public proof page (built and tested, not deployed): `/proof/<vault>` shows a vault
+- Web console, the public proof page (built and tested): `/proof/<vault>` shows a vault
   whose owner made its proof public. The result comes first: "All offline checks pass" (green), "Not
   proven yet" (amber) or "A check failed" (red). Then come checks (a) to (i), each with explorer links
   on the vault's own network, and the vault's cross-chain burns. When a burn is not proven, the page
@@ -79,7 +92,7 @@ The software is an unaudited beta.
   `probarion` package is on npm, every command on the site and in the deploy runbook is shown as run
   from a clone of this repository (four set-up commands, then `node packages/cli/dist/bin.js`), and
   the tests run those commands as shown.
-- Web console, Payables pipeline (built and tested, not deployed): `POST /api/console/[vault]/invoices` takes an invoice (a PDF, a text
+- Web console, Payables pipeline (built and tested): `POST /api/console/[vault]/invoices` takes an invoice (a PDF, a text
   file or pasted text) together with the purchase-order document hashed into a mandate, and runs
   the reference agent. Code rules decide, the vault contract pays the mandate's payee, and each
   payment is signed with the agent key its mandate is bound to.
@@ -102,8 +115,8 @@ The software is an unaudited beta.
   its invoice number for the same payee (kept as a keyed HMAC), matches. Uploads are limited to
   4 MiB per file and 4 MiB + 64 KiB per request. The migration
   `apps/web/supabase/migrations/20261108000006_invoices.sql` adds the invoice tables.
-- Web console, Payables pages (built and tested against a fake chain, not deployed, not yet tried with
-  a real wallet): upload an invoice with its purpose document, see every invoice with its status in
+- Web console, Payables pages (built and tested against a fake chain, not yet tried with a real
+  wallet): upload an invoice with its purpose document, see every invoice with its status in
   plain words, and open each one to see what the model wanted, what the code allowed and what the
   contract did, with explorer links for the payment and the ledger anchor. Zero-retention can be
   switched on there, and the page says what is kept. The migration
@@ -135,6 +148,14 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The README, `SECURITY.md` and the site say what an offline check shows: `verify --offline` checks a
+  snapshot against itself, so a forged snapshot with re-signed entries passes, and only `verify --vault`
+  reads the chain. They also say that `verify --vault v0.probarion.testnet` fails checks d and h today,
+  because the smoke run sent its spends without a ledger.
+- The wallet provider moved to `/console` and `/login`, with one connector per network. First-load JS
+  of `/` went from 148.5 KiB to 139.5 KiB gzip.
+- The web build downloads Hanken Grotesk and IBM Plex Mono from Google Fonts and serves them itself, so
+  `pnpm verify` reaches the network for that step.
 - The repository pins pnpm 10.34.9 through `packageManager` in the root `package.json`. CI, the
   release job and Vercel builds run exactly that version, which is patched against the pnpm advisories
   GHSA-vq4v-j7r6-jq4m, GHSA-c59q-g84q-2gj5 and GHSA-vx52-2968-3vc6. The pinned tests refuse a
@@ -152,6 +173,12 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- Signing in now lands on the console. A prefetched redirect could leave the visitor on `/login` with
+  no error.
+- `/proof/<vault>` says the checks did not run, and its `snapshot.json` and `ledger.jsonl` downloads
+  answer 503, when the database or the server's environment fails. They answered 500 before.
+- A failed sign-in challenge says sign-in is unavailable and nothing was signed. The sign-in page no
+  longer names wallets the picker may not offer.
 - Web console: pages that are not built yet (Canary, open metrics, Payables, Top-up, Alerts,
   Security, Status, Terms, Privacy) show as "coming soon" instead of a link that answers 404, and the
   landing page does not present them as available.

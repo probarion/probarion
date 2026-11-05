@@ -93,7 +93,18 @@ describe("signInWithWallet (NEP-413)", () => {
     const { impl } = fakeFetch([json({}, 503)]);
     const { wallet, seen } = fakeWallet({});
     await expect(signInWithWallet(wallet, impl)).rejects.toThrow(
-      "Could not get a sign-in challenge (503)",
+      "Sign-in is unavailable right now. Nothing was signed. Try again later.",
+    );
+    expect(seen).toHaveLength(0);
+  });
+
+  it("says the same when the challenge request itself fails", async () => {
+    const { wallet, seen } = fakeWallet({});
+    const offline = (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as unknown as typeof fetch;
+    await expect(signInWithWallet(wallet, offline)).rejects.toThrow(
+      "Sign-in is unavailable right now. Nothing was signed. Try again later.",
     );
     expect(seen).toHaveLength(0);
   });

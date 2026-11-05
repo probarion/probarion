@@ -16,20 +16,9 @@ import type { TxResult } from "@/lib/near/outcome";
 import { type SendWallet, sendWalletTx } from "@/lib/near/send";
 import { type Nep413Wallet, type SignedMessage, signInWithWallet } from "@/lib/near/signin";
 import type { WalletTx } from "@/lib/near/tx";
-import { connectorOptions, type DataStorage, hardenConnector } from "./manifest";
+import { type ConnectorLike, connectorFor } from "./connector";
 
-/**
- * Our own narrow view of near-connect 0.11.4, so its missing @near-js/* types cannot leak
- * (Verify on first use #1). Matches the installed build/types: `NearWalletBase` and `NearConnector`.
- */
 type WalletLike = Nep413Wallet & SendWallet;
-interface ConnectorLike {
-  connect(): Promise<unknown>;
-  disconnect(): Promise<void>;
-  getConnectedWallet(): Promise<{ wallet: unknown; accounts: { accountId: string }[] }>;
-  on(event: "wallet:signIn" | "wallet:signOut", callback: (payload: unknown) => void): void;
-  off(event: "wallet:signIn" | "wallet:signOut", callback: (payload: unknown) => void): void;
-}
 
 interface WalletCtx {
   ready: boolean;
@@ -81,16 +70,9 @@ export function WalletProvider({ network, children }: { network: Network; childr
     let detach: (() => void) | undefined;
     (async () => {
       try {
-        const { NearConnector, LocalStorage } = await import("@hot-labs/near-connect"); // client-only, never at SSR
-        // React StrictMode runs this effect twice in dev: only the live run builds a connector.
+        const c = await connectorFor(network);
+        // React StrictMode runs this effect twice in dev: only the live run attaches to the connector.
         if (!alive) return;
-        // Our pinned wallet list (manifest.ts), never the one the library would fetch from GitHub.
-        const options = connectorOptions(network, new LocalStorage() as DataStorage);
-        // (The library types `platform` as string[], but its own manifest, and ours, use an object.)
-        const built = new NearConnector(
-          options as unknown as ConstructorParameters<typeof NearConnector>[0],
-        );
-        const c = hardenConnector(built) as unknown as ConnectorLike;
         connector.current = c;
         const onSignIn = (payload: unknown) => {
           const id = firstAccountId(payload);
