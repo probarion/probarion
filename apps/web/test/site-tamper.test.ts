@@ -16,7 +16,13 @@ import {
   type TamperEditId,
   verifyTamper,
 } from "@/lib/site/tamper";
-import { checkView, passCaveat, resultSummary, runVerifier } from "@/lib/site/tamper-view";
+import {
+  checkView,
+  passCaveat,
+  resultSummary,
+  runVerifier,
+  statusLine,
+} from "@/lib/site/tamper-view";
 import fixture from "@/lib/site/valid-snapshot.json";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
@@ -165,9 +171,7 @@ describe("what the panel shows for a check", () => {
   });
 
   const runs = () =>
-    Promise.all(
-      [null, ...TAMPER_EDITS.map((e) => e.id)].map((id) => verifyTamper(SNAPSHOT, id)),
-    );
+    Promise.all([null, ...TAMPER_EDITS.map((e) => e.id)].map((id) => verifyTamper(SNAPSHOT, id)));
 
   it("says check e's caveat in one plain sentence, at rest and on every live run", async () => {
     const caveatOfE = (r: typeof RECORDED_RESULT) => checkView(r.checks.find((c) => c.id === "e"));
@@ -204,6 +208,25 @@ describe("what the panel shows for a check", () => {
     expect(resultSummary({ ...base, firstBroken: null }, TAMPER_COPY.firstBroken)).toBe(
       "6 passed, 3 failed, 0 unproven",
     );
+  });
+});
+
+describe("the left card's status line", () => {
+  it("says the verdict word first, at rest", () => {
+    expect(statusLine(RECORDED_RESULT.ok, TAMPER_COPY.atRest)).toBe("PASS. As recorded.");
+  });
+
+  it("says the verdict the real verifier gives for each edit", async () => {
+    const lines = await Promise.all(
+      TAMPER_EDITS.map(async ({ id, summary }) =>
+        statusLine((await verifyTamper(SNAPSHOT, id)).ok, summary),
+      ),
+    );
+    expect(lines).toEqual([
+      "FAIL. Entry 2 edited: 40 USDC became 0.000001 USDC.",
+      "FAIL. Entry 4 erased from the ledger.",
+      "FAIL. Entry 4 edited: refuse became allow.",
+    ]);
   });
 });
 
@@ -249,6 +272,14 @@ describe("the ledger test's markup", () => {
   it("announces the verdict and each check whole, in a polite panel", () => {
     expect(html).toContain('aria-live="polite"');
     expect(html.match(/aria-atomic="true"/g)?.length).toBe(10);
+  });
+
+  it("puts the verdict word in the left card's status line, outside the only live region", () => {
+    const line = html.indexOf(">PASS. As recorded.</span>");
+    expect(line).toBeGreaterThan(html.indexOf("Signed ledger, test fixture"));
+    expect(line).toBeLessThan(html.indexOf("Change an amount"));
+    expect(html.match(/aria-live=/g)?.length).toBe(1);
+    expect(line).toBeLessThan(html.indexOf("aria-live="));
   });
 
   it("renders the summary as one text node, so a screen reader does not get bare numbers", () => {

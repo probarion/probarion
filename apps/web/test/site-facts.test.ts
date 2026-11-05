@@ -882,6 +882,21 @@ describe("the stylesheet", () => {
     expect(phone).toMatch(/\.rowNote {[^}]*display: inline-block;[^}]*width: 100%/);
   });
 
+  it("lets the left card of the ledger test end where its table ends, not at the verdict's height", () => {
+    expect(rule(".tamper > .sheet:first-child")).toContain("align-self: start");
+  });
+
+  it("keeps two lines free for the status line on phones, so the buttons below it hold still", () => {
+    const phone = site.slice(site.indexOf("@media (max-width: 620px)"));
+    expect(phone).toMatch(/\.sheetHead > span:last-child {[^}]*min-height: 3\.1em/);
+  });
+
+  it("stacks the status line under the title on the narrowest two-column cards, so a long one does not move the buttons", () => {
+    const block = "@media (min-width: 961px) and (max-width: 1100px)";
+    const narrow = site.slice(site.indexOf(block) + block.length);
+    expect(narrow).toMatch(/^[^@]*\.sheetHead {[^}]*flex-direction: column/);
+  });
+
   it("folds the header into the menu at 1100 px, and only the header", () => {
     expect(site).not.toContain("@media (max-width: 1040px)");
     const fold = site.slice(site.indexOf("@media (max-width: 1100px)"));

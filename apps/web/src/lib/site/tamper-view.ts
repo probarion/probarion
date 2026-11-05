@@ -16,6 +16,14 @@ export function resultSummary(result: Omit<TamperResult, "ok">, firstBroken: str
 }
 
 /**
+ * The left card's status line. It carries the verdict word because on a phone the table sits between the buttons and
+ * the verdict panel. Only that panel is a live region, so a screen reader hears the verdict once.
+ */
+export function statusLine(ok: boolean, what: string): string {
+  return `${ok ? "PASS" : "FAIL"}. ${what}.`;
+}
+
+/**
  * The parts of a passing check's detail that say something was not done, such as "2 entries after the last anchored
  * count (3) are not chain-attested". They are the verifier's own words. A part that starts with "0 entries" leaves
  * nothing undone, and the rest of a passing detail repeats that the check passed.

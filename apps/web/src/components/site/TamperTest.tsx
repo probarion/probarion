@@ -3,7 +3,7 @@
 import type { CheckId, Snapshot } from "@probarion/core";
 import { type ReactNode, useRef, useState } from "react";
 import type { LedgerRow, TamperEdit, TamperEditId, TamperResult } from "@/lib/site/tamper";
-import { checkView, resultSummary, runVerifier } from "@/lib/site/tamper-view";
+import { checkView, resultSummary, runVerifier, statusLine } from "@/lib/site/tamper-view";
 import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
 
@@ -149,7 +149,7 @@ export function TamperTest({
         <div className={s.sheetHead}>
           <span>{copy.sheetTitle}</span>
           <span className={active === undefined ? undefined : s.edited}>
-            {active?.summary ?? copy.atRest}
+            {statusLine(shown.result.ok, active?.summary ?? copy.atRest)}
           </span>
         </div>
         <div className={s.sheetActions}>

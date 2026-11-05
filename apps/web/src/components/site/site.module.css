@@ -575,6 +575,10 @@
   grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   gap: 14px;
 }
+/* Its height is its own, not the verdict's, so that its foot follows the table. */
+.tamper > .sheet:first-child {
+  align-self: start;
+}
 .sheet {
   background: var(--color-surface);
   border: 1px solid var(--color-line);
@@ -1056,6 +1060,14 @@
   }
   .tx {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* The narrowest two-column cards: the longest status line would wrap below the title and move the buttons. */
+@media (min-width: 961px) and (max-width: 1100px) {
+  .sheetHead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
   }
 }
 @media (max-width: 620px) {
