@@ -18,6 +18,8 @@ const pays = (amount: string) => ({ amount, issue: null });
 const readInvoice = (text: string) =>
   read(readAmount(text).why === NOT_AN_INVOICE ? `INVOICE\n${text}` : text);
 const no = (issue: string) => ({ amount: "0", issue });
+/** A refusal as readAmount returns it: no amount, so no line it was read from. */
+const noLine = (issue: string) => ({ ...no(issue), line: null });
 /** Eight header lines that read, so a line after them is read as a body line. */
 const HEADER =
   "INVOICE INV-1\nAcme Design LLC\n1 Main St\nSpringfield\nDate: 2026-11-01\nDue date: 2026-12-01\nBill to: Beta\nTerms: Net 30\n";
@@ -623,12 +625,12 @@ describe("robustness", () => {
 
   it("refuses a text past the read cap before it normalises any of it", () => {
     const t0 = performance.now();
-    expect(readAmount(`€${"a".repeat(4 * 1024 * 1024 - 1)}`)).toEqual(no("unreadable"));
+    expect(readAmount(`€${"a".repeat(4 * 1024 * 1024 - 1)}`)).toEqual(noLine("unreadable"));
     expect(performance.now() - t0).toBeLessThan(100);
   });
 
   it("refuses a text that NFKC expands past the read cap", () => {
-    expect(readAmount("\ufdfa".repeat(12_000))).toEqual(no("unreadable"));
+    expect(readAmount("\ufdfa".repeat(12_000))).toEqual(noLine("unreadable"));
   });
 });
 
@@ -938,7 +940,7 @@ describe("safe widenings", () => {
 describe("the reader's own views", () => {
   it("reads a lone surrogate as U+FFFD, the text the hash and the ledger see, and refuses it", () => {
     expect(readAmount("Acme Design LLC\nInvoice INV-77\nNote \ud800\nTotal: $770.00")).toEqual(
-      no("unreadable"),
+      noLine("unreadable"),
     );
   });
 
@@ -1016,7 +1018,12 @@ describe("a payable document names itself an invoice", () => {
       "Acme Design LLC\nThank you for your business\nInvoice total $700.00",
     ],
   ])("refuses %s as not payable, and says why", (_why, text) => {
-    expect(readAmount(text)).toEqual({ amount: "0", issue: "not_payable", why: NOT_AN_INVOICE });
+    expect(readAmount(text)).toEqual({
+      amount: "0",
+      issue: "not_payable",
+      why: NOT_AN_INVOICE,
+      line: null,
+    });
     expect(read(text)).toEqual(no("not_payable"));
   });
 
@@ -1526,6 +1533,7 @@ describe("the breaker changes", () => {
       amount: "0",
       issue: "not_payable",
       why: NOT_AN_INVOICE,
+      line: null,
     });
   });
 
@@ -1677,5 +1685,69 @@ describe("breaker rules the mutation pass found untested", () => {
     expect(read("INVOICE INV-1001\nAll amounts in u.s.d.\nTotal $1,000.00")).toEqual(
       pays("1000000000"),
     );
+  });
+});
+
+describe("the line the total was read from (ruling W-T14-R2)", () => {
+  const BODY = "Invoice INV-77\nPO: PO-1001\nPay to vendor.testnet";
+  it.each([
+    ["the total as the last line", `${BODY}\nTotal 20.00 USDC`, "20000000", 3],
+    [
+      "a due date after the total",
+      `${BODY}\nTotal 20.00 USDC\nDue date: 2026-11-20`,
+      "20000000",
+      3,
+    ],
+    [
+      "payment terms after the total",
+      `${BODY}\nTotal 20.00 USDC\nPayment due within 20 days`,
+      "20000000",
+      3,
+    ],
+    [
+      "net terms after the total",
+      `${BODY}\nTotal 30.00 USDC\nNet 30, payable within 30 days`,
+      "30000000",
+      3,
+    ],
+    [
+      "a payable-by date after the total",
+      `${BODY}\nTotal 15.00 USDC\nPayable by 2026-11-15`,
+      "15000000",
+      3,
+    ],
+    [
+      "an unlabelled figure after the total",
+      `${BODY}\nTotal 10.00 USDC\nThank you, 10 years serving you`,
+      "10000000",
+      3,
+    ],
+    ["the figure in an item line above", `${BODY}\nDesign 20.00\nTotal 20.00 USDC`, "20000000", 4],
+    [
+      "two agreeing totals: the last one",
+      "INVOICE INV-1001\nTotal: $700.00\nAmount due: $700.00",
+      "700000000",
+      2,
+    ],
+    [
+      "a balance after a deposit",
+      "INVOICE INV-1001\nDesign $1,000.00\nSubtotal $1,000.00\nLess deposit -$400.00\nBalance due: $600.00",
+      "600000000",
+      4,
+    ],
+    [
+      "other line ends, counted as the hash and the model count them",
+      "INVOICE INV-1001\r\nBill to: Beta\r\n\r\nTotal $5.00",
+      "5000000",
+      3,
+    ],
+  ])("names %s", (_why, text, amount, line) => {
+    expect(readAmount(text)).toEqual({ amount, issue: null, line });
+  });
+
+  it("is null when no amount was read", () => {
+    expect(readAmount("INVOICE INV-1001\nTotal 20.00 EUR").line).toBeNull();
+    expect(readAmount("Acme LLC\nTotal $5.00").line).toBeNull();
+    expect(readAmount("").line).toBeNull();
   });
 });

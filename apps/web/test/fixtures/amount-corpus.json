@@ -15052,6 +15052,96 @@
         "issue": null
       },
       "why": "B13 (A $, S $, lower-case dotted codes): the judge expects 1000000000"
+    },
+    {
+      "id": "r7-m17.INV-C1",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "Invoice INV-C1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R2 m17: the title's id digit is read on the unfolded skeleton (a 0 or 1 next to a letter is still a digit there)"
+    },
+    {
+      "id": "r7-m17.INV-I0",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "Invoice INV-I0\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R2 m17: the title's id digit is read on the unfolded skeleton (a 0 or 1 next to a letter is still a digit there)"
+    },
+    {
+      "id": "r7-m17.INV-O1",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "Invoice INV-O1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R2 m17: the title's id digit is read on the unfolded skeleton (a 0 or 1 next to a letter is still a digit there)"
+    },
+    {
+      "id": "r7-m17.INV-B1",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "Invoice INV-B1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R2 m17: the title's id digit is read on the unfolded skeleton (a 0 or 1 next to a letter is still a digit there)"
+    },
+    {
+      "id": "r7-m17.INV-1A",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "Invoice INV-1A\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R2 m17: the title's id digit is read on the unfolded skeleton (a 0 or 1 next to a letter is still a digit there)"
+    },
+    {
+      "id": "r7-m17.INV-C0",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "Invoice INV-C0\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R2 m17: the title's id digit is read on the unfolded skeleton (a 0 or 1 next to a letter is still a digit there)"
+    },
+    {
+      "id": "r7-m17.C1",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "Invoice C1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R2 m17: the title's id digit is read on the unfolded skeleton (a 0 or 1 next to a letter is still a digit there)"
+    },
+    {
+      "id": "r7-m17.No. B1",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "Invoice No. B1\nPO: PO-1001\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R2 m17: the title's id digit is read on the unfolded skeleton (a 0 or 1 next to a letter is still a digit there)"
+    },
+    {
+      "id": "r7-m17.ctl:lnv0ice 1",
+      "source": "Task 14 fix round 1, Task 13 reader title id",
+      "text": "lnv0ice 1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R2 m17 control: a look-alike title still reads on the folded view"
     }
   ]
 }

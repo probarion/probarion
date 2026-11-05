@@ -73,6 +73,12 @@ export interface AmountRead {
   issue: AmountIssue | null;
   /** For some refusals, why in words (a not_payable document with no invoice title). */
   why?: string;
+  /**
+   * Output only (ruling W-T14-R2): the index, from 0, of the line the agreed final total was read from (the last
+   * final-total line that states it), counted on the text with its line ends normalised (normaliseLineEnds); null
+   * when no amount was read. It never changes the amount or the issue.
+   */
+  line: number | null;
 }
 
 /** Why a document with no invoice title in its first eight lines is not_payable. */
@@ -93,7 +99,7 @@ export function cappedNfkc(text: string): string | null {
 /** The largest total paid: 10^12 USDC. */
 const MAX_UNITS = 10n ** 18n;
 
-const refuse = (issue: AmountIssue): AmountRead => ({ amount: "0", issue });
+const refuse = (issue: AmountIssue): AmountRead => ({ amount: "0", issue, line: null });
 
 /** Every line end the model, the hash and the reader treat as one: CRLF, CR, VT, FF, NEL, LS and PS. */
 const LINE_ENDS = /\r\n?|[\v\f\u0085\u2028\u2029]/g;
@@ -359,6 +365,8 @@ interface Views {
   s: readonly string[];
   /** Each line's skeleton with letter-spaced words joined and 0/1 among letters read as letters. */
   u: readonly string[];
+  /** `u` before the 0/1 among letters are read as letters (the title id's digit is read here). */
+  t: readonly string[];
   /** Each line's match of the non-final grammar (a money line, which no status phrase refuses), or null. */
   nonFinal: readonly (RegExpExecArray | null)[];
   /** Each line's match of the final grammar, or null. */
@@ -1148,11 +1156,17 @@ function twoTitles(
 const INVOICE_TITLE = new RegExp(
   `^${TITLE_LEAD}${INVOICE_WORD}(?![a-z])(?:[^a-z0-9]*$|(?:[ \\t]*(?:#|no\\.?(?![a-z])|number|num\\.?(?![a-z])|n\\u00b0))?(?:[^a-z0-9]*$|[ \\t:#.]*(?=[^\\s]{0,64}\\d)[^\\s(]))`,
 );
+/** The title's word and its end, read on the folded view (ruling W-T14-R2 m17). */
+const INVOICE_TITLE_WORD = new RegExp(`^${TITLE_LEAD}${INVOICE_WORD}(?![a-z])`);
 function invoiceTitled(v: Views, lines: readonly number[]): boolean {
   for (const i of lines.slice(0, HEADER_LINES)) {
     // A total or partial line ("Invoice total $700.00", "Invoice amount: $700.00") states an amount, not a title.
     if (v.finalLine[i] !== null || v.nonFinal[i] !== null) continue;
-    if (INVOICE_TITLE.test(titleText(v.u[i] ?? ""))) return true;
+    const u = titleText(v.u[i] ?? "");
+    if (INVOICE_TITLE.test(u)) return true;
+    // The id's digit is read on the skeleton before a 0 or 1 among letters is read as a letter, so "INV-C1",
+    // "INV-I0" and "INV-O1" keep their digit; the word "Invoice" and its end are still read on the folded view.
+    if (INVOICE_TITLE_WORD.test(u) && INVOICE_TITLE.test(titleText(v.t[i] ?? ""))) return true;
   }
   return false;
 }
@@ -1646,6 +1660,7 @@ interface LineViews {
   c: string;
   cu: string;
   u: string;
+  t: string;
   nonFinal: RegExpExecArray | null;
   finalLine: RegExpExecArray | null;
   capitals: CapitalWord[];
@@ -1658,17 +1673,17 @@ function lineViews(line: string): LineViews {
   const c = cleanOf(line);
   const cu = unspacedCapitals(c);
   // Table pipes are separators in the unspaced view (the skeleton would read a "|" as an l).
-  const u = digitLetters(
-    unspaced(
-      line.includes("|") ? skeletonOf(line.replace(/\|/g, " - ")).replace(NOT_PAYABLE, " ") : s,
-    ),
+  const t = unspaced(
+    line.includes("|") ? skeletonOf(line.replace(/\|/g, " - ")).replace(NOT_PAYABLE, " ") : s,
   );
+  const u = digitLetters(t);
   return {
     row,
     s,
     c,
     cu,
     u,
+    t,
     nonFinal: NON_FINAL_LINE.exec(row),
     finalLine: FINAL_LINE.exec(row),
     capitals: capitalWords(cu),
@@ -1705,6 +1720,7 @@ function read(text: string): AmountRead {
     c,
     s,
     u: lv.map((x) => x.u),
+    t: lv.map((x) => x.t),
     nonFinal: lv.map((x) => x.nonFinal),
     finalLine: lv.map((x) => x.finalLine),
     cu: lv.map((x) => x.cu),
@@ -1951,8 +1967,13 @@ function read(text: string): AmountRead {
   )
     return refuse("ambiguous");
   // 1e. Last: a document pays only when it says it is an invoice.
-  if (!invoiceTitled(v, lines)) return { amount: "0", issue: "not_payable", why: NOT_AN_INVOICE };
-  return { amount: only, issue: null };
+  if (!invoiceTitled(v, lines)) {
+    return { amount: "0", issue: "not_payable", why: NOT_AN_INVOICE, line: null };
+  }
+  // Output only: the last marked final line that states the agreed total.
+  let line: number | null = null;
+  for (const f of marked) if (f.units === only && (line === null || f.at > line)) line = f.at;
+  return { amount: only, issue: null, line };
 }
 
 /**
@@ -2068,6 +2089,7 @@ export const REGEXES_FOR_TESTS: Readonly<Record<string, RegExp>> = {
   STRONG_TITLE,
   PAGE_MARK,
   INVOICE_TITLE,
+  INVOICE_TITLE_WORD,
   DATES,
   FINAL_LINE,
   NON_FINAL_LINE,
