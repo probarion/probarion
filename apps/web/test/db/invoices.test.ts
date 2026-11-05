@@ -369,9 +369,18 @@ describe("invoice functions (migration 0006)", () => {
       suggested_amount: "770000000",
       outcome: { code: "custom.owner_confirms_without_model", spendId: null },
     });
-    // The table holds the same rule: a waiting row always has its suggestion.
+    // The table holds the same rule: a waiting row always has its suggestion. Since migration 0007 the snapshot
+    // trigger refuses the change first (a waiting row keeps its suggestion); the check still refuses a row written
+    // as waiting without one.
     await expect(
       pg.query("update invoices set suggested_amount = null where id = $1", [id]),
+    ).rejects.toThrow(/invoice_snapshot_frozen/);
+    await expect(
+      pg.query(
+        `insert into invoices (tenant_id, invoice_hash, ref, media_type, retained, status, request_id, created_by)
+         values ($1, $2, 'inv-awaiting-no-amount', 'text/plain', false, 'awaiting_owner', 'r', 'x')`,
+        [a, H("9")],
+      ),
     ).rejects.toThrow(/invoices_awaiting_owner_amount/);
     // A member reads the suggestion; a member of another vault sees no row.
     const seen = await asRole(pg, "authenticated", "alice.near", (tx) =>

@@ -79,8 +79,7 @@ The software is an unaudited beta.
   `probarion` package is on npm, every command on the site and in the deploy runbook is shown as run
   from a clone of this repository (four set-up commands, then `node packages/cli/dist/bin.js`), and
   the tests run those commands as shown.
-- Web console, Payables pipeline (built and tested, not deployed; the console page with the owner's
-  Confirm button comes next): `POST /api/console/[vault]/invoices` takes an invoice (a PDF, a text
+- Web console, Payables pipeline (built and tested, not deployed): `POST /api/console/[vault]/invoices` takes an invoice (a PDF, a text
   file or pasted text) together with the purchase-order document hashed into a mandate, and runs
   the reference agent. Code rules decide, the vault contract pays the mandate's payee, and each
   payment is signed with the agent key its mandate is bound to.
@@ -94,7 +93,7 @@ The software is an unaudited beta.
   reason the console shows (`not_found`, `ambiguous`, `unreadable`, `currency`, `truncated`, `zero`
   or `not_payable`). That covers receipts, quotes, statements, credit notes, purchase orders, paid,
   void or test stamps, other currencies, totals in columns or split across lines, amounts after the
-  total, and look-alike or hidden characters. Its tests hold 1,572 adversarial inputs, a ReDoS
+  total, and look-alike or hidden characters. Its tests hold 1,670 adversarial inputs, a ReDoS
   sweep of every pattern it uses, and three corpora of realistic invoices, with no wrong amount. On
   realistic invoices it reads about half and refuses the rest with the reason.
 - Payables storage and duplicates: an invoice is stored sealed with a per-vault key, or as hashes
@@ -103,6 +102,36 @@ The software is an unaudited beta.
   its invoice number for the same payee (kept as a keyed HMAC), matches. Uploads are limited to
   4 MiB per file and 4 MiB + 64 KiB per request. The migration
   `apps/web/supabase/migrations/20261108000006_invoices.sql` adds the invoice tables.
+- Web console, Payables pages (built and tested against a fake chain, not deployed, not yet tried with
+  a real wallet): upload an invoice with its purpose document, see every invoice with its status in
+  plain words, and open each one to see what the model wanted, what the code allowed and what the
+  contract did, with explorer links for the payment and the ledger anchor. Zero-retention can be
+  switched on there, and the page says what is kept. The migration
+  `apps/web/supabase/migrations/20261108000007_invoice_confirm.sql` adds what these pages need.
+- An invoice that waits for the owner shows, before any button, the amount, why it waits, the mandate
+  as the chain shows it, the invoice line the amount was read from, who uploaded it, and every invoice
+  of the same payee from the last 90 days with equal and near amounts marked. Confirm is not offered
+  when that list cannot be read, when the payee is unknown, or when the retained text cannot be read
+  or does not hash to the hash the owner signs. Reject stays available, and the page names the cause.
+- The owner can pay a waiting invoice with a wallet signature: the server builds the message from
+  database and chain values only, checks it against a full-access key of the vault's on-chain owner
+  at a final block, and pays exactly the amount shown, once, even after a double click. A confirmation
+  is single-use, expires after 5 minutes, and a new one ends the earlier unused one.
+- Each owner confirmation is kept in the signed ledger with its signature, key, nonce and message, so
+  the signature can be re-checked from the ledger entry against the decision it sits in. The block of
+  the key check is the server's record: whether the key was the owner's at that block takes an archival
+  node, and `probarion verify` does not check the confirmation yet.
+- The owner can reject a waiting invoice; nothing is paid. The same text then comes back as a
+  duplicate, and a corrected invoice counts as new.
+- If the server does not answer after the owner signed, the page says the payment may have gone out
+  and not to pay again; only a failure before that says nothing was sent. A row whose cycle is not
+  recorded shows "not recorded yet, do not resend" and names the ref to read on chain. Such a row stays
+  in that state until the reconcile job is built.
+- The invoice reader accepts invoice numbers whose only digit is a 0 or 1 beside a letter, such as
+  INV-C1. After the invoice word on a title line it refuses a status or document word in any token,
+  such as `Invoice PAID1001`, `Invoice DEM01` and `Invoice void-2`, and a vendor named Test24 Labs
+  before that word still reads. A Title-case word with a look-alike digit is not an invoice id, and an
+  invoice-to or invoice-from label is not a title. Read rates on the realistic corpora did not change.
 
 ### Changed
 
