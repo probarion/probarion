@@ -670,10 +670,11 @@ describe("owner confirmation functions (migration 0007)", () => {
       const row4 = await row(7, 4);
       const inWindow = await row(7, 89);
       await row(7, 91); // outside the 90 days
-      await row(9, 1); // another payee's mandate
+      const another = await row(9, 1); // another payee's mandate, whatever the ledger holds for it
       const elsewhere = await row(null, 1); // no mandate, no decision of this payee
       const decided = await getInvoice(db, t, noMandate);
       const other = await getInvoice(db, t, elsewhere);
+      const theirs = await getInvoice(db, t, another);
       const decision = (seq: number, hash: string | undefined, mandate: number) =>
         pg.query(
           `insert into ledger_entries (tenant_id, seq, kind, body, body_hash, sig, signer, link, request_id)
@@ -687,6 +688,7 @@ describe("owner confirmation functions (migration 0007)", () => {
         );
       await decision(0, decided?.invoice_hash, 7);
       await decision(1, other?.invoice_hash, 9);
+      await decision(2, theirs?.invoice_hash, 7);
       const want = [newest, older, noMandate, row4, inWindow];
       for (const pageSize of [500, 2, 1]) {
         const got = await listPayeeRecent(db, t, [7, 8], pageSize);

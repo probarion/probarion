@@ -413,9 +413,10 @@ language sql stable security definer set search_path = public, pg_temp as $$
 $$;
 
 -- { tenant_id, mandate_ids, limit?, after? }: the tenant's invoices of the last 90 days under one of these mandates (a
--- payee's mandates), or that hold a ledger decision under one of them, newest first. One page of at most `limit` rows
--- (1 to 1000, default 500); `after` { created_at, id } is the last row of the page before, so the caller reads every
--- row: nothing here caps the list. The console shows it, whatever the amounts, before the owner confirms.
+-- payee's mandates), or that have no mandate on the row and hold a ledger decision under one of them (a row's own
+-- mandate decides its payee, so the ledger is read only for the rows without one), newest first. One page of at most
+-- `limit` rows (1 to 1000, default 500); `after` { created_at, id } is the last row of the page before, so the caller
+-- reads every row: nothing here caps the list. The console shows it, whatever the amounts, before the owner confirms.
 create or replace function public.invoice_payee_recent(p jsonb) returns jsonb
 language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
@@ -446,10 +447,11 @@ begin
       and i.created_at >= now() - interval '90 days'
       and (v_after_at is null or (i.created_at, i.id) < (v_after_at, v_after_id))
       and (i.mandate_id::text = any(v_mandates)
-           or exists (select 1 from public.ledger_entries e
-                      where e.tenant_id = v_tenant and e.kind = 'decision'
-                        and e.body->>'invoice_hash' = i.invoice_hash
-                        and e.body->>'mandate_id' = any(v_mandates)))
+           or (i.mandate_id is null
+               and exists (select 1 from public.ledger_entries e
+                           where e.tenant_id = v_tenant and e.kind = 'decision'
+                             and e.body->>'invoice_hash' = i.invoice_hash
+                             and e.body->>'mandate_id' = any(v_mandates))))
     order by i.created_at desc, i.id desc
     limit v_limit
   ) x;
