@@ -9,7 +9,7 @@ function Line({ line }: { line: PanelLine }) {
   if ("note" in line) return <div className={s.panelNote}>{line.note}</div>;
   if ("command" in line) {
     return (
-      <div className={s.panelNote}>
+      <div className={s.panelCommand}>
         <span className={s.prompt}>$ </span>
         {line.command}
       </div>

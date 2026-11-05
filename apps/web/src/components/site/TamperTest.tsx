@@ -33,6 +33,16 @@ export interface TamperCopy {
   noScript: string;
 }
 
+/** The label keeps its place while the button is busy, so that the row of buttons does not reflow. */
+function ActLabel({ label, busy, running }: { label: string; busy: boolean; running: string }) {
+  return (
+    <>
+      <span className={busy ? s.actHidden : undefined}>{label}</span>
+      {busy ? <span className={s.actBusy}>{running}</span> : null}
+    </>
+  );
+}
+
 function Row({ row, edit }: { row: LedgerRow; edit: TamperEdit | undefined }) {
   const hit = edit?.seq === row.seq ? edit : undefined;
   const erased = hit?.change.erased === true;
@@ -154,7 +164,7 @@ export function TamperTest({
                 aria-disabled={busy !== null}
                 onClick={() => run(id)}
               >
-                {busy === id ? copy.running : label}
+                <ActLabel label={label} busy={busy === id} running={copy.running} />
               </button>
             ))}
             <button
@@ -166,7 +176,7 @@ export function TamperTest({
                 if (shown.edit !== null) run(null);
               }}
             >
-              {busy === "restore" ? copy.running : copy.restore}
+              <ActLabel label={copy.restore} busy={busy === "restore"} running={copy.running} />
             </button>
           </div>
           <noscript>

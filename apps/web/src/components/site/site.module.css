@@ -499,6 +499,10 @@
 }
 .panelNote {
   color: var(--color-mute);
+}
+/* One line, so that it copies whole. The panel scrolls sideways when it does not fit. */
+.panelCommand {
+  color: var(--color-mute);
   white-space: pre;
 }
 /* Left out of a copied selection, so the line pastes as a command. */
@@ -681,6 +685,7 @@
   gap: 8px;
 }
 .act {
+  position: relative;
   font-size: 15px;
   font-weight: 500;
   padding: 10px 18px;
@@ -701,6 +706,15 @@
 }
 .act[aria-busy="true"] {
   cursor: progress;
+}
+.actHidden {
+  visibility: hidden;
+}
+.actBusy {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
 }
 .actQuiet {
   background: transparent;
@@ -1080,6 +1094,15 @@
   .barConsole {
     padding-inline: 14px;
     font-size: 14px;
+  }
+  /* The longest summary takes two lines here. They are kept free, so that the buttons below do not move. */
+  .sheetHead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .sheetHead > span:last-child {
+    min-height: 3.1em;
   }
   .table th,
   .table td {
