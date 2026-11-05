@@ -11,7 +11,6 @@ export const PLANNED_ROUTES: readonly string[] = [
   "/status",
   "/terms",
   "/privacy",
-  "/console/[vault]/topup",
   "/console/[vault]/alerts",
 ];
 

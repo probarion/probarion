@@ -13,6 +13,8 @@ export const LIMITS = {
   snapshot: [30, 60],
   proofPage: [60, 60],
   topupQuote: [10, 60],
+  topupStatus: [30, 60],
+  topupSubmit: [10, 60],
   invoiceUpload: [30, 3600],
   canaryModelVisitor: [5, 600],
   canaryModelGlobal: [300, 3600],

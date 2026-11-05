@@ -33,6 +33,12 @@ export interface TxButtonBaseProps {
   /** Wording for the result, live or read back after a reload (so a reloaded lock reads the same). */
   describe?: DescribeResult;
   onResult?: (r: TxResult) => void | Promise<void>;
+  /**
+   * Called with `true` when a click starts waiting for the wallet and the chain, and with `false` when that is over
+   * (and once with `false` when the button mounts). Lets the page keep other actions, such as asking for a new
+   * quote, switched off while a signature is open.
+   */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 /**
@@ -62,6 +68,12 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
     // (also when the action changes, e.g. another vault name: its result is not this one's)
     setResult(readLock(browserStore(), key));
   }, [key]);
+
+  const onBusyChange = useRef(props.onBusyChange);
+  onBusyChange.current = props.onBusyChange;
+  useEffect(() => {
+    onBusyChange.current?.(busy);
+  }, [busy]);
 
   async function run() {
     if (inflight.current || locked) return;
