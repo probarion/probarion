@@ -44,6 +44,8 @@ const BY_CONTRACT: SpendOutcome = {
 const h = vi.hoisted(() => ({
   db: null as unknown as Db,
   failDb: null as null | string,
+  /** A database function that answers late (ms), to show what the route does before it runs the attempt. */
+  slowDb: null as null | { fn: string; ms: number },
   env: {} as Record<string, unknown>,
   sent: new Map<string, string>(),
   jar: [] as { name: string; value: string; options: Record<string, unknown> }[],
@@ -91,8 +93,10 @@ vi.mock("@/lib/crypto/server", async () => {
 });
 vi.mock("@/lib/db/clients", () => ({
   serviceDb: () => ({
-    rpc: (fn: string, p?: Record<string, unknown>) =>
-      fn === h.failDb ? Promise.reject(new Error("db down")) : h.db.rpc(fn, p),
+    rpc: async (fn: string, p?: Record<string, unknown>) => {
+      if (h.slowDb?.fn === fn) await new Promise((resolve) => setTimeout(resolve, h.slowDb?.ms));
+      return fn === h.failDb ? Promise.reject(new Error("db down")) : h.db.rpc(fn, p);
+    },
   }),
 }));
 vi.mock("@/lib/env", () => ({ getEnv: () => h.env }));
@@ -250,6 +254,7 @@ beforeEach(async () => {
     "truncate public.canary_attempts; truncate public.rate_limits; update public.tenants set process_lease_until = null, proof_public = false",
   );
   h.failDb = null;
+  h.slowDb = null;
   h.env = {
     CANARY_VAULT_ID: VAULT,
     CANARY_MODE: "live",
@@ -610,17 +615,19 @@ describe("POST /api/canary/attempt", () => {
   });
 
   describe("an attempt", () => {
-    it("starts the attempt's clock at the route's start: the SDK's chain client gets what is left, and a slow chain read eats into it", async () => {
+    it("starts the attempt's clock at the route's start: the SDK's chain client gets what is left, and what the route did before the attempt eats into it", async () => {
+      // the route looks the tenant up, and takes the model limiter's tokens, before it runs the attempt: 300 ms here
+      h.slowDb = { fn: "tenant_by_vault", ms: 300 };
       h.mandates = async () => {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 200));
         return [mandateFor(agentB.pk)];
       };
       const before = Date.now();
       expect((await post({ text: TEXT })).status).toBe(200);
       const rpc = at(h.deps).rpc as { opts: { remainingMs: () => number } };
       const left = rpc.opts.remainingMs();
-      // 50 s from the start, less the 300 ms the mandates took and what the attempt has used since
-      expect(left).toBeLessThanOrEqual(CANARY_LIMITS.attemptBudgetMs - 300);
+      // 50 s from the route's start, less the 300 ms before the attempt, the 200 ms of the mandates and what it used since
+      expect(left).toBeLessThanOrEqual(CANARY_LIMITS.attemptBudgetMs - 500);
       expect(left).toBeGreaterThan(CANARY_LIMITS.attemptBudgetMs - (Date.now() - before) - 100);
     });
 
