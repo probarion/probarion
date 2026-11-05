@@ -26,7 +26,7 @@ export const LINKS = {
 
 export const SITE_TITLE = "Probarion. Spend by mandate. Prove every payment.";
 export const SITE_DESCRIPTION =
-  "A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and anyone can verify the signed ledger offline.";
+  "A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and anyone can verify the signed ledger.";
 export const OG_IMAGE = {
   url: "/og.png",
   width: 1280,
@@ -113,7 +113,7 @@ export const TX = {
 export const HERO = {
   line1: "Spend by mandate.",
   line2: "Prove every payment.",
-  lede: "A mandate layer for AI agents on NEAR. Your agent pays people and services only inside limits you signed. A contract checks every payment, and every decision goes into a signed ledger anyone can verify offline.",
+  lede: "A mandate layer for AI agents on NEAR. Your agent pays people and services only inside limits you signed. A contract checks every payment, and every decision goes into a signed ledger anyone can verify.",
   openConsole: "Open console",
   breakTheLedger: "Try to break the ledger",
   fineprint: "Testnet today, mainnet planned. You need no account to read the proof.",
@@ -153,7 +153,11 @@ export const NUMBERS = [
     name: "recipient arguments",
     rest: " on `spend`. The payee comes from the mandate.",
   },
-  { value: "9", name: "checks", rest: " anyone can run offline, without trusting us." },
+  {
+    value: "9",
+    name: "checks",
+    rest: " anyone can run. Live, they read the chain. Offline, they check a snapshot against itself, so take the snapshot yourself.",
+  },
 ] as const;
 
 // --- what happens to one payment ------------------------------------------------------------------
@@ -315,7 +319,7 @@ export const RECORDED_RESULT: TamperResult = {
 export const TAMPER_COPY = {
   title: "Change one field. Watch it break.",
   intro:
-    "This is the real verifier from `@probarion/core`. It runs in your browser on a committed test fixture: five entries signed with test keys, not a live vault. Nothing leaves the page.",
+    "This is the real verifier from `@probarion/core`. It runs in your browser on a committed test fixture: five entries signed with test keys, not a live vault. It shows one thing: the verifier catches an edit that was not re-signed. Nothing leaves the page.",
   sheetTitle: "Signed ledger, test fixture",
   atRest: "As recorded",
   caption: "The five entries of the signed test ledger",
@@ -385,6 +389,7 @@ export const STATUS = {
 export const CLOSING = {
   line1: "Don't trust us.",
   line2: "Run the verifier.",
+  live: "A live run reads the chain itself: `verify --vault`.",
   evaluate: "Evaluate in 5 minutes",
   spec: "Read the spec",
 } as const;
@@ -395,7 +400,7 @@ export const PROOF_INDEX = {
   eyebrow: "Public proof",
   title: "Check a vault yourself",
   intro:
-    "A proof page shows a vault's checks a to i with explorer links, plus a snapshot and a ledger you can download and verify offline.",
+    "A proof page shows a vault's checks a to i with explorer links, plus a ledger and a snapshot file you can download. Offline, the verifier checks that file against itself. The page also gives the command that reads the chain again.",
   noneListed: "No public vault is listed here yet.",
   label: "NEAR account of the vault",
   placeholder: "acme.vaults.probarion.testnet",

@@ -21,19 +21,24 @@ import {
   betaStrip,
   CHAIN,
   CHECK_LABELS,
+  CLOSING,
   CONTRACT_REFUSAL_CODE,
   FIXTURE_PATH,
   FOOTER,
   HEADER_ANCHORS,
+  HERO,
   JOURNEY,
   LINKS,
+  NUMBERS,
   OG_IMAGE,
+  PROOF_INDEX,
   publicRoutes,
   RECORDED_RESULT,
   RULES_SHOWN,
   SITE_DESCRIPTION,
   SPEND_REQUEST_FIELDS,
   STATUS,
+  TAMPER_COPY,
   TX,
   VERIFIER_OUTPUT,
 } from "@/lib/site/facts";
@@ -96,6 +101,55 @@ describe("the ledger test", () => {
     const loaded = importsOf(src).filter((i) => !i.typeOnly && !dynamic.includes(i.spec));
     expect(loaded.filter((i) => heavy.test(i.spec))).toEqual([]);
     expect(src.startsWith('"use client"')).toBe(true);
+  });
+});
+
+// Offline, the verifier checks a file against itself: the chain data comes from the same file, so a forged file with
+// re-signed entries passes. Only a live run reads the chain, so no copy may say that a file proves anything by itself.
+describe("what an offline run shows", () => {
+  const sentences = (copy: string) => copy.split(/(?<=[.!?])s+/);
+
+  it("says offline in the lede and the numbers band only beside the word snapshot", () => {
+    const claims = [
+      HERO.lede,
+      SITE_DESCRIPTION,
+      ...NUMBERS.map(({ name, rest }) => `${name}${rest}`),
+    ];
+    for (const sentence of claims.flatMap(sentences)) {
+      if (/offline/i.test(sentence)) expect(sentence).toMatch(/snapshot/i);
+    }
+    expect(HERO.lede).not.toMatch(/offline/i);
+    expect(SITE_DESCRIPTION).not.toMatch(/offline/i);
+    expect(visibleText(landing())).not.toContain("without trusting us");
+  });
+
+  it("says in the numbers band what a live run and an offline run each do", () => {
+    const checks = NUMBERS.find(({ name }) => name === "checks");
+    expect(checks?.rest).toBe(
+      " anyone can run. Live, they read the chain. Offline, they check a snapshot against itself, so take the snapshot yourself.",
+    );
+  });
+
+  it("names the flag that reads the chain under the closing headline, and the CLI has it", () => {
+    expect(CLOSING.line1).toBe("Don't trust us.");
+    expect(CLOSING.line2).toBe("Run the verifier.");
+    expect(CLOSING.live).toContain("reads the chain itself");
+    expect(CLOSING.live).toContain("`verify --vault`");
+    expect(visibleText(landing())).toContain("reads the chain itself");
+    const verify = text(ROOT, "packages", "cli", "src", "commands", "verify.ts");
+    expect(verify).toContain('.option("--vault <id>"');
+  });
+
+  it("says on /proof what the downloaded file shows", () => {
+    expect(PROOF_INDEX.intro).toContain(
+      "Offline, the verifier checks that file against itself. The page also gives the command that reads the chain again.",
+    );
+    expect(PROOF_INDEX.intro).not.toContain("verify offline");
+  });
+
+  it("says what the ledger test shows, and nothing more", () => {
+    expect(TAMPER_COPY.intro).toContain("catches an edit that was not re-signed");
+    expect(TAMPER_COPY.intro).toContain("test fixture");
   });
 });
 

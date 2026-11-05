@@ -616,7 +616,9 @@ describe("/proof", () => {
     it("is a real page: what a proof page shows, that none is listed, and that an owner must make one public", async () => {
       const out = text(await render());
       expect(out).toContain("checks a to i with explorer links");
-      expect(out).toContain("a snapshot and a ledger you can download and verify offline");
+      expect(out).toContain("a ledger and a snapshot file you can download");
+      expect(out).toContain("Offline, the verifier checks that file against itself.");
+      expect(out).toContain("The page also gives the command that reads the chain again.");
       expect(out).toContain("No public vault is listed here yet.");
       expect(out).toContain("A vault&#x27;s owner must make its proof page public first.");
       expect(out).toContain("page-not-found message");

@@ -68,6 +68,9 @@ export function Closing() {
           <span>{CLOSING.line1}</span>
           <span className={s.gold}>{CLOSING.line2}</span>
         </h2>
+        <p className={s.closeNote}>
+          <Rich text={CLOSING.live} />
+        </p>
         <div className={s.cta}>
           <ExternalLink className={`${s.btn} ${s.solid} ${s.big}`} href={LINKS.evaluate}>
             {CLOSING.evaluate}

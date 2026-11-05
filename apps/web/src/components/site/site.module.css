@@ -859,6 +859,10 @@
 .closeTitle span {
   display: block;
 }
+.closeNote {
+  margin-top: 20px;
+  color: var(--color-mute);
+}
 
 /* Footer */
 .footer {
