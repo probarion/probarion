@@ -15,6 +15,25 @@ export function isNearAccountId(s: string): boolean {
   return typeof s === "string" && s.length >= 2 && s.length <= 64 && NEAR_ACCOUNT.test(s);
 }
 
+const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+// 32 bytes are 43 or 44 characters, fewer when the hash starts with zero bytes (each is one "1").
+const TX_HASH_TEXT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * A NEAR transaction hash: base58 text that decodes to exactly 32 bytes (a leading `1` stands for a zero byte).
+ * Stricter than `isTxHash` in outcome.ts, which only checks the alphabet and the length of the text: a
+ * 44-character string can decode to 33 bytes or more, and no transaction has such a hash. For input that
+ * arrives from a browser and goes on to another service.
+ */
+export function isNearTxHash(s: unknown): s is string {
+  if (typeof s !== "string" || !TX_HASH_TEXT.test(s)) return false;
+  let n = 0n;
+  for (const c of s) n = n * 58n + BigInt(BASE58.indexOf(c));
+  const zeroBytes = s.length - s.replace(/^1+/, "").length;
+  const valueBytes = n === 0n ? 0 : Math.ceil(n.toString(2).length / 8);
+  return zeroBytes + valueBytes === 32;
+}
+
 /**
  * A Base (EVM) payee address, for a mandate's NEAR Intents payee. The vault's own check
  * (contracts/vault/src/validate.rs `is_evm_address`) is `0x` and 40 hex digits in any case, and it stores

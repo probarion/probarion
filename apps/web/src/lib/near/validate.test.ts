@@ -1,6 +1,7 @@
 import { isEvmAddress } from "@probarion/core";
+import bs58 from "bs58";
 import { describe, expect, it } from "vitest";
-import { isNearAccountId, parseBaseAddress } from "./validate";
+import { isNearAccountId, isNearTxHash, parseBaseAddress } from "./validate";
 
 describe("isNearAccountId", () => {
   it.each([
@@ -201,5 +202,49 @@ describe("parseBaseAddress", () => {
     for (const bad of [undefined, null, 12, {}, [CHECKSUMMED]]) {
       expect(parseBaseAddress(bad as unknown as string)).toBeNull();
     }
+  });
+});
+
+describe("isNearTxHash", () => {
+  const hash = (bytes: Uint8Array) => bs58.encode(bytes);
+  const random32 = () => crypto.getRandomValues(new Uint8Array(32));
+
+  it("accepts base58 text that decodes to exactly 32 bytes", () => {
+    for (let i = 0; i < 50; i++) expect(isNearTxHash(hash(random32()))).toBe(true);
+    expect(isNearTxHash("3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX")).toBe(true);
+  });
+
+  it("counts leading zero bytes, which base58 writes as 1", () => {
+    const zeroFirst = random32();
+    zeroFirst[0] = 0;
+    zeroFirst[1] = 7;
+    expect(hash(zeroFirst).startsWith("1")).toBe(true);
+    expect(isNearTxHash(hash(zeroFirst))).toBe(true);
+    expect(isNearTxHash("1".repeat(32))).toBe(true); // 32 zero bytes
+  });
+
+  it("refuses text that decodes to another length, even with 43 or 44 characters", () => {
+    expect(isNearTxHash("z".repeat(44))).toBe(false); // 33 bytes
+    expect(isNearTxHash("1".repeat(44))).toBe(false); // 44 zero bytes
+    expect(isNearTxHash(hash(random32().slice(0, 31)))).toBe(false);
+    expect(isNearTxHash(hash(new Uint8Array(33).fill(255)))).toBe(false);
+  });
+
+  it("refuses what is not base58 text of that length, and what is not text", () => {
+    const good = hash(random32());
+    for (const bad of [
+      "",
+      "abc",
+      `${good}x`,
+      `0${good.slice(1)}`,
+      `O${good.slice(1)}`,
+      `l${good.slice(1)}`,
+      `${good} `,
+      `${good}
+`,
+    ]) {
+      expect(isNearTxHash(bad), bad).toBe(false);
+    }
+    for (const bad of [undefined, null, 5, {}, [good]]) expect(isNearTxHash(bad)).toBe(false);
   });
 });
