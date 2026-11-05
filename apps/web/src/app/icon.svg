@@ -9,6 +9,6 @@
     <feColorMatrix in="n" type="saturate" values="0" result="g"/>
     <feBlend in="g" in2="SourceGraphic" mode="soft-light" result="b"/>
     <feComposite in="b" in2="SourceAlpha" operator="in"/>
-  </filter></defs><rect width="400" height="400" fill="#F7F6F3"/><g transform="translate(84.8 297.6) scale(1.6)"><clipPath id="favl-disc"><circle cx="72" cy="-72" r="50"/></clipPath>
+  </filter></defs><style>@media (prefers-color-scheme: dark){.favl-bar{fill:#F7F6F3}}</style><g transform="translate(20 352.5) scale(2.5)"><clipPath id="favl-disc"><circle cx="72" cy="-72" r="50"/></clipPath>
     <g clip-path="url(#favl-disc)"><g filter="url(#favl-grain)"><rect x="12" y="-132" width="120" height="120" fill="url(#favl-sheen)"/><rect x="12" y="-132" width="120" height="120" fill="url(#favl-deep)"/><rect x="12" y="-132" width="120" height="120" fill="url(#favl-warm)"/><rect x="12" y="-132" width="120" height="120" fill="url(#favl-hi)"/></g></g>
-    <rect x="0" y="-16" width="144" height="16" rx="2" fill="#0B0B0C"/></g></svg>
+    <rect class="favl-bar" x="0" y="-16" width="144" height="16" rx="2" fill="#0B0B0C"/></g></svg>
