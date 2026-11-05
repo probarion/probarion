@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto";
-import type { CustomRule, DecisionInput, MandateView, RuleResult } from "@probarion/core";
+import type {
+  CustomRule,
+  DecisionInput,
+  LedgerEntry,
+  MandateView,
+  RuleResult,
+} from "@probarion/core";
 import { PublicKey } from "near-api-js";
 import { nep413Digest } from "@/lib/auth/verify";
 import { decodeCanonical } from "@/lib/crypto/sodium";
-import { CONFIRM_RECIPIENT } from "./confirm-message";
+import { CONFIRM_RECIPIENT, parseConfirmMessage } from "./confirm-message";
 import { payeeId } from "./payee";
 
 // The owner confirmed (rulings W-T14-R0 and R1). When the vault owner pays an invoice that waited for them, the
@@ -11,9 +17,14 @@ import { payeeId } from "./payee";
 // It passes only when the decision pays exactly what the owner signed for: the amount, the invoice hash, the mandate
 // and its payee. Its detail is the whole confirmation (the account, the signer key and the final block at which it
 // was read as FullAccess, the nonce, the message's sha256, the full signature and the message itself), so the
-// confirmation sits in the signed, hash-chained ledger and an auditor re-verifies it from the ledger alone
-// (verifyOwnerConfirmedDetail): sha256(message), then the NEP-413 signature over the message, the nonce and the
-// recipient. Whether the key was a FullAccess key of the owner at that block is a question for an archival node.
+// confirmation sits in the signed, hash-chained ledger.
+//
+// What that record proves, and what it does not. The owner's signature can be re-checked from the ledger entry alone
+// (verifyOwnerConfirmedEntry): the sha256 of the message, the NEP-413 signature over the message, the nonce and the
+// recipient, and that the message names the amount, invoice, mandate and vault of the decision it sits in. The owner
+// signed the message and nothing else: the key-check block is recorded by the server when it read the key, covered only
+// by the ledger entry's own signature. Whether that key was a FullAccess key of the owner at that block is a question
+// for an archival node. `probarion verify` does not check this record yet.
 
 export const OWNER_CONFIRMED_RULE = "custom.owner_confirmed" as const;
 
@@ -129,16 +140,22 @@ export function parseOwnerConfirmedDetail(detail: string): ParsedConfirmation | 
   };
 }
 
+export type ConfirmationCheck =
+  | {
+      ok: true;
+      account: string;
+      publicKey: string;
+      /** The block the server says it read the key at: its record, not signed by the owner and not checked here. */
+      recordedKeyBlockHeight: number;
+    }
+  | { ok: false; why: string };
+
 /**
- * What an auditor checks with the ledger entry alone: the detail parses, the message hashes to the recorded sha256,
- * the message names the same owner, and the signature verifies over the NEP-413 payload (message, nonce, recipient)
- * under the recorded key.
+ * The record on its own: the detail parses, the message hashes to the recorded sha256, the message names the same owner
+ * and nonce, and the signature verifies over the NEP-413 payload (message, nonce, recipient) under the recorded key.
+ * It says nothing about the decision the record sits in: verifyOwnerConfirmedEntry does.
  */
-export function verifyOwnerConfirmedDetail(
-  detail: string,
-):
-  | { ok: true; account: string; publicKey: string; keyBlockHeight: number }
-  | { ok: false; why: string } {
+export function verifyOwnerConfirmedDetail(detail: string): ConfirmationCheck {
   const p = parseOwnerConfirmedDetail(detail);
   if (p === null) return { ok: false, why: "not a custom.owner_confirmed record" };
   if (p.recipient !== CONFIRM_RECIPIENT) return { ok: false, why: "another recipient" };
@@ -162,5 +179,62 @@ export function verifyOwnerConfirmedDetail(
     good = false;
   }
   if (!good) return { ok: false, why: "the signature does not verify under the recorded key" };
-  return { ok: true, account: p.account, publicKey: p.publicKey, keyBlockHeight: p.keyBlockHeight };
+  return {
+    ok: true,
+    account: p.account,
+    publicKey: p.publicKey,
+    recordedKeyBlockHeight: p.keyBlockHeight,
+  };
+}
+
+/**
+ * The record against the decision it sits in: what the owner signed must be what this decision pays, so a confirmation
+ * pasted into another decision fails. The amount, invoice hash, mandate and vault of the message must be the entry's,
+ * and the decision must not be later than the message's expiry.
+ */
+export function verifyOwnerConfirmedEntry(entry: LedgerEntry): ConfirmationCheck {
+  const b = entry.body;
+  const rule = b.rules.find((r) => r.id === OWNER_CONFIRMED_RULE);
+  if (rule === undefined) return { ok: false, why: "this decision holds no owner confirmation" };
+  if (rule.outcome !== "pass") {
+    return { ok: false, why: "the owner confirmation has not passed in this decision" };
+  }
+  const check = verifyOwnerConfirmedDetail(rule.detail);
+  if (!check.ok) return check;
+  const m = parseConfirmMessage(parseOwnerConfirmedDetail(rule.detail)?.message ?? "");
+  if (m === null) return { ok: false, why: "the signed text is not a v1 confirmation message" };
+  if (m.amount !== b.amount) return { ok: false, why: "the owner signed another amount" };
+  if (m.invoiceHash !== b.invoice_hash)
+    return { ok: false, why: "the owner signed another invoice" };
+  if (m.mandateId !== b.mandate_id) return { ok: false, why: "the owner signed another mandate" };
+  if (m.vault !== b.vault) return { ok: false, why: "the owner signed for another vault" };
+  if (!(Date.parse(b.at) <= Date.parse(m.expiresAt))) {
+    return { ok: false, why: "the decision is later than the message's expiry" };
+  }
+  return check;
+}
+
+/**
+ * Every owner confirmation of a ledger, in order: each checked against its decision, and each nonce used by one
+ * decision only. Decisions with no confirmation are skipped.
+ */
+export function verifyOwnerConfirmations(entries: readonly LedgerEntry[]): ConfirmationCheck[] {
+  const nonces = new Set<string>();
+  const out: ConfirmationCheck[] = [];
+  for (const entry of entries) {
+    const rule = entry.body.rules?.find((r) => r.id === OWNER_CONFIRMED_RULE);
+    if (rule === undefined) continue;
+    const check = verifyOwnerConfirmedEntry(entry);
+    const nonce = check.ok ? parseOwnerConfirmedDetail(rule.detail)?.nonceHex : undefined;
+    if (nonce !== undefined && nonces.has(nonce)) {
+      out.push({
+        ok: false,
+        why: "this confirmation's nonce was already used by another decision",
+      });
+      continue;
+    }
+    if (nonce !== undefined) nonces.add(nonce);
+    out.push(check);
+  }
+  return out;
 }

@@ -32,10 +32,14 @@ import { generateKey } from "@/lib/keys/service";
 import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { createVaultReader, listAll } from "@/lib/near/reader";
 import { CONFIRM_RECIPIENT } from "@/lib/payables/confirm-message";
-import { OWNER_CONFIRMED_RULE, verifyOwnerConfirmedDetail } from "@/lib/payables/owner-confirmed";
+import {
+  OWNER_CONFIRMED_RULE,
+  verifyOwnerConfirmedDetail,
+  verifyOwnerConfirmedEntry,
+} from "@/lib/payables/owner-confirmed";
 import { OWNER_CONFIRMS_RULE } from "@/lib/payables/owner-confirms";
-import { type PipelineDeps, processInvoice } from "@/lib/payables/pipeline";
-import { getInvoice, type InvoiceRow } from "@/lib/payables/store";
+import { type PipelineDeps, PROCESS_LEASE_SECONDS, processInvoice } from "@/lib/payables/pipeline";
+import { getInvoice, type InvoiceRow, insertInvoice, listInvoices } from "@/lib/payables/store";
 import { signNep413 } from "../fixtures/nep413";
 import { quietLogs } from "../fixtures/quiet-logs";
 import { freshDb, seedTenant } from "./harness";
@@ -105,7 +109,9 @@ const { confirmInvoice, prepareConfirmation, rejectWaitingInvoice } = await impo
 );
 type ConfirmDeps = import("@/lib/payables/confirm").ConfirmDeps;
 const actions = await import("@/app/console/[vault]/payables/actions");
-const { default: InvoicePage } = await import("@/app/console/[vault]/payables/[id]/page");
+const { default: InvoicePage, maxDuration: invoicePageMaxDuration } = await import(
+  "@/app/console/[vault]/payables/[id]/page"
+);
 const { default: PayablesPage } = await import("@/app/console/[vault]/payables/page");
 
 const NOW = new Date(Number(SCENARIO_NOW / 1_000_000n));
@@ -202,10 +208,10 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
   /** Uploads one invoice (rules-only: it waits for the owner) and returns its row. */
   async function upload(
     total: string,
-    opts: { po?: Uint8Array; payTo?: string; number?: string } = {},
+    opts: { po?: Uint8Array; payTo?: string; number?: string; tail?: string } = {},
   ) {
     n += 1;
-    const text = `Invoice ${opts.number ?? `INV-${1000 + n}`}\nPO: ${opts.po === PO_2002 ? "PO-2002" : "PO-1001"}\nPay to ${opts.payTo ?? SCENARIO_NEAR_PAYEE}\nTotal ${total} USDC`;
+    const text = `Invoice ${opts.number ?? `INV-${1000 + n}`}\nPO: ${opts.po === PO_2002 ? "PO-2002" : "PO-1001"}\nPay to ${opts.payTo ?? SCENARIO_NEAR_PAYEE}\nTotal ${total} USDC${opts.tail ? `\n${opts.tail}` : ""}`;
     const r = await processInvoice(pipeline, {
       tenant: member,
       upload: {
@@ -291,6 +297,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
     if (!r.ok) throw new Error(`not confirmed: ${JSON.stringify(r)}`);
     expect(r.invoiceStatus).toBe("decided");
     expect(r.outcome).toMatchObject({ status: "paid", code: null });
+    expect(r.text).toBe("Paid on NEAR (20.000000 USDC, mandate 1)");
     expect(server.chain.spends).toHaveLength(spends + 1);
     expect(server.chain.spends.at(-1)).toMatchObject({
       mandate_id: 1,
@@ -311,9 +318,17 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       ok: true,
       account: OWNER,
       publicKey: ownerKey.getPublicKey().toString(),
-      keyBlockHeight: server.chain.height,
+      recordedKeyBlockHeight: server.chain.height,
     });
     expect(rule?.detail).toContain(p.message);
+    // Against the decision it sits in. The SDK's clock is fixed in this test and the nonce's expiry is the database's,
+    // so the entry is read at the expiry to test the amount, invoice, mandate and vault.
+    if (!decision) throw new Error("no decision");
+    const atExpiry = { ...decision, body: { ...decision.body, at: p.expiresAt } };
+    expect(verifyOwnerConfirmedEntry(atExpiry)).toMatchObject({ ok: true, account: OWNER });
+    expect(
+      verifyOwnerConfirmedEntry({ ...atExpiry, body: { ...atExpiry.body, amount: "20000001" } }),
+    ).toMatchObject({ ok: false });
     // The row keeps the full message, key, signature, nonce and block.
     expect(await getInvoice(h.db, member.tenant_id, row.id)).toMatchObject({
       status: "decided",
@@ -354,7 +369,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results.find((r) => !r.ok)).toMatchObject({
       ok: false,
-      reason: expect.stringMatching(/^(busy|not_awaiting)$/),
+      reason: expect.stringMatching(/^(busy|not_awaiting|nonce_used)$/),
     });
     expect(server.chain.spends).toHaveLength(spends + 1);
     // Both nonces are now spent or useless, and the row no longer waits.
@@ -418,6 +433,41 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       }),
     ).toMatchObject({ ok: true, outcome: { status: "paid" } });
   });
+
+  it.each([
+    ["throws", () => Promise.reject(new Error("database down"))],
+    ["changes nothing", () => Promise.resolve({ changed: false, status: "processing" })],
+  ])(
+    "when the reset %s, it says the outcome is unknown, not that the invoice waits",
+    async (_why, abort) => {
+      const row = await upload("21.75");
+      const p = await prepared(row);
+      const spends = server.chain.spends.length;
+      const r = await confirmInvoice(
+        {
+          ...deps,
+          db: {
+            rpc: ((fn: string, q: Record<string, unknown>) =>
+              fn === "invoice_confirm_abort" ? abort() : h.db.rpc(fn, q)) as Db["rpc"],
+          },
+          makeProbarion: () => ({
+            rules: { add: () => {} },
+            requestSpend: async () => {
+              throw new Error("rpc down before the decision");
+            },
+          }),
+        },
+        { member, account: OWNER, invoiceId: row.id, nonce: p.nonce, signed: sign(p) },
+      );
+      expect(r).toMatchObject({ ok: false, reason: "failed_unknown" });
+      if (r.ok) throw new Error("not refused");
+      expect(r.text).toMatch(/outcome is unknown/);
+      expect(r.text).toMatch(/processing/);
+      expect(r.text).not.toMatch(/waits for you/);
+      expect(server.chain.spends).toHaveLength(spends);
+      expect((await getInvoice(h.db, member.tenant_id, row.id))?.status).toBe("processing");
+    },
+  );
 
   describe("every refused path changes nothing", () => {
     it("an expired confirmation", async () => {
@@ -796,6 +846,110 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
         })) as ReactElement,
       );
 
+    it("keeps the lease longer than the action that runs the payment cycle", () => {
+      // Confirm runs the whole cycle in a server action of this page, under the tenant's process lease: the lease must
+      // outlast the page's maxDuration with a margin, as route.test.ts checks for the upload route.
+      expect(invoicePageMaxDuration + 30).toBeLessThanOrEqual(PROCESS_LEASE_SECONDS);
+    });
+
+    it("names the real total line when a due date or terms follow the total", async () => {
+      const row = await upload("20.00", { tail: "Due date: 2026-11-20" });
+      await signInAs(OWNER);
+      const out = await html(row.id);
+      expect(out).toContain(
+        'The amount was read from line 4: <code class="wrap-anywhere">Total 20.00 USDC</code>',
+      );
+      expect(out).not.toContain('<code class="wrap-anywhere">Due date');
+    });
+
+    it("lists an older invoice of the same payee and amount past the 200 newest rows", async () => {
+      const older = await upload("47.00");
+      // 201 newer invoices of the vault, none under this payee's mandate.
+      for (let i = 0; i < 201; i++) {
+        const hash = (0x100000 + i).toString(16).padStart(64, "0");
+        await insertInvoice(h.db, member.tenant_id, {
+          invoiceHash: hash,
+          ref: `inv-${hash.slice(-24)}`,
+          filename: null,
+          mediaType: "text/plain",
+          documentSha256: hash,
+          sealed: null,
+          facts: null,
+          amountIssue: null,
+          fingerprint: hash.split("").reverse().join(""),
+          invoiceNumberKey: null,
+          requestId: "r",
+          createdBy: OWNER,
+        });
+      }
+      await pg.query("update invoices set created_at = now() - interval '1 hour' where id = $1", [
+        older.id,
+      ]);
+      // The vault's 200 newest rows no longer hold it: a list read from them would miss it.
+      const newest = await listInvoices(h.db, member.tenant_id, 500);
+      expect(newest).toHaveLength(200);
+      expect(newest.map((r) => r.id)).not.toContain(older.id);
+      const row = await upload("47.00");
+      await signInAs(OWNER);
+      const out = await html(row.id);
+      expect(out).toContain(older.ref);
+      expect(out).toContain("same amount");
+      expect(out).not.toContain("No other invoice of this payee");
+      // Older than the 90 days: not listed, and the card says only what it searched.
+      await pg.query("update invoices set created_at = now() - interval '91 days' where id = $1", [
+        older.id,
+      ]);
+      expect(await html(row.id)).not.toContain(older.ref);
+    });
+
+    it("says the payee is unknown instead of an all-clear when the row's mandate is not on the vault", async () => {
+      const row = await upload("48.00");
+      await pg.query("update invoices set status = 'processing' where id = $1", [row.id]);
+      await pg.query("update invoices set mandate_id = 99 where id = $1", [row.id]);
+      await pg.query("update invoices set status = 'awaiting_owner' where id = $1", [row.id]);
+      await signInAs(OWNER);
+      const out = await html(row.id);
+      expect(out).not.toContain("No other invoice of this payee");
+      expect(out).toContain("payee could not be determined");
+      expect(h.panels[0]).toMatchObject({ canConfirm: false });
+    });
+
+    it("offers Reject for a waiting row with no mandate, and Confirm says why not", async () => {
+      const row = await upload("49.00");
+      await pg.query("update invoices set status = 'processing' where id = $1", [row.id]);
+      await pg.query("update invoices set mandate_id = null where id = $1", [row.id]);
+      await pg.query("update invoices set status = 'awaiting_owner' where id = $1", [row.id]);
+      await signInAs(OWNER);
+      await html(row.id);
+      expect(h.panels).toHaveLength(1);
+      const seen = { suggestedAmount: "49000000", invoiceHash: row.invoice_hash, mandateId: null };
+      expect(h.panels[0]).toMatchObject({ canConfirm: false, seen });
+      expect(String(h.panels[0]?.whyNot)).toMatch(/without its mandate/);
+      expect(await actions.rejectInvoiceAction(SCENARIO_VAULT, row.id, seen)).toMatchObject({
+        ok: true,
+      });
+      expect((await getInvoice(h.db, member.tenant_id, row.id))?.status).toBe("rejected");
+    });
+
+    it("says plainly when the server could not reject", async () => {
+      const row = await upload("50.00");
+      await signInAs(OWNER);
+      const seen = { suggestedAmount: "50000000", invoiceHash: row.invoice_hash, mandateId: 1 };
+      const db = h.db;
+      h.db = {
+        rpc: ((fn: string, q: Record<string, unknown>) =>
+          fn === "invoice_reject"
+            ? Promise.reject(new Error("database down"))
+            : db.rpc(fn, q)) as Db["rpc"],
+      };
+      try {
+        const r = await actions.rejectInvoiceAction(SCENARIO_VAULT, row.id, seen);
+        expect(r).toMatchObject({ ok: false, text: expect.stringMatching(/could not finish/) });
+      } finally {
+        h.db = db;
+      }
+    });
+
     it("refuses every Confirm and Reject action to a non-owner, and changes nothing", async () => {
       const row = await upload("32.00");
       const before = await state(row.id);
@@ -841,9 +995,10 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       expect(out).toContain(OWNER_CONFIRMS_RULE);
       expect(out).toContain(`near:${SCENARIO_NEAR_PAYEE}`);
       // The line the amount was read from, and who uploaded the row.
-      expect(out).toContain("The amount was read from line 4:");
-      expect(out).toContain("Total 40.00 USDC");
-      expect(out).toContain(`uploaded by <span class="mono">${OWNER}</span>`);
+      expect(out).toContain(
+        'The amount was read from line 4: <code class="wrap-anywhere">Total 40.00 USDC</code>',
+      );
+      expect(out).toContain(`uploaded by <span class="mono break-all">${OWNER}</span>`);
       // Every invoice of this payee in the last 90 days, the equal and near amounts marked; another payee's is not.
       for (const r of [earlier, near, far]) expect(out).toContain(r.ref);
       expect(out).not.toContain(other.ref);
@@ -853,6 +1008,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       expect(h.panels).toHaveLength(1);
       expect(h.panels[0]).toMatchObject({
         owner: OWNER,
+        canConfirm: true,
         seen: { suggestedAmount: "40000000", invoiceHash: row.invoice_hash, mandateId: 1 },
       });
     });
@@ -865,10 +1021,13 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
         await signInAs(OWNER);
         const out = await html(row.id);
         expect(out).toContain("Waiting for you");
-        expect(h.panels).toEqual([]);
-        expect(out).toContain(
-          "You are not the vault&#x27;s on-chain owner, so Confirm is not offered.",
-        );
+        // Confirm is not offered; Reject still is, since it needs no chain.
+        expect(h.panels).toHaveLength(1);
+        expect(h.panels[0]).toMatchObject({
+          canConfirm: false,
+          whyNot: "You are not the vault's on-chain owner, so Confirm is not offered.",
+          seen: { suggestedAmount: "46000000", invoiceHash: row.invoice_hash, mandateId: 1 },
+        });
       } finally {
         config.owner = OWNER;
       }
@@ -962,6 +1121,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
         const out = await html(row.id);
         expect(out).toContain("not stored (zero-retention)");
         expect(out).toContain("Zero-retention: only the hashes are kept.");
+        expect(out).toContain("the line the amount was read from cannot be shown");
         expect(out).toContain(row.invoice_hash);
         expect(out).not.toContain("inv.txt");
         // Confirm it, then read the cycle: rules-only, the owner rule passed, the contract paid, the anchor linked.

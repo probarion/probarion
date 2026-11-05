@@ -1,5 +1,6 @@
 import { isNearAccountId, type Payee } from "@probarion/core";
 import { AUTH_RECIPIENT, type Network } from "@/lib/config";
+import { AMOUNT, HEX32, UUID } from "./forms";
 import { usdcFixed } from "./view";
 
 // The message the vault owner signs to pay an invoice that waits for them (rulings W-T14-R0 and R1). The server
@@ -43,9 +44,6 @@ export class ConfirmMessageError extends Error {
 }
 
 const ACCOUNT = /^[a-z0-9._-]{2,64}$/;
-const AMOUNT = /^[1-9][0-9]{0,38}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const HEX32 = /^[0-9a-f]{64}$/;
 const ISO_SECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -98,4 +96,43 @@ export function confirmMessage(f: ConfirmFields): string {
   ].join(" | ");
   if (!PRINTABLE.test(message)) throw new ConfirmMessageError("message");
   return message;
+}
+
+const MESSAGE =
+  /^Probarion confirm v1 \| pay ([0-9]+\.[0-9]{6}) USDC \(([1-9][0-9]{0,38}) base units\) to ([\x20-\x7E]+?) \| vault ([a-z0-9._-]{2,64}) \((mainnet|testnet)\) \| owner ([a-z0-9._-]{2,64}) \| mandate ([1-9][0-9]{0,15}) \| invoice ([0-9a-f-]{36}) \| sha256 ([0-9a-f]{64}) \| nonce ([0-9a-f]{64}) \| expires ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)$/;
+
+/** The fields of a confirmation message, for an auditor comparing it with its decision. */
+export interface ParsedConfirmMessage {
+  amount: string;
+  /** As the message writes it (payeeText). */
+  payee: string;
+  vault: string;
+  network: Network;
+  owner: string;
+  mandateId: number;
+  invoiceId: string;
+  invoiceHash: string;
+  nonceHex: string;
+  expiresAt: string;
+}
+
+/** A message in the v1 form, or null: another text, or two amounts that disagree. */
+export function parseConfirmMessage(message: string): ParsedConfirmMessage | null {
+  const m = MESSAGE.exec(message);
+  if (!m) return null;
+  const [, fixed, amount, payee, vault, network, owner, mandate, invoiceId, hash, nonce, expires] =
+    m as unknown as string[];
+  if (usdcFixed(amount as string) !== fixed || !UUID.test(invoiceId as string)) return null;
+  return {
+    amount: amount as string,
+    payee: payee as string,
+    vault: vault as string,
+    network: network as Network,
+    owner: owner as string,
+    mandateId: Number(mandate),
+    invoiceId: invoiceId as string,
+    invoiceHash: hash as string,
+    nonceHex: nonce as string,
+    expiresAt: expires as string,
+  };
 }

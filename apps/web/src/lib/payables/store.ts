@@ -170,7 +170,8 @@ export function getInvoice(db: Db, tenantId: string, id: string): Promise<Invoic
 export interface RowSnapshot {
   suggestedAmount: string;
   invoiceHash: string;
-  mandateId: number;
+  /** Null for a waiting row recorded without a mandate: it can be rejected, not confirmed. */
+  mandateId: number | null;
 }
 
 export type IssueResult =
@@ -335,4 +336,33 @@ export async function invoiceContent(
         mediaType: r.media_type,
         sealed: { ciphertext: r.content_ciphertext, nonce: r.content_nonce },
       };
+}
+
+const PAYEE_PAGE = 500;
+
+/**
+ * Every invoice of the tenant from the last 90 days under one of these mandates (a payee's mandates), or that holds a
+ * ledger decision under one of them, newest first. No cap on the total: it reads page by page until a page comes back
+ * short, so "no other invoice of this payee" is true when it says so (ruling W-T14-R2).
+ */
+export async function listPayeeRecent(
+  db: Db,
+  tenantId: string,
+  mandateIds: readonly number[],
+  pageSize: number = PAYEE_PAGE,
+): Promise<InvoiceRow[]> {
+  const all: InvoiceRow[] = [];
+  let after: { created_at: string; id: string } | null = null;
+  for (;;) {
+    const page: InvoiceRow[] = await db.rpc<InvoiceRow[]>("invoice_payee_recent", {
+      tenant_id: tenantId,
+      mandate_ids: mandateIds,
+      limit: pageSize,
+      ...(after === null ? {} : { after }),
+    });
+    all.push(...page);
+    const last = page.at(-1);
+    if (last === undefined || page.length < pageSize) return all;
+    after = { created_at: last.created_at, id: last.id };
+  }
 }

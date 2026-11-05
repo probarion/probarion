@@ -13,13 +13,15 @@
 --   - invoice_confirm_abort: back to awaiting_owner when the confirmed cycle stopped before anything was sent;
 --   - Reject (status `rejected`): a compare-and-set with the same snapshot condition, which frees the row's guard
 --     keys, so a corrected re-upload is a new invoice;
---   - invoice_content: a retained invoice's sealed file, for the owner's review on the server.
+--   - invoice_content: a retained invoice's sealed file, for the owner's review on the server;
+--   - invoice_payee_recent: every invoice of a payee from the last 90 days, shown before the owner confirms.
 --
 -- The vault itself accepts each invoice_hash and ref once, so a function cut off after the compare-and-set cannot pay
 -- twice; the watcher (Task 20) reconciles a row left in processing.
 --
--- Every function here is `(p jsonb) returns jsonb`, security definer with a pinned search_path, and executable by
--- the service role only. The server calls them after its own membership check (owner only).
+-- The functions new here take `(p jsonb)`, return jsonb and are security definer with a pinned search_path. The two
+-- replaced from 0006 (invoice_set_outcome, invoice_json), the invoice_confirm_iso helper and the trigger function run
+-- as their caller. All are executable by the service role only; the server calls them after its own membership check.
 
 -- `rejected` joins the statuses.
 alter table public.invoices drop constraint invoices_status_check;
@@ -175,8 +177,9 @@ language sql immutable set search_path = public, pg_temp as $$
   select to_char(t at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 $$;
 
--- { tenant_id, id, nonce, issued_to }: a nonce for this waiting row's snapshot, alive five minutes. Answers the
--- snapshot and the expiry the message carries, or { ok: false, reason: not_awaiting | no_mandate, status }.
+-- { tenant_id, id, nonce, issued_to }: a nonce for this waiting row's snapshot, alive five minutes. It ends the earlier
+-- live nonces of this row and account, and sweeps the tenant's expired ones. Answers the snapshot and the expiry the
+-- message carries, or { ok: false, reason: not_awaiting | no_mandate, status }.
 create or replace function public.invoice_confirm_issue(p jsonb) returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -200,8 +203,9 @@ begin
   if v_row.mandate_id is null then
     return jsonb_build_object('ok', false, 'reason', 'no_mandate', 'status', v_row.status);
   end if;
-  -- Spent or expired nonces of this row are kept a day for the logs, then dropped.
-  delete from public.invoice_confirm_nonces where invoice_id = v_id and expires_at < now() - interval '1 day';
+  delete from public.invoice_confirm_nonces where tenant_id = v_tenant and expires_at < now();
+  update public.invoice_confirm_nonces set used_at = now()
+    where invoice_id = v_id and issued_to = v_to and used_at is null;
   insert into public.invoice_confirm_nonces (nonce, purpose, tenant_id, invoice_id, issued_to, suggested_amount,
                                              mandate_id, invoice_hash, expires_at)
   values (v_nonce, 'confirm', v_tenant, v_id, v_to, v_row.suggested_amount, v_row.mandate_id, v_row.invoice_hash,
@@ -360,8 +364,9 @@ begin
 end $$;
 
 -- { tenant_id, id, rejected_by, suggested_amount, invoice_hash, mandate_id }: Reject, a compare-and-set on the
--- snapshot the owner saw. Nothing is paid; the fingerprint and the invoice-number key are cleared, so a corrected
--- re-upload is a new invoice (a rejected row never blocks the guard either). { changed, status }.
+-- snapshot the owner saw (a null mandate_id matches a row recorded without one). Nothing is paid; the fingerprint and
+-- the invoice-number key are cleared, so a corrected re-upload is a new invoice (a rejected row never blocks the guard
+-- either). { changed, status }.
 create or replace function public.invoice_reject(p jsonb) returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -377,14 +382,15 @@ begin
   if coalesce(v_by, '') = '' or length(v_by) > 64
      or coalesce(v_amount, '') !~ '^[1-9][0-9]{0,38}$'
      or coalesce(v_hash, '') !~ '^[0-9a-f]{64}$'
-     or coalesce(v_mandate, '') !~ '^[1-9][0-9]{0,17}$' then
+     or (v_mandate is not null and v_mandate !~ '^[1-9][0-9]{0,17}$') then
     raise exception 'invalid_input';
   end if;
   update public.invoices set
       status = 'rejected', rejected_by = v_by, rejected_at = now(), decided_at = now(),
       fingerprint_sha256 = null, invoice_number_hmac = null
     where id = v_id and tenant_id = v_tenant and status = 'awaiting_owner'
-      and suggested_amount = v_amount and invoice_hash = v_hash and mandate_id = v_mandate::bigint
+      and suggested_amount = v_amount and invoice_hash = v_hash
+      and mandate_id is not distinct from v_mandate::bigint
     returning true into v_changed;
   if v_changed then
     return jsonb_build_object('changed', true, 'status', 'rejected');
@@ -406,15 +412,59 @@ language sql stable security definer set search_path = public, pg_temp as $$
   where i.tenant_id = public.agent_key_uuid(p->>'tenant_id') and i.id = public.agent_key_uuid(p->>'id')
 $$;
 
+-- { tenant_id, mandate_ids, limit?, after? }: the tenant's invoices of the last 90 days under one of these mandates (a
+-- payee's mandates), or that hold a ledger decision under one of them, newest first. One page of at most `limit` rows
+-- (1 to 1000, default 500); `after` { created_at, id } is the last row of the page before, so the caller reads every
+-- row: nothing here caps the list. The console shows it, whatever the amounts, before the owner confirms.
+create or replace function public.invoice_payee_recent(p jsonb) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_tenant uuid := public.agent_key_uuid(p->>'tenant_id');
+  v_limit integer := case when (p->>'limit') ~ '^[0-9]{1,4}$'
+                          then least(greatest((p->>'limit')::integer, 1), 1000) else 500 end;
+  v_mandates text[];
+  v_after_at timestamptz;
+  v_after_id uuid;
+  v_rows jsonb;
+begin
+  if jsonb_typeof(p->'mandate_ids') is distinct from 'array' then
+    raise exception 'invalid_input';
+  end if;
+  select coalesce(array_agg(m), '{}') into v_mandates from jsonb_array_elements_text(p->'mandate_ids') as m;
+  if exists (select 1 from unnest(v_mandates) as m where m !~ '^[1-9][0-9]{0,17}$') then
+    raise exception 'invalid_input';
+  end if;
+  if jsonb_typeof(p->'after') = 'object' then
+    v_after_at := (p->'after'->>'created_at')::timestamptz;
+    v_after_id := public.agent_key_uuid(p->'after'->>'id');
+  end if;
+  select coalesce(jsonb_agg(public.invoice_json(x.inv) order by (x.inv).created_at desc, (x.inv).id desc), '[]'::jsonb)
+    into v_rows
+  from (
+    select i as inv from public.invoices i
+    where i.tenant_id = v_tenant
+      and i.created_at >= now() - interval '90 days'
+      and (v_after_at is null or (i.created_at, i.id) < (v_after_at, v_after_id))
+      and (i.mandate_id::text = any(v_mandates)
+           or exists (select 1 from public.ledger_entries e
+                      where e.tenant_id = v_tenant and e.kind = 'decision'
+                        and e.body->>'invoice_hash' = i.invoice_hash
+                        and e.body->>'mandate_id' = any(v_mandates)))
+    order by i.created_at desc, i.id desc
+    limit v_limit
+  ) x;
+  return v_rows;
+end $$;
+
 revoke execute on function
   public.invoice_snapshot_frozen(), public.invoice_confirm_iso(timestamptz), public.invoice_confirm_issue(jsonb),
   public.invoice_confirm_nonce(jsonb), public.invoice_confirm_begin(jsonb), public.invoice_confirm_burn(jsonb),
   public.invoice_confirm_abort(jsonb), public.invoice_reject(jsonb), public.invoice_content(jsonb),
-  public.invoice_set_outcome(jsonb), public.invoice_json(public.invoices)
+  public.invoice_payee_recent(jsonb), public.invoice_set_outcome(jsonb), public.invoice_json(public.invoices)
   from public, anon, authenticated;
 grant execute on function
   public.invoice_confirm_iso(timestamptz), public.invoice_confirm_issue(jsonb), public.invoice_confirm_nonce(jsonb),
   public.invoice_confirm_begin(jsonb), public.invoice_confirm_burn(jsonb), public.invoice_confirm_abort(jsonb),
-  public.invoice_reject(jsonb), public.invoice_content(jsonb), public.invoice_set_outcome(jsonb),
-  public.invoice_json(public.invoices)
+  public.invoice_reject(jsonb), public.invoice_content(jsonb), public.invoice_payee_recent(jsonb),
+  public.invoice_set_outcome(jsonb), public.invoice_json(public.invoices)
   to service_role;

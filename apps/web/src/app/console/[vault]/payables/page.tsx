@@ -5,24 +5,15 @@ import { VaultNav } from "@/components/console/VaultNav";
 import { Badge, Card, linePillClass, Notice } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import { serviceDb } from "@/lib/db/clients";
+import { utcMinute } from "@/lib/payables/forms";
 import { listInvoices } from "@/lib/payables/store";
 import { amountIssueText, rowResult } from "@/lib/payables/view";
 import { safeText } from "@/lib/proof/sanitize";
 import { setZeroRetentionAction } from "./actions";
 
 export const metadata: Metadata = { title: "Payables" };
-/** The upload form waits for the cycle (model, code, contract), which the route bounds at 60 s. */
-export const maxDuration = 60;
 
 const muted = "text-ink/60";
-
-/** "2026-11-09 10:00 UTC", or the text as it came when it is not a time. */
-function when(iso: string): string {
-  const t = Date.parse(iso);
-  return Number.isNaN(t)
-    ? safeText(iso, 40)
-    : `${new Date(t).toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
 
 export default async function PayablesPage({ params }: { params: Promise<{ vault: string }> }) {
   const { vault: requested } = await params;
@@ -101,46 +92,50 @@ export default async function PayablesPage({ params }: { params: Promise<{ vault
         {invoices.length === 0 ? (
           <p className={`text-sm ${muted}`}>No invoices yet.</p>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-ink/10">
-                <th>When</th>
-                <th>Ref</th>
-                <th>File</th>
-                <th>Result</th>
-                <th>Stored</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((i) => {
-                const r = rowResult(i, owner);
-                return (
-                  <tr key={i.id} className="border-b border-ink/10 align-top last:border-0">
-                    <td className="whitespace-nowrap">{when(i.created_at)}</td>
-                    <td className="mono break-all">
-                      <Link className="underline" href={`${base}/${encodeURIComponent(i.id)}`}>
-                        {safeText(i.ref, 64)}
-                      </Link>
-                    </td>
-                    <td className="break-all">
-                      {i.retained
-                        ? i.filename
-                          ? safeText(i.filename, 120)
-                          : "pasted text"
-                        : "not stored"}
-                    </td>
-                    <td>
-                      <Badge tone={r.tone}>{r.label}</Badge>
-                      {i.amount_issue ? (
-                        <p className={`mt-1 text-xs ${muted}`}>{amountIssueText(i.amount_issue)}</p>
-                      ) : null}
-                    </td>
-                    <td>{i.retained ? "encrypted" : "hash only"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-ink/10">
+                  <th>When</th>
+                  <th>Ref</th>
+                  <th>File</th>
+                  <th>Result</th>
+                  <th>Stored</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((i) => {
+                  const r = rowResult(i, owner);
+                  return (
+                    <tr key={i.id} className="border-b border-ink/10 align-top last:border-0">
+                      <td className="whitespace-nowrap">{utcMinute(i.created_at)}</td>
+                      <td className="mono break-all">
+                        <Link className="underline" href={`${base}/${encodeURIComponent(i.id)}`}>
+                          {safeText(i.ref, 64)}
+                        </Link>
+                      </td>
+                      <td className="break-all">
+                        {i.retained
+                          ? i.filename
+                            ? safeText(i.filename, 120)
+                            : "pasted text"
+                          : "not stored"}
+                      </td>
+                      <td>
+                        <Badge tone={r.tone}>{r.label}</Badge>
+                        {i.amount_issue ? (
+                          <p className={`mt-1 text-xs ${muted}`}>
+                            {amountIssueText(i.amount_issue)}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td>{i.retained ? "encrypted" : "hash only"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>

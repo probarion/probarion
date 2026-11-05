@@ -10,6 +10,7 @@ import {
   insertInvoice,
   invoiceContent,
   issueConfirmNonce,
+  listPayeeRecent,
   type NewInvoice,
   readConfirmNonce,
   setInvoiceOutcome,
@@ -230,8 +231,9 @@ describe("owner confirmation functions (migration 0007)", () => {
 
   it("pays once under two parallel confirmations, each with its own nonce", async () => {
     const id = await waiting();
+    // Two accounts, since a new nonce for the same row and account ends the earlier one.
     const one = await issued(id);
-    const two = await issued(id);
+    const two = await issued(id, a, "carol.near");
     const results = await Promise.all([
       beginConfirmation(db, { ...one.input, requestId: "one" }),
       beginConfirmation(db, { ...two.input, requestId: "two" }),
@@ -557,6 +559,167 @@ describe("owner confirmation functions (migration 0007)", () => {
     await expect(
       db.rpc("invoice_reject", { tenant_id: a, id, rejected_by: "", ...seen }),
     ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("a new nonce for the same row and owner ends the earlier live one, and leaves others alone", async () => {
+    const id = await waiting();
+    const other = await waiting();
+    const first = await issued(id);
+    const forOtherRow = await issued(other);
+    const forOtherAccount = await issued(id, a, "carol.near");
+    const second = await issued(id);
+    expect((await readConfirmNonce(db, first.nonce))?.used).toBe(true);
+    expect((await readConfirmNonce(db, second.nonce))?.used).toBe(false);
+    expect((await readConfirmNonce(db, forOtherRow.nonce))?.used).toBe(false);
+    expect((await readConfirmNonce(db, forOtherAccount.nonce))?.used).toBe(false);
+    expect(await beginConfirmation(db, first.input)).toMatchObject({
+      ok: false,
+      reason: "nonce_used",
+    });
+    expect(await beginConfirmation(db, second.input)).toEqual({ ok: true, status: "processing" });
+  });
+
+  it("sweeps expired nonces for the whole tenant when one is issued, and no other tenant's", async () => {
+    const stale = await issued(await waiting());
+    const theirs = await issued(await waiting(b), b, "bob.near");
+    const live = await issued(await waiting());
+    await pg.query(
+      "update invoice_confirm_nonces set expires_at = now() - interval '1 second' where nonce = any($1)",
+      [[stale.nonce, theirs.nonce]],
+    );
+    await issued(await waiting());
+    expect(await readConfirmNonce(db, stale.nonce)).toBeNull();
+    expect(await readConfirmNonce(db, live.nonce)).not.toBeNull();
+    expect(await readConfirmNonce(db, theirs.nonce)).toMatchObject({ expired: true });
+  });
+
+  it("rejects a waiting row that has no mandate, with a snapshot that says so", async () => {
+    const { id } = await insertInvoice(db, a, invoice());
+    await setInvoiceOutcome(db, a, id, {
+      status: "awaiting_owner",
+      outcome: WAITING as never,
+      suggestedAmount: "15",
+      anchorTxHash: null,
+      promptTokens: null,
+      completionTokens: null,
+    });
+    const row = await getInvoice(db, a, id);
+    if (!row) throw new Error("no row");
+    const seen = { suggestedAmount: "15", invoiceHash: row.invoice_hash };
+    // A snapshot that names a mandate does not match a row without one, and the reverse.
+    expect(await setInvoiceRejected(db, a, id, "alice.near", { ...seen, mandateId: 1 })).toEqual({
+      changed: false,
+      status: "awaiting_owner",
+    });
+    const withMandate = await waiting(a, "15", {}, 3);
+    const other = await getInvoice(db, a, withMandate);
+    expect(
+      await setInvoiceRejected(db, a, withMandate, "alice.near", {
+        suggestedAmount: "15",
+        invoiceHash: other?.invoice_hash ?? "",
+        mandateId: null,
+      }),
+    ).toEqual({ changed: false, status: "awaiting_owner" });
+    expect(await setInvoiceRejected(db, a, id, "alice.near", { ...seen, mandateId: null })).toEqual(
+      {
+        changed: true,
+        status: "rejected",
+      },
+    );
+    // A malformed mandate is refused.
+    await expect(
+      db.rpc("invoice_reject", {
+        tenant_id: a,
+        id: withMandate,
+        rejected_by: "alice.near",
+        suggested_amount: "15",
+        invoice_hash: other?.invoice_hash,
+        mandate_id: "x",
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  describe("the payee's invoices of the last 90 days", () => {
+    let t: string;
+    /** A decided row under `mandate` (or none), its creation moved `daysAgo` into the past. */
+    async function row(mandate: number | null, daysAgo = 0) {
+      const { id } = await insertInvoice(db, t, invoice());
+      await setInvoiceOutcome(db, t, id, {
+        status: "decided",
+        outcome: { ...WAITING, status: "refused_by_code", code: "x" } as never,
+        ...(mandate === null ? {} : { mandateId: mandate }),
+        anchorTxHash: null,
+        promptTokens: null,
+        completionTokens: null,
+      });
+      await pg.query(
+        `update invoices set created_at = now() - make_interval(days => $2) where id = $1`,
+        [id, daysAgo],
+      );
+      return id;
+    }
+
+    beforeAll(async () => {
+      t = await seedTenant(pg, { vault: "c.vaults.probarion.near", owner: "carol.near" });
+    });
+
+    it("finds rows by mandate and by a ledger decision, past any page, newest first", async () => {
+      const newest = await row(7, 0);
+      const older = await row(8, 2);
+      const noMandate = await row(null, 3);
+      const row4 = await row(7, 4);
+      const inWindow = await row(7, 89);
+      await row(7, 91); // outside the 90 days
+      await row(9, 1); // another payee's mandate
+      const elsewhere = await row(null, 1); // no mandate, no decision of this payee
+      const decided = await getInvoice(db, t, noMandate);
+      const other = await getInvoice(db, t, elsewhere);
+      const decision = (seq: number, hash: string | undefined, mandate: number) =>
+        pg.query(
+          `insert into ledger_entries (tenant_id, seq, kind, body, body_hash, sig, signer, link, request_id)
+           values ($1, $2, 'decision', $3, $4, 'ed25519:s', 'ed25519:p', $4, 'r')`,
+          [
+            t,
+            seq,
+            JSON.stringify({ kind: "decision", invoice_hash: hash, mandate_id: mandate }),
+            seq.toString(16).padStart(64, "c"),
+          ],
+        );
+      await decision(0, decided?.invoice_hash, 7);
+      await decision(1, other?.invoice_hash, 9);
+      const want = [newest, older, noMandate, row4, inWindow];
+      for (const pageSize of [500, 2, 1]) {
+        const got = await listPayeeRecent(db, t, [7, 8], pageSize);
+        expect(
+          got.map((r) => r.id),
+          `page size ${pageSize}`,
+        ).toEqual(want);
+      }
+      // No mandates: nothing to match. Another tenant's rows are not seen.
+      expect(await listPayeeRecent(db, t, [])).toEqual([]);
+      expect(await listPayeeRecent(db, a, [8])).toEqual([]);
+    });
+
+    it("refuses malformed input, and anyone but the service role", async () => {
+      for (const bad of [
+        { tenant_id: "x", mandate_ids: [] },
+        { tenant_id: t, mandate_ids: "7" },
+        { tenant_id: t },
+        { tenant_id: t, mandate_ids: ["7; drop table x"] },
+        { tenant_id: t, mandate_ids: [0] },
+        { tenant_id: t, mandate_ids: [], after: { created_at: "x", id: "y" } },
+      ]) {
+        await expect(db.rpc("invoice_payee_recent", bad), JSON.stringify(bad)).rejects.toThrow();
+      }
+      for (const role of ["authenticated", "anon"] as const) {
+        await expect(
+          asRole(pg, role, "alice.near", (tx) =>
+            tx.query("select public.invoice_payee_recent('{}'::jsonb)"),
+          ),
+          role,
+        ).rejects.toThrow(/permission denied/);
+      }
+    });
   });
 
   it("reads a retained invoice's sealed content for the service role only", async () => {

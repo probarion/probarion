@@ -64,9 +64,14 @@ describe("uploadAnswer", () => {
         "Attach the purpose document: the PO or contract you hashed when you created the mandate.",
     });
     expect(a.tone).toBe("bad");
-    expect(a.text).toMatch(/Attach the PO or contract document whose hash is in the mandate/);
-    expect(a.text).toMatch(/Attach the purpose document/);
+    // The route's guidance, once.
+    expect(a.text).toBe(
+      "Attach the purpose document: the PO or contract you hashed when you created the mandate.",
+    );
     expect(a.invoiceId).toBeNull();
+    expect(uploadAnswer(409, { error: "no_mandate" }).text).toMatch(
+      /Attach the PO or contract document whose hash is in the mandate/,
+    );
   });
 
   it("gives the size limit for a 413", () => {
@@ -76,7 +81,7 @@ describe("uploadAnswer", () => {
         detail: "The invoice is larger than 4 MiB (4,194,304 bytes).",
       }).text,
     ).toMatch(/larger than 4 MiB/);
-    expect(uploadAnswer(413, null).text).toMatch(/4 MiB/);
+    expect(uploadAnswer(413, null).text).toMatch(/invoice and its purpose document together/);
   });
 
   it("does not throw on a gateway answer that is not JSON", () => {

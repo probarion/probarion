@@ -38,7 +38,10 @@ export function InvoiceUploadForm({ vault }: { vault: string }) {
         }
       }}
     >
-      <Field label="Invoice (PDF or .txt, at most 4 MiB)">
+      <Field
+        label="Invoice (PDF or .txt)"
+        hint="The invoice and its purpose document together: at most 4 MiB."
+      >
         <input type="file" name="file" accept="application/pdf,text/plain,.pdf,.txt" />
       </Field>
       <Field label="…or paste the invoice text">
@@ -48,13 +51,13 @@ export function InvoiceUploadForm({ vault }: { vault: string }) {
         label="Purpose document (required: the PO or contract whose sha256 you put in the mandate)"
         hint="It is hashed and matched to a mandate; the payment goes to that mandate's payee."
       >
-        <input type="file" name="purpose" />
+        <input type="file" name="purpose" required />
       </Field>
       <button className={inkPillClass} disabled={busy} type="submit">
         {busy ? "Code → model → contract…" : "Run the payables cycle"}
       </button>
-      {msg ? (
-        <div className="mt-3">
+      <div className="mt-3" role="status">
+        {msg ? (
           <Notice tone={msg.tone}>
             {msg.text}{" "}
             {msg.invoiceId ? (
@@ -63,8 +66,8 @@ export function InvoiceUploadForm({ vault }: { vault: string }) {
               </Link>
             ) : null}
           </Notice>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </form>
   );
 }

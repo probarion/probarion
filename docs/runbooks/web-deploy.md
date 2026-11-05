@@ -186,7 +186,7 @@ Do this only after the transaction exists, once per transaction, each in its own
 | `first_console_vault` | `vault_created` | the owner account | `vaults.probarion.near` | `owner` | the owner signs `create_vault` at `/console` |
 | `first_console_agent_key` | `agent_added` | the owner account | the vault | `owner` | the owner signs `add_agent` at `/console/<vault>/keys` |
 | `first_console_mandate` | `mandate_created` | the owner account | the vault | `owner` | the owner signs the mandate at `/console/<vault>/mandates` |
-| `first_payables_payout` | `near_payment` (for a Base payee: `base_payout`, plus `--base-tx` once the Base transfer is visible) | the vault | the vault | `agent_key` (add `--spend-id` and `--amount`) | the Payables agent pays an invoice (the Payables page is not built yet) |
+| `first_payables_payout` | `near_payment` (for a Base payee: `base_payout`, plus `--base-tx` once the Base transfer is visible) | the vault | the vault | `agent_key` (add `--spend-id` and `--amount`) | the Payables agent pays an invoice at `/console/<vault>/payables` (an owner-confirmed invoice is still signed by the agent key) |
 
 Give each one a `--what` line in plain words, for example "First vault created through the console (factory create_vault)".
 

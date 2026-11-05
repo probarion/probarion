@@ -1,6 +1,6 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { type CustomRule, isNearTxHash, type MandateView } from "@probarion/core";
+import { type CustomRule, isNearTxHash } from "@probarion/core";
 import type { SpendOutcome } from "@probarion/sdk";
 import {
   type KeyCheck,
@@ -9,12 +9,13 @@ import {
   VerifierUnavailableError,
 } from "@/lib/auth/verify";
 import type { Network } from "@/lib/config";
-import { DecryptError, decodeCanonical } from "@/lib/crypto/sodium";
+import { decodeCanonical } from "@/lib/crypto/sodium";
 import { type Db, DbError } from "@/lib/db/port";
 import { type MemberTenant, withLease } from "@/lib/db/tenants";
-import { KeyMismatchError, loadActiveSecret, loadActiveSecretFor } from "@/lib/keys/service";
+import { openKey } from "@/lib/keys/open";
+import { loadActiveSecret, loadActiveSecretFor } from "@/lib/keys/service";
 import { log, newRequestId, scrubText } from "@/lib/log";
-import { listAll, type VaultReader } from "@/lib/near/reader";
+import { readVaultFacts, type VaultFactsReader } from "./chain";
 import {
   CONFIRM_NONCE_BYTES,
   CONFIRM_RECIPIENT,
@@ -22,6 +23,7 @@ import {
   confirmMessage,
   payeeText,
 } from "./confirm-message";
+import { AMOUNT, HEX32, UUID } from "./forms";
 import { type OwnerConfirmation, ownerConfirmedRule } from "./owner-confirmed";
 import { payeeId } from "./payee";
 import { invoiceStatusOf, PROCESS_LEASE_SECONDS } from "./pipeline";
@@ -73,7 +75,7 @@ export interface ConfirmProbarion {
 export interface ConfirmDeps {
   db: Db;
   master: Uint8Array;
-  reader: Pick<VaultReader, "getConfig" | "listMandates">;
+  reader: VaultFactsReader;
   /** fullAccessKeyVerifier(rpcLoginProvider(rpc)): the signature, then the key at finality "final". */
   keyVerifier: Nep413KeyVerifier;
   network: Network;
@@ -108,7 +110,8 @@ export type Refusal =
   | "busy"
   | "no_keys"
   | "key_unavailable"
-  | "failed";
+  | "failed"
+  | "failed_unknown";
 
 const UNCHANGED = "Nothing was sent and nothing changed.";
 
@@ -117,7 +120,7 @@ export const REFUSAL_TEXT: Readonly<Record<Refusal, string>> = {
   not_found: "This invoice is not one of this vault's.",
   not_awaiting: `This invoice no longer waits for you. ${UNCHANGED}`,
   no_mandate:
-    "This invoice was recorded without its mandate, so it cannot be confirmed here. Reject it and upload it again.",
+    "This invoice was recorded without its mandate, so it cannot be confirmed here. Reject it and upload it again. Nothing was sent.",
   not_owner: `Only the vault's on-chain owner can confirm, signing with a full-access key. ${UNCHANGED}`,
   chain_unavailable: `The vault's config or mandates could not be read from NEAR. ${UNCHANGED} Try again.`,
   mandate_missing: `The invoice's mandate is not on the vault any more. ${UNCHANGED}`,
@@ -136,6 +139,8 @@ export const REFUSAL_TEXT: Readonly<Record<Refusal, string>> = {
   key_unavailable: `The mandate's agent key or the ledger key cannot be used on the server. ${UNCHANGED}`,
   failed:
     "The payment cycle stopped before anything was sent. The invoice still waits for you: confirm again.",
+  failed_unknown:
+    "The payment cycle stopped and the invoice could not be set back, so its outcome is unknown: it may stay in processing until the chain has been checked against it. Do not confirm again or pay by hand.",
 };
 
 export type Refused = { ok: false; reason: Refusal; text: string; duplicateId?: string };
@@ -169,35 +174,10 @@ export type ConfirmResult =
     }
   | Refused;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const AMOUNT = /^[1-9][0-9]{0,38}$/;
-const HEX32 = /^[0-9a-f]{64}$/;
-
 /** The row, or null for an id that is not a uuid or not this tenant's. */
 async function row(db: Db, tenantId: string, id: string): Promise<InvoiceRow | null> {
   if (typeof id !== "string" || !UUID.test(id)) return null;
   return getInvoice(db, tenantId, id);
-}
-
-/** The vault's on-chain owner and the mandate, or why they could not be read. */
-async function chainFacts(
-  deps: Pick<ConfirmDeps, "reader">,
-  vault: string,
-  mandateId: number,
-): Promise<{ owner: string; mandate: MandateView | null } | null> {
-  try {
-    const [config, mandates] = await Promise.all([
-      deps.reader.getConfig(vault),
-      listAll((from, limit) => deps.reader.listMandates(vault, from, limit), 100),
-    ]);
-    return { owner: config.owner, mandate: mandates.find((m) => m.id === mandateId) ?? null };
-  } catch (error) {
-    log.warn("payables.confirm_chain_unavailable", {
-      vault,
-      error: scrubText(error instanceof Error ? error.message : String(error)).slice(0, 300),
-    });
-    return null;
-  }
 }
 
 /**
@@ -212,12 +192,13 @@ export async function prepareConfirmation(
   if (r === null) return refuse("not_found");
   if (r.status !== "awaiting_owner" || r.suggested_amount === null) return refuse("not_awaiting");
   if (r.mandate_id === null) return refuse("no_mandate");
-  const chain = await chainFacts(deps, a.member.vault_id, r.mandate_id);
+  const chain = await readVaultFacts(deps.reader, a.member.vault_id);
   if (chain === null) return refuse("chain_unavailable");
   if (chain.owner !== a.account) return refuse("not_owner");
-  if (chain.mandate === null) return refuse("mandate_missing");
+  const mandate = chain.mandates.find((m) => m.id === r.mandate_id);
+  if (mandate === undefined) return refuse("mandate_missing");
   try {
-    payeeText(chain.mandate.payee);
+    payeeText(mandate.payee);
   } catch {
     return refuse("unconfirmable");
   }
@@ -230,7 +211,7 @@ export async function prepareConfirmation(
   try {
     message = confirmMessage({
       amount: issued.suggested_amount,
-      payee: chain.mandate.payee,
+      payee: mandate.payee,
       vault: a.member.vault_id,
       network: deps.network,
       owner: chain.owner,
@@ -258,22 +239,6 @@ export async function prepareConfirmation(
     nonce: Buffer.from(nonce).toString("base64"),
     expiresAt: issued.expires_at,
   };
-}
-
-type KeyProblem = "inactive" | "decrypt_failed" | "key_mismatch";
-
-async function openKey(
-  load: () => Promise<{ publicKey: string; secret: string } | null>,
-): Promise<{ key: { publicKey: string; secret: string } } | { problem: KeyProblem }> {
-  try {
-    const key = await load();
-    return key ? { key } : { problem: "inactive" };
-  } catch (e) {
-    if (e instanceof DecryptError) return { problem: "decrypt_failed" };
-    if (e instanceof KeyMismatchError) return { problem: "key_mismatch" };
-    if (e instanceof DbError && e.code === "invalid_input") return { problem: "inactive" };
-    throw e;
-  }
 }
 
 /** Nothing was sent and only the code held it: the invoice waits for the owner again (another rule must clear). */
@@ -318,11 +283,11 @@ export async function confirmInvoice(
   const signed = parseSignedMessage(a.signed);
   if (signed === null) return refuse("invalid_input");
   if (signed.accountId !== a.account) return refuse("not_owner");
-  const chain = await chainFacts(deps, member.vault_id, rec.mandate_id);
+  const chain = await readVaultFacts(deps.reader, member.vault_id);
   if (chain === null) return refuse("chain_unavailable");
   if (chain.owner !== a.account) return refuse("not_owner");
-  if (chain.mandate === null) return refuse("mandate_missing");
-  const mandate = chain.mandate;
+  const mandate = chain.mandates.find((m) => m.id === rec.mandate_id);
+  if (mandate === undefined) return refuse("mandate_missing");
 
   // The server's own copy of the message, from the nonce's record and the chain.
   let message: string;
@@ -440,15 +405,18 @@ export async function confirmInvoice(
           ...at,
           error: scrubText(error instanceof Error ? error.message : String(error)).slice(0, 500),
         });
+        // Only a row that really went back waits again; otherwise it stays in processing for the watcher.
         try {
-          await abortConfirmation(deps.db, member.tenant_id, r.id);
+          const back = await abortConfirmation(deps.db, member.tenant_id, r.id);
+          if (back.changed) return refuse("failed");
+          log.error("payables.confirm_not_reverted", { ...at, row: back.status });
         } catch (abortError) {
           log.error("payables.confirm_not_reverted", {
             ...at,
             error: abortError instanceof Error ? abortError.name : "unknown",
           });
         }
-        return refuse("failed");
+        return refuse("failed_unknown");
       }
       const invoiceStatus = heldAgain(outcome) ? "awaiting_owner" : invoiceStatusOf(outcome);
       let recorded = false;
@@ -493,7 +461,7 @@ export async function confirmInvoice(
         text:
           invoiceStatus === "awaiting_owner"
             ? `${label} (${outcome.code ?? "a rule"}). Nothing was sent; the invoice waits for you again until that clears.`
-            : `${label}: ${usdcFixed(rec.suggested_amount)} USDC under mandate ${rec.mandate_id}.`,
+            : `${label} (${usdcFixed(rec.suggested_amount)} USDC, mandate ${rec.mandate_id})`,
       };
     },
   );
@@ -507,8 +475,7 @@ const SNAPSHOT_OK = (s: RowSnapshot): boolean =>
   AMOUNT.test(s.suggestedAmount) &&
   typeof s.invoiceHash === "string" &&
   HEX32.test(s.invoiceHash) &&
-  Number.isSafeInteger(s.mandateId) &&
-  s.mandateId > 0;
+  (s.mandateId === null || (Number.isSafeInteger(s.mandateId) && s.mandateId > 0));
 
 /**
  * Reject (ruling W-T14-R1 item 7): unsigned, since it moves no money, but owner only (the action checks the role), a

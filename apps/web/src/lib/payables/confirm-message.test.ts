@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { DecisionInput, MandateView, Payee } from "@probarion/core";
+import type { DecisionInput, LedgerEntry, MandateView, Payee } from "@probarion/core";
 import { NETWORKS } from "@probarion/core";
 import { KeyPair } from "near-api-js";
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,7 @@ import {
   type ConfirmFields,
   ConfirmMessageError,
   confirmMessage,
+  parseConfirmMessage,
   payeeText,
 } from "./confirm-message";
 import {
@@ -18,7 +19,9 @@ import {
   ownerConfirmedDetail,
   ownerConfirmedRule,
   parseOwnerConfirmedDetail,
+  verifyOwnerConfirmations,
   verifyOwnerConfirmedDetail,
+  verifyOwnerConfirmedEntry,
 } from "./owner-confirmed";
 import { payeeId } from "./payee";
 
@@ -212,9 +215,10 @@ describe("custom.owner_confirmed", () => {
       ok: true,
       account: "owner.testnet",
       publicKey: expect.stringMatching(/^ed25519:/),
-      keyBlockHeight: 190000000,
+      recordedKeyBlockHeight: 190000000,
     });
-    // Any edit breaks it: another amount in the message, another signature, another account.
+    // An edit of what the owner signed breaks it: another amount in the message, another signature, another account.
+    // The key-check block is the server's record, not signed by the owner: only the ledger entry's signature covers it.
     const forged = detail.replace("pay 20.000000 USDC (20000000", "pay 30.000000 USDC (30000000");
     expect(verifyOwnerConfirmedDetail(forged)).toMatchObject({
       ok: false,
@@ -255,3 +259,95 @@ describe("custom.owner_confirmed", () => {
 function rule(c: OwnerConfirmation): string {
   return ownerConfirmedRule(c).check(decisionInput(), mandate()).detail;
 }
+
+describe("parseConfirmMessage", () => {
+  it("reads back every field of a message the server built", () => {
+    expect(parseConfirmMessage(confirmMessage(fields()))).toEqual({
+      amount: "20000000",
+      payee: "near:vendor.testnet",
+      vault: "acme.vaults.probarion.testnet",
+      network: "testnet",
+      owner: "owner.testnet",
+      mandateId: 1,
+      invoiceId: ID,
+      invoiceHash: HASH,
+      nonceHex: NONCE,
+      expiresAt: "2026-11-05T12:05:00Z",
+    });
+    expect(parseConfirmMessage(confirmMessage(fields({ payee: BASE_PAYEE })))?.payee).toBe(
+      `base:0x2222222222222222222222222222222222222222 (asset ${NETWORKS.testnet.allowedAssets.base})`,
+    );
+  });
+
+  it("is null for any other text, and when the two amounts disagree", () => {
+    expect(parseConfirmMessage("Sign in to Probarion")).toBeNull();
+    expect(
+      parseConfirmMessage(
+        confirmMessage(fields()).replace("pay 20.000000 USDC", "pay 30.000000 USDC"),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("a confirmation against the decision it sits in", () => {
+  const entry = (
+    over: Partial<LedgerEntry["body"]> = {},
+    detail = rule(signedConfirmation()),
+  ): LedgerEntry =>
+    ({
+      body: {
+        kind: "decision",
+        vault: "acme.vaults.probarion.testnet",
+        at: "2026-11-05T12:01:00.000Z",
+        mandate_id: 1,
+        invoice_hash: HASH,
+        amount: "20000000",
+        rules: [
+          { id: "mandate.none", outcome: "pass", detail: "mandate 1" },
+          { id: OWNER_CONFIRMED_RULE, outcome: "pass", detail },
+        ],
+        ...over,
+      },
+    }) as unknown as LedgerEntry;
+
+  it("verifies when the amount, invoice, mandate and vault match, before the expiry", () => {
+    expect(verifyOwnerConfirmedEntry(entry())).toMatchObject({
+      ok: true,
+      account: "owner.testnet",
+    });
+  });
+
+  it.each([
+    ["another amount", { amount: "30000000" }, /amount/],
+    ["another invoice", { invoice_hash: "d4".repeat(32) }, /invoice/],
+    ["another mandate", { mandate_id: 2 }, /mandate/],
+    ["another vault", { vault: "other.vaults.probarion.testnet" }, /vault/],
+    ["a decision after the expiry", { at: "2026-11-05T12:06:00.000Z" }, /expir/],
+    ["no amount", { amount: null }, /amount/],
+  ])("refuses a confirmation pasted into %s", (_why, over, why) => {
+    expect(verifyOwnerConfirmedEntry(entry(over as never))).toMatchObject({
+      ok: false,
+      why: expect.stringMatching(why),
+    });
+  });
+
+  it("refuses a decision with no passing confirmation, or with a bad record", () => {
+    expect(verifyOwnerConfirmedEntry(entry({ rules: [] }))).toMatchObject({ ok: false });
+    expect(
+      verifyOwnerConfirmedEntry(
+        entry({ rules: [{ id: OWNER_CONFIRMED_RULE, outcome: "refuse", detail: "no" }] as never }),
+      ),
+    ).toMatchObject({ ok: false, why: expect.stringMatching(/passed/) });
+    expect(verifyOwnerConfirmedEntry(entry({}, "not a record"))).toMatchObject({ ok: false });
+  });
+
+  it("across a ledger, each confirmation verifies, and a nonce is used by one decision only", () => {
+    const one = entry({ seq: 3 } as never);
+    const other = entry({ seq: 4 } as never);
+    const plain = { body: { kind: "decision", seq: 5, rules: [] } } as unknown as LedgerEntry;
+    expect(verifyOwnerConfirmations([one, plain]).map((r) => r.ok)).toEqual([true]);
+    const both = verifyOwnerConfirmations([one, plain, other]);
+    expect(both.map((r) => r.ok)).toEqual([true, false]);
+    expect(both[1]).toMatchObject({ why: expect.stringMatching(/nonce/) });
+  });
+});

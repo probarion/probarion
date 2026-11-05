@@ -10,6 +10,7 @@ import type { Tone } from "@/components/ui";
 import { explorerTxUrl, type Network } from "@/lib/config";
 import { safeText } from "@/lib/proof/sanitize";
 import type { AmountIssue } from "./amount";
+import { DIGITS } from "./forms";
 import { OWNER_CONFIRMS_RULE } from "./owner-confirms";
 import { payeeId } from "./payee";
 import type { InvoiceRow, InvoiceStatus } from "./store";
@@ -30,8 +31,8 @@ export const ATTESTATION_LABEL = {
 
 export type AttestationState = keyof typeof ATTESTATION_LABEL;
 
-/** A rule as the console shows it: its id and detail made safe. */
-export type ShownRule = { id: string; outcome: RuleResult["outcome"]; detail: string };
+/** A rule as the console shows it: its id and detail made safe, its outcome one it knows or "unknown". */
+export type ShownRule = { id: string; outcome: RuleResult["outcome"] | "unknown"; detail: string };
 
 export interface CycleView {
   /** False when the outcome's decision entry is not in the ledger (the columns then show nothing about it). */
@@ -45,8 +46,8 @@ export interface CycleView {
     confidence: number;
   } | null;
   codeAllowed: {
-    verdict: "allow" | "hold" | "refuse" | null;
-    decidedBy: string | null;
+    verdict: "allow" | "hold" | "refuse" | "unknown" | null;
+    decidedBy: "model+rules" | "rules-only" | "unknown" | null;
     rules: ShownRule[];
     firstBlocking: ShownRule | null;
   };
@@ -166,8 +167,6 @@ export function amountIssueText(issue: AmountIssue): string {
   }
 }
 
-const DIGITS = /^(0|[1-9][0-9]*)$/;
-
 /** Base units of USDC with all six decimals ("20000000" -> "20.000000"), or "unreadable". */
 export function usdcFixed(units: string): string {
   if (typeof units !== "string" || !DIGITS.test(units)) return "unreadable";
@@ -182,9 +181,17 @@ function hintText(h: ModelProposal["payee_hint"]): string | null {
   return h.name ? safeText(h.name, SHORT) : null;
 }
 
+/** A value the ledger holds as one of `known`, or "unknown": any other value is not shown as it came. */
+function knownOr<T extends string>(value: unknown, known: readonly T[]): T | "unknown" {
+  return known.includes(value as T) ? (value as T) : "unknown";
+}
+const RULE_OUTCOMES = ["pass", "hold", "refuse"] as const;
+const VERDICTS = ["allow", "hold", "refuse"] as const;
+const DECIDERS = ["model+rules", "rules-only"] as const;
+
 const shownRule = (r: RuleResult): ShownRule => ({
   id: safeText(r.id, SHORT),
-  outcome: r.outcome,
+  outcome: knownOr(r.outcome, RULE_OUTCOMES),
   detail: safeText(r.detail, LONG),
 });
 
@@ -239,8 +246,8 @@ export function buildCycleView(
         }
       : null,
     codeAllowed: {
-      verdict: body?.verdict ?? null,
-      decidedBy: body?.decided_by ?? null,
+      verdict: body?.verdict == null ? null : knownOr(body.verdict, VERDICTS),
+      decidedBy: body?.decided_by == null ? null : knownOr(body.decided_by, DECIDERS),
       rules,
       firstBlocking: rules.find((r) => r.outcome !== "pass") ?? null,
     },
@@ -307,6 +314,15 @@ export interface PayeeRow {
 
 /** The window of "recent" invoices of a payee shown before Confirm (ruling W-T14-R1 item 6). */
 export const PAYEE_WINDOW_DAYS = 90;
+
+/** An invoice's payee (payeeId form): its mandate, the row's or else its latest decision's, read from the chain. */
+export function payeeOf(
+  row: InvoiceRow,
+  entries: readonly LedgerEntry[],
+  mandates: readonly MandateView[],
+): string | null {
+  return payeeAndAmount(row, entries, mandates).payee;
+}
 
 /** An invoice's payee and amount: its mandate (the row's, else its latest decision's, read from the chain) and amount. */
 function payeeAndAmount(
@@ -381,45 +397,4 @@ export function recentPayeeRows(
     })
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
   return { ...mine, rows: same };
-}
-
-/** The forms a total of `units` (USDC base units) can be written in: "1277.35", "1,277.35", "20", "20.00". */
-function figureForms(units: string): string[] {
-  const v = BigInt(units);
-  const int = v / 1_000_000n;
-  const frac = (v % 1_000_000n).toString().padStart(6, "0");
-  const ints = [int.toString(), int.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")];
-  const fracs = new Set<string>();
-  const trimmed = frac.replace(/0+$/, "");
-  if (trimmed === "") fracs.add("");
-  fracs.add(`.${trimmed.padEnd(2, "0")}`);
-  fracs.add(`.${frac}`);
-  if (trimmed !== "") fracs.add(`.${trimmed}`);
-  const out = new Set<string>();
-  for (const i of ints) for (const f of fracs) out.add(`${i}${f}`);
-  return [...out];
-}
-
-const TOTAL_LABEL = /\b(?:total|amount due|balance due|due|to pay|payable)\b/i;
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/**
- * The line of a retained invoice the amount was read from. The amount reader does not expose where it read the
- * total, so this is the last line that writes the amount as a whole figure next to a total label, else the last
- * line that writes it at all; null when no line does. Line numbers start at 1; the text is made safe to show.
- */
-export function amountLine(text: string, units: string): { number: number; text: string } | null {
-  if (!DIGITS.test(units)) return null;
-  const figure = new RegExp(
-    `(?<![\\d.,])(?:${figureForms(units).map(escapeRe).join("|")})(?![\\d]|[.,]\\d)`,
-  );
-  const lines = text.split(/\r\n|\r|\n/);
-  let any: number | null = null;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i] ?? "";
-    if (!figure.test(line)) continue;
-    if (TOTAL_LABEL.test(line)) return { number: i + 1, text: safeText(line, 300) };
-    any ??= i;
-  }
-  return any === null ? null : { number: any + 1, text: safeText(lines[any] ?? "", 300) };
 }

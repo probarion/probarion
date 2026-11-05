@@ -108,10 +108,21 @@ export async function rejectInvoiceAction(
 ): Promise<{ ok: boolean; text: string } | ActionDenied> {
   const auth = await memberForAction(vault, ["owner"]);
   if (isDenied(auth)) return auth;
-  const r = await rejectWaitingInvoice(
-    { db: serviceDb() },
-    { member: auth.member, account: auth.session.accountId, invoiceId, seen },
-  );
-  revalidatePath(`/console/${auth.member.vault_id}/payables`);
-  return r;
+  try {
+    const r = await rejectWaitingInvoice(
+      { db: serviceDb() },
+      { member: auth.member, account: auth.session.accountId, invoiceId, seen },
+    );
+    revalidatePath(`/console/${auth.member.vault_id}/payables`);
+    return r;
+  } catch (error) {
+    log.error("payables.reject_action_failed", {
+      tenant: auth.member.tenant_id,
+      error: error instanceof Error ? error.name : "unknown",
+    });
+    return {
+      ok: false,
+      text: "The server could not finish the rejection. Reload the page to see whether the invoice still waits.",
+    };
+  }
 }

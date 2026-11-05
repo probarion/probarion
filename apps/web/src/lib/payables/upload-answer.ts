@@ -31,7 +31,7 @@ export function uploadAnswer(status: number, body: unknown): UploadAnswer {
     if (status === 413) {
       return {
         tone: "bad",
-        text: "The upload is too large: an invoice is at most 4 MiB.",
+        text: "The upload is too large: the invoice and its purpose document together are at most 4 MiB.",
         invoiceId: null,
       };
     }
@@ -68,13 +68,18 @@ export function uploadAnswer(status: number, body: unknown): UploadAnswer {
     case "no_mandate":
       return {
         tone: "bad",
-        text: `No mandate matches this invoice. Attach the PO or contract document whose hash is in the mandate (the same file you hashed when you created it). ${detail ?? ""}`.trim(),
+        // The route's detail says it when it comes; the guidance is shown once.
+        text:
+          detail ??
+          "No mandate matches this invoice. Attach the PO or contract document whose hash is in the mandate (the same file you hashed when you created it).",
         invoiceId: null,
       };
     case "too_large":
       return {
         tone: "bad",
-        text: detail ?? "The upload is too large: an invoice is at most 4 MiB.",
+        text:
+          detail ??
+          "The upload is too large: the invoice and its purpose document together are at most 4 MiB.",
         invoiceId: null,
       };
     default:

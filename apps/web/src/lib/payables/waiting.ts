@@ -5,17 +5,20 @@ import { openInvoice } from "@/lib/crypto/secrets";
 import type { Db } from "@/lib/db/port";
 import type { MemberTenant } from "@/lib/db/tenants";
 import { log } from "@/lib/log";
-import { listAll, type VaultReader } from "@/lib/near/reader";
 import { nsToDate } from "@/lib/near/units";
 import { safeText } from "@/lib/proof/sanitize";
+import { readVaultFacts, type VaultFactsReader } from "./chain";
 import { payeeText } from "./confirm-message";
 import { extractInvoice } from "./extract";
-import { type InvoiceRow, invoiceContent, type RowSnapshot } from "./store";
-import { amountLine, type PayeeRow, recentPayeeRows, type ShownRule, waitReasons } from "./view";
+import { payeeId } from "./payee";
+import { invoiceLines, sourceLine } from "./source-line";
+import { type InvoiceRow, invoiceContent, listPayeeRecent, type RowSnapshot } from "./store";
+import { type PayeeRow, payeeOf, recentPayeeRows, type ShownRule, waitReasons } from "./view";
 
-// What the page shows next to an invoice that waits for the owner, before any button (rulings W-T14-R0 and R1): the
-// amount, why it waits, the mandate as the chain shows it, the invoice (its text when retained, else its hashes), who
-// uploaded it, and every recent invoice of the same payee. Read on the server; every string is made safe to show.
+// What the page shows next to an invoice that waits for the owner, before any button (rulings W-T14-R0, R1 and R2): the
+// amount, why it waits, the mandate as the chain shows it, the invoice (its text and the line the reader read the total
+// from when retained, else its hashes), who uploaded it, and every recent invoice of the same payee. Read on the
+// server; every string is made safe to show.
 
 export interface MandateSummary {
   id: number;
@@ -38,6 +41,7 @@ export type InvoiceShown =
       lines: string[];
       /** Lines not shown (the page shows the first MAX_LINES). */
       more: number;
+      /** The line the reader reads the amount from, or null when it does not read that amount from this text now. */
       amountLine: { number: number; text: string } | null;
     }
   | { kind: "hash"; invoiceHash: string; documentSha256: string | null }
@@ -52,11 +56,13 @@ export interface WaitingView {
   /** Why the mandate is not shown (chain unreadable, not on the vault, no mandate on the row), or null. */
   mandateWhy: string | null;
   invoice: InvoiceShown;
-  /** Null when the mandates could not be read (the list cannot be built). */
+  /** Null when the list could not be read. `payee` null: the invoice's payee could not be determined. */
   payee: { payee: string | null; rows: PayeeRow[] } | null;
-  /** The owner's button is shown only when this is true. */
+  /** Confirm is offered only when this is true; `whyNot` says why when it is not. */
   canConfirm: boolean;
   whyNot: string | null;
+  /** Reject is offered to the owner whenever the row waits: it needs no chain and no mandate. */
+  canReject: boolean;
   /** What Confirm and Reject are bound to: the row as the owner sees it. */
   snapshot: RowSnapshot | null;
   /** The owner's last confirmation of this row (a confirmed cycle that was held again), or null. */
@@ -107,12 +113,12 @@ async function invoiceShown(
     if (content === null) return { kind: "unreadable" };
     const bytes = await openInvoice(master, tenantId, content.sealed);
     const { text } = await extractInvoice({ bytes, mediaType: content.mediaType });
-    const all = text.split(/\r\n|\r|\n/);
+    const all = invoiceLines(text);
     return {
       kind: "text",
       lines: all.slice(0, MAX_LINES).map((l) => safeText(l, 300)),
       more: Math.max(0, all.length - MAX_LINES),
-      amountLine: row.suggested_amount ? amountLine(text, row.suggested_amount) : null,
+      amountLine: row.suggested_amount ? sourceLine(text, row.suggested_amount) : null,
     };
   } catch (error) {
     log.warn("payables.invoice_unreadable", {
@@ -124,39 +130,49 @@ async function invoiceShown(
   }
 }
 
+/** Every invoice of this row's payee from the last 90 days, read without a cap; null when it could not be read. */
+async function payeeList(
+  db: Db,
+  a: { member: MemberTenant; row: InvoiceRow; entries: readonly LedgerEntry[]; now: Date },
+  mandates: readonly MandateView[],
+): Promise<WaitingView["payee"]> {
+  const mine = payeeOf(a.row, a.entries, mandates);
+  if (mine === null) return { payee: null, rows: [] };
+  const ids = mandates.filter((m) => payeeId(m.payee) === mine).map((m) => m.id);
+  try {
+    const rows = await listPayeeRecent(db, a.member.tenant_id, ids);
+    const owner = a.member.role === "owner";
+    const r = recentPayeeRows(a.row, rows, a.entries, mandates, a.now, owner);
+    return { payee: r.payee, rows: r.rows };
+  } catch (error) {
+    log.warn("payables.payee_list_unavailable", {
+      tenant: a.member.tenant_id,
+      error: error instanceof Error ? error.name : "unknown",
+    });
+    return null;
+  }
+}
+
 export async function loadWaitingView(
-  deps: { db: Db; master: Uint8Array; reader: Pick<VaultReader, "getConfig" | "listMandates"> },
+  deps: { db: Db; master: Uint8Array; reader: VaultFactsReader },
   a: {
     member: MemberTenant;
     account: string;
     row: InvoiceRow;
     entries: readonly LedgerEntry[];
-    rows: readonly InvoiceRow[];
     now: Date;
   },
 ): Promise<WaitingView> {
   const { member, row } = a;
   const owner = member.role === "owner";
-  let chain: { owner: string; mandates: MandateView[] } | null = null;
-  try {
-    const [config, mandates] = await Promise.all([
-      deps.reader.getConfig(member.vault_id),
-      listAll((from, limit) => deps.reader.listMandates(member.vault_id, from, limit), 100),
-    ]);
-    chain = { owner: config.owner, mandates };
-  } catch (error) {
-    log.warn("payables.waiting_chain_unavailable", {
-      tenant: member.tenant_id,
-      error: error instanceof Error ? error.name : "unknown",
-    });
-  }
+  const chain = await readVaultFacts(deps.reader, member.vault_id);
   const mandate =
     chain === null || row.mandate_id === null
       ? null
       : (chain.mandates.find((m) => m.id === row.mandate_id) ?? null);
   const mandateWhy =
     row.mandate_id === null
-      ? "This invoice was recorded without its mandate: reject it and upload it again."
+      ? "This invoice was recorded without its mandate, so it cannot be confirmed: reject it and upload it again."
       : chain === null
         ? "The vault's mandates could not be read from NEAR. Reload to try again."
         : mandate === null
@@ -170,8 +186,9 @@ export async function loadWaitingView(
       payeeOk = false;
     }
   }
-  const snapshot =
-    row.status === "awaiting_owner" && row.suggested_amount !== null && row.mandate_id !== null
+  const waits = row.status === "awaiting_owner" && row.suggested_amount !== null;
+  const snapshot: RowSnapshot | null =
+    waits && row.suggested_amount !== null
       ? {
           suggestedAmount: row.suggested_amount,
           invoiceHash: row.invoice_hash,
@@ -187,8 +204,8 @@ export async function loadWaitingView(
         : mandateWhy !== null
           ? mandateWhy
           : !payeeOk
-            ? "The mandate's payee is not in a form the confirmation message accepts."
-            : snapshot === null
+            ? "The mandate's payee is not in a form the confirmation message accepts, so Confirm is not offered."
+            : !waits
               ? "This invoice does not wait for you."
               : null;
   return {
@@ -199,14 +216,10 @@ export async function loadWaitingView(
     mandate: mandate === null ? null : summary(mandate),
     mandateWhy,
     invoice: await invoiceShown(deps.db, deps.master, member.tenant_id, row),
-    payee:
-      chain === null
-        ? null
-        : (({ payee, rows }) => ({ payee, rows }))(
-            recentPayeeRows(row, a.rows, a.entries, chain.mandates, a.now, owner),
-          ),
+    payee: chain === null ? null : await payeeList(deps.db, a, chain.mandates),
     canConfirm: whyNot === null,
     whyNot,
+    canReject: owner && waits,
     snapshot,
     lastConfirmation:
       row.confirmed_by && row.confirmed_at

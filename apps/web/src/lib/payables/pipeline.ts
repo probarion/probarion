@@ -3,15 +3,11 @@ import { createHmac, hkdfSync } from "node:crypto";
 import type { CustomRule, InvoiceFacts, MandateView, Payee, RuleResult } from "@probarion/core";
 import { hashInvoice, type SpendOutcome } from "@probarion/sdk";
 import { sealInvoice } from "@/lib/crypto/secrets";
-import { DecryptError, sha256Hex } from "@/lib/crypto/sodium";
-import { type Db, DbError } from "@/lib/db/port";
+import { sha256Hex } from "@/lib/crypto/sodium";
+import type { Db } from "@/lib/db/port";
 import { type MemberTenant, withLease } from "@/lib/db/tenants";
-import {
-  KeyMismatchError,
-  listKeys,
-  loadActiveSecret,
-  loadActiveSecretFor,
-} from "@/lib/keys/service";
+import { type KeyProblem, openKey } from "@/lib/keys/open";
+import { listKeys, loadActiveSecret, loadActiveSecretFor } from "@/lib/keys/service";
 import { log, scrubText } from "@/lib/log";
 import { extractInvoice, type InvoiceMediaType } from "./extract";
 import { type AmountIssue, extractFacts, fingerprintText, numberKeyText, refFor } from "./facts";
@@ -62,8 +58,8 @@ export interface InvoiceUpload {
   filename: string | null;
 }
 
-/** Why a key could not be used. None of them is ever answered with another key. */
-export type KeyProblem = "inactive" | "decrypt_failed" | "key_mismatch";
+/** Why a key could not be used (src/lib/keys/open.ts, shared with the owner's Confirm). */
+export type { KeyProblem } from "@/lib/keys/open";
 
 export type PipelineResult =
   /**
@@ -107,24 +103,6 @@ export interface PipelineInput {
   purposeBytes: Uint8Array | null;
   actor: string;
   requestId: string;
-}
-
-type Opened = { key: { publicKey: string; secret: string } } | { problem: KeyProblem };
-
-/** The key, or why it cannot be used (null, decrypt_failed and key_mismatch are a skipped cycle). */
-async function openKey(
-  load: () => Promise<{ publicKey: string; secret: string } | null>,
-): Promise<Opened> {
-  try {
-    const key = await load();
-    return key ? { key } : { problem: "inactive" };
-  } catch (e) {
-    if (e instanceof DecryptError) return { problem: "decrypt_failed" };
-    if (e instanceof KeyMismatchError) return { problem: "key_mismatch" };
-    // A mandate bound to a key this console cannot hold (not an ed25519 key): no secret exists for it.
-    if (e instanceof DbError && e.code === "invalid_input") return { problem: "inactive" };
-    throw e;
-  }
 }
 
 const messageOf = (e: unknown): string =>

@@ -3,12 +3,12 @@ import type { SpendOutcome } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import { txHash } from "../../../test/fixtures/proof";
 import { AMOUNT_ISSUES } from "./amount";
+import { utcMinute } from "./forms";
 import { OWNER_CONFIRMS_RULE } from "./owner-confirms";
 import type { InvoiceRow } from "./store";
 import {
   ATTESTATION_LABEL,
   amountIssueText,
-  amountLine,
   amountMatch,
   buildCycleView,
   invoiceStatusLabel,
@@ -220,6 +220,26 @@ describe("buildCycleView", () => {
       expect(hasUnsafe(s as string), String(s)).toBe(false);
       expect((s as string).length).toBeLessThan(2100);
     }
+  });
+
+  it("shows a verdict, a decider or a rule outcome it does not know as unknown", () => {
+    const v = buildCycleView(
+      [
+        decision({
+          verdict: "<b>allow</b>" as never,
+          decided_by: "the\u202Eowner" as never,
+          rules: [{ id: "mandate.none", outcome: "maybe" as never, detail: "x" }],
+        }),
+      ],
+      outcome(),
+      "mainnet",
+    );
+    expect(v.codeAllowed.verdict).toBe("unknown");
+    expect(v.codeAllowed.decidedBy).toBe("unknown");
+    expect(v.codeAllowed.rules[0]?.outcome).toBe("unknown");
+    const known = buildCycleView([decision()], outcome(), "mainnet");
+    expect(known.codeAllowed).toMatchObject({ verdict: "refuse", decidedBy: "model+rules" });
+    expect(known.codeAllowed.rules.map((r) => r.outcome)).toEqual(["pass", "refuse"]);
   });
 
   it("reads a NaN or missing confidence as 0 rather than throwing", () => {
@@ -444,37 +464,18 @@ describe("amountMatch", () => {
   });
 });
 
-describe("amountLine", () => {
-  it("finds the last line that writes the amount beside a total label", () => {
-    const text = "Invoice INV-1\nItem A 20.00\nSubtotal 20.00\nTotal 20.00 USDC\nThank you";
-    expect(amountLine(text, "20000000")).toEqual({ number: 4, text: "Total 20.00 USDC" });
-  });
-
-  it("reads grouped thousands, whole numbers and six decimals", () => {
-    expect(amountLine("Invoice\nAmount due: $1,277.35", "1277350000")?.number).toBe(2);
-    expect(amountLine("Invoice\nTotal 25 USDC", "25000000")?.number).toBe(2);
-    expect(amountLine("Invoice\nTotal 0.000001 USDC", "1")?.number).toBe(2);
-  });
-
-  it("falls back to the last line with the figure, and never matches inside a larger number", () => {
-    expect(amountLine("Invoice\n20.00 for design\nTotal 120.00", "20000000")).toEqual({
-      number: 2,
-      text: "20.00 for design",
-    });
-    expect(amountLine("Invoice\nTotal 120.00\nTotal 20.005", "20000000")).toBeNull();
-    expect(amountLine("x", "not digits")).toBeNull();
-  });
-
-  it("makes the line safe to show", () => {
-    const r = amountLine("Total 20.00 \u202E USDC", "20000000");
-    expect(r?.text).toBe("Total 20.00 \uFFFD USDC");
-  });
-});
-
 describe("ATTESTATION_LABEL", () => {
   it("claims no TDX quote verification", () => {
     for (const label of Object.values(ATTESTATION_LABEL)) {
       expect(label).not.toMatch(/TDX|quote|TEE|hardware/i);
     }
+  });
+});
+
+describe("utcMinute", () => {
+  it("writes an ISO time to the minute in UTC, and anything else as safe text", () => {
+    expect(utcMinute("2026-11-09T10:00:59.999+00:00")).toBe("2026-11-09 10:00 UTC");
+    expect(utcMinute("2026-11-09T12:30:00+02:00")).toBe("2026-11-09 10:30 UTC");
+    expect(hasUnsafe(utcMinute("not a time\u202E"))).toBe(false);
   });
 });
