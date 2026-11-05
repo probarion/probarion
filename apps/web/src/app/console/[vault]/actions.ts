@@ -25,9 +25,13 @@ export async function updateSettingsAction(
 ): Promise<SettingsState> {
   const auth = await memberForAction(vault, ["owner"]);
   if (isDenied(auth)) return { ok: false, ...auth };
+  // The Canary's ledger is private (the form has no such checkbox, and the database refuses it): its kind comes from the
+  // membership row, never from the form, and no public proof is sent for it.
   const saved = await setTenantSettings(serviceDb(), auth.member.tenant_id, {
     zeroRetention: formData.get("zero_retention") === "on",
-    proofPublic: formData.get("proof_public") === "on",
+    ...(auth.member.kind === "canary"
+      ? {}
+      : { proofPublic: formData.get("proof_public") === "on" }),
   });
   revalidatePath(`/console/${auth.member.vault_id}`);
   return {

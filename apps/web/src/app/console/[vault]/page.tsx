@@ -436,6 +436,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
         <Card title="Settings">
           <SettingsForm
             vault={vault}
+            kind={member.kind}
             zeroRetention={member.zero_retention}
             proofPublic={member.proof_public}
             save={updateSettingsAction.bind(null, vault)}

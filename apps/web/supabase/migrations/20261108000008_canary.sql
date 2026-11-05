@@ -2,10 +2,12 @@
 -- never the visitor's message: canary_attempts has no column that could hold it, and this file makes the label columns
 -- short machine labels, so a stranger's words cannot reach the public feed through one either.
 --
--- 1. The Canary's ledger is private (W-T17-R1). The gullible model quotes what a visitor types into the proposal and
---    the attestation it signs, and a public ledger is append-only, so those words would be published for good with no
---    way to take them down. Every canary tenant is made private here, and tenant_register never makes one public again.
---    The public Canary surface is the feed and the leaderboard (labels and hashes) and the explorer links of its
+-- 1. The Canary's ledger is private (W-T17-R1, W-T17-R2). The gullible model quotes what a visitor types into the
+--    proposal and the attestation it signs, and a public ledger is append-only, so those words would be published for
+--    good with no way to take them down. Every canary tenant is made private here and the database FORBIDS the state
+--    (a CHECK on tenants), so no path can make one public: tenant_register keeps it private, tenant_settings_set refuses
+--    a public proof for it with its own error, and public_vault / public_ledger answer nothing for it whatever the row
+--    says. The public Canary surface is the feed and the leaderboard (labels and hashes) and the explorer links of its
 --    transactions.
 -- 2. Five functions, all `(p jsonb) returns jsonb`, all with a pinned search_path:
 --    - canary_attempt_insert, canary_attempt_update, canary_tokens_today: service_role only. The server calls them after
@@ -16,11 +18,71 @@
 --      load the shared database with it); the page reads it on the server, behind a cache.
 --    - public_canary_feed: security definer, executable by anon (the public key) and by authenticated. It is public by
 --      design (the Canary is a public challenge), not opt-in like proof_public, so the gate is the shape of the answer:
---      labels, outcomes and public transaction hashes, never a visitor or IP hash. It reads the newest rows through the
---      created_at index. Both public_* functions time out after 5 s.
+--      labels, outcomes and public transaction hashes, never a visitor or IP hash. It reads at most 100 newest rows
+--      through the created_at index; the anon role's own statement timeout bounds it. (A SET statement_timeout on a
+--      function arms no timer for the statement that called it, so neither public_* function carries one: the server-side
+--      cache bounds the leaderboard.)
 
 -- (1) Private ledgers for every canary tenant that exists now.
 update public.tenants set proof_public = false where kind = 'canary';
+-- The state is forbidden from here on, for every writer (the console's settings, a script, a later migration).
+alter table public.tenants add constraint tenants_canary_private check (kind <> 'canary' or not proof_public);
+
+-- The console's settings (0002's tenant_settings_set, unchanged except for the Canary): a public proof for a canary
+-- tenant is refused with its own error, before the CHECK would fire, so the console gets a clear answer.
+create or replace function public.tenant_settings_set(p jsonb) returns jsonb
+language plpgsql set search_path = public, pg_temp as $$
+declare
+  v_tenant_text text := p->>'tenant_id';
+  v_zero boolean;
+  v_public boolean;
+begin
+  if v_tenant_text is null
+     or v_tenant_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    raise exception 'invalid_input';
+  end if;
+  if coalesce((p->>'proof_public')::boolean, false)
+     and exists (select 1 from public.tenants where id = v_tenant_text::uuid and kind = 'canary') then
+    raise exception 'canary_ledger_private';
+  end if;
+  update public.tenants set
+      zero_retention = coalesce((p->>'zero_retention')::boolean, zero_retention),
+      proof_public = coalesce((p->>'proof_public')::boolean, proof_public)
+    where id = v_tenant_text::uuid
+    returning zero_retention, proof_public into v_zero, v_public;
+  if v_zero is null then
+    raise exception 'not_found';
+  end if;
+  return jsonb_build_object('zero_retention', v_zero, 'proof_public', v_public);
+end $$;
+
+-- The public views of a proof_public vault (0004's public_vault and public_ledger, unchanged except for the Canary): a
+-- canary tenant shows nothing to anon whatever its row says, as defence in depth behind the CHECK. Like 0004 they answer
+-- "nothing" for a private vault and for one that does not exist.
+create or replace function public.public_vault(p jsonb) returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select jsonb_build_object('vault_id', t.vault_id, 'network', t.network, 'kind', t.kind, 'display_name', t.display_name)
+  from public.tenants t where t.vault_id = p->>'vault_id' and t.proof_public and t.kind <> 'canary'
+$$;
+
+create or replace function public.public_ledger(p jsonb) returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_agg(x.j order by x.seq), '[]'::jsonb) from (
+    select e.seq,
+           jsonb_build_object('seq', e.seq, 'body_text', coalesce(e.body_text, e.body::text), 'body_hash', e.body_hash,
+                              'sig', e.sig, 'signer', e.signer, 'link', e.link, 'kind', e.kind,
+                              'created_at', e.created_at) as j
+    from public.ledger_entries e join public.tenants t on t.id = e.tenant_id
+    where t.vault_id = p->>'vault_id' and t.proof_public and t.kind <> 'canary'
+      and e.seq >= case when (p->>'from_seq') ~ '^[0-9]{1,9}$' then (p->>'from_seq')::integer else 0 end
+    order by e.seq
+    limit case when (p->>'limit') ~ '^[0-9]{1,9}$' then least(greatest((p->>'limit')::integer, 1), 500) else 500 end) x
+$$;
+
+revoke execute on function public.tenant_settings_set(jsonb), public.public_vault(jsonb), public.public_ledger(jsonb)
+  from public, anon, authenticated;
+grant execute on function public.tenant_settings_set(jsonb) to service_role;
+grant execute on function public.public_vault(jsonb), public.public_ledger(jsonb) to anon, authenticated, service_role;
 
 -- Registration (0005's tenant_register, unchanged except for proof_public): a team vault's proof is public by default, a
 -- canary's never. An external vault that becomes the Canary is made private whatever its owner had set; for the other
@@ -110,6 +172,12 @@ grant execute on function public.tenant_register(jsonb) to service_role;
 -- code said, and the code of an error the server caught, go in raw_detail, so the leaderboard never counts one as a code
 -- the contract returned.
 alter table public.canary_attempts add column raw_detail text;
+-- `running`: the attempt was opened before its cycle and not closed yet (see canary_attempt_update). The feed and the
+-- leaderboard read a running row younger than the lease as "not yet" and an older one as killed.
+alter table public.canary_attempts drop constraint canary_attempts_code_status_check;
+alter table public.canary_attempts add constraint canary_attempts_code_status_check check (code_status in (
+  'refused_by_code', 'refused_by_contract', 'held', 'paid', 'burned', 'settled', 'failed', 'unconfirmed', 'error',
+  'running'));
 alter table public.canary_attempts
   add constraint canary_attempts_techniques_known check (techniques <@ array[
     'instruction_override', 'authority_urgency', 'payee_change', 'fake_invoice', 'foreign_address', 'encoding_base64',
@@ -121,7 +189,7 @@ alter table public.canary_attempts
     and (contract_code is null or contract_code ~ '^[A-Za-z0-9_.:-]{1,64}$')),
   add constraint canary_attempts_skip_reason_known check (raw_skipped_reason is null or raw_skipped_reason in (
     'mode', 'not_refused_by_code', 'not_pay', 'allowance_low', 'visitor_limit', 'global_limit', 'contract_would_accept',
-    'check_failed', 'no_amount', 'decision_unreadable', 'sdk_refused', 'error'));
+    'check_failed', 'no_amount', 'decision_unreadable', 'sdk_refused', 'no_time', 'error'));
 
 -- One attempt, as the server records it before the cycle runs: { visitor_hash, ip_hash, is_team?, mode, text_sha256,
 -- text_length, techniques?, code_status, request_id, est_tokens?, ... }. The result columns can be given too (see
@@ -193,33 +261,42 @@ $$;
 
 -- The newest attempts, p = { limit? } (a plain integer, default 50, at most 100, at least 1; anything else is the
 -- default). Labels, outcomes and public transaction hashes only: no visitor hash, IP hash, text hash or request id.
+-- An attempt still `running` and younger than the lease (90 s, CANARY_LIMITS.leaseSeconds) is left out; an older one was
+-- killed before its cycle closed it and shows as code_status 'killed' (computed here, nothing is written).
 create or replace function public.public_canary_feed(p jsonb) returns jsonb
-language sql stable security definer set search_path = public, pg_temp set statement_timeout = '5s' as $$
+language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce(jsonb_agg(x.j order by x.created_at desc), '[]'::jsonb) from (
     select a.created_at, jsonb_build_object(
         'created_at', a.created_at, 'techniques', to_jsonb(a.techniques), 'proposal_action', a.proposal_action,
-        'code_status', a.code_status, 'code_rule', a.code_rule, 'raw', a.raw, 'raw_skipped_reason', a.raw_skipped_reason,
+        'code_status', case when a.code_status = 'running' then 'killed' else a.code_status end,
+        'code_rule', a.code_rule, 'raw', a.raw, 'raw_skipped_reason', a.raw_skipped_reason,
         'raw_detail', a.raw_detail, 'contract_status', a.contract_status, 'contract_code', a.contract_code,
         'tx_hash', a.tx_hash, 'is_team', a.is_team) as j
     from public.canary_attempts a
+    where not (a.code_status = 'running' and a.created_at > now() - interval '90 seconds')
     order by a.created_at desc
     limit case when (p->>'limit') ~ '^[0-9]{1,9}$' then least(greatest((p->>'limit')::integer, 1), 100) else 50 end) x
 $$;
 
--- The leaderboard (service role only: the page reads it on the server, behind a cache). `browsers` counts distinct
+-- The leaderboard (service role only: the page reads it on the server, behind a cache, which is what bounds it: it scans
+-- the table). A `running` attempt younger than the lease is not counted anywhere; an older one counts as an attempt (it
+-- was killed) and as nothing else. `browsers` counts distinct
 -- visitor-cookie hashes of outside visitors and `addresses` distinct IP hashes: a script that sends no cookie adds a
 -- browser per request, one that rotates addresses adds an address, so a page shows the LOWER of the two and calls it
 -- what it is. The team's own attempts are counted apart and never in the outside figures (contract_codes included).
 -- `contract_codes` counts only what the contract itself returned. There is deliberately no "paid to an attacker" figure:
 -- nothing here measures it. The page states what is true by construction (the contract pays only a mandate's payee).
 create or replace function public.public_canary_leaderboard(p jsonb) returns jsonb
-language sql stable security definer set search_path = public, pg_temp set statement_timeout = '5s' as $$
+language sql stable security definer set search_path = public, pg_temp as $$
+  with v as (
+    select * from public.canary_attempts a
+    where not (a.code_status = 'running' and a.created_at > now() - interval '90 seconds'))
   select jsonb_build_object(
-    'browsers', (select count(distinct visitor_hash) from public.canary_attempts where not is_team),
-    'addresses', (select count(distinct ip_hash) from public.canary_attempts where not is_team),
-    'attempts_external', (select count(*) from public.canary_attempts where not is_team),
-    'attempts_team', (select count(*) from public.canary_attempts where is_team),
-    'raw_external', (select count(*) from public.canary_attempts where raw and not is_team),
+    'browsers', (select count(distinct visitor_hash) from v where not is_team),
+    'addresses', (select count(distinct ip_hash) from v where not is_team),
+    'attempts_external', (select count(*) from v where not is_team),
+    'attempts_team', (select count(*) from v where is_team),
+    'raw_external', (select count(*) from v where raw and not is_team),
     'techniques', coalesce((
       select jsonb_agg(jsonb_build_object('technique', t.technique, 'attempts', t.attempts, 'refused_by_code', t.by_code,
                                           'refused_by_contract', t.by_contract, 'held', t.held) order by t.attempts desc, t.technique)
@@ -228,11 +305,11 @@ language sql stable security definer set search_path = public, pg_temp set state
                count(*) filter (where a.code_status = 'refused_by_code') as by_code,
                count(*) filter (where a.contract_status = 'refused_by_contract') as by_contract,
                count(*) filter (where a.code_status = 'held' or a.contract_status = 'held') as held
-        from public.canary_attempts a, unnest(a.techniques) as x(technique)
+        from v a, unnest(a.techniques) as x(technique)
         where not a.is_team group by x.technique) t), '[]'::jsonb),
     'contract_codes', coalesce((
       select jsonb_agg(jsonb_build_object('code', c.contract_code, 'n', c.n) order by c.n desc, c.contract_code)
-      from (select contract_code, count(*) as n from public.canary_attempts
+      from (select contract_code, count(*) as n from v
             where contract_code is not null and contract_status = 'refused_by_contract' and not is_team
             group by contract_code) c), '[]'::jsonb))
 $$;

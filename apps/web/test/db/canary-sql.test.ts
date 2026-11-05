@@ -119,7 +119,7 @@ describe("Canary SQL (migration 0008)", () => {
       expect(await service.rpc("public_canary_leaderboard", {})).toMatchObject({ browsers: 0 });
     });
 
-    it("pins the search_path of every Canary function, makes the public two security definer and times them out", async () => {
+    it("pins the search_path of every Canary function and makes the public two security definer, with no statement_timeout that would bound nothing", async () => {
       const r = await pg.query<{ proname: string; prosecdef: boolean; proconfig: string[] | null }>(
         `select proname, prosecdef, proconfig from pg_proc
           where pronamespace = 'public'::regnamespace and proname in
@@ -130,10 +130,12 @@ describe("Canary SQL (migration 0008)", () => {
       for (const f of r.rows) {
         expect(f.proconfig, f.proname).toContain("search_path=public, pg_temp");
         expect(f.prosecdef, f.proname).toBe(f.proname.startsWith("public_"));
-        // a stranger's call cannot hold the database for long
-        if (f.proname.startsWith("public_")) {
-          expect(f.proconfig, f.proname).toContain("statement_timeout=5s");
-        }
+        // A SET clause on a function arms no timer for the statement that called it: the anon role's own timeout bounds
+        // the feed (at most 100 rows through the created_at index) and the server-side cache the leaderboard.
+        expect(
+          (f.proconfig ?? []).filter((c) => c.startsWith("statement_timeout")),
+          f.proname,
+        ).toEqual([]);
       }
     });
 
@@ -202,10 +204,11 @@ describe("Canary SQL (migration 0008)", () => {
         "failed",
         "unconfirmed",
         "error",
+        "running",
       ]) {
         await attempt({ code_status, tx_hash: code_status === "unconfirmed" ? "TX" : null });
       }
-      expect(await rows()).toHaveLength(9);
+      expect(await rows()).toHaveLength(10);
     });
   });
 
@@ -254,6 +257,7 @@ describe("Canary SQL (migration 0008)", () => {
       "no_amount",
       "decision_unreadable",
       "sdk_refused",
+      "no_time",
       "error",
     ];
 
@@ -491,6 +495,104 @@ describe("Canary SQL (migration 0008)", () => {
       }
       const times = (await feed({ limit: 100 })).map((r) => String(r.created_at));
       expect(times).toEqual([...times].sort().reverse());
+    });
+  });
+
+  // An attempt is opened as `running` before its cycle and closed afterwards. The public surfaces say what is true: a
+  // run younger than the lease (90 s, CANARY_LIMITS.leaseSeconds) is not shown, an older one that was never closed
+  // was killed. Nothing is written for that: it is read from the clock.
+  describe("attempts that are still running, or were killed", () => {
+    const running = (ageS: number, over: Record<string, unknown> = {}) =>
+      pg.query(
+        `insert into canary_attempts (created_at, visitor_hash, ip_hash, mode, text_sha256, text_length, code_status, request_id,
+                                      techniques, est_tokens)
+         values (now() - make_interval(secs => $1), $2, $3, 'live', repeat('4', 64), 5, 'running', 'r', $4, 5000)`,
+        [ageS, over.visitor ?? H("1"), over.ip ?? H("2"), over.techniques ?? ["fake_invoice"]],
+      );
+    const feed = () => anon.rpc<Record<string, unknown>[]>("public_canary_feed", {});
+    const board = () =>
+      service.rpc<{
+        browsers: number;
+        addresses: number;
+        attempts_external: number;
+        attempts_team: number;
+        raw_external: number;
+        techniques: { technique: string; attempts: number; refused_by_code: number }[];
+      }>("public_canary_leaderboard", {});
+
+    it("leaves a running attempt younger than the lease out of the feed", async () => {
+      await running(0);
+      await running(89);
+      expect(await feed()).toEqual([]);
+    });
+
+    it("shows one older than the lease as killed, and writes nothing", async () => {
+      await running(91);
+      const [row] = await feed();
+      expect(row).toMatchObject({ code_status: "killed", raw: false, contract_status: null });
+      expect((await rows())[0]?.code_status).toBe("running");
+    });
+
+    it("shows what a run killed after its raw spend was sent had written: a raw, unconfirmed attempt", async () => {
+      // the row as the cycle leaves it just before the send: raw, unconfirmed, no skip reason, no tx hash yet
+      await attempt({
+        code_status: "refused_by_code",
+        code_rule: "mandate.over_per_payment",
+        raw: true,
+        contract_status: "unconfirmed",
+      });
+      const [row] = await feed();
+      expect(row).toMatchObject({
+        code_status: "refused_by_code",
+        raw: true,
+        contract_status: "unconfirmed",
+        raw_skipped_reason: null,
+        tx_hash: null,
+      });
+    });
+
+    it("keeps the newest completed attempts in a feed that also holds running ones", async () => {
+      await attempt({ code_status: "refused_by_code" });
+      await running(5);
+      await running(500);
+      const codes = (await feed()).map((r) => r.code_status).sort();
+      expect(codes).toEqual(["killed", "refused_by_code"]);
+    });
+
+    it("does not count a young running attempt anywhere in the leaderboard, and counts an old one as an attempt only", async () => {
+      await running(10, { visitor: H("a"), ip: H("b") });
+      expect(await board()).toMatchObject({
+        browsers: 0,
+        addresses: 0,
+        attempts_external: 0,
+        raw_external: 0,
+        techniques: [],
+      });
+      await running(200, { visitor: H("c"), ip: H("d") });
+      const b = await board();
+      expect(b).toMatchObject({ browsers: 1, addresses: 1, attempts_external: 1, raw_external: 0 });
+      // an attempt under its technique, never as refused by the code or the contract
+      expect(b.techniques).toEqual([
+        {
+          technique: "fake_invoice",
+          attempts: 1,
+          refused_by_code: 0,
+          refused_by_contract: 0,
+          held: 0,
+        },
+      ]);
+    });
+
+    it("counts a team's old running attempt with the team's", async () => {
+      await running(200, { visitor: H("c"), ip: H("d") });
+      await pg.exec("update canary_attempts set is_team = true");
+      expect(await board()).toMatchObject({ attempts_external: 0, attempts_team: 1 });
+    });
+
+    it("counts the estimate of a running attempt in the day's tokens, young or old", async () => {
+      await running(10);
+      await running(500);
+      expect(await service.rpc<number>("canary_tokens_today", {})).toBe(10_000);
     });
   });
 

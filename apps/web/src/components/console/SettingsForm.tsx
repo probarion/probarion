@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import type { SettingsState } from "@/app/console/[vault]/actions";
 import { Notice } from "@/components/ui";
+import type { TenantKind } from "@/lib/db/tenants";
 
 type Action = (prev: SettingsState, formData: FormData) => Promise<SettingsState>;
 
@@ -21,12 +22,15 @@ const pill =
 /** The owner's settings. Both actions re-check the owner role on the server. */
 export function SettingsForm({
   vault,
+  kind,
   zeroRetention,
   proofPublic,
   save,
   refresh,
 }: {
   vault: string;
+  /** The tenant's kind: the Canary's ledger is private, so it is not offered a public proof page. */
+  kind: TenantKind;
   zeroRetention: boolean;
   proofPublic: boolean;
   save: Action;
@@ -41,10 +45,16 @@ export function SettingsForm({
           <input type="checkbox" name="zero_retention" defaultChecked={zeroRetention} />{" "}
           Zero-retention: keep only each invoice&apos;s hash, discard its content after the decision
         </label>
-        <label className="mb-2 block">
-          <input type="checkbox" name="proof_public" defaultChecked={proofPublic} /> Public proof
-          page (ledger, anchors and checks visible to anyone at /proof/{vault})
-        </label>
+        {kind === "canary" ? (
+          <p className="mb-2 text-xs text-[#0B0B0C]/60">
+            The Canary&apos;s ledger is private: visitors&apos; words never become public.
+          </p>
+        ) : (
+          <label className="mb-2 block">
+            <input type="checkbox" name="proof_public" defaultChecked={proofPublic} /> Public proof
+            page (ledger, anchors and checks visible to anyone at /proof/{vault})
+          </label>
+        )}
         <button className={pill} type="submit" disabled={saving}>
           {saving ? "Saving…" : "Save settings"}
         </button>
