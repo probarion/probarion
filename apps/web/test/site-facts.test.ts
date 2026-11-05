@@ -67,6 +67,9 @@ const landing = (network: "testnet" | "mainnet" = "testnet") =>
       createElement(SiteFooter),
     ),
   );
+/** A source file's imports without its dynamic import() calls, so a static import of the same module still shows. */
+const staticImports = (src: string) => importsOf(src.replace(/\bimport\(\s*"[^"]+"\s*\)/g, "null"));
+
 /**
  * What a client component loads on first paint: its static imports, followed through local files. A dynamic import()
  * is left out, because it loads on first use. Local files come back relative to src, and packages by name.
@@ -76,10 +79,8 @@ function firstLoadOf(entry: string): string[] {
   const queue = [entry];
   const reached: string[] = [];
   for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
-    const src = readFileSync(file, "utf8");
-    const dynamic = [...src.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1] ?? "");
-    for (const { spec, typeOnly } of importsOf(src)) {
-      if (typeOnly || dynamic.includes(spec)) continue;
+    for (const { spec, typeOnly } of staticImports(readFileSync(file, "utf8"))) {
+      if (typeOnly) continue;
       const target = resolveLocal(spec, file, SRC);
       if (target === null) reached.push(spec);
       else if (!seen.has(target)) {
@@ -142,6 +143,11 @@ describe("the ledger test", () => {
     // The walk does follow local files: the panel's view logic is reached through TamperTest.
     const panel = firstLoadOf(join(SRC, "components", "site", "TamperTest.tsx"));
     expect(panel).toContain("lib/site/tamper-view.ts");
+  });
+
+  it("sees a static import of a module that is also imported dynamically", () => {
+    const src = 'import "@/lib/site/tamper";\nconst later = () => import("@/lib/other");\n';
+    expect(staticImports(src).map((i) => i.spec)).toEqual(["@/lib/site/tamper"]);
   });
 });
 
