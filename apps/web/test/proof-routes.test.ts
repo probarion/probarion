@@ -21,6 +21,8 @@ const h = vi.hoisted(() => ({
   publicCalls: [] as string[],
   /** The anon client fails (a database outage seen by /proof with no vault). */
   publicDown: false,
+  /** The service database client cannot be built (no or a malformed environment). */
+  serviceDown: false,
   /** The rate limiter's database call fails. */
   limitDown: false,
   /** Building the proof page's dependencies fails. */
@@ -49,18 +51,21 @@ vi.mock("@/lib/db/clients", () => ({
       ) as T;
     },
   }),
-  serviceDb: (): Db => ({
-    rpc: async <T>(fn: string, p: Record<string, unknown> = {}) => {
-      if (fn !== "rate_limit_take") throw new Error(`unexpected ${fn}`);
-      h.limitCalls.push(String(p.bucket));
-      if (h.limitDown) throw new DbError("db_error", "connection reset");
-      return {
-        allowed: h.allowed,
-        remaining: 0,
-        reset_at: new Date(Date.now() + 30_000).toISOString(),
-      } as T;
-    },
-  }),
+  serviceDb: (): Db => {
+    if (h.serviceDown) throw new Error("Invalid environment: SUPABASE_URL is required");
+    return {
+      rpc: async <T>(fn: string, p: Record<string, unknown> = {}) => {
+        if (fn !== "rate_limit_take") throw new Error(`unexpected ${fn}`);
+        h.limitCalls.push(String(p.bucket));
+        if (h.limitDown) throw new DbError("db_error", "connection reset");
+        return {
+          allowed: h.allowed,
+          remaining: 0,
+          reset_at: new Date(Date.now() + 30_000).toISOString(),
+        } as T;
+      },
+    };
+  },
 }));
 vi.mock("@/lib/proof/deps", () => ({
   proofDeps: async () => {
@@ -148,6 +153,7 @@ beforeEach(() => {
   h.publicVault = null;
   h.publicCalls = [];
   h.publicDown = false;
+  h.serviceDown = false;
   h.limitDown = false;
   h.depsDown = false;
   h.envDown = false;
@@ -879,5 +885,75 @@ describe("a database error before the access check", () => {
     );
     expect(ledger.status).toBe(503);
     expect(await ledger.json()).toEqual({ error: "unavailable" });
+  });
+});
+
+describe.each([
+  { name: "snapshot.json", route: GET },
+  { name: "ledger.jsonl", route: GET_LEDGER },
+])("/proof/[vault]/$name when the database fails", ({ name, route }) => {
+  const answer = (vault: string) =>
+    route(
+      new Request(`https://probarion.xyz/proof/${vault}/${name}`, {
+        headers: { "x-forwarded-for": "203.0.113.7" },
+      }),
+      params(vault),
+    );
+  const expectUnavailable = async (res: Response) => {
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "database" }]);
+  };
+
+  it("answers 503 when the rate limiter's call fails, and does not go on to the load", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    h.limitDown = true;
+    await expectUnavailable(await answer(snapshot.vault));
+    expect(h.depsCalls).toBe(0);
+  });
+
+  it("answers 503 when the database client cannot be built", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    h.serviceDown = true;
+    await expectUnavailable(await answer(snapshot.vault));
+    expect(h.limitCalls).toEqual([]);
+  });
+
+  it("answers 503 when the load's dependencies cannot be built", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    h.depsDown = true;
+    await expectUnavailable(await answer(snapshot.vault));
+  });
+
+  it("still answers 404 for an id that is not an account, before any database call", async () => {
+    h.serviceDown = true;
+    const res = await answer("Not A Vault");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    expect(h.warned).toEqual([]);
+  });
+
+  it("still answers 404 for a vault that is not public, on a healthy database", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot, {
+      publicDb: {
+        rpc: async <T>() => null as T,
+      },
+    });
+    const res = await answer(snapshot.vault);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+  });
+
+  it("still answers 429 when the limiter refuses", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    h.allowed = false;
+    const res = await answer(snapshot.vault);
+    expect(res.status).toBe(429);
+    expect(h.depsCalls).toBe(0);
   });
 });
