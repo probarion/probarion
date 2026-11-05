@@ -116,7 +116,8 @@ export const HERO = {
   lede: "A mandate layer for AI agents on NEAR. Your agent pays people and services only inside limits you signed. A contract checks every payment, and every decision goes into a signed ledger anyone can verify.",
   openConsole: "Open console",
   breakTheLedger: "Try to break the ledger",
-  fineprint: "Testnet today, mainnet planned. You need no account to read the proof.",
+  fineprint:
+    "Testnet today, mainnet planned. You need no account to read the chain or run the verifier.",
   paid: {
     aria: "A payment the contract allowed",
     mandate: "Mandate 1",
@@ -253,7 +254,7 @@ export const JOURNEY = {
     {
       n: 5,
       title: "Anyone can check the record",
-      body: "The SDK anchors the ledger root on the vault. The verifier runs over a snapshot with no server and no account, and it ties each on-chain spend to exactly one decision.",
+      body: "The SDK anchors the ledger root on the vault. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
       tag: `The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture.${
         CLI_ON_NPM ? "" : " Build it from a clone first (README step 1)."
       }`,
@@ -401,7 +402,7 @@ export const STATUS = {
 export const CLOSING = {
   line1: "Don't trust us.",
   line2: "Run the verifier.",
-  live: "A live run reads the chain itself: `verify --vault`.",
+  live: "A live run reads the chain itself: `verify --vault`. On the testnet vault it fails checks d and h today, because the smoke run sent its spends without a ledger.",
   evaluate: "Evaluate in 5 minutes",
   spec: "Read the spec",
 } as const;
@@ -418,7 +419,7 @@ export const PROOF_INDEX = {
   placeholder: "name.testnet",
   submit: "Open its proof page",
   publicOnly:
-    "A vault's owner must make its proof page public first. If the owner has not, you see a page-not-found message.",
+    "A vault's owner must make its proof page public first. If the owner has not, that address answers page not found.",
   invalid:
     "That is not a NEAR account. Use lowercase letters, digits and the separators . - _ in 2 to 64 characters.",
   tamperTitle: "Try the verifier here",

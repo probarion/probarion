@@ -194,6 +194,33 @@ describe("what an offline run shows", () => {
     expect(verify).toContain('.option("--vault <id>"');
   });
 
+  it("warns under the closing headline that a live run on the testnet vault fails today", () => {
+    expect(CLOSING.live).toBe(
+      "A live run reads the chain itself: `verify --vault`. On the testnet vault it fails checks d and h today, because the smoke run sent its spends without a ledger.",
+    );
+    expect(CHECK_LABELS.d).toBe("A decision for every spend");
+    expect(CHECK_LABELS.h).toBe("Burn memos");
+    expect(visibleText(landing())).toContain("it fails checks d and h today");
+  });
+
+  it("does not say on-chain in the step that describes a snapshot", () => {
+    const body = JOURNEY.steps[4].body;
+    expect(body).toContain("snapshot");
+    expect(body).not.toMatch(/on[- ]chain/i);
+    expect(sentences(body)).toEqual([
+      "The SDK anchors the ledger root on the vault.",
+      "The verifier ties each spend in a snapshot to exactly one decision, with no server and no account.",
+      "Offline, those spends come from the file.",
+      "A live run reads them from the chain.",
+    ]);
+  });
+
+  it("promises only what needs no account today", () => {
+    expect(HERO.fineprint).toBe(
+      "Testnet today, mainnet planned. You need no account to read the chain or run the verifier.",
+    );
+  });
+
   it("says on /proof what the downloaded file shows", () => {
     expect(PROOF_INDEX.intro).toContain(
       "Offline, the verifier checks that file against itself. The page also gives the command that reads the chain again.",

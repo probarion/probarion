@@ -682,7 +682,7 @@ describe("/proof", () => {
       expect(out).toContain("The page also gives the command that reads the chain again.");
       expect(out).toContain("No public vault is listed here yet.");
       expect(out).toContain("A vault&#x27;s owner must make its proof page public first.");
-      expect(out).toContain("page-not-found message");
+      expect(out).toContain("If the owner has not, that address answers page not found.");
       expect(out).not.toContain("to see a vault&#x27;s checks");
     });
 
