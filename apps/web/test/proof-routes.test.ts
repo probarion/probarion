@@ -745,7 +745,7 @@ describe("the landing page and the menu", () => {
     expect(text(out)).toContain("packages/core/test/fixtures/valid-snapshot.json");
     if (!CLI_ON_NPM) {
       expect(text(out)).toContain(
-        "Run it from a clone of the repository. The npm package is not published yet.",
+        "The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture. Build it from a clone first (README step 1).",
       );
       expect(text(out)).not.toContain("npx probarion");
     }

@@ -7,6 +7,14 @@ const TONE = { pass: s.pass, fail: s.fail } as const;
 
 function Line({ line }: { line: PanelLine }) {
   if ("note" in line) return <div className={s.panelNote}>{line.note}</div>;
+  if ("command" in line) {
+    return (
+      <div className={s.panelNote}>
+        <span className={s.prompt}>$ </span>
+        {line.command}
+      </div>
+    );
+  }
   if ("key" in line) {
     return (
       <div className={s.panelRow}>
@@ -20,6 +28,7 @@ function Line({ line }: { line: PanelLine }) {
 
 function lineKey(line: PanelLine): string {
   if ("note" in line) return line.note;
+  if ("command" in line) return line.command;
   return "key" in line ? line.key : line.text;
 }
 

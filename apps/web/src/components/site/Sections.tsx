@@ -53,7 +53,7 @@ export function StatusList() {
           <ExternalLink className={s.link} href={LINKS.security}>
             {STATUS.noteLink}
           </ExternalLink>
-          <Rich text={STATUS.noteAfter} />
+          <Rich text={STATUS.noteAfter} /> <Rich text={STATUS.build} />
         </p>
       </div>
     </section>

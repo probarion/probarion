@@ -162,9 +162,10 @@ export const NUMBERS = [
 
 // --- what happens to one payment ------------------------------------------------------------------
 
-/** One line of a step's panel: a quiet note, a key and its value, or a plain line. A tone is said in words too. */
+/** One line of a step's panel: a quiet note, a command to copy, a key and its value, or a plain line. A tone is said in words too. */
 export type PanelLine =
   | { note: string }
+  | { command: string }
   | { key: string; value: string; tone?: "pass" | "fail" }
   | { text: string; tone?: "pass" };
 
@@ -210,7 +211,7 @@ export const JOURNEY = {
         { key: "max_per_payment", value: "5 USDC" },
         { key: "max_total", value: "20 USDC" },
         { key: "max_uses", value: "5" },
-        { key: "approval_above", value: "2 USDC" },
+        { key: "approval_above", value: "5 USDC" },
       ],
     },
     {
@@ -218,8 +219,9 @@ export const JOURNEY = {
       title: "A private model proposes, if there is one",
       body: "It runs in a TEE on NEAR AI Cloud. Its attestation is bound by a nonce to one position in one vault's ledger. It only gives advice: it cannot widen a mandate.",
       tag: "Adapter built. First live attested run in progress.",
-      panelLabel: "Model proposal fields",
+      panelLabel: "What the proposal is bound to",
       panel: [
+        { note: "What the proposal is bound to" },
         { key: "action", value: "pay" },
         { key: "mandate_id", value: "1" },
         { key: "nonce", value: "next ledger position + vault" },
@@ -229,7 +231,8 @@ export const JOURNEY = {
     {
       n: 3,
       title: "Code decides, and signs before anything moves",
-      body: "Deterministic rules run first and cannot be removed. The decision is signed into the ledger before anything is sent, and refusals are recorded too.",
+      body: "Deterministic rules run first and cannot be removed. The SDK signs the decision into the ledger before anything is sent, and it records refusals too.",
+      tag: "The testnet smoke run sent spends without a ledger.",
       panelLabel: "Built-in rules",
       panel: [
         { note: "decide(), built-in rules include" },
@@ -242,7 +245,7 @@ export const JOURNEY = {
       body: "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for a person.",
       panelLabel: "check_spend results on the testnet vault",
       panel: [
-        { note: "check_spend on mandate 1, at most 5 USDC" },
+        { note: "check_spend on mandate 1, at most 5 USDC, valid until 2026-12-01" },
         { key: "2 USDC", value: "ok: true", tone: "pass" },
         { key: "6 USDC", value: `ok: false, ${CONTRACT_REFUSAL_CODE}`, tone: "fail" },
       ],
@@ -250,14 +253,13 @@ export const JOURNEY = {
     {
       n: 5,
       title: "Anyone can check the record",
-      body: "The ledger root is anchored on the vault. The verifier runs over a snapshot with no server and no account, and it ties each on-chain spend to exactly one decision.",
-      ...(CLI_ON_NPM
-        ? {}
-        : { tag: "Run it from a clone of the repository. The npm package is not published yet." }),
+      body: "The SDK anchors the ledger root on the vault. The verifier runs over a snapshot with no server and no account, and it ties each on-chain spend to exactly one decision.",
+      tag: `The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture.${
+        CLI_ON_NPM ? "" : " Build it from a clone first (README step 1)."
+      }`,
       panelLabel: "Verifier output",
       panel: [
-        { note: `$ ${cli("verify --offline")}` },
-        { note: `  ${FIXTURE_PATH}` },
+        { command: cli(`verify --offline ${FIXTURE_PATH}`) },
         { text: VERIFIER_OUTPUT.summary },
         { text: VERIFIER_OUTPUT.result, tone: "pass" },
       ],
@@ -382,6 +384,8 @@ export const STATUS = {
   noteBefore: "No third party has audited this code. Read the ",
   noteLink: "threat model",
   noteAfter: ", including what `verify` does not prove yet.",
+  build:
+    "The testnet vault runs a build older than the current source, and the fixed build's hash is recorded in `contracts/code-hashes.json`.",
 } as const;
 
 // --- closing --------------------------------------------------------------------------------------
@@ -403,7 +407,7 @@ export const PROOF_INDEX = {
     "A proof page shows a vault's checks a to i with explorer links, plus a ledger and a snapshot file you can download. Offline, the verifier checks that file against itself. The page also gives the command that reads the chain again.",
   noneListed: "No public vault is listed here yet.",
   label: "NEAR account of the vault",
-  placeholder: "acme.vaults.probarion.testnet",
+  placeholder: "name.testnet",
   submit: "Open its proof page",
   howTo: "Open /proof/<vault account> to see a vault's checks.",
   publicOnly:

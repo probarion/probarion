@@ -256,6 +256,54 @@ describe("the claims about the code", () => {
   });
 });
 
+describe("the payment journey", () => {
+  const prose = README.replace(/\s+/g, " ");
+  const step = (n: number) => {
+    const found = JOURNEY.steps.find((s) => s.n === n);
+    if (found === undefined) throw new Error(`no step ${n}`);
+    return found;
+  };
+
+  it("says the testnet vault has no ledger key or anchors yet, as the README does", () => {
+    expect(prose).toContain("this vault has no ledger key and no anchors yet");
+    expect(step(5).tag).toContain("The testnet vault has no ledger key or anchors yet");
+    expect(step(5).tag).toContain("runs on a test fixture");
+    expect(step(5).body).toContain("The SDK anchors the ledger root");
+  });
+
+  it("marks the ledger as what the SDK does, and says the smoke run had none", () => {
+    expect(prose).toContain("without the SDK, a model or a ledger");
+    expect(step(3).body).toContain("The SDK signs the decision into the ledger");
+    expect(step(3).tag).toContain("smoke run sent spends without a ledger");
+  });
+
+  it("shows the verifier's command on one line, as the README has it, with a prompt that does not copy", () => {
+    const command = cli(`verify --offline ${FIXTURE_PATH}`);
+    expect(README).toContain(command);
+    expect(step(5).panel).toContainEqual({ command });
+    expect(step(5).tag).toContain("Build it from a clone first (README step 1).");
+    const html = renderToStaticMarkup(createElement(Home));
+    expect(html).toContain(`>$ </span>${command}`);
+    const css = text(WEB, "src", "components", "site", "site.module.css");
+    expect(css).toMatch(/\.prompt {[^}]*user-select: none/);
+  });
+
+  it("shows the example mandate with mandate 1's approval limit", () => {
+    expect(step(1).panel).toContainEqual({ key: "approval_above", value: "5 USDC" });
+  });
+
+  it("does not present the proposal panel as the fields of ModelProposal", () => {
+    expect(step(2).panelLabel).toBe("What the proposal is bound to");
+    expect(step(2).panel).toContainEqual({ note: "What the proposal is bound to" });
+  });
+
+  it("dates the check_spend result by when mandate 1 expires", () => {
+    expect(step(4).panel[0]).toEqual({
+      note: "check_spend on mandate 1, at most 5 USDC, valid until 2026-12-01",
+    });
+  });
+});
+
 describe("the status list", () => {
   it("is exactly the rows and pills that are true today", () => {
     expect(STATUS.rows).toEqual([
@@ -272,6 +320,20 @@ describe("the status list", () => {
       { row: "MCP server", pill: "Planned", tone: "plan" },
       { row: "Mainnet vault", pill: "Planned", tone: "plan" },
     ]);
+  });
+
+  it("says the testnet vault runs an older build, and the fixed build's hash is on record", () => {
+    expect(STATUS.build).toBe(
+      "The testnet vault runs a build older than the current source, and the fixed build's hash is recorded in `contracts/code-hashes.json`.",
+    );
+    const prose = README.replace(/\s+/g, " ");
+    expect(prose).toContain("testnet vault runs the earlier build");
+    const hashes = JSON.parse(text(ROOT, "contracts", "code-hashes.json")) as {
+      entries: { code_hash: string }[];
+    };
+    const fixed = /code hash `(3cQXYDvf[1-9A-HJ-NP-Za-km-z]+)`/.exec(prose)?.[1];
+    expect(hashes.entries.map((e) => e.code_hash)).toContain(fixed);
+    expect(visibleText(landing())).toContain("runs a build older than the current source");
   });
 
   it("says no third party has audited this code and links SECURITY.md", () => {

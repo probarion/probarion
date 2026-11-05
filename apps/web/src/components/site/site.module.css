@@ -476,7 +476,7 @@
   font-size: 13px;
   font-weight: 500;
   padding: 3px 11px;
-  border-radius: 999px;
+  border-radius: 12px;
   background: var(--color-wait-bg);
   color: var(--color-wait);
 }
@@ -503,6 +503,10 @@
 .panelNote {
   color: var(--color-mute);
   white-space: pre;
+}
+/* Left out of a copied selection, so the line pastes as a command. */
+.prompt {
+  user-select: none;
 }
 .pass {
   color: var(--color-ok);
