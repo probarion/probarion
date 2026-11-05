@@ -49,11 +49,13 @@ const STATUS = {
  * the text itself is never stored.
  */
 export async function POST(req: Request) {
+  // The attempt's deadline (CANARY_LIMITS.attemptBudgetMs) counts from here.
+  const startedAt = Date.now();
   const bad = assertSameOrigin(req);
   if (bad) return bad;
   const requestId = req.headers.get("x-request-id") ?? newRequestId();
   try {
-    return await attempt(req, requestId);
+    return await attempt(req, requestId, startedAt);
   } catch (error) {
     // The database, the key derivation, a missing setting or an unreadable key: 503, never an unhandled 500.
     log.error("canary.route_failed", { request_id: requestId, error });
@@ -61,7 +63,7 @@ export async function POST(req: Request) {
   }
 }
 
-async function attempt(req: Request, requestId: string): Promise<Response> {
+async function attempt(req: Request, requestId: string, startedAt: number): Promise<Response> {
   const env = getEnv();
   if (!env.CANARY_VAULT_ID) return problem(503, "not_ready");
   // The gullible agent needs the model: without a key there would be nothing to fool.
@@ -114,8 +116,8 @@ async function attempt(req: Request, requestId: string): Promise<Response> {
       now: () => new Date(),
       tenant,
       mandates: () => vaultMandates(tenant.vault_id),
-      makeProbarion: ({ mandate, requestId: rid }) =>
-        makeCanaryProbarion(db, masterKey(), tenant, mandate, rid),
+      makeProbarion: ({ mandate, requestId: rid, remainingMs }) =>
+        makeCanaryProbarion(db, masterKey(), tenant, mandate, rid, {}, { remainingMs }),
       async agentAllowance(mandate) {
         // A key the chain does not show reads as an unlimited allowance (null): it must not turn raw mode ON.
         const k = await getReader().accessKey(tenant.vault_id, mandate.agent_pk);
@@ -138,7 +140,7 @@ async function attempt(req: Request, requestId: string): Promise<Response> {
       },
       ledgerByHash: (hash) => store.getByHash(hash),
     },
-    { text: body.text, visitorHash, ipHash, isTeam, requestId },
+    { text: body.text, visitorHash, ipHash, isTeam, requestId, startedAt },
   );
   if (r.status === "done") return json(r);
   // Every 429 says when to come back: the seconds until the limit that was hit is over.

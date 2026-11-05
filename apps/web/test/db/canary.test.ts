@@ -13,7 +13,7 @@ import {
   type SpendOutcome,
   TxOutcomeUnknownError,
 } from "@probarion/sdk";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { CANARY_LIMITS, estimateTokens } from "@/lib/canary/limits";
 import { canaryNoAutopay } from "@/lib/canary/rules";
 import {
@@ -184,7 +184,6 @@ describe("runAttempt", () => {
   const firstCall = <F extends (...args: never[]) => unknown>(f: F): Parameters<F> =>
     at(vi.mocked(f).mock.calls) as Parameters<F>;
 
-  // probarion-claim: CANARY-RAW
   it("in live mode sends a code-refused 'pay' proposal to the contract once its dry run refuses it, and records the contract's refusal code", async () => {
     // Mandate 1 exists; 300 USDC is over its 5 USDC cap: the contract refuses for a real reason, not for a missing mandate.
     const proposal = proposalOf({ mandate_id: 1, amount: "300000000" });
@@ -222,9 +221,10 @@ describe("runAttempt", () => {
     expect(check).toEqual({
       mandateId: 1,
       amount: "300000000",
-      invoiceHash: hashInvoice(text),
+      invoiceHash: call.invoiceHash,
       ref: call.ref,
     });
+    expect(call.invoiceHash).toMatch(/^[0-9a-f]{64}$/);
     expect(call).toMatchObject({ mandateId: 1, amount: "300000000", skipPreflight: true });
     expect(call.proposal).toEqual(proposal);
     expect(call.ref).toMatch(/^canary-[0-9a-f]{20}-[0-9a-z]+:raw$/);
@@ -625,8 +625,9 @@ describe("runAttempt", () => {
       const est = estimateTokens(input().text);
       expect(during).toBe(est);
       expect(rowDuring).toMatchObject({
-        code_status: "error",
+        code_status: "running",
         raw: false,
+        raw_skipped_reason: null,
         est_tokens: est,
         visitor_hash: H("1"),
         text_length: input().text.length,
@@ -661,14 +662,14 @@ describe("runAttempt", () => {
   });
 
   describe("the ledger's size and the ledger key", () => {
-    it("closes the Canary when its ledger holds 2,000 entries, before any model call", async () => {
-      expect(CANARY_LIMITS.maxLedgerEntries).toBe(2000);
-      const full = deps({ ledgerSize: async () => 2000 });
+    it("closes the Canary when its ledger holds 300 entries, before any model call", async () => {
+      expect(CANARY_LIMITS.maxLedgerEntries).toBe(300);
+      const full = deps({ ledgerSize: async () => 300 });
       expect(await runAttempt(full.d, input())).toEqual({ status: "rejected", reason: "closed" });
       expect(full.makeProbarion).not.toHaveBeenCalled();
       expect(full.pb.process).not.toHaveBeenCalled();
       expect(await rows()).toEqual([]);
-      const almost = deps({ ledgerSize: async () => 1999 });
+      const almost = deps({ ledgerSize: async () => 299 });
       expect((await runAttempt(almost.d, input())).status).toBe("done");
     });
 
@@ -754,7 +755,7 @@ describe("runAttempt", () => {
         input(other(5)),
       );
       const taken = await pg.query<{ bucket: string; count: number }>(
-        "select bucket, count from rate_limits where bucket like 'canary:attempts:%' order by bucket",
+        "select bucket, count from rate_limits where bucket in ('canary:attempts:day', 'canary:attempts:hour') order by bucket",
       );
       expect(taken.rows).toEqual([
         { bucket: "canary:attempts:day", count: 2 },
@@ -765,7 +766,7 @@ describe("runAttempt", () => {
     it("is not spent by a request that is refused before the model, or that finds the Canary busy", async () => {
       await runAttempt(deps({ mode: "off" }).d, input());
       await runAttempt(deps().d, input({ text: "" }));
-      await runAttempt(deps({ ledgerSize: async () => 2000 }).d, input());
+      await runAttempt(deps({ ledgerSize: async () => 300 }).d, input());
       await runAttempt(deps({ makeProbarion: async () => null }).d, input());
       expect(
         (await pg.query("select 1 from rate_limits where bucket like 'canary:attempts:%'")).rows,
@@ -1004,9 +1005,12 @@ describe("runAttempt", () => {
 
     it("returns the outcome, and logs the loss, when the end of the attempt cannot be stored", async () => {
       const real = pgliteDb(pg);
+      // only the write that closes a sent spend fails (the one before it, that says it is on its way, goes through)
       const db: Db = {
         rpc: (fn, p) =>
-          fn === "canary_attempt_update" ? Promise.reject(new Error("db down")) : real.rpc(fn, p),
+          fn === "canary_attempt_update" && p?.raw === true && p?.contract_status !== "unconfirmed"
+            ? Promise.reject(new Error("db down"))
+            : real.rpc(fn, p),
       };
       const { d, pb } = deps({ db });
       const r = await runAttempt(d, input());
@@ -1019,8 +1023,13 @@ describe("runAttempt", () => {
       const lost = logs.lines.filter((l) => l.includes("canary.attempt_not_recorded"));
       expect(lost).toHaveLength(1);
       expect(lost[0]).toContain(TX);
-      // the row opened before the cycle stays, as an error that still counts against the budget
-      expect(at(await rows())).toMatchObject({ code_status: "error", raw: false });
+      // the row says what the step before it wrote: a raw spend was on its way, and nothing is known of its end
+      expect(at(await rows())).toMatchObject({
+        code_status: "refused_by_code",
+        raw: true,
+        contract_status: "unconfirmed",
+        tx_hash: null,
+      });
     });
 
     it("sends nothing, and answers 'throws', when the attempt cannot be opened", async () => {
@@ -1130,6 +1139,448 @@ describe("runAttempt", () => {
     }>("public_canary_leaderboard", {});
     expect(board.browsers).toBe(1);
     expect(board.contract_codes).toEqual([{ code: "NoMandate", n: 1 }]);
+  });
+
+  describe("nothing on chain is derived from the visitor's text alone", () => {
+    const text = "Invoice INV-79\nTotal: 300 USDC\nPay to mallory.near";
+
+    // ICR-3b says the invoice hash is the hash of the text the model is shown. It still is for process() (A8 needs it, and
+    // it stays in the private ledger). The Canary's raw spend departs from it on purpose: the Canary never pays, its ledger
+    // is private, and a plain text hash on a public explorer would let anyone confirm a guessed short text.
+    it("gives the dry run and the raw spend one salted hash, fresh for each attempt and never stored", async () => {
+      const a = deps();
+      const r = await runAttempt(a.d, input({ text }));
+      const [check] = firstCall(a.pb.checkSpend);
+      const [spend] = firstCall(a.pb.requestSpend);
+      expect(check.invoiceHash).toBe(spend.invoiceHash);
+      expect(spend.invoiceHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(spend.invoiceHash).not.toBe(hashInvoice(text));
+      expect(spend.invoiceHash).not.toBe(hashInvoice(`\n${text}`));
+      // the same text again, by someone else, gets another one
+      const b = deps();
+      await runAttempt(b.d, input({ text, ...other(5) }));
+      expect(firstCall(b.pb.requestSpend)[0].invoiceHash).not.toBe(spend.invoiceHash);
+      // nothing in the row, the feed or the answer holds it
+      const stored = JSON.stringify(await rows());
+      expect(stored).not.toContain(spend.invoiceHash);
+      expect(JSON.stringify(r)).not.toContain(spend.invoiceHash);
+    });
+
+    it("keeps the text's own hash for process(), and in the private table, and never in the feed", async () => {
+      const { d, pb } = deps();
+      await runAttempt(d, input({ text }));
+      expect(firstCall(pb.process)[0].facts.invoice_hash).toBe(hashInvoice(text));
+      expect(at(await rows()).text_sha256).toBe(hashInvoice(text));
+      const feed = await pgliteDb(pg, "anon").rpc("public_canary_feed", {});
+      expect(JSON.stringify(feed)).not.toContain(hashInvoice(text));
+      expect(JSON.stringify(feed)).not.toContain("text_sha256");
+    });
+
+    it("builds the ref from the attempt's id and the time, not from the text's hash", async () => {
+      const { d, pb } = deps();
+      const r = await runAttempt(d, input({ text }));
+      if (r.status !== "done") throw new Error("not done");
+      const [call] = firstCall(pb.process);
+      const prefix = `canary-${r.attemptId.replaceAll("-", "").slice(0, 20)}-`;
+      expect(call.ref.startsWith(prefix)).toBe(true);
+      expect(call.ref).toMatch(/^canary-[0-9a-f]{20}-[0-9a-z]+$/);
+      expect(call.ref).not.toContain(hashInvoice(text).slice(0, 20));
+      expect(firstCall(pb.requestSpend)[0].ref).toBe(`${call.ref}:raw`);
+    });
+  });
+
+  describe("a raw outcome that never reached the chain", () => {
+    it.each(["TxRejected", "TxSendFailed"])(
+      "answers sent: false for a spend the node refused or that could not be sent (%s, no tx hash)",
+      async (code) => {
+        const out: SpendOutcome = {
+          ...byContract,
+          status: "failed",
+          code,
+          txHash: null,
+          spendId: null,
+        };
+        const { d } = deps({}, { requestSpend: vi.fn(async () => out) });
+        const r = await runAttempt(d, input());
+        expect(raw(r)).toEqual({ sent: false, skipped: "error" });
+        expect(at(await rows())).toMatchObject({
+          raw: false,
+          raw_skipped_reason: "error",
+          raw_detail: code,
+          contract_status: null,
+          contract_code: null,
+          tx_hash: null,
+        });
+        const board = await pgliteDb(pg).rpc<{ raw_external: number }>(
+          "public_canary_leaderboard",
+          {},
+        );
+        expect(board.raw_external).toBe(0);
+      },
+    );
+
+    it("keeps a failed outcome WITH a tx hash as sent: the transaction ran", async () => {
+      const out: SpendOutcome = {
+        ...byContract,
+        status: "failed",
+        code: "payout_failed",
+        txHash: TX,
+      };
+      const { d } = deps({}, { requestSpend: vi.fn(async () => out) });
+      expect(raw(await runAttempt(d, input()))).toMatchObject({
+        sent: true,
+        status: "failed",
+        txHash: TX,
+      });
+      expect(at(await rows())).toMatchObject({
+        raw: true,
+        raw_detail: "payout_failed",
+        tx_hash: TX,
+      });
+    });
+  });
+
+  describe("the row says what is happening at each step", () => {
+    const anon = () => pgliteDb(pg, "anon");
+
+    it("is running while the model works, and the public feed does not show it", async () => {
+      let row: Record<string, unknown> | undefined;
+      let feed: unknown;
+      const process = vi.fn(async () => {
+        row = at(await rows());
+        feed = await anon().rpc("public_canary_feed", {});
+        return refused;
+      });
+      await runAttempt(deps({}, { process }).d, input());
+      expect(row).toMatchObject({
+        code_status: "running",
+        raw: false,
+        raw_skipped_reason: null,
+        contract_status: null,
+        code_rule: null,
+        tx_hash: null,
+      });
+      expect(feed).toEqual([]);
+    });
+
+    it("says what the code decided as soon as process() returns, before any raw step", async () => {
+      let row: Record<string, unknown> | undefined;
+      const checkSpend = vi.fn(async () => {
+        row = at(await rows());
+        return wouldRefuse();
+      });
+      await runAttempt(deps({}, { checkSpend }).d, input());
+      expect(row).toMatchObject({
+        code_status: "refused_by_code",
+        code_rule: "mandate.payee_mismatch",
+        proposal_action: "pay",
+        decision_hash: H("d"),
+        raw: false,
+        raw_skipped_reason: null,
+      });
+    });
+
+    it("says a raw spend is on its way just before it is sent: what a run killed during the send leaves", async () => {
+      let row: Record<string, unknown> | undefined;
+      let feed: Record<string, unknown>[] = [];
+      const requestSpend = vi.fn(async () => {
+        row = at(await rows());
+        feed = await anon().rpc<Record<string, unknown>[]>("public_canary_feed", {});
+        return byContract;
+      });
+      await runAttempt(deps({}, { requestSpend }).d, input());
+      expect(row).toMatchObject({
+        code_status: "refused_by_code",
+        code_rule: "mandate.payee_mismatch",
+        raw: true,
+        contract_status: "unconfirmed",
+        raw_skipped_reason: null,
+        contract_code: null,
+        tx_hash: null,
+      });
+      // a run killed here reads, in the feed, as a raw attempt whose outcome is not known
+      expect(feed).toHaveLength(1);
+      expect(feed[0]).toMatchObject({
+        code_status: "refused_by_code",
+        raw: true,
+        contract_status: "unconfirmed",
+        tx_hash: null,
+      });
+      // and when the send returns, the row says what the contract answered
+      expect(at(await rows())).toMatchObject({
+        raw: true,
+        contract_status: "refused_by_contract",
+        contract_code: "NoMandate",
+        tx_hash: TX,
+      });
+    });
+
+    it("does not send when the row cannot say a raw spend is on its way", async () => {
+      const real = pgliteDb(pg);
+      const db: Db = {
+        rpc: (fn, p) =>
+          fn === "canary_attempt_update" && p?.raw === true
+            ? Promise.reject(new Error("db down"))
+            : real.rpc(fn, p),
+      };
+      const { d, pb } = deps({ db });
+      const r = await runAttempt(d, input());
+      expect(raw(r)).toEqual({ sent: false, skipped: "error" });
+      expect(pb.requestSpend).not.toHaveBeenCalled();
+      expect(at(await rows())).toMatchObject({
+        raw: false,
+        raw_skipped_reason: "error",
+        raw_detail: "row_unwritable",
+      });
+    });
+
+    it("closes a cycle that failed as an error, never as running", async () => {
+      const { d } = deps({}, { process: vi.fn(async () => Promise.reject(new Error("x"))) });
+      await runAttempt(d, input());
+      expect(at(await rows())).toMatchObject({
+        code_status: "error",
+        raw_skipped_reason: "error",
+        raw_detail: null,
+      });
+    });
+  });
+
+  describe("each address's share of the attempts", () => {
+    it("allows 6 attempts an hour from one address and answers budget for the 7th, taking no global slot for it", async () => {
+      expect(CANARY_LIMITS.attemptsPerIpPerHour).toBe(6);
+      const { d } = deps();
+      for (let i = 1; i <= 6; i += 1) {
+        const r = await runAttempt(d, input({ ipHash: H("a"), visitorHash: H(i.toString(16)) }));
+        expect(r.status, String(i)).toBe("done");
+      }
+      const hourBefore = await pg.query<{ count: number }>(
+        "select count from rate_limits where bucket = 'canary:attempts:hour'",
+      );
+      const over = await runAttempt(d, input({ ipHash: H("a"), visitorHash: H("7") }));
+      expect(over).toMatchObject({ status: "rejected", reason: "budget" });
+      if (over.status === "rejected") expect(over.retryAfterS).toBeGreaterThan(3500);
+      expect(
+        (await pg.query("select count from rate_limits where bucket = 'canary:attempts:hour'"))
+          .rows,
+      ).toEqual(hourBefore.rows);
+      expect(await rows()).toHaveLength(6);
+      // another address is let in
+      expect((await runAttempt(d, input({ ipHash: H("b"), visitorHash: H("8") }))).status).toBe(
+        "done",
+      );
+    });
+
+    it("keeps two addresses from using up the cap everyone shares", async () => {
+      const { d } = deps();
+      for (const ip of ["a", "b"]) {
+        for (let i = 0; i < 6; i += 1) {
+          await runAttempt(
+            d,
+            input({ ipHash: H(ip), visitorHash: H(String(ip === "a" ? i : i + 6).slice(-1)) }),
+          );
+        }
+      }
+      // 12 of the 60 an hour are gone, so a third visitor is not locked out
+      expect((await runAttempt(d, input({ ipHash: H("c"), visitorHash: H("f") }))).status).toBe(
+        "done",
+      );
+    });
+  });
+
+  describe("the attempt's time", () => {
+    it("hands the SDK what is left of the attempt, counting down from the route's start", async () => {
+      const startedAt = Date.now() - 10_000;
+      const { d, makeProbarion } = deps();
+      await runAttempt(d, input({ startedAt }));
+      const left = firstCall(makeProbarion)[0].remainingMs;
+      expect(left()).toBeGreaterThan(CANARY_LIMITS.attemptBudgetMs - 10_000 - 3000);
+      expect(left()).toBeLessThanOrEqual(CANARY_LIMITS.attemptBudgetMs - 10_000);
+      // it keeps counting
+      const first = left();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(left()).toBeLessThan(first);
+    });
+
+    it("does not start a raw spend with less than 15 s left", async () => {
+      expect(CANARY_LIMITS.rawMinRemainingMs).toBe(15_000);
+      // 10 s left: the code's answer stands, and nothing is asked of the contract
+      const late = deps();
+      const r = await runAttempt(late.d, input({ startedAt: Date.now() - 40_000 }));
+      expect(raw(r)).toEqual({ sent: false, skipped: "no_time" });
+      expect(late.pb.checkSpend).not.toHaveBeenCalled();
+      expect(late.pb.requestSpend).not.toHaveBeenCalled();
+      expect(at(await rows())).toMatchObject({ raw: false, raw_skipped_reason: "no_time" });
+      expect(
+        (await pg.query("select 1 from rate_limits where bucket like 'canary:raw:%'")).rows,
+      ).toEqual([]);
+      // 20 s left: it goes on
+      const ok = deps();
+      expect(
+        raw(await runAttempt(ok.d, input({ ...other(5), startedAt: Date.now() - 30_000 }))),
+      ).toMatchObject({
+        sent: true,
+      });
+    });
+
+    it("refuses a request that has no time left before it reads the chain", async () => {
+      const { d, makeProbarion } = deps({
+        mandates: vi.fn(async () => [mandate()]),
+      });
+      const r = await runAttempt(d, input({ startedAt: Date.now() - 60_000 }));
+      expect(r).toEqual({ status: "rejected", reason: "not_ready" });
+      expect(makeProbarion).not.toHaveBeenCalled();
+      expect(await rows()).toEqual([]);
+    });
+
+    // The SUM, not each cap: with every step made to hang, an attempt still answers inside its 50 s (the clock is faked:
+    // no real wait), and the row it opened is closed.
+    describe("with every step hanging", () => {
+      const hang = <T>() => new Promise<T>(() => {});
+      beforeEach(() => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      });
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+      /** Lets real I/O and the fake clock take turns until the promise settles; the fake time that went by. */
+      async function drive<T>(
+        p: Promise<T>,
+      ): Promise<{ value: T | undefined; settled: boolean; elapsedMs: number }> {
+        let settled = false;
+        let value: T | undefined;
+        void p.then(
+          (v) => {
+            settled = true;
+            value = v;
+          },
+          () => {
+            settled = true;
+          },
+        );
+        const started = Date.now();
+        for (let i = 0; i < 400 && !settled; i += 1) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          await vi.advanceTimersByTimeAsync(250);
+        }
+        return { value, settled, elapsedMs: Date.now() - started };
+      }
+      const within = CANARY_LIMITS.attemptBudgetMs + 1000;
+      const leaseFree = async () =>
+        (await pg.query("select process_lease_until from tenants")).rows[0];
+
+      it("answers failed inside the budget when the model step never returns, and closes the row as a deadline", async () => {
+        const { d, pb } = deps({}, { process: vi.fn(() => hang<SpendOutcome>()) });
+        const { value, settled, elapsedMs } = await drive(runAttempt(d, input()));
+        expect(settled).toBe(true);
+        expect(elapsedMs).toBeLessThanOrEqual(within);
+        expect(elapsedMs).toBeGreaterThanOrEqual(CANARY_LIMITS.attemptBudgetMs - 1000);
+        expect(value).toEqual({ status: "rejected", reason: "failed" });
+        expect(at(await rows())).toMatchObject({
+          code_status: "error",
+          raw: false,
+          raw_skipped_reason: "error",
+          raw_detail: "deadline",
+        });
+        expect(pb.requestSpend).not.toHaveBeenCalled();
+        expect(await leaseFree()).toEqual({ process_lease_until: null });
+        expect(logs.lines.join("\n")).toContain("canary.deadline");
+      });
+
+      it("answers not_ready inside the budget when the chain's mandates never come back", async () => {
+        const { d, makeProbarion } = deps({ mandates: () => hang<MandateView[]>() });
+        const { value, settled, elapsedMs } = await drive(runAttempt(d, input()));
+        expect(settled).toBe(true);
+        expect(elapsedMs).toBeLessThanOrEqual(within);
+        expect(value).toEqual({ status: "rejected", reason: "not_ready" });
+        expect(makeProbarion).not.toHaveBeenCalled();
+        expect(await rows()).toEqual([]);
+      });
+
+      it("answers not_ready inside the budget when the ledger key's allowance never comes back", async () => {
+        const { d, pb } = deps({ ledgerAllowance: () => hang<bigint | null>() });
+        const { value, settled, elapsedMs } = await drive(runAttempt(d, input()));
+        expect(settled).toBe(true);
+        expect(elapsedMs).toBeLessThanOrEqual(within);
+        expect(value).toEqual({ status: "rejected", reason: "not_ready" });
+        expect(pb.process).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ["the agent key's allowance", { agentAllowance: () => hang<bigint | null>() }, {}],
+        [
+          "the contract's dry run",
+          {},
+          {
+            checkSpend: vi.fn(() =>
+              hang<{ ok: boolean; code: string | null; would_hold: boolean }>(),
+            ),
+          },
+        ],
+      ])(
+        "ends the attempt with no_time, sending nothing, when %s never returns",
+        async (_name, over, pbOver) => {
+          const { d, pb } = deps(over as Partial<CanaryDeps>, pbOver as Partial<CanaryProbarion>);
+          const { value, settled, elapsedMs } = await drive(runAttempt(d, input()));
+          expect(settled).toBe(true);
+          expect(elapsedMs).toBeLessThanOrEqual(within);
+          expect(value).toMatchObject({ status: "done", raw: { sent: false, skipped: "no_time" } });
+          expect(pb.requestSpend).not.toHaveBeenCalled();
+          expect(at(await rows())).toMatchObject({
+            code_status: "refused_by_code",
+            raw: false,
+            raw_skipped_reason: "no_time",
+          });
+          expect(await leaseFree()).toEqual({ process_lease_until: null });
+        },
+      );
+
+      it("records a raw spend whose send never returns as unconfirmed at the deadline, and never sends it again", async () => {
+        const requestSpend = vi.fn(() => hang<SpendOutcome>());
+        const { d } = deps({}, { requestSpend });
+        const { value, settled, elapsedMs } = await drive(runAttempt(d, input()));
+        expect(settled).toBe(true);
+        expect(elapsedMs).toBeLessThanOrEqual(within);
+        expect(value).toMatchObject({
+          status: "done",
+          raw: { sent: true, status: "unconfirmed", code: "deadline", txHash: null },
+        });
+        expect(requestSpend).toHaveBeenCalledTimes(1);
+        expect(at(await rows())).toMatchObject({
+          code_status: "refused_by_code",
+          raw: true,
+          contract_status: "unconfirmed",
+          contract_code: null,
+          raw_detail: "deadline",
+          raw_skipped_reason: null,
+        });
+        expect(await leaseFree()).toEqual({ process_lease_until: null });
+      });
+
+      it("answers inside the budget when the model step, the dry run and the send all hang in turn (the sum, not each cap)", async () => {
+        // the model step takes 49 s of the 50 and then returns; nothing after it may take the attempt past the deadline
+        const slow = vi.fn(
+          () =>
+            new Promise<SpendOutcome>((resolve) => {
+              setTimeout(() => resolve(refused), 49_000);
+            }),
+        );
+        const { d } = deps(
+          {},
+          {
+            process: slow,
+            checkSpend: vi.fn(() =>
+              hang<{ ok: boolean; code: string | null; would_hold: boolean }>(),
+            ),
+            requestSpend: vi.fn(() => hang<SpendOutcome>()),
+          },
+        );
+        const { value, settled, elapsedMs } = await drive(runAttempt(d, input()));
+        expect(settled).toBe(true);
+        expect(elapsedMs).toBeLessThanOrEqual(within);
+        // 1 s is left: no raw spend is started (less than 15 s)
+        expect(value).toMatchObject({ status: "done", raw: { sent: false, skipped: "no_time" } });
+      });
+    });
   });
 
   // The facts the SDK is given decide which rule stops a Canary invoice. These run the REAL policy (`decide`) on what

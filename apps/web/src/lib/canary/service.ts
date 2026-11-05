@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import type { InvoiceFacts, LedgerEntry, MandateView, ModelProposal } from "@probarion/core";
 import {
   hashInvoice,
@@ -28,8 +29,10 @@ import { classify, type Technique } from "./technique";
 // Canary never pays from its own cycle (rules.ts). In `live` mode a proposal to pay that the CODE refused is also sent to
 // the contract unfiltered ("raw mode", rate-limited) to show the contract refuses it too, but ONLY when the contract's
 // free dry run says it would refuse: a raw spend the contract would accept is never sent. Each attempt is stored as hashes
-// and labels, never as the visitor's text, and is opened BEFORE the cycle runs so that a run the platform kills still
-// counts against the day's token budget.
+// and labels, never as the visitor's text. Its row is opened BEFORE the cycle runs (so a run the platform kills still
+// counts against the day's token budget) and says what is happening at each step: `running`, then the code's outcome, then
+// "a raw spend is on its way", then the end. The whole attempt has one deadline (CANARY_LIMITS.attemptBudgetMs), counted
+// from the route's start, and every phase shares it.
 
 /** What the cycle needs from the SDK's `Probarion` (and what tests fake). */
 export interface CanaryProbarion {
@@ -60,9 +63,14 @@ export interface CanaryDeps {
   mandates(): Promise<MandateView[]>;
   /**
    * The Probarion for `mandate`: signing with the agent key that mandate is bound to and the tenant's ledger key.
-   * Null when either key is not usable here (no active key, cannot be opened): never another key, never a retry.
+   * `remainingMs` is the time the attempt has left: the instance gives it to its chain client, its senders and its model
+   * calls. Null when either key is not usable here (no active key, cannot be opened): never another key, never a retry.
    */
-  makeProbarion(o: { mandate: MandateView; requestId: string }): Promise<CanaryProbarion | null>;
+  makeProbarion(o: {
+    mandate: MandateView;
+    requestId: string;
+    remainingMs: () => number;
+  }): Promise<CanaryProbarion | null>;
   /** The access-key allowance of `mandate`'s agent key in yoctoNEAR; null = unlimited; 0n = the key is not there. */
   agentAllowance(mandate: MandateView): Promise<bigint | null>;
   /** The same for the tenant's LEDGER key (it pays for the anchor of every attempt). Throws when unreadable. */
@@ -78,14 +86,17 @@ export interface AttemptInput {
   ipHash: string;
   isTeam: boolean;
   requestId: string;
+  /** When the route started (epoch ms): the attempt's deadline counts from here. Default: now. */
+  startedAt?: number;
 }
 
 export type AttemptResult =
   | {
       status: "rejected";
       /**
-       * "failed": the cycle stopped before any spend was sent (the attempt is stored as an error). "closed": the Canary is
-       * off, or its ledger is full. "not_ready": its mandate, keys or ledger key are not usable.
+       * "failed": the cycle stopped before any spend was sent, or ran out of time (the attempt is stored as an error).
+       * "closed": the Canary is off, or its ledger is full. "not_ready": its mandate, keys or ledger key are not usable,
+       * or the chain did not answer in time.
        */
       reason: "closed" | "too_long" | "empty" | "budget" | "busy" | "not_ready" | "failed";
       /** For "budget": the seconds until the limit that was hit is over (the route answers Retry-After). */
@@ -142,6 +153,40 @@ const isU128 = (s: string): boolean => /^[1-9][0-9]{0,38}$/.test(s) && BigInt(s)
 const messageOf = (e: unknown): string =>
   scrubText(e instanceof Error ? e.message : String(e)).slice(0, 500) || "unknown error";
 
+// ---- the attempt's deadline ---------------------------------------------------------------------------------------
+
+/** The attempt's time ran out while `what` was still going. */
+class DeadlineError extends Error {
+  constructor(what: string) {
+    super(`${what}: the attempt's time ran out`);
+    this.name = "DeadlineError";
+  }
+}
+
+/**
+ * Runs `work` unless the time is already out, and gives up on it at the deadline. This is the backstop that makes the
+ * attempt's total time a promise: the SDK's own steps are also bounded by the time left (they are given the same clock),
+ * but a step this code cannot reach into would otherwise hold the whole attempt. Work that is given up on may still
+ * finish in the background; the Canary's cycle never pays (rules.ts), so what it could still do is write ledger entries.
+ */
+function bounded<T>(work: () => Promise<T>, left: () => number, what: string): Promise<T> {
+  const ms = left();
+  if (!(ms > 0)) return Promise.reject(new DeadlineError(what));
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new DeadlineError(what)), ms);
+    work().then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 /**
  * The Canary vault's mandate: the lowest-id one that can still be spent, else the lowest-id one (the cycle then
  * refuses with the precise reason). The vault is meant to hold exactly one. Null when it holds none.
@@ -180,9 +225,13 @@ const rejected = (
 /**
  * Everything that must hold before a model is called or a slot is taken, cheapest first: the kill switches, the size of
  * the text, the day's token budget, the size of the ledger, the Canary's mandate, the ledger key's allowance, and last
- * (it opens sealed keys) its keys. Nothing here is stored or counted.
+ * (it opens sealed keys) its keys. The two chain reads are held to the attempt's time. Nothing here is stored or counted.
  */
-async function admit(deps: CanaryDeps, input: AttemptInput): Promise<AttemptResult | Ready> {
+async function admit(
+  deps: CanaryDeps,
+  input: AttemptInput,
+  left: () => number,
+): Promise<AttemptResult | Ready> {
   if (deps.mode === "off" || deps.mode === "replay") return rejected("closed");
   const text = input.text.trim();
   if (text === "") return rejected("empty");
@@ -198,7 +247,10 @@ async function admit(deps: CanaryDeps, input: AttemptInput): Promise<AttemptResu
   }
   let mandate: MandateView | null;
   try {
-    mandate = canaryMandate(await deps.mandates(), deps.now());
+    mandate = canaryMandate(
+      await bounded(() => deps.mandates(), left, "reading the mandates"),
+      deps.now(),
+    );
   } catch (e) {
     log.warn("canary.chain_unavailable", { ...at, error: messageOf(e) });
     return rejected("not_ready");
@@ -211,7 +263,7 @@ async function admit(deps: CanaryDeps, input: AttemptInput): Promise<AttemptResu
   // anchors never go stale in silence.
   let ledgerAllowance: bigint | null;
   try {
-    ledgerAllowance = await deps.ledgerAllowance();
+    ledgerAllowance = await bounded(() => deps.ledgerAllowance(), left, "reading the ledger key");
   } catch (e) {
     log.warn("canary.ledger_allowance_unreadable", { ...at, error: messageOf(e) });
     return rejected("not_ready");
@@ -220,7 +272,7 @@ async function admit(deps: CanaryDeps, input: AttemptInput): Promise<AttemptResu
     log.error("canary.ledger_allowance_low", at);
     return rejected("not_ready");
   }
-  const pb = await deps.makeProbarion({ mandate, requestId: input.requestId });
+  const pb = await deps.makeProbarion({ mandate, requestId: input.requestId, remainingMs: left });
   if (pb === null) return rejected("not_ready");
   return { text, est, mandate, pb };
 }
@@ -230,30 +282,35 @@ async function admit(deps: CanaryDeps, input: AttemptInput): Promise<AttemptResu
 /** What one raw step decided, and the columns that say so. */
 interface RawStep {
   raw: Raw;
-  fields: {
-    raw: boolean;
-    raw_skipped_reason: RawSkip | null;
-    raw_detail: string | null;
-    contract_status: string | null;
-    contract_code: string | null;
-    tx_hash: string | null;
-    spend_id: number | null;
-    raw_decision_hash: string | null;
-  };
+  fields: RawFields;
 }
+
+interface RawFields {
+  raw: boolean;
+  raw_skipped_reason: RawSkip | null;
+  raw_detail: string | null;
+  contract_status: string | null;
+  contract_code: string | null;
+  tx_hash: string | null;
+  spend_id: number | null;
+  raw_decision_hash: string | null;
+}
+
+/** What the row says before any raw step has run: nothing sent, no reason given yet. */
+const RAW_PENDING: RawFields = {
+  raw: false,
+  raw_skipped_reason: null,
+  raw_detail: null,
+  contract_status: null,
+  contract_code: null,
+  tx_hash: null,
+  spend_id: null,
+  raw_decision_hash: null,
+};
 
 const skip = (skipped: RawSkip, detail: string | null = null): RawStep => ({
   raw: { sent: false, skipped },
-  fields: {
-    raw: false,
-    raw_skipped_reason: skipped,
-    raw_detail: detail,
-    contract_status: null,
-    contract_code: null,
-    tx_hash: null,
-    spend_id: null,
-    raw_decision_hash: null,
-  },
+  fields: { ...RAW_PENDING, raw_skipped_reason: skipped, raw_detail: detail },
 });
 
 /** Errors from `requestSpend` that certainly came before any transaction was sent. Anything else may have been sent. */
@@ -273,9 +330,17 @@ interface RawContext {
   /** The decision the code wrote, or null when it could not be read. */
   decision: LedgerEntry | null;
   facts: InvoiceFacts;
-  invoiceHash: string;
+  /**
+   * The invoice hash of the dry run and the raw spend: a hash of the text with a fresh random salt that is never stored.
+   * ICR-3b says the invoice hash is the hash of the text, and it still is for process(); this departs from it on purpose.
+   * The Canary never pays, its ledger is private, and a plain text hash on a public explorer would let anyone confirm a
+   * guessed short text: nothing the Canary puts on chain is derived from the visitor's text alone.
+   */
+  rawInvoiceHash: string;
   /** The ref of the raw spend: the dry run and the spend carry the same one. */
   ref: string;
+  /** Milliseconds left in the attempt. */
+  left: () => number;
 }
 
 /** The amount of a raw spend: the model's if the contract can read it, else the code's. Never invented. */
@@ -286,9 +351,9 @@ function rawAmount(proposal: ModelProposal, facts: InvoiceFacts): string | null 
 
 /**
  * The raw gate, in order, each step before anything is consumed: live mode; the code refused; the decision is readable
- * and the model proposed to pay; there is an amount; the mandate's agent key can pay its gas; the contract's free dry run
- * REFUSES the spend (one it would accept is never sent); then the visitor's and the global counters. Returns a skip, or
- * the spend to send.
+ * and the model proposed to pay; there is an amount; at least `rawMinRemainingMs` of the attempt is left; the mandate's
+ * agent key can pay its gas; the contract's free dry run REFUSES the spend (one it would accept is never sent); then the
+ * visitor's and the global counters. Returns a skip, or the spend to send.
  */
 async function planRaw(
   c: RawContext,
@@ -304,12 +369,18 @@ async function planRaw(
   const mandateId = proposal.mandate_id ?? c.mandate.id;
   const amount = rawAmount(proposal, c.facts);
   if (amount === null) return skip("no_amount");
+  if (c.left() < CANARY_LIMITS.rawMinRemainingMs) return skip("no_time");
 
   // An unreadable allowance turns raw mode off: it must never be what lets a spend out.
   let allowance: bigint | null;
   try {
-    allowance = await deps.agentAllowance(c.mandate);
+    allowance = await bounded(
+      () => deps.agentAllowance(c.mandate),
+      c.left,
+      "reading the agent key",
+    );
   } catch (e) {
+    if (e instanceof DeadlineError) return skip("no_time");
     log.warn("canary.allowance_unreadable", { request_id: input.requestId, error: messageOf(e) });
     return skip("allowance_low");
   }
@@ -320,14 +391,14 @@ async function planRaw(
   // The contract's own free verdict. Raw mode exists to show the contract REFUSING; a spend it would accept (or hold) is
   // a payment, and none is made here.
   try {
-    const verdict = await c.pb.checkSpend({
-      mandateId,
-      amount,
-      invoiceHash: c.invoiceHash,
-      ref: c.ref,
-    });
+    const verdict = await bounded(
+      () => c.pb.checkSpend({ mandateId, amount, invoiceHash: c.rawInvoiceHash, ref: c.ref }),
+      c.left,
+      "the dry run",
+    );
     if (verdict.ok) return skip("contract_would_accept");
   } catch (e) {
+    if (e instanceof DeadlineError) return skip("no_time");
     log.warn("canary.check_failed", { request_id: input.requestId, error: messageOf(e) });
     return skip("check_failed");
   }
@@ -349,9 +420,10 @@ async function planRaw(
 
 /**
  * Sends the raw spend ONCE and says what came of it. A return or a throw is recorded and never retried: a throw may
- * come after the transaction reached the chain. A refusal by the SDK itself, or an error that certainly came before any
- * transaction, is "not sent"; anything else that went wrong is `unconfirmed`, with its tx hash when the error carries one.
- * What the contract returned is the only thing stored as a contract code.
+ * come after the transaction reached the chain, and so may running out of time. A refusal by the SDK itself, an error that
+ * certainly came before any transaction, and a spend the node refused or that could not be sent (`failed` with no tx
+ * hash) are "not sent"; anything else that went wrong is `unconfirmed`, with its tx hash when the error carries one. What
+ * the contract returned is the only thing stored as a contract code.
  */
 async function sendRaw(
   c: RawContext,
@@ -362,16 +434,24 @@ async function sendRaw(
     // No `evidence`: process() attested the proposal at the ledger position it wrote its decision after, so it can
     // never verify at this spend's position, and an amount or mandate that differs from the one the model was shown
     // makes the SDK throw before it writes anything.
-    out = await c.pb.requestSpend({
-      mandateId: send.mandateId,
-      amount: send.amount,
-      invoiceHash: c.invoiceHash,
-      ref: c.ref,
-      proposal: send.proposal,
-      skipPreflight: true,
-    });
+    out = await bounded(
+      () =>
+        c.pb.requestSpend({
+          mandateId: send.mandateId,
+          amount: send.amount,
+          invoiceHash: c.rawInvoiceHash,
+          ref: c.ref,
+          proposal: send.proposal,
+          skipPreflight: true,
+        }),
+      c.left,
+      "the raw spend",
+    );
   } catch (e) {
-    const code = label(e instanceof ProbarionError ? e.code : "error") ?? "error";
+    const code =
+      e instanceof DeadlineError
+        ? "deadline"
+        : (label(e instanceof ProbarionError ? e.code : "error") ?? "error");
     const txHash =
       typeof (e as { txHash?: unknown } | null)?.txHash === "string"
         ? (e as { txHash: string }).txHash
@@ -387,14 +467,11 @@ async function sendRaw(
     return {
       raw: { sent: true, status: "unconfirmed", code, txHash },
       fields: {
+        ...RAW_PENDING,
         raw: true,
-        raw_skipped_reason: null,
         raw_detail: code,
         contract_status: "unconfirmed",
-        contract_code: null,
         tx_hash: txHash,
-        spend_id: null,
-        raw_decision_hash: null,
       },
     };
   }
@@ -404,6 +481,8 @@ async function sendRaw(
     const refusal = skip("sdk_refused", code);
     return { ...refusal, fields: { ...refusal.fields, raw_decision_hash: out.decisionHash } };
   }
+  // The node refused the signed transaction, or it could not be built and signed: nothing ran, and there is no tx hash.
+  if (out.status === "failed" && out.txHash === null) return skip("error", code);
   const byContract = out.status === "refused_by_contract";
   return {
     raw: { sent: true, status: out.status, code, txHash: out.txHash },
@@ -450,49 +529,112 @@ async function readDecision(
 }
 
 /** One attempt, under the tenant's lease: take a slot, open the row, run the SDK, decide raw, send, close the row. */
-async function cycle(deps: CanaryDeps, input: AttemptInput, ready: Ready): Promise<AttemptResult> {
+async function cycle(
+  deps: CanaryDeps,
+  input: AttemptInput,
+  ready: Ready,
+  left: () => number,
+): Promise<AttemptResult> {
   const { text, est, mandate, pb } = ready;
   const at = { request_id: input.requestId, tenant: deps.tenant.tenant_id };
 
-  // Attempts in total, below the model limiter: each writes ledger entries and sends an anchor transaction.
-  const slot = await takeAttemptSlot(deps.db);
+  // Attempts in total and per address, below the model limiter: each writes ledger entries and sends an anchor transaction.
+  const slot = await takeAttemptSlot(deps.db, input.ipHash);
   if (!slot.ok) return rejected("budget", slot.retryAfterS);
 
-  const invoiceHash = hashInvoice(text);
-  const ref = `canary-${invoiceHash.slice(0, 20)}-${deps.now().getTime().toString(36)}`;
-  const facts = factsOf(text, invoiceHash, mandate);
+  const textHash = hashInvoice(text);
   const techniques = classify(text);
 
   // Opened BEFORE the model is called, with the estimate: a run the platform kills still counts against the day's token
-  // budget. It is an `error` until the cycle closes it. If it cannot be written nothing has run, and the request fails.
+  // budget. It is `running` until the cycle moves it on. If it cannot be written nothing has run, and the request fails.
   const { id: attemptId } = await deps.db.rpc<{ id: string }>("canary_attempt_insert", {
     visitor_hash: input.visitorHash,
     ip_hash: input.ipHash,
     is_team: input.isTeam,
     mode: deps.mode,
-    text_sha256: invoiceHash,
+    text_sha256: textHash,
     text_length: text.length,
     techniques,
     request_id: input.requestId,
     est_tokens: est,
-    code_status: "error",
-    raw: false,
-    raw_skipped_reason: "error",
+    code_status: "running",
   });
+  // The ref comes from the attempt's id and the time, never from the text's hash.
+  const ref = `canary-${attemptId.replaceAll("-", "").slice(0, 20)}-${deps.now().getTime().toString(36)}`;
+  const facts = factsOf(text, textHash, mandate);
+
+  /**
+   * Writes the row's result columns (a failed write is logged with what happened and never hides the outcome). The row says
+   * what is true at this step, so a run that dies leaves an honest row.
+   */
+  const write = async (fields: Record<string, unknown>, step: string): Promise<boolean> => {
+    try {
+      await deps.db.rpc("canary_attempt_update", { id: attemptId, ...fields });
+      return true;
+    } catch (e) {
+      log.error("canary.attempt_not_recorded", {
+        ...at,
+        attempt: attemptId,
+        step,
+        error: messageOf(e),
+        code_status: fields.code_status,
+        contract_status: fields.contract_status,
+        raw_detail: fields.raw_detail,
+        tx: fields.tx_hash,
+      });
+      return false;
+    }
+  };
+  /** The row of an attempt that ended before it had a code outcome: an error, and why when it was the deadline. */
+  const fail = async (deadline: boolean): Promise<AttemptResult> => {
+    await write(
+      {
+        code_status: "error",
+        raw_skipped_reason: "error",
+        raw_detail: deadline ? "deadline" : null,
+      },
+      "failed",
+    );
+    return rejected("failed");
+  };
 
   let outcome: SpendOutcome;
   try {
-    outcome = await pb.process({ text, facts, ref });
+    outcome = await bounded(() => pb.process({ text, facts, ref }), left, "the model step");
   } catch (e) {
-    // The SDK sends a spend only after a decision and never throws once it has: nothing went out. The model may have
-    // answered, so the row stays (its estimate counts against the day's budget).
-    log.error("canary.failed", { ...at, mandate_id: mandate.id, error: messageOf(e) });
-    return rejected("failed");
+    // The SDK sends a spend only after a decision, and the Canary's rule refuses every decision: nothing went out. The model
+    // may have answered, so the row stays (its estimate counts against the day's budget), closed as an error.
+    const deadline = e instanceof DeadlineError || left() <= 0;
+    log.error(deadline ? "canary.deadline" : "canary.failed", {
+      ...at,
+      mandate_id: mandate.id,
+      error: messageOf(e),
+    });
+    return fail(deadline);
   }
 
   const decision = await readDecision(deps, outcome.decisionHash, at);
   const proposal = decision?.body.proposal ?? null;
   const rule = stoppingRule(decision);
+  const usage = outcome.modelUsage ?? null;
+  const code = {
+    proposal_action: proposal?.action ?? null,
+    proposal_mandate_id: proposal?.mandate_id ?? null,
+    proposal_amount: proposal?.amount ?? null,
+    code_status: codeStatusOf(outcome.status),
+    code_rule: label(rule),
+    decision_hash: outcome.decisionHash,
+    model_prompt_tokens: usage?.promptTokens ?? null,
+    model_completion_tokens: usage?.completionTokens ?? null,
+  };
+  const row = (raw: RawFields) => ({
+    ...code,
+    ...raw,
+    tx_hash: raw.tx_hash ?? outcome.txHash,
+    spend_id: raw.spend_id ?? outcome.spendId,
+  });
+  // As soon as the code has answered: what a run that dies from here on leaves is the code's outcome, nothing sent.
+  await write(row(RAW_PENDING), "code outcome");
 
   const context: RawContext = {
     deps,
@@ -502,40 +644,24 @@ async function cycle(deps: CanaryDeps, input: AttemptInput, ready: Ready): Promi
     outcome,
     decision,
     facts,
-    invoiceHash,
+    rawInvoiceHash: hashInvoice(`${randomBytes(32).toString("hex")}\n${text}`),
     ref: `${ref}:raw`,
+    left,
   };
   const plan = await planRaw(context);
-  const step = "send" in plan ? await sendRaw(context, plan.send) : plan;
-
-  // Closes the row. A failed write is logged with what happened and never hides the outcome.
-  const usage = outcome.modelUsage ?? null;
-  try {
-    await deps.db.rpc("canary_attempt_update", {
-      id: attemptId,
-      proposal_action: proposal?.action ?? null,
-      proposal_mandate_id: proposal?.mandate_id ?? null,
-      proposal_amount: proposal?.amount ?? null,
-      code_status: codeStatusOf(outcome.status),
-      code_rule: label(rule),
-      ...step.fields,
-      tx_hash: step.fields.tx_hash ?? outcome.txHash,
-      spend_id: step.fields.spend_id ?? outcome.spendId,
-      decision_hash: outcome.decisionHash,
-      model_prompt_tokens: usage?.promptTokens ?? null,
-      model_completion_tokens: usage?.completionTokens ?? null,
-    });
-  } catch (e) {
-    log.error("canary.attempt_not_recorded", {
-      ...at,
-      attempt: attemptId,
-      error: messageOf(e),
-      code_status: outcome.status,
-      contract_status: step.fields.contract_status,
-      raw_detail: step.fields.raw_detail,
-      tx: step.fields.tx_hash ?? outcome.txHash,
-    });
+  let step: RawStep;
+  if ("send" in plan) {
+    // Just before the send, the row says a raw spend is on its way (raw, unconfirmed, no skip reason): that is what the
+    // row must say if the process dies during the send. If that cannot be written, nothing is sent.
+    const pending = await write(
+      row({ ...RAW_PENDING, raw: true, contract_status: "unconfirmed" }),
+      "raw spend on its way",
+    );
+    step = pending ? await sendRaw(context, plan.send) : skip("error", "row_unwritable");
+  } else {
+    step = plan;
   }
+  await write(row(step.fields), "end");
   log.info("canary.attempt", {
     ...at,
     code: outcome.status,
@@ -560,14 +686,17 @@ async function cycle(deps: CanaryDeps, input: AttemptInput, ready: Ready): Promi
 }
 
 export async function runAttempt(deps: CanaryDeps, input: AttemptInput): Promise<AttemptResult> {
-  const ready = await admit(deps, input);
+  // One deadline for the whole attempt, counted from the route's start; every phase shares it.
+  const deadlineAt = (input.startedAt ?? deps.now().getTime()) + CANARY_LIMITS.attemptBudgetMs;
+  const left = () => deadlineAt - deps.now().getTime();
+  const ready = await admit(deps, input, left);
   if ("status" in ready) return ready;
   const leased = await withLease(
     deps.db,
     deps.tenant.tenant_id,
     "process",
     CANARY_LIMITS.leaseSeconds,
-    () => cycle(deps, input, ready),
+    () => cycle(deps, input, ready, left),
   );
   return leased.acquired ? leased.value : rejected("busy");
 }

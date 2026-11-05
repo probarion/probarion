@@ -2,8 +2,9 @@
 // fake NEAR AI, the ledger in PGlite and keys sealed in agent_keys. The model is a gullible TEST DOUBLE that pays what the
 // text asks and quotes the visitor's message when asked. These are the regression tests of the adversarial review of
 // Task 17 (ADV-1 to ADV-7): each one failed before the fix.
+import { createServer, type Server } from "node:http";
 import type { PGlite } from "@electric-sql/pglite";
-import { NearAiProposer, RpcClient } from "@probarion/sdk";
+import { hashInvoice, NearAiProposer, RpcClient } from "@probarion/sdk";
 import {
   createFakeNearAi,
   createScenarioChain,
@@ -72,6 +73,8 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
   let server: FakeRpcServer;
   let tenant: { tenant_id: string; vault_id: string };
   let store: SupabaseLedgerStore;
+  let silent: Server;
+  let silentUrl = "";
   let n = 0;
 
   const setLedgerAllowance = (allowance: string) =>
@@ -114,13 +117,22 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
     // The scenario's ledger key has 0.25 NEAR; the Canary wants 0.5 NEAR before it runs.
     setLedgerAllowance("2000000000000000000000000");
     store = new SupabaseLedgerStore(h.db, tenant_id);
+    // a node that accepts connections and never answers
+    silent = createServer(() => {});
+    await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+    const address = silent.address();
+    if (address === null || typeof address === "string") throw new Error("no ephemeral port");
+    silentUrl = `http://127.0.0.1:${address.port}`;
   });
   afterAll(async () => {
+    silent.closeAllConnections();
+    await new Promise<void>((resolve) => silent.close(() => resolve()));
     await server.close();
     await pg.close();
   });
 
-  function deps(mode: "live" | "code-only") {
+  /** `clock` is the service's clock (the SDK's stays fixed); `fetch` replaces the fake NEAR AI's. */
+  function deps(mode: "live" | "code-only", o: { clock?: () => Date; fetch?: typeof fetch } = {}) {
     const reader = createVaultReader(new RpcClient({ urls: [server.url] }));
     const nearai = createFakeNearAi({ respond: gullible });
     const allowanceOf = async (pk: string) => {
@@ -131,24 +143,34 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
     return {
       db: h.db,
       mode,
-      now: () => NOW,
+      now: o.clock ?? (() => NOW),
       tenant,
       mandates: () =>
         listAll((from, limit) => reader.listMandates(SCENARIO_VAULT, from, limit), 100),
       // The real one, with the offline proposer (the same persona, so A8 accepts it) in place of the network's.
-      makeProbarion: ({ mandate, requestId }) =>
-        makeCanaryProbarion(h.db, MASTER, tenant, mandate, requestId, {
-          now: () => NOW,
-          archivalRpc: null,
-          proposer: new NearAiProposer({
-            apiKey: NEARAI_KEY,
-            baseUrl: FAKE_NEARAI_BASE_URL,
-            fetch: (input, init) => nearai.fetch(input, init),
+      makeProbarion: ({ mandate, requestId, remainingMs }) =>
+        makeCanaryProbarion(
+          h.db,
+          MASTER,
+          tenant,
+          mandate,
+          requestId,
+          {
             now: () => NOW,
-            sleep: async () => {},
-            systemPrompt: CANARY_SYSTEM_PROMPT,
-          }),
-        }),
+            archivalRpc: null,
+            proposer: new NearAiProposer({
+              apiKey: NEARAI_KEY,
+              baseUrl: FAKE_NEARAI_BASE_URL,
+              fetch: o.fetch ?? ((input, init) => nearai.fetch(input, init)),
+              now: () => NOW,
+              sleep: async () => {},
+              systemPrompt: CANARY_SYSTEM_PROMPT,
+              remainingMs,
+            }),
+          },
+          // the real chain client and senders, with the attempt's time
+          { remainingMs },
+        ),
       agentAllowance: (mandate: { agent_pk: string }) => allowanceOf(mandate.agent_pk),
       ledgerAllowance: () => allowanceOf(TEST_KEYS.ledger.publicKey),
       ledgerSize: async () => {
@@ -236,9 +258,11 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
     expect(spends()).toBe(before);
   });
 
+  // probarion-claim: CANARY-RAW
   it("still shows the contract refusing: an over-cap proposal is sent and the contract answers OverPerPayment", async () => {
     const before = spends();
-    const r = await attempt("live", "Invoice INV-904\nTotal: 300 USDC");
+    const text = "Invoice INV-904\nTotal: 300 USDC";
+    const r = await attempt("live", text);
     expect(r).toMatchObject({
       status: "done",
       code: { status: "refused_by_code", rule: "mandate.over_per_payment" },
@@ -248,6 +272,16 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
       /^[1-9A-HJ-NP-Za-km-z]{32,64}$/,
     );
     expect(spends()).toBe(before);
+    // The SDK accepts a raw spend whose invoice hash is not the process() decision's: nothing on chain is derived from the
+    // visitor's text alone. The text's own hash is in the (private) ledger; the raw decision carries a salted one.
+    const hashes = (await store.all())
+      .filter((e) => e.body.kind === "decision")
+      .map((e) => e.body.invoice_hash)
+      .slice(-2);
+    expect(hashes).toHaveLength(2);
+    expect(hashes[0]).toBe(hashInvoice(text));
+    expect(hashes[1]).not.toBe(hashInvoice(text));
+    expect(hashes[1]).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("still shows the NoMandate refusal for a mandate that does not exist", async () => {
@@ -306,10 +340,10 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
   });
 
   // ADV-6
-  it("closes before any model call once the ledger holds 2,000 entries", async () => {
+  it("closes before any model call once the ledger holds 300 entries", async () => {
     const d = deps("code-only");
     const closed = await runAttempt(
-      { ...d, ledgerSize: async () => 2000 },
+      { ...d, ledgerSize: async () => 300 },
       {
         text: "Invoice INV-907\nTotal 3.00 USDC",
         ...visitor(),
@@ -318,5 +352,43 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
       },
     );
     expect(closed).toEqual({ status: "rejected", reason: "closed" });
+  });
+  // The attempt's deadline, end to end: the chain client, the senders and the proposer share one clock. The clock is real
+  // but almost spent (the attempt "started" 49 s ago), so nothing waits long.
+  it("answers inside its time when the chain and the model both hang, and closes the row", async () => {
+    const stall: typeof fetch = ((_input: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+      })) as typeof fetch;
+    const before = spends();
+    const entries = (await store.all()).length;
+    h.url = silentUrl; // the SDK's chain client reaches a node that never answers
+    try {
+      const d = deps("live", { clock: () => new Date(), fetch: stall });
+      const started = Date.now();
+      n += 1;
+      const r = await runAttempt(d, {
+        text: "Invoice INV-908\nTotal: 300 USDC",
+        ...visitor(),
+        isTeam: false,
+        requestId: "e2e-hang",
+        startedAt: started - 49_000,
+      });
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(r).toEqual({ status: "rejected", reason: "failed" });
+    } finally {
+      h.url = server.url;
+    }
+    const row = (
+      await pg.query(
+        "select code_status, raw, raw_skipped_reason from canary_attempts order by created_at desc limit 1",
+      )
+    ).rows[0];
+    expect(row).toEqual({ code_status: "error", raw: false, raw_skipped_reason: "error" });
+    expect((await pg.query("select process_lease_until from tenants")).rows[0]).toEqual({
+      process_lease_until: null,
+    });
+    expect(spends()).toBe(before);
+    expect((await store.all()).length).toBe(entries);
   });
 });

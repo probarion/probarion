@@ -56,6 +56,8 @@ const h = vi.hoisted(() => ({
   ) => Promise<unknown>,
   accessKeyCalls: [] as [string, string][],
   made: [] as Record<string, unknown>[],
+  /** The deps each made instance was given (the chain client, the senders, the proposer). */
+  deps: [] as Record<string, unknown>[],
   process: (async () => null) as (i: unknown) => Promise<unknown>,
   requestSpend: (async () => null) as (i: unknown) => Promise<unknown>,
   checkSpend: (async () => null) as (i: unknown) => Promise<unknown>,
@@ -114,8 +116,9 @@ vi.mock("@/lib/near/server", () => ({
   }),
 }));
 vi.mock("@/lib/sdk/factory", () => ({
-  makeTenantProbarion: (o: Record<string, unknown>) => {
+  makeTenantProbarion: (o: Record<string, unknown>, deps: Record<string, unknown> = {}) => {
     h.made.push(o);
+    h.deps.push(deps);
     return {
       process: (i: unknown) => h.process(i),
       checkSpend: (i: unknown) => h.checkSpend(i),
@@ -252,7 +255,9 @@ beforeEach(async () => {
     CANARY_MODE: "live",
     NEARAI_API_KEY: "test-key",
     NEARAI_MODEL: null,
+    NEAR_RPC_URLS: ["https://rpc.test/key-in-path"],
   } satisfies Partial<Env>;
+  h.deps = [];
   h.sent = new Map();
   h.jar = [];
   h.session = null;
@@ -305,6 +310,11 @@ describe("POST /api/canary/attempt", () => {
   it("lets the tenant lease outlast the route's longest run, with a margin", () => {
     expect(maxDuration + 30).toBeLessThanOrEqual(CANARY_LIMITS.leaseSeconds);
     expect(CANARY_LIMITS.leaseSeconds).toBe(PROCESS_LEASE_SECONDS);
+  });
+
+  it("bounds one attempt at 50 s, which leaves the platform's 60 s room to close the row and answer", () => {
+    expect(CANARY_LIMITS.attemptBudgetMs).toBe(50_000);
+    expect(CANARY_LIMITS.attemptBudgetMs + 5000).toBeLessThanOrEqual(maxDuration * 1000);
   });
 
   describe("who may call it", () => {
@@ -364,13 +374,22 @@ describe("POST /api/canary/attempt", () => {
     });
 
     it("answers 503, with no model call and no chain call, while the Canary's proof is public", async () => {
-      // its ledger would carry what visitors type, for good: the Canary tenant is private (W-T17-R1)
-      await pg.query("update public.tenants set proof_public = true where id = $1", [tenantId]);
-      await notReady(await post({ text: TEXT }));
-      expect(await rateRows()).toEqual([]);
-      expect(h.accessKeyCalls).toEqual([]);
-      expect(h.jar).toEqual([]);
-      expect(logs.lines.join("\n")).toContain("canary.public_ledger");
+      // its ledger would carry what visitors type, for good: the Canary tenant is private (W-T17-R1). The database forbids
+      // that state (a CHECK), so the test lifts the CHECK to prove the route would still refuse.
+      await pg.exec("alter table public.tenants drop constraint tenants_canary_private");
+      try {
+        await pg.query("update public.tenants set proof_public = true where id = $1", [tenantId]);
+        await notReady(await post({ text: TEXT }));
+        expect(await rateRows()).toEqual([]);
+        expect(h.accessKeyCalls).toEqual([]);
+        expect(h.jar).toEqual([]);
+        expect(logs.lines.join("\n")).toContain("canary.public_ledger");
+      } finally {
+        await pg.query("update public.tenants set proof_public = false where id = $1", [tenantId]);
+        await pg.exec(
+          "alter table public.tenants add constraint tenants_canary_private check (kind <> 'canary' or not proof_public)",
+        );
+      }
     });
 
     it("answers 503 when the ledger key's allowance is under 0.5 NEAR, is gone or cannot be read", async () => {
@@ -521,6 +540,34 @@ describe("POST /api/canary/attempt", () => {
         await keyedHashHex(await visitorKey, "ip:2001:db8:1:2::/64"),
       );
     });
+
+    // One address's share of the attempts (6 an hour), and IPv6 by its /64 for EVERY Canary limiter: a host that rotates
+    // the low 64 bits is one address.
+    it("counts two IPv6 addresses of one /64 as one address for the share of the attempts, and another /64 as another", async () => {
+      const bucket = async (ip: string) =>
+        `canary:attempts:ip:${await keyedHashHex(await visitorKey, `ip:${ip}`)}`;
+      await pg.query(
+        "insert into rate_limits (bucket, window_start, count) values ($1, now(), 6)",
+        [await bucket("2001:db8:1:2::/64")],
+      );
+      for (const ip of ["2001:db8:1:2:aaaa:bbbb:cccc:dddd", "2001:db8:1:2:1111:2222:3333:4444"]) {
+        const r = await post({ text: TEXT }, { ip });
+        expect(r.status, ip).toBe(429);
+        expect(await json(r), ip).toEqual({ error: "budget" });
+        expect(Number(r.headers.get("retry-after")), ip).toBeGreaterThanOrEqual(1);
+      }
+      // another /64, and an IPv4 address, are not affected
+      expect((await post({ text: TEXT }, { ip: "2001:db8:1:3:aaaa:bbbb:cccc:dddd" })).status).toBe(
+        200,
+      );
+      expect((await post({ text: `${TEXT} 2` }, { ip: "203.0.113.90" })).status).toBe(200);
+      // and the attempt that was let in used the /64's counter, taken before the global slots
+      const taken = await pg.query<{ bucket: string; count: number }>(
+        "select bucket, count from rate_limits where bucket like 'canary:attempts:ip:%' order by bucket",
+      );
+      // (the two refused hits still count: the /64 bucket is at 6 + 2)
+      expect(taken.rows.map((x) => x.count).sort()).toEqual([1, 1, 8]);
+    });
   });
 
   describe("the model's own rate limits", () => {
@@ -563,6 +610,20 @@ describe("POST /api/canary/attempt", () => {
   });
 
   describe("an attempt", () => {
+    it("starts the attempt's clock at the route's start: the SDK's chain client gets what is left, and a slow chain read eats into it", async () => {
+      h.mandates = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return [mandateFor(agentB.pk)];
+      };
+      const before = Date.now();
+      expect((await post({ text: TEXT })).status).toBe(200);
+      const rpc = at(h.deps).rpc as { opts: { remainingMs: () => number } };
+      const left = rpc.opts.remainingMs();
+      // 50 s from the start, less the 300 ms the mandates took and what the attempt has used since
+      expect(left).toBeLessThanOrEqual(CANARY_LIMITS.attemptBudgetMs - 300);
+      expect(left).toBeGreaterThan(CANARY_LIMITS.attemptBudgetMs - (Date.now() - before) - 100);
+    });
+
     it("runs the cycle with the key the mandate is bound to, the ledger key and the Canary prompt", async () => {
       const r = await post({ text: TEXT });
       expect(r.status).toBe(200);
@@ -744,13 +805,13 @@ describe("POST /api/canary/attempt", () => {
       }
     });
 
-    it("closed: 503, once the Canary's ledger holds 2,000 entries, before any model call", async () => {
-      h.head = { body: { seq: 1999 } };
+    it("closed: 503, once the Canary's ledger holds 300 entries, before any model call", async () => {
+      h.head = { body: { seq: 299 } };
       const r = await post({ text: TEXT });
       expect(r.status).toBe(503);
       expect(await json(r)).toEqual({ error: "closed" });
       expect(h.made).toEqual([]);
-      h.head = { body: { seq: 1998 } };
+      h.head = { body: { seq: 298 } };
       expect((await post({ text: TEXT })).status).toBe(200);
       h.head = null;
       expect((await post({ text: `${TEXT} 2` })).status).toBe(200);

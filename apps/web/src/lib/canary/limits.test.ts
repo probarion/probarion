@@ -24,11 +24,29 @@ describe("CANARY_LIMITS", () => {
       minLedgerAllowanceYocto: 500_000_000_000_000_000_000_000n,
       attemptsGlobalPerHour: 60,
       attemptsGlobalPerDay: 600,
-      maxLedgerEntries: 2000,
+      attemptsPerIpPerHour: 6,
+      maxLedgerEntries: 300,
       dailyTokenBudget: 2_000_000,
       promptOverheadTokens: 900,
       leaseSeconds: 90,
+      attemptBudgetMs: 50_000,
+      modelBudgetMs: 30_000,
+      chainStepTimeoutMs: 8000,
+      rawMinRemainingMs: 15_000,
+      modelCacheMs: 600_000,
     });
+  });
+
+  // The ledger ceiling bounds what an attempt COSTS, not only how many entries there are: an attempt reads the whole
+  // ledger 2 to 4 times, and an entry with its attestation evidence and the model's full response is about 12 KB, so 300
+  // entries are about 3.6 MB a read, a few MB to 15 MB an attempt.
+  it("keeps the ledger ceiling at the size whose reads stay cheap, and the deadline inside the platform's", () => {
+    expect(CANARY_LIMITS.maxLedgerEntries * 12_000).toBeLessThanOrEqual(3_600_000);
+    // 10 s are left to close the row and answer, and the model has less than the whole attempt
+    expect(CANARY_LIMITS.attemptBudgetMs).toBeLessThanOrEqual(50_000);
+    expect(CANARY_LIMITS.modelBudgetMs).toBeLessThan(CANARY_LIMITS.attemptBudgetMs);
+    expect(CANARY_LIMITS.rawMinRemainingMs).toBeLessThan(CANARY_LIMITS.attemptBudgetMs);
+    expect(CANARY_LIMITS.chainStepTimeoutMs).toBeLessThan(CANARY_LIMITS.rawMinRemainingMs);
   });
 
   // Unknown usage is charged at the worst case: half a token per character (non-Latin text), the system prompt and the
@@ -115,11 +133,11 @@ describe("claimRawSlot and tokensToday", () => {
   });
 
   it("takes an attempt slot from the hour and the day, and says when to come back when either is full", async () => {
-    expect(await takeAttemptSlot(db())).toEqual({ ok: true });
+    expect(await takeAttemptSlot(db(), H("1"))).toEqual({ ok: true });
     expect(await count("canary:attempts:hour")).toBe(1);
     expect(await count("canary:attempts:day")).toBe(1);
     await pg.query("update rate_limits set count = 60 where bucket = 'canary:attempts:hour'");
-    const full = await takeAttemptSlot(db());
+    const full = await takeAttemptSlot(db(), H("1"));
     expect(full.ok).toBe(false);
     if (!full.ok) {
       expect(full.retryAfterS).toBeGreaterThan(3590);
@@ -129,7 +147,7 @@ describe("claimRawSlot and tokensToday", () => {
     expect(await count("canary:attempts:day")).toBe(1);
     await pg.query("update rate_limits set count = 5 where bucket = 'canary:attempts:hour'");
     await pg.query("update rate_limits set count = 600 where bucket = 'canary:attempts:day'");
-    const day = await takeAttemptSlot(db());
+    const day = await takeAttemptSlot(db(), H("1"));
     expect(day.ok).toBe(false);
     if (!day.ok) expect(day.retryAfterS).toBeGreaterThan(86_300);
     // a window that is over starts again
@@ -139,7 +157,42 @@ describe("claimRawSlot and tokensToday", () => {
     await pg.query(
       "update rate_limits set window_start = now() - interval '86401 seconds' where bucket = 'canary:attempts:day'",
     );
-    expect(await takeAttemptSlot(db())).toEqual({ ok: true });
+    expect(await takeAttemptSlot(db(), H("1"))).toEqual({ ok: true });
+  });
+
+  it("gives each address 6 attempts an hour of the cap, taken before the global slots", async () => {
+    for (let i = 1; i <= 6; i += 1) {
+      expect(await takeAttemptSlot(db(), H("a")), String(i)).toEqual({ ok: true });
+    }
+    const hourBefore = await count("canary:attempts:hour");
+    const over = await takeAttemptSlot(db(), H("a"));
+    expect(over.ok).toBe(false);
+    if (!over.ok) {
+      expect(over.retryAfterS).toBeGreaterThan(3590);
+      expect(over.retryAfterS).toBeLessThanOrEqual(3600);
+    }
+    // one address's overflow never spends a global slot
+    expect(await count("canary:attempts:hour")).toBe(hourBefore);
+    expect(await count("canary:attempts:day")).toBe(hourBefore);
+    // another address is not affected, and the bucket is the address's own
+    expect(await takeAttemptSlot(db(), H("b"))).toEqual({ ok: true });
+    expect(await count(`canary:attempts:ip:${H("a")}`)).toBe(7);
+    expect(await count(`canary:attempts:ip:${H("b")}`)).toBe(1);
+    // the window is an hour from the first attempt
+    await pg.query(
+      "update rate_limits set window_start = now() - interval '3601 seconds' where bucket = $1",
+      [`canary:attempts:ip:${H("a")}`],
+    );
+    expect(await takeAttemptSlot(db(), H("a"))).toEqual({ ok: true });
+  });
+
+  it("lets two addresses use their own share and still leave the rest of the cap for everyone else", async () => {
+    for (const ip of ["a", "b"]) {
+      for (let i = 0; i < 6; i += 1) await takeAttemptSlot(db(), H(ip));
+    }
+    // 12 of 60 are taken: a third visitor is not locked out
+    expect(await takeAttemptSlot(db(), H("c"))).toEqual({ ok: true });
+    expect(await count("canary:attempts:hour")).toBe(13);
   });
 
   it("sums the day's model tokens as a number", async () => {

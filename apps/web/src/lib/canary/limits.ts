@@ -22,11 +22,21 @@ export const CANARY_LIMITS = {
   attemptsGlobalPerHour: 60,
   attemptsGlobalPerDay: 600,
   /**
-   * When the Canary's ledger holds this many entries the Canary is closed. The SDK reads the whole ledger several
-   * times per attempt, so a ledger that grows without bound makes each attempt dearer than the last. The ledger stays
-   * readable by the owner; the OWNER starts a new Canary vault before go-live traffic.
+   * One address's share of those 60: two addresses could otherwise use the whole hour (the model limiter lets one address
+   * make 30 attempts an hour) and keep every other visitor out. Taken before the global slots, so an address's overflow
+   * never spends one. An IPv6 address counts by its /64 (`clientIp`), so rotating the low 64 bits changes nothing.
    */
-  maxLedgerEntries: 2000,
+  attemptsPerIpPerHour: 6,
+  /**
+   * When the Canary's ledger holds this many entries the Canary is closed. The ceiling is sized by COST, not by count: the
+   * SDK reads the whole ledger on every attempt (2 to 4 times: before the decision, before a raw spend, before each anchor),
+   * and an entry that carries attestation evidence and the model's full response is about 12 KB. 300 entries are about
+   * 3.6 MB per read, so a few MB to 15 MB moved from the database per attempt; at 2,000 entries it would be 24 MB a read
+   * and filling the ledger would read tens of GB. The ledger stays readable by the owner, and the OWNER starts a new
+   * Canary vault when this one closes. A tail-only read in the SDK would lift the ceiling: parked until traffic beyond the
+   * hackathon demo.
+   */
+  maxLedgerEntries: 300,
   dailyTokenBudget: 2_000_000, // model tokens per UTC day across all attempts
   /** The system prompt, the facts and the mandate view the model is shown, with room to spare (NOT the output cap). */
   promptOverheadTokens: 900,
@@ -35,6 +45,20 @@ export const CANARY_LIMITS = {
    * and it must outlast the route's `maxDuration` (60 s) with a margin. route.test.ts checks both.
    */
   leaseSeconds: 90,
+  /**
+   * One attempt, from the route's start (not from the first model call): the platform stops the function at 60 s, and these
+   * 10 s are what is left to close the row and answer. Every phase gets the smaller of its own cap and the time left, and
+   * the whole attempt is cut off at this deadline.
+   */
+  attemptBudgetMs: 50_000,
+  /** ALL the model calls of one attempt (the catalog, the probe, the attestation report, the chat, the signature reads) share this. */
+  modelBudgetMs: 30_000,
+  /** One step on the chain (a read, signing, a send, a lookup), capped by the time left. */
+  chainStepTimeoutMs: 8000,
+  /** A raw spend is not started with less than this left: the dry run, the send and its row need the time. */
+  rawMinRemainingMs: 15_000,
+  /** How long a process keeps the model its first attempt resolved (the catalog and the probe do not change that fast). */
+  modelCacheMs: 600_000,
 } as const;
 
 export type RawSkip =
@@ -54,6 +78,8 @@ export type RawSkip =
   | "decision_unreadable"
   /** The SDK itself refused the raw spend by code, before the chain. */
   | "sdk_refused"
+  /** Less than `rawMinRemainingMs` of the attempt's time was left, or the time ran out before the spend could be asked about. */
+  | "no_time"
   /** An error that certainly sent nothing (a bad input, no ledger, no node), or a counter that could not be read. */
   | "error";
 
@@ -96,12 +122,21 @@ function retryAfter(resetAt: string, windowS: number): number {
 }
 
 /**
- * One attempt out of the Canary's global caps (60 an hour and 600 a day), taken atomically before the model is called.
- * Over either: `ok: false` with the seconds until that window is over. A refusal by the hour takes nothing from the day.
+ * One attempt out of the Canary's caps, taken atomically before the model is called: the address's own 6 an hour first,
+ * then the global 60 an hour and 600 a day. Over any: `ok: false` with the seconds until that window is over. A refusal
+ * by the address takes nothing from the global slots, and one by the hour nothing from the day.
  */
 export async function takeAttemptSlot(
   db: Db,
+  ipHash: string,
 ): Promise<{ ok: true } | { ok: false; retryAfterS: number }> {
+  const mine = await takeToken(
+    db,
+    `canary:attempts:ip:${ipHash}`,
+    CANARY_LIMITS.attemptsPerIpPerHour,
+    3600,
+  );
+  if (!mine.allowed) return { ok: false, retryAfterS: retryAfter(mine.reset_at, 3600) };
   const hour = await takeToken(
     db,
     "canary:attempts:hour",
