@@ -17,6 +17,7 @@ import { extractInvoice, type InvoiceMediaType } from "./extract";
 import { type AmountIssue, extractFacts, fingerprintText, numberKeyText, refFor } from "./facts";
 import { signingMandate } from "./mandate";
 import { OWNER_CONFIRMS_RULE, ownerConfirms } from "./owner-confirms";
+import { payeeId } from "./payee";
 import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
 
 // The Payables cycle (spec §8, plan 04 Task 13): extract the invoice text, read its facts, store it sealed or as
@@ -131,13 +132,6 @@ const messageOf = (e: unknown): string =>
 
 /** The HKDF label of the invoice-number key: a key of its own, derived from KEY_ENCRYPTION_SECRET. */
 const NUMBER_KEY_INFO = "probarion/payables/invoice-number-key/v1";
-
-/** The payee as one string: a NEAR account, or an Intents chain, address and asset. */
-const payeeId = (p: Payee): string =>
-  (p.type === "near"
-    ? `near:${p.account_id}`
-    : `intents:${p.chain}:${p.address}:${p.asset}`
-  ).toLowerCase();
 
 /**
  * The duplicate guard's second key: HMAC-SHA256, under a server-side key derived from the master key with HKDF, of
@@ -358,6 +352,8 @@ export async function processInvoice(
           outcome,
           // The code's amount, kept for the owner to confirm (Task 14's Confirm button).
           suggestedAmount: invoiceStatus === "awaiting_owner" ? facts.amount : null,
+          // The mandate the cycle signed under: the owner's confirmation names it (migration 0007).
+          mandateId: mandate.id,
           anchorTxHash:
             outcome.anchorTxHash && TX_HASH.test(outcome.anchorTxHash)
               ? outcome.anchorTxHash

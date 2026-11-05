@@ -14,7 +14,7 @@ import type { Network } from "@/lib/config";
 import { confirmTxAction, sendBaselineAction } from "@/lib/near/confirm-action";
 import type { TxResult } from "@/lib/near/outcome";
 import { type SendWallet, sendWalletTx } from "@/lib/near/send";
-import { type Nep413Wallet, signInWithWallet } from "@/lib/near/signin";
+import { type Nep413Wallet, type SignedMessage, signInWithWallet } from "@/lib/near/signin";
 import type { WalletTx } from "@/lib/near/tx";
 import { connectorOptions, type DataStorage, hardenConnector } from "./manifest";
 
@@ -37,6 +37,11 @@ interface WalletCtx {
   accountId: string | null;
   signIn(): Promise<string>;
   signOut(): Promise<void>;
+  /**
+   * Asks the connected wallet for a NEP-413 message signature (the owner's confirmation of an invoice payment). It
+   * signs a message and sends nothing; the server checks the signature over its own copy of the message.
+   */
+  signMessage(p: { message: string; recipient: string; nonce: Uint8Array }): Promise<SignedMessage>;
   /**
    * Asks the wallet to sign and send once, then reads the result from the chain. It never throws and
    * never sends the same transaction twice: a result it cannot confirm comes back as `unknown`.
@@ -148,6 +153,12 @@ export function WalletProvider({ network, children }: { network: Network; childr
     return id;
   }, [wallet]);
 
+  const signMessage = useCallback(
+    async (p: { message: string; recipient: string; nonce: Uint8Array }) =>
+      (await wallet()).signMessage(p),
+    [wallet],
+  );
+
   const signOut = useCallback(async () => {
     // End our session first; if that fails, say so and leave the wallet alone.
     const res = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
@@ -172,8 +183,8 @@ export function WalletProvider({ network, children }: { network: Network; childr
   );
 
   const value = useMemo(
-    () => ({ ready, accountId, signIn, signOut, sendTx }),
-    [ready, accountId, signIn, signOut, sendTx],
+    () => ({ ready, accountId, signIn, signOut, signMessage, sendTx }),
+    [ready, accountId, signIn, signOut, signMessage, sendTx],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

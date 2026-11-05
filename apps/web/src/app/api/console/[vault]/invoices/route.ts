@@ -137,7 +137,9 @@ function respond(r: PipelineResult, requestId: string): Response {
                 ? "This invoice is being processed, or its outcome is still being confirmed."
                 : r.invoiceStatus === "awaiting_owner"
                   ? "This invoice is already waiting for the owner to confirm its amount."
-                  : "This invoice was already processed.",
+                  : r.invoiceStatus === "rejected"
+                    ? "The owner rejected this invoice, so the same text is refused again. A corrected invoice is a new one."
+                    : "This invoice was already processed.",
           invoiceId: r.invoiceId,
           status: r.invoiceStatus,
         },

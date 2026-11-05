@@ -30,7 +30,7 @@ export interface AccessKeyProvider {
   viewAccessKey(a: {
     accountId: string;
     publicKey: string | PublicKey;
-  }): Promise<{ permission: unknown }>;
+  }): Promise<{ permission: unknown; block_height?: unknown; block_hash?: unknown }>;
 }
 
 type VerifyProvider = Parameters<typeof verifyMessage>[0]["provider"];
@@ -102,7 +102,12 @@ export function rpcLoginProvider(rpc: {
       if (!isRecord(result) || !("permission" in result)) {
         throw new VerifierUnavailableError();
       }
-      return { permission: result.permission };
+      // The block the key was read at (finality "final") travels along: the owner's confirmation records it.
+      return {
+        permission: result.permission,
+        block_height: result.block_height,
+        block_hash: result.block_hash,
+      };
     },
   };
 }
@@ -169,7 +174,11 @@ function isEd25519PublicKey(s: string): boolean {
   }
 }
 
-function parseLogin(x: unknown): (SignedLogin & { sigBytes: Uint8Array }) | null {
+/**
+ * A wallet's NEP-413 answer in the one form the server accepts: a NEAR account id, an ed25519 key in its canonical
+ * spelling and 64 signature bytes in canonical padded base64. Null for anything else.
+ */
+export function parseSignedMessage(x: unknown): (SignedLogin & { sigBytes: Uint8Array }) | null {
   if (typeof x !== "object" || x === null) return null;
   const { accountId, publicKey, signature } = x as Record<string, unknown>;
   if (typeof accountId !== "string" || !isNearAccountId(accountId)) return null;
@@ -202,7 +211,7 @@ export async function verifyLogin(
   verifier: Nep413Verifier,
 ): Promise<LoginResult> {
   if (!challenge) return { ok: false, reason: "challenge_missing_or_expired" };
-  const l = parseLogin(login);
+  const l = parseSignedMessage(login);
   if (!l) return { ok: false, reason: "invalid_input" };
   try {
     await verifier({
@@ -220,4 +229,45 @@ export async function verifyLogin(
     };
   }
   return { ok: true, accountId: l.accountId };
+}
+
+/** Where and when a key was read: the final block of the `view_access_key` answer. */
+export interface KeyCheck {
+  blockHeight: number;
+  blockHash: string;
+}
+
+export type Nep413KeyVerifier = (a: Parameters<Nep413Verifier>[0]) => Promise<KeyCheck>;
+
+const BLOCK_HASH = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * nearApiVerifier, plus the block of the key check (ruling W-T14-R1): the signature is checked here, then
+ * `verifyMessage` checks it again and reads the key with finality "final" (rpcLoginProvider), accepting the exact
+ * permission "FullAccess" only, so a function-call key or a gas key is refused. The block height and hash of that
+ * read are returned for the record. An answer without a readable block is `VerifierUnavailableError`: the check
+ * cannot be recorded, so it does not count.
+ */
+export function fullAccessKeyVerifier(provider: AccessKeyProvider): Nep413KeyVerifier {
+  return async (a) => {
+    let seen: Awaited<ReturnType<AccessKeyProvider["viewAccessKey"]>> | null = null;
+    const recording: AccessKeyProvider = {
+      async viewAccessKey(q) {
+        seen = await provider.viewAccessKey(q);
+        return seen;
+      },
+    };
+    await nearApiVerifier(recording)(a);
+    const answer = seen as Awaited<ReturnType<AccessKeyProvider["viewAccessKey"]>> | null;
+    if (answer === null || answer.permission !== "FullAccess") {
+      throw new Error("not a full-access key of the account");
+    }
+    const height = answer.block_height;
+    const hash = answer.block_hash;
+    if (typeof height !== "number" || !Number.isSafeInteger(height) || height < 0) {
+      throw new VerifierUnavailableError();
+    }
+    if (typeof hash !== "string" || !BLOCK_HASH.test(hash)) throw new VerifierUnavailableError();
+    return { blockHeight: height, blockHash: hash };
+  };
 }
