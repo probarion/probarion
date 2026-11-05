@@ -1,26 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { Badge, buttonClass, Field, inputClass, Notice, type Tone } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
+import { lockKeyFor } from "@/lib/near/lock";
 import type { WalletTx } from "@/lib/near/tx";
 import { parseTopupAmount, TOPUP_RANGE_TEXT } from "@/lib/topup/amount";
-import { BLOCK_TEXT, quoteBlock } from "@/lib/topup/block";
-import { registerDepositText } from "@/lib/topup/copy";
+import { BLOCK_TEXT } from "@/lib/topup/block";
+import { describeDeposit, registerDepositText } from "@/lib/topup/copy";
 import { quoteErrorText } from "@/lib/topup/messages";
 import type { VerifiedQuote } from "@/lib/topup/oneclick";
-import { QuoteSummary } from "./QuoteSummary";
+import {
+  blockOf,
+  FINAL_STATUS,
+  initialPanel,
+  onDepositResult,
+  panelReducer,
+} from "@/lib/topup/panel";
+import { QuoteReference, QuoteSummary } from "./QuoteSummary";
 
-/** A quote the server verified, the transaction it built from it, and the amount typed when it was asked for. */
-interface Quoted {
-  quote: VerifiedQuote;
-  tx: WalletTx;
-  asked: string;
-}
-
-/** 1Click's final states: after one of them there is nothing more to read. */
-const FINAL_STATUS = new Set(["SUCCESS", "REFUNDED", "FAILED"]);
 const POLL_MS = 5000;
 const POLL_LIMIT = 36; // 3 minutes
 
@@ -35,6 +34,9 @@ const short = (s: string) => (s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-6)}
  * The owner asks 1Click, through the server, for Base USDC in the vault's Intents account. The server answers only
  * with a quote it verified (signature and what the quote is for), so everything below the button is that quote.
  * The owner signs the deposit in their own wallet. Then the page reads 1Click's status for that deposit address.
+ *
+ * What may be signed is decided by `panelReducer` and `blockOf` (lib/topup/panel.ts, tested): this component
+ * dispatches events and draws the state.
  */
 export function TopUpPanel({
   vault,
@@ -46,19 +48,14 @@ export function TopUpPanel({
   network: Network;
 }) {
   const [amount, setAmount] = useState("20");
-  const [quoted, setQuoted] = useState<Quoted | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [state, dispatch] = useReducer(panelReducer, initialPanel);
+  const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** The owner has signed, or tried to: the quote is then never switched off under their wallet. */
-  const [attempted, setAttempted] = useState(false);
-  /** The deposit went through (the chain confirmed it): signing the same quote again would deposit twice. */
-  const [sent, setSent] = useState(false);
-  const [depositAddress, setDepositAddress] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [gaveUp, setGaveUp] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const { quoted, watching } = state;
 
   const parsed = parseTopupAmount(amount);
+  const block = blockOf(state, amount, now);
 
   useEffect(() => {
     if (!quoted) return;
@@ -67,22 +64,24 @@ export function TopUpPanel({
     return () => clearInterval(t);
   }, [quoted]);
 
+  // Read 1Click's status for the deposit address, until it is final, or for 3 minutes.
+  const address = watching?.address ?? null;
+  const run = watching?.run ?? 0;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `run` restarts the reading for the same address
   useEffect(() => {
-    if (!depositAddress) return;
-    setStatus(null);
-    setGaveUp(false);
+    if (!address) return;
     let stopped = false;
     let n = 0;
     const t = setInterval(async () => {
       n++;
       try {
         const r = await fetch(
-          `/api/topup/status?vault=${encodeURIComponent(vault)}&depositAddress=${encodeURIComponent(depositAddress)}`,
+          `/api/topup/status?vault=${encodeURIComponent(vault)}&depositAddress=${encodeURIComponent(address)}`,
         );
         const body: unknown = r.ok ? await r.json().catch(() => null) : null;
         const s = (body as { status?: unknown } | null)?.status;
         if (!stopped && typeof s === "string") {
-          setStatus(s);
+          dispatch({ type: "status", address, status: s });
           if (FINAL_STATUS.has(s)) {
             stopped = true;
             clearInterval(t);
@@ -95,19 +94,21 @@ export function TopUpPanel({
       if (n >= POLL_LIMIT && !stopped) {
         stopped = true;
         clearInterval(t);
-        setGaveUp(true);
+        dispatch({ type: "gave_up", address });
       }
     }, POLL_MS);
     return () => {
       stopped = true;
       clearInterval(t);
     };
-  }, [depositAddress, vault]);
+  }, [address, run, vault]);
 
   async function getQuote() {
-    if ("problem" in parsed) return;
+    if ("problem" in parsed || state.signing) return;
     setError(null);
-    setBusy(true);
+    // The quote on screen goes now, so an error below never sits beside a button that signs the old one.
+    dispatch({ type: "quote_requested" });
+    setRequesting(true);
     try {
       const r = await fetch("/api/topup/quote", {
         method: "POST",
@@ -117,31 +118,19 @@ export function TopUpPanel({
       const body: unknown = await r.json().catch(() => null);
       const b = body as { quote?: VerifiedQuote; tx?: WalletTx } | null;
       if (r.ok && b?.quote && b.tx) {
-        setQuoted({ quote: b.quote, tx: b.tx, asked: amount.trim() });
-        setAttempted(false);
-        setSent(false);
+        dispatch({
+          type: "quote_received",
+          quoted: { quote: b.quote, tx: b.tx, asked: amount.trim() },
+        });
       } else {
         setError(quoteErrorText(r.status, body));
       }
     } catch {
       setError("The server could not be reached. Try again.");
     } finally {
-      setBusy(false);
+      setRequesting(false);
     }
   }
-
-  // Not offered for signing: sent already, the amount no longer matches the quote, or its address is about to close.
-  const block = quoted
-    ? quoteBlock({
-        deadline: quoted.quote.deadline,
-        asked: quoted.asked,
-        amount,
-        now,
-        attempted,
-        sent,
-      })
-    : null;
-  const blocked = block !== null;
 
   return (
     <div>
@@ -160,50 +149,54 @@ export function TopUpPanel({
       <button
         type="button"
         className={buttonClass}
-        disabled={busy || "problem" in parsed}
+        disabled={requesting || state.signing || "problem" in parsed}
         onClick={getQuote}
       >
-        {busy ? "Asking 1Click…" : "Get a 1Click quote"}
+        {requesting ? "Asking 1Click…" : "Get a 1Click quote"}
       </button>
       {error ? <Notice tone="bad">{error}</Notice> : null}
       {quoted ? (
         <div className="mt-4 rounded border border-stone-200 p-3">
           <QuoteSummary quote={quoted.quote} />
+          {quoted.quote.correlationId ? <QuoteReference id={quoted.quote.correlationId} /> : null}
           {block ? <Notice tone="warn">{BLOCK_TEXT[block]}</Notice> : null}
           <p className="mt-2 text-xs text-stone-600">{registerDepositText}</p>
           {/* A disabled fieldset switches off the button inside without unmounting it, so a signature in progress keeps its result. */}
-          <fieldset disabled={blocked} className="m-0 min-w-0 border-0 p-0">
+          <fieldset disabled={block !== null} className="m-0 min-w-0 border-0 p-0">
             <TxButton
+              // One button per deposit address: a result is never shown under another quote.
+              key={quoted.quote.depositAddress}
               label="Sign the deposit in my wallet"
               network={network}
               expectedSigner={owner}
               tx={quoted.tx}
+              // The lock of an unconfirmed deposit is the vault's, so asking for a new quote does not end it.
+              lockKey={lockKeyFor(`topup-intents:${vault}`)}
+              describe={describeDeposit}
+              onBusyChange={(busy) => dispatch({ type: "signing", busy })}
               onResult={async (r) => {
-                setAttempted(true);
-                if (r.status === "ok") setSent(true);
-                if (!r.txHash || r.status === "failed") return;
-                setDepositAddress(quoted.quote.depositAddress);
-                if (r.status !== "ok") return;
+                const depositAddress = quoted.quote.depositAddress;
+                const result = { status: r.status, txHash: r.txHash };
+                dispatch({ type: "result", address: depositAddress, result });
+                if (!onDepositResult(result).submit || r.txHash === null) return;
                 // A speed-up only: 1Click also finds the deposit by itself.
                 await fetch("/api/topup/submit", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({
-                    vault,
-                    txHash: r.txHash,
-                    depositAddress: quoted.quote.depositAddress,
-                  }),
+                  body: JSON.stringify({ vault, txHash: r.txHash, depositAddress }),
                 }).catch(() => {});
               }}
             />
           </fieldset>
         </div>
       ) : null}
-      {depositAddress ? (
+      {watching ? (
         <p className="mt-3 text-sm">
-          1Click status for deposit address <span className="mono">{short(depositAddress)}</span>:{" "}
-          <Badge tone={status ? statusTone(status) : "neutral"}>{status ?? "not read yet"}</Badge>
-          {gaveUp
+          1Click status for deposit address <span className="mono">{short(watching.address)}</span>:{" "}
+          <Badge tone={watching.status ? statusTone(watching.status) : "neutral"}>
+            {watching.status ?? "not read yet"}
+          </Badge>
+          {watching.gaveUp
             ? " Stopped checking after 3 minutes. The vault's Base USDC in Intents shows on the Overview tab."
             : ""}
         </p>

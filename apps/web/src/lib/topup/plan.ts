@@ -2,7 +2,11 @@ import type { VaultConfig } from "@probarion/core";
 import type { Network } from "@/lib/config";
 import { baseCardNotAllowed, baseCardNotConfigured, FUNDING_NOTICE, testnetBaseText } from "./copy";
 
-export type Offer = { offer: true } | { offer: false; why: string };
+/**
+ * A card either offers its action, for this owner account (the one the chain names, which signs), or says why
+ * it does not. Carrying the owner means a page that offers has it, with no null to re-check.
+ */
+export type Offer = { offer: true; owner: string } | { offer: false; why: string };
 
 export interface TopupPlan {
   notice: string;
@@ -29,33 +33,34 @@ export function topupPlan(i: {
   const { config, consts } = i;
   const none = (why: string): Offer => ({ offer: false, why });
   const notice = FUNDING_NOTICE[i.network];
+  // Testnet has no Intents or 1Click whatever the vault says: that card's text is about the network.
+  const testnetBase = i.network !== "mainnet" ? none(testnetBaseText(consts)) : null;
 
-  let blocked: Offer | null = null;
   if (config === null) {
-    blocked = none(
+    const unread = none(
       "The vault could not be read from NEAR, so nothing is offered here. Try again in a minute.",
     );
-  } else if (config.owner !== i.account) {
-    blocked = none(
+    return { notice, fund: unread, base: testnetBase ?? unread };
+  }
+  if (config.owner !== i.account) {
+    const other = none(
       `The chain names ${config.owner} as this vault's owner, not ${i.account}, so nothing is offered here.`,
     );
+    return { notice, fund: other, base: testnetBase ?? other };
   }
 
+  const owner = config.owner;
   const fund: Offer =
-    blocked ??
-    (config !== null && config.usdc !== consts.usdc
+    config.usdc !== consts.usdc
       ? none(
           `This vault's token is ${config.usdc}, not this network's USDC (${consts.usdc}), so nothing is offered here.`,
         )
-      : { offer: true });
-
+      : { offer: true, owner };
   let base: Offer;
-  if (i.network !== "mainnet") base = none(testnetBaseText(consts));
-  else if (blocked) base = blocked;
-  else if (config !== null && !config.allowed_assets.includes(consts.allowedAssets.base)) {
+  if (testnetBase) base = testnetBase;
+  else if (!config.allowed_assets.includes(consts.allowedAssets.base)) {
     base = none(baseCardNotAllowed);
   } else if (!i.quotesConfigured) base = none(baseCardNotConfigured);
-  else base = { offer: true };
-
+  else base = { offer: true, owner };
   return { notice, fund, base };
 }

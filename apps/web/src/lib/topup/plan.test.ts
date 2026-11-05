@@ -18,12 +18,15 @@ const plan = (o: Partial<Parameters<typeof topupPlan>[0]> = {}) =>
 
 describe("what the Top-up tab offers", () => {
   it("offers both on mainnet to the owner of a vault that allows Base USDC, when quotes are set up", () => {
-    expect(plan()).toMatchObject({ fund: { offer: true }, base: { offer: true } });
+    expect(plan()).toMatchObject({
+      fund: { offer: true, owner: OWNER },
+      base: { offer: true, owner: OWNER },
+    });
   });
 
   it("offers only the NEAR USDC funding on testnet, and says what stands in for Intents there", () => {
     const p = plan({ network: "testnet", config: vaultConfig("testnet"), consts: test });
-    expect(p.fund).toEqual({ offer: true });
+    expect(p.fund).toEqual({ offer: true, owner: OWNER });
     expect(p.base).toEqual({ offer: false, why: testnetBaseText(test) });
   });
 

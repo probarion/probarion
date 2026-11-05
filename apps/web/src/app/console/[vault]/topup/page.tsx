@@ -68,22 +68,22 @@ export default async function TopUpPage({ params }: { params: Promise<{ vault: s
       <VaultNav vault={vault} />
       <Notice tone="warn">{plan.notice}</Notice>
       <Card title="USDC on NEAR (for NEAR payees)">
-        {plan.fund.offer && config !== null ? (
+        {plan.fund.offer ? (
           <FundUsdcButton
             vault={vault}
-            owner={config.owner}
+            owner={plan.fund.owner}
             network={env.NEAR_NETWORK}
             token={consts.usdc}
           />
         ) : (
-          <p className={`text-sm ${muted}`}>{plan.fund.offer ? "" : plan.fund.why}</p>
+          <p className={`text-sm ${muted}`}>{plan.fund.why}</p>
         )}
       </Card>
       <Card title="Base USDC inside NEAR Intents (for Base payees)">
-        {plan.base.offer && config !== null ? (
-          <TopUpPanel vault={vault} owner={config.owner} network={env.NEAR_NETWORK} />
+        {plan.base.offer ? (
+          <TopUpPanel vault={vault} owner={plan.base.owner} network={env.NEAR_NETWORK} />
         ) : (
-          <p className={`text-sm ${muted}`}>{plan.base.offer ? "" : plan.base.why}</p>
+          <p className={`text-sm ${muted}`}>{plan.base.why}</p>
         )}
       </Card>
     </div>

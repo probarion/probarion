@@ -123,6 +123,26 @@ describe("the Top-up page", () => {
     ]);
   });
 
+  it("renders no empty paragraph in either card, whatever is offered", async () => {
+    const cases: [typeof h.network, unknown, string | null][] = [
+      ["mainnet", vaultConfig("mainnet"), JWT],
+      ["mainnet", vaultConfig("mainnet"), null],
+      ["mainnet", { ...vaultConfig("mainnet"), allowed_assets: [] }, JWT],
+      ["mainnet", { ...vaultConfig("mainnet"), usdc: "other.near" }, JWT],
+      ["testnet", vaultConfig("testnet"), JWT],
+      ["mainnet", null, JWT],
+    ];
+    for (const [network, config, jwt] of cases) {
+      h.network = network;
+      h.config = config;
+      h.configError = config === null ? new Error("down") : null;
+      h.jwt = jwt;
+      const out = await html();
+      expect(out).not.toMatch(/<p[^>]*><\/p>/);
+      expect(out).not.toMatch(/<p[^>]*>\s+<\/p>/);
+    }
+  });
+
   it("never puts the partner JWT in the page", async () => {
     expect(await html()).not.toContain(JWT);
   });

@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { VerifiedQuote } from "@/lib/topup/oneclick";
-import { QuoteSummary } from "./QuoteSummary";
+import { QuoteReference, QuoteSummary } from "./QuoteSummary";
 
 const quote: VerifiedQuote = {
   depositAddress: "ab".repeat(32),
@@ -51,11 +51,18 @@ describe("a verified quote as the owner reads it", () => {
 
   it("lists what the server checked before showing it, and no more", () => {
     const t = text(html());
-    expect(t).toContain("the signature (against the 1Click key built into the SDK)");
-    expect(t).toContain("that the quote is for this vault and this refund address");
-    expect(t).toContain("that it delivers at least what you asked for");
+    expect(t).toContain(
+      "the signature (against 1Click's signing key as pinned in Probarion and in its SDK)",
+    );
+    expect(t).toContain(
+      "that the signed request is the one Probarion sent (this vault as recipient, your refund address, the assets, the amount, the slippage, no extra routing)",
+    );
+    expect(t).toContain("that the quote delivers at least what you asked for");
     expect(t).toContain("that you pay at most 5% more than that");
     expect(t).toContain("that it was signed less than 5 minutes ago");
+    expect(t).toContain(
+      "that its deposit address is not this vault, your account, or the USDC or Intents contract",
+    );
   });
 
   it("gives the refund as 1Click's documented rule, not as something this console checked", () => {
@@ -68,7 +75,8 @@ describe("a verified quote as the owner reads it", () => {
 
   it("gives the deadline in UTC, with what 1Click says happens after it", () => {
     const t = text(html());
-    expect(t).toContain("Sign before 2026-11-08 10:30 UTC.");
+    expect(t).toContain("Your deposit must reach 1Click before 2026-11-08 10:30 UTC.");
+    expect(t).not.toContain("Sign before");
     expect(t).toContain("1Click says the deposit address becomes inactive and funds may be lost");
   });
 
@@ -76,7 +84,17 @@ describe("a verified quote as the owner reads it", () => {
     const t = text(html());
     expect(t).toContain(`Deposit address ${"ab".repeat(32)}`);
     expect(t).toContain("1Click estimates about 12 s");
-    expect(t).toContain("quote corr-1");
+  });
+
+  it("keeps the reference, which the signature does not cover, out of the verified summary", () => {
+    expect(html()).not.toContain("corr-1");
+  });
+
+  it("shows the 1Click reference apart, and says it is not part of the signature", () => {
+    const t = text(renderToStaticMarkup(createElement(QuoteReference, { id: "corr-1" })));
+    expect(t).toBe("1Click reference corr-1 (not covered by the signature).");
+    const hostile = renderToStaticMarkup(createElement(QuoteReference, { id: "<b>c</b>" }));
+    expect(hostile).not.toContain("<b>c</b>");
   });
 
   it("leaves out the estimate when 1Click gave none", () => {
