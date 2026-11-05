@@ -911,7 +911,10 @@
   margin-top: 8px;
 }
 
-/* /proof with no vault */
+/* /proof with no vault: the site's full wrap, so that its left edge matches the header and the footer. */
+.proofIndex {
+  padding-block: 32px;
+}
 .eyebrow {
   font-size: 13px;
   font-weight: 500;

@@ -526,6 +526,19 @@ describe("the header", () => {
   });
 });
 
+describe("the proof routes' width", () => {
+  const proof = (...p: string[]) => join(SRC, "app", "proof", ...p);
+
+  it("gives /proof the header's wrap, so their left edges line up", () => {
+    expect(readFileSync(proof("page.tsx"), "utf8")).toContain("s.wrap");
+    expect(existsSync(proof("layout.tsx"))).toBe(false);
+  });
+
+  it("keeps a vault's own page in the narrower container", () => {
+    expect(readFileSync(proof("[vault]", "layout.tsx"), "utf8")).toContain("<Container>");
+  });
+});
+
 describe("the sign-in page", () => {
   it("names no wallet, because the list depends on the network", () => {
     // Read from the source: the page's sign-in button needs a mounted app router to render.

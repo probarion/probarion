@@ -417,7 +417,6 @@ export const PROOF_INDEX = {
   label: "NEAR account of the vault",
   placeholder: "name.testnet",
   submit: "Open its proof page",
-  howTo: "Open /proof/<vault account> to see a vault's checks.",
   publicOnly:
     "A vault's owner must make its proof page public first. If the owner has not, you see a page-not-found message.",
   invalid:

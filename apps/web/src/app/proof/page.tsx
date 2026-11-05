@@ -38,7 +38,7 @@ async function demoTarget(): Promise<string | null> {
 /**
  * `/proof` with no vault: the demo vault (PROBARION_VAULT_ID), when its proof page is public on this network.
  * Otherwise, and when the database cannot say (`publicDemoTarget` catches the error), rather than a redirect to a 404
- * or an error page, it says how to open a vault's page, with a form that opens one and the ledger test.
+ * or an error page, it says what a proof page shows, with a form that opens one and the ledger test.
  *
  * The form is a plain GET back to this page, so it works with no JavaScript: a NEAR account goes on to
  * `/proof/<account>`, and anything else gets an inline error here rather than a 404 there.
@@ -48,12 +48,14 @@ export default async function ProofIndex({ searchParams }: Props = {}) {
   if (target) redirect(target);
 
   const asked = (await searchParams)?.vault;
-  const account = (Array.isArray(asked) ? asked[0] : asked)?.trim() ?? "";
+  const typed = Array.isArray(asked) ? asked[0] : asked;
+  const account = typed?.trim() ?? "";
   if (isAccount(account)) redirect(`/proof/${account}`);
-  const invalid = account !== "";
+  // Blank spaces are something typed too. Only an empty value stays quiet.
+  const invalid = typed !== undefined && typed !== "";
 
   return (
-    <div className={s.site}>
+    <div className={`${s.site} ${s.wrap} ${s.proofIndex}`}>
       <p className={s.eyebrow}>{PROOF_INDEX.eyebrow}</p>
       <h1 className={s.proofTitle}>{PROOF_INDEX.title}</h1>
       <p className={s.proofIntro}>{PROOF_INDEX.intro}</p>
@@ -63,6 +65,8 @@ export default async function ProofIndex({ searchParams }: Props = {}) {
         <label htmlFor="proof-vault">{PROOF_INDEX.label}</label>
         <div className={s.accountRow}>
           <input
+            // biome-ignore lint/a11y/noAutofocus: only after a failed submit, so that the label and the error are read.
+            autoFocus={invalid}
             id="proof-vault"
             className={s.accountInput}
             name="vault"
@@ -88,7 +92,6 @@ export default async function ProofIndex({ searchParams }: Props = {}) {
         ) : null}
       </form>
       <p className={s.proofMuted}>{PROOF_INDEX.publicOnly}</p>
-      <p className={s.proofMuted}>{PROOF_INDEX.howTo}</p>
 
       <section className={s.proofTamper}>
         <h2 className={s.proofTamperTitle}>{PROOF_INDEX.tamperTitle}</h2>

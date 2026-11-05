@@ -640,9 +640,8 @@ describe("/proof", () => {
       h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: demo };
       h.publicVault = row;
       const out = text(renderToStaticMarkup((await ProofIndex()) as ReactElement));
-      expect(out, String(demo)).toContain(
-        "Open /proof/&lt;vault account&gt; to see a vault&#x27;s checks.",
-      );
+      expect(out, String(demo)).toContain("No public vault is listed here yet.");
+      expect(out, String(demo)).toContain("A vault&#x27;s owner must make its proof page public");
     }
     // A missing id, and one that is not an account, are never looked up.
     expect(h.publicCalls).toEqual(["public_vault", "public_vault"]);
@@ -652,7 +651,8 @@ describe("/proof", () => {
     h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: "demo.vaults.probarion.testnet" };
     h.publicDown = true;
     const out = text(renderToStaticMarkup((await ProofIndex()) as ReactElement));
-    expect(out).toContain("Open /proof/&lt;vault account&gt; to see a vault&#x27;s checks.");
+    expect(out).toContain("No public vault is listed here yet.");
+    expect(out).toContain("A vault&#x27;s owner must make its proof page public");
     expect(warnedReasons()).toMatchObject([{ msg: "proof.demo_unavailable" }]);
   });
 
@@ -683,6 +683,7 @@ describe("/proof", () => {
       expect(out).toContain("No public vault is listed here yet.");
       expect(out).toContain("A vault&#x27;s owner must make its proof page public first.");
       expect(out).toContain("page-not-found message");
+      expect(out).not.toContain("to see a vault&#x27;s checks");
     });
 
     it("has a labelled GET form that works with no JavaScript", async () => {
@@ -693,6 +694,11 @@ describe("/proof", () => {
       expect(out).toContain('id="proof-vault"');
       expect(out).toContain('name="vault"');
       expect(out).not.toContain("proof-vault-error");
+      expect(out).not.toContain("autofocus");
+    });
+
+    it("stays quiet on an empty submit", async () => {
+      expect(await render("")).not.toContain("proof-vault-error");
     });
 
     it("sends a NEAR account on to its proof page", async () => {
@@ -705,10 +711,13 @@ describe("/proof", () => {
     });
 
     it("shows an inline error for anything else, instead of a 404", async () => {
-      for (const bad of ["Not A Vault", "a", "../etc/passwd", "x".repeat(65), ["a b", "c"]]) {
+      const typed = ["Not A Vault", "a", "../etc/passwd", "x".repeat(65), ["a b", "c"], " ", "   "];
+      for (const bad of typed) {
         const out = await render(bad);
         expect(out, String(bad)).toContain('id="proof-vault-error"');
         expect(out, String(bad)).toContain('aria-invalid="true"');
+        // Focus lands on the input, so a screen reader reads its label and the error.
+        expect(out, String(bad)).toContain("autofocus");
         expect(text(out), String(bad)).toContain("That is not a NEAR account.");
       }
     });
