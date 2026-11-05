@@ -7,10 +7,14 @@ import { FT_STORAGE_DEPOSIT } from "@/lib/near/tx";
 import {
   baseCardNotAllowed,
   baseCardNotConfigured,
+  DEPOSIT_SENT_DETAIL,
   deadlineText,
+  describeDeposit,
   FUNDING_NOTICE,
+  ONLY_ON_MAINNET,
   registerDepositText,
   testnetBaseText,
+  UNCONFIRMED_DEPOSIT_NOTE,
 } from "./copy";
 
 // The sentences the top-up page shows, held to the files they come from: if a contract, a runbook or a network
@@ -77,6 +81,48 @@ describe("the other sentences of the page", () => {
   it("states the NEAR attached to register the deposit address from the transaction builder's own figure", () => {
     expect(FT_STORAGE_DEPOSIT).toBe("1250000000000000000000");
     expect(registerDepositText).toContain("0.00125 NEAR");
+  });
+
+  it("writes the 'mainnet only' sentence in one place, and the testnet card builds on it", () => {
+    expect(ONLY_ON_MAINNET).toBe("NEAR Intents and 1Click exist on mainnet only");
+    expect(testnetBaseText(NETWORKS.testnet).startsWith(`${ONLY_ON_MAINNET}, so`)).toBe(true);
+  });
+
+  it("does not say the swap is done when the NEAR transfer has landed", () => {
+    expect(describeDeposit({ status: "ok", txHash: "h", code: null, error: null })).toEqual({
+      detail: DEPOSIT_SENT_DETAIL,
+    });
+    expect(DEPOSIT_SENT_DETAIL).toContain("The NEAR transfer to the deposit address went through.");
+    expect(DEPOSIT_SENT_DETAIL).toContain("1Click's step");
+    expect(DEPOSIT_SENT_DETAIL).toContain("may not be done yet");
+    expect(DEPOSIT_SENT_DETAIL).not.toMatch(/complete|credited|received/i);
+  });
+
+  it("tells an unconfirmed deposit from the next quote's, keeping the default words", () => {
+    const r = {
+      status: "unknown",
+      txHash: "h",
+      code: "TxOutcomeUnknown",
+      error: "no answer",
+    } as const;
+    expect(describeDeposit(r)).toEqual({
+      detail: `TxOutcomeUnknown: no answer ${UNCONFIRMED_DEPOSIT_NOTE}`,
+    });
+    expect(describeDeposit({ ...r, code: null, error: null })).toEqual({
+      detail: UNCONFIRMED_DEPOSIT_NOTE,
+    });
+    expect(UNCONFIRMED_DEPOSIT_NOTE).toBe(
+      "An earlier top-up deposit from this vault is not confirmed. Check it on the explorer before you sign another.",
+    );
+  });
+
+  it("keeps the default words for a refused or unsent deposit", () => {
+    expect(
+      describeDeposit({ status: "failed", txHash: "h", code: "x", error: "y" }),
+    ).toBeUndefined();
+    expect(
+      describeDeposit({ status: "failed", txHash: null, code: null, error: "z" }),
+    ).toBeUndefined();
   });
 
   it("writes a deadline as a UTC date and minute", () => {

@@ -1,5 +1,6 @@
 import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LIMITS } from "@/lib/ratelimit";
 import { ONECLICK_BASE } from "@/lib/topup/oneclick";
 import { quietLogs } from "../../../../../test/fixtures/quiet-logs";
 import {
@@ -18,6 +19,9 @@ const h = vi.hoisted(() => ({
   jwt: "" as string | null,
   role: "owner" as "owner" | "approver" | "viewer" | null,
   roles: [] as unknown[],
+  limiterDown: false,
+  buckets: new Map<string, number>(),
+  limits: [] as { bucket: string; max: number; window: number }[],
 }));
 
 vi.mock("@/lib/auth/guard", () => ({
@@ -30,6 +34,22 @@ vi.mock("@/lib/auth/guard", () => ({
     }
     return { session: { accountId: "acme.near" }, member: { vault_id: vault, role: h.role } };
   },
+}));
+vi.mock("@/lib/db/clients", () => ({
+  serviceDb: () => ({
+    rpc: async (fn: string, p: { bucket: string; max: number; window_seconds: number }) => {
+      if (fn !== "rate_limit_take") throw new Error(`unexpected rpc ${fn}`);
+      if (h.limiterDown) throw new Error("db down");
+      h.limits.push({ bucket: p.bucket, max: p.max, window: p.window_seconds });
+      const n = (h.buckets.get(p.bucket) ?? 0) + 1;
+      h.buckets.set(p.bucket, n);
+      return {
+        allowed: n <= p.max,
+        remaining: Math.max(0, p.max - n),
+        reset_at: new Date(Date.now() + 30_000).toISOString(),
+      };
+    },
+  }),
 }));
 vi.mock("@/lib/env", () => ({
   getEnv: () => ({ NEAR_NETWORK: h.network, ONECLICK_JWT: h.jwt }),
@@ -52,6 +72,9 @@ beforeEach(() => {
   h.jwt = JWT;
   h.role = "owner";
   h.roles = [];
+  h.limiterDown = false;
+  h.buckets.clear();
+  h.limits = [];
   oneclick = fakeOneClick();
   oneclick.reply = () => jsonResponse({ status: "KNOWN_DEPOSIT_TX" });
   vi.stubGlobal("fetch", oneclick.fetch);
@@ -114,6 +137,29 @@ describe("POST /api/topup/submit", () => {
       expect(await answer(r)).toEqual({ error: "invalid_input" });
     }
     expect(h.roles).toEqual([]);
+    expect(oneclick.calls).toEqual([]);
+  });
+
+  it("rate-limits per owner account, at the topupSubmit limit, after the other checks", async () => {
+    const [max, window] = LIMITS.topupSubmit;
+    for (let i = 0; i < max; i++) expect((await send()).status).toBe(200);
+    const r = await send();
+    expect(r.status).toBe(429);
+    expect(r.headers.get("retry-after")).toMatch(/^[0-9]+$/);
+    expect(await answer(r)).toMatchObject({ error: "rate_limited" });
+    expect(h.limits.at(-1)).toEqual({ bucket: "topup-submit:acme.near", max, window });
+    expect(oneclick.calls).toHaveLength(max);
+    // A bad request is refused before it costs a token.
+    h.buckets.clear();
+    expect((await send({})).status).toBe(400);
+    expect(h.buckets.size).toBe(0);
+  });
+
+  it("answers 503 when the rate limiter cannot be reached, and tells 1Click nothing", async () => {
+    h.limiterDown = true;
+    const r = await send();
+    expect(r.status).toBe(503);
+    expect(await answer(r)).toMatchObject({ error: "unavailable" });
     expect(oneclick.calls).toEqual([]);
   });
 

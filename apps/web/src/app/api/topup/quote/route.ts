@@ -1,13 +1,11 @@
 import { memberForApi } from "@/lib/auth/guard";
 import { isVaultConfig } from "@/lib/console/vaults";
-import { serviceDb } from "@/lib/db/clients";
-import { getEnv } from "@/lib/env";
-import { assertSameOrigin, json, problem, rateLimitOr429 } from "@/lib/http";
+import { assertSameOrigin, json, problem } from "@/lib/http";
 import { log } from "@/lib/log";
 import { chainConsts, getReader } from "@/lib/near/server";
 import { intentsDepositTx } from "@/lib/near/tx";
-import { LIMITS } from "@/lib/ratelimit";
 import { parseTopupAmount } from "@/lib/topup/amount";
+import { mainnetGate, topupLimited } from "@/lib/topup/gate";
 import { buildQuoteRequest, checkQuote, fetchQuote, QuoteError } from "@/lib/topup/oneclick";
 
 export const dynamic = "force-dynamic";
@@ -33,23 +31,10 @@ export async function POST(req: Request) {
   const auth = await memberForApi(body.vault, ["owner"]);
   if (auth instanceof Response) return auth;
   const vault = auth.member.vault_id;
-  const env = getEnv();
-  if (env.NEAR_NETWORK !== "mainnet") {
-    return problem(409, "mainnet_only", "NEAR Intents and 1Click exist on mainnet only.");
-  }
-  const jwt = env.ONECLICK_JWT;
-  if (!jwt) return problem(503, "not_configured");
-  try {
-    const limited = await rateLimitOr429(
-      serviceDb(),
-      `topup:${auth.session.accountId}`,
-      LIMITS.topupQuote,
-    );
-    if (limited) return limited;
-  } catch (error) {
-    log.error("topup.limiter_failed", { error });
-    return problem(503, "unavailable", "Try again in a minute.");
-  }
+  const gate = mainnetGate();
+  if (gate instanceof Response) return gate;
+  const limited = await topupLimited("quote", auth.session.accountId);
+  if (limited) return limited;
 
   const amount = parseTopupAmount(body.amountUsdc);
   if ("problem" in amount) return problem(400, "invalid_amount", amount.problem);
@@ -83,7 +68,7 @@ export async function POST(req: Request) {
     new Date(),
   );
   try {
-    const resp = await fetchQuote(request, jwt);
+    const resp = await fetchQuote(request, gate.jwt);
     const check = checkQuote(resp, request, new Date());
     if (!check.ok) {
       log.warn("topup.quote_rejected", {

@@ -62,7 +62,7 @@ export function signedQuote(
     amountOutFormatted: "20",
     amountOutUsd: "20",
     minAmountOut: request.amount,
-    deadline: new Date(now.getTime() + 30 * 60_000).toISOString(),
+    deadline: request.deadline,
     timeWhenInactive: new Date(now.getTime() + 60 * 60_000).toISOString(),
     timeEstimate: 12,
     ...o.quote,

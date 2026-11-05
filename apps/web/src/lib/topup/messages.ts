@@ -1,3 +1,5 @@
+import { ONLY_ON_MAINNET } from "./copy";
+
 /**
  * The sentence the top-up panel shows when `/api/topup/quote` answers with an error, from the HTTP status
  * and the JSON body it sent. Plain text: the page escapes it. Kept apart from the panel so it is tested
@@ -9,7 +11,7 @@ export function quoteErrorText(status: number, body: unknown): string {
   const detail = typeof b.detail === "string" && b.detail !== "" ? b.detail : "";
   switch (code) {
     case "mainnet_only":
-      return "NEAR Intents and 1Click exist on mainnet only.";
+      return `${ONLY_ON_MAINNET}.`;
     case "not_configured":
       return "1Click quotes are not set up on this server.";
     case "invalid_amount":
@@ -26,6 +28,14 @@ export function quoteErrorText(status: number, body: unknown): string {
       return `Too many quote requests. ${detail || "Try again in a minute."}`;
     case "chain_unavailable":
       return detail || "The vault could not be read from NEAR. Try again.";
+    case "unavailable":
+      return `A service this page needs is not available. ${detail || "Try again in a minute."}`;
+    case "status_unavailable":
+      return detail || "1Click could not report the deposit's status right now.";
+    case "bad_origin":
+      return "The request did not come from this site, so it was refused. Reload the page and try again.";
+    case "invalid_input":
+      return "The request was not understood. Reload the page and try again.";
     case "unauthenticated":
       return "Your session ended. Sign in again.";
     case "forbidden":

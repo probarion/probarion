@@ -1,8 +1,8 @@
 import { memberForApi } from "@/lib/auth/guard";
-import { getEnv } from "@/lib/env";
 import { assertSameOrigin, json, problem } from "@/lib/http";
 import { log } from "@/lib/log";
 import { isNearAccountId, isNearTxHash } from "@/lib/near/validate";
+import { mainnetGate, topupLimited } from "@/lib/topup/gate";
 import { submitDeposit } from "@/lib/topup/oneclick";
 
 export const dynamic = "force-dynamic";
@@ -30,13 +30,11 @@ export async function POST(req: Request) {
   }
   const auth = await memberForApi(body.vault, ["owner"]);
   if (auth instanceof Response) return auth;
-  const env = getEnv();
-  if (env.NEAR_NETWORK !== "mainnet") {
-    return problem(409, "mainnet_only", "NEAR Intents and 1Click exist on mainnet only.");
-  }
-  const jwt = env.ONECLICK_JWT;
-  if (!jwt) return problem(503, "not_configured");
-  await submitDeposit(jwt, {
+  const gate = mainnetGate();
+  if (gate instanceof Response) return gate;
+  const limited = await topupLimited("submit", auth.session.accountId);
+  if (limited) return limited;
+  await submitDeposit(gate.jwt, {
     txHash: body.txHash,
     depositAddress: body.depositAddress,
     nearSenderAccount: auth.session.accountId,

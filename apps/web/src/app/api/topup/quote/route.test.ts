@@ -76,13 +76,15 @@ vi.mock("@/lib/near/server", async () => {
     }),
   };
 });
+const REAL_ONECLICK_KEY = "ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc";
 // The route runs the real SDK, except that the key it trusts is this test's, so a quote this test signs can pass.
 vi.mock("@defuse-protocol/one-click-sdk-typescript", async (importOriginal) => {
   const sdk = await importOriginal<typeof import("@defuse-protocol/one-click-sdk-typescript")>();
   return {
     ...sdk,
     verifyQuoteSignature: (r: Parameters<typeof sdk.verifyQuoteSignature>[0], k?: string) =>
-      sdk.verifyQuoteSignature(r, k ?? h.trustedKey),
+      // The route passes 1Click's pinned key: this test signs with its own, so that key is swapped for it here.
+      sdk.verifyQuoteSignature(r, k === REAL_ONECLICK_KEY ? h.trustedKey : k),
   };
 });
 
@@ -255,7 +257,10 @@ describe("POST /api/topup/quote: the amount", () => {
     ["20", "20000000"],
     ["1000", "1000000000"],
   ])("asks 1Click for exactly %s USDC", async (amountUsdc, units) => {
-    quotes((r) => ({ quote: { amountIn: String(BigInt(r.amount) + 100n) } })); // a fair price at any size
+    // a fair price at any size: a little over the ask, and a least input that is not above it
+    quotes((r) => ({
+      quote: { amountIn: String(BigInt(r.amount) + 100n), minAmountIn: r.amount },
+    }));
     const r = await ask({ vault: VAULT, amountUsdc });
     expect(r.status).toBe(200);
     expect(firstRequest().amount).toBe(units);
@@ -464,6 +469,26 @@ describe("POST /api/topup/quote: a quote that does not pass", () => {
     await refused("deadline_too_close");
   });
 
+  it("refuses a signed request that carries routing we did not ask for: mismatch:virtualChainRecipient", async () => {
+    quotes({ request: { virtualChainRecipient: `0x${"22".repeat(20)}` } as never });
+    await refused("mismatch:virtualChainRecipient");
+  });
+
+  it("refuses a signed request with other slippage than we sent: mismatch:slippageTolerance", async () => {
+    quotes({ request: { slippageTolerance: 5000 } });
+    await refused("mismatch:slippageTolerance");
+  });
+
+  it("refuses a deposit address that is the vault itself: bad_deposit_address", async () => {
+    quotes({ quote: { depositAddress: VAULT } });
+    await refused("bad_deposit_address");
+  });
+
+  it("refuses a deposit address that stays open past the deadline asked for: deadline_after_request", async () => {
+    quotes((r) => ({ quote: { deadline: new Date(Date.parse(r.deadline) + 1000).toISOString() } }));
+    await refused("deadline_after_request");
+  });
+
   it("refuses an amount that is not digits: malformed", async () => {
     quotes({ quote: { amountIn: "twenty" } });
     await refused("malformed");
@@ -478,14 +503,19 @@ describe("POST /api/topup/quote: a quote that does not pass", () => {
 });
 
 describe("POST /api/topup/quote: 1Click is not available", () => {
-  it("answers 502 quote_unavailable with 1Click's reason when it refuses", async () => {
-    oneclick.reply = () => jsonResponse({ message: "amount too small" }, 400);
+  it("answers 502 quote_unavailable with a fixed sentence for the status when it refuses, never its own text", async () => {
+    oneclick.reply = () => jsonResponse({ message: "amount too small Bearer secret-1" }, 400);
     const r = await ask();
     expect(r.status).toBe(502);
-    expect(await answer(r)).toEqual({
+    const text = await r.text();
+    expect(JSON.parse(text)).toEqual({
       error: "quote_unavailable",
-      detail: "1Click quote failed (400): amount too small",
+      detail: "1Click quote failed (400): the request was not accepted.",
     });
+    expect(text).not.toContain("too small");
+    expect(
+      logs.lines.some((l) => l.includes("topup.oneclick_refused") && l.includes("too small")),
+    ).toBe(true);
   });
 
   it("answers 502 quote_unavailable when 1Click cannot be reached, and says nothing of why", async () => {

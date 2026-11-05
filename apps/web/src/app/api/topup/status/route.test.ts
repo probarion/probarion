@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LIMITS } from "@/lib/ratelimit";
 import { ONECLICK_BASE } from "@/lib/topup/oneclick";
+import { quietLogs } from "../../../../../test/fixtures/quiet-logs";
 import {
   DEPOSIT_ADDRESS,
   fakeOneClick,
@@ -15,6 +17,9 @@ const h = vi.hoisted(() => ({
   role: "owner" as "owner" | "approver" | "viewer" | null,
   roles: [] as unknown[],
   vaults: [] as string[],
+  limiterDown: false,
+  buckets: new Map<string, number>(),
+  limits: [] as { bucket: string; max: number; window: number }[],
 }));
 
 vi.mock("@/lib/auth/guard", () => ({
@@ -29,12 +34,29 @@ vi.mock("@/lib/auth/guard", () => ({
     return { session: { accountId: "acme.near" }, member: { vault_id: vault, role: h.role } };
   },
 }));
+vi.mock("@/lib/db/clients", () => ({
+  serviceDb: () => ({
+    rpc: async (fn: string, p: { bucket: string; max: number; window_seconds: number }) => {
+      if (fn !== "rate_limit_take") throw new Error(`unexpected rpc ${fn}`);
+      if (h.limiterDown) throw new Error("db down");
+      h.limits.push({ bucket: p.bucket, max: p.max, window: p.window_seconds });
+      const n = (h.buckets.get(p.bucket) ?? 0) + 1;
+      h.buckets.set(p.bucket, n);
+      return {
+        allowed: n <= p.max,
+        remaining: Math.max(0, p.max - n),
+        reset_at: new Date(Date.now() + 30_000).toISOString(),
+      };
+    },
+  }),
+}));
 vi.mock("@/lib/env", () => ({
   getEnv: () => ({ NEAR_NETWORK: h.network, ONECLICK_JWT: h.jwt }),
 }));
 
 const { GET } = await import("./route");
 
+quietLogs();
 let oneclick: ReturnType<typeof fakeOneClick>;
 const url = (vault: string | null = VAULT, depositAddress: string | null = DEPOSIT_ADDRESS) => {
   const u = new URL(`${ORIGIN}/api/topup/status`);
@@ -51,6 +73,9 @@ beforeEach(() => {
   h.role = "owner";
   h.roles = [];
   h.vaults = [];
+  h.limiterDown = false;
+  h.buckets.clear();
+  h.limits = [];
   oneclick = fakeOneClick();
   oneclick.reply = () => jsonResponse({ status: "PROCESSING", updatedAt: "2026-11-08T10:01:00Z" });
   vi.stubGlobal("fetch", oneclick.fetch);
@@ -95,6 +120,28 @@ describe("GET /api/topup/status", () => {
   it("answers 401 without a session", async () => {
     h.role = null;
     expect((await get()).status).toBe(401);
+    expect(oneclick.calls).toEqual([]);
+  });
+
+  it("rate-limits per owner account, at the topupStatus limit, enough for the panel's 3 minutes of polling", async () => {
+    const [max, window] = LIMITS.topupStatus;
+    expect(max).toBeGreaterThanOrEqual(12); // the panel reads every 5 s: 12 a minute, for up to 3 minutes
+    for (let i = 0; i < max; i++) expect((await get()).status).toBe(200);
+    const r = await get();
+    expect(r.status).toBe(429);
+    expect(r.headers.get("retry-after")).toMatch(/^[0-9]+$/);
+    expect(h.limits.at(-1)).toEqual({ bucket: "topup-status:acme.near", max, window });
+    expect(oneclick.calls).toHaveLength(max);
+    h.buckets.clear();
+    expect((await get(url("Not A Vault"))).status).toBe(400);
+    expect(h.buckets.size).toBe(0);
+  });
+
+  it("answers 503 when the rate limiter cannot be reached, and asks 1Click nothing", async () => {
+    h.limiterDown = true;
+    const r = await get();
+    expect(r.status).toBe(503);
+    expect(await answer(r)).toMatchObject({ error: "unavailable" });
     expect(oneclick.calls).toEqual([]);
   });
 

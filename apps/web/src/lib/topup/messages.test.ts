@@ -1,5 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { ONLY_ON_MAINNET } from "./copy";
 import { quoteErrorText } from "./messages";
+
+const WEB = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 
 describe("what the owner reads when a quote is not offered", () => {
   it("says the real reason for each answer the quote route gives", () => {
@@ -69,5 +75,66 @@ describe("what the owner reads when a quote is not offered", () => {
     expect(quoteErrorText(429, { error: "rate_limited" })).toBe(
       "Too many quote requests. Try again in a minute.",
     );
+  });
+
+  it("says the 'mainnet only' sentence from the one place it is written", () => {
+    expect(quoteErrorText(409, { error: "mainnet_only" })).toBe(`${ONLY_ON_MAINNET}.`);
+  });
+
+  it("has a sentence for the codes that were falling through", () => {
+    expect(quoteErrorText(403, { error: "bad_origin" })).toBe(
+      "The request did not come from this site, so it was refused. Reload the page and try again.",
+    );
+    expect(quoteErrorText(400, { error: "invalid_input" })).toBe(
+      "The request was not understood. Reload the page and try again.",
+    );
+    expect(quoteErrorText(503, { error: "unavailable", detail: "Try again in a minute." })).toBe(
+      "A service this page needs is not available. Try again in a minute.",
+    );
+    expect(quoteErrorText(503, { error: "unavailable" })).toBe(
+      "A service this page needs is not available. Try again in a minute.",
+    );
+    expect(
+      quoteErrorText(502, { error: "status_unavailable", detail: "1Click status failed (404)" }),
+    ).toBe("1Click status failed (404)");
+    expect(quoteErrorText(502, { error: "status_unavailable" })).toBe(
+      "1Click could not report the deposit's status right now.",
+    );
+  });
+
+  it("has a sentence for every code the three routes, their shared gate, the guard and the helpers can answer", () => {
+    const files = [
+      "src/app/api/topup/quote/route.ts",
+      "src/app/api/topup/submit/route.ts",
+      "src/app/api/topup/status/route.ts",
+      "src/lib/topup/gate.ts",
+      "src/lib/auth/guard.ts",
+      "src/lib/http.ts",
+    ];
+    const codes = new Set<string>();
+    for (const file of files) {
+      const text = readFileSync(join(WEB, file), "utf8");
+      for (const m of text.matchAll(/problem\(\s*\d{3},\s*"([a-z_]+)"/g)) codes.add(m[1] ?? "");
+    }
+    // The scan must see the codes it is meant to guard, or it guards nothing.
+    for (const known of [
+      "mainnet_only",
+      "not_configured",
+      "unavailable",
+      "rate_limited",
+      "bad_origin",
+      "invalid_input",
+      "quote_rejected",
+      "status_unavailable",
+      "forbidden",
+      "unauthenticated",
+    ]) {
+      expect([...codes], known).toContain(known);
+    }
+    for (const code of codes) {
+      expect(quoteErrorText(500, { error: code }), code).not.toMatch(
+        /^The quote could not be requested/,
+      );
+    }
   });
 });

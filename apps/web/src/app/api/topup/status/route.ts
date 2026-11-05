@@ -1,7 +1,7 @@
 import { memberForApi } from "@/lib/auth/guard";
-import { getEnv } from "@/lib/env";
 import { json, problem } from "@/lib/http";
 import { isNearAccountId } from "@/lib/near/validate";
+import { mainnetGate, topupLimited } from "@/lib/topup/gate";
 import { getDepositStatus, QuoteError } from "@/lib/topup/oneclick";
 
 export const dynamic = "force-dynamic";
@@ -19,14 +19,12 @@ export async function GET(req: Request) {
   }
   const auth = await memberForApi(vault, ["owner"]);
   if (auth instanceof Response) return auth;
-  const env = getEnv();
-  if (env.NEAR_NETWORK !== "mainnet") {
-    return problem(409, "mainnet_only", "NEAR Intents and 1Click exist on mainnet only.");
-  }
-  const jwt = env.ONECLICK_JWT;
-  if (!jwt) return problem(503, "not_configured");
+  const gate = mainnetGate();
+  if (gate instanceof Response) return gate;
+  const limited = await topupLimited("status", auth.session.accountId);
+  if (limited) return limited;
   try {
-    return json(await getDepositStatus(jwt, depositAddress));
+    return json(await getDepositStatus(gate.jwt, depositAddress));
   } catch (e) {
     if (e instanceof QuoteError) return problem(502, "status_unavailable", e.message);
     throw e;
