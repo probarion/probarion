@@ -1012,7 +1012,7 @@
 }
 
 /* Wider than the page's own break, so that the header has room for the next built page. */
-@media (max-width: 1040px) {
+@media (max-width: 1100px) {
   .navLinks {
     display: none;
   }

@@ -17,11 +17,13 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
   return (
     <WalletProvider network={BUILD_NETWORK}>
       <Container>
-        <div className="mb-4 flex items-center justify-between text-sm text-[#0B0B0C]/60">
+        <div className="mb-4 flex items-center justify-between gap-3 text-sm text-[#0B0B0C]/60">
           <span className="min-w-0">
             Signed in as <span className="mono wrap-anywhere">{session.accountId}</span>
           </span>
-          <SignOutButton />
+          <span className="shrink-0 whitespace-nowrap">
+            <SignOutButton />
+          </span>
         </div>
         {children}
       </Container>

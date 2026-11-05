@@ -780,6 +780,14 @@ describe("the chrome's landmarks and headings", () => {
     expect(row).toContain('<span className="min-w-0">');
     expect(row).toContain('<span className="mono wrap-anywhere">{session.accountId}</span>');
   });
+
+  it("keeps Sign out on one line beside a 64-character account, with a gap between them", () => {
+    const row = text(SRC, "app", "console", "layout.tsx");
+    expect(row).toMatch(/className="[^"]*\bflex\b[^"]*\bgap-3\b[^"]*"/);
+    expect(row).toMatch(
+      /<span className="shrink-0 whitespace-nowrap">\s*<SignOutButton \/>\s*<\/span>/,
+    );
+  });
 });
 
 describe("the proof routes' width", () => {
@@ -874,8 +882,9 @@ describe("the stylesheet", () => {
     expect(phone).toMatch(/\.rowNote {[^}]*display: inline-block;[^}]*width: 100%/);
   });
 
-  it("folds the header into the menu at 1040 px, and only the header", () => {
-    const fold = site.slice(site.indexOf("@media (max-width: 1040px)"));
+  it("folds the header into the menu at 1100 px, and only the header", () => {
+    expect(site).not.toContain("@media (max-width: 1040px)");
+    const fold = site.slice(site.indexOf("@media (max-width: 1100px)"));
     const block = fold.slice(0, fold.indexOf("@media (max-width: 960px)"));
     expect(block).toContain(".navLinks");
     expect(block).toContain(".phoneMenu");
