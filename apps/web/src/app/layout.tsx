@@ -1,10 +1,27 @@
 import type { Metadata } from "next";
+import { Hanken_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import { RouteLink } from "@/components/RouteLink";
 import { WalletProvider } from "@/components/wallet/WalletProvider";
 import { FOOTER_NAV, isBuilt, SITE_NAV } from "@/lib/routes";
 import "./globals.css";
+
+// Self-hosted at build time. Each sets its Tailwind theme variable on <html>, which beats the fallback in globals.css.
+const sans = Hanken_Grotesk({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--font-sans",
+  display: "swap",
+  fallback: ["Segoe UI", "system-ui", "sans-serif"],
+});
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-mono",
+  display: "swap",
+  fallback: ["ui-monospace", "Menlo", "Consolas", "monospace"],
+});
 
 export const metadata: Metadata = {
   title: { default: "Probarion", template: "%s · Probarion" },
@@ -16,8 +33,8 @@ const NETWORK = process.env.NEXT_PUBLIC_NEAR_NETWORK === "mainnet" ? "mainnet" :
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-paper text-ink antialiased">
+    <html lang="en" data-scroll-behavior="smooth" className={`${sans.variable} ${mono.variable}`}>
+      <body className="min-h-screen bg-paper font-sans text-ink antialiased">
         {/* The wallet context wraps the whole page, so a nav or footer widget can use it too. */}
         <WalletProvider network={NETWORK}>
           <div className="bg-amber-100 px-4 py-1 text-center text-xs text-amber-900">

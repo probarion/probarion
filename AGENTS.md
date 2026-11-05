@@ -14,13 +14,13 @@ pnpm install
 cargo fetch --manifest-path contracts/Cargo.toml
 ```
 
-## Verify (no network, no keys)
+## Verify (no keys)
 
 ```bash
 pnpm verify
 ```
 
-This runs the Rust unit and property tests, then TS lint, typecheck and tests.
+This runs the Rust unit and property tests, then TS lint, typecheck and tests. The one thing it reaches the network for is the web build: `next/font` downloads the site's two fonts from Google Fonts at build time and serves them itself.
 
 ## Full verify (downloads the NEAR sandbox binary)
 

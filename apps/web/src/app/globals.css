@@ -3,13 +3,76 @@
 /*
  * Brand v2 (light): paper and ink. Gold is an accent, never body text on paper. The two deep golds are for small
  * accents on paper: gold-deep (#a57a26) for marks and rules, gold-ink (#5e4210) for small text, where it has the
- * contrast. The name "gold" alone is kept for the metallic gold of the coin and hero.
+ * contrast; gold-small (#7a5a18) is the same job for step numbers, focus rings and the "in progress" pills. The name
+ * "gold" alone is kept for the metallic gold of the coin and hero.
+ *
+ * `static`: every token below reaches :root, whether or not a utility class uses it, because the site's CSS module
+ * reads them as plain variables. Consumers use these names, not literal colours.
  */
-@theme {
+@theme static {
+  /* next/font sets these two on <html> (app/layout.tsx). The values here are what shows if it does not. */
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
   --color-paper: #f7f6f3;
   --color-ink: #0b0b0c;
   --color-gold-deep: #a57a26;
   --color-gold-ink: #5e4210;
+  --color-gold-small: #7a5a18;
+
+  --color-surface: #ffffff;
+  --color-mute: #5f5c55;
+  --color-line: #e2dfd6;
+
+  /* Status: green passed or live, red failed, gold in progress, grey planned. */
+  --color-ok: #17693f;
+  --color-ok-bg: #e2f1e8;
+  --color-bad: #a32a1c;
+  --color-bad-bg: #f8e4e0;
+  --color-wait: #7a5a18;
+  --color-wait-bg: #f4ecd8;
+  --color-plan: #5f5c55;
+  --color-plan-bg: #eceae4;
+
+  /* The ink band and the refused card. */
+  --color-band: #0b0b0c;
+  --color-band-fg: #f7f6f3;
+  --color-band-mute: #a9a59b;
+  --color-band-line: #2b2a27;
+  --color-band-bad: #f29a8c;
+  --color-band-bad-bg: #3a1712;
+
+  /* Metallic gold, for the coin and the paid card. */
+  --color-gold-bright: #efcb6b;
+  --color-gold-pale: #fff0c2;
+  --color-gold-light: #f8e2a0;
+  --color-gold-mid: #d4a640;
+
+  --gradient-gold-text: linear-gradient(96deg, #5e4210 0%, #a57a26 38%, #bc8e30 62%, #6f5016 100%);
+  /* The dark corner stays at 0.28 alpha so that ink text on the card keeps 4.5:1 (WCAG AA) wherever it sits. */
+  --gradient-metal:
+    radial-gradient(90% 70% at 18% 12%, rgb(255 240 194 / 0.8), rgb(255 240 194 / 0) 62%),
+    radial-gradient(80% 60% at 92% 96%, rgb(94 66 16 / 0.28), rgb(94 66 16 / 0) 70%),
+    linear-gradient(135deg, #b98e33 0%, #efcb6b 34%, #f8e2a0 50%, #d4a640 68%, #b38527 100%);
+}
+
+:root {
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer base {
+  /* Zero specificity, so a pill keeps its own radius. On dark surfaces the site's CSS module changes the colour. */
+  :where(a, button, summary, input, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-gold-small);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
 }
 
 a {
@@ -17,5 +80,5 @@ a {
 }
 code,
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }

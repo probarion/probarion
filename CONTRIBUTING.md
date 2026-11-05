@@ -17,7 +17,9 @@ pnpm verify
 
 `pnpm verify` runs the Rust unit and property tests, then Biome lint, the build, the typechecks and
 every TypeScript and Node script test (`pnpm verify:ts`, which also runs on its own without Rust),
-then the launch checks. It needs no keys, no `.env` and no network once the dependencies are fetched.
+then the launch checks. It needs no keys and no `.env`. Once the dependencies are fetched, the one thing it
+reaches the network for is the web build, which downloads the site's two fonts from Google Fonts and serves them
+itself.
 
 Two kinds of check run only in CI (GitHub Actions, ubuntu), not in `pnpm verify`:
 
