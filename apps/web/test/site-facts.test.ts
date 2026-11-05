@@ -423,6 +423,16 @@ describe("the header", () => {
   });
 });
 
+describe("the sign-in page", () => {
+  it("names no wallet, because the list depends on the network", () => {
+    // Read from the source: the page's sign-in button needs a mounted app router to render.
+    const page = text(WEB, "src", "app", "login", "page.tsx").replace(/\s+/g, " ");
+    expect(page).toContain("Pick your wallet from the list.");
+    expect(page).toContain("it moves no funds and adds no keys");
+    expect(page).not.toMatch(/\b(HOT|Meteor|Intear|near-connect)\b/);
+  });
+});
+
 describe("robots and the sitemap", () => {
   it("allow the public pages and keep crawlers off the console and the API", () => {
     const rules = robots().rules;

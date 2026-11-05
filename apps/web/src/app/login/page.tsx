@@ -21,7 +21,7 @@ export default async function LoginPage({
           <h1 className="mt-3 text-3xl font-light tracking-tight">Sign in with your NEAR wallet</h1>
           <p className="mt-3 mb-6 text-mute">
             Your wallet signs a message (NEP-413). This is not a transaction: it moves no funds and
-            adds no keys. HOT, Meteor, Intear and the other near-connect wallets work.
+            adds no keys. Pick your wallet from the list.
           </p>
           <SignInButton next={safeNext} />
         </div>
