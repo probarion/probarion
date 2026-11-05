@@ -803,6 +803,22 @@ describe("the sign-in page", () => {
     expect(page).toContain("it moves no funds and adds no keys");
     expect(page).not.toMatch(/\b(HOT|Meteor|Intear|near-connect)\b/);
   });
+
+  it("leaves with a full page load after sign-in, because a prefetched redirect makes router.push a no-op", () => {
+    const source = text(WEB, "src", "components", "wallet", "SignInButton.tsx");
+    const signIn = source.slice(
+      source.indexOf("export function SignInButton"),
+      source.indexOf("export function SignOutButton"),
+    );
+    expect(signIn).toContain("window.location.assign(next);");
+    expect(signIn).not.toContain("useRouter()");
+  });
+
+  it("takes where to go after sign-in only from the server's safeNext", () => {
+    const page = text(WEB, "src", "app", "login", "page.tsx");
+    expect(page).toContain("<SignInButton next={safeNext} />");
+    expect(page).toContain('next.startsWith("/console") ? next : "/console"');
+  });
 });
 
 describe("robots and the sitemap", () => {

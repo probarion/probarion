@@ -7,7 +7,6 @@ import { useWallet } from "./WalletProvider";
 
 export function SignInButton({ next = "/console" }: { next?: string }) {
   const { ready, signIn } = useWallet();
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (
@@ -21,8 +20,9 @@ export function SignInButton({ next = "/console" }: { next?: string }) {
           setError(null);
           try {
             await signIn();
-            router.push(next);
-            router.refresh();
+            // A full load: a link on this page may have prefetched /console as a redirect to /login, and router.push
+            // would follow that cached answer and stay here.
+            window.location.assign(next);
           } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
           } finally {
