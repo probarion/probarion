@@ -57,7 +57,12 @@ const RULES: [Exclude<Technique, "other">, (t: string) => boolean][] = [
   ["encoding_base64", looksLikeBase64Text],
   ["encoding_hex", (t) => /\b(?:[0-9a-f]{2}[\s:]){12,}[0-9a-f]{2}\b/i.test(t.replace(EVM_ALL, ""))],
   ["encoding_morse", (t) => /(?:[.-]{1,6}(?:\s+\/\s+|\s+)){6,}[.-]{1,6}/.test(t)],
-  ["unicode_obfuscation", (t) => /[​-‏⁠﻿]/.test(t) || (/[Ͱ-ϿЀ-ӿ]/.test(t) && /[A-Za-z]/.test(t))],
+  [
+    "unicode_obfuscation",
+    (t) =>
+      /[\u200B-\u200F\u2060\uFEFF]/.test(t) ||
+      (/[\u0370-\u03FF\u0400-\u04FF]/.test(t) && /[A-Za-z]/.test(t)),
+  ],
   [
     "roleplay",
     (t) => /\b(pretend|role-?play|you are now|act as|imagine you)\b/i.test(t) || /\bDAN\b/.test(t),
