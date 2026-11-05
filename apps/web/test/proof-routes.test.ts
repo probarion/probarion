@@ -21,6 +21,12 @@ const h = vi.hoisted(() => ({
   publicCalls: [] as string[],
   /** The anon client fails (a database outage seen by /proof with no vault). */
   publicDown: false,
+  /** The rate limiter's database call fails. */
+  limitDown: false,
+  /** Building the proof page's dependencies fails. */
+  depsDown: false,
+  /** The server's environment does not parse. */
+  envDown: false,
   /** Structured warn lines (proof.unavailable), kept off the test output. */
   warned: [] as string[],
 }));
@@ -47,6 +53,7 @@ vi.mock("@/lib/db/clients", () => ({
     rpc: async <T>(fn: string, p: Record<string, unknown> = {}) => {
       if (fn !== "rate_limit_take") throw new Error(`unexpected ${fn}`);
       h.limitCalls.push(String(p.bucket));
+      if (h.limitDown) throw new DbError("db_error", "connection reset");
       return {
         allowed: h.allowed,
         remaining: 0,
@@ -58,10 +65,16 @@ vi.mock("@/lib/db/clients", () => ({
 vi.mock("@/lib/proof/deps", () => ({
   proofDeps: async () => {
     h.depsCalls++;
+    if (h.depsDown) throw new Error("the database client could not be built");
     return h.deps;
   },
 }));
-vi.mock("@/lib/env", () => ({ getEnv: () => h.env }));
+vi.mock("@/lib/env", () => ({
+  getEnv: () => {
+    if (h.envDown) throw new Error("Invalid environment: SUPABASE_URL is required");
+    return h.env;
+  },
+}));
 
 import Home from "@/app/page";
 import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
@@ -135,6 +148,9 @@ beforeEach(() => {
   h.publicVault = null;
   h.publicCalls = [];
   h.publicDown = false;
+  h.limitDown = false;
+  h.depsDown = false;
+  h.envDown = false;
   h.warned = [];
   vi.spyOn(console, "warn").mockImplementation((line: unknown) => {
     h.warned.push(String(line));
@@ -163,6 +179,44 @@ describe("/proof/[vault]", () => {
     expect(out).toContain("Too many proof requests from your address");
     expect(h.limitCalls).toEqual(["proof:203.0.113.7"]);
     expect(h.depsCalls).toBe(0);
+  });
+
+  describe("when the database or the server's environment fails", () => {
+    const unavailable = async () => {
+      const out = text(await html("acme.vaults.probarion.near"));
+      expect(out).toContain("No result: the checks did not run");
+      expect(out).toContain("database could not be reached right now");
+      expect(out).toContain("Nothing on this page is a pass.");
+      expect(out).not.toContain("All offline checks pass");
+      expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "database" }]);
+    };
+
+    it("says the checks did not run when the rate limiter's database call fails", async () => {
+      serve(await proofSnapshot("ok"));
+      h.limitDown = true;
+      await unavailable();
+      expect(h.depsCalls).toBe(0);
+    });
+
+    it("says the checks did not run when the page's dependencies cannot be built", async () => {
+      h.depsDown = true;
+      await unavailable();
+    });
+
+    it("says the checks did not run when the environment does not parse", async () => {
+      h.depsDown = true;
+      h.envDown = true;
+      await unavailable();
+    });
+
+    it("still answers 404 for a private vault and for an id that is not an account", async () => {
+      serve(await proofSnapshot("ok"));
+      expect(await digest(page("nobody.vaults.probarion.near"))).toBe(
+        "NEXT_HTTP_ERROR_FALLBACK;404",
+      );
+      h.limitDown = true;
+      expect(await digest(page("Not A Vault"))).toBe("NEXT_HTTP_ERROR_FALLBACK;404");
+    });
   });
 
   it("ok: a green 'All offline checks pass', never 'All checks pass'", async () => {
@@ -599,6 +653,13 @@ describe("/proof", () => {
     h.publicDown = true;
     const out = text(renderToStaticMarkup((await ProofIndex()) as ReactElement));
     expect(out).toContain("Open /proof/&lt;vault account&gt; to see a vault&#x27;s checks.");
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.demo_unavailable" }]);
+  });
+
+  it("is still a page when the server's environment does not parse", async () => {
+    h.envDown = true;
+    const out = text(renderToStaticMarkup((await ProofIndex()) as ReactElement));
+    expect(out).toContain("No public vault is listed here yet.");
     expect(warnedReasons()).toMatchObject([{ msg: "proof.demo_unavailable" }]);
   });
 

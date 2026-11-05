@@ -7,6 +7,7 @@ import { TamperPanel } from "@/components/site/TamperPanel";
 import { inkPillClass } from "@/components/ui";
 import { publicDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
+import { log } from "@/lib/log";
 import { publicDemoTarget } from "@/lib/proof/service";
 import { PROOF_INDEX, TAMPER_COPY } from "@/lib/site/facts";
 
@@ -18,6 +19,22 @@ type Props = { searchParams?: Promise<{ vault?: string | string[] }> };
 /** A plain boolean: the core guard's type would narrow a rejected string to `never`. */
 const isAccount = (value: string): boolean => isNearAccountId(value);
 
+/** Where the demo vault's page is, if it is public. Without a demo vault this page needs no secret, so a bad env is no 500. */
+async function demoTarget(): Promise<string | null> {
+  try {
+    const env = getEnv();
+    return await publicDemoTarget(
+      { publicDb: publicDb(), network: env.NEAR_NETWORK },
+      env.PROBARION_VAULT_ID,
+    );
+  } catch (error) {
+    log.warn("proof.demo_unavailable", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 /**
  * `/proof` with no vault: the demo vault (PROBARION_VAULT_ID), when its proof page is public on this network.
  * Otherwise, and when the database cannot say (`publicDemoTarget` catches the error), rather than a redirect to a 404
@@ -27,11 +44,7 @@ const isAccount = (value: string): boolean => isNearAccountId(value);
  * `/proof/<account>`, and anything else gets an inline error here rather than a 404 there.
  */
 export default async function ProofIndex({ searchParams }: Props = {}) {
-  const env = getEnv();
-  const target = await publicDemoTarget(
-    { publicDb: publicDb(), network: env.NEAR_NETWORK },
-    env.PROBARION_VAULT_ID,
-  );
+  const target = await demoTarget();
   if (target) redirect(target);
 
   const asked = (await searchParams)?.vault;
