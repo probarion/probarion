@@ -169,6 +169,13 @@ The software is an unaudited beta.
 
 - The site and console are served at <https://probarion.xyz>; `www.probarion.xyz` redirects there,
   and <https://probarion.vercel.app> still answers.
+- The vault factory is deployed on NEAR testnet as `vaults.probarion.testnet` (code hash
+  `FK6mMqUd…`). It serves the vault build with the `set_ledger_key` fix (code hash `3cQXYDvf…`) as an
+  embedded version, so each new vault stores its own copy of the code and needs about 3 test NEAR.
+  The console's Create a vault and the CLI's `vault create` use it. A smoke vault,
+  `smoke-embedded.vaults.probarion.testnet`, has no access keys. The README, the site's status list
+  and `contracts/deployments/testnet.json` record it; `v0.probarion.testnet` still runs the earlier
+  build.
 - The README, `SECURITY.md` and the site say what an offline check shows: `verify --offline` checks a
   snapshot against itself, so a forged snapshot with re-signed entries passes, and only `verify --vault`
   reads the chain. They also say that `verify --vault v0.probarion.testnet` fails checks d and h today,
