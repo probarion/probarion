@@ -15,7 +15,7 @@ import {
 import { KeyPair, type KeyPairString } from "near-api-js";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { challengeMessage } from "@/lib/auth/challenge";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth/session";
 import {
@@ -1182,7 +1182,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       await signInAs(OWNER);
       const out = await html(row.id);
       expect(out).toMatch(
-        /The owner confirmed this at [^;<]+; the cycle did not finish, so the ledger may hold no record of it\./,
+        /The owner confirmed this at [^;<]+; the cycle has not been recorded as finished, so the ledger may hold no record of it\./,
       );
       expect(out).not.toContain("the signed ledger");
       expect(out).not.toContain("Confirmed by the owner");
@@ -1195,7 +1195,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       const out = await html(row.id);
       expect(out).toContain("Confirmed by the owner");
       expect(out).toContain("the signed ledger");
-      expect(out).not.toContain("the cycle did not finish");
+      expect(out).not.toContain("has not been recorded as finished");
     });
 
     it.each([
@@ -1258,6 +1258,197 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
         'The amount was read from line 5: <code class="wrap-anywhere">Total 24.00 USDC</code>',
       );
       expect(out).toMatch(/\nTotal 24\.00 USDC<\/pre>/);
+    });
+
+    describe("a row whose cycle is not recorded, and the words around it", () => {
+      // These spend for real, and a spend counts against the scenario mandate's ten uses: each test gives them back, so
+      // the uploads of the tests after these still wait for the owner.
+      let mandates: Record<string, unknown>[] = [];
+      beforeEach(() => {
+        mandates = server.chain.mandates.map((m) => ({ ...m }));
+      });
+      afterEach(() => {
+        server.chain.mandates.forEach((m, i) => {
+          Object.assign(m, mandates[i]);
+        });
+      });
+
+      /** What a kill after the send leaves: the spend went out and paid, and its outcome could not be written. */
+      async function sentButNotRecorded(total: string) {
+        const row = await upload(total);
+        const p = await prepared(row);
+        const spends = server.chain.spends.length;
+        const r = await confirmInvoice(
+          {
+            ...deps,
+            db: {
+              rpc: ((fn: string, q: Record<string, unknown>) =>
+                fn === "invoice_set_outcome"
+                  ? Promise.reject(new Error("database down"))
+                  : h.db.rpc(fn, q)) as Db["rpc"],
+            },
+          },
+          { member, account: OWNER, invoiceId: row.id, nonce: p.nonce, signed: sign(p) },
+        );
+        expect(r).toMatchObject({ ok: true, outcome: { status: "paid" }, recorded: false });
+        expect(server.chain.spends).toHaveLength(spends + 1);
+        const cut = await getInvoice(h.db, member.tenant_id, row.id);
+        // The column still holds the earlier, held cycle: this is what must not be shown as the result.
+        expect(cut).toMatchObject({
+          status: "processing",
+          confirmed_by: OWNER,
+          outcome: { status: "held", spendId: null },
+        });
+        return cut as InvoiceRow;
+      }
+
+      const expectNotRecorded = (out: string) => {
+        expect(out).toContain("Outcome unknown: do not resend");
+        expect(out).toContain("Not recorded yet: do not resend.");
+        expect(out).not.toContain("Contract did");
+        expect(out).not.toContain("Held by code");
+        expect(out).not.toContain("nothing was sent");
+        expect(out).not.toContain("Paid on NEAR");
+      };
+
+      it.each([
+        ["the owner", OWNER],
+        ["an approver", SCENARIO_APPROVER],
+      ])(
+        "shows %s no stored outcome when the spend paid and its outcome was not written",
+        async (_who, account) => {
+          const row = await sentButNotRecorded("2.10");
+          await signInAs(account);
+          expectNotRecorded(await html(row.id));
+        },
+      );
+
+      it("shows no stored outcome while the cycle is running, and the real one once it is written", async () => {
+        const row = await upload("2.20");
+        const p = await prepared(row);
+        await signInAs(OWNER);
+        let during = "";
+        const spends = server.chain.spends.length;
+        const r = await confirmInvoice(
+          {
+            ...deps,
+            db: {
+              rpc: (async (fn: string, q: Record<string, unknown>) => {
+                if (fn === "invoice_set_outcome" && during === "") {
+                  expect(server.chain.spends).toHaveLength(spends + 1);
+                  during = await html(row.id);
+                }
+                return h.db.rpc(fn, q);
+              }) as Db["rpc"],
+            },
+          },
+          { member, account: OWNER, invoiceId: row.id, nonce: p.nonce, signed: sign(p) },
+        );
+        expect(r).toMatchObject({ ok: true, outcome: { status: "paid" }, recorded: true });
+        expectNotRecorded(during);
+        const after = await html(row.id);
+        expect(after).toContain("Paid on NEAR");
+        expect(after).toContain("Contract did");
+        expect(after).not.toContain("Not recorded yet");
+      });
+
+      it("shows no stored outcome for a cycle cut off before any send", async () => {
+        const spends = server.chain.spends.length;
+        const row = await cutOff("24.00");
+        expect(server.chain.spends).toHaveLength(spends);
+        expect(row.outcome).toMatchObject({ status: "held", spendId: null });
+        await signInAs(OWNER);
+        expectNotRecorded(await html(row.id));
+      });
+
+      it("words a processing row by its status in the list and in the payee's other invoices", async () => {
+        const row = await sentButNotRecorded("2.30");
+        await signInAs(OWNER);
+        const list = await listHtml();
+        const from = list.slice(list.indexOf(row.ref));
+        const line = from.slice(0, from.indexOf("</tr>"));
+        expect(line).toContain("Outcome unknown: do not resend");
+        expect(line).not.toContain("Held by code");
+        const waiting = await upload("29.00");
+        const w = await loadWaitingView(
+          { db: h.db, master: MASTER, reader: createVaultReader(new RpcClient({ urls: [h.url] })) },
+          { member, account: OWNER, row: waiting, entries: await store.all(), now: new Date() },
+        );
+        expect(w.payee?.rows.find((r) => r.id === row.id)?.label).toBe(
+          "Outcome unknown: do not resend",
+        );
+      });
+
+      it("says what is true of a row left unfinished, and names the ref to read it by", async () => {
+        const row = await cutOff("27.00");
+        await signInAs(OWNER);
+        const ref = `by this ref: <span class="mono break-all">${row.ref}</span>`;
+        const processing = await html(row.id);
+        expect(processing).toContain("if it was cut off, this row stays in this state");
+        expect(processing).toContain(ref);
+        expect(processing).not.toMatch(/watcher|reconcil/i);
+        await pg.query("update invoices set status = 'unconfirmed' where id = $1", [row.id]);
+        const unconfirmed = await html(row.id);
+        expect(unconfirmed).toContain("This row stays in this state");
+        expect(unconfirmed).toContain(ref);
+        expect(unconfirmed).not.toContain("confirmed from the chain");
+      });
+
+      it.each([
+        ["the owner", OWNER],
+        ["an approver", SCENARIO_APPROVER],
+      ])(
+        "words a held-again row's last confirmation so it is true for %s",
+        async (_who, account) => {
+          const balances = server.chain.intents.balances;
+          const saved = { ...balances };
+          for (const k of Object.keys(balances)) balances[k] = "0";
+          try {
+            const row = await upload("19.00", { po: PO_2002, payTo: SCENARIO_BASE_ADDRESS });
+            const p = await prepared(row);
+            await confirmInvoice(deps, {
+              member,
+              account: OWNER,
+              invoiceId: row.id,
+              nonce: p.nonce,
+              signed: sign(p),
+            });
+            await signInAs(account);
+            const out = await html(row.id);
+            expect(out).toContain("It was last confirmed as owner.testnet at ");
+            expect(out).not.toContain("You last confirmed");
+          } finally {
+            Object.assign(balances, saved);
+          }
+        },
+      );
+
+      it("mentions re-checking the signature only when the ledger holds this row's record", async () => {
+        const FOOT = "custom.owner_confirmed record";
+        await signInAs(OWNER);
+        // No confirmation at all.
+        const fresh = await upload("31.50");
+        expect(await html(fresh.id)).not.toContain(FOOT);
+        // Confirmed and paid: the ledger holds it.
+        const paid = await upload("2.40");
+        const p = await prepared(paid);
+        await confirmInvoice(deps, {
+          member,
+          account: OWNER,
+          invoiceId: paid.id,
+          nonce: p.nonce,
+          signed: sign(p),
+        });
+        expect(await html(paid.id)).toContain(FOOT);
+        // Sent, its outcome not written: the decision was already in the ledger.
+        const sent = await sentButNotRecorded("2.50");
+        expect(JSON.stringify(await store.all())).toContain(sent.confirm_signature);
+        expect(await html(sent.id)).toContain(FOOT);
+        // Cut off before any decision: other rows' records do not count for this one.
+        const cut = await cutOff("34.50");
+        expect(JSON.stringify(await store.all())).not.toContain(cut.confirm_signature);
+        expect(await html(cut.id)).not.toContain(FOOT);
+      });
     });
 
     it("the confirmed notice follows the row's state", async () => {

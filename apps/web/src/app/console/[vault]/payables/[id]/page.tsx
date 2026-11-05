@@ -16,12 +16,14 @@ import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { log } from "@/lib/log";
 import { getReader } from "@/lib/near/server";
 import { UUID, utcMinute } from "@/lib/payables/forms";
+import { ledgerHoldsConfirmation } from "@/lib/payables/owner-confirmed";
 import { getInvoice } from "@/lib/payables/store";
 import {
   amountIssueText,
   buildCycleView,
   type PayeeRow,
   rowResult,
+  shownOutcome,
   usdcFixed,
 } from "@/lib/payables/view";
 import { loadWaitingView, type WaitingView } from "@/lib/payables/waiting";
@@ -125,7 +127,7 @@ function Waiting({
       </ul>
       {w.lastConfirmation ? (
         <Notice tone="warn">
-          You last confirmed it as {w.lastConfirmation.by} at {utcMinute(w.lastConfirmation.at)}.
+          It was last confirmed as {w.lastConfirmation.by} at {utcMinute(w.lastConfirmation.at)}.
           The cycle was held again by the rule above, and nothing was sent.
         </Notice>
       ) : null}
@@ -255,6 +257,10 @@ export default async function InvoiceCyclePage({
         )
       : null;
   const result = rowResult(inv, owner);
+  const outcome = shownOutcome(inv);
+  const ref = safeText(inv.ref, 64);
+  const confirmationInLedger =
+    entries !== null && ledgerHoldsConfirmation(entries, inv.invoice_hash, inv.confirm_signature);
   const m = waiting?.mandate ?? null;
 
   return (
@@ -268,7 +274,7 @@ export default async function InvoiceCyclePage({
       </p>
       <VaultNav vault={vault} />
       <h2 className="mb-1 text-lg">
-        Invoice <span className="mono break-all">{safeText(inv.ref, 64)}</span>{" "}
+        Invoice <span className="mono break-all">{ref}</span>{" "}
         <Badge tone={result.tone}>{result.label}</Badge>
       </h2>
       <p className={`mb-4 text-xs ${muted}`}>
@@ -282,13 +288,16 @@ export default async function InvoiceCyclePage({
       {inv.amount_issue ? <Notice tone="bad">{amountIssueText(inv.amount_issue)}</Notice> : null}
       {inv.status === "processing" ? (
         <Notice tone="warn">
-          Outcome unknown: do not resend. The cycle may still be running, or it was cut off; the
-          watcher confirms it from the chain by its ref.
+          Outcome unknown: do not resend. The cycle may still be running; if it was cut off, this
+          row stays in this state. You can read the vault&apos;s spends on chain by this ref:{" "}
+          <span className="mono break-all">{ref}</span>.
         </Notice>
       ) : null}
       {inv.status === "unconfirmed" ? (
         <Notice tone="warn">
-          Payment sent, confirmation pending: do not resend. The spend is confirmed from the chain.
+          Payment sent, confirmation pending: do not resend. This row stays in this state. You can
+          read the vault&apos;s spends on chain by this ref:{" "}
+          <span className="mono break-all">{ref}</span>.
         </Notice>
       ) : null}
       {inv.status === "rejected" ? (
@@ -312,7 +321,7 @@ export default async function InvoiceCyclePage({
         </Notice>
       ) : inv.confirmed_by && inv.status !== "awaiting_owner" ? (
         <Notice tone={result.tone}>
-          {`The owner confirmed this${inv.confirmed_at ? ` at ${utcMinute(inv.confirmed_at)}` : ""}; the cycle did not finish, so the ledger may hold no record of it.`}
+          {`The owner confirmed this${inv.confirmed_at ? ` at ${utcMinute(inv.confirmed_at)}` : ""}; the cycle has not been recorded as finished, so the ledger may hold no record of it.`}
         </Notice>
       ) : null}
 
@@ -345,13 +354,15 @@ export default async function InvoiceCyclePage({
         </Notice>
       ) : null}
 
-      {inv.outcome && entries !== null ? (
+      {outcome && entries !== null ? (
         <CycleColumns
-          view={buildCycleView(entries, inv.outcome, network, inv.anchor_tx_hash)}
+          view={buildCycleView(entries, outcome, network, inv.anchor_tx_hash)}
           network={network}
         />
-      ) : inv.outcome ? (
+      ) : outcome ? (
         <Notice tone="warn">The ledger could not be read, so the cycle cannot be shown.</Notice>
+      ) : inv.status === "processing" ? (
+        <Notice tone="warn">Not recorded yet: do not resend.</Notice>
       ) : (
         <Notice tone={inv.status === "error" ? "bad" : "info"}>
           {inv.error ? safeText(inv.error, 500) : `Status: ${result.label}`}
@@ -364,10 +375,10 @@ export default async function InvoiceCyclePage({
           proof page
         </RouteLink>{" "}
         has the ledger file and the one-time setup, then run{" "}
-        <code className="wrap-anywhere">{chainCommand(network, vault)}</code>. That command does not
-        check an owner&apos;s confirmation yet: its signature can be re-checked from the ledger
-        entry&apos;s custom.owner_confirmed record, and whether the key was the owner&apos;s at that
-        block takes an archival node.
+        <code className="wrap-anywhere">{chainCommand(network, vault)}</code>.
+        {confirmationInLedger
+          ? " That command does not check an owner's confirmation yet: its signature can be re-checked from the ledger entry's custom.owner_confirmed record, and whether the key was the owner's at that block takes an archival node."
+          : null}
       </p>
     </div>
   );

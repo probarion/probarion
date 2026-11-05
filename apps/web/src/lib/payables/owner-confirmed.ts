@@ -238,3 +238,22 @@ export function verifyOwnerConfirmations(entries: readonly LedgerEntry[]): Confi
   }
   return out;
 }
+
+/**
+ * True when the ledger holds this confirmation: a decision for this invoice whose owner-confirmed rule passed, with
+ * this signature. Another invoice's record, or an earlier confirmation's, does not count.
+ */
+export function ledgerHoldsConfirmation(
+  entries: readonly LedgerEntry[],
+  invoiceHash: string,
+  signature: string | null,
+): boolean {
+  if (signature === null) return false;
+  return entries.some((e) => {
+    if (e.body.kind !== "decision" || e.body.invoice_hash !== invoiceHash) return false;
+    const rule = e.body.rules.find((r) => r.id === OWNER_CONFIRMED_RULE);
+    return (
+      rule?.outcome === "pass" && parseOwnerConfirmedDetail(rule.detail)?.signature === signature
+    );
+  });
+}

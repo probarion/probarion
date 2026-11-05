@@ -123,6 +123,14 @@ export function invoiceStatusLabel(status: InvoiceStatus, owner = true): string 
   }
 }
 
+/**
+ * The outcome a row may show as its result. A row in `processing` shows none: Confirm leaves the earlier held cycle's
+ * outcome in the column until its own is written, so that value says nothing about this cycle, which may already have
+ * paid (ruling W-T14-R5).
+ */
+export const shownOutcome = (row: Pick<InvoiceRow, "status" | "outcome">): InvoiceRow["outcome"] =>
+  row.status === "processing" ? null : row.outcome;
+
 /** What an invoice row came to, in words, with the tone of its badge: the SDK outcome once decided, else the status. */
 export function rowResult(row: InvoiceRow, owner = true): { label: string; tone: Tone } {
   if (row.status === "decided" && row.outcome) {
