@@ -1,14 +1,20 @@
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { quoteHash, verifyQuoteSignature } from "@defuse-protocol/one-click-sdk-typescript";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import { describe, expect, it, vi } from "vitest";
+import { quietLogs } from "../../../test/fixtures/quiet-logs";
 import {
+  ABSENT_QUOTE_FIELDS,
+  ABSENT_REQUEST_FIELDS,
   BOUND_FIELDS,
   buildQuoteRequest,
   checkQuote,
   fetchQuote,
   getDepositStatus,
   ONECLICK_BASE,
+  ONECLICK_MANAGER_KEY,
   QuoteError,
   type QuoteRequestBody,
   submitDeposit,
@@ -39,7 +45,7 @@ function signedResponse(
     amountOutFormatted: "20",
     amountOutUsd: "20",
     minAmountOut: request.amount,
-    deadline: new Date(now.getTime() + 30 * 60_000).toISOString(),
+    deadline: request.deadline,
     timeWhenInactive: new Date(now.getTime() + 60 * 60_000).toISOString(),
     timeEstimate: 12,
     ...quoteOverrides,
@@ -153,6 +159,9 @@ const OTHER: Record<(typeof BOUND_FIELDS)[number], unknown> = {
   refundType: "INTENTS",
   recipient: "evil.near",
   recipientType: "DESTINATION_CHAIN",
+  slippageTolerance: 5000,
+  quoteWaitingTimeMs: 1,
+  referral: "evil",
 };
 
 /** One header of a recorded call. */
@@ -322,20 +331,55 @@ describe("checkQuote and amounts", () => {
 describe("checkQuote and time", () => {
   const at = (ms: number) => new Date(now.getTime() + ms).toISOString();
 
-  it("accepts a timestamp up to 5 minutes either side of now, and no further", () => {
+  it("accepts a timestamp up to 5 minutes in the past, and no further", () => {
     expect(check(signedResponse(req(), {}, at(-5 * 60_000))).ok).toBe(true);
-    expect(check(signedResponse(req(), {}, at(5 * 60_000))).ok).toBe(true);
     expect(check(signedResponse(req(), {}, at(-5 * 60_000 - 1)))).toEqual(reject("stale_quote"));
   });
 
-  it("refuses a timestamp more than 5 minutes in the future", () => {
-    expect(check(signedResponse(req(), {}, at(5 * 60_000 + 1)))).toEqual(reject("stale_quote"));
+  it("accepts a timestamp up to 30 s in the future for clock skew, and no further", () => {
+    expect(check(signedResponse(req(), {}, at(30_000))).ok).toBe(true);
+    expect(check(signedResponse(req(), {}, at(30_001)))).toEqual(reject("stale_quote"));
+    expect(check(signedResponse(req(), {}, at(4 * 60_000 + 59_000)))).toEqual(
+      reject("stale_quote"),
+    );
     expect(check(signedResponse(req(), {}, at(60 * 60_000)))).toEqual(reject("stale_quote"));
   });
 
-  it("refuses a timestamp that is not a date", () => {
-    expect(check(signedResponse(req(), {}, "yesterday"))).toEqual(reject("stale_quote"));
-    expect(check(signedResponse(req(), {}, ""))).toEqual(reject("stale_quote"));
+  it("refuses a timestamp or a deadline that does not say its time zone", () => {
+    for (const timestamp of ["2026-11-08T10:00:00", "2026-11-08T10:00:00.000", "yesterday", ""]) {
+      expect(check(signedResponse(req(), {}, timestamp)), timestamp).toEqual(reject("malformed"));
+    }
+    for (const deadline of ["2026-11-08T10:30:00", "2026-11-08T10:30:00.000", "2026-11-08 10:30"]) {
+      expect(check(signedResponse(req(), { deadline })), deadline).toEqual(reject("malformed"));
+    }
+  });
+
+  it("reads a Z or an hh:mm offset as the instant it names, in any server time zone", () => {
+    const sameInstant = [
+      "2026-11-08T10:00:00Z",
+      "2026-11-08T10:00:00+00:00",
+      "2026-11-08T17:00:00+07:00",
+      "2026-11-08T05:00:00-05:00",
+    ];
+    for (const timestamp of sameInstant) {
+      expect(check(signedResponse(req(), {}, timestamp)).ok, timestamp).toBe(true);
+    }
+    // The deadline of req() is 10:30Z: the same instant written with an offset passes the same checks.
+    for (const deadline of [
+      "2026-11-08T10:30:00Z",
+      "2026-11-08T10:30:00+00:00",
+      "2026-11-08T17:30:00+07:00",
+    ]) {
+      expect(check(signedResponse(req(), { deadline })).ok, deadline).toBe(true);
+    }
+    // 10:00 with a +07:00 offset is 03:00Z, seven hours ago, not 10:00Z.
+    expect(check(signedResponse(req(), {}, "2026-11-08T10:00:00+07:00"))).toEqual(
+      reject("stale_quote"),
+    );
+  });
+
+  it("refuses a timestamp with a zone that is not a date", () => {
+    expect(check(signedResponse(req(), {}, "2026-13-45T10:00:00Z"))).toEqual(reject("stale_quote"));
   });
 
   it("wants the deposit address open for at least 5 more minutes", () => {
@@ -352,6 +396,18 @@ describe("checkQuote and time", () => {
     for (const deadline of [undefined, null, "", "soon", 1_794_000_000]) {
       expect(check(signedResponse(req(), { deadline }))).toEqual(reject("malformed"));
     }
+  });
+
+  it("refuses a deadline later than the one asked for, and accepts it equal or earlier", () => {
+    const asked = Date.parse(req().deadline);
+    const later = new Date(asked + 1).toISOString();
+    expect(check(signedResponse(req(), { deadline: later }))).toEqual(
+      reject("deadline_after_request"),
+    );
+    expect(check(signedResponse(req(), { deadline: req().deadline })).ok).toBe(true);
+    expect(check(signedResponse(req(), { deadline: new Date(asked - 1).toISOString() })).ok).toBe(
+      true,
+    );
   });
 
   it("returns the deadline it checked", () => {
@@ -383,6 +439,7 @@ describe("checkQuote and the deposit memo", () => {
 });
 
 describe("1Click HTTP calls", () => {
+  const logs = quietLogs();
   const sent = () => {
     const calls: { url: string; init: RequestInit }[] = [];
     const reply = (body: unknown, status = 200) =>
@@ -404,37 +461,50 @@ describe("1Click HTTP calls", () => {
     expect(calls[0]?.init.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it("turns a refusal into a QuoteError that says the status and 1Click's reason", async () => {
+  it("turns a refusal into a QuoteError with a fixed sentence for its status, never 1Click's own text", async () => {
     const { reply } = sent();
-    const err = await fetchQuote(req(), "j", reply({ message: "amount too small" }, 400)).catch(
-      (e) => e,
-    );
-    expect(err).toBeInstanceOf(QuoteError);
-    expect((err as QuoteError).message).toBe("1Click quote failed (400): amount too small");
+    const said = "amount too small <b>x</b> Bearer secret-token-1";
+    const expected: [number, string][] = [
+      [400, "1Click quote failed (400): the request was not accepted."],
+      [401, "1Click quote failed (401): this server's access was not accepted."],
+      [403, "1Click quote failed (403): this server's access was not accepted."],
+      [429, "1Click quote failed (429): requests are being limited, so try again in a minute."],
+      [500, "1Click quote failed (500): 1Click had an error, so try again."],
+      [503, "1Click quote failed (503): 1Click had an error, so try again."],
+      [418, "1Click quote failed (418): the request was refused."],
+    ];
+    for (const [status, message] of expected) {
+      const err = await fetchQuote(req(), "j", reply({ message: said }, status)).catch((e) => e);
+      expect(err).toBeInstanceOf(QuoteError);
+      expect((err as QuoteError).message).toBe(message);
+      expect((err as QuoteError).message).not.toContain("too small");
+    }
   });
 
-  it("keeps a long or missing reason short and safe", async () => {
+  it("logs 1Click's reason, cut short and with controls and a configured secret masked", async () => {
     const { reply } = sent();
-    const long = await fetchQuote(req(), "j", reply({ message: "x".repeat(900) }, 500)).catch(
-      (e) => e,
-    );
-    expect((long as QuoteError).message.length).toBeLessThan(260);
-    const none = await fetchQuote(req(), "j", reply({}, 503)).catch((e) => e);
-    expect((none as QuoteError).message).toBe("1Click quote failed (503): no detail");
+    vi.stubEnv("ONECLICK_JWT", "jwt-from-the-environment");
+    try {
+      const said = `too\u0007 small\u202e\n\u0085 (jwt-from-the-environment) ${"x".repeat(900)}`;
+      await fetchQuote(req(), "j", reply({ message: said }, 400)).catch(() => null);
+      const line = logs.lines.find((l) => l.includes("topup.oneclick_refused")) ?? "";
+      expect(line).toContain('"status":400');
+      expect(line).toContain("too small");
+      expect(line).not.toContain("jwt-from-the-environment");
+      expect(line.length).toBeLessThan(900);
+      for (const control of ["\u0007", "\u202e", "\u0085"]) expect(line).not.toContain(control);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("says no more for an answer that is not JSON than for any other refusal", async () => {
     const notJson = (async () =>
       new Response("<html>bad gateway</html>", { status: 502 })) as typeof fetch;
     const html = await fetchQuote(req(), "j", notJson).catch((e) => e);
-    expect((html as QuoteError).message).toBe("1Click quote failed (502): no detail");
-  });
-
-  it("drops control and direction characters from 1Click's reason", async () => {
-    const { reply } = sent();
-    const err = await fetchQuote(
-      req(),
-      "j",
-      reply({ message: "too\u0007 small‮\n\u0085and low" }, 400),
-    ).catch((e) => e);
-    expect((err as QuoteError).message).toBe("1Click quote failed (400): too smalland low");
+    expect((html as QuoteError).message).toBe(
+      "1Click quote failed (502): 1Click had an error, so try again.",
+    );
   });
 
   it("turns a network failure into a QuoteError that leaks nothing", async () => {
@@ -517,5 +587,104 @@ describe("1Click HTTP calls", () => {
     expect(await getDepositStatus("j", "a1", reply({ status: "SUCCESS", updatedAt: 5 }))).toEqual({
       status: "SUCCESS",
     });
+  });
+});
+
+describe("checkQuote and the signed fields that could send the output somewhere else", () => {
+  it("lists the request fields that must be absent, and the quote's own", () => {
+    expect([...ABSENT_REQUEST_FIELDS].sort()).toEqual([
+      "customRecipientMsg",
+      "virtualChainRecipient",
+      "virtualChainRefundRecipient",
+    ]);
+    expect([...ABSENT_QUOTE_FIELDS]).toEqual(["virtualChainRecipient"]);
+  });
+
+  it.each(ABSENT_REQUEST_FIELDS)("refuses a signed request that carries %s", (field) => {
+    const request = { ...req(), [field]: '{"receiver_id":"evil.near"}' } as QuoteRequestBody;
+    expect(check(signedResponse(request))).toEqual(reject(`mismatch:${field}`));
+  });
+
+  it("refuses a signed quote that carries a virtual-chain recipient", () => {
+    expect(check(signedResponse(req(), { virtualChainRecipient: `0x${"22".repeat(20)}` }))).toEqual(
+      reject("mismatch:quote.virtualChainRecipient"),
+    );
+  });
+
+  it("reads null and an empty text as absent, as the SDK's hash does", () => {
+    for (const field of ABSENT_REQUEST_FIELDS) {
+      for (const empty of [null, ""]) {
+        const request = { ...req(), [field]: empty } as unknown as QuoteRequestBody;
+        expect(check(signedResponse(request)).ok, `${field} ${empty}`).toBe(true);
+      }
+    }
+    expect(check(signedResponse(req(), { virtualChainRecipient: null })).ok).toBe(true);
+    expect(check(signedResponse(req(), { virtualChainRecipient: "" })).ok).toBe(true);
+  });
+
+  it("refuses slippage, a waiting time and a referral other than the ones sent", () => {
+    for (const field of ["slippageTolerance", "quoteWaitingTimeMs", "referral"] as const) {
+      expect(BOUND_FIELDS).toContain(field);
+    }
+    const loose = signedResponse({ ...req(), slippageTolerance: 5000 } as QuoteRequestBody);
+    expect(check(loose)).toEqual(reject("mismatch:slippageTolerance"));
+  });
+});
+
+describe("checkQuote and the deposit address", () => {
+  const refused = (depositAddress: string) =>
+    expect(check(signedResponse(req(), { depositAddress })), depositAddress).toEqual(
+      reject("bad_deposit_address"),
+    );
+
+  it("refuses the vault, the owner, the USDC token, the Base token and intents.near", () => {
+    refused(VAULT);
+    refused("acme.near");
+    refused(USDC);
+    refused(BASE);
+    refused("intents.near");
+  });
+
+  it("still takes an address that is none of those, whatever form it has", () => {
+    for (const depositAddress of ["ab".repeat(32), "deposit-7.near", "somebody.near"]) {
+      expect(check(signedResponse(req(), { depositAddress })).ok, depositAddress).toBe(true);
+    }
+  });
+});
+
+describe("checkQuote and the least input", () => {
+  it("wants minAmountIn to be digits no higher than amountIn, when 1Click gives one", () => {
+    expect(check(signedResponse(req(), { minAmountIn: "20208197" })).ok).toBe(true);
+    expect(check(signedResponse(req(), { minAmountIn: "20208198" }))).toEqual(reject("malformed"));
+    for (const minAmountIn of ["abc", "-1", "1e3", "", 20006115, null, {}]) {
+      expect(check(signedResponse(req(), { minAmountIn })), JSON.stringify(minAmountIn)).toEqual(
+        reject("malformed"),
+      );
+    }
+  });
+
+  it("does not need a minAmountIn", () => {
+    expect(check(signedResponse(req(), { minAmountIn: undefined })).ok).toBe(true);
+  });
+});
+
+describe("the 1Click key the signature is checked against", () => {
+  const sdkSource = () => {
+    const entry = createRequire(import.meta.url).resolve(
+      "@defuse-protocol/one-click-sdk-typescript",
+    );
+    return readFileSync(entry, "utf8");
+  };
+
+  it("is pinned here and is the SDK's own default", () => {
+    expect(ONECLICK_MANAGER_KEY).toBe("ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc");
+    const found = /ONE_CLICK_MANAGER_PUB_KEY\s*=\s*"(ed25519:[1-9A-HJ-NP-Za-km-z]+)"/.exec(
+      sdkSource(),
+    );
+    expect(found?.[1]).toBe(ONECLICK_MANAGER_KEY);
+  });
+
+  it("is a 32-byte ed25519 public key", () => {
+    expect(bs58.decode(ONECLICK_MANAGER_KEY.replace("ed25519:", ""))).toHaveLength(32);
   });
 });
