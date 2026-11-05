@@ -1,7 +1,7 @@
 import { RouteLink } from "@/components/RouteLink";
 import { VAULT_TABS } from "@/lib/routes";
 
-// A tab whose page is not built yet (Top-up, Alerts: see PLANNED_ROUTES) is left out until it lands.
+// A tab whose page is not built yet (Alerts: see PLANNED_ROUTES) is left out until it lands.
 export function VaultNav({ vault }: { vault: string }) {
   const base = `/console/${encodeURIComponent(vault)}`;
   return (
