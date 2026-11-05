@@ -526,6 +526,48 @@ describe("the header", () => {
   });
 });
 
+describe("the root layout", () => {
+  const layout = text(SRC, "app", "layout.tsx");
+
+  it("puts the beta strip, the header and the footer on every page", () => {
+    for (const part of ["BetaStrip", "SiteHeader", "SiteFooter"]) {
+      expect(importsOf(layout).map((i) => i.spec)).toContain(`@/components/site/${part}`);
+      expect(layout).toContain(`<${part}`);
+    }
+    expect(layout.indexOf("<BetaStrip")).toBeLessThan(layout.indexOf("<main"));
+    expect(layout.indexOf("<SiteFooter")).toBeGreaterThan(layout.indexOf("</main>"));
+  });
+
+  it("loads every mono weight the console's headings ask for", () => {
+    const mono = layout.slice(layout.indexOf("IBM_Plex_Mono({"));
+    expect(mono).toContain('weight: ["400", "500", "600"]');
+  });
+});
+
+describe("the chrome's landmarks and headings", () => {
+  it("puts the beta strip in a landmark", () => {
+    const html = renderToStaticMarkup(createElement(BetaStrip, { network: "testnet" }));
+    expect(html).toMatch(/^<aside [^>]*aria-label="Beta notice"/);
+  });
+
+  it("does not skip a heading level in the footer, on a page with no h2 of its own", () => {
+    const html = renderToStaticMarkup(createElement(SiteFooter));
+    expect(html).toContain("<h2>Product</h2>");
+    expect(html).not.toContain("<h3");
+  });
+
+  it("leaves a scroll panel a tab stop with no JavaScript", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    expect(html).toMatch(/<section [^>]*aria-label="The SpendRequest fields" tabindex="0"/);
+  });
+
+  it("wraps a 64-character account in the console's signed-in row", () => {
+    const row = text(SRC, "app", "console", "layout.tsx");
+    expect(row).toContain('<span className="min-w-0">');
+    expect(row).toContain('<span className="mono wrap-anywhere">{session.accountId}</span>');
+  });
+});
+
 describe("the proof routes' width", () => {
   const proof = (...p: string[]) => join(SRC, "app", "proof", ...p);
 

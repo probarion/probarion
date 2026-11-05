@@ -890,7 +890,7 @@
   grid-template-columns: minmax(0, 4fr) repeat(3, minmax(0, 2fr));
   gap: 32px;
 }
-.foot h3 {
+.foot h2 {
   font-size: 13px;
   font-weight: 500;
   color: var(--color-ink);

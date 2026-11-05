@@ -6,7 +6,7 @@ import s from "./site.module.css";
 export function BetaStrip({ network }: { network: Network }) {
   const copy = betaStrip(network);
   return (
-    <div className={s.beta}>
+    <aside className={s.beta} aria-label="Beta notice">
       <div className={`${s.wrap} ${s.betaRow}`}>
         <span>
           <b>{copy.lead}</b> {copy.where} {copy.audit}
@@ -15,6 +15,6 @@ export function BetaStrip({ network }: { network: Network }) {
           {copy.custody} {copy.amounts}
         </span>
       </div>
-    </div>
+    </aside>
   );
 }

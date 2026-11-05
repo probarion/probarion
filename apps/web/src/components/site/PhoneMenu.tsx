@@ -4,7 +4,8 @@ import { type ReactNode, useEffect, useRef } from "react";
 
 /**
  * A <details> disclosure, so the menu opens and closes with no JavaScript at all. With it, the menu also closes when a
- * link inside it is followed (the header stays mounted across pages), on a tap outside it, and on Escape.
+ * link inside it is followed (the header stays mounted across pages), on a tap outside it, on Escape, and when focus
+ * moves out of it.
  */
 export function PhoneMenu({
   className,
@@ -32,11 +33,20 @@ export function PhoneMenu({
       details.open = false;
       details.querySelector("summary")?.focus();
     };
+    const onFocusOut = (event: FocusEvent) => {
+      const details = menu.current;
+      const from = event.target;
+      const to = event.relatedTarget;
+      if (!details?.open || !(from instanceof Node) || !(to instanceof Node)) return;
+      if (details.contains(from) && !details.contains(to)) details.open = false;
+    };
     document.addEventListener("click", onClick);
     document.addEventListener("keydown", onKey);
+    document.addEventListener("focusout", onFocusOut);
     return () => {
       document.removeEventListener("click", onClick);
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusout", onFocusOut);
     };
   }, []);
   return (

@@ -12,7 +12,7 @@ export function SiteFooter() {
           <p className={s.footNote}>{FOOTER.note}</p>
         </div>
         <div>
-          <h3>Product</h3>
+          <h2>Product</h2>
           <ul>
             {FOOTER.product.map(({ route, label }) => (
               <li key={route}>
@@ -22,7 +22,7 @@ export function SiteFooter() {
           </ul>
         </div>
         <div>
-          <h3>Developers</h3>
+          <h2>Developers</h2>
           <ul>
             {FOOTER.developers.map(({ href, label }) => (
               <li key={href}>
@@ -32,7 +32,7 @@ export function SiteFooter() {
           </ul>
         </div>
         <div>
-          <h3>Follow</h3>
+          <h2>Follow</h2>
           <ul>
             {FOOTER.follow.map(({ href, label }) => (
               <li key={href}>
