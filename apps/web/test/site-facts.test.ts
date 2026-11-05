@@ -470,8 +470,8 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Vault factory",
-      pill: "Built, not deployed",
-      readme: [{ start: "Factory contract", says: ["**Built and tested**", "**Not deployed**"] }],
+      pill: "On testnet",
+      readme: [{ start: "Factory contract", says: ["**Shipped on NEAR testnet**"] }],
     },
     {
       row: "Canary public challenge",
@@ -565,29 +565,35 @@ describe("the status list", () => {
       { row: "Vault contract", pill: "On testnet", tone: "live" },
       { row: "Offline verifier, checks a to i", pill: "Shipped in source", tone: "live" },
       { row: "Reproducible builds", pill: "Shipped", tone: "live" },
+      { row: "Vault factory", pill: "On testnet", tone: "live" },
       { row: "Web console", pill: "In progress", tone: "work" },
       { row: "Public proof page", pill: "Built, no public vault yet", tone: "work" },
       { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
       { row: "Payables agent", pill: "In progress", tone: "work" },
       { row: "Live attested model run", pill: "In progress", tone: "work" },
-      { row: "Vault factory", pill: "Built, not deployed", tone: "work" },
       { row: "Canary public challenge", pill: "Planned", tone: "plan" },
       { row: "MCP server", pill: "Planned", tone: "plan" },
       { row: "Mainnet vault", pill: "Planned", tone: "plan" },
     ]);
   });
 
-  it("says the testnet vault runs an older build, and the fixed build's hash is on record", () => {
+  it("says v0 runs an older build, and the factory's vaults run the fixed build on record", () => {
     expect(STATUS.build).toBe(
-      "The testnet vault runs a build older than the current source, and the fixed build's hash is recorded in `contracts/code-hashes.json`.",
+      "`v0.probarion.testnet` runs a build older than the current source; the vaults the testnet factory creates run the fixed build recorded in `contracts/code-hashes.json`.",
     );
     const prose = README.replace(/\s+/g, " ");
-    expect(prose).toContain("testnet vault runs the earlier build");
+    expect(prose).toContain("`v0.probarion.testnet` runs the earlier build");
     const hashes = JSON.parse(text(ROOT, "contracts", "code-hashes.json")) as {
       entries: { code_hash: string }[];
     };
     const fixed = /code hash `(3cQXYDvf[1-9A-HJ-NP-Za-km-z]+)`/.exec(prose)?.[1];
     expect(hashes.entries.map((e) => e.code_hash)).toContain(fixed);
+    const record = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
+      factory: { code_hash: string; versions: { code_hash: string }[] };
+    };
+    expect(record.factory.versions.map((v) => v.code_hash)).toEqual([fixed]);
+    expect(hashes.entries.map((e) => e.code_hash)).toContain(record.factory.code_hash);
+    expect(prose).toContain(`Code hash \`${record.factory.code_hash}\``);
     expect(visibleText(landing())).toContain("runs a build older than the current source");
   });
 

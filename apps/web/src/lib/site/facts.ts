@@ -378,12 +378,12 @@ export const STATUS = {
     { row: "Vault contract", pill: "On testnet", tone: "live" },
     { row: "Offline verifier, checks a to i", pill: "Shipped in source", tone: "live" },
     { row: "Reproducible builds", pill: "Shipped", tone: "live" },
+    { row: "Vault factory", pill: "On testnet", tone: "live" },
     { row: "Web console", pill: "In progress", tone: "work" },
     { row: "Public proof page", pill: "Built, no public vault yet", tone: "work" },
     { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
     { row: "Payables agent", pill: "In progress", tone: "work" },
     { row: "Live attested model run", pill: "In progress", tone: "work" },
-    { row: "Vault factory", pill: "Built, not deployed", tone: "work" },
     { row: "Canary public challenge", pill: "Planned", tone: "plan" },
     { row: "MCP server", pill: "Planned", tone: "plan" },
     { row: "Mainnet vault", pill: "Planned", tone: "plan" },
@@ -392,7 +392,7 @@ export const STATUS = {
   noteLink: "threat model",
   noteAfter: ", including what `verify` does not prove yet.",
   build:
-    "The testnet vault runs a build older than the current source, and the fixed build's hash is recorded in `contracts/code-hashes.json`.",
+    "`v0.probarion.testnet` runs a build older than the current source; the vaults the testnet factory creates run the fixed build recorded in `contracts/code-hashes.json`.",
 } as const;
 
 // --- closing --------------------------------------------------------------------------------------
