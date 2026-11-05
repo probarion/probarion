@@ -1188,11 +1188,17 @@ function idShapedTitle(v: Views, i: number): boolean {
   return /\p{Lu}/u.test(letters) && !/^\p{Lu}\p{Ll}+$/u.test(letters);
 }
 
+/** What stands after the invoice word on a line, on the unfolded view, or null when the line does not have the word. */
+function afterTitleWord(v: Views, i: number): string | null {
+  // The word and its end are read on the folded view, which only reads digits as letters: it ends at the same place.
+  const word = INVOICE_TITLE_WORD.exec(titleText(v.u[i] ?? ""));
+  return word ? titleText(v.t[i] ?? "").slice(word[0].length) : null;
+}
+
 function readsAsTitle(v: Views, i: number): boolean {
-  const u = titleText(v.u[i] ?? "");
-  if (INVOICE_TITLE.test(u)) return true;
-  // The word "Invoice" and its end are still read on the folded view.
-  return INVOICE_TITLE_WORD.test(u) && idShapedTitle(v, i);
+  const tail = afterTitleWord(v, i);
+  if (tail === null || PARTY_LABEL.test(tail)) return false;
+  return INVOICE_TITLE.test(titleText(v.u[i] ?? "")) || idShapedTitle(v, i);
 }
 
 function invoiceTitled(v: Views, lines: readonly number[]): boolean {
@@ -1281,7 +1287,10 @@ function stampInTail(tail: string, title: boolean): string | null {
   return null;
 }
 
-/** A party label names someone ("Invoice to: Demo Corp"): it is not a title, and its name is not read for stamps. */
+/**
+ * A party label names someone, whatever stands after its colon ("Invoice to: Demo Corp", "Invoice to:1001"): it is no
+ * title, and its name is not read for stamps, so a customer called Test24 Labs reads under a real title.
+ */
 const PARTY_LABEL = /^\s*(?:to|from)\s*:/;
 /** A "|" with no blank on either side, on the line as written: it may be the l of a word ("PA|D"). */
 const PIPE_IN_TOKEN = /[^\s|]\|[^\s|]/;
@@ -1298,11 +1307,8 @@ const PIPE_AS_SEPARATOR = /(?<=\S) - (?=\S)/g;
 function stampOnTitle(v: Views, lines: readonly number[]): string | null {
   for (const i of lines.slice(0, HEADER_LINES)) {
     if (v.finalLine[i] !== null || v.nonFinal[i] !== null) continue;
-    const word = INVOICE_TITLE_WORD.exec(titleText(v.u[i] ?? ""));
-    if (!word) continue;
-    // The folded view only reads digits as letters, so the word ends at the same place in both.
-    const tail = titleText(v.t[i] ?? "").slice(word[0].length);
-    if (PARTY_LABEL.test(tail)) continue;
+    const tail = afterTitleWord(v, i);
+    if (tail === null || PARTY_LABEL.test(tail)) continue;
     const title = readsAsTitle(v, i);
     const why =
       stampInTail(tail, title) ??

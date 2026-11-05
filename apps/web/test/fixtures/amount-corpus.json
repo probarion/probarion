@@ -15912,6 +15912,126 @@
         "issue": "not_payable"
       },
       "why": "W-T14-R4 item 5: a Title-case look-alike or a digit-first word is no id on the second title reading"
+    },
+    {
+      "id": "r10-party.Invoice to:VOID2",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice to:VOID2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Invoice to:PAID2",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice to:PAID2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Invoice from:QUOTE1",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice from:QUOTE1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Invoice from:RECEIPT1",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice from:RECEIPT1\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Invoice TO:VOID2",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice TO:VOID2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Acme - Invoice to:VOID2",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Acme - Invoice to:VOID2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Invoice to:SAMPLE2",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice to:SAMPLE2\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Invoice to:Test24 Labs",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice to:Test24 Labs\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Invoice to:INV-1001 void and reissued",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice to:INV-1001 void and reissued\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Invoice to:1001 void and reissued",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice to:1001 void and reissued\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party.Invoice from:1001 draft copy",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "Invoice from:1001 draft copy\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "0",
+        "issue": "not_payable"
+      },
+      "why": "W-T14-R5 item 2: a party label is no title, with or without a blank after the colon"
+    },
+    {
+      "id": "r10-party-ctl.INVOICE INV-1001 over Invoice to:Test24 Labs",
+      "source": "Task 14 follow-up 3, party labels",
+      "text": "INVOICE INV-1001\nInvoice to:Test24 Labs\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC",
+      "expect": {
+        "amount": "20000000",
+        "issue": null
+      },
+      "why": "W-T14-R5 item 2 control: a customer's name in a party label reads under a real title"
     }
   ]
 }

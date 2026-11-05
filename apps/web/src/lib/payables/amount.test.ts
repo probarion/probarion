@@ -1969,3 +1969,59 @@ describe("what stands after the invoice word on a title line (ruling W-T14-R4)",
     expect(readAmount(`${title}${BODY}`)).toEqual(refused(NOT_AN_INVOICE));
   });
 });
+
+describe("a party label is no title (ruling W-T14-R5)", () => {
+  const BODY = "\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC";
+  const refused = { amount: "0", issue: "not_payable", why: NOT_AN_INVOICE, line: null };
+
+  it.each([
+    ["Invoice to:VOID2"],
+    ["Invoice to:PAID2"],
+    ["Invoice from:QUOTE1"],
+    ["Invoice from:RECEIPT1"],
+    ["Invoice TO:VOID2"],
+    ["Acme - Invoice to:VOID2"],
+    ["Invoice to:SAMPLE2"],
+    ["Invoice to:Test24 Labs"],
+    ["Invoice to:INV-1001 void and reissued"],
+    ["Invoice to:1001 void and reissued"],
+    ["Invoice from:1001 draft copy"],
+    ["Invoice FROM:1001"],
+    ["Invoice To : 1001"],
+    ["# Invoice to:1001"],
+    ["Acme Ltd | Invoice from:INV-1001"],
+  ])("does not read as a title, with or without a blank: %j", (line) => {
+    expect(readAmount(`${line}${BODY}`)).toEqual(refused);
+  });
+
+  it.each([["Invoice to:Acme2 Corp"], ["Payment reminder\nInvoice to:Acme2"]])(
+    "takes a customer's name with a digit for no id either: %j",
+    (text) => {
+      expect(readAmount(`${text}${BODY}`)).toEqual(refused);
+    },
+  );
+
+  it.each([
+    ["Invoice to:Test24 Labs"],
+    ["Invoice to: Test24 Labs"],
+    ["Invoice from:Sample1 LLC"],
+    ["INVOICE TO:Demo Corp"],
+  ])("still reads a customer's name under a real title: %j", (label) => {
+    expect(readAmount(`INVOICE INV-1001\n${label}${BODY}`)).toEqual({
+      amount: "20000000",
+      issue: null,
+      line: 4,
+    });
+  });
+
+  it.each([["Invoice 1001 to: Acme"], ["Invoice 1001 from:Acme"], ["Invoice TO-1001"]])(
+    "reads a title that only holds the same letters: %j",
+    (title) => {
+      expect(readAmount(`${title}${BODY}`)).toEqual({
+        amount: "20000000",
+        issue: null,
+        line: 3,
+      });
+    },
+  );
+});
