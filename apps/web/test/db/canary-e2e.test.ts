@@ -385,9 +385,12 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
       )
     ).rows[0];
     expect(row).toEqual({ code_status: "error", raw: false, raw_skipped_reason: "error" });
-    expect((await pg.query("select process_lease_until from tenants")).rows[0]).toEqual({
-      process_lease_until: null,
-    });
+    // the model step was given up on while it still ran: the lease is NOT released, it runs out by itself, so no other
+    // cycle starts beside the work that may still be running
+    expect(
+      (await pg.query("select process_lease_until > now() as held from tenants")).rows[0],
+    ).toEqual({ held: true });
+    await pg.exec("update public.tenants set process_lease_until = null");
     expect(spends()).toBe(before);
     expect((await store.all()).length).toBe(entries);
   });

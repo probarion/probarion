@@ -79,6 +79,10 @@ type LeaseGrant = { acquired: true; until: string } | { acquired: false; until: 
  * The lease is released afterwards, whether the work returned or threw. A failed release is logged and
  * swallowed: the lease expires by itself, and throwing here would hide the work's result (a payment may
  * already have gone out) or replace the work's own error.
+ *
+ * `opts.keep` is for a caller that gave up on work it cannot stop (the Canary at its deadline): asked once `fn` has
+ * returned or thrown, a true answer leaves the lease unreleased, so nobody starts a cycle beside the work that may still
+ * be running, and it runs out by itself after `seconds`. Without it the lease is always released, as before.
  */
 export async function withLease<T>(
   db: Db,
@@ -86,30 +90,41 @@ export async function withLease<T>(
   kind: "process" | "watch",
   seconds: number,
   fn: () => Promise<T>,
+  opts: { keep?: () => boolean } = {},
 ): Promise<{ acquired: false } | { acquired: true; value: T }> {
   const lease = await db.rpc<LeaseGrant>("tenant_lease", { tenant_id: tenantId, kind, seconds });
   if (!lease.acquired) return { acquired: false };
   try {
     return { acquired: true, value: await fn() };
   } finally {
-    try {
-      const done = await db.rpc<{ released: boolean }>("tenant_release", {
-        tenant_id: tenantId,
-        kind,
-        until: lease.until,
-      });
-      if (!done.released) {
-        log.warn("lease.expired_before_release", { tenant_id: tenantId, kind });
-      }
-    } catch (e) {
-      const err = toDbError(e);
-      // "db_error" says nothing on its own, so it travels with the database's text (the logger scrubs it).
-      log.warn("lease.release_failed", {
-        tenant_id: tenantId,
-        kind,
-        code: err.code,
-        ...(err.code === "db_error" ? { error: err.message } : {}),
-      });
+    if (opts.keep?.() !== true) await releaseLease(db, tenantId, kind, lease.until);
+  }
+}
+
+/** Releases the lease `until` names; a failed release is logged and swallowed (see withLease). */
+async function releaseLease(
+  db: Db,
+  tenantId: string,
+  kind: "process" | "watch",
+  until: string,
+): Promise<void> {
+  try {
+    const done = await db.rpc<{ released: boolean }>("tenant_release", {
+      tenant_id: tenantId,
+      kind,
+      until,
+    });
+    if (!done.released) {
+      log.warn("lease.expired_before_release", { tenant_id: tenantId, kind });
     }
+  } catch (e) {
+    const err = toDbError(e);
+    // "db_error" says nothing on its own, so it travels with the database's text (the logger scrubs it).
+    log.warn("lease.release_failed", {
+      tenant_id: tenantId,
+      kind,
+      code: err.code,
+      ...(err.code === "db_error" ? { error: err.message } : {}),
+    });
   }
 }

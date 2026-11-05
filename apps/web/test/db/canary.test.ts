@@ -1467,6 +1467,10 @@ describe("runAttempt", () => {
       const within = CANARY_LIMITS.attemptBudgetMs + 1000;
       const leaseFree = async () =>
         (await pg.query("select process_lease_until from tenants")).rows[0];
+      // After a deadline exit the lease is NOT released: the work the attempt gave up on may still be running, and the
+      // lease runs out by itself after leaseSeconds (more than the route's maxDuration).
+      const leaseHeld = async () =>
+        (await pg.query("select process_lease_until > now() as held from tenants")).rows[0];
 
       it("answers failed inside the budget when the model step never returns, and closes the row as a deadline", async () => {
         const { d, pb } = deps({}, { process: vi.fn(() => hang<SpendOutcome>()) });
@@ -1482,7 +1486,7 @@ describe("runAttempt", () => {
           raw_detail: "deadline",
         });
         expect(pb.requestSpend).not.toHaveBeenCalled();
-        expect(await leaseFree()).toEqual({ process_lease_until: null });
+        expect(await leaseHeld()).toEqual({ held: true });
         expect(logs.lines.join("\n")).toContain("canary.deadline");
       });
 
@@ -1530,7 +1534,7 @@ describe("runAttempt", () => {
             raw: false,
             raw_skipped_reason: "no_time",
           });
-          expect(await leaseFree()).toEqual({ process_lease_until: null });
+          expect(await leaseHeld()).toEqual({ held: true });
         },
       );
 
@@ -1553,7 +1557,7 @@ describe("runAttempt", () => {
           raw_detail: "deadline",
           raw_skipped_reason: null,
         });
-        expect(await leaseFree()).toEqual({ process_lease_until: null });
+        expect(await leaseHeld()).toEqual({ held: true });
       });
 
       it("answers inside the budget when the model step, the dry run and the send all hang in turn (the sum, not each cap)", async () => {
@@ -1579,6 +1583,125 @@ describe("runAttempt", () => {
         expect(elapsedMs).toBeLessThanOrEqual(within);
         // 1 s is left: no raw spend is started (less than 15 s)
         expect(value).toMatchObject({ status: "done", raw: { sent: false, skipped: "no_time" } });
+        // nothing was given up on while it ran (only the floor stopped the spend): the lease is released as always
+        expect(await leaseFree()).toEqual({ process_lease_until: null });
+      });
+
+      it("does not release the lease after giving up on the model step: a second attempt is busy until the lease has run out", async () => {
+        const abandoned = vi.fn(() => hang<SpendOutcome>());
+        const first = deps({}, { process: abandoned });
+        const { value, settled } = await drive(runAttempt(first.d, input()));
+        expect(settled).toBe(true);
+        expect(value).toEqual({ status: "rejected", reason: "failed" });
+        // the abandoned process() is still pending; another attempt must not start a cycle beside it
+        const second = deps();
+        expect(await runAttempt(second.d, input(other(5)))).toEqual({
+          status: "rejected",
+          reason: "busy",
+        });
+        expect(second.pb.process).not.toHaveBeenCalled();
+        expect(
+          (await pg.query("select count from rate_limits where bucket = 'canary:attempts:hour'"))
+            .rows,
+        ).toEqual([{ count: 1 }]);
+        // the lease lasts leaseSeconds from when it was taken, more than the route's maxDuration
+        expect(CANARY_LIMITS.leaseSeconds).toBeGreaterThan(60);
+        const held = await pg.query<{ secs: number }>(
+          "select extract(epoch from process_lease_until - now())::float8 as secs from tenants",
+        );
+        expect(held.rows[0]?.secs).toBeGreaterThan(CANARY_LIMITS.leaseSeconds - 60);
+        expect(held.rows[0]?.secs).toBeLessThanOrEqual(CANARY_LIMITS.leaseSeconds);
+        // once the lease has run out by itself, the next attempt runs
+        await pg.exec(
+          "update public.tenants set process_lease_until = now() - interval '1 second'",
+        );
+        const third = deps();
+        expect(await runAttempt(third.d, input(other(7)))).toMatchObject({ status: "done" });
+        expect(third.pb.process).toHaveBeenCalledTimes(1);
+      });
+
+      // The floor is checked where the spend starts, not only at the gate: the allowance read and the dry run each take
+      // their time, and a spend started with 2 s left is recorded as unconfirmed with no tx hash.
+      it("does not start a raw spend when the allowance read and the dry run have used up the time above the floor", async () => {
+        const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+        // 16 s left at the gate, then a 7 s allowance read and a 7 s dry run: 2 s left
+        const real = pgliteDb(pg);
+        const updates: Record<string, unknown>[] = [];
+        const recording: Db = {
+          rpc: async <T>(fn: string, p?: Record<string, unknown>) => {
+            if (fn === "canary_attempt_update") updates.push(p ?? {});
+            return real.rpc<T>(fn, p);
+          },
+        };
+        const { d, pb } = deps(
+          {
+            db: recording,
+            agentAllowance: async () => {
+              await sleep(7000);
+              return 900_000_000_000_000_000_000_000n;
+            },
+          },
+          {
+            checkSpend: vi.fn(async () => {
+              await sleep(7000);
+              return wouldRefuse();
+            }),
+          },
+        );
+        const { value, settled } = await drive(
+          runAttempt(
+            d,
+            input({ startedAt: Date.now() - (CANARY_LIMITS.attemptBudgetMs - 16_000) }),
+          ),
+        );
+        expect(settled).toBe(true);
+        expect(value).toMatchObject({ status: "done", raw: { sent: false, skipped: "no_time" } });
+        expect(pb.requestSpend).not.toHaveBeenCalled();
+        // the row was never made to say a spend is on its way: the floor stopped it before that write
+        expect(updates.filter((u) => u.raw === true)).toEqual([]);
+        expect(at(await rows())).toMatchObject({
+          code_status: "refused_by_code",
+          raw: false,
+          raw_skipped_reason: "no_time",
+          contract_status: null,
+        });
+      });
+
+      it("checks the floor once more after the row says a spend is on its way, and the row then says no_time, not unconfirmed", async () => {
+        const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+        const real = pgliteDb(pg);
+        const updates: Record<string, unknown>[] = [];
+        // the write that says "a raw spend is on its way" takes 3 s: 16 s left before it, 13 s after
+        const slowDb: Db = {
+          rpc: async <T>(fn: string, p?: Record<string, unknown>) => {
+            if (fn === "canary_attempt_update") {
+              updates.push(p ?? {});
+              if (p?.raw === true && p.contract_status === "unconfirmed") await sleep(3000);
+            }
+            return real.rpc<T>(fn, p);
+          },
+        };
+        const { d, pb } = deps({ db: slowDb });
+        const { value, settled } = await drive(
+          runAttempt(
+            d,
+            input({ startedAt: Date.now() - (CANARY_LIMITS.attemptBudgetMs - 16_000) }),
+          ),
+        );
+        expect(settled).toBe(true);
+        expect(value).toMatchObject({ status: "done", raw: { sent: false, skipped: "no_time" } });
+        expect(pb.requestSpend).not.toHaveBeenCalled();
+        // the pre-send write did happen, and the end of the attempt took it back
+        expect(updates.some((u) => u.raw === true && u.contract_status === "unconfirmed")).toBe(
+          true,
+        );
+        expect(at(await rows())).toMatchObject({
+          code_status: "refused_by_code",
+          raw: false,
+          raw_skipped_reason: "no_time",
+          contract_status: null,
+          tx_hash: null,
+        });
       });
     });
   });

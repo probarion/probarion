@@ -163,17 +163,32 @@ class DeadlineError extends Error {
   }
 }
 
+/** Whether the attempt has given up on work that is still running (see `bounded`): the lease is then not released. */
+interface Abandoned {
+  gaveUp: boolean;
+}
+
 /**
  * Runs `work` unless the time is already out, and gives up on it at the deadline. This is the backstop that makes the
  * attempt's total time a promise: the SDK's own steps are also bounded by the time left (they are given the same clock),
  * but a step this code cannot reach into would otherwise hold the whole attempt. Work that is given up on may still
  * finish in the background; the Canary's cycle never pays (rules.ts), so what it could still do is write ledger entries.
+ * That is why `abandoned` (when given) is marked the moment the timer gives up on running work: the cycle then does not
+ * release the tenant's lease, which runs out by itself, so no other cycle starts beside it.
  */
-function bounded<T>(work: () => Promise<T>, left: () => number, what: string): Promise<T> {
+function bounded<T>(
+  work: () => Promise<T>,
+  left: () => number,
+  what: string,
+  abandoned?: Abandoned,
+): Promise<T> {
   const ms = left();
   if (!(ms > 0)) return Promise.reject(new DeadlineError(what));
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new DeadlineError(what)), ms);
+    const timer = setTimeout(() => {
+      if (abandoned) abandoned.gaveUp = true;
+      reject(new DeadlineError(what));
+    }, ms);
     work().then(
       (value) => {
         clearTimeout(timer);
@@ -341,6 +356,8 @@ interface RawContext {
   ref: string;
   /** Milliseconds left in the attempt. */
   left: () => number;
+  /** Set when a step is given up on while it still runs. */
+  abandoned: Abandoned;
 }
 
 /** The amount of a raw spend: the model's if the contract can read it, else the code's. Never invented. */
@@ -378,6 +395,7 @@ async function planRaw(
       () => deps.agentAllowance(c.mandate),
       c.left,
       "reading the agent key",
+      c.abandoned,
     );
   } catch (e) {
     if (e instanceof DeadlineError) return skip("no_time");
@@ -395,6 +413,7 @@ async function planRaw(
       () => c.pb.checkSpend({ mandateId, amount, invoiceHash: c.rawInvoiceHash, ref: c.ref }),
       c.left,
       "the dry run",
+      c.abandoned,
     );
     if (verdict.ok) return skip("contract_would_accept");
   } catch (e) {
@@ -446,6 +465,7 @@ async function sendRaw(
         }),
       c.left,
       "the raw spend",
+      c.abandoned,
     );
   } catch (e) {
     const code =
@@ -534,6 +554,7 @@ async function cycle(
   input: AttemptInput,
   ready: Ready,
   left: () => number,
+  abandoned: Abandoned,
 ): Promise<AttemptResult> {
   const { text, est, mandate, pb } = ready;
   const at = { request_id: input.requestId, tenant: deps.tenant.tenant_id };
@@ -600,7 +621,12 @@ async function cycle(
 
   let outcome: SpendOutcome;
   try {
-    outcome = await bounded(() => pb.process({ text, facts, ref }), left, "the model step");
+    outcome = await bounded(
+      () => pb.process({ text, facts, ref }),
+      left,
+      "the model step",
+      abandoned,
+    );
   } catch (e) {
     // The SDK sends a spend only after a decision, and the Canary's rule refuses every decision: nothing went out. The model
     // may have answered, so the row stays (its estimate counts against the day's budget), closed as an error.
@@ -647,17 +673,29 @@ async function cycle(
     rawInvoiceHash: hashInvoice(`${randomBytes(32).toString("hex")}\n${text}`),
     ref: `${ref}:raw`,
     left,
+    abandoned,
   };
   const plan = await planRaw(context);
   let step: RawStep;
   if ("send" in plan) {
-    // Just before the send, the row says a raw spend is on its way (raw, unconfirmed, no skip reason): that is what the
-    // row must say if the process dies during the send. If that cannot be written, nothing is sent.
-    const pending = await write(
-      row({ ...RAW_PENDING, raw: true, contract_status: "unconfirmed" }),
-      "raw spend on its way",
-    );
-    step = pending ? await sendRaw(context, plan.send) : skip("error", "row_unwritable");
+    // The 15 s floor is checked where the spend starts, not only at the gate: the allowance read, the dry run and the
+    // counters since then each took their time. Below it nothing is written and nothing is sent.
+    const late = () => left() < CANARY_LIMITS.rawMinRemainingMs;
+    if (late()) {
+      step = skip("no_time");
+    } else {
+      // Just before the send, the row says a raw spend is on its way (raw, unconfirmed, no skip reason): that is what the
+      // row must say if the process dies during the send. If that cannot be written, nothing is sent.
+      const pending = await write(
+        row({ ...RAW_PENDING, raw: true, contract_status: "unconfirmed" }),
+        "raw spend on its way",
+      );
+      // The write took time too. A skip from here on is what the end of the attempt records (raw: false, no_time), so the
+      // row never stays "raw, unconfirmed" for a spend that was not started.
+      if (!pending) step = skip("error", "row_unwritable");
+      else if (late()) step = skip("no_time");
+      else step = await sendRaw(context, plan.send);
+    }
   } else {
     step = plan;
   }
@@ -691,12 +729,16 @@ export async function runAttempt(deps: CanaryDeps, input: AttemptInput): Promise
   const left = () => deadlineAt - deps.now().getTime();
   const ready = await admit(deps, input, left);
   if ("status" in ready) return ready;
+  // A step given up on at the deadline may still be running (it cannot be stopped): then the lease is not released, and
+  // runs out by itself after leaseSeconds (more than the route's maxDuration), so no other cycle starts beside it.
+  const abandoned: Abandoned = { gaveUp: false };
   const leased = await withLease(
     deps.db,
     deps.tenant.tenant_id,
     "process",
     CANARY_LIMITS.leaseSeconds,
-    () => cycle(deps, input, ready, left),
+    () => cycle(deps, input, ready, left, abandoned),
+    { keep: () => abandoned.gaveUp },
   );
   return leased.acquired ? leased.value : rejected("busy");
 }
