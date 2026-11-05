@@ -44,7 +44,7 @@ In scope:
 - the packages [`@probarion/core`](packages/core), [`@probarion/sdk`](packages/sdk) and the
   [`probarion` CLI](packages/cli);
 - the public site and web console in [`apps/web`](apps/web), deployed at
-  <https://probarion.vercel.app> on testnet, with its database migrations and its key sealing (in
+  <https://probarion.xyz> on testnet, with its database migrations and its key sealing (in
   progress);
 - the build, deploy and release scripts in [`scripts`](scripts) and the workflows in
   [`.github/workflows`](.github/workflows).
