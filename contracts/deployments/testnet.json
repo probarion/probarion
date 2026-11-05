@@ -17,6 +17,30 @@
     "code_hash": "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
     "locked": true
   },
+  "factory": {
+    "code_hash": "FK6mMqUdieWmYyB9hqyJL23Aew9wWGSPustb6tUDtaQ6",
+    "deployed_on": "2026-11-05",
+    "owner": "probarion-owner.testnet",
+    "min_deposit": "500000000000000000000000",
+    "deploy_tx": "8gFwxZs1Qu2CL4XKpC3rn3aQQvsN8QTVVh6fCdej7kH8",
+    "versions": [
+      {
+        "index": 1,
+        "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+        "mode": "embedded",
+        "store_code_tx": "26EQtjWtat3vH1fvWKNV1Xs6n2XZkg4oPaiTiPHxj3bq",
+        "add_version_tx": "79G6dH4TNVRQBK7bvrRbao6oGnQgvNHafcq9JwTwYsXw"
+      }
+    ],
+    "smoke_vaults": [
+      {
+        "account": "smoke-embedded.vaults.probarion.testnet",
+        "version": 1,
+        "create_vault_tx": "EZ7pm7FQrJTvooKAwmEyZq4gUKueCNcDdpweib6wokdD",
+        "access_keys": 0
+      }
+    ]
+  },
   "smoke": {
     "near_payment_tx": "3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX",
     "base_burn_tx": "3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe",

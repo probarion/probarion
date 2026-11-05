@@ -181,16 +181,16 @@ What exists at this commit, and what does not yet.
 
 | Component | Status | Where |
 | --- | --- | --- |
-| Vault contract | **Shipped on NEAR testnet** as `v0.probarion.testnet` (test tokens). The vault source changed after that deployment (a `set_ledger_key` fix on 2026-11-03); the fixed build is recorded (code hash `3cQXYDvf…`) but not deployed yet | [`contracts/vault`](contracts/vault) |
-| Factory contract | **Built and tested** (unit and sandbox tests). **Not deployed** on any network yet: `vaults.probarion.testnet` does not exist | [`contracts/factory`](contracts/factory) |
+| Vault contract | **Shipped on NEAR testnet** as `v0.probarion.testnet` (test tokens). The vault source changed after that deployment (a `set_ledger_key` fix on 2026-11-03). Vaults created by the testnet factory run the fixed build (code hash `3cQXYDvf…`); `v0.probarion.testnet` still runs the earlier one | [`contracts/vault`](contracts/vault) |
+| Factory contract | **Shipped on NEAR testnet** as `vaults.probarion.testnet` (2026-11-05). It serves the fixed vault build as an embedded version: each new vault stores its own copy of the code, so it needs about 3 test NEAR (the 0.5 NEAR `min_deposit` plus 2.49 NEAR of storage). The global version and a mainnet factory are not deployed yet | [`contracts/factory`](contracts/factory) |
 | Reproducible builds and recorded code hashes | **Shipped** (CI, Docker) | [`scripts/build-reproducible.sh`](scripts/build-reproducible.sh), [`contracts/code-hashes.json`](contracts/code-hashes.json) |
 | `@probarion/core`: policy engine, ledger, attestation checks A1 to A8, verifier checks a to i | **Shipped** in source | [`packages/core`](packages/core) |
 | `@probarion/sdk`: RPC with failover, vault clients, ledger stores, `Probarion` class, `snapshot()` and `verify()` with online O1/O2 | **Shipped** in source | [`packages/sdk`](packages/sdk) |
 | NEAR AI Cloud adapter (private TEE model, nonce-bound attestation, `provider_tee` signature) | **Built** and tested against a fake NEAR AI Cloud. A real attested decision, recorded and verified in this repository: **In progress** | [`packages/sdk/src/nearai.ts`](packages/sdk/src/nearai.ts) |
-| `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` needs a deployed factory, so it waits for the factory | [`packages/cli`](packages/cli) |
+| `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` reads the testnet factory and prints its `create_vault` call for the owner to sign | [`packages/cli`](packages/cli) |
 | CLI `check`, `verify` and `ledger export` | **Shipped** in source. `verify` exits 0 when every check passes, 1 when one fails or verify cannot run, 2 when a burn is unproven | [`packages/cli`](packages/cli) |
 | npm release 0.1.0 of the packages | **Planned**. The tag-driven release pipeline is in place; nothing is published | [`.github/workflows/release.yml`](.github/workflows/release.yml) |
-| Web console (Next.js 16 and Supabase): the public site, wallet sign-in, vault overview, freeze, approvals, keys, mandates, top-up, Payables, the public proof page | **In progress**. Deployed at [probarion.xyz](https://probarion.xyz) on testnet, from `main`. The top-up tab sends USDC on NEAR from the owner's wallet; the 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet. Sign-in and the console have not been tried there with a real wallet yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
+| Web console (Next.js 16 and Supabase): the public site, wallet sign-in, vault overview, freeze, approvals, keys, mandates, top-up, Payables, the public proof page | **In progress**. Deployed at [probarion.xyz](https://probarion.xyz) on testnet, from `main`. The top-up tab sends USDC on NEAR from the owner's wallet; the 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet. Sign-in and Create a vault have been tried there with a real wallet (Meteor, on testnet: `trial.vaults.probarion.testnet`); the other console actions have not yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
 | Mainnet vault `v0.probarion.near` | **Planned**. The runbook is ready; the owner signs every step | [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) |
 | MCP server `@probarion/mcp` | **Planned** | |
 | Payables, the reference agent that pays invoices in USDC | **In progress**. The pipeline, its invoice API and the console pages are built and tested against a fake chain, and deploy with the console; nothing has been tried with a real wallet yet. It pays by itself only when an attested NEAR AI model confirms the amount the code read; without one, nothing is sent and the invoice waits for the owner, who can pay it with a wallet signature or reject it. The amount reader refuses any total it cannot read with certainty. An unfinished payment stays marked "do not resend" until the reconcile job is built | [`apps/web/src/lib/payables`](apps/web/src/lib/payables) |
@@ -344,10 +344,19 @@ NearBlocks' testnet index can lag behind the chain. Step 3 of
 RPC node. The deployment record is [`contracts/deployments/testnet.json`](contracts/deployments/testnet.json),
 and the steps are in [`docs/runbooks/testnet.md`](docs/runbooks/testnet.md).
 
-The vault source changed after this deployment (a `set_ledger_key` fix on 2026-11-03), so the
-testnet vault runs the earlier build. The fixed build is recorded in
+The vault source changed after this deployment (a `set_ledger_key` fix on 2026-11-03), so
+`v0.probarion.testnet` runs the earlier build. The fixed build, recorded in
 [`contracts/code-hashes.json`](contracts/code-hashes.json) (commit `64ac3c0`, code hash
-`3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`) and is not deployed yet. The factory account, `vaults.probarion.testnet`, does not exist yet either.
+`3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`), runs on the vaults the testnet factory creates.
+
+The factory went on testnet on 2026-11-05, following [`docs/runbooks/factory.md`](docs/runbooks/factory.md).
+It serves one version, the fixed vault build as an embedded copy, so a new vault pays for the storage
+of its own code. The global version waits: publishing it burns about 25 test NEAR.
+
+| Account | Role |
+| --- | --- |
+| [`vaults.probarion.testnet`](https://testnet.nearblocks.io/address/vaults.probarion.testnet) | The factory. Owner `probarion-owner.testnet`, `min_deposit` 0.5 NEAR. Code hash `FK6mMqUdieWmYyB9hqyJL23Aew9wWGSPustb6tUDtaQ6`, the reproducible CI build recorded for commit `3e7bd2d`. Version 1: the vault build `3cQXYDvf…`, embedded |
+| [`smoke-embedded.vaults.probarion.testnet`](https://testnet.nearblocks.io/address/smoke-embedded.vaults.probarion.testnet) | The smoke vault the factory created ([`EZ7pm7FQ…wokdD`](https://testnet.nearblocks.io/txns/EZ7pm7FQrJTvooKAwmEyZq4gUKueCNcDdpweib6wokdD)). Owner `probarion-owner.testnet`, approver `probarion-approver.testnet`, no access keys, code hash `3cQXYDvf…` |
 
 ### NEAR mainnet
 
@@ -401,9 +410,8 @@ node packages/cli/dist/bin.js agent keygen --out ../agent-key.json
 
 **Run an agent against a vault.** `Probarion.process()` needs:
 
-- a vault you own, with USDC in it (today a vault is deployed with
-  [`scripts/testnet/deploy.sh`](scripts/testnet/deploy.sh); creating one through the factory waits
-  for the factory deployment);
+- a vault you own, with USDC in it (on testnet, create one with Create a vault in the console or
+  with `vault create`, which prints the `create_vault` call to `vaults.probarion.testnet`);
 - `PROBARION_AGENT_KEY`, the secret of a `spend`-only key the owner added with `agent add`, and a
   mandate that names its public key;
 - `PROBARION_LEDGER_KEY`, the secret of an `anchor`-only key the owner set with `ledger set-key`;
