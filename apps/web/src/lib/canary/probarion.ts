@@ -29,8 +29,9 @@ export interface CanaryBudget {
   remainingMs(): number;
 }
 
-// The catalog and the probe that pick the model are the same for every attempt, so a warm process keeps the model its first
-// attempt resolved for ten minutes. The attestation report for each request's nonce is NOT cached (the nonce is the point).
+// The catalog and the probe that pick the model are the same for every attempt, so a warm process keeps the model an
+// attempt resolved for ten minutes, counted from when it was resolved: using it never renews it (see makeCanaryProbarion).
+// The attestation report for each request's nonce is NOT cached (the nonce is the point).
 let knownModel: { model: string; at: number } | null = null;
 
 /** Forgets the model kept for later attempts (for tests). */
@@ -46,7 +47,10 @@ function cachedModel(): string | undefined {
 }
 
 /** The proposer for the Canary's persona with those timeouts, or null without a NEAR AI key. */
-function canaryProposer(budget: CanaryBudget | undefined): NearAiProposer | null {
+function canaryProposer(
+  budget: CanaryBudget | undefined,
+  known: string | undefined,
+): NearAiProposer | null {
   const env = getEnv();
   if (!env.NEARAI_API_KEY) return null;
   // ALL the model calls of one attempt share `modelBudgetMs`, counted from the first call, and never more than the attempt
@@ -62,7 +66,6 @@ function canaryProposer(budget: CanaryBudget | undefined): NearAiProposer | null
             budget.remainingMs(),
           );
         };
-  const known = cachedModel();
   return new NearAiProposer({
     apiKey: env.NEARAI_API_KEY,
     ...(env.NEARAI_MODEL ? { model: env.NEARAI_MODEL } : {}),
@@ -116,7 +119,10 @@ export async function makeCanaryProbarion(
   if ("problem" in ledger) return unusable("ledger", ledger.problem);
   if ("problem" in agent) return unusable("agent", agent.problem);
   const own = deps.proposer === undefined;
-  const proposer = own ? canaryProposer(budget) : deps.proposer;
+  // The model a warm process kept from an earlier attempt, if it is not ten minutes old yet. A proposer given it resolves
+  // nothing itself, so its cycle stamps nothing below: the ten minutes run from when the model was resolved.
+  const known = own ? cachedModel() : undefined;
+  const proposer = own ? canaryProposer(budget, known) : deps.proposer;
   if (proposer === null) return null;
 
   // The chain: with the attempt's time, a client that stops when it is over, and senders that wait at most one step (or
@@ -156,7 +162,7 @@ export async function makeCanaryProbarion(
   );
   pb.rules.add(canaryNoAutopay);
   if (!own) return pb;
-  // What the proposer resolved while the cycle ran (even if the cycle then failed) is kept for the next attempts.
+  // What the proposer resolved itself while the cycle ran (even if the cycle then failed) is kept for the next attempts.
   const mine = proposer as NearAiProposer;
   return {
     process: async (i) => {
@@ -164,7 +170,7 @@ export async function makeCanaryProbarion(
         return await pb.process(i);
       } finally {
         const model = mine.resolvedModel;
-        if (model !== null) knownModel = { model, at: Date.now() };
+        if (known === undefined && model !== null) knownModel = { model, at: Date.now() };
       }
     },
     checkSpend: (i) => pb.checkSpend(i),

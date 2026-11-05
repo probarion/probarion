@@ -267,6 +267,39 @@ describe("makeCanaryProbarion keeps the resolved model", () => {
     expect(known(2)).toBeUndefined();
   });
 
+  // The ten minutes run from when the model was RESOLVED, never from its last use: under steady traffic a cache that slid
+  // would never re-run the catalog and the probe, and a model that stopped returning NEAR attestation would stay chosen.
+  it("never renews it by using it: the ten minutes run from when the model was resolved", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const minute = 60_000;
+    await runOnce("some/model"); // minute 0: this proposer resolved it itself
+    // cycles that use the cached model, at minutes 0, 4 and 9, renew nothing
+    let at = 0;
+    for (const [i, minutes] of [
+      [1, 0],
+      [2, 4],
+      [3, 9],
+    ] as const) {
+      vi.advanceTimersByTime((minutes - at) * minute);
+      at = minutes;
+      await runOnce("some/model");
+      expect(known(i)).toBe("some/model");
+    }
+    // at minute 10 the model is not kept any more: the catalog and the probe run again
+    vi.advanceTimersByTime((10 - at) * minute);
+    await runOnce("other/model");
+    expect(known(4)).toBeUndefined();
+    // and what that proposer resolved is kept from then on, for its own ten minutes
+    await makeCanaryProbarion(db, MASTER, tenant, mandate, "req-after");
+    expect(known(5)).toBe("other/model");
+    vi.advanceTimersByTime(9 * minute);
+    await runOnce("other/model");
+    expect(known(6)).toBe("other/model");
+    vi.advanceTimersByTime(minute);
+    await makeCanaryProbarion(db, MASTER, tenant, mandate, "req-late");
+    expect(known(7)).toBeUndefined();
+  });
+
   it("keeps nothing when the attempt resolved no model", async () => {
     await runOnce(null);
     await makeCanaryProbarion(db, MASTER, tenant, mandate, "req-2");
