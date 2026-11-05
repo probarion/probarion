@@ -1158,15 +1158,80 @@ const INVOICE_TITLE = new RegExp(
 );
 /** The title's word and its end, read on the folded view (ruling W-T14-R2 m17). */
 const INVOICE_TITLE_WORD = new RegExp(`^${TITLE_LEAD}${INVOICE_WORD}(?![a-z])`);
+/** The title's id on the unfolded view: group 1 is what stands between the word and the id, group 2 the id. */
+const INVOICE_TITLE_ID = new RegExp(
+  `^${TITLE_LEAD}${INVOICE_WORD}(?![a-z])((?:[ \\t]*(?:#|no\\.?(?![a-z])|number|num\\.?(?![a-z])|n\\u00b0))?[ \\t:#.]*)(?=[^\\s]{0,64}\\d)([^\\s(][^\\s]{0,63})`,
+);
+/** A digit-first id with more letters than this is a word with a look-alike ("0verdue"), not an id. */
+const MAX_LETTERS_AFTER_DIGIT = 2;
+
+/**
+ * The second reading of a title (rulings W-T14-R2 m17 and R3): the id's digit is read on the skeleton before a 0 or 1
+ * among letters is read as a letter, so "INV-C1", "INV-I0" and "INV-O1" keep their digit. Only a token shaped like an id
+ * passes: it holds a capital, a hyphen or a "#", or starts with a digit and has at most two letters. A lower-case word
+ * with one look-alike digit ("f0r", "c0py", "rem1nder", "0verdue") is not an id. Capitals exist only as written, so the
+ * token is looked up on the clean line.
+ */
+function idShapedTitle(v: Views, i: number): boolean {
+  const m = INVOICE_TITLE_ID.exec(titleText(v.t[i] ?? ""));
+  if (!m) return false;
+  const before = m[1] ?? "";
+  const folded = m[2] ?? "";
+  if (before.includes("#") || folded.includes("#") || folded.includes("-")) return true;
+  const raw = (v.c[i] ?? "")
+    .trim()
+    .split(/\s+/)
+    .find((w) => skeletonOf(w) === folded);
+  if (raw === undefined) return false;
+  if (/\p{Lu}/u.test(raw)) return true;
+  return /^\d/.test(raw) && raw.replace(/\P{L}/gu, "").length <= MAX_LETTERS_AFTER_DIGIT;
+}
+
 function invoiceTitled(v: Views, lines: readonly number[]): boolean {
   for (const i of lines.slice(0, HEADER_LINES)) {
     // A total or partial line ("Invoice total $700.00", "Invoice amount: $700.00") states an amount, not a title.
     if (v.finalLine[i] !== null || v.nonFinal[i] !== null) continue;
     const u = titleText(v.u[i] ?? "");
     if (INVOICE_TITLE.test(u)) return true;
-    // The id's digit is read on the skeleton before a 0 or 1 among letters is read as a letter, so "INV-C1",
-    // "INV-I0" and "INV-O1" keep their digit; the word "Invoice" and its end are still read on the folded view.
-    if (INVOICE_TITLE_WORD.test(u) && INVOICE_TITLE.test(titleText(v.t[i] ?? ""))) return true;
+    // The word "Invoice" and its end are still read on the folded view.
+    if (INVOICE_TITLE_WORD.test(u) && idShapedTitle(v, i)) return true;
+  }
+  return false;
+}
+
+/** Why a title line with a stamp or a document-type word glued to digits is not an invoice to pay. */
+export const GLUED_TO_TITLE = "a status or document word is glued to digits on the invoice's title";
+
+/** The one-word stamps and document types, as the skeleton writes them. */
+const GLUED_WORDS: ReadonlySet<string> = new Set(
+  [...STAMPS, ...DOCUMENT_TYPES].filter((w) => /^[a-z]+$/.test(w)).map(sk),
+);
+/** Longer than any word of GLUED_WORDS: a longer run of letters is not compared. */
+const MAX_GLUED_WORD = 32;
+
+const isAsciiDigit = (code: number): boolean => code >= 48 && code <= 57;
+
+/** True for a token of a stamp or a document type with digits on either side ("pald1001", "1statement", "0vold"). */
+function gluedWord(token: string): boolean {
+  let a = 0;
+  let b = token.length;
+  while (a < b && isAsciiDigit(token.charCodeAt(a))) a++;
+  while (b > a && isAsciiDigit(token.charCodeAt(b - 1))) b--;
+  if ((a === 0 && b === token.length) || a === b || b - a > MAX_GLUED_WORD) return false;
+  return GLUED_WORDS.has(digitLetters(token.slice(a, b)));
+}
+
+/**
+ * 1e. On an invoice-title line, a status stamp or a document-type word glued to digits on either side refuses ("Invoice
+ * PAID1001", "Invoice void2", "Invoice 2void", "Invoice 1002 QUOTE1"). The stamp checks read the folded view, where a
+ * glued 0 or 1 hides the word, and a longer id passes the title check, so it is read here on the unfolded view (ruling
+ * W-T14-R3). Real ids are untouched: "INV-1001", "#1001", "INV-C1".
+ */
+function gluedToTitle(v: Views, lines: readonly number[]): boolean {
+  for (const i of lines.slice(0, HEADER_LINES)) {
+    if (v.finalLine[i] !== null || v.nonFinal[i] !== null) continue;
+    if (!INVOICE_TITLE_WORD.test(titleText(v.u[i] ?? ""))) continue;
+    for (const m of (v.t[i] ?? "").matchAll(/[a-z0-9]+/g)) if (gluedWord(m[0])) return true;
   }
   return false;
 }
@@ -1966,7 +2031,10 @@ function read(text: string): AmountRead {
     partials.some((p) => p.units === only && (p.paid || p.at < lastDeduction))
   )
     return refuse("ambiguous");
-  // 1e. Last: a document pays only when it says it is an invoice.
+  // 1e. Last: a document pays only when it says it is an invoice, with nothing glued to its title.
+  if (gluedToTitle(v, lines)) {
+    return { amount: "0", issue: "not_payable", why: GLUED_TO_TITLE, line: null };
+  }
   if (!invoiceTitled(v, lines)) {
     return { amount: "0", issue: "not_payable", why: NOT_AN_INVOICE, line: null };
   }
@@ -2090,6 +2158,7 @@ export const REGEXES_FOR_TESTS: Readonly<Record<string, RegExp>> = {
   PAGE_MARK,
   INVOICE_TITLE,
   INVOICE_TITLE_WORD,
+  INVOICE_TITLE_ID,
   DATES,
   FINAL_LINE,
   NON_FINAL_LINE,

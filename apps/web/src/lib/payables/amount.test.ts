@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_READ_UNITS, NOT_AN_INVOICE, readAmount } from "./amount";
+import { GLUED_TO_TITLE, MAX_READ_UNITS, NOT_AN_INVOICE, readAmount } from "./amount";
 import { extractFacts } from "./facts";
 
 // The invoice amount reader, rule by rule, through the public extractFacts. It pays only a total written in the
@@ -1750,4 +1750,66 @@ describe("the line the total was read from (ruling W-T14-R2)", () => {
     expect(readAmount("Acme LLC\nTotal $5.00").line).toBeNull();
     expect(readAmount("").line).toBeNull();
   });
+});
+
+describe("what stands beside the invoice's title (ruling W-T14-R3)", () => {
+  const BODY = "\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC";
+  const reads = { amount: "20000000", issue: null, line: 3 };
+
+  it.each([
+    ["Acme Ltd - Invoice PAID1001"],
+    ["Invoice (PAID1001)"],
+    ["Invoice v0id2"],
+    ["Invoice VOID2"],
+    ["INVOICE #RECEIPT12"],
+    ["Invoice 1001 TEST2"],
+    ["Sales Invoice 1002 QUOTE1"],
+    ["Invoice INV-PAID1"],
+  ])("refuses a word glued to digits: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual({
+      amount: "0",
+      issue: "not_payable",
+      why: GLUED_TO_TITLE,
+      line: null,
+    });
+  });
+
+  it.each([
+    ["Invoice PO1001"],
+    ["Invoice A1B2"],
+    ["Invoice INV-2026-0451"],
+    ["Invoice 20261001"],
+    ["Invoice #C1"],
+    ["Invoice INV-1001 PO2002"],
+    ["Invoice NO1001"],
+  ])("keeps a real id reading: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(reads);
+  });
+
+  it("reads a word beside its own digits on another line as before: only the title line is read here", () => {
+    expect(readAmount(`Invoice INV-1001\nPO: PAID1001${BODY}`).amount).toBe("20000000");
+  });
+
+  it.each([
+    ["Invoice C1"],
+    ["Invoice No. B1"],
+    ["Invoice #c1"],
+    ["Invoice inv-c1"],
+    ["Invoice 1a"],
+    ["Invoice 1st"],
+  ])("reads an id-shaped token on the second reading: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(reads);
+  });
+
+  it.each([["Invoice c1"], ["Invoice no. b1"], ["Invoice 1abc"], ["Invoice f0r"]])(
+    "refuses a lower-case word with a look-alike digit: %j",
+    (title) => {
+      expect(readAmount(`${title}${BODY}`)).toEqual({
+        amount: "0",
+        issue: "not_payable",
+        why: NOT_AN_INVOICE,
+        line: null,
+      });
+    },
+  );
 });
