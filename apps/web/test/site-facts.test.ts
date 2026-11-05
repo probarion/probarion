@@ -154,7 +154,14 @@ describe("the ledger test", () => {
 // Offline, the verifier checks a file against itself: the chain data comes from the same file, so a forged file with
 // re-signed entries passes. Only a live run reads the chain, so no copy may say that a file proves anything by itself.
 describe("what an offline run shows", () => {
-  const sentences = (copy: string) => copy.split(/(?<=[.!?])s+/);
+  const sentences = (copy: string) => copy.split(/(?<=[.!?])\s+/);
+
+  it("reads a claim one sentence at a time", () => {
+    expect(sentences("Verify it offline. Then read a snapshot!")).toEqual([
+      "Verify it offline.",
+      "Then read a snapshot!",
+    ]);
+  });
 
   it("says offline in the lede and the numbers band only beside the word snapshot", () => {
     const claims = [
@@ -372,8 +379,68 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(README).toContain("**Unaudited beta.** No third party has audited this code.");
   });
 
+  it("the code the contract refused with", () => {
+    expect(HERO.refused.code.join("")).toBe("PROBARION:NoMandate");
+    expect(CHAIN.rows[2].body).toContain("`PROBARION:NoMandate`");
+    expect(README).toContain("PROBARION:NoMandate");
+  });
+
+  it("what the smoke run was, and that mainnet is still planned", () => {
+    expect(CHAIN.intro).toContain("no ledger");
+    expect(HERO.note).toContain("test tokens");
+    expect(HERO.fineprint).toContain("mainnet planned");
+  });
+
+  it("the license", () => {
+    expect(FOOTER.note).toContain("MIT");
+    expect(text(ROOT, "LICENSE").startsWith("MIT License")).toBe(true);
+  });
+
   // Each row of the site's status list, with the README Status rows it stands for and the words that make the pill true.
-  it.each([
+  const statusRows = [
+    {
+      row: "Vault contract",
+      pill: "On testnet",
+      readme: [{ start: "Vault contract", says: ["**Shipped on NEAR testnet**"] }],
+    },
+    {
+      row: "Offline verifier, checks a to i",
+      pill: "Shipped in source",
+      readme: [
+        { start: "`@probarion/core`", says: ["**Shipped** in source"] },
+        { start: "CLI `check`, `verify`", says: ["**Shipped** in source"] },
+      ],
+    },
+    {
+      row: "Reproducible builds",
+      pill: "Shipped",
+      readme: [{ start: "Reproducible builds", says: ["**Shipped**"] }],
+    },
+    {
+      row: "Web console",
+      pill: "In progress",
+      readme: [{ start: "Web console", says: ["**In progress**"] }],
+    },
+    {
+      row: "Public proof page",
+      pill: "Built, no public vault yet",
+      readme: [{ start: "Public `/proof/<vault>` page", says: ["**Built**"] }],
+    },
+    {
+      row: "Payables agent",
+      pill: "In progress",
+      readme: [{ start: "Payables, the reference agent", says: ["**In progress**"] }],
+    },
+    {
+      row: "Live attested model run",
+      pill: "In progress",
+      readme: [{ start: "NEAR AI Cloud adapter", says: ["**In progress**"] }],
+    },
+    {
+      row: "MCP server",
+      pill: "Planned",
+      readme: [{ start: "MCP server", says: ["**Planned**"] }],
+    },
     {
       row: "Vault factory",
       pill: "Built, not deployed",
@@ -398,7 +465,15 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
         { start: "npm release 0.1.0", says: ["**Planned**", "nothing is published"] },
       ],
     },
-  ])("the status row $row matches the README", ({ row, pill, readme }) => {
+  ];
+
+  it("holds every row of the status list to the README", () => {
+    expect(statusRows.map(({ row }) => row).sort()).toEqual(
+      STATUS.rows.map(({ row }) => row).sort(),
+    );
+  });
+
+  it.each(statusRows)("the status row $row matches the README", ({ row, pill, readme }) => {
     expect(STATUS.rows.find((r) => r.row === row)?.pill).toBe(pill);
     for (const { start, says } of readme) {
       const line = README.split("\n").find((l) => l.startsWith(`| ${start}`));
