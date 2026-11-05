@@ -309,20 +309,17 @@ export const CHECK_LIST: readonly { id: CheckId; label: string }[] = CHECK_IDS.m
   label: CHECK_LABELS[id],
 }));
 
-/** The caveats of the two checks that pass with something left undone, in the verifier's own words. */
-const RECORDED_CAVEATS: Readonly<Partial<Record<CheckId, string>>> = {
-  c: "0 entries after the last anchored count (5) are not chain-attested",
-  e: "quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 4",
-};
-
-/** What the page shows before anyone clicks, with no JavaScript too. The test runs the real verifier against it. */
+/**
+ * What the page shows before anyone clicks, with no JavaScript too. The test runs the real verifier against it. The
+ * details stay empty: what a passing check shows beside its word comes from `checkView`, at rest as on a live run.
+ */
 export const RECORDED_RESULT: TamperResult = {
   ok: true,
   firstBroken: null,
   passed: CHECK_IDS.length,
   failed: 0,
   unproven: 0,
-  checks: CHECK_IDS.map((id) => ({ id, status: "pass", detail: RECORDED_CAVEATS[id] ?? "" })),
+  checks: CHECK_IDS.map((id) => ({ id, status: "pass", detail: "" })),
 };
 
 export const TAMPER_COPY = {

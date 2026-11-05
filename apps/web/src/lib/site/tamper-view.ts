@@ -16,15 +16,19 @@ export function resultSummary(result: Omit<TamperResult, "ok">, firstBroken: str
 }
 
 /**
- * The parts of a passing check's detail that say something was not done, such as "quote not verified offline". They are
- * the verifier's own words. The rest of a passing detail repeats that the check passed.
+ * The parts of a passing check's detail that say something was not done, such as "2 entries after the last anchored
+ * count (3) are not chain-attested". They are the verifier's own words. A part that starts with "0 entries" leaves
+ * nothing undone, and the rest of a passing detail repeats that the check passed.
  */
 export function passCaveat(detail: string): string {
   return detail
     .split(/;\s*/)
-    .filter((part) => /\bnot\b/i.test(part))
+    .filter((part) => /\bnot\b/i.test(part) && !/^0 entries\b/.test(part))
     .join("; ");
 }
+
+/** What check e leaves undone in a browser. The verifier's own words name a CLI flag and ids the page does not define. */
+const ATTESTATION_CAVEAT = "The hardware quote and the request are not checked here.";
 
 export interface CheckView {
   word: string;
@@ -38,7 +42,8 @@ export interface CheckView {
 export function checkView(check: TamperCheck | undefined): CheckView {
   if (check === undefined) return { word: "not run", bad: true, why: "", caveat: "" };
   if (check.status === "pass") {
-    return { word: STATUS_WORD.pass, bad: false, why: "", caveat: passCaveat(check.detail) };
+    const caveat = check.id === "e" ? ATTESTATION_CAVEAT : passCaveat(check.detail);
+    return { word: STATUS_WORD.pass, bad: false, why: "", caveat };
   }
   return { word: STATUS_WORD[check.status], bad: true, why: check.detail, caveat: "" };
 }

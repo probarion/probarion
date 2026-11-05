@@ -147,14 +147,51 @@ describe("what the panel shows for a check", () => {
     expect(passCaveat("2 decisions pass; quote not verified offline; A8 not run")).toBe(
       "quote not verified offline; A8 not run",
     );
-    expect(
-      checkView({ id: "e", status: "pass", detail: "2 pass; quote not verified offline" }),
-    ).toMatchObject({ word: "pass", bad: false, why: "", caveat: "quote not verified offline" });
+    const detail =
+      "1 anchor matches the ledger; 2 entries after the last anchored count (3) are not chain-attested";
+    expect(checkView({ id: "c", status: "pass", detail })).toMatchObject({
+      word: "pass",
+      bad: false,
+      why: "",
+      caveat: "2 entries after the last anchored count (3) are not chain-attested",
+    });
+  });
+
+  it("shows nothing for a part that starts with 0 entries, because nothing is left undone", () => {
+    const detail =
+      "3 anchors match the ledger; 0 entries after the last anchored count (5) are not chain-attested";
+    expect(passCaveat(detail)).toBe("");
+    expect(checkView({ id: "c", status: "pass", detail }).caveat).toBe("");
+  });
+
+  const runs = () =>
+    Promise.all(
+      [null, ...TAMPER_EDITS.map((e) => e.id)].map((id) => verifyTamper(SNAPSHOT, id)),
+    );
+
+  it("says check e's caveat in one plain sentence, at rest and on every live run", async () => {
+    const caveatOfE = (r: typeof RECORDED_RESULT) => checkView(r.checks.find((c) => c.id === "e"));
+    for (const r of [RECORDED_RESULT, ...(await runs())]) {
+      expect(caveatOfE(r)).toMatchObject({
+        word: "pass",
+        caveat: "The hardware quote and the request are not checked here.",
+      });
+    }
+  });
+
+  it("shows no CLI flag and no undefined id, at rest or on any live run", async () => {
+    for (const r of [RECORDED_RESULT, ...(await runs())]) {
+      const shown = JSON.stringify(r.checks.map(checkView));
+      expect(shown).not.toContain("--online");
+      expect(shown).not.toMatch(/\b(O1|A8)\b/);
+      expect(shown).not.toContain("0 entries");
+    }
+    expect(JSON.stringify(RECORDED_RESULT)).not.toContain("--online");
   });
 
   it("shows at rest the same caveats a real run gives", async () => {
     const real = await verifyTamper(SNAPSHOT, null);
-    const caveats = (r: typeof real) => r.checks.map((c) => [c.id, passCaveat(c.detail)]);
+    const caveats = (r: typeof real) => r.checks.map((c) => [c.id, checkView(c).caveat]);
     expect(caveats(RECORDED_RESULT)).toEqual(caveats(real));
     expect(caveats(real).filter(([, caveat]) => caveat !== "").length).toBeGreaterThan(0);
   });
@@ -220,7 +257,11 @@ describe("the ledger test's markup", () => {
     );
   });
 
-  it("shows the recorded caveats muted, at rest and with no JavaScript", () => {
-    expect(html).toContain("quote not verified offline");
+  it("shows the recorded caveat muted, at rest and with no JavaScript", () => {
+    expect(html).toMatch(
+      /<span class="[^"]*caveat[^"]*">The hardware quote and the request are not checked here\.<\/span>/,
+    );
+    expect(html).not.toContain("--online");
+    expect(html).not.toContain("0 entries");
   });
 });
