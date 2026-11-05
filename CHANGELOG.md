@@ -173,6 +173,8 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The browser-tab icon has a clear background instead of a white square, and its mark is larger. The
+  bar under the coin is ink in a light browser theme and paper in a dark one.
 - Signing in now lands on the console. A prefetched redirect could leave the visitor on `/login` with
   no error.
 - `/proof/<vault>` says the checks did not run, and its `snapshot.json` and `ledger.jsonl` downloads
