@@ -1,5 +1,7 @@
 # Fake test values, not secrets. Each line ignores one exact finding in one commit whose literal was later
-# replaced by a run-time string: log.test.ts in dedca42 (fixed by b82c579), nearai.test.ts in c5eadc4.
+# replaced by a run-time string: log.test.ts in dedca42 (fixed by b82c579), nearai.test.ts in c5eadc4,
+# confirm-message.test.ts in 299052b (a test block hash).
 dedca42d446c64ec82c127bf502f8f5cfebc23ac:apps/web/src/lib/log.test.ts:generic-api-key:396
 dedca42d446c64ec82c127bf502f8f5cfebc23ac:apps/web/src/lib/log.test.ts:generic-api-key:397
 c5eadc472c85543320f3089f8c66f03058566d3a:packages/sdk/test/nearai.test.ts:generic-api-key:46
+299052bbc5bcfb390df0964ae0fe945ed5ee8c52:apps/web/src/lib/payables/confirm-message.test.ts:generic-api-key:138

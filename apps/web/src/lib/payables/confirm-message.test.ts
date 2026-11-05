@@ -39,6 +39,8 @@ const BASE_PAYEE: Payee = {
 const NONCE = "ab".repeat(32);
 const HASH = "c3".repeat(32);
 const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
+/** A test block hash, built at run time so the secret scan does not read it as a key. */
+const KEY_BLOCK_HASH = ["4reLvkAWfqk5fsqio1KL", "udk46cqRz9erQdaHkWZKMJDZ"].join("");
 
 const fields = (over: Partial<ConfirmFields> = {}): ConfirmFields => ({
   amount: "20000000",
@@ -138,7 +140,7 @@ function signedConfirmation(over: Partial<OwnerConfirmation> = {}): OwnerConfirm
     nonceHex: NONCE,
     message,
     keyBlockHeight: 190000000,
-    keyBlockHash: "4reLvkAWfqk5fsqio1KLudk46cqRz9erQdaHkWZKMJDZ",
+    keyBlockHash: KEY_BLOCK_HASH,
     amount: "20000000",
     invoiceHash: HASH,
     mandateId: 1,
