@@ -56,10 +56,13 @@ export function ConfirmInvoicePanel({
   const [phase, setPhase] = useState<ConfirmPhase | "reject" | null>(null);
   const [signing, setSigning] = useState<string | null>(null);
   const [shown, setShown] = useState<Shown | null>(null);
+  // After a pay-phase failure the outcome is unknown: no second Confirm until the page has been loaded again.
+  const [blocked, setBlocked] = useState(false);
   const busy = phase !== null;
 
   const finish = (r: FlowResult) => {
     setShown(r.shown);
+    if (r.blocked) setBlocked(true);
     if (r.refresh) router.refresh();
   };
 
@@ -79,6 +82,13 @@ export function ConfirmInvoicePanel({
           },
         }),
       );
+    } catch {
+      // runConfirm answers every failure itself; this is the last net, and it claims nothing.
+      setBlocked(true);
+      setShown({
+        tone: "warn",
+        text: "This page hit an error. Reload to see what happened to the invoice.",
+      });
     } finally {
       setSigning(null);
       setPhase(null);
@@ -111,22 +121,24 @@ export function ConfirmInvoicePanel({
           asks you to sign a message (it sends no transaction); the vault contract still applies the
           mandate&apos;s caps and holds a payment above its approval threshold for the approvers.
         </p>
-      ) : (
+      ) : whyNot ? (
         <p className="mb-3 text-ink/60">{whyNot}</p>
-      )}
+      ) : null}
       <div className="flex flex-wrap gap-3">
         {canConfirm ? (
           <button
             type="button"
             className={inkPillClass}
-            disabled={!ready || busy}
+            disabled={!ready || busy || blocked}
             onClick={onConfirm}
           >
-            {phase !== null && phase !== "reject"
-              ? CONFIRM_LABEL[phase]
-              : ready
-                ? "Confirm and pay"
-                : "Loading wallets…"}
+            {blocked
+              ? "Reload the page first"
+              : phase !== null && phase !== "reject"
+                ? CONFIRM_LABEL[phase]
+                : ready
+                  ? "Confirm and pay"
+                  : "Loading wallets…"}
           </button>
         ) : null}
         <button type="button" className={linePillClass} disabled={busy} onClick={onReject}>

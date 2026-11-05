@@ -113,23 +113,26 @@ export type Refusal =
   | "failed"
   | "failed_unknown";
 
-const UNCHANGED = "Nothing was sent and nothing changed.";
+// Each refusal speaks only for this attempt: an earlier attempt's outcome may be unknown, so none of them says that
+// nothing was ever sent.
+const UNCHANGED = "This attempt sent nothing and changed nothing.";
+const CHECK_FIRST = "Reload to see what happened to the invoice before you do anything else.";
 
 /** Each refusal in words the owner can act on. */
 export const REFUSAL_TEXT: Readonly<Record<Refusal, string>> = {
   not_found: "This invoice is not one of this vault's.",
-  not_awaiting: `This invoice no longer waits for you. ${UNCHANGED}`,
+  not_awaiting: `This invoice no longer waits for you, and this attempt sent nothing. ${CHECK_FIRST}`,
   no_mandate:
-    "This invoice was recorded without its mandate, so it cannot be confirmed here. Reject it and upload it again. Nothing was sent.",
+    "This invoice was recorded without its mandate, so it cannot be confirmed. You can reject it, but the same text cannot be uploaded again: upload a corrected invoice, or pay it by hand.",
   not_owner: `Only the vault's on-chain owner can confirm, signing with a full-access key. ${UNCHANGED}`,
   chain_unavailable: `The vault's config or mandates could not be read from NEAR. ${UNCHANGED} Try again.`,
   mandate_missing: `The invoice's mandate is not on the vault any more. ${UNCHANGED}`,
   unconfirmable: `The confirmation message could not be built from what the chain shows (the payee or the owner is not in a form it accepts). ${UNCHANGED}`,
   invalid_input: `The wallet's answer was not in the expected form. ${UNCHANGED}`,
-  nonce_unknown: `This confirmation was not issued by the server. ${UNCHANGED} Confirm again.`,
-  nonce_used: `This confirmation was already used. ${UNCHANGED} Confirm again for a new one.`,
+  nonce_unknown: `This confirmation has expired, start again. ${UNCHANGED}`,
+  nonce_used: `This confirmation was already used, and this attempt sent nothing. ${CHECK_FIRST}`,
   nonce_mismatch: `This confirmation was issued for another invoice or account. ${UNCHANGED}`,
-  expired: `The confirmation expired (it lasts 5 minutes). ${UNCHANGED} Confirm again.`,
+  expired: `This confirmation has expired (it lasts 5 minutes), start again. ${UNCHANGED}`,
   bad_signature: `Your wallet's signature was not accepted: sign as the vault's owner with a full-access key. ${UNCHANGED}`,
   verifier_unavailable: `No NEAR node could check your key. ${UNCHANGED} Try again.`,
   row_changed: `The invoice changed after you opened it. ${UNCHANGED} Reload the page and check it again.`,
@@ -452,6 +455,8 @@ export async function confirmInvoice(
         tx: outcome.txHash,
         key_block_height: keyCheck.blockHeight,
       });
+      // The row did not go back to waiting: saying that it waits would be false.
+      if (invoiceStatus === "awaiting_owner" && !recorded) return refuse("failed_unknown");
       const label = outcomeLabel(outcome.status, outcome.code, outcome.spendId);
       return {
         ok: true,
@@ -460,7 +465,7 @@ export async function confirmInvoice(
         recorded,
         text:
           invoiceStatus === "awaiting_owner"
-            ? `${label} (${outcome.code ?? "a rule"}). Nothing was sent; the invoice waits for you again until that clears.`
+            ? `${label} (${outcome.code ?? "a rule"}). The invoice waits for you again until that clears.`
             : `${label} (${usdcFixed(rec.suggested_amount)} USDC, mandate ${rec.mandate_id})`,
       };
     },

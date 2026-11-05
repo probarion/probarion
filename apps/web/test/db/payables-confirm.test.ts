@@ -25,6 +25,7 @@ import {
   verifyLogin,
 } from "@/lib/auth/verify";
 import { AUTH_RECIPIENT } from "@/lib/config";
+import { sealInvoice } from "@/lib/crypto/secrets";
 import { deriveSubkey } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import { type MemberTenant, memberRole, setTenantSettings } from "@/lib/db/tenants";
@@ -108,6 +109,7 @@ const { confirmInvoice, prepareConfirmation, rejectWaitingInvoice } = await impo
   "@/lib/payables/confirm"
 );
 type ConfirmDeps = import("@/lib/payables/confirm").ConfirmDeps;
+const { loadWaitingView } = await import("@/lib/payables/waiting");
 const actions = await import("@/app/console/[vault]/payables/actions");
 const { default: InvoicePage, maxDuration: invoicePageMaxDuration } = await import(
   "@/app/console/[vault]/payables/[id]/page"
@@ -706,6 +708,110 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
     });
   });
 
+  it.each([
+    ["throws", () => Promise.reject(new Error("database down"))],
+    ["changes nothing", () => Promise.resolve({ id: "x", status: "processing", changed: false })],
+  ])(
+    "a held-again cycle whose outcome write %s does not say the invoice waits",
+    async (_why, write) => {
+      const balances = server.chain.intents.balances;
+      const saved = { ...balances };
+      for (const k of Object.keys(balances)) balances[k] = "0";
+      try {
+        const row = await upload("17.00", { po: PO_2002, payTo: SCENARIO_BASE_ADDRESS });
+        const p = await prepared(row);
+        const spends = server.chain.spends.length;
+        const r = await confirmInvoice(
+          {
+            ...deps,
+            db: {
+              rpc: ((fn: string, q: Record<string, unknown>) =>
+                fn === "invoice_set_outcome" ? write() : h.db.rpc(fn, q)) as Db["rpc"],
+            },
+          },
+          { member, account: OWNER, invoiceId: row.id, nonce: p.nonce, signed: sign(p) },
+        );
+        expect(r).toMatchObject({ ok: false, reason: "failed_unknown" });
+        if (r.ok) throw new Error("not refused");
+        expect(r.text).toMatch(/outcome is unknown/);
+        expect(r.text).not.toMatch(/waits for you/);
+        expect(server.chain.spends).toHaveLength(spends);
+      } finally {
+        Object.assign(balances, saved);
+      }
+    },
+  );
+
+  it("a held-again cycle says once that nothing went out, and that the invoice waits", async () => {
+    const balances = server.chain.intents.balances;
+    const saved = { ...balances };
+    for (const k of Object.keys(balances)) balances[k] = "0";
+    try {
+      const row = await upload("16.00", { po: PO_2002, payTo: SCENARIO_BASE_ADDRESS });
+      const p = await prepared(row);
+      const r = await confirmInvoice(deps, {
+        member,
+        account: OWNER,
+        invoiceId: row.id,
+        nonce: p.nonce,
+        signed: sign(p),
+      });
+      if (!r.ok) throw new Error(JSON.stringify(r));
+      expect(r.text).toBe(
+        "Held by code: nothing was sent (intents.balance_low). The invoice waits for you again until that clears.",
+      );
+    } finally {
+      Object.assign(balances, saved);
+    }
+  });
+
+  it("a late signature after a sweep is told the confirmation expired", async () => {
+    const row = await upload("15.00");
+    const other = await upload("14.00");
+    const p = await prepared(row);
+    await pg.query("update invoice_confirm_nonces set expires_at = now() - interval '1 second'");
+    await prepared(other); // this sweeps the tenant's expired nonces
+    const r = await confirmInvoice(deps, {
+      member,
+      account: OWNER,
+      invoiceId: row.id,
+      nonce: p.nonce,
+      signed: sign(p),
+    });
+    expect(r).toMatchObject({ ok: false, reason: "nonce_unknown" });
+    if (r.ok) throw new Error("not refused");
+    expect(r.text).toMatch(/has expired, start again/);
+    expect(r.text).not.toMatch(/not issued/);
+  });
+
+  it("a stale attempt speaks only for itself when the row no longer waits", async () => {
+    const row = await upload("13.00");
+    const stale = await prepared(row);
+    const live = await prepared(row);
+    const paid = await confirmInvoice(deps, {
+      member,
+      account: OWNER,
+      invoiceId: row.id,
+      nonce: live.nonce,
+      signed: sign(live),
+    });
+    expect(paid).toMatchObject({ ok: true, outcome: { status: "paid" } });
+    const again = await prepareConfirmation(deps, { member, account: OWNER, invoiceId: row.id });
+    const late = await confirmInvoice(deps, {
+      member,
+      account: OWNER,
+      invoiceId: row.id,
+      nonce: stale.nonce,
+      signed: sign(stale),
+    });
+    for (const r of [again, late]) {
+      if (r.ok) throw new Error("not refused");
+      expect(r.text).toMatch(/this attempt sent nothing/i);
+      expect(r.text).toMatch(/Reload/);
+      expect(r.text).not.toMatch(/Nothing was sent/);
+    }
+  });
+
   it("the contract still decides: above approval_above the vault holds the spend for the approvers", async () => {
     // 60 USDC is above the mandate's approval_above (50): the upload's owner rule refused it, nothing was sent.
     const row = await upload("60.00");
@@ -920,15 +1026,184 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       await pg.query("update invoices set mandate_id = null where id = $1", [row.id]);
       await pg.query("update invoices set status = 'awaiting_owner' where id = $1", [row.id]);
       await signInAs(OWNER);
-      await html(row.id);
+      const out = await html(row.id);
       expect(h.panels).toHaveLength(1);
       const seen = { suggestedAmount: "49000000", invoiceHash: row.invoice_hash, mandateId: null };
-      expect(h.panels[0]).toMatchObject({ canConfirm: false, seen });
-      expect(String(h.panels[0]?.whyNot)).toMatch(/without its mandate/);
+      // The reason is on the card once, and it does not promise an upload that would be refused.
+      expect(h.panels[0]).toMatchObject({ canConfirm: false, whyNot: null, seen });
+      expect(out.split("recorded without its mandate").length - 1).toBe(1);
+      expect(out.split("the same text cannot be uploaded again").length - 1).toBe(1);
+      expect(out).not.toContain("upload it again");
       expect(await actions.rejectInvoiceAction(SCENARIO_VAULT, row.id, seen)).toMatchObject({
         ok: true,
       });
       expect((await getInvoice(h.db, member.tenant_id, row.id))?.status).toBe("rejected");
+    });
+
+    it("offers no Confirm when the payee's other invoices cannot be read, says why, and keeps Reject", async () => {
+      const row = await upload("51.00");
+      await signInAs(OWNER);
+      const db = h.db;
+      h.db = {
+        rpc: ((fn: string, q: Record<string, unknown>) =>
+          fn === "invoice_payee_recent"
+            ? Promise.reject(new Error("statement timeout"))
+            : db.rpc(fn, q)) as Db["rpc"],
+      };
+      try {
+        const out = await html(row.id);
+        expect(out).toContain("could not be read from the database");
+        expect(out).not.toContain("mandates could not be read");
+        expect(out).not.toContain("No other invoice of this payee");
+        expect(h.panels).toHaveLength(1);
+        expect(h.panels[0]).toMatchObject({ canConfirm: false });
+        expect(String(h.panels[0]?.whyNot)).toMatch(/other invoices/);
+      } finally {
+        h.db = db;
+      }
+    });
+
+    it("offers no Confirm when the chain cannot be read, and names that cause", async () => {
+      const row = await upload("52.00");
+      const w = await loadWaitingView(
+        {
+          db: h.db,
+          master: MASTER,
+          reader: {
+            getConfig: () => Promise.reject(new Error("no node")),
+            listMandates: () => Promise.reject(new Error("no node")),
+          },
+        },
+        { member, account: OWNER, row, entries: await store.all(), now: new Date() },
+      );
+      expect(w).toMatchObject({ canConfirm: false, canReject: true, payee: null });
+      expect(w.payeeProblem).toMatch(/mandates could not be read/);
+    });
+
+    it("offers no Confirm for an invoice whose mandate is not on the vault", async () => {
+      const row = await upload("53.00");
+      await pg.query("update invoices set status = 'processing' where id = $1", [row.id]);
+      await pg.query("update invoices set mandate_id = 99 where id = $1", [row.id]);
+      await pg.query("update invoices set status = 'awaiting_owner' where id = $1", [row.id]);
+      const r = await getInvoice(h.db, member.tenant_id, row.id);
+      if (!r) throw new Error("no row");
+      const w = await loadWaitingView(
+        { db: h.db, master: MASTER, reader: createVaultReader(new RpcClient({ urls: [h.url] })) },
+        { member, account: OWNER, row: r, entries: await store.all(), now: new Date() },
+      );
+      expect(w).toMatchObject({ canConfirm: false, canReject: true });
+      expect(w.payeeProblem).toMatch(/payee could not be determined/);
+    });
+
+    it("shows neither the text nor its line when the stored file does not hash to the invoice's hash", async () => {
+      const row = await upload("54.00");
+      const sealed = await sealInvoice(
+        MASTER,
+        member.tenant_id,
+        new TextEncoder().encode("Invoice INV-9\nTotal 99.00 USDC"),
+      );
+      await pg.query(
+        "update invoices set content_ciphertext = $2, content_nonce = $3 where id = $1",
+        [row.id, sealed.ciphertext, sealed.nonce],
+      );
+      await signInAs(OWNER);
+      const out = await html(row.id);
+      expect(out).toContain("does not match the hash this invoice was recorded with");
+      expect(out).toContain(row.invoice_hash);
+      expect(out).not.toContain("99.00");
+      expect(out).not.toContain("The amount was read from line");
+      expect(h.panels[0]).toMatchObject({ canConfirm: false });
+      expect(String(h.panels[0]?.whyNot)).toMatch(/does not match/);
+    });
+
+    it("says what happens to the same text after Reject: it is refused, and a corrected invoice is new", async () => {
+      const text = `Invoice INV-7001\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 55.00 USDC`;
+      const send = (t: string, requestId: string) =>
+        processInvoice(pipeline, {
+          tenant: member,
+          upload: { bytes: new TextEncoder().encode(t), mediaType: "text/plain", filename: null },
+          purposeBytes: PO_1001,
+          actor: OWNER,
+          requestId,
+        });
+      const first = await send(text, "req-same-1");
+      if (first.status !== "decided") throw new Error(JSON.stringify(first));
+      const row = await getInvoice(h.db, member.tenant_id, first.invoiceId);
+      if (!row) throw new Error("no row");
+      await rejectWaitingInvoice(
+        { db: h.db },
+        {
+          member,
+          account: OWNER,
+          invoiceId: row.id,
+          seen: { suggestedAmount: "55000000", invoiceHash: row.invoice_hash, mandateId: 1 },
+        },
+      );
+      expect(await send(text, "req-same-2")).toMatchObject({
+        status: "duplicate",
+        invoiceId: row.id,
+        invoiceStatus: "rejected",
+      });
+      expect(await send(`${text}\nCorrected`, "req-same-3")).toMatchObject({ status: "decided" });
+    });
+
+    it("the confirmed notice follows the row's state", async () => {
+      await signInAs(OWNER);
+      // Paid: green.
+      const paid = await upload("12.00");
+      const p1 = await prepared(paid);
+      expect(
+        await confirmInvoice(deps, {
+          member,
+          account: OWNER,
+          invoiceId: paid.id,
+          nonce: p1.nonce,
+          signed: sign(p1),
+        }),
+      ).toMatchObject({ ok: true, outcome: { status: "paid" } });
+      expect(await html(paid.id)).toMatch(/bg-emerald-100[^"]*">Confirmed by the owner/);
+      // Held on chain for the approvers: amber.
+      const held = await upload("61.00");
+      const p2 = await prepared(held);
+      expect(
+        await confirmInvoice(deps, {
+          member,
+          account: OWNER,
+          invoiceId: held.id,
+          nonce: p2.nonce,
+          signed: sign(p2),
+        }),
+      ).toMatchObject({ ok: true, outcome: { status: "held" } });
+      expect(await html(held.id)).toMatch(/bg-amber-100[^"]*">Confirmed by the owner/);
+      // Confirmed, held again, then rejected: no green, and it says what the confirmation came to.
+      const balances = server.chain.intents.balances;
+      const saved = { ...balances };
+      for (const k of Object.keys(balances)) balances[k] = "0";
+      try {
+        const again = await upload("18.00", { po: PO_2002, payTo: SCENARIO_BASE_ADDRESS });
+        const p3 = await prepared(again);
+        await confirmInvoice(deps, {
+          member,
+          account: OWNER,
+          invoiceId: again.id,
+          nonce: p3.nonce,
+          signed: sign(p3),
+        });
+        await rejectWaitingInvoice(
+          { db: h.db },
+          {
+            member,
+            account: OWNER,
+            invoiceId: again.id,
+            seen: { suggestedAmount: "18000000", invoiceHash: again.invoice_hash, mandateId: 2 },
+          },
+        );
+        const out = await html(again.id);
+        expect(out).toMatch(/bg-stone-100[^"]*">An earlier confirmation by owner\.testnet/);
+        expect(out).not.toContain("Confirmed by the owner");
+      } finally {
+        Object.assign(balances, saved);
+      }
     });
 
     it("says plainly when the server could not reject", async () => {
@@ -1013,7 +1288,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       });
     });
 
-    it("offers no button to a member owner who is not the vault's on-chain owner", async () => {
+    it("offers Reject but not Confirm to a member owner who is not the vault's on-chain owner", async () => {
       const row = await upload("46.00");
       const config = server.chain.config;
       config.owner = "new-owner.testnet";

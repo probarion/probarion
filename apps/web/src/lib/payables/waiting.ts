@@ -1,5 +1,6 @@
 import "server-only";
 import type { LedgerEntry, MandateView } from "@probarion/core";
+import { hashInvoice } from "@probarion/sdk";
 import { remainingUnits, safeChainText, usdcText } from "@/lib/console/mandates-view";
 import { openInvoice } from "@/lib/crypto/secrets";
 import type { Db } from "@/lib/db/port";
@@ -8,10 +9,11 @@ import { log } from "@/lib/log";
 import { nsToDate } from "@/lib/near/units";
 import { safeText } from "@/lib/proof/sanitize";
 import { readVaultFacts, type VaultFactsReader } from "./chain";
+import { REFUSAL_TEXT } from "./confirm";
 import { payeeText } from "./confirm-message";
 import { extractInvoice } from "./extract";
 import { payeeId } from "./payee";
-import { invoiceLines, sourceLine } from "./source-line";
+import { invoiceLines, shownLine, sourceLine } from "./source-line";
 import { type InvoiceRow, invoiceContent, listPayeeRecent, type RowSnapshot } from "./store";
 import { type PayeeRow, payeeOf, recentPayeeRows, type ShownRule, waitReasons } from "./view";
 
@@ -45,6 +47,8 @@ export type InvoiceShown =
       amountLine: { number: number; text: string } | null;
     }
   | { kind: "hash"; invoiceHash: string; documentSha256: string | null }
+  /** The stored file does not hash to the invoice's hash: its text is not shown, and Confirm is not offered. */
+  | { kind: "mismatch"; invoiceHash: string }
   | { kind: "unreadable" };
 
 export interface WaitingView {
@@ -58,6 +62,8 @@ export interface WaitingView {
   invoice: InvoiceShown;
   /** Null when the list could not be read. `payee` null: the invoice's payee could not be determined. */
   payee: { payee: string | null; rows: PayeeRow[] } | null;
+  /** Why the list cannot be shown, naming the real cause; Confirm is not offered while this is set. */
+  payeeProblem: string | null;
   /** Confirm is offered only when this is true; `whyNot` says why when it is not. */
   canConfirm: boolean;
   whyNot: string | null;
@@ -113,12 +119,20 @@ async function invoiceShown(
     if (content === null) return { kind: "unreadable" };
     const bytes = await openInvoice(master, tenantId, content.sealed);
     const { text } = await extractInvoice({ bytes, mediaType: content.mediaType });
+    // The owner signs this hash: the text shown beside the signature must be the text it was made from.
+    if (hashInvoice(text) !== row.invoice_hash) {
+      log.error("payables.invoice_hash_mismatch", { tenant: tenantId, invoice: row.id });
+      return { kind: "mismatch", invoiceHash: row.invoice_hash };
+    }
     const all = invoiceLines(text);
+    const source = row.suggested_amount ? sourceLine(text, row.suggested_amount) : null;
     return {
       kind: "text",
-      lines: all.slice(0, MAX_LINES).map((l) => safeText(l, 300)),
+      lines: all
+        .slice(0, MAX_LINES)
+        .map((l, i) => (i + 1 === source?.number ? source.text : shownLine(l))),
       more: Math.max(0, all.length - MAX_LINES),
-      amountLine: row.suggested_amount ? sourceLine(text, row.suggested_amount) : null,
+      amountLine: source,
     };
   } catch (error) {
     log.warn("payables.invoice_unreadable", {
@@ -130,26 +144,33 @@ async function invoiceShown(
   }
 }
 
-/** Every invoice of this row's payee from the last 90 days, read without a cap; null when it could not be read. */
+const NO_MANDATES =
+  "The vault's mandates could not be read, so this payee's other invoices cannot be listed. Do not confirm before you have checked them: reload to try again.";
+const NO_PAYEE =
+  "This invoice's payee could not be determined, so its other invoices cannot be listed and Confirm is not offered.";
+const NO_LIST =
+  "This payee's other invoices could not be read from the database, so they cannot be listed and Confirm is not offered. Reload to try again.";
+
+/** Every invoice of this row's payee from the last 90 days, read without a cap, or why it cannot be listed. */
 async function payeeList(
   db: Db,
   a: { member: MemberTenant; row: InvoiceRow; entries: readonly LedgerEntry[]; now: Date },
   mandates: readonly MandateView[],
-): Promise<WaitingView["payee"]> {
+): Promise<Pick<WaitingView, "payee" | "payeeProblem">> {
   const mine = payeeOf(a.row, a.entries, mandates);
-  if (mine === null) return { payee: null, rows: [] };
+  if (mine === null) return { payee: { payee: null, rows: [] }, payeeProblem: NO_PAYEE };
   const ids = mandates.filter((m) => payeeId(m.payee) === mine).map((m) => m.id);
   try {
     const rows = await listPayeeRecent(db, a.member.tenant_id, ids);
     const owner = a.member.role === "owner";
     const r = recentPayeeRows(a.row, rows, a.entries, mandates, a.now, owner);
-    return { payee: r.payee, rows: r.rows };
+    return { payee: { payee: r.payee, rows: r.rows }, payeeProblem: null };
   } catch (error) {
     log.warn("payables.payee_list_unavailable", {
       tenant: a.member.tenant_id,
       error: error instanceof Error ? error.name : "unknown",
     });
-    return null;
+    return { payee: null, payeeProblem: NO_LIST };
   }
 }
 
@@ -172,7 +193,7 @@ export async function loadWaitingView(
       : (chain.mandates.find((m) => m.id === row.mandate_id) ?? null);
   const mandateWhy =
     row.mandate_id === null
-      ? "This invoice was recorded without its mandate, so it cannot be confirmed: reject it and upload it again."
+      ? REFUSAL_TEXT.no_mandate
       : chain === null
         ? "The vault's mandates could not be read from NEAR. Reload to try again."
         : mandate === null
@@ -195,6 +216,11 @@ export async function loadWaitingView(
           mandateId: row.mandate_id,
         }
       : null;
+  const invoice = await invoiceShown(deps.db, deps.master, member.tenant_id, row);
+  const list: Pick<WaitingView, "payee" | "payeeProblem"> =
+    chain === null
+      ? { payee: null, payeeProblem: NO_MANDATES }
+      : await payeeList(deps.db, a, chain.mandates);
   const whyNot = !owner
     ? "Only the owner can confirm or reject this invoice."
     : chain === null
@@ -207,7 +233,11 @@ export async function loadWaitingView(
             ? "The mandate's payee is not in a form the confirmation message accepts, so Confirm is not offered."
             : !waits
               ? "This invoice does not wait for you."
-              : null;
+              : invoice.kind === "mismatch"
+                ? "The stored invoice does not match the hash you would sign, so Confirm is not offered."
+                : list.payeeProblem !== null
+                  ? "Confirm is not offered until this payee's other invoices can be listed."
+                  : null;
   return {
     amount: row.suggested_amount ?? "0",
     reasons: row.outcome ? waitReasons(a.entries, row.outcome) : { owner: null, before: [] },
@@ -215,8 +245,8 @@ export async function loadWaitingView(
     uploadedAt: row.created_at,
     mandate: mandate === null ? null : summary(mandate),
     mandateWhy,
-    invoice: await invoiceShown(deps.db, deps.master, member.tenant_id, row),
-    payee: chain === null ? null : await payeeList(deps.db, a, chain.mandates),
+    invoice,
+    ...list,
     canConfirm: whyNot === null,
     whyNot,
     canReject: owner && waits,

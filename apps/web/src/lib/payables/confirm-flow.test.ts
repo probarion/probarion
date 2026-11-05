@@ -88,7 +88,9 @@ describe("runConfirm", () => {
     );
     expect(thrown.shown.tone).toBe("bad");
     expect(thrown.shown.text).toMatch(/could not prepare the confirmation/);
-    expect(thrown.shown.text).toMatch(/Nothing was sent/);
+    // A later attempt may follow one whose outcome is unknown: it speaks only for itself.
+    expect(thrown.shown.text).toMatch(/this attempt sent nothing/);
+    expect(thrown.shown.text).not.toMatch(/Nothing was sent/);
     expect(thrown.refresh).toBe(false);
     const refused = await runConfirm(
       flow({
@@ -139,6 +141,61 @@ describe("runConfirm", () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["an empty object", {}],
+    ["no account", { publicKey: "ed25519:pk", signature: SIG }],
+    ["no key", { accountId: OWNER, signature: SIG }],
+    ["no signature", { accountId: OWNER, publicKey: "ed25519:pk" }],
+    ["a signature that is not text", { accountId: OWNER, publicKey: "ed25519:pk", signature: 7 }],
+    ["an unreadable signature", { accountId: OWNER, publicKey: "ed25519:pk", signature: "nope" }],
+  ])(
+    "a wallet answer with %s is a wallet failure, and the server is not called",
+    async (_why, answer) => {
+      const confirm = vi.fn();
+      const { d, phases } = flow({
+        confirm,
+        signMessage: async () => answer as never,
+      });
+      const r = await runConfirm(d);
+      expect(phases).toEqual(["prepare", "sign"]);
+      expect(r.shown).toEqual({
+        tone: "bad",
+        text: "The wallet did not return a complete signature. Nothing was sent.",
+      });
+      expect(r.refresh).toBe(false);
+      expect(confirm).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not throw out of the flow, whatever a callback does", async () => {
+    const early = await runConfirm(
+      flow({
+        onPhase: () => {
+          throw new Error("render failed");
+        },
+      }).d,
+    );
+    expect(early.shown.tone).toBe("bad");
+    let n = 0;
+    const late = await runConfirm(
+      flow({
+        onPhase: (p) => {
+          n += 1;
+          if (p === "pay") throw new Error("render failed");
+        },
+      }).d,
+    );
+    expect(n).toBe(3);
+    // From the pay phase on, the outcome is not known.
+    expect(late).toEqual({
+      shown: { tone: "warn", text: PAYMENT_MAY_HAVE_GONE_OUT },
+      refresh: true,
+      blocked: true,
+    });
+  });
+
   it("once the signature went to the server, a failure never says nothing was sent, and the page reloads", async () => {
     const r = await runConfirm(
       flow({
@@ -154,6 +211,8 @@ describe("runConfirm", () => {
     expect(PAYMENT_MAY_HAVE_GONE_OUT).toContain("Outcome unknown: do not resend");
     expect(r.shown.text).not.toMatch(/Nothing was sent/);
     expect(r.refresh).toBe(true);
+    // Confirm stays off until the page has reloaded: the owner must not try again blind.
+    expect(r.blocked).toBe(true);
   });
 
   it("shows the server's refusal and reloads", async () => {

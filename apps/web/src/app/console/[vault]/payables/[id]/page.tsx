@@ -44,21 +44,8 @@ const MATCH: Record<NonNullable<PayeeRow["match"]>, { tone: Tone; label: string 
 };
 
 function PayeeRows({ base, w }: { base: string; w: WaitingView }) {
-  if (w.payee === null) {
-    return (
-      <Notice tone="warn">
-        The vault&apos;s mandates could not be read, so this payee&apos;s other invoices cannot be
-        listed. Do not confirm before you have checked them: reload to try again.
-      </Notice>
-    );
-  }
-  if (w.payee.payee === null) {
-    return (
-      <Notice tone="warn">
-        This invoice&apos;s payee could not be determined (its mandate is not on the vault), so its
-        other invoices cannot be listed. Do not confirm before you have checked them.
-      </Notice>
-    );
+  if (w.payee === null || w.payeeProblem !== null) {
+    return <Notice tone="warn">{w.payeeProblem}</Notice>;
   }
   if (w.payee.rows.length === 0) {
     return (
@@ -204,6 +191,12 @@ function Waiting({
           . The text is not stored, so the line the amount was read from cannot be shown: compare
           the hashes with the invoice you hold before you confirm.
         </p>
+      ) : w.invoice.kind === "mismatch" ? (
+        <Notice tone="bad">
+          The stored invoice does not match the hash this invoice was recorded with (sha256{" "}
+          <span className="mono break-all">{w.invoice.invoiceHash}</span>), so its text and the line
+          the amount was read from are not shown.
+        </Notice>
       ) : (
         <Notice tone="warn">
           The stored invoice could not be opened, so the line the amount was read from cannot be
@@ -304,8 +297,13 @@ export default async function InvoiceCyclePage({
           {inv.rejected_at ? ` at ${utcMinute(inv.rejected_at)}` : ""}: nothing was paid.
         </Notice>
       ) : null}
-      {inv.confirmed_by && inv.status !== "awaiting_owner" ? (
-        <Notice tone="good">
+      {inv.confirmed_by && inv.status === "rejected" ? (
+        <Notice tone="neutral">
+          An earlier confirmation by {safeText(inv.confirmed_by, 64)}
+          {inv.confirmed_at ? ` at ${utcMinute(inv.confirmed_at)}` : ""} sent nothing.
+        </Notice>
+      ) : inv.confirmed_by && inv.status !== "awaiting_owner" ? (
+        <Notice tone={result.tone}>
           Confirmed by the owner {safeText(inv.confirmed_by, 64)}
           {inv.confirmed_at ? ` at ${utcMinute(inv.confirmed_at)}` : ""} with a NEP-413 signature;
           the signed ledger&apos;s rule custom.owner_confirmed holds the signature, the key and the
@@ -324,7 +322,7 @@ export default async function InvoiceCyclePage({
               <ConfirmInvoicePanel
                 owner={session.accountId}
                 canConfirm={waiting.canConfirm}
-                whyNot={waiting.whyNot}
+                whyNot={waiting.whyNot === waiting.mandateWhy ? null : waiting.whyNot}
                 amountText={`${usdcFixed(waiting.amount)} USDC (${waiting.amount} base units)`}
                 payee={m?.payee ?? null}
                 mandateId={m?.id ?? null}
