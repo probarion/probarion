@@ -429,8 +429,11 @@ export interface NearApiJsSenderOptions {
   /**
    * How long to wait for each step (signing, then the send, then a lookup) before giving up:
    * milliseconds, default 90 000. A send that runs out of time throws `TxOutcomeUnknownError`.
+   *
+   * A function is read at the start of EVERY step, so a caller with a deadline can pass the time it has left (at most
+   * the step's own cap). An answer that is not a positive number counts as the least time (1 ms), never as no limit.
    */
-  sendTimeoutMs?: number;
+  sendTimeoutMs?: number | (() => number);
 }
 
 /**
@@ -457,7 +460,7 @@ export class NearApiJsSender implements TxSender {
   readonly #signer: KeyPairSigner;
   readonly #rpcUrl: string | (() => string);
   readonly #createProvider: (url: string) => Provider;
-  readonly #sendTimeoutMs: number;
+  readonly #sendTimeoutMs: () => number;
 
   constructor(opts: NearApiJsSenderOptions) {
     this.accountId = opts.accountId;
@@ -471,13 +474,19 @@ export class NearApiJsSender implements TxSender {
       throw error;
     }
     const timeout = opts.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
-    if (!Number.isFinite(timeout) || timeout <= 0) {
+    if (typeof timeout !== "function" && (!Number.isFinite(timeout) || timeout <= 0)) {
       throw new ConfigError("sendTimeoutMs must be a positive number of milliseconds");
     }
     this.#signer = KeyPairSigner.fromSecretKey(opts.secretKey as KeyPairString);
     this.#rpcUrl = opts.rpcUrl;
     this.#createProvider = opts.createProvider ?? ((url) => new JsonRpcProvider({ url }));
-    this.#sendTimeoutMs = timeout;
+    this.#sendTimeoutMs =
+      typeof timeout === "function"
+        ? () => {
+            const ms = timeout();
+            return Number.isFinite(ms) && ms > 0 ? ms : 1;
+          }
+        : () => timeout;
   }
 
   #provider(): Provider {
@@ -494,7 +503,7 @@ export class NearApiJsSender implements TxSender {
       try {
         raw = await withDeadline(
           provider.sendTransactionUntil(signed, "FINAL"),
-          this.#sendTimeoutMs,
+          this.#sendTimeoutMs(),
           `${tx.methodName} transaction ${txHash}`,
         );
       } catch (error) {
@@ -558,7 +567,7 @@ export class NearApiJsSender implements TxSender {
     try {
       const raw: unknown = await withDeadline(
         provider.viewTransactionStatus({ txHash, accountId: this.accountId, waitUntil: "FINAL" }),
-        this.#sendTimeoutMs,
+        this.#sendTimeoutMs(),
         `lookup of transaction ${txHash}`,
       );
       return { known: true, raw };
@@ -583,7 +592,7 @@ export class NearApiJsSender implements TxSender {
           actions: [actions.functionCall(tx.methodName, tx.args, tx.gas, tx.deposit)],
           signer: this.#signer,
         }),
-        this.#sendTimeoutMs,
+        this.#sendTimeoutMs(),
         `signing the ${tx.methodName} transaction`,
       );
     } catch (error) {

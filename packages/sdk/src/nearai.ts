@@ -114,6 +114,18 @@ export interface NearAiProposerOptions {
   preferredModels?: readonly string[];
   /** Overrides of `DEFAULT_NEARAI_TIMEOUTS_MS`, per phase; each must be a positive finite number of milliseconds. */
   timeoutMs?: Partial<Record<NearAiPhase, number>>;
+  /**
+   * Milliseconds the caller has left for ALL of this proposer's calls together (default: no overall limit). It is read
+   * before every call and every signature back-off: a call gets the smaller of its phase timeout and what is left, a
+   * call with nothing left is not made, and a back-off the time left cannot cover is not waited out. For a caller that
+   * answers inside a platform's time limit.
+   */
+  remainingMs?: () => number;
+  /**
+   * A model id the caller already resolved (it passed the catalog and the attestation probe in an earlier run): used as
+   * is, with no catalog call and no probe. The attestation report for each request's nonce is still fetched.
+   */
+  knownModel?: string;
 }
 
 export interface ProposeInput {
@@ -279,6 +291,8 @@ export class NearAiProposer {
   private readonly opts: NearAiProposerOptions;
   private readonly timeouts: Record<NearAiPhase, number>;
   private resolved: string | null = null;
+  /** The timeout each phase's last call really used (its cap, or less when the time left was shorter). */
+  private readonly used: Partial<Record<NearAiPhase, number>> = {};
 
   constructor(opts: NearAiProposerOptions) {
     if (!opts.apiKey) throw new NearAiError("NEARAI_API_KEY is required for the model step");
@@ -291,13 +305,25 @@ export class NearAiProposer {
         throw new NearAiError(`timeoutMs.${phase} must be a positive number of milliseconds`);
       }
     }
+    if (
+      opts.knownModel !== undefined &&
+      (typeof opts.knownModel !== "string" || opts.knownModel.trim() === "")
+    ) {
+      throw new NearAiError("knownModel must be a non-empty model id");
+    }
     this.timeouts = timeouts;
     this.opts = opts;
+    this.resolved = opts.knownModel ?? null;
   }
 
   /** The resolved model id (after the first resolveModel/propose), else the configured one, else "". */
   get model(): string {
     return this.resolved ?? this.opts.model ?? "";
+  }
+
+  /** The model this proposer resolved (or was given as `knownModel`), or null before it has one. A caller may keep it. */
+  get resolvedModel(): string | null {
+    return this.resolved;
   }
 
   private get base(): string {
@@ -347,7 +373,13 @@ export class NearAiProposer {
     input: string | URL,
     init: RequestInit,
   ): Promise<Response> {
-    const ms = this.timeouts[phase];
+    const cap = this.timeouts[phase];
+    const left = this.opts.remainingMs?.();
+    if (left !== undefined && !(left > 0)) {
+      throw new NearAiError(`${label}: the time left for the model step ran out (not sent)`);
+    }
+    const ms = left === undefined ? cap : Math.max(1, Math.min(cap, Math.ceil(left)));
+    this.used[phase] = ms;
     const doFetch = this.opts.fetch ?? globalThis.fetch;
     try {
       return await doFetch(input, { ...init, signal: AbortSignal.timeout(ms) });
@@ -359,9 +391,12 @@ export class NearAiProposer {
   /** The `NearAiError` for a transport failure or a failed body read: a timeout says so, anything else is redacted. */
   private failure(phase: NearAiPhase, label: string, error: unknown, stage: string): NearAiError {
     if (isTimeout(error)) {
-      return new NearAiError(`${label}: timed out after ${this.timeouts[phase]} ms (${stage})`, {
-        cause: this.safeCause(error),
-      });
+      return new NearAiError(
+        `${label}: timed out after ${this.used[phase] ?? this.timeouts[phase]} ms (${stage})`,
+        {
+          cause: this.safeCause(error),
+        },
+      );
     }
     return new NearAiError(`${label}: ${stage} failed (${this.redact(describe(error))})`, {
       cause: this.safeCause(error),
@@ -479,7 +514,13 @@ export class NearAiProposer {
     const label = "GET /signature";
     let last = "no attempt";
     for (let attempt = 0; attempt <= retries; attempt++) {
-      if (attempt > 0) await this.sleep(delay * attempt);
+      if (attempt > 0) {
+        const left = this.opts.remainingMs?.();
+        if (left !== undefined && left <= delay * attempt) {
+          throw new NearAiError(`${label}: no time left for another try (last: ${last})`);
+        }
+        await this.sleep(delay * attempt);
+      }
       const url = new URL(`${this.base}/signature/${encodeURIComponent(chatId)}`);
       if (model !== undefined) url.searchParams.set("model", model);
       url.searchParams.set("signing_algo", "ecdsa");
