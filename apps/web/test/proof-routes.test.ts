@@ -68,6 +68,7 @@ import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
 import ProofPage, { generateMetadata } from "@/app/proof/[vault]/page";
 import { GET } from "@/app/proof/[vault]/snapshot.json/route";
 import ProofIndex from "@/app/proof/page";
+import { SiteHeader } from "@/components/site/SiteHeader";
 import { SITE_NAV } from "@/lib/routes";
 
 /** True when the text still holds a right-to-left override, a line separator or a BEL. */
@@ -605,11 +606,14 @@ describe("/proof", () => {
 describe("the landing page and the menu", () => {
   it("link the proof page, and no longer call it coming", () => {
     const out = renderToStaticMarkup(createElement(Home));
-    expect(out).toContain(`href="/proof"`);
+    expect(renderToStaticMarkup(createElement(SiteHeader))).toContain(`href="/proof"`);
     expect(text(out)).not.toMatch(/are coming/);
-    expect(text(out)).toContain(cli("verify --offline probarion-&lt;vault&gt;-snapshot.json"));
+    expect(text(out)).toContain(cli("verify --offline"));
+    expect(text(out)).toContain("packages/core/test/fixtures/valid-snapshot.json");
     if (!CLI_ON_NPM) {
-      expect(text(out)).toContain("from a clone of the repository (the npm package is coming)");
+      expect(text(out)).toContain(
+        "Run it from a clone of the repository. The npm package is not published yet.",
+      );
       expect(text(out)).not.toContain("npx probarion");
     }
     expect(SITE_NAV).toContainEqual({ route: "/proof", label: "Proof" });
