@@ -1,58 +1,64 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Fragment, type ReactNode } from "react";
-import { RouteLink } from "@/components/RouteLink";
-import { WalletProvider } from "@/components/wallet/WalletProvider";
-import { FOOTER_NAV, isBuilt, SITE_NAV } from "@/lib/routes";
+import { Hanken_Grotesk, IBM_Plex_Mono } from "next/font/google";
+import type { ReactNode } from "react";
+import { BetaStrip } from "@/components/site/BetaStrip";
+import { SiteFooter } from "@/components/site/SiteFooter";
+import { SiteHeader } from "@/components/site/SiteHeader";
+import s from "@/components/site/site.module.css";
+import { appOrigin } from "@/lib/config";
+import { OG_IMAGE, SITE_DESCRIPTION, SITE_TITLE } from "@/lib/site/facts";
+import { BUILD_NETWORK } from "@/lib/site/network";
 import "./globals.css";
 
+// Self-hosted at build time. Each sets its Tailwind theme variable on <html>, which beats the fallback in globals.css.
+const sans = Hanken_Grotesk({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--font-sans",
+  display: "swap",
+  fallback: ["Segoe UI", "system-ui", "sans-serif"],
+});
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
+  display: "swap",
+  fallback: ["ui-monospace", "Menlo", "Consolas", "monospace"],
+});
+
 export const metadata: Metadata = {
-  title: { default: "Probarion", template: "%s · Probarion" },
-  description: "Spend by mandate. Prove every payment.",
+  metadataBase: new URL(appOrigin()),
+  title: { default: SITE_TITLE, template: "%s · Probarion" },
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "Probarion",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [OG_IMAGE],
+  },
 };
 
-// next.config.ts maps NEAR_NETWORK (default testnet) onto this public variable at build time.
-const NETWORK = process.env.NEXT_PUBLIC_NEAR_NETWORK === "mainnet" ? "mainnet" : "testnet";
-
+// The wallet context lives on the routes that sign (/console and /login). A page that only reads loads no wallet code.
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-paper text-ink antialiased">
-        {/* The wallet context wraps the whole page, so a nav or footer widget can use it too. */}
-        <WalletProvider network={NETWORK}>
-          <div className="bg-amber-100 px-4 py-1 text-center text-xs text-amber-900">
-            Unaudited beta. Non-custodial software: Probarion never holds your owner keys. Use small
-            amounts.
-          </div>
-          <header className="border-b border-stone-200 bg-white">
-            <nav className="mx-auto flex max-w-5xl flex-wrap items-center gap-6 px-4 py-3">
-              <Link href="/" className="font-semibold">
-                Probarion
-              </Link>
-              {/* A page that is still planned (src/lib/routes.ts) is left out until it is built. */}
-              {SITE_NAV.map(({ route, label }) => (
-                <RouteLink
-                  key={route}
-                  route={route}
-                  whenPlanned="hide"
-                  className="text-sm text-stone-600 hover:text-stone-900"
-                >
-                  {label}
-                </RouteLink>
-              ))}
-            </nav>
-          </header>
-          <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
-          <footer className="mx-auto max-w-5xl px-4 py-8 text-xs text-stone-500">
-            {FOOTER_NAV.filter(({ route }) => isBuilt(route)).map(({ route, label }) => (
-              <Fragment key={route}>
-                <Link href={route}>{label}</Link>
-                {" · "}
-              </Fragment>
-            ))}
-            MIT-licensed core · Unaudited beta
-          </footer>
-        </WalletProvider>
+    <html lang="en" data-scroll-behavior="smooth" className={`${sans.variable} ${mono.variable}`}>
+      <body className="flex min-h-screen flex-col bg-paper font-sans text-ink antialiased">
+        <a className={s.skip} href="#main">
+          Skip to content
+        </a>
+        <BetaStrip network={BUILD_NETWORK} />
+        <SiteHeader />
+        <main id="main" className="flex-1">
+          {children}
+        </main>
+        <SiteFooter />
       </body>
     </html>
   );

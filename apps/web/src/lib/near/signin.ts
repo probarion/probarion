@@ -109,13 +109,19 @@ function refusalMessage(code: string): string {
   return Object.hasOwn(SIGN_IN_ERRORS, code) ? `${SIGN_IN_ERRORS[code]} (${code})` : code;
 }
 
+/** The wallet has not been asked for anything yet when this shows, so "nothing was signed" holds. */
+const SIGN_IN_UNAVAILABLE =
+  "Sign-in is unavailable right now. Nothing was signed. Try again later.";
+
 /** Signs in and returns the account the server verified. Throws a message safe to show the user. */
 export async function signInWithWallet(
   wallet: Nep413Wallet,
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
-  const res0 = await fetchImpl("/api/auth/challenge", { credentials: "same-origin" });
-  if (!res0.ok) throw new Error(`Could not get a sign-in challenge (${res0.status})`);
+  const res0 = await fetchImpl("/api/auth/challenge", { credentials: "same-origin" }).catch(
+    () => null,
+  );
+  if (!res0?.ok) throw new Error(SIGN_IN_UNAVAILABLE);
   const challenge: unknown = await res0.json().catch(() => null);
   if (
     !isRecord(challenge) ||

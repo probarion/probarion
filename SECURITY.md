@@ -43,8 +43,9 @@ In scope:
   [`contracts/factory`](contracts/factory);
 - the packages [`@probarion/core`](packages/core), [`@probarion/sdk`](packages/sdk) and the
   [`probarion` CLI](packages/cli);
-- the web console in [`apps/web`](apps/web), its database migrations and its key sealing (in
-  progress and not deployed, so report against the code);
+- the public site and web console in [`apps/web`](apps/web), deployed at
+  <https://probarion.vercel.app> on testnet, with its database migrations and its key sealing (in
+  progress);
 - the build, deploy and release scripts in [`scripts`](scripts) and the workflows in
   [`.github/workflows`](.github/workflows).
 
@@ -91,6 +92,10 @@ snapshot of the ledger and the chain:
 
 ### What is not proven yet
 
+- **Offline, a snapshot is checked against itself.** `verify --offline` takes the chain data from the
+  same file as the ledger. An edit that was not re-signed fails. A forged snapshot, with re-signed
+  entries and chain data edited to agree, passes. Only a live run with `--vault` reads the chain, so
+  take the snapshot yourself or run live.
 - **The TEE measurement is not pinned (O1b, deferred).** Offline, A1 to A7 show that the signature,
   the response and the recorded proposal agree, and that the attestation report is bound to the
   ledger position. The online check O1 verifies the TDX quote through Intel DCAP, and O2 checks the

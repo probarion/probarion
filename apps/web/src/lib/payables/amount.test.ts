@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { MAX_READ_UNITS, NOT_AN_INVOICE, readAmount } from "./amount";
+import {
+  GLUED_TO_TITLE,
+  MAX_READ_UNITS,
+  NOT_AN_INVOICE,
+  readAmount,
+  STAMP_ON_TITLE,
+  sk,
+} from "./amount";
 import { extractFacts } from "./facts";
+import { DOCUMENT_TYPES, STAMPS, TITLE_ONLY_TYPES } from "./lexicon";
 
 // The invoice amount reader, rule by rule, through the public extractFacts. It pays only a total written in the
 // closed final grammar; everything else is "0" with a reason.
@@ -18,6 +26,8 @@ const pays = (amount: string) => ({ amount, issue: null });
 const readInvoice = (text: string) =>
   read(readAmount(text).why === NOT_AN_INVOICE ? `INVOICE\n${text}` : text);
 const no = (issue: string) => ({ amount: "0", issue });
+/** A refusal as readAmount returns it: no amount, so no line it was read from. */
+const noLine = (issue: string) => ({ ...no(issue), line: null });
 /** Eight header lines that read, so a line after them is read as a body line. */
 const HEADER =
   "INVOICE INV-1\nAcme Design LLC\n1 Main St\nSpringfield\nDate: 2026-11-01\nDue date: 2026-12-01\nBill to: Beta\nTerms: Net 30\n";
@@ -623,12 +633,12 @@ describe("robustness", () => {
 
   it("refuses a text past the read cap before it normalises any of it", () => {
     const t0 = performance.now();
-    expect(readAmount(`€${"a".repeat(4 * 1024 * 1024 - 1)}`)).toEqual(no("unreadable"));
+    expect(readAmount(`€${"a".repeat(4 * 1024 * 1024 - 1)}`)).toEqual(noLine("unreadable"));
     expect(performance.now() - t0).toBeLessThan(100);
   });
 
   it("refuses a text that NFKC expands past the read cap", () => {
-    expect(readAmount("\ufdfa".repeat(12_000))).toEqual(no("unreadable"));
+    expect(readAmount("\ufdfa".repeat(12_000))).toEqual(noLine("unreadable"));
   });
 });
 
@@ -938,7 +948,7 @@ describe("safe widenings", () => {
 describe("the reader's own views", () => {
   it("reads a lone surrogate as U+FFFD, the text the hash and the ledger see, and refuses it", () => {
     expect(readAmount("Acme Design LLC\nInvoice INV-77\nNote \ud800\nTotal: $770.00")).toEqual(
-      no("unreadable"),
+      noLine("unreadable"),
     );
   });
 
@@ -1016,7 +1026,12 @@ describe("a payable document names itself an invoice", () => {
       "Acme Design LLC\nThank you for your business\nInvoice total $700.00",
     ],
   ])("refuses %s as not payable, and says why", (_why, text) => {
-    expect(readAmount(text)).toEqual({ amount: "0", issue: "not_payable", why: NOT_AN_INVOICE });
+    expect(readAmount(text)).toEqual({
+      amount: "0",
+      issue: "not_payable",
+      why: NOT_AN_INVOICE,
+      line: null,
+    });
     expect(read(text)).toEqual(no("not_payable"));
   });
 
@@ -1526,6 +1541,7 @@ describe("the breaker changes", () => {
       amount: "0",
       issue: "not_payable",
       why: NOT_AN_INVOICE,
+      line: null,
     });
   });
 
@@ -1678,4 +1694,334 @@ describe("breaker rules the mutation pass found untested", () => {
       pays("1000000000"),
     );
   });
+});
+
+describe("the line the total was read from (ruling W-T14-R2)", () => {
+  const BODY = "Invoice INV-77\nPO: PO-1001\nPay to vendor.testnet";
+  it.each([
+    ["the total as the last line", `${BODY}\nTotal 20.00 USDC`, "20000000", 3],
+    [
+      "a due date after the total",
+      `${BODY}\nTotal 20.00 USDC\nDue date: 2026-11-20`,
+      "20000000",
+      3,
+    ],
+    [
+      "payment terms after the total",
+      `${BODY}\nTotal 20.00 USDC\nPayment due within 20 days`,
+      "20000000",
+      3,
+    ],
+    [
+      "net terms after the total",
+      `${BODY}\nTotal 30.00 USDC\nNet 30, payable within 30 days`,
+      "30000000",
+      3,
+    ],
+    [
+      "a payable-by date after the total",
+      `${BODY}\nTotal 15.00 USDC\nPayable by 2026-11-15`,
+      "15000000",
+      3,
+    ],
+    [
+      "an unlabelled figure after the total",
+      `${BODY}\nTotal 10.00 USDC\nThank you, 10 years serving you`,
+      "10000000",
+      3,
+    ],
+    ["the figure in an item line above", `${BODY}\nDesign 20.00\nTotal 20.00 USDC`, "20000000", 4],
+    [
+      "two agreeing totals: the last one",
+      "INVOICE INV-1001\nTotal: $700.00\nAmount due: $700.00",
+      "700000000",
+      2,
+    ],
+    [
+      "a balance after a deposit",
+      "INVOICE INV-1001\nDesign $1,000.00\nSubtotal $1,000.00\nLess deposit -$400.00\nBalance due: $600.00",
+      "600000000",
+      4,
+    ],
+    [
+      "other line ends, counted as the hash and the model count them",
+      "INVOICE INV-1001\r\nBill to: Beta\r\n\r\nTotal $5.00",
+      "5000000",
+      3,
+    ],
+  ])("names %s", (_why, text, amount, line) => {
+    expect(readAmount(text)).toEqual({ amount, issue: null, line });
+  });
+
+  it("is null when no amount was read", () => {
+    expect(readAmount("INVOICE INV-1001\nTotal 20.00 EUR").line).toBeNull();
+    expect(readAmount("Acme LLC\nTotal $5.00").line).toBeNull();
+    expect(readAmount("").line).toBeNull();
+  });
+});
+
+describe("what stands beside the invoice's title (ruling W-T14-R3)", () => {
+  const BODY = "\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC";
+  const reads = { amount: "20000000", issue: null, line: 3 };
+
+  it.each([
+    ["Acme Ltd - Invoice PAID1001"],
+    ["Invoice (PAID1001)"],
+    ["Invoice v0id2"],
+    ["Invoice VOID2"],
+    ["INVOICE #RECEIPT12"],
+    ["Invoice 1001 TEST2"],
+    ["Sales Invoice 1002 QUOTE1"],
+    ["Invoice INV-PAID1"],
+  ])("refuses a word glued to digits: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual({
+      amount: "0",
+      issue: "not_payable",
+      why: GLUED_TO_TITLE,
+      line: null,
+    });
+  });
+
+  it.each([
+    ["Invoice PO1001"],
+    ["Invoice A1B2"],
+    ["Invoice INV-2026-0451"],
+    ["Invoice 20261001"],
+    ["Invoice #C1"],
+    ["Invoice INV-1001 PO2002"],
+    ["Invoice NO1001"],
+  ])("keeps a real id reading: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(reads);
+  });
+
+  it("reads a word beside its own digits on another line as before: only the title line is read here", () => {
+    expect(readAmount(`Invoice INV-1001\nPO: PAID1001${BODY}`).amount).toBe("20000000");
+  });
+
+  it.each([
+    ["Invoice C1"],
+    ["Invoice No. B1"],
+    ["Invoice #c1"],
+    ["Invoice inv-c1"],
+    ["Invoice 1a"],
+    ["Invoice 1st"],
+  ])("reads an id-shaped token on the second reading: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(reads);
+  });
+
+  it.each([["Invoice c1"], ["Invoice no. b1"], ["Invoice 1abc"], ["Invoice f0r"]])(
+    "refuses a lower-case word with a look-alike digit: %j",
+    (title) => {
+      expect(readAmount(`${title}${BODY}`)).toEqual({
+        amount: "0",
+        issue: "not_payable",
+        why: NOT_AN_INVOICE,
+        line: null,
+      });
+    },
+  );
+});
+
+describe("what stands after the invoice word on a title line (ruling W-T14-R4)", () => {
+  const BODY = "\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC";
+  const reads = { amount: "20000000", issue: null, line: 3 };
+  const refused = (why: string) => ({ amount: "0", issue: "not_payable", why, line: null });
+
+  it.each([
+    ["Test24 Labs - Invoice 1001"],
+    ["Demo360 Ltd | INVOICE INV-1001"],
+    ["Statement1 Co - Invoice 1001"],
+    ["Sample1 LLC - Invoice INV-1001"],
+    ["De|mo360 Ltd - Invoice 1001"],
+  ])("does not read the vendor's name before the invoice word: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(reads);
+  });
+
+  it.each([
+    ["Test24 Labs - Invoice PAID1"],
+    ["Demo360 Ltd | INVOICE INV-1001 void-2"],
+    ["Acme|Invoice INV-1001 PA|D"],
+  ])("still reads what stands after the word when a vendor leads: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toMatchObject({ amount: "0", issue: "not_payable" });
+  });
+
+  it.each([
+    ["Invoice DEM01"],
+    ["Invoice 1DEM0"],
+    ["Invoice INV-DEM01"],
+    ["Invoice 1pr0p0sa1"],
+    ["Invoice RECEIPTO2"],
+    ["Invoice VOIDI2"],
+    ["Invoice TESTO1"],
+    ["Invoice 2PA|D"],
+    ["Invoice VO|D2"],
+    ["Invoice REMITTANCE1"],
+    ["Invoice 1001REMITTANCE"],
+    ["Invoice INV-1001 SETTLED1"],
+    ["Invoice INV-1001 PREPAID1"],
+    ["Invoice INV-1001 CREDITNOTE1"],
+    ["Invoice INV1001PAID"],
+    ["Invoice 1DEMO1"],
+  ])("refuses a word with digits or look-alikes in its token: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(refused(GLUED_TO_TITLE));
+  });
+
+  it.each([
+    ["Invoice void-2"],
+    ["Invoice Void-2"],
+    ["Invoice Draft-2"],
+    ["Invoice cancelled-12"],
+    ["Invoice sample-3"],
+    ["Invoice test-1"],
+    ["Invoice INV-void-1001"],
+    ["Invoice INV-paid-2"],
+    ["Invoice INV-1001 paid-2"],
+    ["Invoice INV-1001 Void 2"],
+    ["Invoice INV-1001 void and reissued"],
+    ["Invoice INV-1001 draft copy"],
+    ["Invoice INV-1001 cancelled by customer"],
+    ["Invoice INV-1001 PA|D"],
+    ["Invoice INV-1001 void (2)"],
+  ])("refuses a word that is its own token: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toMatchObject({ amount: "0", issue: "not_payable" });
+  });
+
+  it("names a plain word as standing on the title, not as glued to digits", () => {
+    expect(readAmount(`Invoice INV-1001 void and reissued${BODY}`)).toEqual(
+      refused(STAMP_ON_TITLE),
+    );
+  });
+
+  it.each([
+    ["Invoice INV-C1"],
+    ["Invoice INV-I0"],
+    ["Invoice INV-O1"],
+    ["Invoice INV-B1"],
+    ["Invoice INV-1A"],
+    ["Invoice INV-C0"],
+    ["Invoice C1"],
+    ["Invoice No. B1"],
+    ["Invoice INV-1001"],
+    ["Invoice #1001"],
+    ["Invoice INV-2026-0451"],
+    ["Invoice No. 5520"],
+    ["Invoice 2026-114"],
+    ["Invoice 1001 for services"],
+    ["Invoice INV-1001 Oldest"],
+    ["Invoice 1001 A|B"],
+  ])("keeps a real id reading: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(reads);
+  });
+
+  it.each([["Invoice PAIDINFULL1"], ["Invoice ORDERCONFIRMATION2"], ["Invoice 1DONOTPAY"]])(
+    "reads a multi-word entry written whole: %j",
+    (title) => {
+      expect(readAmount(`${title}${BODY}`)).toEqual(refused(GLUED_TO_TITLE));
+    },
+  );
+
+  it("holds every word's look-alike ends within what the scan tries", () => {
+    for (const word of [...STAMPS, ...DOCUMENT_TYPES, ...TITLE_ONLY_TYPES]) {
+      const letters = sk(word).replace(/[^a-z]/g, "");
+      expect(/^[ol]{0,2}(?![ol])/.test(letters), word).toBe(true);
+      expect(/(?<![ol])[ol]{0,2}$/.test(letters), word).toBe(true);
+    }
+  });
+
+  it.each([
+    ["Invoice (Sample) INV-1001"],
+    ["Invoice Template v2"],
+    ["Invoice instructions: send to ap@globex.test by 2026-12-01"],
+  ])("reads a plain word only on a line that reads as a title: %j", (line) => {
+    // A line like this is no title of its own; under another title it is left to the other gates, as before.
+    expect(readAmount(`${line}${BODY}`)).toEqual(refused(NOT_AN_INVOICE));
+    expect(readAmount(`INVOICE INV-1001\n${line}${BODY}`)).toEqual({ ...reads, line: 4 });
+  });
+
+  it("reads a whole word with no digit only as it is written", () => {
+    // "ovoid" is no "void": the look-alike letters at a token's ends count only beside a digit.
+    expect(readAmount(`Invoice 1001 Ovoid${BODY}`)).toEqual(reads);
+  });
+
+  it.each([
+    ["Invoice to: Demo Corp"],
+    ["Invoice to: Test24 Labs"],
+    ["Invoice from: Sample Studio"],
+    ["INVOICE TO : Demo Corp"],
+  ])("does not take a party label for a title: %j", (label) => {
+    expect(readAmount(`INVOICE INV-1001\n${label}${BODY}`)).toEqual({ ...reads, line: 4 });
+  });
+
+  it("a party label is still no title of its own, and does not hide a stamped title", () => {
+    expect(readAmount(`Invoice to: Demo Corp${BODY}`)).toEqual(refused(NOT_AN_INVOICE));
+    expect(readAmount(`Invoice PAID1\nInvoice to: Demo Corp${BODY}`)).toEqual(
+      refused(GLUED_TO_TITLE),
+    );
+  });
+
+  it.each([
+    ["Invoice F0r services"],
+    ["Invoice C0py"],
+    ["Invoice N0t payable"],
+    ["Invoice Rem1nder"],
+    ["Invoice 0VERDUE"],
+  ])("a look-alike word in Title case or capitals is no id: %j", (title) => {
+    expect(readAmount(`${title}${BODY}`)).toEqual(refused(NOT_AN_INVOICE));
+  });
+});
+
+describe("a party label is no title (ruling W-T14-R5)", () => {
+  const BODY = "\nPO: PO-1001\nPay to vendor.testnet\nTotal 20.00 USDC";
+  const refused = { amount: "0", issue: "not_payable", why: NOT_AN_INVOICE, line: null };
+
+  it.each([
+    ["Invoice to:VOID2"],
+    ["Invoice to:PAID2"],
+    ["Invoice from:QUOTE1"],
+    ["Invoice from:RECEIPT1"],
+    ["Invoice TO:VOID2"],
+    ["Acme - Invoice to:VOID2"],
+    ["Invoice to:SAMPLE2"],
+    ["Invoice to:Test24 Labs"],
+    ["Invoice to:INV-1001 void and reissued"],
+    ["Invoice to:1001 void and reissued"],
+    ["Invoice from:1001 draft copy"],
+    ["Invoice FROM:1001"],
+    ["Invoice To : 1001"],
+    ["# Invoice to:1001"],
+    ["Acme Ltd | Invoice from:INV-1001"],
+  ])("does not read as a title, with or without a blank: %j", (line) => {
+    expect(readAmount(`${line}${BODY}`)).toEqual(refused);
+  });
+
+  it.each([["Invoice to:Acme2 Corp"], ["Payment reminder\nInvoice to:Acme2"]])(
+    "takes a customer's name with a digit for no id either: %j",
+    (text) => {
+      expect(readAmount(`${text}${BODY}`)).toEqual(refused);
+    },
+  );
+
+  it.each([
+    ["Invoice to:Test24 Labs"],
+    ["Invoice to: Test24 Labs"],
+    ["Invoice from:Sample1 LLC"],
+    ["INVOICE TO:Demo Corp"],
+  ])("still reads a customer's name under a real title: %j", (label) => {
+    expect(readAmount(`INVOICE INV-1001\n${label}${BODY}`)).toEqual({
+      amount: "20000000",
+      issue: null,
+      line: 4,
+    });
+  });
+
+  it.each([["Invoice 1001 to: Acme"], ["Invoice 1001 from:Acme"], ["Invoice TO-1001"]])(
+    "reads a title that only holds the same letters: %j",
+    (title) => {
+      expect(readAmount(`${title}${BODY}`)).toEqual({
+        amount: "20000000",
+        issue: null,
+        line: 3,
+      });
+    },
+  );
 });

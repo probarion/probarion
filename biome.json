@@ -7,7 +7,8 @@
       "!**/*.md",
       "!docs/evidence",
       "!packages/core/test/fixtures/valid-snapshot.json",
-      "!packages/core/test/fixtures/valid-ledger.jsonl"
+      "!packages/core/test/fixtures/valid-ledger.jsonl",
+      "!apps/web/src/lib/site/valid-snapshot.json"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

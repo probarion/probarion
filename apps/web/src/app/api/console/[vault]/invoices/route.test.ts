@@ -9,6 +9,7 @@ import { type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { generateKey } from "@/lib/keys/service";
 import { MAX_INVOICE_BYTES } from "@/lib/payables/extract";
 import { PROCESS_LEASE_SECONDS } from "@/lib/payables/pipeline";
+import { getInvoice, setInvoiceRejected } from "@/lib/payables/store";
 import { LIMITS } from "@/lib/ratelimit";
 import { freshDb, seedTenant } from "../../../../../../test/db/harness";
 import { MASTER } from "../../../../../../test/db/keys-helpers";
@@ -384,6 +385,30 @@ describe("POST /api/console/[vault]/invoices", () => {
       error: "duplicate",
       status: "awaiting_owner",
       detail: expect.stringMatching(/waiting for the owner/),
+    });
+  });
+
+  it("says the owner rejected an invoice whose same text comes again", async () => {
+    h.process = async () => ({
+      ...PAID,
+      status: "held",
+      spendId: null,
+      txHash: null,
+      code: "custom.owner_confirms_without_model",
+    });
+    const text = fresh();
+    const first = await body(await post(invoiceForm({ text })));
+    const row = await getInvoice(h.db, h.member.tenant_id, String(first.invoiceId));
+    if (!row?.suggested_amount || row.mandate_id === null) throw new Error("no waiting row");
+    await setInvoiceRejected(h.db, h.member.tenant_id, row.id, "acme.near", {
+      suggestedAmount: row.suggested_amount,
+      invoiceHash: row.invoice_hash,
+      mandateId: row.mandate_id,
+    });
+    expect(await body(await post(invoiceForm({ text })))).toMatchObject({
+      error: "duplicate",
+      status: "rejected",
+      detail: expect.stringMatching(/^The owner rejected this invoice/),
     });
   });
 

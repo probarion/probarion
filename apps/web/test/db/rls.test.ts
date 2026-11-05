@@ -15,7 +15,14 @@ const TENANT_TABLES: Record<string, string> = {
   alert_subscriptions: "tenant_id",
   alerts_sent: "id",
 };
-const GLOBAL_TABLES = ["canary_attempts", "metrics_daily", "pilots", "rate_limits"];
+// invoice_confirm_nonces (0007) belongs to a tenant, but no member reads it: like the global tables, it has no policy and no grant.
+const GLOBAL_TABLES = [
+  "canary_attempts",
+  "metrics_daily",
+  "pilots",
+  "rate_limits",
+  "invoice_confirm_nonces",
+];
 
 const RLS_ASSERT_SQL = readFileSync(
   fileURLToPath(new URL("./rls-assert.sql", import.meta.url)),

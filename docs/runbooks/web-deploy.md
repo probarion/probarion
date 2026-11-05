@@ -41,7 +41,7 @@ Where things are defined (you do not edit these to deploy):
   | Secret key | `sb_secret_...` | `SUPABASE_SERVICE_ROLE_KEY` (server only) |
 
   The secret key bypasses row-level security. It goes into one variable, as Sensitive, and nowhere else: not in git, not in chat, not behind a `NEXT_PUBLIC_` prefix.
-- [ ] **OWNER:** apply the migrations **in filename order**. Today they are `20261108000001_core.sql` to `20261108000006_invoices.sql` (0006 adds the Payables invoice tables; if you applied 0001 to 0005 before it existed, apply 0006 now); any later file in `apps/web/supabase/migrations/` follows the same rule (the sequence number in the name is the order, with no gaps). Either way, stop at the first error and do not run a file twice:
+- [ ] **OWNER:** apply the migrations **in filename order**. Today they are `20261108000001_core.sql` to `20261108000007_invoice_confirm.sql` (0006 adds the Payables invoice tables, 0007 the owner's Confirm and Reject for invoices that wait for the owner; apply any of them you have not applied yet, in order); any later file in `apps/web/supabase/migrations/` follows the same rule (the sequence number in the name is the order, with no gaps). Either way, stop at the first error and do not run a file twice:
   - **With the Supabase CLI**, from `apps/web`:
     ```bash
     cd apps/web
@@ -186,7 +186,7 @@ Do this only after the transaction exists, once per transaction, each in its own
 | `first_console_vault` | `vault_created` | the owner account | `vaults.probarion.near` | `owner` | the owner signs `create_vault` at `/console` |
 | `first_console_agent_key` | `agent_added` | the owner account | the vault | `owner` | the owner signs `add_agent` at `/console/<vault>/keys` |
 | `first_console_mandate` | `mandate_created` | the owner account | the vault | `owner` | the owner signs the mandate at `/console/<vault>/mandates` |
-| `first_payables_payout` | `near_payment` (for a Base payee: `base_payout`, plus `--base-tx` once the Base transfer is visible) | the vault | the vault | `agent_key` (add `--spend-id` and `--amount`) | the Payables agent pays an invoice (the Payables page is not built yet) |
+| `first_payables_payout` | `near_payment` (for a Base payee: `base_payout`, plus `--base-tx` once the Base transfer is visible) | the vault | the vault | `agent_key` (add `--spend-id` and `--amount`) | the Payables agent pays an invoice at `/console/<vault>/payables` (an owner-confirmed invoice is still signed by the agent key) |
 
 Give each one a `--what` line in plain words, for example "First vault created through the console (factory create_vault)".
 

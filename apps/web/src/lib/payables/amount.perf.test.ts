@@ -141,6 +141,19 @@ describe("extractFacts on adversarial text", { retry: 2 }, () => {
     ["inv1 repeated", (n) => "inv1".repeat(n / 4)],
     ["invoice# repeated", (n) => "invoice#".repeat(n / 8)],
     ["inv#1 repeated", (n) => "inv#1".repeat(n / 5)],
+    // The title scan (ruling W-T14-R4): many tokens with look-alike ends, one token of long runs, and pipes in tokens.
+    [
+      "title tokens with look-alike ends",
+      (n) => `Invoice INV-1 ${"olbxol1 ".repeat(n / 8)}\nTotal 5 USDC`,
+    ],
+    [
+      "one title token of look-alike runs",
+      (n) => `Invoice ${"ol".repeat(n / 4)}b${"ol".repeat(n / 4)}1\nTotal 5 USDC`,
+    ],
+    [
+      "title tokens with a pipe inside",
+      (n) => `Invoice INV-1 ${"a|b ".repeat(n / 4)}\nTotal 5 USDC`,
+    ],
   ];
 
   it.each(shapes)("grows linearly on %s", (_why, shape) => {

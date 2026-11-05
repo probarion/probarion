@@ -26,7 +26,7 @@ const MAX_REQUEST_BYTES = MAX_INVOICE_BYTES + 64 * 1024;
 
 /** Shown for an unconfirmed outcome: the spend was sent and is never sent again. */
 const PAYMENT_PENDING =
-  "Payment sent, confirmation pending. Do not send it again: the spend is confirmed from the chain.";
+  "Payment sent, confirmation pending. Do not send it again. You can read the vault's spends on chain by this invoice's ref.";
 
 /** Shown when no attested model confirmed the amount the code read: nothing was sent, the owner confirms. */
 const OWNER_CONFIRMS =
@@ -137,7 +137,9 @@ function respond(r: PipelineResult, requestId: string): Response {
                 ? "This invoice is being processed, or its outcome is still being confirmed."
                 : r.invoiceStatus === "awaiting_owner"
                   ? "This invoice is already waiting for the owner to confirm its amount."
-                  : "This invoice was already processed.",
+                  : r.invoiceStatus === "rejected"
+                    ? "The owner rejected this invoice, so the same text is refused again. A corrected invoice is a new one."
+                    : "This invoice was already processed.",
           invoiceId: r.invoiceId,
           status: r.invoiceStatus,
         },

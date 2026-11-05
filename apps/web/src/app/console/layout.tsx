@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
+import { Container } from "@/components/site/Container";
 import { SignOutButton } from "@/components/wallet/SignInButton";
+import { WalletProvider } from "@/components/wallet/WalletProvider";
 import { requireSession } from "@/lib/auth/guard";
+import { BUILD_NETWORK } from "@/lib/site/network";
 
 export const dynamic = "force-dynamic";
 
@@ -12,14 +15,18 @@ export const dynamic = "force-dynamic";
 export default async function ConsoleLayout({ children }: { children: ReactNode }) {
   const session = await requireSession();
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between text-sm text-[#0B0B0C]/60">
-        <span>
-          Signed in as <span className="mono">{session.accountId}</span>
-        </span>
-        <SignOutButton />
-      </div>
-      {children}
-    </div>
+    <WalletProvider network={BUILD_NETWORK}>
+      <Container>
+        <div className="mb-4 flex items-center justify-between gap-3 text-sm text-[#0B0B0C]/60">
+          <span className="min-w-0">
+            Signed in as <span className="mono wrap-anywhere">{session.accountId}</span>
+          </span>
+          <span className="shrink-0 whitespace-nowrap">
+            <SignOutButton />
+          </span>
+        </div>
+        {children}
+      </Container>
+    </WalletProvider>
   );
 }

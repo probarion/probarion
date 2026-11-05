@@ -1,6 +1,7 @@
 import { isNearAccountId } from "@probarion/core";
 import { serviceDb } from "@/lib/db/clients";
 import { clientIp, problem, rateLimitOr429 } from "@/lib/http";
+import { log } from "@/lib/log";
 import { proofDeps } from "@/lib/proof/deps";
 import { loadProof } from "@/lib/proof/service";
 import { snapshotResponse } from "@/lib/proof/snapshot-file";
@@ -18,18 +19,28 @@ export const maxDuration = 60;
  * prints: the same taken_at is the same snapshot and gives the same result; another snapshot's result can differ, even
  * on an unchanged vault (a transaction that could not be read during one of the two gathers is enough). The response
  * is not reused by a browser. An id that is not a NEAR account is a 404 before any database or
- * RPC call, so only a validated id reaches the file name.
+ * RPC call, so only a validated id reaches the file name. A limiter or load that throws is a 503, as a failed load is.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ vault: string }> }) {
   const { vault } = await params;
   if (!isNearAccountId(vault)) return problem(404, "not_found");
-  const limited = await rateLimitOr429(
-    serviceDb(),
-    `snapshot:${clientIp(req.headers)}`,
-    LIMITS.snapshot,
-  );
-  if (limited) return limited;
-  const r = await loadProof(await proofDeps(), vault);
+  let r: Awaited<ReturnType<typeof loadProof>>;
+  try {
+    const limited = await rateLimitOr429(
+      serviceDb(),
+      `snapshot:${clientIp(req.headers)}`,
+      LIMITS.snapshot,
+    );
+    if (limited) return limited;
+    r = await loadProof(await proofDeps(), vault);
+  } catch (error) {
+    log.warn("proof.unavailable", {
+      vault,
+      reason: "database",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return problem(503, "unavailable");
+  }
   if (r.status === "not_found") return problem(404, "not_found");
   if (r.status === "error") return problem(503, "unavailable");
   return snapshotResponse(r);
