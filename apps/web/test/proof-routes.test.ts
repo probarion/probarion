@@ -601,6 +601,76 @@ describe("/proof", () => {
     expect(out).toContain("Open /proof/&lt;vault account&gt; to see a vault&#x27;s checks.");
     expect(warnedReasons()).toMatchObject([{ msg: "proof.demo_unavailable" }]);
   });
+
+  describe("with no public demo vault", () => {
+    const index = (vault?: string | string[]) =>
+      ProofIndex(vault === undefined ? {} : { searchParams: Promise.resolve({ vault }) });
+    const render = async (vault?: string | string[]) =>
+      renderToStaticMarkup((await index(vault)) as ReactElement);
+
+    beforeEach(() => {
+      h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: null };
+      h.publicVault = null;
+    });
+
+    it("is a real page: what a proof page shows, that none is listed, and that an owner must make one public", async () => {
+      const out = text(await render());
+      expect(out).toContain("checks a to i with explorer links");
+      expect(out).toContain("a snapshot and a ledger you can download and verify offline");
+      expect(out).toContain("No public vault is listed here yet.");
+      expect(out).toContain("A vault&#x27;s owner must make its proof page public first.");
+      expect(out).toContain("page-not-found message");
+    });
+
+    it("has a labelled GET form that works with no JavaScript", async () => {
+      const out = await render();
+      expect(out).toContain('method="get"');
+      expect(out).toContain('action="/proof"');
+      expect(out).toContain('for="proof-vault"');
+      expect(out).toContain('id="proof-vault"');
+      expect(out).toContain('name="vault"');
+      expect(out).not.toContain("proof-vault-error");
+    });
+
+    it("sends a NEAR account on to its proof page", async () => {
+      expect(await digest(() => index("alice.testnet"))).toMatch(
+        /^NEXT_REDIRECT;[a-z]+;\/proof\/alice\.testnet;/,
+      );
+      expect(await digest(() => index("  alice.testnet "))).toMatch(
+        /^NEXT_REDIRECT;[a-z]+;\/proof\/alice\.testnet;/,
+      );
+    });
+
+    it("shows an inline error for anything else, instead of a 404", async () => {
+      for (const bad of ["Not A Vault", "a", "../etc/passwd", "x".repeat(65), ["a b", "c"]]) {
+        const out = await render(bad);
+        expect(out, String(bad)).toContain('id="proof-vault-error"');
+        expect(out, String(bad)).toContain('aria-invalid="true"');
+        expect(text(out), String(bad)).toContain("That is not a NEAR account.");
+      }
+    });
+
+    it("escapes what was typed, and never makes it a link", async () => {
+      const out = await render('"><script>alert(1)</script>');
+      expect(out).not.toContain("<script>");
+      expect(out).not.toContain('href="&quot;');
+    });
+
+    it("keeps the ledger test on the page, so it does not dead-end", async () => {
+      const out = text(await render());
+      expect(out).toContain("Try the verifier here");
+      expect(out).toContain("Change an amount");
+      expect(out).toContain("9 passed, 0 failed, 0 unproven");
+    });
+
+    it("still prefers the public demo vault to the form", async () => {
+      h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: "demo.vaults.probarion.testnet" };
+      h.publicVault = { vault_id: "demo.vaults.probarion.testnet", network: "testnet" };
+      expect(await digest(() => index("alice.testnet"))).toMatch(
+        /^NEXT_REDIRECT;[a-z]+;\/proof\/demo\.vaults\.probarion\.testnet;/,
+      );
+    });
+  });
 });
 
 describe("the landing page and the menu", () => {
