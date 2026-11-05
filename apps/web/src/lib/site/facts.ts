@@ -328,6 +328,7 @@ export const TAMPER_COPY = {
     "This is the real verifier from `@probarion/core`. It runs in your browser on a committed test fixture: five entries signed with test keys, not a live vault. It shows one thing: the verifier catches an edit that was not re-signed. Nothing leaves the page.",
   sheetTitle: "Signed ledger, test fixture",
   atRest: "As recorded",
+  notRun: "Not run. The verifier did not finish",
   caption: "The five entries of the signed test ledger",
   recorded: "Recorded result. Press a button to run the verifier yourself.",
   live: "Run in your browser just now.",

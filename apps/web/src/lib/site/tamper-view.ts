@@ -23,6 +23,9 @@ export function statusLine(ok: boolean, what: string): string {
   return `${ok ? "PASS" : "FAIL"}. ${what}.`;
 }
 
+/** The same line when a press did not produce a result: the word beside the button must not be the old verdict. */
+export const notRunLine = (notRun: string): string => `${notRun}.`;
+
 /**
  * The parts of a passing check's detail that say something was not done, such as "2 entries after the last anchored
  * count (3) are not chain-attested". They are the verifier's own words. A part that starts with "0 entries" leaves

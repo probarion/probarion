@@ -896,6 +896,10 @@
   color: var(--color-mute);
 }
 
+.closeNote code {
+  white-space: nowrap;
+}
+
 /* Footer */
 .footer {
   border-top: 1px solid var(--color-line);

@@ -3,7 +3,13 @@
 import type { CheckId, Snapshot } from "@probarion/core";
 import { type ReactNode, useRef, useState } from "react";
 import type { LedgerRow, TamperEdit, TamperEditId, TamperResult } from "@/lib/site/tamper";
-import { checkView, resultSummary, runVerifier, statusLine } from "@/lib/site/tamper-view";
+import {
+  checkView,
+  notRunLine,
+  resultSummary,
+  runVerifier,
+  statusLine,
+} from "@/lib/site/tamper-view";
 import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
 
@@ -22,6 +28,7 @@ async function loadVerifier(): Promise<Verify> {
 export interface TamperCopy {
   sheetTitle: string;
   atRest: string;
+  notRun: string;
   caption: string;
   recorded: string;
   live: string;
@@ -148,8 +155,10 @@ export function TamperTest({
       <div className={s.sheet}>
         <div className={s.sheetHead}>
           <span>{copy.sheetTitle}</span>
-          <span className={active === undefined ? undefined : s.edited}>
-            {statusLine(shown.result.ok, active?.summary ?? copy.atRest)}
+          <span className={active === undefined && failed === null ? undefined : s.edited}>
+            {failed === null
+              ? statusLine(shown.result.ok, active?.summary ?? copy.atRest)
+              : notRunLine(copy.notRun)}
           </span>
         </div>
         <div className={s.sheetActions}>

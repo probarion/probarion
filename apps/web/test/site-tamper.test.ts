@@ -18,6 +18,7 @@ import {
 } from "@/lib/site/tamper";
 import {
   checkView,
+  notRunLine,
   passCaveat,
   resultSummary,
   runVerifier,
@@ -212,6 +213,18 @@ describe("what the panel shows for a check", () => {
 });
 
 describe("the left card's status line", () => {
+  it("does not show the old verdict beside the buttons when a press produced no result", () => {
+    const line = notRunLine(TAMPER_COPY.notRun);
+    expect(line).toBe("Not run. The verifier did not finish.");
+    expect(line).not.toMatch(/PASS|FAIL/);
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/components/site/TamperTest.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(source).toContain("failed === null");
+    expect(source).toContain("notRunLine(copy.notRun)");
+  });
+
   it("says the verdict word first, at rest", () => {
     expect(statusLine(RECORDED_RESULT.ok, TAMPER_COPY.atRest)).toBe("PASS. As recorded.");
   });

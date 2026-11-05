@@ -25,7 +25,8 @@ export function SignInButton({ next = "/console" }: { next?: string }) {
             window.location.assign(next);
           } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
-          } finally {
+            // Only here: after a success the button stays busy until the page leaves, so a second click cannot ask the
+            // wallet to sign again.
             setBusy(false);
           }
         }}
@@ -42,7 +43,7 @@ export function SignOutButton() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   return (
-    <span>
+    <span className="relative">
       <button
         type="button"
         className="text-sm text-stone-600 underline"
@@ -59,7 +60,11 @@ export function SignOutButton() {
       >
         Sign out
       </button>
-      {error ? <span className="ml-2 text-xs text-rose-700">{error}</span> : null}
+      {error ? (
+        <span className="absolute top-full right-0 z-10 mt-1 w-max max-w-64 whitespace-normal bg-paper text-right text-xs text-rose-700">
+          {error}
+        </span>
+      ) : null}
     </span>
   );
 }

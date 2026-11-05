@@ -822,6 +822,30 @@ describe("the sign-in page", () => {
     expect(signIn).not.toContain("useRouter()");
   });
 
+  it("stays busy after a successful sign-in, so a second click cannot ask the wallet to sign again", () => {
+    const source = text(WEB, "src", "components", "wallet", "SignInButton.tsx");
+    const signIn = source.slice(
+      source.indexOf("export function SignInButton"),
+      source.indexOf("export function SignOutButton"),
+    );
+    expect(signIn).not.toContain("finally");
+    expect(signIn.indexOf("setBusy(false)")).toBeGreaterThan(signIn.indexOf("catch (e)"));
+  });
+
+  it("shows a sign-out error out of the row's flow, so a long account keeps its width", () => {
+    const source = text(WEB, "src", "components", "wallet", "SignInButton.tsx");
+    const signOut = source.slice(source.indexOf("export function SignOutButton"));
+    expect(signOut).toContain('<span className="relative">');
+    expect(signOut).toContain("absolute top-full right-0");
+    expect(signOut).toContain("whitespace-normal");
+  });
+
+  it("keeps the verify flag on one line in the closing", () => {
+    expect(text(WEB, "src", "components", "site", "site.module.css")).toMatch(
+      /\.closeNote code \{\s*white-space: nowrap;/,
+    );
+  });
+
   it("takes where to go after sign-in only from the server's safeNext", () => {
     const page = text(WEB, "src", "app", "login", "page.tsx");
     expect(page).toContain("<SignInButton next={safeNext} />");
