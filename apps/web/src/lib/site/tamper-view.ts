@@ -1,0 +1,67 @@
+// What the ledger test shows for a result. The client component imports this on first load, so it holds words and
+// branching only: the verifier and the fixture stay behind the dynamic import() in TamperTest.
+import type { TamperCheck, TamperResult } from "./tamper";
+
+const STATUS_WORD: Readonly<Record<TamperCheck["status"], string>> = {
+  pass: "pass",
+  fail: "fail",
+  skip: "skipped",
+  unproven: "not proven",
+};
+
+/** One sentence, so that a live region reads it whole. */
+export function resultSummary(result: Omit<TamperResult, "ok">, firstBroken: string): string {
+  const counts = `${result.passed} passed, ${result.failed} failed, ${result.unproven} unproven`;
+  return result.firstBroken === null ? counts : `${counts}. ${firstBroken} ${result.firstBroken}`;
+}
+
+/**
+ * The parts of a passing check's detail that say something was not done, such as "quote not verified offline". They are
+ * the verifier's own words. The rest of a passing detail repeats that the check passed.
+ */
+export function passCaveat(detail: string): string {
+  return detail
+    .split(/;\s*/)
+    .filter((part) => /\bnot\b/i.test(part))
+    .join("; ");
+}
+
+export interface CheckView {
+  word: string;
+  bad: boolean;
+  /** The verifier's own words on why this check did not pass. */
+  why: string;
+  caveat: string;
+}
+
+/** A check the verifier did not return is not a pass. */
+export function checkView(check: TamperCheck | undefined): CheckView {
+  if (check === undefined) return { word: "not run", bad: true, why: "", caveat: "" };
+  if (check.status === "pass") {
+    return { word: STATUS_WORD.pass, bad: false, why: "", caveat: passCaveat(check.detail) };
+  }
+  return { word: STATUS_WORD[check.status], bad: true, why: check.detail, caveat: "" };
+}
+
+export type VerifierRun =
+  | { outcome: "done"; result: TamperResult }
+  | { outcome: "load_failed" }
+  | { outcome: "run_failed" };
+
+/** Loads the verifier, then runs it. A failed load can be tried again; a failed run is the verifier's own. */
+export async function runVerifier<Edit>(
+  load: () => Promise<(edit: Edit) => Promise<TamperResult>>,
+  edit: Edit,
+): Promise<VerifierRun> {
+  let verify: (edit: Edit) => Promise<TamperResult>;
+  try {
+    verify = await load();
+  } catch {
+    return { outcome: "load_failed" };
+  }
+  try {
+    return { outcome: "done", result: await verify(edit) };
+  } catch {
+    return { outcome: "run_failed" };
+  }
+}

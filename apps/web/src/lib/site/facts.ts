@@ -308,6 +308,12 @@ export const CHECK_LIST: readonly { id: CheckId; label: string }[] = CHECK_IDS.m
   label: CHECK_LABELS[id],
 }));
 
+/** The caveats of the two checks that pass with something left undone, in the verifier's own words. */
+const RECORDED_CAVEATS: Readonly<Partial<Record<CheckId, string>>> = {
+  c: "0 entries after the last anchored count (5) are not chain-attested",
+  e: "quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 4",
+};
+
 /** What the page shows before anyone clicks, with no JavaScript too. The test runs the real verifier against it. */
 export const RECORDED_RESULT: TamperResult = {
   ok: true,
@@ -315,7 +321,7 @@ export const RECORDED_RESULT: TamperResult = {
   passed: CHECK_IDS.length,
   failed: 0,
   unproven: 0,
-  checks: CHECK_IDS.map((id) => ({ id, status: "pass", detail: "" })),
+  checks: CHECK_IDS.map((id) => ({ id, status: "pass", detail: RECORDED_CAVEATS[id] ?? "" })),
 };
 
 export const TAMPER_COPY = {
@@ -332,6 +338,8 @@ export const TAMPER_COPY = {
   firstBroken: "First broken entry:",
   loadFailed:
     "The verifier did not load, so nothing ran and the result here did not change. Check your connection and press the button again.",
+  runFailed:
+    "The verifier stopped with an error before it gave a result, so the result here did not change.",
   noScript:
     "The buttons need JavaScript. The result here is the recorded run of the same verifier.",
 } as const;

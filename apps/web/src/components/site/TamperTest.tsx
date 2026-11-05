@@ -3,6 +3,7 @@
 import type { CheckId, Snapshot } from "@probarion/core";
 import { type ReactNode, useRef, useState } from "react";
 import type { LedgerRow, TamperEdit, TamperEditId, TamperResult } from "@/lib/site/tamper";
+import { checkView, resultSummary, runVerifier } from "@/lib/site/tamper-view";
 import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
 
@@ -18,13 +19,6 @@ async function loadVerifier(): Promise<Verify> {
   return (id) => verifyTamper(snapshot, id);
 }
 
-const STATUS_WORD: Readonly<Record<TamperResult["checks"][number]["status"], string>> = {
-  pass: "pass",
-  fail: "fail",
-  skip: "skipped",
-  unproven: "not proven",
-};
-
 export interface TamperCopy {
   sheetTitle: string;
   atRest: string;
@@ -35,6 +29,7 @@ export interface TamperCopy {
   running: string;
   firstBroken: string;
   loadFailed: string;
+  runFailed: string;
   noScript: string;
 }
 
@@ -68,24 +63,20 @@ function Result({
 }) {
   return (
     <>
-      <div className={s.verdict}>
+      <div className={s.verdict} aria-atomic="true">
         <b className={result.ok ? s.pass : s.fail}>{result.ok ? "PASS" : "FAIL"}</b>
-        <span>
-          {result.passed} passed, {result.failed} failed, {result.unproven} unproven
-          {result.firstBroken === null ? "" : `. ${copy.firstBroken} ${result.firstBroken}`}
-        </span>
+        <span>{resultSummary(result, copy.firstBroken)}</span>
       </div>
       <ul className={s.checks}>
         {checks.map(({ id, label }) => {
-          const check = result.checks.find((c) => c.id === id);
-          const status = check?.status ?? "pass";
-          const bad = status !== "pass";
+          const { word, bad, why, caveat } = checkView(result.checks.find((c) => c.id === id));
           return (
-            <li key={id} className={bad ? s.checkBad : undefined}>
+            <li key={id} className={bad ? s.checkBad : undefined} aria-atomic="true">
               <span className={s.checkId}>{id}</span>
               <span>{label}</span>
-              <span className={s.checkWord}>{STATUS_WORD[status]}</span>
-              {bad && check !== undefined ? <span className={s.why}>{check.detail}</span> : null}
+              <span className={s.checkWord}>{word}</span>
+              {why === "" ? null : <span className={s.why}>{why}</span>}
+              {caveat === "" ? null : <span className={s.caveat}>{caveat}</span>}
             </li>
           );
         })}
@@ -121,22 +112,24 @@ export function TamperTest({
     live: boolean;
   }>({ edit: null, result: recorded, live: false });
   const [busy, setBusy] = useState<TamperEditId | "restore" | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [failed, setFailed] = useState<"load_failed" | "run_failed" | null>(null);
 
   async function run(edit: TamperEditId | null) {
     if (busy !== null) return;
     setBusy(edit ?? "restore");
-    setLoadFailed(false);
-    try {
+    setFailed(null);
+    const load = () => {
       verifier.current ??= loadVerifier();
-      const verify = await verifier.current;
-      setShown({ edit, result: await verify(edit), live: true });
-    } catch {
-      verifier.current = null; // the next click tries the import again
-      setLoadFailed(true);
-    } finally {
-      setBusy(null);
+      return verifier.current;
+    };
+    const attempt = await runVerifier(load, edit);
+    if (attempt.outcome === "done") {
+      setShown({ edit, result: attempt.result, live: true });
+    } else {
+      if (attempt.outcome === "load_failed") verifier.current = null; // the next click tries the import again
+      setFailed(attempt.outcome);
     }
+    setBusy(null);
   }
 
   const active = edits.find((e) => e.id === shown.edit);
@@ -149,27 +142,7 @@ export function TamperTest({
             {active?.summary ?? copy.atRest}
           </span>
         </div>
-        <ScrollRegion className={s.scroll} label={copy.caption}>
-          <table className={s.table}>
-            <caption className="sr-only">{copy.caption}</caption>
-            <thead>
-              <tr>
-                <th scope="col">Seq</th>
-                <th scope="col">Kind</th>
-                <th scope="col">Outcome</th>
-                <th scope="col">Mandate</th>
-                <th scope="col">Amount, USDC</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <Row key={row.seq} row={row} edit={active} />
-              ))}
-            </tbody>
-          </table>
-        </ScrollRegion>
-        <div className={s.sheetFoot}>
-          {source}
+        <div className={s.sheetActions}>
           <div className={s.actions}>
             {edits.map(({ id, label }) => (
               <button
@@ -200,10 +173,34 @@ export function TamperTest({
             <p className={s.source}>{copy.noScript}</p>
           </noscript>
         </div>
+        <ScrollRegion className={s.scroll} label={copy.caption}>
+          <table className={s.table}>
+            <caption className="sr-only">{copy.caption}</caption>
+            <thead>
+              <tr>
+                <th scope="col">Seq</th>
+                <th scope="col">Kind</th>
+                <th scope="col">Outcome</th>
+                <th scope="col">Mandate</th>
+                <th scope="col">Amount, USDC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <Row key={row.seq} row={row} edit={active} />
+              ))}
+            </tbody>
+          </table>
+        </ScrollRegion>
+        <div className={s.sheetFoot}>{source}</div>
       </div>
       <div className={s.sheet} aria-live="polite" aria-busy={busy !== null}>
         <Result result={shown.result} checks={checks} live={shown.live} copy={copy} />
-        {loadFailed ? <p className={s.sheetError}>{copy.loadFailed}</p> : null}
+        {failed === null ? null : (
+          <p className={s.sheetError}>
+            {failed === "load_failed" ? copy.loadFailed : copy.runFailed}
+          </p>
+        )}
       </div>
     </div>
   );

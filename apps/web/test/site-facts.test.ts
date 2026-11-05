@@ -1,7 +1,7 @@
 // The public site's claims, held to the files they come from. If a contract, a README line or a planned page changes,
 // the copy has to change with it: an AI judge and human judges check the site against the repository.
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runChecks, type Snapshot } from "@probarion/core";
 import { createElement } from "react";
@@ -44,13 +44,14 @@ import {
 } from "@/lib/site/facts";
 import { ledgerRows, verifyTamper } from "@/lib/site/tamper";
 import fixture from "@/lib/site/valid-snapshot.json";
-import { importsOf } from "./deploy-scan";
+import { directives, importsOf, resolveLocal, toPosix, walk } from "./deploy-scan";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(WEB, "..", "..");
 const bytes = (...p: string[]) => readFileSync(join(...p));
 const text = (...p: string[]) => readFileSync(join(...p), "utf8");
 
+const SRC = join(WEB, "src");
 const README = text(ROOT, "README.md");
 const SNAPSHOT = fixture as unknown as Snapshot;
 
@@ -66,6 +67,31 @@ const landing = (network: "testnet" | "mainnet" = "testnet") =>
       createElement(SiteFooter),
     ),
   );
+/**
+ * What a client component loads on first paint: its static imports, followed through local files. A dynamic import()
+ * is left out, because it loads on first use. Local files come back relative to src, and packages by name.
+ */
+function firstLoadOf(entry: string): string[] {
+  const seen = new Set([entry]);
+  const queue = [entry];
+  const reached: string[] = [];
+  for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
+    const src = readFileSync(file, "utf8");
+    const dynamic = [...src.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1] ?? "");
+    for (const { spec, typeOnly } of importsOf(src)) {
+      if (typeOnly || dynamic.includes(spec)) continue;
+      const target = resolveLocal(spec, file, SRC);
+      if (target === null) reached.push(spec);
+      else if (!seen.has(target)) {
+        seen.add(target);
+        reached.push(toPosix(relative(SRC, target)));
+        if (/\.tsx?$/.test(target)) queue.push(target);
+      }
+    }
+  }
+  return reached;
+}
+
 const visibleText = (html: string) =>
   html
     .replace(/<[^>]+>/g, " ")
@@ -93,14 +119,29 @@ describe("the ledger test", () => {
     expect(new Set(Object.values(CHECK_LABELS)).size).toBe(9);
   });
 
-  it("keeps the verifier and the fixture out of the landing page's first load", () => {
-    const src = text(WEB, "src", "components", "site", "TamperTest.tsx");
-    const heavy = /@probarion\/core|lib\/site\/tamper|valid-snapshot|lib\/config|components\/ui/;
+  it("loads the verifier and the fixture on the first click, through dynamic imports", () => {
+    const src = text(SRC, "components", "site", "TamperTest.tsx");
     const dynamic = [...src.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1] ?? "");
     expect(dynamic).toEqual(["@/lib/site/tamper", "@/lib/site/valid-snapshot.json"]);
-    const loaded = importsOf(src).filter((i) => !i.typeOnly && !dynamic.includes(i.spec));
-    expect(loaded.filter((i) => heavy.test(i.spec))).toEqual([]);
     expect(src.startsWith('"use client"')).toBe(true);
+  });
+
+  it("keeps the verifier, the fixture and the wallet out of every client component's first load", () => {
+    const heavy =
+      /^@probarion\/|^lib\/site\/tamper\.ts$|valid-snapshot|^lib\/config|^components\/ui|^@hot-labs\/|^components\/wallet/;
+    const clients = walk(join(SRC, "components", "site")).filter(
+      (f) => /\.tsx?$/.test(f) && directives(readFileSync(f, "utf8")).includes("use client"),
+    );
+    expect(clients.map((f) => f.split(/[\\/]/).pop())).toContain("TamperTest.tsx");
+    for (const entry of clients) {
+      expect(
+        firstLoadOf(entry).filter((m) => heavy.test(m)),
+        entry,
+      ).toEqual([]);
+    }
+    // The walk does follow local files: the panel's view logic is reached through TamperTest.
+    const panel = firstLoadOf(join(SRC, "components", "site", "TamperTest.tsx"));
+    expect(panel).toContain("lib/site/tamper-view.ts");
   });
 });
 

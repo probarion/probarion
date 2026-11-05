@@ -4,7 +4,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { firstBrokenSeq, runChecks, type Snapshot } from "@probarion/core";
+import { createElement } from "react";
+import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { TamperPanel } from "@/components/site/TamperPanel";
+import { RECORDED_RESULT, TAMPER_COPY } from "@/lib/site/facts";
 import {
   applyTamper,
   ledgerRows,
@@ -12,6 +16,7 @@ import {
   type TamperEditId,
   verifyTamper,
 } from "@/lib/site/tamper";
+import { checkView, passCaveat, resultSummary, runVerifier } from "@/lib/site/tamper-view";
 import fixture from "@/lib/site/valid-snapshot.json";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
@@ -120,5 +125,102 @@ describe("the ledger test runs the real verifier", () => {
       if (edit.change.amount !== undefined) expect(row?.amount).toBe(edit.change.amount);
       if (edit.change.outcome !== undefined) expect(row?.outcome).toBe(edit.change.outcome);
     }
+  });
+});
+
+describe("what the panel shows for a check", () => {
+  it("says not run for a check the verifier did not return, and never pass", () => {
+    const view = checkView(undefined);
+    expect(view.word).toBe("not run");
+    expect(view.bad).toBe(true);
+  });
+
+  it("shows a failed check's detail in full, as the verifier wrote it", () => {
+    const detail = "anchor 3 covers 5 entries; not the whole ledger";
+    const view = checkView({ id: "c", status: "fail", detail });
+    expect(view).toMatchObject({ word: "fail", bad: true, why: detail, caveat: "" });
+  });
+
+  it("shows only what a passing check says it did not do", () => {
+    expect(passCaveat("5 entries: every body_hash and link recomputes")).toBe("");
+    expect(passCaveat("no intents public keys; predecessor auth enabled")).toBe("");
+    expect(passCaveat("2 decisions pass; quote not verified offline; A8 not run")).toBe(
+      "quote not verified offline; A8 not run",
+    );
+    expect(
+      checkView({ id: "e", status: "pass", detail: "2 pass; quote not verified offline" }),
+    ).toMatchObject({ word: "pass", bad: false, why: "", caveat: "quote not verified offline" });
+  });
+
+  it("shows at rest the same caveats a real run gives", async () => {
+    const real = await verifyTamper(SNAPSHOT, null);
+    const caveats = (r: typeof real) => r.checks.map((c) => [c.id, passCaveat(c.detail)]);
+    expect(caveats(RECORDED_RESULT)).toEqual(caveats(real));
+    expect(caveats(real).filter(([, caveat]) => caveat !== "").length).toBeGreaterThan(0);
+  });
+
+  it("writes the summary as one sentence, with the first broken entry when there is one", () => {
+    const base = { passed: 6, failed: 3, unproven: 0, checks: [] };
+    expect(resultSummary({ ...base, firstBroken: 2 }, TAMPER_COPY.firstBroken)).toBe(
+      "6 passed, 3 failed, 0 unproven. First broken entry: 2",
+    );
+    expect(resultSummary({ ...base, firstBroken: null }, TAMPER_COPY.firstBroken)).toBe(
+      "6 passed, 3 failed, 0 unproven",
+    );
+  });
+});
+
+describe("running the verifier from a button", () => {
+  const result = RECORDED_RESULT;
+
+  it("gives the result of a run", async () => {
+    const outcome = await runVerifier<null>(async () => async () => result, null);
+    expect(outcome).toEqual({ outcome: "done", result });
+  });
+
+  it("tells a failed load from a failed run", async () => {
+    const noLoad = await runVerifier<null>(() => Promise.reject(new Error("chunk")), null);
+    expect(noLoad).toEqual({ outcome: "load_failed" });
+    const noRun = await runVerifier<null>(
+      async () => () => Promise.reject(new Error("runChecks threw")),
+      null,
+    );
+    expect(noRun).toEqual({ outcome: "run_failed" });
+  });
+
+  it("has words for each failure, and neither calls a stopped run a load problem", () => {
+    expect(TAMPER_COPY.loadFailed).toContain("did not load");
+    expect(TAMPER_COPY.runFailed).not.toContain("did not load");
+    expect(TAMPER_COPY.runFailed).toContain("did not change");
+  });
+});
+
+describe("the ledger test's markup", () => {
+  const html = renderToStaticMarkup(createElement(TamperPanel));
+
+  it("keeps the edit buttons above the table and the fixture path below it", () => {
+    const table = html.indexOf("<table");
+    const end = html.indexOf("</table>");
+    expect(html.indexOf("Change an amount")).toBeLessThan(table);
+    expect(html.indexOf("Restore")).toBeLessThan(table);
+    expect(html.indexOf("Signed ledger, test fixture")).toBeLessThan(
+      html.indexOf("Change an amount"),
+    );
+    expect(html.indexOf("valid-snapshot.json")).toBeGreaterThan(end);
+  });
+
+  it("announces the verdict and each check whole, in a polite panel", () => {
+    expect(html).toContain('aria-live="polite"');
+    expect(html.match(/aria-atomic="true"/g)?.length).toBe(10);
+  });
+
+  it("renders the summary as one text node, so a screen reader does not get bare numbers", () => {
+    expect(renderToString(createElement(TamperPanel))).toContain(
+      ">9 passed, 0 failed, 0 unproven</span>",
+    );
+  });
+
+  it("shows the recorded caveats muted, at rest and with no JavaScript", () => {
+    expect(html).toContain("quote not verified offline");
   });
 });
