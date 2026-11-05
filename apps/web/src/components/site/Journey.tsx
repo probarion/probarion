@@ -54,7 +54,7 @@ function Step({ step }: { step: JourneyStep }) {
 
 export function Journey() {
   return (
-    <section className={`${s.section} ${s.anchor}`} id="payment">
+    <section className={s.section} id="payment">
       <div className={s.wrap}>
         <div className={s.sectionHead}>
           <h2 className={s.h2}>{JOURNEY.title}</h2>

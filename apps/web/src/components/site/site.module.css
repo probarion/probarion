@@ -24,9 +24,6 @@
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
 }
-.anchor {
-  scroll-margin-top: 84px;
-}
 
 /* Beta strip */
 .beta {
@@ -693,9 +690,9 @@
 .act:hover {
   transform: translateY(-1px);
 }
+/* A shadow, so that the focus ring, which is an outline, still shows on a pressed button. */
 .act[aria-pressed="true"] {
-  outline: 2px solid var(--color-bad);
-  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--color-bad);
 }
 .act[aria-busy="true"] {
   cursor: progress;
@@ -957,7 +954,10 @@
   border-radius: 12px;
   background: var(--color-surface);
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 16px;
+}
+.accountInput::placeholder {
+  color: var(--color-mute);
 }
 .accountError {
   margin-top: 10px;
@@ -981,7 +981,8 @@
   font-size: 15px;
 }
 
-@media (max-width: 960px) {
+/* Wider than the page's own break, so that the header has room for the next built page. */
+@media (max-width: 1040px) {
   .navLinks {
     display: none;
   }
@@ -991,6 +992,8 @@
   .nav {
     gap: 12px;
   }
+}
+@media (max-width: 960px) {
   .heroGrid,
   .bandGrid,
   .tamper {
@@ -1079,8 +1082,10 @@
   .table td:nth-child(4) {
     display: none;
   }
+  /* Inline-block, or the row's line-through would run through the note as well. */
   .rowNote {
-    display: block;
+    display: inline-block;
+    width: 100%;
     margin-left: 0;
   }
   .menuButton {
@@ -1102,10 +1107,18 @@
   .act {
     transition: none;
   }
+  .btn:hover,
+  .act:hover {
+    transform: none;
+  }
 }
 @media (forced-colors: active) {
   .gold {
     background: none;
     color: CanvasText;
+  }
+  /* Forced colours drop the box-shadow that marks a pressed button. */
+  .act[aria-pressed="true"] {
+    text-decoration: underline;
   }
 }

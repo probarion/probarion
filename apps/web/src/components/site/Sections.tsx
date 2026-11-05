@@ -11,7 +11,7 @@ const TONE: Readonly<Record<StatusTone, string | undefined>> = {
 
 export function ChainList() {
   return (
-    <section className={`${s.section} ${s.flush} ${s.anchor}`} id="chain">
+    <section className={`${s.section} ${s.flush}`} id="chain">
       <div className={s.wrap}>
         <div className={s.sectionHead}>
           <h2 className={s.h2}>{CHAIN.title}</h2>
@@ -35,7 +35,7 @@ export function ChainList() {
 
 export function StatusList() {
   return (
-    <section className={`${s.section} ${s.flush} ${s.anchor}`} id="status">
+    <section className={`${s.section} ${s.flush}`} id="status">
       <div className={s.wrap}>
         <div className={s.sectionHead}>
           <h2 className={s.h2}>{STATUS.title}</h2>

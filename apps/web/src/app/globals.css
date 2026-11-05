@@ -48,7 +48,7 @@
   --color-gold-light: #f8e2a0;
   --color-gold-mid: #d4a640;
 
-  --gradient-gold-text: linear-gradient(96deg, #5e4210 0%, #a57a26 38%, #bc8e30 62%, #6f5016 100%);
+  --gradient-gold-text: linear-gradient(96deg, #5e4210 0%, #a57a26 38%, #b38527 62%, #6f5016 100%);
   /* The dark corner stays at 0.28 alpha so that ink text on the card keeps 4.5:1 (WCAG AA) wherever it sits. */
   --gradient-metal:
     radial-gradient(90% 70% at 18% 12%, rgb(255 240 194 / 0.8), rgb(255 240 194 / 0) 62%),
@@ -58,6 +58,11 @@
 
 :root {
   color-scheme: light;
+}
+
+/* The sticky header's height: a skip link, an anchor or a section jump lands clear of it. */
+html {
+  scroll-padding-top: 84px;
 }
 
 @media (prefers-reduced-motion: no-preference) {

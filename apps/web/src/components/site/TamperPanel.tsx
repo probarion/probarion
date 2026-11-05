@@ -30,7 +30,7 @@ export function TamperPanel() {
 
 export function LedgerTest() {
   return (
-    <section className={`${s.section} ${s.anchor}`} id="verify">
+    <section className={s.section} id="verify">
       <div className={s.wrap}>
         <div className={s.sectionHead}>
           <h2 className={s.h2}>{TAMPER_COPY.title}</h2>

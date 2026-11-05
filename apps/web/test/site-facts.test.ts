@@ -513,6 +513,50 @@ describe("robots and the sitemap", () => {
   });
 });
 
+describe("the stylesheet", () => {
+  const globals = text(WEB, "src", "app", "globals.css");
+  const site = text(WEB, "src", "components", "site", "site.module.css");
+  const rule = (selector: string) => {
+    const at = site.indexOf(`${selector} {`);
+    expect(at, selector).toBeGreaterThanOrEqual(0);
+    return site.slice(at, site.indexOf("}", at));
+  };
+
+  it("clears the sticky header at every jump target, once", () => {
+    expect(globals).toMatch(/html {[^}]*scroll-padding-top: 84px/);
+    expect(site).not.toContain("scroll-margin-top");
+  });
+
+  it("marks a pressed button without taking the outline the focus ring draws", () => {
+    const pressed = rule('.act[aria-pressed="true"]');
+    expect(pressed).toContain("box-shadow: 0 0 0 2px var(--color-bad)");
+    expect(pressed).not.toContain("outline");
+  });
+
+  it("holds buttons still on hover when reduced motion is asked for", () => {
+    const reduce = site.slice(site.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduce).toMatch(/\.btn:hover,\s*\.act:hover {\s*transform: none;/);
+  });
+
+  it("gives the only public input a readable placeholder and a size phones do not zoom", () => {
+    expect(rule(".accountInput")).toContain("font-size: 16px");
+    expect(rule(".accountInput::placeholder")).toContain("color: var(--color-mute)");
+  });
+
+  it("keeps the word erased off the struck-through line on phones", () => {
+    const phone = site.slice(site.indexOf("@media (max-width: 620px)"));
+    expect(phone).toMatch(/\.rowNote {[^}]*display: inline-block;[^}]*width: 100%/);
+  });
+
+  it("folds the header into the menu at 1040 px, and only the header", () => {
+    const fold = site.slice(site.indexOf("@media (max-width: 1040px)"));
+    const block = fold.slice(0, fold.indexOf("@media (max-width: 960px)"));
+    expect(block).toContain(".navLinks");
+    expect(block).toContain(".phoneMenu");
+    expect(block).not.toContain(".heroGrid");
+  });
+});
+
 describe("colours", () => {
   const css = text(WEB, "src", "app", "globals.css");
   const token = (name: string) => {
@@ -555,7 +599,26 @@ describe("colours", () => {
     }
   });
 
-  it("are read from tokens: the site's stylesheet and components hold no literal colour", () => {
+  it("keep the gold headline at 3:1 on paper, all along its gradient", () => {
+    const gradient = /--gradient-gold-text:\s*linear-gradient\(([^;]+)\);/.exec(css)?.[1] ?? "";
+    const stops = [...gradient.matchAll(/(#[0-9a-f]{6})\s+(\d+)%/gi)].map((m) => m[1] ?? "");
+    expect(stops.length).toBeGreaterThan(1);
+    const channels = (hex: string) =>
+      [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
+    const mix = (a: string, b: string, t: number) => {
+      const [from, to] = [channels(a), channels(b)];
+      const part = from.map((c, i) => Math.round(c + ((to[i] ?? c) - c) * t));
+      return `#${part.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+    };
+    for (const [i, stop] of stops.slice(1).entries()) {
+      for (let t = 0; t <= 1; t += 0.01) {
+        const colour = mix(stops[i] ?? stop, stop, t);
+        expect(contrast(colour, token("paper")), colour).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it("are read from tokens: site.module.css holds no literal colour", () => {
     const module = text(WEB, "src", "components", "site", "site.module.css");
     expect(module.replace(/url\("data:[^"]*"\)/g, "")).not.toMatch(
       /#[0-9a-f]{3,8}\b|\brgba?\(\s*\d/i,
