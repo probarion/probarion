@@ -29,7 +29,7 @@ export function RouteLink({
   }
   if (whenPlanned === "hide") return null;
   return (
-    <span className="text-stone-500" title="Not built yet">
+    <span className="text-mute" title="Not built yet">
       {children} (coming soon)
     </span>
   );

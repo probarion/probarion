@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { buttonClass } from "@/components/ui";
+import { inkPillClass } from "@/components/ui";
 import { useWallet } from "./WalletProvider";
 
 export function SignInButton({ next = "/console" }: { next?: string }) {
@@ -14,7 +14,7 @@ export function SignInButton({ next = "/console" }: { next?: string }) {
     <div>
       <button
         type="button"
-        className={buttonClass}
+        className={`${inkPillClass} disabled:opacity-50`}
         disabled={!ready || busy}
         onClick={async () => {
           setBusy(true);
