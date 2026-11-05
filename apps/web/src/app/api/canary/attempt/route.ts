@@ -10,6 +10,7 @@ import type { Db } from "@/lib/db/port";
 import { memberTenants } from "@/lib/db/tenants";
 import { getEnv } from "@/lib/env";
 import { assertSameOrigin, clientIp, json, problem, rateLimitOr429 } from "@/lib/http";
+import { listKeys } from "@/lib/keys/service";
 import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { log, newRequestId } from "@/lib/log";
 import { listAll } from "@/lib/near/reader";
@@ -66,11 +67,19 @@ async function attempt(req: Request, requestId: string): Promise<Response> {
   // The gullible agent needs the model: without a key there would be nothing to fool.
   if (!env.NEARAI_API_KEY) return problem(503, "not_ready");
   const db = serviceDb();
-  const found = await db.rpc<{ tenant_id: string; vault_id: string; kind: string } | null>(
-    "tenant_by_vault",
-    { vault_id: env.CANARY_VAULT_ID },
-  );
+  const found = await db.rpc<{
+    tenant_id: string;
+    vault_id: string;
+    kind: string;
+    proof_public: boolean;
+  } | null>("tenant_by_vault", { vault_id: env.CANARY_VAULT_ID });
   if (found?.kind !== "canary") return problem(503, "not_ready");
+  // The Canary's ledger must be private: the gullible model quotes what visitors type into signed, append-only entries,
+  // and a public ledger would publish that for good (W-T17-R1). No model call and no chain call while it is public.
+  if (found.proof_public) {
+    log.error("canary.public_ledger", { request_id: requestId, tenant: found.tenant_id });
+    return problem(503, "not_ready");
+  }
   const tenant = { tenant_id: found.tenant_id, vault_id: found.vault_id };
 
   const visitorKey = await subkey("visitor");
@@ -113,11 +122,29 @@ async function attempt(req: Request, requestId: string): Promise<Response> {
         if (!k.exists) return 0n;
         return k.allowance === null ? null : BigInt(k.allowance);
       },
+      async ledgerAllowance() {
+        // The tenant's active LEDGER key pays for the anchor of every attempt. No such key reads as 0 (not ready).
+        const key = (await listKeys(db, tenant.tenant_id)).find(
+          (k) => k.purpose === "ledger" && k.status === "active",
+        );
+        if (!key) return 0n;
+        const k = await getReader().accessKey(tenant.vault_id, key.public_key);
+        if (!k.exists) return 0n;
+        return k.allowance === null ? null : BigInt(k.allowance);
+      },
+      async ledgerSize() {
+        const head = await store.head();
+        return head === null ? 0 : head.body.seq + 1;
+      },
       ledgerByHash: (hash) => store.getByHash(hash),
     },
     { text: body.text, visitorHash, ipHash, isTeam, requestId },
   );
   if (r.status === "done") return json(r);
+  // Every 429 says when to come back: the seconds until the limit that was hit is over.
+  if (r.reason === "budget") {
+    return problem(429, "budget", undefined, { "Retry-After": String(r.retryAfterS ?? 60) });
+  }
   return problem(STATUS[r.reason], r.reason);
 }
 

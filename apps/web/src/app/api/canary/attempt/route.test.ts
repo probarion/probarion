@@ -58,7 +58,10 @@ const h = vi.hoisted(() => ({
   made: [] as Record<string, unknown>[],
   process: (async () => null) as (i: unknown) => Promise<unknown>,
   requestSpend: (async () => null) as (i: unknown) => Promise<unknown>,
+  checkSpend: (async () => null) as (i: unknown) => Promise<unknown>,
   decision: null as unknown,
+  /** The newest entry of the Canary's ledger (its seq + 1 is the number of entries). */
+  head: null as unknown,
 }));
 
 vi.mock("next/headers", () => ({
@@ -96,6 +99,9 @@ vi.mock("@/lib/ledger/store", () => ({
     async getByHash() {
       return h.decision;
     }
+    async head() {
+      return h.head;
+    }
   },
 }));
 vi.mock("@/lib/near/server", () => ({
@@ -112,7 +118,9 @@ vi.mock("@/lib/sdk/factory", () => ({
     h.made.push(o);
     return {
       process: (i: unknown) => h.process(i),
+      checkSpend: (i: unknown) => h.checkSpend(i),
       requestSpend: (i: unknown) => h.requestSpend(i),
+      rules: { add: () => {} },
     };
   },
 }));
@@ -125,6 +133,7 @@ let pg: PGlite;
 let agentA: { pk: string; secret: string };
 let agentB: { pk: string; secret: string };
 let ledgerSecret = "";
+let ledgerPk = "";
 let pendingPk = "";
 let foreignPk = "";
 let tenantId = "";
@@ -198,7 +207,9 @@ beforeAll(async () => {
   tenantId = await seedTenant(pg, { vault: VAULT, owner: "probarion.near", kind: "canary" });
   agentA = await activeKey(tenantId, "agent");
   agentB = await activeKey(tenantId, "agent");
-  ledgerSecret = (await activeKey(tenantId, "ledger")).secret;
+  const ledger = await activeKey(tenantId, "ledger");
+  ledgerSecret = ledger.secret;
+  ledgerPk = ledger.pk;
   // a key still pending, and an active key sealed under a master this server does not hold
   const pending = KeyPair.fromRandom("ed25519");
   pendingPk = (
@@ -233,7 +244,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await pg.exec(
-    "truncate public.canary_attempts; truncate public.rate_limits; update public.tenants set process_lease_until = null",
+    "truncate public.canary_attempts; truncate public.rate_limits; update public.tenants set process_lease_until = null, proof_public = false",
   );
   h.failDb = null;
   h.env = {
@@ -252,7 +263,9 @@ beforeEach(async () => {
   h.made = [];
   h.process = async () => REFUSED;
   h.requestSpend = async () => BY_CONTRACT;
+  h.checkSpend = async () => ({ ok: false, code: "NoMandate", would_hold: false });
   h.decision = decisionEntry();
+  h.head = { body: { seq: 9 } };
 });
 
 let ipCounter = 0;
@@ -348,6 +361,41 @@ describe("POST /api/canary/attempt", () => {
         h.mandates = async () => [mandateFor(otherKinds[vault] ?? agentA.pk)];
         await notReady(await post({ text: TEXT }));
       }
+    });
+
+    it("answers 503, with no model call and no chain call, while the Canary's proof is public", async () => {
+      // its ledger would carry what visitors type, for good: the Canary tenant is private (W-T17-R1)
+      await pg.query("update public.tenants set proof_public = true where id = $1", [tenantId]);
+      await notReady(await post({ text: TEXT }));
+      expect(await rateRows()).toEqual([]);
+      expect(h.accessKeyCalls).toEqual([]);
+      expect(h.jar).toEqual([]);
+      expect(logs.lines.join("\n")).toContain("canary.public_ledger");
+    });
+
+    it("answers 503 when the ledger key's allowance is under 0.5 NEAR, is gone or cannot be read", async () => {
+      const ledgerKey = (state: () => Promise<unknown>) => {
+        h.accessKey = async (_vault, pk) =>
+          pk === ledgerPk ? state() : { exists: true, allowance: null };
+      };
+      for (const state of [
+        async () => ({ exists: true, allowance: "499999999999999999999999" }),
+        async () => ({ exists: true, allowance: "0" }),
+        async () => ({ exists: false, allowance: null }),
+        async () => {
+          throw new Error("rpc down");
+        },
+      ]) {
+        ledgerKey(state);
+        await notReady(await post({ text: TEXT }));
+      }
+      // exactly 0.5 NEAR, and an unlimited key, are enough
+      ledgerKey(async () => ({ exists: true, allowance: "500000000000000000000000" }));
+      expect((await post({ text: TEXT })).status).toBe(200);
+      ledgerKey(async () => ({ exists: true, allowance: null }));
+      expect((await post({ text: `${TEXT} 2` })).status).toBe(200);
+      // the key it reads is the tenant's active LEDGER key
+      expect(new Set(h.accessKeyCalls.map(([, pk]) => pk))).toContain(ledgerPk);
     });
 
     it("answers 503 without a NEAR AI key: a Canary with no model has nothing to fool", async () => {
@@ -560,19 +608,27 @@ describe("POST /api/canary/attempt", () => {
     });
 
     it("reads the allowance of the mandate's own key, and keeps raw mode off when that key is gone", async () => {
-      h.accessKey = async () => ({ exists: false, allowance: null });
+      const agentKey = (state: () => Promise<unknown>) => {
+        h.accessKey = async (_vault, pk) =>
+          pk === agentB.pk ? state() : { exists: true, allowance: null };
+      };
+      agentKey(async () => ({ exists: false, allowance: null }));
       const gone = await json(await post({ text: TEXT }));
       expect(gone.raw).toEqual({ sent: false, skipped: "allowance_low" });
-      expect(h.accessKeyCalls).toEqual([[VAULT, agentB.pk]]);
-      h.accessKey = async () => ({ exists: true, allowance: "100000000000000000000000" });
+      // the ledger key is read first (before the model), then the mandate's agent key (before a raw spend)
+      expect(h.accessKeyCalls).toEqual([
+        [VAULT, ledgerPk],
+        [VAULT, agentB.pk],
+      ]);
+      agentKey(async () => ({ exists: true, allowance: "100000000000000000000000" }));
       const low = await json(await post({ text: `${TEXT} 2` }));
       expect(low.raw).toEqual({ sent: false, skipped: "allowance_low" });
-      h.accessKey = async () => ({ exists: true, allowance: "200000000000000000000000" });
+      agentKey(async () => ({ exists: true, allowance: "200000000000000000000000" }));
       const enough = await json(await post({ text: `${TEXT} 3` }));
       expect(enough.raw).toMatchObject({ sent: true });
-      h.accessKey = async () => {
+      agentKey(async () => {
         throw new Error("rpc down");
-      };
+      });
       const unreadable = await json(await post({ text: `${TEXT} 4` }));
       expect(unreadable.raw).toEqual({ sent: false, skipped: "allowance_low" });
     });
@@ -661,7 +717,43 @@ describe("POST /api/canary/attempt", () => {
       const r = await post({ text: TEXT });
       expect(r.status).toBe(429);
       expect(await json(r)).toEqual({ error: "budget" });
+      // seconds until the UTC day ends
+      const retry = Number(r.headers.get("retry-after"));
+      expect(retry).toBeGreaterThanOrEqual(1);
+      expect(retry).toBeLessThanOrEqual(86_400);
       expect(h.made).toEqual([]);
+    });
+
+    it("budget: 429 with Retry-After, over 60 attempts an hour or 600 a day in total", async () => {
+      for (const [bucket, count, window] of [
+        ["canary:attempts:hour", 60, 3600],
+        ["canary:attempts:day", 600, 86_400],
+      ] as const) {
+        await pg.exec("truncate public.rate_limits");
+        await pg.query(
+          "insert into rate_limits (bucket, window_start, count) values ($1, now(), $2)",
+          [bucket, count],
+        );
+        const r = await post({ text: TEXT });
+        expect(r.status, bucket).toBe(429);
+        expect(await json(r), bucket).toEqual({ error: "budget" });
+        const retry = Number(r.headers.get("retry-after"));
+        expect(retry, bucket).toBeGreaterThan(window - 120);
+        expect(retry, bucket).toBeLessThanOrEqual(window);
+        expect(await rows(), bucket).toEqual([]);
+      }
+    });
+
+    it("closed: 503, once the Canary's ledger holds 2,000 entries, before any model call", async () => {
+      h.head = { body: { seq: 1999 } };
+      const r = await post({ text: TEXT });
+      expect(r.status).toBe(503);
+      expect(await json(r)).toEqual({ error: "closed" });
+      expect(h.made).toEqual([]);
+      h.head = { body: { seq: 1998 } };
+      expect((await post({ text: TEXT })).status).toBe(200);
+      h.head = null;
+      expect((await post({ text: `${TEXT} 2` })).status).toBe(200);
     });
 
     it("busy: 409, while another attempt holds the Canary's lease", async () => {

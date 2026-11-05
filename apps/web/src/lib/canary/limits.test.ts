@@ -1,8 +1,16 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { PROPOSAL_MAX_TOKENS } from "@probarion/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { freshDb } from "../../../test/db/harness";
 import { pgliteDb } from "../../../test/db/pglite-db";
-import { CANARY_LIMITS, claimRawSlot, estimateTokens, tokensToday } from "./limits";
+import {
+  CANARY_LIMITS,
+  claimRawSlot,
+  estimateTokens,
+  secondsUntilUtcMidnight,
+  takeAttemptSlot,
+  tokensToday,
+} from "./limits";
 
 const H = (c: string) => c.repeat(64);
 
@@ -13,17 +21,33 @@ describe("CANARY_LIMITS", () => {
       rawVisitorWindowS: 600,
       rawGlobalPerHour: 30,
       minAllowanceYocto: 200_000_000_000_000_000_000_000n,
+      minLedgerAllowanceYocto: 500_000_000_000_000_000_000_000n,
+      attemptsGlobalPerHour: 60,
+      attemptsGlobalPerDay: 600,
+      maxLedgerEntries: 2000,
       dailyTokenBudget: 2_000_000,
       promptOverheadTokens: 900,
       leaseSeconds: 90,
     });
   });
 
-  it("estimates a quarter of the characters, rounded up, plus the prompt overhead", () => {
-    expect(estimateTokens("")).toBe(900);
-    expect(estimateTokens("abcd")).toBe(901);
-    expect(estimateTokens("abcde")).toBe(902);
-    expect(estimateTokens("x".repeat(4000))).toBe(1900);
+  // Unknown usage is charged at the worst case: half a token per character (non-Latin text), the system prompt and the
+  // mandates the model is shown, and the longest answer it may give (PROPOSAL_MAX_TOKENS, 4096).
+  it("estimates half the characters, rounded up, plus the prompt overhead and the longest answer", () => {
+    expect(estimateTokens("")).toBe(900 + PROPOSAL_MAX_TOKENS);
+    expect(estimateTokens("a")).toBe(1 + 900 + PROPOSAL_MAX_TOKENS);
+    expect(estimateTokens("abc")).toBe(2 + 900 + PROPOSAL_MAX_TOKENS);
+    expect(estimateTokens("x".repeat(4000))).toBe(2000 + 900 + PROPOSAL_MAX_TOKENS);
+    expect(PROPOSAL_MAX_TOKENS).toBe(4096);
+  });
+});
+
+describe("secondsUntilUtcMidnight", () => {
+  it("counts to the end of the UTC day, at least one second", () => {
+    expect(secondsUntilUtcMidnight(new Date("2026-11-09T22:00:00Z"))).toBe(7200);
+    expect(secondsUntilUtcMidnight(new Date("2026-11-09T00:00:00Z"))).toBe(86_400);
+    expect(secondsUntilUtcMidnight(new Date("2026-11-09T23:59:59.500Z"))).toBe(1);
+    expect(secondsUntilUtcMidnight(new Date("2026-11-09T23:59:59Z"))).toBe(1);
   });
 });
 
@@ -88,6 +112,34 @@ describe("claimRawSlot and tokensToday", () => {
       "update rate_limits set window_start = now() - interval '3601 seconds' where bucket = 'canary:raw:global'",
     );
     expect(await claimRawSlot(db(), { ipHash: H("d"), visitorHash: H("c") })).toBeNull();
+  });
+
+  it("takes an attempt slot from the hour and the day, and says when to come back when either is full", async () => {
+    expect(await takeAttemptSlot(db())).toEqual({ ok: true });
+    expect(await count("canary:attempts:hour")).toBe(1);
+    expect(await count("canary:attempts:day")).toBe(1);
+    await pg.query("update rate_limits set count = 60 where bucket = 'canary:attempts:hour'");
+    const full = await takeAttemptSlot(db());
+    expect(full.ok).toBe(false);
+    if (!full.ok) {
+      expect(full.retryAfterS).toBeGreaterThan(3590);
+      expect(full.retryAfterS).toBeLessThanOrEqual(3600);
+    }
+    // a refusal by the hour does not touch the day
+    expect(await count("canary:attempts:day")).toBe(1);
+    await pg.query("update rate_limits set count = 5 where bucket = 'canary:attempts:hour'");
+    await pg.query("update rate_limits set count = 600 where bucket = 'canary:attempts:day'");
+    const day = await takeAttemptSlot(db());
+    expect(day.ok).toBe(false);
+    if (!day.ok) expect(day.retryAfterS).toBeGreaterThan(86_300);
+    // a window that is over starts again
+    await pg.query(
+      "update rate_limits set window_start = now() - interval '3601 seconds' where bucket = 'canary:attempts:hour'",
+    );
+    await pg.query(
+      "update rate_limits set window_start = now() - interval '86401 seconds' where bucket = 'canary:attempts:day'",
+    );
+    expect(await takeAttemptSlot(db())).toEqual({ ok: true });
   });
 
   it("sums the day's model tokens as a number", async () => {
