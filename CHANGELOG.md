@@ -7,14 +7,33 @@ The MCP server `@probarion/mcp` is planned and does not exist yet.
 Versions follow semver. The npm packages share one version, released by the tag `sdk-v<version>`;
 none is published yet. A contract crate carries its own version, and each build of it is identified
 by the code hash of its reproducible build in `contracts/code-hashes.json`. The web console is not
-versioned yet, and it deploys from `main` to <https://probarion.vercel.app>. While the version is 0.x, a minor version may change the API.
+versioned yet, and it deploys from `main` to <https://probarion.xyz>. While the version is 0.x, a minor version may change the API.
 The software is an unaudited beta.
 
 ## Unreleased
 
 ### Added
 
-- Public site in the light brand design, deployed at <https://probarion.vercel.app>: a landing page
+- The console has a Top-up tab. The owner sends USDC on NEAR from their own wallet to the vault. On
+  mainnet only, the owner can also ask 1Click for a quote that tops up the vault's Base USDC balance
+  inside NEAR Intents, and signs the deposit in their own wallet. On testnet, which has no Intents or
+  1Click, the tab says so, names the stand-in contract and the test token, and offers only the NEAR
+  USDC funding.
+- Before the owner is asked to sign a 1Click deposit, the server checks the quote's signature against
+  1Click's key (pinned in the code and tested against the SDK's default) and that the signed request
+  is the one the console sent: this vault as the recipient inside Intents, the owner as the refund
+  address, the assets, the amount, the slippage and the referral, with no extra routing fields. It
+  refuses a deposit address that is the vault, the owner or a token contract, and a quote that is
+  stale, more than 5% above the amount, open past the deadline asked for, or with times that do not
+  state their time zone. A refused quote shows its reason and offers nothing to sign.
+- The Top-up tab does not offer a quote again after a deposit was sent or may have been sent, after
+  1Click stopped reporting its address as waiting, past its deadline, or when the amount typed
+  changed. A cancelled or failed wallet attempt does not lift those guards. A new quote request clears
+  the old quote and is switched off while the wallet is open.
+- Owner-only top-up routes `POST /api/topup/quote`, `POST /api/topup/submit` and
+  `GET /api/topup/status`, rate-limited per account, which answer fixed sentences rather than
+  1Click's own error text.
+- Public site in the light brand design, deployed at <https://probarion.xyz>: a landing page
   with real testnet transactions, the path of one payment and a list of what works and what does not;
   a beta strip on every page, a header with a phone menu that works with no JavaScript, a footer, and
   plain sign-in, not-found and error pages. Open Graph and Twitter cards, an icon, `robots.txt` and
@@ -148,6 +167,8 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The site and console are served at <https://probarion.xyz>; `www.probarion.xyz` redirects there,
+  and <https://probarion.vercel.app> still answers.
 - The README, `SECURITY.md` and the site say what an offline check shows: `verify --offline` checks a
   snapshot against itself, so a forged snapshot with re-signed entries passes, and only `verify --vault`
   reads the chain. They also say that `verify --vault v0.probarion.testnet` fails checks d and h today,
@@ -173,6 +194,8 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The browser-tab icon has a clear background instead of a white square, and its mark is larger. The
+  bar under the coin is ink in a light browser theme and paper in a dark one.
 - Signing in now lands on the console. A prefetched redirect could leave the visitor on `/login` with
   no error.
 - `/proof/<vault>` says the checks did not run, and its `snapshot.json` and `ledger.jsonl` downloads

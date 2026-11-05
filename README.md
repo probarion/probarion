@@ -15,7 +15,7 @@
 <a href="#how-to-evaluate-probarion-in-5-minutes"><img src="docs/assets/readme/verify-a-ledger.png" alt="Verify a ledger: checks a to i, offline" height="48"></a>
 <a href="https://x.com/probarionhq"><img src="docs/assets/readme/follow-the-build.png" alt="Follow the build: @probarionhq on X" height="48"></a>
 
-**[Live site](https://probarion.vercel.app)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
+**[Live site](https://probarion.xyz)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
 
 <sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts · NEAR AI Cloud private models · TypeScript SDK and CLI</sub>
 
@@ -35,7 +35,7 @@ the vault, and anyone can re-check the record against the chain.
 > [!IMPORTANT]
 > **Unaudited beta.** No third party has audited this code. The vault runs on NEAR testnet with test
 > tokens; mainnet is planned. The site and web console run at
-> [probarion.vercel.app](https://probarion.vercel.app) on testnet. The console is in progress, no vault
+> [probarion.xyz](https://probarion.xyz) on testnet. The console is in progress, no vault
 > is public there yet, and the npm packages are not published yet.
 > [What is shipped, in progress and planned](#status).
 
@@ -190,12 +190,12 @@ What exists at this commit, and what does not yet.
 | `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` needs a deployed factory, so it waits for the factory | [`packages/cli`](packages/cli) |
 | CLI `check`, `verify` and `ledger export` | **Shipped** in source. `verify` exits 0 when every check passes, 1 when one fails or verify cannot run, 2 when a burn is unproven | [`packages/cli`](packages/cli) |
 | npm release 0.1.0 of the packages | **Planned**. The tag-driven release pipeline is in place; nothing is published | [`.github/workflows/release.yml`](.github/workflows/release.yml) |
-| Web console (Next.js 16 and Supabase): the public site, wallet sign-in, vault overview, freeze, approvals, keys, mandates, Payables, the public proof page | **In progress**. Deployed at [probarion.vercel.app](https://probarion.vercel.app) on testnet, from `main`. Sign-in and the console have not been tried there with a real wallet yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
+| Web console (Next.js 16 and Supabase): the public site, wallet sign-in, vault overview, freeze, approvals, keys, mandates, top-up, Payables, the public proof page | **In progress**. Deployed at [probarion.xyz](https://probarion.xyz) on testnet, from `main`. The top-up tab sends USDC on NEAR from the owner's wallet; the 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet. Sign-in and the console have not been tried there with a real wallet yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
 | Mainnet vault `v0.probarion.near` | **Planned**. The runbook is ready; the owner signs every step | [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) |
 | MCP server `@probarion/mcp` | **Planned** | |
 | Payables, the reference agent that pays invoices in USDC | **In progress**. The pipeline, its invoice API and the console pages are built and tested against a fake chain, and deploy with the console; nothing has been tried with a real wallet yet. It pays by itself only when an attested NEAR AI model confirms the amount the code read; without one, nothing is sent and the invoice waits for the owner, who can pay it with a wallet signature or reject it. The amount reader refuses any total it cannot read with certainty. An unfinished payment stays marked "do not resend" until the reconcile job is built | [`apps/web/src/lib/payables`](apps/web/src/lib/payables) |
 | Canary, a public vault anyone may try to trick into paying them | **Planned** | |
-| Public `/proof/<vault>` page: checks a to i with explorer links, the snapshot and the signed ledger as downloads for the offline verifier | **Built** and tested, and deployed with the console. No vault is public yet, so a vault's address answers page not found, and [`/proof`](https://probarion.vercel.app/proof) offers a form and a ledger test that runs the verifier in your browser on a test fixture. Every command it shows runs from a clone of this repository until the npm package is published, and its tests run those commands as shown | [`apps/web/src/app/proof`](apps/web/src/app/proof) |
+| Public `/proof/<vault>` page: checks a to i with explorer links, the snapshot and the signed ledger as downloads for the offline verifier | **Built** and tested, and deployed with the console. No vault is public yet, so a vault's address answers page not found, and [`/proof`](https://probarion.xyz/proof) offers a form and a ledger test that runs the verifier in your browser on a test fixture. Every command it shows runs from a clone of this repository until the npm package is published, and its tests run those commands as shown | [`apps/web/src/app/proof`](apps/web/src/app/proof) |
 
 ## What Probarion does
 
