@@ -297,6 +297,112 @@ describe("the claims about the code", () => {
   });
 });
 
+describe("facts the site shares with the README, SECURITY.md and the deployment record", () => {
+  const prose = README.replace(/\s+/g, " ");
+  const deployment = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
+    vault_v0: { locked: boolean };
+  };
+  const number = (name: string) => NUMBERS.find((n) => n.name === name)?.value;
+  const step4 = JOURNEY.steps[3].panel;
+  const entry = (key: string) => step4.find((line) => "key" in line && line.key === key);
+
+  it("the smoke run's date", () => {
+    const date = /on (\d{4}-\d{2}-\d{2})\./.exec(CHAIN.intro)?.[1];
+    expect(README).toContain(`### NEAR testnet, ${date}`);
+  });
+
+  it("what the paid transaction paid, and to whom", () => {
+    expect(README).toContain(`Spend 1 \`paid\`: ${HERO.paid.big} to \`${HERO.paid.payee}\``);
+    expect(CHAIN.rows[0].body).toContain(`${HERO.paid.big} to \`${HERO.paid.payee}\``);
+    expect(JOURNEY.steps[0].panel).toContainEqual({ key: "payee", value: HERO.paid.payee });
+  });
+
+  it("the paid transaction's events", () => {
+    const named = CHAIN.rows[0].body.slice(CHAIN.rows[0].body.indexOf("Events"));
+    const events = [...named.matchAll(/`(\w+)`/g)].map((m) => m[1] ?? "");
+    expect(events).toContain(HERO.paid.event);
+    expect(README).toContain(`(${events.map((e) => `\`${e}\``).join(", ")})`);
+  });
+
+  it("what the vault answers for each amount, on the limit the mandate has", () => {
+    expect(entry("2 USDC")).toMatchObject({ value: "ok: true" });
+    expect(README).toContain("2 USDC: { ok: true");
+    expect(entry("6 USDC")).toMatchObject({ value: `ok: false, ${CONTRACT_REFUSAL_CODE}` });
+    expect(README).toContain(`6 USDC: { ok: false, code: '${CONTRACT_REFUSAL_CODE}'`);
+    const limit = /at most (\d+) USDC/.exec(JSON.stringify(step4))?.[1];
+    expect(README).toContain(
+      `mandate 1 "smoke near": active, pays ${HERO.paid.payee}, at most ${Number(limit) * 1_000_000} per payment`,
+    );
+  });
+
+  it("the numbers band", () => {
+    expect(number("checks")).toBe(String(Object.keys(CHECK_LABELS).length));
+    expect(number("full-access keys")).toBe("0");
+    expect(deployment.vault_v0.locked).toBe(true);
+    expect(README).toContain("No full-access key");
+    expect(number("method")).toBe("1");
+    expect(prose).toContain("one function-call key that can call `spend` and nothing else");
+    expect(number("recipient arguments")).toBe("0");
+  });
+
+  it("the fields of the contract's own SpendRequest, none of them a recipient", () => {
+    const types = text(ROOT, "contracts", "vault", "src", "types.rs");
+    const body = /pub struct SpendRequest \{([\s\S]*?)\n\}/.exec(types)?.[1] ?? "";
+    const fields = [...body.matchAll(/pub (?:r#)?(\w+):/g)].map((m) => m[1] ?? "");
+    expect(fields).toEqual([...SPEND_REQUEST_FIELDS]);
+  });
+
+  it("that the model run is still in progress", () => {
+    expect(JOURNEY.steps[1].tag).toBe("Adapter built. First live attested run in progress.");
+    const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
+    expect(row).toContain("**Built**");
+    expect(row).toContain("**In progress**");
+  });
+
+  it("that no third party has audited the code", () => {
+    expect(text(ROOT, "SECURITY.md")).toContain(
+      "**Unaudited beta.** No third party has audited the contracts or the packages.",
+    );
+    expect(README).toContain("**Unaudited beta.** No third party has audited this code.");
+  });
+
+  // Each row of the site's status list, with the README Status rows it stands for and the words that make the pill true.
+  it.each([
+    {
+      row: "Vault factory",
+      pill: "Built, not deployed",
+      readme: [{ start: "Factory contract", says: ["**Built and tested**", "**Not deployed**"] }],
+    },
+    {
+      row: "Canary public challenge",
+      pill: "Planned",
+      readme: [{ start: "Canary, a public vault", says: ["**Planned**"] }],
+    },
+    {
+      row: "Mainnet vault",
+      pill: "Planned",
+      readme: [{ start: "Mainnet vault", says: ["**Planned**"] }],
+    },
+    {
+      row: "TypeScript SDK and CLI",
+      pill: "In source, not on npm",
+      readme: [
+        { start: "`@probarion/sdk`", says: ["**Shipped** in source"] },
+        { start: "`probarion` CLI", says: ["**Shipped** in source"] },
+        { start: "npm release 0.1.0", says: ["**Planned**", "nothing is published"] },
+      ],
+    },
+  ])("the status row $row matches the README", ({ row, pill, readme }) => {
+    expect(STATUS.rows.find((r) => r.row === row)?.pill).toBe(pill);
+    for (const { start, says } of readme) {
+      const line = README.split("\n").find((l) => l.startsWith(`| ${start}`));
+      expect(line, start).toBeDefined();
+      const status = line?.split(" | ")[1];
+      for (const words of says) expect(status, start).toContain(words);
+    }
+  });
+});
+
 describe("the payment journey", () => {
   const prose = README.replace(/\s+/g, " ");
   const step = (n: number) => {
