@@ -26,7 +26,7 @@ const MAX_REQUEST_BYTES = MAX_INVOICE_BYTES + 64 * 1024;
 
 /** Shown for an unconfirmed outcome: the spend was sent and is never sent again. */
 const PAYMENT_PENDING =
-  "Payment sent, confirmation pending. Do not send it again: the spend is confirmed from the chain.";
+  "Payment sent, confirmation pending. Do not send it again. You can read the vault's spends on chain by this invoice's ref.";
 
 /** Shown when no attested model confirmed the amount the code read: nothing was sent, the owner confirms. */
 const OWNER_CONFIRMS =
