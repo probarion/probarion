@@ -3,20 +3,17 @@ import { createHmac, hkdfSync } from "node:crypto";
 import type { CustomRule, InvoiceFacts, MandateView, Payee, RuleResult } from "@probarion/core";
 import { hashInvoice, type SpendOutcome } from "@probarion/sdk";
 import { sealInvoice } from "@/lib/crypto/secrets";
-import { DecryptError, sha256Hex } from "@/lib/crypto/sodium";
-import { type Db, DbError } from "@/lib/db/port";
+import { sha256Hex } from "@/lib/crypto/sodium";
+import type { Db } from "@/lib/db/port";
 import { type MemberTenant, withLease } from "@/lib/db/tenants";
-import {
-  KeyMismatchError,
-  listKeys,
-  loadActiveSecret,
-  loadActiveSecretFor,
-} from "@/lib/keys/service";
+import { type KeyProblem, openKey } from "@/lib/keys/open";
+import { listKeys, loadActiveSecret, loadActiveSecretFor } from "@/lib/keys/service";
 import { log, scrubText } from "@/lib/log";
 import { extractInvoice, type InvoiceMediaType } from "./extract";
 import { type AmountIssue, extractFacts, fingerprintText, numberKeyText, refFor } from "./facts";
 import { signingMandate } from "./mandate";
 import { OWNER_CONFIRMS_RULE, ownerConfirms } from "./owner-confirms";
+import { payeeId } from "./payee";
 import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
 
 // The Payables cycle (spec §8, plan 04 Task 13): extract the invoice text, read its facts, store it sealed or as
@@ -61,8 +58,8 @@ export interface InvoiceUpload {
   filename: string | null;
 }
 
-/** Why a key could not be used. None of them is ever answered with another key. */
-export type KeyProblem = "inactive" | "decrypt_failed" | "key_mismatch";
+/** Why a key could not be used (src/lib/keys/open.ts, shared with the owner's Confirm). */
+export type { KeyProblem } from "@/lib/keys/open";
 
 export type PipelineResult =
   /**
@@ -108,36 +105,11 @@ export interface PipelineInput {
   requestId: string;
 }
 
-type Opened = { key: { publicKey: string; secret: string } } | { problem: KeyProblem };
-
-/** The key, or why it cannot be used (null, decrypt_failed and key_mismatch are a skipped cycle). */
-async function openKey(
-  load: () => Promise<{ publicKey: string; secret: string } | null>,
-): Promise<Opened> {
-  try {
-    const key = await load();
-    return key ? { key } : { problem: "inactive" };
-  } catch (e) {
-    if (e instanceof DecryptError) return { problem: "decrypt_failed" };
-    if (e instanceof KeyMismatchError) return { problem: "key_mismatch" };
-    // A mandate bound to a key this console cannot hold (not an ed25519 key): no secret exists for it.
-    if (e instanceof DbError && e.code === "invalid_input") return { problem: "inactive" };
-    throw e;
-  }
-}
-
 const messageOf = (e: unknown): string =>
   scrubText(e instanceof Error ? e.message : String(e)).slice(0, 500) || "unknown error";
 
 /** The HKDF label of the invoice-number key: a key of its own, derived from KEY_ENCRYPTION_SECRET. */
 const NUMBER_KEY_INFO = "probarion/payables/invoice-number-key/v1";
-
-/** The payee as one string: a NEAR account, or an Intents chain, address and asset. */
-const payeeId = (p: Payee): string =>
-  (p.type === "near"
-    ? `near:${p.account_id}`
-    : `intents:${p.chain}:${p.address}:${p.asset}`
-  ).toLowerCase();
 
 /**
  * The duplicate guard's second key: HMAC-SHA256, under a server-side key derived from the master key with HKDF, of
@@ -358,6 +330,8 @@ export async function processInvoice(
           outcome,
           // The code's amount, kept for the owner to confirm (Task 14's Confirm button).
           suggestedAmount: invoiceStatus === "awaiting_owner" ? facts.amount : null,
+          // The mandate the cycle signed under: the owner's confirmation names it (migration 0007).
+          mandateId: mandate.id,
           anchorTxHash:
             outcome.anchorTxHash && TX_HASH.test(outcome.anchorTxHash)
               ? outcome.anchorTxHash
