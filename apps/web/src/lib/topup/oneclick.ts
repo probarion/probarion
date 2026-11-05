@@ -48,7 +48,8 @@ export function buildQuoteRequest(
     refundType: "ORIGIN_CHAIN",
     recipient: i.vault,
     recipientType: "INTENTS",
-    deadline: new Date(now.getTime() + 30 * 60_000).toISOString(),
+    // On a whole second: 1Click may round the deadline it signs to the second, and a quote must never be later than ours.
+    deadline: new Date(Math.floor((now.getTime() + 30 * 60_000) / 1000) * 1000).toISOString(),
     quoteWaitingTimeMs: 3000,
     referral: "probarion",
   };

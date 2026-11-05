@@ -328,6 +328,54 @@ describe("checkQuote and amounts", () => {
   });
 });
 
+describe("the request deadline is a whole second", () => {
+  // 1Click may round the deadline it signs to the second: ours must already be one, so that never trips the check.
+  const withMs = new Date("2026-11-08T10:00:00.789Z");
+  const asked = () =>
+    buildQuoteRequest(
+      { vault: VAULT, owner: "acme.near", amountOut: "20000000", usdc: USDC, baseAsset: BASE },
+      withMs,
+    );
+
+  it("is 30 minutes ahead, floored to the second", () => {
+    expect(asked().deadline).toBe("2026-11-08T10:30:00.000Z");
+    const nearlyNext = new Date("2026-11-08T10:00:00.999Z");
+    expect(
+      buildQuoteRequest(
+        { vault: VAULT, owner: "acme.near", amountOut: "20000000", usdc: USDC, baseAsset: BASE },
+        nearlyNext,
+      ).deadline,
+    ).toBe("2026-11-08T10:30:00.000Z");
+  });
+
+  it("accepts a quote whose deadline is that whole second", () => {
+    const resp = signedResponse(
+      asked(),
+      { deadline: "2026-11-08T10:30:00.000Z" },
+      withMs.toISOString(),
+    );
+    expect(checkQuote(resp, asked(), withMs, verifyWithTestKey).ok).toBe(true);
+  });
+
+  it("accepts a quote whose deadline 1Click rounded down to the second, and refuses one a second later", () => {
+    const rounded = signedResponse(
+      asked(),
+      { deadline: "2026-11-08T10:29:59.000Z" },
+      withMs.toISOString(),
+    );
+    expect(checkQuote(rounded, asked(), withMs, verifyWithTestKey).ok).toBe(true);
+    const later = signedResponse(
+      asked(),
+      { deadline: "2026-11-08T10:30:01.000Z" },
+      withMs.toISOString(),
+    );
+    expect(checkQuote(later, asked(), withMs, verifyWithTestKey)).toEqual({
+      ok: false,
+      reason: "deadline_after_request",
+    });
+  });
+});
+
 describe("checkQuote and time", () => {
   const at = (ms: number) => new Date(now.getTime() + ms).toISOString();
 
