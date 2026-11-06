@@ -484,9 +484,19 @@ describe("sessions belong to one network (W-NET-R3)", () => {
   it("does not let a query, a cookie or a header choose the network: only the host does", async () => {
     await signInAs("alice.near", Date.now(), "mainnet");
     h.host = TESTNET_HOST;
-    h.headers.set("x-forwarded-host", MAINNET_HOST);
     h.headers.set("x-pathname", "/console?network=mainnet");
+    h.headers.set("x-network", "mainnet");
     expect(await getSession()).toBeNull();
+  });
+
+  it("reads the host as the CSRF check does: the first X-Forwarded-Host value, else Host", async () => {
+    await signInAs("alice.near", Date.now(), "mainnet");
+    h.host = TESTNET_HOST;
+    h.headers.set("x-forwarded-host", `${MAINNET_HOST}, cdn.example`);
+    expect(await getSession()).not.toBeNull(); // the address the platform passed in is mainnet's
+    h.headers.set("x-forwarded-host", TESTNET_HOST);
+    h.host = MAINNET_HOST;
+    expect(await getSession()).toBeNull(); // and the forwarded one wins over Host in the other direction too
   });
 });
 

@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   const network = auth.member.network;
   const gate = mainnetGate(network);
   if (gate instanceof Response) return gate;
-  const limited = await topupLimited("quote", auth.session.accountId);
+  const limited = await topupLimited("quote", network, auth.session.accountId);
   if (limited) return limited;
 
   const amount = parseTopupAmount(body.amountUsdc);

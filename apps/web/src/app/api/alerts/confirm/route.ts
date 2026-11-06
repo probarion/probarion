@@ -1,21 +1,21 @@
 import { confirmEmailLink, isLinkCode } from "@/lib/alerts/links";
-import { appOrigin } from "@/lib/config";
 import { serviceDb } from "@/lib/db/clients";
 import { DbError } from "@/lib/db/port";
 import { clientIp, problem, rateLimitOr429 } from "@/lib/http";
 import { log } from "@/lib/log";
-import { originFor, requestNetwork } from "@/lib/network";
+import { softRequestOrigin } from "@/lib/network";
 import { LIMITS } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Back to the address the request came in on, which is its network's origin (never a host the visitor names): the person
- * confirmed on the network they opened the email's link on, and lands on that network's console.
+ * confirmed on the network they opened the email's link on, and lands on that network's console. A setting the console
+ * refuses does not stop the redirect: the origin then comes from the public map built into the pages, else from the
+ * production address (`softRequestOrigin`).
  */
 async function to(path: string): Promise<Response> {
-  const origin = originFor(await requestNetwork()) ?? appOrigin();
-  return Response.redirect(`${origin}${path}`, 303);
+  return Response.redirect(`${await softRequestOrigin()}${path}`, 303);
 }
 
 /**

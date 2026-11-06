@@ -67,8 +67,26 @@ describe("confirmTxAction", () => {
   it("applies a per-account cap (30 a minute) and a global cap on top (300 a minute)", async () => {
     await confirmTxAction(request());
     expect(mocks.rateLimitOr429.mock.calls).toEqual([
-      [{ db: true }, "confirm:owner.near", [30, 60]],
+      [{ db: true }, "confirm:mainnet:owner.near", [30, 60]],
       [{ db: true }, "confirm:all", [300, 60]],
+    ]);
+  });
+
+  it("keys the per-account cap by network too: the same account has a bucket on each, and the global cap stays one", async () => {
+    for (const network of ["mainnet", "testnet"] as const) {
+      net.network = network;
+      await confirmTxAction(request());
+      await sendBaselineAction();
+    }
+    expect(mocks.rateLimitOr429.mock.calls.map((c) => c[1])).toEqual([
+      "confirm:mainnet:owner.near",
+      "confirm:all",
+      "baseline:mainnet:owner.near",
+      "baseline:all",
+      "confirm:testnet:owner.near",
+      "confirm:all",
+      "baseline:testnet:owner.near",
+      "baseline:all",
     ]);
   });
 
@@ -152,7 +170,7 @@ describe("sendBaselineAction", () => {
   it("has its own caps (30 a minute per account, 300 a minute in all), apart from the confirmation's", async () => {
     await sendBaselineAction();
     expect(mocks.rateLimitOr429.mock.calls).toEqual([
-      [{ db: true }, "baseline:owner.near", [30, 60]],
+      [{ db: true }, "baseline:mainnet:owner.near", [30, 60]],
       [{ db: true }, "baseline:all", [300, 60]],
     ]);
   });
@@ -162,9 +180,9 @@ describe("sendBaselineAction", () => {
     await confirmTxAction(request());
     const buckets = mocks.rateLimitOr429.mock.calls.map((c) => c[1]);
     expect(buckets).toEqual([
-      "baseline:owner.near",
+      "baseline:mainnet:owner.near",
       "baseline:all",
-      "confirm:owner.near",
+      "confirm:mainnet:owner.near",
       "confirm:all",
     ]);
     expect(new Set(buckets).size).toBe(buckets.length);
@@ -173,13 +191,13 @@ describe("sendBaselineAction", () => {
   it("the confirmation touches only the confirm caps, and the baseline only its own", async () => {
     await confirmTxAction(request());
     expect(mocks.rateLimitOr429.mock.calls.map((c) => c[1])).toEqual([
-      "confirm:owner.near",
+      "confirm:mainnet:owner.near",
       "confirm:all",
     ]);
     mocks.rateLimitOr429.mockClear();
     await sendBaselineAction();
     expect(mocks.rateLimitOr429.mock.calls.map((c) => c[1])).toEqual([
-      "baseline:owner.near",
+      "baseline:mainnet:owner.near",
       "baseline:all",
     ]);
   });

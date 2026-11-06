@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { envFrom, REQUIRED_ENV } from "../../test/fixtures/env";
+import { assertSameOrigin } from "./http";
 import { networkForRequestHost, originFor, otherNetwork, routingOf } from "./network";
+import { requestHost } from "./site/network";
 
 // The server side of "the network is the address" (W-NET-R2): the same rule as lib/site/network.ts, over the settings
 // loadEnv parsed, and the wrappers that read the request's Host header.
@@ -157,4 +159,63 @@ describe("requestNetwork and softRequestNetwork", () => {
       expect(await softRequestNetwork(), String(host)).toBe(await requestNetwork());
     }
   });
+});
+
+// W-NET-R4 (fix round 1): the network of a request and the CSRF check read one host, so a request cannot pass the origin check
+// for one address and be answered as the network of another.
+describe("the network and the origin check read the same host", () => {
+  const env = both();
+  const ORIGINS = { mainnet: MAINNET, testnet: TESTNET } as const;
+  const HOSTS = {
+    mainnet: "mainnet.probarion.xyz",
+    testnet: "probarion.xyz",
+    other: "preview.vercel.app",
+  };
+  const requests: [string, Record<string, string>][] = [
+    ["Host only", { host: HOSTS.mainnet }],
+    ["Host only, upper case", { host: "MAINNET.probarion.XYZ" }],
+    ["forwarded host only", { "x-forwarded-host": HOSTS.testnet }],
+    ["both, the same", { "x-forwarded-host": HOSTS.mainnet, host: HOSTS.mainnet }],
+    [
+      "both, different: the forwarded one wins",
+      { "x-forwarded-host": HOSTS.mainnet, host: HOSTS.testnet },
+    ],
+    ["both, different the other way", { "x-forwarded-host": HOSTS.testnet, host: HOSTS.mainnet }],
+    [
+      "a list of forwarded hosts",
+      { "x-forwarded-host": `${HOSTS.mainnet}, ${HOSTS.testnet}`, host: HOSTS.testnet },
+    ],
+    [
+      "a list that starts with the other",
+      { "x-forwarded-host": `${HOSTS.testnet}, ${HOSTS.mainnet}`, host: HOSTS.mainnet },
+    ],
+    [
+      "an unknown forwarded host over a known one",
+      { "x-forwarded-host": HOSTS.other, host: HOSTS.mainnet },
+    ],
+    [
+      "a known forwarded host over an unknown one",
+      { "x-forwarded-host": HOSTS.mainnet, host: HOSTS.other },
+    ],
+  ];
+
+  it.each(requests)(
+    "%s: the origin check accepts an origin only for the network the request is answered as",
+    (_name, headers) => {
+      const network = networkForRequestHost(requestHost(new Headers(headers)), env);
+      for (const candidate of ["mainnet", "testnet"] as const) {
+        const req = new Request("https://internal.local/api/x", {
+          method: "POST",
+          headers: { ...headers, origin: ORIGINS[candidate] },
+        });
+        const accepted = assertSameOrigin(req) === null;
+        // An address of one of the two networks is accepted exactly when the request is for that network; a request for
+        // an unknown host is the default network's, and no origin of a network matches it.
+        const hostIsKnown = [HOSTS.mainnet, HOSTS.testnet].includes(
+          requestHost(new Headers(headers)) ?? "",
+        );
+        expect(accepted, `${candidate}`).toBe(hostIsKnown && network === candidate);
+      }
+    },
+  );
 });

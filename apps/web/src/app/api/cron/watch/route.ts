@@ -11,6 +11,7 @@ import {
   type WatchRun,
   watchAll,
   watchHealthy,
+  watchStarved,
 } from "@/lib/watcher/watch";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ interface Done {
   /** Null when the watch itself could not run (the tenants could not be listed). */
   watch: WatchCounts | null;
   healthy: boolean;
+  /** The watch got no time and left every tenant for the next run (see `watchStarved`). */
+  starved: boolean;
 }
 
 /**
@@ -42,7 +45,10 @@ interface Done {
  * do passes its time on. Every network is watched before any alert goes out, and one network failing (its tenants
  * cannot be listed) does not stop the other. The Better Stack heartbeat goes out after the watches, only when every
  * network's watch was healthy (no tenant, or one that was tried and did not fail), so a dead cron or an unreadable chain
- * raises the alarm; a run where a network's watch was not healthy is a 503 that still says what it did. `checkErrors`
+ * raises the alarm; a run where a network's watch was not healthy is a 503 that still says what it did. A network that
+ * has tenants and got no time at all, so that it skipped every one of them, is not healthy either: the answer marks it
+ * `starved: true`. It only happens when the network before it overran by about 20 s, so the missed ping is a true signal
+ * (the heartbeat's grace absorbs a single one). `checkErrors`
  * counts the best-effort checks that failed (a key's allowance, the vault's NEAR): each is a warning in the log, and none
  * is part of health or of the heartbeat. A call without the bearer secret is a 401. The log has the counts and nothing
  * else: no event data, and not the heartbeat address, which carries a token.
@@ -78,11 +84,12 @@ export async function GET(req: Request) {
             checkErrors: run.checkErrors,
           },
           healthy: watchHealthy(run),
+          starved: watchStarved(run),
         });
       } catch (error) {
         // The database or a missing setting for this network: the other network's watch still runs.
         log.error("cron.watch_failed", { network, error });
-        done.push({ network, watch: null, healthy: false });
+        done.push({ network, watch: null, healthy: false, starved: false });
       }
     }
     // Nothing could be watched at all: the same failed run (no alerts, no heartbeat) as one network that cannot be read.
@@ -95,6 +102,7 @@ export async function GET(req: Request) {
     const entries: {
       network: Network;
       watch: WatchCounts | { error: true };
+      starved?: true;
       alerts: AlertsRun | null;
     }[] = [];
     for (const [i, d] of done.entries()) {
@@ -105,7 +113,12 @@ export async function GET(req: Request) {
         // runAlerts does not throw; the catch is for the day somebody changes that, and the watch's answer must stand.
         alerts = await runAlerts(d.network, deadline).catch(() => DISPATCH_FAILED);
       }
-      entries.push({ network: d.network, watch: d.watch ?? { error: true }, alerts });
+      entries.push({
+        network: d.network,
+        watch: d.watch ?? { error: true },
+        ...(d.starved ? { starved: true as const } : {}),
+        alerts,
+      });
     }
     log.info("cron.watch", { networks: entries, healthy, heartbeat, ms: Date.now() - started });
     return json({ ok: healthy, networks: entries, heartbeat }, healthy ? 200 : 503);

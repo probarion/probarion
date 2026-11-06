@@ -35,6 +35,9 @@ function consoleLink(linked: Linked): string | null {
       ? null
       : `${origin}/console/${encodeURIComponent(linked.vault_id)}/alerts`;
   } catch {
+    // The settings cannot be read (a variable the console refuses): the chat is still linked, without the link. The network
+    // only: no error text, no vault, no chat.
+    log.warn("telegram.console_link_failed", { network: linked.network });
     return null;
   }
 }
@@ -88,12 +91,13 @@ export async function POST(req: Request) {
         link_code: start.code,
         target: start.chatId,
       });
+      const link = linked === null ? null : consoleLink(linked);
       await reply(
         token,
         start.chatId,
         linked === null
           ? EXPIRED
-          : `${linked.duplicate ? `This chat already gets alerts for ${linked.vault_id}.` : `Linked to ${linked.vault_id}.`} You will get a message when ${kindsInWords(linked.kinds)}. Send /stop to end alerts.${consoleLink(linked) === null ? "" : `\n\nManage them: ${consoleLink(linked)}`}`,
+          : `${linked.duplicate ? `This chat already gets alerts for ${linked.vault_id}.` : `Linked to ${linked.vault_id}.`} You will get a message when ${kindsInWords(linked.kinds)}. Send /stop to end alerts.${link === null ? "" : `\n\nManage them: ${link}`}`,
       );
     } else if (stop) {
       const { stopped } = await serviceDb().rpc<{ stopped: number }>("alert_telegram_stop", {

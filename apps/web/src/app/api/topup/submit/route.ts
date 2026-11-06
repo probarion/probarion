@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   if (auth instanceof Response) return auth;
   const gate = mainnetGate(auth.member.network);
   if (gate instanceof Response) return gate;
-  const limited = await topupLimited("submit", auth.session.accountId);
+  const limited = await topupLimited("submit", auth.member.network, auth.session.accountId);
   if (limited) return limited;
   await submitDeposit(gate.jwt, {
     txHash: body.txHash,

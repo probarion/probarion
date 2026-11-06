@@ -1,12 +1,13 @@
 import "server-only";
 import { headers } from "next/headers";
-import type { Network } from "@/lib/config";
+import { appOrigin, type Network } from "@/lib/config";
 import { type Env, getEnv } from "@/lib/env";
 import {
   type NetworkRouting,
   networkForHost,
   otherNetworkOf,
   publicRouting,
+  requestHost,
 } from "@/lib/site/network";
 
 // One deployment serves both networks (W-NET-R2). The network of a request comes from the address it was opened at,
@@ -36,9 +37,12 @@ export function networkForRequestHost(
   return networkForHost(host, routingOf(env));
 }
 
-/** The network of the request being answered. Only for code that runs inside a request. */
+/**
+ * The network of the request being answered. Only for code that runs inside a request. The host is the one the CSRF check
+ * reads (`requestHost`: the first `X-Forwarded-Host` value, else `Host`), so the check and the network cannot disagree.
+ */
 export async function requestNetwork(): Promise<Network> {
-  return networkForRequestHost((await headers()).get("host"), getEnv());
+  return networkForRequestHost(requestHost(await headers()), getEnv());
 }
 
 /**
@@ -47,11 +51,28 @@ export async function requestNetwork(): Promise<Network> {
  * (the same rule, the same origins). It reads no secret and decides nothing about access.
  */
 export async function softRequestNetwork(): Promise<Network> {
-  const host = (await headers()).get("host");
+  const host = requestHost(await headers());
   try {
     return networkForRequestHost(host, getEnv());
   } catch {
     return networkForHost(host, publicRouting());
+  }
+}
+
+/**
+ * The origin of the request's network, for a redirect that must still happen when the settings cannot be read (the
+ * one-time alert links: a button must not turn into a bare 500 because a variable is wrong). The settings first; if they
+ * fail, the public map built into the pages (the same rule on the same host); and when that has no origin for the
+ * network, the production address (`appOrigin()`). Never throws, reads no secret and decides nothing about access.
+ */
+export async function softRequestOrigin(): Promise<string> {
+  const host = requestHost(await headers());
+  try {
+    const env = getEnv();
+    return originFor(networkForRequestHost(host, env), env) ?? appOrigin();
+  } catch {
+    const routing = publicRouting();
+    return routing.origins[networkForHost(host, routing)] ?? appOrigin();
   }
 }
 

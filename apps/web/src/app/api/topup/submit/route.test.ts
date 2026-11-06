@@ -152,7 +152,7 @@ describe("POST /api/topup/submit", () => {
     expect(r.status).toBe(429);
     expect(r.headers.get("retry-after")).toMatch(/^[0-9]+$/);
     expect(await answer(r)).toMatchObject({ error: "rate_limited" });
-    expect(h.limits.at(-1)).toEqual({ bucket: "topup-submit:acme.near", max, window });
+    expect(h.limits.at(-1)).toEqual({ bucket: "topup-submit:mainnet:acme.near", max, window });
     expect(oneclick.calls).toHaveLength(max);
     // A bad request is refused before it costs a token.
     h.buckets.clear();

@@ -318,7 +318,7 @@ describe("POST /api/topup/quote: the request 1Click gets", () => {
     expect(r.status).toBe(429);
     expect(r.headers.get("retry-after")).toMatch(/^[0-9]+$/);
     expect(await answer(r)).toMatchObject({ error: "rate_limited" });
-    expect(h.limits.at(-1)).toEqual({ bucket: `topup:${OWNER}`, max, window });
+    expect(h.limits.at(-1)).toEqual({ bucket: `topup:mainnet:${OWNER}`, max, window });
     expect(oneclick.calls).toHaveLength(max);
   });
 

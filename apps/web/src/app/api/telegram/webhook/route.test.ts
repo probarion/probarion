@@ -358,6 +358,32 @@ describe("one bot, both networks", () => {
     expect(reply()).not.toContain(MAINNET);
   });
 
+  it("makes the link once per start: the settings are read for the token and for that one link", async () => {
+    await serving();
+    h.env.mockClear();
+    await call(message(`/start ${await newCode(tenant)}`));
+    expect(reply()).toContain(`Manage them: ${MAINNET}/console/${V}/alerts`);
+    expect(h.env).toHaveBeenCalledTimes(2);
+  });
+
+  it("still links the chat when the link cannot be made, and logs that it could not, with no value", async () => {
+    // The token is read first; the settings then fail for the link (a variable the console refuses, say).
+    h.env.mockReturnValueOnce({ TELEGRAM_BOT_TOKEN: TOKEN }).mockImplementation(() => {
+      throw new Error(`NEAR_RPC_URLS entry 1 must be https (${TOKEN})`);
+    });
+    await call(message(`/start ${await newCode(tenant)}`));
+    expect(reply()).toContain(`Linked to ${V}.`);
+    expect(reply()).not.toContain("Manage them");
+    expect((await subs())[0]?.verified_at).not.toBeNull();
+    const line = logs.lines.find((l) => l.includes("telegram.console_link_failed")) ?? "";
+    expect(line).toContain('"level":"warn"');
+    expect(line).toContain('"network":"mainnet"');
+    // The warning names the network and nothing else: not the error, the vault, the chat or the token.
+    expect(line).not.toContain(TOKEN);
+    expect(line).not.toContain(V);
+    expect(line).not.toContain(String(CHAT));
+  });
+
   it("names no link for a network this site does not serve, and still links the chat", async () => {
     await serving(false);
     await call(message(`/start ${await newCode(tenant)}`));

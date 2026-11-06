@@ -1,5 +1,6 @@
 import type { Db } from "@/lib/db/port";
 import { takeToken } from "@/lib/ratelimit";
+import { requestHost } from "@/lib/site/network";
 
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 const HEXTET = /^[0-9a-fA-F]{1,4}$/;
@@ -107,11 +108,9 @@ export function problem(
 /** CSRF guard for JSON/multipart route handlers (Server Actions have their own origin check). */
 export function assertSameOrigin(req: Request): Response | null {
   const origin = req.headers.get("origin");
-  // Behind a proxy chain the forwarded host can be a comma list; the first hop is the one the client asked for.
-  const hostHeader =
-    req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? new URL(req.url).host;
-  const host = (hostHeader.split(",")[0] ?? "").trim().toLowerCase();
-  if (!origin) return problem(403, "bad_origin");
+  // The same host the request's network is read from (requestHost): the two cannot disagree.
+  const host = requestHost(req.headers, req.url);
+  if (!origin || host === null) return problem(403, "bad_origin");
   try {
     if (new URL(origin).host !== host) return problem(403, "bad_origin");
   } catch {

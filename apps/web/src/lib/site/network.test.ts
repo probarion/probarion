@@ -9,6 +9,7 @@ import {
   originHost,
   otherNetworkOf,
   publicRoutingVars,
+  requestHost,
   routingFromPublicVars,
   switchPath,
 } from "./network";
@@ -296,5 +297,34 @@ describe("an origin with a trailing dot", () => {
     expect(
       publicRoutingVars({ APP_ORIGIN_MAINNET: "https://a.example." }).NEXT_PUBLIC_ORIGIN_MAINNET,
     ).toBe("https://a.example");
+  });
+});
+
+describe("requestHost", () => {
+  const h = (o: Record<string, string>) => ({
+    get: (name: string) => (Object.hasOwn(o, name) ? (o[name] as string) : null),
+  });
+
+  it("is the first X-Forwarded-Host value, else Host, else the request URL's host: the order the CSRF check has", () => {
+    expect(requestHost(h({ "x-forwarded-host": "a.example", host: "b.example" }))).toBe(
+      "a.example",
+    );
+    expect(
+      requestHost(h({ "x-forwarded-host": "a.example, cdn.example", host: "b.example" })),
+    ).toBe("a.example");
+    expect(requestHost(h({ host: "b.example" }))).toBe("b.example");
+    expect(requestHost(h({}), "https://c.example:3000/x")).toBe("c.example:3000");
+    expect(requestHost(h({ host: "b.example" }), "https://c.example/x")).toBe("b.example");
+  });
+
+  it("is trimmed and lower case, and keeps the port", () => {
+    expect(requestHost(h({ host: "  Probarion.XYZ:3000 " }))).toBe("probarion.xyz:3000");
+    expect(requestHost(h({ "x-forwarded-host": " A.Example , b" }))).toBe("a.example");
+  });
+
+  it("is null when no host can be told", () => {
+    expect(requestHost(h({}))).toBeNull();
+    expect(requestHost(h({ host: "" }))).toBeNull();
+    expect(requestHost(h({ "x-forwarded-host": " , b.example", host: "c.example" }))).toBeNull();
   });
 });

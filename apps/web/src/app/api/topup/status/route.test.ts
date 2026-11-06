@@ -133,7 +133,7 @@ describe("GET /api/topup/status", () => {
     const r = await get();
     expect(r.status).toBe(429);
     expect(r.headers.get("retry-after")).toMatch(/^[0-9]+$/);
-    expect(h.limits.at(-1)).toEqual({ bucket: "topup-status:acme.near", max, window });
+    expect(h.limits.at(-1)).toEqual({ bucket: "topup-status:mainnet:acme.near", max, window });
     expect(oneclick.calls).toHaveLength(max);
     h.buckets.clear();
     expect((await get(url("Not A Vault"))).status).toBe(400);

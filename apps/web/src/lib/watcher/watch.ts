@@ -514,10 +514,20 @@ export async function watchAll(
 
 /**
  * A run is healthy when no tenant was due, or at least one tenant it tried did not fail: the chain was reached. A run that
- * was given no time at all (every tenant skipped, which only a shared run can see) tried nothing and failed nothing.
+ * was given no time at all (every tenant skipped, which only a shared run can see) tried nothing, so it is not healthy
+ * either (`watchStarved` says that this is the reason).
  */
 export function watchHealthy(r: WatchRun): boolean {
-  return r.tenants === 0 || r.skipped === r.tenants || r.errors < r.tenants - r.skipped;
+  return r.tenants === 0 || r.errors < r.tenants - r.skipped;
+}
+
+/**
+ * A network with tenants whose watch got no time and skipped every one of them. The network before it overran its share by
+ * about 20 s, so the missed heartbeat is a true signal; the heartbeat provider's grace absorbs a single one. A network
+ * with no tenant has nothing left undone and is never starved.
+ */
+export function watchStarved(r: WatchRun): boolean {
+  return r.tenants > 0 && r.skipped === r.tenants;
 }
 
 /**

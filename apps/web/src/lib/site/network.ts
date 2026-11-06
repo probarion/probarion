@@ -77,6 +77,33 @@ export function originHost(origin: string | null): string | null {
   return r.ok ? r.host : null;
 }
 
+/**
+ * The host a request was made for, the one source for both the CSRF check (`assertSameOrigin`) and the network of the
+ * request (`requestNetwork`), so the two cannot read different hosts: the first `X-Forwarded-Host` value when the header
+ * is there (behind a proxy chain it is a comma list, and the first hop is the one the client asked for), else `Host`, else
+ * the host of `url` when the caller has the request's URL. Trimmed and lower case, with the port. Null when none of them
+ * gives a host. On Vercel the platform sets both headers.
+ */
+export function requestHost(
+  headers: { get(name: string): string | null },
+  url?: string,
+): string | null {
+  const raw =
+    headers.get("x-forwarded-host") ??
+    headers.get("host") ??
+    (url === undefined ? null : hostOfUrl(url));
+  const first = (raw?.split(",")[0] ?? "").trim().toLowerCase();
+  return first === "" ? null : first;
+}
+
+function hostOfUrl(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
 /** A `Host` header as it is compared: trimmed, lower case, without the dot that ends a fully qualified name. */
 export function normalizeHost(host: string): string {
   return host

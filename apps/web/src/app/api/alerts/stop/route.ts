@@ -1,12 +1,11 @@
 import { stopByToken } from "@/lib/alerts/links";
 import { parseStopParams } from "@/lib/alerts/stop";
-import { appOrigin } from "@/lib/config";
 import { subkey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
 import { DbError } from "@/lib/db/port";
 import { json, problem } from "@/lib/http";
 import { log } from "@/lib/log";
-import { originFor, requestNetwork } from "@/lib/network";
+import { softRequestOrigin } from "@/lib/network";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +20,11 @@ export async function POST(req: Request) {
   const link = parseStopParams(new URL(req.url).searchParams);
   if (link === null) return problem(400, "invalid_link");
   const fromPage = (await req.formData().catch(() => null))?.get("from") === "page";
-  // Back to the address the request came in on, which is its network's origin.
+  // Back to the address the request came in on, which is its network's origin; a setting the console refuses does not stop
+  // the redirect (softRequestOrigin).
   const page = async (extra: string) =>
     Response.redirect(
-      `${originFor(await requestNetwork()) ?? appOrigin()}/alerts/stop?s=${link.id}&t=${link.token}${extra}`,
+      `${await softRequestOrigin()}/alerts/stop?s=${link.id}&t=${link.token}${extra}`,
       303,
     );
   try {

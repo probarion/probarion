@@ -54,6 +54,7 @@ type Body = {
   networks: {
     network: string;
     watch: Record<string, unknown>;
+    starved?: true;
     alerts: Record<string, unknown> | null;
   }[];
   heartbeat: boolean;
@@ -445,7 +446,7 @@ describe("GET /api/cron/watch with both networks served", () => {
       expect(mocks.watchAll.mock.calls.map((c) => c[1])).toEqual([20_000, 12_000]);
     });
 
-    it("gives the second network no time at all when the first used it all, and does not call that a failure", async () => {
+    it("gives the second network no time at all when the first used it all: it is starved, and the run is not healthy", async () => {
       mocks.watchAll.mockImplementationOnce(async () => {
         vi.setSystemTime(at(45));
         return run();
@@ -455,8 +456,50 @@ describe("GET /api/cron/watch with both networks served", () => {
         return run({ tenants: 4, inserted: 0, skipped: 4 }); // every tenant left for the next run
       });
       const res = await call();
+      // BASE's status for a watch that is not healthy, with no heartbeat for the run, and the answer says which network.
+      expect(res.status).toBe(503);
+      expect(beat).not.toHaveBeenCalled();
+      const body = (await res.json()) as Body;
+      expect(body.ok).toBe(false);
+      expect(body.heartbeat).toBe(false);
+      expect(body.networks.map((n) => [n.network, n.starved])).toEqual([
+        ["mainnet", undefined],
+        ["testnet", true],
+      ]);
+      expect(body.networks[1]?.watch).toEqual({
+        tenants: 4,
+        inserted: 0,
+        errors: 0,
+        skipped: 4,
+        checkErrors: 0,
+      });
+      // The events already recorded are still worth sending: both networks' alerts run, as after any unhealthy watch.
+      expect(mocks.runAlerts.mock.calls.map((c) => c[0])).toEqual(BOTH);
+      // The log line says it too.
+      const line = logs.lines.find((l) => l.includes('"msg":"cron.watch"')) ?? "{}";
+      expect(JSON.parse(line)).toMatchObject({ healthy: false, heartbeat: false });
+      expect(JSON.parse(line).networks[1]).toMatchObject({ network: "testnet", starved: true });
+    });
+
+    it("does not call a network with no tenants starved, whatever time it got: nothing was left undone", async () => {
+      mocks.watchAll.mockImplementationOnce(async () => {
+        vi.setSystemTime(at(45));
+        return run();
+      });
+      mocks.watchAll.mockImplementationOnce(async () => run({ tenants: 0, inserted: 0 }));
+      const res = await call();
       expect(res.status).toBe(200);
       expect(beat).toHaveBeenCalledTimes(1);
+      const body = (await res.json()) as Body;
+      expect(body.networks.some((n) => "starved" in n)).toBe(false);
+    });
+
+    it("does not call a network starved when it watched some tenants and left others for the next run", async () => {
+      mocks.watchAll.mockResolvedValue(run({ tenants: 4, skipped: 3 }));
+      const res = await call();
+      expect(res.status).toBe(200);
+      expect(beat).toHaveBeenCalledTimes(1);
+      expect(((await res.json()) as Body).networks.some((n) => "starved" in n)).toBe(false);
     });
 
     it("shares the time to 55 s the same way between the two dispatches", async () => {

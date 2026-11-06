@@ -20,7 +20,11 @@ function unknown(hash: unknown, error: string): TxResult {
   return { status: "unknown", txHash: isTxHash(hash) ? hash : null, code: null, error };
 }
 
-/** Signed in, and under both rate caps of `caps`. The account, or the reason not to go ahead. */
+/**
+ * Signed in, and under both rate caps of `caps`. The account, or the reason not to go ahead. The per-account cap is one
+ * bucket per account and network (the address this runs for): the same account on the other network has its own. The
+ * global cap stays one.
+ */
 async function admit(caps: {
   account: string;
   all: string;
@@ -28,9 +32,13 @@ async function admit(caps: {
   const session = await getSession();
   if (session === null) return "Sign in again to confirm this transaction here";
   const db = serviceDb();
+  const network = await requestNetwork();
   if (
-    (await rateLimitOr429(db, `${caps.account}:${session.accountId}`, LIMITS.confirmPerAccount)) !==
-    null
+    (await rateLimitOr429(
+      db,
+      `${caps.account}:${network}:${session.accountId}`,
+      LIMITS.confirmPerAccount,
+    )) !== null
   ) {
     return "Too many confirmations just now";
   }
