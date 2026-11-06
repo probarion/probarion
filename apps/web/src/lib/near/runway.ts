@@ -24,12 +24,18 @@ export const NEAR_PER_SPEND_YOCTO = (53n * NEAR) / 10_000n;
 export const LOW_NEAR_YOCTO = NEAR / 10n;
 
 /**
- * Below 0.05 NEAR free the vault is about to stop paying.
- * TODO(plan 04 Task 20): the watcher emits a `near_low` vault event (kind added in migration 0001)
- * at most once per UTC day below this. TODO(plan 04 Task 21): `near_low` is in the default alert
- * kinds of a new subscription.
+ * Below 0.05 NEAR free the vault is about to stop paying: the watcher emits a `near_low` vault event
+ * (kind added in migration 0001) at most once per UTC day while it is. TODO(plan 04 Task 21):
+ * `near_low` is in the default alert kinds of a new subscription.
  */
 export const NEAR_LOW_ALERT_YOCTO = NEAR / 20n;
+
+/**
+ * Below 0.2 NEAR of allowance left on an agent or ledger key, the key is about to stop paying for gas: the
+ * watcher emits an `allowance_low` vault event, at most once per key per UTC day. It is the same figure
+ * as the Canary's `minAllowanceYocto`, held apart on purpose: this one is an alert, that one a kill switch.
+ */
+export const ALLOWANCE_LOW_ALERT_YOCTO = NEAR / 5n;
 
 /** The vault wasm is 248,501 bytes (docs/runbooks/factory.md). An embedded vault stores its own copy. */
 export const EMBEDDED_VAULT_WASM_BYTES = 248_501n;
