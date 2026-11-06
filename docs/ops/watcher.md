@@ -27,15 +27,17 @@ The row for a spend also keeps the destination, the `ref`, the hold's end and th
 
 ## What one run does
 
-- It lists the tenants of the network the app runs on (`NEAR_NETWORK`), the ones looked at longest ago first, and watches them one after another. Each tenant is watched under a 50 second lease, so two runs do not normally work on one vault together. A run that outlives its lease can overlap one that starts after it; that is safe, because every event has a key that is written once and a cursor written by the slower run can only move back, never past rows it did not read.
+- It watches every network the site serves (`docs/runbooks/web-deploy.md`, "Both networks in one project"), mainnet first, one network after the other. For each it lists the tenants of that network only, the ones looked at longest ago first, and watches them one after another, reading that network's chain with that network's RPC list. A tenant on the other network is never listed for it, and never read from the other network's chain. Each tenant is watched under a 50 second lease, so two runs do not normally work on one vault together. A run that outlives its lease can overlap one that starts after it; that is safe, because every event has a key that is written once and a cursor written by the slower run can only move back, never past rows it did not read.
 - It reads the tenant's row again (a request the app drives, or you, may have moved its cursors since the run listed them), marks the tenant as looked at before any chain read, and reads each vault's spends, anchors and mandates from the tenant's cursor, 100 at a time and at most 10 pages of each kind per run, and the ledger 500 entries per run. A vault with more than that catches up over the next runs.
 - It writes the events, then moves the cursors. If a run dies in between, the next one reads the same rows again and writes nothing twice. A spend that is `pending`, or `held` and still inside its window, keeps the spend cursor where it is, so it is read again until it settles; see "Limits" for a hold that was never decided.
 - A vault's first run records that vault's whole history, as observed at that moment. On `/usage` the history therefore lands on the day of the first run, and the totals are right. The alerts do not send that history: an event recorded before the vault has caught up is flagged `initial`, and only a low key, a low vault and a hold that is still open are sent from it (`docs/ops/alerts.md`). A run has caught up the vault when every list ended on a short page (not at the 10-page cap) and the ledger answered fewer than 500 entries; the run says so when it writes its cursors, and a run that stopped at a cap does not.
 - A tenant whose run fails is logged (`watch.tenant_failed`) and does not stop the others. Its cursors do not move. It was marked as looked at when it was started, so it goes to the back of the queue and cannot use up every run, even if a run is killed while it hangs.
-- It starts no new tenant 40 seconds into the run. The answer says how many it left (`skipped`), and they go first next time.
+- It starts no new tenant 40 seconds into the run. The 40 seconds are shared: each network's budget is what is left of them divided by the networks not yet run, so a network with nothing to do passes its time on. A network that is given no time at all (the first used it all) leaves every tenant for the next run; that is not a failure. The answer says how many it left (`skipped`), and they go first next time.
+- Every network is watched before any alert goes out, and a network that fails (its tenants cannot be listed) does not stop the other: it is answered as `"watch":{"error":true}` with `"alerts":null`, the other network's watch and alerts run, and the run is a 503.
 - A check that cannot be read (a key's allowance, the vault's balance) is logged as `watch.check_failed` (one line per failed key, with the key's public key and no event data), counted in `checkErrors`, and the vault's spends, anchors, mandates and refusals are still recorded. The check is tried again next run. `checkErrors` is not part of the run's health, so watch it: a number that stays above 0 on every run means the allowance and low-NEAR alerts are not working. The events for those two checks are written in calls of their own, so a failed batch of spends does not hide a low-NEAR alert, and the other way round.
-- The Better Stack heartbeat (`BETTERSTACK_HEARTBEAT_URL`, optional) is sent after a healthy run: no tenant at all, or at least one tenant that was tried and did not fail. Set its expected period in Better Stack to the schedule you use. A run where every tenant that was tried failed answers 503 and sends no heartbeat.
-- The log and the answer carry counts (`tenants`, `inserted`, `errors`, `skipped`, `checkErrors`, and the alert counts under `alerts`, see `docs/ops/alerts.md`) and nothing else: no event data, and not the heartbeat address, which holds a token.
+- The Better Stack heartbeat (`BETTERSTACK_HEARTBEAT_URL`, optional) is sent after the watches, only when **every** network's watch was healthy: no tenant at all, or at least one tenant that was tried and did not fail. Set its expected period in Better Stack to the schedule you use. A run where a network's tenants that were tried all failed answers 503 and sends no heartbeat.
+- The alerts go out after the heartbeat, one network after the other, each until its share of the time left to 55 seconds after the route started.
+- The log and the answer carry counts (`tenants`, `inserted`, `errors`, `skipped`, `checkErrors`, per network, and the alert counts under `alerts`, see `docs/ops/alerts.md`) and nothing else: no event data, and not the heartbeat address, which holds a token.
 
 ## Turn on the per-minute schedule (once)
 
@@ -48,7 +50,7 @@ Use Supabase Cron (`pg_cron`) with `pg_net`: it needs no Vercel plan. It is not 
    select vault.create_secret('<the value of CRON_SECRET>', 'cron_secret', 'Bearer for /api/cron/watch');
    ```
 
-3. Schedule the call, in the SQL Editor. Use the address of your deployment if it is not `probarion.xyz`. A Supabase project that holds both networks needs one job per deployment, because each deployment watches only its own network.
+3. Schedule the call, in the SQL Editor. Use the address of your deployment if it is not `probarion.xyz`. One job is enough for a project that holds both networks: the run watches every network the site serves. It may use either address of the deployment.
 
    ```sql
    select cron.schedule('probarion-watch', '* * * * *', $$
@@ -74,7 +76,7 @@ From your own terminal, with `CRON_SECRET` taken from your password manager (do 
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" https://<deployment-url>/api/cron/watch          # 401
-curl -s -H "Authorization: Bearer $CRON_SECRET" https://<deployment-url>/api/cron/watch   # {"ok":true,"network":"mainnet","watch":{"tenants":...,"inserted":...,"errors":0,"skipped":0,"checkErrors":0},"alerts":{"sent":0,"failed":0,"skipped":0,"deferred":0,"error":false},"heartbeat":false}
+curl -s -H "Authorization: Bearer $CRON_SECRET" https://<deployment-url>/api/cron/watch   # {"ok":true,"networks":[{"network":"mainnet","watch":{"tenants":...,"inserted":...,"errors":0,"skipped":0,"checkErrors":0},"alerts":{"sent":0,"failed":0,"skipped":0,"deferred":0,"error":false}},{"network":"testnet","watch":{...},"alerts":{...}}],"heartbeat":false}
 ```
 
 Then in the SQL Editor:
