@@ -220,12 +220,24 @@ The software is an unaudited beta.
   one-click unsubscribe), the bot's `/stop`, or Remove on the new Alerts tab
   (`/console/<vault>/alerts`). The channels switch on once the owner sets `TELEGRAM_BOT_TOKEN` and
   `RESEND_API_KEY` (`docs/ops/alerts.md`).
+- The web console serves testnet and mainnet from one deployment. The network of a request is the
+  address it was opened at (`APP_ORIGIN_MAINNET`, `APP_ORIGIN_TESTNET`), with a Testnet | Mainnet
+  switch in the header once both are served. Sessions, vault pages, the watcher and metrics jobs,
+  alerts, the Canary board and `/usage` are per network, and a vault of the other network shows a
+  card with a link to its own address. The per-network settings (`NEAR_RPC_URLS`,
+  `PROBARION_FACTORY_ID` and four more) each have a `_MAINNET` and a `_TESTNET` form
+  (`docs/runbooks/web-deploy.md`, section 3.5).
 - The SDK takes a deadline: `RpcClient` `remainingMs`, `NearApiJsSender` `sendTimeoutMs` as a
   function, and `NearAiProposer` `remainingMs` and `knownModel`. All are optional, and the
   defaults are unchanged.
 
 ### Changed
 
+- Sessions name their network and belong to one address, so a person signs in at each network's
+  address with a wallet of that network. After this change everyone signs in once more. A vault's
+  routes and actions answer `409 wrong_network` at the other network's address, and a registered
+  vault keeps its network: Register at the other address cannot move it (`network_mismatch`).
+  Per-account rate limits are counted per network, and Register has its own.
 - The console asks for confirmation in its own dialog instead of the browser's confirm box. The
   dialog is titled with the action, shows the same question as before, and says that the wallet asks
   for the signature next and that nothing is sent until then. Revoking a mandate, removing an agent
@@ -326,6 +338,12 @@ The software is an unaudited beta.
   failure. Third-party actions are pinned by commit SHA, and the cargo-near download is checked by
   sha256.
 - CI scans the whole git history for secrets with gitleaks.
+- The console refuses, at start, settings that could point a network at the other chain: an
+  unsuffixed per-network setting while both networks are served, a mainnet account id ending in
+  `.testnet` or a testnet one ending in `.near`, and an RPC host named after the other network. The
+  error names the variable, not its value. Sign-in, Register and the approvers re-sync read the chain
+  only through RPC URLs that answered the JSON-RPC `status` call with that network's `chain_id`, and
+  answer `503 wrong_chain` once any URL has answered with the other chain.
 
 ## 0.1.0 - 2026-11-07
 
