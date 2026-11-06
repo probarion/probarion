@@ -7,7 +7,8 @@ export type SubkeyPurpose =
   | "session"
   | "telegram"
   | "visitor"
-  | "challenge";
+  | "challenge"
+  | "alerts";
 
 /** Decision D4. Changing an id invalidates every value derived from it. */
 const SUBKEY_IDS: Record<SubkeyPurpose, number> = {
@@ -19,6 +20,9 @@ const SUBKEY_IDS: Record<SubkeyPurpose, number> = {
   // Challenge cookies get their own subkey, so a challenge can never verify as a session even if the
   // two payloads happen to have the same shape. Added after 1-5; those ids must never change.
   challenge: 6,
+  // The stop link in an alert email (lib/alerts/stop.ts): a keyed hash of a subscription id. Added after 1-6; those ids
+  // must never change.
+  alerts: 7,
 };
 const KDF_CONTEXT = "PROBARIO"; // exactly crypto_kdf_CONTEXTBYTES (8)
 const KEY_BYTES = 32; // the libsodium size for secretbox, auth, kdf and keyed hashing here

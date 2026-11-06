@@ -41,6 +41,7 @@ describe("crypto/server", () => {
       "invoices",
       "telegram",
       "visitor",
+      "alerts",
     ] as const) {
       expect(hex(await subkey(purpose)), purpose).toBe(hex(await deriveSubkey(master, purpose)));
     }

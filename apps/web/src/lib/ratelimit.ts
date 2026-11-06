@@ -27,6 +27,8 @@ export const LIMITS = {
   canaryModelGlobal: [300, 3600],
   telegramWebhook: [120, 60],
   alertTest: [5, 600],
+  /** The public confirmation page and its button (per address); the stop link has none: a valid token is all it needs. */
+  alertLink: [30, 60],
   /** The console's server actions that read the chain for a signed-in account (lib/near/confirm-action.ts). */
   confirmPerAccount: [30, 60],
   /** All accounts together, on top of the per-account cap. */
