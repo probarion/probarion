@@ -11,7 +11,7 @@ OWNER only. The public page `/usage` shows counts of vaults, payments, refusals 
   - `metrics_backfill({ network?, from? })` (service role only) computes every day of the history. The migration calls it once at its end (see "The history").
   - `rate_limits_prune` (service role only) deletes the rate limiter's rows whose window began more than a day ago. No window the app uses is longer than a day, so nothing live is deleted; `src/lib/ratelimit.test.ts` holds every window to that.
 - **A Canary attempt carries the network of the Canary vault it was made on**, so a mainnet Canary beside a testnet one keep separate numbers on `/usage`. The attempts that existed when the migration was applied were given the network of the Canary vault when every Canary vault was on the same network; otherwise they have none, and an attempt with no network counts for no network.
-- **Payments and mandates** come from `vault_events`, which the watcher fills from the chain. They read 0 until the watcher runs.
+- **Payments and mandates** come from `vault_events`, which the watcher fills from the chain (`docs/ops/watcher.md`). They read 0 until the watcher runs. A vault's first watcher run records its whole history as observed at that moment, so on `/usage` that history lands on the day of the first run, and the totals are right.
 - **Totals add up the days that were computed.** The migration computes the days of the history that exist when it is applied; after that, each day is computed as it happens.
 
 ## How they stay fresh
