@@ -238,7 +238,7 @@ export const PRIVACY_PAGE = {
       id: "invoices",
       title: "Invoices",
       paragraphs: [
-        "The file of an invoice you upload is encrypted before it is stored. The facts read from it, such as the amount and its references, and its file name are stored with it, not encrypted. With zero-retention on, we keep only its hashes and the outcome: not the file, its text, its facts or its name.",
+        "The file of an invoice you upload is encrypted before it is stored. The facts read from it, such as the amount and its references, and its file name are stored with it, not encrypted. With zero-retention on, the invoice's record keeps only its hashes and the outcome, and the amount while it waits for your Confirm: not the file, its text, its other facts or its name. The signed ledger still records the amount, any PO reference the model was shown, and the model's answer, which may quote details of the invoice.",
         "When the payables agent runs, the invoice text goes to a private model on NEAR AI Cloud. No attested decision has been recorded and verified in the repository yet.",
       ],
     },
@@ -286,7 +286,7 @@ export const PRIVACY_PAGE = {
       title: "Your choices",
       paragraphs: [
         "You can freeze your vault and withdraw its funds with your own keys at any time, without Probarion, for example with near-cli-rs.",
-        "In the vault's Settings, zero-retention stores no invoice file, text, facts or file name, only their hashes and the outcome, and the public proof page stays off unless you turn it on.",
+        "In the vault's Settings, zero-retention keeps no invoice file, text or file name, and the signed ledger still records the amount, any PO reference the model was shown, and the model's answer, which may quote details of the invoice. The public proof page stays off unless you turn it on.",
         "A member of a vault can download its signed ledger at `/proof/<vault>/ledger.jsonl`, whether or not its proof page is public.",
         "To ask what we hold about your account, or to have it removed, send a direct message to @probarionhq on X.",
       ],

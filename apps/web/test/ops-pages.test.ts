@@ -124,4 +124,20 @@ describe("the operations pages", () => {
     expect(html).not.toContain("or your account name");
     expect(html).toContain("A report carries the log line of the error");
   });
+
+  it("/privacy's zero-retention sentences say what the signed ledger still holds, as the console does", () => {
+    const html = render(PrivacyPage);
+    // Zero-retention empties the invoice row's file, facts and file name only (lib/payables/pipeline.ts). The ledger
+    // entry keeps the amount, the facts the model was shown and its answer whatever the setting (packages/core/src/
+    // types.ts, LedgerEntryBody and AttestationEvidence), as the Payables tab says.
+    const paragraphs = [...html.matchAll(/<p class="mb-2">(.*?)<\/p>/g)].map((m) => m[1] ?? "");
+    const zero = paragraphs.filter((p) => /zero-retention/i.test(p));
+    expect(zero).toHaveLength(2);
+    for (const p of zero) {
+      expect(p).toMatch(/signed ledger still records the amount/i);
+      expect(p).toContain("PO reference");
+      expect(p).toContain("the model&#x27;s answer, which may quote details of the invoice");
+    }
+    expect(html).not.toContain("stores no invoice file, text, facts or file name");
+  });
 });
