@@ -106,7 +106,7 @@ Where things are defined (you do not edit these to deploy):
   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | publishable key | the publishable key of the project Preview uses | no (public by design) |
   | `SUPABASE_SERVICE_ROLE_KEY` | secret key | the secret key of the project Preview uses | **yes** |
   | `KEY_ENCRYPTION_SECRET` | from step 2 | **Preview has its own Supabase project:** its own new value. **Preview shares Production's project:** exactly the Production value (see 3.4) | **yes** |
-  | `CRON_SECRET` | from step 2 (the app requires one even before any cron exists) | its own value (it is never stored in the database, so it may differ from Production either way) | **yes** |
+  | `CRON_SECRET` | from step 2 (the daily usage cron sends it as a bearer token, and the app requires one) | its own value (it is never stored in the database, so it may differ from Production either way) | **yes** |
 
   Optional today, set when you need the feature:
 
@@ -152,7 +152,7 @@ This is advice, not a rule of the code. The code does not stop you from pointing
   - `packages/core build` and `packages/sdk build` finish with "Done";
   - `next build` finishes and lists the routes `/`, `/login`, `/console`, `/console/[vault]`, `/console/[vault]/keys`, `/console/[vault]/mandates`, `/proof`, `/proof/[vault]`, `/proof/[vault]/snapshot.json`, `/proof/[vault]/ledger.jsonl` and `/api/auth/*`.
 - [ ] **OWNER:** smoke test, on the deployment URL:
-  1. `/` loads with the amber "Unaudited beta" banner and three cards. The Canary and Open metrics entries read "(coming soon)" and are not links; no link on the page, in the menu or in the footer leads to a 404.
+  1. `/` loads with the amber "Unaudited beta" banner and three cards. The Canary and Usage entries are links; the entries for pages that are not built yet (Security, Status, Terms, Privacy) read "(coming soon)" and are not links; no link on the page, in the menu or in the footer leads to a 404.
   2. `/console` while signed out sends you to `/login?next=%2Fconsole`.
   3. `/login`: Sign in with your NEAR wallet. The wallet asks for a **message signature**, not a transaction. You land on `/console`.
   4. `/console`: register a vault you own, signed in as its on-chain owner. On testnet that is `v0.probarion.testnet` (`contracts/deployments/testnet.json`). The vault page opens with Overview, Mandates and Keys tabs.
@@ -214,6 +214,6 @@ Shape, one entry per vault, keyed by `"<network>:<vault>"`; both fields are opti
 
 - A new pnpm version: change `packageManager` in the root `package.json` (CI and Vercel both follow it), the pinned value in `scripts/test/release-manifests.test.ts`, and every pnpm version named on this page (`deploy.test.ts` fails on any that differs from `packageManager`). The script tests fail until the first two agree. The workflows carry no version of their own.
 - A new environment variable: it goes into `.env.example` first (`deploy.test.ts` fails otherwise), then into the tables in 3.2.
-- A new Vercel cron: add it to `apps/web/vercel.json`. `deploy.test.ts` requires a `GET` route at that path that checks `CRON_SECRET`. Per-minute and hourly schedules need Vercel Pro; the Hobby plan rejects them at deploy time.
+- A new Vercel cron: add it to `apps/web/vercel.json`. `deploy.test.ts` requires a `GET` route at that path that checks `CRON_SECRET`. Per-minute and hourly schedules need Vercel Pro; the Hobby plan rejects them at deploy time (the usage cron is daily for that reason: `docs/ops/metrics.md` says how to run it hourly).
 - A new migration: one new file, next sequence number, no gaps. The test applies the folder to a fresh database and refuses extensions, role changes, owners and Supabase-only features.
 - A page that was "coming soon": delete its line from `PLANNED_ROUTES` in `apps/web/src/lib/routes.ts`, and its link goes live.
