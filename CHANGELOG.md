@@ -185,6 +185,12 @@ The software is an unaudited beta.
   at most 8 seconds, and an attempt that runs out of time ends as failed (or "unconfirmed" for a
   transaction) and is not retried. An attempt that gives up on a step still running keeps the
   Canary busy for 90 seconds instead of starting another cycle beside it.
+- The Canary has a public page at `/canary` and its rules at `/canary/rules`. A visitor writes a
+  message to a deliberately gullible model and sees what the model wanted, what the code rules decided
+  and what the contract did. The vault's balance and mandate are read from the chain, and the
+  scoreboard and the latest attempts come from the database behind a short cache. When the live
+  Canary is paused, a replay is chosen, or no vault is set, the page shows the recorded attacks
+  instead. The page is not open yet: it waits for the Canary vault and `NEARAI_API_KEY`.
 - The Canary closes itself instead of running dry: it does not run while its ledger key holds under
   0.5 NEAR; it answers 429 with `Retry-After` over 6 attempts an hour from one address (an IPv6
   address counts by its /64), 60 an hour or 600 a day in total; it closes when its ledger holds 300

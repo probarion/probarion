@@ -11,6 +11,7 @@ import Home from "@/app/page";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { BetaStrip } from "@/components/site/BetaStrip";
+import { InkBand } from "@/components/site/InkBand";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { explorerTxUrl } from "@/lib/config";
@@ -283,6 +284,15 @@ describe("the claims about the code", () => {
     }
   });
 
+  it("makes the ink band the target of /#payee, which the Canary page links to", () => {
+    const band = renderToStaticMarkup(createElement(InkBand));
+    expect(band).toMatch(/^<section[^>]*\sid="payee"/);
+    expect([...band.matchAll(/\sid="payee"/g)]).toHaveLength(1);
+    expect(band).toContain(BAND.gone);
+    // The landing page has no other element with that id.
+    expect([...landing().matchAll(/\sid="payee"/g)]).toHaveLength(1);
+  });
+
   it("shows mandate fields that exist on a mandate", () => {
     const mandate = fieldsOf("MandateInput");
     const step = JOURNEY.steps[0];
@@ -475,15 +485,11 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Canary public challenge",
-      pill: "Backend built, no page yet",
+      pill: "Page built, not open yet",
       readme: [
         {
           start: "Canary, a public vault",
-          says: [
-            "**In progress**",
-            "does not pay from its own cycle",
-            "The page, the public feed and the leaderboard are not built yet",
-          ],
+          says: ["**In progress**", "does not pay from its own cycle", "It is not open yet"],
         },
       ],
     },
@@ -580,7 +586,7 @@ describe("the status list", () => {
       { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
       { row: "Payables agent", pill: "In progress", tone: "work" },
       { row: "Live attested model run", pill: "In progress", tone: "work" },
-      { row: "Canary public challenge", pill: "Backend built, no page yet", tone: "work" },
+      { row: "Canary public challenge", pill: "Page built, not open yet", tone: "work" },
       { row: "MCP server", pill: "Planned", tone: "plan" },
       { row: "Mainnet vault", pill: "Planned", tone: "plan" },
     ]);
@@ -643,7 +649,9 @@ describe("the rendered landing page", () => {
 
   it("leaves no route out of the footer that it does not cover some other way", () => {
     const out = visibleText(landing());
-    expect(out).toContain("Canary (coming soon)");
+    // /canary is built, so the footer links it as a page and does not call it coming soon.
+    expect(out).not.toContain("Canary (coming soon)");
+    expect(hrefs(landing())).toContain("/canary");
     expect(out).toContain("Open metrics (coming soon)");
     expect(out).toContain("Terms (coming soon)");
     expect(out).toContain("Privacy (coming soon)");
