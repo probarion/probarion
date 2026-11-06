@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { quietLogs } from "../../../../../test/fixtures/quiet-logs";
 
-// The route with its settings, the watcher's inputs and the watch itself replaced. cronAuthorized, the response helpers,
-// the heartbeat, the health rule and the logger are real; the heartbeat's request goes to a stubbed fetch.
+// The route with its settings, the watcher's inputs, the watch itself and the alert dispatch replaced. cronAuthorized, the
+// response helpers, the heartbeat, the health rule and the logger are real; the heartbeat's request goes to a stubbed fetch.
 const mocks = vi.hoisted(() => ({
   env: vi.fn(),
   watchAll: vi.fn(),
+  runAlerts: vi.fn(),
   deps: { marker: "deps" },
 }));
 
 vi.mock("@/lib/env", () => ({ getEnv: mocks.env }));
+vi.mock("@/lib/alerts/server", () => ({ runAlerts: mocks.runAlerts }));
 vi.mock("@/lib/watcher/server", () => ({ watcherDeps: () => mocks.deps }));
 vi.mock("@/lib/watcher/watch", async (importActual) => ({
   ...(await importActual<typeof import("@/lib/watcher/watch")>()),
@@ -23,6 +25,7 @@ const logs = quietLogs();
 const SECRET = "c0ffee".repeat(8);
 const BEAT = "https://uptime.betterstack.com/api/v1/heartbeat/TOKEN-IN-THE-PATH";
 const URL_ = "https://probarion.example/api/cron/watch";
+const ALERTS = { sent: 2, failed: 1, skipped: 0, deferred: 4, error: false };
 const call = (headers: Record<string, string> = { authorization: `Bearer ${SECRET}` }) =>
   route.GET(new Request(URL_, { headers }));
 const run = (
@@ -41,6 +44,8 @@ let beat: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   mocks.env.mockReset();
   mocks.watchAll.mockReset();
+  mocks.runAlerts.mockReset();
+  mocks.runAlerts.mockResolvedValue(ALERTS);
   mocks.env.mockReturnValue({
     NEAR_NETWORK: "mainnet",
     CRON_SECRET: SECRET,
@@ -73,6 +78,7 @@ describe("GET /api/cron/watch", () => {
       expect(await res.json()).toEqual({ error: "unauthorized" });
     }
     expect(mocks.watchAll).not.toHaveBeenCalled();
+    expect(mocks.runAlerts).not.toHaveBeenCalled();
     expect(beat).not.toHaveBeenCalled();
   });
 
@@ -95,6 +101,7 @@ describe("GET /api/cron/watch", () => {
       ok: true,
       network: "mainnet",
       watch: { tenants: 4, inserted: 9, errors: 1, skipped: 2, checkErrors: 3 },
+      alerts: ALERTS,
       heartbeat: true,
     });
   });
@@ -127,6 +134,7 @@ describe("GET /api/cron/watch", () => {
       ok: false,
       network: "mainnet",
       watch: { tenants: 3, inserted: 0, errors: 3, skipped: 0, checkErrors: 0 },
+      alerts: ALERTS,
       heartbeat: false,
     });
   });
@@ -183,6 +191,97 @@ describe("GET /api/cron/watch", () => {
     const res = await call();
     expect(res.status).toBe(503);
     expect(mocks.watchAll).not.toHaveBeenCalled();
+  });
+
+  describe("the alerts", () => {
+    it("are sent after the watch, with a deadline 55 s after the route started", async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date("2026-11-11T10:00:00Z"));
+        const order: string[] = [];
+        mocks.watchAll.mockImplementation(async () => {
+          order.push("watch");
+          vi.setSystemTime(new Date("2026-11-11T10:00:20Z")); // the watch took 20 s
+          return run();
+        });
+        mocks.runAlerts.mockImplementation(async () => {
+          order.push("alerts");
+          return ALERTS;
+        });
+        await call();
+        expect(order).toEqual(["watch", "alerts"]);
+        expect(mocks.runAlerts).toHaveBeenCalledTimes(1);
+        expect(mocks.runAlerts).toHaveBeenCalledWith(Date.parse("2026-11-11T10:00:55Z"));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("are sent after an unhealthy run too: what is already recorded is still worth sending", async () => {
+      mocks.watchAll.mockResolvedValue(run({ tenants: 3, errors: 3 }));
+      const res = await call();
+      expect(res.status).toBe(503);
+      expect(mocks.runAlerts).toHaveBeenCalledTimes(1);
+    });
+
+    it("are not sent when the watch itself cannot run", async () => {
+      mocks.watchAll.mockRejectedValue(new Error("connection refused"));
+      expect((await call()).status).toBe(503);
+      expect(mocks.runAlerts).not.toHaveBeenCalled();
+    });
+
+    it("never change the run's health, its status or its heartbeat when they fail", async () => {
+      mocks.runAlerts.mockResolvedValue({
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        deferred: 0,
+        error: true,
+      });
+      const res = await call();
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        ok: boolean;
+        heartbeat: boolean;
+        alerts: { error: boolean };
+      };
+      expect(body).toMatchObject({ ok: true, heartbeat: true, alerts: { error: true } });
+      expect(beat).toHaveBeenCalledTimes(1);
+      const line = JSON.parse(logs.lines.find((l) => l.includes("cron.watch")) as string);
+      expect(line).toMatchObject({ healthy: true, heartbeat: true, alerts: { error: true } });
+    });
+
+    it("never fail the route even if the dispatch itself rejects", async () => {
+      mocks.runAlerts.mockRejectedValue(new Error("boom"));
+      const res = await call();
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        ok: true,
+        heartbeat: true,
+        alerts: { sent: 0, failed: 0, skipped: 0, deferred: 0, error: true },
+      });
+      expect(beat).toHaveBeenCalledTimes(1);
+    });
+
+    it("are sent after the heartbeat, so a slow dispatch cannot hold it back", async () => {
+      const order: string[] = [];
+      beat.mockImplementation(async () => {
+        order.push("heartbeat");
+        return new Response("ok");
+      });
+      mocks.runAlerts.mockImplementation(async () => {
+        order.push("alerts");
+        return ALERTS;
+      });
+      await call();
+      expect(order).toEqual(["heartbeat", "alerts"]);
+    });
+
+    it("are counted in the log line, and nothing of them but counts", async () => {
+      await call();
+      const entry = JSON.parse(logs.lines.find((l) => l.includes("cron.watch")) as string);
+      expect(entry.alerts).toEqual(ALERTS);
+    });
   });
 
   it("logs the network and the counts, and no secret, no heartbeat address and no event data", async () => {

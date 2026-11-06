@@ -1,5 +1,6 @@
 import "server-only";
 import { after } from "next/server";
+import { runAlerts } from "@/lib/alerts/server";
 import { serviceDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
@@ -17,11 +18,16 @@ export function watcherDeps(): WatchDeps {
   };
 }
 
+/** How long a kick may keep claiming alerts once its watch is over: it shares the function's time with the request. */
+const KICK_ALERTS_MS = 10_000;
+
 /**
  * Watches one tenant as soon as the response in flight has been sent, so an app-driven change (a Payables cycle, a
  * Canary attempt) reaches `vault_events`, and the owner's alerts, within seconds instead of at the next scheduled run.
- * Called from a route once it is sure to run the cycle. It never throws and never fails the request: the watch is
- * best effort, and the scheduled run (docs/ops/watcher.md) covers whatever it missed.
+ * The alerts are dispatched after the watch, for every vault and not only this one, whether or not the watch worked
+ * (what is already recorded is worth sending), until 10 s have passed; the rest waits for the next run. Called from a
+ * route once it is sure to run the cycle. It never throws and never fails the request: the watch and the alerts are best
+ * effort, and the scheduled run (docs/ops/watcher.md) covers whatever they missed.
  */
 export function kickWatcher(tenantId: string): void {
   try {
@@ -31,6 +37,8 @@ export function kickWatcher(tenantId: string): void {
       } catch (error) {
         log.warn("watch.kick_failed", { tenant: tenantId, error });
       }
+      // runAlerts does not throw; the catch is for the day somebody changes that.
+      await runAlerts(Date.now() + KICK_ALERTS_MS).catch(() => undefined);
     });
   } catch (error) {
     // after() throws outside a request scope; the request itself must not fail because of it.
