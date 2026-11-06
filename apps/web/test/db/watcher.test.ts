@@ -6,11 +6,18 @@ import { generateKey, type KeyPurpose } from "@/lib/keys/service";
 import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import type { AccessKeyState } from "@/lib/near/reader";
 import { ALLOWANCE_LOW_ALERT_YOCTO, NEAR_LOW_ALERT_YOCTO } from "@/lib/near/runway";
-import { pingHeartbeat, type WatchDeps, watchAll, watchTenantById } from "@/lib/watcher/watch";
+import {
+  pingHeartbeat,
+  type WatchDeps,
+  type WatchTenant,
+  watchAll,
+  watchTenant,
+  watchTenantById,
+} from "@/lib/watcher/watch";
 import { appendBody, testSigner } from "../fixtures/ledger";
 import { quietLogs } from "../fixtures/quiet-logs";
 import { fakeReader, viewAccount } from "../fixtures/reader";
-import { anchor, mandateView, spend } from "../fixtures/spends";
+import { anchor, HELD_UNTIL_NS, mandateView, spend } from "../fixtures/spends";
 import { asRole, freshDb, seedTenant } from "./harness";
 import { at } from "./keys-helpers";
 import { pgliteDb } from "./pglite-db";
@@ -135,7 +142,7 @@ describe("watcher", () => {
     it("records each spend status once and keeps watching the spends that are not final", async () => {
       spends = [spend(1, "held")];
       anchors = [anchor(1)];
-      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 2 }); // spend held + anchor 1
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 2, checkErrors: 0 }); // spend held + anchor 1
       expect(Number((await cursor()).watch_spend_from)).toBe(0);
 
       spends = [spend(1, "paid"), spend(2, "pending")];
@@ -143,7 +150,7 @@ describe("watcher", () => {
       expect(await keys()).toEqual(["spend:1:held", "anchor:1", "spend:1:paid", "spend:2:pending"]);
       expect(Number((await cursor()).watch_spend_from)).toBe(1);
 
-      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0 }); // an idempotent re-run
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0, checkErrors: 0 }); // an idempotent re-run
       expect(await keys()).toHaveLength(4);
     });
 
@@ -183,7 +190,7 @@ describe("watcher", () => {
       expect(r.payload).toEqual({
         destination: { type: "near", account_id: "designer.near" },
         ref: "inv-7",
-        held_until_ns: "999",
+        held_until_ns: HELD_UNTIL_NS,
         memo: "net 30",
       });
     });
@@ -202,6 +209,66 @@ describe("watcher", () => {
         "spend:4:paid",
         "spend:3:paid",
       ]);
+    });
+
+    describe("a hold that was never decided", () => {
+      const NOW_NS = BigInt(NOW.getTime()) * 1_000_000n;
+      const MARGIN_NS = 600_000_000_000n; // 10 minutes
+      const heldEndedAgo = (ns: bigint, id = 1) =>
+        spend(id, "held", { held_until_ns: (NOW_NS - ns).toString() });
+
+      it("lets the spend cursor pass it once its window ended more than 10 minutes ago, so later spends are recorded", async () => {
+        // The hold, then more paid spends than a run reads: with the cursor pinned at the hold they would never be seen.
+        spends = [
+          heldEndedAgo(MARGIN_NS + 1n),
+          ...Array.from({ length: 1149 }, (_, i) => spend(i + 2, "paid")),
+        ];
+        expect((await watchTenantById(deps(), tenant)).inserted).toBe(1000);
+        expect(Number((await cursor()).watch_spend_from)).toBe(1000);
+        reads = [];
+        expect((await watchTenantById(deps(), tenant)).inserted).toBe(150);
+        expect(reads.filter((r) => r.kind === "spends").map((r) => r.from)).toEqual([1000, 1100]);
+        expect(Number((await cursor()).watch_spend_from)).toBe(1150);
+        expect(await keys()).toContain("spend:1:held");
+        expect(await keys()).toContain("spend:1150:paid");
+      });
+
+      it("records no later change of that hold, and no event for a state the chain has not reached", async () => {
+        spends = [heldEndedAgo(MARGIN_NS + 1n), spend(2, "paid")];
+        await watchTenantById(deps(), tenant);
+        expect(Number((await cursor()).watch_spend_from)).toBe(2);
+        spends = [spend(1, "expired"), spend(2, "paid"), spend(3, "paid")];
+        await watchTenantById(deps(), tenant);
+        expect(await keys()).toEqual(["spend:1:held", "spend:2:paid", "spend:3:paid"]);
+      });
+
+      it("keeps a hold inside its window, or inside the margin, pinned: its approval is still recorded", async () => {
+        spends = [heldEndedAgo(MARGIN_NS - 1n), spend(2, "paid")];
+        await watchTenantById(deps(), tenant);
+        expect(Number((await cursor()).watch_spend_from)).toBe(0);
+        spends = [spend(1, "paid"), spend(2, "paid")]; // approved just before the margin ran out
+        await watchTenantById(deps(), tenant);
+        expect(await keys()).toEqual(["spend:1:held", "spend:2:paid", "spend:1:paid"]);
+        expect(Number((await cursor()).watch_spend_from)).toBe(2);
+      });
+
+      it("counts the margin from the run's clock: the same hold pins now and is passed 2 minutes later", async () => {
+        spends = [heldEndedAgo(MARGIN_NS - 60_000_000_000n), spend(2, "paid")]; // ended 9 minutes ago
+        await watchTenantById(deps(), tenant);
+        expect(Number((await cursor()).watch_spend_from)).toBe(0);
+        const later = deps({ now: () => new Date(NOW.getTime() + 2 * 60_000) });
+        await watchTenantById(later, tenant);
+        expect(Number((await cursor()).watch_spend_from)).toBe(2);
+      });
+
+      it("keeps a pending spend pinned, and a hold with no end", async () => {
+        spends = [spend(1, "held", { held_until_ns: null }), spend(2, "paid")];
+        await watchTenantById(deps(), tenant);
+        expect(Number((await cursor()).watch_spend_from)).toBe(0);
+        spends = [spend(1, "pending", { held_until_ns: "1" }), spend(2, "paid")];
+        await watchTenantById(deps(), tenant);
+        expect(Number((await cursor()).watch_spend_from)).toBe(0);
+      });
     });
 
     it("records anchors by their seq and mandates by their id, and moves each cursor by what it read", async () => {
@@ -226,7 +293,7 @@ describe("watcher", () => {
       expect(at(a.rows).payload).toEqual({ root: "r".repeat(64), count: 3 });
 
       anchors = [...anchors, anchor(3)];
-      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 1 });
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 1, checkErrors: 0 });
       expect(reads.filter((r) => r.kind === "anchors").map((r) => r.from)).toEqual([0, 2]);
     });
   });
@@ -236,7 +303,7 @@ describe("watcher", () => {
       spends = Array.from({ length: 250 }, (_, i) => spend(i + 1, "paid"));
       mandates = Array.from({ length: 120 }, (_, i) => mandateView(i + 1));
       anchors = Array.from({ length: 100 }, (_, i) => anchor(i + 1));
-      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 470 });
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 470, checkErrors: 0 });
       const from = (kind: string) => reads.filter((r) => r.kind === kind).map((r) => r.from);
       expect(from("spends")).toEqual([0, 100, 200]);
       expect(from("mandates")).toEqual([0, 100]);
@@ -259,7 +326,7 @@ describe("watcher", () => {
       expect((await watchTenantById(deps(), tenant)).inserted).toBe(150);
       expect(reads.filter((r) => r.kind === "spends").map((r) => r.from)).toEqual([1000, 1100]);
       expect(Number((await cursor()).watch_spend_from)).toBe(1150);
-      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0 });
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0, checkErrors: 0 });
     });
 
     it("keeps the first spend that is not final as the cursor across the pages it read", async () => {
@@ -298,7 +365,7 @@ describe("watcher", () => {
       expect((await cursor()).watch_ledger_seq).toBe(500);
       expect((await watchTenantById(deps(), tenant)).inserted).toBe(100);
       expect((await cursor()).watch_ledger_seq).toBe(600);
-      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0 });
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0, checkErrors: 0 });
     });
   });
 
@@ -474,13 +541,52 @@ describe("watcher", () => {
           },
         }),
       });
-      expect(await watchTenantById(d, tenant)).toEqual({ inserted: 1 });
+      expect(await watchTenantById(d, tenant)).toEqual({ inserted: 1, checkErrors: 1 });
       expect(await keys()).toEqual(["spend:1:held"]);
       const warned = logs.lines.filter((l) => l.includes("watch.check_failed"));
       expect(warned).toHaveLength(1);
       expect(warned[0]).toContain("allowance");
       expect(warned[0]).toContain("rpc down");
-      expect(warned[0]).not.toContain(pk.slice(8)); // ids and counts, not the key
+      expect(warned[0]).toContain(tenant);
+      expect(warned[0]).toContain(pk); // the failed key, which is public
+    });
+
+    it("drops only the key whose allowance could not be read, and warns once for that key", async () => {
+      const broken = await activeKey("agent");
+      const ledger = await activeKey("ledger");
+      const fine = await activeKey("agent");
+      keyStates.set(ledger, fnKey(LOW));
+      keyStates.set(fine, fnKey(FINE));
+      const d = deps({
+        reader: fakeReader({
+          accessKey: async (_vault, pk) => {
+            if (pk === broken) throw new Error("rpc down");
+            return keyStates.get(pk) ?? MISSING;
+          },
+        }),
+      });
+      expect(await watchTenantById(d, tenant)).toEqual({ inserted: 1, checkErrors: 1 });
+      expect(await keys()).toEqual([`allowance_low:${ledger}:2026-11-11`]);
+      const warned = logs.lines.filter((l) => l.includes("watch.check_failed"));
+      expect(warned).toHaveLength(1);
+      expect(warned[0]).toContain(broken);
+      expect(warned[0]).not.toContain(ledger);
+      expect(warned[0]).not.toContain(fine);
+      expect(warned[0]).not.toContain("payload");
+    });
+
+    it("counts a key list that cannot be read as one failed check", async () => {
+      await activeKey("agent");
+      spends = [spend(1, "paid")];
+      const db = pgliteDb(pg);
+      const d = deps({
+        db: {
+          rpc: <T>(fn: string, p?: Record<string, unknown>): Promise<T> =>
+            fn === "agent_key_list" ? Promise.reject(new Error("db blip")) : db.rpc<T>(fn, p),
+        },
+      });
+      expect(await watchTenantById(d, tenant)).toEqual({ inserted: 1, checkErrors: 1 });
+      expect(logs.lines.filter((l) => l.includes("watch.check_failed"))).toHaveLength(1);
     });
   });
 
@@ -531,7 +637,7 @@ describe("watcher", () => {
           throw new Error("rpc down");
         },
       });
-      expect(await watchTenantById(d, tenant)).toEqual({ inserted: 1 });
+      expect(await watchTenantById(d, tenant)).toEqual({ inserted: 1, checkErrors: 1 });
       const warned = logs.lines.filter((l) => l.includes("watch.check_failed"));
       expect(warned).toHaveLength(1);
       expect(warned[0]).toContain("near_low");
@@ -546,7 +652,11 @@ describe("watcher", () => {
         kind: "watch",
         seconds: 60,
       });
-      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0, skipped: "busy" });
+      expect(await watchTenantById(deps(), tenant)).toEqual({
+        inserted: 0,
+        checkErrors: 0,
+        skipped: "busy",
+      });
       await db.rpc("tenant_release", { tenant_id: tenant, kind: "watch", until: grant.until });
 
       await seedTenant(pg, { vault: "broken.vaults.probarion.near", owner: "b.near" });
@@ -575,13 +685,13 @@ describe("watcher", () => {
         }),
       });
       await expect(watchTenantById(broken, tenant)).rejects.toThrow("rpc down");
-      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0 });
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0, checkErrors: 0 });
     });
 
     it("counts a run's events and logs no event data", async () => {
       spends = [spend(1, "held", { memo: "SECRET-MEMO-TEXT", ref: "SECRET-REF-TEXT" })];
       const r = await watchAll(deps());
-      expect(r).toEqual({ tenants: 1, inserted: 1, errors: 0, skipped: 0 });
+      expect(r).toEqual({ tenants: 1, inserted: 1, errors: 0, skipped: 0, checkErrors: 0 });
       const text = logs.lines.join("\n");
       expect(text).not.toContain("SECRET-MEMO-TEXT");
       expect(text).not.toContain("SECRET-REF-TEXT");
@@ -622,7 +732,7 @@ describe("watcher", () => {
         });
 
       const first = await watchAll(slow());
-      expect(first).toEqual({ tenants: 3, inserted: 0, errors: 0, skipped: 1 });
+      expect(first).toEqual({ tenants: 3, inserted: 0, errors: 0, skipped: 1, checkErrors: 0 });
       expect(reads.map((r) => r.vault)).toEqual([V, "two.vaults.probarion.near"]);
       expect((await cursor(t3)).watch_last_at).toBeNull();
 
@@ -665,7 +775,13 @@ describe("watcher", () => {
         }),
       });
       // It is first in line, uses the whole run, and leaves the other two for later.
-      expect(await watchAll(d)).toEqual({ tenants: 3, inserted: 0, errors: 1, skipped: 2 });
+      expect(await watchAll(d)).toEqual({
+        tenants: 3,
+        inserted: 0,
+        errors: 1,
+        skipped: 2,
+        checkErrors: 0,
+      });
       expect(reads.map((r) => r.vault)).toEqual(["bad.vaults.probarion.near"]);
       // Its cursors did not move, and it was marked as looked at.
       const c = await cursor(bad);
@@ -677,12 +793,155 @@ describe("watcher", () => {
       // Next run: the two it never reached go first, and the vault that failed goes last.
       reads = [];
       clock = NOW.getTime();
-      expect(await watchAll(d)).toEqual({ tenants: 3, inserted: 2, errors: 1, skipped: 0 });
+      expect(await watchAll(d)).toEqual({
+        tenants: 3,
+        inserted: 2,
+        errors: 1,
+        skipped: 0,
+        checkErrors: 0,
+      });
       expect(reads.map((r) => r.vault)).toEqual([
         V,
         "next.vaults.probarion.near",
         "bad.vaults.probarion.near",
       ]);
+    });
+
+    it("reads the tenant's row again under the lease: a cursor moved after the listing is the one used", async () => {
+      spends = Array.from({ length: 5 }, (_, i) => spend(i + 1, "paid"));
+      const db = pgliteDb(pg);
+      const [listed] = await db.rpc<WatchTenant[]>("tenants_for_watch", {
+        network: "mainnet",
+        tenant_id: tenant,
+      });
+      expect(listed?.watch_spend_from).toBe(0);
+      // A kick, or an operator, moved the cursors after the run listed them.
+      await db.rpc("tenant_watch_cursor_set", { tenant_id: tenant, spend_from: 3 });
+      const r = await watchTenant(deps(), listed as WatchTenant);
+      expect(r).toEqual({ inserted: 2, checkErrors: 0 });
+      expect(reads.filter((x) => x.kind === "spends").map((x) => x.from)).toEqual([3]);
+      expect(await keys()).toEqual(["spend:4:paid", "spend:5:paid"]);
+    });
+
+    it("does nothing for a tenant that is gone by the time it holds the lease, and frees the lease", async () => {
+      const db = pgliteDb(pg);
+      const [listed] = await db.rpc<WatchTenant[]>("tenants_for_watch", {
+        network: "mainnet",
+        tenant_id: tenant,
+      });
+      const gone = deps({
+        db: {
+          rpc: <T>(fn: string, p?: Record<string, unknown>): Promise<T> =>
+            fn === "tenants_for_watch" ? Promise.resolve([] as T) : db.rpc<T>(fn, p),
+        },
+      });
+      expect(await watchTenant(gone, listed as WatchTenant)).toEqual({
+        inserted: 0,
+        checkErrors: 0,
+      });
+      expect(reads).toEqual([]);
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 0, checkErrors: 0 });
+    });
+
+    it("marks the vault as looked at before it reads the chain, so a run killed on a hanging vault does not leave it first", async () => {
+      let seen: unknown = "never read";
+      const d = deps({
+        reader: fakeReader({
+          listSpends: async () => {
+            const r = await pg.query<{ w: unknown }>(
+              "select watch_last_at as w from tenants where id = $1",
+              [tenant],
+            );
+            seen = at(r.rows).w;
+            throw new Error("the function was killed here");
+          },
+        }),
+      });
+      await expect(watchTenantById(d, tenant)).rejects.toThrow("killed");
+      expect(seen).not.toBe("never read");
+      expect(seen).not.toBeNull();
+      // ...and no cursor moved.
+      expect(Number((await cursor()).watch_spend_from)).toBe(0);
+    });
+
+    it("writes the events before the cursors: a failed second batch leaves the cursors where they were, and the next run finishes", async () => {
+      spends = Array.from({ length: 250 }, (_, i) => spend(i + 1, "paid"));
+      const db = pgliteDb(pg);
+      let inserts = 0;
+      const flaky = deps({
+        db: {
+          rpc: <T>(fn: string, p?: Record<string, unknown>): Promise<T> => {
+            if (fn === "vault_event_insert" && ++inserts === 2) {
+              return Promise.reject(new Error("connection reset"));
+            }
+            return db.rpc<T>(fn, p);
+          },
+        },
+      });
+      await expect(watchTenantById(flaky, tenant)).rejects.toThrow("connection reset");
+      expect(await keys()).toHaveLength(200); // the first batch is in
+      expect(Number((await cursor()).watch_spend_from)).toBe(0); // the cursor is not
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 50, checkErrors: 0 });
+      expect(await keys()).toHaveLength(250);
+      expect(Number((await cursor()).watch_spend_from)).toBe(250);
+    });
+
+    it("writes the low-NEAR alert even when the batch of list events fails, and still leaves the cursors alone", async () => {
+      account = { amount: "59900000000000000000000", storage_usage: 1000 };
+      spends = [spend(1, "paid")];
+      const db = pgliteDb(pg);
+      const poisoned = deps({
+        db: {
+          rpc: <T>(fn: string, p?: Record<string, unknown>): Promise<T> => {
+            const batch = (p?.events ?? []) as { kind: string }[];
+            return fn === "vault_event_insert" && batch.some((e) => e.kind === "spend_paid")
+              ? Promise.reject(new Error("check constraint"))
+              : db.rpc<T>(fn, p);
+          },
+        },
+      });
+      await expect(watchTenantById(poisoned, tenant)).rejects.toThrow("check constraint");
+      expect(await keys()).toEqual(["near_low:2026-11-11"]);
+      expect(Number((await cursor()).watch_spend_from)).toBe(0);
+      expect((await cursor()).watch_last_at).not.toBeNull();
+      // Fixed, the next run records the spend (and the low-NEAR alert of that day is not written twice).
+      expect(await watchTenantById(deps(), tenant)).toEqual({ inserted: 1, checkErrors: 0 });
+      expect(await keys()).toEqual(["near_low:2026-11-11", "spend:1:paid"]);
+    });
+
+    it("keeps the cursors moving when only the chain-state events cannot be written, and counts that as a failed check", async () => {
+      account = { amount: "59900000000000000000000", storage_usage: 1000 };
+      spends = [spend(1, "paid")];
+      const db = pgliteDb(pg);
+      const d = deps({
+        db: {
+          rpc: <T>(fn: string, p?: Record<string, unknown>): Promise<T> => {
+            const batch = (p?.events ?? []) as { kind: string }[];
+            return fn === "vault_event_insert" && batch.some((e) => e.kind === "near_low")
+              ? Promise.reject(new Error("db blip"))
+              : db.rpc<T>(fn, p);
+          },
+        },
+      });
+      expect(await watchTenantById(d, tenant)).toEqual({ inserted: 1, checkErrors: 1 });
+      expect(await keys()).toEqual(["spend:1:paid"]);
+      expect(Number((await cursor()).watch_spend_from)).toBe(1);
+    });
+
+    it("sums the failed checks of a run, which leave its health alone", async () => {
+      await seedTenant(pg, { vault: "two.vaults.probarion.near", owner: "two.near" });
+      const d = deps({
+        viewAccount: async () => {
+          throw new Error("rpc down");
+        },
+      });
+      expect(await watchAll(d)).toEqual({
+        tenants: 2,
+        inserted: 0,
+        errors: 0,
+        skipped: 0,
+        checkErrors: 2,
+      });
     });
 
     it("lets the whole run fail when the tenants cannot be listed", async () => {

@@ -1,6 +1,9 @@
 import type { AnchorView, MandateView, SpendView } from "@probarion/core";
 
-/** A spend as `list_spends` shows it: 5 USDC to one NEAR account, held until a fixed instant while it is held. */
+/** Where a fixture hold's window ends: 2100-01-01 UTC in nanoseconds, so a held spend is inside its window in every test. */
+export const HELD_UNTIL_NS = "4102444800000000000";
+
+/** A spend as `list_spends` shows it: 5 USDC to one NEAR account, held until `HELD_UNTIL_NS` while it is held. */
 export function spend(
   id: number,
   status: SpendView["status"],
@@ -17,7 +20,7 @@ export function spend(
     destination: { type: "near", account_id: "designer.near" },
     status,
     created_at_ns: "1",
-    held_until_ns: status === "held" ? "999" : null,
+    held_until_ns: status === "held" ? HELD_UNTIL_NS : null,
     memo: null,
     ...over,
   };

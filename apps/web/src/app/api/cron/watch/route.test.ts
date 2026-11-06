@@ -26,12 +26,13 @@ const URL_ = "https://probarion.example/api/cron/watch";
 const call = (headers: Record<string, string> = { authorization: `Bearer ${SECRET}` }) =>
   route.GET(new Request(URL_, { headers }));
 const run = (
-  over: Partial<Record<"tenants" | "inserted" | "errors" | "skipped", number>> = {},
+  over: Partial<Record<"tenants" | "inserted" | "errors" | "skipped" | "checkErrors", number>> = {},
 ) => ({
   tenants: 3,
   inserted: 5,
   errors: 0,
   skipped: 0,
+  checkErrors: 0,
   ...over,
 });
 
@@ -83,7 +84,9 @@ describe("GET /api/cron/watch", () => {
   });
 
   it("watches with the server's inputs and answers the counts", async () => {
-    mocks.watchAll.mockResolvedValue(run({ tenants: 4, inserted: 9, errors: 1, skipped: 2 }));
+    mocks.watchAll.mockResolvedValue(
+      run({ tenants: 4, inserted: 9, errors: 1, skipped: 2, checkErrors: 3 }),
+    );
     const res = await call();
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
@@ -91,7 +94,7 @@ describe("GET /api/cron/watch", () => {
     expect(await res.json()).toEqual({
       ok: true,
       network: "mainnet",
-      watch: { tenants: 4, inserted: 9, errors: 1, skipped: 2 },
+      watch: { tenants: 4, inserted: 9, errors: 1, skipped: 2, checkErrors: 3 },
       heartbeat: true,
     });
   });
@@ -123,9 +126,17 @@ describe("GET /api/cron/watch", () => {
     expect(await res.json()).toEqual({
       ok: false,
       network: "mainnet",
-      watch: { tenants: 3, inserted: 0, errors: 3, skipped: 0 },
+      watch: { tenants: 3, inserted: 0, errors: 3, skipped: 0, checkErrors: 0 },
       heartbeat: false,
     });
+  });
+
+  it("does not let failed checks change the health of a run: the heartbeat still goes out", async () => {
+    mocks.watchAll.mockResolvedValue(run({ tenants: 3, checkErrors: 12 }));
+    const res = await call();
+    expect(res.status).toBe(200);
+    expect(beat).toHaveBeenCalledTimes(1);
+    expect(((await res.json()) as { watch: { checkErrors: number } }).watch.checkErrors).toBe(12);
   });
 
   it("does not count the tenants a full run left for next time as ones that worked", async () => {
@@ -176,7 +187,7 @@ describe("GET /api/cron/watch", () => {
 
   it("logs the network and the counts, and no secret, no heartbeat address and no event data", async () => {
     mocks.watchAll.mockResolvedValue({
-      ...run({ tenants: 4, inserted: 9, errors: 1, skipped: 2 }),
+      ...run({ tenants: 4, inserted: 9, errors: 1, skipped: 2, checkErrors: 3 }),
       leak: "EVENT-DATA-MUST-NOT-BE-LOGGED",
     });
     await call();
@@ -189,6 +200,7 @@ describe("GET /api/cron/watch", () => {
       inserted: 9,
       errors: 1,
       skipped: 2,
+      checkErrors: 3,
       healthy: true,
       heartbeat: true,
     });

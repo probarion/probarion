@@ -13,8 +13,9 @@ export const maxDuration = 60;
  * `vault_events`, the tenants looked at longest ago first, and no new tenant is started 40 s in. The Better Stack
  * heartbeat goes out after a healthy run (no tenant, or one that was tried and did not fail), so a dead cron or an
  * unreadable chain raises the alarm; a run where every tenant that was tried failed is a 503 that still says what it
- * did. A call without the bearer secret is a 401. The log has the counts and nothing else: no event data, and not the
- * heartbeat address, which carries a token.
+ * did. `checkErrors` counts the best-effort checks that failed (a key's allowance, the vault's NEAR): each is a warning
+ * in the log, and none is part of health or of the heartbeat. A call without the bearer secret is a 401. The log has
+ * the counts and nothing else: no event data, and not the heartbeat address, which carries a token.
  *
  * `vercel.json` runs it once a day, the most the Vercel Hobby plan accepts; the per-minute schedule is a Supabase Cron
  * job the OWNER turns on, and the Payables and Canary routes also watch their own vault as soon as they respond.
@@ -30,6 +31,7 @@ export async function GET(req: Request) {
       inserted: run.inserted,
       errors: run.errors,
       skipped: run.skipped,
+      checkErrors: run.checkErrors,
     };
     const healthy = watchHealthy(run);
     const heartbeat = await pingHeartbeat(env.BETTERSTACK_HEARTBEAT_URL, healthy);

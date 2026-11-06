@@ -19,7 +19,7 @@
 --    table's check) fails the whole batch. A key that exists is never changed, so the row a first run wrote stays.
 -- 4. tenant_watch_cursor_set({ tenant_id, spend_from?, mandate_from?, anchor_from?, ledger_seq? }): sets the cursors
 --    that are given and leaves the others, and marks the tenant as looked at now. With only a tenant it moves no cursor:
---    that is how a run that failed marks its vault. A cursor is a plain non-negative whole number. It answers the
+--    that is how a run marks a vault as looked at before it reads the chain. A cursor is a plain non-negative whole number. It answers the
 --    tenant id, or null when the tenant is gone. Two overlapping runs can leave the cursor of the slower one, which is
 --    never beyond what that run read, so the next run reads some rows again; their keys exist and nothing is added.
 

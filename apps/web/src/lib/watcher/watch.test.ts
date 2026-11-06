@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { LedgerRow } from "@/lib/ledger/store";
 import type { AccessKeyState } from "@/lib/near/reader";
 import { ALLOWANCE_LOW_ALERT_YOCTO, NEAR_LOW_ALERT_YOCTO } from "@/lib/near/runway";
-import { anchor, mandateView, spend } from "../../../test/fixtures/spends";
+import { anchor, HELD_UNTIL_NS, mandateView, spend } from "../../../test/fixtures/spends";
 import {
   allowanceEvent,
   anchorEvents,
@@ -18,7 +18,7 @@ const NOW = new Date("2026-11-11T10:00:00Z");
 
 describe("spendEvents", () => {
   it("makes one event per spend, keyed by id and status, of the kind spend_<status>", () => {
-    const r = spendEvents(T, [spend(4, "held"), spend(5, "paid", { amount: "7" })], 3);
+    const r = spendEvents(T, [spend(4, "held"), spend(5, "paid", { amount: "7" })], 3, NOW);
     expect(r.events.map((e) => [e.event_key, e.kind, e.spend_id])).toEqual([
       ["spend:4:held", "spend_held", 4],
       ["spend:5:paid", "spend_paid", 5],
@@ -28,27 +28,71 @@ describe("spendEvents", () => {
 
   it("keeps ids and cursors apart: the event key has the id, the cursor a position", () => {
     // ids start at 1 and positions at 0: the first spend (id 1) sits at position 0.
-    expect(spendEvents(T, [spend(1, "paid")], 0).next).toBe(1);
-    expect(spendEvents(T, [spend(41, "paid"), spend(42, "paid")], 40).next).toBe(42);
+    expect(spendEvents(T, [spend(1, "paid")], 0, NOW).next).toBe(1);
+    expect(spendEvents(T, [spend(41, "paid"), spend(42, "paid")], 40, NOW).next).toBe(42);
   });
 
   it("moves the cursor to the first spend that is not final, or past them all", () => {
     const final = ["paid", "burned", "failed", "rejected", "expired"] as const;
     const open = ["held", "pending"] as const;
-    for (const s of final) expect(spendEvents(T, [spend(1, s)], 0).next, s).toBe(1);
-    for (const s of open) expect(spendEvents(T, [spend(1, s)], 0).next, s).toBe(0);
-    expect(spendEvents(T, [spend(1, "paid"), spend(2, "pending"), spend(3, "paid")], 10).next).toBe(
-      11,
-    );
-    expect(spendEvents(T, [], 7)).toEqual({ events: [], next: 7 });
+    for (const s of final) expect(spendEvents(T, [spend(1, s)], 0, NOW).next, s).toBe(1);
+    for (const s of open) expect(spendEvents(T, [spend(1, s)], 0, NOW).next, s).toBe(0);
+    expect(
+      spendEvents(T, [spend(1, "paid"), spend(2, "pending"), spend(3, "paid")], 10, NOW).next,
+    ).toBe(11);
+    expect(spendEvents(T, [], 7, NOW)).toEqual({ events: [], next: 7 });
+  });
+
+  describe("a hold whose window has passed", () => {
+    // approve fails with HoldExpired once the block time is past held_until_ns, so no payment can follow such a hold:
+    // after a margin for clock skew and an approve in flight, the cursor passes it.
+    const NOW_NS = BigInt(NOW.getTime()) * 1_000_000n;
+    const MARGIN_NS = 600_000_000_000n; // 10 minutes
+    /** A held spend whose window ended `agoNs` before NOW (negative: it ends that long after). */
+    const held = (agoNs: bigint, id = 1) =>
+      spend(id, "held", { held_until_ns: (NOW_NS - agoNs).toString() });
+    const next = (spends: ReturnType<typeof spend>[]) => spendEvents(T, spends, 0, NOW).next;
+
+    it("pins the cursor inside its window and inside the 10-minute margin, up to the margin itself", () => {
+      expect(next([held(-3_600_000_000_000n)])).toBe(0); // an hour left
+      expect(next([held(-1n)])).toBe(0); // one nanosecond left
+      expect(next([held(0n)])).toBe(0); // ends right now
+      expect(next([held(MARGIN_NS - 1n)])).toBe(0); // ended just under 10 minutes ago
+      expect(next([held(MARGIN_NS)])).toBe(0); // exactly 10 minutes: not more than 10
+    });
+
+    it("lets the cursor pass once the window ended more than 10 minutes ago", () => {
+      expect(next([held(MARGIN_NS + 1n)])).toBe(1);
+      expect(next([held(3n * 86_400_000_000_000n)])).toBe(1); // three days ago
+      // ...and stops at the first spend that is still open after it.
+      expect(next([held(MARGIN_NS + 1n, 1), spend(2, "paid"), held(0n, 3), spend(4, "paid")])).toBe(
+        2,
+      );
+    });
+
+    it("emits no event for a state the chain has not reached: the spends read are the events", () => {
+      const r = spendEvents(T, [held(MARGIN_NS + 1n)], 0, NOW);
+      expect(r.events.map((e) => e.event_key)).toEqual(["spend:1:held"]);
+    });
+
+    it("treats a hold with no end, or one that is not a number, as inside its window", () => {
+      expect(next([spend(1, "held", { held_until_ns: null })])).toBe(0);
+      expect(next([spend(1, "held", { held_until_ns: "soon" })])).toBe(0);
+      expect(next([spend(1, "held", { held_until_ns: "" })])).toBe(0);
+      expect(next([spend(1, "held", { held_until_ns: "-5" })])).toBe(0);
+    });
+
+    it("never lets a pending spend pass, however old its hold was", () => {
+      expect(next([spend(1, "pending", { held_until_ns: "1" })])).toBe(0);
+    });
   });
 
   it("carries what an alert needs, and nothing it can leave out", () => {
-    const [e] = spendEvents(T, [spend(1, "held", { memo: "m", ref: "r" })], 0).events;
+    const [e] = spendEvents(T, [spend(1, "held", { memo: "m", ref: "r" })], 0, NOW).events;
     expect(e?.payload).toEqual({
       destination: { type: "near", account_id: "designer.near" },
       ref: "r",
-      held_until_ns: "999",
+      held_until_ns: HELD_UNTIL_NS,
       memo: "m",
     });
   });
@@ -185,11 +229,12 @@ describe("nearLowEvent", () => {
 
 describe("watchHealthy", () => {
   it("is healthy with no tenants, and while at least one tenant that was tried did not fail", () => {
-    const r = (tenants: number, errors: number, skipped = 0) => ({
+    const r = (tenants: number, errors: number, skipped = 0, checkErrors = 0) => ({
       tenants,
       inserted: 0,
       errors,
       skipped,
+      checkErrors,
     });
     expect(watchHealthy(r(0, 0))).toBe(true);
     expect(watchHealthy(r(3, 0))).toBe(true);
@@ -199,5 +244,18 @@ describe("watchHealthy", () => {
     // Tenants the budget left for the next run are not successes: of the one that was tried, none worked.
     expect(watchHealthy(r(3, 1, 2))).toBe(false);
     expect(watchHealthy(r(3, 1, 1))).toBe(true);
+  });
+
+  it("does not count failed checks: they are warnings, and the heartbeat is about the chain being reached", () => {
+    const r = (tenants: number, errors: number, checkErrors: number) => ({
+      tenants,
+      inserted: 0,
+      errors,
+      skipped: 0,
+      checkErrors,
+    });
+    expect(watchHealthy(r(3, 0, 9))).toBe(true);
+    expect(watchHealthy(r(3, 3, 0))).toBe(false);
+    expect(watchHealthy(r(3, 3, 9))).toBe(false);
   });
 });

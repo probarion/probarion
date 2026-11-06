@@ -3,7 +3,7 @@ import type { AnchorView, MandateView, SpendStatus, SpendView } from "@probarion
 import type { Network } from "@/lib/config";
 import type { Db } from "@/lib/db/port";
 import { withLease } from "@/lib/db/tenants";
-import { listKeys } from "@/lib/keys/service";
+import { type KeyRow, listKeys } from "@/lib/keys/service";
 import type { LedgerRow } from "@/lib/ledger/store";
 import { log } from "@/lib/log";
 import type { AccessKeyState, VaultReader } from "@/lib/near/reader";
@@ -69,6 +69,15 @@ export interface WatchRun {
   errors: number;
   /** Tenants the run did not start because its time was used (the next run starts with them). */
   skipped: number;
+  /** Best-effort checks (a key's allowance, the vault's NEAR) that failed: warnings, they do not change `errors`. */
+  checkErrors: number;
+}
+
+/** What one tenant's run did. `skipped` is set when another run holds the tenant's lease. */
+export interface TenantRun {
+  inserted: number;
+  checkErrors: number;
+  skipped?: "busy";
 }
 
 /** The contract's `list_*` cap, and how many pages of one kind a run reads: a vault with more catches up over runs. */
@@ -81,7 +90,7 @@ const LEASE_SECONDS = 50;
 /** Events per `vault_event_insert` call: a first run over a big vault is thousands of them. */
 const INSERT_CHUNK = 200;
 
-/** Final spends never change again; held and pending ones do, so they are read again until they are. */
+/** Final spends never change again; held and pending ones do, so they are read again until they are settled. */
 const FINAL: ReadonlySet<SpendStatus> = new Set([
   "paid",
   "burned",
@@ -90,13 +99,36 @@ const FINAL: ReadonlySet<SpendStatus> = new Set([
   "expired",
 ]);
 
+/** How long after a hold's window the cursor waits before it passes the hold: clock skew, and an approve in flight. */
+const HOLD_MARGIN_NS = 10n * 60n * 1_000_000_000n;
+
+/**
+ * Whether the spend cursor may pass a spend. A final spend never changes again. A hold leaves `held` only through
+ * `approve`, `reject` or `expire_held`, and `approve` fails with `HoldExpired` once the block time is past
+ * `held_until_ns`, so no payment can follow a hold whose window has passed: it can only still become `rejected` or
+ * `expired`. Nothing in the app calls `expire_held`, so an abandoned hold would pin the cursor for ever. The cursor
+ * therefore passes a hold once its window ended more than 10 minutes ago; a later rejection or expiry of it is not
+ * recorded. A hold with no end (it should not happen) is taken as inside its window, and a `pending` spend always
+ * pins: it settles within a few blocks of its callback.
+ */
+function settled(s: SpendView, nowNs: bigint): boolean {
+  if (FINAL.has(s.status)) return true;
+  if (s.status !== "held" || s.held_until_ns === null || !/^\d+$/.test(s.held_until_ns))
+    return false;
+  return nowNs - BigInt(s.held_until_ns) > HOLD_MARGIN_NS;
+}
+
 const utcDay = (d: Date): string => d.toISOString().slice(0, 10);
 
-/** One event per spend and status. `next` is the position of the first spend that is not final (or past them all). */
+/**
+ * One event per spend and status. `next` is the position of the first spend that is not settled (or past them all),
+ * settled as `settled` says, by the clock `now`. No event is made for a state the chain has not reached.
+ */
 export function spendEvents(
   tenantId: string,
   spends: SpendView[],
   from: number,
+  now: Date,
 ): { events: NewEvent[]; next: number } {
   const events = spends.map(
     (s): NewEvent => ({
@@ -115,7 +147,8 @@ export function spendEvents(
       },
     }),
   );
-  const open = spends.findIndex((s) => !FINAL.has(s.status));
+  const nowNs = BigInt(now.getTime()) * 1_000_000n;
+  const open = spends.findIndex((s) => !settled(s, nowNs));
   return { events, next: from + (open === -1 ? spends.length : open) };
 }
 
@@ -249,124 +282,185 @@ async function readPages<T>(
 }
 
 /**
- * A check that must not stop the vault's spends from being recorded: a key whose allowance cannot be read, or a
- * vault account that cannot be viewed, is logged and tried again next run. (If the chain is down the reads that
- * must succeed fail too, and the tenant is an error.)
+ * The events that come from the chain's state and not from its lists: allowance_low for the tenant's active keys, and
+ * near_low for the vault. They are best effort: a check that cannot be read must not stop the vault's spends from
+ * being recorded, so it is logged (`watch.check_failed`, with the tenant, the vault and, for a key, its public key,
+ * never an event payload), counted in `failures` and tried again next run. (If the chain is down the reads that must
+ * succeed fail too, and the tenant is an error.) Each key is read on its own, so one failed read drops that key only.
  */
-async function bestEffort(
-  check: "allowance" | "near_low",
+async function stateEvents(
+  deps: WatchDeps,
   t: WatchTenant,
-  fn: () => Promise<NewEvent[]>,
-): Promise<NewEvent[]> {
-  try {
-    return await fn();
-  } catch (error) {
-    log.warn("watch.check_failed", { tenant: t.tenant_id, vault: t.vault_id, check, error });
-    return [];
-  }
-}
-
-/** allowance_low for the tenant's active keys, and near_low for the vault: the events that come from the chain's state, not its lists. */
-async function stateEvents(deps: WatchDeps, t: WatchTenant): Promise<NewEvent[]> {
-  const now = deps.now();
-  const [allowance, nearLow] = await Promise.all([
-    bestEffort("allowance", t, async () => {
+  now: Date,
+): Promise<{ events: NewEvent[]; failures: number }> {
+  let failures = 0;
+  const failed = (
+    check: "allowance" | "near_low",
+    error: unknown,
+    more: Record<string, unknown> = {},
+  ) => {
+    failures++;
+    log.warn("watch.check_failed", {
+      tenant: t.tenant_id,
+      vault: t.vault_id,
+      check,
+      ...more,
+      error,
+    });
+  };
+  const allowance = async (): Promise<NewEvent[]> => {
+    let active: KeyRow[];
+    try {
       // Every purpose is a scoped function-call key on the vault that burns allowance: the agent key on its spends, the
       // ledger key on its anchors.
-      const active = (await listKeys(deps.db, t.tenant_id)).filter((k) => k.status === "active");
-      const states = await Promise.all(
-        active.map((k) => deps.reader.accessKey(t.vault_id, k.public_key)),
-      );
-      return active.flatMap((k, i) => {
-        const state = states[i];
-        const e = state === undefined ? null : allowanceEvent(t.tenant_id, k, state, now);
-        return e === null ? [] : [e];
-      });
-    }),
-    bestEffort("near_low", t, async () => {
+      active = (await listKeys(deps.db, t.tenant_id)).filter((k) => k.status === "active");
+    } catch (error) {
+      failed("allowance", error);
+      return [];
+    }
+    const states = await Promise.allSettled(
+      active.map((k) => deps.reader.accessKey(t.vault_id, k.public_key)),
+    );
+    return states.flatMap((r, i) => {
+      const key = active[i];
+      if (key === undefined) return [];
+      if (r.status === "rejected") {
+        failed("allowance", r.reason, { public_key: key.public_key });
+        return [];
+      }
+      const e = allowanceEvent(t.tenant_id, key, r.value, now);
+      return e === null ? [] : [e];
+    });
+  };
+  const nearLow = async (): Promise<NewEvent[]> => {
+    try {
       const e = nearLowEvent(t.tenant_id, await deps.viewAccount(t.vault_id), now);
       return e === null ? [] : [e];
-    }),
-  ]);
-  return [...allowance, ...nearLow];
+    } catch (error) {
+      failed("near_low", error);
+      return [];
+    }
+  };
+  const [lowKeys, lowNear] = await Promise.all([allowance(), nearLow()]);
+  return { events: [...lowKeys, ...lowNear], failures };
+}
+
+/** Writes events in batches, in order; a key the tenant already has adds nothing. Returns how many were new. */
+async function insertEvents(db: Db, events: NewEvent[]): Promise<number> {
+  let inserted = 0;
+  for (let i = 0; i < events.length; i += INSERT_CHUNK) {
+    const done = await db.rpc<{ inserted: number }>("vault_event_insert", {
+      events: events.slice(i, i + INSERT_CHUNK),
+    });
+    inserted += done.inserted;
+  }
+  return inserted;
 }
 
 /**
- * One tenant, under its watch lease: read from the cursors, write the events, move the cursors. The events are written
- * first, so a failure in between leaves the cursors where they were and the next run writes nothing twice.
+ * One tenant, under its watch lease: read the tenant's row again, mark it as looked at, read from the cursors, write
+ * the events, move the cursors. `t` says which tenant; its cursors may be a minute old (a kick, or an operator, may
+ * have moved them since the run listed them), so the row is read again under the lease and a tenant that is gone by then
+ * is left alone. The tenant is marked as looked at before any chain read, so a run that is killed while one vault hangs
+ * does not leave that vault first in line for ever.
+ *
+ * The events are written before the cursors, so a failure in between leaves the cursors where they were and the next
+ * run writes nothing twice. The chain-state events (allowance_low, near_low) go in their own calls: a batch of list
+ * events that fails does not keep a low-NEAR alert from being written, and a state batch that fails does not stop the
+ * cursors.
  *
  * The lease is 50 s. A run that outlives it can overlap the next one; it then writes a cursor that is never beyond what
  * IT read, which at worst moves the cursor back past rows the other run recorded, and those are read again and skipped
  * by their keys. A cursor can never skip rows that were not seen.
  */
-export async function watchTenant(
-  deps: WatchDeps,
-  t: WatchTenant,
-): Promise<{ inserted: number; skipped?: "busy" }> {
-  const r = await withLease(deps.db, t.tenant_id, "watch", LEASE_SECONDS, async () => {
-    const [spends, anchors, mandates, ledger] = await Promise.all([
-      readPages("list_spends", t.watch_spend_from, (f, l) =>
-        deps.reader.listSpends(t.vault_id, f, l),
-      ),
-      readPages("list_anchors", t.watch_anchor_from, (f, l) =>
-        deps.reader.listAnchors(t.vault_id, f, l),
-      ),
-      readPages("list_mandates", t.watch_mandate_from, (f, l) =>
-        deps.reader.listMandates(t.vault_id, f, l),
-      ),
-      // At most 500 entries; the rest is read from the cursor on the next run.
-      deps.db.rpc<LedgerRow[]>("ledger_since", {
+export async function watchTenant(deps: WatchDeps, t: WatchTenant): Promise<TenantRun> {
+  const r = await withLease(
+    deps.db,
+    t.tenant_id,
+    "watch",
+    LEASE_SECONDS,
+    async (): Promise<TenantRun> => {
+      const [row] = await deps.db.rpc<WatchTenant[]>("tenants_for_watch", {
+        network: deps.network,
         tenant_id: t.tenant_id,
-        from_seq: t.watch_ledger_seq,
-      }),
-    ]);
-    const s = spendEvents(t.tenant_id, spends, t.watch_spend_from);
-    const a = anchorEvents(t.tenant_id, anchors, t.watch_anchor_from);
-    const m = mandateEvents(t.tenant_id, mandates, t.watch_mandate_from);
-    const l = refusalEvents(t.tenant_id, ledger, t.watch_ledger_seq);
-    const found = [
-      ...s.events,
-      ...a.events,
-      ...m.events,
-      ...l.events,
-      ...(await stateEvents(deps, t)),
-    ];
-    let inserted = 0;
-    for (let i = 0; i < found.length; i += INSERT_CHUNK) {
-      const done = await deps.db.rpc<{ inserted: number }>("vault_event_insert", {
-        events: found.slice(i, i + INSERT_CHUNK),
       });
-      inserted += done.inserted;
-    }
-    await deps.db.rpc("tenant_watch_cursor_set", {
-      tenant_id: t.tenant_id,
-      spend_from: s.next,
-      mandate_from: m.next,
-      anchor_from: a.next,
-      ledger_seq: l.next,
-    });
-    return inserted;
-  });
-  return r.acquired ? { inserted: r.value } : { inserted: 0, skipped: "busy" };
+      if (row === undefined) return { inserted: 0, checkErrors: 0 };
+      await deps.db.rpc("tenant_watch_cursor_set", { tenant_id: row.tenant_id });
+      const [spends, anchors, mandates, ledger] = await Promise.all([
+        readPages("list_spends", row.watch_spend_from, (f, l) =>
+          deps.reader.listSpends(row.vault_id, f, l),
+        ),
+        readPages("list_anchors", row.watch_anchor_from, (f, l) =>
+          deps.reader.listAnchors(row.vault_id, f, l),
+        ),
+        readPages("list_mandates", row.watch_mandate_from, (f, l) =>
+          deps.reader.listMandates(row.vault_id, f, l),
+        ),
+        // At most 500 entries; the rest is read from the cursor on the next run.
+        deps.db.rpc<LedgerRow[]>("ledger_since", {
+          tenant_id: row.tenant_id,
+          from_seq: row.watch_ledger_seq,
+        }),
+      ]);
+      const now = deps.now();
+      const s = spendEvents(row.tenant_id, spends, row.watch_spend_from, now);
+      const a = anchorEvents(row.tenant_id, anchors, row.watch_anchor_from);
+      const m = mandateEvents(row.tenant_id, mandates, row.watch_mandate_from);
+      const l = refusalEvents(row.tenant_id, ledger, row.watch_ledger_seq);
+      const state = await stateEvents(deps, row, now);
+
+      let inserted = 0;
+      let checkErrors = state.failures;
+      let listFailure: unknown = null;
+      try {
+        inserted += await insertEvents(deps.db, [
+          ...s.events,
+          ...a.events,
+          ...m.events,
+          ...l.events,
+        ]);
+      } catch (error) {
+        listFailure = error;
+      }
+      try {
+        inserted += await insertEvents(deps.db, state.events);
+      } catch (error) {
+        checkErrors++;
+        log.warn("watch.check_failed", {
+          tenant: row.tenant_id,
+          vault: row.vault_id,
+          check: "state_events",
+          error,
+        });
+      }
+      if (listFailure !== null) throw listFailure;
+      await deps.db.rpc("tenant_watch_cursor_set", {
+        tenant_id: row.tenant_id,
+        spend_from: s.next,
+        mandate_from: m.next,
+        anchor_from: a.next,
+        ledger_seq: l.next,
+      });
+      return { inserted, checkErrors };
+    },
+  );
+  return r.acquired ? r.value : { inserted: 0, checkErrors: 0, skipped: "busy" };
 }
 
 /** One tenant by id, for the kick after a request that changed its vault (Payables, Canary). */
-export async function watchTenantById(
-  deps: WatchDeps,
-  tenantId: string,
-): Promise<{ inserted: number; skipped?: "busy" }> {
+export async function watchTenantById(deps: WatchDeps, tenantId: string): Promise<TenantRun> {
   const [t] = await deps.db.rpc<WatchTenant[]>("tenants_for_watch", {
     network: deps.network,
     tenant_id: tenantId,
   });
-  return t ? watchTenant(deps, t) : { inserted: 0 };
+  return t ? watchTenant(deps, t) : { inserted: 0, checkErrors: 0 };
 }
 
 /**
  * Every tenant of the network, the ones looked at longest ago first. A tenant that throws is logged and does not stop
- * the others; it is marked as looked at (no cursor moves), so a vault that keeps failing goes to the back of the queue
- * instead of using up every run. No new tenant is started 40 s into the run; `skipped` counts those, and they go first
- * next time.
+ * the others; it was marked as looked at when it was started (no cursor moves on a failure), so a vault that keeps
+ * failing goes to the back of the queue instead of using up every run. No new tenant is started 40 s into the run;
+ * `skipped` counts those, and they go first next time.
  */
 export async function watchAll(deps: WatchDeps): Promise<WatchRun> {
   const tenants = await deps.db.rpc<WatchTenant[]>("tenants_for_watch", { network: deps.network });
@@ -374,24 +468,22 @@ export async function watchAll(deps: WatchDeps): Promise<WatchRun> {
   let inserted = 0;
   let errors = 0;
   let skipped = 0;
+  let checkErrors = 0;
   for (const [i, t] of tenants.entries()) {
     if (deps.now().getTime() - started >= BUDGET_MS) {
       skipped = tenants.length - i;
       break;
     }
     try {
-      inserted += (await watchTenant(deps, t)).inserted;
+      const done = await watchTenant(deps, t);
+      inserted += done.inserted;
+      checkErrors += done.checkErrors;
     } catch (error) {
       errors++;
       log.error("watch.tenant_failed", { tenant: t.tenant_id, vault: t.vault_id, error });
-      await deps.db
-        .rpc("tenant_watch_cursor_set", { tenant_id: t.tenant_id })
-        .catch((e: unknown) => {
-          log.warn("watch.touch_failed", { tenant: t.tenant_id, error: e });
-        });
     }
   }
-  return { tenants: tenants.length, inserted, errors, skipped };
+  return { tenants: tenants.length, inserted, errors, skipped, checkErrors };
 }
 
 /** A run is healthy when no tenant was due, or at least one tenant it tried did not fail: the chain was reached. */
