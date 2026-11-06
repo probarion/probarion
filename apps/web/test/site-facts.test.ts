@@ -475,8 +475,17 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Canary public challenge",
-      pill: "Planned",
-      readme: [{ start: "Canary, a public vault", says: ["**Planned**"] }],
+      pill: "Backend built, no page yet",
+      readme: [
+        {
+          start: "Canary, a public vault",
+          says: [
+            "**In progress**",
+            "does not pay from its own cycle",
+            "The page, the public feed and the leaderboard are not built yet",
+          ],
+        },
+      ],
     },
     {
       row: "Mainnet vault",
@@ -571,7 +580,7 @@ describe("the status list", () => {
       { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
       { row: "Payables agent", pill: "In progress", tone: "work" },
       { row: "Live attested model run", pill: "In progress", tone: "work" },
-      { row: "Canary public challenge", pill: "Planned", tone: "plan" },
+      { row: "Canary public challenge", pill: "Backend built, no page yet", tone: "work" },
       { row: "MCP server", pill: "Planned", tone: "plan" },
       { row: "Mainnet vault", pill: "Planned", tone: "plan" },
     ]);

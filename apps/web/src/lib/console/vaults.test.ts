@@ -426,7 +426,7 @@ describe("registerVault (R11)", () => {
     });
   });
 
-  it("marks the configured Canary vault as kind canary with a public proof", async () => {
+  it("marks the configured Canary vault as kind canary with a private proof", async () => {
     const reader = fakeReader({
       getConfig: async () => vaultConfig({ owner: "probarion.near", approvers: [] }),
     });
@@ -435,7 +435,7 @@ describe("registerVault (R11)", () => {
       account: "probarion.near",
     });
     const m = await memberRole(pgliteDb(pg), "canary.vaults.probarion.near", "probarion.near");
-    expect(m).toMatchObject({ kind: "canary", proof_public: true });
+    expect(m).toMatchObject({ kind: "canary", proof_public: false });
   });
 
   it("a vault in TEAM_VAULT_IDS registers as team, and re-registration turns external into team", async () => {

@@ -103,6 +103,7 @@ import { SIGNER_OUT_OF_NEAR, VAULT_LOW_SUGGESTION } from "./display";
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
 const VAULT = "acme.vaults.probarion.near";
 const OTHER = "other.vaults.probarion.near";
+const CANARY = "canary.vaults.probarion.near";
 
 let pg: PGlite;
 
@@ -112,6 +113,7 @@ beforeAll(async () => {
   // acme.near owns VAULT, cfo.near approves it, mallory.near owns OTHER only.
   await seedTenant(pg, { vault: VAULT, owner: "acme.near", approvers: ["cfo.near"] });
   await seedTenant(pg, { vault: OTHER, owner: "mallory.near" });
+  await seedTenant(pg, { vault: CANARY, owner: "probarion.near", kind: "canary" });
 });
 afterAll(async () => {
   await pg.close();
@@ -184,6 +186,34 @@ describe("vault page guard (requireMember)", () => {
     expect(approver).toContain("25 USDC");
     expect(approver).not.toContain("Freeze vault"); // freeze is the owner's
     expect(approver).not.toContain("Save settings"); // settings are the owner's
+  });
+});
+
+describe("the Canary's settings (its ledger is private)", () => {
+  const private_ = "The Canary's ledger is private: visitors' words never become public.";
+
+  it("shows the owner of the Canary one line instead of the public-proof checkbox", async () => {
+    await signInAs("probarion.near");
+    const out = (await html(CANARY)).replaceAll("&#x27;", "'");
+    expect(out).toContain("Save settings");
+    expect(out).toContain(private_);
+    expect(out).not.toContain('name="proof_public"');
+    // an ordinary vault still gets the checkbox
+    await signInAs("acme.near");
+    const ordinary = (await html(VAULT)).replaceAll("&#x27;", "'");
+    expect(ordinary).toContain('name="proof_public"');
+    expect(ordinary).not.toContain(private_);
+  });
+
+  it("saves the Canary's other setting and never sends it a public proof, whatever the form says", async () => {
+    await signInAs("probarion.near");
+    const r = await updateSettingsAction(
+      CANARY,
+      null,
+      form({ zero_retention: "on", proof_public: "on" }),
+    );
+    expect(r).toMatchObject({ ok: true });
+    expect(await settings(CANARY)).toEqual({ zero_retention: true, proof_public: false });
   });
 });
 

@@ -164,6 +164,35 @@ The software is an unaudited beta.
   such as `Invoice PAID1001`, `Invoice DEM01` and `Invoice void-2`, and a vendor named Test24 Labs
   before that word still reads. A Title-case word with a look-alike digit is not an invoice id, and an
   invoice-to or invoice-from label is not a title. Read rates on the realistic corpora did not change.
+- The Canary challenge has its backend, `POST /api/canary/attempt`: anyone can send text to a
+  deliberately gullible AI accounts-payable agent and try to talk it into paying. The Canary does not
+  pay from its own cycle: a code rule refuses every attempt, and the answer shows which rule refused
+  and why. Its page, public feed and leaderboard are not built yet.
+- In live mode, a "pay" the code refused is also sent to the contract unfiltered, but only when the
+  contract's own free dry run says it would refuse it, so visitors can watch the contract's refusal
+  (for example `OverPerPayment`); the dry run makes sure such a spend pays nothing. This is limited to one on-chain
+  attempt per visitor every 10 minutes and 30 an hour in total, stops by itself when the agent key's
+  allowance drops below 0.2 NEAR, and is not started with less than 15 seconds left.
+- Nothing the Canary puts on chain is derived from the visitor's text alone: the transaction carries
+  a salted hash, fresh for every attempt and not stored, so nobody can confirm a guessed text from a
+  public explorer.
+- The Canary's ledger cannot be made public: a model can quote what visitors type, and a public
+  append-only ledger could not take it back, so the database refuses it on every path, the console
+  included. Attempts are stored as hashes and labels only. The public feed shows labels, outcomes and
+  transaction hashes, with no visitor or IP identifiers; an attempt still running is left out until it
+  is 90 seconds old, then shown as killed. The leaderboard is read on the server only.
+- One Canary attempt is bounded at 50 seconds: the model calls share 30 seconds, a chain step takes
+  at most 8 seconds, and an attempt that runs out of time ends as failed (or "unconfirmed" for a
+  transaction) and is not retried. An attempt that gives up on a step still running keeps the
+  Canary busy for 90 seconds instead of starting another cycle beside it.
+- The Canary closes itself instead of running dry: it does not run while its ledger key holds under
+  0.5 NEAR; it answers 429 with `Retry-After` over 6 attempts an hour from one address (an IPv6
+  address counts by its /64), 60 an hour or 600 a day in total; it closes when its ledger holds 300
+  entries; and its model calls share a daily token budget that counts an attempt from the moment it
+  starts.
+- The SDK takes a deadline: `RpcClient` `remainingMs`, `NearApiJsSender` `sendTimeoutMs` as a
+  function, and `NearAiProposer` `remainingMs` and `knownModel`. All are optional, and the
+  defaults are unchanged.
 
 ### Changed
 

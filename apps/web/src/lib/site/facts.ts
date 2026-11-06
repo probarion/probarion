@@ -384,7 +384,7 @@ export const STATUS = {
     { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
     { row: "Payables agent", pill: "In progress", tone: "work" },
     { row: "Live attested model run", pill: "In progress", tone: "work" },
-    { row: "Canary public challenge", pill: "Planned", tone: "plan" },
+    { row: "Canary public challenge", pill: "Backend built, no page yet", tone: "work" },
     { row: "MCP server", pill: "Planned", tone: "plan" },
     { row: "Mainnet vault", pill: "Planned", tone: "plan" },
   ] as const satisfies readonly { row: string; pill: string; tone: StatusTone }[],
