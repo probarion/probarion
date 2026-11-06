@@ -11,6 +11,7 @@ import { ExtractError, type InvoiceMediaType, MAX_INVOICE_BYTES } from "@/lib/pa
 import { type InvoiceUpload, type PipelineResult, processInvoice } from "@/lib/payables/pipeline";
 import { LIMITS } from "@/lib/ratelimit";
 import { makeTenantProbarion } from "@/lib/sdk/factory";
+import { kickWatcher } from "@/lib/watcher/server";
 
 export const dynamic = "force-dynamic";
 // The tenant lease (PROCESS_LEASE_SECONDS, 90 s) outlasts this with a 30 s margin; route.test.ts checks it.
@@ -251,6 +252,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ vault: 
   const read = await readUpload(form);
   if (read instanceof Response) return read;
 
+  // From here the cycle runs, and what it records or sends changes the vault: the watcher looks at it as soon as this
+  // response is sent, so the owner's alerts do not wait for the next scheduled run.
+  kickWatcher(auth.member.tenant_id);
   try {
     const r = await processInvoice(
       {

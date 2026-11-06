@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ALLOWANCE_LOW_ALERT_YOCTO,
   codeStorageYocto,
   createDepositPlan,
   EMBEDDED_CODE_ESTIMATE_BYTES,
@@ -22,6 +23,7 @@ describe("runway constants (R3)", () => {
     expect(NEAR_PER_SPEND_YOCTO).toBe((53n * NEAR) / 10_000n); // 0.0053 NEAR
     expect(LOW_NEAR_YOCTO).toBe(milli(100n)); // amber below 0.1 NEAR
     expect(NEAR_LOW_ALERT_YOCTO).toBe(milli(50n)); // near_low below 0.05 NEAR (Task 20)
+    expect(ALLOWANCE_LOW_ALERT_YOCTO).toBe(milli(200n)); // allowance_low below 0.2 NEAR (Task 20)
     expect(EMBEDDED_VAULT_WASM_BYTES).toBe(248_501n);
     // +10% on the measured wasm, rounded up: the factory does not expose code_len (ICR to come)
     expect(EMBEDDED_CODE_ESTIMATE_BYTES).toBe(273_352n);

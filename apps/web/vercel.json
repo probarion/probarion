@@ -3,5 +3,8 @@
   "framework": "nextjs",
   "regions": ["iad1"],
   "buildCommand": "pnpm --filter \"@probarion/web^...\" run build && pnpm run build",
-  "crons": [{ "path": "/api/cron/metrics", "schedule": "10 0 * * *" }]
+  "crons": [
+    { "path": "/api/cron/watch", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/metrics", "schedule": "10 0 * * *" }
+  ]
 }
