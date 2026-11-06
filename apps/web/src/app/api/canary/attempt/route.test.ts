@@ -135,14 +135,17 @@ vi.mock("@/lib/ledger/store", () => ({
   },
 }));
 vi.mock("@/lib/near/server", () => ({
-  getReader: (network: string) => ({
-    network: h.readerNetworks.push(network),
-    listMandates: (_vault: string, from: number) => (from === 0 ? h.mandates() : []),
-    accessKey: (vault: string, pk: string) => {
-      h.accessKeyCalls.push([vault, pk]);
-      return h.accessKey(vault, pk);
-    },
-  }),
+  getReader: (network: string) => {
+    h.readerNetworks.push(network);
+    return {
+      network,
+      listMandates: (_vault: string, from: number) => (from === 0 ? h.mandates() : []),
+      accessKey: (vault: string, pk: string) => {
+        h.accessKeyCalls.push([vault, pk]);
+        return h.accessKey(vault, pk);
+      },
+    };
+  },
 }));
 vi.mock("@/lib/watcher/server", () => ({
   kickWatcher: (tenant: string, network: string) => {
@@ -868,6 +871,30 @@ describe("POST /api/canary/attempt", () => {
       const all = await rows();
       expect(all).toHaveLength(5);
       expect(all.filter((r) => r.is_team)).toHaveLength(1);
+    });
+
+    // W-NET-R5: a team vault counts for the team only on its own network. team.near is the owner of a team vault on
+    // mainnet (seeded above): at the testnet address, where that vault does not live, the visit is the public's.
+    it("counts a team vault only on its own network: a member of one on the other network is outside", async () => {
+      h.session = { accountId: "team.near" };
+      // The same account, once at the address of the team vault's network, once at the other's.
+      await post({ text: TEXT });
+      expect(at(await rows()).is_team).toBe(true);
+      await pg.exec("truncate public.canary_attempts; truncate public.rate_limits");
+      await pg.query("update public.tenants set network = 'testnet' where id = $1", [tenantId]);
+      h.host = "testnet.probarion.test";
+      h.canary = { mainnet: null, testnet: VAULT };
+      try {
+        expect((await post({ text: `${TEXT} 2` })).status).toBe(200);
+      } finally {
+        await pg.query("update public.tenants set network = 'mainnet' where id = $1", [tenantId]);
+      }
+      expect(at(await rows()).is_team).toBe(false);
+      // And the team vault is still there, on mainnet, for a member to count by: nothing about it changed.
+      const team = await pg.query<{ network: string }>(
+        "select network from public.tenants where vault_id = 'team.vaults.probarion.near'",
+      );
+      expect(team.rows).toEqual([{ network: "mainnet" }]);
     });
 
     it("lets the caller's team membership come only from the session, never from the body", async () => {

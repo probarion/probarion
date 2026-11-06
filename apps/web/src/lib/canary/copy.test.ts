@@ -177,7 +177,7 @@ describe("a testnet-aware page", () => {
     expect(testnet.filter((t) => /mainnet/i.test(t))).toEqual([]);
   });
 
-  it("says a testnet build runs on testnet in the rules, and a mainnet build makes no such claim", () => {
+  it("says the testnet address runs on testnet in the rules, and the mainnet address makes no such claim", () => {
     const fine = (n: Network) => strings(rulesCopy(n, LINKS.security).at(-1)?.body).join("");
     expect(fine("testnet")).toContain("It runs on testnet, with test tokens that have no value.");
     expect(fine("mainnet")).not.toContain("test tokens");

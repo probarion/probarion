@@ -41,13 +41,13 @@ describe("the two cards side by side", () => {
     );
   });
 
-  it("says what the page does not show, in the owner's words, for a testnet build", () => {
+  it("says what the page does not show, in the owner's words, at the testnet address", () => {
     expect(visible(render("testnet"))).toContain(
       "What this page does not show IPv6 visitors count per /64 network, so one large network can look like many visitors. The hourly caps are shared, so a visitor with many network addresses can use them up for everyone. This runs on testnet, and no third party has audited the code.",
     );
   });
 
-  it("names the network the build runs on", () => {
+  it("names the network of the address the page is opened at", () => {
     expect(visible(render("mainnet"))).toContain(
       "This runs on mainnet, and no third party has audited the code.",
     );

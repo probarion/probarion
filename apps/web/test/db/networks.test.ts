@@ -121,7 +121,7 @@ describe("migration 0012: both networks", () => {
       expect(m.techniques).toEqual([
         {
           technique: "payee_change",
-          attempts: 3 - 1,
+          attempts: 2,
           refused_by_code: 2,
           refused_by_contract: 0,
           held: 0,

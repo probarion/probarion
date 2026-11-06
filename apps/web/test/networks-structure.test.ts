@@ -105,19 +105,85 @@ describe("the pages of a vault", () => {
   );
 });
 
+/**
+ * The exported functions of a file, each with its body in which every call of a function of the same file is replaced by
+ * that function's body (to three levels), so an action that hands its work to a helper is read as one piece, in the order
+ * it runs. A body runs from its declaration to the next top-level declaration, so a helper written after an export is not
+ * taken for part of it.
+ */
+function exportedFunctions(src: string): { name: string; body: string }[] {
+  const top = /^(?:export|function|async function|const|let|type|interface|class)\b/gm;
+  const marks = [...src.matchAll(top)].map((m) => m.index ?? 0);
+  const all = [...src.matchAll(/^(export )?(?:async )?function (\w+)/gm)].map((m) => {
+    const from = m.index ?? 0;
+    const to = marks.find((i) => i > from) ?? src.length;
+    return { name: m[2] ?? "", exported: m[1] !== undefined, body: src.slice(from, to) };
+  });
+  const bodies = new Map(all.map((f) => [f.name, f.body]));
+  const inline = (body: string, depth: number): string =>
+    depth === 0
+      ? body
+      : body.replace(/(?<!function )\b(\w+)\(/g, (call, name: string) => {
+          const helper = bodies.get(name);
+          return helper === undefined ? call : `${call}${inline(helper, depth - 1)}`;
+        });
+  return all.filter((f) => f.exported).map((f) => ({ name: f.name, body: inline(f.body, 3) }));
+}
+
 describe("the routes and the actions of a vault", () => {
   const files = [
     ...walk(join(SRC, "app", "console", "[vault]")).filter((f) => /actions\.ts$/.test(f)),
     ...walk(join(SRC, "app", "api", "topup")).filter((f) => /route\.ts$/.test(f)),
     join(SRC, "app", "api", "console", "[vault]", "invoices", "route.ts"),
   ];
+  const entries = files.flatMap((f) =>
+    exportedFunctions(readFileSync(f, "utf8")).map((fn) => ({ file: posix(f), ...fn })),
+  );
 
-  it.each(files.map((f) => [posix(f), readFileSync(f, "utf8")]))(
-    "%s finds the member through the guard that checks the network",
-    (_file, src) => {
-      expect(src).toMatch(/\bmemberFor(Action|Api)\(/);
+  it("finds every action and every handler (a new one must be added here, and is then held to the guard)", () => {
+    expect(entries.map((e) => `${e.file}: ${e.name}`).sort()).toEqual([
+      "src/app/api/console/[vault]/invoices/route.ts: POST",
+      "src/app/api/topup/quote/route.ts: POST",
+      "src/app/api/topup/status/route.ts: GET",
+      "src/app/api/topup/submit/route.ts: POST",
+      "src/app/console/[vault]/actions.ts: refreshMembersAction",
+      "src/app/console/[vault]/actions.ts: updateSettingsAction",
+      "src/app/console/[vault]/alerts/actions.ts: addEmailAction",
+      "src/app/console/[vault]/alerts/actions.ts: connectTelegramAction",
+      "src/app/console/[vault]/alerts/actions.ts: removeSubscriptionAction",
+      "src/app/console/[vault]/keys/actions.ts: discardKeyAction",
+      "src/app/console/[vault]/keys/actions.ts: generateKeyAction",
+      "src/app/console/[vault]/keys/actions.ts: keepKeyAction",
+      "src/app/console/[vault]/keys/actions.ts: syncKeysAction",
+      "src/app/console/[vault]/mandates/actions.ts: checkPayeeAction",
+      "src/app/console/[vault]/mandates/actions.ts: prepareMandateAction",
+      "src/app/console/[vault]/payables/actions.ts: confirmInvoiceAction",
+      "src/app/console/[vault]/payables/actions.ts: prepareConfirmAction",
+      "src/app/console/[vault]/payables/actions.ts: rejectInvoiceAction",
+      "src/app/console/[vault]/payables/actions.ts: setZeroRetentionAction",
+      "src/app/console/[vault]/topup/actions.ts: prepareFundAction",
+    ]);
+  });
+
+  it.each(entries.map((e) => [`${e.file}: ${e.name}`, e.body]))(
+    "%s finds the member through the guard that checks the network, before anything is read or written",
+    (name, body) => {
+      const guard = body.search(/\bmemberFor(Action|Api)\(/);
+      expect(guard, name).toBeGreaterThan(-1);
       // Never the session alone: that would let a vault of the other network through.
-      expect(src).not.toMatch(/\bgetSession\(\)/);
+      expect(body, name).not.toMatch(/\bgetSession\(\)/);
+      // Nothing is read from a chain or the database, and no outside call is made, before the guard has answered.
+      for (const read of [
+        "getReader(",
+        "getRpc(",
+        "serviceDb(",
+        "chainConsts(",
+        "fetch(",
+        ".rpc(",
+      ]) {
+        const first = body.indexOf(read);
+        expect(first === -1 || guard < first, `${read} before the guard in ${name}`).toBe(true);
+      }
     },
   );
 });

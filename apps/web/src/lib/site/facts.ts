@@ -1,6 +1,6 @@
 // Every word and fact of the public site, in one module so that test/site-facts.test.ts can hold each one to the file
 // it comes from. Backticks in a string render as <code> (components/site/Rich.tsx). The transactions are the testnet
-// smoke run of contracts/deployments/testnet.json: they stay testnet links whatever network this build runs on.
+// smoke run of contracts/deployments/testnet.json: they stay testnet links whatever network the page is opened at.
 import type { CheckId } from "@probarion/core";
 import { explorerTxUrl } from "@/lib/config";
 import { CLI_ON_NPM, cli, REPO_URL } from "@/lib/proof/cli";

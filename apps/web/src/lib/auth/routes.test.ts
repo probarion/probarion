@@ -417,8 +417,9 @@ describe("POST /api/auth/verify", () => {
     const wrongKey = await issueChallenge(await sessionKey, "testnet");
     const asSession = await macToken(await challengeKey, {
       typ: "session",
-      v: 1,
+      v: 2,
       a: "alice.near",
+      n: "testnet",
       exp: Date.now() + 60_000,
     });
     for (const cookie of [expired.cookie, wrongKey.cookie, asSession, "junk"]) {

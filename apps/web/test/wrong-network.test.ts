@@ -232,13 +232,33 @@ async function statusOf(result: unknown): Promise<number | undefined> {
   return undefined;
 }
 
-/** The form actions that answer nothing (or a message) when they are denied. */
+/**
+ * The form actions that do not answer with an error and a status. Three of them return nothing at all (a `Promise<void>`,
+ * the page shows the result): discardKeyAction, setZeroRetentionAction and removeSubscriptionAction. keepKeyAction answers
+ * with a message, which for a vault on the other network is the guard's sentence.
+ */
 const SILENT = new Set([
   "discardKeyAction",
   "keepKeyAction",
   "setZeroRetentionAction",
   "removeSubscriptionAction",
 ]);
+
+/** What a call for a vault on the other network answered: the 409 and the sentence, in whichever form the entry point has. */
+async function expectWrongNetwork(name: string, result: unknown, sentence: string) {
+  if (result instanceof Response) {
+    expect(result.status, name).toBe(409);
+    expect(await result.json(), name).toEqual({ error: "wrong_network", detail: sentence });
+  } else if (name === "keepKeyAction") {
+    expect(result, name).toEqual({ ok: false, message: sentence });
+  } else if (SILENT.has(name)) {
+    // A form action that returns nothing: what shows it did nothing is that it touched nothing (asserted by the caller).
+    expect(result, name).toBeUndefined();
+  } else {
+    // An action shows one plain sentence and the status.
+    expect(result, name).toMatchObject({ error: sentence, status: 409 });
+  }
+}
 
 /** The actions whose own answer, for a vault they may act on, comes before any read or write. */
 const EARLY = new Set(["rejectInvoiceAction", "addEmailAction", "connectTelegramAction"]);
@@ -253,18 +273,11 @@ describe("a vault on the other network, opened at this network's address", () =>
   describe.each([...ROUTES, ...ACTIONS])("%s", (name, call) => {
     it("answers 409, and has read no chain, written nothing and signed nothing", async () => {
       const result = await call(TESTNET_VAULT);
-      const sentence = "This vault is on NEAR testnet. Open it at the testnet address.";
-      if (result instanceof Response) {
-        expect(result.status, name).toBe(409);
-        expect(await result.json()).toEqual({ error: "wrong_network", detail: sentence });
-      } else if (SILENT.has(name)) {
-        // A form action that answers nothing (or only a message): it did nothing, which the next assertions show.
-        const message = (result as { message?: string } | undefined)?.message;
-        if (message !== undefined) expect(message, name).toBe(sentence);
-      } else {
-        // An action shows one plain sentence and the status.
-        expect(result, name).toMatchObject({ error: sentence, status: 409 });
-      }
+      await expectWrongNetwork(
+        name,
+        result,
+        "This vault is on NEAR testnet. Open it at the testnet address.",
+      );
       expect(touched(), name).toEqual({ db: [], chain: [] });
       expect(h.revalidated, name).toEqual([]);
     });
@@ -290,14 +303,7 @@ describe("a vault on the other network, opened at this network's address", () =>
     h.defaultNetwork = "mainnet";
     const sentence = "This vault is on NEAR testnet, which this site does not serve yet.";
     for (const [name, call] of [...ROUTES, ...ACTIONS]) {
-      if (SILENT.has(name)) continue;
-      const result = await call(TESTNET_VAULT);
-      if (result instanceof Response) {
-        expect(result.status, name).toBe(409);
-        expect(await result.json(), name).toEqual({ error: "wrong_network", detail: sentence });
-      } else {
-        expect(result, name).toMatchObject({ error: sentence, status: 409 });
-      }
+      await expectWrongNetwork(name, await call(TESTNET_VAULT), sentence);
     }
     expect(touched()).toEqual({ db: [], chain: [] });
   });

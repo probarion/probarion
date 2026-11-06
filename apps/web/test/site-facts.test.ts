@@ -248,7 +248,7 @@ describe("transactions", () => {
     for (const t of Object.values(TX)) expect(README).toContain(t.hash);
   });
 
-  it("link to the testnet explorer, whatever network this build runs on", () => {
+  it("link to the testnet explorer, whatever network the page is opened at", () => {
     for (const t of Object.values(TX)) {
       expect(t.url).toBe(explorerTxUrl("testnet", t.hash));
       expect(t.url).toContain("testnet");
