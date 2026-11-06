@@ -25,8 +25,8 @@ export const LOW_NEAR_YOCTO = NEAR / 10n;
 
 /**
  * Below 0.05 NEAR free the vault is about to stop paying: the watcher emits a `near_low` vault event
- * (kind added in migration 0001) at most once per UTC day while it is. TODO(plan 04 Task 21):
- * `near_low` is in the default alert kinds of a new subscription.
+ * (kind added in migration 0001) at most once per UTC day while it is. A new alert subscription takes it among its
+ * default kinds (migration 0011).
  */
 export const NEAR_LOW_ALERT_YOCTO = NEAR / 20n;
 

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   after: vi.fn(),
   env: vi.fn(),
   watchTenantById: vi.fn(),
+  runAlerts: vi.fn(),
   viewAccount: vi.fn(),
   db: { rpc: vi.fn() },
   reader: { name: "reader" },
@@ -19,6 +20,7 @@ vi.mock("@/lib/near/server", () => ({
   getRpc: () => ({ viewAccount: mocks.viewAccount }),
 }));
 vi.mock("./watch", () => ({ watchTenantById: mocks.watchTenantById }));
+vi.mock("@/lib/alerts/server", () => ({ runAlerts: mocks.runAlerts }));
 
 import { kickWatcher, watcherDeps } from "./server";
 
@@ -27,7 +29,16 @@ const logs = quietLogs();
 const TENANT = "11111111-1111-4111-8111-111111111111";
 
 beforeEach(() => {
-  for (const m of [mocks.after, mocks.env, mocks.watchTenantById, mocks.viewAccount]) m.mockReset();
+  for (const m of [
+    mocks.after,
+    mocks.env,
+    mocks.watchTenantById,
+    mocks.runAlerts,
+    mocks.viewAccount,
+  ]) {
+    m.mockReset();
+  }
+  mocks.runAlerts.mockResolvedValue({ sent: 0, failed: 0, skipped: 0, deferred: 0, error: false });
   mocks.env.mockReturnValue({ NEAR_NETWORK: "mainnet" });
   mocks.after.mockImplementation(() => undefined);
   mocks.watchTenantById.mockResolvedValue({ inserted: 0 });
@@ -89,6 +100,51 @@ describe("kickWatcher", () => {
     await expect(registered()()).resolves.toBeUndefined();
     expect(mocks.watchTenantById).not.toHaveBeenCalled();
     expect(logs.lines.some((l) => l.includes("watch.kick_failed"))).toBe(true);
+  });
+
+  describe("the owners' alerts", () => {
+    it("go out after the watch, in the same job, with a deadline 10 s from when the job reached them", async () => {
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date("2026-11-11T10:00:00Z"));
+        const order: string[] = [];
+        mocks.watchTenantById.mockImplementation(async () => {
+          order.push("watch");
+          vi.setSystemTime(new Date("2026-11-11T10:00:03Z")); // the watch took 3 s
+          return { inserted: 1 };
+        });
+        mocks.runAlerts.mockImplementation(async () => {
+          order.push("alerts");
+          return { sent: 1, failed: 0, skipped: 0, deferred: 0, error: false };
+        });
+        kickWatcher(TENANT);
+        await registered()();
+        expect(order).toEqual(["watch", "alerts"]);
+        expect(mocks.runAlerts).toHaveBeenCalledWith(Date.parse("2026-11-11T10:00:13Z"));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("still go out when the watch failed: what is already recorded is worth sending", async () => {
+      mocks.watchTenantById.mockRejectedValue(new Error("rpc down"));
+      kickWatcher(TENANT);
+      await expect(registered()()).resolves.toBeUndefined();
+      expect(mocks.runAlerts).toHaveBeenCalledTimes(1);
+      expect(logs.lines.some((l) => l.includes("watch.kick_failed"))).toBe(true);
+    });
+
+    it("never fail the job, even if the dispatch rejects", async () => {
+      mocks.runAlerts.mockRejectedValue(new Error("boom"));
+      kickWatcher(TENANT);
+      await expect(registered()()).resolves.toBeUndefined();
+    });
+
+    it("are not touched until the response is sent", () => {
+      kickWatcher(TENANT);
+      registered();
+      expect(mocks.runAlerts).not.toHaveBeenCalled();
+    });
   });
 
   it("does not throw when after() refuses (called outside a request), so the request is not failed", () => {

@@ -1,3 +1,4 @@
+import { type AlertsRun, runAlerts } from "@/lib/alerts/server";
 import { cronAuthorized } from "@/lib/cron";
 import { getEnv } from "@/lib/env";
 import { json, problem } from "@/lib/http";
@@ -7,6 +8,10 @@ import { pingHeartbeat, watchAll, watchHealthy } from "@/lib/watcher/watch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/** Alerts are claimed until this long after the route started: `maxDuration` is 60 s and one send can take seconds. */
+const ALERTS_DEADLINE_MS = 55_000;
+const DISPATCH_FAILED: AlertsRun = { sent: 0, failed: 0, skipped: 0, deferred: 0, error: true };
 
 /**
  * One watcher run (docs/ops/watcher.md): every tenant of the network the app runs on is read from its cursors into
@@ -19,6 +24,11 @@ export const maxDuration = 60;
  *
  * `vercel.json` runs it once a day, the most the Vercel Hobby plan accepts; the per-minute schedule is a Supabase Cron
  * job the OWNER turns on, and the Payables and Canary routes also watch their own vault as soon as they respond.
+ *
+ * The owners' alerts (docs/ops/alerts.md) go out after the heartbeat, until 55 s after the route started, and what the
+ * deadline leaves waits for the next run. A dispatch that fails is a log line and `alerts.error` in the answer: it never
+ * changes the watch's health, its status or its heartbeat, and it runs after an unhealthy watch too, because the events
+ * already recorded are still worth sending.
  */
 export async function GET(req: Request) {
   try {
@@ -35,14 +45,20 @@ export async function GET(req: Request) {
     };
     const healthy = watchHealthy(run);
     const heartbeat = await pingHeartbeat(env.BETTERSTACK_HEARTBEAT_URL, healthy);
+    // runAlerts does not throw; the catch is for the day somebody changes that, and the watch's answer must stand.
+    const alerts = await runAlerts(started + ALERTS_DEADLINE_MS).catch(() => DISPATCH_FAILED);
     log.info("cron.watch", {
       network: env.NEAR_NETWORK,
       ...watch,
       healthy,
       heartbeat,
+      alerts,
       ms: Date.now() - started,
     });
-    return json({ ok: healthy, network: env.NEAR_NETWORK, watch, heartbeat }, healthy ? 200 : 503);
+    return json(
+      { ok: healthy, network: env.NEAR_NETWORK, watch, alerts, heartbeat },
+      healthy ? 200 : 503,
+    );
   } catch (error) {
     // The database or a missing setting: a failed run for the cron's log, and never an unhandled 500.
     log.error("cron.watch_failed", { error });

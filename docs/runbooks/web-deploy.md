@@ -121,7 +121,7 @@ Where things are defined (you do not edit these to deploy):
   | `CANARY_VAULT_ID`, `CANARY_MODE` | leave `CANARY_MODE` unset (it defaults to `code-only`); set the vault when the Canary is built | no |
   | `BASE_RPC_URL` | public Base RPC for settlement lookups, for example `https://mainnet.base.org` | no |
   | `SENTRY_DSN` | https DSN of a Sentry project | no |
-  | `TELEGRAM_BOT_TOKEN`, `RESEND_API_KEY` | alert channels | **yes** |
+  | `TELEGRAM_BOT_TOKEN`, `RESEND_API_KEY` | alert channels; `docs/ops/alerts.md` has the BotFather, webhook and Resend steps | **yes** |
   | `BETTERSTACK_HEARTBEAT_URL` | https; its path carries a token | **yes** |
 
   Do **not** set these on Vercel:

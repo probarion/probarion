@@ -212,6 +212,14 @@ The software is an unaudited beta.
   `vault_events`. It runs daily on Vercel, every minute once the owner turns on the Supabase Cron
   job in `docs/ops/watcher.md`, and right after an invoice upload or a Canary attempt for that
   vault.
+- Owner alerts: an owner or approver can get a Telegram message or an email when a spend is held
+  for approval, the contract refuses a spend, a spend is paid or paid out to Base, a payout fails,
+  an agent or ledger key's gas allowance runs low, or the vault runs low on NEAR. Each goes out
+  once per alert and event, not for a vault's old history, and a viewer sees addresses and chat
+  ids masked. Every message says how to stop: the email's own stop link (and a mail client's
+  one-click unsubscribe), the bot's `/stop`, or Remove on the new Alerts tab
+  (`/console/<vault>/alerts`). The channels switch on once the owner sets `TELEGRAM_BOT_TOKEN` and
+  `RESEND_API_KEY` (`docs/ops/alerts.md`).
 - The SDK takes a deadline: `RpcClient` `remainingMs`, `NearApiJsSender` `sendTimeoutMs` as a
   function, and `NearAiProposer` `remainingMs` and `knownModel`. All are optional, and the
   defaults are unchanged.

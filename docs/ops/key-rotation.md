@@ -94,7 +94,9 @@ is why the command uses trial decryption.
 5. **Switch `KEY_ENCRYPTION_SECRET` to the new master** in Vercel (Production, and Preview if it
    shares the database) and redeploy. Side effects of a new master: every session is signed out (the
    session and sign-in challenge subkeys change), the Telegram webhook secret changes (re-run
-   `pnpm --filter @probarion/web telegram-webhook`), and visitor hashes change (Canary per-visitor
+   `pnpm --filter @probarion/web telegram-webhook`; `docs/ops/alerts.md`), the stop links in earlier alert
+   emails stop working (the Remove button on the Alerts tab and Telegram's `/stop` still do, and later emails have
+   working links), and visitor hashes change (Canary per-visitor
    limits start over).
 
 6. **Keep the OLD master until a later dry run shows every row opens under the NEW one.** Rows the app
