@@ -11,7 +11,7 @@ const source = readFileSync(
   "utf8",
 );
 const run = source.slice(
-  source.indexOf("async function run()"),
+  source.indexOf("async function run("),
   source.indexOf("return (\n    <div"),
 );
 
@@ -38,9 +38,23 @@ describe("TxButton's confirm step", () => {
     expect(run.slice(0, ask)).toContain("if (props.confirm)");
     expect(run.slice(0, ask)).toContain("if (inflight.current || locked) return;");
     // a "no" leaves: nothing below the ask has run (no busy state, no error, no lock)
-    const returnsOnNo = run.indexOf("if (!(await ask(question))) return;");
+    const returnsOnNo = run.indexOf("if (!(await ask(question, opener))) return;");
     expect(returnsOnNo).toBeGreaterThan(-1);
     expect(returnsOnNo).toBeLessThan(run.indexOf("inflight.current = true"));
+  });
+
+  it("looks again at the in-flight guard and the lock after the dialog answers, before it goes on", () => {
+    const answered = run.indexOf("if (!(await ask(question, opener))) return;");
+    const again = run.indexOf("if (inflight.current || lockedNow.current) return;", answered);
+    expect(again).toBeGreaterThan(answered);
+    expect(again).toBeLessThan(run.indexOf("inflight.current = true"));
+    // the lock is read through a ref, so it is the lock now and not the one the click saw
+    expect(source).toMatch(/lockedNow\.current = locked;/);
+  });
+
+  it("gives the dialog the button that was clicked, to hand the focus back to", () => {
+    expect(source).toContain("onClick={(e) => run(e.currentTarget)}");
+    expect(source).toMatch(/async function run\(opener\?: HTMLElement\)/);
   });
 
   it("starts the busy state, the in-flight guard and the signature only after the owner said yes", () => {

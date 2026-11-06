@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Notice } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
+import type { DangerTone } from "@/lib/console/confirm-dialog";
 import { consoleOutOfNear } from "@/lib/console/display";
 import type { TxResult } from "@/lib/near/outcome";
 import type { WalletTx } from "@/lib/near/tx";
@@ -32,7 +33,7 @@ export function VaultTxButton({
   network: Network;
   expectedSigner?: string;
   confirm?: string;
-  confirmTone?: "danger";
+  confirmTone?: DangerTone;
   tx: WalletTx;
   outOfNearCodes: string[];
   /** True only when the vault's free NEAR was read and is below 0.1 NEAR (never on "unavailable"). */

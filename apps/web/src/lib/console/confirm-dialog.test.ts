@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  ACTION_GUARD_MS,
+  actionClickAllowed,
   type ConfirmOptions,
   type ConfirmSource,
+  type ConfirmTone,
   createAsker,
+  type DangerTone,
   isBackdropClick,
+  pickOpener,
   SIGN_FOOTNOTE,
   walletConfirm,
 } from "./confirm-dialog";
@@ -36,7 +41,7 @@ describe("createAsker", () => {
     expect(a.open).toBeNull();
   });
 
-  it.each<ConfirmSource>(["cancel-button", "escape", "backdrop", "unmount"])(
+  it.each<ConfirmSource>(["cancel-button", "escape", "backdrop", "close", "unmount"])(
     "answers false and closes when the dialog is dismissed by %s",
     async (source) => {
       const { a, seen } = asker();
@@ -140,5 +145,61 @@ describe("walletConfirm (what TxButton asks)", () => {
 
   it("tells the owner what comes next, in the words the approved design uses", () => {
     expect(SIGN_FOOTNOTE).toBe("Next, your wallet asks you to sign. Nothing is sent until you do.");
+  });
+});
+
+describe("actionClickAllowed (a double click on the opener must not land on the action)", () => {
+  const opened = 10_000;
+  const at = (after: number, detail: number) =>
+    actionClickAllowed({ openedAt: opened, now: opened + after, detail });
+
+  it("ignores the action button for the first moments after the dialog opens", () => {
+    expect(ACTION_GUARD_MS).toBe(400);
+    expect(at(0, 1)).toBe(false);
+    expect(at(ACTION_GUARD_MS - 1, 1)).toBe(false);
+  });
+
+  it("takes a click once the guard time has passed", () => {
+    expect(at(ACTION_GUARD_MS, 1)).toBe(true);
+    expect(at(60_000, 1)).toBe(true);
+  });
+
+  it("ignores the second click of a double click, however late", () => {
+    expect(at(60_000, 2)).toBe(false);
+    expect(at(60_000, 3)).toBe(false);
+  });
+
+  it("takes a click from the keyboard (its detail is 0) once the guard time has passed", () => {
+    expect(at(ACTION_GUARD_MS, 0)).toBe(true);
+    expect(at(0, 0)).toBe(false);
+  });
+});
+
+describe("pickOpener (where focus goes back to)", () => {
+  const button = { name: "the button that was clicked" };
+  const active = { name: "whatever had focus" };
+
+  it("is the element the caller passed, when it passed one", () => {
+    expect(pickOpener(button, active)).toBe(button);
+  });
+
+  it("falls back to the element that had focus when none was passed", () => {
+    expect(pickOpener(undefined, active)).toBe(active);
+    expect(pickOpener(null, active)).toBe(active);
+  });
+
+  it("is nothing when there is neither", () => {
+    expect(pickOpener(undefined, null)).toBeNull();
+  });
+});
+
+describe("tone types", () => {
+  it("DangerTone is the one tone a prop can name besides the normal one", () => {
+    const danger: DangerTone = "danger";
+    const tone: ConfirmTone = danger;
+    expect(tone).toBe("danger");
+    // @ts-expect-error "normal" is what no tone means; a prop names only "danger"
+    const normal: DangerTone = "normal";
+    expect(normal).toBe("normal");
   });
 });

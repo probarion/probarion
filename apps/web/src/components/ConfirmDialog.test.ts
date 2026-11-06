@@ -137,6 +137,26 @@ describe("ConfirmDialog markup", () => {
       expect(attr(openTag(html, /^<dialog\b[^>]*>/), "aria-labelledby")).toBe(id);
       expect(html).toMatch(/<h2\b[^>]*>Approve<\/h2>/);
     });
+
+    it("a danger dialog is announced as an alert dialog, and its 'Cannot be undone' line is read first", () => {
+      const html = render({ ...base, tone: "danger" });
+      const dialog = openTag(html, /^<dialog\b[^>]*>/);
+      expect(attr(dialog, "role")).toBe("alertdialog");
+      const eyebrow = openTag(html, /<p\b[^>]*>(?=Cannot be undone)/);
+      const eyebrowId = attr(eyebrow, "id");
+      const bodyId = attr(openTag(html, /<p\b[^>]*id="[^"]*"[^>]*>(?=Approve paying)/), "id");
+      expect(eyebrowId).toBeTruthy();
+      expect(bodyId).toBeTruthy();
+      expect(attr(dialog, "aria-describedby")).toBe(`${eyebrowId} ${bodyId}`);
+    });
+
+    it("a normal dialog is a plain dialog, described by its text alone", () => {
+      const html = render(base);
+      const dialog = openTag(html, /^<dialog\b[^>]*>/);
+      expect(attr(dialog, "role")).toBeUndefined();
+      const bodyId = attr(openTag(html, /<p\b[^>]*id="[^"]*"[^>]*>(?=Approve paying)/), "id");
+      expect(attr(dialog, "aria-describedby")).toBe(bodyId);
+    });
   });
 
   describe("styling", () => {
@@ -183,5 +203,16 @@ describe("the dialog's wiring", () => {
 
   it("answers an open question when it unmounts, so no caller waits for ever", () => {
     expect(source).toContain('settle("unmount")');
+  });
+
+  it("is rendered into document.body, so no fieldset or clickable ancestor of the button reaches it", () => {
+    expect(source).toContain("createPortal(");
+    expect(source).toContain("document.body");
+    expect(source).toContain('typeof document === "undefined"'); // the server render has none
+  });
+
+  it("is told which element to give the focus back to, and says what it did on a close of its own", () => {
+    expect(source).toContain("pickOpener(");
+    expect(source).toContain('onSettle("close")');
   });
 });

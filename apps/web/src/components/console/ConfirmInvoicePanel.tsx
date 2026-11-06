@@ -98,8 +98,8 @@ export function ConfirmInvoicePanel({
     }
   };
 
-  const onReject = async () => {
-    if (!(await ask(REJECT_INVOICE_CONFIRM))) return;
+  const onReject = async (opener: HTMLElement) => {
+    if (!(await ask(REJECT_INVOICE_CONFIRM, opener))) return;
     setPhase("reject");
     setShown(null);
     try {
@@ -138,7 +138,12 @@ export function ConfirmInvoicePanel({
                   : "Loading wallets…"}
           </button>
         ) : null}
-        <button type="button" className={linePillClass} disabled={busy} onClick={onReject}>
+        <button
+          type="button"
+          className={linePillClass}
+          disabled={busy}
+          onClick={(e) => onReject(e.currentTarget)}
+        >
           {phase === "reject" ? "Rejecting…" : "Reject"}
         </button>
       </div>

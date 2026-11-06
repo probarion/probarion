@@ -93,6 +93,26 @@ describe("the buttons that wrap TxButton pass the tone through", () => {
   });
 });
 
+/** How many times a source file gives a button the danger tone, however the prop is spelled. */
+function countDangerProps(source: string): number {
+  return (source.match(/confirmTone=(?:"danger"|\{\s*["']danger["']\s*\})/g) ?? []).length;
+}
+
+describe("countDangerProps (so the count below cannot be dodged by how the prop is written)", () => {
+  it("counts the string form and the expression forms alike", () => {
+    expect(countDangerProps('<B confirmTone="danger" />')).toBe(1);
+    expect(countDangerProps('<B confirmTone={"danger"} />')).toBe(1);
+    expect(countDangerProps('<B confirmTone={ "danger" } />')).toBe(1);
+    expect(countDangerProps("<B confirmTone={'danger'} />")).toBe(1);
+    expect(countDangerProps('<A confirmTone="danger" /><B confirmTone={"danger"} />')).toBe(2);
+  });
+
+  it("does not count another tone, or no tone", () => {
+    expect(countDangerProps("<B confirmTone={undefined} />")).toBe(0);
+    expect(countDangerProps('<B confirm="danger" />')).toBe(0);
+  });
+});
+
 describe("where the danger tone is used", () => {
   const SRC = fileURLToPath(new URL("../../", import.meta.url));
   const read = (...p: string[]) => readFileSync(join(SRC, ...p), "utf8");
@@ -141,7 +161,7 @@ describe("where the danger tone is used", () => {
     const users = walk(SRC)
       .filter(isSourceFile)
       .flatMap((f) => {
-        const n = (readFileSync(f, "utf8").match(/confirmTone="danger"/g) ?? []).length;
+        const n = countDangerProps(readFileSync(f, "utf8"));
         return n === 0 ? [] : [`${toPosix(relative(SRC, f))} x${n}`];
       })
       .sort();
@@ -173,5 +193,8 @@ describe("where the danger tone is used", () => {
     const panel = read("components", "console", "ConfirmInvoicePanel.tsx");
     expect(panel).toContain("useConfirm()");
     expect(panel).toContain("REJECT_INVOICE_CONFIRM");
+    // and hands the dialog the Reject button that was clicked, to give the focus back to
+    expect(panel).toContain("ask(REJECT_INVOICE_CONFIRM, opener)");
+    expect(panel).toContain("onClick={(e) => onReject(e.currentTarget)}");
   });
 });

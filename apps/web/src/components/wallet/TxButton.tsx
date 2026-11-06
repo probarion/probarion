@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { buttonClass } from "@/components/ui";
 import type { Network } from "@/lib/config";
-import { walletConfirm } from "@/lib/console/confirm-dialog";
+import { type DangerTone, walletConfirm } from "@/lib/console/confirm-dialog";
 import { actionKey, browserStore, clearLock, readLock, writeLock } from "@/lib/near/lock";
 import { type DescribeResult, sendLocked, type TxResult } from "@/lib/near/outcome";
 import { actionLabel, type WalletTx } from "@/lib/near/tx";
@@ -33,7 +33,7 @@ export interface TxButtonBaseProps {
   /** Asks the owner first, in the console's own dialog: this text is its body, and the button's label its title. */
   confirm?: string;
   /** "danger" for what cannot be taken back: the dialog gets a red action button and a "Cannot be undone" line. */
-  confirmTone?: "danger";
+  confirmTone?: DangerTone;
   lockKey?: string;
   /** Wording for the result, live or read back after a reload (so a reloaded lock reads the same). */
   describe?: DescribeResult;
@@ -66,6 +66,8 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
   const { ask, dialog } = useConfirm();
   const preview = props.tx ?? prepared;
   const locked = sendLocked(result);
+  const lockedNow = useRef(locked); // what the lock is now, for a check that comes after the dialog has answered
+  lockedNow.current = locked;
   const wrongSigner = !!props.expectedSigner && !!accountId && accountId !== props.expectedSigner;
   const key = props.lockKey ?? (props.tx ? actionKey(props.tx) : null);
 
@@ -81,7 +83,7 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
     onBusyChange.current?.(busy);
   }, [busy]);
 
-  async function run() {
+  async function run(opener?: HTMLElement) {
     if (inflight.current || locked) return;
     if (props.confirm) {
       // A second click while the question is open is answered "no" by the dialog itself. A "no" returns here, before
@@ -91,7 +93,9 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
         confirm: props.confirm,
         confirmTone: props.confirmTone,
       });
-      if (!(await ask(question))) return;
+      if (!(await ask(question, opener))) return;
+      // The page was inert while the dialog was open, but what is true now decides, not what was true at the click.
+      if (inflight.current || lockedNow.current) return;
     }
     inflight.current = true;
     setBusy(true);
@@ -128,7 +132,7 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
         type="button"
         className={buttonClass}
         disabled={!ready || busy || wrongSigner || locked}
-        onClick={run}
+        onClick={(e) => run(e.currentTarget)}
       >
         {busy ? "Waiting for your wallet and the network…" : props.label}
       </button>

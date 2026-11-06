@@ -3,6 +3,8 @@
 
 /** "danger" is for what cannot be taken back: a red action button and a "Cannot be undone" line above the title. */
 export type ConfirmTone = "normal" | "danger";
+/** What a prop names when it asks for the red dialog: "normal" is what no prop at all means. */
+export type DangerTone = Exclude<ConfirmTone, "normal">;
 
 export interface ConfirmOptions {
   /** The action's own label, never "OK". */
@@ -17,9 +19,16 @@ export interface ConfirmOptions {
 
 /**
  * What the owner did to close the dialog. Only the action button says yes. Anything else says no: the Cancel button,
- * Esc, a click on the dimmed backdrop, or the page going away with the question still open.
+ * Esc, a click on the dimmed backdrop, the browser closing the dialog on its own ("close"), or the page going
+ * away with the question still open.
  */
-export type ConfirmSource = "action" | "cancel-button" | "escape" | "backdrop" | "unmount";
+export type ConfirmSource =
+  | "action"
+  | "cancel-button"
+  | "escape"
+  | "backdrop"
+  | "close"
+  | "unmount";
 
 export interface Asker {
   /** Opens the dialog and resolves with the owner's answer. While one is open, a new ask resolves `false` at once. */
@@ -69,13 +78,31 @@ export function isBackdropClick(e: {
   return e.pressed === e.dialog && e.clicked === e.dialog;
 }
 
+/** How long the action button ignores clicks after the dialog opens (the second click of a double click on the opener). */
+export const ACTION_GUARD_MS = 400;
+
+/**
+ * Whether a click on the action button counts. A double click on the button that opened the dialog must not land its
+ * second click on the action: the dialog is up before that click arrives, so the action is held back for a moment, and
+ * a click that is itself the second of a double click (`detail` above 1) never counts. A click from the keyboard has
+ * `detail` 0.
+ */
+export function actionClickAllowed(e: { openedAt: number; now: number; detail: number }): boolean {
+  return e.detail <= 1 && e.now - e.openedAt >= ACTION_GUARD_MS;
+}
+
+/** Where the focus goes back to: the element the caller says opened the question, else the one that had focus. */
+export function pickOpener<T>(given: T | null | undefined, active: T | null): T | null {
+  return given ?? active;
+}
+
 export const SIGN_FOOTNOTE = "Next, your wallet asks you to sign. Nothing is sent until you do.";
 
 /** What a wallet button asks before it asks the wallet: its own label, its confirm text, and its tone. */
 export function walletConfirm(b: {
   label: string;
   confirm: string;
-  confirmTone?: "danger";
+  confirmTone?: DangerTone;
 }): ConfirmOptions {
   return {
     title: b.label,

@@ -2,7 +2,7 @@
 // `window.confirm`: that box looks foreign, cannot say which action it guards, and blocks browser automation. This
 // scans every source file under src (test files excluded) and fails on a use of the browser's `confirm`, however it is
 // spelled. A file's own `confirm` (a prop, a parameter, a method such as `d.confirm(...)`) is a different thing and is
-// not flagged.
+// not flagged. This is a tripwire against accidents, not a security control: deliberate evasion is out of scope.
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { buttonClass, Field, inputClass, Notice } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
+import type { DangerTone } from "@/lib/console/confirm-dialog";
 import { consoleOutOfNear } from "@/lib/console/display";
 import type { KeepState, KeyPurpose, KeySyncState, VaultCode } from "@/lib/keys/rules";
 import { lockKeyFor } from "@/lib/near/lock";
@@ -47,7 +48,7 @@ export function KeyTxButton(props: {
   tx: WalletTx;
   lockKey: string;
   confirm?: string;
-  confirmTone?: "danger";
+  confirmTone?: DangerTone;
   outOfNearCodes: string[];
   sync: Sync;
 }) {
