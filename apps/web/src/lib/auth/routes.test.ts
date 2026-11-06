@@ -1037,24 +1037,88 @@ describe("sign-in checks that the network's RPC serves its chain", () => {
     expect(n.asked).toEqual([`${TEST} status`]);
   });
 
-  it("one URL down, then up: 503 unavailable and no cache until it has answered, and then only it is asked", async () => {
+  // W-NET-R6: a backup URL that a provider has retired does not stop sign-in. The request goes on when one URL answered right
+  // and none answered wrong; the silent URL is asked again on every later request.
+  it("one URL down and one right: the sign-in goes on, and the silent URL is asked again next time, and only it", async () => {
     h.urls.mainnet = [MAIN, MAIN_B];
     h.host = MAINNET_HOST;
     const n = nodes({ [MAIN]: chain("mainnet"), [MAIN_B]: "down" });
-    const c = await getChallenge();
+    // The first check asks both URLs, and the silent one is not remembered as answered.
+    const first = await getChallenge();
+    const rpc1 = useRpc(rpcOk(FULL_ACCESS_KEY));
+    const one = await postVerify(login(first.body), first.cookie);
+    expect(one.res.status).toBe(200);
+    expect(setCookieOf(one.setCookies, SESSION_COOKIE)).toBeDefined();
+    expect(rpc1.calls.map((x) => x.body.method)).toEqual(["query"]);
+    expect([...n.asked].sort()).toEqual([`${MAIN} status`, `${MAIN_B} status`].sort());
+    // The next sign-in asks only the URL that has not answered, and goes on again.
+    n.asked.length = 0;
+    const second = await getChallenge();
+    const rpc2 = useRpc(rpcOk(FULL_ACCESS_KEY));
+    const two = await postVerify(login(second.body), second.cookie);
+    expect(two.res.status).toBe(200);
+    expect(setCookieOf(two.setCookies, SESSION_COOKIE)).toBeDefined();
+    expect(rpc2.calls.map((x) => x.body.method)).toEqual(["query"]);
+    expect(n.asked).toEqual([`${MAIN_B} status`]);
+  });
+
+  it("the URL that was down comes up on the other chain: the next sign-in is a 503 wrong_chain, with no session", async () => {
+    h.urls.mainnet = [MAIN, MAIN_B];
+    h.host = MAINNET_HOST;
+    const n = nodes({ [MAIN]: chain("mainnet"), [MAIN_B]: "down" });
+    const first = await getChallenge();
     useRpc(rpcOk(FULL_ACCESS_KEY));
-    const down = await postVerify(login(c.body), c.cookie);
-    expect(down.res.status).toBe(503);
-    expect(down.json).toEqual({ error: "unavailable" });
-    expect(setCookieOf(down.setCookies, SESSION_COOKIE)).toBeUndefined();
-    // The URL comes back: only it is asked again, the network passes, and the sign-in succeeds.
+    expect((await postVerify(login(first.body), first.cookie)).res.status).toBe(200);
+    n.answers[MAIN_B] = chain("testnet");
+    n.asked.length = 0;
+    const c = await getChallenge();
+    const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+    const { res, json, setCookies } = await postVerify(login(c.body), c.cookie);
+    expect(res.status).toBe(503);
+    expect(json).toEqual({ error: "wrong_chain" });
+    expect(setCookieOf(setCookies, SESSION_COOKIE)).toBeUndefined();
+    expect(n.asked).toEqual([`${MAIN_B} status`]);
+    expect(rpc.calls).toHaveLength(0);
+  });
+
+  it("the URL that was down comes up on the right chain: the network is remembered as passed, and nobody is asked again", async () => {
+    h.urls.mainnet = [MAIN, MAIN_B];
+    h.host = MAINNET_HOST;
+    const n = nodes({ [MAIN]: chain("mainnet"), [MAIN_B]: "down" });
+    const first = await getChallenge();
+    useRpc(rpcOk(FULL_ACCESS_KEY));
+    expect((await postVerify(login(first.body), first.cookie)).res.status).toBe(200);
     n.answers[MAIN_B] = chain("mainnet");
     n.asked.length = 0;
-    const again = await getChallenge();
-    const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
-    expect((await postVerify(login(again.body), again.cookie)).res.status).toBe(200);
+    const second = await getChallenge();
+    useRpc(rpcOk(FULL_ACCESS_KEY));
+    expect((await postVerify(login(second.body), second.cookie)).res.status).toBe(200);
     expect(n.asked).toEqual([`${MAIN_B} status`]);
-    expect(rpc.calls.map((x) => x.body.method)).toEqual(["query"]);
+    n.asked.length = 0;
+    const third = await getChallenge();
+    useRpc(rpcOk(FULL_ACCESS_KEY));
+    expect((await postVerify(login(third.body), third.cookie)).res.status).toBe(200);
+    expect(n.asked).toEqual([]);
+  });
+
+  it("no URL answers: 503 unavailable, no session, and nothing is remembered", async () => {
+    h.urls.mainnet = [MAIN, MAIN_B];
+    h.host = MAINNET_HOST;
+    const n = nodes({ [MAIN]: "down", [MAIN_B]: "down" });
+    const c = await getChallenge();
+    const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+    const { res, json, setCookies } = await postVerify(login(c.body), c.cookie);
+    expect(res.status).toBe(503);
+    expect(json).toEqual({ error: "unavailable" });
+    expect(setCookieOf(setCookies, SESSION_COOKIE)).toBeUndefined();
+    expect(rpc.calls).toHaveLength(0);
+    // One of them comes back: both are asked again, and the sign-in goes on.
+    n.answers[MAIN] = chain("mainnet");
+    n.asked.length = 0;
+    const again = await getChallenge();
+    useRpc(rpcOk(FULL_ACCESS_KEY));
+    expect((await postVerify(login(again.body), again.cookie)).res.status).toBe(200);
+    expect(n.asked.sort()).toEqual([`${MAIN} status`, `${MAIN_B} status`].sort());
   });
 
   it("is not asked for a request that has no valid challenge: no chain call, the same 401", async () => {

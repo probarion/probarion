@@ -27,11 +27,11 @@ export function forgetVerifiedChains(): void {
   answeredRight.clear();
 }
 
-/** The settings variable a network's RPC list comes from, for the log (the suffixed form the runbook tells the OWNER to set). */
-const RPC_VARIABLE: Record<Network, string> = {
-  mainnet: "NEAR_RPC_URLS_MAINNET",
-  testnet: "NEAR_RPC_URLS_TESTNET",
-};
+/** A network's RPC list as the settings give it: the URLs, and the variable that supplied them (named in the log). */
+export interface RpcList {
+  rpcUrls: readonly string[];
+  rpcUrlsVariable: string;
+}
 
 /** One URL's outcome. */
 type Probe =
@@ -65,25 +65,28 @@ async function probe(
 }
 
 /**
- * Checks that every URL of the network's RPC list answers JSON-RPC `status` with `chain_id` equal to `network`. The
- * first check for a network asks all of them, each on its own; a URL that has answered correctly once is not asked again
- * for the life of the process, so the network is remembered as passed when every URL has answered correctly, and until
- * then each check asks only the URLs that have not.
+ * Checks the chain of the network's RPC list: every URL is asked JSON-RPC `status`, each on its own, and `chain_id` must be
+ * `network`. The request may go on when at least one URL has answered with the right chain (in this check or an earlier
+ * one) and none has answered with another. A URL that has answered right is not asked again for the life of the process,
+ * so the network is remembered as passed once every URL has; until then each check asks again the URLs that have not
+ * answered right, so a backup URL that a provider has retired does not stop sign-in or Register, and one that comes up on
+ * the other chain is refused at the next request (W-NET-R6).
  *
  * Any URL that answers for another chain fails the check with `WrongChainError` (logged with the network, the variable
- * and the URL's position, never the URL, which can hold an API key); that wins over a URL that did not answer. A URL
- * that cannot be reached fails it with the RPC client's own error, and an answer without a readable `chain_id` with
- * `RpcMalformedError`: both are failures to check, never a pass. Nothing about a failure is remembered, so a corrected
- * setting or a node that comes back is picked up by the next request.
+ * that supplied the list and the URL's position, never the URL, which can hold an API key); that wins over everything else.
+ * When no URL has answered right and none wrong, the check fails with the RPC client's own error (a URL that cannot be
+ * reached) or `RpcMalformedError` (an answer without a readable `chain_id`): a failure to check, never a pass. Nothing
+ * about a wrong or a missing answer is remembered, so a corrected setting or a node that comes back is picked up by the
+ * next request.
  *
  * `clientOptions` is for tests (a `fetch`, `sleep` and `maxRounds`); the client is the SDK's own, one URL at a time.
  */
 export async function ensureChain(
   network: Network,
-  urls: readonly string[],
+  list: RpcList,
   clientOptions: Partial<RpcClientOptions> = {},
 ): Promise<void> {
-  const unique = [...new Set(urls)];
+  const unique = [...new Set(list.rpcUrls)];
   if (unique.length === 0) throw new Error(`no RPC URL is set for ${network}`);
   const right = answeredRight.get(network) ?? new Set<string>();
   const pending = unique.filter((url) => !right.has(url));
@@ -101,8 +104,10 @@ export async function ensureChain(
   answeredRight.set(network, right);
 
   if (wrongAt !== null) {
-    log.error("chain.wrong", { network, variable: RPC_VARIABLE[network], entry: wrongAt });
+    log.error("chain.wrong", { network, variable: list.rpcUrlsVariable, entry: wrongAt });
     throw new WrongChainError(network);
   }
-  if (failure !== null) throw failure.error;
+  // Nothing answered for another chain. At least one URL has answered right (now or before): the request goes on, and the
+  // URLs that have not answered are asked again next time. None has: a failure to check.
+  if (right.size === 0 && failure !== null) throw failure.error;
 }

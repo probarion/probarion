@@ -20,6 +20,7 @@ export function settingsFor(
     enabled: true,
     origin: network === "mainnet" ? MAINNET_ORIGIN : TESTNET_ORIGIN,
     rpcUrls: [...NETWORKS[network].rpcUrls],
+    rpcUrlsVariable: network === "mainnet" ? "NEAR_RPC_URLS_MAINNET" : "NEAR_RPC_URLS_TESTNET",
     archivalRpcUrls: [],
     factoryId: NETWORKS[network].factory,
     demoVaultId: null,

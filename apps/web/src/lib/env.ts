@@ -20,6 +20,11 @@ export interface NetworkSettings {
    */
   origin: string | null;
   rpcUrls: string[];
+  /**
+   * The variable that supplied `rpcUrls`: NEAR_RPC_URLS_<NET>, or the unsuffixed NEAR_RPC_URLS when that supplied the default
+   * network's list, or NEAR_RPC_URLS_<NET> when neither is set and the built-in list is used. For logs about the list.
+   */
+  rpcUrlsVariable: string;
   /** /proof's burn lookups for txs older than about 2.5 days. Empty (unset) means no archival lookup (R5). */
   archivalRpcUrls: string[];
   factoryId: string;
@@ -288,6 +293,7 @@ function settingsOf(
     origin: origin?.origin ?? null,
     // A list with no entries (for example ",") is unset, so the network default applies.
     rpcUrls: rpc?.value ?? [...NETWORKS[network].rpcUrls],
+    rpcUrlsVariable: rpc?.name ?? `NEAR_RPC_URLS_${SUFFIX[network]}`,
     archivalRpcUrls: archival?.value ?? [],
     factoryId: account("PROBARION_FACTORY_ID") ?? NETWORKS[network].factory,
     demoVaultId: account("PROBARION_VAULT_ID"),

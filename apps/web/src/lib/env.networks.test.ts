@@ -31,6 +31,7 @@ describe("loadEnv: both networks (W-NET-R1)", () => {
       enabled: true,
       origin: "http://localhost:3000",
       rpcUrls: ["https://rpc.example/key"],
+      rpcUrlsVariable: "NEAR_RPC_URLS",
       archivalRpcUrls: ["https://archival.example"],
       factoryId: "vaults.staging.testnet",
       demoVaultId: "demo.vaults.staging.testnet",
@@ -42,6 +43,7 @@ describe("loadEnv: both networks (W-NET-R1)", () => {
       enabled: false,
       origin: null,
       rpcUrls: ["https://rpc.mainnet.fastnear.com", "https://rpc.intea.rs"],
+      rpcUrlsVariable: "NEAR_RPC_URLS_MAINNET",
       archivalRpcUrls: [],
       factoryId: "vaults.probarion.near",
       demoVaultId: null,
@@ -680,5 +682,64 @@ describe("an origin with a trailing dot (fix round 1)", () => {
     const { networkForRequestHost } = await import("./network");
     expect(networkForRequestHost("mainnet.probarion.example.", env)).toBe("mainnet");
     expect(networkForRequestHost("mainnet.probarion.example", env)).toBe("mainnet");
+  });
+});
+
+// Fix round 3 (W-NET-R6): the settings say which variable supplied each network's RPC list, so that a log line about the list
+// (the chain check's `chain.wrong`) names the one the OWNER has to change.
+describe("rpcUrlsVariable: the variable that supplied the RPC list", () => {
+  const BOTH = {
+    ...base,
+    APP_ORIGIN_MAINNET: "https://mainnet.probarion.example",
+    APP_ORIGIN_TESTNET: "https://probarion.example",
+  };
+
+  it("is the suffixed name when the suffixed variable supplied the list", () => {
+    const env = loadEnv({
+      ...BOTH,
+      NEAR_RPC_URLS_MAINNET: "https://rpc.example/main",
+      NEAR_RPC_URLS_TESTNET: "https://rpc.example/test",
+    });
+    expect(env.networks.mainnet.rpcUrlsVariable).toBe("NEAR_RPC_URLS_MAINNET");
+    expect(env.networks.testnet.rpcUrlsVariable).toBe("NEAR_RPC_URLS_TESTNET");
+  });
+
+  it("is the unsuffixed name when the unsuffixed variable supplied the default network's list (one network served)", () => {
+    const env = loadEnv({ ...base, NEAR_RPC_URLS: "https://rpc.example/key" });
+    expect(env.networks.testnet.rpcUrls).toEqual(["https://rpc.example/key"]);
+    expect(env.networks.testnet.rpcUrlsVariable).toBe("NEAR_RPC_URLS");
+    // The network that is not served never takes the unsuffixed variable: its own name.
+    expect(env.networks.mainnet.rpcUrlsVariable).toBe("NEAR_RPC_URLS_MAINNET");
+  });
+
+  it("follows the default network: a mainnet default takes the unsuffixed variable for mainnet, and testnet is never served by it", () => {
+    const env = loadEnv({
+      ...base,
+      NEAR_NETWORK: "mainnet",
+      NEAR_RPC_URLS: "https://rpc.example/key",
+    });
+    expect(env.networks.mainnet.rpcUrls).toEqual(["https://rpc.example/key"]);
+    expect(env.networks.mainnet.rpcUrlsVariable).toBe("NEAR_RPC_URLS");
+    expect(env.networks.testnet.rpcUrlsVariable).toBe("NEAR_RPC_URLS_TESTNET");
+  });
+
+  it("is the suffixed name when neither variable is set and the built-in list is used", () => {
+    const env = loadEnv({ ...BOTH });
+    expect(env.networks.mainnet.rpcUrls).toEqual([
+      "https://rpc.mainnet.fastnear.com",
+      "https://rpc.intea.rs",
+    ]);
+    expect(env.networks.mainnet.rpcUrlsVariable).toBe("NEAR_RPC_URLS_MAINNET");
+    expect(env.networks.testnet.rpcUrlsVariable).toBe("NEAR_RPC_URLS_TESTNET");
+  });
+
+  it("ignores a blank or comma-only variable, as the list does: the name is the one that really supplied it", () => {
+    const env = loadEnv({
+      ...base,
+      NEAR_RPC_URLS: "https://rpc.example/key",
+      NEAR_RPC_URLS_TESTNET: " , ",
+    });
+    expect(env.networks.testnet.rpcUrls).toEqual(["https://rpc.example/key"]);
+    expect(env.networks.testnet.rpcUrlsVariable).toBe("NEAR_RPC_URLS");
   });
 });

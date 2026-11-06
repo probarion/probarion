@@ -109,7 +109,7 @@ export async function registerVaultAction(vaultId: unknown): Promise<RegisterAct
       factoryId: settings.factoryId,
       canaryVaultId: settings.canaryVaultId,
       teamVaultIds: settings.teamVaultIds,
-      verifyChain: () => ensureChain(network, settings.rpcUrls),
+      verifyChain: () => ensureChain(network, settings),
     },
     { vaultId: id, account: auth.accountId },
   );

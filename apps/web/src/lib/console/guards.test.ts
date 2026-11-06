@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
   chainId: "mainnet" as unknown,
   chainIdOf: {} as Record<string, unknown>,
   statusDown: false,
+  /** URLs whose node does not answer (a 503), the others answer. */
+  downUrls: new Set<string>(),
   statusCalls: 0,
   /** The nodes of the chain check (its one-URL clients use this `fetch`). */
   chainFetch: undefined as undefined | typeof fetch,
@@ -139,13 +141,14 @@ beforeEach(async () => {
   h.chainId = "mainnet";
   h.chainIdOf = {};
   h.statusDown = false;
+  h.downUrls = new Set();
   h.statusCalls = 0;
   h.chainFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const body = JSON.parse(String(init?.body)) as { id: string; method: string };
     if (body.method !== "status") throw new Error(`unexpected RPC method ${body.method}`);
     h.statusCalls += 1;
-    if (h.statusDown) return new Response("busy", { status: 503 });
+    if (h.statusDown || h.downUrls.has(url)) return new Response("busy", { status: 503 });
     const chain_id = url in h.chainIdOf ? h.chainIdOf[url] : h.chainId;
     return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { chain_id } }));
   }) as typeof fetch;
@@ -684,6 +687,31 @@ describe("server actions: the success paths", () => {
     h.statusCalls = 0;
     expect(await registerVaultAction("mixed.near")).toMatchObject({ ok: true });
     expect(h.statusCalls).toBe(1);
+  });
+
+  // W-NET-R6: a retired backup URL does not stop Register; one that comes up on the other chain is refused at the next call.
+  it("registerVaultAction goes on while one URL of the list is silent and the other is right, and refuses it when it answers wrong", async () => {
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", approvers: [], factory: null }),
+    });
+    h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    const second = NETWORKS.mainnet.rpcUrls[1] as string;
+    h.downUrls = new Set([second]);
+    await signInAs("acme.near");
+    expect(await registerVaultAction("silent.near")).toMatchObject({ ok: true });
+    expect(h.statusCalls).toBe(2); // both asked the first time
+    h.statusCalls = 0;
+    expect(await registerVaultAction("silent2.near")).toMatchObject({ ok: true });
+    expect(h.statusCalls).toBe(1); // only the silent URL is asked again
+    // It comes up on the other chain: the next call is refused and registers nothing.
+    h.downUrls = new Set();
+    h.chainIdOf = { [second]: "testnet" };
+    expect(await registerVaultAction("silent3.near")).toMatchObject({
+      ok: false,
+      code: "wrong_chain",
+      status: 503,
+    });
+    expect(await tenantCount("silent3.near")).toBe(0);
   });
 
   it("registerVaultAction asks every URL until it has answered, then remembers the pass; an unreachable node is unavailable and not remembered", async () => {

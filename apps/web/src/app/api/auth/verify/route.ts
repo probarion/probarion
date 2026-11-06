@@ -113,13 +113,13 @@ async function verify(req: Request, requestId: string | undefined): Promise<Resp
     return problem(413, "payload_too_large");
   }
   const rpc = getRpc(network);
-  // A session is lasting state: before one can be minted, every URL of the network's RPC list must answer for the
-  // network's chain (the client fails over from URL to URL, so one wrong URL is enough). A setting that points a URL at
-  // the other chain's nodes is refused here, whatever the URL looks like. With no valid challenge nothing can be minted,
+  // A session is lasting state: before one can be minted, the network's RPC list is checked URL by URL (the client fails
+  // over from URL to URL, so one wrong URL is enough to refuse): at least one URL must answer for the network's chain and
+  // none for another. A setting that points a URL at the other chain's nodes is refused here, whatever the URL looks like. With no valid challenge nothing can be minted,
   // so no node is asked. A node that cannot be reached is the usual 503 `unavailable` (the POST handler).
   if (challenge) {
     try {
-      await ensureChain(network, getEnv().networks[network].rpcUrls);
+      await ensureChain(network, getEnv().networks[network]);
     } catch (error) {
       if (error instanceof WrongChainError) return problem(503, "wrong_chain");
       throw error;
