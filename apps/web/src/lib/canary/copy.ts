@@ -1,5 +1,6 @@
 // Every word of the public Canary pages, in one module so that its test can hold the copy to the limits and to the
-// words the page must not use. The numbers come from CANARY_LIMITS: the page never repeats one as a literal. The
+// words the page must not use. The numbers come from CANARY_LIMITS and LIMITS (lib/ratelimit). The one literal is the
+// single on-chain attempt per visitor window, which limits.ts also takes as a literal 1. The
 // Canary runs on testnet today, so nothing here promises anything for winning, and a token is named a test token
 // there. This file is imported by the client form too, so it reaches no server-only module.
 import type { Tone } from "@/components/ui";
