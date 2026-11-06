@@ -37,15 +37,6 @@ export function memberRole(db: Db, vaultId: string, account: string): Promise<Me
   return db.rpc<MemberTenant | null>("member_role", { vault_id: vaultId, account });
 }
 
-/**
- * The network a vault id is registered on, or null when it is not registered at all. Answers whoever asks, so only a
- * caller that has already checked who is asking may use it (Register, after the session).
- */
-export async function tenantNetwork(db: Db, vaultId: string): Promise<Network | null> {
-  const found = await db.rpc<{ network: Network } | null>("tenant_by_vault", { vault_id: vaultId });
-  return found?.network ?? null;
-}
-
 export function memberTenants(db: Db, account: string): Promise<TenantListItem[]> {
   return db.rpc<TenantListItem[]>("member_tenants", { account });
 }

@@ -13,13 +13,15 @@ import {
   rpcChainReads,
 } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
-import { tenantNetwork } from "@/lib/db/tenants";
+import { memberRole } from "@/lib/db/tenants";
 import { getEnv } from "@/lib/env";
+import { log } from "@/lib/log";
 import { ensureChain } from "@/lib/near/chain";
 import { getReader, getRpc } from "@/lib/near/server";
 import type { WalletTx } from "@/lib/near/tx";
 import { isNearAccountId } from "@/lib/near/validate";
 import { requestNetwork, wrongNetworkSentence } from "@/lib/network";
+import { LIMITS, takeToken } from "@/lib/ratelimit";
 
 // The two actions that come before a vault exists, so they check the session (sessionForAction), not a
 // membership. Their arguments come from the browser and are treated as untrusted text.
@@ -58,23 +60,40 @@ export async function prepareCreateVaultAction(
 
 export type RegisterActionResult =
   | { ok: true; vaultId: string }
-  | { ok: false; error: string; code?: RegisterError; status?: 401 | 403 | 409 | 503 };
+  | { ok: false; error: string; code?: RegisterError; status?: 401 | 403 | 409 | 429 | 503 };
+
+const REGISTER_LIMITED =
+  "Too many attempts to register a vault just now. Try again in a few minutes.";
 
 export async function registerVaultAction(vaultId: unknown): Promise<RegisterActionResult> {
   const auth = await sessionForAction();
   if (isDenied(auth)) return { ok: false, ...auth };
   const network = await requestNetwork();
   const settings = getEnv().networks[network];
+  // One attempt costs a chain read and a membership read: a bucket for each account on each network.
+  try {
+    const [max, windowSeconds] = LIMITS.registerPerAccount;
+    const bucket = `register:${network}:${auth.accountId}`;
+    if (!(await takeToken(serviceDb(), bucket, max, windowSeconds)).allowed) {
+      return { ok: false, error: REGISTER_LIMITED, status: 429 };
+    }
+  } catch (error) {
+    // A call that cannot be counted does not run.
+    log.error("register.limiter_failed", { error });
+    return { ok: false, error: REGISTER_ERROR_TEXT.unavailable, code: "unavailable", status: 503 };
+  }
   const id = typeof vaultId === "string" ? vaultId.trim().slice(0, 64) : "";
-  // A tenant's network is fixed (W-NET-R4). A vault that is registered on the other network is not registered here: the
-  // answer is the 409 every vault action gives, found before any chain client is made and before anything is written.
-  // (tenant_register refuses it as well, for a registration that races this one.)
+  // A tenant's network is fixed (W-NET-R4). A member of a vault that is registered on the other network is told so, with the
+  // 409 every vault action gives, before any chain client is made and before anything is written; the membership is read
+  // the way the guards read it, so no one else is told which network a vault is on (W-NET-R5). Anyone else goes on as for
+  // a vault nobody registered, on this network's chain. tenant_register refuses a takeover as well (owner_mismatch for
+  // another owner, network_mismatch for the same owner, whom the line above has already answered, or a race).
   if (isNearAccountId(id)) {
-    const registeredOn = await tenantNetwork(serviceDb(), id);
-    if (registeredOn !== null && registeredOn !== network) {
+    const member = await memberRole(serviceDb(), id, auth.accountId);
+    if (member !== null && member.vault_id === id && member.network !== network) {
       return {
         ok: false,
-        error: wrongNetworkSentence(registeredOn),
+        error: wrongNetworkSentence(member.network),
         code: "network_mismatch",
         status: 409,
       };

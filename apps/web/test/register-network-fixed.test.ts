@@ -52,6 +52,13 @@ vi.mock("@/lib/env", async () => {
     }),
   };
 });
+// The chain check has its own tests; here it passes, and is recorded, so that "no chain was asked" covers it too.
+vi.mock("@/lib/near/chain", async (orig) => ({
+  ...(await orig<typeof import("@/lib/near/chain")>()),
+  ensureChain: async (network: string) => {
+    h.chainCalls.push(`chain:${network}`);
+  },
+}));
 vi.mock("@/lib/near/server", async () => {
   const { NETWORKS } = await import("@probarion/core");
   const { KNOWN_VAULT_CODE_HASHES: KNOWN } = await import("@probarion/core");
@@ -89,6 +96,8 @@ vi.mock("@/lib/near/server", async () => {
 
 import { syncKeysAction } from "@/app/console/[vault]/keys/actions";
 import { registerVaultAction } from "@/app/console/actions";
+import { REGISTER_ERROR_TEXT } from "@/lib/console/vaults";
+import { LIMITS } from "@/lib/ratelimit";
 
 // A vault id and an owner id that two different people can each hold, one per chain (for example a top-level name long
 // enough that no registrar is needed). Any id string works the same way for the code; nothing checks the shape.
@@ -124,10 +133,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await pg.close();
 });
-beforeEach(() => {
+beforeEach(async () => {
   h.jar.clear();
   h.chainCalls = [];
   h.revalidated = [];
+  await pg.exec("delete from public.rate_limits");
 });
 
 const asTestnet = async () => {
@@ -135,6 +145,14 @@ const asTestnet = async () => {
   h.jar.set(
     SESSION_COOKIE,
     await createSessionToken(await deriveSubkey(MASTER, "session"), OWNER, "testnet"),
+  );
+};
+/** A signed-in account at an address of `network`. */
+const asAccount = async (account: string, network: "mainnet" | "testnet") => {
+  h.host = network === "testnet" ? TESTNET_HOST : MAINNET_HOST;
+  h.jar.set(
+    SESSION_COOKIE,
+    await createSessionToken(await deriveSubkey(MASTER, "session"), account, network),
   );
 };
 const asMainnet = async () => {
@@ -201,5 +219,122 @@ describe("Register at the testnet address cannot move a mainnet tenant to testne
     ).rejects.toMatchObject({ code: "network_mismatch" });
     expect(await row()).toBe("mainnet");
     expect((await members()).map((m) => m.account_id)).not.toContain("mallory.testnet");
+  });
+});
+
+// Round 2 (W-NET-R5), RR1-ORACLE: the pre-check's answer names the network a vault is registered on, so it is given only to a
+// member of that tenant, by the membership read the guards use. Everyone else goes on as for a vault nobody registered.
+describe("Register tells only a member which network a vault is on", () => {
+  const STRANGER = "mallory.testnet";
+  const UNREGISTERED = "nobodyregisteredthisvault00000001";
+  const original = () => h.testnetConfig as Record<string, unknown>;
+
+  it("treats a stranger's registered vault id exactly like an id nobody registered: the chain's answer, no network named", async () => {
+    await asAccount(STRANGER, "testnet");
+    // The guard's own answer for this stranger: nothing is confirmed.
+    expect(await syncKeysAction(VAULT)).toMatchObject({ ok: false, status: 403 });
+
+    h.chainCalls = [];
+    const registered = await registerVaultAction(VAULT);
+    const clientsForRegistered = [...h.chainCalls];
+    h.chainCalls = [];
+    const unregistered = await registerVaultAction(UNREGISTERED);
+    // The chain answered (its owner is somebody else): the same answer for both, and it is the chain's.
+    expect(registered).toEqual(unregistered);
+    expect(registered).toEqual({
+      ok: false,
+      error: REGISTER_ERROR_TEXT.not_owner,
+      code: "not_owner",
+    });
+    expect(JSON.stringify(registered)).not.toMatch(/mainnet|network/);
+    // Both went to the request network's chain, the registered one included: nothing was answered before it.
+    expect(clientsForRegistered).toEqual(h.chainCalls);
+    expect(h.chainCalls).toContain("chain:testnet");
+    expect(h.chainCalls).toContain("reader:testnet");
+    expect(h.chainCalls.some((c) => c.endsWith(":mainnet"))).toBe(false);
+    expect(await row()).toBe("mainnet");
+  });
+
+  it("still refuses a takeover by someone who holds the id on this chain but is not the tenant's owner", async () => {
+    await asAccount(STRANGER, "testnet");
+    const before = await members();
+    // The testnet chain says this stranger owns the id there: the chain checks pass, and the database refuses.
+    h.testnetConfig = { ...original(), owner: STRANGER, approvers: [STRANGER] };
+    try {
+      const r = await registerVaultAction(VAULT);
+      expect(r).toMatchObject({ ok: false, code: "owner_mismatch" });
+    } finally {
+      h.testnetConfig = { ...original(), owner: OWNER, approvers: ["mallory.testnet"] };
+    }
+    expect(await row()).toBe("mainnet");
+    expect(await members()).toEqual(before);
+    expect(h.revalidated).toEqual([]);
+  });
+
+  it("gives a member the 409, whichever role they have", async () => {
+    // The owner (above) and an approver of the mainnet tenant, both at the testnet address.
+    for (const account of [OWNER, "cfo.near"]) {
+      h.chainCalls = [];
+      await asAccount(account, "testnet");
+      expect(await registerVaultAction(VAULT), account).toEqual({
+        ok: false,
+        error: "This vault is on NEAR mainnet. Open it at the mainnet address.",
+        code: "network_mismatch",
+        status: 409,
+      });
+      expect(h.chainCalls, account).toEqual([]);
+    }
+    expect(await row()).toBe("mainnet");
+  });
+
+  it("limits Register per account and network, with its own bucket for each, and answers 429 before anything else", async () => {
+    const [max] = LIMITS.registerPerAccount;
+    await asAccount(STRANGER, "testnet");
+    for (let i = 0; i < max; i++) {
+      const r = await registerVaultAction(UNREGISTERED);
+      expect((r as { status?: number }).status, `call ${i + 1}`).not.toBe(429);
+    }
+    h.chainCalls = [];
+    const over = await registerVaultAction(UNREGISTERED);
+    expect(over).toEqual({
+      ok: false,
+      error: "Too many attempts to register a vault just now. Try again in a few minutes.",
+      status: 429,
+    });
+    expect(h.chainCalls).toEqual([]);
+    expect(h.revalidated).toEqual([]);
+    const buckets = await pg.query<{ bucket: string }>("select bucket from public.rate_limits");
+    expect(buckets.rows.map((b) => b.bucket)).toEqual(["register:testnet:mallory.testnet"]);
+
+    // Another account, and the same account on the other network, have their own bucket. (The mainnet chain is down in
+    // this test, so that call ends in the chain read: what matters is that it got past the limiter.)
+    const attempt = () => registerVaultAction(UNREGISTERED).catch(() => ({ threw: true }));
+    await asAccount("other.testnet", "testnet");
+    expect(await attempt()).not.toHaveProperty("status", 429);
+    await asAccount(STRANGER, "mainnet");
+    expect(await attempt()).not.toHaveProperty("status", 429);
+    const after = await pg.query<{ bucket: string }>(
+      "select bucket from public.rate_limits order by bucket",
+    );
+    expect(after.rows.map((b) => b.bucket)).toEqual([
+      "register:mainnet:mallory.testnet",
+      "register:testnet:mallory.testnet",
+      "register:testnet:other.testnet",
+    ]);
+  });
+
+  it("counts a member's attempt too, and takes the token before it looks anything up", async () => {
+    await asAccount(OWNER, "testnet");
+    await registerVaultAction(VAULT);
+    const buckets = await pg.query<{ bucket: string; count: number }>(
+      "select bucket, count from public.rate_limits",
+    );
+    expect(buckets.rows).toEqual([{ bucket: `register:testnet:${OWNER}`, count: 1 }]);
+  });
+
+  it("answers 401 without a session, and takes no token", async () => {
+    h.jar.clear();
+    expect(await registerVaultAction(VAULT)).toMatchObject({ ok: false, status: 401 });
+    expect((await pg.query("select 1 from public.rate_limits")).rows).toEqual([]);
   });
 });

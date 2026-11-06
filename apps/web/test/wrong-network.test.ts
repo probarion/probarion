@@ -72,6 +72,15 @@ vi.mock("@/lib/env", async () => {
     }),
   };
 });
+// The chain check asks every node of the network's list: it is a chain call like the others, recorded, and it fails like an
+// unreachable node (so nothing reaches the network, and a call that gets this far shows it in `chainCalls`).
+vi.mock("@/lib/near/chain", async (orig) => ({
+  ...(await orig<typeof import("@/lib/near/chain")>()),
+  ensureChain: async (network: string) => {
+    h.chainCalls.push(`chain:${network}`);
+    throw new Error("the chain check is unreachable in this test");
+  },
+}));
 // A chain client that is asked for at all is a read: each one records itself, and fails like an unreachable node.
 vi.mock("@/lib/near/server", async () => {
   const { NETWORKS } = await import("@probarion/core");
@@ -346,6 +355,11 @@ describe("a vault on the other network, opened at this network's address", () =>
 // --- a vault of the other network that is not a member's: Register ---------------------------------------------------------
 
 describe("Register (registerVaultAction) for a vault registered on the other network", () => {
+  beforeEach(async () => {
+    // Each attempt takes a token of the account's Register bucket; every test starts with the bucket empty.
+    await pg.exec("delete from public.rate_limits");
+  });
+
   const tenantNetworks = async () =>
     (
       await pg.query<{ vault_id: string; network: string }>(

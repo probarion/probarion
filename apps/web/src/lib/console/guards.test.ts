@@ -135,6 +135,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   (await import("@/lib/near/chain")).forgetVerifiedChains();
+  await pg.exec("delete from public.rate_limits"); // Register's per-account bucket
   h.chainId = "mainnet";
   h.chainIdOf = {};
   h.statusDown = false;
