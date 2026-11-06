@@ -489,11 +489,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       readme: [
         {
           start: "Canary, a public vault",
-          says: [
-            "**In progress**",
-            "does not pay from its own cycle",
-            "The page, the public feed and the leaderboard are not built yet",
-          ],
+          says: ["**In progress**", "does not pay from its own cycle", "It is not open yet"],
         },
       ],
     },
