@@ -38,6 +38,7 @@ export function RevokeMandateButton(props: {
         tx={props.tx}
         lockKey={lockKeyFor(`revoke-mandate:${props.vault}:${props.mandateId}`)}
         confirm={`Revoke mandate #${props.mandateId} "${props.mandateLabel}" (pays ${props.payeeText})?\n\nThis cannot be undone. The agent can no longer spend on it and a held payment can no longer be approved; a payout already pending still settles.`}
+        confirmTone="danger"
         describe={(r: TxResult) => {
           const v = consoleOutOfNear(r.code, props.outOfNearCodes, false);
           return v === null ? undefined : { detail: v.text };

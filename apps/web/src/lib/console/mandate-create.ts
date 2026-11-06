@@ -56,7 +56,7 @@ export function payeeLine(payee: MandateInputJson["payee"]): string {
     : `${payee.address} (USDC on Base)`;
 }
 
-/** The confirmation the owner reads in the wallet's dialog, built from the validated input and nothing else. */
+/** The confirmation the owner reads in the console's confirm dialog, built from the validated input and nothing else. */
 export function confirmText(input: MandateInputJson): string {
   return [
     `Create mandate "${input.label}"?`,

@@ -350,6 +350,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                           expectedSigner={session.accountId}
                           tx={rejectTx(vault, s.id)}
                           confirm={`Reject spend #${s.id}? Its reservation goes back to the mandate.`}
+                          confirmTone="danger"
                           outOfNearCodes={OUT_OF_NEAR.codes}
                           vaultNearLow={vaultNearLow}
                         />
