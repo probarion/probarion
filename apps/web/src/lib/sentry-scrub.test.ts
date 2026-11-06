@@ -1,5 +1,5 @@
 import type { ErrorEvent } from "@sentry/nextjs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { formatLog } from "@/lib/log";
 import {
   COMPONENTS,
@@ -7,6 +7,7 @@ import {
   scrubBreadcrumb,
   scrubEvent,
   sentryOptions,
+  sentrySecrets,
 } from "./sentry-scrub";
 
 const SECRET = "s3cr3t-value-0123456789";
@@ -92,15 +93,28 @@ describe("scrubEvent", () => {
     expect(out.tags).toEqual({ component: "topup", request_id: "r-1", network: "mainnet" });
   });
 
-  it("keeps the request id and network a route tagged, and ignores malformed ones in the line", () => {
+  it("takes the request id and network of the line over the scope's, and keeps the scope's when the line has none that is valid", () => {
+    // A scope can carry another request's tags (the request that started the instance tagged the scope every later
+    // request copies), while the line was written by the request that failed.
     const line = formatLog("error", "payables.route_failed", {
       request_id: "from-line",
-      network: "moon",
+      network: "mainnet",
     });
-    const tagged = scrubEvent(
+    const stale = scrubEvent(
       event({
         logger: "console",
         message: line,
+        tags: { request_id: "from-scope", network: "testnet" },
+      }),
+      [],
+    );
+    expect(stale.tags?.request_id).toBe("from-line");
+    expect(stale.tags?.network).toBe("mainnet");
+    const bare = formatLog("error", "payables.route_failed", { network: "moon" });
+    const tagged = scrubEvent(
+      event({
+        logger: "console",
+        message: bare,
         tags: { request_id: "from-route", network: "testnet" },
       }),
       [],
@@ -111,6 +125,77 @@ describe("scrubEvent", () => {
     const untagged = scrubEvent(event({ logger: "console", message: odd }), []);
     expect(untagged.tags?.request_id).toBeUndefined();
     expect(untagged.tags?.network).toBeUndefined();
+  });
+
+  it("keeps the console's text arguments, masked, and only the type of any other, cycles included", () => {
+    const loop: Record<string, unknown> = { name: "loop" };
+    loop.self = loop;
+    loop.again = { back: loop, list: [loop, loop] };
+    const out = scrubEvent(
+      event({
+        logger: "console",
+        message: "plain",
+        extra: { arguments: [`failed with ${SECRET}`, loop, new Error(SECRET), 7] },
+      }),
+      [SECRET],
+    );
+    expect(out.extra?.arguments).toEqual([
+      "failed with [redacted]",
+      "[object]",
+      "[object]",
+      "[number]",
+    ]);
+    const cyclic = scrubEvent(event({ contexts: { app: loop } }), []);
+    expect(JSON.stringify(cyclic)).toContain("[circular]");
+  });
+});
+
+/** An RPC key, as some providers put it in the URL's path (Lava's documented shape). */
+const RPC_KEY = "0123456789abcdef0123456789abcdef";
+
+describe("sentrySecrets", () => {
+  it("adds each secret URL as Sentry writes it: default port dropped, host in lower case, and without its query", () => {
+    const configured = [
+      `https://g.w.lavanet.xyz:443/gateway/near/rpc-http/${RPC_KEY}`,
+      `https://RPC.Example.com/v1/${RPC_KEY}`,
+      `https://near.example.com/v1/${RPC_KEY}?network=mainnet`,
+    ];
+    const secrets = sentrySecrets(configured);
+    for (const value of configured) expect(secrets).toContain(value);
+    for (const form of [
+      `https://g.w.lavanet.xyz/gateway/near/rpc-http/${RPC_KEY}`,
+      `https://rpc.example.com/v1/${RPC_KEY}`,
+      `https://near.example.com/v1/${RPC_KEY}`,
+    ])
+      expect(secrets).toContain(form);
+    expect(secrets).toEqual([...secrets].sort((a, b) => b.length - a.length));
+    // Text that is not an http URL is kept as it is, and adds nothing.
+    expect(sentrySecrets(["ed25519:abcdefghijk", "123456789:token-like"])).toEqual([
+      "123456789:token-like",
+      "ed25519:abcdefghijk",
+    ]);
+  });
+
+  it("masks a keyed URL in an error's text in the form Sentry gives it, from the settings themselves", () => {
+    vi.stubEnv(
+      "NEAR_RPC_URLS_MAINNET",
+      `https://g.w.lavanet.xyz:443/gateway/near/rpc-http/${RPC_KEY}`,
+    );
+    vi.stubEnv("NEAR_ARCHIVAL_RPC_URLS_MAINNET", `https://RPC.Example.com/v1/${RPC_KEY}`);
+    try {
+      const options = sentryOptions("https://public@o0.ingest.sentry.io/0");
+      const out = options.beforeSend(
+        event({
+          message: `fetch to https://g.w.lavanet.xyz/gateway/near/rpc-http/${RPC_KEY} failed`,
+          exception: {
+            values: [{ type: "Error", value: `https://rpc.example.com/v1/${RPC_KEY}: 502` }],
+          },
+        }),
+      );
+      expect(JSON.stringify(out)).not.toContain(RPC_KEY);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -126,8 +211,73 @@ describe("scrubBreadcrumb", () => {
       },
       [],
     );
-    expect(String(crumb.data?.url)).not.toContain("AAAA");
-    expect(String(crumb.data?.url)).not.toContain("?");
+    expect(String(crumb?.data?.url)).not.toContain("AAAA");
+    expect(String(crumb?.data?.url)).not.toContain("?");
+  });
+
+  it("keeps only the origin of an outgoing request, so an RPC key in its path never reaches Sentry", () => {
+    // The URLs as Sentry's fetch breadcrumb writes them, after it dropped the :443, lower-cased the host and cut the
+    // query: none of them is the configured text any more.
+    const configured = [
+      `https://g.w.lavanet.xyz:443/gateway/near/rpc-http/${RPC_KEY}`,
+      `https://RPC.Example.com/v1/${RPC_KEY}`,
+    ];
+    const cases: [string, string, string][] = [
+      [
+        "http",
+        `https://g.w.lavanet.xyz/gateway/near/rpc-http/${RPC_KEY}`,
+        "https://g.w.lavanet.xyz",
+      ],
+      ["http", `https://rpc.example.com/v1/${RPC_KEY}`, "https://rpc.example.com"],
+      ["fetch", `https://rpc.example.com:8443/v1/${RPC_KEY}`, "https://rpc.example.com:8443"],
+      ["xhr", `https://rpc.example.com/v1/${RPC_KEY}#frag`, "https://rpc.example.com"],
+    ];
+    for (const secrets of [[], configured, sentrySecrets(configured)]) {
+      for (const [category, url, origin] of cases) {
+        const crumb = scrubBreadcrumb(
+          {
+            category,
+            type: "http",
+            data: {
+              url,
+              status_code: 200,
+              "http.request.method": "POST",
+              "url.query": "network=mainnet",
+              "url.fragment": "frag",
+              "http.query": "?network=mainnet",
+              "http.fragment": "#frag",
+            },
+          },
+          secrets,
+        );
+        expect(crumb?.data, url).toEqual({
+          url: origin,
+          status_code: 200,
+          "http.request.method": "POST",
+        });
+      }
+    }
+  });
+
+  it("keeps the path of a request to this site, without its query", () => {
+    const crumb = scrubBreadcrumb(
+      { category: "fetch", data: { url: "/alerts/confirm?token=abc", method: "GET" } },
+      [],
+    );
+    expect(crumb?.data).toEqual({ url: "/alerts/confirm", method: "GET" });
+    const odd = scrubBreadcrumb({ category: "fetch", data: { url: "not a url/at all" } }, []);
+    expect(odd?.data).toEqual({ url: "[url]" });
+  });
+
+  it("drops console breadcrumbs: info and warn lines can name an account, and they stay in the server's logs", () => {
+    const line = formatLog("info", "auth.signed_in", { account: "alice.near" });
+    expect(scrubBreadcrumb({ category: "console", level: "info", message: line }, [])).toBeNull();
+    const options = sentryOptions("https://public@o0.ingest.sentry.io/0");
+    expect(options.beforeBreadcrumb({ category: "console", message: line })).toBeNull();
+    expect(options.beforeBreadcrumb({ category: "navigation", data: { to: "/status" } })).toEqual({
+      category: "navigation",
+      data: { to: "/status" },
+    });
   });
 });
 
@@ -174,8 +324,11 @@ describe("sentryOptions", () => {
       httpHeaders: false,
       httpBodies: [],
       urlQueryParams: false,
+      graphQL: { document: false, variables: false },
       genAI: { inputs: false, outputs: false },
+      mcp: { inputs: false, outputs: false },
       databaseQueryData: false,
+      queues: false,
       stackFrameVariables: false,
     });
   });

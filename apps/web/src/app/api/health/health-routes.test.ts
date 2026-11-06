@@ -107,6 +107,36 @@ describe("GET /api/health", () => {
     expect(JSON.stringify(body)).not.toContain("CRON_SECRET");
     expect(logs.lines.join("\n")).toContain("health.settings_invalid");
   });
+
+  it("reports a settings failure to Sentry at most once in 30 seconds: a repeat is a warning", async () => {
+    mocks.env.mockImplementation(() => {
+      throw new Error("Invalid environment: CRON_SECRET is required");
+    });
+    // Later than any real failure an earlier test reported.
+    const start = Date.now() + 3_600_000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(start);
+    try {
+      await health();
+      await health();
+      now.mockReturnValue(start + 29_999);
+      await health();
+      now.mockReturnValue(start + 30_000);
+      await health();
+      const levels = logs.lines
+        .filter((l) => l.includes("health.settings_invalid"))
+        .map((l) => (JSON.parse(l) as { level: string }).level);
+      // Only console.error lines become Sentry events (the console bridge, sentry.server.config.ts).
+      expect(levels).toEqual(["error", "warn", "warn", "error"]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("answers with the exact keyword the uptime monitors look for", async () => {
+    expect(await (await health()).text()).toContain('"network":"testnet"');
+    mocks.network.value = "mainnet";
+    expect(await (await health()).text()).toContain('"network":"mainnet"');
+  });
 });
 
 describe("GET /api/health/rpc", () => {

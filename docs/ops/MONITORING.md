@@ -117,7 +117,7 @@ X from [@probarionhq](https://x.com/probarionhq) are the status page, and nothin
   There is no database component: no route probes the database.
 - **Announcement**, permanent, word for word:
 
-  > Unaudited beta. Probarion runs on NEAR testnet today, with test tokens. It is non-custodial: vault owners can freeze and withdraw from their own wallet even when this site is down.
+  > Unaudited beta. Probarion runs on NEAR testnet today, with test tokens. It is non-custodial: vault owners can freeze and withdraw with their own keys, for example with near-cli-rs, even when this site is down.
 
   Change it when mainnet goes live, in the same change that says so elsewhere.
 - **Links:** the security policy,
@@ -137,11 +137,19 @@ so a new value needs a redeploy.
 
 One place decides it for the server, the edge and the browser (`apps/web/src/lib/sentry-scrub.ts`):
 
-- Errors only. Tracing is off, and no trace header goes to another service.
+- Errors only. Tracing is off, and no trace header goes to another service. The browser sends no sessions (its
+  `BrowserSession` integration is removed), so a page view sends nothing. The server sends Sentry's request-session
+  counts: per minute, how many requests ended well, in an error or in a crash, with nothing about any request.
 - No user, no cookies, no headers, no request bodies, no query strings and no local variables. A request is cut to
   its URL without the query, and its method. Breadcrumb URLs lose their query too: alert links carry one-time tokens.
-- Every string passes through the log's scrubber, which masks the value of every secret setting it knows and secret
-  shapes such as a Telegram bot token in a URL path.
+- A breadcrumb of an outgoing request (`http`, `fetch`, `xhr`) keeps only the origin of its URL, and a path on this
+  site without its query: some RPC providers put the key in the path, and Sentry has already rewritten the URL
+  (default port dropped, host in lower case) by the time the scrubber sees it, so it may no longer match the setting.
+- No console breadcrumbs: an info or warn line can name an account (sign-in, the owner's Confirm), and an error line
+  is an event of its own (below).
+- Every string passes through the log's scrubber, which masks the value of every secret setting it knows, each
+  secret URL also in the forms Sentry writes it (without the default port, with the host in lower case, without the
+  query), and secret shapes such as a Telegram bot token in a URL path.
 - Environment: `VERCEL_ENV` on the server and the edge (`production` or `preview`; `development` outside Vercel). The
   browser sets none, so Sentry's default, `production`, applies to browser events, also from a preview build that has
   a DSN.
@@ -151,8 +159,10 @@ One place decides it for the server, the edge and the browser (`apps/web/src/lib
 Routes catch their errors and log them, so few exceptions reach Sentry on their own. On the server, every
 `console.error` line becomes an event (`captureConsoleIntegration` with the `error` level only). The app's log lines
 are JSON with a key such as `alerts.dispatch_failed`: such an event's message and fingerprint are the key, so each key
-is one issue, and the line itself, masked, is attached to the event as extra data. `log.warn` lines, such as
-`alerts.send_failed` and `cron.rate_limits_prune_failed`, are not sent.
+is one issue, and the line itself, masked, is attached to the event as extra data (it can name a vault, a tenant
+and the error's own text). Any other argument of a `console.error` call is sent only as its type. `log.info` and
+`log.warn` lines, such as `alerts.send_failed` and `cron.rate_limits_prune_failed`, are not sent, neither as events
+nor as breadcrumbs of a later event: they stay in the Vercel logs, where the `request_id` finds them.
 
 ### Tags
 
@@ -171,9 +181,17 @@ Where the tags come from:
   (`component:metrics`). The crons cover every network, so they set no network. Every event of those requests,
   unhandled exceptions included, carries the route's component and request id, and a log line from them keeps the
   route's component: `alerts.dispatch_failed` in a watch run is `component:watcher`.
+- One request of those routes is not tagged: the one that starts a new server instance. Next.js starts Sentry inside
+  it, so Sentry has no scope of its own for it, and its scope is the process-wide one that every later request's scope
+  is copied from. Tagging it would put its tenant, network and request id on the events of other requests, so
+  `tagRequest` leaves it alone (`apps/web/src/lib/observe.ts`). Its log-line events still carry their own request id
+  and network; an exception with no log line in it has `component:web`.
 - Any other event made from a log line takes the component of its key's prefix (`alerts.` and `telegram.` are
-  `component:alerts`, `topup.` is `component:topup`, `chain.` and `auth.` are `component:auth`, and so on), and the
-  line's own `request_id` and `network`. A key with no known prefix stays `component:web`.
+  `component:alerts`, `topup.` is `component:topup`, `chain.` and `auth.` are `component:auth`, and so on). A key with
+  no known prefix stays `component:web`.
+- Every event made from a log line takes the line's own `request_id` and `network` when the line has them, also in a
+  tagged route: the line was written by the request that failed. A cron line that names its network
+  (`cron.watch_failed`) is therefore tagged with that network.
 - An exception with no log line in a route that is not tagged (the top-up, auth, alerts or proof routes, or a server
   action) has `component:web` and no `request_id`.
 
@@ -237,7 +255,9 @@ Every step is the OWNER's; none is for an agent.
    - Create rules 1 to 4 (4b and 5 optional) from [alert rules](#alert-rules) and send a test notification for each.
    - Turn on the Data Scrubber with [the fields above](#data-scrubber-fields), and "Prevent storing of IP addresses".
    - Trigger one error on a preview and check the `request_id`, `component` and `network` tags. An error in the
-     Payables upload should show `component:payables`, and two requests at the same time should not share tags.
+     Payables upload should show `component:payables` (trigger it on a warm instance: the request that starts an
+     instance is not tagged), two requests at the same time should not share tags, and an error in another route
+     after a Payables upload should not carry the upload's `tenant`.
 2. **Better Stack.**
    - Create the [stage A monitors](#stage-a-today). Move to stage B when web-deploy 3.5 step 2 is done.
    - Create the status page as [status page](#status-page) describes it: the components, the announcement, the

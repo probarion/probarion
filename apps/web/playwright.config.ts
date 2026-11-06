@@ -45,6 +45,9 @@ const TEST_SETTINGS: Record<string, string> = {
   SENTRY_ORG: "",
   SENTRY_PROJECT: "",
   VERCEL_PROJECT_PRODUCTION_URL: "",
+  // Read by the app (the health route's commit, the Sentry environment) and set by Vercel, not by .env.example.
+  VERCEL_ENV: "",
+  VERCEL_GIT_COMMIT_SHA: "",
 };
 
 export default defineConfig({

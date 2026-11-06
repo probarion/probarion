@@ -3,7 +3,7 @@ import type { ErrorEvent } from "@sentry/nextjs";
 import * as Sentry from "@sentry/nextjs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { tagRequest } from "./observe";
-import { sentryOptions } from "./sentry-scrub";
+import { PROCESS_SCOPE, sentryOptions } from "./sentry-scrub";
 
 // A real Sentry client that sends nothing: a made-up DSN, a transport that does nothing, and a beforeSend that keeps
 // the scrubbed event and drops it. It is made before the server config loads, so that config's Sentry.init finds a
@@ -57,6 +57,11 @@ describe("the component tag", () => {
     expect(event.tags?.network).toBeUndefined();
   });
 
+  it("sends no browser sessions: the browser reports errors only", () => {
+    const source = readFileSync(new URL("../instrumentation-client.ts", import.meta.url), "utf8");
+    expect(source).toContain('defaults.filter((i) => i.name !== "BrowserSession")');
+  });
+
   it("is a global-scope default in every Sentry init, so the request's scope wins over it", () => {
     for (const file of [
       "sentry.server.config.ts",
@@ -67,5 +72,34 @@ describe("the component tag", () => {
       expect(source, file).not.toMatch(/initialScope\s*:/);
       expect(source, file).toContain('Sentry.getGlobalScope().setTag("component", "web");');
     }
+  });
+});
+
+// Last in the file: if the guard ever breaks, the tags it lets through stay on the process-wide scope.
+describe("a request that runs on the process-wide scope", () => {
+  it("is left untagged, so the requests after it do not inherit its tags", async () => {
+    // The request that starts an instance is answered before Sentry has a scope of its own for it: its tagRequest runs
+    // on the isolation scope the SDK falls back to, which every later request's scope is copied from.
+    expect(Sentry.getIsolationScope()).toBe(
+      (globalThis as unknown as Record<symbol, unknown>)[PROCESS_SCOPE],
+    );
+    tagRequest("r-first", "payables", "mainnet", { tenant: "t-first" });
+    expect(Sentry.getIsolationScope().getScopeData().tags).toEqual({});
+    const later = await eventOf(() => {
+      Sentry.captureException(new Error("boom"));
+    });
+    expect(later.tags?.component).toBe("web");
+    for (const tag of ["request_id", "network", "tenant"])
+      expect(later.tags?.[tag], tag).toBeUndefined();
+    // A request with a scope of its own is still tagged.
+    const own = await eventOf(() => {
+      tagRequest("r-own", "canary", "testnet");
+      Sentry.captureException(new Error("boom"));
+    });
+    expect(own.tags).toMatchObject({
+      component: "canary",
+      request_id: "r-own",
+      network: "testnet",
+    });
   });
 });
