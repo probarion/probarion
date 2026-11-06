@@ -4,7 +4,8 @@ import { serviceDb } from "@/lib/db/clients";
 import type { Db } from "@/lib/db/port";
 import { getEnv } from "@/lib/env";
 import { json, problem } from "@/lib/http";
-import { log } from "@/lib/log";
+import { log, newRequestId, REQUEST_ID_HEADER } from "@/lib/log";
+import { tagRequest } from "@/lib/observe";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -51,6 +52,7 @@ export async function GET(req: Request) {
   try {
     const env = getEnv();
     if (!cronAuthorized(req, env.CRON_SECRET)) return problem(401, "unauthorized");
+    tagRequest(req.headers.get(REQUEST_ID_HEADER) ?? newRequestId(), "metrics", null);
     const now = Date.now();
     const days = [utcDay(now - DAY_MS), utcDay(now)];
     const db = serviceDb();

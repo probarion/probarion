@@ -17,6 +17,7 @@ import { log, newRequestId } from "@/lib/log";
 import { listAll } from "@/lib/near/reader";
 import { getReader } from "@/lib/near/server";
 import { requestNetwork } from "@/lib/network";
+import { tagRequest } from "@/lib/observe";
 import { LIMITS } from "@/lib/ratelimit";
 import { kickWatcher } from "@/lib/watcher/server";
 
@@ -70,6 +71,7 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
   const env = getEnv();
   // The Canary of the address this attempt is made at: that network's vault, chain and board (W-NET-R5).
   const network = await requestNetwork();
+  tagRequest(requestId, "canary", network);
   const canaryVault = env.networks[network].canaryVaultId;
   if (!canaryVault) return problem(503, "not_ready");
   // The gullible agent needs the model: without a key there would be nothing to fool.

@@ -3,7 +3,8 @@ import type { Network } from "@/lib/config";
 import { cronAuthorized } from "@/lib/cron";
 import { getEnv } from "@/lib/env";
 import { json, problem } from "@/lib/http";
-import { log } from "@/lib/log";
+import { log, newRequestId, REQUEST_ID_HEADER } from "@/lib/log";
+import { tagRequest } from "@/lib/observe";
 import { watcherDeps } from "@/lib/watcher/server";
 import {
   pingHeartbeat,
@@ -65,6 +66,8 @@ export async function GET(req: Request) {
   try {
     const env = getEnv();
     if (!cronAuthorized(req, env.CRON_SECRET)) return problem(401, "unauthorized");
+    // One run covers every network, so it carries no network tag.
+    tagRequest(req.headers.get(REQUEST_ID_HEADER) ?? newRequestId(), "watcher", null);
     const started = Date.now();
     const networks = env.enabledNetworks;
 
