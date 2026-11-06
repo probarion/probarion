@@ -652,7 +652,11 @@ describe("the rendered landing page", () => {
     // /canary is built, so the footer links it as a page and does not call it coming soon.
     expect(out).not.toContain("Canary (coming soon)");
     expect(hrefs(landing())).toContain("/canary");
-    expect(out).toContain("Open metrics (coming soon)");
+    // /usage is built too, and the old planned name /open is gone.
+    expect(out).not.toContain("Usage (coming soon)");
+    expect(out).not.toContain("Open metrics");
+    expect(hrefs(landing())).toContain("/usage");
+    expect(hrefs(landing())).not.toContain("/open");
     expect(out).toContain("Terms (coming soon)");
     expect(out).toContain("Privacy (coming soon)");
   });
@@ -888,6 +892,7 @@ describe("robots and the sitemap", () => {
     const paths = sitemap().map((e) => new URL(e.url).pathname);
     expect(paths).toContain("/");
     expect(paths).toContain("/proof");
+    expect(paths).toContain("/usage");
     expect(paths.filter((p) => p.startsWith("/console") || p.startsWith("/api"))).toEqual([]);
     expect(paths.filter((p) => PLANNED_ROUTES.includes(p))).toEqual([]);
     expect(paths).toEqual(publicRoutes());

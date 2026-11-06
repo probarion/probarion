@@ -1,0 +1,82 @@
+/*
+ * The public Usage page. It looks like the Canary pages (canary.module.css, imported beside this file for the header,
+ * the tiles, the cards and the tables) and adds only what is its own: the grey "+N" of a week, the indented sub-row,
+ * the glossary. A wide table scrolls inside its own panel (ScrollRegion), and a grid child may shrink
+ * (minmax(0, ...)), so the page itself has no horizontal scroll at any width.
+ */
+
+.tiles {
+  margin-bottom: 24px;
+}
+
+/* The week's count beside an all-time value: grey, and under it on a phone, where the column is narrow. */
+.delta {
+  margin-left: 6px;
+  font-size: 12.5px;
+  color: var(--color-mute);
+}
+/* What a screen reader hears after the "+N". */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The metric's name may wrap (the longest is a sentence), so the numbers keep the room they need. */
+table.usage td:first-child {
+  white-space: normal;
+  min-width: 9em;
+}
+.indent {
+  display: inline-block;
+  padding-left: 1.1em;
+  color: var(--color-mute);
+}
+
+.counts {
+  font-weight: 300;
+  font-size: clamp(20px, 2.6vw, 26px);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.names {
+  margin-top: 10px;
+  color: var(--color-mute);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+/* How each number is counted */
+.defs {
+  display: grid;
+  gap: 12px;
+  max-width: 48em;
+  padding-left: 1.3em;
+  list-style: disc;
+  font-size: 16px;
+}
+.defs strong {
+  font-weight: 600;
+}
+
+@media (max-width: 620px) {
+  .delta {
+    display: block;
+    margin-left: 0;
+  }
+  table.usage th,
+  table.usage td {
+    padding-inline: 8px;
+  }
+  table.usage td:first-child {
+    min-width: 7em;
+  }
+}
