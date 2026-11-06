@@ -4,7 +4,7 @@
  * delete its line here: test/deploy.test.ts fails until you do, and the link goes live on its own.
  * Patterns are `src/app` routes, so `[vault]` stands for any vault.
  */
-export const PLANNED_ROUTES: readonly string[] = ["/security", "/status", "/terms", "/privacy"];
+export const PLANNED_ROUTES: readonly string[] = ["/security", "/terms", "/privacy"];
 
 /** False while the page is planned and not yet built. */
 export function isBuilt(route: string): boolean {

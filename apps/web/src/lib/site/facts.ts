@@ -51,7 +51,6 @@ export const HEADER_ANCHORS: readonly { href: string; label: string }[] = [
   { href: "/#payment", label: "How a payment works" },
   { href: "/#verify", label: "Verify" },
   { href: "/#chain", label: "On chain" },
-  { href: "/#status", label: "Status" },
 ];
 
 export const PROOF_ROUTE = "/proof";
