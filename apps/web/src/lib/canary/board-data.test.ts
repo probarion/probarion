@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { quietLogs } from "../../../test/fixtures/quiet-logs";
 
 // `unstable_cache` needs the Next runtime. Here it records how it was called and runs the function it wraps at once.
+// It can also be made to fail the way a broken cache layer would: with a rejection, or with a throw before any promise.
 const mocks = vi.hoisted(() => ({
   cached: [] as { keys: string[]; options: { revalidate?: number } }[],
+  cacheFails: null as null | "reject" | "throw",
   service: vi.fn(),
   anon: vi.fn(),
 }));
@@ -15,7 +17,11 @@ vi.mock("next/cache", () => ({
     options: { revalidate?: number },
   ) => {
     mocks.cached.push({ keys, options });
-    return fn;
+    return (...args: unknown[]) => {
+      if (mocks.cacheFails === "reject") return Promise.reject(new Error("cache layer down"));
+      if (mocks.cacheFails === "throw") throw new Error("cache layer down");
+      return fn(...args);
+    };
   },
 }));
 vi.mock("@/lib/db/clients", () => ({
@@ -23,7 +29,7 @@ vi.mock("@/lib/db/clients", () => ({
   publicDb: () => ({ rpc: mocks.anon }),
 }));
 
-import { FEED_LIMIT, loadBoard, loadFeed } from "./board-data";
+import { FEED_LIMIT, loadBoard, loadFeed, READ_TIMEOUT_MS } from "./board-data";
 
 const logs = quietLogs();
 
@@ -51,6 +57,11 @@ const ROW = {
 beforeEach(() => {
   mocks.service.mockReset();
   mocks.anon.mockReset();
+  mocks.cacheFails = null;
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("how the scoreboard and the feed are cached", () => {
@@ -117,5 +128,57 @@ describe("loadFeed", () => {
     mocks.anon.mockRejectedValue(new Error("timeout"));
     expect(await loadFeed()).toBeNull();
     expect(logs.lines.filter((l) => l.includes("canary.feed_unavailable"))).toHaveLength(1);
+  });
+});
+
+describe("when the cache layer itself fails", () => {
+  it.each(["reject", "throw"] as const)(
+    "gives no board and no feed, and logs a warning, when the cache %ss",
+    async (how) => {
+      mocks.cacheFails = how;
+      mocks.service.mockResolvedValue(BOARD);
+      mocks.anon.mockResolvedValue([ROW]);
+      expect(await loadBoard()).toBeNull();
+      expect(await loadFeed()).toBeNull();
+      const warned = logs.lines.filter((l) => /canary\.(board|feed)_unavailable/.test(l));
+      expect(warned).toHaveLength(2);
+      expect(warned.every((l) => l.includes("cache layer down"))).toBe(true);
+    },
+  );
+});
+
+describe("a read that hangs", () => {
+  it("gives up after 5 seconds: a null board and a null feed, each with a warning", async () => {
+    vi.useFakeTimers();
+    mocks.service.mockReturnValue(new Promise(() => {}));
+    mocks.anon.mockReturnValue(new Promise(() => {}));
+    expect(READ_TIMEOUT_MS).toBe(5000);
+    const board = loadBoard();
+    const feed = loadFeed();
+    await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1);
+    let settled = false;
+    void Promise.all([board, feed]).then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await board).toBeNull();
+    expect(await feed).toBeNull();
+    const warned = logs.lines.filter((l) => /canary\.(board|feed)_unavailable/.test(l));
+    expect(warned).toHaveLength(2);
+    expect(warned.every((l) => l.includes("timed out"))).toBe(true);
+  });
+
+  it("does not cut off a read that answers in time, and leaves no timer behind", async () => {
+    vi.useFakeTimers();
+    mocks.service.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(BOARD), READ_TIMEOUT_MS - 100)),
+    );
+    const board = loadBoard();
+    await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 100);
+    expect(await board).toMatchObject({ attempts_external: 8 });
+    expect(vi.getTimerCount()).toBe(0);
+    expect(logs.lines.filter((l) => l.includes("unavailable"))).toEqual([]);
   });
 });

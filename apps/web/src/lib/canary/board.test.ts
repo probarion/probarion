@@ -1,6 +1,9 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseBoard, parseFeed, refusedOnChain } from "./board";
-import { plural, thousands, utcMinute } from "./format";
+import { isRecord, plural, thousands, usdcFromUnits, utcMinute } from "./format";
 
 const board = (over: Record<string, unknown> = {}) => ({
   browsers: 9,
@@ -217,6 +220,36 @@ describe("parseFeed", () => {
 });
 
 describe("format helpers", () => {
+  it("tells a plain object from everything else that typeof calls an object", () => {
+    expect(isRecord({})).toBe(true);
+    expect(isRecord({ a: 1 })).toBe(true);
+    for (const not of [null, undefined, [], [1], "x", 3, true, () => {}])
+      expect(isRecord(not)).toBe(false);
+  });
+
+  it("is the only place in the Canary code that defines isRecord or checks base units", () => {
+    const here = fileURLToPath(new URL(".", import.meta.url));
+    const components = join(here, "..", "..", "components", "canary");
+    const sources = [here, components].flatMap((dir) =>
+      readdirSync(dir)
+        .filter((f) => /\.tsx?$/.test(f) && !f.includes(".test."))
+        .map((f) => join(dir, f)),
+    );
+    const defining = (re: RegExp) =>
+      sources.filter((f) => re.test(readFileSync(f, "utf8"))).map((f) => basename(f));
+    expect(defining(/(?:const|function) isRecord\b/)).toEqual(["format.ts"]);
+    expect(defining(/\{1,39\}/)).toEqual(["format.ts"]);
+  });
+
+  it("turns whole base units into USDC and refuses anything else, in one place", () => {
+    expect(usdcFromUnits("1500000")).toBe("1.5");
+    expect(usdcFromUnits("0")).toBe("0");
+    expect(usdcFromUnits("1".repeat(39))).not.toBeNull();
+    for (const bad of [null, "", "12.5", "-1", "abc", "1e6", " 1", "1".repeat(40)]) {
+      expect(usdcFromUnits(bad), String(bad)).toBeNull();
+    }
+  });
+
   it("groups thousands the same way everywhere", () => {
     expect(thousands(0)).toBe("0");
     expect(thousands(999)).toBe("999");

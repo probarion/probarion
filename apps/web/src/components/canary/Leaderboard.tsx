@@ -69,11 +69,19 @@ export function Scoreboard({ board }: { board: Board | null }) {
               <table className={c.table}>
                 <thead>
                   <tr>
-                    <th>{B.technique}</th>
-                    <th className={c.num}>{B.attempts}</th>
-                    <th className={c.num}>{B.byCode}</th>
-                    <th className={c.num}>{B.onChain}</th>
-                    <th className={c.num}>{B.held}</th>
+                    <th scope="col">{B.technique}</th>
+                    <th scope="col" className={c.num}>
+                      {B.attempts}
+                    </th>
+                    <th scope="col" className={c.num}>
+                      {B.byCode}
+                    </th>
+                    <th scope="col" className={c.num}>
+                      {B.onChain}
+                    </th>
+                    <th scope="col" className={c.num}>
+                      {B.held}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -159,11 +167,11 @@ export function LatestAttempts({ feed, network }: { feed: FeedRow[] | null; netw
           <table className={c.table}>
             <thead>
               <tr>
-                <th>{F.when}</th>
-                <th>{F.techniques}</th>
-                <th>{F.code}</th>
-                <th>{F.contract}</th>
-                <th>{F.tx}</th>
+                <th scope="col">{F.when}</th>
+                <th scope="col">{F.techniques}</th>
+                <th scope="col">{F.code}</th>
+                <th scope="col">{F.contract}</th>
+                <th scope="col">{F.tx}</th>
               </tr>
             </thead>
             <tbody>

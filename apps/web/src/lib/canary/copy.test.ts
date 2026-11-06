@@ -3,22 +3,22 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Network } from "@/lib/config";
+import { LIMITS } from "@/lib/ratelimit";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import { LINKS } from "@/lib/site/facts";
 import {
   baseLine,
-  budgetText,
   CANARY_COPY,
   characterCount,
   describeRaw,
   eyebrow,
+  limitText,
   mandateParts,
   moreMandates,
   type Part,
   RAW_SKIP_TEXT,
   REPLY_TEXT,
   RULES_HEAD,
-  rateLimitedText,
   refusedSub,
   rulesCopy,
   runsOn,
@@ -83,9 +83,10 @@ function allCopy(): string[] {
         "USDC",
       ),
     ),
-    rateLimitedText(7),
-    budgetText(0, 5),
-    budgetText(2, 5),
+    limitText(1),
+    limitText(41),
+    limitText(60),
+    limitText(125),
     ...rawCases.map((r) => describeRaw(r).text),
   ];
   for (const network of NETWORKS) {
@@ -103,6 +104,21 @@ describe("the words the Canary pages must not use", () => {
   it("promises nothing for winning, and names no contract refusal that does not exist", () => {
     const banned = /bounty|keep what you extract|prize|reward|PayeeMismatch/i;
     expect(allCopy().filter((t) => banned.test(t))).toEqual([]);
+  });
+
+  it("does not name one cause for a limit that has several: there is no model budget wording", () => {
+    // The attempt route answers `budget` for an address's own cap, the global caps and the token budget alike.
+    expect(allCopy().filter((t) => /model budget/i.test(t))).toEqual([]);
+    expect(allCopy().filter((t) => /used up|used your attempts/i.test(t))).toEqual([]);
+  });
+
+  it("has no plan placeholder in a public sentence", () => {
+    expect(allCopy().filter((t) => /to be reviewed|legal advice/i.test(t))).toEqual([]);
+  });
+
+  it("has no link to the proof page: the Canary's ledger is private, so it would be a 404", () => {
+    expect(strings(CANARY_COPY).filter((t) => /\/proof/.test(t))).toEqual([]);
+    expect(Object.keys(CANARY_COPY.head)).not.toContain("proof");
   });
 
   it("uses no em dash, as the rest of the site does not", () => {
@@ -183,14 +199,48 @@ describe("the numbers in the copy are the limits in code", () => {
     expect(limitsRule()).toContain(`at most ${max} characters`);
   });
 
-  it("quotes every limit of the rules from CANARY_LIMITS", () => {
-    const text = limitsRule();
-    expect(text).toContain(`${CANARY_LIMITS.attemptsPerIpPerHour} model attempts an hour`);
-    expect(text).toContain(`every ${CANARY_LIMITS.rawVisitorWindowS / 60} minutes`);
-    expect(text).toContain(`at most ${CANARY_LIMITS.rawGlobalPerHour} an hour`);
-    expect(text).toContain(`${thousands(CANARY_LIMITS.dailyTokenBudget)} tokens`);
-    expect(text).toContain("0.2 NEAR");
+  it("states every limit of the rules, each number built from the constants", () => {
+    const [modelMax, modelWindowS] = LIMITS.canaryModelVisitor;
+    expect(limitsRule()).toBe(
+      [
+        `A message is at most ${thousands(CANARY_LIMITS.maxTextChars)} characters.`,
+        `One network address gets at most ${modelMax} model attempts every ${modelWindowS / 60} minutes and ${CANARY_LIMITS.attemptsPerIpPerHour} an hour.`,
+        `All visitors together get at most ${CANARY_LIMITS.attemptsGlobalPerHour} an hour and ${CANARY_LIMITS.attemptsGlobalPerDay} a day.`,
+        `On chain, one visitor gets 1 attempt every ${CANARY_LIMITS.rawVisitorWindowS / 60} minutes, and all visitors together get at most ${CANARY_LIMITS.rawGlobalPerHour} an hour.`,
+        `There is also a daily budget of ${thousands(CANARY_LIMITS.dailyTokenBudget)} model tokens for everyone together.`,
+        "Raw mode pauses when the agent key's gas allowance falls below 0.2 NEAR.",
+      ].join(" "),
+    );
     expect(CANARY_LIMITS.minAllowanceYocto).toBe(200_000_000_000_000_000_000_000n);
+  });
+
+  it("has no number in the limits that the constants do not give", () => {
+    const [modelMax, modelWindowS] = LIMITS.canaryModelVisitor;
+    const given = new Set([
+      thousands(CANARY_LIMITS.maxTextChars),
+      String(modelMax),
+      String(modelWindowS / 60),
+      String(CANARY_LIMITS.attemptsPerIpPerHour),
+      String(CANARY_LIMITS.attemptsGlobalPerHour),
+      String(CANARY_LIMITS.attemptsGlobalPerDay),
+      "1",
+      String(CANARY_LIMITS.rawVisitorWindowS / 60),
+      String(CANARY_LIMITS.rawGlobalPerHour),
+      thousands(CANARY_LIMITS.dailyTokenBudget),
+      "0.2",
+    ]);
+    const found = limitsRule().match(/\d[\d,]*(?:\.\d+)?/g) ?? [];
+    expect(found.filter((n) => !given.has(n))).toEqual([]);
+    expect(found.length).toBeGreaterThanOrEqual(given.size - 1);
+  });
+
+  it("says the address's own limits, the global ones and the on-chain ones apart", () => {
+    const text = limitsRule();
+    expect(text).toMatch(
+      /One network address gets at most \d+ model attempts every \d+ minutes and \d+ an hour\./,
+    );
+    expect(text).toMatch(/All visitors together get at most \d+ an hour and \d+ a day\./);
+    expect(text).toMatch(/On chain, one visitor gets 1 attempt every \d+ minutes/);
   });
 
   it("reads the same on every network", () => {
@@ -199,6 +249,13 @@ describe("the numbers in the copy are the limits in code", () => {
 });
 
 describe("raw-mode texts against the code they explain", () => {
+  it("says the allowance is below the amount the rules name, or unreadable, and that raw mode is paused", () => {
+    expect(RAW_SKIP_TEXT.allowance_low).toBe(
+      "The agent key's gas allowance is below 0.2 NEAR or could not be read, so raw mode is paused for now.",
+    );
+    expect(RAW_SKIP_TEXT.allowance_low).not.toMatch(/tops? it up/);
+  });
+
   it("says a raw spend the contract would accept is never sent", () => {
     expect(RAW_SKIP_TEXT.contract_would_accept).toMatch(/sends only what the contract refuses/);
   });
@@ -308,6 +365,13 @@ describe("the rules of the challenge", () => {
     expect(counted).toBe(
       "You are a challenge participant, not a customer. These numbers are kept apart from the product's own.",
     );
+  });
+
+  it("ends with a sentence that is true on its own, not a note to the team", () => {
+    const fine = strings(rules.at(-1)?.body).join("");
+    expect(fine).toContain("These rules may change while the challenge runs.");
+    expect(fine).toContain("The challenge may pause or end at any time");
+    expect(fine).not.toMatch(/legal advice|to be reviewed/);
   });
 
   it("says raw mode sends only what the contract's dry run says it would refuse", () => {

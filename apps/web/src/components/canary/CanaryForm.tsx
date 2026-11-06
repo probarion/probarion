@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import c from "@/components/site/canary.module.css";
 import { inkPillClass } from "@/components/ui";
 import { CANARY_COPY, characterCount } from "@/lib/canary/copy";
@@ -28,11 +28,22 @@ export function CanaryForm({ network, mode }: { network: Network; mode: "live" |
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<Answer | null>(null);
 
+  // One attempt at a time. A press while one runs does nothing (the button is not `disabled`, so that it keeps the
+  // keyboard focus, and says it is busy with aria-disabled). A ref, not the state: a second press can come before the
+  // render that shows the first.
+  const running = useRef(false);
+
   async function submit() {
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
     setAnswer(null);
-    setAnswer(await submitAttempt(text, IO));
-    setBusy(false);
+    try {
+      setAnswer(await submitAttempt(text, IO));
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
   }
 
   return (
@@ -60,7 +71,8 @@ export function CanaryForm({ network, mode }: { network: Network; mode: "live" |
         <button
           type="button"
           className={`${inkPillClass} ${c.button}`}
-          disabled={busy || text.trim() === ""}
+          disabled={text.trim() === ""}
+          aria-disabled={busy ? true : undefined}
           onClick={submit}
         >
           {busy ? F.busy : F.button}

@@ -1,17 +1,16 @@
 import c from "@/components/site/canary.module.css";
 import { TxLink } from "@/components/ui";
 import { CANARY_COPY, describeRaw, tokenNoun } from "@/lib/canary/copy";
+import { usdcFromUnits } from "@/lib/canary/format";
 import type { AttemptResult } from "@/lib/canary/service";
 import type { Network } from "@/lib/config";
-import { formatUsdc } from "@/lib/near/units";
 import { Chip } from "./Chip";
 
 type Done = Extract<AttemptResult, { status: "done" }>;
 const COPY = CANARY_COPY.result;
 
 /** The model's amount is base units of USDC. Anything that is not a whole number of them is shown as it came. */
-const amountText = (units: string): string =>
-  /^[0-9]{1,39}$/.test(units) ? formatUsdc(units) : units;
+const amountText = (units: string): string => usdcFromUnits(units) ?? units;
 
 function proposalLine(p: NonNullable<Done["proposal"]>, network: Network): string {
   return [

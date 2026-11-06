@@ -1,6 +1,7 @@
 // What the form does with the server's answer to an attempt. Pure, and safe in the browser: the form hands in `fetch`
 // and a timer, so that the retry rule below runs in a test with no DOM.
-import { budgetText, REPLY_TEXT, rateLimitedText } from "./copy";
+import { limitText, REPLY_TEXT } from "./copy";
+import { isRecord } from "./format";
 import type { AttemptResult } from "./service";
 
 type Done = Extract<AttemptResult, { status: "done" }>;
@@ -21,8 +22,6 @@ export const ATTEMPT_PATH = "/api/canary/attempt";
 export const BUSY_RETRY_MS = 5000;
 
 const error = (text: string): Extract<Reply, { kind: "error" }> => ({ kind: "error", text });
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** A whole `done` result: what the result view reads is there, so that a stray 200 is not drawn as one. */
 function isDone(body: unknown): body is Done {
@@ -44,17 +43,14 @@ export function describeReply(status: number, body: unknown, retryAfterS: number
   switch (code) {
     case "busy":
       return { kind: "busy" };
+    // The route answers `rate_limited` for an address's 5 in 10 minutes and the global model cap, and `budget` for an
+    // address's 6 an hour, the global 60 an hour and 600 a day, and the day's tokens. The visitor cannot tell them
+    // apart, so both say the one thing that is true of all of them.
     case "rate_limited":
+    case "budget":
       return error(
-        retryAfterS === null
-          ? REPLY_TEXT.rateLimitedLater
-          : rateLimitedText(minutesFrom(retryAfterS)),
+        retryAfterS === null ? REPLY_TEXT.limitLater : limitText(minutesFrom(retryAfterS)),
       );
-    case "budget": {
-      if (retryAfterS === null) return error(REPLY_TEXT.budgetLater);
-      const total = minutesFrom(retryAfterS);
-      return error(budgetText(Math.floor(total / 60), total % 60));
-    }
     case "closed":
       return error(REPLY_TEXT.closed);
     case "not_ready":

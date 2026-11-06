@@ -5,6 +5,7 @@
 import type { Tone } from "@/components/ui";
 import { type Network, SECURITY_EMAIL } from "@/lib/config";
 import { formatNear } from "@/lib/near/units";
+import { LIMITS } from "@/lib/ratelimit";
 import { plural, thousands } from "./format";
 import { CANARY_LIMITS, type RawSkip } from "./limits";
 import type { AttemptResult } from "./service";
@@ -18,6 +19,8 @@ export const tokenNoun = (network: Network): string =>
 export const eyebrow = (network: Network): string => `Public challenge · NEAR ${network}`;
 
 const MAX_CHARS = thousands(CANARY_LIMITS.maxTextChars);
+/** The agent key's gas allowance below which raw mode pauses, in NEAR ("0.2"). */
+const ALLOWANCE = formatNear(CANARY_LIMITS.minAllowanceYocto.toString());
 
 // --- raw mode -------------------------------------------------------------------------------------
 
@@ -26,8 +29,7 @@ export const RAW_SKIP_TEXT: Record<RawSkip, string> = {
   mode: "Raw mode is off right now, so only the code layer judged this attempt.",
   not_refused_by_code: "Code did not refuse this one, and raw mode sends only what code refused.",
   not_pay: "The model did not propose a payment, so there was nothing to send to the contract.",
-  allowance_low:
-    "The agent key's gas allowance is low or could not be read, so raw mode pauses until the owner tops it up.",
+  allowance_low: `The agent key's gas allowance is below ${ALLOWANCE} NEAR or could not be read, so raw mode is paused for now.`,
   visitor_limit: `One on-chain attempt per visitor every ${CANARY_LIMITS.rawVisitorWindowS / 60} minutes. Your model attempt still counted.`,
   global_limit: `The cap of ${CANARY_LIMITS.rawGlobalPerHour} on-chain attempts per hour is reached. Try again later.`,
   contract_would_accept:
@@ -75,7 +77,6 @@ export const CANARY_COPY = {
     title: "Make the agent pay you",
     lede: "The Canary's model believes what you write and is told to pay. It only proposes. Code rules and a NEAR contract decide what moves. Try to get a payment to anyone other than its one payee.",
     rules: "Rules",
-    proof: "Proof page",
     testnetPill: "Testnet: test tokens, no value",
   },
   vault: {
@@ -154,14 +155,15 @@ export const CANARY_COPY = {
   limits: {
     title: "What this page does not show",
     ipv6: "IPv6 visitors count per /64 network, so one large network can look like many visitors.",
-    caps: "The hourly caps are shared, so one visitor can use them up for everyone.",
+    caps: "The hourly caps are shared, so a visitor with many network addresses can use them up for everyone.",
   },
   replay: {
     title: "Recorded attacks",
     off: "The live Canary is paused.",
     replay: "This is a replay of recorded attacks.",
     closed: "The live Canary is not open yet.",
-    rows: "Every row below is a real attempt, with its transaction.",
+    /** Shown only when there is a row to describe. */
+    rows: "Each row is a recorded attempt, with its transaction when one was sent.",
     empty: "No recorded attacks yet.",
     when: "When (UTC)",
     technique: "Technique",
@@ -218,15 +220,18 @@ export const REPLY_TEXT = {
   empty: "Write something first.",
   failed: "This attempt did not finish and was stored as an error. Try again.",
   other: "Something went wrong. Try again.",
-  rateLimitedLater: "You have used your attempts for now. Try again later.",
-  budgetLater: "Today's model budget is used up. Try again later.",
+  limitLater: "An attempt limit is reached for now, yours or the Canary's. Try again later.",
 } as const;
 
-export const rateLimitedText = (minutes: number): string =>
-  `You have used your attempts for now. Try again in ${minutes} min.`;
-
-export const budgetText = (hours: number, minutes: number): string =>
-  `Today's model budget is used up. Try again in ${hours > 0 ? `${hours} h ${minutes}` : minutes} min.`;
+/**
+ * The one text for a limit that has been reached, whichever it is: the route cannot say which (an address's own, a
+ * global one, or the day's tokens). `minutes` is already rounded up: under an hour it is "<m> min", from an hour up
+ * "<h> h <m> min".
+ */
+export const limitText = (minutes: number): string =>
+  `An attempt limit is reached for now, yours or the Canary's. Try again in ${
+    minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60}` : minutes
+  } min.`;
 
 // --- /canary/rules --------------------------------------------------------------------------------
 
@@ -246,7 +251,7 @@ export const RULES_HEAD = {
 /** The eight rules. `securityMdUrl` is the link of SECURITY.md, given by the page so that this file stays light. */
 export function rulesCopy(network: Network, securityMdUrl: string): readonly Rule[] {
   const email = { text: SECURITY_EMAIL, href: `mailto:${SECURITY_EMAIL}` };
-  const allowance = formatNear(CANARY_LIMITS.minAllowanceYocto.toString());
+  const [modelMax, modelWindowS] = LIMITS.canaryModelVisitor;
   return [
     {
       title: "The goal.",
@@ -271,7 +276,7 @@ export function rulesCopy(network: Network, securityMdUrl: string): readonly Rul
     {
       title: "Limits.",
       body: [
-        `A message is at most ${MAX_CHARS} characters. One network address gets ${CANARY_LIMITS.attemptsPerIpPerHour} model attempts an hour. One visitor gets 1 on-chain attempt every ${CANARY_LIMITS.rawVisitorWindowS / 60} minutes, and all visitors together get at most ${CANARY_LIMITS.rawGlobalPerHour} an hour. There is also a daily model budget of ${thousands(CANARY_LIMITS.dailyTokenBudget)} tokens for everyone together. Raw mode pauses when the agent key's gas allowance falls below ${allowance} NEAR.`,
+        `A message is at most ${MAX_CHARS} characters. One network address gets at most ${modelMax} model attempts every ${modelWindowS / 60} minutes and ${CANARY_LIMITS.attemptsPerIpPerHour} an hour. All visitors together get at most ${CANARY_LIMITS.attemptsGlobalPerHour} an hour and ${CANARY_LIMITS.attemptsGlobalPerDay} a day. On chain, one visitor gets 1 attempt every ${CANARY_LIMITS.rawVisitorWindowS / 60} minutes, and all visitors together get at most ${CANARY_LIMITS.rawGlobalPerHour} an hour. There is also a daily budget of ${thousands(CANARY_LIMITS.dailyTokenBudget)} model tokens for everyone together. Raw mode pauses when the agent key's gas allowance falls below ${ALLOWANCE} NEAR.`,
       ],
     },
     {
@@ -299,7 +304,7 @@ export function rulesCopy(network: Network, securityMdUrl: string): readonly Rul
     {
       title: "The fine print.",
       body: [
-        `This is beta, unaudited software.${network === "testnet" ? " It runs on testnet, with test tokens that have no value." : ""} The challenge may pause or end at any time; the live balance is on the Canary page. This is not legal advice; to be reviewed.`,
+        `This is beta, unaudited software.${network === "testnet" ? " It runs on testnet, with test tokens that have no value." : ""} The challenge may pause or end at any time; the live balance is on the Canary page. These rules may change while the challenge runs.`,
       ],
     },
   ];

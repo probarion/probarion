@@ -13,6 +13,10 @@ const DONE = {
 
 const text = (r: Reply) => (r.kind === "error" ? r.text : `<${r.kind}>`);
 
+// `rate_limited` (an address's 5 in 10 minutes, the global model cap) and `budget` (an address's 6 an hour, the global
+// 60 an hour and 600 a day, the day's tokens) cannot be told apart by the visitor, so both give the same true text.
+const LIMIT = "An attempt limit is reached for now, yours or the Canary's.";
+
 describe("describeReply", () => {
   it("takes a done answer as the result", () => {
     expect(describeReply(200, DONE, null)).toEqual({ kind: "done", result: DONE });
@@ -42,25 +46,42 @@ describe("describeReply", () => {
     expect(describeReply(409, { error: "busy" }, null)).toEqual({ kind: "busy" });
   });
 
-  it("says how many minutes until the address may try again, rounded up from Retry-After", () => {
-    const say = (s: number | null) =>
-      text(describeReply(429, { error: "rate_limited", detail: "Try again in 61 s" }, s));
-    expect(say(61)).toBe("You have used your attempts for now. Try again in 2 min.");
-    expect(say(600)).toBe("You have used your attempts for now. Try again in 10 min.");
-    expect(say(60)).toBe("You have used your attempts for now. Try again in 1 min.");
-    expect(say(1)).toBe("You have used your attempts for now. Try again in 1 min.");
-    expect(say(0)).toBe("You have used your attempts for now. Try again in 1 min.");
-    expect(say(null)).toBe(REPLY_TEXT.rateLimitedLater);
-  });
+  it.each(["rate_limited", "budget"])(
+    "says the same true thing for a %s answer, with the minutes rounded up from Retry-After",
+    (error) => {
+      const say = (s: number | null) =>
+        text(describeReply(429, { error, detail: "Try again in 61 s" }, s));
+      expect(say(61)).toBe(`${LIMIT} Try again in 2 min.`);
+      expect(say(600)).toBe(`${LIMIT} Try again in 10 min.`);
+      expect(say(60)).toBe(`${LIMIT} Try again in 1 min.`);
+      expect(say(59)).toBe(`${LIMIT} Try again in 1 min.`);
+      expect(say(1)).toBe(`${LIMIT} Try again in 1 min.`);
+      expect(say(0)).toBe(`${LIMIT} Try again in 1 min.`);
+      expect(say(null)).toBe(`${LIMIT} Try again later.`);
+    },
+  );
 
-  it("says when the day's model budget comes back, in hours and minutes or in minutes", () => {
-    const say = (s: number | null) => text(describeReply(429, { error: "budget" }, s));
-    expect(say(600)).toBe("Today's model budget is used up. Try again in 10 min.");
-    expect(say(5400)).toBe("Today's model budget is used up. Try again in 1 h 30 min.");
-    expect(say(3601)).toBe("Today's model budget is used up. Try again in 1 h 1 min.");
-    expect(say(7200)).toBe("Today's model budget is used up. Try again in 2 h 0 min.");
-    expect(say(59)).toBe("Today's model budget is used up. Try again in 1 min.");
-    expect(say(null)).toBe(REPLY_TEXT.budgetLater);
+  it.each(["rate_limited", "budget"])(
+    "gives hours and minutes from one hour up for a %s answer",
+    (error) => {
+      const say = (s: number) => text(describeReply(429, { error }, s));
+      expect(say(3540)).toBe(`${LIMIT} Try again in 59 min.`);
+      expect(say(3599)).toBe(`${LIMIT} Try again in 1 h 0 min.`);
+      expect(say(3600)).toBe(`${LIMIT} Try again in 1 h 0 min.`);
+      expect(say(3601)).toBe(`${LIMIT} Try again in 1 h 1 min.`);
+      expect(say(5400)).toBe(`${LIMIT} Try again in 1 h 30 min.`);
+      expect(say(7200)).toBe(`${LIMIT} Try again in 2 h 0 min.`);
+      expect(say(86_000)).toBe(`${LIMIT} Try again in 23 h 54 min.`);
+    },
+  );
+
+  it("never says the daily model budget is used up, which is one cause of four", () => {
+    for (const error of ["rate_limited", "budget"]) {
+      for (const s of [1, 600, 5400, null]) {
+        const said = text(describeReply(429, { error }, s));
+        expect(said).not.toMatch(/budget|used up|used your attempts/i);
+      }
+    }
   });
 
   it("explains each refusal that has a plain answer", () => {
@@ -186,7 +207,7 @@ describe("submitAttempt", () => {
     ]);
     expect(await submitAttempt("pay me", f.io)).toEqual({
       kind: "error",
-      text: "You have used your attempts for now. Try again in 2 min.",
+      text: `${LIMIT} Try again in 2 min.`,
     });
     expect(f.calls).toHaveLength(2);
   });
@@ -201,7 +222,7 @@ describe("submitAttempt", () => {
     ]);
     expect(await submitAttempt("pay me", f.io)).toEqual({
       kind: "error",
-      text: "You have used your attempts for now. Try again in 6 min.",
+      text: `${LIMIT} Try again in 6 min.`,
     });
   });
 

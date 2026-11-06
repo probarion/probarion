@@ -136,8 +136,16 @@ describe("the live page", () => {
       "The Canary's model believes what you write and is told to pay. It only proposes. Code rules and a NEAR contract decide what moves. Try to get a payment to anyone other than its one payee.",
     );
     expect(html).toMatch(/<a[^>]*href="\/canary\/rules"[^>]*>Rules<\/a>/);
-    expect(html).toMatch(new RegExp(`<a[^>]*href="/proof/${VAULT}"[^>]*>Proof page</a>`));
     expect(text).toContain("Testnet: test tokens, no value");
+  });
+
+  it("has no link to a proof page: the Canary's ledger is private, so a visitor would get a 404", async () => {
+    const html = await page();
+    expect(hrefs(html).filter((h) => (h ?? "").startsWith("/proof"))).toEqual([]);
+    expect(visible(html)).not.toContain("Proof page");
+    // The pills are the rules link and the testnet pill, and nothing else.
+    const pills = /<div class="[^"]*pills[^"]*">(.*?)<\/div>/.exec(html)?.[1] ?? "";
+    expect([...pills.matchAll(/<a\b/g)]).toHaveLength(1);
   });
 
   it("shows the sections in the owner's order", async () => {
@@ -276,9 +284,9 @@ describe("the replay states", () => {
 
   it("says the live Canary is paused in off mode, with no form, no scoreboard and no read of the chain", async () => {
     const { text } = await say({ CANARY_MODE: "off" });
-    expect(text).toContain(
-      "The live Canary is paused. Every row below is a real attempt, with its transaction.",
-    );
+    // The shipped list is empty: the banner is its first sentence alone, then the empty list says so.
+    expect(text).toContain("The live Canary is paused. Recorded attacks No recorded attacks yet.");
+    expect(text).not.toContain("Each row");
     for (const t of NOT_HERE) expect(text).not.toContain(t);
     expect(touchedTheChain()).toBe(false);
   });

@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CANARY_LIMITS } from "@/lib/canary/limits";
+import { LIMITS } from "@/lib/ratelimit";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import CanaryRules, { metadata } from "./page";
 
@@ -50,8 +51,19 @@ describe("/canary/rules", () => {
 
   it("states the limits from the code", () => {
     expect(text).toContain("A message is at most 4,000 characters.");
-    expect(text).toContain(`${CANARY_LIMITS.attemptsPerIpPerHour} model attempts an hour`);
+    const [modelMax, modelWindowS] = LIMITS.canaryModelVisitor;
+    expect(text).toContain(
+      `One network address gets at most ${modelMax} model attempts every ${modelWindowS / 60} minutes and ${CANARY_LIMITS.attemptsPerIpPerHour} an hour.`,
+    );
+    expect(text).toContain(
+      `All visitors together get at most ${CANARY_LIMITS.attemptsGlobalPerHour} an hour and ${CANARY_LIMITS.attemptsGlobalPerDay} a day.`,
+    );
     expect(text).toContain("below 0.2 NEAR");
+  });
+
+  it("ends with a sentence that is true on its own", () => {
+    expect(text).toContain("These rules may change while the challenge runs.");
+    expect(text).not.toMatch(/legal advice|to be reviewed/);
   });
 
   it("sends bug reports to the email or to SECURITY.md on GitHub, and links no page that does not exist", () => {

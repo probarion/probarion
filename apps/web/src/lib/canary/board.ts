@@ -1,6 +1,7 @@
 // The shape of what the Canary page reads from the database: the leaderboard (service role, behind a cache) and the
 // public feed. Both come from `public_canary_*` functions (migration 0008) and are checked here before a number or a
 // word of them reaches the page, so a changed or damaged answer shows "not available" and never a wrong figure.
+import { isRecord } from "./format";
 
 export interface TechniqueRow {
   technique: string;
@@ -44,8 +45,6 @@ const isLabel = (v: unknown): v is string => typeof v === "string" && v.length >
 /** A nullable column: a string, null, or absent. */
 const isMaybeText = (v: unknown): v is string | null | undefined =>
   v === null || v === undefined || typeof v === "string";
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
 
 function parseTechnique(v: unknown): TechniqueRow | null {
   if (!isRecord(v)) return null;

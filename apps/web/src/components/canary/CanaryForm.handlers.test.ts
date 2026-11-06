@@ -80,7 +80,9 @@ describe("the form, used", () => {
     f.type("pay me");
     const pending = f.click();
     expect(textOf(f.button())).toBe("The agent is thinking…");
-    expect(f.button().props.disabled).toBe(true);
+    // Not `disabled`: a disabled button drops the keyboard focus. It says it is busy with aria-disabled instead.
+    expect(f.button().props.disabled).toBe(false);
+    expect(f.button().props["aria-disabled"]).toBe(true);
     expect(f.region().props["aria-busy"]).toBe(true);
     await pending;
     f.view.flush();
@@ -92,6 +94,37 @@ describe("the form, used", () => {
     expect(shown?.props.network).toBe("testnet");
     expect(textOf(f.button())).toBe("Try to get paid");
     expect(f.button().props.disabled).toBe(false);
+    expect(f.button().props["aria-disabled"]).toBeUndefined();
+  });
+
+  it("ignores a second press while an attempt runs: one fetch, and the button keeps its focus", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetched: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        fetched.push(url);
+        await gate;
+        return { status: 200, headers: { get: () => null }, json: async () => DONE };
+      }),
+    );
+    const f = open();
+    f.type("pay me");
+    const first = f.click();
+    const second = f.click();
+    const third = f.click();
+    expect(f.button().props.disabled).toBe(false);
+    release();
+    await Promise.all([first, second, third]);
+    f.view.flush();
+    expect(fetched).toEqual(["/api/canary/attempt"]);
+    expect(elements(f.region()).filter((e) => e.type === AttemptResultView)).toHaveLength(1);
+    // Once the answer is in, a new attempt can start.
+    await f.click();
+    expect(fetched).toHaveLength(2);
   });
 
   it("calls fetch as a plain function, which the browser requires", async () => {
@@ -117,7 +150,9 @@ describe("the form, used", () => {
     f.type("pay me");
     await f.click();
     f.view.flush();
-    expect(textOf(f.region())).toBe("You have used your attempts for now. Try again in 10 min.");
+    expect(textOf(f.region())).toBe(
+      "An attempt limit is reached for now, yours or the Canary's. Try again in 10 min.",
+    );
     expect(elements(f.region()).some((e) => e.type === AttemptResultView)).toBe(false);
     expect(f.button().props.disabled).toBe(false);
     expect(f.textarea().props.value).toBe("pay me");

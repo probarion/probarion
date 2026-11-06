@@ -1,5 +1,5 @@
 import type { MandateView } from "@probarion/core";
-import { formatUsdc } from "@/lib/near/units";
+import { usdcFromUnits } from "./format";
 
 /** What the page read from the chain. A null is a read that failed: it is never shown as a zero. */
 export interface VaultReads {
@@ -29,10 +29,7 @@ export interface VaultSummary {
   mandate: MandateLine;
 }
 
-/** Whole USDC from base units, or null for anything that is not a whole number of them. */
-function usdc(units: string | null): string | null {
-  return units !== null && /^[0-9]{1,39}$/.test(units) ? formatUsdc(units) : null;
-}
+const usdc = usdcFromUnits;
 
 const payeeOf = (m: MandateView): string =>
   m.payee.type === "near" ? m.payee.account_id : `${m.payee.chain}:${m.payee.address}`;

@@ -25,18 +25,45 @@ const ENTRY: ReplayEntry = {
 };
 
 describe("the replay's three banners", () => {
-  const rows = " Every row below is a real attempt, with its transaction.";
+  const rows = " Each row is a recorded attempt, with its transaction when one was sent.";
+  const banner = (html: string) => /<p[^>]*role="status"[^>]*>(.*?)<\/p>/.exec(html)?.[1] ?? "";
 
   it("says the live Canary is paused when the owner turned it off", () => {
-    expect(visible(render("off"))).toContain(`The live Canary is paused.${rows}`);
+    expect(visible(render("off", [ENTRY]))).toContain(`The live Canary is paused.${rows}`);
   });
 
   it("says this is a replay when the owner chose one", () => {
-    expect(visible(render("replay"))).toContain(`This is a replay of recorded attacks.${rows}`);
+    expect(visible(render("replay", [ENTRY]))).toContain(
+      `This is a replay of recorded attacks.${rows}`,
+    );
+  });
+
+  it("is its first sentence alone, then No recorded attacks yet, when the list is empty", () => {
+    const expected = {
+      off: "The live Canary is paused.",
+      replay: "This is a replay of recorded attacks.",
+      closed: "The live Canary is not open yet.",
+    } as const;
+    for (const b of ["off", "replay", "closed"] as const) {
+      const html = render(b, []);
+      expect(visible(banner(html)).trim(), b).toBe(expected[b]);
+      expect(visible(html), b).not.toContain("Each row");
+      expect(visible(html), b).not.toContain("Every row");
+      expect(visible(html), b).toContain(
+        `${expected[b]} Recorded attacks No recorded attacks yet.`,
+      );
+    }
+  });
+
+  it("says each row is a recorded attempt, and a transaction only when one was sent", () => {
+    expect(visible(render("replay", [ENTRY]))).toContain(
+      "Each row is a recorded attempt, with its transaction when one was sent.",
+    );
+    expect(visible(render("replay", [ENTRY]))).not.toContain("Every row below");
   });
 
   it("says the live Canary is not open yet when there is no vault or no environment", () => {
-    expect(visible(render("closed"))).toContain(`The live Canary is not open yet.${rows}`);
+    expect(visible(render("closed", [ENTRY]))).toContain(`The live Canary is not open yet.${rows}`);
   });
 
   it("shows exactly one banner, as a status the page announces politely", () => {
@@ -94,7 +121,15 @@ describe("the recorded attacks", () => {
     expect(html).not.toContain("nearblocks");
   });
 
-  it("keeps two entries that share a time and a result", () => {
+  it("scopes every column header to its column", () => {
+    const heads = [...render("replay", [ENTRY]).matchAll(/<th\b[^>]*>/g)].map((m) => m[0]);
+    expect(heads).toHaveLength(5);
+    expect(heads.filter((h) => !h.includes('scope="col"'))).toEqual([]);
+  });
+
+  // renderToStaticMarkup does not report a duplicate React key (probed: no console.error for two equal keys), so this
+  // checks the rows and not the keys. The key is built from the time, the result and the position (ReplayView.tsx).
+  it("draws two entries that share a time and a result as two rows", () => {
     const html = render("replay", [ENTRY, ENTRY]);
     expect([...html.matchAll(/<tr/g)]).toHaveLength(3);
   });

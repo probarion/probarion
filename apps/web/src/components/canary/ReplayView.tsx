@@ -24,7 +24,8 @@ export function ReplayView({
   return (
     <div>
       <p role="status" className={c.banner}>
-        <b>{R[banner]}</b> {R.rows}
+        <b>{R[banner]}</b>
+        {entries.length > 0 ? ` ${R.rows}` : null}
       </p>
       <section className={brandCardClass}>
         <h2 className={c.cardTitle}>{R.title}</h2>
@@ -35,11 +36,11 @@ export function ReplayView({
             <table className={c.table}>
               <thead>
                 <tr>
-                  <th>{R.when}</th>
-                  <th>{R.technique}</th>
-                  <th>{R.tried}</th>
-                  <th>{R.stoppedBy}</th>
-                  <th>{R.tx}</th>
+                  <th scope="col">{R.when}</th>
+                  <th scope="col">{R.technique}</th>
+                  <th scope="col">{R.tried}</th>
+                  <th scope="col">{R.stoppedBy}</th>
+                  <th scope="col">{R.tx}</th>
                 </tr>
               </thead>
               <tbody>

@@ -200,7 +200,17 @@ describe("the latest attempts", () => {
     expect(unread).not.toContain("No attempts yet");
   });
 
-  it("keeps two attempts of the same minute apart", () => {
+  it("scopes every column header of both tables to its column", () => {
+    for (const html of [renderFeed([row()]), renderBoard(board())]) {
+      const heads = [...html.matchAll(/<th\b[^>]*>/g)].map((m) => m[0]);
+      expect(heads).toHaveLength(5);
+      expect(heads.filter((h) => !h.includes('scope="col"'))).toEqual([]);
+    }
+  });
+
+  // renderToStaticMarkup does not report a duplicate React key (probed with two identical keys: no console.error), so
+  // this checks the rows and not the keys. The key is built from the time and the position (Leaderboard.tsx).
+  it("draws two attempts of the same minute as two rows", () => {
     const html = renderFeed([row(), row()]);
     expect([...html.matchAll(/<tr/g)].length).toBe(3); // the head and two rows
   });

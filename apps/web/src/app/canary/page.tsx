@@ -51,7 +51,11 @@ async function readVault(vault: string): Promise<VaultSummary> {
   return summarizeVault({ usdc, base, mandates });
 }
 
-function Header({ network, vault }: { network: Network; vault: string | null }) {
+/**
+ * The header has no link to a proof page: the Canary's ledger is private (the database forbids making it public), so
+ * `/proof/<its vault>` is "page not found" for everyone but its team.
+ */
+function Header({ network }: { network: Network }) {
   return (
     <header>
       <p className={s.eyebrow}>{eyebrow(network)}</p>
@@ -61,11 +65,6 @@ function Header({ network, vault }: { network: Network; vault: string | null }) 
         <Link className={linePillClass} href="/canary/rules">
           {H.rules}
         </Link>
-        {vault === null ? null : (
-          <Link className={linePillClass} href={`/proof/${encodeURIComponent(vault)}`}>
-            {H.proof}
-          </Link>
-        )}
         {network === "testnet" ? <span className={c.statePill}>{H.testnetPill}</span> : null}
       </div>
     </header>
@@ -82,7 +81,7 @@ export default async function CanaryPage() {
   if (view.kind === "replay") {
     return (
       <div className={`${s.site} ${s.wrap} ${c.page}`}>
-        <Header network={view.network} vault={null} />
+        <Header network={view.network} />
         <ReplayView banner={view.banner} />
       </div>
     );
@@ -100,7 +99,7 @@ export default async function CanaryPage() {
   ]);
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
-      <Header network={view.network} vault={view.vault} />
+      <Header network={view.network} />
       <VaultCard network={view.network} vault={view.vault} summary={summary} />
       <ByConstructionCard />
       <section className={brandCardClass}>
