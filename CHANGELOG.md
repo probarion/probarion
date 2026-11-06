@@ -207,6 +207,11 @@ The software is an unaudited beta.
 - The daily usage job also deletes the rate limiter's rows older than a day, so that table no longer
   grows without limit. Applying the database update computes the usage numbers of the existing
   history.
+- The watcher, `GET /api/cron/watch`, reads every vault's spends, mandates, anchors, refusals by the
+  contract, low agent and ledger key allowances and low NEAR, and records each once in
+  `vault_events`. It runs daily on Vercel, every minute once the owner turns on the Supabase Cron
+  job in `docs/ops/watcher.md`, and right after an invoice upload or a Canary attempt for that
+  vault.
 - The SDK takes a deadline: `RpcClient` `remainingMs`, `NearApiJsSender` `sendTimeoutMs` as a
   function, and `NearAiProposer` `remainingMs` and `knownModel`. All are optional, and the
   defaults are unchanged.
