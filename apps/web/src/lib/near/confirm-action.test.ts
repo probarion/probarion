@@ -7,10 +7,14 @@ const mocks = vi.hoisted(() => ({
   confirmTx: vi.fn(),
   currentFinalHeight: vi.fn(),
 }));
+const net = vi.hoisted(() => ({ network: "mainnet" as "mainnet" | "testnet" }));
 
 vi.mock("@/lib/auth/guard", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/db/clients", () => ({ serviceDb: mocks.serviceDb }));
 vi.mock("@/lib/http", () => ({ rateLimitOr429: mocks.rateLimitOr429 }));
+vi.mock("@/lib/network", () => ({ requestNetwork: async () => net.network }));
+// The chain client is the network's own: the mock names which network it was asked for.
+vi.mock("./server", () => ({ getRpc: (network: string) => ({ rpcOf: network }) }));
 vi.mock("./confirm", () => ({
   confirmTx: mocks.confirmTx,
   currentFinalHeight: mocks.currentFinalHeight,
@@ -38,13 +42,26 @@ beforeEach(() => {
   mocks.rateLimitOr429.mockResolvedValue(null);
   mocks.confirmTx.mockResolvedValue(OK);
   mocks.currentFinalHeight.mockResolvedValue(4242);
+  net.network = "mainnet";
 });
 
 describe("confirmTxAction", () => {
   it("a signed-in owner gets the chain's answer, for exactly the request that was made", async () => {
     const r = await confirmTxAction(request());
     expect(r).toEqual(OK);
-    expect(mocks.confirmTx).toHaveBeenCalledWith(request());
+    expect(mocks.confirmTx).toHaveBeenCalledWith(request(), { rpcOf: "mainnet" });
+  });
+
+  it("asks the chain of the network of the address it runs for, and of no other", async () => {
+    for (const network of ["mainnet", "testnet"] as const) {
+      net.network = network;
+      mocks.confirmTx.mockClear();
+      await confirmTxAction(request());
+      expect(mocks.confirmTx).toHaveBeenCalledWith(request(), { rpcOf: network });
+      mocks.currentFinalHeight.mockClear();
+      await sendBaselineAction();
+      expect(mocks.currentFinalHeight).toHaveBeenCalledWith({ rpcOf: network });
+    }
   });
 
   it("applies a per-account cap (30 a minute) and a global cap on top (300 a minute)", async () => {

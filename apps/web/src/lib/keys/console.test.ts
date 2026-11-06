@@ -63,7 +63,10 @@ vi.mock("@/lib/crypto/server", async () => {
   };
 });
 vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
-vi.mock("@/lib/env", () => ({ getEnv: () => ({ NEAR_NETWORK: "mainnet" }) }));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../../../test/fixtures/networks");
+  return { getEnv: () => networkPart({ defaultNetwork: "mainnet" }) };
+});
 vi.mock("@/lib/near/server", () => ({
   getReader: () => h.reader,
   getRpc: () => ({
@@ -165,7 +168,7 @@ beforeEach(() => {
 async function signInAs(account: string) {
   h.jar.set(
     SESSION_COOKIE,
-    await createSessionToken(await deriveSubkey(MASTER, "session"), account),
+    await createSessionToken(await deriveSubkey(MASTER, "session"), account, "mainnet"),
   );
 }
 

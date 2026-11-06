@@ -2,6 +2,7 @@ import { isNearAccountId } from "@probarion/core";
 import { serviceDb } from "@/lib/db/clients";
 import { clientIp, problem, rateLimitOr429 } from "@/lib/http";
 import { log } from "@/lib/log";
+import { requestNetwork } from "@/lib/network";
 import { proofDeps } from "@/lib/proof/deps";
 import { loadProof } from "@/lib/proof/service";
 import { snapshotResponse } from "@/lib/proof/snapshot-file";
@@ -32,7 +33,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ vault: s
       LIMITS.snapshot,
     );
     if (limited) return limited;
-    r = await loadProof(await proofDeps(), vault);
+    r = await loadProof(await proofDeps(await requestNetwork()), vault);
   } catch (error) {
     log.warn("proof.unavailable", {
       vault,

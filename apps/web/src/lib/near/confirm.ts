@@ -14,7 +14,6 @@ import {
   isTxHash,
   type TxResult,
 } from "./outcome";
-import { getRpc } from "./server";
 import { isReadableMethod, type PreparedAction, preparedLabel } from "./tx";
 import { isNearAccountId } from "./validate";
 
@@ -236,7 +235,7 @@ function heightOf(block: unknown, expectedHash?: string): number | null {
 }
 
 /** The final block height now, or `null` when the network cannot say. Never throws. */
-export async function currentFinalHeight(rpc: RpcLike = getRpc()): Promise<number | null> {
+export async function currentFinalHeight(rpc: RpcLike): Promise<number | null> {
   try {
     return heightOf(await rpc.call<unknown>("block", { finality: "final" }));
   } catch {
@@ -266,7 +265,7 @@ async function inclusionHeight(raw: Record<string, unknown>, rpc: RpcLike): Prom
  *
  * `request` is untrusted input and is validated here.
  */
-export async function confirmTx(request: unknown, rpc: RpcLike = getRpc()): Promise<TxResult> {
+export async function confirmTx(request: unknown, rpc: RpcLike): Promise<TxResult> {
   const parsed = parseRequest(request);
   if (typeof parsed === "string") {
     const hash = isRecord(request) && isTxHash(request.hash) ? request.hash : null;

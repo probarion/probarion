@@ -16,19 +16,19 @@ const base = {
 describe("loadEnv", () => {
   it("applies network defaults from NETWORKS", () => {
     const env = loadEnv(base);
-    expect(env.NEAR_NETWORK).toBe("mainnet");
-    expect(env.NEAR_RPC_URLS[0]).toBe("https://rpc.mainnet.fastnear.com");
-    expect(env.PROBARION_FACTORY_ID).toBe("vaults.probarion.near");
+    expect(env.defaultNetwork).toBe("mainnet");
+    expect(env.networks.mainnet.rpcUrls[0]).toBe("https://rpc.mainnet.fastnear.com");
+    expect(env.networks.mainnet.factoryId).toBe("vaults.probarion.near");
     expect(env.CANARY_MODE).toBe("code-only");
     expect(env.NEARAI_API_KEY).toBeNull();
-    expect(env.CANARY_VAULT_ID).toBeNull();
-    expect(env.PROBARION_VAULT_ID).toBeNull();
+    expect(env.networks.mainnet.canaryVaultId).toBeNull();
+    expect(env.networks.mainnet.demoVaultId).toBeNull();
     expect(env.BETTERSTACK_HEARTBEAT_URL).toBeNull();
   });
 
   it("splits NEAR_RPC_URLS in failover order", () => {
     const env = loadEnv({ ...base, NEAR_RPC_URLS: "https://a.example, https://b.example" });
-    expect(env.NEAR_RPC_URLS).toEqual(["https://a.example", "https://b.example"]);
+    expect(env.networks.mainnet.rpcUrls).toEqual(["https://a.example", "https://b.example"]);
   });
 
   it("rejects a master key that is not 32 bytes", () => {
@@ -72,12 +72,12 @@ describe("loadEnv: empty means unset (R12)", () => {
         BASE_RPC_URL: blank,
         SENTRY_DSN: blank,
       });
-      expect(env.NEAR_NETWORK).toBe("testnet");
+      expect(env.defaultNetwork).toBe("testnet");
       expect(env.CANARY_MODE).toBe("code-only");
       expect(env.NEARAI_API_KEY).toBeNull();
-      expect(env.NEAR_RPC_URLS).toEqual(["https://rpc.testnet.fastnear.com"]);
-      expect(env.PROBARION_FACTORY_ID).toBe("vaults.probarion.testnet");
-      expect(env.PROBARION_VAULT_ID).toBeNull();
+      expect(env.networks.testnet.rpcUrls).toEqual(["https://rpc.testnet.fastnear.com"]);
+      expect(env.networks.testnet.factoryId).toBe("vaults.probarion.testnet");
+      expect(env.networks.testnet.demoVaultId).toBeNull();
       expect(env.BETTERSTACK_HEARTBEAT_URL).toBeNull();
       expect(env.BASE_RPC_URL).toBeNull();
       expect(env.SENTRY_DSN).toBeNull();
@@ -92,7 +92,7 @@ describe("loadEnv: empty means unset (R12)", () => {
 
   it("falls back to the network default when NEAR_RPC_URLS lists no entry", () => {
     for (const listed of [",", " , ,", ",,"]) {
-      expect(loadEnv({ ...base, NEAR_RPC_URLS: listed }).NEAR_RPC_URLS).toEqual([
+      expect(loadEnv({ ...base, NEAR_RPC_URLS: listed }).networks.mainnet.rpcUrls).toEqual([
         "https://rpc.mainnet.fastnear.com",
         "https://rpc.intea.rs",
       ]);
@@ -101,7 +101,7 @@ describe("loadEnv: empty means unset (R12)", () => {
 
   it("trims values and drops empty entries between commas", () => {
     const env = loadEnv({ ...base, NEAR_RPC_URLS: " https://a.example ,, https://b.example ," });
-    expect(env.NEAR_RPC_URLS).toEqual(["https://a.example", "https://b.example"]);
+    expect(env.networks.mainnet.rpcUrls).toEqual(["https://a.example", "https://b.example"]);
   });
 });
 
@@ -301,11 +301,11 @@ describe("loadEnv: service URLs", () => {
       expect(env.SUPABASE_URL).toBe(local);
       expect(env.NEXT_PUBLIC_SUPABASE_URL).toBe(local);
       expect(env.BASE_RPC_URL).toBe(local);
-      expect(env.NEAR_RPC_URLS).toEqual([local]);
+      expect(env.networks.mainnet.rpcUrls).toEqual([local]);
     }
     expect(
-      loadEnv({ ...base, NEAR_RPC_URLS: "http://localhost:3030, https://rpc.example" })
-        .NEAR_RPC_URLS,
+      loadEnv({ ...base, NEAR_RPC_URLS: "http://localhost:3030, https://rpc.example" }).networks
+        .mainnet.rpcUrls,
     ).toEqual(["http://localhost:3030", "https://rpc.example"]);
   });
 
@@ -404,14 +404,17 @@ describe("loadEnv: service URLs", () => {
 describe("loadEnv: TEAM_VAULT_IDS (R11)", () => {
   it("is an empty list when unset, blank or only commas (R12)", () => {
     for (const v of [undefined, "", "   ", ",", " , ,"]) {
-      expect(loadEnv({ ...base, TEAM_VAULT_IDS: v }).TEAM_VAULT_IDS, String(v)).toEqual([]);
+      expect(
+        loadEnv({ ...base, TEAM_VAULT_IDS: v }).networks.mainnet.teamVaultIds,
+        String(v),
+      ).toEqual([]);
     }
   });
 
   it("splits, trims and drops empty entries, like NEAR_RPC_URLS", () => {
     expect(
       loadEnv({ ...base, TEAM_VAULT_IDS: " demo.vaults.probarion.near ,, v0.probarion.near ," })
-        .TEAM_VAULT_IDS,
+        .networks.mainnet.teamVaultIds,
     ).toEqual(["demo.vaults.probarion.near", "v0.probarion.near"]);
   });
 
@@ -432,7 +435,7 @@ describe("loadEnv: NEAR_ARCHIVAL_RPC_URLS (/proof, R5)", () => {
   it("is an empty list when unset, blank or only commas: no archival lookup (R12)", () => {
     for (const v of [undefined, "", "   ", ",", " , ,"]) {
       expect(
-        loadEnv({ ...base, NEAR_ARCHIVAL_RPC_URLS: v }).NEAR_ARCHIVAL_RPC_URLS,
+        loadEnv({ ...base, NEAR_ARCHIVAL_RPC_URLS: v }).networks.mainnet.archivalRpcUrls,
         String(v),
       ).toEqual([]);
     }
@@ -444,7 +447,7 @@ describe("loadEnv: NEAR_ARCHIVAL_RPC_URLS (/proof, R5)", () => {
         ...base,
         NEAR_ARCHIVAL_RPC_URLS:
           " https://archival-rpc.testnet.fastnear.com ,, http://localhost:3031 ,",
-      }).NEAR_ARCHIVAL_RPC_URLS,
+      }).networks.mainnet.archivalRpcUrls,
     ).toEqual(["https://archival-rpc.testnet.fastnear.com", "http://localhost:3031"]);
   });
 

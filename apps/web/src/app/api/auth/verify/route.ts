@@ -14,6 +14,7 @@ import { serviceDb } from "@/lib/db/clients";
 import { assertSameOrigin, clientIp, json, problem, rateLimitOr429 } from "@/lib/http";
 import { log } from "@/lib/log";
 import { getRpc } from "@/lib/near/server";
+import { requestNetwork } from "@/lib/network";
 import { LIMITS } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
@@ -79,10 +80,13 @@ async function verify(req: Request, requestId: string | undefined): Promise<Resp
   );
   if (limited) return limited;
 
+  // The network of the address this sign-in is opened at (W-NET-R3): its challenge, its chain, its session.
+  const network = await requestNetwork();
   const jar = await cookies();
   const challenge = await openChallenge(
     await subkey("challenge"),
     jar.get(CHALLENGE_COOKIE)?.value,
+    network,
   );
   // Single use, success or not: the browser's copy goes at once (same attributes it was set with) ...
   jar.set(CHALLENGE_COOKIE, "", clearedCookieOptions());
@@ -109,7 +113,7 @@ async function verify(req: Request, requestId: string | undefined): Promise<Resp
   const result = await verifyLogin(
     body.value,
     challenge,
-    nearApiVerifier(rpcLoginProvider(getRpc())),
+    nearApiVerifier(rpcLoginProvider(getRpc(network))),
   );
   if (!result.ok) {
     log.warn("auth.rejected", { reason: result.reason, request_id: requestId });
@@ -121,9 +125,9 @@ async function verify(req: Request, requestId: string | undefined): Promise<Resp
   }
   jar.set(
     SESSION_COOKIE,
-    await createSessionToken(await subkey("session"), result.accountId),
+    await createSessionToken(await subkey("session"), result.accountId, network),
     cookieOptions(SESSION_TTL_MS),
   );
-  log.info("auth.signed_in", { account: result.accountId, request_id: requestId });
+  log.info("auth.signed_in", { account: result.accountId, network, request_id: requestId });
   return json({ accountId: result.accountId });
 }

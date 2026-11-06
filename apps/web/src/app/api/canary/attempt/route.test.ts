@@ -47,6 +47,10 @@ const h = vi.hoisted(() => ({
   /** A database function that answers late (ms), to show what the route does before it runs the attempt. */
   slowDb: null as null | { fn: string; ms: number },
   env: {} as Record<string, unknown>,
+  /** The Canary vault each network is set to (CANARY_VAULT_ID_<NET>); both networks are served. */
+  canary: { mainnet: null, testnet: null } as Record<"mainnet" | "testnet", string | null>,
+  /** The address the request is opened at: its host decides the network. */
+  host: null as string | null,
   sent: new Map<string, string>(),
   jar: [] as { name: string; value: string; options: Record<string, unknown> }[],
   session: null as null | { accountId: string },
@@ -68,9 +72,14 @@ const h = vi.hoisted(() => ({
   head: null as unknown,
   /** The tenants the route asked the watcher to look at once its response is sent. */
   kicks: [] as string[],
+  /** The networks the route asked a chain reader and a kick for. */
+  readerNetworks: [] as string[],
+  kickNetworks: [] as string[],
+  madeNetworks: [] as string[],
 }));
 
 vi.mock("next/headers", () => ({
+  headers: async () => ({ get: (name: string) => (name === "host" ? h.host : null) }),
   cookies: async () => ({
     get: (name: string) => (h.sent.has(name) ? { name, value: h.sent.get(name) } : undefined),
     set: (name: string, value: string, options: Record<string, unknown> = {}) => {
@@ -101,7 +110,20 @@ vi.mock("@/lib/db/clients", () => ({
     },
   }),
 }));
-vi.mock("@/lib/env", () => ({ getEnv: () => h.env }));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../../../../../test/fixtures/networks");
+  return {
+    getEnv: () => ({
+      ...networkPart({
+        defaultNetwork: "mainnet",
+        both: true,
+        mainnet: { canaryVaultId: h.canary.mainnet },
+        testnet: { canaryVaultId: h.canary.testnet },
+      }),
+      ...h.env,
+    }),
+  };
+});
 vi.mock("@/lib/ledger/store", () => ({
   SupabaseLedgerStore: class {
     async getByHash() {
@@ -113,7 +135,8 @@ vi.mock("@/lib/ledger/store", () => ({
   },
 }));
 vi.mock("@/lib/near/server", () => ({
-  getReader: () => ({
+  getReader: (network: string) => ({
+    network: h.readerNetworks.push(network),
     listMandates: (_vault: string, from: number) => (from === 0 ? h.mandates() : []),
     accessKey: (vault: string, pk: string) => {
       h.accessKeyCalls.push([vault, pk]);
@@ -121,9 +144,19 @@ vi.mock("@/lib/near/server", () => ({
     },
   }),
 }));
-vi.mock("@/lib/watcher/server", () => ({ kickWatcher: (tenant: string) => h.kicks.push(tenant) }));
+vi.mock("@/lib/watcher/server", () => ({
+  kickWatcher: (tenant: string, network: string) => {
+    h.kickNetworks.push(network);
+    return h.kicks.push(tenant);
+  },
+}));
 vi.mock("@/lib/sdk/factory", () => ({
-  makeTenantProbarion: (o: Record<string, unknown>, deps: Record<string, unknown> = {}) => {
+  makeTenantProbarion: (
+    network: string,
+    o: Record<string, unknown>,
+    deps: Record<string, unknown> = {},
+  ) => {
+    h.madeNetworks.push(network);
     h.made.push(o);
     h.deps.push(deps);
     return {
@@ -259,12 +292,15 @@ beforeEach(async () => {
   h.failDb = null;
   h.slowDb = null;
   h.env = {
-    CANARY_VAULT_ID: VAULT,
     CANARY_MODE: "live",
     NEARAI_API_KEY: "test-key",
     NEARAI_MODEL: null,
-    NEAR_RPC_URLS: ["https://rpc.test/key-in-path"],
   } satisfies Partial<Env>;
+  h.canary = { mainnet: VAULT, testnet: null };
+  h.host = null; // mainnet is the default network of this test
+  h.readerNetworks = [];
+  h.kickNetworks = [];
+  h.madeNetworks = [];
   h.deps = [];
   h.sent = new Map();
   h.jar = [];
@@ -365,7 +401,7 @@ describe("POST /api/canary/attempt", () => {
     };
 
     it("answers 503 without CANARY_VAULT_ID", async () => {
-      h.env.CANARY_VAULT_ID = null;
+      h.canary.mainnet = null;
       await notReady(await post({ text: TEXT }));
       expect(await rateRows()).toEqual([]);
     });
@@ -376,7 +412,7 @@ describe("POST /api/canary/attempt", () => {
         "ext.vaults.probarion.near",
         "team.vaults.probarion.near",
       ]) {
-        h.env.CANARY_VAULT_ID = vault;
+        h.canary.mainnet = vault;
         h.mandates = async () => [mandateFor(otherKinds[vault] ?? agentA.pk)];
         await notReady(await post({ text: TEXT }));
       }
@@ -433,13 +469,13 @@ describe("POST /api/canary/attempt", () => {
     });
 
     it("answers 503 when the tenant has no active keys", async () => {
-      h.env.CANARY_VAULT_ID = "bare.vaults.probarion.near";
+      h.canary.mainnet = "bare.vaults.probarion.near";
       h.mandates = async () => [mandateFor(agentA.pk)];
       await notReady(await post({ text: TEXT }));
     });
 
     it("answers 503 when the tenant has an agent key but no ledger key", async () => {
-      h.env.CANARY_VAULT_ID = "noledger.vaults.probarion.near";
+      h.canary.mainnet = "noledger.vaults.probarion.near";
       h.mandates = async () => [mandateFor(agentA.pk)];
       await notReady(await post({ text: TEXT }));
     });
@@ -655,6 +691,9 @@ describe("POST /api/canary/attempt", () => {
         await pg.exec("truncate public.canary_attempts; truncate public.rate_limits");
         h.made = [];
         await pg.query("update public.tenants set network = $2 where id = $1", [tenantId, network]);
+        // The Canary of the address the visitor is at: its own host and its own vault setting.
+        h.host = network === "testnet" ? "testnet.probarion.test" : "mainnet.probarion.test";
+        h.canary = { mainnet: null, testnet: null, [network]: VAULT };
         try {
           expect((await post({ text: TEXT })).status, network).toBe(200);
         } finally {
@@ -663,6 +702,62 @@ describe("POST /api/canary/attempt", () => {
         expect(at(await rows()).network, network).toBe(network);
         expect(at(h.made).tenant, network).toMatchObject({ tenant_id: tenantId, network });
       }
+    });
+
+    // W-NET-R5: the Canary is the request network's.
+    describe("on each network's address", () => {
+      const HOSTS = {
+        mainnet: "mainnet.probarion.test",
+        testnet: "testnet.probarion.test",
+      } as const;
+      const asNetwork = async (network: "mainnet" | "testnet") => {
+        await pg.query("update public.tenants set network = $2 where id = $1", [tenantId, network]);
+        h.host = HOSTS[network];
+      };
+      afterAll(async () => {
+        await pg.query("update public.tenants set network = 'mainnet' where id = $1", [tenantId]);
+      });
+      const notReady = async (r: Response) => {
+        expect(r.status).toBe(503);
+        expect(await json(r)).toEqual({ error: "not_ready" });
+        expect(h.made).toEqual([]);
+        expect(await rows()).toEqual([]);
+      };
+
+      it("runs on that network's Canary vault, chain reader and watcher, and on no other", async () => {
+        for (const network of ["mainnet", "testnet"] as const) {
+          await pg.exec("truncate public.canary_attempts; truncate public.rate_limits");
+          h.made = [];
+          h.readerNetworks = [];
+          h.kickNetworks = [];
+          h.madeNetworks = [];
+          await asNetwork(network);
+          h.canary = { mainnet: null, testnet: null, [network]: VAULT };
+          expect((await post({ text: TEXT })).status, network).toBe(200);
+          expect(new Set(h.readerNetworks), network).toEqual(new Set([network]));
+          expect(h.kickNetworks, network).toEqual([network]);
+          expect(new Set(h.madeNetworks), network).toEqual(new Set([network]));
+        }
+      });
+
+      it("is not ready on a network that has no Canary vault, whatever the other one has set", async () => {
+        await asNetwork("testnet");
+        h.canary = { mainnet: VAULT, testnet: null };
+        await notReady(await post({ text: TEXT }));
+        expect(h.readerNetworks).toEqual([]);
+        expect(h.kicks).toEqual([]);
+      });
+
+      it("is not ready when the network's Canary vault is registered on the other network", async () => {
+        // The setting names a vault, the database says it lives on mainnet: it is never run on testnet's chain.
+        await pg.query("update public.tenants set network = 'mainnet' where id = $1", [tenantId]);
+        h.host = HOSTS.testnet;
+        h.canary = { mainnet: null, testnet: VAULT };
+        await notReady(await post({ text: TEXT }));
+        expect(h.readerNetworks).toEqual([]);
+        expect(h.kicks).toEqual([]);
+        expect(logs.lines.join("\n")).toContain("canary.vault_on_other_network");
+      });
     });
 
     it("has the Canary's vault watched once the response is sent: one kick for the Canary tenant", async () => {
@@ -679,9 +774,9 @@ describe("POST /api/canary/attempt", () => {
     it("does not have the vault watched when the attempt is refused before it runs", async () => {
       await post({ text: TEXT }, { headers: { origin: "https://evil.example" } }); // 403
       await post(null, { raw: "{not json" }); // 400
-      h.env.CANARY_VAULT_ID = "";
+      h.canary.mainnet = "";
       expect((await post({ text: TEXT })).status).toBe(503); // not ready
-      h.env.CANARY_VAULT_ID = VAULT;
+      h.canary.mainnet = VAULT;
       const [max] = LIMITS.canaryModelGlobal;
       await pg.query(
         `insert into rate_limits (bucket, window_start, count) values ('canary:model:global', now(), $1)

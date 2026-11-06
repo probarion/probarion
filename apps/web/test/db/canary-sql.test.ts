@@ -115,9 +115,11 @@ describe("Canary SQL (migration 0008)", () => {
         });
       }
       for (const db of [anon, authenticated, service]) {
-        expect(await db.rpc("public_canary_feed", {})).toEqual([]);
+        expect(await db.rpc("public_canary_feed", { network: "mainnet" })).toEqual([]);
       }
-      expect(await service.rpc("public_canary_leaderboard", {})).toMatchObject({ browsers: 0 });
+      expect(await service.rpc("public_canary_leaderboard", { network: "mainnet" })).toMatchObject({
+        browsers: 0,
+      });
     });
 
     it("pins the search_path of every Canary function and makes the public two security definer, with no statement_timeout that would bound nothing", async () => {
@@ -447,7 +449,7 @@ describe("Canary SQL (migration 0008)", () => {
 
   describe("public_canary_feed", () => {
     const feed = (p: Record<string, unknown> = {}) =>
-      anon.rpc<Record<string, unknown>[]>("public_canary_feed", p);
+      anon.rpc<Record<string, unknown>[]>("public_canary_feed", { network: "mainnet", ...p });
 
     it("shows labels, outcomes and public transaction hashes, and nothing that identifies a visitor", async () => {
       await attempt({
@@ -494,8 +496,8 @@ describe("Canary SQL (migration 0008)", () => {
 
     it("lists the newest first, 50 by default, at most 100, at least 1", async () => {
       await pg.exec(
-        `insert into canary_attempts (created_at, visitor_hash, ip_hash, mode, text_sha256, text_length, code_status, request_id)
-         select now() - make_interval(secs => g), repeat('1', 64), repeat('2', 64), 'live', repeat('3', 64), 5, 'refused_by_code', 'r'
+        `insert into canary_attempts (created_at, visitor_hash, ip_hash, mode, text_sha256, text_length, code_status, request_id, network)
+         select now() - make_interval(secs => g), repeat('1', 64), repeat('2', 64), 'live', repeat('3', 64), 5, 'refused_by_code', 'r', 'mainnet'
            from generate_series(1, 120) g`,
       );
       expect(await feed()).toHaveLength(50);
@@ -518,11 +520,12 @@ describe("Canary SQL (migration 0008)", () => {
     const running = (ageS: number, over: Record<string, unknown> = {}) =>
       pg.query(
         `insert into canary_attempts (created_at, visitor_hash, ip_hash, mode, text_sha256, text_length, code_status, request_id,
-                                      techniques, est_tokens)
-         values (now() - make_interval(secs => $1), $2, $3, 'live', repeat('4', 64), 5, 'running', 'r', $4, 5000)`,
+                                      techniques, est_tokens, network)
+         values (now() - make_interval(secs => $1), $2, $3, 'live', repeat('4', 64), 5, 'running', 'r', $4, 5000, 'mainnet')`,
         [ageS, over.visitor ?? H("1"), over.ip ?? H("2"), over.techniques ?? ["fake_invoice"]],
       );
-    const feed = () => anon.rpc<Record<string, unknown>[]>("public_canary_feed", {});
+    const feed = () =>
+      anon.rpc<Record<string, unknown>[]>("public_canary_feed", { network: "mainnet" });
     const board = () =>
       service.rpc<{
         browsers: number;
@@ -531,7 +534,7 @@ describe("Canary SQL (migration 0008)", () => {
         attempts_team: number;
         raw_external: number;
         techniques: { technique: string; attempts: number; refused_by_code: number }[];
-      }>("public_canary_leaderboard", {});
+      }>("public_canary_leaderboard", { network: "mainnet" });
 
     it("leaves a running attempt younger than the lease out of the feed", async () => {
       await running(0);
@@ -625,7 +628,7 @@ describe("Canary SQL (migration 0008)", () => {
           held: number;
         }[];
         contract_codes: { code: string; n: number }[];
-      }>("public_canary_leaderboard", {});
+      }>("public_canary_leaderboard", { network: "mainnet" });
 
     it("is empty and zero before the first attempt, with no unmeasured figure in it", async () => {
       expect(await board()).toEqual({

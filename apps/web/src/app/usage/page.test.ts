@@ -8,8 +8,11 @@ const mocks = vi.hoisted(() => ({
   env: vi.fn(),
   load: vi.fn(),
 }));
+/** The network of the address the page is opened at. */
+const net = vi.hoisted(() => ({ network: "mainnet" as "mainnet" | "testnet" }));
 
 vi.mock("@/lib/env", () => ({ getEnv: mocks.env }));
+vi.mock("@/lib/network", () => ({ softRequestNetwork: async () => net.network }));
 vi.mock("@/lib/usage/data", () => ({ loadUsage: mocks.load }));
 
 import { PLANNED_ROUTES } from "@/lib/routes";
@@ -47,7 +50,8 @@ const usage = (network: "mainnet" | "testnet" = "mainnet") =>
 beforeEach(() => {
   mocks.env.mockReset();
   mocks.load.mockReset();
-  mocks.env.mockReturnValue({ NEAR_NETWORK: "mainnet" });
+  net.network = "mainnet";
+  mocks.env.mockReturnValue({});
   mocks.load.mockResolvedValue(usage());
 });
 
@@ -96,11 +100,11 @@ describe("the page with its numbers", () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
-  it("asks for the numbers of the network the app runs on", async () => {
+  it("asks for the numbers of the network of the address the page is opened at", async () => {
     await page();
     expect(mocks.load).toHaveBeenCalledTimes(1);
     expect(mocks.load).toHaveBeenCalledWith("mainnet");
-    mocks.env.mockReturnValue({ NEAR_NETWORK: "testnet" });
+    net.network = "testnet";
     mocks.load.mockResolvedValue(usage("testnet"));
     const t = visible(await page());
     expect(mocks.load).toHaveBeenLastCalledWith("testnet");
@@ -172,6 +176,8 @@ describe("the page when the numbers are not available", () => {
   });
 
   it("is that same state when the settings cannot be read, with a warning, and reads nothing", async () => {
+    // softRequestNetwork falls back to the public map built into the page, here the testnet default.
+    net.network = "testnet";
     mocks.env.mockImplementation(() => {
       throw new Error("Invalid environment: SUPABASE_URL is required");
     });
@@ -179,7 +185,7 @@ describe("the page when the numbers are not available", () => {
     expect(t).toContain(UNAVAILABLE);
     expect(t).toContain("Usage, counted apart");
     expect(t).toContain("How each number is counted");
-    // The network comes from the build when the settings are unreadable.
+    // The network comes from the address and the public map when the settings are unreadable.
     expect(t).toContain("Usage · NEAR testnet");
     expect(mocks.load).not.toHaveBeenCalled();
     const warned = logs.lines.filter((l) => l.includes("usage.env_unreadable"));
@@ -203,7 +209,7 @@ describe("the page when the numbers are not available", () => {
           throw "not even an error";
         }),
     ]) {
-      mocks.env.mockReturnValue({ NEAR_NETWORK: "testnet" });
+      net.network = "testnet";
       setup();
       await expect(page()).resolves.toContain(UNAVAILABLE);
     }

@@ -6,12 +6,12 @@ import type { ReactNode } from "react";
 import { ConfirmInvoicePanel } from "@/components/console/ConfirmInvoicePanel";
 import { CycleColumns } from "@/components/console/CycleColumns";
 import { VaultNav } from "@/components/console/VaultNav";
+import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
 import { RouteLink } from "@/components/RouteLink";
 import { Badge, Card, Notice, type Tone } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import { masterKey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
-import { getEnv } from "@/lib/env";
 import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { log } from "@/lib/log";
 import { getReader } from "@/lib/near/server";
@@ -225,14 +225,15 @@ export default async function InvoiceCyclePage({
 }) {
   const { vault: requested, id } = await params;
   // 404 for anyone who is not a member: a vault id is never confirmed to a stranger.
-  const { session, member } = await requireMember(requested);
+  const { session, member, elsewhere } = await requireMember(requested);
+  if (elsewhere) return <VaultOnOtherNetwork {...elsewhere} />;
   if (!UUID.test(id)) notFound();
   const db = serviceDb();
   const inv = await getInvoice(db, member.tenant_id, id);
   if (!inv) notFound();
   const vault = member.vault_id;
   const owner = member.role === "owner";
-  const network = getEnv().NEAR_NETWORK;
+  const network = member.network;
   const base = `/console/${encodeURIComponent(vault)}/payables`;
   let entries: LedgerEntry[] | null = null;
   try {
@@ -246,7 +247,7 @@ export default async function InvoiceCyclePage({
   const waiting =
     inv.status === "awaiting_owner" && entries !== null
       ? await loadWaitingView(
-          { db, master: masterKey(), reader: getReader() },
+          { db, master: masterKey(), reader: getReader(network) },
           {
             member,
             account: session.accountId,

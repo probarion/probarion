@@ -12,7 +12,12 @@ import { quietLogs } from "../../../test/fixtures/quiet-logs";
 // The public pages an alert email links to, and the routes behind their buttons: confirm an address, stop a subscription.
 // The database is PGlite, so the real SQL answers; the key is a test master; the response helpers, the limiter and the
 // logger are real.
-const h = vi.hoisted(() => ({ db: null as unknown as Db, ip: "203.0.113.5" }));
+const h = vi.hoisted(() => ({
+  db: null as unknown as Db,
+  ip: "203.0.113.5",
+  /** The address the request is opened at: its host decides the network (both are served, mainnet by default). */
+  host: null as string | null,
+}));
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
 
 vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
@@ -20,8 +25,25 @@ vi.mock("@/lib/crypto/server", () => ({
   subkey: (purpose: Parameters<typeof deriveSubkey>[1]) => deriveSubkey(MASTER, purpose),
 }));
 vi.mock("next/headers", () => ({
-  headers: async () => new Headers({ "x-forwarded-for": h.ip }),
+  headers: async () => {
+    const headers = new Headers({ "x-forwarded-for": h.ip });
+    if (h.host !== null) headers.set("host", h.host);
+    return headers;
+  },
 }));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../../../test/fixtures/networks");
+  return {
+    getEnv: () => ({
+      ...networkPart({
+        defaultNetwork: "mainnet",
+        both: true,
+        mainnet: { origin: "https://probarion.xyz" },
+        testnet: { origin: "https://testnet.probarion.xyz" },
+      }),
+    }),
+  };
+});
 
 import * as confirmRoute from "../api/alerts/confirm/route";
 import * as stopRoute from "../api/alerts/stop/route";
@@ -31,7 +53,9 @@ import StopPage, { metadata as stopMetadata } from "./stop/page";
 const logs = quietLogs();
 
 const V = "acme.vaults.probarion.near";
+// The mainnet origin of the env mock above, which is also the default network's.
 const ORIGIN = "https://probarion.xyz";
+const TESTNET = "https://testnet.probarion.xyz";
 let pg: PGlite;
 let tenant: string;
 
@@ -49,6 +73,7 @@ beforeEach(async () => {
   await pg.exec("delete from alert_subscriptions; delete from rate_limits;");
   h.db = pgliteDb(pg);
   h.ip = "203.0.113.5";
+  h.host = null;
 });
 
 const html = (el: unknown) => renderToStaticMarkup(el as ReactElement).replaceAll("&#x27;", "'");
@@ -196,6 +221,24 @@ describe("POST /api/alerts/confirm", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  // W-NET-R9: back to the address the request came in on, which is its network's origin. Never another host.
+  it("redirects to the origin of the network the request came in on, and to no other host", async () => {
+    for (const [host, origin] of [
+      ["probarion.xyz", ORIGIN],
+      ["testnet.probarion.xyz", TESTNET],
+      ["preview-git-x.vercel.app", ORIGIN], // not an origin of this site: the default network's
+      ["evil.example", ORIGIN],
+    ] as const) {
+      h.host = host;
+      const { id, link_code } = await createEmail();
+      const res = await post(confirmRoute, `${origin}/api/alerts/confirm`, { code: link_code });
+      expect(location(res), host).toBe(`${origin}/console/${V}/alerts?verified=1`);
+      expect(await row(id)).toMatchObject({ link_code: null });
+      const bad = await post(confirmRoute, `${origin}/api/alerts/confirm`, { code: "nope" });
+      expect(location(bad), host).toBe(`${origin}/alerts/confirm`);
+    }
+  });
+
   it("changes nothing on a GET: it is a POST route only", () => {
     expect(Object.keys(confirmRoute).sort()).toEqual(["POST", "dynamic"]);
   });
@@ -306,6 +349,20 @@ describe("POST /api/alerts/stop", () => {
     expect(res.status).toBe(303);
     expect(location(res)).toBe(`${ORIGIN}/alerts/stop${q}&done=1`);
     expect(await row(id)).toMatchObject({ active: false });
+  });
+
+  it("sends the page's button back to the origin of the network the request came in on", async () => {
+    for (const [host, origin] of [
+      ["probarion.xyz", ORIGIN],
+      ["testnet.probarion.xyz", TESTNET],
+    ] as const) {
+      h.host = host;
+      const { id } = await createEmail();
+      const { oneClick } = await link(id);
+      const q = new URL(oneClick).search;
+      const res = await post(stopRoute, oneClick, { from: "page" });
+      expect(location(res), host).toBe(`${origin}/alerts/stop${q}&done=1`);
+    }
   });
 
   it("answers the same whether or not the subscription existed, and whether or not it was already off", async () => {

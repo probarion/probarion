@@ -47,7 +47,7 @@ export interface ChainReads {
   factoryVersions(factory: string): Promise<VersionView[]>;
 }
 
-/** ChainReads over the SDK RpcClient (`getRpc()` on the server). */
+/** ChainReads over the SDK RpcClient (`getRpc(network)` on the server). */
 export function rpcChainReads(rpc: RpcClient): ChainReads {
   return {
     viewAccount: (account) => rpc.viewAccount(account),

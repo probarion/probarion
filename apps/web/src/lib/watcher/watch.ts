@@ -83,8 +83,11 @@ export interface TenantRun {
 /** The contract's `list_*` cap, and how many pages of one kind a run reads: a vault with more catches up over runs. */
 const PAGE = 100;
 const MAX_PAGES = 10;
-/** A run starts no new tenant after this long: the route's `maxDuration` is 60 s and one tenant can take several. */
-const BUDGET_MS = 40_000;
+/**
+ * A run starts no new tenant after this long: the route's `maxDuration` is 60 s and one tenant can take several. With
+ * two networks in one run the time is shared (the route divides what is left among the networks not yet run).
+ */
+export const WATCH_BUDGET_MS = 40_000;
 /** The watch lease: shorter than a Vercel function's life, so a run that died is not waited for. */
 const LEASE_SECONDS = 50;
 /** `ledger_since` answers at most this many entries (migration 0004): a full answer may not be the end of the ledger. */
@@ -479,10 +482,13 @@ export async function watchTenantById(deps: WatchDeps, tenantId: string): Promis
 /**
  * Every tenant of the network, the ones looked at longest ago first. A tenant that throws is logged and does not stop
  * the others; it was marked as looked at when it was started (no cursor moves on a failure), so a vault that keeps
- * failing goes to the back of the queue instead of using up every run. No new tenant is started 40 s into the run;
- * `skipped` counts those, and they go first next time.
+ * failing goes to the back of the queue instead of using up every run. No new tenant is started `budgetMs` (default
+ * 40 s) into the run; `skipped` counts those, and they go first next time.
  */
-export async function watchAll(deps: WatchDeps): Promise<WatchRun> {
+export async function watchAll(
+  deps: WatchDeps,
+  budgetMs: number = WATCH_BUDGET_MS,
+): Promise<WatchRun> {
   const tenants = await deps.db.rpc<WatchTenant[]>("tenants_for_watch", { network: deps.network });
   const started = deps.now().getTime();
   let inserted = 0;
@@ -490,7 +496,7 @@ export async function watchAll(deps: WatchDeps): Promise<WatchRun> {
   let skipped = 0;
   let checkErrors = 0;
   for (const [i, t] of tenants.entries()) {
-    if (deps.now().getTime() - started >= BUDGET_MS) {
+    if (deps.now().getTime() - started >= budgetMs) {
       skipped = tenants.length - i;
       break;
     }
@@ -506,9 +512,12 @@ export async function watchAll(deps: WatchDeps): Promise<WatchRun> {
   return { tenants: tenants.length, inserted, errors, skipped, checkErrors };
 }
 
-/** A run is healthy when no tenant was due, or at least one tenant it tried did not fail: the chain was reached. */
+/**
+ * A run is healthy when no tenant was due, or at least one tenant it tried did not fail: the chain was reached. A run that
+ * was given no time at all (every tenant skipped, which only a shared run can see) tried nothing and failed nothing.
+ */
 export function watchHealthy(r: WatchRun): boolean {
-  return r.tenants === 0 || r.errors < r.tenants - r.skipped;
+  return r.tenants === 0 || r.skipped === r.tenants || r.errors < r.tenants - r.skipped;
 }
 
 /**

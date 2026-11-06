@@ -7,6 +7,7 @@ import { LIMITS } from "@/lib/ratelimit";
 import { freshDb } from "../../../test/db/harness";
 import { pgliteDb } from "../../../test/db/pglite-db";
 import { FULL_ACCESS_KEY, FUNCTION_CALL_KEY, signNep413 } from "../../../test/fixtures/nep413";
+import { MAINNET_HOST, TESTNET_HOST } from "../../../test/fixtures/networks";
 import { httpStatus, rpcErr, rpcOk, scriptedRpc } from "../../../test/fixtures/rpc";
 import {
   burnChallenge,
@@ -25,6 +26,10 @@ const h = vi.hoisted(() => ({
   out: null as unknown as import("next/server").NextResponse,
   db: null as unknown as Db,
   rpc: null as unknown,
+  /** The address the request is opened at: its host decides the network (both are served, testnet by default). */
+  host: null as string | null,
+  /** The networks getRpc was asked for. */
+  rpcFor: [] as string[],
   /** Switches that make one piece of infrastructure fail, to see that each gives a 503 and never a 500. */
   fail: {
     db: null as null | ((fn: string, p?: Record<string, unknown>) => boolean),
@@ -35,6 +40,7 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("next/headers", () => ({
+  headers: async () => ({ get: (name: string) => (name === "host" ? h.host : null) }),
   cookies: async () => ({
     get: (name: string) => (h.sent.has(name) ? { name, value: h.sent.get(name) } : undefined),
     set: (name: string, value: string, options?: object) => {
@@ -63,11 +69,16 @@ vi.mock("@/lib/db/clients", () => ({
   },
 }));
 vi.mock("@/lib/near/server", () => ({
-  getRpc: () => {
+  getRpc: (network: string) => {
+    h.rpcFor.push(network);
     if (h.fail.getRpc) throw new Error("NEAR_RPC_URLS is invalid");
     return h.rpc;
   },
 }));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../../../test/fixtures/networks");
+  return { getEnv: () => networkPart({ defaultNetwork: "testnet", both: true }) };
+});
 
 import { GET as challengeRoute } from "@/app/api/auth/challenge/route";
 import { POST as logoutRoute } from "@/app/api/auth/logout/route";
@@ -106,6 +117,8 @@ beforeEach(async () => {
   h.fail.subkey.clear();
   h.fail.serviceDb = false;
   h.fail.getRpc = false;
+  h.host = null;
+  h.rpcFor = [];
   logged = [];
   const sink = (line: unknown) => {
     logged.push(String(line));
@@ -235,8 +248,10 @@ describe("GET /api/auth/challenge", () => {
     const parts = cookie.split(".");
     expect(parts).toHaveLength(2);
     const { openChallenge } = await import("./challenge");
-    expect((await openChallenge(await challengeKey, cookie))?.message).toBe(body.message);
-    expect(await openChallenge(await sessionKey, cookie)).toBeNull();
+    expect((await openChallenge(await challengeKey, cookie, "testnet"))?.message).toBe(
+      body.message,
+    );
+    expect(await openChallenge(await sessionKey, cookie, "testnet")).toBeNull();
   });
 
   it("sets the cookie HttpOnly, SameSite=Lax, Path=/ for five minutes (not Secure outside production)", async () => {
@@ -382,8 +397,8 @@ describe("POST /api/auth/verify", () => {
     const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
     const body = (await getChallenge()).body;
     const l = login(body);
-    const expired = await issueChallenge(await challengeKey, Date.now() - 6 * 60_000);
-    const wrongKey = await issueChallenge(await sessionKey);
+    const expired = await issueChallenge(await challengeKey, "testnet", Date.now() - 6 * 60_000);
+    const wrongKey = await issueChallenge(await sessionKey, "testnet");
     const asSession = await macToken(await challengeKey, {
       typ: "session",
       v: 1,
@@ -874,5 +889,50 @@ describe("infrastructure failures answer 503 'unavailable', never an unhandled 5
       const r = await postVerify(login(c.body), c.cookie);
       expect(JSON.stringify(r.json)).not.toMatch(/SUPABASE|NEAR_RPC|kdf|db down/);
     });
+  });
+});
+
+// W-NET-R3: the network of a sign-in is the network of the address it is opened at, and nothing else.
+describe("sign-in on each network's address (W-NET-R3)", () => {
+  it.each([
+    [MAINNET_HOST, "mainnet"],
+    [TESTNET_HOST, "testnet"],
+    ["preview-git-x.vercel.app", "testnet"], // any other address is the default network
+  ] as const)(
+    "issues the challenge for the network of %s, and mints the session for it",
+    async (host, network) => {
+      h.host = host;
+      h.rpcFor = [];
+      const c = await getChallenge();
+      const { openChallenge } = await import("./challenge");
+      expect(await openChallenge(await challengeKey, c.cookie, network), host).not.toBeNull();
+      useRpc(rpcOk(FULL_ACCESS_KEY));
+      const { res, setCookies } = await postVerify(login(c.body), c.cookie);
+      expect(res.status, host).toBe(200);
+      const session = await readSessionToken(
+        await sessionKey,
+        cookieValue(setCookies, SESSION_COOKIE),
+      );
+      expect(session?.network, host).toBe(network);
+      // The key was checked on that network's chain, and on no other.
+      expect(h.rpcFor, host).toEqual([network]);
+    },
+  );
+
+  it("refuses a challenge from one address at the other, before any chain call", async () => {
+    h.host = MAINNET_HOST;
+    const c = await getChallenge();
+    h.host = TESTNET_HOST;
+    h.rpcFor = [];
+    const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
+    const { res, json, setCookies } = await postVerify(login(c.body), c.cookie);
+    expect(res.status).toBe(401);
+    expect(json).toEqual({ error: "challenge_missing_or_expired" });
+    expect(setCookieOf(setCookies, SESSION_COOKIE)).toBeUndefined();
+    expect(rpc.remaining()).toBe(1);
+    // The mainnet challenge was not burned on the way: it still signs in at its own address.
+    h.host = MAINNET_HOST;
+    const again = await postVerify(login(c.body), c.cookie);
+    expect(again.res.status).toBe(200);
   });
 });

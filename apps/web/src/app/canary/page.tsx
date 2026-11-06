@@ -16,7 +16,7 @@ import type { Network } from "@/lib/config";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
 import { chainConsts, getReader } from "@/lib/near/server";
-import { BUILD_NETWORK } from "@/lib/site/network";
+import { softRequestNetwork } from "@/lib/network";
 
 export const metadata: Metadata = {
   title: "Canary",
@@ -40,9 +40,9 @@ function soft<T>(what: string, read: () => Promise<T>): Promise<T | null> {
     });
 }
 
-async function readVault(vault: string): Promise<VaultSummary> {
-  const consts = chainConsts();
-  const reader = getReader();
+async function readVault(network: Network, vault: string): Promise<VaultSummary> {
+  const consts = chainConsts(network);
+  const reader = getReader(network);
   const [usdc, base, mandates] = await Promise.all([
     soft("usdc", () => reader.ftBalance(consts.usdc, vault)),
     soft("base", () => reader.intentsBalance(consts.intents, vault, consts.allowedAssets.base)),
@@ -75,9 +75,10 @@ function Header({ network }: { network: Network }) {
  * The public Canary. Live (or code-only) with a vault set, it has the vault read from the chain, the form, the
  * scoreboard and the latest attempts. Otherwise, or when the environment cannot be read, it is the replay of recorded
  * attacks with a banner that says why. It never fails for want of settings, and it shows no ledger (the Canary's is private).
+ * It is the Canary of the network of the address it was opened at: that network's vault, chain and board.
  */
 export default async function CanaryPage() {
-  const view = canaryView(getEnv, BUILD_NETWORK);
+  const view = canaryView(getEnv, await softRequestNetwork());
   if (view.kind === "replay") {
     return (
       <div className={`${s.site} ${s.wrap} ${c.page}`}>
@@ -87,15 +88,15 @@ export default async function CanaryPage() {
     );
   }
   const [summary, board, feed] = await Promise.all([
-    readVault(view.vault).catch((error: unknown) => {
+    readVault(view.network, view.vault).catch((error: unknown) => {
       // The reader could not even be built: the same "could not read" as a failed read.
       log.warn("canary.chain_unavailable", {
         error: error instanceof Error ? error.message : String(error),
       });
       return summarizeVault({ usdc: null, base: null, mandates: null });
     }),
-    loadBoard(),
-    loadFeed(),
+    loadBoard(view.network),
+    loadFeed(view.network),
   ]);
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>

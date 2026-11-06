@@ -26,7 +26,7 @@ Where things are defined (you do not edit these to deploy):
   git show origin/main:package.json | grep '"packageManager": "pnpm@10.34.9"'
   ```
   It must print one line. If it prints nothing, stop: Vercel would build a commit with no root `packageManager`. Merge the pin into `main` first.
-- [ ] **OWNER:** decide the network. Read `contracts/deployments/mainnet.json`. While its `factory.deploy_tx` is `null`, the mainnet factory `vaults.probarion.near` is not deployed, so the console cannot create or register a mainnet vault. Deploy against **testnet** first (`NEAR_NETWORK=testnet`) and move Production to mainnet when the factory is live (`docs/runbooks/factory.md`).
+- [ ] **OWNER:** decide the default network. Read `contracts/deployments/mainnet.json`. While its `factory.deploy_tx` is `null`, the mainnet factory `vaults.probarion.near` is not deployed, so the console cannot create or register a mainnet vault. Deploy with **testnet** as the default (`NEAR_NETWORK=testnet`) and flip the default to mainnet when the factory is live (`docs/runbooks/factory.md`). One project can serve both networks, each at its own address: section 3.5.
 - [ ] **OWNER:** check the testnet factory `vaults.probarion.testnet` is deployed (`docs/runbooks/factory.md`). Without it the console shows the Create vault panel as unavailable. Registering an existing vault still works.
 
 ## 1. Supabase
@@ -98,9 +98,9 @@ Where things are defined (you do not edit these to deploy):
 
   | Variable | Production | Preview | Sensitive |
   |---|---|---|---|
-  | `NEAR_NETWORK` | `testnet` now, `mainnet` when step 0 allows | `testnet` | no |
-  | `NEAR_RPC_URLS` | leave unset for the network default, or a comma list in failover order | unset | no |
-  | `PROBARION_FACTORY_ID` | unset for the default (`vaults.probarion.testnet` or `vaults.probarion.near`) | unset | no |
+  | `NEAR_NETWORK` | the **default network**: `testnet` now, `mainnet` when step 0 allows. It is the network of any address that is neither of the two in 3.5 (a preview, a `*.vercel.app` URL), and the one the unsuffixed variables below apply to | `testnet` | no |
+  | `NEAR_RPC_URLS` | leave unset for the network default, or a comma list in failover order (the default network's; 3.5 has the per-network form) | unset | no |
+  | `PROBARION_FACTORY_ID` | unset for the default (`vaults.probarion.testnet` or `vaults.probarion.near`; the default network's) | unset | no |
   | `SUPABASE_URL` | project URL | the Preview project's URL, or the Production URL if Preview shares that project | no |
   | `NEXT_PUBLIC_SUPABASE_URL` | the same URL | the same URL as `SUPABASE_URL` in Preview | no |
   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | publishable key | the publishable key of the project Preview uses | no (public by design) |
@@ -112,13 +112,14 @@ Where things are defined (you do not edit these to deploy):
 
   | Variable | Notes | Sensitive |
   |---|---|---|
+  | `APP_ORIGIN_MAINNET`, `APP_ORIGIN_TESTNET` | the address each network is served at, `https://host` with no path (3.5). Setting one turns that network on. The default network falls back to the production address when its own is unset | no |
   | `TEAM_VAULT_IDS` | comma-separated vault accounts the team runs; they register as tenant kind `team` (step 5) | no |
   | `PROBARION_VAULT_ID` | the demo vault `/proof` opens. Use a public team vault created through the factory, with a signed, anchored ledger and "Public proof page" on (step 5). **Not** `v0.probarion.testnet`: it fails check (d) by design (its smoke spends predate the ledger), so `/proof` would show it in red. A vault whose proof page is not public is not opened: `/proof` then says how to open a vault | no |
   | `NEAR_ARCHIVAL_RPC_URLS` | comma-separated archival NEAR RPCs, in failover order, for example `https://archival-rpc.testnet.fastnear.com`. `/proof` reads burn transactions older than about 2.5 days through them. Unset: no archival lookup, and such a burn shows as "not proven" (`tx_unavailable`), never as a pass | no (yes if a URL carries an API key) |
   | `NEARAI_API_KEY` | NEAR AI Cloud key; set a spend cap in the NEAR AI dashboard first | **yes** |
   | `NEARAI_MODEL` | leave unset: the SDK resolves a default | no |
-  | `ONECLICK_JWT` | 1Click top-up quotes (mainnet only) | **yes** |
-  | `CANARY_VAULT_ID`, `CANARY_MODE` | leave `CANARY_MODE` unset (it defaults to `code-only`); set the vault when the Canary is built | no |
+  | `ONECLICK_JWT` | 1Click top-up quotes (mainnet only): one key for the whole project, used for mainnet vaults; a testnet vault is refused | **yes** |
+  | `CANARY_VAULT_ID`, `CANARY_MODE` | leave `CANARY_MODE` unset (it defaults to `code-only`); set the vault when the Canary is built. The vault is a network's own (3.5); `CANARY_MODE` is one switch for both | no |
   | `BASE_RPC_URL` | public Base RPC for settlement lookups, for example `https://mainnet.base.org` | no |
   | `SENTRY_DSN` | https DSN of a Sentry project | no |
   | `TELEGRAM_BOT_TOKEN`, `RESEND_API_KEY` | alert channels; `docs/ops/alerts.md` has the BotFather, webhook and Resend steps | **yes** |
@@ -129,9 +130,9 @@ Where things are defined (you do not edit these to deploy):
   - `PROBARION_AGENT_KEY`, `PROBARION_LEDGER_KEY`: the console keeps each vault's keys sealed in the database. These two are for the SDK and CLI on a developer machine.
   - `PROBARION_LEDGER_PATH`: for the SDK, CLI and verifier; the console does not read it.
   - `OLD_KEY_ENCRYPTION_SECRET`, `NEW_KEY_ENCRYPTION_SECRET`: inputs of the one-off rotation command, never stored.
-  - Any variable with a `NEXT_PUBLIC_` prefix beyond the two in the table. The prefix publishes the value to every visitor's browser. `next.config.ts` derives the two it needs (`NEXT_PUBLIC_NEAR_NETWORK` and `NEXT_PUBLIC_SENTRY_DSN`) from `NEAR_NETWORK` and `SENTRY_DSN`.
+  - Any variable with a `NEXT_PUBLIC_` prefix beyond the two in the table. The prefix publishes the value to every visitor's browser. `next.config.ts` derives the ones it needs from other settings: `NEXT_PUBLIC_SENTRY_DSN` from `SENTRY_DSN`, and `NEXT_PUBLIC_DEFAULT_NETWORK`, `NEXT_PUBLIC_ORIGIN_MAINNET` and `NEXT_PUBLIC_ORIGIN_TESTNET` (which address is which network: addresses and a network name, nothing secret) from `NEAR_NETWORK`, `APP_ORIGIN_MAINNET` and `APP_ORIGIN_TESTNET`.
 
-  The `NEXT_PUBLIC_` values and `NEAR_NETWORK` are fixed into the build. After changing one, redeploy (a new build), not just restart.
+  The `NEXT_PUBLIC_` values, `NEAR_NETWORK` and the two `APP_ORIGIN_*` are fixed into the build. After changing one, redeploy (a new build), not just restart.
 
 ### 3.3 Domain (only if you have one)
 
@@ -140,6 +141,36 @@ Where things are defined (you do not edit these to deploy):
 ### 3.4 Preview versus Production data (advice)
 
 This is advice, not a rule of the code. The code does not stop you from pointing Preview and Production at one Supabase project; it only requires that every row can be opened. Rows are sealed under `KEY_ENCRYPTION_SECRET`, so a project shared by two environments needs the same value in both, and then a leaked Preview value is a leaked Production value. Two Supabase projects, each with its own value, keep a throwaway Preview from touching real tenants. If you share one project, use one `KEY_ENCRYPTION_SECRET` and one network in both environments.
+
+### 3.5 Both networks in one project
+
+One Vercel project, one deployment, one Supabase database, one cron set, one Telegram bot and one heartbeat serve testnet and mainnet at once. **The network of a request is the address it was opened at**, and nothing else: not a query parameter, not a cookie. With none of the settings below the project behaves as it did before: one network, `NEAR_NETWORK`'s.
+
+- [ ] **OWNER:** add the second address to the **same** Vercel project (Settings, Domains; a domain on an existing project is free, it is not a second project). Wait until Vercel marks it valid. Keep the first address as it is.
+- [ ] **OWNER:** set the two origins, for Production (and Preview if you want the switch there), each `https://<host>` with no path, no query and no fragment (`http://localhost:<port>` is allowed for development). Two networks cannot share one host, and a refused value stops the console from starting with a message that names the variable and never its value:
+  - `APP_ORIGIN_MAINNET`
+  - `APP_ORIGIN_TESTNET`
+
+  A network is **served** when it is the default network (`NEAR_NETWORK`) or its origin is set. The default network's origin falls back to the production address Vercel gives the build when its own is unset. Any other address (a preview, a `*.vercel.app` deployment URL, `localhost`) is the default network.
+- [ ] **OWNER:** give each network its own settings. These six variables each have a mainnet form and a testnet form:
+
+  | Setting | Mainnet | Testnet |
+  |---|---|---|
+  | RPC URLs, in failover order | `NEAR_RPC_URLS_MAINNET` | `NEAR_RPC_URLS_TESTNET` |
+  | Archival RPC URLs (`/proof`) | `NEAR_ARCHIVAL_RPC_URLS_MAINNET` | `NEAR_ARCHIVAL_RPC_URLS_TESTNET` |
+  | Factory | `PROBARION_FACTORY_ID_MAINNET` | `PROBARION_FACTORY_ID_TESTNET` |
+  | Demo vault of `/proof` | `PROBARION_VAULT_ID_MAINNET` | `PROBARION_VAULT_ID_TESTNET` |
+  | Canary vault | `CANARY_VAULT_ID_MAINNET` | `CANARY_VAULT_ID_TESTNET` |
+  | Team vaults | `TEAM_VAULT_IDS_MAINNET` | `TEAM_VAULT_IDS_TESTNET` |
+
+  The RPC URL lists can carry an API key: tick **Sensitive** for them. A network's value is its suffixed variable; else, for the **default network only**, the unsuffixed variable; else the built-in default (the network's public RPCs and its factory from the contracts' deployments, otherwise empty). **An unsuffixed variable never applies to the other network**: testnet RPCs never serve mainnet. When you serve both networks, set the suffixed forms for both and leave the unsuffixed ones unset, so that changing the default network (below) cannot point a network at the other one's settings.
+- Everything else stays one variable for the whole project: `ONECLICK_JWT` (1Click is mainnet only), `BASE_RPC_URL`, `CANARY_MODE`, `BETTERSTACK_HEARTBEAT_URL`, `TELEGRAM_BOT_TOKEN`, `RESEND_API_KEY`, `NEARAI_API_KEY`, `NEARAI_MODEL`, `SENTRY_DSN`, `CRON_SECRET`, `KEY_ENCRYPTION_SECRET` and the Supabase keys. The Canary's daily model-token budget is shared by the two networks on purpose (a token costs the same on both).
+- [ ] **OWNER:** a change to `NEAR_NETWORK`, `APP_ORIGIN_MAINNET` or `APP_ORIGIN_TESTNET` needs a **redeploy**: the browser's copy of the address map is built into the pages, and the header's Testnet | Mainnet switch and the beta strip read it. The switch shows only when the other network is served; with no `APP_ORIGIN_*` it never shows.
+- [ ] **OWNER:** run the migration once. `20261108000012_networks.sql` is for the whole project, not for one network: apply it once, in order, as in step 1. Deploy the code first and apply it right after: the new code works with the old functions (the Canary board then counts both networks until the migration lands), while the new functions refuse a request that does not name a network, which the old code never does.
+- [ ] **OWNER:** the main address stays **testnet** until the mainnet factory is live (`contracts/deployments/mainnet.json`). When it is: set the suffixed variables for both networks, set `APP_ORIGIN_MAINNET` to the address that should show mainnet, set `NEAR_NETWORK=mainnet` if the main address should flip with it (and give testnet its own address in `APP_ORIGIN_TESTNET`), and redeploy. Check the Production variables before you flip: whatever is unsuffixed now becomes **mainnet's** the moment `NEAR_NETWORK` says mainnet.
+- Sessions are per address. Signing in at one address does not sign in at the other (the cookie belongs to its host and names its network), so a person signs in on each, with a wallet of that network. After this change everyone signs in once more: the old cookie is not accepted (it lasts 12 hours anyway).
+- One Telegram bot serves both networks, and its webhook stays at the default network's address (`docs/ops/alerts.md`). Each alert links to the console of its own vault's network.
+- Check it: open each address; the header shows Testnet | Mainnet with the current one filled, and the other a link to the other address; sign in at each; open a vault of the other network and read "This vault is on NEAR <network>" with a button to its address.
 
 ## 4. First deploy and smoke test
 
@@ -213,7 +244,7 @@ Shape, one entry per vault, keyed by `"<network>:<vault>"`; both fields are opti
 ## When a later task changes this page
 
 - A new pnpm version: change `packageManager` in the root `package.json` (CI and Vercel both follow it), the pinned value in `scripts/test/release-manifests.test.ts`, and every pnpm version named on this page (`deploy.test.ts` fails on any that differs from `packageManager`). The script tests fail until the first two agree. The workflows carry no version of their own.
-- A new environment variable: it goes into `.env.example` first (`deploy.test.ts` fails otherwise), then into the tables in 3.2.
+- A new environment variable: it goes into `.env.example` first (`deploy.test.ts` fails otherwise), then into the tables in 3.2. A setting that differs by network takes the `_MAINNET` and `_TESTNET` forms of 3.5.
 - A new Vercel cron: add it to `apps/web/vercel.json`. `deploy.test.ts` requires a `GET` route at that path that checks `CRON_SECRET`. Per-minute and hourly schedules need Vercel Pro; the Hobby plan rejects them at deploy time (the usage cron is daily for that reason: `docs/ops/metrics.md` says how to run it hourly). The watcher's cron is daily for the same reason, and `docs/ops/watcher.md` says how to run it every minute.
 - A new migration: one new file, next sequence number, no gaps. The test applies the folder to a fresh database and refuses extensions, role changes, owners and Supabase-only features.
 - A page that was "coming soon": delete its line from `PLANNED_ROUTES` in `apps/web/src/lib/routes.ts`, and its link goes live.

@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   }
   const auth = await memberForApi(body.vault, ["owner"]);
   if (auth instanceof Response) return auth;
-  const gate = mainnetGate();
+  const gate = mainnetGate(auth.member.network);
   if (gate instanceof Response) return gate;
   const limited = await topupLimited("submit", auth.session.accountId);
   if (limited) return limited;

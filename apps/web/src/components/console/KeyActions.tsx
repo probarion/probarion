@@ -17,7 +17,7 @@ import type { WalletTx } from "@/lib/near/tx";
 type Generate = (
   purpose: KeyPurpose,
   label: string,
-) => Promise<WalletTx | { error: string; status?: 401 | 403 }>;
+) => Promise<WalletTx | { error: string; status?: 401 | 403 | 409 }>;
 type Sync = (prev: KeySyncState, formData?: FormData) => Promise<KeySyncState>;
 type Keep = (prev: KeepState, formData?: FormData) => Promise<KeepState>;
 

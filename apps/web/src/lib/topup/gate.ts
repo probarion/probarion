@@ -1,3 +1,4 @@
+import type { Network } from "@/lib/config";
 import { serviceDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
 import { problem, rateLimitOr429 } from "@/lib/http";
@@ -7,12 +8,13 @@ import { ONLY_ON_MAINNET } from "./copy";
 
 /**
  * What every top-up route needs before it talks to 1Click, in one place so a new route cannot forget it:
- * this deployment runs on mainnet (1Click and NEAR Intents exist there only) and holds the partner JWT.
- * The JWT is returned for the route to use and never reaches a response.
+ * the vault is on mainnet (1Click and NEAR Intents exist there only; `network` is the vault's own, which the guard
+ * has already shown to be the request's) and this deployment holds the partner JWT. The JWT is returned for the route
+ * to use and never reaches a response.
  */
-export function mainnetGate(): { jwt: string } | Response {
+export function mainnetGate(network: Network): { jwt: string } | Response {
   const env = getEnv();
-  if (env.NEAR_NETWORK !== "mainnet") return problem(409, "mainnet_only", `${ONLY_ON_MAINNET}.`);
+  if (network !== "mainnet") return problem(409, "mainnet_only", `${ONLY_ON_MAINNET}.`);
   if (!env.ONECLICK_JWT) return problem(503, "not_configured");
   return { jwt: env.ONECLICK_JWT };
 }

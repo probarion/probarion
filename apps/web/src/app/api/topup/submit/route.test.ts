@@ -32,7 +32,10 @@ vi.mock("@/lib/auth/guard", () => ({
     if (!(roles as string[]).includes(h.role)) {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
     }
-    return { session: { accountId: "acme.near" }, member: { vault_id: vault, role: h.role } };
+    return {
+      session: { accountId: "acme.near" },
+      member: { vault_id: vault, role: h.role, network: h.network },
+    };
   },
 }));
 vi.mock("@/lib/db/clients", () => ({
@@ -52,7 +55,7 @@ vi.mock("@/lib/db/clients", () => ({
   }),
 }));
 vi.mock("@/lib/env", () => ({
-  getEnv: () => ({ NEAR_NETWORK: h.network, ONECLICK_JWT: h.jwt }),
+  getEnv: () => ({ ONECLICK_JWT: h.jwt }),
 }));
 
 const { POST } = await import("./route");

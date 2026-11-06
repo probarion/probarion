@@ -2,7 +2,7 @@
 // it comes from. Backticks in a string render as <code> (components/site/Rich.tsx). The transactions are the testnet
 // smoke run of contracts/deployments/testnet.json: they stay testnet links whatever network this build runs on.
 import type { CheckId } from "@probarion/core";
-import { explorerTxUrl, type Network } from "@/lib/config";
+import { explorerTxUrl } from "@/lib/config";
 import { CLI_ON_NPM, cli, REPO_URL } from "@/lib/proof/cli";
 import { FOOTER_NAV, isBuilt, type NavItem, SITE_NAV } from "@/lib/routes";
 import type { TamperResult } from "./tamper";
@@ -44,16 +44,7 @@ export function publicRoutes(): string[] {
 
 // --- chrome ---------------------------------------------------------------------------------------
 
-export function betaStrip(network: Network) {
-  return {
-    lead: "Unaudited beta.",
-    where:
-      network === "mainnet" ? "Runs on NEAR mainnet." : "Runs on NEAR testnet with test tokens.",
-    audit: "No third party has audited this code.",
-    custody: "Non-custodial: Probarion holds no owner key.",
-    amounts: "Use small amounts.",
-  };
-}
+export { betaStrip } from "./beta";
 
 /** The landing sections. A full path, so that each one works from every page. */
 export const HEADER_ANCHORS: readonly { href: string; label: string }[] = [

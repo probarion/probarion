@@ -4,11 +4,19 @@ import { type CanaryEnv, canaryView } from "./view";
 
 const logs = quietLogs();
 
-const env = (over: Partial<CanaryEnv> = {}): CanaryEnv => ({
-  NEAR_NETWORK: "testnet",
-  CANARY_MODE: "code-only",
-  CANARY_VAULT_ID: "canary.vaults.probarion.testnet",
-  ...over,
+const VAULT = "canary.vaults.probarion.testnet";
+/** Each network has its own Canary vault: `vault` is the testnet's, `mainnetVault` the mainnet's. */
+const env = (
+  over: Partial<Pick<CanaryEnv, "CANARY_MODE">> & {
+    vault?: string | null;
+    mainnetVault?: string | null;
+  } = {},
+): CanaryEnv => ({
+  CANARY_MODE: over.CANARY_MODE ?? "code-only",
+  networks: {
+    testnet: { canaryVaultId: over.vault === undefined ? VAULT : over.vault },
+    mainnet: { canaryVaultId: over.mainnetVault === undefined ? null : over.mainnetVault },
+  },
 });
 
 describe("canaryView", () => {
@@ -37,7 +45,7 @@ describe("canaryView", () => {
 
   it("is a replay that has not opened yet when no vault is set, in either live mode", () => {
     for (const CANARY_MODE of ["live", "code-only"] as const) {
-      expect(canaryView(() => env({ CANARY_MODE, CANARY_VAULT_ID: null }), "testnet")).toEqual({
+      expect(canaryView(() => env({ CANARY_MODE, vault: null }), "testnet")).toEqual({
         kind: "replay",
         banner: "closed",
         network: "testnet",
@@ -51,13 +59,27 @@ describe("canaryView", () => {
     }
   });
 
-  it("takes the network from the environment", () => {
-    expect(canaryView(() => env({ NEAR_NETWORK: "mainnet" }), "testnet")).toMatchObject({
+  it("takes the network it is asked for, and that network's own Canary vault", () => {
+    const both = env({ mainnetVault: "canary.vaults.probarion.near" });
+    expect(canaryView(() => both, "mainnet")).toEqual({
+      kind: "live",
+      mode: "code-only",
+      vault: "canary.vaults.probarion.near",
+      network: "mainnet",
+    });
+    expect(canaryView(() => both, "testnet")).toMatchObject({ vault: VAULT, network: "testnet" });
+  });
+
+  it("is not open yet on a network that has no Canary vault, whatever the other one has", () => {
+    // Only testnet has a vault: mainnet is not open yet (the other network's vault is never used for it).
+    expect(canaryView(() => env(), "mainnet")).toEqual({
+      kind: "replay",
+      banner: "closed",
       network: "mainnet",
     });
   });
 
-  it("is a replay that has not opened yet, on the build's network, when the environment cannot be read", () => {
+  it("is a replay that has not opened yet, on the network it is asked for, when the environment cannot be read", () => {
     const broken = () => {
       throw new Error("Invalid environment: KEY_ENCRYPTION_SECRET is required");
     };

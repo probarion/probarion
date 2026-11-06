@@ -4,6 +4,7 @@ import Link from "next/link";
 import { MandateFormPanel } from "@/components/console/MandateFormPanel";
 import { RevokeMandateButton } from "@/components/console/RevokeMandateButton";
 import { VaultNav } from "@/components/console/VaultNav";
+import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
 import { AccountLink, Badge, Card, Notice } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import type { Network } from "@/lib/config";
@@ -22,7 +23,6 @@ import {
 } from "@/lib/console/mandates-view";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { isVaultConfig, type Read } from "@/lib/console/vaults";
-import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
 import { chainErrorKind, listAll } from "@/lib/near/reader";
 import { chainConsts, getReader } from "@/lib/near/server";
@@ -100,11 +100,12 @@ function revokeTx(vault: string, id: number): WalletTx | null {
 export default async function MandatesPage({ params }: { params: Promise<{ vault: string }> }) {
   const { vault: requested } = await params;
   // 404 for anyone who is not a member: a vault id is never confirmed to a stranger.
-  const { session, member } = await requireMember(requested);
+  const { session, member, elsewhere } = await requireMember(requested);
+  if (elsewhere) return <VaultOnOtherNetwork {...elsewhere} />;
   const vault = member.vault_id;
-  const network = getEnv().NEAR_NETWORK;
-  const consts = chainConsts();
-  const reader = getReader();
+  const network = member.network;
+  const consts = chainConsts(network);
+  const reader = getReader(network);
   const isOwner = member.role === "owner";
 
   const [configRead, agentsRead, mandatesRead] = await Promise.all([

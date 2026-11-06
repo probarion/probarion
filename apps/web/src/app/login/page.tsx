@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Container } from "@/components/site/Container";
 import { SignInButton } from "@/components/wallet/SignInButton";
 import { WalletProvider } from "@/components/wallet/WalletProvider";
-import { BUILD_NETWORK } from "@/lib/site/network";
+import { softRequestNetwork } from "@/lib/network";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -13,8 +13,10 @@ export default async function LoginPage({
 }) {
   const { next } = await searchParams;
   const safeNext = typeof next === "string" && next.startsWith("/console") ? next : "/console"; // no open redirect
+  // The wallet list is the network's of the address this page is opened at; the session it starts is too.
+  const network = await softRequestNetwork();
   return (
-    <WalletProvider network={BUILD_NETWORK}>
+    <WalletProvider network={network}>
       <Container>
         <div className="mx-auto my-6 max-w-lg rounded-3xl border border-line bg-surface p-6 sm:my-10 sm:p-8">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-small">Console</p>

@@ -36,14 +36,14 @@ describe("near/server", () => {
       NEAR_NETWORK: "mainnet",
       NEAR_RPC_URLS: "https://a.example, https://b.example",
     });
-    const rpc = getRpc();
+    const rpc = getRpc("mainnet");
     expect(rpc).toBeInstanceOf(RpcClient);
     expect(rpc.currentUrl).toBe("https://a.example");
   });
 
   it("falls back to the network's providers when NEAR_RPC_URLS is empty (R12)", async () => {
     const { getRpc } = await load({ NEAR_NETWORK: "testnet", NEAR_RPC_URLS: "  " });
-    expect(getRpc().currentUrl).toBe(NETWORKS.testnet.rpcUrls[0]);
+    expect(getRpc("testnet").currentUrl).toBe(NETWORKS.testnet.rpcUrls[0]);
   });
 
   it("gives up after two rounds over the providers, as a transport error", async () => {
@@ -54,7 +54,7 @@ describe("near/server", () => {
     const down = vi.fn(async () => new Response("busy", { status: 503 }));
     vi.stubGlobal("fetch", down);
     try {
-      const error = await getReader()
+      const error = await getReader("mainnet")
         .getConfig("v.near")
         .catch((e: unknown) => e);
       const { chainErrorKind } = await import("./reader");
@@ -65,37 +65,61 @@ describe("near/server", () => {
     }
   });
 
-  it("shares one client and one reader per process", async () => {
+  it("shares one client and one reader per network", async () => {
     const { getRpc, getReader } = await load({ NEAR_NETWORK: "testnet" });
-    expect(getRpc()).toBe(getRpc());
-    expect(getReader()).toBe(getReader());
-    expect(typeof getReader().getConfig).toBe("function");
+    expect(getRpc("testnet")).toBe(getRpc("testnet"));
+    expect(getReader("testnet")).toBe(getReader("testnet"));
+    expect(getRpc("mainnet")).toBe(getRpc("mainnet"));
+    expect(getRpc("mainnet")).not.toBe(getRpc("testnet"));
+    expect(getReader("mainnet")).not.toBe(getReader("testnet"));
+    expect(typeof getReader("testnet").getConfig).toBe("function");
   });
 
-  it("returns the fixed addresses of NEAR_NETWORK", async () => {
-    const mainnet = await load({ NEAR_NETWORK: "mainnet" });
-    expect(mainnet.chainConsts()).toStrictEqual(NETWORKS.mainnet);
-    expect(mainnet.chainConsts().intents).toBe("intents.near");
-    const testnet = await load({ NEAR_NETWORK: "testnet" });
-    expect(testnet.chainConsts()).toStrictEqual(NETWORKS.testnet);
+  it("builds each network's client from that network's providers only", async () => {
+    const { getRpc } = await load({
+      NEAR_NETWORK: "testnet",
+      APP_ORIGIN_MAINNET: "https://mainnet.probarion.xyz",
+      // The unsuffixed list is the default network's: it never reaches mainnet.
+      NEAR_RPC_URLS: "https://testnet-key.example/SENTINEL",
+      NEAR_RPC_URLS_MAINNET: "https://mainnet-a.example, https://mainnet-b.example",
+    });
+    expect(getRpc("testnet").currentUrl).toBe("https://testnet-key.example/SENTINEL");
+    expect(getRpc("mainnet").currentUrl).toBe("https://mainnet-a.example");
   });
 
-  it("does not call getEnv on import, only when a function is used", async () => {
+  it("gives the other network its own built-in providers, not the default network's list", async () => {
+    const { getRpc } = await load({
+      NEAR_NETWORK: "testnet",
+      NEAR_RPC_URLS: "https://testnet-key.example/SENTINEL",
+    });
+    expect(getRpc("mainnet").currentUrl).toBe(NETWORKS.mainnet.rpcUrls[0]);
+  });
+
+  it("returns the fixed addresses of the network it is asked for", async () => {
+    const { chainConsts } = await load({ NEAR_NETWORK: "testnet" });
+    expect(chainConsts("mainnet")).toStrictEqual(NETWORKS.mainnet);
+    expect(chainConsts("mainnet").intents).toBe("intents.near");
+    expect(chainConsts("testnet")).toStrictEqual(NETWORKS.testnet);
+  });
+
+  it("does not call getEnv on import, only when a client is built", async () => {
     vi.resetModules();
     const getEnv = vi.fn(() => ({
-      NEAR_NETWORK: "testnet",
-      NEAR_RPC_URLS: ["https://a.example"],
+      networks: {
+        testnet: { rpcUrls: ["https://a.example"] },
+        mainnet: { rpcUrls: ["https://b.example"] },
+      },
     }));
     vi.doMock("@/lib/env", () => ({ getEnv }));
     try {
       const server = await import("./server");
       expect(getEnv).not.toHaveBeenCalled();
-      server.chainConsts();
+      server.getRpc("testnet");
       expect(getEnv).toHaveBeenCalledTimes(1);
-      server.getRpc();
-      expect(getEnv).toHaveBeenCalledTimes(2);
       // The client is cached: a second read of the environment is not needed.
-      server.getRpc();
+      server.getRpc("testnet");
+      expect(getEnv).toHaveBeenCalledTimes(1);
+      server.getRpc("mainnet");
       expect(getEnv).toHaveBeenCalledTimes(2);
     } finally {
       vi.doUnmock("@/lib/env");
@@ -103,14 +127,13 @@ describe("near/server", () => {
     }
   });
 
-  it("imports with an invalid environment and fails only when a function is used", async () => {
+  it("imports with an invalid environment and fails only when a client is built", async () => {
     // Nothing valid is set: importing must not throw, so `next build` needs no runtime secrets.
     vi.resetModules();
     vi.stubEnv("KEY_ENCRYPTION_SECRET", "not-a-key");
     vi.stubEnv("CRON_SECRET", "");
     vi.stubEnv("NEAR_NETWORK", "no-such-network");
     const server = await import("./server");
-    expect(() => server.getRpc()).toThrow(/Invalid environment/);
-    expect(() => server.chainConsts()).toThrow(/Invalid environment/);
+    expect(() => server.getRpc("testnet")).toThrow(/Invalid environment/);
   });
 });

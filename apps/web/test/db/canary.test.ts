@@ -947,7 +947,7 @@ describe("runAttempt", () => {
       const board = await pgliteDb(pg).rpc<{
         raw_external: number;
         contract_codes: unknown[];
-      }>("public_canary_leaderboard", {});
+      }>("public_canary_leaderboard", { network: "mainnet" });
       expect(board).toMatchObject({ raw_external: 0, contract_codes: [] });
     });
 
@@ -1137,18 +1137,19 @@ describe("runAttempt", () => {
   it("publishes the feed to anon without visitor or IP hashes, and the leaderboard only to the server", async () => {
     await runAttempt(deps().d, input());
     const feed = await pgliteDb(pg, "anon").rpc<Record<string, unknown>[]>("public_canary_feed", {
+      network: "mainnet",
       limit: 10,
     });
     expect(feed).toHaveLength(1);
     expect(Object.keys(at(feed))).not.toContain("visitor_hash");
     expect(Object.keys(at(feed))).not.toContain("ip_hash");
-    await expect(pgliteDb(pg, "anon").rpc("public_canary_leaderboard", {})).rejects.toThrow(
-      /permission denied/,
-    );
+    await expect(
+      pgliteDb(pg, "anon").rpc("public_canary_leaderboard", { network: "mainnet" }),
+    ).rejects.toThrow(/permission denied/);
     const board = await pgliteDb(pg).rpc<{
       browsers: number;
       contract_codes: { code: string; n: number }[];
-    }>("public_canary_leaderboard", {});
+    }>("public_canary_leaderboard", { network: "mainnet" });
     expect(board.browsers).toBe(1);
     expect(board.contract_codes).toEqual([{ code: "NoMandate", n: 1 }]);
   });
@@ -1183,7 +1184,7 @@ describe("runAttempt", () => {
       await runAttempt(d, input({ text }));
       expect(firstCall(pb.process)[0].facts.invoice_hash).toBe(hashInvoice(text));
       expect(at(await rows()).text_sha256).toBe(hashInvoice(text));
-      const feed = await pgliteDb(pg, "anon").rpc("public_canary_feed", {});
+      const feed = await pgliteDb(pg, "anon").rpc("public_canary_feed", { network: "mainnet" });
       expect(JSON.stringify(feed)).not.toContain(hashInvoice(text));
       expect(JSON.stringify(feed)).not.toContain("text_sha256");
     });
@@ -1225,7 +1226,7 @@ describe("runAttempt", () => {
         });
         const board = await pgliteDb(pg).rpc<{ raw_external: number }>(
           "public_canary_leaderboard",
-          {},
+          { network: "mainnet" },
         );
         expect(board.raw_external).toBe(0);
       },
@@ -1260,7 +1261,7 @@ describe("runAttempt", () => {
       let feed: unknown;
       const process = vi.fn(async () => {
         row = at(await rows());
-        feed = await anon().rpc("public_canary_feed", {});
+        feed = await anon().rpc("public_canary_feed", { network: "mainnet" });
         return refused;
       });
       await runAttempt(deps({}, { process }).d, input());
@@ -1297,7 +1298,9 @@ describe("runAttempt", () => {
       let feed: Record<string, unknown>[] = [];
       const requestSpend = vi.fn(async () => {
         row = at(await rows());
-        feed = await anon().rpc<Record<string, unknown>[]>("public_canary_feed", {});
+        feed = await anon().rpc<Record<string, unknown>[]>("public_canary_feed", {
+          network: "mainnet",
+        });
         return byContract;
       });
       await runAttempt(deps({}, { requestSpend }).d, input());

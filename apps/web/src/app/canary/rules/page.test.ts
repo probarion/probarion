@@ -1,12 +1,16 @@
-import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CANARY_LIMITS } from "@/lib/canary/limits";
 import { LIMITS } from "@/lib/ratelimit";
 import { PLANNED_ROUTES } from "@/lib/routes";
+
+// The page is rendered per request, for the network of the address it is opened at.
+const net = vi.hoisted(() => ({ network: "testnet" as "mainnet" | "testnet" }));
+vi.mock("@/lib/network", () => ({ softRequestNetwork: async () => net.network }));
+
 import CanaryRules, { metadata } from "./page";
 
-const html = renderToStaticMarkup(createElement(CanaryRules));
+const html = renderToStaticMarkup(await CanaryRules());
 const visible = (h: string) =>
   h
     .replace(/<\/?(?:p|h1|h2|li|ol|div)\b[^>]*>/g, " ")
@@ -86,6 +90,17 @@ describe("/canary/rules", () => {
   it("says on a testnet build that it runs on testnet", () => {
     expect(text).toContain("It runs on testnet, with test tokens that have no value.");
     expect(text).not.toMatch(/mainnet/i);
+  });
+
+  it("leaves the testnet sentence out on a mainnet address", async () => {
+    net.network = "mainnet";
+    try {
+      const mainnet = visible(renderToStaticMarkup(await CanaryRules()));
+      expect(mainnet).not.toMatch(/testnet|test tokens/i);
+      expect(mainnet).toContain("This is beta, unaudited software.");
+    } finally {
+      net.network = "testnet";
+    }
   });
 
   it("tells a participant that they are not a customer, and links the Usage page where they are counted apart", () => {

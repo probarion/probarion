@@ -33,6 +33,8 @@ import {
 
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
 const NOW = Date.UTC(2026, 10, 8, 10, 0, 0);
+/** The network the fixtures sign in on. */
+const NET = "testnet" as const;
 const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 const challengeKey = deriveSubkey(MASTER, "challenge");
@@ -66,8 +68,8 @@ function providerWith(permission: unknown) {
 
 async function signedFor(recipient = AUTH_RECIPIENT) {
   const key = await challengeKey;
-  const { challenge, cookie } = await issueChallenge(key, NOW);
-  const opened = await openChallenge(key, cookie, NOW + 1000);
+  const { challenge, cookie } = await issueChallenge(key, NET, NOW);
+  const opened = await openChallenge(key, cookie, NET, NOW + 1000);
   if (!opened) throw new Error("the challenge just issued did not open");
   const signed = signNep413({ message: challenge.message, nonce: opened.nonce, recipient });
   return {
@@ -89,8 +91,9 @@ async function forgeChallenge(fields: Record<string, unknown>, key?: Uint8Array)
   const nonce = Buffer.alloc(32, 7).toString("base64");
   return macToken(key ?? (await challengeKey), {
     typ: "challenge",
-    v: 1,
+    v: 2,
     n: nonce,
+    net: NET,
     exp: NOW + CHALLENGE_TTL_MS,
     ...fields,
   });
@@ -99,8 +102,9 @@ async function forgeChallenge(fields: Record<string, unknown>, key?: Uint8Array)
 async function forgeSession(fields: Record<string, unknown>, key?: Uint8Array) {
   return macToken(key ?? (await sessionKey), {
     typ: "session",
-    v: 1,
+    v: 2,
     a: "alice.near",
+    n: NET,
     exp: NOW + SESSION_TTL_MS,
     ...fields,
   });
@@ -217,9 +221,9 @@ describe("NEP-413 sign-in", () => {
 
   it("rejects expired and tampered challenge cookies", async () => {
     const { key, now, cookie } = await signedFor();
-    expect(await openChallenge(key, cookie, now + 6 * 60_000)).toBeNull();
-    expect(await openChallenge(key, `${cookie}x`, now)).toBeNull();
-    expect(await openChallenge(key, undefined, now)).toBeNull();
+    expect(await openChallenge(key, cookie, NET, now + 6 * 60_000)).toBeNull();
+    expect(await openChallenge(key, `${cookie}x`, NET, now)).toBeNull();
+    expect(await openChallenge(key, undefined, NET, now)).toBeNull();
     const r = await verifyLogin(
       { accountId: "alice.near", publicKey: "ed25519:x", signature: "AA==" },
       null,
@@ -616,7 +620,7 @@ describe("challenge cookies", () => {
   it("issues a 32-byte nonce, the fixed recipient and a message derived from the nonce", async () => {
     const key = await challengeKey;
     const rand = vi.fn((n: number) => Uint8Array.from({ length: n }, (_, i) => i));
-    const { challenge, cookie } = await issueChallenge(key, NOW, rand);
+    const { challenge, cookie } = await issueChallenge(key, NET, NOW, rand);
     expect(rand).toHaveBeenCalledWith(32);
     expect(challenge.recipient).toBe(AUTH_RECIPIENT);
     expect(challenge.nonce).toBe(
@@ -625,15 +629,15 @@ describe("challenge cookies", () => {
     expect(challenge.message).toBe(
       challengeMessage(Buffer.from(challenge.nonce, "base64").toString("hex")),
     );
-    const opened = await openChallenge(key, cookie, NOW);
+    const opened = await openChallenge(key, cookie, NET, NOW);
     expect(opened?.message).toBe(challenge.message);
     expect(Buffer.from(opened?.nonce ?? []).toString("base64")).toBe(challenge.nonce);
   });
 
   it("uses fresh randomness every time", async () => {
     const key = await challengeKey;
-    const a = await issueChallenge(key, NOW);
-    const b = await issueChallenge(key, NOW);
+    const a = await issueChallenge(key, NET, NOW);
+    const b = await issueChallenge(key, NET, NOW);
     expect(a.challenge.nonce).not.toBe(b.challenge.nonce);
     expect(a.cookie).not.toBe(b.cookie);
   });
@@ -641,7 +645,7 @@ describe("challenge cookies", () => {
   it("refuses a random source that does not give 32 bytes", async () => {
     const key = await challengeKey;
     for (const n of [0, 16, 31, 33]) {
-      await expect(issueChallenge(key, NOW, () => new Uint8Array(n))).rejects.toThrow(/32/);
+      await expect(issueChallenge(key, NET, NOW, () => new Uint8Array(n))).rejects.toThrow(/32/);
     }
   });
 
@@ -650,34 +654,34 @@ describe("challenge cookies", () => {
     expect(CHALLENGE_TTL_MS).toBe(5 * 60_000);
     expect(NONCE_BURN_WINDOW_SECONDS).toBe(600);
     expect(NONCE_BURN_WINDOW_SECONDS * 1000).toBeGreaterThan(CHALLENGE_TTL_MS);
-    const { cookie } = await issueChallenge(key, NOW);
-    expect(await openChallenge(key, cookie, NOW + CHALLENGE_TTL_MS - 1)).not.toBeNull();
-    expect(await openChallenge(key, cookie, NOW + CHALLENGE_TTL_MS)).toBeNull();
-    expect(await openChallenge(key, cookie, NOW + CHALLENGE_TTL_MS + 1)).toBeNull();
+    const { cookie } = await issueChallenge(key, NET, NOW);
+    expect(await openChallenge(key, cookie, NET, NOW + CHALLENGE_TTL_MS - 1)).not.toBeNull();
+    expect(await openChallenge(key, cookie, NET, NOW + CHALLENGE_TTL_MS)).toBeNull();
+    expect(await openChallenge(key, cookie, NET, NOW + CHALLENGE_TTL_MS + 1)).toBeNull();
   });
 
   it("rejects a cookie with a changed middle character or a changed last character", async () => {
     const key = await challengeKey;
-    const { cookie } = await issueChallenge(key, NOW);
+    const { cookie } = await issueChallenge(key, NET, NOW);
     const [body, tag] = cookie.split(".") as [string, string];
     const midTag = tamperAt(tag, Math.floor(tag.length / 2), B64URL);
     const midBody = tamperAt(body, Math.floor(body.length / 2), B64URL);
     expect(midTag).not.toBe(tag);
-    expect(await openChallenge(key, `${body}.${midTag}`, NOW)).toBeNull();
-    expect(await openChallenge(key, `${midBody}.${tag}`, NOW)).toBeNull();
+    expect(await openChallenge(key, `${body}.${midTag}`, NET, NOW)).toBeNull();
+    expect(await openChallenge(key, `${midBody}.${tag}`, NET, NOW)).toBeNull();
     // the last character's low-bit sibling decodes to the same bytes in a lenient decoder
     const sibling = lowBitSibling(tag, B64URL);
     expect(sibling).not.toBe(tag);
     expect(Buffer.from(sibling, "base64url").equals(Buffer.from(tag, "base64url"))).toBe(true);
-    expect(await openChallenge(key, `${body}.${sibling}`, NOW)).toBeNull();
-    expect(await openChallenge(key, `${lowBitSibling(body, B64URL)}.${tag}`, NOW)).toBeNull();
-    expect(await openChallenge(key, `${body}.${tag}`, NOW)).not.toBeNull();
+    expect(await openChallenge(key, `${body}.${sibling}`, NET, NOW)).toBeNull();
+    expect(await openChallenge(key, `${lowBitSibling(body, B64URL)}.${tag}`, NET, NOW)).toBeNull();
+    expect(await openChallenge(key, `${body}.${tag}`, NET, NOW)).not.toBeNull();
   });
 
   it("rejects junk cookies", async () => {
     const key = await challengeKey;
     for (const junk of ["", ".", "a.b", "a.b.c", "x".repeat(5000), "\u0000", "undefined"]) {
-      expect(await openChallenge(key, junk, NOW), junk.slice(0, 20)).toBeNull();
+      expect(await openChallenge(key, junk, NET, NOW), junk.slice(0, 20)).toBeNull();
     }
   });
 
@@ -686,7 +690,7 @@ describe("challenge cookies", () => {
     const nonce = Buffer.from(Array.from({ length: 32 }, (_, i) => i * 8 + 1));
     const canonical = nonce.toString("base64");
     expect(canonical).toHaveLength(44);
-    const open = async (n: unknown) => openChallenge(key, await forgeChallenge({ n }), NOW);
+    const open = async (n: unknown) => openChallenge(key, await forgeChallenge({ n }), NET, NOW);
     // control: the canonical spelling opens
     expect(Buffer.from((await open(canonical))?.nonce ?? []).equals(nonce)).toBe(true);
     const sibling = lowBitSibling(canonical, `${B64URL.slice(0, 62)}+/`);
@@ -713,20 +717,20 @@ describe("challenge cookies", () => {
     const key = await challengeKey;
     for (const n of [0, 1, 16, 31, 33, 64]) {
       const token = await forgeChallenge({ n: Buffer.alloc(n, 3).toString("base64") });
-      expect(await openChallenge(key, token, NOW), `${n} bytes`).toBeNull();
+      expect(await openChallenge(key, token, NET, NOW), `${n} bytes`).toBeNull();
     }
-    expect(await openChallenge(key, await forgeChallenge({}), NOW)).not.toBeNull();
+    expect(await openChallenge(key, await forgeChallenge({}), NET, NOW)).not.toBeNull();
   });
 
   it("checks its own type, version and expiry on the payload", async () => {
     const key = await challengeKey;
     const open = async (fields: Record<string, unknown>) =>
-      openChallenge(key, await forgeChallenge(fields), NOW);
+      openChallenge(key, await forgeChallenge(fields), NET, NOW);
     expect(await open({})).not.toBeNull();
     for (const typ of ["session", "Challenge", "", undefined, null, 1]) {
       expect(await open({ typ }), `typ ${String(typ)}`).toBeNull();
     }
-    for (const v of [0, 2, "1", undefined, null]) {
+    for (const v of [0, 1, 3, "2", undefined, null]) {
       expect(await open({ v }), `v ${String(v)}`).toBeNull();
     }
     for (const exp of [
@@ -748,37 +752,44 @@ describe("challenge cookies", () => {
   it("ignores the old payload field e: expiry is exp", async () => {
     const key = await challengeKey;
     const nonce = Buffer.alloc(32, 7).toString("base64");
-    const token = await macToken(key, { typ: "challenge", v: 1, n: nonce, e: NOW + 1000 });
-    expect(await openChallenge(key, token, NOW)).toBeNull();
+    const token = await macToken(key, {
+      typ: "challenge",
+      v: 2,
+      n: nonce,
+      net: NET,
+      e: NOW + 1000,
+    });
+    expect(await openChallenge(key, token, NET, NOW)).toBeNull();
   });
 
   it("separates tokens by key: a challenge sealed under the session key does not open", async () => {
     const key = await challengeKey;
     const wrongKey = await sessionKey;
     const sealedWrong = await forgeChallenge({}, wrongKey);
-    expect(await openChallenge(key, sealedWrong, NOW)).toBeNull();
+    expect(await openChallenge(key, sealedWrong, NET, NOW)).toBeNull();
     // and a good challenge does not open under the session key
-    const { cookie } = await issueChallenge(key, NOW);
-    expect(await openChallenge(wrongKey, cookie, NOW)).toBeNull();
+    const { cookie } = await issueChallenge(key, NET, NOW);
+    expect(await openChallenge(wrongKey, cookie, NET, NOW)).toBeNull();
   });
 
   it("separates tokens by type: a session payload sealed under the right key does not open", async () => {
     const key = await challengeKey;
     // the nonce field is present and valid, so only the type can stop this one
     const asSession = await forgeChallenge({ typ: "session", a: "alice.near" });
-    expect(await openChallenge(key, asSession, NOW)).toBeNull();
+    expect(await openChallenge(key, asSession, NET, NOW)).toBeNull();
     const real = await forgeSession({ n: Buffer.alloc(32, 7).toString("base64") }, key);
-    expect(await openChallenge(key, real, NOW)).toBeNull();
+    expect(await openChallenge(key, real, NET, NOW)).toBeNull();
   });
 });
 
 describe("session tokens", () => {
   it("round-trip, expire and resist tampering", async () => {
     const key = await sessionKey;
-    const t = await createSessionToken(key, "alice.near", 1_000);
+    const t = await createSessionToken(key, "alice.near", NET, 1_000);
     expect(await readSessionToken(key, t, 2_000)).toEqual({
       accountId: "alice.near",
       exp: 1_000 + 12 * 3600_000,
+      network: NET,
     });
     expect(await readSessionToken(key, t, 1_000 + 12 * 3600_000 + 1)).toBeNull();
     expect(
@@ -793,10 +804,11 @@ describe("session tokens", () => {
   it("lasts twelve hours and not a moment longer", async () => {
     const key = await sessionKey;
     expect(SESSION_TTL_MS).toBe(12 * 3600_000);
-    const t = await createSessionToken(key, "alice.near", NOW);
+    const t = await createSessionToken(key, "alice.near", NET, NOW);
     expect(await readSessionToken(key, t, NOW + SESSION_TTL_MS - 1)).toEqual({
       accountId: "alice.near",
       exp: NOW + SESSION_TTL_MS,
+      network: NET,
     });
     expect(await readSessionToken(key, t, NOW + SESSION_TTL_MS)).toBeNull();
     expect(await readSessionToken(key, t, NOW + SESSION_TTL_MS + 1)).toBeNull();
@@ -804,7 +816,7 @@ describe("session tokens", () => {
 
   it("rejects a changed middle character and a changed last character (R7)", async () => {
     const key = await sessionKey;
-    const t = await createSessionToken(key, "alice.near", NOW);
+    const t = await createSessionToken(key, "alice.near", NET, NOW);
     const [body, tag] = t.split(".") as [string, string];
     const midTag = tamperAt(tag, Math.floor(tag.length / 2), B64URL);
     const midBody = tamperAt(body, Math.floor(body.length / 2), B64URL);
@@ -821,7 +833,7 @@ describe("session tokens", () => {
 
   it("rejects junk and a wrong key", async () => {
     const key = await sessionKey;
-    const t = await createSessionToken(key, "alice.near", NOW);
+    const t = await createSessionToken(key, "alice.near", NET, NOW);
     for (const junk of ["", ".", "a.b", "a.b.c", "x".repeat(5000), `${t}x`, `x${t}`]) {
       expect(await readSessionToken(key, junk, NOW), junk.slice(0, 20)).toBeNull();
     }
@@ -834,11 +846,15 @@ describe("session tokens", () => {
     const key = await sessionKey;
     const read = async (fields: Record<string, unknown>) =>
       readSessionToken(key, await forgeSession(fields), NOW);
-    expect(await read({})).toEqual({ accountId: "alice.near", exp: NOW + SESSION_TTL_MS });
+    expect(await read({})).toEqual({
+      accountId: "alice.near",
+      exp: NOW + SESSION_TTL_MS,
+      network: NET,
+    });
     for (const typ of ["challenge", "Session", "", undefined, null, 3]) {
       expect(await read({ typ }), `typ ${String(typ)}`).toBeNull();
     }
-    for (const v of [0, 2, "1", undefined, null]) {
+    for (const v of [0, 1, 3, "2", undefined, null]) {
       expect(await read({ v }), `v ${String(v)}`).toBeNull();
     }
     for (const a of ["Alice.near", "", "a", 5, null, undefined, "alice.near\n"]) {
@@ -861,7 +877,13 @@ describe("session tokens", () => {
 
   it("ignores the old payload field e: expiry is exp", async () => {
     const key = await sessionKey;
-    const token = await macToken(key, { typ: "session", v: 1, a: "alice.near", e: NOW + 1000 });
+    const token = await macToken(key, {
+      typ: "session",
+      v: 2,
+      a: "alice.near",
+      n: NET,
+      e: NOW + 1000,
+    });
     expect(await readSessionToken(key, token, NOW)).toBeNull();
   });
 
@@ -871,7 +893,7 @@ describe("session tokens", () => {
       await readSessionToken(await sessionKey, await forgeSession({}, wrongKey), NOW),
     ).toBeNull();
     // and a valid challenge token presented as a session, whichever key reads it
-    const { cookie } = await issueChallenge(wrongKey, NOW);
+    const { cookie } = await issueChallenge(wrongKey, NET, NOW);
     expect(await readSessionToken(await sessionKey, cookie, NOW)).toBeNull();
     expect(await readSessionToken(wrongKey, cookie, NOW)).toBeNull();
   });
@@ -886,8 +908,9 @@ describe("session tokens", () => {
     expect(await readSessionToken(key, asChallenge, NOW)).toBeNull();
     const real = await macToken(key, {
       typ: "challenge",
-      v: 1,
+      v: 2,
       n: Buffer.alloc(32, 7).toString("base64"),
+      net: NET,
       exp: NOW + SESSION_TTL_MS,
     });
     expect(await readSessionToken(key, real, NOW)).toBeNull();
@@ -896,20 +919,115 @@ describe("session tokens", () => {
   it("refuses to mint a session for something that is not a NEAR account", async () => {
     const key = await sessionKey;
     for (const bad of ["", "Alice.near", "a", "alice near", "alice.near\n"]) {
-      await expect(createSessionToken(key, bad, NOW)).rejects.toThrow(/account/);
+      await expect(createSessionToken(key, bad, NET, NOW)).rejects.toThrow(/account/);
     }
   });
 
-  it("carries nothing but type, version, account and expiry", async () => {
+  it("carries nothing but type, version, account, network and expiry", async () => {
     const key = await sessionKey;
-    const t = await createSessionToken(key, "alice.near", NOW);
+    const t = await createSessionToken(key, "alice.near", NET, NOW);
     const body = decodeCanonical(t.split(".")[0], "base64url");
     expect(JSON.parse(new TextDecoder().decode(body ?? new Uint8Array()))).toEqual({
+      typ: "session",
+      v: 2,
+      a: "alice.near",
+      n: NET,
+      exp: NOW + SESSION_TTL_MS,
+    });
+  });
+
+  // W-NET-R3: a session belongs to the network it was minted on.
+  it("carries the network it was minted for, whichever it is", async () => {
+    const key = await sessionKey;
+    for (const network of ["mainnet", "testnet"] as const) {
+      const t = await createSessionToken(key, "alice.near", network, NOW);
+      expect((await readSessionToken(key, t, NOW))?.network).toBe(network);
+    }
+  });
+
+  it("refuses to mint a session for something that is not a network", async () => {
+    const key = await sessionKey;
+    for (const bad of ["", "devnet", "Mainnet", undefined, null, 1]) {
+      await expect(
+        createSessionToken(key, "alice.near", bad as unknown as "mainnet", NOW),
+        String(bad),
+      ).rejects.toThrow(/network/);
+    }
+  });
+
+  it("does not read a payload whose network is missing or not a network", async () => {
+    const key = await sessionKey;
+    const read = async (fields: Record<string, unknown>) =>
+      readSessionToken(key, await forgeSession(fields), NOW);
+    expect(await read({ n: "mainnet" })).not.toBeNull();
+    for (const n of ["devnet", "Mainnet", "", undefined, null, 1, ["mainnet"]]) {
+      expect(await read({ n }), `n ${JSON.stringify(n)}`).toBeNull();
+    }
+  });
+
+  it("does not read a version 1 cookie (no network): everyone signs in once more", async () => {
+    const key = await sessionKey;
+    const v1 = await macToken(key, {
       typ: "session",
       v: 1,
       a: "alice.near",
       exp: NOW + SESSION_TTL_MS,
     });
+    expect(await readSessionToken(key, v1, NOW)).toBeNull();
+    // Not even with a network stuck on: the version is what the reader trusts.
+    const v1WithNetwork = await macToken(key, {
+      typ: "session",
+      v: 1,
+      a: "alice.near",
+      n: "mainnet",
+      exp: NOW + SESSION_TTL_MS,
+    });
+    expect(await readSessionToken(key, v1WithNetwork, NOW)).toBeNull();
+  });
+});
+
+describe("challenge tokens: bound to a network (W-NET-R3)", () => {
+  it("open on the network they were issued for, and on no other", async () => {
+    const key = await challengeKey;
+    for (const [issued, other] of [
+      ["mainnet", "testnet"],
+      ["testnet", "mainnet"],
+    ] as const) {
+      const { cookie } = await issueChallenge(key, issued, NOW);
+      expect(await openChallenge(key, cookie, issued, NOW + 1)).not.toBeNull();
+      expect(await openChallenge(key, cookie, other, NOW + 1), `${issued} on ${other}`).toBeNull();
+    }
+  });
+
+  it("do not open when the payload has no network, or a version 1 payload", async () => {
+    const key = await challengeKey;
+    const nonce = Buffer.alloc(32, 7).toString("base64");
+    const v1 = await macToken(key, {
+      typ: "challenge",
+      v: 1,
+      n: nonce,
+      exp: NOW + CHALLENGE_TTL_MS,
+    });
+    expect(await openChallenge(key, v1, NET, NOW)).toBeNull();
+    for (const net of [undefined, null, "devnet", 1]) {
+      expect(
+        await openChallenge(key, await forgeChallenge({ net }), NET, NOW),
+        String(net),
+      ).toBeNull();
+    }
+  });
+
+  it("do not verify across networks: the sign-in of one address cannot be finished at the other", async () => {
+    const key = await challengeKey;
+    const { cookie } = await issueChallenge(key, "mainnet", NOW);
+    const onTestnet = await openChallenge(key, cookie, "testnet", NOW + 1000);
+    expect(onTestnet).toBeNull();
+    const result = await verifyLogin(
+      { accountId: "alice.near", publicKey: "ed25519:x", signature: "AAAA" },
+      onTestnet,
+      async () => {},
+    );
+    expect(result).toEqual({ ok: false, reason: "challenge_missing_or_expired" });
   });
 });
 

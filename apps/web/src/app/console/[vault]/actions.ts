@@ -12,7 +12,7 @@ import { getReader, getRpc } from "@/lib/near/server";
 export type SettingsState =
   | null
   | { ok: true; message: string }
-  | { ok: false; error: string; status?: 401 | 403 };
+  | { ok: false; error: string; status?: 401 | 403 | 409 };
 
 // `vault` is bound by the page, but a bound argument comes back from the browser, so it is only a
 // lookup key: the tenant id and the role come from the membership row (memberForAction), never
@@ -48,16 +48,18 @@ export async function refreshMembersAction(
 ): Promise<SettingsState> {
   const auth = await memberForAction(vault, ["owner"]);
   if (isDenied(auth)) return { ok: false, ...auth };
-  const env = getEnv();
+  // The vault's own network, which the guard has shown to be the request's.
+  const network = auth.member.network;
+  const settings = getEnv().networks[network];
   const r = await registerVault(
     {
       db: serviceDb(),
-      reader: getReader(),
-      chain: rpcChainReads(getRpc()),
-      network: env.NEAR_NETWORK,
-      factoryId: env.PROBARION_FACTORY_ID,
-      canaryVaultId: env.CANARY_VAULT_ID,
-      teamVaultIds: env.TEAM_VAULT_IDS,
+      reader: getReader(network),
+      chain: rpcChainReads(getRpc(network)),
+      network,
+      factoryId: settings.factoryId,
+      canaryVaultId: settings.canaryVaultId,
+      teamVaultIds: settings.teamVaultIds,
     },
     // No display name: the stored one is kept (migration 0005).
     { vaultId: auth.member.vault_id, account: auth.session.accountId },

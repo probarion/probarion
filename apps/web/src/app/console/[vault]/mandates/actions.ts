@@ -14,7 +14,7 @@ import { chainConsts, getReader } from "@/lib/near/server";
 import { createMandateTx, type WalletTx } from "@/lib/near/tx";
 import { isNearAccountId } from "@/lib/near/validate";
 
-export type PrepareMandateResult = WalletTx | { error: string; status?: 401 | 403 };
+export type PrepareMandateResult = WalletTx | { error: string; status?: 401 | 403 | 409 };
 
 const SERVER_FAILED =
   "Something went wrong on the server, so nothing was prepared and nothing was signed. Try again in a moment.";
@@ -46,12 +46,13 @@ async function prepare(vault: string, form: MandateForm): Promise<PrepareMandate
   const auth = await memberForAction(typeof vault === "string" ? vault : "", ["owner"]);
   if (isDenied(auth)) return auth;
   const id = auth.member.vault_id;
-  const consts = chainConsts();
+  const network = auth.member.network;
+  const consts = chainConsts(network);
 
   let config: unknown;
   let agents: unknown;
   try {
-    const reader = getReader();
+    const reader = getReader(network);
     [config, agents] = await Promise.all([reader.getConfig(id), reader.listAgents(id)]);
   } catch (e) {
     log.warn("console.mandate_prepare_read_failed", {
@@ -115,7 +116,7 @@ export async function checkPayeeAction(
     const name = typeof account === "string" ? account.trim() : "";
     if (!isNearAccountId(name)) return { exists: null };
     try {
-      return { exists: await getReader().accountExists(name) };
+      return { exists: await getReader(auth.member.network).accountExists(name) };
     } catch (e) {
       log.warn("console.payee_check_failed", {
         vault: auth.member.vault_id,

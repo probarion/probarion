@@ -35,8 +35,10 @@ const TENANT = {
   vault_id: "acme.vaults.probarion.near",
 };
 const base = {
-  NEAR_NETWORK: "mainnet",
-  NEAR_RPC_URLS: ["https://rpc.example"],
+  networks: {
+    mainnet: { rpcUrls: ["https://rpc.example"] },
+    testnet: { rpcUrls: ["https://testnet-rpc.example"] },
+  },
   NEARAI_API_KEY: null,
   NEARAI_MODEL: null,
 };
@@ -55,7 +57,7 @@ describe("makeTenantProbarion", () => {
   });
 
   it("builds one tenant's instance on its Supabase ledger, with the request id and both keys", () => {
-    makeTenantProbarion({
+    makeTenantProbarion("mainnet", {
       tenant: TENANT,
       agentKey: "ed25519:a",
       ledgerKey: "ed25519:l",
@@ -74,16 +76,26 @@ describe("makeTenantProbarion", () => {
     expect(opts.ledger).toBeInstanceOf(SupabaseLedgerStore);
   });
 
+  it("builds the instance for the network it is given: its chain and its RPC list, not the other's", () => {
+    makeTenantProbarion("testnet", { tenant: TENANT, requestId: "r" });
+    expect(made().opts).toMatchObject({
+      network: "testnet",
+      rpcUrls: ["https://testnet-rpc.example"],
+    });
+    makeTenantProbarion("mainnet", { tenant: TENANT, requestId: "r" });
+    expect(made().opts).toMatchObject({ network: "mainnet", rpcUrls: ["https://rpc.example"] });
+  });
+
   it("passes NEAR AI's key and model through, and the persona only when one is given", () => {
     h.env = { ...base, NEARAI_API_KEY: "k-1", NEARAI_MODEL: "model-x" };
-    makeTenantProbarion({ tenant: TENANT, requestId: "r" });
+    makeTenantProbarion("mainnet", { tenant: TENANT, requestId: "r" });
     expect(made().opts.model).toEqual({
       provider: "near-ai-cloud",
       apiKey: "k-1",
       model: "model-x",
     });
     h.env = { ...base, NEARAI_API_KEY: "k-1" };
-    makeTenantProbarion({ tenant: TENANT, requestId: "r", systemPrompt: "persona" });
+    makeTenantProbarion("mainnet", { tenant: TENANT, requestId: "r", systemPrompt: "persona" });
     expect(made().opts.model).toEqual({
       provider: "near-ai-cloud",
       apiKey: "k-1",
@@ -92,7 +104,7 @@ describe("makeTenantProbarion", () => {
   });
 
   it("logs the SDK's warnings as this app's log lines, with the request and the tenant", () => {
-    makeTenantProbarion({ tenant: TENANT, requestId: "req-9" });
+    makeTenantProbarion("mainnet", { tenant: TENANT, requestId: "req-9" });
     made().deps.logger?.warn("model unavailable; deciding rules-only", { vault: TENANT.vault_id });
     expect(h.warned).toEqual([
       {
@@ -108,7 +120,7 @@ describe("makeTenantProbarion", () => {
   });
 
   it("never lets the SDK's fields replace the request id, the tenant or the message", () => {
-    makeTenantProbarion({ tenant: TENANT, requestId: "req-10" });
+    makeTenantProbarion("mainnet", { tenant: TENANT, requestId: "req-10" });
     made().deps.logger?.warn("the real warning", {
       request_id: "forged",
       tenant: "another-tenant",

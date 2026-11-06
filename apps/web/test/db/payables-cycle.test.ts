@@ -37,14 +37,16 @@ import { pgliteDb } from "./pglite-db";
 const h = vi.hoisted(() => ({ url: "", db: null as unknown as Db, key: "" as string | null }));
 /** Built at run time, so no secret-shaped literal sits in the source (gitleaks). */
 const NEARAI_KEY = ["test", "double", "nearai", "key"].join("-");
-vi.mock("@/lib/env", () => ({
-  getEnv: () => ({
-    NEAR_NETWORK: "testnet",
-    NEAR_RPC_URLS: [h.url],
-    NEARAI_API_KEY: h.key,
-    NEARAI_MODEL: null,
-  }),
-}));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../fixtures/networks");
+  return {
+    getEnv: () => ({
+      ...networkPart({ defaultNetwork: "testnet", testnet: { rpcUrls: [h.url] } }),
+      NEARAI_API_KEY: h.key,
+      NEARAI_MODEL: null,
+    }),
+  };
+});
 vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
 
 const { makeTenantProbarion } = await import("@/lib/sdk/factory");
@@ -109,7 +111,11 @@ describe("a Payables cycle on the fake chain", () => {
     h.url = server.url;
     pg = await freshDb();
     h.db = pgliteDb(pg);
-    const tenantId = await seedTenant(pg, { vault: SCENARIO_VAULT, owner: "owner.testnet" });
+    const tenantId = await seedTenant(pg, {
+      vault: SCENARIO_VAULT,
+      owner: "owner.testnet",
+      network: "testnet",
+    });
     for (const [purpose, pair] of [
       ["agent", TEST_KEYS.agent],
       ["ledger", TEST_KEYS.ledger],
@@ -139,7 +145,7 @@ describe("a Payables cycle on the fake chain", () => {
       now: () => NOW,
       mandates: (t) => listAll((from, limit) => reader.listMandates(t.vault_id, from, limit), 100),
       makeProbarion: (o) =>
-        makeTenantProbarion(o, {
+        makeTenantProbarion("testnet", o, {
           now: () => NOW,
           archivalRpc: null,
           // With no NEARAI_API_KEY the factory configures no model, so no proposer is injected either.

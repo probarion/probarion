@@ -74,23 +74,44 @@ describe("how the scoreboard and the feed are cached", () => {
   });
 });
 
+// W-NET-R5, R8: one board and one feed per network. The network is the argument of the cached read (so it is part of
+// Next's cache key, as /usage's is) and of the database call, which counts only that network's attempts.
+describe("each network has its own board and feed", () => {
+  it("asks the database for the network it is given, and for no other", async () => {
+    mocks.service.mockResolvedValue(BOARD);
+    mocks.anon.mockResolvedValue([ROW]);
+    await loadBoard("mainnet");
+    await loadBoard("testnet");
+    await loadFeed("mainnet");
+    await loadFeed("testnet");
+    expect(mocks.service.mock.calls).toEqual([
+      ["public_canary_leaderboard", { network: "mainnet" }],
+      ["public_canary_leaderboard", { network: "testnet" }],
+    ]);
+    expect(mocks.anon.mock.calls).toEqual([
+      ["public_canary_feed", { network: "mainnet", limit: 30 }],
+      ["public_canary_feed", { network: "testnet", limit: 30 }],
+    ]);
+  });
+});
+
 describe("loadBoard", () => {
   it("reads the leaderboard with the service role, which is the only role allowed to", async () => {
     mocks.service.mockResolvedValue(BOARD);
-    const board = await loadBoard();
-    expect(mocks.service).toHaveBeenCalledWith("public_canary_leaderboard", {});
+    const board = await loadBoard("testnet");
+    expect(mocks.service).toHaveBeenCalledWith("public_canary_leaderboard", { network: "testnet" });
     expect(mocks.anon).not.toHaveBeenCalled();
     expect(board).toMatchObject({ visitors: 2, attempts_external: 8 });
   });
 
   it("is null when the answer is malformed", async () => {
     mocks.service.mockResolvedValue({ ...BOARD, browsers: -1 });
-    expect(await loadBoard()).toBeNull();
+    expect(await loadBoard("testnet")).toBeNull();
   });
 
   it("is null, and logs a warning, when the database throws", async () => {
     mocks.service.mockRejectedValue(new Error("connection refused"));
-    expect(await loadBoard()).toBeNull();
+    expect(await loadBoard("testnet")).toBeNull();
     const warned = logs.lines.filter((l) => l.includes("canary.board_unavailable"));
     expect(warned).toHaveLength(1);
     expect(warned[0]).toContain("connection refused");
@@ -100,15 +121,18 @@ describe("loadBoard", () => {
     mocks.service.mockImplementation(() => {
       throw new Error("Invalid environment: SUPABASE_SERVICE_ROLE_KEY is required");
     });
-    expect(await loadBoard()).toBeNull();
+    expect(await loadBoard("testnet")).toBeNull();
   });
 });
 
 describe("loadFeed", () => {
   it("reads the newest 30 attempts with the public key", async () => {
     mocks.anon.mockResolvedValue([ROW]);
-    const feed = await loadFeed();
-    expect(mocks.anon).toHaveBeenCalledWith("public_canary_feed", { limit: 30 });
+    const feed = await loadFeed("testnet");
+    expect(mocks.anon).toHaveBeenCalledWith("public_canary_feed", {
+      network: "testnet",
+      limit: 30,
+    });
     expect(FEED_LIMIT).toBe(30);
     expect(mocks.service).not.toHaveBeenCalled();
     expect(feed).toEqual([ROW]);
@@ -116,17 +140,17 @@ describe("loadFeed", () => {
 
   it("keeps the rows that are well formed", async () => {
     mocks.anon.mockResolvedValue([ROW, { ...ROW, created_at: "never" }, "garbage"]);
-    expect(await loadFeed()).toEqual([ROW]);
+    expect(await loadFeed("testnet")).toEqual([ROW]);
   });
 
   it("is an empty list when the database says the feed is empty", async () => {
     mocks.anon.mockResolvedValue([]);
-    expect(await loadFeed()).toEqual([]);
+    expect(await loadFeed("testnet")).toEqual([]);
   });
 
   it("is null, not an empty list, and logs a warning when the database throws", async () => {
     mocks.anon.mockRejectedValue(new Error("timeout"));
-    expect(await loadFeed()).toBeNull();
+    expect(await loadFeed("testnet")).toBeNull();
     expect(logs.lines.filter((l) => l.includes("canary.feed_unavailable"))).toHaveLength(1);
   });
 });
@@ -138,8 +162,8 @@ describe("when the cache layer itself fails", () => {
       mocks.cacheFails = how;
       mocks.service.mockResolvedValue(BOARD);
       mocks.anon.mockResolvedValue([ROW]);
-      expect(await loadBoard()).toBeNull();
-      expect(await loadFeed()).toBeNull();
+      expect(await loadBoard("testnet")).toBeNull();
+      expect(await loadFeed("testnet")).toBeNull();
       const warned = logs.lines.filter((l) => /canary\.(board|feed)_unavailable/.test(l));
       expect(warned).toHaveLength(2);
       expect(warned.every((l) => l.includes("cache layer down"))).toBe(true);
@@ -153,8 +177,8 @@ describe("a read that hangs", () => {
     mocks.service.mockReturnValue(new Promise(() => {}));
     mocks.anon.mockReturnValue(new Promise(() => {}));
     expect(READ_TIMEOUT_MS).toBe(5000);
-    const board = loadBoard();
-    const feed = loadFeed();
+    const board = loadBoard("testnet");
+    const feed = loadFeed("testnet");
     await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1);
     let settled = false;
     void Promise.all([board, feed]).then(() => {
@@ -175,7 +199,7 @@ describe("a read that hangs", () => {
     mocks.service.mockImplementation(
       () => new Promise((resolve) => setTimeout(() => resolve(BOARD), READ_TIMEOUT_MS - 100)),
     );
-    const board = loadBoard();
+    const board = loadBoard("testnet");
     await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 100);
     expect(await board).toMatchObject({ attempts_external: 8 });
     expect(vi.getTimerCount()).toBe(0);

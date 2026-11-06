@@ -31,7 +31,9 @@ export async function POST(req: Request) {
   const auth = await memberForApi(body.vault, ["owner"]);
   if (auth instanceof Response) return auth;
   const vault = auth.member.vault_id;
-  const gate = mainnetGate();
+  // The vault's own network (the guard has shown it is the request's): 1Click exists on mainnet only.
+  const network = auth.member.network;
+  const gate = mainnetGate(network);
   if (gate instanceof Response) return gate;
   const limited = await topupLimited("quote", auth.session.accountId);
   if (limited) return limited;
@@ -39,10 +41,10 @@ export async function POST(req: Request) {
   const amount = parseTopupAmount(body.amountUsdc);
   if ("problem" in amount) return problem(400, "invalid_amount", amount.problem);
 
-  const consts = chainConsts();
+  const consts = chainConsts(network);
   let config: unknown;
   try {
-    config = await getReader().getConfig(vault);
+    config = await getReader(network).getConfig(vault);
   } catch (error) {
     log.warn("topup.config_unreadable", { vault, error });
     return problem(503, "chain_unavailable", "The vault could not be read from NEAR. Try again.");

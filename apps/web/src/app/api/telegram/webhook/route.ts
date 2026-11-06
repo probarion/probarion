@@ -12,14 +12,31 @@ import { DbError } from "@/lib/db/port";
 import { getEnv } from "@/lib/env";
 import { json, problem, rateLimitOr429 } from "@/lib/http";
 import { log } from "@/lib/log";
+import { originFor } from "@/lib/network";
 import { LIMITS } from "@/lib/ratelimit";
+import { isNetwork } from "@/lib/site/network";
 
 export const dynamic = "force-dynamic";
 
 interface Linked {
   vault_id: string;
+  /** The vault's network (migration 0012). One bot serves both networks, so the reply names the right console. */
+  network?: unknown;
   kinds: string[];
   duplicate: boolean;
+}
+
+/** The alerts page of the vault on its own network's address, or null when that network is not served by this site. */
+function consoleLink(linked: Linked): string | null {
+  if (!isNetwork(linked.network)) return null;
+  try {
+    const origin = originFor(linked.network);
+    return origin === null
+      ? null
+      : `${origin}/console/${encodeURIComponent(linked.vault_id)}/alerts`;
+  } catch {
+    return null;
+  }
 }
 
 const EXPIRED =
@@ -76,7 +93,7 @@ export async function POST(req: Request) {
         start.chatId,
         linked === null
           ? EXPIRED
-          : `${linked.duplicate ? `This chat already gets alerts for ${linked.vault_id}.` : `Linked to ${linked.vault_id}.`} You will get a message when ${kindsInWords(linked.kinds)}. Send /stop to end alerts.`,
+          : `${linked.duplicate ? `This chat already gets alerts for ${linked.vault_id}.` : `Linked to ${linked.vault_id}.`} You will get a message when ${kindsInWords(linked.kinds)}. Send /stop to end alerts.${consoleLink(linked) === null ? "" : `\n\nManage them: ${consoleLink(linked)}`}`,
       );
     } else if (stop) {
       const { stopped } = await serviceDb().rpc<{ stopped: number }>("alert_telegram_stop", {

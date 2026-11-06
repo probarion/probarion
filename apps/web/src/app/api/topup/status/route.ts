@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   }
   const auth = await memberForApi(vault, ["owner"]);
   if (auth instanceof Response) return auth;
-  const gate = mainnetGate();
+  const gate = mainnetGate(auth.member.network);
   if (gate instanceof Response) return gate;
   const limited = await topupLimited("status", auth.session.accountId);
   if (limited) return limited;

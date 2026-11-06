@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { InvoiceUploadForm } from "@/components/console/InvoiceUploadForm";
 import { VaultNav } from "@/components/console/VaultNav";
+import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
 import { Badge, Card, linePillClass, Notice } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import { serviceDb } from "@/lib/db/clients";
@@ -18,7 +19,8 @@ const muted = "text-ink/60";
 export default async function PayablesPage({ params }: { params: Promise<{ vault: string }> }) {
   const { vault: requested } = await params;
   // 404 for anyone who is not a member: a vault id is never confirmed to a stranger.
-  const { member } = await requireMember(requested);
+  const { member, elsewhere } = await requireMember(requested);
+  if (elsewhere) return <VaultOnOtherNetwork {...elsewhere} />;
   const vault = member.vault_id;
   const owner = member.role === "owner";
   const canUpload = member.role === "owner" || member.role === "approver";
