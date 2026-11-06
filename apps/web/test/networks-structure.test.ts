@@ -106,18 +106,29 @@ describe("the pages of a vault", () => {
 });
 
 /**
+ * A function declared at the top of a file, in any of the ways an action or a handler is written: `function f`,
+ * `async function f`, and `const f = async (...) =>`, `const f = async function`, `const f = (...) =>`, `const f = x =>`
+ * (with a type annotation or a return type if it has one), exported or not. A top-level declaration starts at the
+ * beginning of a line.
+ */
+const DECLARATION =
+  /^(export )?(?:(?:async )?function\*? (\w+)|const (\w+)\b[^=\n]*=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*(?::\s*[^=]+)?=>|\w+\s*=>))/gm;
+
+/** The next top-level declaration or export, which ends the body of the one before it. */
+const TOP_LEVEL = /^(?:export|function|async function|const|let|var|type|interface|class)\b/gm;
+
+/**
  * The exported functions of a file, each with its body in which every call of a function of the same file is replaced by
  * that function's body (to three levels), so an action that hands its work to a helper is read as one piece, in the order
  * it runs. A body runs from its declaration to the next top-level declaration, so a helper written after an export is not
  * taken for part of it.
  */
 function exportedFunctions(src: string): { name: string; body: string }[] {
-  const top = /^(?:export|function|async function|const|let|type|interface|class)\b/gm;
-  const marks = [...src.matchAll(top)].map((m) => m.index ?? 0);
-  const all = [...src.matchAll(/^(export )?(?:async )?function (\w+)/gm)].map((m) => {
+  const marks = [...src.matchAll(TOP_LEVEL)].map((m) => m.index ?? 0);
+  const all = [...src.matchAll(DECLARATION)].map((m) => {
     const from = m.index ?? 0;
     const to = marks.find((i) => i > from) ?? src.length;
-    return { name: m[2] ?? "", exported: m[1] !== undefined, body: src.slice(from, to) };
+    return { name: m[2] ?? m[3] ?? "", exported: m[1] !== undefined, body: src.slice(from, to) };
   });
   const bodies = new Map(all.map((f) => [f.name, f.body]));
   const inline = (body: string, depth: number): string =>
@@ -128,6 +139,54 @@ function exportedFunctions(src: string): { name: string; body: string }[] {
           return helper === undefined ? call : `${call}${inline(helper, depth - 1)}`;
         });
   return all.filter((f) => f.exported).map((f) => ({ name: f.name, body: inline(f.body, 3) }));
+}
+
+/** What the guard check reads before the guard has answered: a chain, the database, or a call to the outside. */
+const READS = ["getReader(", "getRpc(", "serviceDb(", "chainConsts(", "fetch(", ".rpc("];
+
+/**
+ * Why an action or a handler (a body from `exportedFunctions`) is not held to the guard: it has no membership guard
+ * (`memberForAction` or `memberForApi`), it reads the session alone (that would let a vault of the other network
+ * through), or it reads something before the guard has answered. Empty when it is fine.
+ */
+function guardProblems(body: string): string[] {
+  const problems: string[] = [];
+  const guard = body.search(/\bmemberFor(Action|Api)\(/);
+  if (guard === -1) problems.push("no membership guard");
+  if (/\bgetSession\(\)/.test(body)) problems.push("reads the session alone");
+  if (guard !== -1) {
+    for (const read of READS) {
+      const first = body.indexOf(read);
+      if (first !== -1 && first < guard) problems.push(`${read} before the guard`);
+    }
+  }
+  return problems;
+}
+
+/** The route options a handler file may export besides its handlers (Next reads them; they are not actions). */
+const ROUTE_OPTIONS = new Set(["dynamic", "maxDuration", "runtime"]);
+
+/**
+ * The exports of a file that the guard check cannot read, so that a new way of writing a handler fails loudly instead of
+ * being skipped: a constant that is not a function or a route option (a handler wrapped in a helper, say), a default
+ * export, a re-export, a `let`, `var`, class or enum. Types and interfaces are not code and are fine. Empty when every
+ * export is a function the check reads or a route option.
+ */
+function unreadableExports(src: string): string[] {
+  const functions = new Set(exportedFunctions(src).map((f) => f.name));
+  const found: string[] = [];
+  for (const m of src.matchAll(/^export (?!type\b|interface\b)(.*)$/gm)) {
+    const rest = m[1] ?? "";
+    const constant = /^const (\w+)/.exec(rest);
+    if (/^(?:async )?function\*? \w+/.test(rest)) continue; // a declaration: listed by exportedFunctions
+    if (constant) {
+      const name = constant[1] ?? "";
+      if (!functions.has(name) && !ROUTE_OPTIONS.has(name)) found.push(`const ${name}`);
+    } else {
+      found.push(rest.slice(0, 40));
+    }
+  }
+  return found;
 }
 
 describe("the routes and the actions of a vault", () => {
@@ -168,24 +227,120 @@ describe("the routes and the actions of a vault", () => {
   it.each(entries.map((e) => [`${e.file}: ${e.name}`, e.body]))(
     "%s finds the member through the guard that checks the network, before anything is read or written",
     (name, body) => {
-      const guard = body.search(/\bmemberFor(Action|Api)\(/);
-      expect(guard, name).toBeGreaterThan(-1);
-      // Never the session alone: that would let a vault of the other network through.
-      expect(body, name).not.toMatch(/\bgetSession\(\)/);
-      // Nothing is read from a chain or the database, and no outside call is made, before the guard has answered.
-      for (const read of [
-        "getReader(",
-        "getRpc(",
-        "serviceDb(",
-        "chainConsts(",
-        "fetch(",
-        ".rpc(",
-      ]) {
-        const first = body.indexOf(read);
-        expect(first === -1 || guard < first, `${read} before the guard in ${name}`).toBe(true);
-      }
+      // No membership guard, the session alone (that would let a vault of the other network through), or a chain, database
+      // or outside call before the guard has answered.
+      expect(guardProblems(body ?? ""), name).toEqual([]);
     },
   );
+
+  it.each(files.map((f) => [posix(f), readFileSync(f, "utf8")]))(
+    "%s exports nothing this check cannot read: no wrapped handler, default export, re-export or other constant",
+    (file, src) => {
+      expect(unreadableExports(src ?? ""), file).toEqual([]);
+    },
+  );
+});
+
+// The check has to see an action however it is written. These are inline sources, written the way a vault's actions.ts or
+// route.ts could be one day.
+describe("the guard check reads every way of exporting an action", () => {
+  const names = (src: string) => exportedFunctions(src).map((f) => f.name);
+  const problemsOf = (src: string, name: string) =>
+    guardProblems(exportedFunctions(src).find((f) => f.name === name)?.body ?? "<not found>");
+
+  const GUARDED = [
+    "export async function declared(vault: string) {",
+    "  const auth = await memberForAction(vault);",
+    "  return serviceDb();",
+    "}",
+    "export const arrow = async (vault: string): Promise<void> => {",
+    "  const auth = await memberForApi(vault);",
+    "  getRpc(auth.member.network);",
+    "};",
+    "export const expression = async function (vault: string) {",
+    "  await memberForAction(vault);",
+    "  return fetch('https://example.invalid');",
+    "};",
+    "export const typed: Handler = async (req: Request, { params }: { params: Promise<{ v: string }> }) => {",
+    "  const auth = await memberForApi((await params).v);",
+    "  return auth;",
+    "};",
+    "export const plain = (req: Request) => {",
+    "  return memberForApi('x');",
+    "};",
+    "export const bare = req => memberForApi('x');",
+    "export const viaHelper = async (vault: string) => run(vault);",
+    "const run = async (vault: string) => {",
+    "  await memberForAction(vault);",
+    "  return serviceDb();",
+    "};",
+    "export const dynamic = 'force-dynamic';",
+    "export const maxDuration = 30;",
+    "export type Result = { ok: boolean };",
+  ].join("\n");
+
+  it("finds a function declaration, and an export const written as an async arrow, an async function, a typed arrow, a plain arrow and a bare-parameter arrow", () => {
+    expect(names(GUARDED)).toEqual([
+      "declared",
+      "arrow",
+      "expression",
+      "typed",
+      "plain",
+      "bare",
+      "viaHelper",
+    ]);
+  });
+
+  it("does not take an export const that is not a function for an action, and holds nothing else to the check", () => {
+    expect(names(GUARDED)).not.toContain("dynamic");
+    expect(names(GUARDED)).not.toContain("maxDuration");
+    expect(unreadableExports(GUARDED)).toEqual([]);
+  });
+
+  it("passes each guarded form: the guard first, a helper read in place", () => {
+    for (const name of names(GUARDED)) expect(problemsOf(GUARDED, name), name).toEqual([]);
+  });
+
+  it("fails an export const action that has no guard, in each way of writing it", () => {
+    const sources = {
+      arrow: "export const bad = async (vault: string) => {\n  return serviceDb();\n};",
+      expression:
+        "export const bad = async function (vault: string) {\n  return getRpc('mainnet');\n};",
+      typed:
+        "export const bad: Handler = async (req: Request) => {\n  return Response.json({});\n};",
+      plain: "export const bad = (req: Request) => {\n  return Response.json({});\n};",
+      bare: "export const bad = req => {\n  return Response.json({});\n};",
+    };
+    for (const [form, src] of Object.entries(sources)) {
+      expect(names(src), form).toEqual(["bad"]);
+      expect(problemsOf(src, "bad"), form).toContain("no membership guard");
+    }
+  });
+
+  it("fails an export const action that reads before the guard, or only the session", () => {
+    const early =
+      "export const early = async (vault: string) => {\n  const db = serviceDb();\n  await memberForAction(vault);\n};";
+    expect(problemsOf(early, "early")).toEqual(["serviceDb( before the guard"]);
+    const viaHelper =
+      "export const outer = async (vault: string) => helper(vault);\nconst helper = async (vault: string) => {\n  getReader('testnet');\n  await memberForApi(vault);\n};";
+    expect(problemsOf(viaHelper, "outer")).toEqual(["getReader( before the guard"]);
+    const session =
+      "export const onlySession = async (vault: string) => {\n  const s = await getSession();\n  await memberForAction(vault);\n};";
+    expect(problemsOf(session, "onlySession")).toContain("reads the session alone");
+  });
+
+  it("says so when an export cannot be read, so a new way of writing a handler is never silently skipped", () => {
+    const cannotRead = [
+      "export const POST = withAuth(async (req: Request) => {\n  return Response.json({});\n});",
+      "export default async function handler(req: Request) {\n  return Response.json({});\n}",
+      "export { thing } from './thing';",
+      "export * from './all';",
+      "export let counter = 0;",
+      "export class Thing {}",
+      "export const limit = 10;",
+    ];
+    for (const src of cannotRead) expect(unreadableExports(src), src).toHaveLength(1);
+  });
 });
 
 describe("the root layout", () => {
