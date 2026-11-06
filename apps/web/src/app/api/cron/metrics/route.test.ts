@@ -24,12 +24,11 @@ beforeEach(() => {
   mocks.rpc.mockReset();
   mocks.env.mockReturnValue({ NEAR_NETWORK: "mainnet", CRON_SECRET: SECRET });
   // The row data a log line must never carry: only the counts of a run may.
-  mocks.rpc.mockImplementation(async (_fn: string, p: { network: string; day: string }) => ({
-    day: p.day,
-    network: p.network,
-    rows: 7,
-    leak: "ROW-DATA-MUST-NOT-BE-LOGGED",
-  }));
+  mocks.rpc.mockImplementation(async (fn: string, p: { network: string; day: string }) =>
+    fn === "rate_limits_prune"
+      ? { deleted: 4 }
+      : { day: p.day, network: p.network, rows: 7, leak: "ROW-DATA-MUST-NOT-BE-LOGGED" },
+  );
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-11-06T00:10:03.500Z"));
 });
@@ -68,17 +67,21 @@ describe("GET /api/cron/metrics", () => {
   it("computes yesterday and then today, in UTC, for the network the app runs on", async () => {
     const res = await call();
     expect(res.status).toBe(200);
+    // The two computes, then the prune of the rate limiter's old rows.
     expect(mocks.rpc.mock.calls).toEqual([
       ["metrics_compute", { network: "mainnet", day: "2026-11-05" }],
       ["metrics_compute", { network: "mainnet", day: "2026-11-06" }],
+      ["rate_limits_prune", {}],
     ]);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = (await res.json()) as {
       ok: boolean;
       network: string;
       results: { day: string; rows: number }[];
+      prune: { ok: boolean; deleted?: number };
     };
     expect(body.ok).toBe(true);
+    expect(body.prune).toEqual({ ok: true, deleted: 4 });
     expect(body.network).toBe("mainnet");
     expect(body.results.map((r) => [r.day, r.rows])).toEqual([
       ["2026-11-05", 7],
@@ -89,7 +92,8 @@ describe("GET /api/cron/metrics", () => {
   it("uses testnet when the app runs on testnet", async () => {
     mocks.env.mockReturnValue({ NEAR_NETWORK: "testnet", CRON_SECRET: SECRET });
     await call();
-    expect(mocks.rpc.mock.calls.map(([, p]) => p.network)).toEqual(["testnet", "testnet"]);
+    const computes = mocks.rpc.mock.calls.filter(([fn]) => fn === "metrics_compute");
+    expect(computes.map(([, p]) => p.network)).toEqual(["testnet", "testnet"]);
   });
 
   it("takes its days from the UTC clock at the edges of the day", async () => {
@@ -97,7 +101,8 @@ describe("GET /api/cron/metrics", () => {
     await call();
     vi.setSystemTime(new Date("2027-01-01T00:00:00.000Z"));
     await call();
-    expect(mocks.rpc.mock.calls.map(([, p]) => p.day)).toEqual([
+    const computes = mocks.rpc.mock.calls.filter(([fn]) => fn === "metrics_compute");
+    expect(computes.map(([, p]) => p.day)).toEqual([
       "2026-12-30",
       "2026-12-31",
       "2026-12-31",
@@ -113,8 +118,41 @@ describe("GET /api/cron/metrics", () => {
     expect(line).toContain("2026-11-05");
     expect(line).toContain("2026-11-06");
     expect(line).toContain("[7,7]");
+    expect(line).toContain("4"); // the rows the prune deleted
     expect(logs.lines.join("\n")).not.toContain("ROW-DATA-MUST-NOT-BE-LOGGED");
     expect(logs.lines.join("\n")).not.toContain(SECRET);
+  });
+
+  it("still answers 200 with both computes when the prune fails, and says so in the log and in the answer", async () => {
+    mocks.rpc.mockImplementation(async (fn: string, p: { network: string; day: string }) => {
+      if (fn === "rate_limits_prune") throw new Error("permission denied for table rate_limits");
+      return { day: p.day, network: p.network, rows: 7 };
+    });
+    const res = await call();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      results: { rows: number }[];
+      prune: { ok: boolean; deleted?: number };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.results.map((r) => r.rows)).toEqual([7, 7]);
+    expect(body.prune).toEqual({ ok: false });
+    const warned = logs.lines.filter((l) => l.includes("cron.rate_limits_prune_failed"));
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toContain("permission denied for table rate_limits");
+    expect(warned[0]).toContain('"level":"warn"');
+    // The computes were done and logged as they would be.
+    expect(logs.lines.some((l) => l.includes("cron.metrics") && l.includes("[7,7]"))).toBe(true);
+    expect(logs.lines.join("\n")).not.toContain(SECRET);
+  });
+
+  it("does not prune when a compute failed: the run is a failed run", async () => {
+    mocks.rpc.mockReset();
+    mocks.rpc.mockRejectedValueOnce(new Error("statement timeout"));
+    const res = await call();
+    expect(res.status).toBe(503);
+    expect(mocks.rpc.mock.calls.map(([fn]) => fn)).toEqual(["metrics_compute"]);
   });
 
   it("logs no run for a request that was refused, and no secret", async () => {
