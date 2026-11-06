@@ -2,6 +2,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { publicDb, serviceDb } from "@/lib/db/clients";
 import { log } from "@/lib/log";
+import { within } from "@/lib/within";
 import { type Board, type FeedRow, parseBoard, parseFeed } from "./board";
 
 // What the Canary page reads from the database, behind Next's data cache. The leaderboard scans the table, so only the
@@ -18,25 +19,6 @@ export const READ_TIMEOUT_MS = 5000;
 
 const warn = (msg: string, error: unknown) =>
   log.warn(msg, { error: error instanceof Error ? error.message : String(error) });
-
-/** `read`, or a rejection after `ms`. A throw before the first promise is a rejection too. The timer never outlives it. */
-function within<T>(read: () => Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
-    Promise.resolve()
-      .then(read)
-      .then(
-        (value) => {
-          clearTimeout(timer);
-          resolve(value);
-        },
-        (error: unknown) => {
-          clearTimeout(timer);
-          reject(error);
-        },
-      );
-  });
-}
 
 /** The raw answer, or null when the read failed (no service key in a preview, the database down, too slow). */
 const readBoard = unstable_cache(
