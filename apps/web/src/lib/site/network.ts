@@ -62,7 +62,12 @@ export function checkOrigin(value: string): OriginCheck {
     return { ok: false, reason: "scheme" };
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") return { ok: false, reason: "scheme" };
-  return { ok: true, origin: url.origin, host: url.host };
+  // A fully qualified name ends in a dot, and a Host header is compared without it (normalizeHost): the origin is
+  // stored without it too, so "x.example." and "x.example" are one address (and one host for the same-host check).
+  const hostname = url.hostname.replace(/\.$/, "");
+  if (hostname.endsWith(".") || hostname.includes("..")) return { ok: false, reason: "shape" };
+  const host = url.port === "" ? hostname : `${hostname}:${url.port}`;
+  return { ok: true, origin: `${url.protocol}//${host}`, host };
 }
 
 /** The host of a normalised origin, or null. */

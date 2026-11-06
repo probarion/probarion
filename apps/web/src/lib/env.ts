@@ -187,10 +187,16 @@ function originsOf(
         `${name} must be an origin: a scheme and a host, with no path, query or fragment`,
       );
   }
-  if (found[defaultNetwork] === null) {
-    // The production address stands in for the default network's origin (the same fallback appOrigin() gives).
+  if (found[defaultNetwork] === null && opt(src[`APP_ORIGIN_${SUFFIX[defaultNetwork]}`]) === null) {
+    // The production address stands in for the default network's origin (the same fallback appOrigin() gives, and with
+    // neither variable set, http://localhost:3000 for development). A network that is served has an address: a value
+    // that does not make an origin is refused, not left as "served, with nowhere to link to".
     const fallback = checkOrigin(appOrigin(src));
     if (fallback.ok) found[defaultNetwork] = { origin: fallback.origin, host: fallback.host };
+    else
+      problems.push(
+        `VERCEL_PROJECT_PRODUCTION_URL must be a host (it is the ${defaultNetwork} address when APP_ORIGIN_${SUFFIX[defaultNetwork]} is unset)`,
+      );
   }
   const { mainnet, testnet } = found;
   if (mainnet !== null && testnet !== null && mainnet.host === testnet.host) {
@@ -202,6 +208,40 @@ function originsOf(
   return found;
 }
 
+/** The suffix a name on the other network ends in: a mainnet id never ends in .testnet, a testnet id never in .near. */
+const OTHER_NETWORK_SUFFIX: Record<Network, string> = { mainnet: ".testnet", testnet: ".near" };
+
+/**
+ * A setting that is an account id (a factory, a demo or Canary vault, a team vault). One that ends the way the other
+ * network's accounts do is a leftover from the other network (the flip's trap) and is refused. An implicit id (64 hex)
+ * and an ETH-implicit one (0x and 40 hex) belong to a key, not a network, and pass. `entry` is the 1-based position in a list.
+ */
+function accountIdProblem(
+  name: string,
+  id: string,
+  network: Network,
+  entry: number | null,
+): string | null {
+  if (!id.endsWith(OTHER_NETWORK_SUFFIX[network])) return null;
+  const where = entry === null ? name : `${name} entry ${entry}`;
+  return `${where} is not a ${network} account (it ends in ${OTHER_NETWORK_SUFFIX[network]})`;
+}
+
+/** The words of a URL's host, split at dots, hyphens and underscores: "rpc.testnet.fastnear.com" has "testnet". */
+function hostWords(url: string): string[] {
+  try {
+    return new URL(url).hostname.toLowerCase().split(/[._-]+/);
+  } catch {
+    return [];
+  }
+}
+
+/** The other network's name, when an RPC URL's host carries it (so the URL is for the other chain). */
+function otherChainName(url: string, network: Network): Network | null {
+  const other: Network = network === "mainnet" ? "testnet" : "mainnet";
+  return hostWords(url).includes(other) ? other : null;
+}
+
 function settingsOf(
   src: Source,
   network: Network,
@@ -209,32 +249,75 @@ function settingsOf(
   origin: FoundOrigin,
   problems: string[],
 ): NetworkSettings {
+  // The URL lists: https (or local http), and a host that does not name the other chain. The message names the variable
+  // and the position and never the URL, which can hold an API key.
+  const urlList = (found: { name: string; value: string[] } | null) =>
+    found?.value.forEach((u, i) => {
+      if (!isAllowedServiceUrl(u)) {
+        problems.push(`${found.name} entry ${i + 1} ${HTTPS_OR_LOCAL}`);
+        return;
+      }
+      const other = otherChainName(u, network);
+      if (other !== null) {
+        problems.push(
+          `${found.name} entry ${i + 1} is not a ${network} RPC (its host has a "${other}" part)`,
+        );
+      }
+    });
   const rpc = perNetwork(src, "NEAR_RPC_URLS", network, defaultNetwork, entries);
-  rpc?.value.forEach((u, i) => {
-    if (!isAllowedServiceUrl(u)) problems.push(`${rpc.name} entry ${i + 1} ${HTTPS_OR_LOCAL}`);
-  });
+  urlList(rpc);
   // No network default here: unset (or only commas) means /proof makes no archival lookup.
   const archival = perNetwork(src, "NEAR_ARCHIVAL_RPC_URLS", network, defaultNetwork, entries);
-  archival?.value.forEach((u, i) => {
-    if (!isAllowedServiceUrl(u)) problems.push(`${archival.name} entry ${i + 1} ${HTTPS_OR_LOCAL}`);
-  });
+  urlList(archival);
   const team = perNetwork(src, "TEAM_VAULT_IDS", network, defaultNetwork, entries);
   team?.value.forEach((id, i) => {
     if (!isNearAccountId(id)) problems.push(`${team.name} entry ${i + 1} is not a NEAR account id`);
+    else {
+      const wrong = accountIdProblem(team.name, id, network, i + 1);
+      if (wrong !== null) problems.push(wrong);
+    }
   });
+  const account = (base: "PROBARION_FACTORY_ID" | "PROBARION_VAULT_ID" | "CANARY_VAULT_ID") => {
+    const found = perNetwork(src, base, network, defaultNetwork, opt);
+    const wrong = found === null ? null : accountIdProblem(found.name, found.value, network, null);
+    if (wrong !== null) problems.push(wrong);
+    return found?.value ?? null;
+  };
   return {
     enabled: network === defaultNetwork || origin !== null,
     origin: origin?.origin ?? null,
     // A list with no entries (for example ",") is unset, so the network default applies.
     rpcUrls: rpc?.value ?? [...NETWORKS[network].rpcUrls],
     archivalRpcUrls: archival?.value ?? [],
-    factoryId:
-      perNetwork(src, "PROBARION_FACTORY_ID", network, defaultNetwork, opt)?.value ??
-      NETWORKS[network].factory,
-    demoVaultId: perNetwork(src, "PROBARION_VAULT_ID", network, defaultNetwork, opt)?.value ?? null,
-    canaryVaultId: perNetwork(src, "CANARY_VAULT_ID", network, defaultNetwork, opt)?.value ?? null,
+    factoryId: account("PROBARION_FACTORY_ID") ?? NETWORKS[network].factory,
+    demoVaultId: account("PROBARION_VAULT_ID"),
+    canaryVaultId: account("CANARY_VAULT_ID"),
     teamVaultIds: team?.value ?? [],
   };
+}
+
+const LIST_NAMES: ReadonlySet<string> = new Set([
+  "NEAR_RPC_URLS",
+  "NEAR_ARCHIVAL_RPC_URLS",
+  "TEAM_VAULT_IDS",
+]);
+
+/**
+ * While both networks are served, an unsuffixed per-network variable is refused. It would belong to the default
+ * network, and flipping NEAR_NETWORK (an OWNER step) would hand it to the other one: testnet's RPC and factory
+ * would quietly become mainnet's. With one network served nothing changes (the bare names are that network's), and a
+ * blank value, or a list of only commas, is unset as everywhere else. The message names the variable and never the value.
+ */
+function refuseUnsuffixed(src: Source, served: number, problems: string[]): void {
+  if (served < 2) return;
+  for (const name of PER_NETWORK_ENV_NAMES) {
+    const set = LIST_NAMES.has(name) ? entries(src[name]) !== null : opt(src[name]) !== null;
+    if (set) {
+      problems.push(
+        `${name} must not be set while both networks are served: set ${name}_MAINNET or ${name}_TESTNET`,
+      );
+    }
+  }
 }
 
 export function loadEnv(src: Source): Env {
@@ -255,6 +338,8 @@ export function loadEnv(src: Source): Env {
     mainnet: settingsOf(src, "mainnet", defaultNetwork, origins.mainnet, problems),
     testnet: settingsOf(src, "testnet", defaultNetwork, origins.testnet, problems),
   };
+
+  refuseUnsuffixed(src, NETWORK_ORDER.filter((n) => networks[n].enabled).length, problems);
 
   const master = req("KEY_ENCRYPTION_SECRET");
   const masterProblem = master ? masterKeyProblem(master) : null;

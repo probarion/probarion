@@ -36,8 +36,11 @@ const TENANT = {
 };
 const base = {
   networks: {
-    mainnet: { rpcUrls: ["https://rpc.example"] },
-    testnet: { rpcUrls: ["https://testnet-rpc.example"] },
+    mainnet: { rpcUrls: ["https://rpc.example"], archivalRpcUrls: [] },
+    testnet: {
+      rpcUrls: ["https://testnet-rpc.example"],
+      archivalRpcUrls: ["https://archival.example"],
+    },
   },
   NEARAI_API_KEY: null,
   NEARAI_MODEL: null,
@@ -84,6 +87,17 @@ describe("makeTenantProbarion", () => {
     });
     makeTenantProbarion("mainnet", { tenant: TENANT, requestId: "r" });
     expect(made().opts).toMatchObject({ network: "mainnet", rpcUrls: ["https://rpc.example"] });
+  });
+
+  it("gives the SDK no process environment, and an archival client only from the network's own list", () => {
+    makeTenantProbarion("testnet", { tenant: TENANT, requestId: "r" });
+    expect(made().deps.env).toEqual({});
+    expect((made().deps.archivalRpc as { currentUrl: string }).currentUrl).toBe(
+      "https://archival.example",
+    );
+    makeTenantProbarion("mainnet", { tenant: TENANT, requestId: "r" });
+    expect(made().deps.env).toEqual({});
+    expect(made().deps.archivalRpc).toBeNull();
   });
 
   it("passes NEAR AI's key and model through, and the persona only when one is given", () => {

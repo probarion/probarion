@@ -79,8 +79,8 @@ describe("near/server", () => {
     const { getRpc } = await load({
       NEAR_NETWORK: "testnet",
       APP_ORIGIN_MAINNET: "https://mainnet.probarion.xyz",
-      // The unsuffixed list is the default network's: it never reaches mainnet.
-      NEAR_RPC_URLS: "https://testnet-key.example/SENTINEL",
+      // Both networks served: each has its own list (the unsuffixed form is refused while both are served).
+      NEAR_RPC_URLS_TESTNET: "https://testnet-key.example/SENTINEL",
       NEAR_RPC_URLS_MAINNET: "https://mainnet-a.example, https://mainnet-b.example",
     });
     expect(getRpc("testnet").currentUrl).toBe("https://testnet-key.example/SENTINEL");

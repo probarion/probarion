@@ -446,9 +446,9 @@ describe("loadEnv: NEAR_ARCHIVAL_RPC_URLS (/proof, R5)", () => {
       loadEnv({
         ...base,
         NEAR_ARCHIVAL_RPC_URLS:
-          " https://archival-rpc.testnet.fastnear.com ,, http://localhost:3031 ,",
+          " https://archival-rpc.mainnet.fastnear.com ,, http://localhost:3031 ,",
       }).networks.mainnet.archivalRpcUrls,
-    ).toEqual(["https://archival-rpc.testnet.fastnear.com", "http://localhost:3031"]);
+    ).toEqual(["https://archival-rpc.mainnet.fastnear.com", "http://localhost:3031"]);
   });
 
   it("rejects an entry that is not https (or http on localhost), by position and without its value", () => {

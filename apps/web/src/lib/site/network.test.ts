@@ -254,3 +254,47 @@ describe("networkSwitch", () => {
     });
   });
 });
+
+// Fix round 1, item 4: an origin written with the dot that ends a fully qualified name is the same address as one without.
+describe("an origin with a trailing dot", () => {
+  it("is stored without it, as a Host header is read without it", () => {
+    expect(checkOrigin("https://host.example.")).toEqual({
+      ok: true,
+      origin: "https://host.example",
+      host: "host.example",
+    });
+    expect(checkOrigin("https://HOST.example./")).toMatchObject({ origin: "https://host.example" });
+    expect(checkOrigin("https://host.example.:8443")).toEqual({
+      ok: true,
+      origin: "https://host.example:8443",
+      host: "host.example:8443",
+    });
+  });
+
+  it("refuses more than one dot", () => {
+    for (const bad of [
+      "https://host.example..",
+      "https://host..example",
+      "https://host.example.../",
+    ]) {
+      expect(checkOrigin(bad), bad).toMatchObject({ ok: false });
+    }
+  });
+
+  it("serves the address it names, with or without the dot in the request", () => {
+    const routing = routingFromPublicVars(
+      publicRoutingVars({ APP_ORIGIN_MAINNET: "https://mainnet.probarion.example." }),
+    );
+    expect(routing.origins.mainnet).toBe("https://mainnet.probarion.example");
+    for (const host of [
+      "mainnet.probarion.example",
+      "mainnet.probarion.example.",
+      "MAINNET.probarion.example",
+    ]) {
+      expect(networkForHost(host, routing), host).toBe("mainnet");
+    }
+    expect(
+      publicRoutingVars({ APP_ORIGIN_MAINNET: "https://a.example." }).NEXT_PUBLIC_ORIGIN_MAINNET,
+    ).toBe("https://a.example");
+  });
+});
