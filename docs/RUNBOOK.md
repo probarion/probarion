@@ -555,6 +555,7 @@ Snapshots (node packages/cli/dist/bin.js verify --snapshot), Sentry issues, requ
 ## Links
 
 - [Security policy](../SECURITY.md)
+- [Threat model: eleven attacks, the blast radius, failure modes, known gaps](THREAT_MODEL.md)
 - [Monitoring: health routes, monitors, Sentry rules](ops/MONITORING.md)
 - [The watcher](ops/watcher.md)
 - [Owner alerts](ops/alerts.md)
