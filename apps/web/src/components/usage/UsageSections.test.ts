@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -159,6 +161,33 @@ describe("the table", () => {
     expect(render()).toContain("in the last 7 days");
   });
 
+  it("names each row with a row header, so that a number is tied to its metric", () => {
+    const h = render();
+    const headers = [...h.matchAll(/<th scope="row"[^>]*>(.*?)<\/th>/gs)].map((m) =>
+      visible(m[1] ?? ""),
+    );
+    expect(headers).toEqual([
+      "Vaults",
+      "Mandates signed",
+      "Payments made",
+      "of which cross-chain (Base)",
+      "Held for approval",
+      "Refused by code",
+      "Refused on chain",
+      "Canary attempts",
+      "Canary attempts sent straight to the contract",
+      "Model decisions",
+    ]);
+    // The four column headers stay column headers, and no metric name is a plain cell any more.
+    expect([...h.matchAll(/<th scope="col"/g)]).toHaveLength(4);
+    expect(
+      rows(h)
+        .slice(1)
+        .every((r) => r.length === 4),
+    ).toBe(true);
+    expect([...h.matchAll(/<td/g)]).toHaveLength(10 * 3);
+  });
+
   it("puts the cross-chain row under Payments made as a part of it", () => {
     const h = render();
     expect(h).toMatch(/<span class="[^"]*indent[^"]*">of which cross-chain \(Base\)<\/span>/);
@@ -234,6 +263,20 @@ describe("the unit costs", () => {
     expect(tokens).toEqual(["NEAR AI tokens per decision", EMPTY, EMPTY, EMPTY]);
   });
 
+  it("names each unit cost with a row header", () => {
+    const h = render(usage(), null);
+    const headers = [...h.matchAll(/<th scope="row"[^>]*>(.*?)<\/th>/gs)].map((m) =>
+      visible(m[1] ?? ""),
+    );
+    expect(headers).toEqual([
+      "NEAR AI tokens per decision",
+      "USD per decision",
+      "Gas per spend",
+      "Hosting and RPC",
+    ]);
+    expect([...h.matchAll(/<th scope="col"/g)]).toHaveLength(4);
+  });
+
   it("names the rows in the owner's order", () => {
     const names = cells(render(usage(), null)).map((r) => r[0]);
     expect(names).toEqual([
@@ -307,5 +350,35 @@ describe("the unavailable state", () => {
     expect(visible(html(createElement(Unavailable)))).toBe(
       "The usage numbers are not available right now. Every payment stays visible on chain.",
     );
+  });
+});
+
+describe("the stylesheet of the tables", () => {
+  const css = readFileSync(
+    fileURLToPath(new URL("../site/usage.module.css", import.meta.url)),
+    "utf8",
+  );
+  const rule = (selector: string) => {
+    const at = css.indexOf(`${selector} {`);
+    if (at < 0) return "";
+    return css.slice(at, css.indexOf("}", at));
+  };
+
+  it("makes a row header look like the cell it replaces: the column-header style is undone for it", () => {
+    const th = rule("table.usage tbody th");
+    expect(th).not.toBe("");
+    // The column headers are small capitals in grey (canary.module.css); a metric's name is plain text.
+    for (const undo of [
+      "text-transform: none",
+      "font-weight: inherit",
+      "font-size: inherit",
+      "letter-spacing: normal",
+      "color: inherit",
+      "white-space: normal",
+    ]) {
+      expect(th, undo).toContain(undo);
+    }
+    // And the last row has no rule under it, as the cells of the last row have none.
+    expect(rule("table.usage tbody tr:last-child th")).toContain("border-bottom: 0");
   });
 });

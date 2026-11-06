@@ -28,10 +28,25 @@
   border: 0;
 }
 
-/* The metric's name may wrap (the longest is a sentence), so the numbers keep the room they need. */
-table.usage td:first-child {
-  white-space: normal;
+/*
+ * A metric's name is a row header (th scope="row"), and the column-header style of canary.module.css (small grey capitals)
+ * is undone for it, so it looks as the cell it replaces did. It may wrap (the longest is a sentence), so the numbers keep
+ * the room they need. The first column keeps no left padding, as in canary.module.css.
+ */
+table.usage tbody th {
   min-width: 9em;
+  padding: 11px 14px 11px 0;
+  border-bottom: 1px solid var(--color-line);
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  color: inherit;
+  white-space: normal;
+  vertical-align: top;
+}
+table.usage tbody tr:last-child th {
+  border-bottom: 0;
 }
 .indent {
   display: inline-block;
@@ -76,7 +91,7 @@ table.usage td:first-child {
   table.usage td {
     padding-inline: 8px;
   }
-  table.usage td:first-child {
+  table.usage tbody th {
     min-width: 7em;
   }
 }

@@ -169,7 +169,7 @@ describe("the Top-up page", () => {
       expect(out).not.toContain("/security");
       const links = [...out.matchAll(/\shref="([^"]*)"/g)].map((m) => m[1] ?? "");
       expect(links).toContain(`/console/${VAULT}/topup`);
-      for (const planned of ["/status", "/canary", "/open", "/terms", "/privacy", "/alerts"]) {
+      for (const planned of ["/status", "/canary", "/terms", "/privacy", "/alerts"]) {
         expect(links.filter((l) => l.endsWith(planned))).toEqual([]);
       }
     }

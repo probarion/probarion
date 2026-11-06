@@ -6,13 +6,17 @@ import { log } from "@/lib/log";
 import { within } from "@/lib/within";
 import { parseUsage, type UsageMetrics } from "./parse";
 
-// What the Usage page reads from the database, behind Next's data cache. The read and the refresh live in the same cache
-// entry (a minute), so the refresh runs at most about once a minute however many people look, and in practice about
-// once an hour: it runs only when the network was last computed more than an hour ago (its run record, metrics_runs). A
-// refresh that fails (no service key in a preview, a timeout, an error) shows what exists. A read that fails is cached too, as an absent answer, for
-// the same minute: a database in trouble is asked once a minute, not once a view. The parsing is outside the cache, so
-// that a reader of this file never sees a stale shape. Nothing here throws: a read that fails, hangs past
-// `READ_TIMEOUT_MS` or is lost by the cache layer itself is a null, with a warning.
+// What the Usage page reads from the database, behind Next's data cache.
+//
+// The read and the refresh live in the same cache entry (a minute), so the refresh runs at most about once a minute
+// however many people look, and in practice about once an hour: it runs only when the network was last computed more
+// than an hour ago (its run record, metrics_runs). A refresh that fails (no service key in a preview, a timeout, an
+// error) shows what exists. A read that fails is cached too, as an absent answer, for the same minute: a database in
+// trouble is asked once a minute, not once a view.
+//
+// The parsing is outside the cache, so that a reader of this file never sees a stale shape. Nothing here throws: a
+// read that fails, hangs past `READ_TIMEOUT_MS` or is lost by the cache layer itself is a null, with a warning, and
+// so is an answer the page cannot show (`usage.malformed`: the message and the network, never the answer).
 
 export const USAGE_REVALIDATE_S = 60;
 /** The numbers are refreshed when the network was last computed longer ago than this, or never. */
@@ -72,7 +76,17 @@ const readUsage = unstable_cache(
 /** The usage numbers of `network`, or null when they cannot be read or are malformed. Never throws. */
 export async function loadUsage(network: Network): Promise<UsageMetrics | null> {
   try {
-    return parseUsage(await readUsage(network), network);
+    const raw = await readUsage(network);
+    const usage = parseUsage(raw, network);
+    // An answer that is there and cannot be shown: a shape, or a network, that drifted. It is logged, so that a drift
+    // after a deploy is seen. A read that failed (a null answer) already said so.
+    if (raw !== null && usage === null) {
+      log.warn("usage.malformed", {
+        network,
+        reason: "the answer is malformed or is for another network",
+      });
+    }
+    return usage;
   } catch (error) {
     // The cache layer itself failed (its own storage, not the database): still a page, not a 500.
     warn("usage.unavailable", error);

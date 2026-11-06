@@ -122,7 +122,9 @@ export function UsageTable({ usage }: { usage: UsageMetrics }) {
           <tbody>
             {rows.map((row) => (
               <tr key={row.metric}>
-                <td>{row.indent ? <span className={u.indent}>{row.label}</span> : row.label}</td>
+                <th scope="row">
+                  {row.indent ? <span className={u.indent}>{row.label}</span> : row.label}
+                </th>
                 {COLUMNS.map(({ segment }) => (
                   <Cell key={segment} total={row[segment]} week={row.week[segment]} />
                 ))}
@@ -165,7 +167,7 @@ export function UnitCostsCard({
           </thead>
           <tbody>
             <tr>
-              <td>{C.tokens}</td>
+              <th scope="row">{C.tokens}</th>
               {COLUMNS.map(({ segment }, i) => (
                 <td key={segment} className={c.num}>
                   {tokensCell(per[i]?.tokensPerDecision ?? null)}
@@ -173,7 +175,7 @@ export function UnitCostsCard({
               ))}
             </tr>
             <tr>
-              <td>{C.usd}</td>
+              <th scope="row">{C.usd}</th>
               {price === null ? (
                 <td colSpan={COLUMNS.length} className={`${c.num} ${c.quiet}`}>
                   {C.usdUnset}
@@ -190,13 +192,13 @@ export function UnitCostsCard({
               )}
             </tr>
             <tr>
-              <td>{C.gas}</td>
+              <th scope="row">{C.gas}</th>
               <td colSpan={COLUMNS.length} className={`${c.num} ${c.quiet}`}>
                 {C.gasUnset}
               </td>
             </tr>
             <tr>
-              <td>{C.hosting}</td>
+              <th scope="row">{C.hosting}</th>
               <td colSpan={COLUMNS.length} className={`${c.num} ${c.quiet}`}>
                 {C.hostingUnset}
               </td>

@@ -41,8 +41,9 @@ async function pruneRateLimits(db: Db): Promise<Prune> {
  * The daily run of the usage numbers (vercel.json): it computes yesterday, which is complete by now, and today, which
  * is still going, for the network this app runs on. Each run replaces that day's rows, so a second run does no harm.
  * The page also refreshes its own numbers when they are an hour old (lib/usage/data.ts), so this is the floor and not
- * the only way they move. Then it prunes the rate limiter's old rows. A call without the bearer secret is a 401. The
- * log has the counts of rows and nothing else.
+ * the only way they move. Then it prunes the rate limiter's old rows, whether or not the computes worked: the table
+ * must not grow just when they are failing. A failed compute is a 503 that still says what the prune did. A call
+ * without the bearer secret is a 401. The log has the counts of rows and nothing else.
  */
 export async function GET(req: Request) {
   try {
@@ -52,10 +53,20 @@ export async function GET(req: Request) {
     const days = [utcDay(now - DAY_MS), utcDay(now)];
     const db = serviceDb();
     const results: Run[] = [];
-    for (const day of days) {
-      results.push(await db.rpc<Run>("metrics_compute", { network: env.NEAR_NETWORK, day }));
+    let failure: unknown = null;
+    try {
+      for (const day of days) {
+        results.push(await db.rpc<Run>("metrics_compute", { network: env.NEAR_NETWORK, day }));
+      }
+    } catch (error) {
+      failure = error;
     }
     const prune = await pruneRateLimits(db);
+    if (failure !== null) {
+      // A failed run for the cron's log, and never an unhandled 500.
+      log.error("cron.metrics_failed", { error: failure, pruned: prune.ok ? prune.deleted : null });
+      return json({ error: "unavailable", prune }, 503);
+    }
     log.info("cron.metrics", {
       network: env.NEAR_NETWORK,
       days,

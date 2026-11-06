@@ -118,7 +118,7 @@ describe("GET /api/cron/metrics", () => {
     expect(line).toContain("2026-11-05");
     expect(line).toContain("2026-11-06");
     expect(line).toContain("[7,7]");
-    expect(line).toContain("4"); // the rows the prune deleted
+    expect(line).toContain('"pruned":4'); // the rows the prune deleted
     expect(logs.lines.join("\n")).not.toContain("ROW-DATA-MUST-NOT-BE-LOGGED");
     expect(logs.lines.join("\n")).not.toContain(SECRET);
   });
@@ -147,12 +147,42 @@ describe("GET /api/cron/metrics", () => {
     expect(logs.lines.join("\n")).not.toContain(SECRET);
   });
 
-  it("does not prune when a compute failed: the run is a failed run", async () => {
+  it("prunes after a failed compute too: the table must not grow just when the computes are failing", async () => {
+    for (const failing of [0, 1]) {
+      mocks.rpc.mockReset();
+      let call_ = 0;
+      mocks.rpc.mockImplementation(async (fn: string, p: { network: string; day: string }) => {
+        if (fn === "rate_limits_prune") return { deleted: 4 };
+        if (call_++ === failing) throw new Error("statement timeout");
+        return { day: p.day, network: p.network, rows: 7 };
+      });
+      const res = await call();
+      // The run is still a failed run, and says what the prune did.
+      expect(res.status, `compute ${failing}`).toBe(503);
+      expect(await res.json()).toEqual({ error: "unavailable", prune: { ok: true, deleted: 4 } });
+      const calls = mocks.rpc.mock.calls.map(([fn]) => fn);
+      // The second compute is not tried after the first failed; the prune always is, and it is last.
+      expect(calls, `compute ${failing}`).toEqual(
+        failing === 0
+          ? ["metrics_compute", "rate_limits_prune"]
+          : ["metrics_compute", "metrics_compute", "rate_limits_prune"],
+      );
+      expect(
+        logs.lines.some(
+          (l) => l.includes("cron.metrics_failed") && l.includes("statement timeout"),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("is a failed run with no prune done when both fail, and says so", async () => {
     mocks.rpc.mockReset();
-    mocks.rpc.mockRejectedValueOnce(new Error("statement timeout"));
+    mocks.rpc.mockRejectedValue(new Error("connection refused"));
     const res = await call();
     expect(res.status).toBe(503);
-    expect(mocks.rpc.mock.calls.map(([fn]) => fn)).toEqual(["metrics_compute"]);
+    expect(await res.json()).toEqual({ error: "unavailable", prune: { ok: false } });
+    expect(logs.lines.filter((l) => l.includes("cron.rate_limits_prune_failed"))).toHaveLength(1);
+    expect(logs.lines.join("\n")).not.toContain(SECRET);
   });
 
   it("logs no run for a request that was refused, and no secret", async () => {

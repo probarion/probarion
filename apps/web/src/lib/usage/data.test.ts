@@ -221,6 +221,8 @@ describe("loadUsage", () => {
       expect(warned).toHaveLength(1);
       expect(warned[0]).toContain("connection refused");
       expect(mocks.service).not.toHaveBeenCalled();
+      // A read that failed is not a malformed answer, and is not logged as one.
+      expect(logs.lines.filter((l) => l.includes("usage.malformed"))).toEqual([]);
     });
 
     it("is null when the public key is not set, as in a preview", async () => {
@@ -236,6 +238,30 @@ describe("loadUsage", () => {
       expect(await loadUsage("mainnet")).toBeNull();
       mocks.anon.mockResolvedValue(answer({ network: "testnet" }));
       expect(await loadUsage("mainnet")).toBeNull();
+    });
+
+    it("warns that the answer is malformed, with the network and no part of the answer", async () => {
+      const payload = "PAYLOAD-MUST-NOT-BE-LOGGED";
+      mocks.anon.mockResolvedValue(
+        answer({
+          totals: [{ segment: "team", metric: "vaults", value: payload }],
+          external_owners: -1,
+        }),
+      );
+      expect(await loadUsage("mainnet")).toBeNull();
+      const warned = logs.lines.filter((l) => l.includes("usage.malformed"));
+      expect(warned).toHaveLength(1);
+      expect(warned[0]).toContain("mainnet");
+      expect(logs.lines.join("\n")).not.toContain(payload);
+      // An answer for the other network is the same warning: a shape or a network that drifted shows in the logs.
+      mocks.anon.mockResolvedValue(answer({ network: "testnet" }));
+      expect(await loadUsage("mainnet")).toBeNull();
+      expect(logs.lines.filter((l) => l.includes("usage.malformed"))).toHaveLength(2);
+      // A good answer logs nothing of the kind.
+      logs.lines.length = 0;
+      mocks.anon.mockResolvedValue(answer());
+      expect(await loadUsage("mainnet")).not.toBeNull();
+      expect(logs.lines.filter((l) => l.includes("usage."))).toEqual([]);
     });
 
     it("gives up on a read that hangs after 5 seconds", async () => {

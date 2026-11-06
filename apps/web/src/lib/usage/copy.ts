@@ -136,7 +136,7 @@ export function definitions(network: Network): readonly Definition[] {
     },
     {
       lead: "Canary attempts:",
-      text: "every attempt on the Canary page. One that did not finish is counted as an attempt and nothing else, once 90 seconds have passed. Sent straight to the contract means a code-refused attempt that was also sent on chain, bypassing the code rules.",
+      text: "every attempt that was recorded. One that did not finish is counted as an attempt and nothing else, once 90 seconds have passed. Sent straight to the contract means a code-refused attempt that was also sent on chain, bypassing the code rules.",
     },
     {
       lead: "Model decisions:",

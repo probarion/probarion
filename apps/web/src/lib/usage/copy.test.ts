@@ -288,6 +288,12 @@ describe("how each number is counted", () => {
     expect(text("mainnet")).toContain("once 90 seconds have passed");
   });
 
+  it("counts the attempts that were recorded, not every one that was tried: a turned-away attempt has no row", () => {
+    const attempts = definitions("mainnet").find((d) => d.lead === "Canary attempts:");
+    expect(attempts?.text).toMatch(/^every attempt that was recorded\. /);
+    expect(text("mainnet")).not.toContain("every attempt on the Canary page");
+  });
+
   it("has an entry for every row of the table", () => {
     const leads = definitions("mainnet").flatMap((d) => (d.lead ? [d.lead] : []));
     for (const lead of [
