@@ -152,6 +152,7 @@ import {
   setZeroRetentionAction,
 } from "@/app/console/[vault]/payables/actions";
 import { prepareFundAction } from "@/app/console/[vault]/topup/actions";
+import { registerVaultAction } from "@/app/console/actions";
 
 const ORIGIN = `https://${MAINNET_HOST}`;
 const form = (fields: Record<string, string> = {}) => {
@@ -284,6 +285,23 @@ describe("a vault on the other network, opened at this network's address", () =>
     });
   });
 
+  it("says the site does not serve that network yet, with no address to open, when it has none", async () => {
+    h.both = false;
+    h.defaultNetwork = "mainnet";
+    const sentence = "This vault is on NEAR testnet, which this site does not serve yet.";
+    for (const [name, call] of [...ROUTES, ...ACTIONS]) {
+      if (SILENT.has(name)) continue;
+      const result = await call(TESTNET_VAULT);
+      if (result instanceof Response) {
+        expect(result.status, name).toBe(409);
+        expect(await result.json(), name).toEqual({ error: "wrong_network", detail: sentence });
+      } else {
+        expect(result, name).toMatchObject({ error: sentence, status: 409 });
+      }
+    }
+    expect(touched()).toEqual({ db: [], chain: [] });
+  });
+
   it("is a 409 for a member only: a stranger still gets the same 403 as for a vault that does not exist", async () => {
     h.jar.set(
       SESSION_COOKIE,
@@ -316,6 +334,87 @@ describe("a vault on the other network, opened at this network's address", () =>
     const result = await syncKeysAction(TESTNET_VAULT);
     expect(await statusOf(result)).toBe(401);
     expect(touched()).toEqual({ db: [], chain: [] });
+  });
+});
+
+// --- a vault of the other network that is not a member's: Register ---------------------------------------------------------
+
+describe("Register (registerVaultAction) for a vault registered on the other network", () => {
+  const tenantNetworks = async () =>
+    (
+      await pg.query<{ vault_id: string; network: string }>(
+        "select vault_id, network from public.tenants where vault_id = any ($1) order by vault_id",
+        [[MAINNET_VAULT, TESTNET_VAULT]],
+      )
+    ).rows;
+  const asTestnetOwner = async () => {
+    h.host = TESTNET_HOST;
+    h.jar.set(
+      SESSION_COOKIE,
+      await createSessionToken(await deriveSubkey(MASTER, "session"), OWNER, "testnet"),
+    );
+  };
+
+  it("answers 409 for a testnet vault from the mainnet address: one sentence, no chain client, no write", async () => {
+    const before = await tenantNetworks();
+    const r = await registerVaultAction(TESTNET_VAULT);
+    expect(r).toEqual({
+      ok: false,
+      error: "This vault is on NEAR testnet. Open it at the testnet address.",
+      code: "network_mismatch",
+      status: 409,
+    });
+    expect(h.chainCalls).toEqual([]);
+    expect(h.dbCalls).not.toContain("tenant_register");
+    expect(h.revalidated).toEqual([]);
+    expect(await tenantNetworks()).toEqual(before);
+  });
+
+  it("answers 409 for a mainnet vault from the testnet address, the same way", async () => {
+    await asTestnetOwner();
+    const before = await tenantNetworks();
+    const r = await registerVaultAction(MAINNET_VAULT);
+    expect(r).toEqual({
+      ok: false,
+      error: "This vault is on NEAR mainnet. Open it at the mainnet address.",
+      code: "network_mismatch",
+      status: 409,
+    });
+    expect(h.chainCalls).toEqual([]);
+    expect(h.dbCalls).not.toContain("tenant_register");
+    expect(await tenantNetworks()).toEqual(before);
+  });
+
+  it("says the site does not serve that network yet when it has no address for it", async () => {
+    h.both = false;
+    h.defaultNetwork = "mainnet";
+    const r = await registerVaultAction(TESTNET_VAULT);
+    expect(r).toEqual({
+      ok: false,
+      error: "This vault is on NEAR testnet, which this site does not serve yet.",
+      code: "network_mismatch",
+      status: 409,
+    });
+    expect(JSON.stringify(r)).not.toContain("address");
+    expect(h.chainCalls).toEqual([]);
+    expect(h.dbCalls).not.toContain("tenant_register");
+  });
+
+  it("is not stopped for a vault of its own network, or for one nobody has registered: the control", async () => {
+    for (const vault of [MAINNET_VAULT, "new.vaults.probarion.near"]) {
+      h.chainCalls = [];
+      const r = await registerVaultAction(vault).catch(() => undefined);
+      expect((r as { status?: number } | undefined)?.status, vault).not.toBe(409);
+      // It got past the check and asked this network's chain (which is down in this test).
+      expect(h.chainCalls, vault).toContain("reader:mainnet");
+    }
+  });
+
+  it("asks the database for the tenant only for an account id, and answers the same 401 as before without a session", async () => {
+    h.jar.clear();
+    expect(await registerVaultAction(TESTNET_VAULT)).toMatchObject({ ok: false, status: 401 });
+    expect(h.dbCalls).toEqual([]);
+    expect(h.chainCalls).toEqual([]);
   });
 });
 

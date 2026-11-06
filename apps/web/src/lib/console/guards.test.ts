@@ -20,6 +20,10 @@ const h = vi.hoisted(() => ({
   db: null as unknown as Db,
   reader: null as unknown as VaultReader,
   account: null as unknown as () => Promise<unknown>,
+  /** What the node's `status` says about its chain, or an error to throw instead. */
+  chainId: "mainnet" as unknown,
+  statusError: null as unknown,
+  statusCalls: 0,
   revalidated: [] as string[],
   /** Factory views by method name; a method left out throws (the factory cannot be read). */
   factory: {} as Record<string, unknown>,
@@ -66,6 +70,12 @@ vi.mock("@/lib/near/server", async () => {
   return {
     getReader: () => h.reader,
     getRpc: () => ({
+      call: async (method: string) => {
+        if (method !== "status") throw new Error(`unexpected RPC method ${method}`);
+        h.statusCalls += 1;
+        if (h.statusError !== null) throw h.statusError;
+        return { chain_id: h.chainId };
+      },
       viewAccount: () => h.account(),
       viewFunction: async (_contract: string, method: string) => {
         if (!(method in h.factory)) throw new Error("no factory in this test");
@@ -114,7 +124,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await pg.close();
 });
-beforeEach(() => {
+beforeEach(async () => {
+  (await import("@/lib/near/chain")).forgetVerifiedChains();
+  h.chainId = "mainnet";
+  h.statusError = null;
+  h.statusCalls = 0;
   h.jar.clear();
   h.revalidated.length = 0;
   h.buttons.length = 0;
@@ -127,6 +141,17 @@ beforeEach(() => {
   h.account = async () =>
     viewAccount({ amount: "3000000000000000000000000", storage_usage: 250_733 });
 });
+
+async function tenantCount(vault: string): Promise<number> {
+  return Number(
+    (
+      await pg.query<{ n: string }>(
+        "select count(*) as n from public.tenants where vault_id = $1",
+        [vault],
+      )
+    ).rows[0]?.n ?? 0,
+  );
+}
 
 async function signInAs(account: string) {
   h.jar.set(
@@ -595,6 +620,61 @@ describe("server actions: the success paths", () => {
     h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
     await signInAs("acme.near");
     expect(await registerVaultAction("taken.near")).toMatchObject({ ok: false, code: "not_owner" });
+  });
+
+  it("registerVaultAction refuses, and writes nothing, when the node serves the other chain", async () => {
+    h.reader = fakeReader({
+      getConfig: async () =>
+        vaultConfig({ owner: "acme.near", approvers: ["coo.near"], factory: null }),
+    });
+    h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    h.chainId = "testnet"; // the mainnet console, a node of the testnet
+    await signInAs("acme.near");
+    const r = await registerVaultAction("wrongchain.near");
+    expect(r).toMatchObject({ ok: false, code: "wrong_chain", status: 503 });
+    expect(JSON.stringify(r)).not.toMatch(/testnet|https?:/);
+    expect(await tenantCount("wrongchain.near")).toBe(0);
+    expect(h.revalidated).toEqual([]);
+    // The setting is fixed: the next attempt asks again and registers.
+    h.chainId = "mainnet";
+    expect(await registerVaultAction("wrongchain.near")).toEqual({
+      ok: true,
+      vaultId: "wrongchain.near",
+    });
+    expect(await tenantCount("wrongchain.near")).toBe(1);
+  });
+
+  it("registerVaultAction asks the node once, then remembers the pass; an unreachable node is unavailable and not remembered", async () => {
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", approvers: [], factory: null }),
+    });
+    h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    await signInAs("acme.near");
+    h.statusError = transportError();
+    expect(await registerVaultAction("flaky.near")).toMatchObject({
+      ok: false,
+      code: "unavailable",
+    });
+    expect(await tenantCount("flaky.near")).toBe(0);
+    h.statusError = null;
+    expect(await registerVaultAction("flaky.near")).toMatchObject({ ok: true });
+    expect(await registerVaultAction("flaky2.near")).toMatchObject({ ok: true });
+    expect(await registerVaultAction("flaky3.near")).toMatchObject({ ok: true });
+    expect(h.statusCalls).toBe(2); // the failure, then the one pass that every later call relied on
+  });
+
+  it("refreshMembersAction does not re-read the approvers from a node that serves the other chain", async () => {
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", approvers: ["mallory.near"] }),
+    });
+    h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    h.chainId = "testnet";
+    await signInAs("acme.near");
+    const r = await refreshMembersAction(VAULT, null);
+    expect(r).toMatchObject({ ok: false });
+    expect(
+      await pgliteDb(pg).rpc("member_role", { vault_id: VAULT, account: "mallory.near" }),
+    ).toBeNull();
   });
 
   it("refreshMembersAction re-reads the approvers from the chain for the owner", async () => {

@@ -1,6 +1,6 @@
 -- Both networks from one deployment (rulings W-NET-R2 and W-NET-R3, task NET). One project, one database and one
 -- Telegram bot now serve testnet and mainnet at once, so what was "the one network" is a column. The tenants, the
--- metrics, the Canary attempts and the watcher were already per network (0009, 0010). Three things were not, and this file
+-- metrics, the Canary attempts and the watcher were already per network (0009, 0010). Four things were not, and this file
 -- closes them. Nothing here changes a table; every function is redefined with `create or replace`, its body copied from the
 -- migration that defined it last.
 --
@@ -15,6 +15,12 @@
 --    written), the same as for any pair that cannot be claimed.
 -- 3. alert_subscription_verify (0011) also answers the tenant's network, so the Telegram reply can link to the console of
 --    the network the vault is on. One bot serves both networks; its webhook is registered at the default address.
+--
+-- 4. tenant_register (0008) no longer moves a tenant to another network. It used to write the registration's network over
+--    the stored one, so a request at the other address could re-register a vault id, on the strength of the other chain
+--    showing a vault at that string with the same owner string, and turn its owner away from the address it belongs to.
+--    A tenant's network is fixed (W-NET-R4); a call that names another network raises network_mismatch, after the owner
+--    check and before any change. An operator who has to move a tenant does it by hand.
 --
 -- Grants are repeated at the end, exactly as the functions had them.
 
@@ -147,10 +153,91 @@ begin
       'kinds', to_jsonb(s.kinds), 'duplicate', v_duplicate);
 end $$;
 
+-- (4) Registration: 0008's body, plus the network that cannot change.
+create or replace function public.tenant_register(p jsonb) returns jsonb
+language plpgsql set search_path = public, pg_temp as $$
+declare
+  v_vault text := p->>'vault_id';
+  v_owner text := p->>'owner_account';
+  v_kind text := coalesce(p->>'kind', 'external');
+  v_raw jsonb := case when jsonb_typeof(p->'approvers') is null or jsonb_typeof(p->'approvers') = 'null'
+                      then '[]'::jsonb else p->'approvers' end;
+  v_approvers text[];
+  v_id uuid;
+  v_existing_owner text;
+  v_existing_network text;
+  v_inserted boolean := false;
+begin
+  -- vault_id has the same pattern as tenants.vault_id's check, so a bad one is invalid_input, not a constraint error.
+  if v_vault is null or v_vault !~ '^[a-z0-9._-]{2,64}$' or v_owner is null
+     or coalesce(p->>'network', '') not in ('mainnet', 'testnet')
+     or v_kind not in ('team', 'external', 'canary')
+     or jsonb_typeof(v_raw) <> 'array' then
+    raise exception 'invalid_input';
+  end if;
+  -- Only strings (JSON null entries are skipped): an object or a number is not an account id.
+  if exists (select 1 from jsonb_array_elements(v_raw) e where jsonb_typeof(e) not in ('string', 'null')) then
+    raise exception 'invalid_input';
+  end if;
+  v_approvers := array(select a from jsonb_array_elements_text(v_raw) as a where a is not null);
+  -- Insert first. If the vault is already registered (an earlier call, a double click, or a concurrent call that
+  -- committed first) nothing is inserted and we use the existing row, so the second call returns the same tenant
+  -- instead of failing on the unique vault_id. Either way the owner must match.
+  insert into public.tenants (vault_id, network, kind, display_name, owner_account, proof_public)
+  values (v_vault, p->>'network', v_kind, left(coalesce(p->>'display_name', split_part(v_vault, '.', 1)), 80), v_owner,
+          v_kind = 'team')
+  on conflict (vault_id) do nothing
+  returning id, owner_account, network, true into v_id, v_existing_owner, v_existing_network, v_inserted;
+  if v_id is null then
+    select id, owner_account, network into v_id, v_existing_owner, v_existing_network
+      from public.tenants where vault_id = v_vault;
+  end if;
+  -- The insert was skipped and the row it conflicted with is gone again (deleted by a concurrent transaction). Stop
+  -- here: with a NULL id the owner check below is NULL (so it passes) and the member rows would fail on a not-null.
+  if v_id is null then
+    raise exception 'not_found';
+  end if;
+  if v_existing_owner <> v_owner then
+    raise exception 'owner_mismatch';
+  end if;
+  -- A tenant's network is fixed once it is registered (W-NET-R4): a vault id on one chain is another account from the
+  -- same string on the other. A registration that names another network changes nothing.
+  if v_existing_network <> p->>'network' then
+    raise exception 'network_mismatch';
+  end if;
+  -- An existing tenant takes, only from `external`, the kind of this registration. A missing display_name keeps the
+  -- stored one. proof_public is left alone, except that a tenant that is (or becomes) the Canary is private. The network
+  -- is not touched.
+  if not coalesce(v_inserted, false) then
+    update public.tenants set
+        kind = case when kind = 'external' then v_kind else kind end,
+        display_name = left(coalesce(p->>'display_name', display_name), 80),
+        proof_public = case when (case when kind = 'external' then v_kind else kind end) = 'canary'
+                            then false else proof_public end
+      where id = v_id;
+  end if;
+  insert into public.tenant_members (tenant_id, account_id, role) values (v_id, v_owner, 'owner')
+    on conflict (tenant_id, account_id) do update set role = 'owner', promoted_from_viewer = false;
+  -- Approvers the chain no longer lists: a promoted viewer goes back to viewer, any other approver is removed.
+  update public.tenant_members set role = 'viewer', promoted_from_viewer = false
+    where tenant_id = v_id and role = 'approver' and promoted_from_viewer and not (account_id = any (v_approvers));
+  delete from public.tenant_members
+    where tenant_id = v_id and role = 'approver' and not (account_id = any (v_approvers));
+  -- `distinct`: a repeated account would make DO UPDATE touch one row twice. A viewer who is an on-chain approver is
+  -- promoted and remembered as such; the owner row is never touched (the owner is filtered out, and only viewers are
+  -- updated).
+  insert into public.tenant_members as m (tenant_id, account_id, role)
+    select distinct v_id, a, 'approver' from unnest(v_approvers) as a where a <> v_owner
+    on conflict (tenant_id, account_id) do update set role = 'approver', promoted_from_viewer = true
+      where m.role = 'viewer';
+  return jsonb_build_object('tenant_id', v_id);
+end $$;
+
 -- Grants, as before: the feed is public by design (anon, authenticated, service_role); the leaderboard scans the table, and
--- the claim and the verify are the server's own (service_role only).
+-- the claim, the verify and the registration are the server's own (service_role only).
 revoke execute on function public.public_canary_feed(jsonb), public.public_canary_leaderboard(jsonb),
-  public.alert_claim(jsonb), public.alert_subscription_verify(jsonb) from public, anon, authenticated;
+  public.alert_claim(jsonb), public.alert_subscription_verify(jsonb), public.tenant_register(jsonb)
+  from public, anon, authenticated;
 grant execute on function public.public_canary_leaderboard(jsonb), public.alert_claim(jsonb),
-  public.alert_subscription_verify(jsonb) to service_role;
+  public.alert_subscription_verify(jsonb), public.tenant_register(jsonb) to service_role;
 grant execute on function public.public_canary_feed(jsonb) to anon, authenticated, service_role;

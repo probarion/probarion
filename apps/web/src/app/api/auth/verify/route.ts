@@ -13,6 +13,7 @@ import { subkey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
 import { assertSameOrigin, clientIp, json, problem, rateLimitOr429 } from "@/lib/http";
 import { log } from "@/lib/log";
+import { ensureChain, WrongChainError } from "@/lib/near/chain";
 import { getRpc } from "@/lib/near/server";
 import { requestNetwork } from "@/lib/network";
 import { LIMITS } from "@/lib/ratelimit";
@@ -110,11 +111,19 @@ async function verify(req: Request, requestId: string | undefined): Promise<Resp
     log.warn("auth.rejected", { reason: "payload_too_large", request_id: requestId });
     return problem(413, "payload_too_large");
   }
-  const result = await verifyLogin(
-    body.value,
-    challenge,
-    nearApiVerifier(rpcLoginProvider(getRpc(network))),
-  );
+  const rpc = getRpc(network);
+  // A session is lasting state: before one can be minted, the network's RPC must answer for the network's chain. A setting
+  // that points it at the other one's nodes is refused here, whatever the URL looks like. With no valid challenge nothing
+  // can be minted, so no node is asked. A node that cannot be reached is the usual 503 `unavailable` (the POST handler).
+  if (challenge) {
+    try {
+      await ensureChain(network, rpc);
+    } catch (error) {
+      if (error instanceof WrongChainError) return problem(503, "wrong_chain");
+      throw error;
+    }
+  }
+  const result = await verifyLogin(body.value, challenge, nearApiVerifier(rpcLoginProvider(rpc)));
   if (!result.ok) {
     log.warn("auth.rejected", { reason: result.reason, request_id: requestId });
     // "verifier_unavailable" (no node could say whether the key is on the account) is the same 503 as every

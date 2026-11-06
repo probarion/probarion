@@ -4,9 +4,9 @@ import { memberRole, type RegisterTenantInput, registerTenant } from "@/lib/db/t
 import { freshDb } from "./harness";
 import { pgliteDb } from "./pglite-db";
 
-// Migration 0005 (R11, parked from Task 3): re-registering a vault updates its kind, network and
-// display name, and a viewer who was promoted to approver goes back to viewer (not out) when the
-// chain no longer lists them.
+// Migration 0005 (R11, parked from Task 3): re-registering a vault updates its kind and display name, and a viewer who
+// was promoted to approver goes back to viewer (not out) when the chain no longer lists them. Migration 0012 (W-NET-R4):
+// a tenant's network is fixed once it is registered, so a registration that names another network is refused.
 
 describe("tenant_register re-registration (0005)", () => {
   let pg: PGlite;
@@ -46,7 +46,7 @@ describe("tenant_register re-registration (0005)", () => {
       )
     ).rows;
 
-  it("updates kind, network and display name: external becomes team", async () => {
+  it("updates kind and display name on the same network: external becomes team", async () => {
     const db = pgliteDb(pg);
     const first = await registerTenant(db, base);
     expect(await tenant(base.vaultId)).toEqual({
@@ -55,17 +55,12 @@ describe("tenant_register re-registration (0005)", () => {
       display_name: "re",
       proof_public: false,
     });
-    const again = await registerTenant(db, {
-      ...base,
-      kind: "team",
-      network: "mainnet",
-      displayName: "Re team",
-    });
+    const again = await registerTenant(db, { ...base, kind: "team", displayName: "Re team" });
     expect(again.tenant_id).toBe(first.tenant_id);
     // proof_public is the owner's setting: re-registration never flips it.
     expect(await tenant(base.vaultId)).toEqual({
       kind: "team",
-      network: "mainnet",
+      network: "testnet",
       display_name: "Re team",
       proof_public: false,
     });
@@ -158,6 +153,50 @@ describe("tenant_register re-registration (0005)", () => {
       registerTenant(db, { ...base, vaultId, owner: "eve.near", kind: "team", displayName: "Eve" }),
     ).rejects.toMatchObject({ code: "owner_mismatch" });
     expect(await tenant(vaultId)).toMatchObject({ kind: "external", display_name: "re" });
+  });
+
+  it("refuses a registration on another network, whoever the owner is, and changes nothing", async () => {
+    const db = pgliteDb(pg);
+    for (const [from, to] of [
+      ["testnet", "mainnet"],
+      ["mainnet", "testnet"],
+    ] as const) {
+      const vaultId = `fixed-${from}.vaults.probarion.near`;
+      const { tenant_id } = await registerTenant(db, {
+        ...base,
+        vaultId,
+        network: from,
+        approvers: ["cfo.near"],
+      });
+      const row = await tenant(vaultId);
+      const people = await members(tenant_id);
+      // The owner, with another kind, another name and another list of approvers: the network is the only difference
+      // that matters, and it alone is enough to refuse.
+      await expect(
+        registerTenant(db, {
+          ...base,
+          vaultId,
+          network: to,
+          kind: "team",
+          displayName: "Moved",
+          approvers: ["mallory.near"],
+        }),
+      ).rejects.toMatchObject({ code: "network_mismatch" });
+      expect(await tenant(vaultId)).toEqual(row);
+      expect(await members(tenant_id)).toEqual(people);
+      // The same network still re-registers, right after the refused call.
+      await registerTenant(db, { ...base, vaultId, network: from, approvers: ["cfo.near"] });
+      expect((await tenant(vaultId))?.network).toBe(from);
+    }
+  });
+
+  it("checks the owner before the network: another owner on another network is owner_mismatch", async () => {
+    const db = pgliteDb(pg);
+    const vaultId = "both-wrong.vaults.probarion.near";
+    await registerTenant(db, { ...base, vaultId });
+    await expect(
+      registerTenant(db, { ...base, vaultId, owner: "eve.near", network: "mainnet" }),
+    ).rejects.toMatchObject({ code: "owner_mismatch" });
   });
 
   it("is still service_role only", async () => {

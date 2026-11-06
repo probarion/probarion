@@ -30,6 +30,11 @@ const h = vi.hoisted(() => ({
   host: null as string | null,
   /** The networks getRpc was asked for. */
   rpcFor: [] as string[],
+  /**
+   * Whether sign-in really asks the node which chain it serves (lib/near/chain). Off for the tests that script the key
+   * lookup alone; the tests of that check switch it on and script its `status` answer first.
+   */
+  realChain: false,
   /** Switches that make one piece of infrastructure fail, to see that each gives a 503 and never a 500. */
   fail: {
     db: null as null | ((fn: string, p?: Record<string, unknown>) => boolean),
@@ -75,6 +80,16 @@ vi.mock("@/lib/near/server", () => ({
     return h.rpc;
   },
 }));
+vi.mock("@/lib/near/chain", async (orig) => {
+  const real = await orig<typeof import("@/lib/near/chain")>();
+  return {
+    ...real,
+    ensureChain: (
+      network: Parameters<typeof real.ensureChain>[0],
+      rpc: Parameters<typeof real.ensureChain>[1],
+    ) => (h.realChain ? real.ensureChain(network, rpc) : Promise.resolve()),
+  };
+});
 vi.mock("@/lib/env", async () => {
   const { networkPart } = await import("../../../test/fixtures/networks");
   return { getEnv: () => networkPart({ defaultNetwork: "testnet", both: true }) };
@@ -119,6 +134,7 @@ beforeEach(async () => {
   h.fail.getRpc = false;
   h.host = null;
   h.rpcFor = [];
+  h.realChain = false;
   logged = [];
   const sink = (line: unknown) => {
     logged.push(String(line));
@@ -889,6 +905,86 @@ describe("infrastructure failures answer 503 'unavailable', never an unhandled 5
       const r = await postVerify(login(c.body), c.cookie);
       expect(JSON.stringify(r.json)).not.toMatch(/SUPABASE|NEAR_RPC|kdf|db down/);
     });
+  });
+});
+
+// Fix round 1 (W-NET-R4): before a session is minted, the network's RPC must answer for that network's chain.
+describe("sign-in checks that the network's RPC serves its chain", () => {
+  const status = (chain_id: unknown) => rpcOk({ chain_id, protocol_version: 73 });
+  beforeEach(async () => {
+    const { forgetVerifiedChains } = await import("@/lib/near/chain");
+    forgetVerifiedChains();
+    h.realChain = true;
+  });
+
+  it.each([
+    [MAINNET_HOST, "mainnet", "testnet"],
+    [TESTNET_HOST, "testnet", "mainnet"],
+  ] as const)(
+    "at %s: an RPC that answers for %s is a 503 wrong_chain, with no session and no key lookup",
+    async (host, network, answers) => {
+      h.host = host;
+      const c = await getChallenge();
+      const rpc = useRpc(status(answers), rpcOk(FULL_ACCESS_KEY));
+      const { res, json, setCookies } = await postVerify(login(c.body), c.cookie);
+      expect(res.status).toBe(503);
+      expect(json).toEqual({ error: "wrong_chain" });
+      expect(setCookieOf(setCookies, SESSION_COOKIE)).toBeUndefined();
+      // Only `status` was asked: the key lookup that would have signed the person in never ran.
+      expect(rpc.remaining()).toBe(1);
+      expect(rpc.calls).toHaveLength(1);
+      // The log names the network, and nothing of the RPC.
+      const line = logged.find((l) => l.includes("chain.wrong")) ?? "";
+      expect(line).toContain(`"network":"${network}"`);
+      expect(logged.join(" | ")).not.toMatch(/a\.example/);
+    },
+  );
+
+  it("asks `status` once, then remembers the pass for that network: the next sign-in only looks up the key", async () => {
+    h.host = MAINNET_HOST;
+    const first = await getChallenge();
+    const rpc1 = useRpc(status("mainnet"), rpcOk(FULL_ACCESS_KEY));
+    expect((await postVerify(login(first.body), first.cookie)).res.status).toBe(200);
+    expect(rpc1.remaining()).toBe(0);
+    expect(rpc1.calls.map((c) => c.body.method)).toEqual(["status", "query"]);
+
+    const second = await getChallenge();
+    const rpc2 = useRpc(rpcOk(FULL_ACCESS_KEY));
+    expect((await postVerify(login(second.body), second.cookie)).res.status).toBe(200);
+    expect(rpc2.calls.map((c) => c.body.method)).toEqual(["query"]);
+
+    // The other network was not covered by it: its first sign-in asks again, and a wrong answer is refused.
+    h.host = TESTNET_HOST;
+    const other = await getChallenge();
+    const rpc3 = useRpc(status("mainnet"), rpcOk(FULL_ACCESS_KEY));
+    const refused = await postVerify(login(other.body), other.cookie);
+    expect(refused.json).toEqual({ error: "wrong_chain" });
+    expect(rpc3.calls).toHaveLength(1);
+  });
+
+  it("answers an unreachable node as it answers any RPC failure (503 unavailable) and does not remember it", async () => {
+    h.host = MAINNET_HOST;
+    const c = await getChallenge();
+    useRpc(httpStatus(503));
+    const down = await postVerify(login(c.body), c.cookie);
+    expect(down.res.status).toBe(503);
+    expect(down.json).toEqual({ error: "unavailable" });
+    expect(setCookieOf(down.setCookies, SESSION_COOKIE)).toBeUndefined();
+    // The node is back: the next sign-in asks again (status, then the key) and succeeds.
+    const again = await getChallenge();
+    const rpc = useRpc(status("mainnet"), rpcOk(FULL_ACCESS_KEY));
+    expect((await postVerify(login(again.body), again.cookie)).res.status).toBe(200);
+    expect(rpc.calls.map((x) => x.body.method)).toEqual(["status", "query"]);
+  });
+
+  it("is not asked for a request that has no valid challenge: no chain call, the same 401", async () => {
+    h.host = MAINNET_HOST;
+    const c = await getChallenge();
+    const rpc = useRpc(status("testnet"));
+    const { res, json } = await postVerify(login(c.body), undefined);
+    expect(res.status).toBe(401);
+    expect(json).toEqual({ error: "challenge_missing_or_expired" });
+    expect(rpc.calls).toHaveLength(0);
   });
 });
 

@@ -7,7 +7,8 @@ import { at } from "./keys-helpers";
 import { pgliteDb } from "./pglite-db";
 
 // Migration 0012 (W-NET-R8): the Canary's public face is per network, an alert is claimed only for an event of its own
-// vault, and the Telegram link answers the vault's network. The functions are called as the app calls them, as each role.
+// vault, the Telegram link answers the vault's network, and a registration cannot move a tenant to the other network
+// (W-NET-R4). The functions are called as the app calls them, as each role.
 const MIGRATIONS = fileURLToPath(new URL("../../supabase/migrations", import.meta.url));
 const H = (c: string) => c.repeat(64);
 
@@ -300,6 +301,7 @@ describe("migration 0012: both networks", () => {
       "public_canary_leaderboard(jsonb)",
       "alert_claim(jsonb)",
       "alert_subscription_verify(jsonb)",
+      "tenant_register(jsonb)",
     ])("keeps %s for the service role alone", async (fn) => {
       expect(await grants(fn)).toEqual({
         anon: false,
@@ -334,7 +336,7 @@ describe("migration 0012: both networks", () => {
   });
 
   describe("the migration itself", () => {
-    it("redefines the four functions and edits no older file", async () => {
+    it("redefines the five functions and edits no older file", async () => {
       const files = readdirSync(MIGRATIONS)
         .filter((f) => f.endsWith(".sql"))
         .sort();
@@ -345,6 +347,7 @@ describe("migration 0012: both networks", () => {
         "public_canary_leaderboard",
         "alert_claim",
         "alert_subscription_verify",
+        "tenant_register",
       ]) {
         expect(sql, fn).toMatch(
           new RegExp(`create or replace function public\\.${fn}\\(p jsonb\\)`),

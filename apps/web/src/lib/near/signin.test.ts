@@ -156,6 +156,7 @@ describe("signInWithWallet (NEP-413)", () => {
     for (const code of [
       "challenge_missing_or_expired",
       "verifier_unavailable",
+      "wrong_chain",
       "invalid_input",
       "bad_origin",
       "rate_limited",

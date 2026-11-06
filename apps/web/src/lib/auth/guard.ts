@@ -7,7 +7,7 @@ import { serviceDb } from "@/lib/db/clients";
 import { type MemberRole, type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { problem } from "@/lib/http";
 import { isNearAccountId } from "@/lib/near/validate";
-import { originFor, requestNetwork } from "@/lib/network";
+import { originFor, requestNetwork, wrongNetworkSentence } from "@/lib/network";
 import { loginPath } from "./redirect";
 import { readSessionToken, SESSION_COOKIE, type Session } from "./session";
 
@@ -110,11 +110,7 @@ export async function memberForApi(
   const member = await membership(vaultId, session.accountId, roles);
   if (!member) return problem(403, "forbidden");
   if (member.network !== (await requestNetwork())) {
-    return problem(
-      409,
-      "wrong_network",
-      `This vault is on NEAR ${member.network}. Open it at the ${member.network} address.`,
-    );
+    return problem(409, "wrong_network", wrongNetworkSentence(member.network));
   }
   return { session, member };
 }

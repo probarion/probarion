@@ -6,6 +6,7 @@ import { REGISTER_ERROR_TEXT, registerVault, rpcChainReads } from "@/lib/console
 import { serviceDb } from "@/lib/db/clients";
 import { setTenantSettings } from "@/lib/db/tenants";
 import { getEnv } from "@/lib/env";
+import { ensureChain } from "@/lib/near/chain";
 import { getReader, getRpc } from "@/lib/near/server";
 
 /** What the settings form shows after a submit. */
@@ -51,15 +52,17 @@ export async function refreshMembersAction(
   // The vault's own network, which the guard has shown to be the request's.
   const network = auth.member.network;
   const settings = getEnv().networks[network];
+  const rpc = getRpc(network);
   const r = await registerVault(
     {
       db: serviceDb(),
       reader: getReader(network),
-      chain: rpcChainReads(getRpc(network)),
+      chain: rpcChainReads(rpc),
       network,
       factoryId: settings.factoryId,
       canaryVaultId: settings.canaryVaultId,
       teamVaultIds: settings.teamVaultIds,
+      verifyChain: () => ensureChain(network, rpc),
     },
     // No display name: the stored one is kept (migration 0005).
     { vaultId: auth.member.vault_id, account: auth.session.accountId },

@@ -59,3 +59,17 @@ export async function softRequestNetwork(): Promise<Network> {
 export function originFor(network: Network, env: Pick<Env, "networks"> = getEnv()): string | null {
   return env.networks[network].origin;
 }
+
+/**
+ * The one plain sentence for a vault that is registered on another network than this request's: where to open it, or
+ * that this site has no address for that network yet (then there is nothing to open, so it does not say "Open it at").
+ * Routes put it in the 409 `wrong_network` answer and actions in their result.
+ */
+export function wrongNetworkSentence(
+  vaultNetwork: Network,
+  env: Pick<Env, "networks"> = getEnv(),
+): string {
+  return originFor(vaultNetwork, env) === null
+    ? `This vault is on NEAR ${vaultNetwork}, which this site does not serve yet.`
+    : `This vault is on NEAR ${vaultNetwork}. Open it at the ${vaultNetwork} address.`;
+}
