@@ -196,6 +196,17 @@ The software is an unaudited beta.
   address counts by its /64), 60 an hour or 600 a day in total; it closes when its ledger holds 300
   entries; and its model calls share a daily token budget that counts an attempt from the moment it
   starts.
+- The site has a public Usage page at `/usage` that counts team vaults, external owners and Canary
+  participants apart, for the network the app runs on. It shows counts and not dollar volumes, with
+  the last 7 days beside each total, the model tokens a decision uses, and how each number is
+  counted; a price in dollars appears only once one is set from NEAR AI's price list. A daily job
+  computes the numbers, and the page refreshes them when they are an hour old. The Canary rules link
+  to it.
+- Each Canary attempt is recorded with the network of the Canary vault it was made on, so a mainnet
+  Canary and a testnet Canary keep separate numbers on the Usage page.
+- The daily usage job also deletes the rate limiter's rows older than a day, so that table no longer
+  grows without limit. Applying the database update computes the usage numbers of the existing
+  history.
 - The SDK takes a deadline: `RpcClient` `remainingMs`, `NearApiJsSender` `sendTimeoutMs` as a
   function, and `NearAiProposer` `remainingMs` and `knownModel`. All are optional, and the
   defaults are unchanged.

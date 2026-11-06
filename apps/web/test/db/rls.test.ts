@@ -19,6 +19,7 @@ const TENANT_TABLES: Record<string, string> = {
 const GLOBAL_TABLES = [
   "canary_attempts",
   "metrics_daily",
+  "metrics_runs",
   "pilots",
   "rate_limits",
   "invoice_confirm_nonces",
@@ -80,6 +81,9 @@ describe("schema and RLS", () => {
     );
     await pg.query(
       `insert into metrics_daily (day, segment, metric, value) values ('2026-11-08', 'team', 'vaults', 1)`,
+    );
+    await pg.query(
+      `insert into metrics_runs (network, computed_at, canary_participants, external_owners) values ('mainnet', now(), 1, 1)`,
     );
     await pg.query(
       `insert into pilots (vault_account_id, owner_account_id, cohort) values ('acme.vaults.probarion.near', 'acme.near', 'external')`,

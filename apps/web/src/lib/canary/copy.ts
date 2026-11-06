@@ -299,7 +299,9 @@ export function rulesCopy(network: Network, securityMdUrl: string): readonly Rul
     {
       title: "How you are counted.",
       body: [
-        "You are a challenge participant, not a customer. These numbers are kept apart from the product's own.",
+        "You are a challenge participant, not a customer. The ",
+        { text: "Usage page", href: "/usage" },
+        " counts you apart from the product's own users.",
       ],
     },
     {

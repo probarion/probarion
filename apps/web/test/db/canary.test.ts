@@ -108,7 +108,7 @@ const logs = quietLogs();
 
 describe("runAttempt", () => {
   let pg: PGlite;
-  let tenant: { tenant_id: string; vault_id: string };
+  let tenant: CanaryDeps["tenant"];
 
   beforeAll(async () => {
     pg = await freshDb();
@@ -119,6 +119,7 @@ describe("runAttempt", () => {
         kind: "canary",
       }),
       vault_id: "canary.vaults.probarion.near",
+      network: "mainnet",
     };
   });
   afterAll(async () => {
@@ -183,6 +184,17 @@ describe("runAttempt", () => {
   /** The arguments of the first call of a mocked function. */
   const firstCall = <F extends (...args: never[]) => unknown>(f: F): Parameters<F> =>
     at(vi.mocked(f).mock.calls) as Parameters<F>;
+
+  it("opens the attempt's row with the network of the Canary vault, whichever it is", async () => {
+    for (const [n, network] of [
+      [3, "mainnet"],
+      [5, "testnet"],
+    ] as const) {
+      const { d } = deps({ tenant: { ...tenant, network } });
+      expect((await runAttempt(d, input(other(n)))).status).toBe("done");
+    }
+    expect((await rows()).map((r) => r.network)).toEqual(["mainnet", "testnet"]);
+  });
 
   it("in live mode sends a code-refused 'pay' proposal to the contract once its dry run refuses it, and records the contract's refusal code", async () => {
     // Mandate 1 exists; 300 USDC is over its 5 USDC cap: the contract refuses for a real reason, not for a missing mandate.

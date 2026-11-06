@@ -361,10 +361,13 @@ describe("the rules of the challenge", () => {
     expect(data).toBe(
       "Your message goes to a private model on NEAR AI Cloud. We store a sha256 hash of it, not the text, plus technique labels and the on-chain result. Your IP address and cookie are stored only as keyed hashes, for rate limits. Do not submit personal data.",
     );
-    const counted = strings(rules.find((r) => r.title === "How you are counted.")?.body).join("");
-    expect(counted).toBe(
-      "You are a challenge participant, not a customer. These numbers are kept apart from the product's own.",
+    const counted = rules.find((r) => r.title === "How you are counted.")?.body ?? [];
+    expect(counted.map((p) => (typeof p === "string" ? p : p.text)).join("")).toBe(
+      "You are a challenge participant, not a customer. The Usage page counts you apart from the product's own users.",
     );
+    // The words "Usage page" are the link, and the page it names is built.
+    expect(links(counted)).toEqual([{ text: "Usage page", href: "/usage" }]);
+    expect(PLANNED_ROUTES).not.toContain("/usage");
   });
 
   it("ends with a sentence that is true on its own, not a note to the team", () => {

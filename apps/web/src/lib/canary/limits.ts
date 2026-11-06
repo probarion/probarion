@@ -2,6 +2,11 @@ import { PROPOSAL_MAX_TOKENS } from "@probarion/core";
 import type { Db } from "@/lib/db/port";
 import { takeToken } from "@/lib/ratelimit";
 
+/** Window lengths of the Canary's limiters, in seconds. None is over a day (ratelimit.test.ts): the daily cron prunes older rows. */
+export const RAW_GLOBAL_WINDOW_S = 3600;
+export const ATTEMPT_HOUR_WINDOW_S = 3600;
+export const ATTEMPT_DAY_WINDOW_S = 86_400;
+
 /** Spec §14.3 and §21 abuse controls. The model's own request limits (per IP, global) are `LIMITS.canaryModel*`. */
 export const CANARY_LIMITS = {
   maxTextChars: 4000,
@@ -109,7 +114,10 @@ export async function claimRawSlot(
   if (!(await takeToken(db, `canary:raw:cookie:${v.visitorHash}`, 1, window)).allowed) {
     return "visitor_limit";
   }
-  if (!(await takeToken(db, "canary:raw:global", CANARY_LIMITS.rawGlobalPerHour, 3600)).allowed) {
+  if (
+    !(await takeToken(db, "canary:raw:global", CANARY_LIMITS.rawGlobalPerHour, RAW_GLOBAL_WINDOW_S))
+      .allowed
+  ) {
     return "global_limit";
   }
   return null;
@@ -134,23 +142,26 @@ export async function takeAttemptSlot(
     db,
     `canary:attempts:ip:${ipHash}`,
     CANARY_LIMITS.attemptsPerIpPerHour,
-    3600,
+    ATTEMPT_HOUR_WINDOW_S,
   );
-  if (!mine.allowed) return { ok: false, retryAfterS: retryAfter(mine.reset_at, 3600) };
+  if (!mine.allowed)
+    return { ok: false, retryAfterS: retryAfter(mine.reset_at, ATTEMPT_HOUR_WINDOW_S) };
   const hour = await takeToken(
     db,
     "canary:attempts:hour",
     CANARY_LIMITS.attemptsGlobalPerHour,
-    3600,
+    ATTEMPT_HOUR_WINDOW_S,
   );
-  if (!hour.allowed) return { ok: false, retryAfterS: retryAfter(hour.reset_at, 3600) };
+  if (!hour.allowed)
+    return { ok: false, retryAfterS: retryAfter(hour.reset_at, ATTEMPT_HOUR_WINDOW_S) };
   const day = await takeToken(
     db,
     "canary:attempts:day",
     CANARY_LIMITS.attemptsGlobalPerDay,
-    86_400,
+    ATTEMPT_DAY_WINDOW_S,
   );
-  if (!day.allowed) return { ok: false, retryAfterS: retryAfter(day.reset_at, 86_400) };
+  if (!day.allowed)
+    return { ok: false, retryAfterS: retryAfter(day.reset_at, ATTEMPT_DAY_WINDOW_S) };
   return { ok: true };
 }
 

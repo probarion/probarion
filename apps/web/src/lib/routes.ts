@@ -5,7 +5,6 @@
  * Patterns are `src/app` routes, so `[vault]` stands for any vault.
  */
 export const PLANNED_ROUTES: readonly string[] = [
-  "/open",
   "/security",
   "/status",
   "/terms",
@@ -27,7 +26,7 @@ export const SITE_NAV: readonly NavItem[] = [
   { route: "/console", label: "Console" },
   { route: "/proof", label: "Proof" },
   { route: "/canary", label: "Canary" },
-  { route: "/open", label: "Open metrics" },
+  { route: "/usage", label: "Usage" },
   { route: "/security", label: "Security" },
   { route: "/status", label: "Status" },
 ];

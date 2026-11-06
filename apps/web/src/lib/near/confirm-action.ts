@@ -3,13 +3,9 @@
 import { getSession } from "@/lib/auth/guard";
 import { serviceDb } from "@/lib/db/clients";
 import { rateLimitOr429 } from "@/lib/http";
+import { LIMITS } from "@/lib/ratelimit";
 import { confirmTx, currentFinalHeight } from "./confirm";
 import { type ConfirmRequest, isTxHash, type TxResult } from "./outcome";
-
-/** Per signed-in account: reading the chain costs us an RPC call. */
-const PER_ACCOUNT = [30, 60] as const;
-/** All accounts together, on top of the per-account cap. */
-const GLOBAL = [300, 60] as const;
 
 /**
  * Two separate pairs of caps, so a send costs ONE token of the confirmation caps (its confirmation) and
@@ -30,10 +26,13 @@ async function admit(caps: {
   const session = await getSession();
   if (session === null) return "Sign in again to confirm this transaction here";
   const db = serviceDb();
-  if ((await rateLimitOr429(db, `${caps.account}:${session.accountId}`, PER_ACCOUNT)) !== null) {
+  if (
+    (await rateLimitOr429(db, `${caps.account}:${session.accountId}`, LIMITS.confirmPerAccount)) !==
+    null
+  ) {
     return "Too many confirmations just now";
   }
-  if ((await rateLimitOr429(db, caps.all, GLOBAL)) !== null) {
+  if ((await rateLimitOr429(db, caps.all, LIMITS.confirmGlobal)) !== null) {
     return "The console is busy confirming transactions";
   }
   return { accountId: session.accountId };

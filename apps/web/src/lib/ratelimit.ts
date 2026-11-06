@@ -6,6 +6,13 @@ export interface RateDecision {
   reset_at: string;
 }
 
+/**
+ * The longest a rate-limit window may be, in seconds. The daily cron deletes the rows of the limiter that began more than
+ * this long ago (rate_limits_prune, migration 0009), which is safe only because no window is longer: a row that old
+ * belongs to a window that is over. ratelimit.test.ts holds every window to it.
+ */
+export const RATE_LIMIT_KEEP_S = 86_400;
+
 /** [max hits, window seconds] per public endpoint. Canary on-chain limits live in canary/limits.ts. */
 export const LIMITS = {
   authChallenge: [20, 60],
@@ -20,6 +27,10 @@ export const LIMITS = {
   canaryModelGlobal: [300, 3600],
   telegramWebhook: [120, 60],
   alertTest: [5, 600],
+  /** The console's server actions that read the chain for a signed-in account (lib/near/confirm-action.ts). */
+  confirmPerAccount: [30, 60],
+  /** All accounts together, on top of the per-account cap. */
+  confirmGlobal: [300, 60],
 } as const satisfies Record<string, readonly [number, number]>;
 
 /**

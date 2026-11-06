@@ -71,7 +71,7 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
   quietLogs();
   let pg: PGlite;
   let server: FakeRpcServer;
-  let tenant: { tenant_id: string; vault_id: string };
+  let tenant: { tenant_id: string; vault_id: string; network: "mainnet" | "testnet" };
   let store: SupabaseLedgerStore;
   let silent: Server;
   let silentUrl = "";
@@ -96,7 +96,7 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
       owner: "owner.testnet",
       approvers: [],
     });
-    tenant = { tenant_id, vault_id: SCENARIO_VAULT };
+    tenant = { tenant_id, vault_id: SCENARIO_VAULT, network: "testnet" };
     for (const [purpose, pair] of [
       ["agent", TEST_KEYS.agent],
       ["ledger", TEST_KEYS.ledger],

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/guard";
 import { makeCanaryProbarion } from "@/lib/canary/probarion";
 import { runAttempt } from "@/lib/canary/service";
+import type { Network } from "@/lib/config";
 import { masterKey, subkey } from "@/lib/crypto/server";
 import { keyedHashHex } from "@/lib/crypto/sodium";
 import { serviceDb } from "@/lib/db/clients";
@@ -72,6 +73,7 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
   const found = await db.rpc<{
     tenant_id: string;
     vault_id: string;
+    network: Network;
     kind: string;
     proof_public: boolean;
   } | null>("tenant_by_vault", { vault_id: env.CANARY_VAULT_ID });
@@ -82,7 +84,7 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
     log.error("canary.public_ledger", { request_id: requestId, tenant: found.tenant_id });
     return problem(503, "not_ready");
   }
-  const tenant = { tenant_id: found.tenant_id, vault_id: found.vault_id };
+  const tenant = { tenant_id: found.tenant_id, vault_id: found.vault_id, network: found.network };
 
   const visitorKey = await subkey("visitor");
   const ipHash = await keyedHashHex(visitorKey, `ip:${clientIp(req.headers)}`);

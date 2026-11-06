@@ -53,7 +53,7 @@ The lead judge's framing, "Cross-chain markets and confidential AI are NEAR" **[
 | **Agent builder** | Developer of any agent: their own, IronClaw, Claude via MCP, other hackathon teams | "Give my agent a payment ability that a customer's security team will approve." | `@probarion/sdk`, CLI, MCP server, docs |
 | **Approver** | Co-founder, finance lead, DAO council member | "Approve payments over a threshold from my own wallet." | Console approval screen |
 | **Payee** | Vendor, contractor, API provider, on NEAR or Base | Gets paid exactly as mandated | None needed; optional receipt page |
-| **Verifier** | Auditor, judge, curious user | "Prove what the agent did and why." | `probarion verify`, `/proof`, `/open` |
+| **Verifier** | Auditor, judge, curious user | "Prove what the agent did and why." | `probarion verify`, `/proof`, `/usage` |
 
 ## 4. Product surfaces
 
@@ -63,7 +63,7 @@ The lead judge's framing, "Cross-chain markets and confidential AI are NEAR" **[
    - **Console** for owners and approvers.
    - **Payables**, the reference AP agent: it reads invoices and pays within mandates.
    - **`/proof`**, which reads a vault's events, burn memos and attestations live from RPC.
-   - **`/open`**, live public metrics with team and external usage kept separate.
+   - **`/usage`**, live public usage counts, with team, external owners and Canary participants kept separate.
    - **`/canary`**, the public challenge in §14.3.
    - **`/docs`**, **`/status`**, **`/security`**.
 4. **Probarion Canary**: a public mainnet vault, run by a deliberately gullible agent, that anyone may try to trick into paying them.
@@ -342,7 +342,7 @@ The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
 
 ### 14.5 Honesty rules for metrics
 
-- `/open` always separates team, external owners and Canary participants.
+- `/usage` always separates team, external owners and Canary participants.
 - No volume figures that come from the team paying itself.
 - Testimonials only with written consent.
 
@@ -350,7 +350,7 @@ The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
 
 - **Open-source core (MIT):** contracts, SDK, CLI, MCP and verifier.
 - **Probarion Cloud (hosted):** free during the beta. Planned pricing, shown as "planned" and not live: Free (1 vault, up to $1k mandated per month), Team ($49/month), and Scale (usage-based).
-- **Costs to track from Day 1:** NEAR AI Cloud tokens per decision, hosting, RPC, and gas per spend. They are published on `/open` so the unit economics are visible.
+- **Costs to track from Day 1:** NEAR AI Cloud tokens per decision, hosting, RPC, and gas per spend. They are published on `/usage` so the unit economics are visible.
 - **After the hackathon, 30/60/90 days:**
   - 30 days: third-party audit, factory v2 on global contracts, Solana payouts.
   - 60 days: approvals through Trezu/Sputnik roles, verification of signed 1Click quotes on-chain (mode B), unlinkable payouts through Confidential Intents once access is granted.
@@ -376,7 +376,7 @@ The full sequence is in **[Report §8, "Vòng lặp agent"]**. In short:
 
 | Tier | Contents |
 |---|---|
-| **MVP (by Day 10)** | Vault on mainnet (NEAR payee and Base payee via Intents). Factory, or white-glove vault creation by CLI if the factory slips. Attested decisions. Ledger and verifier (a)–(i). SDK v0.1 on npm. CLI. Console plus Payables. `/proof`, `/open`, `/canary` (or a static attack replay). Eval set of 60 invoices. README v1 |
+| **MVP (by Day 10)** | Vault on mainnet (NEAR payee and Base payee via Intents). Factory, or white-glove vault creation by CLI if the factory slips. Attested decisions. Ledger and verifier (a)–(i). SDK v0.1 on npm. CLI. Console plus Payables. `/proof`, `/usage`, `/canary` (or a static attack replay). Eval set of 60 invoices. README v1 |
 | **MVP+ (Days 11–12)** | MCP server, `near/agent-skills` PR, pilot onboarding, owner alerts, status page, runbooks, docs site |
 | **Stretch** | Solana payouts, mode B (on-chain quote verification), Confidential Intents payouts, Agent Market listing, Trezu/Sputnik approver, gas keys, an executor on OutLayer |
 
@@ -413,7 +413,7 @@ The dates are UTC days; the builder works in UTC+7. Detailed tasks will be in th
 | 6 | Nov 6 | NEAR AI Cloud attestation binding, verifier (e), fixtures, rules-only fallback |
 | 7 | Nov 7 | Factory (testnet, then mainnet); spike S9 decides global contract vs embedded wasm. **SDK v0.1.0 and CLI on npm. Announcement to hackathon builders** |
 | 8 | Nov 8 | Console: near-connect login, create vault through the factory, mandates (NEAR and Base), approvals, Intents top-up flow with a signed-quote check. Payables cycle end to end |
-| 9 | Nov 9 | **Canary live**, eval set (60 invoices) with results committed, `/proof`, `/open` |
+| 9 | Nov 9 | **Canary live**, eval set (60 invoices) with results committed, `/proof`, `/usage` |
 | **10** | **Nov 10** | **Checkpoint:** freeze vault code; publish the global code (or final wasm); demo vault; full mainnet flow; one Base payout; one attested decision verified on a clean clone; README v1; video dry-run |
 | 11 | Nov 11 | MCP server, `agent-skills` PR, pilot onboarding, owner alerts |
 | 12 | Nov 12 | Hardening and operations: status page, Sentry, RPC failover, rate limits, `RUNBOOK.md`, `SECURITY.md`, security review, gitleaks |
@@ -432,7 +432,7 @@ The dates are UTC days; the builder works in UTC+7. Detailed tasks will be in th
 | **You** | Pilot outreach and the waitlist (`prep/pilot-outreach.md`) |
 | **Claude** | Write the implementation plan from this spec (task-level, test-first) |
 | **Claude, with you running mainnet steps** | Throwaway spikes in a separate, clearly labeled repo (`near-learning-spikes-oct2026`). None of this code is copied into the product repo, and the README discloses the repo. Priority: **S0** cross-chain route; **S1** contract → `intents.near` `ft_withdraw` with a `WITHDRAW_TO:` memo; **S2** attestation binding; **S9** whether a factory can create a sub-account that uses a global contract by hash, from near-sdk 5.29.1, on mainnet |
-| **Claude** | Draft the eval dataset schema, the demo script, the copy for the Canary rules, the `/open` metric definitions, and the terms and privacy drafts |
+| **Claude** | Draft the eval dataset schema, the demo script, the copy for the Canary rules, the `/usage` metric definitions, and the terms and privacy drafts |
 
 ## 20. Decisions you still need to make
 

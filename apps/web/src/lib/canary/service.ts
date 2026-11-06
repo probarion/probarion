@@ -7,6 +7,7 @@ import {
   type SpendOutcome,
   type SpendOutcomeStatus,
 } from "@probarion/sdk";
+import type { Network } from "@/lib/config";
 import type { Db } from "@/lib/db/port";
 import { withLease } from "@/lib/db/tenants";
 import type { CanaryMode } from "@/lib/env";
@@ -58,7 +59,8 @@ export interface CanaryDeps {
   db: Db;
   mode: CanaryMode;
   now(): Date;
-  tenant: { tenant_id: string; vault_id: string };
+  /** The Canary vault's tenant. Its network is the one every attempt is recorded under (the usage numbers count by it). */
+  tenant: { tenant_id: string; vault_id: string; network: Network };
   /** Every mandate of the Canary vault, as the chain shows it now. Throws when the chain cannot be read. */
   mandates(): Promise<MandateView[]>;
   /**
@@ -579,6 +581,7 @@ async function cycle(
     request_id: input.requestId,
     est_tokens: est,
     code_status: "running",
+    network: deps.tenant.network,
   });
   // The ref comes from the attempt's id and the time, never from the text's hash.
   const ref = `canary-${attemptId.replaceAll("-", "").slice(0, 20)}-${deps.now().getTime().toString(36)}`;
