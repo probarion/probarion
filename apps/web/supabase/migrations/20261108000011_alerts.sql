@@ -12,15 +12,21 @@
 --
 -- 1. No flood of history (R2). A vault's first watch records everything it ever did, observed now, and an owner who
 --    subscribed before that would get one message per old spend. So tenants.watch_caught_up_at says when a run first
---    finished its cursors (tenant_watch_cursor_set with a cursor; a touch does not count), and a vault_events row is
---    written with initial = true while its tenant has not caught up. alerts_pending sends an initial event only when it
---    is still true: a low key or a low vault, or a hold whose window is still open (an approval is still possible). A
---    vault that already finished a run before this migration is marked as caught up here: a cursor past 0 proves it.
---    A first run that fails part way writes no cursor, so the next run's events are flagged too.
+--    read everything, and a vault_events row is written with initial = true while its tenant has not caught up.
+--    alerts_pending sends an initial event only when it is still true: a low key or a low vault, or a hold whose window
+--    is still open (an approval is still possible). "Read everything" is the watcher's word, not the cursors': a run
+--    caps what it reads (1,000 rows of each list, 500 ledger entries), so a vault with more history takes several runs,
+--    and the runs before the last one have moved their cursors without having caught up. tenant_watch_cursor_set sets
+--    the column only when it is called with caught_up = true, which the watcher does when every list ended on a short
+--    page and the ledger answered fewer than 500 entries. A cursor, a touch, or caught_up = false leave it alone. A run
+--    that fails part way writes no cursor, so the next run's events are flagged too. No vault is marked here, not even
+--    one that already ran under 0010: a cursor past 0 could be the end of a short list or the cap of a long one, so the
+--    first run after this migration decides, and the events it records are history to the alerts.
 -- 2. The rules of alerts_pending. A subscription gets an event of a kind it chose, observed after the subscription was
 --    made and within the last 24 hours, never one it already has (sent, in flight, or failed 3 times). A failed send
---    comes back up to 3 attempts in all; a send that has been `sending` for 2 minutes (a run that died) is taken again,
---    also up to 3 attempts. A Canary vault never alerts `refused_by_contract`: in live mode every visitor attempt makes one.
+--    comes back up to 3 attempts in all, each after 5 minutes for every attempt so far (a short outage does not use up
+--    all three at once); a send that has been `sending` for 2 minutes (a run that died) is taken again, also up to 3
+--    attempts. A Canary vault never alerts `refused_by_contract`: in live mode every visitor attempt makes one.
 -- 3. alert_claim fences a send. It takes a row only for a subscription that is still active and confirmed, and answers the
 --    attempt number; alert_mark needs that number, so a run that was taken over cannot overwrite the run that has the claim.
 -- 4. Codes. A link code (email or Telegram) works once and for 24 hours, then it is gone. alert_link_peek reads one
@@ -31,11 +37,6 @@ alter table public.tenants add column watch_caught_up_at timestamptz;
 alter table public.vault_events add column initial boolean not null default false;
 -- alerts_pending looks only at the last 24 hours of events.
 create index vault_events_observed_at_idx on public.vault_events (observed_at);
-
--- A vault that already finished a run: a cursor past 0 is the proof (a vault with nothing in it stays null until its next run).
-update public.tenants set watch_caught_up_at = watch_last_at
-  where watch_last_at is not null
-    and (watch_spend_from > 0 or watch_mandate_from > 0 or watch_anchor_from > 0 or watch_ledger_seq > 0);
 
 -- 0010's vault_event_insert, with `initial` set from the tenant's watch_caught_up_at.
 create or replace function public.vault_event_insert(p jsonb) returns jsonb
@@ -65,7 +66,8 @@ begin
   return jsonb_build_object('inserted', v_inserted);
 end $$;
 
--- 0010's tenant_watch_cursor_set, which also marks the vault as caught up the first time a cursor is given.
+-- 0010's tenant_watch_cursor_set, which also takes caught_up (true or false, optional): true marks the vault as caught up
+-- (once, the first time), anything else leaves the mark alone. Cursors and the touch work as in 0010.
 create or replace function public.tenant_watch_cursor_set(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
 declare
@@ -79,23 +81,27 @@ begin
      or (p->>'ledger_seq' is not null and p->>'ledger_seq' !~ '^[0-9]{1,9}$') then
     raise exception 'invalid_input';
   end if;
+  if jsonb_typeof(p->'caught_up') not in ('boolean', 'null') then
+    raise exception 'invalid_input';
+  end if;
   update public.tenants set
       watch_spend_from = coalesce((p->>'spend_from')::bigint, watch_spend_from),
       watch_mandate_from = coalesce((p->>'mandate_from')::bigint, watch_mandate_from),
       watch_anchor_from = coalesce((p->>'anchor_from')::bigint, watch_anchor_from),
       watch_ledger_seq = coalesce((p->>'ledger_seq')::integer, watch_ledger_seq),
       watch_caught_up_at = case
-        when p->>'spend_from' is not null or p->>'mandate_from' is not null
-             or p->>'anchor_from' is not null or p->>'ledger_seq' is not null
-        then coalesce(watch_caught_up_at, now()) else watch_caught_up_at end,
+        when p->>'caught_up' = 'true' then coalesce(watch_caught_up_at, now()) else watch_caught_up_at end,
       watch_last_at = now()
     where id = v_tenant
     returning id into v_id;
   return case when v_id is null then null else jsonb_build_object('tenant_id', v_id) end;
 end $$;
 
--- A new subscription: { tenant_id, channel, created_by, target? (email only), kinds? }. Answers { id, link_code }. The
--- link code is 122 random bits. `kinds` is left to the table's default unless it is an array, and an array may hold only the
+-- A new subscription: { tenant_id, channel, created_by, target? (email only), kinds? }. Answers { id, link_code }. An email
+-- target is one address, lower-cased: at most 254 characters, one @, a local part of 1 to 64 printable ASCII characters
+-- with none of , ; < > " ' ( ) or a backslash (nothing a mailer reads as a list, a display name or a comment), and a
+-- domain of dot-separated labels of letters, digits and inner hyphens. The 0001 check on the table stays as it was and is
+-- looser. The link code is 122 random bits. `kinds` is left to the table's default unless it is an array, and an array may hold only the
 -- kinds of the vault_events check (a test holds the two lists together). A vault keeps at most 20 live subscriptions; the
 -- vault's unconfirmed ones whose link has expired are dropped first, so they do not count.
 create or replace function public.alert_subscription_create(p jsonb) returns jsonb
@@ -111,7 +117,11 @@ begin
   if v_channel is null or v_channel not in ('telegram', 'email') or coalesce(p->>'created_by', '') = '' then
     raise exception 'invalid_input';
   end if;
-  if v_channel = 'email' and (v_target is null or length(v_target) > 254 or v_target !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$') then
+  if v_channel = 'email' and (
+       v_target is null or length(v_target) > 254 or v_target !~ '^[^@]{1,64}@[^@]+$'
+       or split_part(v_target, '@', 1) !~ '^[\x21-\x7e]+$'
+       or split_part(v_target, '@', 1) ~ '[,;<>"''()\\]'
+       or split_part(v_target, '@', 2) !~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$') then
     raise exception 'invalid_input';
   end if;
   if jsonb_typeof(p->'kinds') = 'array' then
@@ -195,15 +205,23 @@ language sql stable set search_path = public, pg_temp as $$
      and a.created_at > now() - interval '24 hours'
 $$;
 
--- The console's list: { tenant_id } -> the vault's live subscriptions, oldest first. Live is active and either confirmed or
--- waiting inside its 24 hours. It has the address (the page is for members), and never a link code.
+-- The console's list: { tenant_id, full? } -> the vault's live subscriptions, oldest first. Live is active and either
+-- confirmed or waiting inside its 24 hours. The target is masked (an address as its first letter, three bullets and its
+-- domain; a chat as four bullets and its last 2 digits) unless full is the JSON true, which the page asks only for an owner
+-- or an approver. It never has a link code.
 create or replace function public.alert_subscriptions_list(p jsonb) returns jsonb
 language plpgsql stable set search_path = public, pg_temp as $$
 declare
   v_tenant uuid := public.agent_key_uuid(p->>'tenant_id');
+  v_full boolean := coalesce(p->'full' = 'true'::jsonb, false);
 begin
   return (
-    select coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'channel', a.channel, 'target', a.target,
+    select coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'channel', a.channel,
+                                                 'target', case
+                                                   when v_full or a.target is null then a.target
+                                                   when a.channel = 'email' then left(split_part(a.target, '@', 1), 1)
+                                                     || repeat(chr(8226), 3) || '@' || split_part(a.target, '@', 2)
+                                                   else repeat(chr(8226), 4) || right(a.target, 2) end,
                                                  'kinds', to_jsonb(a.kinds), 'verified_at', a.verified_at,
                                                  'created_at', a.created_at) order by a.created_at, a.id), '[]'::jsonb)
       from public.alert_subscriptions a
@@ -290,14 +308,15 @@ begin
                    else false end))
         and not (t.kind = 'canary' and e.kind = 'refused_by_contract')
         and (a.id is null
-             or (a.attempts < 3 and (a.status = 'failed'
+             or (a.attempts < 3 and ((a.status = 'failed' and a.updated_at < now() - interval '5 minutes' * a.attempts)
                                      or (a.status = 'sending' and a.updated_at < now() - interval '2 minutes'))))
       order by e.id, s.id
       limit v_limit) x);
 end $$;
 
 -- The only way to a send: { subscription_id, vault_event_id } -> { claimed, id, attempt }. A new row is claimed at once. An
--- existing one only when it failed or has been `sending` for 2 minutes, and under 3 attempts, which counts the claim. Two
+-- existing one only when it failed (and 5 minutes for each attempt so far have passed) or has been `sending` for 2
+-- minutes, and under 3 attempts, which counts the claim. Two
 -- callers cannot both win. A subscription that was removed or never confirmed is not claimed.
 create or replace function public.alert_claim(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
@@ -317,7 +336,8 @@ begin
    where s.id = v_subscription and s.active and s.verified_at is not null
   on conflict (subscription_id, vault_event_id) do update
     set status = 'sending', attempts = a.attempts + 1, updated_at = now()
-    where a.attempts < 3 and (a.status = 'failed' or (a.status = 'sending' and a.updated_at < now() - interval '2 minutes'))
+    where a.attempts < 3 and ((a.status = 'failed' and a.updated_at < now() - interval '5 minutes' * a.attempts)
+                              or (a.status = 'sending' and a.updated_at < now() - interval '2 minutes'))
   returning a.id, a.attempts into v_id, v_attempt;
   return jsonb_build_object('claimed', v_id is not null, 'id', v_id, 'attempt', v_attempt);
 end $$;

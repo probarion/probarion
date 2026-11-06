@@ -104,10 +104,12 @@ describe("formatAlert", () => {
   });
 
   describe("how to stop", () => {
-    it("ends a Telegram message with /stop and the console link", () => {
+    it("ends a Telegram message with /stop, said as what it does (every vault in the chat), and the console link", () => {
       const a = formatAlert(base, V, "mainnet", ORIGIN, "telegram");
       const last = a.text.split("\n").at(-1);
-      expect(last).toBe(`Stop or change alerts: send /stop, or open ${ORIGIN}/console/${V}/alerts`);
+      expect(last).toBe(
+        `Stop or change alerts: send /stop to stop alerts for every vault in this chat, or open ${ORIGIN}/console/${V}/alerts`,
+      );
     });
 
     it("ends an email with the stop link and the console link", () => {
@@ -125,6 +127,16 @@ describe("formatAlert", () => {
   });
 
   describe("text that somebody else chose (R8)", () => {
+    it("makes a message whatever shape the payload has: an event row can hold null, a list or a string there", () => {
+      for (const payload of [null, [], "x", 7, undefined, { public_key: null }]) {
+        for (const kind of ["allowance_low", "near_low", "spend_held", "spend_paid", "anchor"]) {
+          const a = formatAlert({ ...base, kind, payload: payload as never }, V, "mainnet", ORIGIN);
+          expect(a.subject, `${kind} ${JSON.stringify(payload)}`).toContain(V);
+          expect(a.text).not.toContain("undefined");
+        }
+      }
+    });
+
     it("never carries a spend's ref or memo, in the subject or the text, for any kind", () => {
       const payload = {
         ref: HOSTILE,

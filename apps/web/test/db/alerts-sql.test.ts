@@ -145,6 +145,18 @@ describe("the alerts SQL", () => {
       });
     });
 
+    it("takes an address with the usual local-part characters, a plus tag and a subdomain", async () => {
+      for (const target of [
+        "a.b+tag@mail.example.co.uk",
+        "first_last-1@x-y.example.com",
+        "a!b#c@example.io",
+      ]) {
+        expect((await row((await create({ channel: "email", target })).id)).target, target).toBe(
+          target,
+        );
+      }
+    });
+
     it("keeps no target for a Telegram subscription, whatever was sent", async () => {
       const { id } = await create({ target: "someone@example.com" });
       expect((await row(id)).target).toBeNull();
@@ -160,6 +172,26 @@ describe("the alerts SQL", () => {
         { channel: "email", target: "a@b" },
         { channel: "email", target: `${"a".repeat(250)}@example.com` },
         { channel: "email", target: "a b@example.com" },
+        // one address and only one: nothing a mailer reads as a list, a display name or a comment
+        { channel: "email", target: "a@b.co,victim@x.co" },
+        { channel: "email", target: "a@b.co;victim@x.co" },
+        { channel: "email", target: "<a@b.co>" },
+        { channel: "email", target: "Name <a@b.co>" },
+        { channel: "email", target: '"a"@b.co' },
+        { channel: "email", target: "a(c)@b.co" },
+        { channel: "email", target: "a\\b@c.co" },
+        { channel: "email", target: "a\u0007@b.co" }, // a NUL cannot get here: jsonb refuses it first
+        { channel: "email", target: "a@b@c.co" },
+        { channel: "email", target: "@b.co" },
+        { channel: "email", target: "a@.co" },
+        { channel: "email", target: "a@b..co" },
+        { channel: "email", target: "a@b.co." },
+        { channel: "email", target: "a@-b.co" },
+        { channel: "email", target: "a@b_c.co" },
+        { channel: "email", target: "a@b.c o" },
+        { channel: "email", target: "a@b.co\nx@y.zz" },
+        { channel: "email", target: `${"a".repeat(65)}@example.com` },
+        { channel: "email", target: "\u00e9@example.com" },
         { created_by: "" },
         { created_by: null },
         { tenant_id: "nope" },
@@ -341,6 +373,7 @@ describe("the alerts SQL", () => {
       await verify({ link_code: b.link_code });
       const list = await db().rpc<Record<string, unknown>[]>("alert_subscriptions_list", {
         tenant_id: tenant,
+        full: true,
       });
       expect(list.map((s) => s.id)).toEqual([a.id, b.id]);
       expect(list[0]).toMatchObject({
@@ -358,6 +391,40 @@ describe("the alerts SQL", () => {
         "verified_at",
       ]);
       expect(JSON.stringify(list)).not.toContain(a.link_code);
+    });
+
+    it("masks every target unless it is asked for in full: an address to its first letter and domain, a chat to its last 2 digits", async () => {
+      await create({ channel: "email", target: "Finance@Example.com" });
+      await create({ channel: "email", target: "x@y.co" });
+      const tg = await create();
+      await verify({ link_code: tg.link_code });
+      const targets = async (p: Record<string, unknown>) =>
+        (
+          await db().rpc<{ target: string | null }[]>("alert_subscriptions_list", {
+            tenant_id: tenant,
+            ...p,
+          })
+        ).map((s) => s.target);
+      const dots = "\u2022";
+      for (const p of [{}, { full: false }, { full: "yes" }, { full: 1 }]) {
+        expect(await targets(p), JSON.stringify(p)).toEqual([
+          `f${dots.repeat(3)}@example.com`,
+          `x${dots.repeat(3)}@y.co`,
+          `${dots.repeat(4)}${CHAT.slice(-2)}`,
+        ]);
+      }
+      expect(await targets({ full: true })).toEqual(["finance@example.com", "x@y.co", CHAT]);
+    });
+
+    it("leaves an unlinked Telegram target null, masked or not", async () => {
+      await create();
+      for (const p of [{}, { full: true }]) {
+        const [s] = await db().rpc<{ target: string | null }[]>("alert_subscriptions_list", {
+          tenant_id: tenant,
+          ...p,
+        });
+        expect(s?.target).toBeNull();
+      }
     });
 
     it("leaves out removed subscriptions, unconfirmed ones whose link expired, and other vaults'", async () => {
@@ -584,6 +651,41 @@ describe("the alerts SQL", () => {
       }
     });
 
+    it("takes a failed claim again only after 5 minutes for each attempt so far, and never past 3 attempts", async () => {
+      const { sub, event } = await pending();
+      const failIt = async (c: { id: number | null; attempt: number | null }) =>
+        db().rpc("alert_mark", { id: c.id, attempt: c.attempt, status: "failed", error: "x" });
+      const age = (minutes: number) =>
+        pg.query("update alerts_sent set updated_at = now() - ($1 || ' minutes')::interval", [
+          String(minutes),
+        ]);
+      const c1 = await claim(sub, event);
+      await failIt(c1);
+      await age(4);
+      expect(await claim(sub, event)).toMatchObject({ claimed: false }); // 4 < 5 x 1
+      await age(6);
+      const c2 = await claim(sub, event);
+      expect(c2).toMatchObject({ claimed: true, attempt: 2 }); // 6 > 5 x 1
+      await failIt(c2);
+      await age(9);
+      expect(await claim(sub, event)).toMatchObject({ claimed: false }); // 9 < 5 x 2
+      await age(11);
+      const c3 = await claim(sub, event);
+      expect(c3).toMatchObject({ claimed: true, attempt: 3 }); // 11 > 5 x 2
+      await failIt(c3);
+      await age(600);
+      expect(await claim(sub, event)).toMatchObject({ claimed: false }); // 3 attempts is the end
+    });
+
+    it("keeps the stuck-claim rule as it was: 2 minutes, whatever the attempt", async () => {
+      const { sub, event } = await pending();
+      await claim(sub, event);
+      await pg.query("update alerts_sent set updated_at = now() - interval '3 minutes'");
+      expect(await claim(sub, event)).toMatchObject({ claimed: true, attempt: 2 });
+      await pg.query("update alerts_sent set updated_at = now() - interval '3 minutes'");
+      expect(await claim(sub, event)).toMatchObject({ claimed: true, attempt: 3 });
+    });
+
     it("refuses a claim that is not one", async () => {
       for (const p of [
         { subscription_id: "nope", vault_event_id: 1 },
@@ -615,6 +717,38 @@ describe("the alerts SQL", () => {
       }
       expect(await db().rpc("alerts_pending", { network: "mainnet" })).toEqual([]);
       expect(await db().rpc("alerts_pending", { network: "testnet", limit: 5 })).toEqual([]);
+    });
+
+    it("lists a failed alert again only once 5 minutes for each attempt so far have passed", async () => {
+      const { id, link_code } = await create();
+      await verify({ link_code });
+      const e = await pg.query<{ id: string }>(
+        "insert into vault_events (tenant_id, event_key, kind, observed_at) values ($1, 'spend:1:held', 'spend_held', now() + interval '1 second') returning id",
+        [tenant],
+      );
+      const event = at(e.rows).id;
+      await pg.query(
+        "insert into alerts_sent (subscription_id, vault_event_id, status, attempts, updated_at) values ($1, $2, 'failed', 1, now())",
+        [id, event],
+      );
+      const listed = async (age: string, attempts: number, status = "failed") => {
+        await pg.query(
+          "update alerts_sent set updated_at = now() - $1::interval, attempts = $2, status = $3",
+          [age, attempts, status],
+        );
+        return (await db().rpc<unknown[]>("alerts_pending", { network: "mainnet" })).length;
+      };
+      expect(await listed("4 minutes", 1)).toBe(0);
+      expect(await listed("6 minutes", 1)).toBe(1);
+      expect(await listed("9 minutes", 2)).toBe(0);
+      expect(await listed("11 minutes", 2)).toBe(1);
+      expect(await listed("14 minutes", 3)).toBe(0); // three attempts is the end, however old
+      expect(await listed("2 days", 3)).toBe(0);
+      // a stuck claim is taken again after 2 minutes, as before
+      expect(await listed("1 minute", 1, "sending")).toBe(0);
+      expect(await listed("3 minutes", 1, "sending")).toBe(1);
+      expect(await listed("3 minutes", 2, "sending")).toBe(1);
+      expect(await listed("3 minutes", 3, "sending")).toBe(0);
     });
 
     it("hands over what dispatch needs for each pending alert, in event order, and nothing secret", async () => {
@@ -676,7 +810,7 @@ describe("the alerts SQL", () => {
         ).rows,
       ).at;
 
-    it("flags every event of a vault as history until a run has moved its cursors, and none after", async () => {
+    it("flags every event of a vault as history until a run says it read everything, and none after", async () => {
       await db().rpc("vault_event_insert", { events: [ev("a:1"), ev("a:2")] });
       await db().rpc("vault_event_insert", { events: [ev("a:3")] });
       expect(await flags()).toEqual([
@@ -684,24 +818,48 @@ describe("the alerts SQL", () => {
         { event_key: "a:2", initial: true },
         { event_key: "a:3", initial: true },
       ]);
-      await db().rpc("tenant_watch_cursor_set", { tenant_id: tenant, spend_from: 0 });
+      // a run that moved its cursors but stopped at a cap does not say it
+      await db().rpc("tenant_watch_cursor_set", { tenant_id: tenant, spend_from: 1000 });
       await db().rpc("vault_event_insert", { events: [ev("a:4")] });
-      expect(await flags()).toContainEqual({ event_key: "a:4", initial: false });
-      expect((await flags()).filter((f) => f.initial)).toHaveLength(3);
+      expect(await flags()).toContainEqual({ event_key: "a:4", initial: true });
+      await db().rpc("tenant_watch_cursor_set", {
+        tenant_id: tenant,
+        spend_from: 1200,
+        caught_up: true,
+      });
+      await db().rpc("vault_event_insert", { events: [ev("a:5")] });
+      expect(await flags()).toContainEqual({ event_key: "a:5", initial: false });
+      expect((await flags()).filter((f) => f.initial)).toHaveLength(4);
     });
 
     it("keeps the first row of a key: an event the first run wrote stays history when it is read again", async () => {
       await db().rpc("vault_event_insert", { events: [ev("a:1")] });
-      await db().rpc("tenant_watch_cursor_set", { tenant_id: tenant, ledger_seq: 3 });
+      await db().rpc("tenant_watch_cursor_set", {
+        tenant_id: tenant,
+        ledger_seq: 3,
+        caught_up: true,
+      });
       await db().rpc("vault_event_insert", { events: [ev("a:1")] });
       expect(await flags()).toEqual([{ event_key: "a:1", initial: true }]);
     });
 
-    it("sets when the vault caught up on the first run that moves a cursor, any cursor, and never moves it again", async () => {
+    it("sets when the vault caught up only on the run that says so, and never moves it again", async () => {
       expect(await caughtUp()).toBeNull();
       await db().rpc("tenant_watch_cursor_set", { tenant_id: tenant });
       expect(await caughtUp()).toBeNull(); // a touch only
       await db().rpc("tenant_watch_cursor_set", { tenant_id: tenant, anchor_from: 0 });
+      expect(await caughtUp()).toBeNull(); // cursors moved, nothing said
+      await db().rpc("tenant_watch_cursor_set", {
+        tenant_id: tenant,
+        ledger_seq: 500,
+        caught_up: false,
+      });
+      expect(await caughtUp()).toBeNull(); // said no
+      await db().rpc("tenant_watch_cursor_set", {
+        tenant_id: tenant,
+        anchor_from: 0,
+        caught_up: true,
+      });
       const first = await caughtUp();
       expect(first).not.toBeNull();
       await pg.query(
@@ -714,8 +872,19 @@ describe("the alerts SQL", () => {
         mandate_from: 1,
         anchor_from: 1,
         ledger_seq: 2,
+        caught_up: true,
       });
       expect(new Date(String(await caughtUp())).toISOString()).toBe("2026-01-01T00:00:00.000Z");
+    });
+
+    it("refuses a caught_up that is not true or false", async () => {
+      for (const caught_up of ["maybe", 1, "yes", {}, []]) {
+        await expect(
+          db().rpc("tenant_watch_cursor_set", { tenant_id: tenant, spend_from: 1, caught_up }),
+          JSON.stringify(caught_up),
+        ).rejects.toMatchObject({ code: "invalid_input" });
+      }
+      expect(await caughtUp()).toBeNull();
     });
 
     it("still moves the cursors and marks the vault as looked at, as 0010 does", async () => {
@@ -799,9 +968,9 @@ describe("the alerts SQL", () => {
   });
 });
 
-/** Migration 0011 on a database that has been running 0010: the vaults that already finished a run are caught up. */
+/** Migration 0011 on a database that has been running 0010: nobody is caught up until a run says it read everything. */
 describe("migration 0011 on a database that ran the watcher", () => {
-  it("marks a vault as caught up when it has finished a run (a cursor past 0), and leaves the others for their first run", async () => {
+  it("marks no vault as caught up, whatever its cursors say: only a run that read every list to its end does", async () => {
     const dir = fileURLToPath(new URL("../../supabase/migrations", import.meta.url));
     const files = readdirSync(dir)
       .filter((f) => f.endsWith(".sql"))
@@ -820,30 +989,23 @@ describe("migration 0011 on a database that ran the watcher", () => {
         await pg.query(`update tenants set ${set} where id = $1`, [at(r.rows).id]);
         return at(r.rows).id;
       };
-      const ran = await t(
+      // A cursor past 0 could be the end of a short list or the cap of a long one: the migration cannot tell.
+      await t(
         "ran.vaults.probarion.near",
-        "watch_spend_from = 4, watch_last_at = '2026-11-05T00:00:00Z'",
+        "watch_spend_from = 1000, watch_last_at = '2026-11-05T00:00:00Z'",
       );
-      const ledgerOnly = await t(
+      await t(
         "ledger.vaults.probarion.near",
-        "watch_ledger_seq = 2, watch_last_at = '2026-11-05T01:00:00Z'",
+        "watch_ledger_seq = 500, watch_last_at = '2026-11-05T01:00:00Z'",
       );
-      const touched = await t(
-        "touched.vaults.probarion.near",
-        "watch_last_at = '2026-11-05T02:00:00Z'",
-      );
-      const never = await t("never.vaults.probarion.near", "watch_ledger_seq = 0");
+      await t("touched.vaults.probarion.near", "watch_last_at = '2026-11-05T02:00:00Z'");
+      await t("never.vaults.probarion.near", "watch_ledger_seq = 0");
       await pg.exec(readFileSync(`${dir}/${files[last]}`, "utf8"));
-      const rows = await pg.query<{ id: string; at: string | null }>(
-        "select id, watch_caught_up_at as at from tenants",
+      const rows = await pg.query<{ at: string | null }>(
+        "select watch_caught_up_at as at from tenants",
       );
-      const caught = new Map(
-        rows.rows.map((r) => [r.id, r.at === null ? null : new Date(r.at).toISOString()]),
-      );
-      expect(caught.get(ran)).toBe("2026-11-05T00:00:00.000Z");
-      expect(caught.get(ledgerOnly)).toBe("2026-11-05T01:00:00.000Z");
-      expect(caught.get(touched)).toBeNull();
-      expect(caught.get(never)).toBeNull();
+      expect(rows.rows).toHaveLength(4);
+      expect(rows.rows.every((r) => r.at === null)).toBe(true);
     } finally {
       await pg.close();
     }

@@ -46,6 +46,10 @@ describe("every rate-limit window is at most a day, so the prune cannot reopen a
     }
   });
 
+  it("keeps the per-address confirmation window at exactly the longest a window may be, a day", () => {
+    expect(LIMITS.alertConfirmAddress).toEqual([3, RATE_LIMIT_KEEP_S]);
+  });
+
   it("covers the Canary's windows in limits.ts", () => {
     const canary = {
       rawVisitorWindowS: CANARY_LIMITS.rawVisitorWindowS,

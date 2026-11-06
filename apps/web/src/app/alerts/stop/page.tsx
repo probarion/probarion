@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
-import { Container } from "@/components/site/Container";
+import { PublicCard } from "@/components/site/PublicCard";
 import { inkPillClass } from "@/components/ui";
 import { parseStopParams, verifyStopToken } from "@/lib/alerts/stop";
 import { subkey } from "@/lib/crypto/server";
@@ -14,18 +13,6 @@ export const metadata: Metadata = {
 };
 export const dynamic = "force-dynamic";
 
-function Card({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <Container>
-      <div className="mx-auto my-6 max-w-lg rounded-3xl border border-line bg-surface p-6 sm:my-10 sm:p-8">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-small">Alerts</p>
-        <h1 className="mt-3 text-3xl font-light tracking-tight">{title}</h1>
-        {children}
-      </div>
-    </Container>
-  );
-}
-
 export default async function StopAlertsPage({
   searchParams,
 }: {
@@ -35,23 +22,23 @@ export default async function StopAlertsPage({
   const link = parseStopParams(query);
   if (link === null || !(await verifyStopToken(await subkey("alerts"), link.id, link.token))) {
     return (
-      <Card title="Stop alerts">
+      <PublicCard title="Stop alerts">
         <p className="mt-3 text-mute">This stop link is not valid.</p>
-      </Card>
+      </PublicCard>
     );
   }
   if (query.done === "1") {
     return (
-      <Card title="Alerts stopped.">
+      <PublicCard title="Alerts stopped.">
         <p className="mt-3 text-mute">
           You will get no more of these emails. To turn alerts on again, open the Alerts tab of the
           vault in the console.
         </p>
-      </Card>
+      </PublicCard>
     );
   }
   return (
-    <Card title="Stop these alerts?">
+    <PublicCard title="Stop these alerts?">
       {query.failed === "1" ? (
         <p className="mt-3 text-rose-800">
           The alerts could not be stopped right now. Try again in a minute.
@@ -67,6 +54,6 @@ export default async function StopAlertsPage({
           Stop alerts
         </button>
       </form>
-    </Card>
+    </PublicCard>
   );
 }

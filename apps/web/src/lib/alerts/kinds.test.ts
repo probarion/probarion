@@ -15,7 +15,7 @@ describe("kindsInWords", () => {
   it("says each kind of the default set in plain words, never as an id", () => {
     const text = kindsInWords(DEFAULT);
     expect(text).toBe(
-      "a spend waits for approval, the contract refuses a spend, a spend is paid, a payout goes out to Base, a payout fails, an agent key's gas allowance runs low and the vault's free NEAR runs low",
+      "a spend waits for approval, the contract refuses a spend, a spend is paid, a payout goes out to Base, a payout fails, an agent or ledger key's gas allowance runs low and the vault's free NEAR runs low",
     );
     expect(text).not.toMatch(/_/);
   });

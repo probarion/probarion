@@ -9,7 +9,7 @@ const WORDS: readonly (readonly [string, string])[] = [
   ["spend_paid", "a spend is paid"],
   ["spend_burned", "a payout goes out to Base"],
   ["spend_failed", "a payout fails"],
-  ["allowance_low", "an agent key's gas allowance runs low"],
+  ["allowance_low", "an agent or ledger key's gas allowance runs low"],
   ["near_low", "the vault's free NEAR runs low"],
   ["mandate_created", "a mandate is created"],
   ["spend_pending", "a payout is on its way"],

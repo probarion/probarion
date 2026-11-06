@@ -87,6 +87,8 @@ const MAX_PAGES = 10;
 const BUDGET_MS = 40_000;
 /** The watch lease: shorter than a Vercel function's life, so a run that died is not waited for. */
 const LEASE_SECONDS = 50;
+/** `ledger_since` answers at most this many entries (migration 0004): a full answer may not be the end of the ledger. */
+const LEDGER_PAGE = 500;
 /** Events per `vault_event_insert` call: a first run over a big vault is thousands of them. */
 const INSERT_CHUNK = 200;
 
@@ -253,7 +255,9 @@ export function nearLowEvent(
 }
 
 /**
- * Reads a list view from position `from`, page after page while a page is full, and at most MAX_PAGES pages. A node
+ * Reads a list view from position `from`, page after page while a page is full, and at most MAX_PAGES pages.
+ * `complete` is true when it stopped because a page came back short (the end of the list), and false when it stopped at
+ * the cap: the list may go on, and the alerts must not take such a run for one that has seen everything. A node
  * that ignores `from_index` answers the same page again, and cursors counted over that would run past the end of the
  * list and skip what comes next: it is an error (as in the SDK's `pageAll`), and nothing is written.
  */
@@ -261,8 +265,9 @@ async function readPages<T>(
   what: string,
   from: number,
   read: (from: number, limit: number) => Promise<T[]>,
-): Promise<T[]> {
+): Promise<{ items: T[]; complete: boolean }> {
   const out: T[] = [];
+  let complete = false;
   let previous: T[] = [];
   for (let n = 0; n < MAX_PAGES; n++) {
     const page = await read(from + out.length, PAGE);
@@ -275,10 +280,13 @@ async function readPages<T>(
       throw new Error(`${what}: page ${n} repeats page ${n - 1}: the node ignores from_index`);
     }
     out.push(...page);
-    if (page.length < PAGE) break;
+    if (page.length < PAGE) {
+      complete = true;
+      break;
+    }
     previous = page;
   }
-  return out;
+  return { items: out, complete };
 }
 
 /**
@@ -364,6 +372,12 @@ async function insertEvents(db: Db, events: NewEvent[]): Promise<number> {
  * is left alone. The tenant is marked as looked at before any chain read, so a run that is killed while one vault hangs
  * does not leave that vault first in line for ever.
  *
+ * A run that read everything (every list ended on a short page, and the ledger answered fewer than 500 entries) says so
+ * when it writes its cursors, `caught_up: true`: the alerts (docs/ops/alerts.md) treat every event recorded before that
+ * as history and send none of it. A run that stopped at a cap moves its cursors and says nothing, so the next slice of the
+ * same history is not mistaken for new events. A hold that pins the spend cursor does not stop a run from catching up:
+ * what counts is whether the reads from the pin reached the end.
+ *
  * The events are written before the cursors, so a failure in between leaves the cursors where they were and the next
  * run writes nothing twice. The chain-state events (allowance_low, near_low) go in their own calls: a batch of list
  * events that fails does not keep a low-NEAR alert from being written, and a state batch that fails does not stop the
@@ -386,7 +400,7 @@ export async function watchTenant(deps: WatchDeps, t: WatchTenant): Promise<Tena
       });
       if (row === undefined) return { inserted: 0, checkErrors: 0 };
       await deps.db.rpc("tenant_watch_cursor_set", { tenant_id: row.tenant_id });
-      const [spends, anchors, mandates, ledger] = await Promise.all([
+      const [spendRead, anchorRead, mandateRead, ledger] = await Promise.all([
         readPages("list_spends", row.watch_spend_from, (f, l) =>
           deps.reader.listSpends(row.vault_id, f, l),
         ),
@@ -403,9 +417,14 @@ export async function watchTenant(deps: WatchDeps, t: WatchTenant): Promise<Tena
         }),
       ]);
       const now = deps.now();
-      const s = spendEvents(row.tenant_id, spends, row.watch_spend_from, now);
-      const a = anchorEvents(row.tenant_id, anchors, row.watch_anchor_from);
-      const m = mandateEvents(row.tenant_id, mandates, row.watch_mandate_from);
+      const readEverything =
+        spendRead.complete &&
+        anchorRead.complete &&
+        mandateRead.complete &&
+        ledger.length < LEDGER_PAGE;
+      const s = spendEvents(row.tenant_id, spendRead.items, row.watch_spend_from, now);
+      const a = anchorEvents(row.tenant_id, anchorRead.items, row.watch_anchor_from);
+      const m = mandateEvents(row.tenant_id, mandateRead.items, row.watch_mandate_from);
       const l = refusalEvents(row.tenant_id, ledger, row.watch_ledger_seq);
       const state = await stateEvents(deps, row, now);
 
@@ -440,6 +459,7 @@ export async function watchTenant(deps: WatchDeps, t: WatchTenant): Promise<Tena
         mandate_from: m.next,
         anchor_from: a.next,
         ledger_seq: l.next,
+        ...(readEverything ? { caught_up: true } : {}),
       });
       return { inserted, checkErrors };
     },

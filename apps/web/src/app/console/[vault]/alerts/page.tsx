@@ -37,8 +37,10 @@ export default async function AlertsPage({
   const canChange = member.role === "owner" || member.role === "approver";
   let subs: Sub[] | null;
   try {
+    // The whole address or chat id only for those who may act on it; a viewer gets it masked, by the database.
     subs = await serviceDb().rpc<Sub[]>("alert_subscriptions_list", {
       tenant_id: member.tenant_id,
+      full: canChange,
     });
   } catch {
     subs = null;

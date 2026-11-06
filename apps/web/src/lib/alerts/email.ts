@@ -23,7 +23,7 @@ interface ResendLike {
     send(
       payload: {
         from: string;
-        to: string;
+        to: string[];
         subject: string;
         text: string;
         headers?: Record<string, string>;
@@ -43,7 +43,7 @@ export function resendSender(
         const { data, error } = await client.emails.send(
           {
             from: ALERT_FROM,
-            to,
+            to: [to],
             subject,
             text,
             ...(unsubscribeUrl

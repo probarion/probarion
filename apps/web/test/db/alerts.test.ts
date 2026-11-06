@@ -1,6 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { type DispatchDeps, dispatchAlerts, type Senders } from "@/lib/alerts/dispatch";
+import { formatAlert } from "@/lib/alerts/format";
 import type { SendResult } from "@/lib/alerts/telegram";
 import { quietLogs } from "../fixtures/quiet-logs";
 import { freshDb, seedTenant } from "./harness";
@@ -12,6 +13,12 @@ const OWNER = "acme.near";
 const CHAT = "424242";
 const EMAIL = "owner@example.com";
 const TX = "8vYQ4Nn1ZDLmWQ4TqkRkYHq1sV3xUq1m2F7ZB8pVwx6a";
+
+// The real formatAlert, as a spy: one test makes a call throw.
+vi.mock("@/lib/alerts/format", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/alerts/format")>();
+  return { ...actual, formatAlert: vi.fn(actual.formatAlert) };
+});
 
 const logs = quietLogs();
 
@@ -104,6 +111,9 @@ describe("dispatchAlerts", () => {
       stopLinks,
       ...over,
     });
+  /** Makes what a run left in alerts_sent older, as the passing of time does: the retries are spaced (5 minutes an attempt). */
+  const later = (interval = "1 hour") =>
+    pg.query("update alerts_sent set updated_at = updated_at - $1::interval", [interval]);
   const sentRows = async () =>
     (
       await pg.query<{ status: string; attempts: number; error: string | null }>(
@@ -176,7 +186,10 @@ describe("dispatchAlerts", () => {
       await telegramSub();
       await event("spend:1:held", "spend_held");
       const failing = senders(vi.fn(async () => ({ ok: false as const, error: "429" })));
-      for (let i = 0; i < 5; i++) await run(failing);
+      for (let i = 0; i < 5; i++) {
+        await run(failing);
+        await later();
+      }
       expect(failing.tg).toHaveBeenCalledTimes(3);
       expect(await sentRows()).toEqual([{ status: "failed", attempts: 3, error: "429" }]);
     });
@@ -190,7 +203,8 @@ describe("dispatchAlerts", () => {
         .mockRejectedValueOnce(new Error("socket hang up"))
         .mockResolvedValue({ ok: true, id: "m2" });
       expect(await run(senders(tg))).toMatchObject({ sent: 1, failed: 1 });
-      // the failed one goes out on the next run
+      // the failed one goes out on a later run
+      await later();
       expect(await run(senders(tg))).toMatchObject({ sent: 1, failed: 0 });
     });
 
@@ -202,8 +216,68 @@ describe("dispatchAlerts", () => {
         .mockResolvedValueOnce({ ok: false, error: "502" })
         .mockResolvedValue({ ok: true, id: "m1" });
       expect(await run(senders(tg))).toMatchObject({ sent: 0, failed: 1 });
+      await later();
       expect(await run(senders(tg))).toMatchObject({ sent: 1, failed: 0 });
       expect(await sentRows()).toEqual([{ status: "sent", attempts: 2, error: null }]);
+    });
+
+    it("leaves a failed alert alone until 5 minutes for each attempt so far have passed, so a short outage does not use up the three", async () => {
+      await telegramSub();
+      await event("spend:1:held", "spend_held");
+      const tg = vi.fn(async () => ({ ok: false as const, error: "502" }));
+      const s = senders(tg);
+      expect(await run(s)).toMatchObject({ failed: 1 }); // attempt 1
+      expect(await run(s)).toMatchObject({ failed: 0, sent: 0 }); // the very next run: nothing
+      await later("4 minutes");
+      expect(await run(s)).toMatchObject({ failed: 0, sent: 0 }); // 4 < 5
+      await later("2 minutes");
+      expect(await run(s)).toMatchObject({ failed: 1 }); // 6 > 5: attempt 2
+      await later("9 minutes");
+      expect(await run(s)).toMatchObject({ failed: 0 }); // 9 < 10
+      await later("2 minutes");
+      expect(await run(s)).toMatchObject({ failed: 1 }); // 11 > 10: attempt 3
+      await later("5 hours");
+      expect(await run(s)).toMatchObject({ failed: 0 }); // three is the end
+      expect(tg).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not let one alert that cannot be made stop the run: it is marked failed with a short sentence, and the next goes out", async () => {
+      await telegramSub();
+      await event("spend:1:held", "spend_held");
+      await event("spend:2:paid", "spend_paid");
+      vi.mocked(formatAlert).mockImplementationOnce(() => {
+        throw new Error("poison: owner@example.com 424242");
+      });
+      const s = senders();
+      expect(await run(s)).toMatchObject({ sent: 1, failed: 1 });
+      expect(s.tg).toHaveBeenCalledTimes(1);
+      const rows = await sentRows();
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toEqual({
+        status: "failed",
+        attempts: 1,
+        error: "the message could not be made",
+      });
+      expect(rows[1]).toMatchObject({ status: "sent" });
+      const line = logs.lines.find((l) => l.includes("alerts.item_failed"));
+      expect(line).toBeDefined();
+      expect(line).not.toContain("owner@example.com");
+      expect(line).not.toContain(CHAT);
+      // the one that failed is not lost: it is tried again later, and goes out once it can be made
+      await later();
+      expect(await run(s)).toMatchObject({ sent: 1, failed: 0 });
+    });
+
+    it("makes a message for an event whose payload is not an object, instead of failing on it", async () => {
+      await telegramSub();
+      await pg.query(
+        `insert into vault_events (tenant_id, event_key, kind, payload, observed_at)
+         values ($1, 'allowance_low:k:2026-11-11', 'allowance_low', 'null'::jsonb, now() + interval '1 second')`,
+        [tenant],
+      );
+      const s = senders();
+      expect(await run(s)).toMatchObject({ sent: 1, failed: 0 });
+      expect(String(at(s.tg.mock.calls as unknown as string[][])[1])).toContain("gas allowance");
     });
 
     it("logs the channel and the ids, and never an address, a chat id, a message or more than 200 characters of the provider's error", async () => {
@@ -378,6 +452,31 @@ describe("dispatchAlerts", () => {
       expect(texts.some((t) => t.includes("was paid on NEAR"))).toBe(false);
     });
 
+    it("sends none of a long history that took several runs to read: a run that stopped at a cap has not caught up", async () => {
+      await telegramSub();
+      const slice = (from: number, to: number) => ({
+        events: Array.from({ length: to - from }, (_, i) =>
+          first(`spend:${from + i}:paid`, "spend_paid"),
+        ),
+      });
+      // run 1 read a full slice and moved its cursor, but did not say it had read everything
+      await db().rpc("vault_event_insert", slice(1, 1001));
+      await db().rpc("tenant_watch_cursor_set", { tenant_id: tenant, spend_from: 1000 });
+      const s = senders();
+      expect(await run(s)).toMatchObject({ sent: 0 });
+      // run 2 read the rest, to its end, and says so (after writing its events)
+      await db().rpc("vault_event_insert", slice(1001, 1151));
+      await db().rpc("tenant_watch_cursor_set", {
+        tenant_id: tenant,
+        spend_from: 1150,
+        caught_up: true,
+      });
+      expect(await run(s)).toMatchObject({ sent: 0 }); // old spends 1001 to 1150 are history too
+      // run 3: a payment that really is new
+      await db().rpc("vault_event_insert", slice(1151, 1152));
+      expect(await run(s)).toMatchObject({ sent: 1 });
+    });
+
     it("still flags a first run that failed part way: until the cursors are written, the next run's events are history too", async () => {
       await telegramSub();
       await db().rpc("vault_event_insert", { events: [first("spend:1:paid", "spend_paid")] });
@@ -395,6 +494,7 @@ describe("dispatchAlerts", () => {
         mandate_from: 0,
         anchor_from: 0,
         ledger_seq: 0,
+        caught_up: true,
       });
       const s = senders();
       expect(await run(s)).toMatchObject({ sent: 0 });
@@ -519,6 +619,95 @@ describe("dispatchAlerts", () => {
       expect(await run(s, { deadline: 1, now: () => 2 })).toMatchObject({ sent: 0, deferred: 1 });
       expect(s.tg).not.toHaveBeenCalled();
       expect(await run(s)).toMatchObject({ sent: 1 });
+    });
+  });
+
+  describe("a send never outlives the function (the hard limit)", () => {
+    /** The delays asked of setTimeout while a run goes, so a test can see how long a send was given. */
+    const delays = () => {
+      const seen: number[] = [];
+      const real = globalThis.setTimeout;
+      const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+        fn: () => void,
+        ms?: number,
+        ...rest: unknown[]
+      ) => {
+        if (typeof ms === "number") seen.push(ms);
+        return real(fn, ms, ...rest);
+      }) as typeof setTimeout);
+      return { seen, stop: () => spy.mockRestore() };
+    };
+
+    it("gives a send the smaller of its normal 12 s and what is left of the limit, less a 2 s margin", async () => {
+      await telegramSub();
+      await event("spend:1:held", "spend_held");
+      const t = delays();
+      try {
+        // 6.5 s before the limit: 4.5 s for the send
+        await run(senders(), { deadline: 100_000, hardLimit: 105_500, now: () => 99_000 });
+        expect(t.seen).toContain(4_500);
+        expect(t.seen).not.toContain(12_000);
+      } finally {
+        t.stop();
+      }
+    });
+
+    it("keeps the normal timeout when there is plenty of time, and when there is no deadline at all", async () => {
+      await telegramSub();
+      await event("spend:1:held", "spend_held");
+      await event("spend:2:paid", "spend_paid");
+      const t = delays();
+      try {
+        await run(senders(), { deadline: 1_000_000, hardLimit: 2_000_000, now: () => 0 });
+        await later("1 hour"); // (nothing failed; this keeps the helper honest)
+        expect(t.seen.filter((ms) => ms === 12_000)).toHaveLength(2);
+        await pg.exec("delete from alerts_sent");
+        t.seen.length = 0;
+        await run(senders());
+        expect(t.seen.filter((ms) => ms === 12_000)).toHaveLength(2);
+      } finally {
+        t.stop();
+      }
+    });
+
+    it("takes the limit as 5 s after the deadline when it is not given: the cron's 55 s and 60 s", async () => {
+      await telegramSub();
+      await event("spend:1:held", "spend_held");
+      const t = delays();
+      try {
+        await run(senders(), { deadline: 55_000, now: () => 54_000 }); // 6 s left: 4 s for the send
+        expect(t.seen).toContain(4_000);
+      } finally {
+        t.stop();
+      }
+    });
+
+    it("starts no send with less than 3 s left, claims nothing for it, and counts it as deferred", async () => {
+      await telegramSub();
+      await event("spend:1:held", "spend_held");
+      await event("spend:2:paid", "spend_paid");
+      const s = senders();
+      const r = await run(s, { deadline: 100_000, hardLimit: 102_998, now: () => 99_999 }); // 2_999 left
+      expect(r).toMatchObject({ sent: 0, failed: 0, deferred: 2 });
+      expect(s.tg).not.toHaveBeenCalled();
+      expect((await pg.query("select 1 from alerts_sent")).rows).toHaveLength(0);
+      // with exactly 3 s left it does start
+      const ok = await run(s, { deadline: 100_000, hardLimit: 102_999, now: () => 99_999 });
+      expect(ok).toMatchObject({ sent: 2, deferred: 0 });
+    });
+
+    it("stops starting sends once one has used the time: the rest wait for the next run", async () => {
+      await telegramSub();
+      for (const n of [1, 2, 3]) await event(`spend:${n}:paid`, "spend_paid");
+      const clock = vi
+        .fn()
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(1_000)
+        .mockReturnValue(9_000);
+      const s = senders();
+      // limit 10 s: at 0 s and 1 s there is time, at 9 s there is 1 s left: not enough to start
+      const r = await run(s, { deadline: 9_500, hardLimit: 10_000, now: clock });
+      expect(r).toMatchObject({ sent: 2, deferred: 1 });
     });
   });
 

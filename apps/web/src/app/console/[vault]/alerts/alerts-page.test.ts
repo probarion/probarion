@@ -268,12 +268,53 @@ describe("the alerts page", () => {
     expect(out).toContain(">Remove</button>");
   });
 
+  it("shows a viewer a masked target and an owner or approver the whole one: an address as its first letter and domain, a chat as its last 2 digits", async () => {
+    await confirmed({ target: "finance@example.com" });
+    await confirmed({ channel: "telegram" });
+    const dots = "\u2022";
+    await signInAs("view.near");
+    const masked = await html();
+    expect(masked).toContain(`f${dots.repeat(3)}@example.com`);
+    expect(masked).toContain(`chat ${dots.repeat(4)}42`);
+    expect(masked).not.toContain("finance");
+    expect(masked).not.toContain("424242");
+    for (const who of ["acme.near", "cfo.near"]) {
+      await signInAs(who);
+      const whole = await html();
+      expect(whole, who).toContain("finance@example.com");
+      expect(whole, who).toContain("chat 424242");
+      expect(whole, who).not.toContain(dots);
+    }
+  });
+
+  it("asks the database for the whole target only for an owner or an approver", async () => {
+    await confirmed({ target: "finance@example.com" });
+    const calls: Record<string, unknown>[] = [];
+    const real = pgliteDb(pg);
+    h.db = {
+      rpc: (fn: string, p?: Record<string, unknown>) => {
+        if (fn === "alert_subscriptions_list") calls.push(p ?? {});
+        return real.rpc(fn, p);
+      },
+    } as Db;
+    for (const [who, full] of [
+      ["view.near", false],
+      ["acme.near", true],
+      ["cfo.near", true],
+    ] as const) {
+      await signInAs(who);
+      await html();
+      expect(calls.at(-1)?.full ?? false, who).toBe(full);
+    }
+  });
+
   it("shows a viewer the list and no way to change it, and says why", async () => {
     await confirmed({ target: "finance@example.com" });
     await signInAs("view.near");
     const out = await html();
     expect(out).toContain("Alerts · you are viewer");
-    expect(out).toContain("finance@example.com");
+    expect(out).toContain("f\u2022\u2022\u2022@example.com");
+    expect(out).not.toContain("finance@example.com");
     expect(out).toContain("Only the vault's owners and approvers can add or remove alerts.");
     expect(out).not.toContain("Send confirmation");
     expect(out).not.toContain("Create a Telegram link");
@@ -327,7 +368,7 @@ describe("addEmailAction", () => {
     });
     expect(h.sendEmail).toHaveBeenCalledTimes(1);
     const sent = h.sendEmail.mock.calls[0]?.[0] as Record<string, string>;
-    expect(sent.to).toBe("finance@example.com");
+    expect(sent.to).toBe("finance@example.com"); // one address, as the sender is given it
     expect(sent.subject).toBe(`[Probarion] Confirm alerts for ${V}`);
     expect(sent.text).toContain(V);
     expect(sent.text).toContain(`${ORIGIN}/alerts/confirm?code=${row?.link_code}`);
@@ -368,6 +409,15 @@ describe("addEmailAction", () => {
       "a b@example.com",
       `${"a".repeat(250)}@example.com`,
       "a@@b.co",
+      // one address and only one
+      "a@b.co,victim@x.co",
+      "a@b.co;victim@x.co",
+      "Name <a@b.co>",
+      '"a"@b.co',
+      "a(c)@b.co",
+      "a@b.co\nvictim@x.co",
+      "a@b..co",
+      "a@b_c.co",
     ]) {
       const r = await add(email);
       expect(r, email).toEqual({ ok: false, error: "That does not look like an email address." });
@@ -386,6 +436,58 @@ describe("addEmailAction", () => {
       error: "Email alerts are not set up on this server.",
     });
     expect(await subs()).toHaveLength(0);
+  });
+
+  it("limits the confirmation emails to one address: 3 a day, whatever the case, and no other address is touched", async () => {
+    await signInAs("acme.near");
+    for (let i = 0; i < 3; i++) {
+      expect(await add(i === 1 ? "Same@Example.com" : "same@example.com")).toMatchObject({
+        ok: true,
+      });
+    }
+    expect(await add("SAME@example.com")).toEqual({
+      ok: false,
+      error: "That address has already been sent 3 confirmation emails today. Try again tomorrow.",
+    });
+    expect(h.sendEmail).toHaveBeenCalledTimes(3);
+    expect(await subs()).toHaveLength(3); // the refused one made nothing
+    expect(await add("other@example.com")).toMatchObject({ ok: true });
+  });
+
+  it("limits it for the address across vaults: the budget is the address's, not the vault's", async () => {
+    await signInAs("mallory.near"); // owns OTHER; acme.near's vault has its own budget
+    for (let i = 0; i < 3; i++)
+      expect(await add("victim@example.com", OTHER)).toMatchObject({ ok: true });
+    await signInAs("acme.near");
+    expect(await add("victim@example.com")).toMatchObject({ ok: false });
+    expect(h.sendEmail).toHaveBeenCalledTimes(3);
+  });
+
+  it("keys the address limit by a keyed hash, never by the address", async () => {
+    await signInAs("acme.near");
+    await add("Hidden.Name@Example.com");
+    const buckets = (await pg.query<{ bucket: string }>("select bucket from rate_limits")).rows.map(
+      (r) => r.bucket,
+    );
+    const mine = buckets.filter((b) => b.startsWith("alerts:to:"));
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatch(/^alerts:to:[0-9a-f]{64}$/);
+    expect(buckets.join(" ").toLowerCase()).not.toContain("hidden");
+    expect(buckets.join(" ").toLowerCase()).not.toContain("example");
+    // the same address in another case is the same bucket
+    await add("hidden.name@example.com");
+    expect(
+      (await pg.query("select bucket from rate_limits where bucket like 'alerts:to:%'")).rows,
+    ).toHaveLength(1);
+  });
+
+  it("applies the vault's limit on top of the address's: five in ten minutes, to five addresses", async () => {
+    await signInAs("acme.near");
+    for (let i = 0; i < 5; i++) expect(await add(`a${i}@example.com`)).toMatchObject({ ok: true });
+    expect(await add("a6@example.com")).toEqual({
+      ok: false,
+      error: "Too many confirmation emails for this vault. Try again in a few minutes.",
+    });
   });
 
   it("limits the confirmation emails per vault: the sixth in ten minutes is refused, and the others are not touched", async () => {

@@ -369,6 +369,182 @@ describe("watcher", () => {
     });
   });
 
+  describe("caught up: the word the alerts wait for", () => {
+    // A vault is caught up (watch_caught_up_at, migration 0011) only after a run that read every list to its end: each
+    // list stopped on a short page, not at the 10-page cap, and the ledger answered fewer than 500 entries. Until then the
+    // events a run records are history to the alerts (vault_events.initial), however far its cursors have moved.
+    const caughtUp = async () =>
+      at(
+        (
+          await pg.query<{ at: string | null }>(
+            "select watch_caught_up_at as at from tenants where id = $1",
+            [tenant],
+          )
+        ).rows,
+      ).at !== null;
+    const flags = async () =>
+      new Map(
+        (
+          await pg.query<{ event_key: string; initial: boolean }>(
+            "select event_key, initial from vault_events",
+          )
+        ).rows.map((r) => [r.event_key, r.initial]),
+      );
+    const ledgerRows = (from: number, to: number) =>
+      pg.query(
+        `insert into public.ledger_entries (tenant_id, seq, kind, body, body_hash, sig, signer, link, request_id)
+         select $1, g, 'payment',
+                jsonb_build_object('v', 1, 'vault', $2::text, 'kind', 'payment', 'request_id', 'r' || g,
+                                   'contract', jsonb_build_object('code', 'NoMandate', 'tx_hash', 'TX' || g, 'status', 'refused')),
+                lpad(to_hex(g), 64, '0'), 'sig', 'ed25519:x', lpad(to_hex(g + 100000), 64, '0'), 'r' || g
+           from generate_series($3::int, $4::int) g`,
+        [tenant, V, from, to],
+      );
+
+    it("is set by a run that read every list to its end, which flags what that run recorded and nothing after", async () => {
+      spends = [spend(1, "paid"), spend(2, "paid")];
+      mandates = [mandateView(1)];
+      expect(await caughtUp()).toBe(false);
+      await watchTenantById(deps(), tenant);
+      expect(await caughtUp()).toBe(true);
+      expect(await flags()).toEqual(
+        new Map([
+          ["spend:1:paid", true],
+          ["spend:2:paid", true],
+          ["mandate:1", true],
+        ]),
+      );
+      spends = [...spends, spend(3, "paid")];
+      await watchTenantById(deps(), tenant);
+      expect((await flags()).get("spend:3:paid")).toBe(false);
+    });
+
+    it("is set by a run of an empty vault, and by one whose last page is exactly one short of the cap", async () => {
+      await watchTenantById(deps(), tenant);
+      expect(await caughtUp()).toBe(true);
+      await pg.query("update tenants set watch_caught_up_at = null where id = $1", [tenant]);
+      spends = Array.from({ length: 999 }, (_, i) => spend(i + 1, "paid"));
+      await watchTenantById(deps(), tenant); // ten pages, the last one short: the end
+      expect(await caughtUp()).toBe(true);
+    });
+
+    for (const kind of ["spends", "mandates", "anchors"] as const) {
+      it(`is not set by a run that stopped at the cap on the ${kind}, nor by the next one's events: they are history too, and the run that reaches the end sets it`, async () => {
+        const fill = (n: number, from = 1) => {
+          if (kind === "spends")
+            spends = Array.from({ length: n }, (_, i) => spend(from + i, "paid"));
+          if (kind === "mandates")
+            mandates = Array.from({ length: n }, (_, i) => mandateView(from + i));
+          if (kind === "anchors") anchors = Array.from({ length: n }, (_, i) => anchor(from + i));
+        };
+        const key = (n: number) =>
+          kind === "spends"
+            ? `spend:${n}:paid`
+            : kind === "mandates"
+              ? `mandate:${n}`
+              : `anchor:${n}`;
+        fill(1150);
+        expect((await watchTenantById(deps(), tenant)).inserted).toBe(1000);
+        expect(await caughtUp()).toBe(false);
+        // the second slice: the old events 1001 to 1150 are still history, and the run reached the end
+        expect((await watchTenantById(deps(), tenant)).inserted).toBe(150);
+        const after = await flags();
+        expect(after.get(key(1))).toBe(true);
+        expect(after.get(key(1001))).toBe(true);
+        expect(after.get(key(1150))).toBe(true);
+        expect(await caughtUp()).toBe(true);
+        // only now is an event new
+        fill(1, 1151);
+        spends =
+          kind === "spends"
+            ? [...Array.from({ length: 1150 }, (_, i) => spend(i + 1, "paid")), spend(1151, "paid")]
+            : spends;
+        if (kind === "mandates")
+          mandates = Array.from({ length: 1151 }, (_, i) => mandateView(i + 1));
+        if (kind === "anchors") anchors = Array.from({ length: 1151 }, (_, i) => anchor(i + 1));
+        await watchTenantById(deps(), tenant);
+        expect((await flags()).get(key(1151))).toBe(false);
+      });
+    }
+
+    it("is not set by a run that read a full ledger page, and the next slice of the ledger is history too", async () => {
+      await ledgerRows(0, 599);
+      expect((await watchTenantById(deps(), tenant)).inserted).toBe(500);
+      expect(await caughtUp()).toBe(false);
+      expect((await watchTenantById(deps(), tenant)).inserted).toBe(100);
+      const after = await flags();
+      expect(after.get("refused:0")).toBe(true);
+      expect(after.get("refused:550")).toBe(true); // read by the second run, still history
+      expect(await caughtUp()).toBe(true);
+      await ledgerRows(600, 600);
+      await watchTenantById(deps(), tenant);
+      expect((await flags()).get("refused:600")).toBe(false);
+    });
+
+    it("cannot tell a ledger of exactly 500 entries from a longer one, so the next run, which finds none, sets it", async () => {
+      await ledgerRows(0, 499);
+      await watchTenantById(deps(), tenant);
+      expect(await caughtUp()).toBe(false);
+      await watchTenantById(deps(), tenant);
+      expect(await caughtUp()).toBe(true);
+      expect((await flags()).get("refused:499")).toBe(true);
+    });
+
+    it("is not set while any one of the reads is capped, whatever the others did", async () => {
+      spends = [spend(1, "paid")];
+      await ledgerRows(0, 499);
+      await watchTenantById(deps(), tenant);
+      expect(await caughtUp()).toBe(false);
+    });
+
+    it("is set although an open hold pins the spend cursor, because the reads from the pin reached the end", async () => {
+      spends = Array.from({ length: 230 }, (_, i) => spend(i + 1, i === 150 ? "held" : "paid"));
+      await watchTenantById(deps(), tenant);
+      expect(Number((await cursor()).watch_spend_from)).toBe(150); // pinned
+      expect(await caughtUp()).toBe(true);
+    });
+
+    it("is not set while a pin keeps the reads from reaching the end of a long list", async () => {
+      spends = Array.from({ length: 1300 }, (_, i) => spend(i + 1, i === 50 ? "held" : "paid"));
+      await watchTenantById(deps(), tenant);
+      expect(Number((await cursor()).watch_spend_from)).toBe(50);
+      expect(await caughtUp()).toBe(false);
+      await watchTenantById(deps(), tenant); // reads 50 to 1049 again: still not the end
+      expect(await caughtUp()).toBe(false);
+    });
+
+    it("is not set by a run that failed before it wrote its cursors", async () => {
+      spends = [spend(1, "paid")];
+      const broken = deps({
+        db: {
+          rpc: async (fn: string, p?: Record<string, unknown>) => {
+            if (fn === "tenant_watch_cursor_set" && p && "spend_from" in p)
+              throw new Error("db down");
+            return pgliteDb(pg).rpc(fn, p);
+          },
+        },
+      });
+      await expect(watchTenantById(broken, tenant)).rejects.toThrow("db down");
+      expect(await caughtUp()).toBe(false);
+    });
+
+    it("hands the word to tenant_watch_cursor_set only on a run that read everything: caught_up true, never the cursors alone", async () => {
+      const calls: Record<string, unknown>[] = [];
+      const spy = deps({
+        db: {
+          rpc: async (fn: string, p?: Record<string, unknown>) => {
+            if (fn === "tenant_watch_cursor_set" && p && "spend_from" in p) calls.push(p);
+            return pgliteDb(pg).rpc(fn, p);
+          },
+        },
+      });
+      spends = Array.from({ length: 1100 }, (_, i) => spend(i + 1, "paid"));
+      await watchTenantById(spy, tenant);
+      await watchTenantById(spy, tenant);
+      expect(calls.map((c) => c.caught_up)).toEqual([undefined, true]);
+    });
+  });
+
   describe("refusals by the contract", () => {
     const contract = (status: string | null, code: string | null, tx_hash: string | null) => ({
       code,

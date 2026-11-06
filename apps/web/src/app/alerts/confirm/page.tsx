@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import type { ReactNode } from "react";
-import { Container } from "@/components/site/Container";
+import { PublicCard } from "@/components/site/PublicCard";
 import { inkPillClass } from "@/components/ui";
 import { isLinkCode, peekEmailLink } from "@/lib/alerts/links";
 import { serviceDb } from "@/lib/db/clients";
@@ -16,18 +15,6 @@ export const metadata: Metadata = {
 };
 export const dynamic = "force-dynamic";
 
-function Card({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <Container>
-      <div className="mx-auto my-6 max-w-lg rounded-3xl border border-line bg-surface p-6 sm:my-10 sm:p-8">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-small">Alerts</p>
-        <h1 className="mt-3 text-3xl font-light tracking-tight">{title}</h1>
-        {children}
-      </div>
-    </Container>
-  );
-}
-
 const EXPIRED = "This link has expired or was already used.";
 
 export default async function ConfirmAlertsPage({
@@ -38,9 +25,9 @@ export default async function ConfirmAlertsPage({
   const { code } = await searchParams;
   if (!isLinkCode(code)) {
     return (
-      <Card title="Confirm alerts">
+      <PublicCard title="Confirm alerts">
         <p className="mt-3 text-mute">{EXPIRED}</p>
-      </Card>
+      </PublicCard>
     );
   }
   let vault: string | null;
@@ -49,30 +36,30 @@ export default async function ConfirmAlertsPage({
     const bucket = `alerts:link:${clientIp(await headers())}`;
     if (!(await takeToken(serviceDb(), bucket, max, windowSeconds)).allowed) {
       return (
-        <Card title="Confirm alerts">
+        <PublicCard title="Confirm alerts">
           <p className="mt-3 text-mute">Too many tries. Wait a minute and open the link again.</p>
-        </Card>
+        </PublicCard>
       );
     }
     vault = await peekEmailLink(serviceDb(), code);
   } catch {
     return (
-      <Card title="Confirm alerts">
+      <PublicCard title="Confirm alerts">
         <p className="mt-3 text-mute">
           This link could not be checked right now. Try it again in a minute.
         </p>
-      </Card>
+      </PublicCard>
     );
   }
   if (vault === null) {
     return (
-      <Card title="Confirm alerts">
+      <PublicCard title="Confirm alerts">
         <p className="mt-3 text-mute">{EXPIRED}</p>
-      </Card>
+      </PublicCard>
     );
   }
   return (
-    <Card title={`Confirm alerts for ${vault}?`}>
+    <PublicCard title={`Confirm alerts for ${vault}?`}>
       <p className="mt-3 mb-6 text-mute">
         Press the button to confirm that this email address should get payment alerts for this
         vault. If you did not ask for this, close the page: nothing is turned on until you press it.
@@ -83,6 +70,6 @@ export default async function ConfirmAlertsPage({
           Confirm alerts
         </button>
       </form>
-    </Card>
+    </PublicCard>
   );
 }

@@ -29,6 +29,8 @@ export const LIMITS = {
   alertTest: [5, 600],
   /** The public confirmation page and its button (per address); the stop link has none: a valid token is all it needs. */
   alertLink: [30, 60],
+  /** Confirmation emails to one address, from every vault together: 3 a day (a day is the longest a window may be). */
+  alertConfirmAddress: [3, 86_400],
   /** The console's server actions that read the chain for a signed-in account (lib/near/confirm-action.ts). */
   confirmPerAccount: [30, 60],
   /** All accounts together, on top of the per-account cap. */

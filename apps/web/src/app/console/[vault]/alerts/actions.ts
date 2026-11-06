@@ -1,11 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { normalizeEmail } from "@/lib/alerts/email-address";
 import { providerError } from "@/lib/alerts/errors";
 import { alertSenders } from "@/lib/alerts/server";
 import { telegramBotUsername } from "@/lib/alerts/telegram";
 import { appOrigin } from "@/lib/config";
 import { isDenied, memberForAction } from "@/lib/console/action-auth";
+import { subkey } from "@/lib/crypto/server";
+import { keyedHashHex } from "@/lib/crypto/sodium";
 import { serviceDb } from "@/lib/db/clients";
 import { DbError } from "@/lib/db/port";
 import { getEnv } from "@/lib/env";
@@ -30,9 +33,6 @@ export type TelegramState =
 
 const CAN_CHANGE = ["owner", "approver"] as ("owner" | "approver")[];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-/** The table's own shape (alert_email_shape in migration 0001), and the longest an address can be (RFC 5321). */
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const EMAIL_MAX = 254;
 /** A Telegram bot's username: 5 to 32 letters, digits and underscores. It goes into a link, so nothing else does. */
 const BOT_USERNAME = /^[A-Za-z0-9_]{5,32}$/;
 
@@ -41,6 +41,8 @@ const ERROR_TEXT = {
   noMail: "Email alerts are not set up on this server.",
   noBot: "Telegram alerts are not set up on this server.",
   tooManyEmails: "Too many confirmation emails for this vault. Try again in a few minutes.",
+  tooManyToAddress:
+    "That address has already been sent 3 confirmation emails today. Try again tomorrow.",
   tooManyLinks: "Too many links for this vault. Try again in a few minutes.",
   full: "This vault already has 20 alerts. Remove one first.",
   failed: "The alert could not be added. Try again in a minute.",
@@ -51,6 +53,16 @@ const ERROR_TEXT = {
 async function withinBudget(tenantId: string): Promise<boolean> {
   const [max, windowSeconds] = LIMITS.alertTest;
   return (await takeToken(serviceDb(), `alerts:add:${tenantId}`, max, windowSeconds)).allowed;
+}
+
+/**
+ * One address gets at most `LIMITS.alertConfirmAddress` confirmation emails a day, from every vault together, so a vault
+ * cannot be used to fill someone's inbox. The bucket is a keyed hash of the lower-cased address, never the address.
+ */
+async function addressWithinBudget(email: string): Promise<boolean> {
+  const [max, windowSeconds] = LIMITS.alertConfirmAddress;
+  const bucket = `alerts:to:${await keyedHashHex(await subkey("alerts"), `alert-address:${email}`)}`;
+  return (await takeToken(serviceDb(), bucket, max, windowSeconds)).allowed;
 }
 
 /** The sentence for a failed `alert_subscription_create`. */
@@ -76,16 +88,16 @@ export async function addEmailAction(
   const auth = await memberForAction(vault, CAN_CHANGE);
   if (isDenied(auth)) return { ok: false, ...auth };
   const { member, session } = auth;
-  const email = String(formData.get("email") ?? "")
-    .trim()
-    .toLowerCase();
-  if (email.length > EMAIL_MAX || !EMAIL.test(email)) return { ok: false, error: ERROR_TEXT.email };
+  const email = normalizeEmail(String(formData.get("email") ?? ""));
+  if (email === null) return { ok: false, error: ERROR_TEXT.email };
   const sender = alertSenders().email;
   if (sender === null) return { ok: false, error: ERROR_TEXT.noMail };
   let created: { id: string; link_code: string };
   try {
     if (!(await withinBudget(member.tenant_id)))
       return { ok: false, error: ERROR_TEXT.tooManyEmails };
+    if (!(await addressWithinBudget(email)))
+      return { ok: false, error: ERROR_TEXT.tooManyToAddress };
     created = await serviceDb().rpc("alert_subscription_create", {
       tenant_id: member.tenant_id,
       channel: "email",

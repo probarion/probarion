@@ -170,7 +170,7 @@ describe("POST /api/telegram/webhook", () => {
       expect(h.sendTelegram).toHaveBeenCalledTimes(1);
       expect(h.sendTelegram.mock.calls[0]?.slice(0, 2)).toEqual([TOKEN, String(CHAT)]);
       expect(reply()).toBe(
-        `Linked to ${V}. You will get a message when a spend waits for approval, the contract refuses a spend, a spend is paid, a payout goes out to Base, a payout fails, an agent key's gas allowance runs low and the vault's free NEAR runs low. Send /stop to end alerts.`,
+        `Linked to ${V}. You will get a message when a spend waits for approval, the contract refuses a spend, a spend is paid, a payout goes out to Base, a payout fails, an agent or ledger key's gas allowance runs low and the vault's free NEAR runs low. Send /stop to end alerts.`,
       );
       expect(reply()).not.toMatch(/_/);
     });

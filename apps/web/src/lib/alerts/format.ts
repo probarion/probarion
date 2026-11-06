@@ -66,13 +66,18 @@ export function formatAlert(
     typeof e.tx_hash === "string" && TX_HASH.test(e.tx_hash)
       ? explorerTxUrl(network, e.tx_hash)
       : explorerAccountUrl(network, v);
+  // An event row's payload is any JSON (a hand-made row can hold null or a list): read only an object.
+  const payload: Record<string, unknown> =
+    typeof e.payload === "object" && e.payload !== null && !Array.isArray(e.payload)
+      ? e.payload
+      : {};
   const lines: string[] = [];
   let subject: string;
   switch (e.kind) {
     case "spend_held": {
       subject = `[Probarion] Approval needed${amount ? `: ${amount}` : ""} on ${v}`;
       lines.push(`${spendWords(e)} is held until an approver signs.`);
-      const ends = holdEnds(e.payload);
+      const ends = holdEnds(payload);
       if (ends !== null) lines.push(`The hold ends ${ends}.`);
       lines.push(`Approve or reject: ${consoleUrl}`);
       break;
@@ -98,9 +103,9 @@ export function formatAlert(
       break;
     }
     case "allowance_low": {
-      const key = e.payload.public_key;
+      const key = payload.public_key;
       const publicKey = typeof key === "string" && PUBLIC_KEY.test(key) ? key : null;
-      const noun = e.payload.purpose === "ledger" ? "ledger key" : "agent key";
+      const noun = payload.purpose === "ledger" ? "ledger key" : "agent key";
       subject = `[Probarion] ${noun === "agent key" ? "Agent" : "Ledger"} key gas allowance low on ${v}`;
       const who =
         publicKey === null
@@ -112,7 +117,7 @@ export function formatAlert(
       break;
     }
     case "near_low": {
-      const free = digits(e.payload.free_yocto);
+      const free = digits(payload.free_yocto);
       subject = `[Probarion] Vault is low on NEAR: ${v}`;
       lines.push(
         `${free === null ? "The vault's free NEAR is" : `The vault has ${formatNear(free)} NEAR free, and it is`} under 0.05 NEAR. Without NEAR it cannot record a payment. Top up: ${consoleUrl}/topup`,
@@ -131,7 +136,10 @@ export function formatAlert(
         : `Stop or change alerts: open ${consoleUrl}/alerts`,
     );
   } else {
-    lines.push(`Stop or change alerts: send /stop, or open ${consoleUrl}/alerts`);
+    // /stop ends the chat's alerts for every vault, and the line says so: the bot then says how many it stopped.
+    lines.push(
+      `Stop or change alerts: send /stop to stop alerts for every vault in this chat, or open ${consoleUrl}/alerts`,
+    );
   }
   return { subject, text: lines.join("\n") };
 }

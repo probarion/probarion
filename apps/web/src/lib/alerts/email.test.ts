@@ -21,7 +21,13 @@ describe("resendSender", () => {
     expect(r).toEqual({ ok: true, id: "em_1" });
     expect(c.send).toHaveBeenCalledTimes(1);
     const [payload, options] = c.send.mock.calls[0] ?? [];
-    expect(payload).toEqual({ from: ALERT_FROM, to: "owner@example.com", subject: "S", text: "T" });
+    // `to` is a list of one address, never a string a mailer could read as several
+    expect(payload).toEqual({
+      from: ALERT_FROM,
+      to: ["owner@example.com"],
+      subject: "S",
+      text: "T",
+    });
     expect(payload).not.toHaveProperty("html");
     expect(options).toEqual({ idempotencyKey: "alert-1-2" });
   });

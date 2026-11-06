@@ -37,6 +37,8 @@ export function kickWatcher(tenantId: string): void {
       } catch (error) {
         log.warn("watch.kick_failed", { tenant: tenantId, error });
       }
+      // One dispatch for the whole network, not only this vault: it is a global job hung off a per-vault request, and it
+      // is safe, because every alert is claimed before it is sent, so two dispatches never send one twice.
       // runAlerts does not throw; the catch is for the day somebody changes that.
       await runAlerts(Date.now() + KICK_ALERTS_MS).catch(() => undefined);
     });

@@ -34,6 +34,12 @@ export interface DispatchDeps {
   limit?: number;
   /** Epoch milliseconds. No new alert is claimed from then on; what is left waits for the next run. */
   deadline?: number;
+  /**
+   * Epoch milliseconds when the function that runs this is cut off (the cron route's 60 s, where the deadline is 55 s).
+   * No send starts with less than 3 s left, and no send is given longer than what is left less 2 s, so a claim is
+   * marked before the function ends. Default: 5 s after the deadline, and no limit when there is no deadline.
+   */
+  hardLimit?: number;
   now?: () => number;
   /** How long one send may take before it counts as failed. A claim is never held longer than that by a hung call. */
   sendTimeoutMs?: number;
@@ -47,6 +53,12 @@ export interface DispatchResult {
   /** Alerts the deadline left for the next run. */
   deferred: number;
 }
+
+/** The least time a send may start with before the hard limit, and the margin it leaves for the mark. */
+const MIN_LEFT_MS = 3_000;
+const MARGIN_MS = 2_000;
+/** How long after the deadline the function lives, when the caller does not say. */
+const GRACE_AFTER_DEADLINE_MS = 5_000;
 
 async function sendWithin(send: () => Promise<SendResult>, ms: number): Promise<SendResult> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -74,6 +86,9 @@ async function sendWithin(send: () => Promise<SendResult>, ms: number): Promise<
  */
 export async function dispatchAlerts(deps: DispatchDeps): Promise<DispatchResult> {
   const now = deps.now ?? Date.now;
+  const hardLimit =
+    deps.hardLimit ??
+    (deps.deadline === undefined ? undefined : deps.deadline + GRACE_AFTER_DEADLINE_MS);
   const pending = await deps.db.rpc<Pending[]>("alerts_pending", {
     network: deps.network,
     limit: deps.limit ?? 200,
@@ -87,7 +102,9 @@ export async function dispatchAlerts(deps: DispatchDeps): Promise<DispatchResult
       result.skipped++;
       continue;
     }
-    if (late || (deps.deadline !== undefined && now() >= deps.deadline)) {
+    const t = now();
+    const left = hardLimit === undefined ? Number.POSITIVE_INFINITY : hardLimit - t;
+    if (late || (deps.deadline !== undefined && t >= deps.deadline) || left < MIN_LEFT_MS) {
       late = true;
       result.deferred++;
       continue;
@@ -114,22 +131,40 @@ export async function dispatchAlerts(deps: DispatchDeps): Promise<DispatchResult
       attempt: number | null;
     }>("alert_claim", { subscription_id: p.subscription_id, vault_event_id: p.vault_event_id });
     if (!claim.claimed || claim.id === null || claim.attempt === null) continue;
-    const msg = formatAlert(p.event, p.vault_id, deps.network, deps.origin, p.channel, links?.page);
-    const r = await sendWithin(
-      () =>
-        p.channel === "telegram" && telegram
-          ? telegram(p.target, `${msg.subject}\n\n${msg.text}`)
-          : email && links
-            ? email.send({
-                to: p.target,
-                subject: msg.subject,
-                text: msg.text,
-                idempotencyKey: `alert-${p.subscription_id}-${p.vault_event_id}`,
-                unsubscribeUrl: links.oneClick,
-              })
-            : Promise.resolve<SendResult>({ ok: false, error: "no sender" }),
-      deps.sendTimeoutMs ?? 12_000,
-    );
+    // From here the alert is claimed: whatever goes wrong with this one, it is marked and the run goes on.
+    let r: SendResult;
+    try {
+      const msg = formatAlert(
+        p.event,
+        p.vault_id,
+        deps.network,
+        deps.origin,
+        p.channel,
+        links?.page,
+      );
+      r = await sendWithin(
+        () =>
+          p.channel === "telegram" && telegram
+            ? telegram(p.target, `${msg.subject}\n\n${msg.text}`)
+            : email && links
+              ? email.send({
+                  to: p.target,
+                  subject: msg.subject,
+                  text: msg.text,
+                  idempotencyKey: `alert-${p.subscription_id}-${p.vault_event_id}`,
+                  unsubscribeUrl: links.oneClick,
+                })
+              : Promise.resolve<SendResult>({ ok: false, error: "no sender" }),
+        Math.min(deps.sendTimeoutMs ?? 12_000, left - MARGIN_MS),
+      );
+    } catch (error) {
+      // Only the error's name: its message may quote the event.
+      log.error("alerts.item_failed", {
+        ...ids,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+      r = { ok: false, error: "the message could not be made" };
+    }
     const error = r.ok ? null : providerError(r.error, p.target);
     await markClaim(
       deps.db,
