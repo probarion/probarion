@@ -88,6 +88,16 @@ describe("/canary/rules", () => {
     expect(text).not.toMatch(/mainnet/i);
   });
 
+  it("tells a participant that they are not a customer, and links the Usage page where they are counted apart", () => {
+    expect(text).toContain(
+      "You are a challenge participant, not a customer. The Usage page counts you apart from the product's own users.",
+    );
+    expect(html).toMatch(/<a[^>]*href="\/usage"[^>]*>Usage page<\/a>/);
+    // It is a page of this site, so it opens here and not in a new tab.
+    expect(html).not.toMatch(/<a[^>]*href="\/usage"[^>]*target=/);
+    expect(text).not.toContain("kept apart from the product's own");
+  });
+
   it("links back to the Canary page", () => {
     expect(html).toMatch(/<a[^>]*href="\/canary"[^>]*>Back to the Canary<\/a>/);
   });

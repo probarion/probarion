@@ -9,16 +9,24 @@ import { BUILD_NETWORK } from "@/lib/site/network";
 
 export const metadata: Metadata = { title: "Canary rules" };
 
-/** Text, and links: a web address opens in a new tab and says so, a mail link is a plain link. */
+/** Text, and links: a web address opens in a new tab and says so, a page of this site is an app link, a mail link is a plain link. */
 function Parts({ parts }: { parts: readonly Part[] }) {
   return parts.map((part, i) => {
     // The parts of a rule never change order, so the position is a stable key.
     const key = `${i}`;
     if (typeof part === "string") return <span key={key}>{part}</span>;
-    return part.href.startsWith("http") ? (
-      <ExternalLink key={key} href={part.href}>
+    if (part.href.startsWith("http")) {
+      return (
+        <ExternalLink key={key} href={part.href}>
+          {part.text}
+        </ExternalLink>
+      );
+    }
+    // A page of this site is a link inside the app, and a mail link is a plain one.
+    return part.href.startsWith("/") ? (
+      <Link key={key} href={part.href}>
         {part.text}
-      </ExternalLink>
+      </Link>
     ) : (
       <a key={key} href={part.href}>
         {part.text}
