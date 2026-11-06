@@ -20,10 +20,13 @@ const h = vi.hoisted(() => ({
   db: null as unknown as Db,
   reader: null as unknown as VaultReader,
   account: null as unknown as () => Promise<unknown>,
-  /** What the node's `status` says about its chain, or an error to throw instead. */
+  /** What the nodes' `status` says about their chain; `chainIdOf` overrides it for one URL; `statusDown` is a 503. */
   chainId: "mainnet" as unknown,
-  statusError: null as unknown,
+  chainIdOf: {} as Record<string, unknown>,
+  statusDown: false,
   statusCalls: 0,
+  /** The nodes of the chain check (its one-URL clients use this `fetch`). */
+  chainFetch: undefined as undefined | typeof fetch,
   revalidated: [] as string[],
   /** Factory views by method name; a method left out throws (the factory cannot be read). */
   factory: {} as Record<string, unknown>,
@@ -70,12 +73,6 @@ vi.mock("@/lib/near/server", async () => {
   return {
     getReader: () => h.reader,
     getRpc: () => ({
-      call: async (method: string) => {
-        if (method !== "status") throw new Error(`unexpected RPC method ${method}`);
-        h.statusCalls += 1;
-        if (h.statusError !== null) throw h.statusError;
-        return { chain_id: h.chainId };
-      },
       viewAccount: () => h.account(),
       viewFunction: async (_contract: string, method: string) => {
         if (!(method in h.factory)) throw new Error("no factory in this test");
@@ -83,6 +80,18 @@ vi.mock("@/lib/near/server", async () => {
       },
     }),
     chainConsts: () => N.mainnet,
+  };
+});
+// The chain check is the real one, over a fetch that answers `status` per URL (the mainnet list has two URLs).
+vi.mock("@/lib/near/chain", async (orig) => {
+  const real = await orig<typeof import("@/lib/near/chain")>();
+  return {
+    ...real,
+    ensureChain: (
+      network: Parameters<typeof real.ensureChain>[0],
+      urls: Parameters<typeof real.ensureChain>[1],
+    ) =>
+      real.ensureChain(network, urls, { fetch: h.chainFetch, maxRounds: 1, sleep: async () => {} }),
   };
 });
 // Client components call useRouter, which needs the app router; notFound and redirect stay real.
@@ -127,8 +136,18 @@ afterAll(async () => {
 beforeEach(async () => {
   (await import("@/lib/near/chain")).forgetVerifiedChains();
   h.chainId = "mainnet";
-  h.statusError = null;
+  h.chainIdOf = {};
+  h.statusDown = false;
   h.statusCalls = 0;
+  h.chainFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const body = JSON.parse(String(init?.body)) as { id: string; method: string };
+    if (body.method !== "status") throw new Error(`unexpected RPC method ${body.method}`);
+    h.statusCalls += 1;
+    if (h.statusDown) return new Response("busy", { status: 503 });
+    const chain_id = url in h.chainIdOf ? h.chainIdOf[url] : h.chainId;
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { chain_id } }));
+  }) as typeof fetch;
   h.jar.clear();
   h.revalidated.length = 0;
   h.buttons.length = 0;
@@ -644,23 +663,46 @@ describe("server actions: the success paths", () => {
     expect(await tenantCount("wrongchain.near")).toBe(1);
   });
 
-  it("registerVaultAction asks the node once, then remembers the pass; an unreachable node is unavailable and not remembered", async () => {
+  // RR1-CHAIN-1 for Register: the first URL of the list is the right chain, the second is not.
+  it("registerVaultAction refuses a mixed RPC list, and registers nothing", async () => {
+    h.reader = fakeReader({
+      getConfig: async () => vaultConfig({ owner: "acme.near", approvers: [], factory: null }),
+    });
+    h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    h.chainIdOf = { [NETWORKS.mainnet.rpcUrls[1] as string]: "testnet" };
+    await signInAs("acme.near");
+    expect(await registerVaultAction("mixed.near")).toMatchObject({
+      ok: false,
+      code: "wrong_chain",
+      status: 503,
+    });
+    expect(await tenantCount("mixed.near")).toBe(0);
+    expect(h.statusCalls).toBe(NETWORKS.mainnet.rpcUrls.length); // every URL was asked
+    // The list is corrected: the next attempt asks only the URL that was wrong, and registers.
+    h.chainIdOf = {};
+    h.statusCalls = 0;
+    expect(await registerVaultAction("mixed.near")).toMatchObject({ ok: true });
+    expect(h.statusCalls).toBe(1);
+  });
+
+  it("registerVaultAction asks every URL until it has answered, then remembers the pass; an unreachable node is unavailable and not remembered", async () => {
     h.reader = fakeReader({
       getConfig: async () => vaultConfig({ owner: "acme.near", approvers: [], factory: null }),
     });
     h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
     await signInAs("acme.near");
-    h.statusError = transportError();
+    h.statusDown = true;
     expect(await registerVaultAction("flaky.near")).toMatchObject({
       ok: false,
       code: "unavailable",
     });
     expect(await tenantCount("flaky.near")).toBe(0);
-    h.statusError = null;
+    h.statusDown = false;
     expect(await registerVaultAction("flaky.near")).toMatchObject({ ok: true });
     expect(await registerVaultAction("flaky2.near")).toMatchObject({ ok: true });
     expect(await registerVaultAction("flaky3.near")).toMatchObject({ ok: true });
-    expect(h.statusCalls).toBe(2); // the failure, then the one pass that every later call relied on
+    // Every URL of the list asked while it was down, and once more when it answered: then nobody again.
+    expect(h.statusCalls).toBe(2 * NETWORKS.mainnet.rpcUrls.length);
   });
 
   it("refreshMembersAction does not re-read the approvers from a node that serves the other chain", async () => {

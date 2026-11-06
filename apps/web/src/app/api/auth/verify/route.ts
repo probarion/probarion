@@ -11,6 +11,7 @@ import { authUnavailable } from "@/lib/auth/unavailable";
 import { nearApiVerifier, rpcLoginProvider, verifyLogin } from "@/lib/auth/verify";
 import { subkey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
+import { getEnv } from "@/lib/env";
 import { assertSameOrigin, clientIp, json, problem, rateLimitOr429 } from "@/lib/http";
 import { log } from "@/lib/log";
 import { ensureChain, WrongChainError } from "@/lib/near/chain";
@@ -112,12 +113,13 @@ async function verify(req: Request, requestId: string | undefined): Promise<Resp
     return problem(413, "payload_too_large");
   }
   const rpc = getRpc(network);
-  // A session is lasting state: before one can be minted, the network's RPC must answer for the network's chain. A setting
-  // that points it at the other one's nodes is refused here, whatever the URL looks like. With no valid challenge nothing
-  // can be minted, so no node is asked. A node that cannot be reached is the usual 503 `unavailable` (the POST handler).
+  // A session is lasting state: before one can be minted, every URL of the network's RPC list must answer for the
+  // network's chain (the client fails over from URL to URL, so one wrong URL is enough). A setting that points a URL at
+  // the other chain's nodes is refused here, whatever the URL looks like. With no valid challenge nothing can be minted,
+  // so no node is asked. A node that cannot be reached is the usual 503 `unavailable` (the POST handler).
   if (challenge) {
     try {
-      await ensureChain(network, rpc);
+      await ensureChain(network, getEnv().networks[network].rpcUrls);
     } catch (error) {
       if (error instanceof WrongChainError) return problem(503, "wrong_chain");
       throw error;

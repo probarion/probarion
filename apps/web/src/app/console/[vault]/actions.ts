@@ -62,7 +62,7 @@ export async function refreshMembersAction(
       factoryId: settings.factoryId,
       canaryVaultId: settings.canaryVaultId,
       teamVaultIds: settings.teamVaultIds,
-      verifyChain: () => ensureChain(network, rpc),
+      verifyChain: () => ensureChain(network, settings.rpcUrls),
     },
     // No display name: the stored one is kept (migration 0005).
     { vaultId: auth.member.vault_id, account: auth.session.accountId },
