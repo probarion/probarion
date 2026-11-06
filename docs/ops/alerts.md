@@ -65,6 +65,8 @@ An email address is confirmed the same careful way: the confirmation email's lin
 
 Apply `apps/web/supabase/migrations/20261108000011_alerts.sql` after 0010, the way `docs/runbooks/web-deploy.md` says (in order, stop at the first error, never a file twice). It adds `tenants.watch_caught_up_at`, `vault_events.initial`, the alert functions (all service role only) and redefines two functions of 0010. Apply it before the build that has the alerts goes live. The two redefined functions answer the old build exactly as before, and the old build never calls the alert functions. A build that runs without the migration logs `alerts.dispatch_failed` on every watcher run and its Alerts page says the alerts could not be read; nothing else is affected.
 
+**OWNER:** right after applying 0011, and before anyone adds the first alert, run the watcher once by hand (the second command in [the watcher's "Check that it works"](watcher.md#check-that-it-works)). The migration marks no vault as caught up, so the first run after it counts as history. Run by hand, that first run reads the history while no alert exists yet; a vault whose history fits in one run is caught up after it, and what it does from then on is alerted. Without that run, the first one is the next daily cron or kick, and whatever a vault does until then is history to the alerts.
+
 ### Telegram (OWNER)
 
 1. **OWNER:** in Telegram, talk to `@BotFather`: `/newbot`, a name, a username ending in `bot`. BotFather answers a token. Keep it in your password manager; do not paste it anywhere shared.
