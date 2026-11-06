@@ -23,6 +23,7 @@ export function VaultTxButton({
   network,
   expectedSigner,
   confirm,
+  confirmTone,
   tx,
   outOfNearCodes,
   vaultNearLow,
@@ -31,6 +32,7 @@ export function VaultTxButton({
   network: Network;
   expectedSigner?: string;
   confirm?: string;
+  confirmTone?: "danger";
   tx: WalletTx;
   outOfNearCodes: string[];
   /** True only when the vault's free NEAR was read and is below 0.1 NEAR (never on "unavailable"). */
@@ -44,6 +46,7 @@ export function VaultTxButton({
         network={network}
         expectedSigner={expectedSigner}
         confirm={confirm}
+        confirmTone={confirmTone}
         tx={tx}
         // The words are set at display time, so a result read back after a reload (a locked,
         // unconfirmed send) says the same as the live one; the result object is not touched.

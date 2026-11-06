@@ -4,6 +4,7 @@ import {
   type ConfirmFlow,
   confirmResultShown,
   PAYMENT_MAY_HAVE_GONE_OUT,
+  REJECT_INVOICE_CONFIRM,
   runConfirm,
   runReject,
 } from "./confirm-flow";
@@ -292,5 +293,20 @@ describe("runReject", () => {
     expect(r.shown.tone).toBe("bad");
     expect(r.shown.text).toMatch(/could not finish/);
     expect(r.refresh).toBe(true);
+  });
+});
+
+describe("REJECT_INVOICE_CONFIRM", () => {
+  it("is the red dialog titled and labelled 'Reject invoice', with the sentence the owner has always been asked", () => {
+    expect(REJECT_INVOICE_CONFIRM).toEqual({
+      title: "Reject invoice",
+      actionLabel: "Reject invoice",
+      tone: "danger",
+      body: "Reject this invoice? Nothing is paid. The same text uploaded again stays a duplicate; a corrected invoice is a new one.",
+    });
+  });
+
+  it("has no wallet footnote: Reject asks the server, and the wallet nothing", () => {
+    expect(REJECT_INVOICE_CONFIRM).not.toHaveProperty("footnote");
   });
 });

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { inkPillClass, linePillClass, Notice } from "@/components/ui";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import type { ActionDenied } from "@/lib/console/action-auth";
@@ -9,6 +10,7 @@ import type { ConfirmResult, PrepareResult } from "@/lib/payables/confirm";
 import {
   type ConfirmPhase,
   type FlowResult,
+  REJECT_INVOICE_CONFIRM,
   runConfirm,
   runReject,
   type Shown,
@@ -59,6 +61,7 @@ export function ConfirmInvoicePanel({
   // After a pay-phase failure the outcome is unknown: no second Confirm until the page has been loaded again.
   const [blocked, setBlocked] = useState(false);
   const busy = phase !== null;
+  const { ask, dialog } = useConfirm();
 
   const finish = (r: FlowResult) => {
     setShown(r.shown);
@@ -96,13 +99,7 @@ export function ConfirmInvoicePanel({
   };
 
   const onReject = async () => {
-    if (
-      !window.confirm(
-        "Reject this invoice? Nothing is paid. The same text uploaded again stays a duplicate; a corrected invoice is a new one.",
-      )
-    ) {
-      return;
-    }
+    if (!(await ask(REJECT_INVOICE_CONFIRM))) return;
     setPhase("reject");
     setShown(null);
     try {
@@ -156,6 +153,7 @@ export function ConfirmInvoicePanel({
       <div className="mt-3" role="status">
         {shown ? <Notice tone={shown.tone}>{shown.text}</Notice> : null}
       </div>
+      {dialog}
     </div>
   );
 }

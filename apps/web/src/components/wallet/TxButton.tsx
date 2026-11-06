@@ -2,8 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { buttonClass } from "@/components/ui";
 import type { Network } from "@/lib/config";
+import { walletConfirm } from "@/lib/console/confirm-dialog";
 import { actionKey, browserStore, clearLock, readLock, writeLock } from "@/lib/near/lock";
 import { type DescribeResult, sendLocked, type TxResult } from "@/lib/near/outcome";
 import { actionLabel, type WalletTx } from "@/lib/near/tx";
@@ -28,7 +30,10 @@ export interface TxButtonBaseProps {
   tx?: WalletTx;
   prepare?: () => Promise<Prepared>;
   expectedSigner?: string;
+  /** Asks the owner first, in the console's own dialog: this text is its body, and the button's label its title. */
   confirm?: string;
+  /** "danger" for what cannot be taken back: the dialog gets a red action button and a "Cannot be undone" line. */
+  confirmTone?: "danger";
   lockKey?: string;
   /** Wording for the result, live or read back after a reload (so a reloaded lock reads the same). */
   describe?: DescribeResult;
@@ -58,6 +63,7 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
   const [prepared, setPrepared] = useState<WalletTx | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TxResult | null>(null);
+  const { ask, dialog } = useConfirm();
   const preview = props.tx ?? prepared;
   const locked = sendLocked(result);
   const wrongSigner = !!props.expectedSigner && !!accountId && accountId !== props.expectedSigner;
@@ -77,7 +83,16 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
 
   async function run() {
     if (inflight.current || locked) return;
-    if (props.confirm && !window.confirm(props.confirm)) return;
+    if (props.confirm) {
+      // A second click while the question is open is answered "no" by the dialog itself. A "no" returns here, before
+      // the busy state, the in-flight guard, the error and the lock are touched: the button is as it was.
+      const question = walletConfirm({
+        label: props.label,
+        confirm: props.confirm,
+        confirmTone: props.confirmTone,
+      });
+      if (!(await ask(question))) return;
+    }
     inflight.current = true;
     setBusy(true);
     setError(null);
@@ -149,6 +164,7 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
           I checked the explorer: unlock this button
         </button>
       ) : null}
+      {dialog}
     </div>
   );
 }

@@ -104,6 +104,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             tx={removeAgentTx(vault, k.public_key)}
             lockKey={lockKeyFor(`keys:remove:${vault}:${k.public_key}`)}
             confirm="Remove this agent key from the vault? Payables stops using it at once."
+            confirmTone="danger"
           />
         ) : null}
         {k.discardedOnChain ? <KeyKeepButton keep={keepKeyAction.bind(null, vault, k.id)} /> : null}

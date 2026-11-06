@@ -47,6 +47,7 @@ export function KeyTxButton(props: {
   tx: WalletTx;
   lockKey: string;
   confirm?: string;
+  confirmTone?: "danger";
   outOfNearCodes: string[];
   sync: Sync;
 }) {
@@ -58,6 +59,7 @@ export function KeyTxButton(props: {
       tx={props.tx}
       lockKey={props.lockKey}
       confirm={props.confirm}
+      confirmTone={props.confirmTone}
       describe={signerFirst(props.outOfNearCodes)}
       onResult={afterTx(props.sync)}
     />
