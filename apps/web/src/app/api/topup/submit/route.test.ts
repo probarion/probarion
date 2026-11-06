@@ -112,7 +112,9 @@ describe("POST /api/topup/submit", () => {
       "",
       "abc",
       "z".repeat(44), // base58, 44 characters, but 33 bytes
-      `${TX_HASH}x`,
+      // 45 characters, one over the longest hash text. Not `${TX_HASH}x`: TX_HASH is random, and a 43-character hash
+      // of a small enough value still decodes to 32 bytes with one more character (CI run 42100685842).
+      TX_HASH.padEnd(45, "x"),
       `0${TX_HASH.slice(1)}`,
       `${TX_HASH}\n`,
       5,
