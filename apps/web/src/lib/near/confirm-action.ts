@@ -3,9 +3,11 @@
 import { getSession } from "@/lib/auth/guard";
 import { serviceDb } from "@/lib/db/clients";
 import { rateLimitOr429 } from "@/lib/http";
+import { requestNetwork } from "@/lib/network";
 import { LIMITS } from "@/lib/ratelimit";
 import { confirmTx, currentFinalHeight } from "./confirm";
 import { type ConfirmRequest, isTxHash, type TxResult } from "./outcome";
+import { getRpc } from "./server";
 
 /**
  * Two separate pairs of caps, so a send costs ONE token of the confirmation caps (its confirmation) and
@@ -18,7 +20,11 @@ function unknown(hash: unknown, error: string): TxResult {
   return { status: "unknown", txHash: isTxHash(hash) ? hash : null, code: null, error };
 }
 
-/** Signed in, and under both rate caps of `caps`. The account, or the reason not to go ahead. */
+/**
+ * Signed in, and under both rate caps of `caps`. The account, or the reason not to go ahead. The per-account cap is one
+ * bucket per account and network (the address this runs for): the same account on the other network has its own. The
+ * global cap stays one.
+ */
 async function admit(caps: {
   account: string;
   all: string;
@@ -26,9 +32,13 @@ async function admit(caps: {
   const session = await getSession();
   if (session === null) return "Sign in again to confirm this transaction here";
   const db = serviceDb();
+  const network = await requestNetwork();
   if (
-    (await rateLimitOr429(db, `${caps.account}:${session.accountId}`, LIMITS.confirmPerAccount)) !==
-    null
+    (await rateLimitOr429(
+      db,
+      `${caps.account}:${network}:${session.accountId}`,
+      LIMITS.confirmPerAccount,
+    )) !== null
   ) {
     return "Too many confirmations just now";
   }
@@ -47,7 +57,8 @@ async function admit(caps: {
 export async function sendBaselineAction(): Promise<number | null> {
   try {
     if (typeof (await admit(BASELINE_CAPS)) === "string") return null;
-    return await currentFinalHeight();
+    // The chain of the address this runs for: the wallet the page connected is that network's too.
+    return await currentFinalHeight(getRpc(await requestNetwork()));
   } catch {
     return null;
   }
@@ -72,7 +83,7 @@ export async function confirmTxAction(request: ConfirmRequest): Promise<TxResult
         `You are signed in as ${who.accountId}, so a transaction signed by another account cannot be confirmed here; confirm on the explorer.`,
       );
     }
-    return await confirmTx(request);
+    return await confirmTx(request, getRpc(await requestNetwork()));
   } catch {
     return unknown(hash, "The transaction could not be confirmed here; confirm on the explorer.");
   }

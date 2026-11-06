@@ -1,5 +1,6 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
+import type { Network } from "@/lib/config";
 import { publicDb, serviceDb } from "@/lib/db/clients";
 import { log } from "@/lib/log";
 import { within } from "@/lib/within";
@@ -20,12 +21,15 @@ export const READ_TIMEOUT_MS = 5000;
 const warn = (msg: string, error: unknown) =>
   log.warn(msg, { error: error instanceof Error ? error.message : String(error) });
 
-/** The raw answer, or null when the read failed (no service key in a preview, the database down, too slow). */
+/**
+ * The raw answer, or null when the read failed (no service key in a preview, the database down, too slow). One answer per
+ * network: the cache key carries the network argument, so the board of one network is never served for the other.
+ */
 const readBoard = unstable_cache(
-  async (): Promise<unknown> => {
+  async (network: Network): Promise<unknown> => {
     try {
       return await within(
-        () => serviceDb().rpc<unknown>("public_canary_leaderboard", {}),
+        () => serviceDb().rpc<unknown>("public_canary_leaderboard", { network }),
         READ_TIMEOUT_MS,
       );
     } catch (error) {
@@ -38,10 +42,10 @@ const readBoard = unstable_cache(
 );
 
 const readFeed = unstable_cache(
-  async (): Promise<unknown> => {
+  async (network: Network): Promise<unknown> => {
     try {
       return await within(
-        () => publicDb().rpc<unknown>("public_canary_feed", { limit: FEED_LIMIT }),
+        () => publicDb().rpc<unknown>("public_canary_feed", { network, limit: FEED_LIMIT }),
         READ_TIMEOUT_MS,
       );
     } catch (error) {
@@ -53,10 +57,10 @@ const readFeed = unstable_cache(
   { revalidate: FEED_REVALIDATE_S },
 );
 
-/** The scoreboard, or null when it cannot be read or is malformed. Never throws. */
-export async function loadBoard(): Promise<Board | null> {
+/** The scoreboard of one network, or null when it cannot be read or is malformed. Never throws. */
+export async function loadBoard(network: Network): Promise<Board | null> {
   try {
-    return parseBoard(await readBoard());
+    return parseBoard(await readBoard(network));
   } catch (error) {
     // The cache layer itself failed (its own storage, not the database): still a page, not a 500.
     warn("canary.board_unavailable", error);
@@ -64,10 +68,10 @@ export async function loadBoard(): Promise<Board | null> {
   }
 }
 
-/** The newest attempts: a list (empty when there are none), or null when the feed could not be read. Never throws. */
-export async function loadFeed(): Promise<FeedRow[] | null> {
+/** The newest attempts on one network: a list (empty when there are none), or null when the feed could not be read. Never throws. */
+export async function loadFeed(network: Network): Promise<FeedRow[] | null> {
   try {
-    const raw = await readFeed();
+    const raw = await readFeed(network);
     return raw === null ? null : parseFeed(raw);
   } catch (error) {
     warn("canary.feed_unavailable", error);

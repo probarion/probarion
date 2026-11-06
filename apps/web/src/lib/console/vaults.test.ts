@@ -1,8 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { KNOWN_VAULT_CODE_HASHES, type SpendView, type VersionView } from "@probarion/core";
-import type { ViewAccountResult } from "@probarion/sdk";
+import { RpcMalformedError, type ViewAccountResult } from "@probarion/sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { memberRole } from "@/lib/db/tenants";
+import { WrongChainError } from "@/lib/near/chain";
 import type { VaultReader } from "@/lib/near/reader";
 import { freshDb } from "../../../test/db/harness";
 import { pgliteDb } from "../../../test/db/pglite-db";
@@ -267,8 +268,7 @@ describe("registerVault (R11)", () => {
     over: { teamVaultIds?: string[]; canaryVaultId?: string | null } = {},
   ) => ({
     db: pgliteDb(pg),
-    reader,
-    chain: reads,
+    connect: async () => ({ reader, chain: reads }),
     network: "mainnet" as const,
     factoryId: FACTORY,
     canaryVaultId: over.canaryVaultId ?? "canary.vaults.probarion.near",
@@ -479,6 +479,150 @@ describe("registerVault (R11)", () => {
         account: "new.near",
       }),
     ).toEqual({ ok: false, error: "owner_mismatch" });
+  });
+});
+
+describe("registerVault: the network's RPC must serve its chain (W-NET-R4)", () => {
+  let pg: PGlite;
+  beforeAll(async () => {
+    pg = await freshDb();
+  });
+  afterAll(async () => {
+    await pg.close();
+  });
+
+  const reads: string[] = [];
+  const reader = fakeReader({
+    getConfig: async () => {
+      reads.push("getConfig");
+      return vaultConfig({ owner: "chain.near" });
+    },
+  });
+  const chain: ChainReads = {
+    viewAccount: async () => {
+      reads.push("viewAccount");
+      return viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    },
+    factoryVersions: async () => [],
+  };
+  /** `beforeReads` is the chain check that `connect` runs: it throws, or the clients come back. */
+  const deps = (beforeReads: () => Promise<void>) => ({
+    db: pgliteDb(pg),
+    connect: async () => {
+      await beforeReads();
+      return { reader, chain };
+    },
+    network: "mainnet" as const,
+    factoryId: FACTORY,
+    canaryVaultId: null,
+    teamVaultIds: [],
+  });
+  const input = { vaultId: "chain.vaults.probarion.near", account: "chain.near" };
+  const count = async () =>
+    Number(
+      (await pg.query<{ n: string }>("select count(*) as n from public.tenants")).rows[0]?.n ?? 0,
+    );
+
+  it("connects first, and reads only through what it gave: registers when the chain is the network's", async () => {
+    reads.length = 0;
+    const order: string[] = [];
+    const r = await registerVault(
+      deps(async () => {
+        order.push(`connect (reads so far: ${reads.length})`);
+      }),
+      input,
+    );
+    expect(r.ok).toBe(true);
+    expect(order).toEqual(["connect (reads so far: 0)"]);
+    expect(reads).toContain("getConfig");
+  });
+
+  it("answers wrong_chain, reads nothing and writes nothing, when the RPC serves the other chain", async () => {
+    reads.length = 0;
+    const before = await count();
+    const r = await registerVault(
+      deps(async () => {
+        throw new WrongChainError("mainnet");
+      }),
+      { ...input, vaultId: "another.vaults.probarion.near" },
+    );
+    expect(r).toEqual({ ok: false, error: "wrong_chain" });
+    expect(reads).toEqual([]);
+    expect(await count()).toBe(before);
+  });
+
+  it("answers unavailable for a node that cannot be reached, and writes nothing", async () => {
+    reads.length = 0;
+    const before = await count();
+    for (const failure of [transportError(), new RpcMalformedError("status: no chain_id")]) {
+      const r = await registerVault(
+        deps(async () => {
+          throw failure;
+        }),
+        { ...input, vaultId: "another.vaults.probarion.near" },
+      );
+      expect(r).toEqual({ ok: false, error: "unavailable" });
+    }
+    expect(reads).toEqual([]);
+    expect(await count()).toBe(before);
+  });
+
+  it("does not hide a bug: an error that is not the RPC's is thrown", async () => {
+    await expect(
+      registerVault(
+        deps(async () => {
+          throw new TypeError("a bug");
+        }),
+        input,
+      ),
+    ).rejects.toThrow("a bug");
+  });
+});
+
+describe("registerVault: a tenant's network is fixed (W-NET-R4)", () => {
+  let pg: PGlite;
+  beforeAll(async () => {
+    pg = await freshDb();
+    await pg.query(
+      "insert into public.tenants (vault_id, network, kind, owner_account) values ($1, 'testnet', 'external', 'acme.near')",
+      ["fixed.vaults.probarion.testnet"],
+    );
+  });
+  afterAll(async () => {
+    await pg.close();
+  });
+
+  const reader = fakeReader({ getConfig: async () => vaultConfig({ owner: "acme.near" }) });
+  const reads: ChainReads = {
+    viewAccount: async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" }),
+    factoryVersions: async () => [],
+  };
+  const deps = () => ({
+    db: pgliteDb(pg),
+    connect: async () => ({ reader, chain: reads }),
+    network: "mainnet" as const,
+    factoryId: FACTORY,
+    canaryVaultId: null,
+    teamVaultIds: [],
+  });
+  const row = async () =>
+    (
+      await pg.query<{ network: string }>(
+        "select network from public.tenants where vault_id = 'fixed.vaults.probarion.testnet'",
+      )
+    ).rows[0]?.network;
+
+  it("maps the database's refusal of a tenant registered on the other network to network_mismatch, and changes nothing", async () => {
+    const r = await registerVault(deps(), {
+      vaultId: "fixed.vaults.probarion.testnet",
+      account: "acme.near",
+    });
+    expect(r).toEqual({ ok: false, error: "network_mismatch" });
+    expect(await row()).toBe("testnet");
+    const members = await pg.query(
+      "select account_id, role from public.tenant_members m join public.tenants t on t.id = m.tenant_id where t.vault_id = 'fixed.vaults.probarion.testnet'",
+    );
+    expect(members.rows).toEqual([]);
   });
 });
 

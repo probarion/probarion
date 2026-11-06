@@ -1,3 +1,4 @@
+import type { Network } from "@/lib/config";
 import { cronAuthorized } from "@/lib/cron";
 import { serviceDb } from "@/lib/db/clients";
 import type { Db } from "@/lib/db/port";
@@ -38,12 +39,13 @@ async function pruneRateLimits(db: Db): Promise<Prune> {
 }
 
 /**
- * The daily run of the usage numbers (vercel.json): it computes yesterday, which is complete by now, and today, which
- * is still going, for the network this app runs on. Each run replaces that day's rows, so a second run does no harm.
- * The page also refreshes its own numbers when they are an hour old (lib/usage/data.ts), so this is the floor and not
- * the only way they move. Then it prunes the rate limiter's old rows, whether or not the computes worked: the table
- * must not grow just when they are failing. A failed compute is a 503 that still says what the prune did. A call
- * without the bearer secret is a 401. The log has the counts of rows and nothing else.
+ * The daily run of the usage numbers (vercel.json): for every network this site serves, mainnet first, it computes
+ * yesterday, which is complete by now, and today, which is still going. Each run replaces that day's rows, so a second run
+ * does no harm. The page also refreshes its own numbers when they are an hour old (lib/usage/data.ts), so this is the floor
+ * and not the only way they move. Then it prunes the rate limiter's old rows once, whether or not the computes worked: the
+ * table must not grow just when they are failing. A network whose compute fails does not stop the other; the run is then a
+ * 503 that still says what the prune did. A call without the bearer secret is a 401. The log has the counts of rows and
+ * nothing else.
  */
 export async function GET(req: Request) {
   try {
@@ -52,28 +54,37 @@ export async function GET(req: Request) {
     const now = Date.now();
     const days = [utcDay(now - DAY_MS), utcDay(now)];
     const db = serviceDb();
-    const results: Run[] = [];
-    let failure: unknown = null;
-    try {
-      for (const day of days) {
-        results.push(await db.rpc<Run>("metrics_compute", { network: env.NEAR_NETWORK, day }));
+    const done: { network: Network; results: Run[] }[] = [];
+    const failures: { network: Network; error: unknown }[] = [];
+    for (const network of env.enabledNetworks) {
+      const results: Run[] = [];
+      try {
+        for (const day of days) {
+          results.push(await db.rpc<Run>("metrics_compute", { network, day }));
+        }
+        done.push({ network, results });
+      } catch (error) {
+        failures.push({ network, error });
       }
-    } catch (error) {
-      failure = error;
     }
     const prune = await pruneRateLimits(db);
-    if (failure !== null) {
+    if (failures.length > 0) {
       // A failed run for the cron's log, and never an unhandled 500.
-      log.error("cron.metrics_failed", { error: failure, pruned: prune.ok ? prune.deleted : null });
+      for (const { network, error } of failures) {
+        log.error("cron.metrics_failed", {
+          network,
+          error,
+          pruned: prune.ok ? prune.deleted : null,
+        });
+      }
       return json({ error: "unavailable", prune }, 503);
     }
     log.info("cron.metrics", {
-      network: env.NEAR_NETWORK,
+      networks: done.map((d) => ({ network: d.network, rows: d.results.map((r) => r.rows) })),
       days,
-      rows: results.map((r) => r.rows),
       pruned: prune.ok ? prune.deleted : null,
     });
-    return json({ ok: true, network: env.NEAR_NETWORK, results, prune });
+    return json({ ok: true, networks: done, prune });
   } catch (error) {
     // The database or a missing setting: a failed run for the cron's log, and never an unhandled 500.
     log.error("cron.metrics_failed", { error });

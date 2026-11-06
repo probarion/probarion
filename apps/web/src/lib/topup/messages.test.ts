@@ -77,6 +77,18 @@ describe("what the owner reads when a quote is not offered", () => {
     );
   });
 
+  it("shows the guard's sentence for a vault on the other network, with one of its own as a fallback", () => {
+    expect(
+      quoteErrorText(409, {
+        error: "wrong_network",
+        detail: "This vault is on NEAR mainnet. Open it at the mainnet address.",
+      }),
+    ).toBe("This vault is on NEAR mainnet. Open it at the mainnet address.");
+    expect(quoteErrorText(409, { error: "wrong_network" })).toBe(
+      "This vault is on the other network. Open it at that network's address.",
+    );
+  });
+
   it("says the 'mainnet only' sentence from the one place it is written", () => {
     expect(quoteErrorText(409, { error: "mainnet_only" })).toBe(`${ONLY_ON_MAINNET}.`);
   });

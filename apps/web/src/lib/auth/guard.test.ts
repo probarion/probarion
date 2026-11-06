@@ -4,6 +4,7 @@ import { deriveSubkey, macToken, parseMasterKey } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import { freshDb, seedTenant } from "../../../test/db/harness";
 import { pgliteDb } from "../../../test/db/pglite-db";
+import { MAINNET_HOST, MAINNET_ORIGIN, TESTNET_HOST } from "../../../test/fixtures/networks";
 import { issueChallenge } from "./challenge";
 import { loginPath, safeNextPath } from "./redirect";
 import { createSessionToken, SESSION_COOKIE, SESSION_TTL_MS } from "./session";
@@ -14,6 +15,13 @@ const h = vi.hoisted(() => ({
   jar: new Map<string, string>(),
   /** Request headers the page was rendered with (the proxy sets x-pathname). */
   headers: new Map<string, string>(),
+  /** The address the request was opened at: its host decides the network. */
+  host: null as string | null,
+  /** The settings the mocked environment describes. */
+  net: { defaultNetwork: "testnet", both: true } as {
+    defaultNetwork: "testnet" | "mainnet";
+    both: boolean;
+  },
   db: null as unknown as Db,
   calls: [] as { fn: string; p: Record<string, unknown> | undefined }[],
 }));
@@ -22,8 +30,15 @@ vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => (h.jar.has(name) ? { name, value: h.jar.get(name) } : undefined),
   }),
-  headers: async () => ({ get: (name: string) => h.headers.get(name) ?? null }),
+  headers: async () => ({
+    get: (name: string) => (name === "host" ? h.host : (h.headers.get(name) ?? null)),
+  }),
 }));
+// Both networks are served, testnet by default: a request on the mainnet host is a mainnet request, any other is testnet.
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../../../test/fixtures/networks");
+  return { getEnv: () => networkPart(h.net) };
+});
 vi.mock("@/lib/crypto/server", async () => {
   const sodium = await import("@/lib/crypto/sodium");
   const master = sodium.parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
@@ -65,6 +80,8 @@ beforeAll(async () => {
     [tenantA],
   );
   tenantB = await seedTenant(pg, { vault: "vault-b.near", owner: "mallory.near" });
+  // Alice also owns a vault on testnet, which a mainnet address does not serve.
+  await seedTenant(pg, { vault: "vault-t.near", owner: "alice.near", network: "testnet" });
 });
 
 afterAll(async () => {
@@ -74,11 +91,17 @@ afterAll(async () => {
 beforeEach(() => {
   h.jar.clear();
   h.headers.clear();
+  h.host = MAINNET_HOST;
+  h.net = { defaultNetwork: "testnet", both: true };
   h.calls.length = 0;
 });
 
-async function signInAs(account: string, now = Date.now()) {
-  h.jar.set(SESSION_COOKIE, await createSessionToken(await sessionKey, account, now));
+async function signInAs(
+  account: string,
+  now = Date.now(),
+  network: "mainnet" | "testnet" = "mainnet",
+) {
+  h.jar.set(SESSION_COOKIE, await createSessionToken(await sessionKey, account, network, now));
 }
 
 /** What a guard threw: the digest Next uses to turn it into a 404 or a redirect. */
@@ -159,7 +182,7 @@ describe("getSession / requireSession", () => {
 
   it("does not take a challenge cookie for a session, under either key or payload", async () => {
     // a real challenge cookie, put where a session belongs
-    const { cookie } = await issueChallenge(await challengeKey);
+    const { cookie } = await issueChallenge(await challengeKey, "mainnet");
     h.jar.set(SESSION_COOKIE, cookie);
     expect(await getSession()).toBeNull();
     // sealed under the challenge key with a session payload
@@ -167,8 +190,9 @@ describe("getSession / requireSession", () => {
       SESSION_COOKIE,
       await macToken(await challengeKey, {
         typ: "session",
-        v: 1,
+        v: 2,
         a: "alice.near",
+        n: "mainnet",
         exp: Date.now() + 60_000,
       }),
     );
@@ -178,8 +202,9 @@ describe("getSession / requireSession", () => {
       SESSION_COOKIE,
       await macToken(await sessionKey, {
         typ: "challenge",
-        v: 1,
+        v: 2,
         a: "alice.near",
+        n: "mainnet",
         exp: Date.now() + 60_000,
       }),
     );
@@ -254,8 +279,9 @@ describe("memberForApi", () => {
       SESSION_COOKIE,
       await macToken(await sessionKey, {
         typ: "session",
-        v: 1,
+        v: 2,
         a: "carol.near",
+        n: "mainnet",
         exp: Date.now() + 60_000,
         role: "owner",
         tenant_id: tenantB,
@@ -304,7 +330,7 @@ describe("memberForApi", () => {
   it("answers 401 for an expired or foreign session, never 403 or the member", async () => {
     await signInAs("alice.near", Date.now() - SESSION_TTL_MS - 1000);
     expect(await statusOf(await memberForApi("vault-a.near"))).toBe(401);
-    const { cookie } = await issueChallenge(await challengeKey);
+    const { cookie } = await issueChallenge(await challengeKey, "mainnet");
     h.jar.set(SESSION_COOKIE, cookie);
     expect(await statusOf(await memberForApi("vault-a.near"))).toBe(401);
     expect(h.calls).toEqual([]);
@@ -407,5 +433,127 @@ describe("safeNextPath", () => {
     expect(loginPath("//evil.example")).toBe("/login");
     expect(loginPath(undefined)).toBe("/login");
     expect(loginPath(null)).toBe("/login");
+  });
+});
+
+// W-NET-R3 and W-NET-R4: a session belongs to the network it was minted on, and a vault is only reachable at its own
+// network's address. The default for these tests: both networks served, a request on the mainnet host.
+describe("sessions belong to one network (W-NET-R3)", () => {
+  it("reads a session on the network it was minted on, and as signed out on the other", async () => {
+    await signInAs("alice.near", Date.now(), "mainnet");
+    h.host = MAINNET_HOST;
+    expect((await getSession())?.network).toBe("mainnet");
+    h.host = TESTNET_HOST;
+    expect(await getSession()).toBeNull();
+    // The reverse: a testnet session on the mainnet address.
+    await signInAs("alice.near", Date.now(), "testnet");
+    expect(await getSession()).not.toBeNull();
+    h.host = MAINNET_HOST;
+    expect(await getSession()).toBeNull();
+  });
+
+  it("sends a session of the other network to /login, as if there were none", async () => {
+    await signInAs("alice.near", Date.now(), "testnet");
+    h.host = MAINNET_HOST;
+    expect(await thrownDigest(requireSession())).toMatch(/^NEXT_REDIRECT;[a-z]+;\/login;/);
+    expect(await thrownDigest(requireMember("vault-a.near"))).toMatch(
+      /^NEXT_REDIRECT;[a-z]+;\/login;/,
+    );
+  });
+
+  it("answers 401 to a session of the other network, and never asks the database", async () => {
+    await signInAs("alice.near", Date.now(), "testnet");
+    h.host = MAINNET_HOST;
+    const r = await memberForApi("vault-a.near");
+    expect(await statusOf(r)).toBe(401);
+    expect(h.calls).toEqual([]);
+  });
+
+  it("takes any other host for the default network, and the sessions with it", async () => {
+    await signInAs("alice.near", Date.now(), "testnet");
+    for (const host of ["preview-git-x.vercel.app", "localhost:3000", "evil.example", null]) {
+      h.host = host;
+      expect(await getSession(), String(host)).not.toBeNull();
+    }
+    h.net = { defaultNetwork: "mainnet", both: true };
+    await signInAs("alice.near", Date.now(), "mainnet");
+    h.host = "preview-git-x.vercel.app";
+    expect(await getSession()).not.toBeNull();
+  });
+
+  it("does not let a query, a cookie or a header choose the network: only the host does", async () => {
+    await signInAs("alice.near", Date.now(), "mainnet");
+    h.host = TESTNET_HOST;
+    h.headers.set("x-pathname", "/console?network=mainnet");
+    h.headers.set("x-network", "mainnet");
+    expect(await getSession()).toBeNull();
+  });
+
+  it("reads the host as the CSRF check does: the first X-Forwarded-Host value, else Host", async () => {
+    await signInAs("alice.near", Date.now(), "mainnet");
+    h.host = TESTNET_HOST;
+    h.headers.set("x-forwarded-host", `${MAINNET_HOST}, cdn.example`);
+    expect(await getSession()).not.toBeNull(); // the address the platform passed in is mainnet's
+    h.headers.set("x-forwarded-host", TESTNET_HOST);
+    h.host = MAINNET_HOST;
+    expect(await getSession()).toBeNull(); // and the forwarded one wins over Host in the other direction too
+  });
+});
+
+describe("a vault on the other network (W-NET-R4)", () => {
+  it("answers 409 wrong_network to a member, with one plain sentence, on the network that is not the vault's", async () => {
+    await signInAs("alice.near", Date.now(), "mainnet");
+    h.host = MAINNET_HOST;
+    const r = await memberForApi("vault-t.near");
+    expect(r).toBeInstanceOf(Response);
+    expect((r as Response).status).toBe(409);
+    expect(await (r as Response).json()).toEqual({
+      error: "wrong_network",
+      detail: "This vault is on NEAR testnet. Open it at the testnet address.",
+    });
+  });
+
+  it("serves the vault on its own network", async () => {
+    await signInAs("alice.near", Date.now(), "testnet");
+    h.host = TESTNET_HOST;
+    const r = await memberForApi("vault-t.near");
+    expect(await statusOf(r)).toBeNull();
+    expect((r as { member: { network: string } }).member.network).toBe("testnet");
+  });
+
+  it("keeps a stranger's 403 and a missing vault's 403: the 409 is for members only", async () => {
+    await signInAs("mallory.near", Date.now(), "mainnet");
+    expect(await statusOf(await memberForApi("vault-t.near"))).toBe(403);
+    expect(await statusOf(await memberForApi("no-such-vault.near"))).toBe(403);
+  });
+
+  it("gives a page the vault's other address instead of the page, for a member only", async () => {
+    await signInAs("alice.near", Date.now(), "mainnet");
+    h.host = MAINNET_HOST;
+    const r = await requireMember("vault-t.near");
+    expect(r.elsewhere).toEqual({
+      vaultId: "vault-t.near",
+      vaultNetwork: "testnet",
+      requestNetwork: "mainnet",
+      href: "https://testnet.probarion.test/console/vault-t.near",
+    });
+    expect(r.member.network).toBe("testnet");
+    const own = await requireMember("vault-a.near");
+    expect(own.elsewhere).toBeNull();
+    await signInAs("mallory.near", Date.now(), "mainnet");
+    expect(await thrownDigest(requireMember("vault-t.near"))).toBe("NEXT_HTTP_ERROR_FALLBACK;404");
+  });
+
+  it("has no address to give when that network is not served by this site", async () => {
+    h.net = { defaultNetwork: "mainnet", both: false };
+    await signInAs("alice.near", Date.now(), "mainnet");
+    h.host = MAINNET_HOST;
+    const r = await requireMember("vault-t.near");
+    expect(r.elsewhere).toMatchObject({
+      vaultNetwork: "testnet",
+      requestNetwork: "mainnet",
+      href: null,
+    });
+    expect(MAINNET_ORIGIN).toContain(MAINNET_HOST);
   });
 });

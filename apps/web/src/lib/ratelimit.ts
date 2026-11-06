@@ -35,6 +35,8 @@ export const LIMITS = {
   confirmPerAccount: [30, 60],
   /** All accounts together, on top of the per-account cap. */
   confirmGlobal: [300, 60],
+  /** Register (app/console/actions.ts), per account and network: each attempt reads the chain and the membership. */
+  registerPerAccount: [10, 600],
 } as const satisfies Record<string, readonly [number, number]>;
 
 /**

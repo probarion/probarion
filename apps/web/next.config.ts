@@ -1,4 +1,11 @@
 import type { NextConfig } from "next";
+import { publicRoutingVars } from "./src/lib/site/network";
+
+// Which network an address is, as the browser needs it: the default network (NEAR_NETWORK) and each network's origin
+// (APP_ORIGIN_MAINNET and APP_ORIGIN_TESTNET, else the default's production address), from the same settings the
+// server reads and with the same rule (lib/site/network.ts). The static pages learn their network from this map and the
+// browser's address bar. A change to any of those settings needs a redeploy.
+const routing = publicRoutingVars(process.env);
 
 const nextConfig: NextConfig = {
   // Native/wasm packages stay outside the server bundle (Verify on first use #4, #5).
@@ -12,7 +19,9 @@ const nextConfig: NextConfig = {
     // The Sentry DSN is public by design; IF §14 has only SENTRY_DSN, so expose it at build time.
     // R12: an empty or whitespace-only value counts as unset, here as in loadEnv.
     NEXT_PUBLIC_SENTRY_DSN: process.env.SENTRY_DSN?.trim() || "",
-    NEXT_PUBLIC_NEAR_NETWORK: process.env.NEAR_NETWORK?.trim() || "testnet",
+    NEXT_PUBLIC_DEFAULT_NETWORK: routing.NEXT_PUBLIC_DEFAULT_NETWORK,
+    NEXT_PUBLIC_ORIGIN_MAINNET: routing.NEXT_PUBLIC_ORIGIN_MAINNET,
+    NEXT_PUBLIC_ORIGIN_TESTNET: routing.NEXT_PUBLIC_ORIGIN_TESTNET,
   },
   async headers() {
     return [

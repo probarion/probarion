@@ -5,7 +5,6 @@ import { normalizeEmail } from "@/lib/alerts/email-address";
 import { providerError } from "@/lib/alerts/errors";
 import { alertSenders } from "@/lib/alerts/server";
 import { telegramBotUsername } from "@/lib/alerts/telegram";
-import { appOrigin } from "@/lib/config";
 import { isDenied, memberForAction } from "@/lib/console/action-auth";
 import { subkey } from "@/lib/crypto/server";
 import { keyedHashHex } from "@/lib/crypto/sodium";
@@ -13,6 +12,7 @@ import { serviceDb } from "@/lib/db/clients";
 import { DbError } from "@/lib/db/port";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
+import { softRequestOrigin } from "@/lib/network";
 import { LIMITS, takeToken } from "@/lib/ratelimit";
 
 // `vault` is bound by the page, but a bound argument comes back from the browser, so it is only a lookup key: the tenant
@@ -24,12 +24,12 @@ import { LIMITS, takeToken } from "@/lib/ratelimit";
 export type AlertsState =
   | null
   | { ok: true; message: string }
-  | { ok: false; error: string; status?: 401 | 403 };
+  | { ok: false; error: string; status?: 401 | 403 | 409 };
 
 /** What the Telegram button shows: the link to open, or why there is none. */
 export type TelegramState =
   | { ok: true; link: string }
-  | { ok: false; error: string; status?: 401 | 403 };
+  | { ok: false; error: string; status?: 401 | 403 | 409 };
 
 const CAN_CHANGE = ["owner", "approver"] as ("owner" | "approver")[];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -113,7 +113,7 @@ export async function addEmailAction(
       subject: `[Probarion] Confirm alerts for ${member.vault_id}`,
       text: [
         `Confirm that this address should get payment alerts for ${member.vault_id}:`,
-        `${appOrigin()}/alerts/confirm?code=${created.link_code}`,
+        `${await softRequestOrigin()}/alerts/confirm?code=${created.link_code}`,
         "",
         "The link works once and for 24 hours. Opening it shows a button; nothing is turned on until you press it.",
         "If you did not ask for this, ignore this email.",

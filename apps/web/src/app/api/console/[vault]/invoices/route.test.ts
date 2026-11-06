@@ -29,6 +29,8 @@ const h = vi.hoisted(() => ({
   failDb: null as null | string,
   /** The tenants the route asked the watcher to look at once its response is sent. */
   kicks: [] as string[],
+  /** The networks the route asked a reader, a Probarion and a kick for. */
+  networks: [] as string[],
 }));
 
 vi.mock("@/lib/auth/guard", () => ({
@@ -45,11 +47,20 @@ vi.mock("@/lib/db/clients", () => ({
   }),
 }));
 vi.mock("@/lib/near/server", () => ({
-  getReader: () => ({ listMandates: (v: string, f: number, l: number) => h.mandates(v, f, l) }),
+  getReader: (network: string) => {
+    h.networks.push(`reader:${network}`);
+    return { listMandates: (v: string, f: number, l: number) => h.mandates(v, f, l) };
+  },
 }));
-vi.mock("@/lib/watcher/server", () => ({ kickWatcher: (tenant: string) => h.kicks.push(tenant) }));
+vi.mock("@/lib/watcher/server", () => ({
+  kickWatcher: (tenant: string, network: string) => {
+    h.networks.push(`kick:${network}`);
+    return h.kicks.push(tenant);
+  },
+}));
 vi.mock("@/lib/sdk/factory", () => ({
-  makeTenantProbarion: (o: Record<string, unknown>) => {
+  makeTenantProbarion: (network: string, o: Record<string, unknown>) => {
+    h.networks.push(`probarion:${network}`);
     h.made.push(o);
     return {
       process: (i: unknown) => h.process(i),
@@ -134,6 +145,7 @@ beforeEach(() => {
   h.auth = null;
   h.roles = [];
   h.made = [];
+  h.networks = [];
   h.rules = [];
   h.failDb = null;
   h.kicks = [];
@@ -227,6 +239,10 @@ describe("POST /api/console/[vault]/invoices", () => {
     expect(h.made).toEqual([
       expect.objectContaining({ agentKey: agentSecret, requestId: "req-1" }),
     ]);
+    // The cycle runs on the vault's own network: its chain reader, its Probarion, its watcher kick.
+    expect(new Set(h.networks)).toEqual(
+      new Set(["reader:mainnet", "probarion:mainnet", "kick:mainnet"]),
+    );
     const row = await pg.query<{ filename: string; media_type: string }>(
       "select filename, media_type from invoices order by created_at desc limit 1",
     );

@@ -74,12 +74,20 @@ vi.mock("@/lib/proof/deps", () => ({
     return h.deps;
   },
 }));
-vi.mock("@/lib/env", () => ({
-  getEnv: () => {
-    if (h.envDown) throw new Error("Invalid environment: SUPABASE_URL is required");
-    return h.env;
-  },
-}));
+// The settings in this file are one network's: the default network (so every request is for it), and its demo vault.
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("./fixtures/networks");
+  return {
+    getEnv: () => {
+      if (h.envDown) throw new Error("Invalid environment: SUPABASE_URL is required");
+      const network = h.env.NEAR_NETWORK as "mainnet" | "testnet";
+      return networkPart({
+        defaultNetwork: network,
+        [network]: { demoVaultId: h.env.PROBARION_VAULT_ID },
+      });
+    },
+  };
+});
 
 import Home from "@/app/page";
 import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";

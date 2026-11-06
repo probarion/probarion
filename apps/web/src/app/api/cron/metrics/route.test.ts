@@ -22,7 +22,7 @@ const call = (headers: Record<string, string> = { authorization: `Bearer ${SECRE
 beforeEach(() => {
   mocks.env.mockReset();
   mocks.rpc.mockReset();
-  mocks.env.mockReturnValue({ NEAR_NETWORK: "mainnet", CRON_SECRET: SECRET });
+  mocks.env.mockReturnValue({ enabledNetworks: ["mainnet"], CRON_SECRET: SECRET });
   // The row data a log line must never carry: only the counts of a run may.
   mocks.rpc.mockImplementation(async (fn: string, p: { network: string; day: string }) =>
     fn === "rate_limits_prune"
@@ -58,13 +58,13 @@ describe("GET /api/cron/metrics", () => {
   });
 
   it("answers 401 when the server's own secret is too short to be one", async () => {
-    mocks.env.mockReturnValue({ NEAR_NETWORK: "mainnet", CRON_SECRET: "short" });
+    mocks.env.mockReturnValue({ enabledNetworks: ["mainnet"], CRON_SECRET: "short" });
     const res = await call({ authorization: "Bearer short" });
     expect(res.status).toBe(401);
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
-  it("computes yesterday and then today, in UTC, for the network the app runs on", async () => {
+  it("computes yesterday and then today, in UTC, for the network the site serves", async () => {
     const res = await call();
     expect(res.status).toBe(200);
     // The two computes, then the prune of the rate limiter's old rows.
@@ -76,21 +76,20 @@ describe("GET /api/cron/metrics", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = (await res.json()) as {
       ok: boolean;
-      network: string;
-      results: { day: string; rows: number }[];
+      networks: { network: string; results: { day: string; rows: number }[] }[];
       prune: { ok: boolean; deleted?: number };
     };
     expect(body.ok).toBe(true);
     expect(body.prune).toEqual({ ok: true, deleted: 4 });
-    expect(body.network).toBe("mainnet");
-    expect(body.results.map((r) => [r.day, r.rows])).toEqual([
+    expect(body.networks.map((n) => n.network)).toEqual(["mainnet"]);
+    expect(body.networks[0]?.results.map((r) => [r.day, r.rows])).toEqual([
       ["2026-11-05", 7],
       ["2026-11-06", 7],
     ]);
   });
 
-  it("uses testnet when the app runs on testnet", async () => {
-    mocks.env.mockReturnValue({ NEAR_NETWORK: "testnet", CRON_SECRET: SECRET });
+  it("uses testnet when the site serves testnet only", async () => {
+    mocks.env.mockReturnValue({ enabledNetworks: ["testnet"], CRON_SECRET: SECRET });
     await call();
     const computes = mocks.rpc.mock.calls.filter(([fn]) => fn === "metrics_compute");
     expect(computes.map(([, p]) => p.network)).toEqual(["testnet", "testnet"]);
@@ -132,11 +131,11 @@ describe("GET /api/cron/metrics", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       ok: boolean;
-      results: { rows: number }[];
+      networks: { results: { rows: number }[] }[];
       prune: { ok: boolean; deleted?: number };
     };
     expect(body.ok).toBe(true);
-    expect(body.results.map((r) => r.rows)).toEqual([7, 7]);
+    expect(body.networks[0]?.results.map((r) => r.rows)).toEqual([7, 7]);
     expect(body.prune).toEqual({ ok: false });
     const warned = logs.lines.filter((l) => l.includes("cron.rate_limits_prune_failed"));
     expect(warned).toHaveLength(1);
@@ -173,6 +172,68 @@ describe("GET /api/cron/metrics", () => {
         ),
       ).toBe(true);
     }
+  });
+
+  // W-NET-R7: every enabled network, mainnet first; the prune once.
+  describe("with both networks served", () => {
+    beforeEach(() => {
+      mocks.env.mockReturnValue({ enabledNetworks: ["mainnet", "testnet"], CRON_SECRET: SECRET });
+    });
+
+    it("computes both days for each network, mainnet first, and prunes once, last", async () => {
+      const res = await call();
+      expect(res.status).toBe(200);
+      expect(mocks.rpc.mock.calls).toEqual([
+        ["metrics_compute", { network: "mainnet", day: "2026-11-05" }],
+        ["metrics_compute", { network: "mainnet", day: "2026-11-06" }],
+        ["metrics_compute", { network: "testnet", day: "2026-11-05" }],
+        ["metrics_compute", { network: "testnet", day: "2026-11-06" }],
+        ["rate_limits_prune", {}],
+      ]);
+      const body = (await res.json()) as {
+        ok: boolean;
+        networks: { network: string; results: { rows: number }[] }[];
+      };
+      expect(body.ok).toBe(true);
+      expect(body.networks.map((n) => [n.network, n.results.length])).toEqual([
+        ["mainnet", 2],
+        ["testnet", 2],
+      ]);
+    });
+
+    it("logs the rows of each network in one line", async () => {
+      await call();
+      const lines = logs.lines.filter((l) => l.includes('"msg":"cron.metrics"'));
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0] as string).networks).toEqual([
+        { network: "mainnet", rows: [7, 7] },
+        { network: "testnet", rows: [7, 7] },
+      ]);
+    });
+
+    it("lets one network fail without stopping the other, still prunes once, and is a failed run", async () => {
+      let n = 0;
+      mocks.rpc.mockImplementation(async (fn: string, p: { network: string; day: string }) => {
+        if (fn === "rate_limits_prune") return { deleted: 4 };
+        n += 1;
+        if (n === 1) throw new Error("statement timeout"); // mainnet's first day
+        return { day: p.day, network: p.network, rows: 7 };
+      });
+      const res = await call();
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: "unavailable", prune: { ok: true, deleted: 4 } });
+      expect(mocks.rpc.mock.calls).toEqual([
+        ["metrics_compute", { network: "mainnet", day: "2026-11-05" }],
+        // mainnet's second day is not tried after its first failed; testnet is computed in full
+        ["metrics_compute", { network: "testnet", day: "2026-11-05" }],
+        ["metrics_compute", { network: "testnet", day: "2026-11-06" }],
+        ["rate_limits_prune", {}],
+      ]);
+      const failed = logs.lines.filter((l) => l.includes("cron.metrics_failed"));
+      expect(failed).toHaveLength(1);
+      expect(failed[0]).toContain("mainnet");
+      expect(failed[0]).toContain("statement timeout");
+    });
   });
 
   it("is a failed run with no prune done when both fail, and says so", async () => {

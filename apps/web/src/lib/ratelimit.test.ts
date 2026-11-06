@@ -137,7 +137,7 @@ describe("every call takes its window from a constant the tests above read", () 
   it("states the limits that a route builds from a table in LIMITS too", () => {
     // topup/gate.ts passes `limit` from its BUCKETS table: every entry of it is a LIMITS entry.
     const gate = readFileSync(join(WEB, "src", "lib", "topup", "gate.ts"), "utf8");
-    const entries = [...gate.matchAll(/=> \[[^\]]*, (\S+)\] as const/g)].map((m) => m[1]);
+    const entries = [...gate.matchAll(/=>\s*\[[^\]]*, (\S+)\] as const/g)].map((m) => m[1]);
     expect(entries.length).toBe(3);
     expect(entries.filter((e) => !(e ?? "").startsWith("LIMITS."))).toEqual([]);
   });

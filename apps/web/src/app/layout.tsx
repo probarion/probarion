@@ -7,7 +7,6 @@ import { SiteHeader } from "@/components/site/SiteHeader";
 import s from "@/components/site/site.module.css";
 import { appOrigin } from "@/lib/config";
 import { OG_IMAGE, SITE_DESCRIPTION, SITE_TITLE } from "@/lib/site/facts";
-import { BUILD_NETWORK } from "@/lib/site/network";
 import "./globals.css";
 
 // Self-hosted at build time. Each sets its Tailwind theme variable on <html>, which beats the fallback in globals.css.
@@ -53,7 +52,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <a className={s.skip} href="#main">
           Skip to content
         </a>
-        <BetaStrip network={BUILD_NETWORK} />
+        <BetaStrip />
         <SiteHeader />
         <main id="main" className="flex-1">
           {children}

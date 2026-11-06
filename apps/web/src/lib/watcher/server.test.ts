@@ -4,20 +4,32 @@ import { quietLogs } from "../../../test/fixtures/quiet-logs";
 // The kick and the deps with next/server, the settings, the database and the chain replaced. The logger is real.
 const mocks = vi.hoisted(() => ({
   after: vi.fn(),
-  env: vi.fn(),
+  db: { rpc: vi.fn() },
+  dbFails: false,
+  readers: [] as string[],
+  rpcs: [] as string[],
   watchTenantById: vi.fn(),
   runAlerts: vi.fn(),
   viewAccount: vi.fn(),
-  db: { rpc: vi.fn() },
   reader: { name: "reader" },
 }));
 
 vi.mock("next/server", () => ({ after: mocks.after }));
-vi.mock("@/lib/env", () => ({ getEnv: mocks.env }));
-vi.mock("@/lib/db/clients", () => ({ serviceDb: () => mocks.db }));
+vi.mock("@/lib/db/clients", () => ({
+  serviceDb: () => {
+    if (mocks.dbFails) throw new Error("Invalid environment: SUPABASE_URL is required");
+    return mocks.db;
+  },
+}));
 vi.mock("@/lib/near/server", () => ({
-  getReader: () => mocks.reader,
-  getRpc: () => ({ viewAccount: mocks.viewAccount }),
+  getReader: (network: string) => {
+    mocks.readers.push(network);
+    return mocks.reader;
+  },
+  getRpc: (network: string) => {
+    mocks.rpcs.push(network);
+    return { viewAccount: mocks.viewAccount };
+  },
 }));
 vi.mock("./watch", () => ({ watchTenantById: mocks.watchTenantById }));
 vi.mock("@/lib/alerts/server", () => ({ runAlerts: mocks.runAlerts }));
@@ -29,17 +41,13 @@ const logs = quietLogs();
 const TENANT = "11111111-1111-4111-8111-111111111111";
 
 beforeEach(() => {
-  for (const m of [
-    mocks.after,
-    mocks.env,
-    mocks.watchTenantById,
-    mocks.runAlerts,
-    mocks.viewAccount,
-  ]) {
+  for (const m of [mocks.after, mocks.watchTenantById, mocks.runAlerts, mocks.viewAccount]) {
     m.mockReset();
   }
   mocks.runAlerts.mockResolvedValue({ sent: 0, failed: 0, skipped: 0, deferred: 0, error: false });
-  mocks.env.mockReturnValue({ NEAR_NETWORK: "mainnet" });
+  mocks.dbFails = false;
+  mocks.readers = [];
+  mocks.rpcs = [];
   mocks.after.mockImplementation(() => undefined);
   mocks.watchTenantById.mockResolvedValue({ inserted: 0 });
 });
@@ -51,29 +59,36 @@ const registered = (): (() => Promise<void>) => {
 };
 
 describe("watcherDeps", () => {
-  it("is the server's database and reader, the app's network, the clock and the RPC's view_account", async () => {
-    mocks.env.mockReturnValue({ NEAR_NETWORK: "testnet" });
+  it("is the server's database, the network's reader, the network, the clock and the network's view_account", async () => {
     mocks.viewAccount.mockResolvedValue({ amount: "5", storage_usage: 1 });
-    const deps = watcherDeps();
+    const deps = watcherDeps("testnet");
     expect(deps.db).toBe(mocks.db);
     expect(deps.reader).toBe(mocks.reader);
     expect(deps.network).toBe("testnet");
     expect(deps.now()).toBeInstanceOf(Date);
     expect(await deps.viewAccount("v.near")).toEqual({ amount: "5", storage_usage: 1 });
     expect(mocks.viewAccount).toHaveBeenCalledWith("v.near");
+    // Both the reader and the view_account went to testnet's chain client, and nothing to mainnet's.
+    expect(mocks.readers).toEqual(["testnet"]);
+    expect(mocks.rpcs).toEqual(["testnet"]);
+  });
+
+  it("is built for the network it is given, whichever that is", () => {
+    expect(watcherDeps("mainnet").network).toBe("mainnet");
+    expect(mocks.readers).toEqual(["mainnet"]);
   });
 });
 
 describe("kickWatcher", () => {
   it("hands one job to after() and does no work until the response is sent", () => {
-    kickWatcher(TENANT);
+    kickWatcher(TENANT, "mainnet");
     registered();
     expect(mocks.watchTenantById).not.toHaveBeenCalled();
-    expect(mocks.env).not.toHaveBeenCalled();
+    expect(mocks.readers).toEqual([]);
   });
 
-  it("watches that tenant, on the app's network, when the job runs", async () => {
-    kickWatcher(TENANT);
+  it("watches that tenant, on the tenant's network, when the job runs", async () => {
+    kickWatcher(TENANT, "mainnet");
     await registered()();
     expect(mocks.watchTenantById).toHaveBeenCalledTimes(1);
     const [deps, id] = mocks.watchTenantById.mock.calls[0] as [{ network: string }, string];
@@ -83,7 +98,7 @@ describe("kickWatcher", () => {
 
   it("never throws out of the job: a failed watch is a warning with the tenant and the error", async () => {
     mocks.watchTenantById.mockRejectedValue(new Error("rpc down"));
-    kickWatcher(TENANT);
+    kickWatcher(TENANT, "mainnet");
     await expect(registered()()).resolves.toBeUndefined();
     const warned = logs.lines.filter((l) => l.includes("watch.kick_failed"));
     expect(warned).toHaveLength(1);
@@ -93,10 +108,8 @@ describe("kickWatcher", () => {
   });
 
   it("does not throw when the settings cannot be read inside the job", async () => {
-    mocks.env.mockImplementation(() => {
-      throw new Error("Invalid environment: SUPABASE_URL is required");
-    });
-    kickWatcher(TENANT);
+    mocks.dbFails = true;
+    kickWatcher(TENANT, "mainnet");
     await expect(registered()()).resolves.toBeUndefined();
     expect(mocks.watchTenantById).not.toHaveBeenCalled();
     expect(logs.lines.some((l) => l.includes("watch.kick_failed"))).toBe(true);
@@ -117,10 +130,10 @@ describe("kickWatcher", () => {
           order.push("alerts");
           return { sent: 1, failed: 0, skipped: 0, deferred: 0, error: false };
         });
-        kickWatcher(TENANT);
+        kickWatcher(TENANT, "mainnet");
         await registered()();
         expect(order).toEqual(["watch", "alerts"]);
-        expect(mocks.runAlerts).toHaveBeenCalledWith(Date.parse("2026-11-11T10:00:13Z"));
+        expect(mocks.runAlerts).toHaveBeenCalledWith("mainnet", Date.parse("2026-11-11T10:00:13Z"));
       } finally {
         vi.useRealTimers();
       }
@@ -128,7 +141,7 @@ describe("kickWatcher", () => {
 
     it("still go out when the watch failed: what is already recorded is worth sending", async () => {
       mocks.watchTenantById.mockRejectedValue(new Error("rpc down"));
-      kickWatcher(TENANT);
+      kickWatcher(TENANT, "mainnet");
       await expect(registered()()).resolves.toBeUndefined();
       expect(mocks.runAlerts).toHaveBeenCalledTimes(1);
       expect(logs.lines.some((l) => l.includes("watch.kick_failed"))).toBe(true);
@@ -136,22 +149,43 @@ describe("kickWatcher", () => {
 
     it("never fail the job, even if the dispatch rejects", async () => {
       mocks.runAlerts.mockRejectedValue(new Error("boom"));
-      kickWatcher(TENANT);
+      kickWatcher(TENANT, "mainnet");
       await expect(registered()()).resolves.toBeUndefined();
     });
 
     it("are not touched until the response is sent", () => {
-      kickWatcher(TENANT);
+      kickWatcher(TENANT, "mainnet");
       registered();
       expect(mocks.runAlerts).not.toHaveBeenCalled();
     });
+  });
+
+  // W-NET-R7: a kick watches and alerts the tenant's own network, and only that one.
+  it("watches and alerts a testnet tenant on testnet alone, and a mainnet tenant on mainnet alone", async () => {
+    for (const network of ["testnet", "mainnet"] as const) {
+      mocks.after.mockReset();
+      mocks.watchTenantById.mockClear();
+      mocks.runAlerts.mockClear();
+      mocks.readers = [];
+      kickWatcher(TENANT, network);
+      await registered()();
+      expect(mocks.readers, network).toEqual([network]);
+      const [deps] = mocks.watchTenantById.mock.calls[0] as [
+        { network: string; viewAccount(a: string): Promise<unknown> },
+      ];
+      expect(deps.network).toBe(network);
+      mocks.viewAccount.mockResolvedValue({ amount: "1", storage_usage: 1 });
+      await deps.viewAccount("v.near");
+      expect(mocks.rpcs.at(-1), network).toBe(network);
+      expect(mocks.runAlerts.mock.calls[0]?.[0]).toBe(network);
+    }
   });
 
   it("does not throw when after() refuses (called outside a request), so the request is not failed", () => {
     mocks.after.mockImplementation(() => {
       throw new Error("`after` was called outside a request scope");
     });
-    expect(() => kickWatcher(TENANT)).not.toThrow();
+    expect(() => kickWatcher(TENANT, "mainnet")).not.toThrow();
     expect(logs.lines.some((l) => l.includes("watch.kick_failed"))).toBe(true);
   });
 });

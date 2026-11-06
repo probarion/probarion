@@ -107,7 +107,7 @@ describe("the recorded attacks", () => {
     expect(html).toMatch(/data-tone="good"/);
   });
 
-  it("links a testnet entry to the testnet explorer, whatever network this build runs on", () => {
+  it("links a testnet entry to the testnet explorer, whatever network the page is opened at", () => {
     const html = render("replay", [{ ...ENTRY, network: "testnet" }]);
     expect(html).toContain('href="https://testnet.nearblocks.io/txns/AbC123xyz"');
   });

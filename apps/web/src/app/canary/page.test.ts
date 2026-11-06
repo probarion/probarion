@@ -13,15 +13,24 @@ const mocks = vi.hoisted(() => ({
   intentsBalance: vi.fn(),
   listMandates: vi.fn(),
 }));
+/** The network of the address the page is opened at, and the networks the page asked a chain reader for. */
+const net = vi.hoisted(() => ({
+  network: "testnet" as "mainnet" | "testnet",
+  readers: [] as string[],
+}));
 
 vi.mock("@/lib/env", () => ({ getEnv: mocks.env }));
+vi.mock("@/lib/network", () => ({ softRequestNetwork: async () => net.network }));
 vi.mock("@/lib/canary/board-data", () => ({ loadBoard: mocks.board, loadFeed: mocks.feed }));
 vi.mock("@/lib/near/server", () => ({
-  getReader: () => ({
-    ftBalance: mocks.ftBalance,
-    intentsBalance: mocks.intentsBalance,
-    listMandates: mocks.listMandates,
-  }),
+  getReader: (network: string) => {
+    net.readers.push(network);
+    return {
+      ftBalance: mocks.ftBalance,
+      intentsBalance: mocks.intentsBalance,
+      listMandates: mocks.listMandates,
+    };
+  },
   chainConsts: () => ({
     usdc: "usdc.probarion.testnet",
     intents: "intents-stub.probarion.testnet",
@@ -36,12 +45,24 @@ const logs = quietLogs();
 
 const VAULT = "canary.vaults.probarion.testnet";
 
-const env = (over: Record<string, unknown> = {}) => ({
-  NEAR_NETWORK: "testnet",
-  CANARY_MODE: "code-only",
-  CANARY_VAULT_ID: VAULT,
-  ...over,
-});
+/** The settings: the mode, and the Canary vault of each network (`CANARY_VAULT_ID` sets both; `vaults` sets them apart). */
+const env = (
+  over: {
+    CANARY_MODE?: string;
+    CANARY_VAULT_ID?: string | null;
+    vaults?: { mainnet: string | null; testnet: string | null };
+  } = {},
+) => {
+  const vault = "CANARY_VAULT_ID" in over ? (over.CANARY_VAULT_ID ?? null) : VAULT;
+  const vaults = over.vaults ?? { mainnet: vault, testnet: vault };
+  return {
+    CANARY_MODE: over.CANARY_MODE ?? "code-only",
+    networks: {
+      mainnet: { canaryVaultId: vaults.mainnet },
+      testnet: { canaryVaultId: vaults.testnet },
+    },
+  };
+};
 
 const mandate: MandateView = {
   id: 1,
@@ -94,6 +115,8 @@ const FEED = parseFeed([
 
 beforeEach(() => {
   for (const m of Object.values(mocks)) m.mockReset();
+  net.network = "testnet";
+  net.readers = [];
   mocks.env.mockReturnValue(env());
   mocks.board.mockResolvedValue(BOARD);
   mocks.feed.mockResolvedValue(FEED);
@@ -215,7 +238,7 @@ describe("the live page", () => {
   });
 
   it("says USDC and no testnet pill on mainnet", async () => {
-    mocks.env.mockReturnValue(env({ NEAR_NETWORK: "mainnet" }));
+    net.network = "mainnet";
     const html = await page();
     const text = visible(html);
     expect(text).toContain("Public challenge · NEAR mainnet");
@@ -223,6 +246,37 @@ describe("the live page", () => {
     expect(text).not.toContain("test USDC");
     expect(text).not.toContain("Testnet: test tokens, no value");
     expect(html).toContain(`href="https://nearblocks.io/address/${VAULT}"`);
+  });
+
+  // W-NET-R5: the Canary is the request network's: its vault, its chain, its board and its feed.
+  it("reads the vault, the board and the feed of the network of the address, and of no other", async () => {
+    mocks.env.mockReturnValue(
+      env({ vaults: { mainnet: "canary.vaults.probarion.near", testnet: VAULT } }),
+    );
+    for (const network of ["mainnet", "testnet"] as const) {
+      net.network = network;
+      net.readers = [];
+      mocks.board.mockClear();
+      mocks.feed.mockClear();
+      const text = visible(await page());
+      expect(text, network).toContain(
+        network === "mainnet" ? "canary.vaults.probarion.near" : VAULT,
+      );
+      expect(new Set(net.readers), network).toEqual(new Set([network]));
+      expect(mocks.board, network).toHaveBeenCalledWith(network);
+      expect(mocks.feed, network).toHaveBeenCalledWith(network);
+    }
+  });
+
+  it("is not open yet on a network that has no Canary vault, whatever the other one has", async () => {
+    mocks.env.mockReturnValue(
+      env({ vaults: { mainnet: "canary.vaults.probarion.near", testnet: null } }),
+    );
+    net.network = "testnet";
+    const text = visible(await page());
+    expect(text).toContain("The live Canary is not open yet.");
+    expect(text).not.toContain("canary.vaults.probarion.near");
+    expect(touchedTheChain()).toBe(false);
   });
 
   it("shows the Base balance only when there is one", async () => {

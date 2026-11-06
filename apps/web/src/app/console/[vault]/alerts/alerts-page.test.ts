@@ -34,9 +34,15 @@ vi.mock("@/lib/crypto/server", () => ({
   subkey: (purpose: Parameters<typeof deriveSubkey>[1]) => deriveSubkey(MASTER, purpose),
 }));
 vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
-vi.mock("@/lib/env", () => ({
-  getEnv: () => ({ NEAR_NETWORK: "mainnet", TELEGRAM_BOT_TOKEN: h.token }),
-}));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../../../../../test/fixtures/networks");
+  return {
+    getEnv: () => ({
+      ...networkPart({ defaultNetwork: "mainnet", mainnet: { origin: "https://probarion.xyz" } }),
+      TELEGRAM_BOT_TOKEN: h.token,
+    }),
+  };
+});
 vi.mock("@/lib/alerts/server", () => ({
   alertSenders: () => ({
     telegram: h.token ? async () => ({ ok: true, id: "1" }) : null,
@@ -55,6 +61,7 @@ const logs = quietLogs();
 
 const V = "acme.vaults.probarion.near";
 const OTHER = "other.vaults.probarion.near";
+// The confirmation link is on the request network's origin (the env mock above), not on the production address.
 const ORIGIN = "https://probarion.xyz";
 
 let pg: PGlite;
@@ -93,7 +100,7 @@ beforeEach(async () => {
 async function signInAs(account: string) {
   h.jar.set(
     SESSION_COOKIE,
-    await createSessionToken(await deriveSubkey(MASTER, "session"), account),
+    await createSessionToken(await deriveSubkey(MASTER, "session"), account, "mainnet"),
   );
 }
 async function digest(p: Promise<unknown>): Promise<string> {

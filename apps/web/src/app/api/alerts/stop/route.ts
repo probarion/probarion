@@ -1,11 +1,11 @@
 import { stopByToken } from "@/lib/alerts/links";
 import { parseStopParams } from "@/lib/alerts/stop";
-import { appOrigin } from "@/lib/config";
 import { subkey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
 import { DbError } from "@/lib/db/port";
 import { json, problem } from "@/lib/http";
 import { log } from "@/lib/log";
+import { softRequestOrigin } from "@/lib/network";
 
 export const dynamic = "force-dynamic";
 
@@ -20,15 +20,20 @@ export async function POST(req: Request) {
   const link = parseStopParams(new URL(req.url).searchParams);
   if (link === null) return problem(400, "invalid_link");
   const fromPage = (await req.formData().catch(() => null))?.get("from") === "page";
-  const page = (extra: string) =>
-    Response.redirect(`${appOrigin()}/alerts/stop?s=${link.id}&t=${link.token}${extra}`, 303);
+  // Back to the address the request came in on, which is its network's origin; a setting the console refuses does not stop
+  // the redirect (softRequestOrigin).
+  const page = async (extra: string) =>
+    Response.redirect(
+      `${await softRequestOrigin()}/alerts/stop?s=${link.id}&t=${link.token}${extra}`,
+      303,
+    );
   try {
     if (!(await stopByToken(serviceDb(), await subkey("alerts"), link.id, link.token))) {
       return problem(400, "invalid_link");
     }
-    return fromPage ? page("&done=1") : json({ ok: true });
+    return fromPage ? await page("&done=1") : json({ ok: true });
   } catch (error) {
     log.warn("alerts.stop_failed", { error: error instanceof DbError ? error.code : "failed" });
-    return fromPage ? page("&failed=1") : problem(503, "unavailable");
+    return fromPage ? await page("&failed=1") : problem(503, "unavailable");
   }
 }

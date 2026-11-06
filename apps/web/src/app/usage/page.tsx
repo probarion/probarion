@@ -13,7 +13,7 @@ import {
 import type { Network } from "@/lib/config";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
-import { BUILD_NETWORK } from "@/lib/site/network";
+import { softRequestNetwork } from "@/lib/network";
 import { USAGE_COPY } from "@/lib/usage/copy";
 import { loadUsage } from "@/lib/usage/data";
 import type { UsageMetrics } from "@/lib/usage/parse";
@@ -29,13 +29,14 @@ export const dynamic = "force-dynamic";
 const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
- * The network the app runs on and its numbers, or null for the numbers when anything fails. Settings that cannot be
- * read are the same "not available" as a database that cannot be: the network then comes from the build.
+ * The network of the address the page was opened at and its numbers, or null for the numbers when anything fails.
+ * Settings that cannot be read are the same "not available" as a database that cannot be: the network then comes from
+ * the public map built into the page.
  */
 async function load(): Promise<{ network: Network; usage: UsageMetrics | null }> {
-  let network: Network = BUILD_NETWORK;
+  const network = await softRequestNetwork();
   try {
-    network = getEnv().NEAR_NETWORK;
+    getEnv();
   } catch (error) {
     log.warn("usage.env_unreadable", { error: reason(error) });
     return { network, usage: null };
@@ -51,7 +52,7 @@ async function load(): Promise<{ network: Network; usage: UsageMetrics | null }>
 
 /**
  * The public usage numbers: counts of vaults, payments, refusals and decisions, with the team, external owners and Canary
- * participants in separate columns, and what each number means. The numbers are for the network the app runs on. When
+ * participants in separate columns, and what each number means. The numbers are for the network of the address the page was opened at. When
  * they cannot be read the page says so and keeps the header and the definitions: it does not fail for want of them.
  */
 export default async function UsagePage() {

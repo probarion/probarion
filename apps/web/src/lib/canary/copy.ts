@@ -176,7 +176,7 @@ export const CANARY_COPY = {
   },
 } as const;
 
-/** The second half of the "does not show" card: the network this build runs on, and the audit. */
+/** The second half of the "does not show" card: the network of the address the page is opened at, and the audit. */
 export const runsOn = (network: Network): string =>
   `This runs on ${network}, and no third party has audited the code.`;
 

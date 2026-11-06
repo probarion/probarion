@@ -12,7 +12,14 @@ import { quietLogs } from "../../../test/fixtures/quiet-logs";
 // The public pages an alert email links to, and the routes behind their buttons: confirm an address, stop a subscription.
 // The database is PGlite, so the real SQL answers; the key is a test master; the response helpers, the limiter and the
 // logger are real.
-const h = vi.hoisted(() => ({ db: null as unknown as Db, ip: "203.0.113.5" }));
+const h = vi.hoisted(() => ({
+  db: null as unknown as Db,
+  ip: "203.0.113.5",
+  /** The address the request is opened at: its host decides the network (both are served, mainnet by default). */
+  host: null as string | null,
+  /** The settings cannot be read (a variable the console refuses): getEnv throws, as it does on every request then. */
+  badEnv: false,
+}));
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
 
 vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
@@ -20,8 +27,28 @@ vi.mock("@/lib/crypto/server", () => ({
   subkey: (purpose: Parameters<typeof deriveSubkey>[1]) => deriveSubkey(MASTER, purpose),
 }));
 vi.mock("next/headers", () => ({
-  headers: async () => new Headers({ "x-forwarded-for": h.ip }),
+  headers: async () => {
+    const headers = new Headers({ "x-forwarded-for": h.ip });
+    if (h.host !== null) headers.set("host", h.host);
+    return headers;
+  },
 }));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../../../test/fixtures/networks");
+  return {
+    getEnv: () => {
+      if (h.badEnv) throw new Error("NEAR_RPC_URLS entry 1 must be https");
+      return {
+        ...networkPart({
+          defaultNetwork: "mainnet",
+          both: true,
+          mainnet: { origin: "https://probarion.xyz" },
+          testnet: { origin: "https://testnet.probarion.xyz" },
+        }),
+      };
+    },
+  };
+});
 
 import * as confirmRoute from "../api/alerts/confirm/route";
 import * as stopRoute from "../api/alerts/stop/route";
@@ -31,7 +58,9 @@ import StopPage, { metadata as stopMetadata } from "./stop/page";
 const logs = quietLogs();
 
 const V = "acme.vaults.probarion.near";
+// The mainnet origin of the env mock above, which is also the default network's.
 const ORIGIN = "https://probarion.xyz";
+const TESTNET = "https://testnet.probarion.xyz";
 let pg: PGlite;
 let tenant: string;
 
@@ -49,6 +78,8 @@ beforeEach(async () => {
   await pg.exec("delete from alert_subscriptions; delete from rate_limits;");
   h.db = pgliteDb(pg);
   h.ip = "203.0.113.5";
+  h.host = null;
+  h.badEnv = false;
 });
 
 const html = (el: unknown) => renderToStaticMarkup(el as ReactElement).replaceAll("&#x27;", "'");
@@ -196,8 +227,75 @@ describe("POST /api/alerts/confirm", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  // W-NET-R9: back to the address the request came in on, which is its network's origin. Never another host.
+  it("redirects to the origin of the network the request came in on, and to no other host", async () => {
+    for (const [host, origin] of [
+      ["probarion.xyz", ORIGIN],
+      ["testnet.probarion.xyz", TESTNET],
+      ["preview-git-x.vercel.app", ORIGIN], // not an origin of this site: the default network's
+      ["evil.example", ORIGIN],
+    ] as const) {
+      h.host = host;
+      const { id, link_code } = await createEmail();
+      const res = await post(confirmRoute, `${origin}/api/alerts/confirm`, { code: link_code });
+      expect(location(res), host).toBe(`${origin}/console/${V}/alerts?verified=1`);
+      expect(await row(id)).toMatchObject({ link_code: null });
+      const bad = await post(confirmRoute, `${origin}/api/alerts/confirm`, { code: "nope" });
+      expect(location(bad), host).toBe(`${origin}/alerts/confirm`);
+    }
+  });
+
   it("changes nothing on a GET: it is a POST route only", () => {
     expect(Object.keys(confirmRoute).sort()).toEqual(["POST", "dynamic"]);
+  });
+
+  // A setting the console refuses must not turn a button into a bare 500: the person is sent back to a page (which then says
+  // what it can), at the address of the network the request came in on as the public map built into the pages knows it, else
+  // at the production address.
+  describe("when the settings cannot be read", () => {
+    beforeEach(() => {
+      h.badEnv = true;
+    });
+
+    it("still redirects, to the production address when the public map has no origin", async () => {
+      const bad = await post(confirmRoute, `${ORIGIN}/api/alerts/confirm`, { code: "nope" });
+      expect(bad.status).toBe(303);
+      expect(location(bad)).toBe(`${ORIGIN}/alerts/confirm`);
+    });
+
+    it("redirects to the origin of the network the host is, from the public map built into the pages", async () => {
+      vi.stubEnv("NEXT_PUBLIC_DEFAULT_NETWORK", "mainnet");
+      vi.stubEnv("NEXT_PUBLIC_ORIGIN_MAINNET", ORIGIN);
+      vi.stubEnv("NEXT_PUBLIC_ORIGIN_TESTNET", TESTNET);
+      try {
+        for (const [host, origin] of [
+          ["probarion.xyz", ORIGIN],
+          ["testnet.probarion.xyz", TESTNET],
+          ["evil.example", ORIGIN],
+        ] as const) {
+          h.host = host;
+          const res = await post(confirmRoute, `${origin}/api/alerts/confirm`, { code: "nope" });
+          expect(location(res), host).toBe(`${origin}/alerts/confirm`);
+        }
+      } finally {
+        vi.unstubAllEnvs();
+        vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "probarion.xyz");
+      }
+    });
+
+    it("answers a database that cannot be reached with the 503, not an unhandled error", async () => {
+      const { link_code } = await createEmail();
+      h.db = { rpc: async () => Promise.reject(new Error("no settings")) } as unknown as Db;
+      const res = await post(confirmRoute, `${ORIGIN}/api/alerts/confirm`, { code: link_code });
+      expect(res.status).toBe(503);
+    });
+
+    it("confirms and redirects when only the network settings are the problem and the database answers", async () => {
+      const { id, link_code } = await createEmail();
+      const res = await post(confirmRoute, `${ORIGIN}/api/alerts/confirm`, { code: link_code });
+      expect(location(res)).toBe(`${ORIGIN}/console/${V}/alerts?verified=1`);
+      expect(await row(id)).toMatchObject({ link_code: null });
+    });
   });
 
   it("answers 429 when one address has asked too often, and confirms nothing", async () => {
@@ -308,6 +406,20 @@ describe("POST /api/alerts/stop", () => {
     expect(await row(id)).toMatchObject({ active: false });
   });
 
+  it("sends the page's button back to the origin of the network the request came in on", async () => {
+    for (const [host, origin] of [
+      ["probarion.xyz", ORIGIN],
+      ["testnet.probarion.xyz", TESTNET],
+    ] as const) {
+      h.host = host;
+      const { id } = await createEmail();
+      const { oneClick } = await link(id);
+      const q = new URL(oneClick).search;
+      const res = await post(stopRoute, oneClick, { from: "page" });
+      expect(location(res), host).toBe(`${origin}/alerts/stop${q}&done=1`);
+    }
+  });
+
   it("answers the same whether or not the subscription existed, and whether or not it was already off", async () => {
     const { id } = await createEmail();
     const real = await link(id);
@@ -366,6 +478,50 @@ describe("POST /api/alerts/stop", () => {
     const res = await post(stopRoute, oneClick, { from: "page" });
     expect(res.status).toBe(303);
     expect(location(res)).toBe(`${ORIGIN}/alerts/stop${q}&failed=1`);
+  });
+
+  describe("when the settings cannot be read", () => {
+    beforeEach(() => {
+      h.badEnv = true;
+    });
+
+    it("still stops the subscription and sends the page's button back, to the production address", async () => {
+      const { id } = await createEmail();
+      const { oneClick } = await link(id);
+      const q = new URL(oneClick).search;
+      const res = await post(stopRoute, oneClick, { from: "page" });
+      expect(res.status).toBe(303);
+      expect(location(res)).toBe(`${ORIGIN}/alerts/stop${q}&done=1`);
+      expect(await row(id)).toMatchObject({ active: false });
+    });
+
+    it("sends the button back to a page that says it failed when the database fails too, instead of answering 500", async () => {
+      const { id } = await createEmail();
+      const { oneClick } = await link(id);
+      const q = new URL(oneClick).search;
+      h.db = { rpc: async () => Promise.reject(new Error("no settings")) } as unknown as Db;
+      const res = await post(stopRoute, oneClick, { from: "page" });
+      expect(res.status).toBe(303);
+      expect(location(res)).toBe(`${ORIGIN}/alerts/stop${q}&failed=1`);
+      expect((await post(stopRoute, oneClick)).status).toBe(503);
+    });
+
+    it("takes the host's network from the public map built into the pages", async () => {
+      vi.stubEnv("NEXT_PUBLIC_DEFAULT_NETWORK", "mainnet");
+      vi.stubEnv("NEXT_PUBLIC_ORIGIN_MAINNET", ORIGIN);
+      vi.stubEnv("NEXT_PUBLIC_ORIGIN_TESTNET", TESTNET);
+      try {
+        h.host = "testnet.probarion.xyz";
+        const { id } = await createEmail();
+        const { oneClick } = await link(id);
+        const q = new URL(oneClick).search;
+        const res = await post(stopRoute, oneClick, { from: "page" });
+        expect(location(res)).toBe(`${TESTNET}/alerts/stop${q}&done=1`);
+      } finally {
+        vi.unstubAllEnvs();
+        vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "probarion.xyz");
+      }
+    });
   });
 
   it("has no rate limit to turn an unsubscribe away: a valid token is all it asks for", async () => {

@@ -16,6 +16,7 @@ import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { log, newRequestId } from "@/lib/log";
 import { listAll } from "@/lib/near/reader";
 import { getReader } from "@/lib/near/server";
+import { requestNetwork } from "@/lib/network";
 import { LIMITS } from "@/lib/ratelimit";
 import { kickWatcher } from "@/lib/watcher/server";
 
@@ -28,8 +29,8 @@ const VISITOR_COOKIE = "pb_canary";
 const VISITOR_SHAPE = /^[A-Za-z0-9_-]{22}$/;
 
 /** Every mandate of the vault, all pages (the SDK's pageAll refuses a node that loops or truncates). */
-function vaultMandates(vault: string): Promise<MandateView[]> {
-  return listAll((from, limit) => getReader().listMandates(vault, from, limit), 100, {
+function vaultMandates(network: Network, vault: string): Promise<MandateView[]> {
+  return listAll((from, limit) => getReader(network).listMandates(vault, from, limit), 100, {
     contractId: vault,
     methodName: "list_mandates",
   });
@@ -67,7 +68,10 @@ export async function POST(req: Request) {
 
 async function attempt(req: Request, requestId: string, startedAt: number): Promise<Response> {
   const env = getEnv();
-  if (!env.CANARY_VAULT_ID) return problem(503, "not_ready");
+  // The Canary of the address this attempt is made at: that network's vault, chain and board (W-NET-R5).
+  const network = await requestNetwork();
+  const canaryVault = env.networks[network].canaryVaultId;
+  if (!canaryVault) return problem(503, "not_ready");
   // The gullible agent needs the model: without a key there would be nothing to fool.
   if (!env.NEARAI_API_KEY) return problem(503, "not_ready");
   const db = serviceDb();
@@ -77,8 +81,13 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
     network: Network;
     kind: string;
     proof_public: boolean;
-  } | null>("tenant_by_vault", { vault_id: env.CANARY_VAULT_ID });
+  } | null>("tenant_by_vault", { vault_id: canaryVault });
   if (found?.kind !== "canary") return problem(503, "not_ready");
+  // The network's Canary vault is registered on the other one: a setting gone wrong, not a vault to run an attempt on.
+  if (found.network !== network) {
+    log.error("canary.vault_on_other_network", { request_id: requestId, network });
+    return problem(503, "not_ready");
+  }
   // The Canary's ledger must be private: the gullible model quotes what visitors type into signed, append-only entries,
   // and a public ledger would publish that for good (W-T17-R1). No model call and no chain call while it is public.
   if (found.proof_public) {
@@ -109,24 +118,24 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
 
   const body = (await req.json().catch(() => null)) as { text?: unknown } | null;
   if (typeof body?.text !== "string") return problem(400, "invalid_input");
-  const isTeam = await isTeamMember(db);
+  const isTeam = await isTeamMember(db, network);
   const store = new SupabaseLedgerStore(db, tenant.tenant_id);
 
   // From here the attempt runs, and what it records or sends changes the vault: the watcher looks at it as soon as this
   // response is sent, so the owner's alerts do not wait for the next scheduled run.
-  kickWatcher(tenant.tenant_id);
+  kickWatcher(tenant.tenant_id, tenant.network);
   const r = await runAttempt(
     {
       db,
       mode: env.CANARY_MODE,
       now: () => new Date(),
       tenant,
-      mandates: () => vaultMandates(tenant.vault_id),
+      mandates: () => vaultMandates(tenant.network, tenant.vault_id),
       makeProbarion: ({ mandate, requestId: rid, remainingMs }) =>
         makeCanaryProbarion(db, masterKey(), tenant, mandate, rid, {}, { remainingMs }),
       async agentAllowance(mandate) {
         // A key the chain does not show reads as an unlimited allowance (null): it must not turn raw mode ON.
-        const k = await getReader().accessKey(tenant.vault_id, mandate.agent_pk);
+        const k = await getReader(tenant.network).accessKey(tenant.vault_id, mandate.agent_pk);
         if (!k.exists) return 0n;
         return k.allowance === null ? null : BigInt(k.allowance);
       },
@@ -136,7 +145,7 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
           (k) => k.purpose === "ledger" && k.status === "active",
         );
         if (!key) return 0n;
-        const k = await getReader().accessKey(tenant.vault_id, key.public_key);
+        const k = await getReader(tenant.network).accessKey(tenant.vault_id, key.public_key);
         if (!k.exists) return 0n;
         return k.allowance === null ? null : BigInt(k.allowance);
       },
@@ -157,14 +166,17 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
 }
 
 /**
- * True for a signed-in member of a team vault: the team's own attempts are counted apart from the public's. Taken from
- * the session only; a failure here is a visitor counted as outside, never a refused attempt.
+ * True for a signed-in member of a team vault on this network: the team's own attempts are counted apart from the
+ * public's. Taken from the session only (which is this network's); a failure here is a visitor counted as outside, never
+ * a refused attempt.
  */
-async function isTeamMember(db: Db): Promise<boolean> {
+async function isTeamMember(db: Db, network: Network): Promise<boolean> {
   try {
     const session = await getSession();
     if (!session) return false;
-    return (await memberTenants(db, session.accountId)).some((t) => t.kind === "team");
+    return (await memberTenants(db, session.accountId)).some(
+      (t) => t.kind === "team" && t.network === network,
+    );
   } catch {
     return false;
   }

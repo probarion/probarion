@@ -32,7 +32,10 @@ vi.mock("@/lib/auth/guard", () => ({
     if (!(roles as string[]).includes(h.role)) {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
     }
-    return { session: { accountId: "acme.near" }, member: { vault_id: vault, role: h.role } };
+    return {
+      session: { accountId: "acme.near" },
+      member: { vault_id: vault, role: h.role, network: h.network },
+    };
   },
 }));
 vi.mock("@/lib/db/clients", () => ({
@@ -52,7 +55,7 @@ vi.mock("@/lib/db/clients", () => ({
   }),
 }));
 vi.mock("@/lib/env", () => ({
-  getEnv: () => ({ NEAR_NETWORK: h.network, ONECLICK_JWT: h.jwt }),
+  getEnv: () => ({ ONECLICK_JWT: h.jwt }),
 }));
 
 const { POST } = await import("./route");
@@ -149,7 +152,7 @@ describe("POST /api/topup/submit", () => {
     expect(r.status).toBe(429);
     expect(r.headers.get("retry-after")).toMatch(/^[0-9]+$/);
     expect(await answer(r)).toMatchObject({ error: "rate_limited" });
-    expect(h.limits.at(-1)).toEqual({ bucket: "topup-submit:acme.near", max, window });
+    expect(h.limits.at(-1)).toEqual({ bucket: "topup-submit:mainnet:acme.near", max, window });
     expect(oneclick.calls).toHaveLength(max);
     // A bad request is refused before it costs a token.
     h.buckets.clear();

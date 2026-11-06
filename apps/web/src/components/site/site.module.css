@@ -105,6 +105,39 @@
   flex: 1;
 }
 
+/*
+ * The network switch (W-NET-R6): "Testnet | Mainnet" between the links and Proof. The current network is filled (ink on
+ * paper, inverted) and is not a link; the other is a quiet link to its address, with a small up-right arrow. It appears
+ * after mount, and only when the other network is served. The phone menu has the same switch as its last row.
+ */
+.netSwitch {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  list-style: none;
+  padding: 3px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.netPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  color: var(--color-mute);
+}
+a.netPill:hover {
+  color: var(--color-ink);
+}
+.netPillCurrent {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -171,6 +204,30 @@
   align-items: center;
   min-height: 44px;
   font-size: 17px;
+}
+/* The last row of the menu: the network, and a link to the other one, after a hairline. */
+.menuPanel .menuNetwork {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-line);
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.menuPanel .menuNetworkName {
+  color: var(--color-ink);
+  font-weight: 500;
+}
+.menuPanel .menuNetworkLink {
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-gold-small);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Hero */
@@ -1029,6 +1086,12 @@
   }
   .nav {
     gap: 12px;
+  }
+}
+/* The bar has no room for the pair below this width; the phone menu's last row has the same switch. */
+@media (max-width: 760px) {
+  .netSwitch {
+    display: none;
   }
 }
 @media (max-width: 960px) {

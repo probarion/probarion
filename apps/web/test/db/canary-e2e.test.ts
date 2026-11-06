@@ -30,14 +30,16 @@ import { pgliteDb } from "./pglite-db";
 
 const h = vi.hoisted(() => ({ url: "", db: null as unknown as Db }));
 const NEARAI_KEY = ["test", "double", "nearai", "key"].join("-");
-vi.mock("@/lib/env", () => ({
-  getEnv: () => ({
-    NEAR_NETWORK: "testnet",
-    NEAR_RPC_URLS: [h.url],
-    NEARAI_API_KEY: NEARAI_KEY,
-    NEARAI_MODEL: null,
-  }),
-}));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../fixtures/networks");
+  return {
+    getEnv: () => ({
+      ...networkPart({ defaultNetwork: "testnet", testnet: { rpcUrls: [h.url] } }),
+      NEARAI_API_KEY: NEARAI_KEY,
+      NEARAI_MODEL: null,
+    }),
+  };
+});
 vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
 
 const { makeCanaryProbarion } = await import("@/lib/canary/probarion");
@@ -219,6 +221,7 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
     });
     expect(spends()).toBe(before);
     const feed = await pgliteDb(pg, "anon").rpc<Record<string, unknown>[]>("public_canary_feed", {
+      network: "testnet",
       limit: 1,
     });
     expect(feed[0]).toMatchObject({
@@ -320,7 +323,9 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
     expect(JSON.stringify(pub)).not.toContain("Hang Bac");
     expect(pub).toEqual([]);
     expect(await anon.rpc("public_vault", { vault_id: SCENARIO_VAULT })).toBeNull();
-    const feed = JSON.stringify(await anon.rpc("public_canary_feed", { limit: 100 }));
+    const feed = JSON.stringify(
+      await anon.rpc("public_canary_feed", { network: "testnet", limit: 100 }),
+    );
     expect(feed).not.toContain("Hang Bac");
   });
 

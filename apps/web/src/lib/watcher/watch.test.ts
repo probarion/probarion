@@ -11,6 +11,7 @@ import {
   refusalEvents,
   spendEvents,
   watchHealthy,
+  watchStarved,
 } from "./watch";
 
 const T = "11111111-1111-4111-8111-111111111111";
@@ -244,6 +245,26 @@ describe("watchHealthy", () => {
     // Tenants the budget left for the next run are not successes: of the one that was tried, none worked.
     expect(watchHealthy(r(3, 1, 2))).toBe(false);
     expect(watchHealthy(r(3, 1, 1))).toBe(true);
+    // A run that was given no time at all tried nothing: it is not healthy either (a starved network, W-NET-R4).
+    expect(watchHealthy(r(3, 0, 3))).toBe(false);
+    expect(watchHealthy(r(1, 0, 1))).toBe(false);
+    expect(watchHealthy(r(0, 0, 0))).toBe(true);
+  });
+
+  it("calls a run starved when it has tenants and skipped every one of them, and no other", () => {
+    const r = (tenants: number, errors: number, skipped: number) => ({
+      tenants,
+      inserted: 0,
+      errors,
+      skipped,
+      checkErrors: 0,
+    });
+    expect(watchStarved(r(4, 0, 4))).toBe(true);
+    expect(watchStarved(r(1, 0, 1))).toBe(true);
+    expect(watchStarved(r(0, 0, 0))).toBe(false); // no tenants: nothing was left undone
+    expect(watchStarved(r(4, 0, 3))).toBe(false); // one was watched
+    expect(watchStarved(r(4, 4, 0))).toBe(false); // all tried and all failed: unhealthy, but not starved
+    expect(watchStarved(r(3, 0, 0))).toBe(false);
   });
 
   it("does not count failed checks: they are warnings, and the heartbeat is about the chain being reached", () => {

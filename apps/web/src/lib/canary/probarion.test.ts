@@ -14,7 +14,7 @@ const h = vi.hoisted(() => ({
   ledger: null as unknown,
   agent: null as unknown,
   agentFor: [] as string[],
-  made: [] as { opts: Record<string, unknown>; deps: Record<string, unknown> }[],
+  made: [] as { network: string; opts: Record<string, unknown>; deps: Record<string, unknown> }[],
   rules: [] as unknown[],
   processThrows: false,
 }));
@@ -33,8 +33,12 @@ vi.mock("@/lib/keys/service", async (original) => ({
   },
 }));
 vi.mock("@/lib/sdk/factory", () => ({
-  makeTenantProbarion: (opts: Record<string, unknown>, deps: Record<string, unknown> = {}) => {
-    h.made.push({ opts, deps });
+  makeTenantProbarion: (
+    network: string,
+    opts: Record<string, unknown>,
+    deps: Record<string, unknown> = {},
+  ) => {
+    h.made.push({ network, opts, deps });
     return {
       rules: { add: (rule: unknown) => h.rules.push(rule) },
       process: async () => {
@@ -54,7 +58,11 @@ const { CANARY_NEARAI_TIMEOUTS_MS, makeCanaryProbarion, resetCanaryModelCache } 
 const logs = quietLogs();
 const db = {} as Db;
 const MASTER = new Uint8Array(32).fill(7);
-const tenant = { tenant_id: "t-1", vault_id: "canary.vaults.probarion.near" };
+const tenant = {
+  tenant_id: "t-1",
+  vault_id: "canary.vaults.probarion.near",
+  network: "mainnet" as const,
+};
 const mandate = { id: 3, agent_pk: "ed25519:agentpk" } as MandateView;
 // Throwaway keys for tests only, derived from fixed seeds. They hold nothing anywhere.
 const agentPair = generateKeyPair(Uint8Array.from({ length: 32 }, (_, i) => i + 11));
@@ -73,7 +81,10 @@ beforeEach(() => {
   h.env = {
     NEARAI_API_KEY: "test-key",
     NEARAI_MODEL: null,
-    NEAR_RPC_URLS: ["https://rpc.test/key-in-path"],
+    networks: {
+      mainnet: { rpcUrls: ["https://rpc.test/key-in-path"] },
+      testnet: { rpcUrls: ["https://testnet-rpc.test/other"] },
+    },
   };
   h.ledger = ledgerKey;
   h.agent = agentKey;
@@ -93,6 +104,8 @@ describe("makeCanaryProbarion", () => {
     expect(pb).not.toBeNull();
     expect(h.agentFor).toEqual(["ed25519:agentpk"]);
     expect(h.made).toHaveLength(1);
+    // The instance is made for the tenant's own network.
+    expect(h.made[0]?.network).toBe("mainnet");
     expect(h.made[0]?.opts).toEqual({
       tenant,
       agentKey: agentPair.secretKey,

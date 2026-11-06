@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AddEmailForm } from "@/components/console/AddEmailForm";
 import { TelegramConnect } from "@/components/console/TelegramConnect";
 import { VaultNav } from "@/components/console/VaultNav";
+import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
 import { Badge, Card, Notice } from "@/components/ui";
 import { kindsInWords } from "@/lib/alerts/kinds";
 import { requireMember } from "@/lib/auth/guard";
@@ -31,7 +32,8 @@ export default async function AlertsPage({
   const { vault: requested } = await params;
   const { verified } = await searchParams;
   // 404 for anyone who is not a member: a vault id is never confirmed to a stranger.
-  const { member } = await requireMember(requested);
+  const { member, elsewhere } = await requireMember(requested);
+  if (elsewhere) return <VaultOnOtherNetwork {...elsewhere} />;
   const vault = member.vault_id;
   // Owners and approvers change alerts; a viewer sees them (the actions check the role again).
   const canChange = member.role === "owner" || member.role === "approver";

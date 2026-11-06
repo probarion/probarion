@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
-import { BetaStrip } from "@/components/site/BetaStrip";
+import { BetaStrip, BetaStripView } from "@/components/site/BetaStrip";
 import { InkBand } from "@/components/site/InkBand";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
@@ -62,7 +62,7 @@ const landing = (network: "testnet" | "mainnet" = "testnet") =>
     createElement(
       "div",
       null,
-      createElement(BetaStrip, { network }),
+      createElement(BetaStripView, { network }),
       createElement(SiteHeader),
       createElement(Home),
       createElement(SiteFooter),
@@ -248,7 +248,7 @@ describe("transactions", () => {
     for (const t of Object.values(TX)) expect(README).toContain(t.hash);
   });
 
-  it("link to the testnet explorer, whatever network this build runs on", () => {
+  it("link to the testnet explorer, whatever network the page is opened at", () => {
     for (const t of Object.values(TX)) {
       expect(t.url).toBe(explorerTxUrl("testnet", t.hash));
       expect(t.url).toContain("testnet");
@@ -726,7 +726,9 @@ describe("the rendered landing page", () => {
 
 describe("the beta strip", () => {
   it("says the three standing facts and the test network", () => {
-    const out = visibleText(renderToStaticMarkup(createElement(BetaStrip, { network: "testnet" })));
+    const out = visibleText(
+      renderToStaticMarkup(createElement(BetaStripView, { network: "testnet" })),
+    );
     expect(out).toContain("Unaudited beta.");
     expect(out).toContain("Probarion holds no owner key");
     expect(out).toContain("Non-custodial");
@@ -735,11 +737,47 @@ describe("the beta strip", () => {
   });
 
   it("does not say testnet when the build is mainnet", () => {
-    const out = visibleText(renderToStaticMarkup(createElement(BetaStrip, { network: "mainnet" })));
+    const out = visibleText(
+      renderToStaticMarkup(createElement(BetaStripView, { network: "mainnet" })),
+    );
     expect(out).not.toMatch(/testnet|test tokens/i);
     expect(out).toContain("Unaudited beta.");
     expect(out).toContain("Runs on NEAR mainnet.");
     expect(betaStrip("mainnet").where).toBe("Runs on NEAR mainnet.");
+  });
+});
+
+describe("the beta strip, before the browser has told it the network", () => {
+  // The pages are static: the strip cannot know which address it is served at until it runs in the browser, so what the
+  // server renders (and what hydration meets) is only what is true on both networks (W-NET-R6).
+  it("says the standing facts and no network at all in the server render", () => {
+    const out = visibleText(renderToStaticMarkup(createElement(BetaStrip)));
+    expect(out).toContain("Unaudited beta.");
+    expect(out).toContain("No third party has audited this code.");
+    expect(out).toContain("Probarion holds no owner key");
+    expect(out).toContain("Use small amounts.");
+    expect(out).not.toMatch(/testnet|mainnet|test tokens|Runs on/i);
+  });
+
+  it("is the same markup as the view with no network", () => {
+    expect(renderToStaticMarkup(createElement(BetaStrip))).toBe(
+      renderToStaticMarkup(createElement(BetaStripView, { network: null })),
+    );
+  });
+
+  it("adds the network sentence of the network it is told, and no other", () => {
+    for (const [network, says, not] of [
+      ["testnet", "Runs on NEAR testnet with test tokens.", /mainnet/i],
+      ["mainnet", "Runs on NEAR mainnet.", /testnet|test tokens/i],
+    ] as const) {
+      const out = visibleText(renderToStaticMarkup(createElement(BetaStripView, { network })));
+      expect(out, network).toContain(says);
+      expect(out, network).not.toMatch(not);
+    }
+  });
+
+  it("has no network sentence in the neutral copy", () => {
+    expect(betaStrip(null).where).toBeNull();
   });
 });
 
@@ -753,6 +791,11 @@ describe("the header", () => {
     expect(links).toContain(LINKS.github);
     for (const route of PLANNED_ROUTES) expect(links).not.toContain(route);
     expect(html).not.toContain("coming soon");
+  });
+
+  it("renders no network switch on the server: it appears after mount, and only when the other network is served", () => {
+    expect(html).not.toContain('aria-label="Network"');
+    expect(html).not.toContain("Network:");
   });
 
   it("has a menu for phones that works with no JavaScript", () => {
@@ -787,7 +830,7 @@ describe("the root layout", () => {
 
 describe("the chrome's landmarks and headings", () => {
   it("puts the beta strip in a landmark", () => {
-    const html = renderToStaticMarkup(createElement(BetaStrip, { network: "testnet" }));
+    const html = renderToStaticMarkup(createElement(BetaStripView, { network: "testnet" }));
     expect(html).toMatch(/^<aside [^>]*aria-label="Beta notice"/);
   });
 

@@ -4,6 +4,7 @@ import { ExternalLink } from "@/components/ui";
 import { SITE_NAV } from "@/lib/routes";
 import { CONSOLE_ROUTE, HEADER_ANCHORS, HERO, LINKS, PROOF_ROUTE } from "@/lib/site/facts";
 import { BrandMark } from "./BrandMark";
+import { NetworkSwitch } from "./NetworkSwitch";
 import { PhoneMenu } from "./PhoneMenu";
 import s from "./site.module.css";
 
@@ -43,6 +44,7 @@ export function SiteHeader() {
             <ExternalLink href={LINKS.github}>GitHub</ExternalLink>
           </div>
           <span className={s.spacer} />
+          <NetworkSwitch variant="pill" />
           <RouteLink route={PROOF_ROUTE} whenPlanned="hide" className={`${s.btn} ${s.quietSm}`}>
             Proof
           </RouteLink>
@@ -68,6 +70,7 @@ export function SiteHeader() {
               </RouteLink>
               <OtherPageLinks />
               <ExternalLink href={LINKS.github}>GitHub</ExternalLink>
+              <NetworkSwitch variant="menu" />
             </div>
           </PhoneMenu>
         </nav>

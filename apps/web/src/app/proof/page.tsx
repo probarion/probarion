@@ -8,6 +8,7 @@ import { inkPillClass } from "@/components/ui";
 import { publicDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
+import { requestNetwork } from "@/lib/network";
 import { publicDemoTarget } from "@/lib/proof/service";
 import { PROOF_INDEX, TAMPER_COPY } from "@/lib/site/facts";
 
@@ -22,10 +23,11 @@ const isAccount = (value: string): boolean => isNearAccountId(value);
 /** Where the demo vault's page is, if it is public. Without a demo vault this page needs no secret, so a bad env is no 500. */
 async function demoTarget(): Promise<string | null> {
   try {
-    const env = getEnv();
+    // The demo vault of the network of this address (PROBARION_VAULT_ID[_<NET>]).
+    const network = await requestNetwork();
     return await publicDemoTarget(
-      { publicDb: publicDb(), network: env.NEAR_NETWORK },
-      env.PROBARION_VAULT_ID,
+      { publicDb: publicDb(), network },
+      getEnv().networks[network].demoVaultId,
     );
   } catch (error) {
     log.warn("proof.demo_unavailable", {
@@ -36,7 +38,7 @@ async function demoTarget(): Promise<string | null> {
 }
 
 /**
- * `/proof` with no vault: the demo vault (PROBARION_VAULT_ID), when its proof page is public on this network.
+ * `/proof` with no vault: the demo vault (PROBARION_VAULT_ID), when its proof page is public on this address's network.
  * Otherwise, and when the database cannot say (`publicDemoTarget` catches the error), rather than a redirect to a 404
  * or an error page, it says what a proof page shows, with a form that opens one and the ledger test.
  *

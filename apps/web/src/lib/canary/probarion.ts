@@ -1,6 +1,7 @@
 import "server-only";
 import type { MandateView } from "@probarion/core";
 import { NearAiProposer, NearApiJsSender, type ProbarionDeps, RpcClient } from "@probarion/sdk";
+import type { Network } from "@/lib/config";
 import type { Db } from "@/lib/db/port";
 import { getEnv } from "@/lib/env";
 import { openKey } from "@/lib/keys/open";
@@ -91,12 +92,14 @@ function canaryProposer(
  * `modelBudgetMs`. Without it the SDK's own defaults apply (tests that do not care). `deps` is for tests (an offline
  * proposer, a fixed clock); a `proposer` given there replaces the NEAR AI one.
  *
+ * `tenant.network` is the Canary vault's own network: its chain, its RPC list.
+ *
  * This is one of the server cycles that may open a sealed secret (like the Payables pipeline); no page or route does.
  */
 export async function makeCanaryProbarion(
   db: Db,
   master: Uint8Array,
-  tenant: { tenant_id: string; vault_id: string },
+  tenant: { tenant_id: string; vault_id: string; network: Network },
   mandate: MandateView,
   requestId: string,
   deps: ProbarionDeps = {},
@@ -132,7 +135,7 @@ export async function makeCanaryProbarion(
     const rpc =
       deps.rpc ??
       new RpcClient({
-        urls: getEnv().NEAR_RPC_URLS,
+        urls: getEnv().networks[tenant.network].rpcUrls,
         maxRounds: 2,
         timeoutMs: CANARY_LIMITS.chainStepTimeoutMs,
         remainingMs: budget.remainingMs,
@@ -151,6 +154,7 @@ export async function makeCanaryProbarion(
   }
 
   const pb = makeTenantProbarion(
+    tenant.network,
     {
       tenant,
       agentKey: agent.key.secret,

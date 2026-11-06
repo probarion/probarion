@@ -23,12 +23,12 @@ vi.mock("@/lib/auth/guard", () => ({
     if (h.role === null || (roles && !roles.includes(h.role))) notFound();
     return {
       session: { accountId: h.account },
-      member: { vault_id: vault, role: h.role, tenant_id: "t-1" },
+      member: { vault_id: vault, role: h.role, tenant_id: "t-1", network: h.network },
     };
   },
 }));
 vi.mock("@/lib/env", () => ({
-  getEnv: () => ({ NEAR_NETWORK: h.network, ONECLICK_JWT: h.jwt }),
+  getEnv: () => ({ ONECLICK_JWT: h.jwt }),
 }));
 vi.mock("@/lib/near/server", async () => {
   const { NETWORKS: networks } = await import("@probarion/core");

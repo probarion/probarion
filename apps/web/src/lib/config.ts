@@ -1,4 +1,5 @@
 import { NETWORKS, type NetworkId } from "@probarion/core";
+import { productionOrigin } from "@/lib/site/network";
 
 export type Network = NetworkId;
 
@@ -25,7 +26,7 @@ export function explorerAccountUrl(network: Network, account: string): string {
   return `${NETWORKS[network].explorerTx.replace("/txns/", "/address/")}${encodeURIComponent(account)}`;
 }
 
+/** The address the site is served at: the production address, else localhost. The default network's origin when it sets none. */
 export function appOrigin(src: Record<string, string | undefined> = process.env): string {
-  const prod = src.VERCEL_PROJECT_PRODUCTION_URL?.trim();
-  return prod ? `https://${prod}` : "http://localhost:3000";
+  return productionOrigin(src);
 }

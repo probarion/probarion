@@ -89,7 +89,9 @@ A deployment with no token or no key simply has no sender for that channel: the 
 
 ### The links in a message
 
-The origin in every link is the production address Vercel gives the build (`VERCEL_PROJECT_PRODUCTION_URL`, as `appOrigin()` reads it). A build without it (local development) writes `http://localhost:3000`.
+The origin in every link is the address of the vault's own network (`APP_ORIGIN_MAINNET` or `APP_ORIGIN_TESTNET`; the default network's falls back to the production address Vercel gives the build, `VERCEL_PROJECT_PRODUCTION_URL`). A build without it (local development) writes `http://localhost:3000`.
+
+**Both networks, one bot.** The watcher's run dispatches the alerts of each network in turn (`docs/ops/watcher.md`), and every link in a message (the console link and the stop link) is on the origin of the subscription's own network. A confirmation email is built on the origin the owner is signed in at, which is the vault's network, and `/api/alerts/confirm` and `/api/alerts/stop` send the person back to the address the request came in on. There is one Telegram bot and one webhook for the project, registered at the **default network's** address (`APP_ORIGIN` for the script below, when that is not `https://probarion.xyz`). The bot links and stops subscriptions of either network, and its reply names the console of the vault's network. Migration `20261108000012_networks.sql` also makes the claim of an alert refuse an event of another vault.
 
 ## Try it (OWNER)
 

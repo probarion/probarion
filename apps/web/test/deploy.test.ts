@@ -50,12 +50,18 @@ const platformVariable = (name: string) =>
 const ROTATION_INPUTS = ["OLD_KEY_ENCRYPTION_SECRET", "NEW_KEY_ENCRYPTION_SECRET"];
 /** An input of the one-off `telegram-webhook` script (docs/ops/alerts.md). The app itself never reads it: it takes its origin from Vercel. */
 const SCRIPT_INPUTS = ["APP_ORIGIN"];
-/** Public by design (§14, and the two next.config.ts derives from SENTRY_DSN and NEAR_NETWORK). */
+/**
+ * Public by design (§14, and the ones next.config.ts derives: the DSN from SENTRY_DSN, and the network map from
+ * NEAR_NETWORK, APP_ORIGIN_MAINNET and APP_ORIGIN_TESTNET: which network each address is, the browser's copy of the
+ * server's own rule. Addresses and a network name, nothing secret).
+ */
 const PUBLIC_ALLOWED = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "NEXT_PUBLIC_SENTRY_DSN",
-  "NEXT_PUBLIC_NEAR_NETWORK",
+  "NEXT_PUBLIC_DEFAULT_NETWORK",
+  "NEXT_PUBLIC_ORIGIN_MAINNET",
+  "NEXT_PUBLIC_ORIGIN_TESTNET",
 ];
 const SECRET_NAME = /SECRET|KEY|TOKEN|JWT|PASSWORD|DSN|HEARTBEAT/;
 
@@ -71,7 +77,7 @@ describe("environment variables", () => {
   it("lists every variable the web app reads in .env.example", () => {
     const read = envNamesRead(WEB);
     expect(read.size).toBeGreaterThan(15);
-    // next.config.ts derives NEXT_PUBLIC_SENTRY_DSN and NEXT_PUBLIC_NEAR_NETWORK from variables listed here.
+    // next.config.ts derives NEXT_PUBLIC_SENTRY_DSN and the network map from variables listed here.
     const derived = nextPublicNames(text(WEB, "next.config.ts"));
     const missing = [...read]
       .filter(

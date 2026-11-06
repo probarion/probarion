@@ -6,22 +6,28 @@ import type { MemberRole, MemberTenant } from "@/lib/db/tenants";
 /**
  * What a server action answers when the caller may not run it. A server action has no HTTP status
  * of its own, so the status travels in the result: 401 without a session, 403 for a non-member
- * (or a member without the role), the same answers `memberForApi` gives a route.
+ * (or a member without the role), 409 for a vault on the other network, the same answers `memberForApi` gives a route.
  */
+export type DeniedStatus = 401 | 403 | 409;
+
 export interface ActionDenied {
   error: string;
-  status: 401 | 403;
+  status: DeniedStatus;
 }
 
 const SIGNED_OUT: ActionDenied = { error: "Your session ended. Sign in again.", status: 401 };
 const FORBIDDEN: ActionDenied = { error: "You cannot change this vault.", status: 403 };
+const WRONG_NETWORK_FALLBACK =
+  "This vault is on the other network. Open it at that network's address.";
 
 export function isDenied(value: unknown): value is ActionDenied {
   return (
     typeof value === "object" &&
     value !== null &&
     "status" in value &&
-    ((value as ActionDenied).status === 401 || (value as ActionDenied).status === 403)
+    ((value as ActionDenied).status === 401 ||
+      (value as ActionDenied).status === 403 ||
+      (value as ActionDenied).status === 409)
   );
 }
 
@@ -42,6 +48,21 @@ export async function memberForAction(
   roles?: MemberRole[],
 ): Promise<{ session: Session; member: MemberTenant } | ActionDenied> {
   const r = await memberForApi(vault, roles);
-  if (r instanceof Response) return r.status === 401 ? SIGNED_OUT : FORBIDDEN;
+  if (r instanceof Response) {
+    if (r.status === 401) return SIGNED_OUT;
+    if (r.status === 409) return { error: await wrongNetworkSentence(r), status: 409 };
+    return FORBIDDEN;
+  }
   return r;
+}
+
+/** The one plain sentence `memberForApi` put in its 409 answer ("This vault is on NEAR mainnet. Open it at the mainnet address."). */
+async function wrongNetworkSentence(r: Response): Promise<string> {
+  try {
+    const body: unknown = await r.json();
+    const detail = (body as { detail?: unknown } | null)?.detail;
+    return typeof detail === "string" && detail !== "" ? detail : WRONG_NETWORK_FALLBACK;
+  } catch {
+    return WRONG_NETWORK_FALLBACK;
+  }
 }

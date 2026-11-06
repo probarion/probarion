@@ -305,3 +305,101 @@ describe("POST /api/telegram/webhook", () => {
     });
   });
 });
+
+// W-NET-R8, R9: one bot serves both networks. A reply names the console of the vault's own network, and /stop works for
+// the subscriptions of either.
+describe("one bot, both networks", () => {
+  const MAINNET = "https://mainnet.probarion.test";
+  const TESTNET = "https://testnet.probarion.test";
+  let testnetTenant: string;
+  const TESTNET_V = "acme.vaults.probarion.testnet";
+
+  beforeAll(async () => {
+    testnetTenant = await seedTenant(pg, {
+      vault: TESTNET_V,
+      owner: "acme.testnet",
+      network: "testnet",
+    });
+  });
+
+  const serving = async (both = true) => {
+    const { networkPart } = await import("../../../../../test/fixtures/networks");
+    h.env.mockReturnValue({
+      TELEGRAM_BOT_TOKEN: TOKEN,
+      ...networkPart({ defaultNetwork: "testnet", both }),
+    });
+  };
+
+  it("answers the network of the vault in the verify call", async () => {
+    const mainnetCode = await newCode(tenant);
+    const testnetCode = await newCode(testnetTenant);
+    const a = await h.db.rpc<{ network: string }>("alert_subscription_verify", {
+      channel: "telegram",
+      link_code: mainnetCode,
+      target: "1",
+    });
+    const b = await h.db.rpc<{ network: string }>("alert_subscription_verify", {
+      channel: "telegram",
+      link_code: testnetCode,
+      target: "2",
+    });
+    expect([a.network, b.network]).toEqual(["mainnet", "testnet"]);
+  });
+
+  it("links the vault's alerts page on its own network's origin, whichever network it is", async () => {
+    await serving();
+    await call(message(`/start ${await newCode(tenant)}`));
+    expect(reply()).toContain(`Linked to ${V}.`);
+    expect(reply()).toContain(`Manage them: ${MAINNET}/console/${V}/alerts`);
+    h.sendTelegram.mockClear();
+    await call(message(`/start ${await newCode(testnetTenant)}`, 77));
+    expect(reply()).toContain(`Linked to ${TESTNET_V}.`);
+    expect(reply()).toContain(`Manage them: ${TESTNET}/console/${TESTNET_V}/alerts`);
+    expect(reply()).not.toContain(MAINNET);
+  });
+
+  it("makes the link once per start: the settings are read for the token and for that one link", async () => {
+    await serving();
+    h.env.mockClear();
+    await call(message(`/start ${await newCode(tenant)}`));
+    expect(reply()).toContain(`Manage them: ${MAINNET}/console/${V}/alerts`);
+    expect(h.env).toHaveBeenCalledTimes(2);
+  });
+
+  it("still links the chat when the link cannot be made, and logs that it could not, with no value", async () => {
+    // The token is read first; the settings then fail for the link (a variable the console refuses, say).
+    h.env.mockReturnValueOnce({ TELEGRAM_BOT_TOKEN: TOKEN }).mockImplementation(() => {
+      throw new Error(`NEAR_RPC_URLS entry 1 must be https (${TOKEN})`);
+    });
+    await call(message(`/start ${await newCode(tenant)}`));
+    expect(reply()).toContain(`Linked to ${V}.`);
+    expect(reply()).not.toContain("Manage them");
+    expect((await subs())[0]?.verified_at).not.toBeNull();
+    const line = logs.lines.find((l) => l.includes("telegram.console_link_failed")) ?? "";
+    expect(line).toContain('"level":"warn"');
+    expect(line).toContain('"network":"mainnet"');
+    // The warning names the network and nothing else: not the error, the vault, the chat or the token.
+    expect(line).not.toContain(TOKEN);
+    expect(line).not.toContain(V);
+    expect(line).not.toContain(String(CHAT));
+  });
+
+  it("names no link for a network this site does not serve, and still links the chat", async () => {
+    await serving(false);
+    await call(message(`/start ${await newCode(tenant)}`));
+    expect(reply()).toContain(`Linked to ${V}.`);
+    expect(reply()).not.toContain("Manage them");
+    expect(reply()).not.toContain("http");
+    expect((await subs())[0]?.verified_at).not.toBeNull();
+  });
+
+  it("stops the chat's alerts on both networks with one /stop", async () => {
+    await serving();
+    await call(message(`/start ${await newCode(tenant)}`, 5));
+    await call(message(`/start ${await newCode(testnetTenant)}`, 5));
+    h.sendTelegram.mockClear();
+    await call(message("/stop", 5));
+    expect(reply()).toContain("Stopped alerts for 2 vaults.");
+    expect((await subs()).every((s) => !s.active)).toBe(true);
+  });
+});
