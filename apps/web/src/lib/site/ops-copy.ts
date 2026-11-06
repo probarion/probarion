@@ -133,7 +133,7 @@ export const SECURITY_PAGE = {
     setup: "Set up once, one command per line:",
     setupLines: CLI_SETUP_LINES,
     hosted:
-      "For a vault hosted on Probarion, first download its signed ledger from `/proof/<vault>/ledger.jsonl` on the address of its network: a member of the vault can, and anyone can when its proof page is public. Then, from the repository folder:",
+      "For a vault hosted on Probarion, first download its signed ledger from `/proof/<vault>/ledger.jsonl` into the repository folder, on the address of its network: a member of the vault can, and anyone can when its proof page is public. Then run this from the repository folder, with `--network mainnet` for a mainnet vault:",
     command: cli(`verify --network testnet --vault <vault> --ledger ${ledgerFileName("<vault>")}`),
     why: "Without `--ledger`, the command checks the chain against an empty ledger, and a vault with an anchor fails. The vault's proof page at `/proof/<vault>` shows the same command for that vault.",
   },
@@ -238,7 +238,7 @@ export const PRIVACY_PAGE = {
       id: "invoices",
       title: "Invoices",
       paragraphs: [
-        "The file of an invoice you upload is encrypted before it is stored. The facts read from it, such as the amount and its references, and its file name are stored with it, not encrypted. With zero-retention on, the invoice's record keeps only its hashes and the outcome, and the amount while it waits for your Confirm: not the file, its text, its other facts or its name. The signed ledger still records the amount, any PO reference the model was shown, and the model's answer, which may quote details of the invoice.",
+        "The file of an invoice you upload is encrypted before it is stored. The facts read from it, such as the amount and its references, and its file name are stored with it, not encrypted. With zero-retention on, the invoice's record keeps only its hashes and the outcome, and, for an invoice that asked for your Confirm, its amount: not the file, its text, its other facts or its name. The signed ledger still records the amount, any PO reference the model was shown, and the model's answer, which may quote details of the invoice.",
         "When the payables agent runs, the invoice text goes to a private model on NEAR AI Cloud. No attested decision has been recorded and verified in the repository yet.",
       ],
     },

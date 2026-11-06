@@ -74,4 +74,15 @@ describe("the operations copy", () => {
     expect(ALL.join("\n")).not.toMatch(/paid plan|pricing/i);
     expect(PRIVACY_PAGE.sections.map((s) => s.id)).not.toContain("browser-extension");
   });
+
+  it("puts the downloaded ledger where the relative --ledger path finds it", () => {
+    expect(SECURITY_PAGE.verify.hosted).toContain("into the repository folder");
+    expect(SECURITY_PAGE.verify.hosted).toContain("`--network mainnet`");
+  });
+
+  it("does not limit the zero-retention amount to the wait for a Confirm", () => {
+    // A rejected row keeps suggested_amount, and a confirmed one keeps its signed confirmation message.
+    const invoices = PRIVACY_PAGE.sections.find((s) => s.id === "invoices");
+    expect(invoices?.paragraphs.join(" ")).not.toContain("while it waits");
+  });
 });
