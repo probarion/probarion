@@ -222,6 +222,7 @@ a.netPill:hover {
   font-weight: 500;
 }
 .menuPanel .menuNetworkLink {
+  gap: 4px;
   font-size: 15px;
   font-weight: 500;
   color: var(--color-gold-small);
