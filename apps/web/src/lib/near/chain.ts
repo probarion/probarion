@@ -1,12 +1,14 @@
 import { RpcClient, type RpcClientOptions, RpcMalformedError } from "@probarion/sdk";
 import type { Network } from "@/lib/config";
 import { log } from "@/lib/log";
+import { createVaultReader, type VaultReader } from "./reader";
 
 // One deployment serves both networks, each with its own RPC list from the settings (W-NET-R2). A list that points a
 // network at the other one's nodes passes the checks on its shape (a URL with no network in its host), and would sign
-// people in, and register vaults, against the wrong chain. The two paths that create lasting state, sign-in and Register,
-// therefore ask the nodes which chain they serve before they act. The RPC client fails over from URL to URL and keeps the
-// one that answered last, so a list is only as good as its worst URL: every URL is asked, each on its own (W-NET-R5).
+// people in, and register vaults, against the wrong chain. The paths that create lasting state (sign-in, Register and the
+// approvers re-sync) therefore take their chain client from here, and from nowhere else: a client built only from the URLs
+// that have been asked which chain they serve and have answered with the network's own (W-NET-R7). The RPC client fails over
+// from URL to URL and keeps the one that answered last, so no URL that has not been checked may be in it.
 
 /** One of the network's RPC URLs answers for another chain. Never a transient failure: that is the RPC's own error. */
 export class WrongChainError extends Error {
@@ -17,14 +19,24 @@ export class WrongChainError extends Error {
 }
 
 /**
- * The URLs of each network that have answered `status` with the network's own chain, for the life of this process. Kept
- * in memory only and never logged: a URL can hold an API key.
+ * What the process knows about the URLs of one network, per URL (the exact string of the list, never logged: a URL can hold
+ * an API key). `right`: it answered `status` with the network's own chain. `wrong`: it answered with another chain, which
+ * is remembered until the process restarts and is never cleared by a later right answer. A URL in neither set is unknown:
+ * it has not answered, or its answer said nothing (an error, a timeout, a steady 429, no `chain_id`).
  */
-const answeredRight = new Map<Network, Set<string>>();
+interface UrlState {
+  right: Set<string>;
+  wrong: Set<string>;
+}
+const states = new Map<Network, UrlState>();
 
-/** For tests: forgets what has been verified, so the next check asks every URL again. */
+/** The client of the production path, kept per network so that its failover keeps its preferred URL between requests. */
+const clients = new Map<Network, { key: string; client: RpcClient }>();
+
+/** For tests: forgets everything, as a restart of the process does. */
 export function forgetVerifiedChains(): void {
-  answeredRight.clear();
+  states.clear();
+  clients.clear();
 }
 
 /** A network's RPC list as the settings give it: the URLs, and the variable that supplied them (named in the log). */
@@ -65,49 +77,88 @@ async function probe(
 }
 
 /**
- * Checks the chain of the network's RPC list: every URL is asked JSON-RPC `status`, each on its own, and `chain_id` must be
- * `network`. The request may go on when at least one URL has answered with the right chain (in this check or an earlier
- * one) and none has answered with another. A URL that has answered right is not asked again for the life of the process,
- * so the network is remembered as passed once every URL has; until then each check asks again the URLs that have not
- * answered right, so a backup URL that a provider has retired does not stop sign-in or Register, and one that comes up on
- * the other chain is refused at the next request (W-NET-R6).
+ * The chain client for sign-in, Register and the approvers re-sync (W-NET-R7). Every URL of the network's list that is not
+ * yet known to be right or wrong is asked `status`, each on its own. Then:
  *
- * Any URL that answers for another chain fails the check with `WrongChainError` (logged with the network, the variable
- * that supplied the list and the URL's position, never the URL, which can hold an API key); that wins over everything else.
- * When no URL has answered right and none wrong, the check fails with the RPC client's own error (a URL that cannot be
- * reached) or `RpcMalformedError` (an answer without a readable `chain_id`): a failure to check, never a pass. Nothing
- * about a wrong or a missing answer is remembered, so a corrected setting or a node that comes back is picked up by the
- * next request.
+ * - if any URL is wrong (now, or at any earlier check of this process): `WrongChainError`, logged with the network, the
+ *   variable that supplied the list and the URL's position in the variable as written (never the URL), and nothing is
+ *   minted or registered. A right URL never outvotes a wrong one, and a wrong URL is not asked again;
+ * - else, if no URL is right: the RPC client's own error (a URL that cannot be reached) or `RpcMalformedError` (an answer
+ *   without a readable `chain_id`), which is `unavailable`, never a pass;
+ * - else an `RpcClient` built only from the URLs that are right, in the order of the list. A URL that has not answered
+ *   right is not in it, so failover cannot reach it; it is asked again at the next check, and once every URL is right the
+ *   client holds the whole list and nobody is asked.
  *
- * `clientOptions` is for tests (a `fetch`, `sleep` and `maxRounds`); the client is the SDK's own, one URL at a time.
+ * The caller uses this client for every chain call it makes, and never `getRpc(network)`.
+ *
+ * `clientOptions` is for tests (a `fetch`, `sleep` and `maxRounds`); the clients are the SDK's own.
  */
-export async function ensureChain(
+export async function verifiedRpc(
   network: Network,
   list: RpcList,
   clientOptions: Partial<RpcClientOptions> = {},
-): Promise<void> {
+): Promise<RpcClient> {
   const unique = [...new Set(list.rpcUrls)];
   if (unique.length === 0) throw new Error(`no RPC URL is set for ${network}`);
-  const right = answeredRight.get(network) ?? new Set<string>();
-  const pending = unique.filter((url) => !right.has(url));
-  if (pending.length === 0) return;
+  let state = states.get(network);
+  if (state === undefined) {
+    state = { right: new Set(), wrong: new Set() };
+    states.set(network, state);
+  }
+  const { right, wrong } = state;
 
+  const pending = unique.filter((url) => !right.has(url) && !wrong.has(url));
   const results = await Promise.all(pending.map((url) => probe(network, url, clientOptions)));
-  let wrongAt: number | null = null;
   let failure: { error: unknown } | null = null;
   for (const [i, r] of results.entries()) {
     const url = pending[i] as string;
     if (r.ok) right.add(url);
-    else if (r.wrong) wrongAt ??= unique.indexOf(url) + 1;
+    else if (r.wrong) wrong.add(url);
     else failure ??= { error: r.error };
   }
-  answeredRight.set(network, right);
 
-  if (wrongAt !== null) {
-    log.error("chain.wrong", { network, variable: list.rpcUrlsVariable, entry: wrongAt });
+  const wrongUrl = unique.find((url) => wrong.has(url));
+  if (wrongUrl !== undefined) {
+    log.error("chain.wrong", {
+      network,
+      variable: list.rpcUrlsVariable,
+      entry: list.rpcUrls.indexOf(wrongUrl) + 1,
+    });
     throw new WrongChainError(network);
   }
-  // Nothing answered for another chain. At least one URL has answered right (now or before): the request goes on, and the
-  // URLs that have not answered are asked again next time. None has: a failure to check.
-  if (right.size === 0 && failure !== null) throw failure.error;
+  const verified = unique.filter((url) => right.has(url));
+  if (verified.length === 0) {
+    // Nothing is right and nothing is wrong: every URL is unknown, and this check asked each of them.
+    throw (
+      (failure as { error: unknown } | null)?.error ?? new Error(`no ${network} RPC has answered`)
+    );
+  }
+
+  // Production: the same client while the verified URLs are the same, so its failover remembers the URL that answered last.
+  // A test that injects a `fetch` gets a new client each time.
+  const injected = Object.keys(clientOptions).length > 0;
+  const key = verified.join("\n");
+  const cached = clients.get(network);
+  if (!injected && cached?.key === key) return cached.client;
+  const client = new RpcClient({
+    maxRounds: 2,
+    timeoutMs: 8_000,
+    ...clientOptions,
+    urls: verified,
+  });
+  if (!injected) clients.set(network, { key, client });
+  return client;
+}
+
+/**
+ * `verifiedRpc` and a reader of the vault contracts over that same client: for the callers (Register, the approvers
+ * re-sync) that read vaults and the factory as well as accounts. Never `getReader(network)`.
+ */
+export async function verifiedChain(
+  network: Network,
+  list: RpcList,
+  clientOptions: Partial<RpcClientOptions> = {},
+): Promise<{ rpc: RpcClient; reader: VaultReader }> {
+  const rpc = await verifiedRpc(network, list, clientOptions);
+  return { rpc, reader: createVaultReader(rpc) };
 }

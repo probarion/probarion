@@ -28,14 +28,14 @@ const h = vi.hoisted(() => ({
   rpc: null as unknown,
   /** The address the request is opened at: its host decides the network (both are served, testnet by default). */
   host: null as string | null,
-  /** The networks getRpc was asked for. */
+  /** The networks the sign-in's chain client was asked for. */
   rpcFor: [] as string[],
   /**
-   * Whether sign-in really asks the node which chain it serves (lib/near/chain). Off for the tests that script the key
-   * lookup alone; the tests of that check switch it on and script its `status` answer first.
+   * Whether sign-in really asks the nodes which chain they serve (lib/near/chain) and reads the key through the client of the
+   * URLs that answered right. Off for the tests that script the key lookup alone (`h.rpc`); the tests of the check switch it on.
    */
   realChain: false,
-  /** The nodes of each network's RPC list, as the chain check sees them: the `fetch` its one-URL clients use. */
+  /** The nodes of each network's RPC list, as the chain check and the client it gives see them: their `fetch`. */
   chainFetch: undefined as undefined | typeof fetch,
   /** The RPC list of each network, as the settings give it to the route. */
   urls: {
@@ -87,21 +87,26 @@ vi.mock("@/lib/near/server", () => ({
     return h.rpc;
   },
 }));
+// Sign-in takes its chain client from the chain check and from nowhere else. Off: the scripted client (`h.rpc`). On: the
+// real check over the fake nodes (`h.chainFetch`), whose client reads the key.
 vi.mock("@/lib/near/chain", async (orig) => {
   const real = await orig<typeof import("@/lib/near/chain")>();
   return {
     ...real,
-    ensureChain: (
-      network: Parameters<typeof real.ensureChain>[0],
-      urls: Parameters<typeof real.ensureChain>[1],
-    ) =>
-      h.realChain
-        ? real.ensureChain(network, urls, {
+    verifiedRpc: async (
+      network: Parameters<typeof real.verifiedRpc>[0],
+      list: Parameters<typeof real.verifiedRpc>[1],
+    ) => {
+      h.rpcFor.push(network);
+      if (h.fail.getRpc) throw new Error("NEAR_RPC_URLS is invalid");
+      return h.realChain
+        ? real.verifiedRpc(network, list, {
             fetch: h.chainFetch,
             maxRounds: 1,
             sleep: async () => {},
           })
-        : Promise.resolve(),
+        : (h.rpc as Awaited<ReturnType<typeof real.verifiedRpc>>);
+    },
   };
 });
 vi.mock("@/lib/env", async () => {
@@ -933,26 +938,39 @@ describe("infrastructure failures answer 503 'unavailable', never an unhandled 5
   });
 });
 
-// Fix rounds 1 and 2 (W-NET-R4, W-NET-R5): before a session is minted, every URL of the network's RPC list must answer for
-// that network's chain. The nodes are a fetch that answers per URL (the chain check's own one-URL clients use it); the key
-// lookup is the scripted client, as in every other test here.
+// Fix rounds 1 to 4 (W-NET-R4 to R7): before a session is minted, every URL of the network's RPC list is asked which chain it
+// serves, and the key is read through a client built only from the URLs that answered with the network's own chain. The nodes
+// are a fetch that answers per URL: `status` as the test says, and a key lookup with the full-access key (a node on the
+// other chain has the same key on the same id, which is the attack).
 describe("sign-in checks that the network's RPC serves its chain", () => {
   const MAIN = "https://rpc.mainnet.example";
   const MAIN_B = "https://key-in-the-url@rpc2.mainnet.example/abc123";
   const TEST = "https://rpc.testnet.example";
   const chain = (chain_id: unknown) => ({ chain_id, protocol_version: 73 });
-  /** The `status` answers per URL ("down" is a 503), and what was asked. */
+  /** What the node at each URL says to `status` ("down" is a 503); a key lookup is answered with a full-access key. */
   function nodes(answers: Record<string, unknown>) {
-    const asked: string[] = [];
+    const seen: { url: string; method: string }[] = [];
     h.chainFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const body = JSON.parse(String(init?.body)) as { id: string; method: string };
-      asked.push(`${url} ${body.method}`);
+      seen.push({ url, method: body.method });
+      const ok = (result: unknown) =>
+        new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
+      if (body.method === "query") return ok(FULL_ACCESS_KEY);
       const a = answers[url];
       if (a === "down" || !(url in answers)) return new Response("busy", { status: 503 });
-      return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: a }));
+      return ok(a);
     }) as typeof fetch;
-    return { answers, asked };
+    return {
+      answers,
+      seen,
+      /** The URLs asked `status`, and the URLs asked the key. */
+      statuses: () => seen.filter((x) => x.method === "status").map((x) => x.url),
+      keys: () => seen.filter((x) => x.method === "query").map((x) => x.url),
+      forget: () => {
+        seen.length = 0;
+      },
+    };
   }
   beforeEach(async () => {
     const { forgetVerifiedChains } = await import("@/lib/near/chain");
@@ -969,14 +987,13 @@ describe("sign-in checks that the network's RPC serves its chain", () => {
       h.host = host;
       const c = await getChallenge();
       const n = nodes({ [url]: chain(answers) });
-      const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
       const { res, json, setCookies } = await postVerify(login(c.body), c.cookie);
       expect(res.status).toBe(503);
       expect(json).toEqual({ error: "wrong_chain" });
       expect(setCookieOf(setCookies, SESSION_COOKIE)).toBeUndefined();
       // Only `status` was asked, of the network's own URL: the key lookup that would have signed the person in never ran.
-      expect(n.asked).toEqual([`${url} status`]);
-      expect(rpc.calls).toHaveLength(0);
+      expect(n.statuses()).toEqual([url]);
+      expect(n.keys()).toEqual([]);
       // The log names the network and the variable, and nothing of the RPC.
       const line = logged.find((l) => l.includes("chain.wrong")) ?? "";
       expect(line).toContain(`"network":"${network}"`);
@@ -993,20 +1010,19 @@ describe("sign-in checks that the network's RPC serves its chain", () => {
     h.host = MAINNET_HOST;
     const c = await getChallenge();
     const n = nodes({ [MAIN]: chain("mainnet"), [MAIN_B]: chain("testnet") });
-    const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
     const { res, json, setCookies } = await postVerify(login(c.body), c.cookie);
     expect(res.status).toBe(503);
     expect(json).toEqual({ error: "wrong_chain" });
     expect(setCookieOf(setCookies, SESSION_COOKIE)).toBeUndefined();
-    expect([...n.asked].sort()).toEqual([`${MAIN} status`, `${MAIN_B} status`].sort());
-    expect(rpc.calls).toHaveLength(0);
+    expect([...n.statuses()].sort()).toEqual([MAIN, MAIN_B].sort());
+    expect(n.keys()).toEqual([]);
     // The position and the variable are logged, never the URL (it holds a key here).
     const line = logged.find((l) => l.includes("chain.wrong")) ?? "";
     expect(line).toContain('"entry":2');
     expect(logged.join(" | ")).not.toMatch(/key-in-the-url|abc123|rpc2\.mainnet/);
   });
 
-  it("asks every URL once, then remembers the pass for that network: the next sign-in only looks up the key", async () => {
+  it("asks every URL once and reads the key through them, then remembers the pass for that network: the next sign-in asks no status", async () => {
     h.urls.mainnet = [MAIN, MAIN_B];
     h.host = MAINNET_HOST;
     const n = nodes({
@@ -1015,70 +1031,73 @@ describe("sign-in checks that the network's RPC serves its chain", () => {
       [TEST]: chain("mainnet"),
     });
     const first = await getChallenge();
-    const rpc1 = useRpc(rpcOk(FULL_ACCESS_KEY));
     expect((await postVerify(login(first.body), first.cookie)).res.status).toBe(200);
-    expect([...n.asked].sort()).toEqual([`${MAIN} status`, `${MAIN_B} status`].sort());
-    expect(rpc1.calls.map((c) => c.body.method)).toEqual(["query"]);
+    expect([...n.statuses()].sort()).toEqual([MAIN, MAIN_B].sort());
+    expect(n.keys()).toEqual([MAIN]);
 
-    n.asked.length = 0;
+    n.forget();
     const second = await getChallenge();
-    const rpc2 = useRpc(rpcOk(FULL_ACCESS_KEY));
     expect((await postVerify(login(second.body), second.cookie)).res.status).toBe(200);
-    expect(n.asked).toEqual([]);
-    expect(rpc2.calls.map((c) => c.body.method)).toEqual(["query"]);
+    expect(n.statuses()).toEqual([]);
+    expect(n.keys()).toEqual([MAIN]);
 
     // The other network was not covered by it: its first sign-in asks again, and a wrong answer is refused.
     h.host = TESTNET_HOST;
     const other = await getChallenge();
     n.answers[TEST] = chain("mainnet");
-    useRpc(rpcOk(FULL_ACCESS_KEY));
+    n.forget();
     const refused = await postVerify(login(other.body), other.cookie);
     expect(refused.json).toEqual({ error: "wrong_chain" });
-    expect(n.asked).toEqual([`${TEST} status`]);
+    expect(n.statuses()).toEqual([TEST]);
+    expect(n.keys()).toEqual([]);
   });
 
-  // W-NET-R6: a backup URL that a provider has retired does not stop sign-in. The request goes on when one URL answered right
-  // and none answered wrong; the silent URL is asked again on every later request.
-  it("one URL down and one right: the sign-in goes on, and the silent URL is asked again next time, and only it", async () => {
+  // W-NET-R7: a backup URL that is down does not stop sign-in, and the key is read only from the URLs that answered right.
+  it("one URL down and one right: the sign-in goes on, the key is read from the right one alone, and the silent URL is asked again next time", async () => {
     h.urls.mainnet = [MAIN, MAIN_B];
     h.host = MAINNET_HOST;
     const n = nodes({ [MAIN]: chain("mainnet"), [MAIN_B]: "down" });
-    // The first check asks both URLs, and the silent one is not remembered as answered.
     const first = await getChallenge();
-    const rpc1 = useRpc(rpcOk(FULL_ACCESS_KEY));
     const one = await postVerify(login(first.body), first.cookie);
     expect(one.res.status).toBe(200);
     expect(setCookieOf(one.setCookies, SESSION_COOKIE)).toBeDefined();
-    expect(rpc1.calls.map((x) => x.body.method)).toEqual(["query"]);
-    expect([...n.asked].sort()).toEqual([`${MAIN} status`, `${MAIN_B} status`].sort());
-    // The next sign-in asks only the URL that has not answered, and goes on again.
-    n.asked.length = 0;
+    expect([...n.statuses()].sort()).toEqual([MAIN, MAIN_B].sort());
+    expect(n.keys()).toEqual([MAIN]);
+    // The next sign-in asks only the URL that has not answered, and reads the key from the right one again.
+    n.forget();
     const second = await getChallenge();
-    const rpc2 = useRpc(rpcOk(FULL_ACCESS_KEY));
     const two = await postVerify(login(second.body), second.cookie);
     expect(two.res.status).toBe(200);
-    expect(setCookieOf(two.setCookies, SESSION_COOKIE)).toBeDefined();
-    expect(rpc2.calls.map((x) => x.body.method)).toEqual(["query"]);
-    expect(n.asked).toEqual([`${MAIN_B} status`]);
+    expect(n.statuses()).toEqual([MAIN_B]);
+    expect(n.keys()).toEqual([MAIN]);
   });
 
-  it("the URL that was down comes up on the other chain: the next sign-in is a 503 wrong_chain, with no session", async () => {
+  // RR2-CHAIN-2: the URL that was down answers with the other chain; it stays wrong when it is silent or right again.
+  it("the URL that was down comes up on the other chain: the next sign-in is a 503 wrong_chain, and so is every one after it", async () => {
     h.urls.mainnet = [MAIN, MAIN_B];
     h.host = MAINNET_HOST;
     const n = nodes({ [MAIN]: chain("mainnet"), [MAIN_B]: "down" });
     const first = await getChallenge();
-    useRpc(rpcOk(FULL_ACCESS_KEY));
     expect((await postVerify(login(first.body), first.cookie)).res.status).toBe(200);
     n.answers[MAIN_B] = chain("testnet");
-    n.asked.length = 0;
+    n.forget();
     const c = await getChallenge();
-    const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
     const { res, json, setCookies } = await postVerify(login(c.body), c.cookie);
     expect(res.status).toBe(503);
     expect(json).toEqual({ error: "wrong_chain" });
     expect(setCookieOf(setCookies, SESSION_COOKIE)).toBeUndefined();
-    expect(n.asked).toEqual([`${MAIN_B} status`]);
-    expect(rpc.calls).toHaveLength(0);
+    expect(n.statuses()).toEqual([MAIN_B]);
+    expect(n.keys()).toEqual([]);
+    // Silent again, or right (a pool with a stray backend): still refused, and not asked.
+    for (const again of ["down", chain("mainnet")]) {
+      n.answers[MAIN_B] = again;
+      n.forget();
+      const next = await getChallenge();
+      const r = await postVerify(login(next.body), next.cookie);
+      expect(r.json).toEqual({ error: "wrong_chain" });
+      expect(n.statuses()).toEqual([]);
+      expect(n.keys()).toEqual([]);
+    }
   });
 
   it("the URL that was down comes up on the right chain: the network is remembered as passed, and nobody is asked again", async () => {
@@ -1086,39 +1105,48 @@ describe("sign-in checks that the network's RPC serves its chain", () => {
     h.host = MAINNET_HOST;
     const n = nodes({ [MAIN]: chain("mainnet"), [MAIN_B]: "down" });
     const first = await getChallenge();
-    useRpc(rpcOk(FULL_ACCESS_KEY));
     expect((await postVerify(login(first.body), first.cookie)).res.status).toBe(200);
     n.answers[MAIN_B] = chain("mainnet");
-    n.asked.length = 0;
+    n.forget();
     const second = await getChallenge();
-    useRpc(rpcOk(FULL_ACCESS_KEY));
     expect((await postVerify(login(second.body), second.cookie)).res.status).toBe(200);
-    expect(n.asked).toEqual([`${MAIN_B} status`]);
-    n.asked.length = 0;
+    expect(n.statuses()).toEqual([MAIN_B]);
+    n.forget();
     const third = await getChallenge();
-    useRpc(rpcOk(FULL_ACCESS_KEY));
     expect((await postVerify(login(third.body), third.cookie)).res.status).toBe(200);
-    expect(n.asked).toEqual([]);
+    expect(n.statuses()).toEqual([]);
   });
 
-  it("no URL answers: 503 unavailable, no session, and nothing is remembered", async () => {
+  // RR2-CHAIN-3: a URL that serves queries and never says what chain it is must never read the key.
+  it("a URL that serves the key but never answers status is never asked for it", async () => {
+    h.urls.mainnet = [MAIN, MAIN_B];
+    h.host = MAINNET_HOST;
+    const n = nodes({ [MAIN]: chain("mainnet"), [MAIN_B]: "down" });
+    for (let i = 0; i < 3; i++) {
+      n.forget();
+      const c = await getChallenge();
+      expect((await postVerify(login(c.body), c.cookie)).res.status, `sign-in ${i + 1}`).toBe(200);
+      expect(n.keys(), `sign-in ${i + 1}`).toEqual([MAIN]);
+    }
+  });
+
+  it("no URL has answered right: 503 unavailable, no session, no key lookup, and nothing is remembered", async () => {
     h.urls.mainnet = [MAIN, MAIN_B];
     h.host = MAINNET_HOST;
     const n = nodes({ [MAIN]: "down", [MAIN_B]: "down" });
     const c = await getChallenge();
-    const rpc = useRpc(rpcOk(FULL_ACCESS_KEY));
     const { res, json, setCookies } = await postVerify(login(c.body), c.cookie);
     expect(res.status).toBe(503);
     expect(json).toEqual({ error: "unavailable" });
     expect(setCookieOf(setCookies, SESSION_COOKIE)).toBeUndefined();
-    expect(rpc.calls).toHaveLength(0);
+    expect(n.keys()).toEqual([]);
     // One of them comes back: both are asked again, and the sign-in goes on.
     n.answers[MAIN] = chain("mainnet");
-    n.asked.length = 0;
+    n.forget();
     const again = await getChallenge();
-    useRpc(rpcOk(FULL_ACCESS_KEY));
     expect((await postVerify(login(again.body), again.cookie)).res.status).toBe(200);
-    expect(n.asked.sort()).toEqual([`${MAIN} status`, `${MAIN_B} status`].sort());
+    expect([...n.statuses()].sort()).toEqual([MAIN, MAIN_B].sort());
+    expect(n.keys()).toEqual([MAIN]);
   });
 
   it("is not asked for a request that has no valid challenge: no chain call, the same 401", async () => {
@@ -1128,7 +1156,7 @@ describe("sign-in checks that the network's RPC serves its chain", () => {
     const { res, json } = await postVerify(login(c.body), undefined);
     expect(res.status).toBe(401);
     expect(json).toEqual({ error: "challenge_missing_or_expired" });
-    expect(n.asked).toEqual([]);
+    expect(n.seen).toEqual([]);
   });
 });
 

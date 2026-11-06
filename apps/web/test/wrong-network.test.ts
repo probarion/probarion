@@ -72,11 +72,12 @@ vi.mock("@/lib/env", async () => {
     }),
   };
 });
-// The chain check asks every node of the network's list: it is a chain call like the others, recorded, and it fails like an
-// unreachable node (so nothing reaches the network, and a call that gets this far shows it in `chainCalls`).
+// Register and the approvers re-sync take their clients from the chain check (`verifiedChain`), which asks every node of the
+// network's list: a chain call like the others, recorded, and it fails like an unreachable node (so nothing reaches the
+// network, and a call that gets this far shows it in `chainCalls`).
 vi.mock("@/lib/near/chain", async (orig) => ({
   ...(await orig<typeof import("@/lib/near/chain")>()),
-  ensureChain: async (network: string) => {
+  verifiedChain: async (network: string) => {
     h.chainCalls.push(`chain:${network}`);
     throw new Error("the chain check is unreachable in this test");
   },
@@ -425,8 +426,8 @@ describe("Register (registerVaultAction) for a vault registered on the other net
       h.chainCalls = [];
       const r = await registerVaultAction(vault).catch(() => undefined);
       expect((r as { status?: number } | undefined)?.status, vault).not.toBe(409);
-      // It got past the check and asked this network's chain (which is down in this test).
-      expect(h.chainCalls, vault).toContain("reader:mainnet");
+      // It got past the check and asked this network's chain (through the chain check, which is down in this test).
+      expect(h.chainCalls, vault).toContain("chain:mainnet");
     }
   });
 

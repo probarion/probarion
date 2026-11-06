@@ -378,3 +378,60 @@ describe("the documented settings", () => {
     ).toBeGreaterThanOrEqual(5);
   });
 });
+
+// W-NET-R7: sign-in's key lookup, Register and the approvers re-sync create lasting state from what a chain says, so every
+// chain client they use comes from the chain check (the clients built only from the URLs that have answered with the
+// network's own chain), and never from the shared getRpc or getReader, which hold every URL of the list, checked or not.
+// (The check below reads the code of each function; the behavioural tests, guards.test.ts and routes.test.ts, are what pin
+// that nothing reaches the shared clients at run time.)
+describe("sign-in, Register and the approvers re-sync take every chain client from the chain check", () => {
+  /** What is wrong with the way `body` gets its chain client: it asks for a shared one, or never asks the check. */
+  const clientProblems = (body: string, check: string): string[] => {
+    const problems: string[] = [];
+    // (`req.body.getReader()` is the Web Streams one, hence the look-behind.)
+    for (const m of body.matchAll(/(?<![.\w])(getRpc|getReader)\(/g)) {
+      problems.push(`asks for the shared client with ${m[1]}(`);
+    }
+    if (!body.includes(check)) problems.push(`never calls ${check}`);
+    return problems;
+  };
+  const targets = [
+    ["src/app/api/auth/verify/route.ts", "POST", "verifiedRpc("],
+    ["src/app/console/actions.ts", "registerVaultAction", "connectChain("],
+    ["src/app/console/[vault]/actions.ts", "refreshMembersAction", "connectChain("],
+  ] as const;
+
+  it.each(targets)("%s: %s gets its client from %s and from nothing else", (file, name, check) => {
+    const found = exportedFunctions(readFileSync(join(WEB, file), "utf8")).find(
+      (f) => f.name === name,
+    );
+    expect(found, `${name} in ${file}`).toBeDefined();
+    expect(clientProblems(found?.body ?? "", check)).toEqual([]);
+  });
+
+  it("registerVault itself reads only through what connect gave it", () => {
+    const src = readFileSync(join(SRC, "lib", "console", "vaults.ts"), "utf8");
+    const body = src.slice(src.indexOf("export async function registerVault("));
+    const code = body.slice(0, body.indexOf("\nfunction rethrow"));
+    expect(code).not.toMatch(/\b(getRpc|getReader)\(|deps\.(reader|chain)\b/);
+    expect(code).toContain("deps.connect()");
+  });
+
+  it("sees a function that asks for a shared client, or never asks the check", () => {
+    const bad = [
+      "export const sneaky = async (vault: string) => {",
+      "  const rpc = getRpc('mainnet');",
+      "  return connectChain('mainnet', {});",
+      "};",
+      "export const alsoBad = async () => getReader('mainnet').getConfig('x');",
+    ].join("\n");
+    const [sneaky, alsoBad] = exportedFunctions(bad);
+    expect(clientProblems(sneaky?.body ?? "", "connectChain(")).toEqual([
+      "asks for the shared client with getRpc(",
+    ]);
+    expect(clientProblems(alsoBad?.body ?? "", "connectChain(")).toEqual([
+      "asks for the shared client with getReader(",
+      "never calls connectChain(",
+    ]);
+  });
+});

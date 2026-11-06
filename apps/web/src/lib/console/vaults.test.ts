@@ -268,13 +268,11 @@ describe("registerVault (R11)", () => {
     over: { teamVaultIds?: string[]; canaryVaultId?: string | null } = {},
   ) => ({
     db: pgliteDb(pg),
-    reader,
-    chain: reads,
+    connect: async () => ({ reader, chain: reads }),
     network: "mainnet" as const,
     factoryId: FACTORY,
     canaryVaultId: over.canaryVaultId ?? "canary.vaults.probarion.near",
     teamVaultIds: over.teamVaultIds ?? [],
-    verifyChain: async () => {},
   });
   const kindOf = async (vault: string) =>
     (
@@ -507,15 +505,17 @@ describe("registerVault: the network's RPC must serve its chain (W-NET-R4)", () 
     },
     factoryVersions: async () => [],
   };
-  const deps = (verifyChain: () => Promise<void>) => ({
+  /** `beforeReads` is the chain check that `connect` runs: it throws, or the clients come back. */
+  const deps = (beforeReads: () => Promise<void>) => ({
     db: pgliteDb(pg),
-    reader,
-    chain,
+    connect: async () => {
+      await beforeReads();
+      return { reader, chain };
+    },
     network: "mainnet" as const,
     factoryId: FACTORY,
     canaryVaultId: null,
     teamVaultIds: [],
-    verifyChain,
   });
   const input = { vaultId: "chain.vaults.probarion.near", account: "chain.near" };
   const count = async () =>
@@ -523,17 +523,17 @@ describe("registerVault: the network's RPC must serve its chain (W-NET-R4)", () 
       (await pg.query<{ n: string }>("select count(*) as n from public.tenants")).rows[0]?.n ?? 0,
     );
 
-  it("asks first, and registers when the chain is the network's", async () => {
+  it("connects first, and reads only through what it gave: registers when the chain is the network's", async () => {
     reads.length = 0;
     const order: string[] = [];
     const r = await registerVault(
       deps(async () => {
-        order.push(`verify (reads so far: ${reads.length})`);
+        order.push(`connect (reads so far: ${reads.length})`);
       }),
       input,
     );
     expect(r.ok).toBe(true);
-    expect(order).toEqual(["verify (reads so far: 0)"]);
+    expect(order).toEqual(["connect (reads so far: 0)"]);
     expect(reads).toContain("getConfig");
   });
 
@@ -599,13 +599,11 @@ describe("registerVault: a tenant's network is fixed (W-NET-R4)", () => {
   };
   const deps = () => ({
     db: pgliteDb(pg),
-    reader,
-    chain: reads,
+    connect: async () => ({ reader, chain: reads }),
     network: "mainnet" as const,
     factoryId: FACTORY,
     canaryVaultId: null,
     teamVaultIds: [],
-    verifyChain: async () => {},
   });
   const row = async () =>
     (

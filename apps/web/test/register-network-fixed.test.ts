@@ -52,13 +52,41 @@ vi.mock("@/lib/env", async () => {
     }),
   };
 });
-// The chain check has its own tests; here it passes, and is recorded, so that "no chain was asked" covers it too.
-vi.mock("@/lib/near/chain", async (orig) => ({
-  ...(await orig<typeof import("@/lib/near/chain")>()),
-  ensureChain: async (network: string) => {
-    h.chainCalls.push(`chain:${network}`);
-  },
-}));
+// The chain check has its own tests. Here Register's clients come from it, as they do for real (`verifiedChain`), and it
+// passes: the testnet node is a Probarion vault host, the mainnet one is down. Asking for the clients is recorded, so
+// "no chain was asked" covers the check too.
+vi.mock("@/lib/near/chain", async (orig) => {
+  const { KNOWN_VAULT_CODE_HASHES: KNOWN } = await import("@probarion/core");
+  const down = (what: string) => async () => {
+    throw new Error(`${what} is unreachable in this test`);
+  };
+  return {
+    ...(await orig<typeof import("@/lib/near/chain")>()),
+    verifiedChain: async (network: string) => {
+      h.chainCalls.push(`chain:${network}`);
+      return {
+        reader: new Proxy(
+          {},
+          {
+            get: (_t, method) =>
+              method === "getConfig" && network === "testnet"
+                ? async () => h.testnetConfig
+                : down(`reader.${String(method)}`),
+          },
+        ),
+        rpc: new Proxy(
+          {},
+          {
+            get: (_t, method) =>
+              method === "viewAccount" && network === "testnet"
+                ? async () => ({ code_hash: KNOWN[0], global_contract_hash: null, amount: "1" })
+                : down(`rpc.${String(method)}`),
+          },
+        ),
+      };
+    },
+  };
+});
 vi.mock("@/lib/near/server", async () => {
   const { NETWORKS } = await import("@probarion/core");
   const { KNOWN_VAULT_CODE_HASHES: KNOWN } = await import("@probarion/core");
@@ -249,8 +277,7 @@ describe("Register tells only a member which network a vault is on", () => {
     expect(JSON.stringify(registered)).not.toMatch(/mainnet|network/);
     // Both went to the request network's chain, the registered one included: nothing was answered before it.
     expect(clientsForRegistered).toEqual(h.chainCalls);
-    expect(h.chainCalls).toContain("chain:testnet");
-    expect(h.chainCalls).toContain("reader:testnet");
+    expect(h.chainCalls).toEqual(["chain:testnet"]);
     expect(h.chainCalls.some((c) => c.endsWith(":mainnet"))).toBe(false);
     expect(await row()).toBe("mainnet");
   });

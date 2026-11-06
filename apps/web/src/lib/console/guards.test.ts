@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth/session";
 import { deriveSubkey, parseMasterKey } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
+import { forgetVerifiedChains } from "@/lib/near/chain";
 import type { VaultReader } from "@/lib/near/reader";
 import { freshDb, seedTenant } from "../../../test/db/harness";
 import { pgliteDb } from "../../../test/db/pglite-db";
@@ -27,6 +28,8 @@ const h = vi.hoisted(() => ({
   /** URLs whose node does not answer (a 503), the others answer. */
   downUrls: new Set<string>(),
   statusCalls: 0,
+  /** How often the SHARED clients (getRpc, getReader: every URL of the list, checked or not) were asked for. */
+  sharedClients: 0,
   /** The nodes of the chain check (its one-URL clients use this `fetch`). */
   chainFetch: undefined as undefined | typeof fetch,
   revalidated: [] as string[],
@@ -73,27 +76,42 @@ vi.mock("@/lib/env", async () => {
 vi.mock("@/lib/near/server", async () => {
   const { NETWORKS: N } = await import("@probarion/core");
   return {
-    getReader: () => h.reader,
-    getRpc: () => ({
-      viewAccount: () => h.account(),
-      viewFunction: async (_contract: string, method: string) => {
-        if (!(method in h.factory)) throw new Error("no factory in this test");
-        return h.factory[method];
-      },
-    }),
+    getReader: () => {
+      h.sharedClients += 1;
+      return h.reader;
+    },
+    getRpc: () => {
+      h.sharedClients += 1;
+      return fakeRpc();
+    },
     chainConsts: () => N.mainnet,
   };
 });
-// The chain check is the real one, over a fetch that answers `status` per URL (the mainnet list has two URLs).
+/** The fake node behind both the shared clients and the clients of the chain check. */
+const fakeRpc = () => ({
+  viewAccount: () => h.account(),
+  viewFunction: async (_contract: string, method: string) => {
+    if (!(method in h.factory)) throw new Error("no factory in this test");
+    return h.factory[method];
+  },
+});
+// The chain check is the real one, over a fetch that answers `status` per URL (the mainnet list has two URLs). Once it has
+// given its clients, they are the fakes above: Register's reads are scripted, and are not the check's business.
 vi.mock("@/lib/near/chain", async (orig) => {
   const real = await orig<typeof import("@/lib/near/chain")>();
   return {
     ...real,
-    ensureChain: (
-      network: Parameters<typeof real.ensureChain>[0],
-      urls: Parameters<typeof real.ensureChain>[1],
-    ) =>
-      real.ensureChain(network, urls, { fetch: h.chainFetch, maxRounds: 1, sleep: async () => {} }),
+    verifiedChain: async (
+      network: Parameters<typeof real.verifiedChain>[0],
+      list: Parameters<typeof real.verifiedChain>[1],
+    ) => {
+      await real.verifiedRpc(network, list, {
+        fetch: h.chainFetch,
+        maxRounds: 1,
+        sleep: async () => {},
+      });
+      return { rpc: fakeRpc() as never, reader: h.reader };
+    },
   };
 });
 // Client components call useRouter, which needs the app router; notFound and redirect stay real.
@@ -143,6 +161,7 @@ beforeEach(async () => {
   h.statusDown = false;
   h.downUrls = new Set();
   h.statusCalls = 0;
+  h.sharedClients = 0;
   h.chainFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const body = JSON.parse(String(init?.body)) as { id: string; method: string };
@@ -658,8 +677,18 @@ describe("server actions: the success paths", () => {
     expect(JSON.stringify(r)).not.toMatch(/testnet|https?:/);
     expect(await tenantCount("wrongchain.near")).toBe(0);
     expect(h.revalidated).toEqual([]);
-    // The setting is fixed: the next attempt asks again and registers.
+    // A URL that answered with the other chain is wrong until the process restarts (W-NET-R7): it is not asked again, and
+    // the node's later right answer does not clear it.
     h.chainId = "mainnet";
+    h.statusCalls = 0;
+    expect(await registerVaultAction("wrongchain.near")).toMatchObject({
+      ok: false,
+      code: "wrong_chain",
+    });
+    expect(h.statusCalls).toBe(0);
+    expect(await tenantCount("wrongchain.near")).toBe(0);
+    // The setting is corrected and the process restarts: the next attempt asks again and registers.
+    forgetVerifiedChains();
     expect(await registerVaultAction("wrongchain.near")).toEqual({
       ok: true,
       vaultId: "wrongchain.near",
@@ -682,14 +711,21 @@ describe("server actions: the success paths", () => {
     });
     expect(await tenantCount("mixed.near")).toBe(0);
     expect(h.statusCalls).toBe(NETWORKS.mainnet.rpcUrls.length); // every URL was asked
-    // The list is corrected: the next attempt asks only the URL that was wrong, and registers.
+    // The wrong URL answers right on the next call (a pool with a stray backend): still refused, and it is not asked.
     h.chainIdOf = {};
     h.statusCalls = 0;
+    expect(await registerVaultAction("mixed.near")).toMatchObject({
+      ok: false,
+      code: "wrong_chain",
+    });
+    expect(h.statusCalls).toBe(0);
+    expect(await tenantCount("mixed.near")).toBe(0);
+    // The list is corrected and the process restarts: it registers.
+    forgetVerifiedChains();
     expect(await registerVaultAction("mixed.near")).toMatchObject({ ok: true });
-    expect(h.statusCalls).toBe(1);
   });
 
-  // W-NET-R6: a retired backup URL does not stop Register; one that comes up on the other chain is refused at the next call.
+  // W-NET-R6, R7: a retired backup URL does not stop Register; one that comes up on the other chain is refused at the next call.
   it("registerVaultAction goes on while one URL of the list is silent and the other is right, and refuses it when it answers wrong", async () => {
     h.reader = fakeReader({
       getConfig: async () => vaultConfig({ owner: "acme.near", approvers: [], factory: null }),
@@ -746,6 +782,26 @@ describe("server actions: the success paths", () => {
     expect(
       await pgliteDb(pg).rpc("member_role", { vault_id: VAULT, account: "mallory.near" }),
     ).toBeNull();
+  });
+
+  // W-NET-R7: the chain clients of Register and of the approvers re-sync come from the chain check (the clients built only
+  // from the URLs that answered right), never from the shared getRpc and getReader, which hold every URL.
+  it("registerVaultAction and refreshMembersAction never ask for the shared getRpc or getReader", async () => {
+    h.reader = fakeReader({
+      getConfig: async () =>
+        vaultConfig({ owner: "acme.near", approvers: ["cfo.near"], factory: null }),
+    });
+    h.account = async () => viewAccount({ code_hash: KNOWN_VAULT_CODE_HASHES[0] ?? "" });
+    await signInAs("acme.near");
+    h.sharedClients = 0;
+    expect(await registerVaultAction("sharedless.near")).toMatchObject({ ok: true });
+    expect(await refreshMembersAction(VAULT, null)).toMatchObject({ ok: true });
+    expect(h.sharedClients).toBe(0);
+    // The same actions with a URL that is silent: still none, and still the check's clients.
+    h.downUrls = new Set([NETWORKS.mainnet.rpcUrls[1] as string]);
+    forgetVerifiedChains();
+    expect(await registerVaultAction("sharedless2.near")).toMatchObject({ ok: true });
+    expect(h.sharedClients).toBe(0);
   });
 
   it("refreshMembersAction re-reads the approvers from the chain for the owner", async () => {

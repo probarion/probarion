@@ -8,18 +8,27 @@ import {
   SESSION_TTL_MS,
 } from "@/lib/auth/session";
 import { authUnavailable } from "@/lib/auth/unavailable";
-import { nearApiVerifier, rpcLoginProvider, verifyLogin } from "@/lib/auth/verify";
+import {
+  type Nep413Verifier,
+  nearApiVerifier,
+  rpcLoginProvider,
+  verifyLogin,
+} from "@/lib/auth/verify";
 import { subkey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
 import { assertSameOrigin, clientIp, json, problem, rateLimitOr429 } from "@/lib/http";
 import { log } from "@/lib/log";
-import { ensureChain, WrongChainError } from "@/lib/near/chain";
-import { getRpc } from "@/lib/near/server";
+import { verifiedRpc, WrongChainError } from "@/lib/near/chain";
 import { requestNetwork } from "@/lib/network";
 import { LIMITS } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
+
+/** Without a valid challenge `verifyLogin` answers before it uses a verifier: there is no key to look up. */
+const noVerifier: Nep413Verifier = async () => {
+  throw new Error("no challenge, so no key is looked up");
+};
 
 /** A login is about 250 bytes of JSON; anything near this size is not one. */
 const MAX_BODY_BYTES = 2048;
@@ -112,20 +121,24 @@ async function verify(req: Request, requestId: string | undefined): Promise<Resp
     log.warn("auth.rejected", { reason: "payload_too_large", request_id: requestId });
     return problem(413, "payload_too_large");
   }
-  const rpc = getRpc(network);
-  // A session is lasting state: before one can be minted, the network's RPC list is checked URL by URL (the client fails
-  // over from URL to URL, so one wrong URL is enough to refuse): at least one URL must answer for the network's chain and
-  // none for another. A setting that points a URL at the other chain's nodes is refused here, whatever the URL looks like. With no valid challenge nothing can be minted,
-  // so no node is asked. A node that cannot be reached is the usual 503 `unavailable` (the POST handler).
+  // A session is lasting state, and it rests on one key lookup. Before one can be minted the network's RPC list is checked
+  // URL by URL (the client fails over from URL to URL, so one URL on the other chain is enough to refuse), and the key is
+  // read through a client built only from the URLs that have answered with this network's chain: never getRpc, which holds
+  // every URL, checked or not. A setting that points a URL at the other chain's nodes is refused here, whatever the URL
+  // looks like. With no valid challenge nothing can be minted, so no node is asked. A node that cannot be reached, with no
+  // URL right, is the usual 503 `unavailable` (the POST handler).
+  let verifier: Nep413Verifier = noVerifier;
   if (challenge) {
     try {
-      await ensureChain(network, getEnv().networks[network]);
+      verifier = nearApiVerifier(
+        rpcLoginProvider(await verifiedRpc(network, getEnv().networks[network])),
+      );
     } catch (error) {
       if (error instanceof WrongChainError) return problem(503, "wrong_chain");
       throw error;
     }
   }
-  const result = await verifyLogin(body.value, challenge, nearApiVerifier(rpcLoginProvider(rpc)));
+  const result = await verifyLogin(body.value, challenge, verifier);
   if (!result.ok) {
     log.warn("auth.rejected", { reason: result.reason, request_id: requestId });
     // "verifier_unavailable" (no node could say whether the key is on the account) is the same 503 as every

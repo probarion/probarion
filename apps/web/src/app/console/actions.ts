@@ -5,19 +5,18 @@ import { revalidatePath } from "next/cache";
 import { isDenied, sessionForAction } from "@/lib/console/action-auth";
 import { asForm, type CreateVaultForm } from "@/lib/console/create-rules";
 import {
+  connectChain,
   loadFactoryForCreate,
   prepareCreateVault,
   REGISTER_ERROR_TEXT,
   type RegisterError,
   registerVault,
-  rpcChainReads,
 } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
 import { memberRole } from "@/lib/db/tenants";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
-import { ensureChain } from "@/lib/near/chain";
-import { getReader, getRpc } from "@/lib/near/server";
+import { getRpc } from "@/lib/near/server";
 import type { WalletTx } from "@/lib/near/tx";
 import { isNearAccountId } from "@/lib/near/validate";
 import { requestNetwork, wrongNetworkSentence } from "@/lib/network";
@@ -99,17 +98,16 @@ export async function registerVaultAction(vaultId: unknown): Promise<RegisterAct
       };
     }
   }
-  const rpc = getRpc(network);
+  // Every chain call of a registration goes through the client of the URLs that have answered with this network's chain
+  // (connectChain): never getRpc or getReader, which hold every URL, checked or not.
   const r = await registerVault(
     {
       db: serviceDb(),
-      reader: getReader(network),
-      chain: rpcChainReads(rpc),
+      connect: () => connectChain(network, settings),
       network,
       factoryId: settings.factoryId,
       canaryVaultId: settings.canaryVaultId,
       teamVaultIds: settings.teamVaultIds,
-      verifyChain: () => ensureChain(network, settings),
     },
     { vaultId: id, account: auth.accountId },
   );

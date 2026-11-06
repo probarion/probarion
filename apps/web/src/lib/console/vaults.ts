@@ -11,7 +11,7 @@ import type { Network } from "@/lib/config";
 import { type Db, DbError } from "@/lib/db/port";
 import { registerTenant, type TenantKind } from "@/lib/db/tenants";
 import { log } from "@/lib/log";
-import { WrongChainError } from "@/lib/near/chain";
+import { type RpcList, verifiedChain, WrongChainError } from "@/lib/near/chain";
 import { type ChainErrorKind, chainErrorKind, listAll, type VaultReader } from "@/lib/near/reader";
 import {
   createDepositPlan,
@@ -54,6 +54,20 @@ export function rpcChainReads(rpc: RpcClient): ChainReads {
     viewAccount: (account) => rpc.viewAccount(account),
     factoryVersions: (factory) => new FactoryClient(factory, rpc).versions(),
   };
+}
+
+/**
+ * The chain clients of Register and of the approvers re-sync (`RegisterDeps.connect`): the vault reader and the account and
+ * factory reads, over one client built only from the URLs of the network's list that have answered `status` with the
+ * network's own chain. Throws `WrongChainError`, or the RPC's own error when no URL has answered right. Never `getRpc` or
+ * `getReader`: those hold every URL, checked or not.
+ */
+export async function connectChain(
+  network: Network,
+  list: RpcList,
+): Promise<{ reader: VaultReader; chain: ChainReads }> {
+  const { rpc, reader } = await verifiedChain(network, list);
+  return { reader, chain: rpcChainReads(rpc) };
 }
 
 // ---- reads that may fail -------------------------------------------------------------------------
@@ -250,19 +264,19 @@ export function codeIdentity(
 
 export interface RegisterDeps {
   db: Db;
-  reader: VaultReader;
-  chain: ChainReads;
+  /**
+   * The chain clients of this registration: the vault reader and the account and factory reads, both over the same client,
+   * which is built only from the RPC URLs that have answered with this network's own chain (`verifiedChain`, lib/near/chain).
+   * Called before anything is read or written. It throws `WrongChainError` when a URL answers for another chain, and the
+   * RPC's own error when no URL has answered right. Every chain call of a registration goes through what it returns.
+   */
+  connect: () => Promise<{ reader: VaultReader; chain: ChainReads }>;
   network: Network;
   /** PROBARION_FACTORY_ID: the one factory whose versions the console trusts. */
   factoryId: string;
   canaryVaultId: string | null;
   /** TEAM_VAULT_IDS (R11). */
   teamVaultIds: readonly string[];
-  /**
-   * Checks that this network's RPC serves this network's chain (`ensureChain(network, rpc)`), before anything is read or
-   * written: throws `WrongChainError` when it does not, and the RPC's own error when it cannot tell.
-   */
-  verifyChain: () => Promise<void>;
 }
 
 export type RegisterError =
@@ -311,9 +325,12 @@ export async function registerVault(
   const vaultId = input.vaultId.trim();
   if (!isNearAccountId(vaultId)) return { ok: false, error: "invalid_vault" };
   // A registration is lasting state, and everything it believes comes from this network's nodes: they must be this
-  // network's. An RPC setting that points at the other chain would read another account's vault under the same id.
+  // network's. An RPC setting that points at the other chain would read another account's vault under the same id, so the
+  // clients come from `connect`, which has checked every URL, and nothing here reads through any other.
+  let reader: VaultReader;
+  let chain: ChainReads;
   try {
-    await deps.verifyChain();
+    ({ reader, chain } = await deps.connect());
   } catch (e) {
     if (e instanceof WrongChainError) return { ok: false, error: "wrong_chain" };
     return { ok: false, error: chainErrorKind(e) === null ? rethrow(e) : "unavailable" };
@@ -321,10 +338,7 @@ export async function registerVault(
   let config: VaultConfig;
   let identity: string;
   try {
-    const [c, account] = await Promise.all([
-      deps.reader.getConfig(vaultId),
-      deps.chain.viewAccount(vaultId),
-    ]);
+    const [c, account] = await Promise.all([reader.getConfig(vaultId), chain.viewAccount(vaultId)]);
     config = c;
     identity = codeIdentity(account);
   } catch (e) {
@@ -337,7 +351,7 @@ export async function registerVault(
     }
     let versions: VersionView[];
     try {
-      versions = await deps.chain.factoryVersions(deps.factoryId);
+      versions = await chain.factoryVersions(deps.factoryId);
     } catch (e) {
       // The factory's version list is the evidence here: without it nothing is trusted.
       return { ok: false, error: chainErrorKind(e) === null ? rethrow(e) : "unavailable" };

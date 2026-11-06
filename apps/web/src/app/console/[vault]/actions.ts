@@ -2,12 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { isDenied, memberForAction } from "@/lib/console/action-auth";
-import { REGISTER_ERROR_TEXT, registerVault, rpcChainReads } from "@/lib/console/vaults";
+import { connectChain, REGISTER_ERROR_TEXT, registerVault } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
 import { setTenantSettings } from "@/lib/db/tenants";
 import { getEnv } from "@/lib/env";
-import { ensureChain } from "@/lib/near/chain";
-import { getReader, getRpc } from "@/lib/near/server";
 
 /** What the settings form shows after a submit. */
 export type SettingsState =
@@ -52,17 +50,16 @@ export async function refreshMembersAction(
   // The vault's own network, which the guard has shown to be the request's.
   const network = auth.member.network;
   const settings = getEnv().networks[network];
-  const rpc = getRpc(network);
+  // Every chain call goes through the client of the URLs that have answered with this network's chain (connectChain):
+  // never getRpc or getReader, which hold every URL, checked or not.
   const r = await registerVault(
     {
       db: serviceDb(),
-      reader: getReader(network),
-      chain: rpcChainReads(rpc),
+      connect: () => connectChain(network, settings),
       network,
       factoryId: settings.factoryId,
       canaryVaultId: settings.canaryVaultId,
       teamVaultIds: settings.teamVaultIds,
-      verifyChain: () => ensureChain(network, settings),
     },
     // No display name: the stored one is kept (migration 0005).
     { vaultId: auth.member.vault_id, account: auth.session.accountId },
