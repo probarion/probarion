@@ -74,10 +74,11 @@ const ledger = (
   seq: number,
   kind: "decision" | "payment",
   body: object,
+  createdAt?: string,
 ) =>
   pg.query(
-    "insert into public.ledger_entries (tenant_id, seq, kind, body, body_hash, sig, signer, link, request_id) values ($1, $2, $3, $4, $5, 's', 'p', $5, 'r')",
-    [tenant, seq, kind, JSON.stringify(body), String(seq).repeat(64)],
+    "insert into public.ledger_entries (tenant_id, seq, kind, body, body_hash, sig, signer, link, request_id, created_at) values ($1, $2, $3, $4, $5, 's', 'p', $5, 'r', coalesce($6::timestamptz, now()))",
+    [tenant, seq, kind, JSON.stringify(body), String(seq).repeat(64), createdAt ?? null],
   );
 
 const contract = (status: string, code: string | null, tx: string | null) => ({
@@ -384,12 +385,10 @@ describe("metrics_compute and public_usage_metrics", () => {
     expect(m.canary_participants).toBe(0);
   });
 
-  it("writes nothing for a network with no activity, and reads as empty with no update time", async () => {
+  it("a network with no activity, once computed, has an update time and no rows", async () => {
     const fresh = await freshDb();
     try {
-      const m = await usage(fresh, "mainnet");
-      expect(m).toMatchObject({
-        network: "mainnet",
+      const empty = {
         totals: [],
         recent: [],
         canary_participants: 0,
@@ -397,9 +396,23 @@ describe("metrics_compute and public_usage_metrics", () => {
         team_vaults: 0,
         pilots: [],
         pilot_names: [],
+      };
+      // Before any run there is no record of one.
+      expect(await usage(fresh, "mainnet")).toMatchObject({
+        network: "mainnet",
+        ...empty,
         updated_at: null,
       });
       expect(await compute(fresh, "mainnet")).toMatchObject({ network: "mainnet", rows: 0 });
+      const after = await usage(fresh, "mainnet");
+      expect(after).toMatchObject({ ...empty });
+      expect(after.updated_at).not.toBeNull();
+      // The run is the network's own: testnet was not computed.
+      expect((await usage(fresh, "testnet")).updated_at).toBeNull();
+      const runs = await fresh.query<{ network: string }>(
+        "select network from public.metrics_runs",
+      );
+      expect(runs.rows).toEqual([{ network: "mainnet" }]);
     } finally {
       await fresh.close();
     }
@@ -418,7 +431,7 @@ describe("metrics_compute and public_usage_metrics", () => {
     expect(at(r.rows).stamps).toBe(1);
     expect(at(r.rows).fresh).toBe(at(r.rows).n);
     const stamp = await pg.query<{ same: boolean }>(
-      "select $1::timestamptz = (select max(computed_at) from public.metrics_daily where network = 'mainnet') as same",
+      "select $1::timestamptz = (select computed_at from public.metrics_runs where network = 'mainnet') as same",
       [m.updated_at],
     );
     expect(at(stamp.rows).same).toBe(true);
@@ -516,6 +529,50 @@ describe("metrics_compute and public_usage_metrics", () => {
     expect(at(after.rows).n).toBe(at(before.rows).n);
   });
 
+  it("keeps one run record per network: when it ran, and the counts of people at that time", async () => {
+    const runs = await pg.query<{
+      network: string;
+      canary_participants: number;
+      external_owners: number;
+      fresh: boolean;
+    }>(
+      `select network, canary_participants, external_owners, computed_at > now() - interval '10 minutes' as fresh
+         from public.metrics_runs order by network`,
+    );
+    expect(runs.rows).toEqual([
+      { network: "mainnet", canary_participants: 4, external_owners: 2, fresh: true },
+      { network: "testnet", canary_participants: 0, external_owners: 1, fresh: true },
+    ]);
+    // The public answer is that record: the same counts, and its time as the update time.
+    const m = await usage(pg, "mainnet");
+    expect([m.canary_participants, m.external_owners]).toEqual([4, 2]);
+    const t = await usage(pg, "testnet");
+    expect([t.canary_participants, t.external_owners]).toEqual([0, 1]);
+  });
+
+  it("keeps the network's key and refuses a network that is not one", async () => {
+    await expect(
+      pg.exec(
+        "insert into public.metrics_runs (network, computed_at, canary_participants, external_owners) values ('devnet', now(), 0, 0)",
+      ),
+    ).rejects.toThrow(/check/);
+    await expect(
+      pg.exec(
+        "insert into public.metrics_runs (network, computed_at, canary_participants, external_owners) values ('mainnet', now(), 0, 0)",
+      ),
+    ).rejects.toThrow(/duplicate key/);
+  });
+
+  it("answers from metrics_daily, metrics_runs and pilots only: no scan of the attempts or the tenants", async () => {
+    const f = await pg.query<{ src: string }>(
+      "select prosrc as src from pg_proc where oid = 'public.public_usage_metrics(jsonb)'::regprocedure",
+    );
+    const src = at(f.rows).src;
+    expect(src).not.toMatch(/canary_attempts|tenants|ledger_entries|invoices|vault_events/);
+    const tables = [...src.matchAll(/public\.([a-z_]+)/g)].map((m) => m[1]);
+    expect([...new Set(tables)].sort()).toEqual(["metrics_daily", "metrics_runs", "pilots"]);
+  });
+
   describe("who may call what", () => {
     it("lets only the service role compute, and runs it as its caller", async () => {
       for (const role of ["anon", "authenticated"] as const) {
@@ -552,9 +609,18 @@ describe("metrics_compute and public_usage_metrics", () => {
         `select p.oid::regprocedure::text as fn,
                 (select count(*)::int from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
                   where a.grantee = 0 and a.privilege_type = 'EXECUTE') as n
-           from pg_proc p where p.oid in ('public.metrics_compute(jsonb)'::regprocedure, 'public.public_usage_metrics(jsonb)'::regprocedure)`,
+           from pg_proc p where p.oid in ('public.metrics_compute(jsonb)'::regprocedure, 'public.public_usage_metrics(jsonb)'::regprocedure,
+                                          'public.metrics_backfill(jsonb)'::regprocedure, 'public.rate_limits_prune(jsonb)'::regprocedure)`,
       );
-      expect(r.rows.map((x) => x.n)).toEqual([0, 0]);
+      expect(r.rows.map((x) => x.n)).toEqual([0, 0, 0, 0]);
+      for (const table of ["metrics_runs", "metrics_daily"]) {
+        for (const role of ["anon", "authenticated"] as const) {
+          await expect(
+            asRole(pg, role, "x.near", (tx) => tx.query(`select * from public.${table}`)),
+            `${role} on ${table}`,
+          ).rejects.toThrow(/permission denied/);
+        }
+      }
       await expect(
         asRole(pg, "anon", null, (tx) => tx.query("select * from public.metrics_daily")),
       ).rejects.toThrow(/permission denied/);
@@ -612,7 +678,7 @@ describe("the days of the numbers", () => {
   beforeEach(async () => {
     // A tenant with a ledger could not be deleted, and none of these has one: the ledger is append-only.
     await pg.exec(
-      "delete from public.tenants; truncate public.canary_attempts, public.metrics_daily, public.pilots",
+      "delete from public.tenants; truncate public.canary_attempts, public.metrics_daily, public.metrics_runs, public.pilots",
     );
   });
 
@@ -697,19 +763,25 @@ describe("the days of the numbers", () => {
     expect(paid(odd.recent)).toBe(2); // anything that is not a number of days is 7
   });
 
+  /** The numbers of a network after a run, which is where the counts of people are taken. */
+  const computed = async (network = "mainnet") => {
+    await compute(pg, network, await utcDay(pg));
+    return usage(pg, network);
+  };
+
   it("counts people as the smaller of the distinct browsers and the distinct addresses", async () => {
     await seedTenant(pg, { vault: "c.vaults.probarion.near", owner: "p.near", kind: "canary" });
     // Three browsers behind one address.
     for (const v of ["1", "2", "3"]) await attempt(pg, { visitor: H(v), ip: H("a") });
-    expect((await usage(pg, "mainnet")).canary_participants).toBe(1);
+    expect((await computed()).canary_participants).toBe(1);
     // One browser behind three addresses, on top of those.
     await pg.exec("truncate public.canary_attempts");
     for (const ip of ["a", "b", "c"]) await attempt(pg, { visitor: H("1"), ip: H(ip) });
-    expect((await usage(pg, "mainnet")).canary_participants).toBe(1);
+    expect((await computed()).canary_participants).toBe(1);
     // The team's browsers do not count as participants.
     await attempt(pg, { visitor: H("9"), ip: H("9"), team: true });
     await attempt(pg, { visitor: H("2"), ip: H("d") });
-    expect((await usage(pg, "mainnet")).canary_participants).toBe(2);
+    expect((await computed()).canary_participants).toBe(2);
   });
 
   it("counts the Canary's attempts only on the network that has the Canary vault", async () => {
@@ -730,7 +802,15 @@ describe("the days of the numbers", () => {
     await seedTenant(pg, { vault: "a1.vaults.probarion.near", owner: "same.near" });
     await seedTenant(pg, { vault: "a2.vaults.probarion.near", owner: "same.near" });
     await seedTenant(pg, { vault: "t1.vaults.probarion.near", owner: "team.near", kind: "team" });
+    expect((await computed()).external_owners).toBe(1);
+  });
+
+  it("gives the counts of the last run, not a live count: the next run picks up what came after", async () => {
+    await seedTenant(pg, { vault: "a1.vaults.probarion.near", owner: "one.near" });
+    expect((await computed()).external_owners).toBe(1);
+    await seedTenant(pg, { vault: "a2.vaults.probarion.near", owner: "two.near" });
     expect((await usage(pg, "mainnet")).external_owners).toBe(1);
+    expect((await computed()).external_owners).toBe(2);
   });
 });
 
@@ -790,6 +870,259 @@ describe("the migration on a database that already has rows", () => {
           where i.indrelid = 'public.metrics_daily'::regclass and i.indisprimary`,
       );
       expect(at(key.rows).cols).toBe("day,network,segment,metric");
+    } finally {
+      await pg.close();
+    }
+  }, 60_000);
+});
+
+const isoAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+
+describe("rate_limits_prune", () => {
+  let pg: PGlite;
+  beforeAll(async () => {
+    pg = await freshDb();
+  }, 60_000);
+  afterAll(async () => {
+    await pg.close();
+  });
+  beforeEach(async () => {
+    await pg.exec("truncate public.rate_limits");
+  });
+
+  const bucket = (name: string, ago: string) =>
+    pg.query(
+      "insert into public.rate_limits (bucket, window_start, count) values ($1, now() - $2::interval, 1)",
+      [name, ago],
+    );
+  const prune = () => pgliteDb(pg).rpc<{ deleted: number }>("rate_limits_prune", {});
+  const left = async () =>
+    (
+      await pg.query<{ bucket: string }>("select bucket from public.rate_limits order by bucket")
+    ).rows.map((r) => r.bucket);
+
+  it("deletes the rows whose window began more than a day ago, and keeps the rest", async () => {
+    await bucket("old-2-days", "2 days");
+    await bucket("old-a-day-and-a-minute", "1 day 1 minute");
+    await bucket("new-a-day-less-a-minute", "23 hours 59 minutes");
+    await bucket("new-an-hour", "1 hour");
+    await bucket("new-now", "0 seconds");
+    expect(await prune()).toEqual({ deleted: 2 });
+    expect(await left()).toEqual(["new-a-day-less-a-minute", "new-an-hour", "new-now"]);
+    // Nothing is left to delete the second time.
+    expect(await prune()).toEqual({ deleted: 0 });
+  });
+
+  it("does nothing to an empty table", async () => {
+    expect(await prune()).toEqual({ deleted: 0 });
+  });
+
+  it("does not reopen a window that is still open: a day-long window begun 23 hours ago still blocks after it", async () => {
+    const take = (name: string, windowS: number, begunAgoS = 0) =>
+      pgliteDb(pg).rpc<{ allowed: boolean }>("rate_limit_take", {
+        bucket: name,
+        max: 1,
+        window_seconds: windowS,
+        now: new Date(Date.now() - begunAgoS * 1000).toISOString(),
+      });
+    expect((await take("live", 86_400, 23 * 3600)).allowed).toBe(true);
+    expect((await take("live", 86_400)).allowed).toBe(false);
+    // A window of 10 minutes that began two days ago is over, with or without the prune.
+    expect((await take("over", 600, 2 * 86_400)).allowed).toBe(true);
+    expect(await prune()).toEqual({ deleted: 1 });
+    expect(await left()).toEqual(["live"]);
+    expect((await take("live", 86_400)).allowed).toBe(false); // still shut
+    expect((await take("over", 600)).allowed).toBe(true); // a new window, as it would be without the prune
+  });
+
+  it("is for the service role only, runs as its caller, and has a pinned search path", async () => {
+    for (const role of ["anon", "authenticated"] as const) {
+      await expect(pgliteDb(pg, role, "x.near").rpc("rate_limits_prune", {})).rejects.toMatchObject(
+        { code: "permission_denied" },
+      );
+    }
+    await expect(prune()).resolves.toEqual({ deleted: 0 });
+    const f = await pg.query<{ definer: boolean; config: string[] | null }>(
+      "select prosecdef as definer, proconfig as config from pg_proc where oid = 'public.rate_limits_prune(jsonb)'::regprocedure",
+    );
+    expect(at(f.rows).definer).toBe(false);
+    expect(at(f.rows).config).toContain("search_path=public, pg_temp");
+  });
+});
+
+describe("metrics_backfill", () => {
+  const backfill = (pg: PGlite, p: Record<string, unknown> = {}) =>
+    pgliteDb(pg).rpc<{ networks: number; days: number; runs: number }>("metrics_backfill", p);
+  const snapshot = async (pg: PGlite) =>
+    (
+      await pg.query<{ k: string }>(
+        `select day::text || '|' || network || '|' || segment || '|' || metric || '|' || value::text as k
+           from public.metrics_daily order by day, network, segment, metric`,
+      )
+    ).rows.map((r) => r.k);
+  const age = (pg: PGlite, tenant: string, days: number) =>
+    pg.query(
+      "update public.tenants set created_at = now() - make_interval(days => $2) where id = $1",
+      [tenant, days],
+    );
+
+  it("computes every day from the earliest record to today, for each network that has a tenant", async () => {
+    const pg = await freshDb();
+    try {
+      const ext = await seedTenant(pg, { vault: "a.vaults.probarion.near", owner: "a.near" });
+      const team = await seedTenant(pg, {
+        vault: "t.vaults.probarion.near",
+        owner: "p.near",
+        kind: "team",
+      });
+      const can = await seedTenant(pg, {
+        vault: "c.vaults.probarion.near",
+        owner: "p.near",
+        kind: "canary",
+      });
+      const tnet = await testnetTenant(pg, "x.vaults.probarion.testnet", "x.near");
+      await age(pg, ext, 3);
+      await age(pg, can, 3);
+      await age(pg, team, 2);
+      await age(pg, tnet, 1);
+      await event(pg, ext, "spend:1:paid", "spend_paid", isoAgo(2));
+      // The earliest record of all is a ledger entry, four days old.
+      await ledger(
+        pg,
+        ext,
+        0,
+        "decision",
+        { verdict: "refuse", evidence: null, contract: null },
+        isoAgo(4),
+      );
+      await attempt(pg, { visitor: H("1"), ip: H("a"), createdAt: isoAgo(3) });
+
+      expect(await backfill(pg)).toEqual({ networks: 2, days: 5, runs: 10 });
+      const d = (n: number) => utcDay(pg, -n);
+      const [d4, d3, d2, d1] = await Promise.all([d(4), d(3), d(2), d(1)]);
+      const rows = await snapshot(pg);
+      expect(rows).toEqual([
+        `${d4}|mainnet|external|refused_by_code|1`,
+        `${d3}|mainnet|canary|canary_attempts|1`,
+        `${d3}|mainnet|canary|refused_by_code|1`,
+        `${d3}|mainnet|canary|vaults|1`,
+        `${d3}|mainnet|external|vaults|1`,
+        `${d2}|mainnet|external|spends_paid|1`,
+        `${d2}|mainnet|team|vaults|1`,
+        `${d1}|testnet|external|vaults|1`,
+      ]);
+      const runs = await pg.query<{
+        network: string;
+        canary_participants: number;
+        external_owners: number;
+      }>(
+        "select network, canary_participants, external_owners from public.metrics_runs order by network",
+      );
+      expect(runs.rows).toEqual([
+        { network: "mainnet", canary_participants: 1, external_owners: 1 },
+        { network: "testnet", canary_participants: 0, external_owners: 1 },
+      ]);
+      expect((await usage(pg, "mainnet")).updated_at).not.toBeNull();
+
+      // Running it again leaves the same numbers.
+      await backfill(pg);
+      expect(await snapshot(pg)).toEqual(rows);
+      // A start date and a network narrow it: the testnet's last two days only.
+      expect(await backfill(pg, { network: "testnet", from: d1 })).toEqual({
+        networks: 1,
+        days: 2,
+        runs: 2,
+      });
+      expect(await snapshot(pg)).toEqual(rows);
+    } finally {
+      await pg.close();
+    }
+  }, 60_000);
+
+  it("does nothing on a fresh database, starts at an attempt older than any tenant, and skips a network with no tenant", async () => {
+    const pg = await freshDb();
+    try {
+      // The migration ran its own backfill on this empty database and left nothing behind.
+      expect(await snapshot(pg)).toEqual([]);
+      expect((await pg.query("select 1 from public.metrics_runs")).rows).toEqual([]);
+      expect(await backfill(pg)).toEqual({ networks: 0, days: 0, runs: 0 });
+
+      const ext = await seedTenant(pg, { vault: "a.vaults.probarion.near", owner: "a.near" });
+      await seedTenant(pg, { vault: "c.vaults.probarion.near", owner: "p.near", kind: "canary" });
+      await age(pg, ext, 2);
+      await attempt(pg, { visitor: H("1"), ip: H("a"), createdAt: isoAgo(6) });
+      expect(await backfill(pg)).toEqual({ networks: 1, days: 7, runs: 7 });
+      const runs = await pg.query<{ network: string }>("select network from public.metrics_runs");
+      expect(runs.rows).toEqual([{ network: "mainnet" }]);
+      expect((await usage(pg, "testnet")).updated_at).toBeNull();
+      expect(value((await usage(pg, "mainnet")).totals, "canary", "canary_attempts")).toBe(1);
+    } finally {
+      await pg.close();
+    }
+  }, 60_000);
+
+  it("refuses a network or a start date that is not one, and is for the service role only", async () => {
+    const pg = await freshDb();
+    try {
+      for (const p of [
+        { network: "devnet" },
+        { network: 1 },
+        { from: "yesterday" },
+        { from: "2026-13-45" },
+        { from: 20261105 },
+      ]) {
+        await expect(backfill(pg, p)).rejects.toMatchObject({ code: "invalid_input" });
+      }
+      for (const role of ["anon", "authenticated"] as const) {
+        await expect(
+          pgliteDb(pg, role, "x.near").rpc("metrics_backfill", {}),
+        ).rejects.toMatchObject({
+          code: "permission_denied",
+        });
+      }
+      const f = await pg.query<{ definer: boolean; config: string[] | null }>(
+        "select prosecdef as definer, proconfig as config from pg_proc where oid = 'public.metrics_backfill(jsonb)'::regprocedure",
+      );
+      expect(at(f.rows).definer).toBe(false);
+      expect(at(f.rows).config).toContain("search_path=public, pg_temp");
+    } finally {
+      await pg.close();
+    }
+  }, 60_000);
+});
+
+describe("the migration on a database that has history", () => {
+  it("backfills the days it finds, so the numbers are there when the migration is done", async () => {
+    const dir = fileURLToPath(new URL("../../supabase/migrations", import.meta.url));
+    const files = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+    const last = files.findIndex((f) => f.endsWith("_metrics.sql"));
+    const pg = new PGlite();
+    try {
+      await pg.exec(SUPABASE_STUB);
+      for (const f of files.slice(0, last)) await pg.exec(readFileSync(`${dir}/${f}`, "utf8"));
+      const t = await seedTenant(pg, { vault: "a.vaults.probarion.near", owner: "a.near" });
+      await pg.query(
+        "update public.tenants set created_at = now() - interval '3 days' where id = $1",
+        [t],
+      );
+      await event(pg, t, "spend:1:paid", "spend_paid", isoAgo(2));
+      const [d3, d2] = [await utcDay(pg, -3), await utcDay(pg, -2)];
+
+      await pg.exec(readFileSync(`${dir}/${files[last]}`, "utf8"));
+      const rows = await pg.query<{ k: string }>(
+        `select day::text || '|' || network || '|' || segment || '|' || metric || '|' || value::text as k
+           from public.metrics_daily order by day, segment, metric`,
+      );
+      expect(rows.rows.map((r) => r.k)).toEqual([
+        `${d3}|mainnet|external|vaults|1`,
+        `${d2}|mainnet|external|spends_paid|1`,
+      ]);
+      const runs = await pg.query<{ network: string; external_owners: number }>(
+        "select network, external_owners from public.metrics_runs",
+      );
+      expect(runs.rows).toEqual([{ network: "mainnet", external_owners: 1 }]);
     } finally {
       await pg.close();
     }

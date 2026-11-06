@@ -8,14 +8,14 @@ import { parseUsage, type UsageMetrics } from "./parse";
 
 // What the Usage page reads from the database, behind Next's data cache. The read and the refresh live in the same cache
 // entry (a minute), so the refresh runs at most about once a minute however many people look, and in practice about
-// once an hour: it runs only when the newest row of the network is over an hour old. A refresh that fails (no service
-// key in a preview, a timeout, an error) shows what exists. A read that fails is cached too, as an absent answer, for
+// once an hour: it runs only when the network was last computed more than an hour ago (its run record, metrics_runs). A
+// refresh that fails (no service key in a preview, a timeout, an error) shows what exists. A read that fails is cached too, as an absent answer, for
 // the same minute: a database in trouble is asked once a minute, not once a view. The parsing is outside the cache, so
 // that a reader of this file never sees a stale shape. Nothing here throws: a read that fails, hangs past
 // `READ_TIMEOUT_MS` or is lost by the cache layer itself is a null, with a warning.
 
 export const USAGE_REVALIDATE_S = 60;
-/** The numbers are refreshed when the newest row is older than this. */
+/** The numbers are refreshed when the network was last computed longer ago than this, or never. */
 export const STALE_AFTER_MS = 60 * 60_000;
 /** How long one step may take. The page waits on it, so a hung database must not hold a visitor for long. */
 export const READ_TIMEOUT_MS = 5000;

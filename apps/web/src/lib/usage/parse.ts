@@ -18,7 +18,7 @@ export interface UsageMetrics {
   pilots: SegmentCounts;
   /** Pilots who agreed in writing to be named. */
   pilot_names: string[];
-  /** When the newest row was written, or null before the first run. */
+  /** When the network was last computed (its run record), or null before the first run. */
   updated_at: string | null;
 }
 
