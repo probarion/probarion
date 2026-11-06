@@ -230,6 +230,15 @@ describe("vercel.json", () => {
   it("gives every cron a GET route that reads CRON_SECRET", () => {
     expect(cronProblems(WEB, VERCEL)).toEqual([]);
   });
+
+  it("runs the watcher and the usage numbers once a day, the most the Vercel Hobby plan accepts", () => {
+    // The Hobby plan rejects a more frequent schedule when it deploys. The per-minute watcher is a Supabase Cron job the
+    // OWNER turns on (docs/ops/watcher.md); a project on a paid plan changes these two lines and this test on purpose.
+    expect(VERCEL.crons).toEqual([
+      { path: "/api/cron/watch", schedule: "0 0 * * *" },
+      { path: "/api/cron/metrics", schedule: "10 0 * * *" },
+    ]);
+  });
 });
 
 describe("client components", () => {

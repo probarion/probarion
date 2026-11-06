@@ -66,6 +66,8 @@ const h = vi.hoisted(() => ({
   decision: null as unknown,
   /** The newest entry of the Canary's ledger (its seq + 1 is the number of entries). */
   head: null as unknown,
+  /** The tenants the route asked the watcher to look at once its response is sent. */
+  kicks: [] as string[],
 }));
 
 vi.mock("next/headers", () => ({
@@ -119,6 +121,7 @@ vi.mock("@/lib/near/server", () => ({
     },
   }),
 }));
+vi.mock("@/lib/watcher/server", () => ({ kickWatcher: (tenant: string) => h.kicks.push(tenant) }));
 vi.mock("@/lib/sdk/factory", () => ({
   makeTenantProbarion: (o: Record<string, unknown>, deps: Record<string, unknown> = {}) => {
     h.made.push(o);
@@ -270,6 +273,7 @@ beforeEach(async () => {
   h.mandates = async () => [mandateFor(agentB.pk)];
   h.accessKey = async () => ({ exists: true, allowance: null });
   h.accessKeyCalls = [];
+  h.kicks = [];
   h.made = [];
   h.process = async () => REFUSED;
   h.requestSpend = async () => BY_CONTRACT;
@@ -659,6 +663,33 @@ describe("POST /api/canary/attempt", () => {
         expect(at(await rows()).network, network).toBe(network);
         expect(at(h.made).tenant, network).toMatchObject({ tenant_id: tenantId, network });
       }
+    });
+
+    it("has the Canary's vault watched once the response is sent: one kick for the Canary tenant", async () => {
+      expect((await post({ text: TEXT })).status).toBe(200);
+      expect(h.kicks).toEqual([tenantId]);
+      // An attempt that stops with an error may still have changed the ledger or the chain: it is watched too.
+      h.process = async () => {
+        throw new Error("NEAR AI says no");
+      };
+      expect((await post({ text: `${TEXT} 2` })).status).toBe(502);
+      expect(h.kicks).toEqual([tenantId, tenantId]);
+    });
+
+    it("does not have the vault watched when the attempt is refused before it runs", async () => {
+      await post({ text: TEXT }, { headers: { origin: "https://evil.example" } }); // 403
+      await post(null, { raw: "{not json" }); // 400
+      h.env.CANARY_VAULT_ID = "";
+      expect((await post({ text: TEXT })).status).toBe(503); // not ready
+      h.env.CANARY_VAULT_ID = VAULT;
+      const [max] = LIMITS.canaryModelGlobal;
+      await pg.query(
+        `insert into rate_limits (bucket, window_start, count) values ('canary:model:global', now(), $1)
+         on conflict (bucket) do update set count = excluded.count`,
+        [max],
+      );
+      expect((await post({ text: TEXT })).status).toBe(429);
+      expect(h.kicks).toEqual([]);
     });
 
     it("follows the mandate when it is bound to the other active key", async () => {

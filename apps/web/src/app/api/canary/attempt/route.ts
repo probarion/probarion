@@ -17,6 +17,7 @@ import { log, newRequestId } from "@/lib/log";
 import { listAll } from "@/lib/near/reader";
 import { getReader } from "@/lib/near/server";
 import { LIMITS } from "@/lib/ratelimit";
+import { kickWatcher } from "@/lib/watcher/server";
 
 export const dynamic = "force-dynamic";
 // The Canary tenant's lease (CANARY_LIMITS.leaseSeconds, 90 s) outlasts this with a 30 s margin; route.test.ts checks it.
@@ -111,6 +112,9 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
   const isTeam = await isTeamMember(db);
   const store = new SupabaseLedgerStore(db, tenant.tenant_id);
 
+  // From here the attempt runs, and what it records or sends changes the vault: the watcher looks at it as soon as this
+  // response is sent, so the owner's alerts do not wait for the next scheduled run.
+  kickWatcher(tenant.tenant_id);
   const r = await runAttempt(
     {
       db,
