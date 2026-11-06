@@ -643,7 +643,6 @@ describe("the rendered landing page", () => {
     const named = [...FOOTER.product, ...FOOTER.legal].filter((i) =>
       PLANNED_ROUTES.includes(i.route),
     );
-    expect(named.length).toBeGreaterThan(0);
     for (const { label } of named) expect(out, label).toContain(`${label} (coming soon)`);
   });
 
@@ -657,8 +656,10 @@ describe("the rendered landing page", () => {
     expect(out).not.toContain("Open metrics");
     expect(hrefs(landing())).toContain("/usage");
     expect(hrefs(landing())).not.toContain("/open");
-    expect(out).toContain("Terms (coming soon)");
-    expect(out).toContain("Privacy (coming soon)");
+    expect(out).not.toContain("coming soon");
+    expect(hrefs(landing())).toEqual(
+      expect.arrayContaining(["/security", "/status", "/terms", "/privacy"]),
+    );
   });
 
   it("names none of the owner's other projects", () => {

@@ -428,10 +428,10 @@ describe("/proof/[vault]", () => {
     );
   });
 
-  it("links /security the way a planned page is linked: as 'coming soon' text", async () => {
+  it("links /security now that the page is built", async () => {
     const { out } = await served("ok");
-    expect(out).not.toContain('href="/security"');
-    expect(text(out)).toContain("Security (coming soon)");
+    expect(out).toContain('href="/security"');
+    expect(text(out)).not.toContain("Security (coming soon)");
   });
 
   it("shows crafted ledger and chain text with its controls replaced", async () => {

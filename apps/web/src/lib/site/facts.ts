@@ -17,6 +17,8 @@ export const LINKS = {
   spec: blob("docs/specs/2026-10-21-probarion-design.md"),
   interfaces: blob("docs/specs/2026-10-21-probarion-interfaces.md"),
   security: blob("SECURITY.md"),
+  threatModel: blob("docs/THREAT_MODEL.md"),
+  runbook: blob("docs/RUNBOOK.md"),
   changelog: blob("CHANGELOG.md"),
   fixture: blob(FIXTURE_PATH),
   x: "https://x.com/probarionhq",
@@ -57,10 +59,10 @@ export const PROOF_ROUTE = "/proof";
 export const CONSOLE_ROUTE = "/console";
 
 /**
- * Planned pages the footer leaves out until they exist, because it already covers them: the Security link opens
- * SECURITY.md and the landing page has a status section. Once built, each one joins its list by itself.
+ * Planned pages the footer leaves out until they exist, because it already covers them some other way (for
+ * /security, the developers list links SECURITY.md). Once built, each one joins its list by itself.
  */
-const COVERED_WHILE_PLANNED: readonly string[] = ["/security", "/status"];
+const COVERED_WHILE_PLANNED: readonly string[] = ["/security"];
 const listed = (items: readonly NavItem[]) =>
   items.filter(({ route }) => isBuilt(route) || !COVERED_WHILE_PLANNED.includes(route));
 
@@ -73,7 +75,7 @@ export const FOOTER = {
   developers: [
     { href: LINKS.github, label: "GitHub" },
     { href: LINKS.interfaces, label: "Interfaces" },
-    { href: LINKS.security, label: "Security" },
+    { href: LINKS.security, label: "SECURITY.md" },
     { href: LINKS.changelog, label: "Changelog" },
   ],
   follow: [{ href: LINKS.x, label: "@probarionhq on X" }],

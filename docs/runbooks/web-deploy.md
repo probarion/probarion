@@ -197,7 +197,7 @@ Once the deployment is live, the [incident runbook](../RUNBOOK.md) says what to 
   - `packages/core build` and `packages/sdk build` finish with "Done";
   - `next build` finishes and lists the routes `/`, `/login`, `/console`, `/console/[vault]`, `/console/[vault]/keys`, `/console/[vault]/mandates`, `/proof`, `/proof/[vault]`, `/proof/[vault]/snapshot.json`, `/proof/[vault]/ledger.jsonl` and `/api/auth/*`.
 - [ ] **OWNER:** smoke test, on the deployment URL:
-  1. `/` loads with the amber "Unaudited beta" banner and three cards. The Canary, Usage and Status entries are links; until Task 22's other pages are built, Security, Terms and Privacy read "(coming soon)" and are not links; no link on the page, in the menu or in the footer leads to a 404.
+  1. `/` loads with the amber "Unaudited beta" banner and three cards. The Canary, Usage, Security, Status, Terms and Privacy entries are links, and nothing reads "(coming soon)"; no link on the page, in the menu or in the footer leads to a 404.
   2. `/console` while signed out sends you to `/login?next=%2Fconsole`.
   3. `/login`: Sign in with your NEAR wallet. The wallet asks for a **message signature**, not a transaction. You land on `/console`.
   4. `/console`: register a vault you own, signed in as its on-chain owner. On testnet that is `v0.probarion.testnet` (`contracts/deployments/testnet.json`). The vault page opens with Overview, Mandates and Keys tabs.
