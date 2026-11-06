@@ -70,8 +70,7 @@ strangely worries you, you can stop your vault yourself, at once, without Probar
 1. **Freeze it.** Open your vault in the console and press "Freeze vault". Freezing takes no deposit, so
    any key of your owner account can sign it. From then on every spend and every approval is refused with
    `PROBARION:Frozen`; your funds, mandates and ledger stay where they are. If the console is down, print
-   the same transaction with the CLI and sign it in your own wallet or near-cli-rs
-   ([freeze procedure](#freeze-procedure)).
+   the same transaction with the CLI and sign it with near-cli-rs ([freeze procedure](#freeze-procedure)).
 2. **Move funds out, if you want to.** The vault's page has "Withdraw all ... to my wallet" for the USDC
    on NEAR, and "Withdraw all ... Base USDC out of Intents to my account" when the vault holds some. Each
    needs your full-access key (1 yoctoNEAR, a wallet prompt), and the money goes only to your own owner
@@ -136,7 +135,7 @@ editor for an incident only.
 ```text
 Probarion incident <id>, <UTC time>: <one sentence>. As a precaution, freeze your vault now:
 1. Open <the address of your vault's network>/console/<your vault> and press "Freeze vault", or
-2. From your own wallet or near-cli-rs, call freeze on <your vault> as its owner, with no deposit.
+2. With near-cli-rs and your owner key, call freeze on <your vault> as its owner, with no deposit.
 Freezing stops every agent payment; your funds and mandates stay where they are.
 Updates: https://x.com/probarionhq
 ```
@@ -168,7 +167,9 @@ near contract call-function as-read-only intents.near mt_balance_of json-args '{
 ### Unfreezing
 
 Unfreeze only when the cause is understood and fixed, the affected agent keys are replaced, and
-`node packages/cli/dist/bin.js verify --network <mainnet|testnet> --vault <vault>` passes. In the console
+`node packages/cli/dist/bin.js verify --network <mainnet|testnet> --vault <vault>` passes (for a hosted vault, add
+`--ledger <file>`, its ledger downloaded from `/proof/<vault>/ledger.jsonl`, as in step 6 of
+[first 15 minutes](#first-15-minutes); without it `verify` checks the chain against an empty ledger). In the console
 the same button then reads "Unfreeze vault". Or print it:
 
 **OWNER SIGNS**
@@ -191,7 +192,7 @@ Then post "Resolved".
 
 | Key or secret | Where it lives | Rotate when | How |
 |---|---|---|---|
-| Agent key (a function-call key that can call `spend` only) | Hosted vault: sealed in the database. SDK or CLI: the operator's `PROBARION_AGENT_KEY` | Suspected leak, allowance nearly used up | Hosted: on the Keys page, "Generate agent key and add it in my wallet" (1 yoctoNEAR); create new mandates for the new key, because every mandate is bound to one agent key; then "Remove" the old key and revoke its mandates ([rotation runbook](ops/key-rotation.md#steps), step 7). SDK: `node packages/cli/dist/bin.js agent keygen --out <file>`, then `agent add --pk <new pk>` and `agent remove --pk <old pk>`, each printed for **OWNER SIGNS** with 1 yoctoNEAR. |
+| Agent key (a function-call key that can call `spend` only) | Hosted vault: sealed in the database. SDK or CLI: the operator's `PROBARION_AGENT_KEY` | Suspected leak, allowance nearly used up | Hosted: on the Keys page, "Generate agent key and add it in my wallet" (1 yoctoNEAR); create new mandates for the new key, because every mandate is bound to one agent key; then "Remove" the old key and revoke its mandates ([rotation runbook](ops/key-rotation.md#steps), step 7). SDK: `node packages/cli/dist/bin.js agent keygen --out <file>`; `agent add --pk <new pk>` (1 yoctoNEAR); for each mandate of the old key, a new one bound to the new key (`mandate create ... --agent-pk <new pk>`, with its storage deposit); then `mandate revoke --mandate <id>` for each old mandate and `agent remove --pk <old pk>` (1 yoctoNEAR each). Each call is printed for **OWNER SIGNS**; until the new mandates exist, the agent cannot pay. |
 | Ledger key (a function-call key that can call `anchor` only) | Hosted vault: sealed in the database. SDK or CLI: `PROBARION_LEDGER_KEY` | Suspected leak, allowance nearly used up | Anchor first: entries after the last anchor must be signed by the new key. Hosted: "Generate ledger key and set it in my wallet" on the Keys page. SDK: `node packages/cli/dist/bin.js ledger set-key --pk <new pk> --allowance <near>` (default 0.25 NEAR), **OWNER SIGNS** with 1 yoctoNEAR, then set `PROBARION_LEDGER_KEY` and restart. The vault deletes the previous ledger key. Each anchor records its ledger key, so entries signed before the rotation keep verifying. |
 | `KEY_ENCRYPTION_SECRET` (the master key that seals agent keys, the ledger key and retained invoices) | Vercel, Production (and a Preview that shares the database) | Suspected leak, or someone who knew it leaves | Follow the [rotation runbook](ops/key-rotation.md): `pnpm --filter @probarion/web rotate-keys` as a dry run, then `--apply`, then switch the variable in Vercel and redeploy. Side effects: everyone is signed out; the Telegram webhook secret changes, so re-run `pnpm --filter @probarion/web telegram-webhook`; the stop links in earlier alert emails stop working; Canary visitor limits start over. The invoice-number key changes (it is derived from `KEY_ENCRYPTION_SECRET`, `apps/web/src/lib/payables/pipeline.ts:111-112,126`), so a re-uploaded invoice is no longer matched by its number to invoices uploaded before the rotation; the text fingerprint (an unkeyed sha256, `pipeline.ts:263`) still catches identical text. If the master leaked, also replace every agent and ledger key (step 7 of the rotation runbook). |
 | `TELEGRAM_BOT_TOKEN` | Vercel | Leak | @BotFather `/revoke`, the new token in Vercel (Sensitive), redeploy, then re-run `pnpm --filter @probarion/web telegram-webhook` ([alerts](ops/alerts.md#telegram-owner)). |
@@ -202,7 +203,7 @@ Then post "Resolved".
 | `ONECLICK_JWT` | Vercel (one key for the project, mainnet only) | Leak | 1Click's partner portal: a new JWT, set in Vercel, redeploy, then revoke the old one. |
 | `RESEND_API_KEY` | Vercel | Leak | Resend dashboard: a new key, set in Vercel, redeploy, then delete the old one. |
 | RPC URLs that carry a key (`NEAR_RPC_URLS_<NET>`, `NEAR_ARCHIVAL_RPC_URLS_<NET>`, `BASE_RPC_URL`) | Vercel (Sensitive when they carry a key) | Leak | A new key from the provider, the new URLs in Vercel, redeploy. |
-| `NPM_TOKEN` | GitHub Actions secret of the release workflow | Leak | Revoke it in npm's account settings, create one with the same scope, and store it as the repository secret. |
+| `NPM_TOKEN` | Environment secret of the `npm-release` environment (GitHub Settings > Environments), used by the release workflow | Leak | Revoke it in npm's account settings, create one with the same scope, and store it as the environment secret of `npm-release`, not as a repository secret: the environment admits only `sdk-v*` tags and waits for a reviewer (`.github/workflows/release.yml`). |
 | The factory owner and the team's owner accounts | The OWNER's wallet or hardware wallet | Device lost, or suspected leak | **OWNER SIGNS** adding a new full-access key from a new device, then deleting the old one. The factory owner can publish vault versions but cannot change a vault the factory created. The testnet factory owner is `probarion-owner.testnet` (`contracts/deployments/testnet.json`). |
 
 After any rotation, check that no old value is left in Vercel. CI's gitleaks job scans the repository on
@@ -271,7 +272,7 @@ A cross-chain payout has two halves: the vault's `ft_withdraw` on NEAR burns the
 
 | Incident | Severity | What to do |
 |---|---|---|
-| Supabase down | SEV2 | The console, Payables, the proof pages and the alerts stop. Vaults are unaffected: owners can freeze and withdraw from their own wallets, and the CLI's on-chain checks still run. `/status` shows only the RPC and NEAR AI checks (it has no database check), so the sign is the console failing, and a missed heartbeat. Post "Partial outage" on X. No data repair until Supabase recovers. |
+| Supabase down | SEV2 | The console, Payables, the proof pages and the alerts stop. Vaults are unaffected: owners can freeze and withdraw with their own keys (near-cli-rs), and the CLI's on-chain checks still run. `/status` shows only the RPC and NEAR AI checks (it has no database check), so the sign is the console failing, and a missed heartbeat. Post "Partial outage" on X. No data repair until Supabase recovers. |
 | NEAR AI Cloud down (`/api/health/nearai` answers 503) | SEV3 | Decisions fall back to the rules alone, and the ledger records `decided_by: "rules-only"`. Post "Degraded". |
 | 1Click down | SEV3 | Only mainnet Intents top-ups are affected; payouts from existing Intents balances still work. |
 | Intents balance low (the rule `intents.balance_low` holds a spend) | SEV4 | Tell the owner to top up on the Top-up tab ([Intents top-up](#intents-top-up)). |
@@ -290,7 +291,7 @@ log line `health.settings_invalid` names the variable, never its value.
 2. A bad deploy: the OWNER rolls back to the previous Production deployment in Vercel (Instant Rollback, or
    promoting an older deployment; check the label on first use).
 3. A bad setting: the OWNER fixes it in Vercel and redeploys.
-4. Owners can still freeze and withdraw from their own wallets in the meantime. Say so in the post.
+4. Owners can still freeze and withdraw with their own keys (near-cli-rs) in the meantime. Say so in the post.
 
 ### Alerts not delivered
 
@@ -495,7 +496,7 @@ SEV1 and SEV2 posts on X. Copy a template and fill in the angle brackets.
 **Investigating**
 
 ```text
-We are investigating <symptom, for example "failed payouts to Base"> affecting <component>. Vaults stay under their owners' control: you can freeze and withdraw from your own wallet at any time. Next update by <UTC time, at most 60 minutes away>.
+We are investigating <symptom, for example "failed payouts to Base"> affecting <component>. Vaults stay under their owners' control: you can freeze and withdraw with your own keys, for example with near-cli-rs, at any time. Next update by <UTC time, at most 60 minutes away>.
 ```
 
 **Identified**

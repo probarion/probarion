@@ -36,7 +36,7 @@ test("the liveness route answers for the default network", async ({ request }) =
   });
 });
 
-test("the Canary in replay mode shows recorded attacks and no form", async ({ page }) => {
+test("the Canary in replay mode has a title and no form", async ({ page }) => {
   await page.goto("/canary");
   await expect(page.locator("h1").first()).toBeVisible();
   await expect(page.locator("textarea")).toHaveCount(0);

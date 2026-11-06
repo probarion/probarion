@@ -187,13 +187,31 @@ describe("docs/THREAT_MODEL.md", () => {
     );
   });
 
-  it("links only files that exist", () => {
+  it("links only files and headings that exist", () => {
+    // GitHub's anchor for a heading (as runbook.test.ts makes it): lower case, punctuation dropped.
+    const slug = (heading: string): string =>
+      heading
+        .trim()
+        .toLowerCase()
+        .replace(/[^\w\- ]/g, "")
+        .replace(/ /g, "-");
     const missing: string[] = [];
     for (const m of md.matchAll(/\]\(([^)\s]+)\)/g)) {
       const target = m[1] ?? "";
-      if (/^(https?:|mailto:|#)/.test(target)) continue;
-      const file = target.split("#")[0] ?? "";
-      if (!existsSync(resolve(root, "docs", file))) missing.push(target);
+      if (/^(https?:|mailto:)/.test(target)) continue;
+      const [file = "", anchor] = target.split("#");
+      const path =
+        file === "" ? join(root, "docs", "THREAT_MODEL.md") : resolve(root, "docs", file);
+      if (!existsSync(path)) {
+        missing.push(target);
+        continue;
+      }
+      if (anchor !== undefined && path.endsWith(".md")) {
+        const anchors = [...readFileSync(path, "utf8").matchAll(/^#+ (.+)$/gm)].map((h) =>
+          slug(h[1] ?? ""),
+        );
+        if (!anchors.includes(anchor)) missing.push(target);
+      }
     }
     expect(missing).toEqual([]);
   });

@@ -77,9 +77,10 @@ Out of scope:
 ## Safe harbor
 
 Good-faith security research under this policy is welcome, and we will not take legal action over
-it. Good faith here means that you test against your own vaults, on testnet or in the sandbox; that
-you do not move or try to move funds that are not yours; that you do not degrade the service for
-anyone else; and that you report what you find to us privately before you tell anyone else.
+it. Good faith here means that you test against your own vaults, on testnet or in the sandbox, or
+against the Canary under its rules; that, outside the Canary, you do not move or try to move funds
+that are not yours; that you do not degrade the service for anyone else; and that you report what
+you find to us privately before you tell anyone else.
 
 ## The Canary
 

@@ -10,6 +10,9 @@ import { BLAST_RADIUS, SECURITY_PAGE as P } from "@/lib/site/ops-copy";
 export const metadata: Metadata = { title: P.meta.title, description: P.meta.description };
 
 const H2 = "mb-3 text-xl font-semibold";
+/** A command block, as on the proof page: one command per line. */
+const CODE_BLOCK =
+  "my-2 block whitespace-pre-wrap rounded-2xl bg-ink px-3 py-2 font-mono text-xs text-paper wrap-anywhere";
 
 /** The security summary. SECURITY.md is the policy; this page says the same in short and links it. Static. */
 export default function SecurityPage() {
@@ -102,8 +105,16 @@ export default function SecurityPage() {
 
       <section className={brandCardClass}>
         <h2 className={H2}>{P.verify.title}</h2>
-        <p className="break-words">
-          <Rich text={P.verify.text} />
+        <p>
+          {P.verify.note} {P.verify.setup}
+        </p>
+        <code className={CODE_BLOCK}>{P.verify.setupLines.join("\n")}</code>
+        <p>
+          <Rich text={P.verify.hosted} />
+        </p>
+        <code className={CODE_BLOCK}>{P.verify.command}</code>
+        <p>
+          <Rich text={P.verify.why} />
         </p>
       </section>
 

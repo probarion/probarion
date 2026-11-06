@@ -4,10 +4,18 @@ import { describe, expect, it } from "vitest";
 import PrivacyPage from "@/app/privacy/page";
 import SecurityPage from "@/app/security/page";
 import TermsPage from "@/app/terms/page";
+import { CLI_SETUP_LINES } from "@/lib/proof/cli";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import { LINKS } from "@/lib/site/facts";
 
 const render = (page: () => React.ReactElement) => renderToStaticMarkup(createElement(page));
+/** Text as React writes it into the markup. */
+const asMarkup = (text: string) =>
+  text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 
 describe("the operations pages", () => {
   it("are built, so nothing is planned any more", () => {
@@ -27,6 +35,25 @@ describe("the operations pages", () => {
     }
     expect(html).toContain("72 hours");
     expect(html).toContain("node packages/cli/dist/bin.js verify");
+  });
+
+  it("/security's check runs on a fresh clone: it shows the build first, and gives a hosted vault its ledger", () => {
+    const html = render(SecurityPage);
+    // dist/ is not in the repository, so the verify command needs the set-up lines before it.
+    let at = 0;
+    for (const line of CLI_SETUP_LINES) {
+      const next = html.indexOf(asMarkup(line), at);
+      expect(next, line).toBeGreaterThan(at);
+      at = next;
+    }
+    expect(html.indexOf("node packages/cli/dist/bin.js verify", at)).toBeGreaterThan(at);
+    // Without --ledger the CLI checks the chain against an empty ledger, and an anchored vault fails.
+    expect(html).toContain(
+      asMarkup(
+        "node packages/cli/dist/bin.js verify --network testnet --vault <vault> --ledger probarion-<vault>-ledger.jsonl",
+      ),
+    );
+    expect(html).toContain("/proof/&lt;vault&gt;/ledger.jsonl");
   });
 
   it("/terms states non-custodial, beta, unaudited and at your own risk, and the rules PLAN4 asks for", () => {
@@ -81,6 +108,20 @@ describe("the operations pages", () => {
       expect(html).toContain(t);
     }
     expect(html).toMatch(/permanent/i);
-    expect(html).toContain("within two days");
+    expect(html).toContain("about two days after your last request");
+  });
+
+  it("/privacy says what the Canary and Sentry keep, as they keep it", () => {
+    const html = render(PrivacyPage);
+    // The Canary's ledger holds the model's answer, which can quote the visitor (migration 0008), and the keyed
+    // hashes stay with each attempt, counted on the leaderboard.
+    expect(html).toContain(
+      "which can quote your message, goes into the Canary&#x27;s own signed ledger",
+    );
+    expect(html).toContain("for rate limits and for the leaderboard&#x27;s count of visitors");
+    expect(html).not.toContain("stored only as keyed hashes, for rate limits");
+    // An error report carries its log line, which can name a vault or an account.
+    expect(html).not.toContain("or your account name");
+    expect(html).toContain("A report carries the log line of the error");
   });
 });

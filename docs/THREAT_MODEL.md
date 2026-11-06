@@ -194,7 +194,8 @@ lives in a `server-only` module (`apps/web/src/lib/db/clients.ts:1`).
 (`apps/web/next.config.ts`). There is no Content-Security-Policy yet ([known gaps](#known-gaps)). The
 wallet connector's executor scripts load from GitHub at pinned 40-hex commits
 (`apps/web/src/components/wallet/manifest.ts:11,78`). A request id sent by the client is kept only
-when it is a UUID (`apps/web/src/proxy.ts:21`), and it serves only to match log lines.
+when it is a UUID (`apps/web/src/proxy.ts:21`), and it serves only to match log lines, ledger entries and
+Sentry events; it grants nothing.
 
 **Planned surfaces.**
 
@@ -209,9 +210,9 @@ when it is a UUID (`apps/web/src/proxy.ts:21`), and it serves only to match log 
 |---|---|
 | Call `spend` with stolen agent keys | Pay anyone not named in a mandate |
 | Submit fake invoice hashes against open mandates, or skip the owner's Confirm on a waiting invoice | Exceed a mandate's per-payment cap, total cap, uses or expiry, or the vault's daily backstop; a spend above `approval_above` still waits for an approver |
-| Rewrite off-chain history | Hide it: the anchored roots and `verify` expose the first altered entry |
-| Stop the service | Touch the owner's funds: the owner can freeze, withdraw and revoke keys from their own wallet without Probarion |
-| Use the console's login keys or a hijacked owner or approver session | Approve, withdraw, rotate keys, revoke mandates or unfreeze: each needs exactly 1 yoctoNEAR, which only a full-access key can attach, through a wallet prompt |
+| Rewrite off-chain history | Hide a rewrite of a range already anchored: the anchored roots and `verify` expose the first altered entry |
+| Stop the service | Lock the owner out of their funds: the owner can freeze, withdraw and revoke keys with their own keys, for example near-cli-rs, without Probarion |
+| Use a hijacked owner or approver session, or a function-call key on their account, such as a dapp login key | Approve, withdraw, rotate keys, revoke mandates or unfreeze: each needs exactly 1 yoctoNEAR, which only a full-access key can attach, through a wallet prompt |
 
 ## Failure modes
 
@@ -224,8 +225,8 @@ when it is a UUID (`apps/web/src/proxy.ts:21`), and it serves only to match log 
 | An RPC URL rate-limited (HTTP 429) or failing | The next URL of `NEAR_RPC_URLS_MAINNET` or `NEAR_RPC_URLS_TESTNET` is tried, in order (`packages/sdk/src/rpc.ts:410-415`; [RPC failover](RUNBOOK.md#rpc-failover)) |
 | An RPC URL that serves the other chain | Sign-in and Register answer 503 `wrong_chain`, mint no session and register nothing |
 | Two processes writing one vault's ledger | The database's compare-and-append refuses the second with `ledger_conflict` (`apps/web/src/lib/ledger/store.ts:111`), and an anchor out of order fails with `PROBARION:BadSeq`. The MCP server's `LEDGER_FORK_RISK` refusal is planned |
-| The watcher runs only once a day | A change nobody drove through the app reaches the owner's alerts at the next run: within a day on the daily cron, within a minute with the Supabase schedule |
-| Supabase or Vercel down | The console, Payables, the proof pages and the alerts stop. The funds stay in the vaults, and owners freeze and withdraw from their own wallets |
+| The watcher runs only once a day | A change nobody drove through the app reaches the owner's alerts at the next watcher run that reaches its vault: within a day on the daily cron, or at a later per-minute run once the Supabase schedule is on, with no promised delay ([when a message arrives](ops/alerts.md#when-a-message-arrives)) |
+| Supabase or Vercel down | The console, Payables, the proof pages and the alerts stop. The funds stay in the vaults, and owners freeze and withdraw with their own keys (near-cli-rs) |
 | `KEY_ENCRYPTION_SECRET` lost | The sealed agent and ledger keys are lost: remove them from each vault and add new ones ([key rotation](ops/key-rotation.md)). The funds are not affected |
 | Protocol upgrade during the beta | near-sdk is pinned to `=5.29.1` (`contracts/Cargo.toml:11`); re-run the sandbox and testnet suites |
 | Contract bug | The owner freezes, withdraws both balances and moves to a new vault version: a vault has no upgrade method |

@@ -59,7 +59,7 @@ describe("/status", () => {
     expect(html).toContain("rpc.testnet.fastnear.com: passing");
     expect(html).toContain("NEAR AI Cloud: failing");
     expect(html).toContain("timeout after 5000 ms");
-    expect(html).toContain("Checked at 2026-11-07 12:00:00 UTC.");
+    expect(html).toContain("Page made at 2026-11-07 12:00:00 UTC.");
     expect(html).toContain("Funds stay in your own vault.");
   });
 
