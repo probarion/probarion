@@ -48,6 +48,8 @@ const platformVariable = (name: string) =>
   name === "NODE_ENV" || name === "NEXT_RUNTIME" || name === "CI" || name.startsWith("VERCEL_");
 /** Inputs of the one-off `rotate-keys` command: they must not sit in an .env file next to the live key. */
 const ROTATION_INPUTS = ["OLD_KEY_ENCRYPTION_SECRET", "NEW_KEY_ENCRYPTION_SECRET"];
+/** An input of the one-off `telegram-webhook` script (docs/ops/alerts.md). The app itself never reads it: it takes its origin from Vercel. */
+const SCRIPT_INPUTS = ["APP_ORIGIN"];
 /** Public by design (§14, and the two next.config.ts derives from SENTRY_DSN and NEAR_NETWORK). */
 const PUBLIC_ALLOWED = [
   "NEXT_PUBLIC_SUPABASE_URL",
@@ -76,6 +78,7 @@ describe("environment variables", () => {
         ([n]) =>
           !platformVariable(n) &&
           !ROTATION_INPUTS.includes(n) &&
+          !SCRIPT_INPUTS.includes(n) &&
           !derived.includes(n) &&
           !example.has(n),
       )
@@ -95,6 +98,17 @@ describe("environment variables", () => {
       expect(example.has(name), `${name} in .env.example`).toBe(false);
       expect(runbook, name).toContain(name);
       expect(rotateCli, `${name} read by rotate-keys`).toContain(name);
+    }
+  });
+
+  it("keeps the Telegram setup script's own input out of .env.example, read by that script alone, and in its runbook", () => {
+    const runbook = text(ROOT, "docs", "ops", "alerts.md");
+    for (const name of SCRIPT_INPUTS) {
+      expect(example.has(name), `${name} in .env.example`).toBe(false);
+      expect(runbook, name).toContain(name);
+      expect(envNamesRead(WEB).get(name), `where ${name} is read`).toEqual([
+        "src/lib/alerts/webhook-setup.ts",
+      ]);
     }
   });
 
@@ -257,7 +271,6 @@ describe("client components", () => {
 describe("package scripts", () => {
   /** Scripts whose file a later task adds. Delete the entry when it lands: the test below says so. */
   const KNOWN_GAPS: Record<string, string> = {
-    "telegram-webhook": "Task 21 (Telegram alerts) adds scripts/telegram-webhook.ts",
     "test:e2e": "Task 22 (smoke e2e) adds playwright.config.ts",
   };
   const exists = (rel: string) => existsSync(join(WEB, rel));

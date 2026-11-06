@@ -12,7 +12,7 @@ import { ALLOWANCE_LOW_ALERT_YOCTO, freeNearYocto, NEAR_LOW_ALERT_YOCTO } from "
 // The watcher (plan 04 Task 20): it reads each vault's chain and ledger from a cursor and writes what it sees into
 // `vault_events`, one row per (tenant, event_key). Reading the same thing twice adds nothing, so a run that died
 // half way, two runs that overlap and a cursor that moved back are all harmless. The usage page counts these rows
-// and the alerts (Task 21) send them. Nothing here sends anything or shows anything.
+// and the alerts (docs/ops/alerts.md) send them. Nothing here sends anything or shows anything.
 
 export interface WatchTenant {
   tenant_id: string;
@@ -138,7 +138,7 @@ export function spendEvents(
       spend_id: s.id,
       mandate_id: s.mandate_id,
       amount: s.amount,
-      // `ref` and `memo` are text the payee or the agent chose: Task 21 treats them as untrusted when it renders.
+      // `ref` and `memo` are text the payee or the agent chose: the alerts never print them (lib/alerts/format.ts).
       payload: {
         destination: s.destination,
         ref: s.ref,
