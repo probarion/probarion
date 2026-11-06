@@ -369,6 +369,11 @@ describe("the alerts SQL", () => {
   describe("alert_subscriptions_list", () => {
     it("lists a vault's live subscriptions in order, with the address, and never a link code", async () => {
       const a = await create({ channel: "email", target: "a@example.com" });
+      // Two inserts can share one timestamp, and the list then falls back to the random id.
+      await pg.query(
+        "update alert_subscriptions set created_at = now() - interval '1 minute' where id = $1",
+        [a.id],
+      );
       const b = await create();
       await verify({ link_code: b.link_code });
       const list = await db().rpc<Record<string, unknown>[]>("alert_subscriptions_list", {
