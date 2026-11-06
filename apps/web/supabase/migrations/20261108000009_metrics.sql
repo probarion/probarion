@@ -4,6 +4,11 @@
 --
 -- 1. metrics_daily gets a network. The table is empty in production today, and the change still works on one with rows:
 --    an existing row becomes a testnet row (the default) and the key gains the network.
+-- 1b. canary_attempts gets a network: the network of the Canary vault the attempt was made on, set by
+--    canary_attempt_insert (which now refuses an attempt that does not say one). The column is nullable, because a row
+--    written before this migration has none: a null network means "not known", and such a row counts for no network. The
+--    rows that exist now are given the network of the Canary vault, but only when every Canary vault is on the same
+--    network; with Canary vaults on both networks which one an old row belongs to is not known, and it is left null.
 -- 2. metrics_runs: one row per network, written at the end of every run of metrics_compute, even when that run wrote no
 --    metric row. It holds when the network was last computed and the two counts of people (Canary participants as the
 --    smaller of the distinct browsers and the distinct addresses of outside attempts, external owners as distinct owner
@@ -24,16 +29,16 @@
 --    - nearai_tokens_in / _out: what the model reported on each invoice, by `decided_at`.
 --    - The Canary tenant's own ledger and invoices are left out of all of the above. The Canary's refusals, attempts,
 --      model decisions and tokens come from `canary_attempts` instead, so nothing is counted twice. An attempt of a team
---      member (is_team) is counted under `team`; every other attempt under `canary`. The attempts carry no network, so
---      they count for a network only when that network has a Canary tenant. An attempt still `running` and younger than
---      90 s (the lease) is left out; an older one was killed and is one attempt and nothing else.
+--      member (is_team) is counted under `team`; every other attempt under `canary`. An attempt counts for its own network
+--      only (an attempt with no network counts for none). An attempt still `running` and younger than 90 s (the lease)
+--      is left out; an older one was killed and is one attempt and nothing else.
 -- 4. public_usage_metrics({ network, days? }): security definer, executable by anon, with a pinned search_path. It reads
 --    only metrics_daily, metrics_runs and pilots, and returns that network's totals, the last `days` (default 7, from 1 to
 --    90) days, the people from the run record, the pilots (the pilots table has no network), the names of pilots who
 --    consented in writing, and when the network was last computed.
--- 5. metrics_backfill({ network?, from? }): service_role only. It runs metrics_compute for every day from the earliest
---    created_at in tenants, ledger_entries and canary_attempts (or from `from`) up to today (UTC), for each network that
---    has a tenant (or for `network`). It is called once, at the end of this file, so a database that already has history
+-- 5. metrics_backfill({ network?, from? }): service_role only. For each network that has a tenant (or for `network`) it
+--    runs metrics_compute for every day from that network's earliest created_at in tenants, ledger_entries and
+--    canary_attempts (or from `from`) up to today (UTC). It is called once, at the end of this file, so a database that already has history
 --    has its numbers when the migration is done, and again by hand to recompute (docs/ops/metrics.md).
 -- 6. rate_limits_prune: the daily cron's housekeeping. It resolves the TODO in 0001 and 0002 ("the metrics cron prunes
 --    rate_limits", F29, D12): it deletes the limiter's rows whose window began more than a day ago. No window the app
@@ -45,6 +50,44 @@ alter table public.metrics_daily
   add column network text not null default 'testnet' check (network in ('mainnet', 'testnet'));
 alter table public.metrics_daily drop constraint metrics_daily_pkey;
 alter table public.metrics_daily add primary key (day, network, segment, metric);
+
+-- (1b) The network of a Canary attempt. Null means "not known": a row written before this column existed has none, and
+-- counts for no network. The compute filters on it, and the day's range is served by canary_attempts_created_idx
+-- (created_at), so no index on the network is added: it would only filter the rows of one day.
+alter table public.canary_attempts
+  add column network text check (network in ('mainnet', 'testnet'));
+-- The rows that exist now: the network of the Canary vault, when every Canary vault is on the same one. Otherwise left null.
+update public.canary_attempts
+  set network = (select min(t.network) from public.tenants t where t.kind = 'canary')
+  where network is null
+    and (select count(distinct t.network) from public.tenants t where t.kind = 'canary') = 1;
+
+-- 0008's canary_attempt_insert, plus the network (p.network, 'mainnet' or 'testnet', required: invalid_input otherwise).
+-- Everything else is as it was, and so are the grants (create or replace keeps them: service_role only).
+create or replace function public.canary_attempt_insert(p jsonb) returns jsonb
+language plpgsql set search_path = public, pg_temp as $$
+declare
+  v_id uuid;
+begin
+  if coalesce(p->>'network', '') not in ('mainnet', 'testnet') then
+    raise exception 'invalid_input';
+  end if;
+  insert into public.canary_attempts (
+    visitor_hash, ip_hash, is_team, mode, text_sha256, text_length, techniques, proposal_action, proposal_mandate_id,
+    proposal_amount, code_status, code_rule, raw, raw_skipped_reason, raw_detail, contract_status, contract_code, tx_hash,
+    spend_id, decision_hash, raw_decision_hash, request_id, est_tokens, model_prompt_tokens, model_completion_tokens,
+    network)
+  values (
+    p->>'visitor_hash', p->>'ip_hash', coalesce((p->>'is_team')::boolean, false), p->>'mode', p->>'text_sha256',
+    (p->>'text_length')::integer, array(select jsonb_array_elements_text(coalesce(p->'techniques', '[]'::jsonb))),
+    p->>'proposal_action', (p->>'proposal_mandate_id')::bigint, p->>'proposal_amount', p->>'code_status', p->>'code_rule',
+    coalesce((p->>'raw')::boolean, false), p->>'raw_skipped_reason', p->>'raw_detail', p->>'contract_status',
+    p->>'contract_code', p->>'tx_hash', (p->>'spend_id')::bigint, p->>'decision_hash', p->>'raw_decision_hash',
+    p->>'request_id', coalesce((p->>'est_tokens')::integer, 0), (p->>'model_prompt_tokens')::integer,
+    (p->>'model_completion_tokens')::integer, p->>'network')
+  returning id into v_id;
+  return jsonb_build_object('id', v_id);
+end $$;
 
 -- (2) When each network was last computed, and the counts of people then. RLS on, no policy, no grant to anon or
 -- authenticated, as for the other global tables: the server reads it through the functions below.
@@ -150,7 +193,7 @@ begin
         ('nearai_tokens_in', case when a.code_status <> 'running' then coalesce(a.model_prompt_tokens, 0) else 0 end),
         ('nearai_tokens_out', case when a.code_status <> 'running' then coalesce(a.model_completion_tokens, 0) else 0 end)
       ) as k(metric, v)
-      where exists (select 1 from public.tenants c where c.kind = 'canary' and c.network = v_network)
+      where a.network = v_network
         and a.created_at >= v_from and a.created_at < v_to
         and not (a.code_status = 'running' and a.created_at > v_young)
         and k.v <> 0
@@ -164,11 +207,9 @@ begin
   insert into public.metrics_runs (network, computed_at, canary_participants, external_owners)
   values (
     v_network, now(),
-    case when exists (select 1 from public.tenants c where c.kind = 'canary' and c.network = v_network) then (
-      select least(count(distinct a.visitor_hash), count(distinct a.ip_hash))
-      from public.canary_attempts a
-      where not a.is_team and not (a.code_status = 'running' and a.created_at > v_young))
-    else 0 end,
+    (select least(count(distinct a.visitor_hash), count(distinct a.ip_hash))
+       from public.canary_attempts a
+       where a.network = v_network and not a.is_team and not (a.code_status = 'running' and a.created_at > v_young)),
     (select count(distinct t.owner_account) from public.tenants t where t.kind = 'external' and t.network = v_network))
   on conflict (network) do update set
     computed_at = excluded.computed_at,
@@ -219,15 +260,19 @@ begin
     'updated_at', v_run.computed_at);
 end $$;
 
--- (5) Compute every day of the history, for each network that has a tenant. { network?, from? } narrow it.
+-- (5) Compute the history, for each network that has a tenant, from that network's own earliest record (its tenants, the
+-- ledger entries of its tenants and the attempts made on it). { network?, from? } narrow it. Returns the networks done,
+-- the longest run of days and the number of runs.
 create or replace function public.metrics_backfill(p jsonb) returns jsonb
 language plpgsql security invoker set search_path = public, pg_temp as $$
 declare
   v_only text := p->>'network';
-  v_from date;
+  v_param date;
+  v_start date;
   v_today date := (now() at time zone 'UTC')::date;
   v_net text;
   v_networks integer := 0;
+  v_days integer := 0;
   v_runs integer := 0;
   v_i integer;
 begin
@@ -238,28 +283,29 @@ begin
     raise exception 'invalid_input';
   end if;
   begin
-    v_from := (p->>'from')::date;
+    v_param := (p->>'from')::date;
   exception when invalid_datetime_format or datetime_field_overflow then
     raise exception 'invalid_input';
   end;
-  if v_from is null then
-    select (min(x.t) at time zone 'UTC')::date into v_from from (
-      select min(created_at) as t from public.tenants
-      union all select min(created_at) from public.ledger_entries
-      union all select min(created_at) from public.canary_attempts) x;
-  end if;
-  -- Nothing recorded yet, or a start in the future: nothing to do.
-  if v_from is null or v_from > v_today then
-    return jsonb_build_object('networks', 0, 'days', 0, 'runs', 0);
-  end if;
   for v_net in select distinct t.network from public.tenants t where v_only is null or t.network = v_only order by 1 loop
+    v_start := v_param;
+    if v_start is null then
+      select (min(x.t) at time zone 'UTC')::date into v_start from (
+        select min(created_at) as t from public.tenants where network = v_net
+        union all select min(l.created_at) from public.ledger_entries l
+                    join public.tenants t on t.id = l.tenant_id where t.network = v_net
+        union all select min(created_at) from public.canary_attempts where network = v_net) x;
+    end if;
+    -- A start in the future: nothing to do for this network.
+    continue when v_start is null or v_start > v_today;
     v_networks := v_networks + 1;
-    for v_i in 0 .. (v_today - v_from) loop
-      perform public.metrics_compute(jsonb_build_object('network', v_net, 'day', v_from + v_i));
+    v_days := greatest(v_days, v_today - v_start + 1);
+    for v_i in 0 .. (v_today - v_start) loop
+      perform public.metrics_compute(jsonb_build_object('network', v_net, 'day', v_start + v_i));
       v_runs := v_runs + 1;
     end loop;
   end loop;
-  return jsonb_build_object('networks', v_networks, 'days', v_today - v_from + 1, 'runs', v_runs);
+  return jsonb_build_object('networks', v_networks, 'days', v_days, 'runs', v_runs);
 end $$;
 
 -- (6) The daily cron's housekeeping: the limiter's rows whose window began more than a day ago. Returns { deleted }.

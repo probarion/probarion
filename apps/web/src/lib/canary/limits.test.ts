@@ -205,6 +205,7 @@ describe("claimRawSlot and tokensToday", () => {
       text_length: 5,
       code_status: "refused_by_code",
       request_id: "r",
+      network: "mainnet",
       est_tokens: 1234,
     });
     expect(await tokensToday(db(), new Date())).toBe(1234);

@@ -646,6 +646,21 @@ describe("POST /api/canary/attempt", () => {
       expect(made.agentKey).not.toBe(agentA.secret);
     });
 
+    it("records the attempt for the network of the Canary vault, and hands the cycle that network too", async () => {
+      for (const network of ["mainnet", "testnet"] as const) {
+        await pg.exec("truncate public.canary_attempts; truncate public.rate_limits");
+        h.made = [];
+        await pg.query("update public.tenants set network = $2 where id = $1", [tenantId, network]);
+        try {
+          expect((await post({ text: TEXT })).status, network).toBe(200);
+        } finally {
+          await pg.query("update public.tenants set network = 'mainnet' where id = $1", [tenantId]);
+        }
+        expect(at(await rows()).network, network).toBe(network);
+        expect(at(h.made).tenant, network).toMatchObject({ tenant_id: tenantId, network });
+      }
+    });
+
     it("follows the mandate when it is bound to the other active key", async () => {
       h.mandates = async () => [mandateFor(agentA.pk)];
       await post({ text: TEXT });

@@ -50,6 +50,7 @@ describe("Canary SQL (migration 0008)", () => {
       text_length: 10,
       code_status: "refused_by_code",
       request_id: "r",
+      network: "mainnet",
       ...over,
     });
   };
@@ -172,6 +173,18 @@ describe("Canary SQL (migration 0008)", () => {
       });
       await attempt({ techniques: undefined });
       expect((await rows())[1]?.techniques).toEqual([]);
+    });
+
+    it("stores the network the attempt was made on, and refuses an attempt that does not say one", async () => {
+      await attempt({ network: "mainnet" });
+      await attempt({ network: "testnet" });
+      expect((await rows()).map((r) => r.network)).toEqual(["mainnet", "testnet"]);
+      for (const network of [undefined, null, "", "devnet", "Mainnet", 1, ["mainnet"]]) {
+        await expect(attempt({ network }), String(network)).rejects.toMatchObject({
+          code: "invalid_input",
+        });
+      }
+      expect(await rows()).toHaveLength(2);
     });
 
     it("keeps the table's own checks: mode, text length, status, hash shape", async () => {

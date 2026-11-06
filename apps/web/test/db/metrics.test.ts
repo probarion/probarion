@@ -94,6 +94,8 @@ interface Attempt {
   contractStatus?: string | null;
   tokens?: [number, number] | null;
   createdAt?: string;
+  /** The network the attempt was made on. Default mainnet; null is a row written before attempts had a network. */
+  network?: "mainnet" | "testnet" | null;
 }
 
 let attemptN = 0;
@@ -101,8 +103,8 @@ const attempt = (pg: PGlite, a: Attempt) => {
   attemptN += 1;
   return pg.query(
     `insert into public.canary_attempts (visitor_hash, ip_hash, is_team, mode, text_sha256, text_length, code_status, raw,
-        contract_status, contract_code, request_id, model_prompt_tokens, model_completion_tokens, created_at)
-     values ($1, $2, $3, 'live', $4, 5, $5, $6, $7, $8, 'r', $9, $10, coalesce($11::timestamptz, now()))`,
+        contract_status, contract_code, request_id, model_prompt_tokens, model_completion_tokens, created_at, network)
+     values ($1, $2, $3, 'live', $4, 5, $5, $6, $7, $8, 'r', $9, $10, coalesce($11::timestamptz, now()), $12)`,
     [
       a.visitor,
       a.ip,
@@ -115,6 +117,7 @@ const attempt = (pg: PGlite, a: Attempt) => {
       a.tokens?.[0] ?? null,
       a.tokens?.[1] ?? null,
       a.createdAt ?? null,
+      a.network === undefined ? "mainnet" : a.network,
     ],
   );
 };
@@ -366,7 +369,7 @@ describe("metrics_compute and public_usage_metrics", () => {
     expect(m.team_vaults).toBe(1);
   });
 
-  it("gives testnet its own numbers, and no Canary rows while testnet has no Canary vault", async () => {
+  it("gives testnet its own numbers, and no Canary rows while no attempt was made on testnet", async () => {
     const m = await usage(pg, "testnet");
     const v = (segment: string, metric: string) => value(m.totals, segment, metric);
     expect(m.network).toBe("testnet");
@@ -379,7 +382,7 @@ describe("metrics_compute and public_usage_metrics", () => {
     expect(v("external", "nearai_tokens_in")).toBe(5000);
     expect(m.external_owners).toBe(1);
     expect(m.team_vaults).toBe(1);
-    // The attempts carry no network, so they are counted for the network that has the Canary vault, and for no other.
+    // The attempts of the scenario were made on mainnet, so none of them is testnet's.
     expect(m.totals.filter((r) => r.segment === "canary")).toEqual([]);
     expect(v("team", "canary_attempts")).toBe(0);
     expect(m.canary_participants).toBe(0);
@@ -784,18 +787,53 @@ describe("the days of the numbers", () => {
     expect((await computed()).canary_participants).toBe(2);
   });
 
-  it("counts the Canary's attempts only on the network that has the Canary vault", async () => {
+  it("counts each Canary attempt for the network it was made on: two Canary vaults, two sets of numbers", async () => {
+    await seedTenant(pg, { vault: "c.vaults.probarion.near", owner: "p.near", kind: "canary" });
     await testnetTenant(pg, "c.vaults.probarion.testnet", "p.testnet", "canary");
-    await attempt(pg, { visitor: H("1"), ip: H("a") });
-    const today = await utcDay(pg);
-    await compute(pg, "mainnet", today);
-    await compute(pg, "testnet", today);
-    expect(
-      (await usage(pg, "mainnet")).totals.filter((r) => r.metric === "canary_attempts"),
-    ).toEqual([]);
-    expect(value((await usage(pg, "testnet")).totals, "canary", "canary_attempts")).toBe(1);
-    expect((await usage(pg, "mainnet")).canary_participants).toBe(0);
-    expect((await usage(pg, "testnet")).canary_participants).toBe(1);
+    // Mainnet: two outside browsers and a team member. Testnet: one outside browser, twice.
+    await attempt(pg, { visitor: H("1"), ip: H("a"), tokens: [800, 100] });
+    await attempt(pg, { visitor: H("2"), ip: H("b") });
+    await attempt(pg, { visitor: H("3"), ip: H("c"), team: true });
+    await attempt(pg, { visitor: H("7"), ip: H("f"), network: "testnet", tokens: [50, 5] });
+    await attempt(pg, { visitor: H("7"), ip: H("f"), network: "testnet", raw: true });
+    // A row written before attempts had a network belongs to neither.
+    await attempt(pg, { visitor: H("9"), ip: H("9"), network: null });
+    const day = await utcDay(pg);
+    await compute(pg, "mainnet", day);
+    await compute(pg, "testnet", day);
+
+    const main = await usage(pg, "mainnet");
+    const test = await usage(pg, "testnet");
+    for (const [metric, mainnet, testnet] of [
+      ["canary_attempts", 2, 2],
+      ["refused_by_code", 2, 2],
+      ["canary_raw_attempts", 0, 1],
+      ["model_decisions", 1, 1],
+      ["nearai_tokens_in", 800, 50],
+      ["nearai_tokens_out", 100, 5],
+    ] as const) {
+      expect(value(main.totals, "canary", metric), `mainnet ${metric}`).toBe(mainnet);
+      expect(value(test.totals, "canary", metric), `testnet ${metric}`).toBe(testnet);
+    }
+    expect(value(main.totals, "team", "canary_attempts")).toBe(1);
+    expect(value(test.totals, "team", "canary_attempts")).toBe(0);
+    // The people are per network too, in the public answer and in the run record behind it.
+    expect([main.canary_participants, test.canary_participants]).toEqual([2, 1]);
+    const runs = await pg.query<{ network: string; canary_participants: number }>(
+      "select network, canary_participants from public.metrics_runs order by network",
+    );
+    expect(runs.rows).toEqual([
+      { network: "mainnet", canary_participants: 2 },
+      { network: "testnet", canary_participants: 1 },
+    ]);
+  });
+
+  it("counts a Canary attempt for no network when the row does not say which", async () => {
+    await seedTenant(pg, { vault: "c.vaults.probarion.near", owner: "p.near", kind: "canary" });
+    await attempt(pg, { visitor: H("1"), ip: H("a"), network: null });
+    const m = await computed();
+    expect(m.totals.filter((r) => r.metric === "canary_attempts")).toEqual([]);
+    expect(m.canary_participants).toBe(0);
   });
 
   it("counts a distinct owner once, however many external vaults they have", async () => {
@@ -997,7 +1035,8 @@ describe("metrics_backfill", () => {
       );
       await attempt(pg, { visitor: H("1"), ip: H("a"), createdAt: isoAgo(3) });
 
-      expect(await backfill(pg)).toEqual({ networks: 2, days: 5, runs: 10 });
+      // Each network starts at its own earliest record: mainnet's is the ledger entry, 4 days old; testnet's is its vault.
+      expect(await backfill(pg)).toEqual({ networks: 2, days: 5, runs: 7 });
       const d = (n: number) => utcDay(pg, -n);
       const [d4, d3, d2, d1] = await Promise.all([d(4), d(3), d(2), d(1)]);
       const rows = await snapshot(pg);
@@ -1056,6 +1095,14 @@ describe("metrics_backfill", () => {
       expect(runs.rows).toEqual([{ network: "mainnet" }]);
       expect((await usage(pg, "testnet")).updated_at).toBeNull();
       expect(value((await usage(pg, "mainnet")).totals, "canary", "canary_attempts")).toBe(1);
+
+      // The start of a network takes that network's attempts only: a testnet attempt 9 days old moves testnet's start and
+      // not mainnet's, and an attempt with no network moves neither.
+      await testnetTenant(pg, "x.vaults.probarion.testnet", "x.near", "canary");
+      await attempt(pg, { visitor: H("2"), ip: H("b"), network: "testnet", createdAt: isoAgo(9) });
+      await attempt(pg, { visitor: H("3"), ip: H("c"), network: null, createdAt: isoAgo(12) });
+      expect(await backfill(pg)).toEqual({ networks: 2, days: 10, runs: 17 });
+      expect(value((await usage(pg, "testnet")).totals, "canary", "canary_attempts")).toBe(1);
     } finally {
       await pg.close();
     }
@@ -1127,4 +1174,71 @@ describe("the migration on a database that has history", () => {
       await pg.close();
     }
   }, 60_000);
+});
+
+describe("the migration on attempts that have no network yet", () => {
+  // The attempts written before this migration have no network. The migration gives them the network of the Canary vault
+  // when every Canary vault is on the same one, and leaves them without one otherwise: a row that does not say is not
+  // guessed, and counts for no network.
+  const dir = fileURLToPath(new URL("../../supabase/migrations", import.meta.url));
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  const last = files.findIndex((f) => f.endsWith("_metrics.sql"));
+
+  /** The network of each attempt after the migration, over a database seeded by `seed` before it. */
+  const networksAfter = async (seed: (pg: PGlite) => Promise<void>): Promise<(string | null)[]> => {
+    const pg = new PGlite();
+    try {
+      await pg.exec(SUPABASE_STUB);
+      for (const f of files.slice(0, last)) await pg.exec(readFileSync(`${dir}/${f}`, "utf8"));
+      await seed(pg);
+      for (const v of ["1", "2"]) {
+        // Inserted the way 0008 allows: there is no network column yet.
+        await pg.query(
+          `insert into public.canary_attempts (visitor_hash, ip_hash, mode, text_sha256, text_length, code_status, request_id)
+           values ($1, $1, 'live', $1, 5, 'refused_by_code', 'r')`,
+          [H(v)],
+        );
+      }
+      await pg.exec(readFileSync(`${dir}/${files[last]}`, "utf8"));
+      const r = await pg.query<{ network: string | null }>(
+        "select network from public.canary_attempts order by visitor_hash",
+      );
+      return r.rows.map((x) => x.network);
+    } finally {
+      await pg.close();
+    }
+  };
+
+  it("sets the network of the one Canary network, and leaves it empty when there is none or two", async () => {
+    expect(last).toBeGreaterThan(0);
+    // One Canary vault, on mainnet.
+    expect(
+      await networksAfter(async (pg) => {
+        await seedTenant(pg, { vault: "c.vaults.probarion.near", owner: "p.near", kind: "canary" });
+      }),
+    ).toEqual(["mainnet", "mainnet"]);
+    // Two Canary vaults on the same network, and a vault of another kind on the other one.
+    expect(
+      await networksAfter(async (pg) => {
+        await testnetTenant(pg, "c1.vaults.probarion.testnet", "p.testnet", "canary");
+        await testnetTenant(pg, "c2.vaults.probarion.testnet", "p.testnet", "canary");
+        await seedTenant(pg, { vault: "a.vaults.probarion.near", owner: "a.near" });
+      }),
+    ).toEqual(["testnet", "testnet"]);
+    // Canary vaults on both networks: which one an old attempt was made on is not known.
+    expect(
+      await networksAfter(async (pg) => {
+        await seedTenant(pg, { vault: "c.vaults.probarion.near", owner: "p.near", kind: "canary" });
+        await testnetTenant(pg, "c.vaults.probarion.testnet", "p.testnet", "canary");
+      }),
+    ).toEqual([null, null]);
+    // No Canary vault at all.
+    expect(
+      await networksAfter(async (pg) => {
+        await seedTenant(pg, { vault: "a.vaults.probarion.near", owner: "a.near" });
+      }),
+    ).toEqual([null, null]);
+  }, 120_000);
 });
