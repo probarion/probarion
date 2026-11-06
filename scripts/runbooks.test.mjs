@@ -63,6 +63,15 @@ test("every runbook marks its mainnet sends with OWNER SIGNS", () => {
       `${name}: unmarked mainnet sends at lines ${problems.join(", ")}`,
     );
   }
+  const runbook = new URL("../docs/RUNBOOK.md", import.meta.url);
+  if (existsSync(runbook)) {
+    const problems = unsignedMainnetSends(readFileSync(runbook, "utf8"));
+    assert.deepEqual(
+      problems,
+      [],
+      `RUNBOOK.md: unmarked mainnet sends at lines ${problems.join(", ")}`,
+    );
+  }
 });
 
 // The one-yocto rule (interfaces v2 §4.2): these methods panic RequiresOneYocto without exactly 1 yoctoNEAR.
@@ -111,6 +120,8 @@ test("runbooks and testnet scripts attach 1 yoctoNEAR to every one-yocto method"
       files.push(new URL(name, url));
     }
   }
+  const runbook = new URL("../docs/RUNBOOK.md", import.meta.url);
+  if (existsSync(runbook)) files.push(runbook);
   for (const file of files) {
     assert.deepEqual(
       missingOneYocto(readFileSync(file, "utf8")),
