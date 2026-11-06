@@ -196,6 +196,13 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The console asks for confirmation in its own dialog instead of the browser's confirm box. The
+  dialog is titled with the action, shows the same question as before, and says that the wallet asks
+  for the signature next and that nothing is sent until then. Revoking a mandate, removing an agent
+  key, and rejecting a spend or an invoice get a red dialog with a "Cannot be undone" line. Esc, a
+  click outside the dialog and Cancel all cancel; the focus starts on Cancel and goes back to the
+  button that was clicked, and the action button is held back for a moment after the dialog opens, so
+  a double click on the opener does not confirm it.
 - The site and console are served at <https://probarion.xyz>; `www.probarion.xyz` redirects there,
   and <https://probarion.vercel.app> still answers.
 - The vault factory is deployed on NEAR testnet as `vaults.probarion.testnet` (code hash
