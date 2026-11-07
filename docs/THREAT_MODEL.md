@@ -54,15 +54,19 @@ How evidence is named in this file:
     `anchor` only);
   - the factory owner, `probarion-owner.testnet` on testnet;
   - extension tokens (`pbx_…`), one per connected browser, held by that browser; the database keeps
-    only their sha256.
+    a sha256 of the token and its last four characters, with the account, network, browser name and
+    times, not the token itself.
 - **The history:** the signed, hash-chained ledger and its anchors on chain.
 - **Off-chain data:**
   - invoices, sealed per tenant, or only their hashes when the vault is in zero-retention mode (the
     `invoices_retention` constraint, `apps/web/supabase/migrations/20261108000006_invoices.sql:56-59`);
   - alert targets (email addresses and Telegram chats);
   - session, sign-in challenge and alert-link secrets, all derived from the master key;
-  - the browser extension's connections: a sha256 of each token, its last four characters, a browser
-    name and its times, kept after the connection ends; open pairing codes, as a sha256, for 10 minutes.
+  - the browser extension's connections, one row per connected browser: a sha256 of the token and its
+    last four characters, with the account, network, browser name and times, not the token itself,
+    kept after the connection ends; pairing codes, as a sha256, with the account, network and times: a
+    code works for 10 minutes, and used and expired ones are deleted when the next code is made, by any
+    account.
 
 ## Actors and keys
 
@@ -206,7 +210,8 @@ Sentry events; it grants nothing.
 `Authorization: Bearer pbx_…` alone, and `/api/ext/pair` takes a one-time pairing code; none of them
 reads a cookie (`apps/web/src/lib/ext/auth.ts`, `apps/web/src/app/api/ext/pair/route.ts`), so no other
 page can make these calls for someone. They send no CORS header, so no other page can read an answer
-(`apps/web/test/ext-structure.test.ts`). The database keeps only each token's sha256
+(`apps/web/test/ext-structure.test.ts`). The database keeps a sha256 of the token and its last four
+characters, with the account, network, browser name and times, not the token itself
 (`apps/web/supabase/migrations/20261108000013_extension_tokens.sql`), and no member role reads those
 tables (claim `RLS`). A token works only at its network's address, for 30 days, until it is revoked,
 with at most 5 live per account and network, and every inbox request reads the account's memberships
@@ -214,15 +219,17 @@ again. Only a signed session on `/extension` mints a token or a pairing code, an
 such a code into a token once; the page makes at most 10 tokens and codes per account and network in
 10 minutes. A pairing code has 40 bits, lives 10 minutes and works once; the exchange allows 10 tries
 per address and 300 in all per network in 10 minutes (`LIMITS` in `apps/web/src/lib/ratelimit.ts`).
-Nothing under `lib/ext` or `app/api/ext` loads a module that pays, signs or opens a key
-(`apps/web/test/ext-structure.test.ts`): a stolen token reads its account's waiting invoices, held
-spends and active mandates, and cannot pay or approve.
+No code under `lib/ext` or `app/api/ext`, nor any app module it loads, imports the app's modules or
+functions that pay, sign or open a sealed key, or a signer from the SDK or `near-api-js`
+(`apps/web/test/ext-structure.test.ts`); the inbox reads the chain through the SDK's `VaultClient`,
+built with no signer. A stolen token reads its account's waiting invoices, held spends and active
+mandates, and cannot pay or approve.
 
 **Planned surfaces.**
 
-- The browser extension itself (plan 06 Task E2), and its queue route `POST /api/ext/invoices` (Task
-  E1b), which leaves each invoice waiting for the owner's wallet-signed Confirm. This section is updated
-  when they ship.
+- The browser extension itself (plan 06 Task 3, E2), and its queue route `POST /api/ext/invoices` (Task
+  2, E1b), which leaves each invoice waiting for the owner's wallet-signed Confirm. This section is
+  updated when they ship.
 - An MCP server whose tools take no address (`MCP-NOADDR`, planned).
 
 ## Blast radius if Probarion is breached
@@ -280,6 +287,13 @@ spends and active mandates, and cannot pay or approve.
   a plain sha256 in the database, not sealed under the master key. It reads the waiting list and cannot
   pay. The owner revokes it on `/extension`, and the OWNER can end every token at once
   ([RUNBOOK](RUNBOOK.md#key-rotation)). The row of an ended connection is kept; there is no purge yet.
+- **Anyone can use up code pairing's network-wide limit.** `/api/ext/pair` allows 300 tries in all per
+  network in 10 minutes, which guards the 40-bit codes against guessing. Every request still within
+  its address's 10 tries takes one of the 300 before its body or code is read. About 30 IPv4
+  addresses, or one IPv6 /48 (each /64 counts as one address), can therefore keep code pairing
+  answering 429 for everyone on that network, window after window, and a page on another site can
+  make its visitors' browsers send those requests. This is accepted: Connect on `/extension` does not
+  use that limit and still works.
 - **`wee_alloc` is in the shipped contracts.** near-sdk 5.29.1 turns on its `wee_alloc` feature by
   default, and the vault and factory use the default features (`contracts/vault/Cargo.toml:14`,
   `contracts/factory/Cargo.toml:14`). Dependabot flags `wee_alloc` as unmaintained

@@ -1,14 +1,15 @@
--- The browser extension's connections (plan 06 Task E1a; spec 2026-11-06-probarion-chrome-extension-design.md §4.1-4.2).
+-- The browser extension's connections (plan 06 Task 1, E1a, from the extension design approved on 2026-11-06).
 --
 -- A member connects the Probarion extension from /extension, signed in with a wallet. The server mints a token for that
 -- account on that network and hands it to the extension once: by a message the page posts to its own window, or in
--- exchange for an 8-character pairing code the person types into the extension. Only the token's sha256 is stored. A
+-- exchange for an 8-character pairing code the person types into the extension. The database keeps a sha256 of the
+-- token and its last four characters, with the account, network, browser name and times, not the token itself. A
 -- token is valid on the network it was minted on, for 30 days, until it is revoked; an account keeps at most 5 live
--- tokens per network (a sixth ends the oldest). A code lives 10 minutes and is used once; an account holds at most 3
--- open codes per network.
+-- tokens per network (a sixth ends the oldest). A code lives 10 minutes and is used once, and used and expired codes
+-- are deleted when the next code is made, by any account; an account holds at most 3 open codes per network.
 --
--- What a token can do is decided in the app (lib/ext): read the account's waiting items and queue an invoice. It never
--- pays: queueing is a path of its own (migration 0014), and paying still needs the owner's wallet-signed Confirm (0007).
+-- What a token can do is decided in the app (lib/ext): read the account's waiting items and, with plan 06 Task 2
+-- (E1b), queue an invoice. It does not pay: paying still needs the owner's wallet-signed Confirm (0007).
 --
 -- No member reads these tables (RLS on, no policy, no grant). The functions take (p jsonb), return jsonb, are security
 -- definer with a pinned search_path, and are executable by the service role only.

@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { sha256Hex } from "@/lib/crypto/sodium";
 
 // The browser extension's credentials (spec §4.2). A token is `pbx_` and 32 random bytes in base64url; a pairing code is
-// 8 Crockford base32 characters (40 bits), shown as XXXX-XXXX. The database keeps only their sha256.
+// 8 Crockford base32 characters (40 bits), shown as XXXX-XXXX. The database keeps a sha256 of each, and a token's last
+// four characters as a hint, not the token or the code itself.
 
 export const TOKEN_RE = /^pbx_[A-Za-z0-9_-]{43}$/;
 const BEARER = /^Bearer (pbx_[A-Za-z0-9_-]{43})$/;
