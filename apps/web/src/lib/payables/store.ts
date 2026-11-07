@@ -4,6 +4,7 @@ import type { Sealed } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import type { InvoiceMediaType } from "./extract";
 import type { AmountIssue } from "./facts";
+import type { QueueCheck } from "./queue-rules";
 
 // The invoices rows as the service-role functions of migration 0006 read and write them. `tenantId` must come
 // from the session's membership (memberRole) or a server job's own tenant row, never from a request.
@@ -72,6 +73,10 @@ export interface InvoiceRow {
   created_by: string;
   created_at: string;
   decided_at: string | null;
+  /** Where the invoice came from (migration 0014): the console upload, or the browser extension (queued, never run). */
+  source: "console" | "extension";
+  /** The checks an extension invoice passed when it was queued (0014), or null for a console upload. */
+  queue_checks: QueueCheck[] | null;
 }
 
 export interface NewInvoice {
@@ -96,8 +101,8 @@ export type InsertResult =
   | { id: string; duplicate: false; retry: boolean }
   | { id: string; duplicate: true; status: InvoiceStatus };
 
-export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<InsertResult> {
-  return db.rpc<InsertResult>("invoice_insert", {
+function insertParams(tenantId: string, i: NewInvoice): Record<string, unknown> {
+  return {
     tenant_id: tenantId,
     invoice_hash: i.invoiceHash,
     ref: i.ref,
@@ -113,6 +118,38 @@ export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<
     amount_issue: i.amountIssue,
     request_id: i.requestId,
     created_by: i.createdBy,
+  };
+}
+
+export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<InsertResult> {
+  return db.rpc<InsertResult>("invoice_insert", insertParams(tenantId, i));
+}
+
+/** An invoice the browser extension queues: the console's row, plus what the owner is asked to confirm. */
+export interface QueuedInvoice extends NewInvoice {
+  /** The code's amount (USDC base units). */
+  suggestedAmount: string;
+  /** The mandate the member chose. */
+  mandateId: number;
+  /** The checks it passed: pass or hold only. */
+  checks: QueueCheck[];
+}
+
+export type QueueInsertResult =
+  | { id: string; duplicate: false; status: "awaiting_owner" }
+  | { id: string; duplicate: true; status: InvoiceStatus };
+
+/** invoice_insert's row, stored straight in awaiting_owner in the same transaction (migration 0014). */
+export function queueInvoiceRow(
+  db: Db,
+  tenantId: string,
+  q: QueuedInvoice,
+): Promise<QueueInsertResult> {
+  return db.rpc<QueueInsertResult>("invoice_queue", {
+    ...insertParams(tenantId, q),
+    suggested_amount: q.suggestedAmount,
+    mandate_id: q.mandateId,
+    queue_checks: q.checks,
   });
 }
 

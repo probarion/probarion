@@ -32,6 +32,8 @@ export interface InboxInvoice {
   payee: string | null;
   created_at: string;
   url: string;
+  /** Where the invoice came from (migration 0014): the console upload, or the browser extension. */
+  source: "console" | "extension";
 }
 
 export interface InboxHeld {
@@ -146,6 +148,7 @@ export async function loadInbox(
             payee: m === undefined ? null : payeeOrNull(m.payee),
             created_at: r.created_at,
             url: `${base}/payables/${encodeURIComponent(r.id)}`,
+            source: r.source === "extension" ? "extension" : "console",
           };
         }),
         held: held

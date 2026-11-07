@@ -15,7 +15,14 @@ import { extractInvoice } from "./extract";
 import { payeeId } from "./payee";
 import { invoiceLines, sourceLine, verbatimLine } from "./source-line";
 import { type InvoiceRow, invoiceContent, listPayeeRecent, type RowSnapshot } from "./store";
-import { type PayeeRow, payeeOf, recentPayeeRows, type ShownRule, waitReasons } from "./view";
+import {
+  type PayeeRow,
+  payeeOf,
+  queuedChecks,
+  recentPayeeRows,
+  type ShownRule,
+  waitReasons,
+} from "./view";
 
 // What the page shows next to an invoice that waits for the owner, before any button (rulings W-T14-R0, R1 and R2): the
 // amount, why it waits, the mandate as the chain shows it, the invoice (its text and the line the reader read the total
@@ -53,6 +60,10 @@ export type InvoiceShown =
 
 export interface WaitingView {
   amount: string;
+  /** Where the invoice came from (migration 0014): the console upload, or the browser extension. */
+  source: "console" | "extension";
+  /** An extension invoice no cycle has run for yet: its row has no outcome. */
+  queued: boolean;
   reasons: { owner: ShownRule | null; before: ShownRule[] };
   uploadedBy: string;
   uploadedAt: string;
@@ -242,7 +253,11 @@ export async function loadWaitingView(
                     : null;
   return {
     amount: row.suggested_amount ?? "0",
-    reasons: row.outcome ? waitReasons(a.entries, row.outcome) : { owner: null, before: [] },
+    source: row.source === "extension" ? "extension" : "console",
+    queued: row.source === "extension" && row.outcome === null,
+    reasons: row.outcome
+      ? waitReasons(a.entries, row.outcome)
+      : { owner: null, before: queuedChecks(row) },
     uploadedBy: safeText(row.created_by, 64),
     uploadedAt: row.created_at,
     mandate: mandate === null ? null : summary(mandate),

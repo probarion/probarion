@@ -206,7 +206,7 @@ wallet connector's executor scripts load from GitHub at pinned 40-hex commits
 when it is a UUID (`apps/web/src/proxy.ts:21`), and it serves only to match log lines, ledger entries and
 Sentry events; it grants nothing.
 
-**The browser extension's connections.** `/api/ext/inbox` and `/api/ext/revoke` take
+**The browser extension's connections.** `/api/ext/inbox`, `/api/ext/invoices` and `/api/ext/revoke` take
 `Authorization: Bearer pbx_…` alone, and `/api/ext/pair` takes a one-time pairing code; none of them
 reads a cookie (`apps/web/src/lib/ext/auth.ts`, `apps/web/src/app/api/ext/pair/route.ts`), so no other
 page can make these calls for someone. They send no CORS header, so no other page can read an answer
@@ -219,25 +219,39 @@ again. Only a signed session on `/extension` mints a token or a pairing code, an
 such a code into a token once; the page makes at most 10 tokens and codes per account and network in
 10 minutes. A pairing code has 40 bits, lives 10 minutes and works once; the exchange allows 10 tries
 per address and 300 in all per network in 10 minutes (`LIMITS` in `apps/web/src/lib/ratelimit.ts`).
-No code under `lib/ext` or `app/api/ext`, nor any app module it loads, imports the app's modules or
-functions that pay, sign or open a sealed key, anything from `near-api-js` or `@near-js`, or a signer
-from the SDK or `@probarion/core`. It names no RPC method that sends a transaction and no database
-function or column that returns a sealed agent key, builds no database client but
-`lib/db/clients.ts`, which only calls functions, and names each function it calls as a literal.
-Outside `lib/crypto`, it asks `subkey` only for the session's, imports none of `masterKey`,
-`parseMasterKey`, `deriveSubkey`, `tenantInvoiceKey` or `getSodium`, and loads no libsodium,
-tweetnacl, `@noble` or `@stablelib` package (`apps/web/test/ext-structure.test.ts`). The test reads
-imports and names. It catches a plain import of any of these, not code written to get around it: the
-master key's value is still reachable in that graph, because the log scrubber reads it to redact it.
-Review of every change to that code is the other control. The inbox reads the chain through the SDK's
-`VaultClient`, built with no signer. A stolen token reads its account's waiting invoices, held spends and active
-mandates, and cannot pay or approve.
+`/api/ext/invoices` queues an invoice for an owner or an approver of the vault it names, not a Canary
+vault, whose role it reads again on every request, at most 20 per account and network in 10 minutes.
+It reads the text and its facts as the console upload does, and refuses, storing nothing, an invoice
+whose mandate cannot take invoices now, whose payee contradicts the chosen mandate's (core's
+`payeeHintContradiction`, the check the cycle runs, `packages/core/src/policy.ts:201-203`), or that
+the contract's `check_spend` view would refuse now. It stores the rest straight in `awaiting_owner`,
+as an upload is stored (the file sealed, or in zero-retention mode no file, name or facts), with the
+checks it passed and the hold `extension.mandate_chosen`, without which `invoice_queue` stores nothing
+(`apps/web/supabase/migrations/20261108000014_extension_queue.sql`). No cycle runs for it and nothing
+is sent: only the owner's wallet-signed Confirm pays it, and the contract checks that spend again.
+No code under `lib/ext`, `app/api/ext` or `lib/payables/queue*.ts`, nor any app module it loads, imports a
+function that pays or signs, or, from outside `lib/crypto`, one that opens a sealed key, anything from
+`near-api-js` or `@near-js`, or a signer from the SDK or `@probarion/core`. It names no RPC method that
+sends a transaction and no database function or column that returns a sealed agent key, builds no
+database client but `lib/db/clients.ts`, which only calls functions, and names each function it calls
+as a literal. Outside `lib/crypto`, it asks `subkey` only for the session's, imports none of
+`parseMasterKey`, `deriveSubkey`, `tenantInvoiceKey` or `getSodium`, and only the queue's route imports
+`masterKey`, and it loads no libsodium, tweetnacl, `@noble` or `@stablelib` package
+(`apps/web/test/ext-structure.test.ts`). `secrets.ts` opens a sealed value only inside its own opening
+functions, which the extension's server code never imports. The queue's route reads the master key only
+to seal the invoice with `sealInvoice` and to key its duplicate guard (an HMAC under a key derived from it
+with HKDF, `lib/payables/number-key.ts`), as the console upload does. The test reads imports and names.
+It catches a plain import of any of these, not code written to get around it: the master key's value is
+also reachable in that graph through the log scrubber, which reads it to redact it. Review of every
+change to that code is the other control. The inbox and the queue read the chain through the SDK's
+`VaultClient`, built with no signer, and the test refuses any other use of it. A stolen token reads its
+account's waiting invoices, held spends and active mandates, and can queue invoices under its vaults'
+usable mandates, to the payees they already name and within their limits; it cannot pay, confirm or
+approve.
 
 **Planned surfaces.**
 
-- The browser extension itself (plan 06 Task 3, E2), and its queue route `POST /api/ext/invoices` (Task
-  2, E1b), which leaves each invoice waiting for the owner's wallet-signed Confirm. This section is
-  updated when they ship.
+- The browser extension itself (plan 06 Task 3, E2). This section is updated when it ships.
 - An MCP server whose tools take no address (`MCP-NOADDR`, planned).
 
 ## Blast radius if Probarion is breached
@@ -293,8 +307,11 @@ mandates, and cannot pay or approve.
   nonce-based policy that works with the wallet connector's executors needs its own design and tests.
 - **Extension tokens outlive the session that made them.** A token lasts 30 days unless it is revoked.
   Signing out, the session's 12-hour expiry and a new `KEY_ENCRYPTION_SECRET` do not end it: a token is
-  a plain sha256 in the database, not sealed under the master key. It reads the waiting list and cannot
-  pay. The owner revokes it on `/extension`, and the OWNER can end every token at once
+  a plain sha256 in the database, not sealed under the master key. It reads the waiting list, and it can
+  add to it: up to 20 invoices in 10 minutes per account and network, each under a usable mandate of a
+  vault the account owns or approves (not a Canary vault), to the payee that mandate already names. It
+  cannot pay: each invoice waits for the owner's wallet-signed Confirm, and the owner can Reject it. The
+  owner revokes a token on `/extension`, and the OWNER can end every token at once
   ([RUNBOOK](RUNBOOK.md#key-rotation)). A pairing code the session made outlives it too: for up to 10
   minutes it turns into a token with no session, and Revoke does not end a code. After a stolen
   session, follow the RUNBOOK's steps: end every token with the SQL, which deletes the codes first, or
@@ -319,8 +336,8 @@ mandates, and cannot pay or approve.
 - **Contacts and status.** The only reporting channel is a direct message on X until an email address
   passes a delivery test. There is no third-party status page yet: `/status` on each address and
   posts on X stand in.
-- **Request ids in Sentry.** An exception with no log line, on a route other than the seven tagged
-  ones (the Payables upload, the Canary attempt, the two crons and the browser extension's three
+- **Request ids in Sentry.** An exception with no log line, on a route other than the eight tagged
+  ones (the Payables upload, the Canary attempt, the two crons and the browser extension's four
   routes), reaches Sentry with `component:web` and no request id ([monitoring](ops/MONITORING.md)).
 - **What `verify` does not prove yet** is listed in
   [SECURITY.md](../SECURITY.md#what-is-not-proven-yet).

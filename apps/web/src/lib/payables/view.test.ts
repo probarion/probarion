@@ -13,6 +13,7 @@ import {
   buildCycleView,
   invoiceStatusLabel,
   outcomeLabel,
+  queuedChecks,
   recentPayeeRows,
   rowResult,
   usdcFixed,
@@ -322,6 +323,54 @@ describe("rowResult", () => {
     expect(rowResult(row({ status: "processing" })).tone).toBe("warn");
     expect(rowResult(row({ status: "error" })).tone).toBe("bad");
     expect(rowResult(row({ status: "rejected" })).tone).toBe("neutral");
+  });
+});
+
+describe("an invoice from the browser extension", () => {
+  const row = (over: Partial<InvoiceRow>) =>
+    ({
+      status: "awaiting_owner",
+      outcome: null,
+      source: "extension",
+      queue_checks: null,
+      ...over,
+    }) as InvoiceRow;
+
+  it("says where it came from while it waits, and a console row reads as before", () => {
+    expect(rowResult(row({}))).toEqual({
+      label: "Waiting for you: sent from the browser extension",
+      tone: "warn",
+    });
+    expect(rowResult(row({}), false).label).toBe(
+      "Waiting for the owner: sent from the browser extension",
+    );
+    expect(rowResult(row({ source: "console" }))).toEqual({
+      label: "Waiting for you: no attested model confirmed the amount",
+      tone: "warn",
+    });
+    expect(
+      rowResult(row({ status: "decided", outcome: outcome({ status: "paid", spendId: 1 }) })),
+    ).toEqual({ label: "Paid on NEAR", tone: "good" });
+  });
+
+  it("shows the checks it was queued with, made safe, and none for a console row", () => {
+    const checks = [
+      { id: "extension.mandate_chosen", outcome: "hold", detail: "chosen\u202E here" },
+      { id: "contract.check_spend", outcome: "pass", detail: "ok" },
+      { id: "x", outcome: "maybe", detail: "d" },
+    ] as InvoiceRow["queue_checks"];
+    const shown = queuedChecks(row({ queue_checks: checks }));
+    expect(shown.map((c) => [c.id, c.outcome])).toEqual([
+      ["extension.mandate_chosen", "hold"],
+      ["contract.check_spend", "pass"],
+      ["x", "unknown"],
+    ]);
+    expect(hasUnsafe(shown[0]?.detail ?? "")).toBe(false);
+    expect(queuedChecks(row({ source: "console", queue_checks: checks }))).toEqual([]);
+    expect(queuedChecks(row({ queue_checks: "nope" as never }))).toEqual([]);
+    expect(queuedChecks(row({ queue_checks: [null, 7, ...(checks ?? [])] as never }))).toHaveLength(
+      3,
+    );
   });
 });
 
