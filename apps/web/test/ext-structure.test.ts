@@ -126,9 +126,9 @@ const RAW_CRYPTO =
 /** near-api-js and @near-js/*: Account, Signer and every key pair sign; the graph imports none of them, in any form. */
 const NEAR_SIGNING_IMPORTS = /^(near-api-js|@near-js\/)/;
 /**
- * The master key's environment variable. Only lib/crypto (which parses and uses it), lib/env.ts (which validates it)
- * and lib/log.ts (which redacts it) may name it; anywhere else would read the master key and derive a subkey by hand,
- * with no refused name in sight.
+ * The master key's environment variable, by name. Only lib/crypto (which parses and uses it), lib/env.ts (which validates
+ * it) and lib/log.ts (which redacts it) may name it. This refuses one spelling, not the value: log.ts's secretEnvValues()
+ * and sentry-scrub.ts's sentrySecrets() return it for redaction, and getEnv() can be read with a computed key.
  */
 const MASTER_ENV = "KEY_ENCRYPTION_SECRET";
 const MASTER_ENV_OK = (f: string) =>
@@ -142,6 +142,18 @@ const SEALED_KEY_FUNCTIONS = ["agent_key_secret", "agent_key_secret_for", "key_r
 const SEALED_COLUMNS = ["secret_ciphertext", "secret_nonce"];
 const SEND_METHODS = ["send_tx", "broadcast_tx_commit", "broadcast_tx_async"];
 /**
+ * The database functions that name the sealed column without returning it: the agent-key insert and the rotation's
+ * write-back (migration 0003). The first `it` classifies every migration function that mentions the column, in any
+ * shape, as one of these or as a SEALED_KEY_FUNCTIONS entry, so a new one fails until it is ruled on.
+ */
+const SEALED_KEY_WRITERS = ["agent_key_insert", "key_rotation_apply"];
+/**
+ * The one module that builds a Supabase client. Its Db port exposes only `rpc`, so the graph reads no table directly,
+ * and every `.rpc(` call elsewhere must name its function as a literal, which the sealed-function pin then sees.
+ */
+const SUPABASE_HOME = "src/lib/db/clients.ts";
+const SUPABASE_IMPORTS = /^@supabase\//;
+/**
  * The docs' no-pay claim (THREAT_MODEL's extension paragraph, SECURITY.md's extension-token row) in the words that hold
  * only while no exemption is in use. Once the queue's files exist, both docs must say the narrower claim instead: no
  * function that pays, signs or opens a sealed key, and the queue's route reads the master key only to seal the invoice
@@ -150,7 +162,7 @@ const SEND_METHODS = ["send_tx", "broadcast_tx_commit", "broadcast_tx_async"];
 const NO_PAY_DOCS = ["docs/THREAT_MODEL.md", "SECURITY.md"];
 const NO_EXEMPTION_CLAIM = [
   "the app's modules or functions that pay",
-  "derives no subkey of the master key but the session's",
+  "imports none of masterKey, parseMasterKey, deriveSubkey, tenantInvoiceKey or getSodium",
 ];
 /**
  * Once the queue ships, the docs must also name why loading `secrets.ts` (which imports `open`) is still no-pay: its
@@ -267,6 +279,25 @@ function dynamicLoadsOf(file: string): string[] {
 }
 
 /** The text of every string and template literal in a file, a template's parts between substitutions included. */
+/** Every `.rpc(` call in a file whose first argument is not a string literal, as `line`. */
+function computedRpcOf(file: string): string[] {
+  const sf = parse(file);
+  const out: string[] = [];
+  const visit = (n: ts.Node): void => {
+    if (
+      ts.isCallExpression(n) &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      n.expression.name.text === "rpc" &&
+      !(n.arguments[0] !== undefined && ts.isStringLiteralLike(n.arguments[0]))
+    ) {
+      out.push(String(sf.getLineAndCharacterOfPosition(n.getStart()).line + 1));
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
 function stringsOf(file: string): string[] {
   const out: string[] = [];
   const visit = (n: ts.Node): void => {
@@ -386,7 +417,7 @@ function graph(roots: string[]): Map<string, Imp[]> {
   return seen;
 }
 
-describe("the extension's server code never pays", () => {
+describe("the extension's server code imports nothing that pays, signs or opens a key", () => {
   const g = graph(ROOTS);
   /** Every import that loads something, with the module it names and the app file it resolves to, if any. */
   const loads = [...g.entries()].flatMap(([f, imps]) =>
@@ -423,24 +454,23 @@ describe("the extension's server code never pays", () => {
     for (const fn of SEALED_KEY_FUNCTIONS) {
       expect(migrations, fn).toContain(`create or replace function public.${fn}(`);
     }
-    // Completeness: every migration function whose body outputs the sealed column must be in SEALED_KEY_FUNCTIONS, so a
-    // new one (another `key_rotation_rows`) cannot slip past the list. The pattern is a jsonb builder emitting the
-    // column, e.g. `'secret_ciphertext', k.secret_ciphertext`.
+    // Completeness: every migration function whose body mentions the sealed column, in any shape, is either in
+    // SEALED_KEY_FUNCTIONS or a known writer, so a new one (another `key_rotation_rows`) cannot slip past the list.
     const sealedReturners = new Set<string>();
-    const fnRe = /create\s+or\s+replace\s+function\s+public\.([a-z0-9_]+)\s*\(/gi;
+    const fnRe = /create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?([a-z0-9_]+)\s*\(/gi;
     for (let m = fnRe.exec(migrations); m !== null; m = fnRe.exec(migrations)) {
       const rest = migrations.slice(m.index);
       const tag = /\$[a-z_]*\$/i.exec(rest);
       if (tag === null) continue;
       const open = tag.index + tag[0].length;
       const body = rest.slice(open, rest.indexOf(tag[0], open));
-      if (/'secret_ciphertext'\s*,\s*[a-z_]+\.secret_ciphertext/i.test(body))
-        sealedReturners.add(m[1]);
+      if (/secret_ciphertext/i.test(body)) sealedReturners.add(m[1]);
     }
     expect(
       [...sealedReturners].sort(),
-      "SEALED_KEY_FUNCTIONS lists every function that returns the sealed column",
-    ).toEqual([...SEALED_KEY_FUNCTIONS].sort());
+      "every function that mentions the sealed column is in SEALED_KEY_FUNCTIONS or SEALED_KEY_WRITERS",
+    ).toEqual([...SEALED_KEY_FUNCTIONS, ...SEALED_KEY_WRITERS].sort());
+    expect(isFile(join(WEB, SUPABASE_HOME)), SUPABASE_HOME).toBe(true);
     // The exempted readers of the master key's env var must each still name it, so an exemption is never dead.
     for (const f of ["src/lib/crypto/server.ts", "src/lib/env.ts", "src/lib/log.ts"]) {
       expect(readFileSync(join(WEB, f), "utf8"), `${f} names ${MASTER_ENV}`).toContain(MASTER_ENV);
@@ -621,9 +651,25 @@ describe("the extension's server code never pays", () => {
     expect(found).toEqual([]);
   });
 
-  it("reads the master key's env var only in lib/crypto, lib/env.ts and lib/log.ts", () => {
-    // Reading KEY_ENCRYPTION_SECRET (through getEnv() or process.env) and deriving a subkey by hand needs no refused
-    // name. Only the three places that legitimately parse, use or redact it may name it; the graph has no other.
+  it("builds a Supabase client only in lib/db/clients.ts, whose port calls functions and reads no table", () => {
+    const found = [...g.entries()]
+      .filter(([f]) => posix(f) !== SUPABASE_HOME)
+      .flatMap(([f, imps]) =>
+        imps.filter((i) => SUPABASE_IMPORTS.test(i.from)).map((i) => `${posix(f)}: ${i.from}`),
+      );
+    expect(found).toEqual([]);
+  });
+
+  it("names every database function it calls as a literal, so the sealed-function pin sees each one", () => {
+    const found = [...g.keys()]
+      .filter((f) => posix(f) !== SUPABASE_HOME)
+      .flatMap((f) => computedRpcOf(f).map((l) => `${posix(f)}:${l}`));
+    expect(found).toEqual([]);
+  });
+
+  it("names the master key's env var only in lib/crypto, lib/env.ts and lib/log.ts", () => {
+    // A plain read of KEY_ENCRYPTION_SECRET (getEnv().KEY_ENCRYPTION_SECRET or process.env) names it. Only the three
+    // places that parse, validate or redact it may; the graph has no other. See MASTER_ENV for what this does not stop.
     const found = [...g.keys()]
       .filter((f) => !MASTER_ENV_OK(posix(f)))
       .flatMap((f) => {
@@ -664,7 +710,8 @@ describe("the extension's server code never pays", () => {
       (f) => f !== "src/lib/crypto/secrets.ts" && isFile(join(WEB, f)),
     );
     for (const doc of NO_PAY_DOCS) {
-      const text = readFileSync(join(REPO, doc), "utf8").replace(/\s+/g, " ");
+      // Backticks dropped and whitespace collapsed, so neither a code span nor a line break hides a phrase.
+      const text = readFileSync(join(REPO, doc), "utf8").replaceAll("`", "").replace(/\s+/g, " ");
       for (const claim of NO_EXEMPTION_CLAIM) {
         // Present while no exemption is in use, so that a rewording cannot switch this off; gone once one is.
         expect(text.includes(claim), `${doc}: "${claim}" with ${inUse.length} in use`).toBe(

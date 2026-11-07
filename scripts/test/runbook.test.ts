@@ -90,9 +90,8 @@ describe("docs/RUNBOOK.md", () => {
       expect(ended, name).toBeGreaterThan(-1);
       expect(wait, `${name}: waits out the codes after the sessions end`).toBeGreaterThan(ended);
       expect(revoke, `${name}: revokes one by one only after the wait`).toBeGreaterThan(wait);
-      expect(row, name).toMatch(
-        /end every token with the SQL[^|]*deletes the pairing codes first/i,
-      );
+      const sql = row.search(/end every token with the SQL[^|]*deletes the pairing codes first/i);
+      expect(sql, `${name}: the SQL comes after the sessions end`).toBeGreaterThan(ended);
     }
   });
 

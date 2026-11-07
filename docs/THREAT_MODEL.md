@@ -220,11 +220,17 @@ such a code into a token once; the page makes at most 10 tokens and codes per ac
 10 minutes. A pairing code has 40 bits, lives 10 minutes and works once; the exchange allows 10 tries
 per address and 300 in all per network in 10 minutes (`LIMITS` in `apps/web/src/lib/ratelimit.ts`).
 No code under `lib/ext` or `app/api/ext`, nor any app module it loads, imports the app's modules or
-functions that pay, sign or open a sealed key, or a signer from the SDK, `@probarion/core` or
-`near-api-js`, or names an RPC method that sends a transaction. Outside `lib/crypto`, it derives no
-subkey of the master key but the session's, and loads neither libsodium nor tweetnacl
-(`apps/web/test/ext-structure.test.ts`). The inbox reads the chain through the SDK's `VaultClient`,
-built with no signer. A stolen token reads its account's waiting invoices, held spends and active
+functions that pay, sign or open a sealed key, anything from `near-api-js` or `@near-js`, or a signer
+from the SDK or `@probarion/core`. It names no RPC method that sends a transaction and no database
+function or column that returns a sealed agent key, builds no database client but
+`lib/db/clients.ts`, which only calls functions, and names each function it calls as a literal.
+Outside `lib/crypto`, it asks `subkey` only for the session's, imports none of `masterKey`,
+`parseMasterKey`, `deriveSubkey`, `tenantInvoiceKey` or `getSodium`, and loads no libsodium,
+tweetnacl, `@noble` or `@stablelib` package (`apps/web/test/ext-structure.test.ts`). The test reads
+imports and names. It catches a plain import of any of these, not code written to get around it: the
+master key's value is still reachable in that graph, because the log scrubber reads it to redact it.
+Review of every change to that code is the other control. The inbox reads the chain through the SDK's
+`VaultClient`, built with no signer. A stolen token reads its account's waiting invoices, held spends and active
 mandates, and cannot pay or approve.
 
 **Planned surfaces.**
@@ -282,13 +288,17 @@ mandates, and cannot pay or approve.
 
 - **No Content-Security-Policy yet.** An XSS in the console has no second wall in the browser. Row 11
   still holds, because a script cannot attach a deposit, but it could show the owner a false page,
-  start a wallet prompt, or mint a 30-day extension token through the `/extension` page's action. A
+  start a wallet prompt, or mint a 30-day extension token or a pairing code through the `/extension`
+  page's actions. A
   nonce-based policy that works with the wallet connector's executors needs its own design and tests.
 - **Extension tokens outlive the session that made them.** A token lasts 30 days unless it is revoked.
   Signing out, the session's 12-hour expiry and a new `KEY_ENCRYPTION_SECRET` do not end it: a token is
   a plain sha256 in the database, not sealed under the master key. It reads the waiting list and cannot
   pay. The owner revokes it on `/extension`, and the OWNER can end every token at once
-  ([RUNBOOK](RUNBOOK.md#key-rotation)). The row of an ended connection is kept; there is no purge yet.
+  ([RUNBOOK](RUNBOOK.md#key-rotation)). A pairing code the session made outlives it too: for up to 10
+  minutes it turns into a token with no session, and Revoke does not end a code. After a stolen
+  session, follow the RUNBOOK's steps: end every token with the SQL, which deletes the codes first, or
+  wait out the codes before revoking. The row of an ended connection is kept; there is no purge yet.
 - **Anyone can use up code pairing's network-wide limit.** `/api/ext/pair` allows 300 tries in all per
   network in 10 minutes, which guards the 40-bit codes against guessing. Every request still within
   its address's 10 tries takes one of the 300 before its body or code is read. About 30 IPv4
