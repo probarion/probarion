@@ -365,6 +365,22 @@ describe("owner-only commands print transactions and never sign", () => {
     }
   });
 
+  it("says which owner keys can freeze, and what still works while frozen", async () => {
+    // contracts/vault/src/admin.rs: freeze takes no deposit; checks.rs and held.rs: spend and approve refuse
+    // Frozen, while reject and expire_held do not look at it. A key scoped to another contract cannot call it.
+    const help = testIo(dir);
+    expect(await runCli(["vault", "--help"], help.io)).toBe(0);
+    expect(help.state.out.replace(/\s+/g, " ")).toContain(
+      "print freeze for the OWNER to sign (no deposit: the owner's full-access key, or a function-call key on the owner's account that may call this vault)",
+    );
+    expect(help.state.out).not.toContain("any owner key");
+    const { io, state } = testIo(dir, { PROBARION_VAULT_ID: VAULT });
+    expect(await runCli(["vault", "freeze"], io)).toBe(0);
+    expect(state.out).toContain(
+      "Every new spend and every approve is refused until unfreeze. reject and expire_held still work.",
+    );
+  });
+
   it("reports the version", async () => {
     const { io, state } = testIo(dir);
     expect(await runCli(["--version"], io)).toBe(0);

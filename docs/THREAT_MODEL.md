@@ -258,9 +258,9 @@ mandates, and cannot pay or approve.
 | 1Click down | Only mainnet top-ups wait; payouts from existing Intents balances continue |
 | POA bridge slow or down (mainnet) | The spend stays "burned, awaiting bridge", and nobody pays it again ([RUNBOOK](RUNBOOK.md#burned-awaiting-bridge)). Testnet has no bridge |
 | Intents balance low | The rule `intents.balance_low` holds the spend (`packages/core/src/policy.ts:315-325`) |
-| An RPC URL rate-limited (HTTP 429) or failing | The next URL of `NEAR_RPC_URLS_MAINNET` or `NEAR_RPC_URLS_TESTNET` is tried, in order (`packages/sdk/src/rpc.ts:410-415`; [RPC failover](RUNBOOK.md#rpc-failover)) |
+| An RPC URL rate-limited (HTTP 429) or failing | The SDK's RPC client tries the next URL of its list, in order (`packages/sdk/src/rpc.ts:410-421`; [RPC failover](RUNBOOK.md#rpc-failover)). The web app takes each network's list from `NEAR_RPC_URLS_MAINNET` or `NEAR_RPC_URLS_TESTNET`, and the bare `NEAR_RPC_URLS` for its default network only (`apps/web/src/lib/env.ts:154-167`). The SDK and the CLI read only the bare `NEAR_RPC_URLS` (or `--rpc`), for whichever network they are given (`packages/sdk/src/rpc.ts:168-180`) |
 | An RPC URL that serves the other chain | Sign-in and Register answer 503 `wrong_chain`, mint no session and register nothing |
-| Two processes writing one vault's ledger | The database's compare-and-append refuses the second with `ledger_conflict` (`apps/web/src/lib/ledger/store.ts:111`), and an anchor out of order fails with `PROBARION:BadSeq`. The MCP server's `LEDGER_FORK_RISK` refusal is planned |
+| Two processes writing one vault's ledger | The database's compare-and-append refuses the second with `ledger_conflict` (`apps/web/src/lib/ledger/store.ts:111`), and an anchor out of order fails with `PROBARION:BadSeq`. The SDK marks the rest `LEDGER_FORK_RISK`: it sends no spend for a decision that did not land at the position it was attested for, and it warns and does not anchor when the chain's last anchor covers more entries than its ledger holds (`packages/sdk/src/probarion.ts:978-982`, `:1099-1103`). Two writers with two ledger files still fork the vault's history, which `verify` check c then reports. An MCP server is planned |
 | The watcher runs only once a day | A change nobody drove through the app reaches the owner's alerts at the next watcher run that reaches its vault: within a day on the daily cron, or at a later per-minute run once the Supabase schedule is on, with no promised delay ([when a message arrives](ops/alerts.md#when-a-message-arrives)) |
 | Supabase or Vercel down | The console, Payables, the proof pages and the alerts stop. The funds stay in the vaults, and owners freeze and withdraw with their own keys (near-cli-rs) |
 | `KEY_ENCRYPTION_SECRET` lost | The sealed agent and ledger keys are lost: remove them from each vault and add new ones ([key rotation](ops/key-rotation.md)). The funds are not affected |
@@ -315,7 +315,8 @@ mandates, and cannot pay or approve.
   and the review log below records each triage. `cargo audit` has not been run.
 - **Repository security settings are off:** private vulnerability reporting, secret scanning, push
   protection and Dependabot security updates. Turning them on is the repository owner's call. CI's
-  gitleaks job scans the full history on every push and pull request.
+  gitleaks job scans the full history on every pull request into `dev` or `main` and every push to
+  them ([`ci.yml`](../.github/workflows/ci.yml)).
 - **Contacts and status.** The only reporting channel is a direct message on X until an email address
   passes a delivery test. There is no third-party status page yet: `/status` on each address and
   posts on X stand in.
