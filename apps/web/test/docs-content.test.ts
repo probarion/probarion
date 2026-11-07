@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { slug } from "github-slugger";
 import type { Code, List, Root, RootContent } from "mdast";
 import { describe, expect, it } from "vitest";
 import { anchorsOf, headingsOf } from "@/lib/docs/headings";
@@ -53,13 +54,25 @@ const codesOf = (tree: Root) => nodesOf(tree).filter((n): n is Code => n.type ==
 const NOT_LINKED = ["/canary", "/extension"];
 const PATTERNS = appRoutes(WEB);
 const FILES = publicPaths(WEB);
+/** The site's own hosts: a link to a page here is written as a site path, not a full URL. */
+const OWN_HOSTS = [new URL(ORIGIN).hostname, `www.${new URL(ORIGIN).hostname}`];
+const BAD_ESCAPE = "malformed %-escape";
+
+/** `decodeURIComponent`, or null for a malformed %-escape (its URIError names no file). */
+function decoded(text: string): string | null {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return null;
+  }
+}
 
 /** Why `url`, written on the page at `from`, is a bad link; null when it is fine. */
 function linkProblem(url: string, from: string): string | null {
   if (url.startsWith("#")) {
-    return anchorsOf(readMdx(from), fileOf(from)).has(decodeURIComponent(url.slice(1)))
-      ? null
-      : `no ${url} on this page`;
+    const id = decoded(url.slice(1));
+    if (id === null) return BAD_ESCAPE;
+    return anchorsOf(readMdx(from), fileOf(from)).has(id) ? null : `no ${url} on this page`;
   }
   if (/^mailto:/i.test(url)) return "no mailto links";
   if (/^http:/i.test(url)) return "use https";
@@ -70,12 +83,17 @@ function linkProblem(url: string, from: string): string | null {
     } catch {
       return "malformed URL";
     }
+    if (OWN_HOSTS.includes(parsed.hostname)) {
+      return `use the site path ${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
     const repoFile =
       parsed.hostname === "github.com"
         ? /^\/probarion\/probarion\/(?:blob|tree)\/(?:main|dev)\/(.+)$/.exec(parsed.pathname)?.[1]
         : undefined;
-    if (repoFile && !existsSync(join(ROOT, decodeURIComponent(repoFile)))) {
-      return `no ${repoFile} in the repository`;
+    if (repoFile) {
+      const file = decoded(repoFile);
+      if (file === null) return BAD_ESCAPE;
+      if (!existsSync(join(ROOT, file))) return `no ${repoFile} in the repository`;
     }
     return null;
   }
@@ -90,19 +108,29 @@ function linkProblem(url: string, from: string): string | null {
     const pagePath = (path.endsWith(".md") ? path.slice(0, -3) : path).replace(/^\/docs\/?/, "");
     const page = findPage(pagePath);
     if (!page) return `no docs page at ${path}`;
-    if (hash && !anchorsOf(readMdx(page.path), fileOf(page.path)).has(decodeURIComponent(hash))) {
-      return `no #${hash} on ${path}`;
+    if (hash) {
+      const id = decoded(hash);
+      if (id === null) return BAD_ESCAPE;
+      if (!anchorsOf(readMdx(page.path), fileOf(page.path)).has(id)) {
+        return `no #${hash} on ${path}`;
+      }
     }
     return null;
   }
   return hrefResolves(path, PATTERNS, FILES) ? null : `no page or file at ${path}`;
 }
 
-/** Markdown links and definitions, plus every JSX `href` or `...Href` attribute. */
+/**
+ * Markdown links, images and definitions, plus every JSX `href` or `...Href` attribute. An image's
+ * URL meets the same rules: a site path must be a public file or a route, an https URL must pass
+ * the same form checks.
+ */
 function mdxLinks(tree: Root): string[] {
   const out: string[] = [];
   for (const node of nodesOf(tree)) {
-    if (node.type === "link" || node.type === "definition") out.push(node.url);
+    if (node.type === "link" || node.type === "image" || node.type === "definition") {
+      out.push(node.url);
+    }
     if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") {
       for (const a of node.attributes) {
         if (
@@ -234,6 +262,15 @@ const CLI_TREE: Readonly<Record<string, readonly string[]>> = {
 const BIN = "node packages/cli/dist/bin.js";
 const FENCE_LANGS = ["bash", "text", "ts", "tsx", "js", "json", "rust", "md", "toml"];
 
+/** A fence's text with every backslash line continuation joined into one line, one space wide. */
+const joinContinuations = (code: string) => code.replace(/[ \t]*\\\r?\n[ \t]*/g, " ");
+
+/** A fence's commands: one per line once continuations are joined, without a `$ ` prompt. */
+const commandLines = (code: string) =>
+  joinContinuations(code)
+    .split("\n")
+    .map((l) => l.trim().replace(/^\$\s*/, ""));
+
 /** A literal `.command("x")`, and the same call made on `program`, which makes x a top command. */
 const COMMAND = /\.command\("([a-z][\w-]*)"\)/g;
 const TOP_COMMAND = /\bprogram\s*\.command\("([a-z][\w-]*)"\)/g;
@@ -287,12 +324,20 @@ describe("CLI commands", () => {
     const problems: string[] = [];
     for (const p of PAGES) {
       for (const c of codesOf(treeOf(p.path)).filter((x) => x.lang === "bash")) {
-        for (const raw of c.value.split("\n")) {
-          const line = raw.trim().replace(/^\$\s*/, "");
+        for (const line of commandLines(c.value)) {
           if (/^probarion\s/.test(line)) problems.push(`${fileOf(p.path)}: write "${BIN} ..."`);
-          if (!line.startsWith(`${BIN} `)) continue;
+          if (!line.startsWith(`${BIN} `)) {
+            // A command that runs the bin some other way (an env prefix, `cd ... &&`, `./`) is not
+            // the site's form and would escape the checks below. A `#` comment may name it.
+            if (/\bbin\.js\b/.test(line) && !line.startsWith("#")) {
+              problems.push(
+                `${fileOf(p.path)}: write "${BIN} ..." at the start of the line: ${line}`,
+              );
+            }
+            continue;
+          }
           // The site puts the program options first: bin.js --network testnet vault create ...
-          const words = line.slice(BIN.length + 1).split(/\s+/);
+          const words = line.slice(BIN.length).trim().split(/\s+/);
           while (words[0] === "--network" || words[0] === "--rpc") words.splice(0, 2);
           const [top = "", sub = ""] = words;
           if (top.startsWith("-")) {
@@ -311,16 +356,21 @@ describe("CLI commands", () => {
   });
 
   it("set up from a clone with exactly the site's steps", () => {
+    const problems: string[] = [];
     for (const p of PAGES) {
       for (const c of codesOf(treeOf(p.path)).filter((x) => x.value.includes("git clone"))) {
-        const lines = c.value.split("\n").map((l) => l.trim());
+        const lines = commandLines(c.value);
         const at = lines.indexOf(CLI_SETUP_LINES[0] ?? "");
-        expect(at, fileOf(p.path)).toBeGreaterThanOrEqual(0);
-        expect(lines.slice(at, at + CLI_SETUP_LINES.length), fileOf(p.path)).toEqual([
-          ...CLI_SETUP_LINES,
-        ]);
+        const got = at < 0 ? [] : lines.slice(at, at + CLI_SETUP_LINES.length);
+        if (got.join("\n") !== CLI_SETUP_LINES.join("\n")) {
+          problems.push(
+            `${fileOf(p.path)}: needs the ${CLI_SETUP_LINES.length} CLI_SETUP_LINES, ` +
+              `consecutive, in order: ${CLI_SETUP_LINES.join(" | ")}`,
+          );
+        }
       }
     }
+    expect(problems).toEqual([]);
   });
 });
 
@@ -364,6 +414,16 @@ describe("components", () => {
   });
 });
 
+/**
+ * The headings whose id is not the slug of their own text: rehype-slug added a number because an
+ * earlier heading took that slug.
+ */
+function numberedHeadings(source: string): string[] {
+  return headingsOf(source)
+    .filter((h) => h.id !== slug(h.text))
+    .map((h) => `${h.text} (#${h.id})`);
+}
+
 describe("page shape", () => {
   it("leaves the H1 to the page head and uses only H2 and H3", () => {
     for (const p of PAGES) {
@@ -374,12 +434,14 @@ describe("page shape", () => {
 
   it("gives no two headings the same text, so no anchor needs a number", () => {
     for (const p of PAGES) {
-      const ids = headingsOf(readMdx(p.path)).map((h) => h.id);
-      const numbered = ids.filter(
-        (id) => /-\d+$/.test(id) && ids.includes(id.replace(/-\d+$/, "")),
-      );
-      expect(numbered, fileOf(p.path)).toEqual([]);
+      expect(numberedHeadings(readMdx(p.path)), fileOf(p.path)).toEqual([]);
     }
+  });
+
+  it("counts a heading as numbered only when its text repeats", () => {
+    // "HTTP 402" slugs to http-402 by itself: no number was added, so it is not a repeat.
+    expect(numberedHeadings("## HTTP\n\n### HTTP 402\n")).toEqual([]);
+    expect(numberedHeadings("## Refusals\n\n### Refusals\n")).toEqual(["Refusals (#refusals-1)"]);
   });
 
   it("ends every explanation with what it does not do", () => {
@@ -405,9 +467,10 @@ describe("page shape", () => {
 // --- who signs -----------------------------------------------------------------------------------
 
 // A CLI line may put the program options first: bin.js --network testnet vault create ...
+// Any run of white space may sit between the words.
 const OWNER_CLI =
-  /\bbin\.js (?:--(?:network|rpc) \S+ )*(?:vault (?:create|freeze|unfreeze|withdraw|withdraw-intents)|mandate (?:create|revoke)|agent (?:add|remove)|ledger set-key)\b/;
-const APPROVER_CLI = /\bbin\.js (?:--(?:network|rpc) \S+ )*spend (?:approve|reject)\b/;
+  /\bbin\.js\s+(?:--(?:network|rpc)\s+\S+\s+)*(?:vault\s+(?:create|freeze|unfreeze|withdraw|withdraw-intents)|mandate\s+(?:create|revoke)|agent\s+(?:add|remove)|ledger\s+set-key)\b/;
+const APPROVER_CLI = /\bbin\.js\s+(?:--(?:network|rpc)\s+\S+\s+)*spend\s+(?:approve|reject)\b/;
 const OWNER_CALL =
   /\bcall-function\b.*\b(?:create_vault|create_mandate|revoke_mandate|add_agent|remove_agent|set_ledger_key|freeze|unfreeze|withdraw|withdraw_intents)\b/;
 const APPROVER_CALL = /\bcall-function\b.*\b(?:approve|reject)\b/;
@@ -417,12 +480,11 @@ describe("signing callouts", () => {
     const problems: string[] = [];
     for (const p of PAGES) {
       const tree = treeOf(p.path);
-      // A line that ends in a backslash goes on in the next one: join them, so a near-cli call
-      // wrapped before its method name still counts as that call.
+      // A line that ends in a backslash goes on in the next one: join them, so a command wrapped
+      // before its method or subcommand still counts as that call.
       const code = codesOf(tree)
-        .map((c) => c.value)
-        .join("\n")
-        .replace(/\\\r?\n[ \t]*/g, " ");
+        .map((c) => joinContinuations(c.value))
+        .join("\n");
       const kinds = new Set(
         jsxNodes(tree)
           .filter((n) => n.name === "Callout")
