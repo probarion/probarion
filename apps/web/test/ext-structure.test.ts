@@ -18,7 +18,10 @@ const ROOTS = [
   ...walk(join(SRC, "app", "api", "ext")).filter((f) => /[\\/]route\.ts$/.test(f)),
 ];
 
-/** Modules that pay, sign or open a key: none may load from the extension's code. */
+/**
+ * Modules that pay, sign or open a key: none may load from the extension's code, unless every import of it is one
+ * that EXEMPTIONS lets through.
+ */
 const FORBIDDEN_FILES = [
   "src/lib/payables/pipeline.ts",
   "src/lib/payables/confirm.ts",
@@ -39,7 +42,13 @@ const FORBIDDEN_EXPORTS: Record<string, string[]> = {
   "src/lib/payables/confirm.ts": ["confirmInvoice"],
   "src/lib/keys/open.ts": ["openKey"],
   "src/lib/keys/service.ts": ["loadActiveSecret", "loadActiveSecretFor"],
-  "src/lib/crypto/secrets.ts": ["openAgentSecret", "sealAgentSecret", "openInvoice"],
+  "src/lib/crypto/secrets.ts": [
+    "openAgentSecret",
+    "sealAgentSecret",
+    "openInvoice",
+    "reencryptAgentSecret",
+    "reencryptInvoice",
+  ],
   "src/lib/crypto/server.ts": ["masterKey"],
 };
 const FORBIDDEN_NAMES = Object.values(FORBIDDEN_EXPORTS).flat();
@@ -50,6 +59,29 @@ const FORBIDDEN_NAMES = Object.values(FORBIDDEN_EXPORTS).flat();
 const FORBIDDEN_FROM: Record<string, string[]> = {
   "src/lib/crypto/sodium.ts": ["open"],
 };
+/**
+ * The only imports the rules above let through: each is one name, imported by one file, from one module. They are the
+ * invoice queue of plan 06 Task 2 (E1b), as the approved plan writes it. The queue's route reads the master key, and
+ * the queue seals the invoice under the tenant's invoice key with it (and keys its duplicate guard), as the console
+ * upload does. Neither opens anything. secrets.ts's own `open` serves only its opening functions, which every module
+ * here is still refused by name, and a test below holds sealInvoice to sealing.
+ *
+ * Until E1b writes those files, none of these lets anything through. E1b adds its roots and changes nothing here. If
+ * its files or imports differ from the plan, the controller rules: widening an exemption loosens the guard.
+ */
+const EXEMPTIONS: readonly { file: string; from: string; name: string }[] = [
+  {
+    file: "src/app/api/ext/invoices/route.ts",
+    from: "src/lib/crypto/server.ts",
+    name: "masterKey",
+  },
+  { file: "src/lib/payables/queue.ts", from: "src/lib/crypto/secrets.ts", name: "sealInvoice" },
+  { file: "src/lib/crypto/secrets.ts", from: "src/lib/crypto/sodium.ts", name: "open" },
+];
+/** Whether `file` importing `name` from the app module `to` is one of the EXEMPTIONS. */
+const isExempt = (file: string, to: string | null, name: string) =>
+  to !== null &&
+  EXEMPTIONS.some((e) => e.file === posix(file) && e.from === posix(to) && e.name === name);
 /** Packages that hold a signer: a namespace or default import of one would reach it as a property. */
 const SIGNING_PACKAGES = [/^@probarion\/sdk(\/|$)/, /^near-api-js(\/|$)/, /^@near-js\//];
 /** The cookie session: the extension's routes use the bearer token alone. */
@@ -239,6 +271,10 @@ describe("the extension's server code never pays", () => {
         : Object.keys((await import(/* @vite-ignore */ from)) as Record<string, unknown>);
       for (const n of names) expect(exported, `${from} exports ${n}`).toContain(n);
     }
+    for (const e of EXEMPTIONS) {
+      expect(isFile(join(WEB, e.from)), e.from).toBe(true);
+      expect(exportsOf(join(WEB, e.from)), `${e.from} exports ${e.name}`).toContain(e.name);
+    }
   });
 
   it("has the roots it is meant to check", () => {
@@ -260,13 +296,27 @@ describe("the extension's server code never pays", () => {
   });
 
   it("loads no module that pays, signs or opens a key", () => {
-    expect([...g.keys()].map(posix).filter((f) => FORBIDDEN_FILES.includes(f))).toEqual([]);
+    // Loaded at all only when every import of it names something, and each name it names is exempt.
+    const admitted = (f: string) => {
+      const into = loads.filter((l) => l.to !== null && posix(l.to) === f);
+      return (
+        into.length > 0 &&
+        into.every(
+          (l) => l.imp.names.length > 0 && l.imp.names.every((n) => isExempt(l.file, l.to, n)),
+        )
+      );
+    };
+    expect(
+      [...g.keys()].map(posix).filter((f) => FORBIDDEN_FILES.includes(f) && !admitted(f)),
+    ).toEqual([]);
   });
 
   it("imports none of their functions from anywhere", () => {
     const found = [...g.entries()].flatMap(([f, imps]) =>
       imps.flatMap((i) =>
-        i.names.filter((n) => FORBIDDEN_NAMES.includes(n)).map((n) => `${posix(f)}: ${n}`),
+        i.names
+          .filter((n) => FORBIDDEN_NAMES.includes(n) && !isExempt(f, resolveLocal(f, i.from), n))
+          .map((n) => `${posix(f)}: ${n}`),
       ),
     );
     expect(found).toEqual([]);
@@ -275,9 +325,56 @@ describe("the extension's server code never pays", () => {
   it("imports no key-opening function from the module that has it", () => {
     const found = loads.flatMap((l) => {
       const refused = l.to === null ? [] : (FORBIDDEN_FROM[posix(l.to)] ?? []);
-      return l.imp.names.filter((n) => refused.includes(n)).map((n) => `${posix(l.file)}: ${n}`);
+      return l.imp.names
+        .filter((n) => refused.includes(n) && !isExempt(l.file, l.to, n))
+        .map((n) => `${posix(l.file)}: ${n}`);
     });
     expect(found).toEqual([]);
+  });
+
+  it("lets through only the queue's sealing and its master key, one name in one file each, and sealing opens nothing", () => {
+    const SECRETS = "src/lib/crypto/secrets.ts";
+    const secrets = parse(join(WEB, SECRETS));
+    // sealInvoice, the one name that may come out of secrets.ts, names its parameters, seal and tenantInvoiceKey, and
+    // nothing else: it seals, and it opens nothing.
+    const sealInvoice = secrets.statements.find(
+      (st): st is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(st) && st.name?.text === "sealInvoice",
+    );
+    expect(sealInvoice?.body, "secrets.ts declares sealInvoice").toBeDefined();
+    const params = (sealInvoice?.parameters ?? []).flatMap((p) =>
+      ts.isIdentifier(p.name) ? [p.name.text] : [],
+    );
+    const named = new Set<string>();
+    const visit = (n: ts.Node): void => {
+      if (ts.isIdentifier(n)) named.add(n.text);
+      ts.forEachChild(n, visit);
+    };
+    if (sealInvoice?.body) visit(sealInvoice.body);
+    expect([...named].sort()).toEqual([...params, "seal", "tenantInvoiceKey"].sort());
+    // Every other export of secrets.ts but the number KEY_VERSION opens a key or seals an agent's, and each one is
+    // refused by name, so no module can carry one in.
+    expect(
+      exportsOf(join(WEB, SECRETS))
+        .filter((n) => n !== "sealInvoice" && n !== "KEY_VERSION")
+        .sort(),
+    ).toEqual([...(FORBIDDEN_EXPORTS[SECRETS] ?? [])].sort());
+    for (const e of EXEMPTIONS) {
+      // From a key module under lib/crypto, never from a module that pays or signs.
+      expect(e.from.startsWith("src/lib/crypto/"), e.from).toBe(true);
+      // Once its file is in the graph, the file imports that name from that module: an unused exemption is removed.
+      if (![...g.keys()].some((f) => posix(f) === e.file)) continue;
+      expect(
+        loads.some(
+          (l) =>
+            posix(l.file) === e.file &&
+            l.to !== null &&
+            posix(l.to) === e.from &&
+            l.imp.names.includes(e.name),
+        ),
+        `${e.file} imports ${e.name} from ${e.from}`,
+      ).toBe(true);
+    }
   });
 
   it("reaches nothing as a property: no namespace or export * of an app module, nor a whole signing package", () => {
