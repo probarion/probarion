@@ -1,0 +1,389 @@
+/*
+ * Probarion docs, ported from the docs mockup onto the site's tokens. Every colour is a token from
+ * app/globals.css (a test checks). Nothing makes the page scroll sideways: grid tracks use
+ * minmax(0, ...), flex children get min-width: 0, and only code frames and tables scroll, inside
+ * their own box. No rule resets every property, and every custom control has its own :focus-visible
+ * rule.
+ */
+
+/* Prose */
+.prose {
+  min-width: 0;
+  font-size: 16.5px;
+  line-height: 1.72;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+.prose > * + * {
+  margin-top: 1.1em;
+}
+.prose h2 {
+  margin-top: 2.2em;
+  font-size: 27px;
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+.prose h3 {
+  margin-top: 1.8em;
+  font-size: 18.5px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+.prose ul {
+  padding-left: 1.4em;
+  list-style: disc;
+}
+.prose ol {
+  padding-left: 1.4em;
+  list-style: decimal;
+}
+.prose li + li {
+  margin-top: 0.35em;
+}
+.prose strong {
+  font-weight: 600;
+}
+/* Before the inline-code rule: rules that end in the same selector rise in specificity. */
+.pre code {
+  font-family: inherit;
+}
+.prose :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-soft);
+  font-size: 0.88em;
+  overflow-wrap: anywhere;
+}
+.link {
+  color: var(--color-gold-ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-gold-deep) 55%, transparent);
+  text-underline-offset: 3px;
+}
+.link:hover {
+  text-decoration-color: currentColor;
+}
+.anchor {
+  margin-left: 0.35em;
+  color: var(--color-mute);
+  text-decoration: none;
+  opacity: 0;
+}
+.prose h2:hover .anchor,
+.prose h3:hover .anchor,
+.anchor:focus-visible {
+  opacity: 1;
+}
+
+/* Code frames: ink in both themes */
+.code {
+  min-width: 0;
+  margin: 1.4em 0;
+  overflow: hidden;
+  border: 1px solid var(--color-band-line);
+  border-radius: 14px;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+}
+.codeHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--color-band-line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-band-mute);
+}
+.codeLang {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.copy {
+  margin-left: auto;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-band-fg);
+  font: inherit;
+  cursor: pointer;
+}
+.copy:hover {
+  background: var(--color-code-active);
+}
+.pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  background: var(--color-band);
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+.copy:focus-visible,
+.tab:focus-visible {
+  outline: 2px solid var(--color-gold-bright);
+  outline-offset: 2px;
+}
+.pre:focus-visible {
+  outline: 2px solid var(--color-gold-bright);
+  outline-offset: -2px;
+}
+.codeTitled {
+  margin: 1.4em 0;
+}
+.codeTitled > .code {
+  margin-top: 6px;
+}
+.codeTitle {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--color-mute);
+  overflow-wrap: anywhere;
+}
+.codeTabs {
+  margin: 1.4em 0;
+}
+.codeTabs .code {
+  margin: 0;
+}
+.codeTabs > [role="tabpanel"] + [role="tabpanel"] {
+  margin-top: 12px;
+}
+.codeTabs[data-ready] > [role="tabpanel"] + [role="tabpanel"] {
+  margin-top: 0;
+}
+/*
+ * With JavaScript the panels share one ink frame, as in the mockup: the tabs and one Copy button
+ * in its head, then the active panel's code. Each panel's own frame loses its border and head.
+ */
+.codeTabs[data-ready] {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-band-line);
+  border-radius: 14px;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+}
+.codeTabs[data-ready] .code {
+  border: 0;
+  border-radius: 0;
+}
+.codeTabs[data-ready] .codeHead {
+  display: none;
+}
+.tabsHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 4px 8px 4px 14px;
+  border-bottom: 1px solid var(--color-band-line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-band-mute);
+}
+.tabList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.tab {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-band-mute);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--color-band-fg);
+}
+.tab[aria-selected="true"] {
+  background: var(--color-code-active);
+  color: var(--color-band-fg);
+}
+.tabLabel {
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-mute);
+}
+.codeTabs[data-ready] .tabLabel {
+  display: none;
+}
+
+/* Callouts */
+.callout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin: 1.4em 0;
+  padding: 16px 18px;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font-size: 15.5px;
+  line-height: 1.6;
+}
+.calloutTitle {
+  font-weight: 600;
+}
+.calloutBody > * + * {
+  margin-top: 0.6em;
+}
+.calloutFooter {
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.warning {
+  border-color: color-mix(in srgb, var(--color-wait) 30%, transparent);
+  background: var(--color-wait-bg);
+}
+.signs {
+  border-left: 3px solid var(--color-gold-deep);
+}
+.key {
+  border-color: var(--color-band-line);
+  background: var(--color-band);
+  color: var(--color-band-fg);
+}
+.key .calloutTitle {
+  color: var(--color-gold-bright);
+}
+.key .calloutFooter {
+  color: var(--color-band-mute);
+}
+.key :not(pre) > code {
+  border-color: var(--color-band-line);
+  background: var(--color-code-active);
+  color: var(--color-band-fg);
+}
+.key .link {
+  color: var(--color-gold-bright);
+}
+
+/* Steps and the flow strip */
+.steps ol {
+  padding-left: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.steps ol > li {
+  position: relative;
+  padding-left: 44px;
+  counter-increment: step;
+}
+.steps ol > li::before {
+  content: counter(step);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-gold-deep);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-gold-small);
+}
+.flow ol {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  background: var(--color-surface);
+  counter-reset: flow;
+}
+.flow ol > li {
+  margin: 0;
+  padding: 16px;
+  counter-increment: flow;
+}
+/* After both lists' base item rules: rules that end in the same selector rise in specificity. */
+.steps ol > li + li {
+  margin-top: 1.2em;
+}
+.flow ol > li + li {
+  margin-top: 0;
+  border-left: 1px solid var(--color-line);
+}
+.flow ol > li::before {
+  content: counter(flow, decimal-leading-zero);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-gold-small);
+}
+.flow strong {
+  display: block;
+  margin-top: 4px;
+}
+
+/* Tables */
+.tableWrap {
+  margin: 1.4em 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+.tableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: normal;
+}
+.tableWrap th {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+.tableWrap td {
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-line);
+  vertical-align: top;
+}
+.tableWrap tr:first-child td {
+  border-top: 0;
+}
+.tableWrap td code {
+  white-space: nowrap;
+}
+.tableWrap:focus-visible {
+  outline: 2px solid var(--color-gold-small);
+  outline-offset: 2px;
+}
+
+/* Phone (prose and components) */
+@media (hover: none) {
+  .anchor {
+    opacity: 1;
+  }
+}
+@media (max-width: 760px) {
+  .flow ol {
+    grid-auto-flow: row;
+  }
+  .flow ol > li + li {
+    border-top: 1px solid var(--color-line);
+    border-left: 0;
+  }
+}

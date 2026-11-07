@@ -1054,6 +1054,13 @@ describe("colours", () => {
       ["band-bad", "band-bad-bg"],
       ["band-bad", "band"],
       ["gold-light", "ink"],
+      ["mute", "soft"],
+      ["ink", "soft"],
+      ["gold-ink", "paper"],
+      ["gold-ink", "surface"],
+      ["band-fg", "code-active"],
+      ["band-mute", "code-active"],
+      ["gold-bright", "band"],
     ];
     for (const [fg, bg] of pairs) {
       expect(contrast(token(fg), token(bg)), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
@@ -1079,10 +1086,15 @@ describe("colours", () => {
     }
   });
 
-  it("are read from tokens: site.module.css holds no literal colour", () => {
-    const module = text(WEB, "src", "components", "site", "site.module.css");
-    expect(module.replace(/url\("data:[^"]*"\)/g, "")).not.toMatch(
-      /#[0-9a-f]{3,8}\b|\brgba?\(\s*\d/i,
-    );
+  it("are read from tokens: site.module.css and docs.module.css hold no literal colour", () => {
+    for (const parts of [
+      ["src", "components", "site", "site.module.css"],
+      ["src", "components", "docs", "docs.module.css"],
+    ]) {
+      const module = text(WEB, ...parts);
+      expect(module.replace(/url\("data:[^"]*"\)/g, ""), parts.join("/")).not.toMatch(
+        /#[0-9a-f]{3,8}\b|\brgba?\(\s*\d/i,
+      );
+    }
   });
 });
