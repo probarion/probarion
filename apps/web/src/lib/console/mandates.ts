@@ -99,11 +99,12 @@ export const MIN_EXPIRY_AHEAD_MS = 3600_000;
 
 /**
  * Why the form will not hash a purpose document of `size` bytes, or null. The form only hashes it, but Payables pays
- * an invoice only with this same document attached, and the invoices route takes one of MAX_INVOICE_BYTES at most.
+ * an invoice only with this same document attached. The invoices route takes a document of MAX_INVOICE_BYTES at most,
+ * and the invoice, the document and the form together in MAX_INVOICE_BYTES + 64 KiB, so the invoice shares the 4 MiB.
  */
 export function purposeFileTooLarge(size: number): string | null {
   return size > MAX_INVOICE_BYTES
-    ? "That file is over 4 MiB, the largest purpose document the Payables upload takes with an invoice. To pay through your own SDK instead, paste its sha256."
+    ? "That file is over 4 MiB. The Payables upload takes the invoice and this document together, 4 MiB at most. To pay through your own SDK instead, paste its sha256."
     : null;
 }
 

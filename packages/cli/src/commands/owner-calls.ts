@@ -114,8 +114,9 @@ export const OWNER_CALLS: readonly CallSpec[] = [
   {
     group: "vault",
     name: "freeze",
-    // No deposit, so a function-call key can sign it, but only one whose receiver is this vault: a login key
-    // scoped to another contract cannot call the vault at all (integration-tests/tests/security.rs).
+    // No deposit, so a function-call key whose receiver is this vault can sign it (integration-tests/tests/security.rs,
+    // a dapp login key scoped to the vault). A key scoped to another contract cannot call the vault at all: that is
+    // the NEAR protocol's function-call key rule, not a vault check.
     description:
       "print freeze for the OWNER to sign (no deposit: the owner's full-access key, or a function-call key on the owner's account that may call this vault)",
     method: "freeze",

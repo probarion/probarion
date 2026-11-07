@@ -206,7 +206,7 @@ export function MandateFormPanel(props: {
       ))}
       <Field
         label="Purpose document (PO or contract)"
-        hint="Hashed in your browser: the file never leaves your device and only its sha256 goes on-chain. Keep this same document: you attach it to the invoices it covers later (4 MiB at most), and an invoice is only paid when its PO hashes to this value."
+        hint="Hashed in your browser: the file never leaves your device and only its sha256 goes on-chain. Keep this same document: you attach it to the invoices it covers later (the invoice and this document together: 4 MiB at most), and an invoice is only paid when its PO hashes to this value."
       >
         <input key={fileKey} type="file" onChange={onFile} />
       </Field>

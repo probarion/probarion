@@ -367,7 +367,8 @@ describe("owner-only commands print transactions and never sign", () => {
 
   it("says which owner keys can freeze, and what still works while frozen", async () => {
     // contracts/vault/src/admin.rs: freeze takes no deposit; checks.rs and held.rs: spend and approve refuse
-    // Frozen, while reject and expire_held do not look at it. A key scoped to another contract cannot call it.
+    // Frozen, while reject and expire_held do not look at it. integration-tests/tests/security.rs freezes with a
+    // login key scoped to the vault; a key scoped to another contract cannot call it (a NEAR protocol rule).
     const help = testIo(dir);
     expect(await runCli(["vault", "--help"], help.io)).toBe(0);
     expect(help.state.out.replace(/\s+/g, " ")).toContain(

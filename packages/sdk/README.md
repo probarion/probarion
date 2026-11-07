@@ -85,8 +85,19 @@ console.log(outcome.status, outcome.code, outcome.spendId, outcome.txHash);
 - `failed`: definitely not paid.
 - `unconfirmed`: a `spend` was sent and may have paid. Find out on the chain whether it did before
   anything else, and do not send it again under a new `ref`. The contract has no lookup by `ref`:
-  list the vault's spends and match `ref` (`VaultClient.listAllSpends()` pages the contract's
-  `list_spends`). `probarion.spends.get(id)` reads one spend by its id.
+  list the vault's spends and match `ref`, as below. `probarion.spends.get(id)` reads one spend by
+  its id.
+
+```ts
+import { RpcClient, resolveRpcUrls, VaultClient } from "@probarion/sdk";
+
+// A read-only client: no sender, so it cannot sign anything. listAllSpends pages the contract's list_spends.
+const vault = new VaultClient(
+  "acme.vaults.probarion.testnet",
+  new RpcClient({ urls: resolveRpcUrls("testnet") }),
+);
+const spend = (await vault.listAllSpends()).find((s) => s.ref === "INV-2026-001") ?? null;
+```
 
 ## The `Probarion` class
 

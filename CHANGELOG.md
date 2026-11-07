@@ -357,9 +357,9 @@ The software is an unaudited beta.
 - Sign-in explains two more answers of the server in words: `unavailable` (sign-in could not finish,
   so you were not signed in) and `payload_too_large` (the wallet's answer was too large to be a
   sign-in). The page showed the bare code before.
-- The mandate form takes a purpose document of 4 MiB at most, the size the Payables upload takes with
-  an invoice. It took 25 MB, so a mandate made from a larger document could not be paid through
-  Payables. The form still only hashes the file, in the browser.
+- The mandate form refuses a purpose document over 4 MiB. It took 25 MB, but the Payables upload
+  takes the invoice and its purpose document together in 4 MiB, so a mandate made from a larger
+  document could not be paid through Payables. The form still only hashes the file, in the browser.
 - The `near_low` alert links to "Send NEAR to this vault" on the vault's Overview. It linked to
   Top-up, which funds USDC only.
 - The Canary rules ask for a report the way SECURITY.md does, with a direct message to @probarionhq on

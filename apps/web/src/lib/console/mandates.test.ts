@@ -882,14 +882,15 @@ describe("isImplicitAccount and payeeToCheck: which NEAR payees are looked up", 
 });
 
 describe("purposeFileTooLarge", () => {
-  // The form only hashes the file, but Payables pays an invoice only with this same document attached, and the
-  // invoices route refuses a purpose document over MAX_INVOICE_BYTES (api/console/[vault]/invoices/route.ts).
-  it("takes a purpose document up to the Payables upload limit, 4 MiB, and refuses one byte more", () => {
+  // The form only hashes the file, but Payables pays an invoice only with this same document attached. The invoices
+  // route refuses a purpose document over MAX_INVOICE_BYTES, and a request over MAX_INVOICE_BYTES + 64 KiB for the
+  // invoice, the document and the form together (api/console/[vault]/invoices/route.ts).
+  it("refuses a purpose document Payables could not take, and says the invoice shares the 4 MiB", () => {
     expect(MAX_INVOICE_BYTES).toBe(4 * 1024 * 1024);
     expect(purposeFileTooLarge(0)).toBeNull();
     expect(purposeFileTooLarge(MAX_INVOICE_BYTES)).toBeNull();
     expect(purposeFileTooLarge(MAX_INVOICE_BYTES + 1)).toBe(
-      "That file is over 4 MiB, the largest purpose document the Payables upload takes with an invoice. To pay through your own SDK instead, paste its sha256.",
+      "That file is over 4 MiB. The Payables upload takes the invoice and this document together, 4 MiB at most. To pay through your own SDK instead, paste its sha256.",
     );
     expect(purposeFileTooLarge(25 * 1024 * 1024)).not.toBeNull();
   });
