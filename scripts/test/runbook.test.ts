@@ -75,11 +75,24 @@ describe("docs/RUNBOOK.md", () => {
     const session =
       text.split("\n").find((l) => l.startsWith("| An owner's console session stolen")) ?? "";
     const tokens = text.split("\n").find((l) => l.startsWith("| Extension tokens (")) ?? "";
+    // A pairing code the stolen session showed turns into a token without any session for 10 minutes
+    // (ext_code_exchange, migration 0013), and Revoke on /extension ends tokens only. So, once the sessions end, the
+    // owner either runs the SQL, which deletes the codes first, or waits out every code before revoking one by one.
     for (const [name, row] of [
       ["session row", session],
       ["Extension tokens row", tokens],
-    ]) {
-      expect(row, name).toMatch(/end the sessions first/i);
+    ] as const) {
+      const ended = row.search(/end the sessions first/i);
+      const wait = row.search(/wait at least 10 minutes from the moment the sessions ended/i);
+      const revoke = row.search(
+        /then revoke its tokens on `\/extension` and check Connected browsers again/i,
+      );
+      expect(ended, name).toBeGreaterThan(-1);
+      expect(wait, `${name}: waits out the codes after the sessions end`).toBeGreaterThan(ended);
+      expect(revoke, `${name}: revokes one by one only after the wait`).toBeGreaterThan(wait);
+      expect(row, name).toMatch(
+        /end every token with the SQL[^|]*deletes the pairing codes first/i,
+      );
     }
   });
 
