@@ -1,5 +1,51 @@
-Probarion lets an owner set the limits an AI agent pays inside. A contract on NEAR checks every payment against those limits, and a signed ledger records each one.
+<HubSearch>
 
-## Start with one page
+- [PROBARION:NoMandate](/docs/concepts/payment-checks)
 
-- [How a payment is checked](/docs/concepts/payment-checks)
+</HubSearch>
+
+<HubDoors>
+
+<Door
+  who="Start here"
+  title="How a payment is checked"
+  href="/docs/concepts/payment-checks"
+  go="Read it"
+  also="What a refusal does"
+  alsoHref="/docs/concepts/payment-checks#what-a-refusal-does"
+>
+The 14 checks the vault runs on every spend, in order.
+</Door>
+
+<Door who="Evaluator" title="Check it yourself" href="/docs/concepts/payment-checks" go="Read it" ink>
+The same page, on the ink card.
+</Door>
+
+</HubDoors>
+
+## What happens to one payment
+
+The model may advise. Code decides. The contract has the last word.
+
+<Flow>
+1. **Agent** Requests a spend.
+2. **Contract** Runs the checks.
+</Flow>
+
+## Start reading
+
+<HubCards>
+
+<Card title="How a payment is checked" href="/docs/concepts/payment-checks" tag="check_spend">
+The 14 checks, in order.
+</Card>
+
+</HubCards>
+
+## Docs your agent can read
+
+<HubAgents example="concepts/payment-checks" />
+
+## What works today, and what does not
+
+<StatusTable />

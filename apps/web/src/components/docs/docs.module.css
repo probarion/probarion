@@ -852,6 +852,280 @@ section.source code {
   outline-offset: -2px;
 }
 
+/* Docs home (the hub sits inside .prose; these rules refine it) */
+.gold {
+  background: var(--gradient-gold-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  padding-bottom: 0.08em;
+}
+.heroTitle .gold {
+  display: block;
+}
+.hubSearch {
+  margin-top: 26px;
+}
+.bigSearch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  max-width: 640px;
+  height: 56px;
+  padding: 0 12px 0 18px;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: 0 1px 0 var(--color-line);
+  font-size: 16.5px;
+  color: var(--color-mute);
+}
+.bigSearch span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The text gives way on a phone, never the key cap: shrunk, it would wrap "Ctrl K" in two. */
+.bigSearch .kbd {
+  flex: none;
+}
+.bigSearch:hover {
+  border-color: var(--color-ink);
+}
+.hub .popular {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13.5px;
+  color: var(--color-mute);
+}
+.hub .popular ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hub .popular li + li {
+  margin-top: 0;
+}
+.hub .popular a {
+  display: inline-block;
+  padding: 5px 11px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.hub .popular a:hover {
+  border-color: var(--color-ink);
+}
+.doorsWrap {
+  margin-top: 40px;
+}
+.doors {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.door,
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+.door {
+  gap: 10px;
+  min-height: 200px;
+  padding: 22px;
+  border-radius: 18px;
+}
+.card {
+  gap: 6px;
+  padding: 20px;
+  border-radius: 16px;
+}
+.door:hover,
+.card:hover {
+  border-color: var(--color-ink);
+}
+/*
+ * The title link covers its card. Its focus ring moves to the card, so the whole target shows it.
+ */
+.cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.cover:focus-visible {
+  outline: none;
+}
+.door:has(.cover:focus-visible),
+.card:has(.cover:focus-visible) {
+  outline: 2px solid var(--color-gold-small);
+  outline-offset: 3px;
+}
+.hub .who {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-gold-small);
+}
+.hub .doorTitle,
+.hub .cardTitle {
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.hub .doorTitle {
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.hub .cardTitle {
+  font-size: 16.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.hub .doorTitle a,
+.hub .cardTitle a {
+  color: inherit;
+  text-decoration: none;
+}
+.hub .doorText,
+.hub .cardText {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--color-mute);
+}
+.hub .go {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: auto;
+  font-size: 14px;
+  font-weight: 500;
+}
+.also {
+  position: relative;
+  z-index: 1;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.doorInk {
+  border-color: var(--color-band);
+  background: var(--color-band);
+  color: var(--color-band-fg);
+}
+.hub .doorInk .doorText {
+  color: var(--color-band-mute);
+}
+.hub .doorInk .who {
+  color: var(--color-gold-bright);
+}
+/*
+ * Only the second link of an ink door sits on ink. The ink door's own ring is drawn on the paper
+ * outside it, so it keeps gold-small.
+ */
+.doorInk .also:focus-visible {
+  outline-color: var(--color-gold-bright);
+}
+.hub > h2 {
+  margin-top: 72px;
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.hub > h2 + p {
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.hub > :is(.flow, .cards, .agents, .tableWrap) {
+  margin-top: 20px;
+}
+/*
+ * The last step is ink. Its corners follow the strip's 16px corners less its 1px border. The strip
+ * does not clip its steps: overflow: hidden would cut the focus ring of a link in a step.
+ */
+.hub .flow ol > li:last-child {
+  border-radius: 0 15px 15px 0;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+}
+.hub .flow ol > li:last-child::before {
+  color: var(--color-gold-bright);
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.hub .cardTag {
+  margin-top: auto;
+  padding-top: 6px;
+}
+.hub .cardTag code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+  color: var(--color-gold-small);
+}
+.agents {
+  padding: 24px;
+  border-radius: 18px;
+  background: var(--color-band);
+  color: var(--color-band-mute);
+}
+.agents > * + * {
+  margin-top: 10px;
+}
+.hub .agentsEyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-gold-bright);
+}
+.hub .agentsLinks {
+  padding: 0;
+  list-style: none;
+}
+.hub .agentsLinks a {
+  color: var(--color-gold-bright);
+}
+.hub .agents :not(pre) > code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+}
+.agentsMore {
+  color: var(--color-band-fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.agentsLinks a:focus-visible,
+.agentsMore:focus-visible {
+  outline-color: var(--color-gold-bright);
+}
+
 /* Breakpoints */
 @media (hover: none) {
   .anchor {
@@ -914,5 +1188,43 @@ section.source code {
   }
   .pagerNext {
     grid-column: auto;
+  }
+}
+@media (max-width: 1179px) {
+  .doors,
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* The flow strip stacks here (Task 2), so its last step is the bottom one. */
+@media (max-width: 760px) {
+  .hub .flow ol > li:last-child {
+    border-radius: 0 0 15px 15px;
+  }
+}
+@media (max-width: 620px) {
+  .doors,
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .door {
+    min-height: 0;
+  }
+  .hub > h2 {
+    margin-top: 56px;
+    font-size: 28px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .door,
+  .card,
+  .bigSearch {
+    transition: border-color 0.15s;
+  }
+}
+@media (forced-colors: active) {
+  .gold {
+    background: none;
+    color: CanvasText;
   }
 }

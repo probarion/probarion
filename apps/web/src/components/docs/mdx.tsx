@@ -12,6 +12,7 @@ import { CodeTabs } from "./CodeTabs";
 import d from "./docs.module.css";
 import { ErrorCatalog } from "./ErrorCatalog";
 import { Flow } from "./Flow";
+import { Card, Door, HubAgents, HubCards, HubDoors, HubSearch } from "./hub";
 import { SpendChecks } from "./SpendChecks";
 import { StatusTable } from "./StatusTable";
 import { Steps } from "./Steps";
@@ -98,4 +99,10 @@ export const DOCS_COMPONENTS: MDXComponents = {
   VerifierChecks,
   StatusTable,
   AgentRules,
+  HubSearch,
+  HubDoors,
+  Door,
+  HubCards,
+  Card,
+  HubAgents,
 };

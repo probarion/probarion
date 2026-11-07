@@ -4,6 +4,7 @@ import { Breadcrumbs } from "@/components/docs/Breadcrumbs";
 import { DocsBar } from "@/components/docs/DocsBar";
 import d from "@/components/docs/docs.module.css";
 import { Feedback } from "@/components/docs/Feedback";
+import { HubHero } from "@/components/docs/hub";
 import { PageHead } from "@/components/docs/PageHead";
 import { Pager } from "@/components/docs/Pager";
 import { Sidebar } from "@/components/docs/Sidebar";
@@ -55,12 +56,8 @@ export default async function DocsPage({ params }: PageProps<"/docs/[[...slug]]"
         {jsonLd}
         <DocsBar current={null} path="" />
         <div className={d.home}>
-          <header className={d.hero}>
-            <p className={d.eyebrow}>Documentation</p>
-            <h1 className={d.heroTitle}>{page.title}</h1>
-            <p className={d.heroLede}>{page.lede}</p>
-          </header>
-          <div className={d.hub}>
+          <HubHero page={page} />
+          <div className={`${d.prose} ${d.hub}`}>
             <Content />
           </div>
         </div>

@@ -232,6 +232,34 @@ describe("mdxToMarkdown", () => {
     const components = Object.keys(DOCS_COMPONENTS).filter((k) => /^[A-Z]/.test(k));
     expect([...MDX_COMPONENT_NAMES].sort()).toEqual(components.sort());
   });
+
+  it("writes the hub blocks as links a reader can follow", () => {
+    const door = md(
+      '<Door who="New here" title="Start" href="/docs/concepts/payment-checks" go="Go" also="More" alsoHref="/docs">\nOne payment.\n</Door>',
+    );
+    expect(door).toContain(`**[Start](${ORIGIN}/docs/concepts/payment-checks.md)** (New here)`);
+    expect(door).toContain("One payment.");
+    expect(door).toContain(`[More](${ORIGIN}/docs.md)`);
+    const card = md(
+      '<Card title="Errors" href="/docs" tag="PROBARION:NoMandate">\nCodes.\n</Card>',
+    );
+    expect(card).toContain("`PROBARION:NoMandate`");
+    expect(md('<HubAgents example="concepts/payment-checks" />')).toContain(`(${ORIGIN}/llms.txt)`);
+    expect(md("<HubSearch>\n\n- [x](/docs)\n\n</HubSearch>")).toContain("**Popular searches**");
+    expect(() => md('<Card title="x">\ny\n</Card>')).toThrow(/<Card> needs href in test\.mdx/);
+  });
+
+  it("refuses a door the React Door refuses: no go, or only one of also and alsoHref", () => {
+    const doorWith = (attrs: string) =>
+      md(`<Door who="New here" title="Start" href="/docs"${attrs}>\nOne payment.\n</Door>`);
+    expect(() => doorWith("")).toThrow(/<Door> needs go in test\.mdx/);
+    expect(() => doorWith(' go="Go" also="More"')).toThrow(
+      /<Door> "Start": also and alsoHref go together in test\.mdx/,
+    );
+    expect(() => doorWith(' go="Go" alsoHref="/docs"')).toThrow(
+      /<Door> "Start": also and alsoHref go together in test\.mdx/,
+    );
+  });
 });
 
 describe("headings", () => {

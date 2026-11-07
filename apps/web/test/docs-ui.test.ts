@@ -15,6 +15,7 @@ import { CodeTabs } from "@/components/docs/CodeTabs";
 import { DocsBar } from "@/components/docs/DocsBar";
 import d from "@/components/docs/docs.module.css";
 import { Feedback } from "@/components/docs/Feedback";
+import { Card, Door, HUB_CLAIM, HubAgents, HubHero, HubSearch } from "@/components/docs/hub";
 import { DOCS_COMPONENTS } from "@/components/docs/mdx";
 import { PageHead } from "@/components/docs/PageHead";
 import { Pager } from "@/components/docs/Pager";
@@ -693,5 +694,71 @@ describe("docs.module.css", () => {
     for (const control of ["sideLink", "tocLink", "tabLink"]) {
       expect(ring(control), control).toMatch(/outline-offset:\s*-2px/);
     }
+  });
+});
+
+describe("the docs home blocks", () => {
+  const home = () => {
+    const page = findPage("");
+    if (!page) throw new Error("home missing");
+    return page;
+  };
+
+  it("lead with the eyebrow, the claim as the H1, and the lede", () => {
+    const out = html(createElement(HubHero, { page: home() }));
+    expect(out).toContain(`>${home().title}</p>`);
+    expect(out).toMatch(/<h1[^>]*>Give an AI agent a budget, <span/);
+    expect(out).toContain(HUB_CLAIM.gold);
+  });
+
+  it("make the search box a link to the popular list, so it works without JavaScript", () => {
+    const out = html(createElement(HubSearch, { children: "list" }));
+    expect(out).toMatch(/<a[^>]*href="#popular"/);
+    expect(out).toContain("data-docs-search");
+    expect(out).toMatch(/id="popular"[^>]*data-docs-popular|data-docs-popular[^>]*id="popular"/);
+  });
+
+  it("make each door one link, with an optional second link and an ink variant", () => {
+    const props = {
+      who: "Evaluator",
+      title: "Check it",
+      href: "/docs/concepts/payment-checks",
+      go: "Verify it",
+      also: "Verify a vault",
+      alsoHref: "/docs/concepts/payment-checks",
+      ink: true,
+      children: "Text",
+    };
+    const out = html(createElement(Door, props));
+    expect(out).toContain("data-door");
+    expect(out).toMatch(
+      /<h3[^>]*><a[^>]*href="\/docs\/concepts\/payment-checks"[^>]*>Check it<\/a>/,
+    );
+    expect(out).toContain(">Verify a vault</a>");
+    expect(out).toMatch(/aria-hidden="true">Verify it/);
+    expect(() => html(createElement(Door, { ...props, alsoHref: undefined }))).toThrow(
+      /also and alsoHref go together/,
+    );
+    expect(() => html(createElement(Door, { ...props, go: "" }))).toThrow(/needs go/);
+  });
+
+  it("show a card's tag as code", () => {
+    const out = html(
+      createElement(Card, {
+        title: "Errors",
+        href: "/docs",
+        tag: "PROBARION:NoMandate",
+        children: "x",
+      }),
+    );
+    expect(out).toContain("<code>PROBARION:NoMandate</code>");
+  });
+
+  it("point agents at the two llms files and one page's twin, and refuse an unknown page", () => {
+    const out = html(createElement(HubAgents, { example: "concepts/payment-checks" }));
+    for (const href of ["/llms.txt", "/llms-full.txt", "/docs/concepts/payment-checks.md"]) {
+      expect(out).toContain(`href="${href}"`);
+    }
+    expect(() => html(createElement(HubAgents, { example: "no/such" }))).toThrow(/no docs page/);
   });
 });

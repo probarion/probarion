@@ -17,7 +17,7 @@ import { richParts } from "@/lib/site/rich";
 import { AGENT_RULES } from "./agents";
 import { CALLOUT_KINDS, calloutFooter, isCalloutKind } from "./callouts";
 import { errorAnchor, HTTP_ERRORS, SDK_ERRORS, VAULT_ERRORS } from "./errors";
-import { attrOf, inFile, type JsxNode, parseMdx } from "./mdast";
+import { attrOf, inFile, type JsxNode, parseMarkdown, parseMdx } from "./mdast";
 import { docsHref, findPage, mdHref } from "./registry";
 import { SPEND_CHECKS } from "./spend-checks";
 import { docsStatusRows } from "./status";
@@ -78,6 +78,19 @@ function blocks(nodes: RootContent[]): RootContent[] {
   return nodes.length > 0 && nodes.every((n) => PHRASING.has(n.type))
     ? [para(nodes as PhrasingContent[])]
     : nodes;
+}
+
+/** A required string attribute: missing or empty fails the twin, and so the build. */
+function need(node: JsxNode, name: string, file: string): string {
+  const value = attrOf(node, name, file);
+  if (value === undefined || value.trim() === "") {
+    throw new Error(`<${node.name}> needs ${name} in ${file}`);
+  }
+  return value;
+}
+
+function linkTo(label: string, href: string, origin: string): PhrasingContent {
+  return { type: "link", url: twinUrl(href, origin), children: [text(label)] };
 }
 
 /** A table cell: generated copy (see rich), or nodes a handler built. */
@@ -237,6 +250,52 @@ const HANDLERS: Record<string, Handler> = {
     ),
   ],
   AgentRules: () => [rulesList()],
+  HubSearch: (node, ctx) => [
+    para([strong("Popular searches")]),
+    ...ctx.convert(node.children as RootContent[]),
+  ],
+  HubDoors: (node, ctx) => ctx.convert(node.children as RootContent[]),
+  Door(node, ctx) {
+    const title = need(node, "title", ctx.file);
+    const also = attrOf(node, "also", ctx.file);
+    const alsoHref = attrOf(node, "alsoHref", ctx.file);
+    // The React Door's rules, so a page that breaks them fails the twin, not only next build.
+    if ((also === undefined) !== (alsoHref === undefined)) {
+      throw new Error(`<Door> "${title}": also and alsoHref go together in ${ctx.file}`);
+    }
+    need(node, "go", ctx.file);
+    const link = linkTo(title, need(node, "href", ctx.file), ctx.origin);
+    return [
+      para([{ type: "strong", children: [link] }, text(` (${need(node, "who", ctx.file)})`)]),
+      ...blocks(ctx.convert(node.children as RootContent[])),
+      ...(also !== undefined && alsoHref !== undefined
+        ? [para([linkTo(also, alsoHref, ctx.origin)])]
+        : []),
+    ];
+  },
+  HubCards: (node, ctx) => ctx.convert(node.children as RootContent[]),
+  Card(node, ctx) {
+    const tag = attrOf(node, "tag", ctx.file);
+    const title = linkTo(need(node, "title", ctx.file), need(node, "href", ctx.file), ctx.origin);
+    return [
+      para([{ type: "strong", children: [title] }]),
+      ...blocks(ctx.convert(node.children as RootContent[])),
+      ...(tag ? [para([inline(tag)])] : []),
+    ];
+  },
+  HubAgents(node, ctx) {
+    const example = need(node, "example", ctx.file);
+    if (!findPage(example)) throw new Error(`HubAgents: no docs page "${example}" in ${ctx.file}`);
+    return parseMarkdown(
+      [
+        "Every page is also plain Markdown. Point a coding agent at the index, or paste a page into a chat.",
+        "",
+        `- [/llms.txt](${ctx.origin}/llms.txt): the index`,
+        `- [/llms-full.txt](${ctx.origin}/llms-full.txt): every page in one file`,
+        `- [${mdHref(example)}](${ctx.origin}${mdHref(example)}): one page`,
+      ].join("\n"),
+    ).children;
+  },
 };
 
 /** The component names a page may use: exactly the ones with a Markdown form. */
