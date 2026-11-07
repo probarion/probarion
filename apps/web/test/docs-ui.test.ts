@@ -539,16 +539,21 @@ describe("the docs shell", () => {
 
 describe("the docs bar's tabs, once a tab's page exists", () => {
   afterEach(() => {
+    vi.doUnmock("@/lib/docs/pages/start");
     vi.doUnmock("@/lib/docs/pages/build");
+    vi.doUnmock("@/lib/docs/pages/trust");
     vi.resetModules();
   });
 
   it("shows only the tabs whose page exists, and marks the current one", async () => {
     vi.resetModules();
     const base = article();
+    // The double replaces every section that holds a tab's page, so later pages cannot change it.
+    vi.doMock("@/lib/docs/pages/start", () => ({ START: [] }));
     vi.doMock("@/lib/docs/pages/build", () => ({
       BUILD: [{ ...base, path: "build/install", title: "Install" }],
     }));
+    vi.doMock("@/lib/docs/pages/trust", () => ({ TRUST: [] }));
     const fresh = await import("@/components/docs/DocsBar");
     const out = html(createElement(fresh.DocsBar, { current: "build", path: "build/install" }));
     const tabs = /<nav aria-label="Docs sections"[^>]*>(.*?)<\/nav>/.exec(out)?.[1] ?? "";

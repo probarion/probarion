@@ -127,8 +127,9 @@ describe("registry helpers", () => {
   });
 });
 
-describe("the docs bar's tabs on a registry with more pages", () => {
+describe("the docs bar's tabs on a registry double", () => {
   afterEach(() => {
+    vi.doUnmock("@/lib/docs/pages/start");
     vi.doUnmock("@/lib/docs/pages/build");
     vi.doUnmock("@/lib/docs/pages/trust");
     vi.resetModules();
@@ -138,7 +139,9 @@ describe("the docs bar's tabs on a registry with more pages", () => {
     const base = PAGES[1];
     if (!base) throw new Error("no page besides the home");
     vi.resetModules();
+    // The double replaces every section that holds a tab's page, so later pages cannot change it.
     // build/errors exists but build/install does not: Reference shows and Build does not.
+    vi.doMock("@/lib/docs/pages/start", () => ({ START: [] }));
     vi.doMock("@/lib/docs/pages/build", () => ({
       BUILD: [{ ...base, path: "build/errors", type: "reference" }],
     }));
