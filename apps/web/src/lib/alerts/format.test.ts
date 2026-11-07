@@ -87,7 +87,11 @@ describe("formatAlert", () => {
     );
     expect(near.subject).toBe(`[Probarion] Vault is low on NEAR: ${V}`);
     expect(near.text).toContain("0.03 NEAR");
-    expect(near.text).toContain(`https://probarion.xyz/console/${V}/topup`);
+    // NEAR is sent from the vault's Overview (SendNearPanel, id="send-near"); /topup only funds USDC
+    expect(near.text).toContain(
+      `Send NEAR to the vault: https://probarion.xyz/console/${V}#send-near`,
+    );
+    expect(near.text).not.toContain("/topup");
   });
 
   it("falls back to a plain line for a kind it has no words for", () => {

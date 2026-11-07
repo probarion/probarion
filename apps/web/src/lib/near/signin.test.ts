@@ -177,6 +177,29 @@ describe("signInWithWallet (NEP-413)", () => {
     await expect(signInWithWallet(fakeWallet({}).wallet, b.impl)).rejects.toThrow("Sign-in failed");
   });
 
+  it("explains the verify route's 503 and 413 in words, after the wallet has signed", async () => {
+    // apps/web/src/app/api/auth/verify/route.ts: every infrastructure failure, and a body over 2 KiB
+    const cases: [string, number, string][] = [
+      [
+        "unavailable",
+        503,
+        "Sign-in is unavailable right now, so you were not signed in. Try again later (unavailable)",
+      ],
+      [
+        "payload_too_large",
+        413,
+        "The wallet's answer was too large to be a sign-in (payload_too_large)",
+      ],
+    ];
+    for (const [code, status, message] of cases) {
+      const f = fakeFetch([json(CHALLENGE), json({ error: code }, status)]);
+      const w = fakeWallet({});
+      await expect(signInWithWallet(w.wallet, f.impl), code).rejects.toThrow(new Error(message));
+      // the wallet signed the challenge, so the words cannot say that nothing was signed
+      expect(w.seen, code).toHaveLength(1);
+    }
+  });
+
   it("returns the account the server verified, and falls back to the signed one on an empty 200", async () => {
     const a = fakeFetch([json(CHALLENGE), json({ accountId: "server.near" })]);
     await expect(

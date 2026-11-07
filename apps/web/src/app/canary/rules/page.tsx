@@ -41,7 +41,7 @@ function Parts({ parts }: { parts: readonly Part[] }) {
  * the page. Every number in it comes from CANARY_LIMITS (lib/canary/copy.ts), and every link goes to a page that exists.
  */
 export default async function CanaryRules() {
-  const rules = rulesCopy(await softRequestNetwork(), LINKS.security);
+  const rules = rulesCopy(await softRequestNetwork(), LINKS);
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
       <p className={s.eyebrow}>{RULES_HEAD.eyebrow}</p>

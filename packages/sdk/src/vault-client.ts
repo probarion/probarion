@@ -57,7 +57,7 @@ export type SpendUnconfirmedKind = "unreadable_value" | "callback_failed" | "pen
 
 /**
  * A spend that may have paid although the answer cannot say so. The caller must look the spend up
- * by its `ref` (`get_spend` / `list_spends`) and must never record it as failed or send it again.
+ * by its `ref` in `list_spends` (`get_spend` takes a spend id) and must never record it as failed or send it again.
  */
 export interface SpendUnconfirmed {
   kind: SpendUnconfirmedKind;

@@ -119,8 +119,9 @@ export function formatAlert(
     case "near_low": {
       const free = digits(payload.free_yocto);
       subject = `[Probarion] Vault is low on NEAR: ${v}`;
+      // The Overview's "Send NEAR to this vault" panel (SendNearPanel, id="send-near"): /topup funds USDC only.
       lines.push(
-        `${free === null ? "The vault's free NEAR is" : `The vault has ${formatNear(free)} NEAR free, and it is`} under 0.05 NEAR. Without NEAR it cannot record a payment. Top up: ${consoleUrl}/topup`,
+        `${free === null ? "The vault's free NEAR is" : `The vault has ${formatNear(free)} NEAR free, and it is`} under 0.05 NEAR. Without NEAR it cannot record a payment. Send NEAR to the vault: ${consoleUrl}#send-near`,
       );
       break;
     }
