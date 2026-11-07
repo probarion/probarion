@@ -58,6 +58,13 @@ describe("docs/RUNBOOK.md", () => {
     );
   });
 
+  it("says a new master does not end the browser extension's connections, here and in the rotation runbook", () => {
+    expect(text).toContain("A new `KEY_ENCRYPTION_SECRET` does not end them.");
+    expect(readFileSync(join(docs, "ops", "key-rotation.md"), "utf8")).toMatch(
+      /extension\s+connections\s+are\s+not\s+ended/i,
+    );
+  });
+
   it("has one Key rotation section (plan 05 Task 18 replaces it) and leaves Backups and restore to Task 19", () => {
     expect(headings("##").filter((h) => h === "Key rotation")).toHaveLength(1);
     expect(text).not.toMatch(/^## Backups and restore$/m);

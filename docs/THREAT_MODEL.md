@@ -52,13 +52,17 @@ How evidence is named in this file:
   - the owner's and the approvers' full-access keys, which are never on Probarion's servers;
   - the agent key (a function-call key for `spend` only) and the ledger key (a function-call key for
     `anchor` only);
-  - the factory owner, `probarion-owner.testnet` on testnet.
+  - the factory owner, `probarion-owner.testnet` on testnet;
+  - extension tokens (`pbx_…`), one per connected browser, held by that browser; the database keeps
+    only their sha256.
 - **The history:** the signed, hash-chained ledger and its anchors on chain.
 - **Off-chain data:**
   - invoices, sealed per tenant, or only their hashes when the vault is in zero-retention mode (the
     `invoices_retention` constraint, `apps/web/supabase/migrations/20261108000006_invoices.sql:56-59`);
   - alert targets (email addresses and Telegram chats);
-  - session, sign-in challenge and alert-link secrets, all derived from the master key.
+  - session, sign-in challenge and alert-link secrets, all derived from the master key;
+  - the browser extension's connections: a sha256 of each token, its last four characters, a browser
+    name and its times, kept after the connection ends; open pairing codes, as a sha256, for 10 minutes.
 
 ## Actors and keys
 
@@ -121,8 +125,9 @@ eleven attacks do not name.
   `httpOnly`, `secure` in production and `sameSite: lax` (`session.ts:66-72`). Signing out cannot
   revoke a copy someone stole; it expires within 12 hours, and a new master key ends every session.
 - JSON and multipart routes compare the `Origin` header with the host the network is read from
-  (`assertSameOrigin`, `apps/web/src/lib/http.ts:109`); server actions use the framework's own origin
-  check.
+  (`assertSameOrigin`, `apps/web/src/lib/http.ts:109`), except the browser extension's routes, which
+  read no cookie and take a bearer token or, for `/api/ext/pair`, a one-time pairing code instead
+  (below); server actions use the framework's own origin check.
 - The proxy's redirect to `/login` is a courtesy, not a boundary: every console page and route checks
   the signed session and the vault membership itself (`apps/web/src/proxy.ts:13-17`).
 
@@ -197,11 +202,27 @@ wallet connector's executor scripts load from GitHub at pinned 40-hex commits
 when it is a UUID (`apps/web/src/proxy.ts:21`), and it serves only to match log lines, ledger entries and
 Sentry events; it grants nothing.
 
+**The browser extension's connections.** `/api/ext/inbox` and `/api/ext/revoke` take
+`Authorization: Bearer pbx_…` alone, and `/api/ext/pair` takes a one-time pairing code; none of them
+reads a cookie (`apps/web/src/lib/ext/auth.ts`, `apps/web/src/app/api/ext/pair/route.ts`), so no other
+page can make these calls for someone. They send no CORS header, so no other page can read an answer
+(`apps/web/test/ext-structure.test.ts`). The database keeps only each token's sha256
+(`apps/web/supabase/migrations/20261108000013_extension_tokens.sql`), and no member role reads those
+tables (claim `RLS`). A token works only at its network's address, for 30 days, until it is revoked,
+with at most 5 live per account and network, and every inbox request reads the account's memberships
+again. Only a signed session on `/extension` mints a token or a pairing code, and `/api/ext/pair` turns
+such a code into a token once; the page makes at most 10 tokens and codes per account and network in
+10 minutes. A pairing code has 40 bits, lives 10 minutes and works once; the exchange allows 10 tries
+per address and 300 in all per network in 10 minutes (`LIMITS` in `apps/web/src/lib/ratelimit.ts`).
+Nothing under `lib/ext` or `app/api/ext` loads a module that pays, signs or opens a key
+(`apps/web/test/ext-structure.test.ts`): a stolen token reads its account's waiting invoices, held
+spends and active mandates, and cannot pay or approve.
+
 **Planned surfaces.**
 
-- A browser extension that reads a vault's inbox and queues invoices through a token API (plan 06).
-  Its design stores only a hash of each token, binds a token to one network, and leaves Confirm to the
-  owner's wallet signature, so a stolen token cannot pay. This section is updated when it ships.
+- The browser extension itself (plan 06 Task E2), and its queue route `POST /api/ext/invoices` (Task
+  E1b), which leaves each invoice waiting for the owner's wallet-signed Confirm. This section is updated
+  when they ship.
 - An MCP server whose tools take no address (`MCP-NOADDR`, planned).
 
 ## Blast radius if Probarion is breached
@@ -251,9 +272,14 @@ Sentry events; it grants nothing.
 ## Known gaps
 
 - **No Content-Security-Policy yet.** An XSS in the console has no second wall in the browser. Row 11
-  still holds, because a script cannot attach a deposit, but it could show the owner a false page or
-  start a wallet prompt. A nonce-based policy that works with the wallet connector's executors needs
-  its own design and tests.
+  still holds, because a script cannot attach a deposit, but it could show the owner a false page,
+  start a wallet prompt, or mint a 30-day extension token through the `/extension` page's action. A
+  nonce-based policy that works with the wallet connector's executors needs its own design and tests.
+- **Extension tokens outlive the session that made them.** A token lasts 30 days unless it is revoked.
+  Signing out, the session's 12-hour expiry and a new `KEY_ENCRYPTION_SECRET` do not end it: a token is
+  a plain sha256 in the database, not sealed under the master key. It reads the waiting list and cannot
+  pay. The owner revokes it on `/extension`, and the OWNER can end every token at once
+  ([RUNBOOK](RUNBOOK.md#key-rotation)). The row of an ended connection is kept; there is no purge yet.
 - **`wee_alloc` is in the shipped contracts.** near-sdk 5.29.1 turns on its `wee_alloc` feature by
   default, and the vault and factory use the default features (`contracts/vault/Cargo.toml:14`,
   `contracts/factory/Cargo.toml:14`). Dependabot flags `wee_alloc` as unmaintained
@@ -267,8 +293,9 @@ Sentry events; it grants nothing.
 - **Contacts and status.** The only reporting channel is a direct message on X until an email address
   passes a delivery test. There is no third-party status page yet: `/status` on each address and
   posts on X stand in.
-- **Request ids in Sentry.** An exception with no log line, on a route other than the four tagged
-  ones, reaches Sentry with `component:web` and no request id ([monitoring](ops/MONITORING.md)).
+- **Request ids in Sentry.** An exception with no log line, on a route other than the seven tagged
+  ones (the Payables upload, the Canary attempt, the two crons and the browser extension's three
+  routes), reaches Sentry with `component:web` and no request id ([monitoring](ops/MONITORING.md)).
 - **What `verify` does not prove yet** is listed in
   [SECURITY.md](../SECURITY.md#what-is-not-proven-yet).
 
