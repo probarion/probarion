@@ -107,12 +107,13 @@
   padding: 6px 10px;
   border-radius: 8px;
   background: transparent;
-  color: var(--color-band-fg);
+  color: var(--color-band-mute);
   font: inherit;
   cursor: pointer;
 }
 .copy:hover {
   background: var(--color-code-active);
+  color: var(--color-band-fg);
 }
 .pre {
   margin: 0;
@@ -185,6 +186,10 @@
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--color-band-mute);
+}
+/* The head is hidden until JavaScript runs: this keeps it so over display: flex, preflight or not. */
+.tabsHead[hidden] {
+  display: none;
 }
 .tabList {
   display: flex;
@@ -266,6 +271,10 @@
 }
 .key .link {
   color: var(--color-gold-bright);
+}
+/* On ink the site's gold-small focus ring is too faint: the key callout's links ring in bright gold. */
+.key .link:focus-visible {
+  outline-color: var(--color-gold-bright);
 }
 
 /* Steps and the flow strip */

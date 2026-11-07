@@ -52,8 +52,9 @@ const FILE_HREF = /\.(?:md|txt)(?:[?#]|$)/;
 
 function DocLink({ href = "", children, ...rest }: ComponentProps<"a">) {
   if (/^https?:\/\//.test(href)) {
+    // ExternalLink sets its own target and rel; from Markdown only a title comes along.
     return (
-      <ExternalLink href={href} className={d.link}>
+      <ExternalLink href={href} title={rest.title} className={d.link}>
         {children}
       </ExternalLink>
     );

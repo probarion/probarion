@@ -14,6 +14,7 @@ import { CALLOUT_KINDS, isCalloutKind } from "@/lib/docs/callouts";
 import { copyText } from "@/lib/docs/clipboard";
 import { codeText, nodeText } from "@/lib/docs/node-text";
 import { readCodeTab, writeCodeTab } from "@/lib/docs/prefs";
+import { isTabKey, nextTab, tabFor, tabNames } from "@/lib/docs/tabs";
 import { WEB } from "./docs-helpers";
 
 const html = (node: ReactNode) => renderToStaticMarkup(node as never);
@@ -98,6 +99,40 @@ describe("the remembered code tab", () => {
   });
 });
 
+describe("the code tabs' logic", () => {
+  it("reads the names from the labels, and refuses a wrong count or a repeated name", () => {
+    expect(tabNames(" TypeScript, Shell ,", 2)).toEqual(["TypeScript", "Shell"]);
+    expect(() => tabNames("A, B", 1)).toThrow(/2 labels for 1 code block/);
+    expect(() => tabNames("Shell, TypeScript, Shell", 3)).toThrow(/label "Shell" is repeated/);
+  });
+
+  it("moves with the arrow keys, wrapping at both ends, and jumps with Home and End", () => {
+    expect(nextTab(0, "ArrowRight", 3)).toBe(1);
+    expect(nextTab(2, "ArrowRight", 3)).toBe(0);
+    expect(nextTab(1, "ArrowLeft", 3)).toBe(0);
+    expect(nextTab(0, "ArrowLeft", 3)).toBe(2);
+    expect(nextTab(1, "Home", 3)).toBe(0);
+    expect(nextTab(1, "End", 3)).toBe(2);
+  });
+
+  it("leaves the tab alone for any other key, and claims only the keys it moves with", () => {
+    for (const key of ["Enter", " ", "Tab", "ArrowDown", "a"]) {
+      expect(nextTab(1, key, 3), key).toBe(1);
+      expect(isTabKey(key), key).toBe(false);
+    }
+    for (const key of ["ArrowLeft", "ArrowRight", "Home", "End"]) {
+      expect(isTabKey(key), key).toBe(true);
+    }
+    expect(nextTab(0, "ArrowRight", 0)).toBe(0);
+  });
+
+  it("finds the remembered tab by its name, and nothing for a name this block lacks", () => {
+    expect(tabFor(["TypeScript", "Shell"], "Shell")).toBe(1);
+    expect(tabFor(["TypeScript", "Shell"], "Rust")).toBeNull();
+    expect(tabFor(["TypeScript", "Shell"], null)).toBeNull();
+  });
+});
+
 describe("Callout", () => {
   it("knows exactly five kinds", () => {
     expect(Object.keys(CALLOUT_KINDS)).toEqual([
@@ -157,6 +192,11 @@ describe("CodeFrame", () => {
   it("has a copy button for the code's text", () => {
     expect(html(shikiPre("ts"))).toContain(">Copy<");
   });
+
+  it("names the figure by its language, not by the text of its button", () => {
+    expect(html(shikiPre("bash"))).toMatch(/<figure [^>]*aria-label="Shell code"/);
+    expect(html(shikiPre("zig"))).toMatch(/<figure [^>]*aria-label="zig code"/);
+  });
 });
 
 describe("CodeTabs", () => {
@@ -196,6 +236,17 @@ describe("CodeTabs", () => {
     expect(() =>
       html(createElement(CodeTabs, { labels: "A, B", children: createElement("pre", null, "a") })),
     ).toThrow(/2 labels for 1 code block/);
+  });
+
+  it("refuses a repeated label", () => {
+    expect(() =>
+      html(
+        createElement(CodeTabs, {
+          labels: "Shell, Shell",
+          children: [createElement("pre", { key: 1 }, "a"), createElement("pre", { key: 2 }, "b")],
+        }),
+      ),
+    ).toThrow(/label "Shell" is repeated/);
   });
 });
 
@@ -249,6 +300,18 @@ describe("prose overrides", () => {
     );
     expect(inner).toContain('href="/docs/build/errors#NoMandate"');
     expect(inner).not.toContain("_blank");
+  });
+
+  it("keep a Markdown link's title on an external link", () => {
+    const out = html(
+      createElement(C.a as never, {
+        href: "https://github.com/probarion/probarion",
+        title: "The source on GitHub",
+        children: "repo",
+      }),
+    );
+    expect(out).toContain('title="The source on GitHub"');
+    expect(out).toContain('target="_blank"');
   });
 
   it("link a .md twin or an llms file with a plain <a>: next/link would prefetch it", () => {

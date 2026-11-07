@@ -1058,6 +1058,8 @@ describe("colours", () => {
       ["ink", "soft"],
       ["gold-ink", "paper"],
       ["gold-ink", "surface"],
+      ["gold-ink", "soft"],
+      ["gold-ink", "wait-bg"],
       ["band-fg", "code-active"],
       ["band-mute", "code-active"],
       ["gold-bright", "band"],

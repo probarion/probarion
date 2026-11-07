@@ -1,5 +1,5 @@
 import { type ComponentProps, isValidElement, type ReactNode } from "react";
-import { nodeText } from "@/lib/docs/node-text";
+import { codeText } from "@/lib/docs/node-text";
 import { CopyButton } from "./CopyButton";
 import d from "./docs.module.css";
 
@@ -33,11 +33,13 @@ export function CodeFrame({
   ...rest
 }: ComponentProps<"pre">) {
   const lang = languageOf(children);
+  const label = LANG_LABELS[lang] ?? lang;
+  // Named by its language: the head also holds the Copy button and its status text.
   return (
-    <figure className={d.code}>
+    <figure className={d.code} aria-label={`${label} code`}>
       <figcaption className={d.codeHead}>
-        <span className={d.codeLang}>{LANG_LABELS[lang] ?? lang}</span>
-        <CopyButton text={nodeText(children).replace(/\n$/, "")} className={d.copy} />
+        <span className={d.codeLang}>{label}</span>
+        <CopyButton text={codeText(children)} className={d.copy} />
       </figcaption>
       <pre className={`${className ?? ""} ${d.pre}`} {...rest}>
         {children}

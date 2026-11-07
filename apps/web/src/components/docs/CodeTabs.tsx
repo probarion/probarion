@@ -11,6 +11,7 @@ import {
 } from "react";
 import { codeText } from "@/lib/docs/node-text";
 import { CODE_TAB_EVENT, readCodeTab, writeCodeTab } from "@/lib/docs/prefs";
+import { isTabKey, nextTab, tabFor, tabNames } from "@/lib/docs/tabs";
 import { CopyButton } from "./CopyButton";
 import d from "./docs.module.css";
 
@@ -21,22 +22,16 @@ import d from "./docs.module.css";
  * that shows, one panel shows at a time, and the choice is remembered.
  */
 export function CodeTabs({ labels, children }: { labels: string; children: ReactNode }) {
-  const names = labels
-    .split(",")
-    .map((l) => l.trim())
-    .filter(Boolean);
   const panels = Children.toArray(children).filter(isValidElement);
-  if (names.length !== panels.length) {
-    throw new Error(`CodeTabs: ${names.length} labels for ${panels.length} code block(s)`);
-  }
+  const names = tabNames(labels, panels.length);
   const id = useId();
   const [active, setActive] = useState(0);
   const [ready, setReady] = useState(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: labels carries the names
   useEffect(() => {
     const follow = (label: string | null) => {
-      const at = label === null ? -1 : names.indexOf(label);
-      if (at >= 0) setActive(at);
+      const at = tabFor(names, label);
+      if (at !== null) setActive(at);
     };
     follow(readCodeTab());
     setReady(true);
@@ -53,9 +48,9 @@ export function CodeTabs({ labels, children }: { labels: string; children: React
     window.dispatchEvent(new CustomEvent(CODE_TAB_EVENT, { detail: label }));
   };
   const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    if (!isTabKey(event.key)) return;
     event.preventDefault();
-    const next = (active + (event.key === "ArrowRight" ? 1 : -1) + names.length) % names.length;
+    const next = nextTab(active, event.key, names.length);
     pick(next);
     document.getElementById(`${id}-tab-${next}`)?.focus();
   };
