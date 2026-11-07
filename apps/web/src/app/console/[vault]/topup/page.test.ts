@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { testnetBaseText } from "@/lib/topup/copy";
+import { faucetCopy, testnetBaseText } from "@/lib/topup/copy";
 import { OWNER, VAULT, vaultConfig } from "../../../../../test/fixtures/topup";
 
 const h = vi.hoisted(() => ({
   network: "mainnet" as "mainnet" | "testnet",
   jwt: "" as string | null,
+  faucetKey: null as string | null,
   /** The signed-in account's role in the vault, or null for a stranger. */
   role: "owner" as "owner" | "approver" | "viewer" | null,
   account: "acme.near",
@@ -28,7 +29,7 @@ vi.mock("@/lib/auth/guard", () => ({
   },
 }));
 vi.mock("@/lib/env", () => ({
-  getEnv: () => ({ ONECLICK_JWT: h.jwt }),
+  getEnv: () => ({ ONECLICK_JWT: h.jwt, TESTNET_FAUCET_KEY: h.faucetKey }),
 }));
 vi.mock("@/lib/near/server", async () => {
   const { NETWORKS: networks } = await import("@probarion/core");
@@ -58,6 +59,8 @@ vi.mock("@/components/wallet/TxButton", () => ({
 const { default: TopUpPage, maxDuration, metadata } = await import("./page");
 
 const JWT = "jwt-page-secret";
+const FAUCET_KEY = `ed25519:${"f".repeat(86)}`;
+const FAUCET = faucetCopy("25");
 const html = async () =>
   renderToStaticMarkup(await TopUpPage({ params: Promise.resolve({ vault: VAULT }) }));
 const text = (s: string) =>
@@ -71,6 +74,7 @@ const text = (s: string) =>
 beforeEach(() => {
   h.network = "mainnet";
   h.jwt = JWT;
+  h.faucetKey = FAUCET_KEY;
   h.role = "owner";
   h.account = OWNER;
   h.config = vaultConfig("mainnet");
@@ -204,5 +208,47 @@ describe("the Top-up page", () => {
       expect(t).not.toContain(gone);
     }
     expect(h.buttons).toEqual([]);
+  });
+
+  it("on testnet offers the owner the faucet above the wallet button, and keeps the wallet button", async () => {
+    h.network = "testnet";
+    h.config = vaultConfig("testnet");
+    const out = await html();
+    const t = text(out);
+    expect(t).toContain("Add 25 test USDC to this vault");
+    expect(t).toContain("Test tokens from the Probarion team, no value. Once a day per vault.");
+    expect(t).toContain(FAUCET.signer);
+    expect(t).toContain("Add test USDC");
+    expect(t.indexOf(FAUCET.title)).toBeLessThan(t.indexOf("Amount (test USDC)"));
+    expect(t).not.toContain(FAUCET.fallback);
+    expect(h.buttons.map((b) => b.label)).toEqual(["Send USDC to the vault from my wallet"]);
+    expect(out).not.toContain(FAUCET_KEY);
+    expect(out).not.toContain(FAUCET_KEY.slice(8, 40));
+  });
+
+  it("on testnet without a faucet key says whom to ask, and offers no faucet button", async () => {
+    h.network = "testnet";
+    h.config = vaultConfig("testnet");
+    h.faucetKey = null;
+    const t = text(await html());
+    expect(t).toContain(FAUCET.fallback);
+    expect(t).not.toContain("Add test USDC");
+    expect(t).toContain("Send USDC to the vault from my wallet");
+  });
+
+  it("offers no faucet on mainnet, to a vault of another token, or when the chain names another owner", async () => {
+    let t = text(await html());
+    expect(t).not.toContain("test USDC to this vault");
+    expect(t).not.toContain(FAUCET.fallback);
+    h.network = "testnet";
+    for (const config of [
+      { ...vaultConfig("testnet"), usdc: "other-usdc.testnet" },
+      { ...vaultConfig("testnet"), owner: "someone-else.testnet" },
+    ]) {
+      h.config = config;
+      t = text(await html());
+      expect(t).not.toContain("Add test USDC");
+      expect(t).not.toContain(FAUCET.fallback);
+    }
   });
 });

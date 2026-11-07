@@ -269,6 +269,7 @@ export const PRIVACY_PAGE = {
       paragraphs: [
         "Our servers log events such as sign-in, invoice uploads and payments, each with a request id. A line can name your account and your vault. Known secrets are masked before a line is written. Vercel, which hosts the site, also keeps its own request logs.",
         "Rate limits on sign-in, alert links, the proof pages and downloads, and pairing the browser extension with a code count requests per IP address (an IPv6 address cut to its /64). That address is stored as it is, in a counter that a daily cleanup deletes about two days after your last request. The Canary keeps only keyed hashes.",
+        "On testnet, the Add test USDC button counts its mints per vault and for all vaults together, with no IP address, in counters the same cleanup deletes. Each mint is a NEAR transaction that names your vault, so it is public on chain.",
         "Error reports go to Sentry once it is enabled, without cookies, request headers or query strings. A report carries the log line of the error, which can name your vault or your account, and the page or route it came from.",
       ],
     },

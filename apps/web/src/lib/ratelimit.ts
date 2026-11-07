@@ -47,6 +47,13 @@ export const LIMITS = {
   extInvoice: [20, 600],
   /** Tokens and pairing codes the /extension page makes, together, per account and network. */
   extMint: [10, 600],
+  /** The testnet faucet (app/api/topup/faucet): one mint of test USDC per vault a day. */
+  faucetVault: [1, 86_400],
+  /**
+   * The same, all vaults together. It bounds what the faucet costs: each new vault takes 0.00125 NEAR of the test
+   * token's own storage, and each mint about 0.003 NEAR of the key's allowance.
+   */
+  faucetGlobal: [50, 86_400],
 } as const satisfies Record<string, readonly [number, number]>;
 
 /**
