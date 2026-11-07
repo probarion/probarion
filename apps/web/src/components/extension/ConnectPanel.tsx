@@ -13,6 +13,9 @@ type State =
   | { kind: "code"; code: string; expires: string }
   | { kind: "error"; text: string };
 
+/** When an action cannot be reached at all: the connection dropped, or the page was left open across a deploy. */
+const UNREACHABLE = "Probarion could not do this now. Try again.";
+
 function browserLabel(): string {
   const ua = navigator.userAgent;
   const os = /Windows/.test(ua)
@@ -27,14 +30,18 @@ function browserLabel(): string {
   return `Chrome on ${os}`;
 }
 
-/** Whether the extension's content script marked the page connected, waiting up to `ms`. */
-async function extensionTookIt(ms: number): Promise<boolean> {
+/**
+ * Whether the extension's content script marked the page connected, waiting up to `ms`. The mark is read once more when
+ * the wait ends, so one set in its last moments still counts.
+ */
+export async function extensionTookIt(ms: number): Promise<boolean> {
+  const marked = () => document.documentElement.dataset.probarionExtension === "connected";
   const until = Date.now() + ms;
   while (Date.now() < until) {
-    if (document.documentElement.dataset.probarionExtension === "connected") return true;
+    if (marked()) return true;
     await new Promise((r) => setTimeout(r, 200));
   }
-  return false;
+  return marked();
 }
 
 export function ConnectPanel({
@@ -47,11 +54,20 @@ export function ConnectPanel({
   network: Network;
 }) {
   const [state, setState] = useState<State>({ kind: "idle" });
+  // True once a token was posted for this page's nonce. The extension uses a nonce once, whatever it does with the
+  // token, so another press here would only mint a token nobody takes (and, past five, end the oldest connection).
+  const [posted, setPosted] = useState(false);
 
   async function connect() {
-    if (nonce === null) return;
+    if (nonce === null || posted) return;
     setState({ kind: "busy" });
-    const r = await connectExtensionAction(browserLabel());
+    let r: Awaited<ReturnType<typeof connectExtensionAction>>;
+    try {
+      r = await connectExtensionAction(browserLabel());
+    } catch {
+      setState({ kind: "error", text: UNREACHABLE });
+      return;
+    }
     if ("error" in r) {
       setState({ kind: "error", text: r.error });
       return;
@@ -71,17 +87,23 @@ export function ConnectPanel({
       },
       window.location.origin,
     );
-    setState({ kind: (await extensionTookIt(3000)) ? "connected" : "not_taken" });
+    const took = await extensionTookIt(3000);
+    setPosted(true);
+    setState({ kind: took ? "connected" : "not_taken" });
   }
 
   async function code() {
     setState({ kind: "busy" });
-    const r = await showPairCodeAction();
-    setState(
-      "error" in r
-        ? { kind: "error", text: r.error }
-        : { kind: "code", code: r.code, expires: r.expires_at },
-    );
+    try {
+      const r = await showPairCodeAction();
+      setState(
+        "error" in r
+          ? { kind: "error", text: r.error }
+          : { kind: "code", code: r.code, expires: r.expires_at },
+      );
+    } catch {
+      setState({ kind: "error", text: UNREACHABLE });
+    }
   }
 
   return (
@@ -94,6 +116,8 @@ export function ConnectPanel({
           Open the Probarion extension and press Connect, or show a code and type it into the
           extension.
         </p>
+      ) : posted ? (
+        <p className="mb-3">To connect again, press Connect in the extension.</p>
       ) : (
         <button
           type="button"
@@ -119,7 +143,8 @@ export function ConnectPanel({
       {state.kind === "code" ? (
         <Notice tone="info">
           Type <strong className="mono">{state.code}</strong> into the extension. It works once, for
-          ten minutes.
+          ten minutes. Type it only into your own extension: whoever enters it first gets a 30-day
+          connection to your account.
         </Notice>
       ) : null}
       {state.kind === "error" ? <Notice tone="bad">{state.text}</Notice> : null}
