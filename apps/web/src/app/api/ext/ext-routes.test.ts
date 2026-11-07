@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import type { MandateView, SpendView } from "@probarion/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/lib/db/port";
-import { createPairCode } from "@/lib/ext/store";
+import { createPairCode, listTokens } from "@/lib/ext/store";
 import { codeHash } from "@/lib/ext/token";
 import { freshDb, seedTenant } from "../../../../test/db/harness";
 import { pgliteDb } from "../../../../test/db/pglite-db";
@@ -15,7 +15,9 @@ const h = vi.hoisted(() => ({
   mandates: [] as MandateView[],
   spends: [] as SpendView[],
   dbDown: false,
+  tag: vi.fn(),
 }));
+vi.mock("@/lib/observe", () => ({ tagRequest: h.tag }));
 vi.mock("@/lib/env", async () => {
   const { networkPart } = await import("../../../../test/fixtures/networks");
   return { getEnv: () => networkPart({ defaultNetwork: "testnet", both: true }) };
@@ -160,9 +162,46 @@ describe("the extension's API", () => {
     const r = await pair(pairRequest("nope"));
     expect(r.status).toBe(400);
     expect(await r.json()).toMatchObject({ error: "bad_code_format" });
-    const noLength = at(TESTNET_HOST, "/api/ext/pair", { method: "POST", body: "{}" });
-    noLength.headers.delete("content-length");
-    expect((await pair(noLength)).status).toBe(400);
+    // A well-formed code that exists: only the length can refuse these, and the code is not used up.
+    await createPairCode(h.db, OWNER, "testnet", codeHash("K7QM4XRA"));
+    const body = JSON.stringify({ code: "K7QM-4XRA", label: "Chrome on Windows" });
+    const sized = (length: string | null) => {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (length !== null) headers["content-length"] = length;
+      return at(TESTNET_HOST, "/api/ext/pair", { method: "POST", headers, body });
+    };
+    const noLength = sized(null);
+    expect(noLength.headers.get("content-length")).toBeNull();
+    for (const [name, req] of [
+      ["no length", noLength],
+      ["1025", sized("1025")],
+      ["2048", sized("2048")],
+      ["abc", sized("abc")],
+    ] as const) {
+      const refused = await pair(req);
+      expect(refused.status, name).toBe(400);
+      expect(await refused.json(), name).toMatchObject({ error: "invalid_input" });
+    }
+    expect((await pair(sized(String(Buffer.byteLength(body))))).status).toBe(200);
+  });
+
+  it("pairs a browser whose label holds a surrogate that is not part of a pair, without it", async () => {
+    await createPairCode(h.db, OWNER, "testnet", codeHash("K7QM4XRA"));
+    const body = '{"code":"K7QM-4XRA","label":"Chrome\\ud800 on Windows"}';
+    const r = await pair(
+      at(TESTNET_HOST, "/api/ext/pair", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(Buffer.byteLength(body)),
+        },
+        body,
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect((await listTokens(h.db, OWNER, "testnet")).map((t) => t.label)).toEqual([
+      "Chrome on Windows",
+    ]);
   });
 
   it("limits code guesses per address", async () => {
@@ -171,6 +210,19 @@ describe("the extension's API", () => {
     expect(r.status).toBe(429);
     expect(r.headers.get("retry-after")).toMatch(/^\d+$/);
     expect((await pair(pairRequest("AAAA-AAAA", TESTNET_HOST, "198.51.100.9"))).status).toBe(401);
+    // The same address on the other network has a bucket of its own.
+    expect((await pair(pairRequest("AAAA-AAAA", MAINNET_HOST))).status).toBe(401);
+  });
+
+  it("limits code guesses on a network in total, apart from the other network", async () => {
+    await pg.query(
+      "insert into public.rate_limits (bucket, window_start, count) values ('ext:pair:testnet', now(), 300)",
+    );
+    const r = await pair(pairRequest("AAAA-AAAA", TESTNET_HOST, "198.51.100.10"));
+    expect(r.status).toBe(429);
+    expect(await r.json()).toMatchObject({ error: "rate_limited" });
+    expect(r.headers.get("retry-after")).toMatch(/^\d+$/);
+    expect((await pair(pairRequest("AAAA-AAAA", MAINNET_HOST, "198.51.100.10"))).status).toBe(401);
   });
 
   it("needs the bearer token: no header, a cookie or another scheme is a 401", async () => {
@@ -198,6 +250,7 @@ describe("the extension's API", () => {
       }),
     );
     expect(elsewhere.status).toBe(401);
+    expect(await elsewhere.json()).toMatchObject({ error: "bad_token" });
     // Neither call touched it: the token still works at its own address.
     expect((await inbox(withToken(c.token))).status).toBe(200);
     await createPairCode(h.db, OWNER, "testnet", codeHash("M7QM4XRA"));
@@ -206,8 +259,9 @@ describe("the extension's API", () => {
     expect(await p.json()).toMatchObject({ error: "bad_code" });
   });
 
-  it("ends when the extension disconnects", async () => {
+  it("ends the calling token alone when the extension disconnects", async () => {
     const c = await connected();
+    const other = await connected("M7QM4XRA");
     const r = await revoke(
       at(TESTNET_HOST, "/api/ext/revoke", {
         method: "POST",
@@ -216,6 +270,8 @@ describe("the extension's API", () => {
     );
     expect(r.status).toBe(204);
     expect((await inbox(withToken(c.token))).status).toBe(401);
+    // The account's other connection still reads.
+    expect((await inbox(withToken(other.token))).status).toBe(200);
   });
 
   it("lists the active mandates and the held spends, and sends no CORS header", async () => {
@@ -250,13 +306,35 @@ describe("the extension's API", () => {
 
   it("answers every route without a CORS header, never cached, and an error as { error, detail }", async () => {
     const c = await connected();
+    const other = await connected("M7QM4XRA");
     const answers: [string, Response][] = [
       ["pair 400", await pair(pairRequest("nope"))],
       ["inbox 401", await inbox(at(TESTNET_HOST, "/api/ext/inbox"))],
       ["revoke 401", await revoke(at(TESTNET_HOST, "/api/ext/revoke", { method: "POST" }))],
       ["inbox 200", await inbox(withToken(c.token))],
+      [
+        "revoke 204",
+        await revoke(
+          at(TESTNET_HOST, "/api/ext/revoke", {
+            method: "POST",
+            headers: { authorization: `Bearer ${other.token}` },
+          }),
+        ),
+      ],
     ];
+    // Full buckets answer 429 at once.
+    await pg.query(
+      `insert into public.rate_limits (bucket, window_start, count) values ($1, now(), 60), ($2, now(), 10)
+       on conflict (bucket) do update set window_start = excluded.window_start, count = excluded.count`,
+      [`ext:inbox:testnet:${OWNER}`, "ext:pair:testnet:198.51.100.20"],
+    );
+    answers.push(
+      ["inbox 429", await inbox(withToken(c.token))],
+      ["pair 429", await pair(pairRequest("AAAA-AAAA", TESTNET_HOST, "198.51.100.20"))],
+    );
     for (const [name, r] of answers) {
+      // Each row is the answer its name says.
+      expect(r.status, name).toBe(Number(name.split(" ")[1]));
       for (const [header] of r.headers)
         expect(header.startsWith("access-control-"), name).toBe(false);
       expect(r.headers.get("cache-control"), name).toBe("no-store");
@@ -271,7 +349,47 @@ describe("the extension's API", () => {
     const r = await inbox(withToken(c.token));
     expect(r.status).toBe(429);
     expect(await r.json()).toMatchObject({ error: "rate_limited" });
+    // The same account on the other network has a bucket of its own.
+    await createPairCode(h.db, OWNER, "mainnet", codeHash("M7QM4XRA"));
+    const p = await pair(pairRequest("M7QM-4XRA", MAINNET_HOST));
+    expect(p.status).toBe(200);
+    const onMainnet = (await p.json()) as { token: string };
+    expect((await inbox(withToken(onMainnet.token, MAINNET_HOST))).status).toBe(200);
   }, 30_000);
+
+  it("tags each route's request with its id, component:extension and the network of its address", async () => {
+    const c = await connected();
+    const withId = (req: Request, id: string) => {
+      req.headers.set("x-request-id", id);
+      return req;
+    };
+    h.tag.mockClear();
+    await createPairCode(h.db, OWNER, "testnet", codeHash("M7QM4XRA"));
+    expect((await pair(withId(pairRequest("M7QM-4XRA"), "rid-pair"))).status).toBe(200);
+    expect(
+      (await pair(withId(pairRequest("AAAA-AAAA", MAINNET_HOST), "rid-pair-main"))).status,
+    ).toBe(401);
+    expect((await inbox(withId(withToken(c.token), "rid-inbox"))).status).toBe(200);
+    expect(
+      (
+        await revoke(
+          withId(
+            at(TESTNET_HOST, "/api/ext/revoke", {
+              method: "POST",
+              headers: { authorization: `Bearer ${c.token}` },
+            }),
+            "rid-revoke",
+          ),
+        )
+      ).status,
+    ).toBe(204);
+    expect(h.tag.mock.calls).toEqual([
+      ["rid-pair", "extension", "testnet"],
+      ["rid-pair-main", "extension", "mainnet"],
+      ["rid-inbox", "extension", "testnet"],
+      ["rid-revoke", "extension", "testnet"],
+    ]);
+  });
 
   it("logs the connection with its request id, and never the token", async () => {
     const c = await connected();

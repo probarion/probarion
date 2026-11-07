@@ -32,6 +32,17 @@ describe("migration 0013: extension tokens and pairing codes", () => {
     await pg.exec("delete from public.extension_tokens; delete from public.extension_pair_codes;");
   });
 
+  /**
+   * PGlite keeps now() to the millisecond, so two quick calls can tie on created_at, and the caps and the list order
+   * then depend on a random tie-break. Every row there is aged a minute after each call, so the next one is strictly
+   * newer. (Postgres keeps microseconds; this is for the tests.)
+   */
+  async function age() {
+    await pg.exec(`
+      update public.extension_tokens set created_at = created_at - interval '1 minute';
+      update public.extension_pair_codes set created_at = created_at - interval '1 minute';`);
+  }
+
   async function mint(account = A, network: "mainnet" | "testnet" = "testnet") {
     const t = newToken();
     const r = await mintToken(db(), {
@@ -41,6 +52,7 @@ describe("migration 0013: extension tokens and pairing codes", () => {
       hint: t.hint,
       label: "Chrome on Windows",
     });
+    await age();
     return { ...t, ...r };
   }
 
@@ -206,6 +218,7 @@ describe("migration 0013: extension tokens and pairing codes", () => {
     it("keep at most three open codes per account and network", async () => {
       for (const c of ["AAAAAAAA", "BBBBBBBB", "CCCCCCCC", "DDDDDDDD"]) {
         await createPairCode(db(), A, "testnet", codeHash(c));
+        await age();
       }
       const t = newToken();
       const ex = (c: string) =>
@@ -245,18 +258,35 @@ describe("migration 0013: extension tokens and pairing codes", () => {
   });
 
   it("takes a lock per account and network before it counts live tokens or open codes", () => {
-    // PGlite has one connection, so the race cannot run here: the lock is pinned in the source instead.
+    // PGlite has one connection, so the race cannot run here: the lock is pinned in the source instead, in the body of
+    // each function, before its first write, and not in a comment.
     const sql = readFileSync(
       fileURLToPath(
         new URL("../../supabase/migrations/20261108000013_extension_tokens.sql", import.meta.url),
       ),
       "utf8",
-    );
-    for (const kind of ["token", "code"]) {
-      expect(sql, kind).toContain(
-        `pg_advisory_xact_lock(hashtextextended('probarion/ext/${kind}/' || v_account || '/' || v_network, 0))`,
+    ).replace(/--.*$/gm, "");
+    const body = (fn: string) => {
+      const start = sql.indexOf(`function public.${fn}(p jsonb)`);
+      expect(start, fn).toBeGreaterThan(-1);
+      return sql.slice(start, sql.indexOf("end $$;", start));
+    };
+    for (const [kind, fn, firstWrite] of [
+      ["token", "ext_token_mint", "insert into public.extension_tokens"],
+      ["code", "ext_code_create", "delete from public.extension_pair_codes"],
+    ]) {
+      const b = body(fn);
+      const lock = b.indexOf(
+        `perform pg_advisory_xact_lock(hashtextextended('probarion/ext/${kind}/' || v_account || '/' || v_network, 0));`,
       );
+      expect(lock, fn).toBeGreaterThan(-1);
+      expect(b.indexOf(firstWrite), fn).toBeGreaterThan(lock);
+      expect(b.indexOf("insert into"), fn).toBeGreaterThan(lock);
     }
+    // The exchange mints through ext_token_mint, so it takes the token lock too, and writes no token of its own.
+    const exchange = body("ext_code_exchange");
+    expect(exchange).toContain("public.ext_token_mint(");
+    expect(exchange).not.toContain("insert into public.extension_tokens");
   });
 
   it("are the service role's alone", async () => {

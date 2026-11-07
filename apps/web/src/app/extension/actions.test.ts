@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/lib/db/port";
-import { exchangePairCode, listTokens, useToken } from "@/lib/ext/store";
+import { exchangePairCode, listTokens, mintToken, useToken } from "@/lib/ext/store";
 import { codeHash, newToken, readPairCode, tokenHash } from "@/lib/ext/token";
 import { freshDb } from "../../../test/db/harness";
 import { pgliteDb } from "../../../test/db/pglite-db";
@@ -72,6 +72,19 @@ describe("the /extension page's actions", () => {
     expect(await revokeExtensionAction("not-an-id")).toEqual({ error: "No such browser." });
     expect(await revokeExtensionAction(item?.id)).toEqual({ ok: true });
     expect(await useToken(h.db, tokenHash(r.token), "testnet")).toBeNull();
+    // Another account's connection, by its real id: alice's session cannot end it.
+    const bob = newToken();
+    const theirs = await mintToken(h.db, {
+      account: "bob.testnet",
+      network: "testnet",
+      sha256: bob.sha256,
+      hint: bob.hint,
+      label: "Chrome on Linux",
+    });
+    await revokeExtensionAction(theirs.id);
+    expect(await useToken(h.db, bob.sha256, "testnet")).toMatchObject({
+      account_id: "bob.testnet",
+    });
   });
 
   it("does nothing signed out, and limits minting per account", async () => {
@@ -84,5 +97,18 @@ describe("the /extension page's actions", () => {
     expect(await connectExtensionAction("x")).toEqual({
       error: "Too many tries. Wait ten minutes, then try again.",
     });
+  });
+
+  it("counts tokens and codes in one limit, per account and network", async () => {
+    const limited = { error: "Too many tries. Wait ten minutes, then try again." };
+    for (let i = 0; i < 5; i++) expect("token" in (await connectExtensionAction("x"))).toBe(true);
+    for (let i = 0; i < 5; i++) expect("code" in (await showPairCodeAction())).toBe(true);
+    expect(await showPairCodeAction()).toEqual(limited);
+    expect(await connectExtensionAction("x")).toEqual(limited);
+    // The same account on the other network, and another account, count apart.
+    h.session = { accountId: A, network: "mainnet", exp: Date.now() + 3_600_000 };
+    expect("token" in (await connectExtensionAction("x"))).toBe(true);
+    h.session = { accountId: "bob.testnet", network: "testnet", exp: Date.now() + 3_600_000 };
+    expect("code" in (await showPairCodeAction())).toBe(true);
   });
 });
