@@ -38,6 +38,7 @@ import { DIGITS, UNSAFE_TEXT } from "@/lib/console/mandates-view";
 import type { MandateInputJson } from "@/lib/near/tx";
 import { AmountError, dateToNs, formatUsdc, parseUsdc } from "@/lib/near/units";
 import { isNearAccountId, parseBaseAddress } from "@/lib/near/validate";
+import { MAX_INVOICE_BYTES } from "@/lib/payables/limits";
 
 export interface MandateForm {
   payeeKind: "near" | "base";
@@ -95,6 +96,16 @@ export const MAX_USES_BETA = 10_000;
 export const MAX_EXPIRY_AHEAD_MS = 366 * 24 * 3600_000;
 /** Not the contract's rule (it needs only "in the future"): room for the owner to sign before it passes. */
 export const MIN_EXPIRY_AHEAD_MS = 3600_000;
+
+/**
+ * Why the form will not hash a purpose document of `size` bytes, or null. The form only hashes it, but Payables pays
+ * an invoice only with this same document attached, and the invoices route takes one of MAX_INVOICE_BYTES at most.
+ */
+export function purposeFileTooLarge(size: number): string | null {
+  return size > MAX_INVOICE_BYTES
+    ? "That file is over 4 MiB, the largest purpose document the Payables upload takes with an invoice. To pay through your own SDK instead, paste its sha256."
+    : null;
+}
 
 const U64_MAX = 2n ** 64n - 1n;
 const NS_PER_MS = 1_000_000n;

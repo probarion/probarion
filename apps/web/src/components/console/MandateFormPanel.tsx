@@ -19,6 +19,7 @@ import {
   nearPayeeWarnings,
   type PayeeExists,
   payeeToCheck,
+  purposeFileTooLarge,
   tryUsdcUnits,
 } from "@/lib/console/mandates";
 import { expiryText } from "@/lib/console/mandates-view";
@@ -27,8 +28,6 @@ import { formatNear, formatUsdc } from "@/lib/near/units";
 import { parseBaseAddress } from "@/lib/near/validate";
 import { sha256HexOf } from "./sha256";
 
-/** A purpose document is read into memory to hash it: a PO is a few pages, so this is generous. */
-const MAX_PURPOSE_FILE_BYTES = 25 * 1024 * 1024;
 /** How long the owner stops typing before the console asks whether the payee account exists. */
 const PAYEE_CHECK_DELAY_MS = 500;
 
@@ -138,8 +137,9 @@ export function MandateFormPanel(props: {
     const file = e.target.files?.[0];
     setFileNote(null);
     if (!file) return;
-    if (file.size > MAX_PURPOSE_FILE_BYTES) {
-      setFileNote("That file is over 25 MB. Paste its sha256 instead.");
+    const tooLarge = purposeFileTooLarge(file.size);
+    if (tooLarge !== null) {
+      setFileNote(tooLarge);
       return;
     }
     try {
@@ -206,7 +206,7 @@ export function MandateFormPanel(props: {
       ))}
       <Field
         label="Purpose document (PO or contract)"
-        hint="Hashed in your browser: the file never leaves your device and only its sha256 goes on-chain. Keep this same document: you attach it to the invoices it covers later, and an invoice is only paid when its PO hashes to this value."
+        hint="Hashed in your browser: the file never leaves your device and only its sha256 goes on-chain. Keep this same document: you attach it to the invoices it covers later (4 MiB at most), and an invoice is only paid when its PO hashes to this value."
       >
         <input key={fileKey} type="file" onChange={onFile} />
       </Field>
