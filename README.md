@@ -167,7 +167,8 @@ No wallet, no key and no account: every step either runs offline or reads public
 typecheck, every TypeScript test and the launch checks. It needs Rust as well (rustup installs the
 pinned 1.99.1 from `rust-toolchain.toml`); on Windows, set `AWS_LC_SYS_PREBUILT_NASM=1` first or
 install NASM. On a Windows 10 laptop the first run took about 10 minutes, most of it compiling the
-Rust dependencies, and later runs about 7½ minutes; CI runs the same checks on ubuntu on every push.
+Rust dependencies, and later runs about 7½ minutes; CI runs the same checks on ubuntu on every pull request into `dev` or
+`main` and every push to them.
 On that laptop one database test, `apps/web/test/db/key-rotation.test.ts`, went past its 20-second
 limit in each of three full runs while every package's tests ran at once, and passed when run alone:
 `pnpm --filter @probarion/web exec vitest run test/db/key-rotation.test.ts`.
@@ -225,7 +226,7 @@ request that starts a server instance, reaches Sentry without a request id.
 | **Decisions** | `decide()` in `@probarion/core` is pure and deterministic. Its built-in rules run first and cannot be removed (`mandate.none`, `mandate.payee_mismatch`, `mandate.over_total`, `invoice.duplicate`, `invoice.po_mismatch`, `vault.daily_backstop`, `model.attestation_invalid`, `model.low_confidence` and others); your own `custom.*` rules run after them. A private model on NEAR AI Cloud may propose `pay`, `hold` or `refuse`, and its proposal counts only when its attestation checks pass. Without a model, or when it fails, the code decides alone and the ledger says `rules-only` |
 | **The ledger** | Every decision and every outcome, refusals included, is an entry whose body hash is signed with Ed25519 and chained to the entry before it. The SDK anchors the latest root on the vault after every cycle |
 | **Verify** | `runChecks` (offline, pure) and `verify()` (which gathers the chain state) run checks a to i: signatures, hash links, anchors, a decision for every spend, attestations, a locked vault, intents keys, burn memos and the factory version |
-| **Owner tools** | The CLI prints each owner and approver transaction for `near-cli-rs` and signs none. The owner can freeze the vault with any of their keys, and withdraw USDC and the Intents balance to their own account, without Probarion |
+| **Owner tools** | The CLI prints each owner and approver transaction for `near-cli-rs` and signs none. The owner can freeze the vault with no deposit, from their full-access key or a function-call key on their account that may call the vault, and withdraw USDC and the Intents balance to their own account, without Probarion |
 
 ## Why it is different
 
@@ -312,7 +313,7 @@ flowchart LR
 | **Exactly once** | An invoice hash is paid at most once, and a `ref` is accepted once | [`checks.rs`](contracts/vault/src/checks.rs) |
 | **Holds** | A spend above `approval_above` pays only after an approver approves it, before its hold expires and while the vault is not frozen | [`held.rs`](contracts/vault/src/held.rs) |
 | **One-yocto rule** | `add_agent`, `remove_agent`, `set_ledger_key`, `revoke_mandate`, `approve`, `reject`, `unfreeze`, `withdraw` and `withdraw_intents` need exactly 1 yoctoNEAR, so a dapp login key cannot call them | [`errors.rs`](contracts/vault/src/errors.rs) |
-| **Freeze** | Any owner key stops every spend and approval at once, with no deposit | [`admin.rs`](contracts/vault/src/admin.rs) |
+| **Freeze** | The owner stops every new spend and every approve at once, with no deposit: from their full-access key, or from a function-call key on their account that may call the vault. `reject` and `expire_held` still work | [`admin.rs`](contracts/vault/src/admin.rs) |
 | **No way to change the rules underneath** | No upgrade method, no method to change the owner or the approvers, no full-access key on the vault | [`lib.rs`](contracts/vault/src/lib.rs) |
 | **Code before the contract** | `decide()` refuses or holds before a transaction exists; built-in rules cannot be removed | [`policy.ts`](packages/core/src/policy.ts) |
 | **Signed ledger and anchors** | Every entry is signed and chained; anchors pin each range on chain, with the key that signed it | [`ledger.ts`](packages/core/src/ledger.ts), [`anchors.rs`](contracts/vault/src/anchors.rs) |
@@ -468,7 +469,7 @@ a recorded real NEAR AI Cloud decision, which wait for that recording, and, on W
 file-permission test.
 
 Some checks need Linux or Docker, so they run in [CI](.github/workflows/ci.yml) (GitHub Actions,
-ubuntu) on every push:
+ubuntu) on every pull request into `dev` or `main`, every push to those two branches and every `v*` tag:
 
 | CI job | What it does |
 | --- | --- |
