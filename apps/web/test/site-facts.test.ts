@@ -577,18 +577,43 @@ describe("the payment journey", () => {
 describe("the status list", () => {
   it("is exactly the rows and pills that are true today", () => {
     expect(STATUS.rows).toEqual([
-      { row: "Vault contract", pill: "On testnet", tone: "live" },
-      { row: "Offline verifier, checks a to i", pill: "Shipped in source", tone: "live" },
-      { row: "Reproducible builds", pill: "Shipped", tone: "live" },
-      { row: "Vault factory", pill: "On testnet", tone: "live" },
-      { row: "Web console", pill: "In progress", tone: "work" },
-      { row: "Public proof page", pill: "Built, no public vault yet", tone: "work" },
-      { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
-      { row: "Payables agent", pill: "In progress", tone: "work" },
-      { row: "Live attested model run", pill: "In progress", tone: "work" },
-      { row: "Canary public challenge", pill: "Page built, not open yet", tone: "work" },
-      { row: "MCP server", pill: "Planned", tone: "plan" },
-      { row: "Mainnet vault", pill: "Planned", tone: "plan" },
+      { id: "vault-contract", row: "Vault contract", pill: "On testnet", tone: "live" },
+      {
+        id: "offline-verifier",
+        row: "Offline verifier, checks a to i",
+        pill: "Shipped in source",
+        tone: "live",
+      },
+      { id: "reproducible-builds", row: "Reproducible builds", pill: "Shipped", tone: "live" },
+      { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
+      { id: "web-console", row: "Web console", pill: "In progress", tone: "work" },
+      {
+        id: "public-proof-page",
+        row: "Public proof page",
+        pill: "Built, no public vault yet",
+        tone: "work",
+      },
+      {
+        id: "sdk-and-cli",
+        row: "TypeScript SDK and CLI",
+        pill: "In source, not on npm",
+        tone: "work",
+      },
+      { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
+      {
+        id: "attested-model-run",
+        row: "Live attested model run",
+        pill: "In progress",
+        tone: "work",
+      },
+      {
+        id: "canary",
+        row: "Canary public challenge",
+        pill: "Page built, not open yet",
+        tone: "work",
+      },
+      { id: "mcp-server", row: "MCP server", pill: "Planned", tone: "plan" },
+      { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },
     ]);
   });
 

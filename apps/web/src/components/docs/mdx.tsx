@@ -4,13 +4,18 @@ import type { ComponentProps } from "react";
 import { ScrollRegion } from "@/components/site/ScrollRegion";
 import { ExternalLink } from "@/components/ui";
 import { nodeText, tableLabel } from "@/lib/docs/node-text";
+import { AgentRules } from "./AgentRules";
 import { Callout } from "./Callout";
 import { CodeBlock } from "./CodeBlock";
 import { CodeFrame } from "./CodeFrame";
 import { CodeTabs } from "./CodeTabs";
 import d from "./docs.module.css";
+import { ErrorCatalog } from "./ErrorCatalog";
 import { Flow } from "./Flow";
+import { SpendChecks } from "./SpendChecks";
+import { StatusTable } from "./StatusTable";
 import { Steps } from "./Steps";
+import { VerifierChecks } from "./VerifierChecks";
 
 function Anchor({ id, label }: { id: string; label: string }) {
   return (
@@ -88,4 +93,9 @@ export const DOCS_COMPONENTS: MDXComponents = {
   Flow,
   CodeTabs,
   CodeBlock,
+  ErrorCatalog,
+  SpendChecks,
+  VerifierChecks,
+  StatusTable,
+  AgentRules,
 };

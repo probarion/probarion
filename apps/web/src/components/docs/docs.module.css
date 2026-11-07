@@ -381,6 +381,59 @@
   outline-offset: 2px;
 }
 
+/* Chips and generated reference */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-size: 13px;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.chipDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.live {
+  border-color: transparent;
+  background: var(--color-ok-bg);
+  color: var(--color-ok);
+}
+.preview {
+  border-color: transparent;
+  background: var(--color-wait-bg);
+  color: var(--color-wait);
+}
+.planned {
+  border-color: transparent;
+  background: var(--color-plan-bg);
+  color: var(--color-plan);
+}
+.tableWrap small {
+  font-size: 12.5px;
+  color: var(--color-mute);
+}
+.checks > .check + .check {
+  margin-top: 1.6em;
+}
+.check > * + * {
+  margin-top: 0.5em;
+}
+.rules {
+  padding-left: 1.4em;
+  list-style: decimal;
+}
+ol.rules > li + li {
+  margin-top: 0.5em;
+}
+
 /* Phone (prose and components) */
 @media (hover: none) {
   .anchor {
