@@ -78,6 +78,14 @@ describe("labels and nonces", () => {
     for (const bad of ["", "   ", "\u0000", 7, null]) expect(cleanLabel(bad)).toBe("Chrome");
   });
 
+  it("drop a surrogate that is not part of a pair, which the database cannot store, and keep a pair", () => {
+    expect(cleanLabel("Chrome\uD800")).toBe("Chrome");
+    expect(cleanLabel("\uDC00Chrome on\uDBFF Windows")).toBe("Chrome on Windows");
+    expect(cleanLabel("\uD800")).toBe("Chrome");
+    expect(cleanLabel("Chrome \u{1F310}")).toBe("Chrome \u{1F310}");
+    expect(cleanLabel(`${"x".repeat(63)}\u{1F310}`)).toBe(`${"x".repeat(63)}\u{1F310}`);
+  });
+
   it("read a nonce of 22 to 64 URL-safe characters", () => {
     expect(readNonce("a".repeat(22))).toBe("a".repeat(22));
     expect(readNonce("A-_9".repeat(16))).toBe("A-_9".repeat(16));

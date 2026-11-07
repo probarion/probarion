@@ -12,7 +12,9 @@ export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CODE = /^[0-9A-HJKMNP-TV-Z]{8}$/;
 const NONCE = /^[A-Za-z0-9_-]{22,64}$/;
-const UNSAFE_LABEL_CHAR = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+/** Control and format characters, line and paragraph separators, and a surrogate that is not part of a pair: Postgres
+ * refuses JSON that carries one, so a label holding it would fail the whole pairing. */
+const UNSAFE_LABEL_CHAR = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/gu;
 
 type Random = (size: number) => Uint8Array;
 
