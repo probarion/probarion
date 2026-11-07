@@ -65,6 +65,24 @@ describe("docs/RUNBOOK.md", () => {
     );
   });
 
+  it("ends every extension token with the pairing codes first, in one transaction, after a stolen session", () => {
+    // An exchange in flight holds its code's row: the delete waits for it, and the update's fresh snapshot then sees
+    // the token it minted. Revoking first lets that token, or one a live stolen session mints, survive.
+    expect(text).toContain(
+      "`begin; delete from public.extension_pair_codes; update public.extension_tokens set revoked_at = now() where revoked_at is null; commit;`",
+    );
+    expect(text).not.toMatch(/update public\.extension_tokens[^`]*`[^`]*then `delete from/);
+    const session =
+      text.split("\n").find((l) => l.startsWith("| An owner's console session stolen")) ?? "";
+    const tokens = text.split("\n").find((l) => l.startsWith("| Extension tokens (")) ?? "";
+    for (const [name, row] of [
+      ["session row", session],
+      ["Extension tokens row", tokens],
+    ]) {
+      expect(row, name).toMatch(/end the sessions first/i);
+    }
+  });
+
   it("has one Key rotation section (plan 05 Task 18 replaces it) and leaves Backups and restore to Task 19", () => {
     expect(headings("##").filter((h) => h === "Key rotation")).toHaveLength(1);
     expect(text).not.toMatch(/^## Backups and restore$/m);
