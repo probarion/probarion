@@ -162,6 +162,13 @@
   font-weight: 500;
 }
 
+/* Under the three columns of an answer: where to go next. */
+.next {
+  margin-top: 16px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
 /* The three columns of an answer */
 .columns {
   display: grid;

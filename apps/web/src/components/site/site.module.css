@@ -851,10 +851,47 @@ a.netPill:hover {
   color: var(--color-mute);
   overflow-wrap: anywhere;
 }
+/* The verifier's own words, closed until asked for: the plain verdict above says what they mean. */
+.detail {
+  margin: 0 20px 14px;
+  font-size: 14px;
+}
+.detail summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--color-mute);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.detail p {
+  margin-top: 8px;
+  color: var(--color-mute);
+}
+.detail ul {
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+.detail li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
 .sheetNote {
   padding: 0 20px 18px;
   font-size: 14px;
   color: var(--color-mute);
+}
+/* After a run the verifier failed: where to go next. */
+.sheetNext {
+  margin-top: -6px;
+  padding: 0 20px 18px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
 }
 .sheetError {
   padding: 0 20px 18px;

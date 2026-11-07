@@ -14,6 +14,11 @@ The software is an unaudited beta.
 
 ### Added
 
+- The ledger test on the landing page, each Canary answer and each proof page whose checks ran now
+  end with a link to the next page. On the landing page, a run the verifier failed ends with
+  "Caught." and a link to `/proof`. A Canary answer ends with "Put limits like these on your own
+  agent", and a proof page with "Put your agent behind a mandate"; both link to the console. They
+  ended at GitHub or an explorer.
 - The console has a Top-up tab. The owner sends USDC on NEAR from their own wallet to the vault. On
   mainnet only, the owner can also ask 1Click for a quote that tops up the vault's Base USDC balance
   inside NEAR Intents, and signs the deposit in their own wallet. On testnet, which has no Intents or
@@ -283,6 +288,12 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The ledger test gives its verdict in one plain sentence beside PASS or FAIL, read from the
+  verifier's result, such as "Entry 2 was changed after it was signed, so its signature no longer
+  matches." It names a cause and an entry only when the verifier's own words name them, and
+  otherwise gives the counts. The counts and the verifier's words on each check that did not pass sit behind "Verifier
+  detail". The test printed the counts as its verdict and the verifier's words under each failed
+  check.
 - Sessions name their network and belong to one address, so a person signs in at each network's
   address with a wallet of that network. After this change everyone signs in once more. A vault's
   routes and actions answer `409 wrong_network` at the other network's address, and a registered
