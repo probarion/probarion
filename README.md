@@ -172,8 +172,9 @@ On that laptop one database test, `apps/web/test/db/key-rotation.test.ts`, went 
 limit in each of three full runs while every package's tests ran at once, and passed when run alone:
 `pnpm --filter @probarion/web exec vitest run test/db/key-rotation.test.ts`.
 
-**Reviewing security:** [SECURITY.md](SECURITY.md) has the threat model, what `verify` proves, what
-is not proven yet, and how to report a vulnerability.
+**Reviewing security:** [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) has the threat model (eleven
+attacks, the blast radius, failure modes, known gaps and the latest review), and
+[SECURITY.md](SECURITY.md) says how to report a vulnerability and what `verify` does not prove yet.
 
 ## Status
 
@@ -200,6 +201,18 @@ What exists at this commit, and what does not yet.
 | Watcher: every vault's chain events in `vault_events`, which `/usage` counts and the owner alerts read | **Built** and tested against a fake chain. `GET /api/cron/watch` records each spend status, new mandates, anchors, refusals by the contract, agent and ledger keys whose allowance is under 0.2 NEAR, and vaults with under 0.05 NEAR free, each once. It runs once a day on Vercel (the Hobby plan takes only daily crons) and right after an invoice upload or a Canary attempt; it runs every minute once the Supabase schedule in its runbook is turned on | [`apps/web/src/lib/watcher`](apps/web/src/lib/watcher), [`docs/ops/watcher.md`](docs/ops/watcher.md) |
 | Owner alerts by Telegram and email | **Built** and tested against a fake Telegram and a fake Resend; no real bot message or email has been sent yet. An owner or approver adds an alert on a vault's Alerts tab (`/console/<vault>/alerts`): an email is confirmed through a link, a Telegram chat through the bot's `/start`. After each watcher run, a spend held for approval, a spend the contract refused, a spend paid or paid out to Base, a failed payout, a key low on gas allowance and a vault low on NEAR each go out once per alert and event, not for a vault's old history. Every message says how to stop: the email's stop link and one-click unsubscribe, the bot's `/stop`, or Remove on the tab. Telegram and email switch on once `TELEGRAM_BOT_TOKEN` and `RESEND_API_KEY` are set | [`apps/web/src/lib/alerts`](apps/web/src/lib/alerts), [`docs/ops/alerts.md`](docs/ops/alerts.md) |
 | Public `/proof/<vault>` page: checks a to i with explorer links, the snapshot and the signed ledger as downloads for the offline verifier | **Built** and tested, and deployed with the console. No vault is public yet, so a vault's address answers page not found, and [`/proof`](https://probarion.xyz/proof) offers a form and a ledger test that runs the verifier in your browser on a test fixture. Every command it shows runs from a clone of this repository until the npm package is published, and its tests run those commands as shown | [`apps/web/src/app/proof`](apps/web/src/app/proof) |
+| Health checks and the `/status` page | **Built** and tested. `GET /api/health` answers 503 when the deployment cannot read its settings, `GET /api/health/rpc?provider=<n>` checks one NEAR RPC provider of the address's network (the right chain, a block under two minutes old), and `GET /api/health/nearai` checks NEAR AI Cloud's public model list; answers are cached for 30 seconds and do not include a key or a configured URL. `/status` on each address shows those checks live for its network. The uptime monitors and a third-party status page are created by the owner and are not set up yet | [`apps/web/src/lib/health.ts`](apps/web/src/lib/health.ts), [`apps/web/src/app/status`](apps/web/src/app/status), [`docs/ops/MONITORING.md`](docs/ops/MONITORING.md) |
+| Error reports to Sentry | **Built** and tested with the real SDK sending nothing; off until `SENTRY_DSN` is set. Before an event leaves, the user, cookies, headers, bodies and query strings are removed, a request breadcrumb keeps only the origin of another host (or a path on this site, without its query), and every known secret value and shape is masked; tracing is off. Each logged error becomes one issue per log key, tagged with its component; the Payables upload, Canary attempt and both crons also tag the request id of their log lines | [`apps/web/src/lib/sentry-scrub.ts`](apps/web/src/lib/sentry-scrub.ts), [`apps/web/src/lib/observe.ts`](apps/web/src/lib/observe.ts) |
+| Incident runbook, threat model and security contact | **Shipped** as documents. The runbook covers severity, freezing, key rotation and RPC failover on both networks, with **OWNER SIGNS** above every mainnet send; a test fails if a mainnet send loses that mark or a one-yocto call its 1 yoctoNEAR. `/.well-known/security.txt` (RFC 9116) is on every address; the contact is a direct message to [@probarionhq](https://x.com/probarionhq) | [`docs/RUNBOOK.md`](docs/RUNBOOK.md), [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md), [`SECURITY.md`](SECURITY.md) |
+| `/security`, `/terms` and `/privacy` pages | **Built** and tested. Every link on the site opens a real page; nothing reads "coming soon" any more | [`apps/web/src/app/security`](apps/web/src/app/security), [`apps/web/src/lib/site/ops-copy.ts`](apps/web/src/lib/site/ops-copy.ts) |
+| Browser smoke test of the built site | **Built**; runs locally only, with test settings: `pnpm build`, then `pnpm --filter @probarion/web test:e2e`. It is not in CI | [`apps/web/e2e/smoke.spec.ts`](apps/web/e2e/smoke.spec.ts) |
+
+**Known limitations** ([all of them](docs/THREAT_MODEL.md#known-gaps)): no Content-Security-Policy
+yet (owner and approver actions still need a 1 yoctoNEAR wallet prompt, so a script in the page
+cannot approve or withdraw); the contracts link near-sdk's unmaintained default `wee_alloc`
+allocator, which can change only with a new vault version; CI has no dependency-audit job
+(Dependabot alerts are triaged in the review log); an exception on an untagged route, or in the
+request that starts a server instance, reaches Sentry without a request id.
 
 ## What Probarion does
 
@@ -430,9 +443,9 @@ stores.
 
 | | |
 | --- | --- |
-| **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy and threat model](SECURITY.md) |
+| **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy](SECURITY.md) · [Threat model](docs/THREAT_MODEL.md) |
 | **Packages** | [`@probarion/core`](packages/core/README.md) · [`@probarion/sdk`](packages/sdk/README.md) · [`probarion` CLI](packages/cli/README.md) · [`intents-stub`](contracts/intents-stub/README.md) |
-| **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Web deploy runbook](docs/runbooks/web-deploy.md) · [Key rotation](docs/ops/key-rotation.md) · [Usage numbers](docs/ops/metrics.md) · [Watcher](docs/ops/watcher.md) · [Alerts](docs/ops/alerts.md) |
+| **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Web deploy runbook](docs/runbooks/web-deploy.md) · [Key rotation](docs/ops/key-rotation.md) · [Usage numbers](docs/ops/metrics.md) · [Watcher](docs/ops/watcher.md) · [Alerts](docs/ops/alerts.md) · [Incident runbook](docs/RUNBOOK.md) · [Monitoring](docs/ops/MONITORING.md) |
 | **This repository** | [AGENTS.md](AGENTS.md), for AI agents and humans who build here · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Changelog](CHANGELOG.md) · [CI runs](https://github.com/probarion/probarion/actions/workflows/ci.yml) |
 
 ## Development

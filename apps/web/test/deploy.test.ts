@@ -276,9 +276,7 @@ describe("client components", () => {
 
 describe("package scripts", () => {
   /** Scripts whose file a later task adds. Delete the entry when it lands: the test below says so. */
-  const KNOWN_GAPS: Record<string, string> = {
-    "test:e2e": "Task 22 (smoke e2e) adds playwright.config.ts",
-  };
+  const KNOWN_GAPS: Record<string, string> = {};
   const exists = (rel: string) => existsSync(join(WEB, rel));
   const unresolved = (): string[] => {
     const out = new Set<string>();

@@ -1,0 +1,8 @@
+Contact: https://x.com/probarionhq
+Expires: 2027-05-14T00:00:00.000Z
+Preferred-Languages: en, vi
+Canonical: https://probarion.xyz/.well-known/security.txt
+Canonical: https://testnet.probarion.xyz/.well-known/security.txt
+Canonical: https://probarion.vercel.app/.well-known/security.txt
+Policy: https://github.com/probarion/probarion/blob/main/SECURITY.md
+Acknowledgments: https://github.com/probarion/probarion/blob/main/SECURITY.md#acknowledgments

@@ -41,7 +41,7 @@ Where things are defined (you do not edit these to deploy):
   | Secret key | `sb_secret_...` | `SUPABASE_SERVICE_ROLE_KEY` (server only) |
 
   The secret key bypasses row-level security. It goes into one variable, as Sensitive, and nowhere else: not in git, not in chat, not behind a `NEXT_PUBLIC_` prefix.
-- [ ] **OWNER:** apply the migrations **in filename order**. Today they are `20261108000001_core.sql` to `20261108000007_invoice_confirm.sql` (0006 adds the Payables invoice tables, 0007 the owner's Confirm and Reject for invoices that wait for the owner; apply any of them you have not applied yet, in order); any later file in `apps/web/supabase/migrations/` follows the same rule (the sequence number in the name is the order, with no gaps). Either way, stop at the first error and do not run a file twice:
+- [ ] **OWNER:** apply the migrations **in filename order**: every file in `apps/web/supabase/migrations/`, from `20261108000001_core.sql` on, that you have not applied yet (the sequence number in the name is the order, with no gaps). Either way, stop at the first error and do not run a file twice:
   - **With the Supabase CLI**, from `apps/web`:
     ```bash
     cd apps/web
@@ -50,6 +50,12 @@ Where things are defined (you do not edit these to deploy):
     pnpm dlx supabase db push
     ```
     If the CLI refuses because `supabase/config.toml` is missing, use the SQL editor below and tell the controller. Never run `supabase db reset` against the hosted project. The CLI writes your project reference into `apps/web/supabase/.temp/`; that folder is git-ignored, so leave it out of every commit.
+
+    Without `login` and `link`, the CLI can also push straight to the database through its Session pooler, from `apps/web`:
+    ```bash
+    pnpm dlx supabase db push --db-url "<Session pooler URI from the Supabase Connect dialog>"
+    ```
+    The URI is in the dashboard's Connect dialog (Session pooler) and holds the database password: fill it in from your password manager, and never paste it into a shared place.
   - **Or in the dashboard**: SQL Editor, paste each file in order, Run.
 - [ ] **OWNER:** check the result. In the SQL Editor:
   ```sql
@@ -180,6 +186,8 @@ One Vercel project, one deployment, one Supabase database, one cron set, one Tel
 
 ## 4. First deploy and smoke test
 
+Once the deployment is live, the [incident runbook](../RUNBOOK.md) says what to do when something goes wrong, and the [monitoring guide](../ops/MONITORING.md) sets up the uptime monitors, the heartbeat and Sentry.
+
 - [ ] **OWNER:** make a build that starts after step 3.2: Deployments, the latest Production deployment, Redeploy (the import build ran before the variables existed and does not count), or push to `main`. Open that build's log and check, in order:
   - the log shows `Detected ENABLE_EXPERIMENTAL_COREPACK=1 and "pnpm@10.34.9" in package.json`, and the install then ends with `Done in ... using pnpm v10.34.9`: the install step uses pnpm 10.34.9, from `packageManager`. If it does not:
     - `Could not enable corepack because package.json is missing "packageManager" property`, or `Using pnpm@9.x based on project creation date`: the commit that was built has no pin. Merge it (step 0), then redeploy.
@@ -189,12 +197,12 @@ One Vercel project, one deployment, one Supabase database, one cron set, one Tel
   - `packages/core build` and `packages/sdk build` finish with "Done";
   - `next build` finishes and lists the routes `/`, `/login`, `/console`, `/console/[vault]`, `/console/[vault]/keys`, `/console/[vault]/mandates`, `/proof`, `/proof/[vault]`, `/proof/[vault]/snapshot.json`, `/proof/[vault]/ledger.jsonl` and `/api/auth/*`.
 - [ ] **OWNER:** smoke test, on the deployment URL:
-  1. `/` loads with the amber "Unaudited beta" banner and three cards. The Canary and Usage entries are links; the entries for pages that are not built yet (Security, Status, Terms, Privacy) read "(coming soon)" and are not links; no link on the page, in the menu or in the footer leads to a 404.
+  1. `/` loads with the amber "Unaudited beta" banner and three cards. The Canary, Usage, Security, Status, Terms and Privacy entries are links, and nothing reads "(coming soon)"; no link on the page, in the menu or in the footer leads to a 404.
   2. `/console` while signed out sends you to `/login?next=%2Fconsole`.
   3. `/login`: Sign in with your NEAR wallet. The wallet asks for a **message signature**, not a transaction. You land on `/console`.
   4. `/console`: register a vault you own, signed in as its on-chain owner. On testnet that is `v0.probarion.testnet` (`contracts/deployments/testnet.json`). The vault page opens with Overview, Mandates and Keys tabs.
   5. Security headers: `curl -sI https://<deployment-url>/` shows `x-content-type-options`, `referrer-policy`, `x-frame-options`, `permissions-policy` and `cross-origin-opener-policy`.
-  6. There is no `/api/health` route yet; plan 05 adds the health probes. Skip it until then.
+  6. Health checks, for the deployment's network: `curl -s https://<deployment-url>/api/health` gives `{"ok":true,"service":"probarion-web","network":"<network>",...}`; `curl -s -o /dev/null -w "%{http_code}\n" "https://<deployment-url>/api/health/rpc?provider=0"` gives 200, and the same for `https://<deployment-url>/api/health/nearai` gives 200; `curl -sI https://<deployment-url>/.well-known/security.txt` gives 200. A 503 names the problem in `detail` ([health routes](../ops/MONITORING.md#health-routes)).
   7. `/proof/<vault>` for a vault whose "Public proof page" is on (step 5), ideally the `PROBARION_VAULT_ID` demo vault (a factory team vault, never `v0.probarion.testnet`, which is red by design): the result comes first ("All offline checks pass", "Not proven yet" or "A check failed"), then checks (a) to (i) with explorer links. `/proof` alone redirects to `PROBARION_VAULT_ID` when that vault's proof page is public on this network, and otherwise says how to open a vault. Download `snapshot.json` from the page. On another machine, set the CLI up from the public repository (the `probarion` npm package is not published yet; needs git, Node 24 or later and pnpm 10; if you cloned it before, run `git pull`, `pnpm install` and the build line again), one command per line: `git clone https://github.com/probarion/probarion`, then `cd probarion`, then `pnpm install`, then `pnpm --filter "{packages/cli}..." build`. Put the downloaded file in that folder and run `node packages/cli/dist/bin.js verify --offline <the downloaded file>`. The download is a snapshot of the vault taken when you click or shortly before, not necessarily the page's own: the verifier prints its `taken_at`. When that is the `taken_at` the page shows, it is the very snapshot the page checked, and a verifier built from the current repository gives the same result; otherwise it is another snapshot of the vault, and its result can differ from the page's (a transaction that could not be read during one of the two reads is enough). The page's `probarion-<vault>-ledger.jsonl` link downloads the ledger its prove-it commands pass as `--ledger`; download it just before running them, replacing any earlier copy. A vault id that is not a NEAR account, and a vault whose page is private, answer 404.
 - [ ] If sign-in answers 503 or `/console` shows an error page: Vercel, Logs. The message names the variable that is missing or malformed (for example "KEY_ENCRYPTION_SECRET must be 32 bytes encoded as base64"), never its value. Fix the variable, then redeploy.
 

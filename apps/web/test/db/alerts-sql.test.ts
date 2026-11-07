@@ -369,6 +369,11 @@ describe("the alerts SQL", () => {
   describe("alert_subscriptions_list", () => {
     it("lists a vault's live subscriptions in order, with the address, and never a link code", async () => {
       const a = await create({ channel: "email", target: "a@example.com" });
+      // Two inserts can share one timestamp, and the list then falls back to the random id.
+      await pg.query(
+        "update alert_subscriptions set created_at = now() - interval '1 minute' where id = $1",
+        [a.id],
+      );
       const b = await create();
       await verify({ link_code: b.link_code });
       const list = await db().rpc<Record<string, unknown>[]>("alert_subscriptions_list", {
@@ -394,8 +399,18 @@ describe("the alerts SQL", () => {
     });
 
     it("masks every target unless it is asked for in full: an address to its first letter and domain, a chat to its last 2 digits", async () => {
-      await create({ channel: "email", target: "Finance@Example.com" });
-      await create({ channel: "email", target: "x@y.co" });
+      // Back to back, the three can share one timestamp, and the list would then order them by their random ids.
+      const finance = await create({ channel: "email", target: "Finance@Example.com" });
+      const x = await create({ channel: "email", target: "x@y.co" });
+      for (const [id, minutes] of [
+        [finance.id, 2],
+        [x.id, 1],
+      ] as const) {
+        await pg.query(
+          "update alert_subscriptions set created_at = now() - make_interval(mins => $2) where id = $1",
+          [id, minutes],
+        );
+      }
       const tg = await create();
       await verify({ link_code: tg.link_code });
       const targets = async (p: Record<string, unknown>) =>

@@ -15,6 +15,7 @@
     "**/*.spec.ts",
     "**/*.spec.tsx",
     "test",
-    "e2e"
+    "e2e",
+    "playwright.config.ts"
   ]
 }

@@ -97,7 +97,10 @@ is why the command uses trial decryption.
    `pnpm --filter @probarion/web telegram-webhook`; `docs/ops/alerts.md`), the stop links in earlier alert
    emails stop working (the Remove button on the Alerts tab and Telegram's `/stop` still do, and later emails have
    working links), and visitor hashes change (Canary per-visitor
-   limits start over).
+   limits start over). The invoice-number key changes (it is derived from `KEY_ENCRYPTION_SECRET`,
+   `apps/web/src/lib/payables/pipeline.ts:111-112,126`), so a re-uploaded invoice is no longer matched by its number
+   to invoices uploaded before the rotation; the text fingerprint (an unkeyed sha256, `pipeline.ts:263`) still catches
+   identical text.
 
 6. **Keep the OLD master until a later dry run shows every row opens under the NEW one.** Rows the app
    sealed between step 4 and step 5 are still under the old master. After the redeploy, run the dry run

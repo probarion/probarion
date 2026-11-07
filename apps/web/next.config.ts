@@ -1,3 +1,4 @@
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 import { publicRoutingVars } from "./src/lib/site/network";
 
@@ -7,7 +8,7 @@ import { publicRoutingVars } from "./src/lib/site/network";
 // browser's address bar. A change to any of those settings needs a redeploy.
 const routing = publicRoutingVars(process.env);
 
-const nextConfig: NextConfig = {
+export const nextConfig: NextConfig = {
   // Native/wasm packages stay outside the server bundle (Verify on first use #4, #5).
   serverExternalPackages: ["pdf-parse", "@napi-rs/canvas", "libsodium-wrappers", "libsodium"],
   transpilePackages: ["@probarion/core", "@probarion/sdk"],
@@ -42,4 +43,6 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Sentry's build step. Quiet, no telemetry. It uploads source maps only when the OWNER sets SENTRY_AUTH_TOKEN,
+// SENTRY_ORG and SENTRY_PROJECT in the Vercel build settings; the plugin reads them, the app does not.
+export default withSentryConfig(nextConfig, { silent: true, telemetry: false });

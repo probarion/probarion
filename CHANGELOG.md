@@ -231,6 +231,39 @@ The software is an unaudited beta.
   function, and `NearAiProposer` `remainingMs` and `knownModel`. All are optional, and the
   defaults are unchanged.
 
+- Uptime monitors can check each address of the site: `GET /api/health` answers 200 when the
+  deployment can read its settings and 503 when it cannot; `GET /api/health/rpc?provider=<n>` checks
+  one NEAR RPC provider of that address's network (the right chain, and a block under two minutes
+  old); `GET /api/health/nearai` checks that NEAR AI Cloud's public model list answers. Answers are
+  cached for 30 seconds and do not include a key or a configured URL.
+- A `/status` page on each address shows the live checks for that address's network, links to the
+  other network's status page when that address is served, and says that funds stay in your own
+  vault, under your own keys, if the service is down. The header's Status link opens it.
+- Errors reach Sentry once `SENTRY_DSN` is set; until then the SDK is off. Each logged error becomes
+  one issue per log key, tagged with its component. The Payables upload, the Canary attempt and both
+  cron routes also tag the request id of their log lines, so one error can be matched to its logs. A
+  failure of the root layout shows a plain "Something went wrong" page with a reference id.
+- `docs/RUNBOOK.md`, an incident runbook for both networks: severity levels, the first 15 minutes,
+  what a vault owner can do alone, freezing, withdrawing and unfreezing with the CLI printers (the
+  owner signs every transaction), key rotation, RPC failover, burned cross-chain payouts, alerts,
+  top-up, rate limits, deploys and migrations, status posts and a postmortem template. The runbook
+  lint now checks it too: **OWNER SIGNS** above every mainnet send, and 1 yoctoNEAR on every one-yocto
+  call.
+- `docs/ops/MONITORING.md`: the health routes, the uptime monitors before and after each network gets
+  its own address, the watcher heartbeat, the status page to create, and what Sentry receives, with
+  its tags, alert rules and data scrubber fields.
+- `/.well-known/security.txt` (RFC 9116) on every address, with the X account as the contact, a fixed
+  expiry, one canonical URL per address, and links to the policy and its acknowledgments.
+- `docs/THREAT_MODEL.md`: eleven attacks, each with the test, code path or testnet transaction that
+  backs it; the hosted service's own surfaces; what a full breach of Probarion's servers could and
+  could not do; failure modes, trust assumptions, known gaps; and the first security review's log. A
+  test fails if it cites a safety claim that has no marker in the code.
+- `/security`, `/terms` and `/privacy` pages. Every link on the site now opens a real page; nothing
+  reads "coming soon" any more. Security sits in the footer beside Terms and Privacy.
+- A browser smoke test of the built site runs locally with `pnpm --filter @probarion/web test:e2e`,
+  after `pnpm build`. It builds with test settings only, and needs no wallet, database or chain. It
+  is not in CI.
+
 ### Changed
 
 - Sessions name their network and belong to one address, so a person signs in at each network's
@@ -277,6 +310,13 @@ The software is an unaudited beta.
   payload to the request's nonce. Measurement pinning (O1b) is deferred, so `quote_verified` stays
   false.
 
+- `SECURITY.md` now gives response targets (acknowledge within 72 hours, a severity within 7 days,
+  a SEV2 fix within 14 days, disclosure once fixed or after 90 days), a safe harbor for good-faith
+  research that covers the Canary under its rules, the Canary as a public testnet challenge with no
+  reward, the practices CI runs, and acknowledgments.
+- The deploy runbook's smoke test checks the health routes and security.txt. The key rotation
+  runbook says that a new master key also resets duplicate matching by invoice number.
+
 ### Fixed
 
 - The browser-tab icon has a clear background instead of a white square, and its mark is larger. The
@@ -320,6 +360,9 @@ The software is an unaudited beta.
 - The SDK's chain reads fail closed: a malformed node answer is an error, and a node's own error is
   kept after the read fails over to another endpoint rather than reported as an outage.
 
+- A database test of the alert list could fail when two subscriptions were created in the same
+  instant and tied on their creation time.
+
 ### Security
 
 - Key sealing: the web console generates agent and ledger keys on the server and seals them at rest
@@ -344,6 +387,12 @@ The software is an unaudited beta.
   error names the variable, not its value. Sign-in, Register and the approvers re-sync read the chain
   only through RPC URLs that answered the JSON-RPC `status` call with that network's `chain_id`, and
   answer `503 wrong_chain` once any URL has answered with the other chain.
+
+- Before an error report leaves for Sentry, the user, cookies, headers, request bodies and query
+  strings are removed, console breadcrumbs are dropped, a request breadcrumb keeps only the origin of
+  another host, and every known secret value and secret shape is masked. Tracing and browser sessions
+  are off. The request that starts a server instance is left untagged, so its tags cannot reach other
+  requests' reports.
 
 ## 0.1.0 - 2026-11-07
 

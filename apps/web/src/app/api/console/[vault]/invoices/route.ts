@@ -8,6 +8,7 @@ import { assertSameOrigin, json, problem, rateLimitOr429 } from "@/lib/http";
 import { log, newRequestId } from "@/lib/log";
 import { listAll } from "@/lib/near/reader";
 import { getReader } from "@/lib/near/server";
+import { tagRequest } from "@/lib/observe";
 import { ExtractError, type InvoiceMediaType, MAX_INVOICE_BYTES } from "@/lib/payables/extract";
 import { type InvoiceUpload, type PipelineResult, processInvoice } from "@/lib/payables/pipeline";
 import { LIMITS } from "@/lib/ratelimit";
@@ -218,6 +219,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ vault: 
   const auth = await memberForApi(vault, ["owner", "approver"]);
   if (auth instanceof Response) return auth;
   const requestId = req.headers.get("x-request-id") ?? newRequestId();
+  tagRequest(requestId, "payables", auth.member.network, { tenant: auth.member.tenant_id });
   const unavailable = (error: unknown) => {
     log.error("payables.route_failed", {
       request_id: requestId,
