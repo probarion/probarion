@@ -14,7 +14,14 @@ describe("/privacy", () => {
     expect(html.match(/id="browser-extension"/g) ?? []).toHaveLength(1);
     expect(html.lastIndexOf("<section")).toBe(html.indexOf('<section id="browser-extension"'));
     expect(html).toContain('href="/extension"');
-    for (const fact of ["last four characters", "ten minutes", "not released yet"]) {
+    for (const fact of [
+      "last four characters",
+      "ten minutes",
+      "not released yet",
+      "set to end and revoked",
+      "its record is deleted the next time anyone asks for a code",
+      "a sixth connection on the same network ends the oldest one",
+    ]) {
       expect(html, fact).toContain(fact);
     }
   });

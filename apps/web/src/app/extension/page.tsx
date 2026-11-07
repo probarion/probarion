@@ -28,9 +28,9 @@ export default async function ExtensionPage({
     <Container>
       <h1 className="mb-2 text-2xl font-semibold">Browser extension</h1>
       <p className="mb-6 text-sm text-[#0B0B0C]/70">
-        The extension sends invoices to wait for your confirmation and shows what waits for you, but
-        it can't pay or approve: an invoice it sends is paid only after you confirm it in the
-        console with your wallet.
+        The extension will send invoices to wait for your confirmation and show what waits for you,
+        but it can't pay or approve: an invoice it sends will be paid only after you confirm it in
+        the console with your wallet.
       </p>
       <Notice tone="info">The Probarion extension for Chrome is not released yet.</Notice>
       <Card title="Connect this browser">

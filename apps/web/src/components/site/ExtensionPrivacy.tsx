@@ -5,7 +5,7 @@ import { EXTENSION_PRIVACY as E } from "@/lib/site/ops-copy";
 
 /**
  * The browser extension's part of /privacy (spec §8): the page's last section, which the Chrome Web Store listing
- * links to. Its words are EXTENSION_PRIVACY in lib/site/ops-copy.ts, under that file's banned-word test.
+ * will link to. Its words are EXTENSION_PRIVACY in lib/site/ops-copy.ts, under that file's banned-word test.
  */
 export function ExtensionPrivacy() {
   return (

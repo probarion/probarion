@@ -301,8 +301,8 @@ export interface LinkedCopySection extends CopySection {
 
 /**
  * The browser extension's section of /privacy (plan 06 Task 1), rendered last by components/site/ExtensionPrivacy.tsx,
- * which links `end.link` to /extension. The Chrome Web Store listing links /privacy#browser-extension. It is not in
- * PRIVACY_PAGE.sections, so it renders once.
+ * which links `end.link` to /extension. The Chrome Web Store listing will link /privacy#browser-extension once the
+ * extension is submitted. It is not in PRIVACY_PAGE.sections, so it renders once.
  */
 export const EXTENSION_PRIVACY = {
   id: "browser-extension",
@@ -310,11 +310,11 @@ export const EXTENSION_PRIVACY = {
   paragraphs: [
     "The Probarion extension for Chrome is not released yet. This section says what it is built to do, and what Probarion stores for it now. You will connect it to your account on the Browser extension page, `/extension`, signed in with your wallet, or with a pairing code that page shows.",
     "Once released, the extension will send an invoice to Probarion only when you ask it to: the PDF or text you choose, with the vault and the mandate you pick. It will send it to the Probarion address you connected, and nowhere else. In your browser it will keep the connection token, your account name and network, and, until you send it or close Chrome, the invoice you captured. It will read no page except the PDF or the selection you send, and Probarion's own Browser extension page when you connect. It will have no analytics and will run no code from elsewhere, and its Disconnect button will end its connection.",
-    "For each browser you connect, we store a hash of its connection token, not the token, with the token's last four characters, a name for the browser such as Chrome on Windows, and when it was connected, last used and set to end. The record of a connection stays after it ends. A pairing code is stored only as a hash, and works once, for ten minutes.",
+    "For each browser you connect, we store a hash of its connection token, not the token, with the token's last four characters, your account and network, a name for the browser such as Chrome on Windows, and when it was connected, last used, set to end and revoked. The record of a connection stays after it ends. A pairing code is stored as a hash, with your account and network and when it was made, set to end and used. It works once, for ten minutes, and once it is used or expired, its record is deleted the next time anyone asks for a code.",
     "A connection works only for your account, and only at the address of the network it was made on. It reads the invoices and held payments waiting for you and your vaults' active mandates. It cannot pay, approve or confirm a payment, which still needs your wallet's signature in the console.",
   ],
   end: {
-    text: "A connection ends after 30 days. You can end it sooner with Revoke on the",
+    text: "A connection ends after 30 days, and a sixth connection on the same network ends the oldest one. You can end one sooner with Revoke on the",
     link: "Browser extension page",
   },
 } satisfies LinkedCopySection;
