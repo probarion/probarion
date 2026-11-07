@@ -35,6 +35,19 @@ no bug bounty.
 Test only against vaults you deployed yourself, on testnet or in the near-workspaces sandbox. Do not
 try to move funds that are not yours.
 
+### Response targets
+
+| We aim to | Within |
+| --- | --- |
+| Acknowledge your report | 72 hours |
+| Assess it and give it a severity ([severity levels](docs/RUNBOOK.md#severity-levels)) | 7 days |
+| For a SEV1 (funds at risk): freeze the vaults Probarion runs, signed by the project owner, and ask the owners of every other vault to freeze theirs | At once |
+| For a SEV2: ship a fix or a mitigation | 14 days |
+| Disclose the issue, on a date agreed with you | Once a fix ships, or 90 days after the report |
+
+Probarion can freeze only the vaults it runs: `freeze` checks the vault's owner, so the owner of any
+other vault freezes it from their own wallet.
+
 ## Scope
 
 In scope:
@@ -44,8 +57,10 @@ In scope:
 - the packages [`@probarion/core`](packages/core), [`@probarion/sdk`](packages/sdk) and the
   [`probarion` CLI](packages/cli);
 - the public site and web console in [`apps/web`](apps/web), deployed at
-  <https://probarion.xyz> on testnet, with its database migrations and its key sealing (in
-  progress);
+  <https://probarion.xyz> and <https://probarion.vercel.app>, NEAR testnet today (one deployment
+  serves both networks, and the address decides which; a testnet address of the same deployment,
+  once it is set up, is in scope too), with its database migrations, its server-side key sealing,
+  and the browser extension's token API (`/api/ext/*`) and its `/extension` page;
 - the build, deploy and release scripts in [`scripts`](scripts) and the workflows in
   [`.github/workflows`](.github/workflows).
 
@@ -53,12 +68,44 @@ Out of scope:
 
 - [`contracts/intents-stub`](contracts/intents-stub) and [`contracts/test-ft`](contracts/test-ft),
   which are test stand-ins for `intents.near` and USDC and are not deployed on mainnet;
-- weaknesses in services Probarion uses (the NEAR protocol, `intents.near`, the POA bridge, NEAR AI
-  Cloud, Supabase), which go to that service;
+- weaknesses in services Probarion uses (the NEAR protocol, `intents.near`, the POA bridge, NEAR
+  Intents 1Click, NEAR AI Cloud, wallets, NEAR RPC providers, Supabase, Vercel, Telegram and
+  Resend), which go to that service;
 - findings that need a compromised device, social engineering or physical access, denial of service
   by volume, and scanner output without a demonstrated impact.
 
+## Safe harbor
+
+Good-faith security research under this policy is welcome, and we will not take legal action over
+it. Good faith here means that you test against your own vaults, on testnet or in the sandbox, or
+against the Canary under its rules; that, outside the Canary, you do not move or try to move funds
+that are not yours; that you do not degrade the service for anyone else; and that you report what
+you find to us privately before you tell anyone else.
+
+## The Canary
+
+The Canary is a public testnet vault that anyone may try to trick, under its rules at
+<https://probarion.xyz/canary/rules>. It is the one exception to "test only against vaults you
+deployed yourself" above. It holds test tokens with no value, and there is no reward. A way past
+what the contract enforces, such as a payment to an account no mandate names, is a vulnerability:
+report it as above.
+
+## Practices
+
+- Reproducible builds: CI rebuilds the contracts in Docker and compares the code hashes in
+  [`contracts/code-hashes.json`](contracts/code-hashes.json).
+- CI runs gitleaks over the full history and `cargo clippy` with warnings as errors on every push
+  and pull request to `main` and `dev`.
+- No owner keys on servers. Agent keys are generated server-side, encrypted at rest with a master key held outside the database, and can call only `spend`.
+- Every decision is signed into a hash-chained ledger, and anchors pin it on chain.
+- Dependabot alerts are triaged; the latest review is in the
+  [review log](docs/THREAT_MODEL.md#review-log).
+
 ## Threat model
+
+The full model (eleven attacks, the blast radius if Probarion is breached, the failure modes, the
+trust assumptions and the known gaps) is in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). The table
+below says who holds which key, and what each can and cannot do.
 
 The vault holds the USDC. The agent holds one function-call key. A spend is checked by code off chain
 and again by the contract on chain, and every decision goes into a signed, hash-chained ledger.
@@ -69,10 +116,11 @@ and again by the contract on chain, and every decision goes into a signed, hash-
 | **The ledger key** (function-call key, method `anchor` only) | Anchor the next ledger range, `seq` exactly one above the last | Spend, or change a mandate or a key |
 | **Whoever holds the agent key**, for example a breached server | Spend inside open mandates, with invoice hashes of its choosing | Pay anyone a mandate does not name, or exceed a mandate's limits or the daily backstop. Hide a rewritten ledger range that was anchored: `verify` names the first entry that does not match |
 | **The owner** (a full-access key on the owner's account) | Create and revoke mandates, add and remove keys, set the ledger key, freeze, unfreeze, withdraw USDC and the Intents balance to the owner's own account | Change a mandate's payee (a new payee needs a new mandate), change the owner or the approvers, or upgrade the vault: there is no method for any of these |
-| **A function-call key on the owner's or the approver's account**, such as a dapp login key | On the owner's account, call `freeze`, which takes no deposit so that any owner key can stop the vault | Call `add_agent`, `remove_agent`, `set_ledger_key`, `revoke_mandate`, `approve`, `reject`, `unfreeze`, `withdraw` or `withdraw_intents`: each needs exactly 1 yoctoNEAR attached, which only a full-access key can attach |
+| **A function-call key on the owner's or the approver's account**, such as a dapp login key | On the owner's account, call `freeze` if the key may call this vault (its receiver is the vault, and its method list is empty or names `freeze`). `freeze` takes no deposit so that the owner can stop the vault fast; a key scoped to another contract cannot call the vault at all | Call `add_agent`, `remove_agent`, `set_ledger_key`, `revoke_mandate`, `approve`, `reject`, `unfreeze`, `withdraw` or `withdraw_intents`: each needs exactly 1 yoctoNEAR attached, which only a full-access key can attach |
 | **An approver** | Approve or reject a held spend (1 yoctoNEAR) | Approve while the vault is frozen, after the hold expired, or for a revoked mandate |
 | **The factory owner** | Publish a new vault version | Change, upgrade or take funds from a vault the factory created: such a vault starts with no access keys and has no upgrade method |
 | **The model** (NEAR AI Cloud, private TEE) | Propose `pay`, `hold` or `refuse` for one invoice | Decide alone. Its proposal is advice: the code rules run on every decision and the contract checks every spend, so text injected into an invoice cannot widen a mandate |
+| **An extension token** (`pbx_…`, held by a connected browser; the server keeps a sha256 of the token and its last four characters, with the account, network, browser name and times, not the token itself) | At its network's address, for 30 days unless revoked: read its account's waiting invoices, held spends and active mandates | Pay, approve, confirm, or change a mandate or a key: the extension's server code (`apps/web/src/lib/ext` and `apps/web/src/app/api/ext`), and every app module it loads, imports none of the app's modules or functions that pay, sign or open a sealed key, nothing from `near-api-js` or `@near-js`, and no signer from the SDK or `@probarion/core`; it names no RPC method that sends a transaction and no database function or column that returns a sealed agent key, builds no database client but `apps/web/src/lib/db/clients.ts`, which only calls functions, and names each function it calls as a literal; outside `apps/web/src/lib/crypto`, it asks `subkey` only for the session's, imports none of `masterKey`, `parseMasterKey`, `deriveSubkey`, `tenantInvoiceKey` or `getSodium`, and loads no libsodium, tweetnacl, `@noble` or `@stablelib` package (`apps/web/test/ext-structure.test.ts`). That test reads imports and names: it catches a plain import of any of these, not code written to get around it, so review of every change to that code is the other control. The inbox reads the chain through the SDK's `VaultClient`, built with no signer, and Confirm needs the owner's wallet signature |
 
 ### What `verify` proves
 
@@ -116,3 +164,7 @@ snapshot of the ledger and the chain:
 The full design is in [`docs/specs/2026-10-21-probarion-design.md`](docs/specs/2026-10-21-probarion-design.md)
 (§7, §10, §11 and §12), and the exact checks are in
 [`docs/specs/2026-10-21-probarion-interfaces.md`](docs/specs/2026-10-21-probarion-interfaces.md) (§7 and §10).
+
+## Acknowledgments
+
+None yet.

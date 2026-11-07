@@ -19,7 +19,7 @@ export interface SnapshotSource {
 }
 
 export interface ProofDeps {
-  /** The chain this deployment reads (`NEAR_NETWORK`). A vault registered for the other one is not served. */
+  /** The chain of the address this request was opened at (`requestNetwork()`). A vault registered for the other one is not served. */
   network: Network;
   /** Anon key: only the public_* functions, which answer for proof_public vaults alone. */
   publicDb: Db;

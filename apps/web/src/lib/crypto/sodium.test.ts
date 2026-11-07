@@ -129,6 +129,7 @@ describe("deriveSubkey", () => {
     "telegram",
     "visitor",
     "challenge",
+    "alerts",
   ];
 
   it("gives every purpose its own 32-byte subkey, different under another master", async () => {
@@ -149,6 +150,9 @@ describe("deriveSubkey", () => {
     "e8fd2ee27b21c2e8",
     // id 6, added with the challenge cookie; the five above are unchanged
     "e46799c6b8e6fa59",
+    // id 7, added with the alert stop links; the six above are unchanged. Recomputed with the same independent
+    // BLAKE2b, which reproduces ids 1 to 6 above.
+    "c3e8d760dfb83152",
   ];
 
   it("keeps the subkey ids and KDF context stable (D4)", async () => {
@@ -156,6 +160,13 @@ describe("deriveSubkey", () => {
       PURPOSES.map(async (p) => hex((await deriveSubkey(MASTER, p)).subarray(0, 8))),
     );
     expect(got).toEqual(PINNED);
+  });
+
+  it("keeps the first six ids exactly as they were when alerts (7) was added", async () => {
+    const first = await Promise.all(
+      PURPOSES.slice(0, 6).map(async (p) => hex((await deriveSubkey(MASTER, p)).subarray(0, 8))),
+    );
+    expect(first).toEqual(PINNED.slice(0, 6));
   });
 
   it("keeps the first five ids exactly as they were when challenge (6) was added", async () => {

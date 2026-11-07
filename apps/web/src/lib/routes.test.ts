@@ -21,6 +21,21 @@ describe("route registry", () => {
   });
 });
 
+describe("the Usage page", () => {
+  it("is in the site menu as Usage, and is built: neither planned nor still called /open", () => {
+    expect(SITE_NAV).toContainEqual({ route: "/usage", label: "Usage" });
+    expect(isBuilt("/usage")).toBe(true);
+    expect(SITE_NAV.map((i) => i.route)).not.toContain("/open");
+    expect(PLANNED_ROUTES).not.toContain("/open");
+    expect(PLANNED_ROUTES).not.toContain("/usage");
+  });
+
+  it("sits after the Canary in the menu", () => {
+    const routes = SITE_NAV.map((i) => i.route);
+    expect(routes.indexOf("/usage")).toBe(routes.indexOf("/canary") + 1);
+  });
+});
+
 describe("rendered pages link only to pages that are built", () => {
   const planned = (href: string) =>
     PLANNED_ROUTES.some((r) => {

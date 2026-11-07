@@ -5,7 +5,7 @@ import s from "./site.module.css";
 
 export function InkBand() {
   return (
-    <section className={s.band}>
+    <section className={s.band} id="payee">
       <div className={`${s.wrap} ${s.bandGrid}`}>
         <div>
           <h2 className={s.h2}>{BAND.title}</h2>

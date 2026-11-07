@@ -11,6 +11,7 @@ import type { Network } from "@/lib/config";
 import { type Db, DbError } from "@/lib/db/port";
 import { registerTenant, type TenantKind } from "@/lib/db/tenants";
 import { log } from "@/lib/log";
+import { type RpcList, verifiedChain, WrongChainError } from "@/lib/near/chain";
 import { type ChainErrorKind, chainErrorKind, listAll, type VaultReader } from "@/lib/near/reader";
 import {
   createDepositPlan,
@@ -47,12 +48,26 @@ export interface ChainReads {
   factoryVersions(factory: string): Promise<VersionView[]>;
 }
 
-/** ChainReads over the SDK RpcClient (`getRpc()` on the server). */
+/** ChainReads over the SDK RpcClient (`getRpc(network)` on the server). */
 export function rpcChainReads(rpc: RpcClient): ChainReads {
   return {
     viewAccount: (account) => rpc.viewAccount(account),
     factoryVersions: (factory) => new FactoryClient(factory, rpc).versions(),
   };
+}
+
+/**
+ * The chain clients of Register and of the approvers re-sync (`RegisterDeps.connect`): the vault reader and the account and
+ * factory reads, over one client built only from the URLs of the network's list that have answered `status` with the
+ * network's own chain. Throws `WrongChainError`, or the RPC's own error when no URL has answered right. Never `getRpc` or
+ * `getReader`: those hold every URL, checked or not.
+ */
+export async function connectChain(
+  network: Network,
+  list: RpcList,
+): Promise<{ reader: VaultReader; chain: ChainReads }> {
+  const { rpc, reader } = await verifiedChain(network, list);
+  return { reader, chain: rpcChainReads(rpc) };
 }
 
 // ---- reads that may fail -------------------------------------------------------------------------
@@ -249,8 +264,13 @@ export function codeIdentity(
 
 export interface RegisterDeps {
   db: Db;
-  reader: VaultReader;
-  chain: ChainReads;
+  /**
+   * The chain clients of this registration: the vault reader and the account and factory reads, both over the same client,
+   * which is built only from the RPC URLs that have answered with this network's own chain (`verifiedChain`, lib/near/chain).
+   * Called before anything is read or written. It throws `WrongChainError` when a URL answers for another chain, and the
+   * RPC's own error when no URL has answered right. Every chain call of a registration goes through what it returns.
+   */
+  connect: () => Promise<{ reader: VaultReader; chain: ChainReads }>;
   network: Network;
   /** PROBARION_FACTORY_ID: the one factory whose versions the console trusts. */
   factoryId: string;
@@ -266,7 +286,9 @@ export type RegisterError =
   | "foreign_factory"
   | "unknown_code"
   | "not_owner"
-  | "owner_mismatch";
+  | "owner_mismatch"
+  | "network_mismatch"
+  | "wrong_chain";
 
 export const REGISTER_ERROR_TEXT: Record<RegisterError, string> = {
   invalid_vault: "That is not a NEAR account id.",
@@ -279,6 +301,10 @@ export const REGISTER_ERROR_TEXT: Record<RegisterError, string> = {
     "That account does not run a known Probarion vault build (or a version of this console's factory), so it cannot be registered.",
   not_owner: "Only the vault's on-chain owner can register it. Sign in with the owner account.",
   owner_mismatch: "This vault is already registered under another owner.",
+  network_mismatch:
+    "This vault is already registered on the other network. A vault stays on the network it was registered on.",
+  wrong_chain:
+    "This site is connected to the wrong NEAR network right now, so nothing was registered. Try again later.",
 };
 
 /**
@@ -287,9 +313,10 @@ export const REGISTER_ERROR_TEXT: Record<RegisterError, string> = {
  * known to be a Probarion vault. The code must be a recorded reproducible build
  * (KNOWN_VAULT_CODE_HASHES), or the vault must name this console's factory AND run one of that
  * factory's versions. Then only the on-chain owner may register it, and the approvers come from
- * `get_config`. Registering again re-syncs the approvers and the network, upgrades the kind
- * (external -> team or canary, never back: TEAM_VAULT_IDS, CANARY_VAULT_ID) and keeps the stored
- * display name unless one is given.
+ * `get_config`. Registering again re-syncs the approvers, upgrades the kind (external -> team or
+ * canary, never back: TEAM_VAULT_IDS, CANARY_VAULT_ID) and keeps the stored display name unless one is
+ * given. It never changes the network: the database refuses a tenant that is registered on the other one
+ * (`network_mismatch`). registerVaultAction looks the vault up first, so that the usual case never reaches a chain.
  */
 export async function registerVault(
   deps: RegisterDeps,
@@ -297,13 +324,21 @@ export async function registerVault(
 ): Promise<{ ok: true; tenantId: string } | { ok: false; error: RegisterError }> {
   const vaultId = input.vaultId.trim();
   if (!isNearAccountId(vaultId)) return { ok: false, error: "invalid_vault" };
+  // A registration is lasting state, and everything it believes comes from this network's nodes: they must be this
+  // network's. An RPC setting that points at the other chain would read another account's vault under the same id, so the
+  // clients come from `connect`, which has checked every URL, and nothing here reads through any other.
+  let reader: VaultReader;
+  let chain: ChainReads;
+  try {
+    ({ reader, chain } = await deps.connect());
+  } catch (e) {
+    if (e instanceof WrongChainError) return { ok: false, error: "wrong_chain" };
+    return { ok: false, error: chainErrorKind(e) === null ? rethrow(e) : "unavailable" };
+  }
   let config: VaultConfig;
   let identity: string;
   try {
-    const [c, account] = await Promise.all([
-      deps.reader.getConfig(vaultId),
-      deps.chain.viewAccount(vaultId),
-    ]);
+    const [c, account] = await Promise.all([reader.getConfig(vaultId), chain.viewAccount(vaultId)]);
     config = c;
     identity = codeIdentity(account);
   } catch (e) {
@@ -316,7 +351,7 @@ export async function registerVault(
     }
     let versions: VersionView[];
     try {
-      versions = await deps.chain.factoryVersions(deps.factoryId);
+      versions = await chain.factoryVersions(deps.factoryId);
     } catch (e) {
       // The factory's version list is the evidence here: without it nothing is trusted.
       return { ok: false, error: chainErrorKind(e) === null ? rethrow(e) : "unavailable" };
@@ -347,6 +382,8 @@ export async function registerVault(
   } catch (e) {
     if (e instanceof DbError && e.code === "owner_mismatch")
       return { ok: false, error: "owner_mismatch" };
+    if (e instanceof DbError && e.code === "network_mismatch")
+      return { ok: false, error: "network_mismatch" };
     throw e;
   }
 }

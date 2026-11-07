@@ -1,0 +1,96 @@
+import "server-only";
+import { headers } from "next/headers";
+import { appOrigin, type Network } from "@/lib/config";
+import { type Env, getEnv } from "@/lib/env";
+import {
+  type NetworkRouting,
+  networkForHost,
+  otherNetworkOf,
+  publicRouting,
+  requestHost,
+} from "@/lib/site/network";
+
+// One deployment serves both networks (W-NET-R2). The network of a request comes from the address it was opened at,
+// and from nothing else: never a query parameter, a cookie or a body. Everything that answers a request resolves it
+// once here and passes it down; nothing below reads a network the caller did not name.
+
+export { otherNetworkOf as otherNetwork };
+
+/** The routing the settings describe: the default network, and the origin of each network this site serves. */
+export function routingOf(env: Pick<Env, "defaultNetwork" | "networks">): NetworkRouting {
+  const origin = (n: Network): string | null =>
+    env.networks[n].enabled ? env.networks[n].origin : null;
+  return {
+    defaultNetwork: env.defaultNetwork,
+    origins: { mainnet: origin("mainnet"), testnet: origin("testnet") },
+  };
+}
+
+/**
+ * The network of a request, from its `Host` header. A host equal to an enabled network's origin is that network;
+ * anything else (a preview, a deployment URL, localhost, no host) is the default network. Pure, so tests can cover it.
+ */
+export function networkForRequestHost(
+  host: string | null | undefined,
+  env: Pick<Env, "defaultNetwork" | "networks">,
+): Network {
+  return networkForHost(host, routingOf(env));
+}
+
+/**
+ * The network of the request being answered. Only for code that runs inside a request. The host is the one the CSRF check
+ * reads (`requestHost`: the first `X-Forwarded-Host` value, else `Host`), so the check and the network cannot disagree.
+ */
+export async function requestNetwork(): Promise<Network> {
+  return networkForRequestHost(requestHost(await headers()), getEnv());
+}
+
+/**
+ * The same, for a page that must still render when the settings cannot be read (the Canary, usage, the rules, the error
+ * state of a proof page): if the settings fail, the host is read against the public map built into the page at build time
+ * (the same rule, the same origins). It reads no secret and decides nothing about access.
+ */
+export async function softRequestNetwork(): Promise<Network> {
+  const host = requestHost(await headers());
+  try {
+    return networkForRequestHost(host, getEnv());
+  } catch {
+    return networkForHost(host, publicRouting());
+  }
+}
+
+/**
+ * The origin of the request's network, for a redirect that must still happen when the settings cannot be read (the
+ * one-time alert links: a button must not turn into a bare 500 because a variable is wrong). The settings first; if they
+ * fail, the public map built into the pages (the same rule on the same host); and when that has no origin for the
+ * network, the production address (`appOrigin()`). Never throws, reads no secret and decides nothing about access.
+ */
+export async function softRequestOrigin(): Promise<string> {
+  const host = requestHost(await headers());
+  try {
+    const env = getEnv();
+    return originFor(networkForRequestHost(host, env), env) ?? appOrigin();
+  } catch {
+    const routing = publicRouting();
+    return routing.origins[networkForHost(host, routing)] ?? appOrigin();
+  }
+}
+
+/** Where a network is served (`https://host`), or null when this site does not serve it. */
+export function originFor(network: Network, env: Pick<Env, "networks"> = getEnv()): string | null {
+  return env.networks[network].origin;
+}
+
+/**
+ * The one plain sentence for a vault that is registered on another network than this request's: where to open it, or
+ * that this site has no address for that network yet (then there is nothing to open, so it does not say "Open it at").
+ * Routes put it in the 409 `wrong_network` answer and actions in their result.
+ */
+export function wrongNetworkSentence(
+  vaultNetwork: Network,
+  env: Pick<Env, "networks"> = getEnv(),
+): string {
+  return originFor(vaultNetwork, env) === null
+    ? `This vault is on NEAR ${vaultNetwork}, which this site does not serve yet.`
+    : `This vault is on NEAR ${vaultNetwork}. Open it at the ${vaultNetwork} address.`;
+}

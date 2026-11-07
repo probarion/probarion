@@ -17,3 +17,5 @@ coverage/
 docs/mainnet-proof.json.*.tmp
 *.tsbuildinfo
 probarion-tx/
+test-results/
+playwright-report/

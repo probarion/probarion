@@ -48,12 +48,20 @@ const platformVariable = (name: string) =>
   name === "NODE_ENV" || name === "NEXT_RUNTIME" || name === "CI" || name.startsWith("VERCEL_");
 /** Inputs of the one-off `rotate-keys` command: they must not sit in an .env file next to the live key. */
 const ROTATION_INPUTS = ["OLD_KEY_ENCRYPTION_SECRET", "NEW_KEY_ENCRYPTION_SECRET"];
-/** Public by design (§14, and the two next.config.ts derives from SENTRY_DSN and NEAR_NETWORK). */
+/** An input of the one-off `telegram-webhook` script (docs/ops/alerts.md). The app itself never reads it: it takes its origin from Vercel. */
+const SCRIPT_INPUTS = ["APP_ORIGIN"];
+/**
+ * Public by design (§14, and the ones next.config.ts derives: the DSN from SENTRY_DSN, and the network map from
+ * NEAR_NETWORK, APP_ORIGIN_MAINNET and APP_ORIGIN_TESTNET: which network each address is, the browser's copy of the
+ * server's own rule. Addresses and a network name, nothing secret).
+ */
 const PUBLIC_ALLOWED = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "NEXT_PUBLIC_SENTRY_DSN",
-  "NEXT_PUBLIC_NEAR_NETWORK",
+  "NEXT_PUBLIC_DEFAULT_NETWORK",
+  "NEXT_PUBLIC_ORIGIN_MAINNET",
+  "NEXT_PUBLIC_ORIGIN_TESTNET",
 ];
 const SECRET_NAME = /SECRET|KEY|TOKEN|JWT|PASSWORD|DSN|HEARTBEAT/;
 
@@ -69,13 +77,14 @@ describe("environment variables", () => {
   it("lists every variable the web app reads in .env.example", () => {
     const read = envNamesRead(WEB);
     expect(read.size).toBeGreaterThan(15);
-    // next.config.ts derives NEXT_PUBLIC_SENTRY_DSN and NEXT_PUBLIC_NEAR_NETWORK from variables listed here.
+    // next.config.ts derives NEXT_PUBLIC_SENTRY_DSN and the network map from variables listed here.
     const derived = nextPublicNames(text(WEB, "next.config.ts"));
     const missing = [...read]
       .filter(
         ([n]) =>
           !platformVariable(n) &&
           !ROTATION_INPUTS.includes(n) &&
+          !SCRIPT_INPUTS.includes(n) &&
           !derived.includes(n) &&
           !example.has(n),
       )
@@ -95,6 +104,17 @@ describe("environment variables", () => {
       expect(example.has(name), `${name} in .env.example`).toBe(false);
       expect(runbook, name).toContain(name);
       expect(rotateCli, `${name} read by rotate-keys`).toContain(name);
+    }
+  });
+
+  it("keeps the Telegram setup script's own input out of .env.example, read by that script alone, and in its runbook", () => {
+    const runbook = text(ROOT, "docs", "ops", "alerts.md");
+    for (const name of SCRIPT_INPUTS) {
+      expect(example.has(name), `${name} in .env.example`).toBe(false);
+      expect(runbook, name).toContain(name);
+      expect(envNamesRead(WEB).get(name), `where ${name} is read`).toEqual([
+        "src/lib/alerts/webhook-setup.ts",
+      ]);
     }
   });
 
@@ -230,6 +250,15 @@ describe("vercel.json", () => {
   it("gives every cron a GET route that reads CRON_SECRET", () => {
     expect(cronProblems(WEB, VERCEL)).toEqual([]);
   });
+
+  it("runs the watcher and the usage numbers once a day, the most the Vercel Hobby plan accepts", () => {
+    // The Hobby plan rejects a more frequent schedule when it deploys. The per-minute watcher is a Supabase Cron job the
+    // OWNER turns on (docs/ops/watcher.md); a project on a paid plan changes these two lines and this test on purpose.
+    expect(VERCEL.crons).toEqual([
+      { path: "/api/cron/watch", schedule: "0 0 * * *" },
+      { path: "/api/cron/metrics", schedule: "10 0 * * *" },
+    ]);
+  });
 });
 
 describe("client components", () => {
@@ -247,10 +276,7 @@ describe("client components", () => {
 
 describe("package scripts", () => {
   /** Scripts whose file a later task adds. Delete the entry when it lands: the test below says so. */
-  const KNOWN_GAPS: Record<string, string> = {
-    "telegram-webhook": "Task 21 (Telegram alerts) adds scripts/telegram-webhook.ts",
-    "test:e2e": "Task 22 (smoke e2e) adds playwright.config.ts",
-  };
+  const KNOWN_GAPS: Record<string, string> = {};
   const exists = (rel: string) => existsSync(join(WEB, rel));
   const unresolved = (): string[] => {
     const out = new Set<string>();

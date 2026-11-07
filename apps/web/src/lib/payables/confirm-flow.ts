@@ -1,4 +1,5 @@
 import type { ActionDenied } from "@/lib/console/action-auth";
+import type { ConfirmOptions } from "@/lib/console/confirm-dialog";
 import { decodeNonce, normalizeSignature, type SignedMessage } from "@/lib/near/signin";
 import type { ConfirmResult, PrepareResult } from "./confirm";
 import type { RowSnapshot } from "./store";
@@ -26,6 +27,17 @@ export interface FlowResult {
 /** After the signature went to the server and no answer came back. */
 export const PAYMENT_MAY_HAVE_GONE_OUT =
   "The server did not answer; the payment may have gone out. Reload: if the invoice shows 'Outcome unknown: do not resend', do not confirm again or pay by hand.";
+
+/**
+ * What the owner is asked before Reject. It cannot be taken back, so it is the red dialog. Reject asks the server and
+ * the wallet nothing, so unlike a wallet button's dialog it has no "your wallet asks you to sign" footnote.
+ */
+export const REJECT_INVOICE_CONFIRM: ConfirmOptions = {
+  title: "Reject invoice",
+  actionLabel: "Reject invoice",
+  tone: "danger",
+  body: "Reject this invoice? Nothing is paid. The same text uploaded again stays a duplicate; a corrected invoice is a new one.",
+};
 
 const denied = (v: unknown): v is ActionDenied =>
   typeof v === "object" && v !== null && "status" in v && "error" in v;

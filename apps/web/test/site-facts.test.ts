@@ -10,7 +10,8 @@ import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
-import { BetaStrip } from "@/components/site/BetaStrip";
+import { BetaStrip, BetaStripView } from "@/components/site/BetaStrip";
+import { InkBand } from "@/components/site/InkBand";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { explorerTxUrl } from "@/lib/config";
@@ -61,7 +62,7 @@ const landing = (network: "testnet" | "mainnet" = "testnet") =>
     createElement(
       "div",
       null,
-      createElement(BetaStrip, { network }),
+      createElement(BetaStripView, { network }),
       createElement(SiteHeader),
       createElement(Home),
       createElement(SiteFooter),
@@ -247,7 +248,7 @@ describe("transactions", () => {
     for (const t of Object.values(TX)) expect(README).toContain(t.hash);
   });
 
-  it("link to the testnet explorer, whatever network this build runs on", () => {
+  it("link to the testnet explorer, whatever network the page is opened at", () => {
     for (const t of Object.values(TX)) {
       expect(t.url).toBe(explorerTxUrl("testnet", t.hash));
       expect(t.url).toContain("testnet");
@@ -281,6 +282,15 @@ describe("the claims about the code", () => {
     for (const f of fieldsOf("SpendRequest")) {
       expect(f).not.toMatch(/recipient|payee|address|receiver|destination/i);
     }
+  });
+
+  it("makes the ink band the target of /#payee, which the Canary page links to", () => {
+    const band = renderToStaticMarkup(createElement(InkBand));
+    expect(band).toMatch(/^<section[^>]*\sid="payee"/);
+    expect([...band.matchAll(/\sid="payee"/g)]).toHaveLength(1);
+    expect(band).toContain(BAND.gone);
+    // The landing page has no other element with that id.
+    expect([...landing().matchAll(/\sid="payee"/g)]).toHaveLength(1);
   });
 
   it("shows mandate fields that exist on a mandate", () => {
@@ -470,13 +480,18 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Vault factory",
-      pill: "Built, not deployed",
-      readme: [{ start: "Factory contract", says: ["**Built and tested**", "**Not deployed**"] }],
+      pill: "On testnet",
+      readme: [{ start: "Factory contract", says: ["**Shipped on NEAR testnet**"] }],
     },
     {
       row: "Canary public challenge",
-      pill: "Planned",
-      readme: [{ start: "Canary, a public vault", says: ["**Planned**"] }],
+      pill: "Page built, not open yet",
+      readme: [
+        {
+          start: "Canary, a public vault",
+          says: ["**In progress**", "does not pay from its own cycle", "It is not open yet"],
+        },
+      ],
     },
     {
       row: "Mainnet vault",
@@ -565,29 +580,35 @@ describe("the status list", () => {
       { row: "Vault contract", pill: "On testnet", tone: "live" },
       { row: "Offline verifier, checks a to i", pill: "Shipped in source", tone: "live" },
       { row: "Reproducible builds", pill: "Shipped", tone: "live" },
+      { row: "Vault factory", pill: "On testnet", tone: "live" },
       { row: "Web console", pill: "In progress", tone: "work" },
       { row: "Public proof page", pill: "Built, no public vault yet", tone: "work" },
       { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
       { row: "Payables agent", pill: "In progress", tone: "work" },
       { row: "Live attested model run", pill: "In progress", tone: "work" },
-      { row: "Vault factory", pill: "Built, not deployed", tone: "work" },
-      { row: "Canary public challenge", pill: "Planned", tone: "plan" },
+      { row: "Canary public challenge", pill: "Page built, not open yet", tone: "work" },
       { row: "MCP server", pill: "Planned", tone: "plan" },
       { row: "Mainnet vault", pill: "Planned", tone: "plan" },
     ]);
   });
 
-  it("says the testnet vault runs an older build, and the fixed build's hash is on record", () => {
+  it("says v0 runs an older build, and the factory's vaults run the fixed build on record", () => {
     expect(STATUS.build).toBe(
-      "The testnet vault runs a build older than the current source, and the fixed build's hash is recorded in `contracts/code-hashes.json`.",
+      "`v0.probarion.testnet` runs a build older than the current source; the vaults the testnet factory creates run the fixed build recorded in `contracts/code-hashes.json`.",
     );
     const prose = README.replace(/\s+/g, " ");
-    expect(prose).toContain("testnet vault runs the earlier build");
+    expect(prose).toContain("`v0.probarion.testnet` runs the earlier build");
     const hashes = JSON.parse(text(ROOT, "contracts", "code-hashes.json")) as {
       entries: { code_hash: string }[];
     };
     const fixed = /code hash `(3cQXYDvf[1-9A-HJ-NP-Za-km-z]+)`/.exec(prose)?.[1];
     expect(hashes.entries.map((e) => e.code_hash)).toContain(fixed);
+    const record = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
+      factory: { code_hash: string; versions: { code_hash: string }[] };
+    };
+    expect(record.factory.versions.map((v) => v.code_hash)).toEqual([fixed]);
+    expect(hashes.entries.map((e) => e.code_hash)).toContain(record.factory.code_hash);
+    expect(prose).toContain(`Code hash \`${record.factory.code_hash}\``);
     expect(visibleText(landing())).toContain("runs a build older than the current source");
   });
 
@@ -622,16 +643,23 @@ describe("the rendered landing page", () => {
     const named = [...FOOTER.product, ...FOOTER.legal].filter((i) =>
       PLANNED_ROUTES.includes(i.route),
     );
-    expect(named.length).toBeGreaterThan(0);
     for (const { label } of named) expect(out, label).toContain(`${label} (coming soon)`);
   });
 
   it("leaves no route out of the footer that it does not cover some other way", () => {
     const out = visibleText(landing());
-    expect(out).toContain("Canary (coming soon)");
-    expect(out).toContain("Open metrics (coming soon)");
-    expect(out).toContain("Terms (coming soon)");
-    expect(out).toContain("Privacy (coming soon)");
+    // /canary is built, so the footer links it as a page and does not call it coming soon.
+    expect(out).not.toContain("Canary (coming soon)");
+    expect(hrefs(landing())).toContain("/canary");
+    // /usage is built too, and the old planned name /open is gone.
+    expect(out).not.toContain("Usage (coming soon)");
+    expect(out).not.toContain("Open metrics");
+    expect(hrefs(landing())).toContain("/usage");
+    expect(hrefs(landing())).not.toContain("/open");
+    expect(out).not.toContain("coming soon");
+    expect(hrefs(landing())).toEqual(
+      expect.arrayContaining(["/security", "/status", "/terms", "/privacy"]),
+    );
   });
 
   it("names none of the owner's other projects", () => {
@@ -699,7 +727,9 @@ describe("the rendered landing page", () => {
 
 describe("the beta strip", () => {
   it("says the three standing facts and the test network", () => {
-    const out = visibleText(renderToStaticMarkup(createElement(BetaStrip, { network: "testnet" })));
+    const out = visibleText(
+      renderToStaticMarkup(createElement(BetaStripView, { network: "testnet" })),
+    );
     expect(out).toContain("Unaudited beta.");
     expect(out).toContain("Probarion holds no owner key");
     expect(out).toContain("Non-custodial");
@@ -708,11 +738,47 @@ describe("the beta strip", () => {
   });
 
   it("does not say testnet when the build is mainnet", () => {
-    const out = visibleText(renderToStaticMarkup(createElement(BetaStrip, { network: "mainnet" })));
+    const out = visibleText(
+      renderToStaticMarkup(createElement(BetaStripView, { network: "mainnet" })),
+    );
     expect(out).not.toMatch(/testnet|test tokens/i);
     expect(out).toContain("Unaudited beta.");
     expect(out).toContain("Runs on NEAR mainnet.");
     expect(betaStrip("mainnet").where).toBe("Runs on NEAR mainnet.");
+  });
+});
+
+describe("the beta strip, before the browser has told it the network", () => {
+  // The pages are static: the strip cannot know which address it is served at until it runs in the browser, so what the
+  // server renders (and what hydration meets) is only what is true on both networks (W-NET-R6).
+  it("says the standing facts and no network at all in the server render", () => {
+    const out = visibleText(renderToStaticMarkup(createElement(BetaStrip)));
+    expect(out).toContain("Unaudited beta.");
+    expect(out).toContain("No third party has audited this code.");
+    expect(out).toContain("Probarion holds no owner key");
+    expect(out).toContain("Use small amounts.");
+    expect(out).not.toMatch(/testnet|mainnet|test tokens|Runs on/i);
+  });
+
+  it("is the same markup as the view with no network", () => {
+    expect(renderToStaticMarkup(createElement(BetaStrip))).toBe(
+      renderToStaticMarkup(createElement(BetaStripView, { network: null })),
+    );
+  });
+
+  it("adds the network sentence of the network it is told, and no other", () => {
+    for (const [network, says, not] of [
+      ["testnet", "Runs on NEAR testnet with test tokens.", /mainnet/i],
+      ["mainnet", "Runs on NEAR mainnet.", /testnet|test tokens/i],
+    ] as const) {
+      const out = visibleText(renderToStaticMarkup(createElement(BetaStripView, { network })));
+      expect(out, network).toContain(says);
+      expect(out, network).not.toMatch(not);
+    }
+  });
+
+  it("has no network sentence in the neutral copy", () => {
+    expect(betaStrip(null).where).toBeNull();
   });
 });
 
@@ -726,6 +792,11 @@ describe("the header", () => {
     expect(links).toContain(LINKS.github);
     for (const route of PLANNED_ROUTES) expect(links).not.toContain(route);
     expect(html).not.toContain("coming soon");
+  });
+
+  it("renders no network switch on the server: it appears after mount, and only when the other network is served", () => {
+    expect(html).not.toContain('aria-label="Network"');
+    expect(html).not.toContain("Network:");
   });
 
   it("has a menu for phones that works with no JavaScript", () => {
@@ -760,7 +831,7 @@ describe("the root layout", () => {
 
 describe("the chrome's landmarks and headings", () => {
   it("puts the beta strip in a landmark", () => {
-    const html = renderToStaticMarkup(createElement(BetaStrip, { network: "testnet" }));
+    const html = renderToStaticMarkup(createElement(BetaStripView, { network: "testnet" }));
     expect(html).toMatch(/^<aside [^>]*aria-label="Beta notice"/);
   });
 
@@ -787,6 +858,7 @@ describe("the chrome's landmarks and headings", () => {
     expect(row).toMatch(
       /<span className="shrink-0 whitespace-nowrap">\s*<SignOutButton \/>\s*<\/span>/,
     );
+    expect(row).toContain('<Link href="/extension"');
   });
 });
 
@@ -850,6 +922,20 @@ describe("the sign-in page", () => {
     const page = text(WEB, "src", "app", "login", "page.tsx");
     expect(page).toContain("<SignInButton next={safeNext} />");
     expect(page).toContain('next.startsWith("/console") ? next : "/console"');
+    expect(page).toContain("const safeNext = extensionNextPath(next) ?? consoleNext;");
+  });
+
+  it("says on the Browser extension page that the extension is not released yet", () => {
+    const page = text(WEB, "src", "app", "extension", "page.tsx");
+    expect(page).toMatch(
+      /<Notice tone="info">\s*The Probarion extension for Chrome is not released yet\.\s*<\/Notice>/,
+    );
+    // Its intro puts what the extension does in the future tense, as /privacy does.
+    const words = page.replace(/\s+/g, " ");
+    expect(words).toContain(
+      "The extension will send invoices to wait for your confirmation and show what waits for you, but it can't pay or approve: an invoice it sends will be paid only after you confirm it in the console with your wallet.",
+    );
+    expect(words).not.toContain("The extension sends invoices");
   });
 });
 
@@ -865,6 +951,7 @@ describe("robots and the sitemap", () => {
     const paths = sitemap().map((e) => new URL(e.url).pathname);
     expect(paths).toContain("/");
     expect(paths).toContain("/proof");
+    expect(paths).toContain("/usage");
     expect(paths.filter((p) => p.startsWith("/console") || p.startsWith("/api"))).toEqual([]);
     expect(paths.filter((p) => PLANNED_ROUTES.includes(p))).toEqual([]);
     expect(paths).toEqual(publicRoutes());

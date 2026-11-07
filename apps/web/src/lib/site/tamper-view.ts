@@ -15,6 +15,50 @@ export function resultSummary(result: Omit<TamperResult, "ok">, firstBroken: str
   return result.firstBroken === null ? counts : `${counts}. ${firstBroken} ${result.firstBroken}`;
 }
 
+/** A body edited after signing, in the words of check a or b (packages/core/src/verify.ts). */
+const CHANGED = /^entry (\d+) body_hash does not recompute from its body\b/;
+/** Entries cut from the end, in the words of check c. */
+const CUT = /covers (\d+) entries but the ledger has (\d+): entry \d+ and later are missing$/;
+
+/**
+ * The verdict in plain words, beside PASS or FAIL. It reads the verifier's result, not the button pressed, and names a
+ * cause and an entry only when the verifier's own words name them: an entry whose body no longer gives the hash its
+ * signature covers (check a or b), or one entry cut from the end that an anchor still counts (check c alone). Any other
+ * result gets the counts. The verifier's own words go in the disclosure below the checks.
+ */
+export function plainVerdict(result: Omit<TamperResult, "ok">, firstBroken: string): string {
+  const failed = new Map(
+    result.checks.filter((c) => c.status === "fail").map((c) => [c.id, c.detail]),
+  );
+  const all = result.checks.length;
+  if (failed.size === 0 && result.unproven === 0 && all > 0 && result.passed === all) {
+    return `All ${all} offline checks pass.`;
+  }
+  const changed = CHANGED.exec(failed.get("a") ?? "") ?? CHANGED.exec(failed.get("b") ?? "");
+  if (changed !== null) {
+    return `Entry ${changed[1]} was changed after it was signed, so its signature no longer matches.`;
+  }
+  const cut = failed.size === 1 ? CUT.exec(failed.get("c") ?? "") : null;
+  if (cut !== null && Number(cut[1]) === Number(cut[2]) + 1) {
+    return `Entry ${cut[2]} is missing, but the vault anchored a count that includes it.`;
+  }
+  return resultSummary(result, firstBroken);
+}
+
+/**
+ * The next step follows a run the verifier failed, while that run is what the panel shows: not at rest, not after
+ * Restore, not for a result that is only unproven, and not once a later press did not finish.
+ */
+export function offersNext(
+  shown: { live: boolean; result: Pick<TamperResult, "failed"> },
+  notRun: boolean,
+): boolean {
+  return shown.live && shown.result.failed > 0 && !notRun;
+}
+
+/** The disclosure that holds the counts and, for each check that did not pass, the verifier's own words. */
+export const VERIFIER_DETAIL = "Verifier detail";
+
 /**
  * The left card's status line. It carries the verdict word because on a phone the table sits between the buttons and
  * the verdict panel. Only that panel is a live region, so a screen reader hears the verdict once.

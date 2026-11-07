@@ -1,3 +1,4 @@
+import type { Network } from "@/lib/config";
 import { serviceDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
 import { problem, rateLimitOr429 } from "@/lib/http";
@@ -7,31 +8,38 @@ import { ONLY_ON_MAINNET } from "./copy";
 
 /**
  * What every top-up route needs before it talks to 1Click, in one place so a new route cannot forget it:
- * this deployment runs on mainnet (1Click and NEAR Intents exist there only) and holds the partner JWT.
- * The JWT is returned for the route to use and never reaches a response.
+ * the vault is on mainnet (1Click and NEAR Intents exist there only; `network` is the vault's own, which the guard
+ * has already shown to be the request's) and this deployment holds the partner JWT. The JWT is returned for the route
+ * to use and never reaches a response.
  */
-export function mainnetGate(): { jwt: string } | Response {
+export function mainnetGate(network: Network): { jwt: string } | Response {
   const env = getEnv();
-  if (env.NEAR_NETWORK !== "mainnet") return problem(409, "mainnet_only", `${ONLY_ON_MAINNET}.`);
+  if (network !== "mainnet") return problem(409, "mainnet_only", `${ONLY_ON_MAINNET}.`);
   if (!env.ONECLICK_JWT) return problem(503, "not_configured");
   return { jwt: env.ONECLICK_JWT };
 }
 
+/** A bucket is one account on one network: the same account on the other network has its own. */
 const BUCKETS = {
-  quote: (account: string) => [`topup:${account}`, LIMITS.topupQuote] as const,
-  status: (account: string) => [`topup-status:${account}`, LIMITS.topupStatus] as const,
-  submit: (account: string) => [`topup-submit:${account}`, LIMITS.topupSubmit] as const,
+  quote: (network: Network, account: string) =>
+    [`topup:${network}:${account}`, LIMITS.topupQuote] as const,
+  status: (network: Network, account: string) =>
+    [`topup-status:${network}:${account}`, LIMITS.topupStatus] as const,
+  submit: (network: Network, account: string) =>
+    [`topup-submit:${network}:${account}`, LIMITS.topupSubmit] as const,
 };
 
 /**
- * One hit on this route's rate limit for the signed-in account, or the response to send instead: 429 when it
- * is used up, 503 when the limiter cannot be reached (a route that cannot count does not run).
+ * One hit on this route's rate limit for the signed-in account on `network` (the vault's own, which the guard has shown
+ * to be the request's), or the response to send instead: 429 when it is used up, 503 when the limiter cannot be reached
+ * (a route that cannot count does not run).
  */
 export async function topupLimited(
   kind: keyof typeof BUCKETS,
+  network: Network,
   account: string,
 ): Promise<Response | null> {
-  const [bucket, limit] = BUCKETS[kind](account);
+  const [bucket, limit] = BUCKETS[kind](network, account);
   try {
     return await rateLimitOr429(serviceDb(), bucket, limit);
   } catch (error) {

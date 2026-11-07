@@ -27,6 +27,10 @@ const h = vi.hoisted(() => ({
   /** The custom rules the pipeline added to the Probarion it made. */
   rules: [] as string[],
   failDb: null as null | string,
+  /** The tenants the route asked the watcher to look at once its response is sent. */
+  kicks: [] as string[],
+  /** The networks the route asked a reader, a Probarion and a kick for. */
+  networks: [] as string[],
 }));
 
 vi.mock("@/lib/auth/guard", () => ({
@@ -43,10 +47,20 @@ vi.mock("@/lib/db/clients", () => ({
   }),
 }));
 vi.mock("@/lib/near/server", () => ({
-  getReader: () => ({ listMandates: (v: string, f: number, l: number) => h.mandates(v, f, l) }),
+  getReader: (network: string) => {
+    h.networks.push(`reader:${network}`);
+    return { listMandates: (v: string, f: number, l: number) => h.mandates(v, f, l) };
+  },
+}));
+vi.mock("@/lib/watcher/server", () => ({
+  kickWatcher: (tenant: string, network: string) => {
+    h.networks.push(`kick:${network}`);
+    return h.kicks.push(tenant);
+  },
 }));
 vi.mock("@/lib/sdk/factory", () => ({
-  makeTenantProbarion: (o: Record<string, unknown>) => {
+  makeTenantProbarion: (network: string, o: Record<string, unknown>) => {
+    h.networks.push(`probarion:${network}`);
     h.made.push(o);
     return {
       process: (i: unknown) => h.process(i),
@@ -131,8 +145,10 @@ beforeEach(() => {
   h.auth = null;
   h.roles = [];
   h.made = [];
+  h.networks = [];
   h.rules = [];
   h.failDb = null;
+  h.kicks = [];
   h.mandates = async (_v, from) => (from === 0 ? [mandate(1, agentPk)] : []);
   h.process = async () => PAID;
 });
@@ -223,6 +239,10 @@ describe("POST /api/console/[vault]/invoices", () => {
     expect(h.made).toEqual([
       expect.objectContaining({ agentKey: agentSecret, requestId: "req-1" }),
     ]);
+    // The cycle runs on the vault's own network: its chain reader, its Probarion, its watcher kick.
+    expect(new Set(h.networks)).toEqual(
+      new Set(["reader:mainnet", "probarion:mainnet", "kick:mainnet"]),
+    );
     const row = await pg.query<{ filename: string; media_type: string }>(
       "select filename, media_type from invoices order by created_at desc limit 1",
     );
@@ -456,6 +476,37 @@ describe("POST /api/console/[vault]/invoices", () => {
     expect(
       logs.lines.some((l) => l.includes("payables.failed") && l.includes("ledger moved")),
     ).toBe(true);
+  });
+
+  it("has the vault watched once the response is sent: one kick, with the member's tenant, after the cycle is sure to run", async () => {
+    expect((await post(invoiceForm({ text: fresh() }))).status).toBe(200);
+    expect(h.kicks).toEqual([h.member.tenant_id]);
+    // A cycle that stops with an error may still have changed the vault's ledger or chain: it is watched too.
+    h.process = async () => {
+      throw new Error("ledger moved");
+    };
+    expect((await post(invoiceForm({ text: fresh() }))).status).toBe(502);
+    expect(h.kicks).toEqual([h.member.tenant_id, h.member.tenant_id]);
+  });
+
+  it("does not have the vault watched for a request that is refused before the cycle", async () => {
+    await post(invoiceForm({ text: fresh() }), { origin: "https://evil.example" });
+    h.auth = new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
+    await post(invoiceForm({ text: fresh() }));
+    h.auth = null;
+    await post(invoiceForm({ text: fresh() }), {}, { length: false }); // 411
+    await post(invoiceForm({ text: "  " })); // 400: no invoice
+    await post(invoiceForm({ text: fresh() }), { "content-length": String(20 * 1024 * 1024) }); // 413
+    const [max, windowSeconds] = LIMITS.invoiceUpload;
+    for (let i = 0; i < max; i++) {
+      await h.db.rpc("rate_limit_take", {
+        bucket: `invoices:${h.member.tenant_id}`,
+        max,
+        window_seconds: windowSeconds,
+      });
+    }
+    expect((await post(invoiceForm({ text: fresh() }))).status).toBe(429);
+    expect(h.kicks).toEqual([]);
   });
 
   it("rate-limits uploads per vault", async () => {

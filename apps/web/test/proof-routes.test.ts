@@ -8,6 +8,7 @@ import { type Db, DbError } from "@/lib/db/port";
 import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 import { ProofEvidenceError } from "@/lib/proof/evidence";
 import { clearProofCache, type ProofDeps } from "@/lib/proof/service";
+import { elementsOf } from "./fixtures/elements";
 import { noServiceDb, type ProofState, proofSnapshot, publicDbFor, txHash } from "./fixtures/proof";
 
 const h = vi.hoisted(() => ({
@@ -74,12 +75,20 @@ vi.mock("@/lib/proof/deps", () => ({
     return h.deps;
   },
 }));
-vi.mock("@/lib/env", () => ({
-  getEnv: () => {
-    if (h.envDown) throw new Error("Invalid environment: SUPABASE_URL is required");
-    return h.env;
-  },
-}));
+// The settings in this file are one network's: the default network (so every request is for it), and its demo vault.
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("./fixtures/networks");
+  return {
+    getEnv: () => {
+      if (h.envDown) throw new Error("Invalid environment: SUPABASE_URL is required");
+      const network = h.env.NEAR_NETWORK as "mainnet" | "testnet";
+      return networkPart({
+        defaultNetwork: network,
+        [network]: { demoVaultId: h.env.PROBARION_VAULT_ID },
+      });
+    },
+  };
+});
 
 import Home from "@/app/page";
 import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
@@ -87,6 +96,7 @@ import ProofPage, { generateMetadata } from "@/app/proof/[vault]/page";
 import { GET } from "@/app/proof/[vault]/snapshot.json/route";
 import ProofIndex from "@/app/proof/page";
 import { SiteHeader } from "@/components/site/SiteHeader";
+import { TamperPanel } from "@/components/site/TamperPanel";
 import { SITE_NAV } from "@/lib/routes";
 
 /** True when the text still holds a right-to-left override, a line separator or a BEL. */
@@ -332,6 +342,26 @@ describe("/proof/[vault]", () => {
     expect(t).toContain("The first broken ledger entry is seq 0.");
   });
 
+  it("ends with the next step, whatever the result: a link to the console, after the steps to verify", async () => {
+    for (const state of ["ok", "unproven", "failed"] as const) {
+      const { out } = await served(state);
+      expect(out, state).toMatch(
+        /<a[^>]*href="\/console"[^>]*>Put your agent behind a mandate <span aria-hidden="true">→<\/span><\/a>/,
+      );
+      const t = text(out);
+      expect(t.indexOf("Put your agent behind a mandate"), state).toBeGreaterThan(
+        t.indexOf("Verify it yourself, offline"),
+      );
+    }
+  });
+
+  it("does not offer the next step when the checks did not run", async () => {
+    const { snapshot } = await served("ok");
+    h.limitDown = true;
+    clearProofCache();
+    expect(await html(snapshot.vault)).not.toContain("Put your agent behind a mandate");
+  });
+
   it("links the explorer of the vault's network, the download and the offline command", async () => {
     const { snapshot, out } = await served("ok", "testnet");
     expect(snapshot.vault).toBe("acme.vaults.probarion.testnet");
@@ -420,10 +450,10 @@ describe("/proof/[vault]", () => {
     );
   });
 
-  it("links /security the way a planned page is linked: as 'coming soon' text", async () => {
+  it("links /security now that the page is built", async () => {
     const { out } = await served("ok");
-    expect(out).not.toContain('href="/security"');
-    expect(text(out)).toContain("Security (coming soon)");
+    expect(out).toContain('href="/security"');
+    expect(text(out)).not.toContain("Security (coming soon)");
   });
 
   it("shows crafted ledger and chain text with its controls replaced", async () => {
@@ -738,7 +768,12 @@ describe("/proof", () => {
       const out = text(await render());
       expect(out).toContain("Try the verifier here");
       expect(out).toContain("Change an amount");
-      expect(out).toContain("9 passed, 0 failed, 0 unproven");
+      expect(out).toContain("All 9 offline checks pass.");
+    });
+
+    it("gives its ledger test no link to /proof: the form above it is the next step here", async () => {
+      const panels = elementsOf(await index(), TamperPanel);
+      expect(panels.map((p) => (p.props as { next?: boolean }).next)).toEqual([undefined]);
     });
 
     it("still prefers the public demo vault to the form", async () => {

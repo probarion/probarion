@@ -2,11 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { fullAccessKeyVerifier, rpcLoginProvider } from "@/lib/auth/verify";
+import type { Network } from "@/lib/config";
 import { type ActionDenied, isDenied, memberForAction } from "@/lib/console/action-auth";
 import { masterKey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
 import { setTenantSettings } from "@/lib/db/tenants";
-import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
 import { getReader, getRpc } from "@/lib/near/server";
 import {
@@ -35,15 +35,18 @@ export async function setZeroRetentionAction(vault: string, formData: FormData):
   revalidatePath(`/console/${auth.member.vault_id}/payables`);
 }
 
-/** The production wiring of the confirm service: the shared RPC client, read at finality "final" for the key. */
-function confirmDeps(): ConfirmDeps {
+/**
+ * The production wiring of the confirm service: the network's shared RPC client, read at finality "final" for the key.
+ * `network` is the vault's own (the guard has shown it is the request's); it is in the message the owner signs.
+ */
+function confirmDeps(network: Network): ConfirmDeps {
   return {
     db: serviceDb(),
     master: masterKey(),
-    reader: getReader(),
-    keyVerifier: fullAccessKeyVerifier(rpcLoginProvider(getRpc())),
-    network: getEnv().NEAR_NETWORK,
-    makeProbarion: (o) => makeTenantProbarion(o),
+    reader: getReader(network),
+    keyVerifier: fullAccessKeyVerifier(rpcLoginProvider(getRpc(network))),
+    network,
+    makeProbarion: (o) => makeTenantProbarion(network, o),
   };
 }
 
@@ -58,7 +61,7 @@ export async function prepareConfirmAction(
   const auth = await memberForAction(vault, ["owner"]);
   if (isDenied(auth)) return auth;
   try {
-    return await prepareConfirmation(confirmDeps(), {
+    return await prepareConfirmation(confirmDeps(auth.member.network), {
       member: auth.member,
       account: auth.session.accountId,
       invoiceId,
@@ -82,7 +85,7 @@ export async function confirmInvoiceAction(
   const auth = await memberForAction(vault, ["owner"]);
   if (isDenied(auth)) return auth;
   try {
-    const r = await confirmInvoice(confirmDeps(), {
+    const r = await confirmInvoice(confirmDeps(auth.member.network), {
       member: auth.member,
       account: auth.session.accountId,
       invoiceId,

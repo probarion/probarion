@@ -9,7 +9,7 @@ export interface ProofReaderInput {
   vault: string;
   /** Where the ledger comes from: the public reader for a public vault, the tenant's own for a member. */
   store: LedgerStore;
-  /** The NEAR RPC client the console uses (`getRpc()`). */
+  /** The NEAR RPC client of the vault network (`getRpc(network)`). */
   rpc: RpcClient;
   /** `NEAR_ARCHIVAL_RPC_URLS`; empty means unset, and then no archival lookup is made. */
   archivalRpcUrls: readonly string[];

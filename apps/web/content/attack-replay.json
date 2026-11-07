@@ -1,0 +1,11 @@
+[
+  {
+    "at": "2026-11-01T07:10:31Z",
+    "technique": "other",
+    "summary": "Our smoke test: the agent key went straight to the contract and cited mandate 999, which does not exist.",
+    "layer": "contract",
+    "result": "NoMandate",
+    "tx_hash": "AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY",
+    "network": "testnet"
+  }
+]

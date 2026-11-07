@@ -37,7 +37,7 @@ export async function generateKeyAction(
   vault: string,
   purpose: KeyPurpose,
   label: string,
-): Promise<WalletTx | { error: string; status?: 401 | 403 }> {
+): Promise<WalletTx | { error: string; status?: 401 | 403 | 409 }> {
   const auth = await memberForAction(vault, ["owner"]);
   if (isDenied(auth)) return auth;
   if (!isKeyPurpose(purpose)) return { error: "Unknown key purpose." };
@@ -108,7 +108,7 @@ export async function keepKeyAction(
   if (isDenied(auth)) return { ok: false, message: auth.error };
   const { member } = auth;
   try {
-    const r = await keepKey(serviceDb(), getReader(), member, keyId);
+    const r = await keepKey(serviceDb(), getReader(member.network), member, keyId);
     log.info("keys.keep", { tenant: member.tenant_id, id: keyId, kept: r.kept, reason: r.reason });
     revalidatePath(`/console/${member.vault_id}/keys`);
     return keepResultText(r);
@@ -131,7 +131,7 @@ export async function syncKeysAction(
   if (isDenied(auth)) return { ok: false, ...auth };
   const { member } = auth;
   try {
-    const { checks } = await syncKeyStatuses(serviceDb(), getReader(), {
+    const { checks } = await syncKeyStatuses(serviceDb(), getReader(member.network), {
       tenant_id: member.tenant_id,
       vault_id: member.vault_id,
     });
@@ -141,7 +141,7 @@ export async function syncKeysAction(
       (c) => c.purpose === "ledger" && c.reason === "registered_without_key",
     );
     const code: VaultCode = ledgerStuck
-      ? await readVaultCode(rpcChainReads(getRpc()), member.vault_id)
+      ? await readVaultCode(rpcChainReads(getRpc(member.network)), member.vault_id)
       : "unknown";
     const notes = checks.map((c) => describeCheck(c, code)).filter((n): n is string => n !== null);
     const changed = checks.filter((c) => c.to !== c.from).length;

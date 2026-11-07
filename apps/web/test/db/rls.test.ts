@@ -15,13 +15,16 @@ const TENANT_TABLES: Record<string, string> = {
   alert_subscriptions: "tenant_id",
   alerts_sent: "id",
 };
-// invoice_confirm_nonces (0007) belongs to a tenant, but no member reads it: like the global tables, it has no policy and no grant.
+// invoice_confirm_nonces (0007) belongs to a tenant, and extension_tokens and extension_pair_codes (0013) to an account and a network, but no member reads them: like the global tables, they have no policy and no grant.
 const GLOBAL_TABLES = [
   "canary_attempts",
   "metrics_daily",
+  "metrics_runs",
   "pilots",
   "rate_limits",
   "invoice_confirm_nonces",
+  "extension_tokens",
+  "extension_pair_codes",
 ];
 
 const RLS_ASSERT_SQL = readFileSync(
@@ -80,6 +83,9 @@ describe("schema and RLS", () => {
     );
     await pg.query(
       `insert into metrics_daily (day, segment, metric, value) values ('2026-11-08', 'team', 'vaults', 1)`,
+    );
+    await pg.query(
+      `insert into metrics_runs (network, computed_at, canary_participants, external_owners) values ('mainnet', now(), 1, 1)`,
     );
     await pg.query(
       `insert into pilots (vault_account_id, owner_account_id, cohort) values ('acme.vaults.probarion.near', 'acme.near', 'external')`,

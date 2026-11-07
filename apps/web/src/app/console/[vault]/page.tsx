@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { SendNearPanel } from "@/components/console/SendNearPanel";
 import { SettingsForm } from "@/components/console/SettingsForm";
 import { VaultNav } from "@/components/console/VaultNav";
+import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
 import { VaultTxButton } from "@/components/console/VaultTxButton";
 import { AccountLink, Badge, Card, Notice } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
@@ -17,7 +18,6 @@ import {
 } from "@/lib/console/display";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { loadOverview, type Read, rpcChainReads } from "@/lib/console/vaults";
-import { getEnv } from "@/lib/env";
 import { NEAR_LOW_ALERT_YOCTO } from "@/lib/near/runway";
 import { chainConsts, getReader, getRpc } from "@/lib/near/server";
 import {
@@ -179,11 +179,13 @@ function VaultCard({
 export default async function VaultPage({ params }: { params: Promise<{ vault: string }> }) {
   const { vault: requested } = await params;
   // 404 for anyone who is not a member: a vault id is never confirmed to a stranger.
-  const { session, member } = await requireMember(requested);
+  const { session, member, elsewhere } = await requireMember(requested);
+  if (elsewhere) return <VaultOnOtherNetwork {...elsewhere} />;
   const vault = member.vault_id;
-  const network = getEnv().NEAR_NETWORK;
-  const consts = chainConsts();
-  const o = await loadOverview(getReader(), rpcChainReads(getRpc()), vault, {
+  // The vault's own network, which is the request's: nothing below reads the other one.
+  const network = member.network;
+  const consts = chainConsts(network);
+  const o = await loadOverview(getReader(network), rpcChainReads(getRpc(network)), vault, {
     base: consts.allowedAssets.base,
   });
   const config = o.config.ok ? o.config.value : null;
@@ -350,6 +352,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                           expectedSigner={session.accountId}
                           tx={rejectTx(vault, s.id)}
                           confirm={`Reject spend #${s.id}? Its reservation goes back to the mandate.`}
+                          confirmTone="danger"
                           outOfNearCodes={OUT_OF_NEAR.codes}
                           vaultNearLow={vaultNearLow}
                         />
@@ -436,6 +439,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
         <Card title="Settings">
           <SettingsForm
             vault={vault}
+            kind={member.kind}
             zeroRetention={member.zero_retention}
             proofPublic={member.proof_public}
             save={updateSettingsAction.bind(null, vault)}

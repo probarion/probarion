@@ -1,5 +1,6 @@
 import type { MandateView } from "@probarion/core";
 import { memberForApi } from "@/lib/auth/guard";
+import type { Network } from "@/lib/config";
 import { masterKey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
 import type { Db } from "@/lib/db/port";
@@ -7,10 +8,12 @@ import { assertSameOrigin, json, problem, rateLimitOr429 } from "@/lib/http";
 import { log, newRequestId } from "@/lib/log";
 import { listAll } from "@/lib/near/reader";
 import { getReader } from "@/lib/near/server";
+import { tagRequest } from "@/lib/observe";
 import { ExtractError, type InvoiceMediaType, MAX_INVOICE_BYTES } from "@/lib/payables/extract";
 import { type InvoiceUpload, type PipelineResult, processInvoice } from "@/lib/payables/pipeline";
 import { LIMITS } from "@/lib/ratelimit";
 import { makeTenantProbarion } from "@/lib/sdk/factory";
+import { kickWatcher } from "@/lib/watcher/server";
 
 export const dynamic = "force-dynamic";
 // The tenant lease (PROCESS_LEASE_SECONDS, 90 s) outlasts this with a 30 s margin; route.test.ts checks it.
@@ -106,8 +109,8 @@ async function readUpload(form: FormData): Promise<Read> {
 }
 
 /** Every mandate of the vault, all pages (the SDK's pageAll refuses a node that loops or truncates). */
-function vaultMandates(vault: string): Promise<MandateView[]> {
-  return listAll((from, limit) => getReader().listMandates(vault, from, limit), 100, {
+function vaultMandates(network: Network, vault: string): Promise<MandateView[]> {
+  return listAll((from, limit) => getReader(network).listMandates(vault, from, limit), 100, {
     contractId: vault,
     methodName: "list_mandates",
   });
@@ -216,6 +219,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ vault: 
   const auth = await memberForApi(vault, ["owner", "approver"]);
   if (auth instanceof Response) return auth;
   const requestId = req.headers.get("x-request-id") ?? newRequestId();
+  tagRequest(requestId, "payables", auth.member.network, { tenant: auth.member.tenant_id });
   const unavailable = (error: unknown) => {
     log.error("payables.route_failed", {
       request_id: requestId,
@@ -251,13 +255,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ vault: 
   const read = await readUpload(form);
   if (read instanceof Response) return read;
 
+  // From here the cycle runs, and what it records or sends changes the vault: the watcher looks at it as soon as this
+  // response is sent, so the owner's alerts do not wait for the next scheduled run.
+  kickWatcher(auth.member.tenant_id, auth.member.network);
   try {
     const r = await processInvoice(
       {
         db,
         master: masterKey(),
-        mandates: (t) => vaultMandates(t.vault_id),
-        makeProbarion: (o) => makeTenantProbarion(o),
+        mandates: (t) => vaultMandates(auth.member.network, t.vault_id),
+        makeProbarion: (o) => makeTenantProbarion(auth.member.network, o),
       },
       {
         tenant: auth.member,

@@ -2,6 +2,7 @@ import { isNearAccountId } from "@probarion/core";
 import { serviceDb } from "@/lib/db/clients";
 import { clientIp, problem, rateLimitOr429 } from "@/lib/http";
 import { log } from "@/lib/log";
+import { requestNetwork } from "@/lib/network";
 import { proofDeps } from "@/lib/proof/deps";
 import { ledgerResponse } from "@/lib/proof/ledger-file";
 import { loadLedger } from "@/lib/proof/service";
@@ -28,7 +29,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ vault: s
       LIMITS.snapshot,
     );
     if (limited) return limited;
-    r = await loadLedger(await proofDeps(), vault);
+    r = await loadLedger(await proofDeps(await requestNetwork()), vault);
   } catch (error) {
     log.warn("proof.unavailable", {
       vault,

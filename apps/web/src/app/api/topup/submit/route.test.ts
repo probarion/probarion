@@ -32,7 +32,10 @@ vi.mock("@/lib/auth/guard", () => ({
     if (!(roles as string[]).includes(h.role)) {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
     }
-    return { session: { accountId: "acme.near" }, member: { vault_id: vault, role: h.role } };
+    return {
+      session: { accountId: "acme.near" },
+      member: { vault_id: vault, role: h.role, network: h.network },
+    };
   },
 }));
 vi.mock("@/lib/db/clients", () => ({
@@ -52,7 +55,7 @@ vi.mock("@/lib/db/clients", () => ({
   }),
 }));
 vi.mock("@/lib/env", () => ({
-  getEnv: () => ({ NEAR_NETWORK: h.network, ONECLICK_JWT: h.jwt }),
+  getEnv: () => ({ ONECLICK_JWT: h.jwt }),
 }));
 
 const { POST } = await import("./route");
@@ -112,7 +115,9 @@ describe("POST /api/topup/submit", () => {
       "",
       "abc",
       "z".repeat(44), // base58, 44 characters, but 33 bytes
-      `${TX_HASH}x`,
+      // 45 characters, one over the longest hash text. Not `${TX_HASH}x`: TX_HASH is random, and a 43-character hash
+      // of a small enough value still decodes to 32 bytes with one more character (CI run 42100685842).
+      TX_HASH.padEnd(45, "x"),
       `0${TX_HASH.slice(1)}`,
       `${TX_HASH}\n`,
       5,
@@ -147,7 +152,7 @@ describe("POST /api/topup/submit", () => {
     expect(r.status).toBe(429);
     expect(r.headers.get("retry-after")).toMatch(/^[0-9]+$/);
     expect(await answer(r)).toMatchObject({ error: "rate_limited" });
-    expect(h.limits.at(-1)).toEqual({ bucket: "topup-submit:acme.near", max, window });
+    expect(h.limits.at(-1)).toEqual({ bucket: "topup-submit:mainnet:acme.near", max, window });
     expect(oneclick.calls).toHaveLength(max);
     // A bad request is refused before it costs a token.
     h.buckets.clear();

@@ -17,7 +17,7 @@ import { parseFundAmount } from "@/lib/topup/amount";
 export async function prepareFundAction(
   vault: string,
   amountUsdc: string,
-): Promise<WalletTx | { error: string; status?: 401 | 403 }> {
+): Promise<WalletTx | { error: string; status?: 401 | 403 | 409 }> {
   const auth = await memberForAction(vault, ["owner"]);
   if (isDenied(auth)) return auth;
   const amount = typeof amountUsdc === "string" ? parseFundAmount(amountUsdc) : null;
@@ -30,7 +30,7 @@ export async function prepareFundAction(
   };
   let config: unknown;
   try {
-    config = await getReader().getConfig(member.vault_id);
+    config = await getReader(member.network).getConfig(member.vault_id);
   } catch (error) {
     log.warn("topup.config_unreadable", { vault: member.vault_id, error });
     return unread;
@@ -44,7 +44,7 @@ export async function prepareFundAction(
       error: `The chain names ${config.owner} as this vault's owner, not ${session.accountId}, so nothing was prepared.`,
     };
   }
-  const { usdc } = chainConsts();
+  const { usdc } = chainConsts(member.network);
   if (config.usdc !== usdc) {
     return {
       error: `This vault's token is ${config.usdc}, not this network's USDC (${usdc}), so nothing was prepared.`,

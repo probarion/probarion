@@ -1,7 +1,8 @@
-import { AUTH_RECIPIENT } from "@/lib/config";
+import { AUTH_RECIPIENT, type Network } from "@/lib/config";
 import { decodeCanonical, macToken, readMacToken } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import { takeToken } from "@/lib/ratelimit";
+import { isNetwork } from "@/lib/site/network";
 
 export const CHALLENGE_COOKIE = "pb_chal";
 export const CHALLENGE_TTL_MS = 5 * 60_000;
@@ -19,11 +20,15 @@ export interface Challenge {
   nonce: string; // base64 of 32 bytes
 }
 
-/** The payload of the challenge cookie. `typ` keeps it from ever being read as a session (and the reverse). */
+/**
+ * The payload of the challenge cookie. `typ` keeps it from ever being read as a session (and the reverse). Version 2
+ * binds the challenge to the network of the address it was issued at (`net`): it opens there and nowhere else.
+ */
 interface ChallengePayload {
   typ: "challenge";
-  v: 1;
+  v: 2;
   n: string;
+  net: Network;
   exp: number;
 }
 
@@ -34,10 +39,11 @@ export function challengeMessage(nonceHex: string): string {
 
 /**
  * `key` is the "challenge" subkey, never the session one. The cookie is MAC'd, not encrypted: the nonce is
- * public by design (the browser gets it in the response body too).
+ * public by design (the browser gets it in the response body too). `network` is the request's.
  */
 export async function issueChallenge(
   key: Uint8Array,
+  network: Network,
   now: number = Date.now(),
   rand: (n: number) => Uint8Array = (n) => crypto.getRandomValues(new Uint8Array(n)),
 ): Promise<{ challenge: Challenge; cookie: string }> {
@@ -46,8 +52,9 @@ export async function issueChallenge(
   const nonceB64 = Buffer.from(nonce).toString("base64");
   const payload: ChallengePayload = {
     typ: "challenge",
-    v: 1,
+    v: 2,
     n: nonceB64,
+    net: network,
     exp: now + CHALLENGE_TTL_MS,
   };
   return {
@@ -60,16 +67,21 @@ export async function issueChallenge(
   };
 }
 
-/** Null for anything that is not a live challenge we issued under `key`: wrong key, type, version, spelling, age. */
+/**
+ * Null for anything that is not a live challenge we issued under `key` on `network`: wrong key, type, version, network,
+ * spelling, age. A challenge issued at one network's address does not open at the other's.
+ */
 export async function openChallenge(
   key: Uint8Array,
   cookie: string | undefined,
+  network: Network,
   now: number = Date.now(),
 ): Promise<{ nonce: Uint8Array; message: string } | null> {
   if (!cookie) return null;
   const c = await readMacToken<Partial<Record<keyof ChallengePayload, unknown>>>(key, cookie);
   if (c === null || typeof c !== "object") return null;
-  if (c.typ !== "challenge" || c.v !== 1) return null;
+  if (c.typ !== "challenge" || c.v !== 2) return null;
+  if (!isNetwork(c.net) || c.net !== network) return null;
   // Not `exp >= now`: a challenge dies at its expiry instant, and a missing or non-numeric exp fails closed.
   if (typeof c.exp !== "number" || !Number.isFinite(c.exp) || !(c.exp > now)) return null;
   // R7: the nonce is authenticated data, so it is decoded in its one canonical spelling, never with a bare Buffer.from.

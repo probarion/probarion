@@ -31,7 +31,10 @@ vi.mock("@/lib/auth/guard", () => ({
     if (!(roles as string[]).includes(h.role)) {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
     }
-    return { session: { accountId: "acme.near" }, member: { vault_id: vault, role: h.role } };
+    return {
+      session: { accountId: "acme.near" },
+      member: { vault_id: vault, role: h.role, network: h.network },
+    };
   },
 }));
 vi.mock("@/lib/db/clients", () => ({
@@ -51,7 +54,7 @@ vi.mock("@/lib/db/clients", () => ({
   }),
 }));
 vi.mock("@/lib/env", () => ({
-  getEnv: () => ({ NEAR_NETWORK: h.network, ONECLICK_JWT: h.jwt }),
+  getEnv: () => ({ ONECLICK_JWT: h.jwt }),
 }));
 
 const { GET } = await import("./route");
@@ -130,7 +133,7 @@ describe("GET /api/topup/status", () => {
     const r = await get();
     expect(r.status).toBe(429);
     expect(r.headers.get("retry-after")).toMatch(/^[0-9]+$/);
-    expect(h.limits.at(-1)).toEqual({ bucket: "topup-status:acme.near", max, window });
+    expect(h.limits.at(-1)).toEqual({ bucket: "topup-status:mainnet:acme.near", max, window });
     expect(oneclick.calls).toHaveLength(max);
     h.buckets.clear();
     expect((await get(url("Not A Vault"))).status).toBe(400);

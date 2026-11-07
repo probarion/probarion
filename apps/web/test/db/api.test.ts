@@ -175,7 +175,7 @@ describe("api functions", () => {
     ).rejects.toMatchObject({ code: "owner_mismatch" });
   });
 
-  it("makes team and canary proofs public by default and stores settings", async () => {
+  it("makes team proofs public by default, keeps a canary proof private, and stores settings", async () => {
     const db = pgliteDb(pg);
     const { tenant_id } = await registerTenant(db, {
       vaultId: "canary.vaults.probarion.near",
@@ -187,9 +187,20 @@ describe("api functions", () => {
     });
     expect(
       (await memberRole(db, "canary.vaults.probarion.near", "probarion.near"))?.proof_public,
-    ).toBe(true);
+    ).toBe(false);
     const s = await setTenantSettings(db, tenant_id, { zeroRetention: true });
-    expect(s).toEqual({ zero_retention: true, proof_public: true });
+    expect(s).toEqual({ zero_retention: true, proof_public: false });
+    await registerTenant(db, {
+      vaultId: "teamv.vaults.probarion.near",
+      network: "mainnet",
+      kind: "team",
+      displayName: "Team",
+      owner: "probarion.near",
+      approvers: [],
+    });
+    expect(
+      (await memberRole(db, "teamv.vaults.probarion.near", "probarion.near"))?.proof_public,
+    ).toBe(true);
   });
 
   it("leases are exclusive, expire, and are released even when the work throws", async () => {
@@ -404,6 +415,62 @@ describe("api functions: edges", () => {
     ).rejects.toThrow("work failed");
     expect(warn).toHaveBeenCalledTimes(2);
     await cleanUp();
+  });
+
+  // A caller that gave up on work it cannot stop (the Canary, at its deadline) keeps the lease: the work may still be
+  // running, and the lease runs out by itself.
+  it("withLease keeps the lease, after a return and after a throw, when `keep` says the work may still be running", async () => {
+    const real = pgliteDb(pg);
+    const { tenant_id } = await registerTenant(real, {
+      vaultId: "keep.vaults.probarion.near",
+      network: "testnet",
+      kind: "external",
+      displayName: "Keep",
+      owner: "keep.near",
+      approvers: [],
+    });
+    const free = async () =>
+      (
+        await pg.query<{ process_lease_until: string | null }>(
+          "select process_lease_until from tenants where id = $1",
+          [tenant_id],
+        )
+      ).rows[0];
+    // `keep` false: released as always
+    expect(
+      await withLease(real, tenant_id, "process", 60, async () => 1, { keep: () => false }),
+    ).toEqual({ acquired: true, value: 1 });
+    expect(await free()).toEqual({ process_lease_until: null });
+    // `keep` true after a return: not released, so nobody else gets the tenant
+    expect(
+      await withLease(real, tenant_id, "process", 60, async () => 2, { keep: () => true }),
+    ).toEqual({ acquired: true, value: 2 });
+    expect((await free())?.process_lease_until).not.toBeNull();
+    expect(await withLease(real, tenant_id, "process", 60, async () => 3)).toEqual({
+      acquired: false,
+    });
+    // ... until it has run out by itself
+    await pg.query(
+      "update public.tenants set process_lease_until = now() - interval '1 second' where id = $1",
+      [tenant_id],
+    );
+    // `keep` true after a throw: the work's own error still reaches the caller, and the lease is still not released
+    await expect(
+      withLease(
+        real,
+        tenant_id,
+        "process",
+        60,
+        async () => {
+          throw new Error("gave up");
+        },
+        { keep: () => true },
+      ),
+    ).rejects.toThrow("gave up");
+    expect((await free())?.process_lease_until).not.toBeNull();
+    await pg.query("update public.tenants set process_lease_until = null where id = $1", [
+      tenant_id,
+    ]);
   });
 
   it("tenant_register validates its input", async () => {

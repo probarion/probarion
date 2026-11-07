@@ -1,8 +1,8 @@
 // Every word and fact of the public site, in one module so that test/site-facts.test.ts can hold each one to the file
 // it comes from. Backticks in a string render as <code> (components/site/Rich.tsx). The transactions are the testnet
-// smoke run of contracts/deployments/testnet.json: they stay testnet links whatever network this build runs on.
+// smoke run of contracts/deployments/testnet.json: they stay testnet links whatever network the page is opened at.
 import type { CheckId } from "@probarion/core";
-import { explorerTxUrl, type Network } from "@/lib/config";
+import { explorerTxUrl } from "@/lib/config";
 import { CLI_ON_NPM, cli, REPO_URL } from "@/lib/proof/cli";
 import { FOOTER_NAV, isBuilt, type NavItem, SITE_NAV } from "@/lib/routes";
 import type { TamperResult } from "./tamper";
@@ -17,6 +17,8 @@ export const LINKS = {
   spec: blob("docs/specs/2026-10-21-probarion-design.md"),
   interfaces: blob("docs/specs/2026-10-21-probarion-interfaces.md"),
   security: blob("SECURITY.md"),
+  threatModel: blob("docs/THREAT_MODEL.md"),
+  runbook: blob("docs/RUNBOOK.md"),
   changelog: blob("CHANGELOG.md"),
   fixture: blob(FIXTURE_PATH),
   x: "https://x.com/probarionhq",
@@ -44,33 +46,23 @@ export function publicRoutes(): string[] {
 
 // --- chrome ---------------------------------------------------------------------------------------
 
-export function betaStrip(network: Network) {
-  return {
-    lead: "Unaudited beta.",
-    where:
-      network === "mainnet" ? "Runs on NEAR mainnet." : "Runs on NEAR testnet with test tokens.",
-    audit: "No third party has audited this code.",
-    custody: "Non-custodial: Probarion holds no owner key.",
-    amounts: "Use small amounts.",
-  };
-}
+export { betaStrip } from "./beta";
 
 /** The landing sections. A full path, so that each one works from every page. */
 export const HEADER_ANCHORS: readonly { href: string; label: string }[] = [
   { href: "/#payment", label: "How a payment works" },
   { href: "/#verify", label: "Verify" },
   { href: "/#chain", label: "On chain" },
-  { href: "/#status", label: "Status" },
 ];
 
 export const PROOF_ROUTE = "/proof";
 export const CONSOLE_ROUTE = "/console";
 
 /**
- * Planned pages the footer leaves out until they exist, because it already covers them: the Security link opens
- * SECURITY.md and the landing page has a status section. Once built, each one joins its list by itself.
+ * Planned pages the footer leaves out until they exist, because it already covers them some other way (for
+ * /security, the developers list links SECURITY.md). Once built, each one joins its list by itself.
  */
-const COVERED_WHILE_PLANNED: readonly string[] = ["/security", "/status"];
+const COVERED_WHILE_PLANNED: readonly string[] = ["/security"];
 const listed = (items: readonly NavItem[]) =>
   items.filter(({ route }) => isBuilt(route) || !COVERED_WHILE_PLANNED.includes(route));
 
@@ -83,7 +75,7 @@ export const FOOTER = {
   developers: [
     { href: LINKS.github, label: "GitHub" },
     { href: LINKS.interfaces, label: "Interfaces" },
-    { href: LINKS.security, label: "Security" },
+    { href: LINKS.security, label: "SECURITY.md" },
     { href: LINKS.changelog, label: "Changelog" },
   ],
   follow: [{ href: LINKS.x, label: "@probarionhq on X" }],
@@ -378,13 +370,13 @@ export const STATUS = {
     { row: "Vault contract", pill: "On testnet", tone: "live" },
     { row: "Offline verifier, checks a to i", pill: "Shipped in source", tone: "live" },
     { row: "Reproducible builds", pill: "Shipped", tone: "live" },
+    { row: "Vault factory", pill: "On testnet", tone: "live" },
     { row: "Web console", pill: "In progress", tone: "work" },
     { row: "Public proof page", pill: "Built, no public vault yet", tone: "work" },
     { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
     { row: "Payables agent", pill: "In progress", tone: "work" },
     { row: "Live attested model run", pill: "In progress", tone: "work" },
-    { row: "Vault factory", pill: "Built, not deployed", tone: "work" },
-    { row: "Canary public challenge", pill: "Planned", tone: "plan" },
+    { row: "Canary public challenge", pill: "Page built, not open yet", tone: "work" },
     { row: "MCP server", pill: "Planned", tone: "plan" },
     { row: "Mainnet vault", pill: "Planned", tone: "plan" },
   ] as const satisfies readonly { row: string; pill: string; tone: StatusTone }[],
@@ -392,7 +384,7 @@ export const STATUS = {
   noteLink: "threat model",
   noteAfter: ", including what `verify` does not prove yet.",
   build:
-    "The testnet vault runs a build older than the current source, and the fixed build's hash is recorded in `contracts/code-hashes.json`.",
+    "`v0.probarion.testnet` runs a build older than the current source; the vaults the testnet factory creates run the fixed build recorded in `contracts/code-hashes.json`.",
 } as const;
 
 // --- closing --------------------------------------------------------------------------------------

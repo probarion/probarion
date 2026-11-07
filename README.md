@@ -167,13 +167,15 @@ No wallet, no key and no account: every step either runs offline or reads public
 typecheck, every TypeScript test and the launch checks. It needs Rust as well (rustup installs the
 pinned 1.99.1 from `rust-toolchain.toml`); on Windows, set `AWS_LC_SYS_PREBUILT_NASM=1` first or
 install NASM. On a Windows 10 laptop the first run took about 10 minutes, most of it compiling the
-Rust dependencies, and later runs about 7½ minutes; CI runs the same checks on ubuntu on every push.
+Rust dependencies, and later runs about 7½ minutes; CI runs the same checks on ubuntu on every pull request into `dev` or
+`main` and every push to them.
 On that laptop one database test, `apps/web/test/db/key-rotation.test.ts`, went past its 20-second
 limit in each of three full runs while every package's tests ran at once, and passed when run alone:
 `pnpm --filter @probarion/web exec vitest run test/db/key-rotation.test.ts`.
 
-**Reviewing security:** [SECURITY.md](SECURITY.md) has the threat model, what `verify` proves, what
-is not proven yet, and how to report a vulnerability.
+**Reviewing security:** [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) has the threat model (eleven
+attacks, the blast radius, failure modes, known gaps and the latest review), and
+[SECURITY.md](SECURITY.md) says how to report a vulnerability and what `verify` does not prove yet.
 
 ## Status
 
@@ -181,21 +183,38 @@ What exists at this commit, and what does not yet.
 
 | Component | Status | Where |
 | --- | --- | --- |
-| Vault contract | **Shipped on NEAR testnet** as `v0.probarion.testnet` (test tokens). The vault source changed after that deployment (a `set_ledger_key` fix on 2026-11-03); the fixed build is recorded (code hash `3cQXYDvf…`) but not deployed yet | [`contracts/vault`](contracts/vault) |
-| Factory contract | **Built and tested** (unit and sandbox tests). **Not deployed** on any network yet: `vaults.probarion.testnet` does not exist | [`contracts/factory`](contracts/factory) |
+| Vault contract | **Shipped on NEAR testnet** as `v0.probarion.testnet` (test tokens). The vault source changed after that deployment (a `set_ledger_key` fix on 2026-11-03). Vaults created by the testnet factory run the fixed build (code hash `3cQXYDvf…`); `v0.probarion.testnet` still runs the earlier one | [`contracts/vault`](contracts/vault) |
+| Factory contract | **Shipped on NEAR testnet** as `vaults.probarion.testnet` (2026-11-05). It serves the fixed vault build as an embedded version: each new vault stores its own copy of the code, so it needs about 3 test NEAR (the 0.5 NEAR `min_deposit` plus 2.49 NEAR of storage). The global version and a mainnet factory are not deployed yet | [`contracts/factory`](contracts/factory) |
 | Reproducible builds and recorded code hashes | **Shipped** (CI, Docker) | [`scripts/build-reproducible.sh`](scripts/build-reproducible.sh), [`contracts/code-hashes.json`](contracts/code-hashes.json) |
 | `@probarion/core`: policy engine, ledger, attestation checks A1 to A8, verifier checks a to i | **Shipped** in source | [`packages/core`](packages/core) |
 | `@probarion/sdk`: RPC with failover, vault clients, ledger stores, `Probarion` class, `snapshot()` and `verify()` with online O1/O2 | **Shipped** in source | [`packages/sdk`](packages/sdk) |
 | NEAR AI Cloud adapter (private TEE model, nonce-bound attestation, `provider_tee` signature) | **Built** and tested against a fake NEAR AI Cloud. A real attested decision, recorded and verified in this repository: **In progress** | [`packages/sdk/src/nearai.ts`](packages/sdk/src/nearai.ts) |
-| `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` needs a deployed factory, so it waits for the factory | [`packages/cli`](packages/cli) |
+| `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` reads the testnet factory and prints its `create_vault` call for the owner to sign | [`packages/cli`](packages/cli) |
 | CLI `check`, `verify` and `ledger export` | **Shipped** in source. `verify` exits 0 when every check passes, 1 when one fails or verify cannot run, 2 when a burn is unproven | [`packages/cli`](packages/cli) |
 | npm release 0.1.0 of the packages | **Planned**. The tag-driven release pipeline is in place; nothing is published | [`.github/workflows/release.yml`](.github/workflows/release.yml) |
-| Web console (Next.js 16 and Supabase): the public site, wallet sign-in, vault overview, freeze, approvals, keys, mandates, top-up, Payables, the public proof page | **In progress**. Deployed at [probarion.xyz](https://probarion.xyz) on testnet, from `main`. The top-up tab sends USDC on NEAR from the owner's wallet; the 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet. Sign-in and the console have not been tried there with a real wallet yet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
+| Web console (Next.js 16 and Supabase): the public site, wallet sign-in, vault overview, freeze, approvals, keys, mandates, top-up, Payables, the public proof page | **In progress**. Deployed at [probarion.xyz](https://probarion.xyz) on testnet, from `main`. The top-up tab sends USDC on NEAR from the owner's wallet. On testnet it also has a faucet button that adds 25 test USDC straight into the vault, once a UTC day per vault and for up to 3 vaults per owner account, with no wallet: built and tested, and live on the site once the OWNER sets its key ([runbook](docs/RUNBOOK.md#testnet-faucet)). The 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet. Sign-in and Create a vault have been tried there with a real wallet (Meteor, on testnet: `trial.vaults.probarion.testnet`); the other console actions have not yet. The sign-in page says what a vault takes (on testnet, a testnet account and about 3.3 test NEAR; on mainnet, vaults cannot be created yet) and links the ledger test for visitors with no wallet. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
 | Mainnet vault `v0.probarion.near` | **Planned**. The runbook is ready; the owner signs every step | [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) |
 | MCP server `@probarion/mcp` | **Planned** | |
 | Payables, the reference agent that pays invoices in USDC | **In progress**. The pipeline, its invoice API and the console pages are built and tested against a fake chain, and deploy with the console; nothing has been tried with a real wallet yet. It pays by itself only when an attested NEAR AI model confirms the amount the code read; without one, nothing is sent and the invoice waits for the owner, who can pay it with a wallet signature or reject it. The amount reader refuses any total it cannot read with certainty. An unfinished payment stays marked "do not resend" until the reconcile job is built | [`apps/web/src/lib/payables`](apps/web/src/lib/payables) |
-| Canary, a public vault anyone may try to trick into paying them | **Planned** | |
-| Public `/proof/<vault>` page: checks a to i with explorer links, the snapshot and the signed ledger as downloads for the offline verifier | **Built** and tested, and deployed with the console. No vault is public yet, so a vault's address answers page not found, and [`/proof`](https://probarion.xyz/proof) offers a form and a ledger test that runs the verifier in your browser on a test fixture. Every command it shows runs from a clone of this repository until the npm package is published, and its tests run those commands as shown | [`apps/web/src/app/proof`](apps/web/src/app/proof) |
+| Browser extension for Chrome | **In progress**. The server half is built and tested: the signed-in `/extension` page makes a 30-day connection for one network (or shows a one-time code that works for ten minutes), lists each connection and revokes it, and `GET /api/ext/inbox` lets a connection read what waits for you: invoices waiting for the owner, holds an approver can still approve, and the mandates an invoice can still be sent under. A connection is stored as a sha256 and its last four characters, at most 5 per account and network, and cannot pay, approve or confirm; a test fails if the extension's server code imports anything that pays, signs or opens a key. The extension itself is not built yet, and nothing is in the Chrome Web Store | [`apps/web/src/lib/ext`](apps/web/src/lib/ext), [`apps/web/src/app/api/ext`](apps/web/src/app/api/ext), [`apps/web/test/ext-structure.test.ts`](apps/web/test/ext-structure.test.ts) |
+| Canary, a public vault anyone may try to trick into paying them | **In progress**. The backend is built and tested against a fake chain and a fake NEAR AI Cloud: `POST /api/canary/attempt` gives a visitor's text to a deliberately gullible model, and the Canary does not pay from its own cycle (a code rule refuses every attempt). In live mode a refused "pay" is also sent to the contract only when the contract's own dry run refuses it, so a visitor can watch the contract say no. Its ledger is private and the database refuses to make it public; nothing it puts on chain is derived from the visitor's text alone; one attempt is bounded at 50 s. The page `/canary` and its rules are built: a visitor sees what the model wanted, what the code rules decided and what the contract did, then a link to the console, beside a scoreboard and the latest attempts. It is not open yet. The page shows its form only when the Canary vault and `NEARAI_API_KEY` are set, a private Canary tenant on that network has room in its ledger, its ledger key has gas for anchors, and the vault holds a mandate. Until then it shows attacks from the team's own tests (today one: the smoke run's `NoMandate` refusal on testnet), and the route answers `not_ready` (`closed` once the ledger is full) | [`apps/web/src/lib/canary`](apps/web/src/lib/canary), [`apps/web/src/app/canary`](apps/web/src/app/canary) |
+| Testnet and mainnet from one deployment | **Built** and tested. The network of a request is the address it was opened at. Each network has its own sign-in, vault pages, watcher and metrics runs, alerts, Canary board and `/usage`; a vault of the other network answers `409 wrong_network`, and a registered vault keeps its network. Settings that could point a network at the other chain are refused at start, and sign-in and Register first check that the RPC serves the right chain. Only the testnet address is live: mainnet has no factory yet, so no mainnet address is served | [`apps/web/src/lib/network.ts`](apps/web/src/lib/network.ts), [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md#35-both-networks-in-one-project) |
+| Public Usage page `/usage`: team vaults, external owners and Canary participants, counted apart, for the network of the address it is opened at | **Built** and tested. It shows counts, not dollar volumes, with the last 7 days beside each total, the model tokens a decision uses and how each number is counted; a dollar price appears only once one is set from NEAR AI's price list. A daily job (`GET /api/cron/metrics`, 00:10 UTC) computes the numbers and also deletes the rate limiter's rows older than a day; the page refreshes the numbers when they are an hour old. Each Canary attempt carries the network of its Canary vault, so the two networks never mix | [`apps/web/src/app/usage`](apps/web/src/app/usage), [`apps/web/src/lib/usage`](apps/web/src/lib/usage), [`docs/ops/metrics.md`](docs/ops/metrics.md) |
+| Watcher: every vault's chain events in `vault_events`, which `/usage` counts and the owner alerts read | **Built** and tested against a fake chain. `GET /api/cron/watch` records each spend status, new mandates, anchors, refusals by the contract, agent and ledger keys whose allowance is under 0.2 NEAR, and vaults with under 0.05 NEAR free, each once. It runs once a day on Vercel (the Hobby plan takes only daily crons) and right after an invoice upload or a Canary attempt; it runs every minute once the Supabase schedule in its runbook is turned on | [`apps/web/src/lib/watcher`](apps/web/src/lib/watcher), [`docs/ops/watcher.md`](docs/ops/watcher.md) |
+| Owner alerts by Telegram and email | **Built** and tested against a fake Telegram and a fake Resend; no real bot message or email has been sent yet. An owner or approver adds an alert on a vault's Alerts tab (`/console/<vault>/alerts`): an email is confirmed through a link, a Telegram chat through the bot's `/start`. After each watcher run, a spend held for approval, a spend the contract refused, a spend paid or paid out to Base, a failed payout, a key low on gas allowance and a vault low on NEAR each go out once per alert and event, not for a vault's old history. Every message says how to stop: the email's stop link and one-click unsubscribe, the bot's `/stop`, or Remove on the tab. Telegram and email switch on once `TELEGRAM_BOT_TOKEN` and `RESEND_API_KEY` are set | [`apps/web/src/lib/alerts`](apps/web/src/lib/alerts), [`docs/ops/alerts.md`](docs/ops/alerts.md) |
+| Public `/proof/<vault>` page: checks a to i with explorer links, the snapshot and the signed ledger as downloads for the offline verifier | **Built** and tested, and deployed with the console. No vault is public yet, so a vault's address answers page not found, and [`/proof`](https://probarion.xyz/proof) offers a form and a ledger test that runs the verifier in your browser on a test fixture. The ledger test gives its verdict in a plain sentence, with the verifier's own words behind "Verifier detail"; a proof page ends with a link to the console. Every command it shows runs from a clone of this repository until the npm package is published, and its tests run those commands as shown | [`apps/web/src/app/proof`](apps/web/src/app/proof) |
+| Health checks and the `/status` page | **Built** and tested. `GET /api/health` answers 503 when the deployment cannot read its settings, `GET /api/health/rpc?provider=<n>` checks one NEAR RPC provider of the address's network (the right chain, a block under two minutes old), and `GET /api/health/nearai` checks NEAR AI Cloud's public model list; answers are cached for 30 seconds and do not include a key or a configured URL. `/status` on each address shows those checks live for its network. The uptime monitors and a third-party status page are created by the owner and are not set up yet | [`apps/web/src/lib/health.ts`](apps/web/src/lib/health.ts), [`apps/web/src/app/status`](apps/web/src/app/status), [`docs/ops/MONITORING.md`](docs/ops/MONITORING.md) |
+| Error reports to Sentry | **Built** and tested with the real SDK sending nothing; off until `SENTRY_DSN` is set. Before an event leaves, the user, cookies, headers, bodies and query strings are removed, a request breadcrumb keeps only the origin of another host (or a path on this site, without its query), and every known secret value and shape is masked; tracing is off. Each logged error becomes one issue per log key, tagged with its component; the Payables upload, Canary attempt and both crons also tag the request id of their log lines | [`apps/web/src/lib/sentry-scrub.ts`](apps/web/src/lib/sentry-scrub.ts), [`apps/web/src/lib/observe.ts`](apps/web/src/lib/observe.ts) |
+| Incident runbook, threat model and security contact | **Shipped** as documents. The runbook covers severity, freezing, key rotation and RPC failover on both networks, with **OWNER SIGNS** above every mainnet send; a test fails if a mainnet send loses that mark or a one-yocto call its 1 yoctoNEAR. `/.well-known/security.txt` (RFC 9116) is on every address; the contact is a direct message to [@probarionhq](https://x.com/probarionhq) | [`docs/RUNBOOK.md`](docs/RUNBOOK.md), [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md), [`SECURITY.md`](SECURITY.md) |
+| `/security`, `/terms` and `/privacy` pages | **Built** and tested. Every link on the site opens a real page; nothing reads "coming soon" any more | [`apps/web/src/app/security`](apps/web/src/app/security), [`apps/web/src/lib/site/ops-copy.ts`](apps/web/src/lib/site/ops-copy.ts) |
+| Browser smoke test of the built site | **Built**; runs locally only, with test settings: `pnpm build`, then `pnpm --filter @probarion/web test:e2e`. It serves both networks, one per loopback address, and checks that the header fits on each at 375, 1120, 1280 and 1440 px. It is not in CI | [`apps/web/e2e/smoke.spec.ts`](apps/web/e2e/smoke.spec.ts) |
+
+**Known limitations** ([all of them](docs/THREAT_MODEL.md#known-gaps)): no Content-Security-Policy
+yet (owner and approver actions still need a 1 yoctoNEAR wallet prompt, so a script in the page
+cannot approve or withdraw); the contracts link near-sdk's unmaintained default `wee_alloc`
+allocator, which can change only with a new vault version; CI has no dependency-audit job
+(Dependabot alerts are triaged in the review log); an exception on an untagged route, or in the
+request that starts a server instance, reaches Sentry without a request id.
 
 ## What Probarion does
 
@@ -207,7 +226,7 @@ What exists at this commit, and what does not yet.
 | **Decisions** | `decide()` in `@probarion/core` is pure and deterministic. Its built-in rules run first and cannot be removed (`mandate.none`, `mandate.payee_mismatch`, `mandate.over_total`, `invoice.duplicate`, `invoice.po_mismatch`, `vault.daily_backstop`, `model.attestation_invalid`, `model.low_confidence` and others); your own `custom.*` rules run after them. A private model on NEAR AI Cloud may propose `pay`, `hold` or `refuse`, and its proposal counts only when its attestation checks pass. Without a model, or when it fails, the code decides alone and the ledger says `rules-only` |
 | **The ledger** | Every decision and every outcome, refusals included, is an entry whose body hash is signed with Ed25519 and chained to the entry before it. The SDK anchors the latest root on the vault after every cycle |
 | **Verify** | `runChecks` (offline, pure) and `verify()` (which gathers the chain state) run checks a to i: signatures, hash links, anchors, a decision for every spend, attestations, a locked vault, intents keys, burn memos and the factory version |
-| **Owner tools** | The CLI prints each owner and approver transaction for `near-cli-rs` and signs none. The owner can freeze the vault with any of their keys, and withdraw USDC and the Intents balance to their own account, without Probarion |
+| **Owner tools** | The CLI prints each owner and approver transaction for `near-cli-rs` and signs none. The owner can freeze the vault with no deposit, from their full-access key or a function-call key on their account that may call the vault, and withdraw USDC and the Intents balance to their own account, without Probarion |
 
 ## Why it is different
 
@@ -294,7 +313,7 @@ flowchart LR
 | **Exactly once** | An invoice hash is paid at most once, and a `ref` is accepted once | [`checks.rs`](contracts/vault/src/checks.rs) |
 | **Holds** | A spend above `approval_above` pays only after an approver approves it, before its hold expires and while the vault is not frozen | [`held.rs`](contracts/vault/src/held.rs) |
 | **One-yocto rule** | `add_agent`, `remove_agent`, `set_ledger_key`, `revoke_mandate`, `approve`, `reject`, `unfreeze`, `withdraw` and `withdraw_intents` need exactly 1 yoctoNEAR, so a dapp login key cannot call them | [`errors.rs`](contracts/vault/src/errors.rs) |
-| **Freeze** | Any owner key stops every spend and approval at once, with no deposit | [`admin.rs`](contracts/vault/src/admin.rs) |
+| **Freeze** | The owner stops every new spend and every approve at once, with no deposit: from their full-access key, or from a function-call key on their account that may call the vault. `reject` and `expire_held` still work | [`admin.rs`](contracts/vault/src/admin.rs) |
 | **No way to change the rules underneath** | No upgrade method, no method to change the owner or the approvers, no full-access key on the vault | [`lib.rs`](contracts/vault/src/lib.rs) |
 | **Code before the contract** | `decide()` refuses or holds before a transaction exists; built-in rules cannot be removed | [`policy.ts`](packages/core/src/policy.ts) |
 | **Signed ledger and anchors** | Every entry is signed and chained; anchors pin each range on chain, with the key that signed it | [`ledger.ts`](packages/core/src/ledger.ts), [`anchors.rs`](contracts/vault/src/anchors.rs) |
@@ -344,10 +363,19 @@ NearBlocks' testnet index can lag behind the chain. Step 3 of
 RPC node. The deployment record is [`contracts/deployments/testnet.json`](contracts/deployments/testnet.json),
 and the steps are in [`docs/runbooks/testnet.md`](docs/runbooks/testnet.md).
 
-The vault source changed after this deployment (a `set_ledger_key` fix on 2026-11-03), so the
-testnet vault runs the earlier build. The fixed build is recorded in
+The vault source changed after this deployment (a `set_ledger_key` fix on 2026-11-03), so
+`v0.probarion.testnet` runs the earlier build. The fixed build, recorded in
 [`contracts/code-hashes.json`](contracts/code-hashes.json) (commit `64ac3c0`, code hash
-`3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`) and is not deployed yet. The factory account, `vaults.probarion.testnet`, does not exist yet either.
+`3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`), runs on the vaults the testnet factory creates.
+
+The factory went on testnet on 2026-11-05, following [`docs/runbooks/factory.md`](docs/runbooks/factory.md).
+It serves one version, the fixed vault build as an embedded copy, so a new vault pays for the storage
+of its own code. The global version waits: publishing it burns about 25 test NEAR.
+
+| Account | Role |
+| --- | --- |
+| [`vaults.probarion.testnet`](https://testnet.nearblocks.io/address/vaults.probarion.testnet) | The factory. Owner `probarion-owner.testnet`, `min_deposit` 0.5 NEAR. Code hash `FK6mMqUdieWmYyB9hqyJL23Aew9wWGSPustb6tUDtaQ6`, the reproducible CI build recorded for commit `3e7bd2d`. Version 1: the vault build `3cQXYDvf…`, embedded |
+| [`smoke-embedded.vaults.probarion.testnet`](https://testnet.nearblocks.io/address/smoke-embedded.vaults.probarion.testnet) | The smoke vault the factory created ([`EZ7pm7FQ…wokdD`](https://testnet.nearblocks.io/txns/EZ7pm7FQrJTvooKAwmEyZq4gUKueCNcDdpweib6wokdD)). Owner `probarion-owner.testnet`, approver `probarion-approver.testnet`, no access keys, code hash `3cQXYDvf…` |
 
 ### NEAR mainnet
 
@@ -373,7 +401,7 @@ mainnet claim.
 | [`apps/web`](apps/web) | The web console (Next.js 16, Supabase with row-level security), in progress |
 | [`scripts`](scripts) | Contract builds, the reproducible build and code-hash record, testnet deploy and smoke, the proof file and the release check |
 | [`docs/specs`](docs/specs) | The design spec and the shared interfaces |
-| [`docs/runbooks`](docs/runbooks), [`docs/ops`](docs/ops) | Deploy runbooks (testnet, factory, mainnet v0, the web console) and the key rotation procedure |
+| [`docs/runbooks`](docs/runbooks), [`docs/ops`](docs/ops) | Deploy runbooks (testnet, factory, mainnet v0, the web console), the key rotation procedure, the guide to the usage numbers, the watcher's runbook and the alerts runbook |
 | [`docs/evidence`](docs/evidence) | The purchase order and invoices prepared for the planned mainnet v0 run |
 
 ## Quick start
@@ -401,9 +429,8 @@ node packages/cli/dist/bin.js agent keygen --out ../agent-key.json
 
 **Run an agent against a vault.** `Probarion.process()` needs:
 
-- a vault you own, with USDC in it (today a vault is deployed with
-  [`scripts/testnet/deploy.sh`](scripts/testnet/deploy.sh); creating one through the factory waits
-  for the factory deployment);
+- a vault you own, with USDC in it (on testnet, create one with Create a vault in the console or
+  with `vault create`, which prints the `create_vault` call to `vaults.probarion.testnet`);
 - `PROBARION_AGENT_KEY`, the secret of a `spend`-only key the owner added with `agent add`, and a
   mandate that names its public key;
 - `PROBARION_LEDGER_KEY`, the secret of an `anchor`-only key the owner set with `ledger set-key`;
@@ -418,9 +445,9 @@ stores.
 
 | | |
 | --- | --- |
-| **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy and threat model](SECURITY.md) |
+| **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy](SECURITY.md) · [Threat model](docs/THREAT_MODEL.md) |
 | **Packages** | [`@probarion/core`](packages/core/README.md) · [`@probarion/sdk`](packages/sdk/README.md) · [`probarion` CLI](packages/cli/README.md) · [`intents-stub`](contracts/intents-stub/README.md) |
-| **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Web deploy runbook](docs/runbooks/web-deploy.md) · [Key rotation](docs/ops/key-rotation.md) |
+| **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Web deploy runbook](docs/runbooks/web-deploy.md) · [Key rotation](docs/ops/key-rotation.md) · [Usage numbers](docs/ops/metrics.md) · [Watcher](docs/ops/watcher.md) · [Alerts](docs/ops/alerts.md) · [Incident runbook](docs/RUNBOOK.md) · [Monitoring](docs/ops/MONITORING.md) |
 | **This repository** | [AGENTS.md](AGENTS.md), for AI agents and humans who build here · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Changelog](CHANGELOG.md) · [CI runs](https://github.com/probarion/probarion/actions/workflows/ci.yml) |
 
 ## Development
@@ -442,7 +469,7 @@ a recorded real NEAR AI Cloud decision, which wait for that recording, and, on W
 file-permission test.
 
 Some checks need Linux or Docker, so they run in [CI](.github/workflows/ci.yml) (GitHub Actions,
-ubuntu) on every push:
+ubuntu) on every pull request into `dev` or `main`, every push to those two branches and every `v*` tag:
 
 | CI job | What it does |
 | --- | --- |

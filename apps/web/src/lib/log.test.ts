@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "./env";
-import { formatLog, redact, SECRET_ENV_NAMES, secretEnvValues } from "./log";
+import { formatLog, redact, SECRET_ENV_NAMES, scrubText, secretEnvValues } from "./log";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -72,6 +72,9 @@ describe("redaction: the denylist", () => {
     "private_key",
     "agent_key",
     "ledger_key",
+    "faucet_key",
+    "faucetKey",
+    "TESTNET_FAUCET_KEY",
     "telegram_bot_token",
     "access_token",
   ];
@@ -139,14 +142,35 @@ describe("redaction: an Env-shaped object", () => {
 
   // Typed on Env: adding a variable there fails to compile until it is listed here.
   const envLike: Record<keyof Env, unknown> = {
-    NEAR_NETWORK: sentinel("NEAR_NETWORK"),
-    NEAR_RPC_URLS: [sentinel("NEAR_RPC_URLS_1"), sentinel("NEAR_RPC_URLS_2")],
-    NEAR_ARCHIVAL_RPC_URLS: [sentinel("NEAR_ARCHIVAL_RPC_URLS_1")],
-    PROBARION_FACTORY_ID: sentinel("PROBARION_FACTORY_ID"),
-    PROBARION_VAULT_ID: sentinel("PROBARION_VAULT_ID"),
+    defaultNetwork: sentinel("defaultNetwork"),
+    enabledNetworks: [sentinel("enabledNetworks")],
+    // The per-network settings (W-NET-R1): the lists of RPC URLs carry keys, the rest is public configuration.
+    networks: {
+      mainnet: {
+        enabled: sentinel("mainnet.enabled"),
+        origin: sentinel("mainnet.origin"),
+        rpcUrls: [sentinel("NEAR_RPC_URLS_MAINNET_1"), sentinel("NEAR_RPC_URLS_MAINNET_2")],
+        archivalRpcUrls: [sentinel("NEAR_ARCHIVAL_RPC_URLS_MAINNET_1")],
+        factoryId: sentinel("PROBARION_FACTORY_ID_MAINNET"),
+        demoVaultId: sentinel("PROBARION_VAULT_ID_MAINNET"),
+        canaryVaultId: sentinel("CANARY_VAULT_ID_MAINNET"),
+        teamVaultIds: [sentinel("TEAM_VAULT_IDS_MAINNET")],
+      },
+      testnet: {
+        enabled: sentinel("testnet.enabled"),
+        origin: sentinel("testnet.origin"),
+        rpcUrls: [sentinel("NEAR_RPC_URLS_TESTNET_1")],
+        archivalRpcUrls: [sentinel("NEAR_ARCHIVAL_RPC_URLS_TESTNET_1")],
+        factoryId: sentinel("PROBARION_FACTORY_ID_TESTNET"),
+        demoVaultId: sentinel("PROBARION_VAULT_ID_TESTNET"),
+        canaryVaultId: sentinel("CANARY_VAULT_ID_TESTNET"),
+        teamVaultIds: [sentinel("TEAM_VAULT_IDS_TESTNET")],
+      },
+    },
     NEARAI_API_KEY: sentinel("NEARAI_API_KEY"),
     NEARAI_MODEL: sentinel("NEARAI_MODEL"),
     ONECLICK_JWT: sentinel("ONECLICK_JWT"),
+    TESTNET_FAUCET_KEY: sentinel("TESTNET_FAUCET_KEY"),
     SUPABASE_URL: sentinel("SUPABASE_URL"),
     SUPABASE_SERVICE_ROLE_KEY: sentinel("SUPABASE_SERVICE_ROLE_KEY"),
     NEXT_PUBLIC_SUPABASE_URL: sentinel("NEXT_PUBLIC_SUPABASE_URL"),
@@ -155,8 +179,6 @@ describe("redaction: an Env-shaped object", () => {
     SENTRY_DSN: sentinel("SENTRY_DSN"),
     TELEGRAM_BOT_TOKEN: sentinel("TELEGRAM_BOT_TOKEN"),
     RESEND_API_KEY: sentinel("RESEND_API_KEY"),
-    CANARY_VAULT_ID: sentinel("CANARY_VAULT_ID"),
-    TEAM_VAULT_IDS: [sentinel("TEAM_VAULT_IDS")],
     BASE_RPC_URL: sentinel("BASE_RPC_URL"),
     CRON_SECRET: sentinel("CRON_SECRET"),
     CANARY_MODE: sentinel("CANARY_MODE"),
@@ -172,12 +194,9 @@ describe("redaction: an Env-shaped object", () => {
   // Public configuration, kept on purpose: the network, ids, model name and mode, and the
   // NEXT_PUBLIC_* values and the Supabase project URL, which ship to the browser anyway.
   const PUBLIC_CONFIG: ReadonlyArray<keyof Env> = [
-    "NEAR_NETWORK",
-    "PROBARION_FACTORY_ID",
-    "PROBARION_VAULT_ID",
+    "defaultNetwork",
+    "enabledNetworks",
     "NEARAI_MODEL",
-    "CANARY_VAULT_ID",
-    "TEAM_VAULT_IDS",
     "CANARY_MODE",
     "SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_URL",
@@ -201,12 +220,46 @@ describe("redaction: an Env-shaped object", () => {
     for (const name of PUBLIC_CONFIG) expect(line, name).toContain(sentinel(name));
   });
 
+  // The per-network settings are one object in Env, and four variables in the environment: the RPC lists carry keys.
+  const PER_NETWORK_SECRETS = [
+    "NEAR_RPC_URLS_MAINNET",
+    "NEAR_RPC_URLS_TESTNET",
+    "NEAR_ARCHIVAL_RPC_URLS_MAINNET",
+    "NEAR_ARCHIVAL_RPC_URLS_TESTNET",
+  ];
+
   it("lists every non-public variable in SECRET_ENV_NAMES, so its value is masked in text", () => {
     const listed: ReadonlySet<string> = new Set(SECRET_ENV_NAMES);
     for (const name of [...Object.keys(envLike), ...Object.keys(otherSecrets)]) {
+      if (name === "networks") continue; // below
       if (PUBLIC_CONFIG.includes(name as keyof Env)) expect(listed.has(name), name).toBe(false);
       else expect(listed.has(name), name).toBe(true);
     }
+    for (const name of PER_NETWORK_SECRETS) expect(listed.has(name), name).toBe(true);
+  });
+
+  it("masks the RPC lists of each network wherever the settings are logged, and keeps the rest", () => {
+    const networks = envLike.networks as Record<string, Record<string, unknown>>;
+    const line = formatLog("info", "env.networks", { networks });
+    for (const settings of Object.values(networks)) {
+      for (const key of ["rpcUrls", "archivalRpcUrls"]) {
+        for (const value of flat(settings[key])) expect(line, key).not.toContain(value);
+      }
+      for (const key of ["factoryId", "demoVaultId", "canaryVaultId", "origin"]) {
+        expect(line, key).toContain(String(settings[key]));
+      }
+    }
+  });
+
+  it("masks the value of a suffixed RPC variable in a message", () => {
+    vi.stubEnv("NEAR_RPC_URLS_MAINNET", "https://m.example/KEY-MAINNET-SECRET");
+    vi.stubEnv("NEAR_ARCHIVAL_RPC_URLS_TESTNET", "https://t.example/KEY-TESTNET-SECRET");
+    const text = scrubText(
+      "failed https://m.example/KEY-MAINNET-SECRET and https://t.example/KEY-TESTNET-SECRET",
+    );
+    expect(text).not.toContain("KEY-MAINNET-SECRET");
+    expect(text).not.toContain("KEY-TESTNET-SECRET");
+    vi.unstubAllEnvs();
   });
 });
 
@@ -434,6 +487,19 @@ describe("redaction: string values are scrubbed", () => {
     expect(line).not.toContain(TELEGRAM_TOKEN);
     expect(line).not.toContain("abc.def-ghi");
     expect(line).not.toContain("SENTINEL");
+  });
+
+  it("masks a browser extension token by its shape, in the message, a field and an error", () => {
+    // Built at run time, like the other fakes here: pbx_ and 43 base64url characters, as lib/ext/token.ts makes them.
+    const PBX = `pbx_${"Ab3-_9".repeat(8).slice(0, 43)}`;
+    const line = formatLog("error", `ext.pair_failed ${PBX}`, {
+      note: `refused ${PBX}`,
+      error: new Error(`bad ${PBX}`),
+    });
+    expect(line).not.toContain(PBX.slice(4));
+    expect(line.split("pbx_[redacted]")).toHaveLength(4);
+    // A name that starts with pbx_ is not a token.
+    expect(redact({ name: "pbx_token" })).toEqual({ name: "pbx_token" });
   });
 
   it("leaves ordinary strings alone", () => {

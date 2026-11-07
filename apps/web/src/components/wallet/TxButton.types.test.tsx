@@ -10,6 +10,14 @@ const tx = freezeTx("acme.vaults.probarion.near");
 const prepare = async () => tx;
 
 export const accepted = [
+  <TxButton
+    key="danger"
+    label="Revoke"
+    network="testnet"
+    tx={tx}
+    confirm="Revoke mandate #1?"
+    confirmTone="danger"
+  />,
   <TxButton key="tx" label="Freeze" network="testnet" tx={tx} />,
   <TxButton key="tx-key" label="Freeze" network="testnet" tx={tx} lockKey="freeze:acme" />,
   <TxButton
@@ -29,6 +37,8 @@ export const accepted = [
 ];
 
 export const refused = [
+  // @ts-expect-error the only tone besides the normal one is "danger"
+  <TxButton key="bad-tone" label="Revoke" network="testnet" tx={tx} confirmTone="loud" />,
   // @ts-expect-error prepare() without a lockKey: a reload would forget an unconfirmed send
   <TxButton key="prepare" label="Create" network="testnet" prepare={prepare} />,
   // @ts-expect-error describe returns words, not a number

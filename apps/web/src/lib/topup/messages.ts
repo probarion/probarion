@@ -40,6 +40,9 @@ export function quoteErrorText(status: number, body: unknown): string {
       return "Your session ended. Sign in again.";
     case "forbidden":
       return "Only this vault's owner can top it up.";
+    case "wrong_network":
+      // The guard's own sentence: "This vault is on NEAR mainnet. Open it at the mainnet address."
+      return detail || "This vault is on the other network. Open it at that network's address.";
     default:
       return `The quote could not be requested (${code || `HTTP ${status}`}).`;
   }

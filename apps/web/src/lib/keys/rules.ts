@@ -283,4 +283,4 @@ export function keepResultText(r: {
 export type KeySyncState =
   | null
   | { ok: true; message: string; notes: string[] }
-  | { ok: false; error: string; status?: 401 | 403 };
+  | { ok: false; error: string; status?: 401 | 403 | 409 };

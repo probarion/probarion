@@ -5,7 +5,7 @@ export const REQUEST_ID_HEADER = "x-request-id";
 
 /** Field names whose values never reach a log line (matched anywhere in the name, any case). */
 const SECRET_KEY =
-  /secret|token|password|passphrase|mnemonic|seed|authorization|bearer|cookie|api_?key|private|service_?role|jwt|heartbeat|rpc_?urls?|dsn|(agent|ledger|signing)_?key$/i;
+  /secret|token|password|passphrase|mnemonic|seed|authorization|bearer|cookie|api_?key|private|service_?role|jwt|heartbeat|rpc_?urls?|dsn|(agent|ledger|signing|faucet)_?key$/i;
 /** A hash of a secret is not the secret (`token_hash`), except a password hash. */
 const HASH_KEY = /hash$/i;
 const PASSWORD_KEY = /password/i;
@@ -29,6 +29,8 @@ function isSecretKey(key: string, value: unknown): boolean {
 
 const TEXT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, `Bearer ${REDACTED}`],
+  // A browser extension token (pbx_ and 43 base64url characters, lib/ext/token.ts), wherever it appears.
+  [/\bpbx_[A-Za-z0-9_-]{20,}/g, `pbx_${REDACTED}`],
   // A NEAR secret key is base58 of 64 bytes (about 88 characters); a public key is about 44.
   [/\bed25519:[1-9A-HJ-NP-Za-km-z]{60,}/g, `ed25519:${REDACTED}`],
   [/(\bhttps?:\/\/)[^\s/@"']+@/gi, `$1${REDACTED}@`],
@@ -54,10 +56,15 @@ export const SECRET_ENV_NAMES = [
   "CRON_SECRET",
   "BETTERSTACK_HEARTBEAT_URL",
   "NEAR_RPC_URLS",
+  "NEAR_RPC_URLS_MAINNET",
+  "NEAR_RPC_URLS_TESTNET",
   "NEAR_ARCHIVAL_RPC_URLS",
+  "NEAR_ARCHIVAL_RPC_URLS_MAINNET",
+  "NEAR_ARCHIVAL_RPC_URLS_TESTNET",
   "BASE_RPC_URL",
   "PROBARION_AGENT_KEY",
   "PROBARION_LEDGER_KEY",
+  "TESTNET_FAUCET_KEY",
   "OLD_KEY_ENCRYPTION_SECRET",
   "NEW_KEY_ENCRYPTION_SECRET",
 ] as const;

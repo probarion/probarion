@@ -4,15 +4,7 @@
  * delete its line here: test/deploy.test.ts fails until you do, and the link goes live on its own.
  * Patterns are `src/app` routes, so `[vault]` stands for any vault.
  */
-export const PLANNED_ROUTES: readonly string[] = [
-  "/canary",
-  "/open",
-  "/security",
-  "/status",
-  "/terms",
-  "/privacy",
-  "/console/[vault]/alerts",
-];
+export const PLANNED_ROUTES: readonly string[] = [];
 
 /** False while the page is planned and not yet built. */
 export function isBuilt(route: string): boolean {
@@ -24,12 +16,12 @@ export interface NavItem {
   label: string;
 }
 
+/** /security is in FOOTER_NAV only: with it, the header's links do not fit in the bar at 1120 px. */
 export const SITE_NAV: readonly NavItem[] = [
   { route: "/console", label: "Console" },
   { route: "/proof", label: "Proof" },
   { route: "/canary", label: "Canary" },
-  { route: "/open", label: "Open metrics" },
-  { route: "/security", label: "Security" },
+  { route: "/usage", label: "Usage" },
   { route: "/status", label: "Status" },
 ];
 

@@ -1,0 +1,412 @@
+/*
+ * The public Canary pages, in the look of the rest of the public site (site.module.css): paper, ink and hairlines, with
+ * the status colours of app/globals.css for what passed (ok), failed (bad), waits (wait) or is neutral (plan). A wide
+ * table scrolls inside its own panel (.scroll), and a grid child may shrink (minmax(0, ...)), so the page itself has no
+ * horizontal scroll at any width. Cards come from brandCardClass in components/ui.tsx.
+ */
+
+.page {
+  padding-block: 32px 72px;
+}
+
+/* Header */
+.title {
+  margin-top: 10px;
+  font-weight: 300;
+  font-size: clamp(36px, 5.2vw, 60px);
+  line-height: 1.04;
+  letter-spacing: -0.038em;
+  text-wrap: balance;
+}
+.lede {
+  margin-top: 16px;
+  max-width: 40em;
+  font-size: clamp(17px, 1.65vw, 19px);
+  line-height: 1.42;
+}
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 24px;
+  margin-bottom: clamp(28px, 4vw, 44px);
+}
+/* Looks like a pill and is not a link: no hover, and the wait colours say "read this". */
+.statePill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--color-wait-bg);
+  color: var(--color-wait);
+}
+
+/* Cards */
+.cardTitle {
+  font-weight: 300;
+  font-size: clamp(22px, 2.6vw, 30px);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  margin-bottom: 14px;
+}
+.muted {
+  color: var(--color-mute);
+  font-size: 15px;
+}
+.line {
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+}
+.balance {
+  font-weight: 300;
+  font-size: clamp(30px, 4.4vw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.balance small {
+  font-size: 0.45em;
+  letter-spacing: 0;
+  color: var(--color-mute);
+}
+.unreadable {
+  color: var(--color-bad);
+}
+.link {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+}
+.pair > * {
+  min-width: 0;
+}
+
+/* The attempt form */
+.label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.textarea {
+  display: block;
+  width: 100%;
+  min-height: 168px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-mute);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font-family: var(--font-mono);
+  /* 16px, so that a phone does not zoom in on focus. */
+  font-size: 16px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.textarea::placeholder {
+  color: var(--color-mute);
+}
+.textarea:focus-visible {
+  outline: 2px solid var(--color-gold-small);
+  outline-offset: 3px;
+}
+.formRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin-top: 8px;
+}
+.formRow p {
+  margin: 0;
+}
+.count {
+  font-size: 13px;
+  color: var(--color-mute);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.button {
+  cursor: pointer;
+}
+/* Empty text is `disabled`. An attempt that is running is only aria-disabled, so that the button keeps the focus. */
+.button:disabled,
+.button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.result {
+  margin-top: 20px;
+}
+.result:empty {
+  margin-top: 0;
+}
+.error {
+  color: var(--color-bad);
+  font-weight: 500;
+}
+
+/* Under the three columns of an answer: where to go next. */
+.next {
+  margin-top: 16px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+/* The three columns of an answer */
+.columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.column {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  overflow-wrap: anywhere;
+}
+.columnTitle {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+.column p {
+  margin: 0;
+}
+.column p + p,
+.column p + div {
+  margin-top: 8px;
+}
+.reasoning {
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.chip code {
+  font-size: 1em;
+}
+.ok {
+  background: var(--color-ok-bg);
+  color: var(--color-ok);
+}
+.fail {
+  background: var(--color-bad-bg);
+  color: var(--color-bad);
+}
+.wait {
+  background: var(--color-wait-bg);
+  color: var(--color-wait);
+}
+.plan {
+  background: var(--color-plan-bg);
+  color: var(--color-plan);
+}
+
+/* The scoreboard */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.tile {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+}
+.tileLabel {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.tileValue {
+  margin: 0;
+  font-weight: 300;
+  font-size: clamp(32px, 4vw, 44px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.tileValue small {
+  font-size: 0.4em;
+  letter-spacing: 0;
+  color: var(--color-mute);
+}
+.tileSub {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-mute);
+}
+.codes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 14px;
+}
+.fresh {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--color-mute);
+}
+
+/* Tables */
+.scroll {
+  overflow-x: auto;
+  min-width: 0;
+  margin-top: 16px;
+}
+.scroll:focus-visible {
+  outline: 2px solid var(--color-gold-small);
+  outline-offset: 3px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+}
+.table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--color-line);
+  white-space: nowrap;
+  vertical-align: top;
+}
+.table th:first-child,
+.table td:first-child {
+  padding-left: 0;
+}
+.table th:last-child,
+.table td:last-child {
+  padding-right: 0;
+}
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.table .num {
+  text-align: right;
+}
+.table td.wide {
+  white-space: normal;
+  min-width: 14em;
+}
+.quiet {
+  color: var(--color-mute);
+}
+.team {
+  margin-left: 8px;
+}
+
+/* The replay's banner */
+.banner {
+  margin-bottom: 24px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: var(--color-wait-bg);
+  color: var(--color-wait);
+  font-size: 15px;
+}
+.banner b {
+  font-weight: 600;
+}
+/* What a visitor can do while the live Canary is not shown: just under the banner, aligned with its text. */
+.meanwhile {
+  margin: -12px 0 24px;
+  padding: 0 18px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+/* The rules */
+.rules {
+  margin-top: 28px;
+  max-width: 44em;
+  padding-left: 1.4em;
+  display: grid;
+  gap: 18px;
+  font-size: 16px;
+  list-style: decimal;
+}
+.rules strong {
+  font-weight: 600;
+}
+.rules a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.back {
+  margin-top: 36px;
+}
+
+@media (max-width: 960px) {
+  .columns,
+  .tiles,
+  .pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 620px) {
+  .page {
+    padding-block: 24px 56px;
+  }
+  .pills > * {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .table th,
+  .table td {
+    padding-inline: 10px;
+  }
+}
+@media (forced-colors: active) {
+  .chip,
+  .statePill,
+  .banner {
+    border: 1px solid CanvasText;
+  }
+}

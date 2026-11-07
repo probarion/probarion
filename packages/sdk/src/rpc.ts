@@ -12,6 +12,13 @@ export interface RpcClientOptions {
   maxDelayMs?: number;
   timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Milliseconds the caller has left for its whole job (default: no overall limit). It is read before every try and
+   * every back-off: a try gets the smaller of `timeoutMs` and what is left, a back-off is cut to what is left, and
+   * when nothing is left the call stops with an `RpcError` instead of trying the next endpoint. For a caller that
+   * answers inside a platform's time limit.
+   */
+  remainingMs?: () => number;
 }
 
 export interface ViewAccountResult {
@@ -374,11 +381,15 @@ export class RpcClient {
     return Math.min(max, (this.opts.baseDelayMs ?? 250) * 2 ** attempt);
   }
 
-  private async attempt(url: string, method: string, params: unknown): Promise<Attempt> {
+  private async attempt(
+    url: string,
+    method: string,
+    params: unknown,
+    timeoutMs: number,
+  ): Promise<Attempt> {
     const doFetch = this.opts.fetch ?? globalThis.fetch;
     const id = `probarion-${this.nextId}`;
     this.nextId += 1;
-    const timeoutMs = this.opts.timeoutMs ?? 15_000;
     const shown = redactUrl(url);
     let response: Response;
     try {
@@ -470,7 +481,23 @@ export class RpcClient {
       const index = (this.preferred + n) % this.urls.length;
       const url = this.urls[index];
       if (url === undefined) continue;
-      const outcome = await this.attempt(url, method, params);
+      // The time the caller has left, if it said (read before every try): no try starts without any.
+      const left = this.opts.remainingMs?.();
+      if (left !== undefined && !(left > 0)) {
+        throw new RpcError(
+          `${method}: the time left for this job ran out after ${attempts.length} attempt(s)`,
+          attempts,
+          nodeError,
+          lastCause === undefined ? undefined : { cause: lastCause },
+        );
+      }
+      const base = this.opts.timeoutMs ?? 15_000;
+      const outcome = await this.attempt(
+        url,
+        method,
+        params,
+        left === undefined ? base : Math.max(1, Math.min(base, Math.ceil(left))),
+      );
       if (outcome.kind === "ok") {
         this.preferred = index;
         return outcome.result as T;
@@ -481,7 +508,11 @@ export class RpcClient {
       attempts.push({ url: redactUrl(url), error: outcome.message });
       if (outcome.rpcError !== undefined) nodeError = outcome.rpcError;
       lastCause = outcome.cause ?? new Error(outcome.message);
-      if (n < total - 1) await this.sleep(this.delay(n, outcome.retryAfterMs));
+      if (n < total - 1) {
+        const wait = this.delay(n, outcome.retryAfterMs);
+        const after = this.opts.remainingMs?.();
+        await this.sleep(after === undefined ? wait : Math.max(0, Math.min(wait, after)));
+      }
     }
     const tried = [...new Set(this.urls.map(redactUrl))].join(", ");
     const last = attempts.at(-1)?.error ?? "no attempt made";

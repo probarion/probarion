@@ -6,13 +6,13 @@ import {
   KeyTxButton,
 } from "@/components/console/KeyActions";
 import { VaultNav } from "@/components/console/VaultNav";
+import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
 import { Badge, Card, Notice, type Tone } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import { VAULT_DEFAULTS } from "@/lib/config";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { rpcChainReads } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
-import { getEnv } from "@/lib/env";
 import { DISCARDED_ON_CHAIN_TEXT, type KeyStatus, stuckText } from "@/lib/keys/rules";
 import { type AllowanceView, type KeyView, loadKeysView } from "@/lib/keys/view";
 import { lockKeyFor } from "@/lib/near/lock";
@@ -51,10 +51,16 @@ function allowanceText(a: AllowanceView | null): string {
 export default async function KeysPage({ params }: { params: Promise<{ vault: string }> }) {
   const { vault: requested } = await params;
   // 404 for anyone who is not a member: a vault id is never confirmed to a stranger.
-  const { session, member } = await requireMember(requested);
+  const { session, member, elsewhere } = await requireMember(requested);
+  if (elsewhere) return <VaultOnOtherNetwork {...elsewhere} />;
   const vault = member.vault_id;
-  const network = getEnv().NEAR_NETWORK;
-  const view = await loadKeysView(serviceDb(), getReader(), member, rpcChainReads(getRpc()));
+  const network = member.network;
+  const view = await loadKeysView(
+    serviceDb(),
+    getReader(network),
+    member,
+    rpcChainReads(getRpc(network)),
+  );
   // A stuck ledger key can be replaced only on current vault code (W-T10-R3); on old code, or when the
   // code could not be read, a new ledger key is not offered (it could only move the stuck pointer).
   const ledgerBlocked = view.ledgerStuck && view.vaultCode !== "current";
@@ -104,6 +110,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             tx={removeAgentTx(vault, k.public_key)}
             lockKey={lockKeyFor(`keys:remove:${vault}:${k.public_key}`)}
             confirm="Remove this agent key from the vault? Payables stops using it at once."
+            confirmTone="danger"
           />
         ) : null}
         {k.discardedOnChain ? <KeyKeepButton keep={keepKeyAction.bind(null, vault, k.id)} /> : null}

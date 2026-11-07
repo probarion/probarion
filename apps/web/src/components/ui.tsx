@@ -13,6 +13,9 @@ const TONES: Record<Tone, string> = {
 export const inputClass = "w-full rounded border border-stone-300 bg-white px-2 py-1 text-sm";
 export const buttonClass =
   "rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50";
+/** The action button of a confirm dialog for something that cannot be taken back. */
+export const dangerButtonClass =
+  "rounded bg-rose-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-800 disabled:opacity-50";
 
 // Brand v2 (light): ink pills, hairline cards with a large radius, and status panels whose colour carries meaning
 // (green passed, amber not proven or no result, red failed). The colours are the tokens in app/globals.css.

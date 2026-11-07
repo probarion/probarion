@@ -7,10 +7,14 @@ const mocks = vi.hoisted(() => ({
   confirmTx: vi.fn(),
   currentFinalHeight: vi.fn(),
 }));
+const net = vi.hoisted(() => ({ network: "mainnet" as "mainnet" | "testnet" }));
 
 vi.mock("@/lib/auth/guard", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/db/clients", () => ({ serviceDb: mocks.serviceDb }));
 vi.mock("@/lib/http", () => ({ rateLimitOr429: mocks.rateLimitOr429 }));
+vi.mock("@/lib/network", () => ({ requestNetwork: async () => net.network }));
+// The chain client is the network's own: the mock names which network it was asked for.
+vi.mock("./server", () => ({ getRpc: (network: string) => ({ rpcOf: network }) }));
 vi.mock("./confirm", () => ({
   confirmTx: mocks.confirmTx,
   currentFinalHeight: mocks.currentFinalHeight,
@@ -38,20 +42,51 @@ beforeEach(() => {
   mocks.rateLimitOr429.mockResolvedValue(null);
   mocks.confirmTx.mockResolvedValue(OK);
   mocks.currentFinalHeight.mockResolvedValue(4242);
+  net.network = "mainnet";
 });
 
 describe("confirmTxAction", () => {
   it("a signed-in owner gets the chain's answer, for exactly the request that was made", async () => {
     const r = await confirmTxAction(request());
     expect(r).toEqual(OK);
-    expect(mocks.confirmTx).toHaveBeenCalledWith(request());
+    expect(mocks.confirmTx).toHaveBeenCalledWith(request(), { rpcOf: "mainnet" });
+  });
+
+  it("asks the chain of the network of the address it runs for, and of no other", async () => {
+    for (const network of ["mainnet", "testnet"] as const) {
+      net.network = network;
+      mocks.confirmTx.mockClear();
+      await confirmTxAction(request());
+      expect(mocks.confirmTx).toHaveBeenCalledWith(request(), { rpcOf: network });
+      mocks.currentFinalHeight.mockClear();
+      await sendBaselineAction();
+      expect(mocks.currentFinalHeight).toHaveBeenCalledWith({ rpcOf: network });
+    }
   });
 
   it("applies a per-account cap (30 a minute) and a global cap on top (300 a minute)", async () => {
     await confirmTxAction(request());
     expect(mocks.rateLimitOr429.mock.calls).toEqual([
-      [{ db: true }, "confirm:owner.near", [30, 60]],
+      [{ db: true }, "confirm:mainnet:owner.near", [30, 60]],
       [{ db: true }, "confirm:all", [300, 60]],
+    ]);
+  });
+
+  it("keys the per-account cap by network too: the same account has a bucket on each, and the global cap stays one", async () => {
+    for (const network of ["mainnet", "testnet"] as const) {
+      net.network = network;
+      await confirmTxAction(request());
+      await sendBaselineAction();
+    }
+    expect(mocks.rateLimitOr429.mock.calls.map((c) => c[1])).toEqual([
+      "confirm:mainnet:owner.near",
+      "confirm:all",
+      "baseline:mainnet:owner.near",
+      "baseline:all",
+      "confirm:testnet:owner.near",
+      "confirm:all",
+      "baseline:testnet:owner.near",
+      "baseline:all",
     ]);
   });
 
@@ -135,7 +170,7 @@ describe("sendBaselineAction", () => {
   it("has its own caps (30 a minute per account, 300 a minute in all), apart from the confirmation's", async () => {
     await sendBaselineAction();
     expect(mocks.rateLimitOr429.mock.calls).toEqual([
-      [{ db: true }, "baseline:owner.near", [30, 60]],
+      [{ db: true }, "baseline:mainnet:owner.near", [30, 60]],
       [{ db: true }, "baseline:all", [300, 60]],
     ]);
   });
@@ -145,9 +180,9 @@ describe("sendBaselineAction", () => {
     await confirmTxAction(request());
     const buckets = mocks.rateLimitOr429.mock.calls.map((c) => c[1]);
     expect(buckets).toEqual([
-      "baseline:owner.near",
+      "baseline:mainnet:owner.near",
       "baseline:all",
-      "confirm:owner.near",
+      "confirm:mainnet:owner.near",
       "confirm:all",
     ]);
     expect(new Set(buckets).size).toBe(buckets.length);
@@ -156,13 +191,13 @@ describe("sendBaselineAction", () => {
   it("the confirmation touches only the confirm caps, and the baseline only its own", async () => {
     await confirmTxAction(request());
     expect(mocks.rateLimitOr429.mock.calls.map((c) => c[1])).toEqual([
-      "confirm:owner.near",
+      "confirm:mainnet:owner.near",
       "confirm:all",
     ]);
     mocks.rateLimitOr429.mockClear();
     await sendBaselineAction();
     expect(mocks.rateLimitOr429.mock.calls.map((c) => c[1])).toEqual([
-      "baseline:owner.near",
+      "baseline:mainnet:owner.near",
       "baseline:all",
     ]);
   });

@@ -5,6 +5,7 @@ import { authUnavailable } from "@/lib/auth/unavailable";
 import { subkey } from "@/lib/crypto/server";
 import { serviceDb } from "@/lib/db/clients";
 import { clientIp, json, rateLimitOr429 } from "@/lib/http";
+import { requestNetwork } from "@/lib/network";
 import { LIMITS } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,11 @@ export async function GET(req: Request) {
     );
     if (limited) return limited;
     // The "challenge" subkey, not "session": a challenge cookie can never be read as a session.
-    const { challenge, cookie } = await issueChallenge(await subkey("challenge"));
+    // Bound to the network of this address: it opens there and nowhere else (W-NET-R3).
+    const { challenge, cookie } = await issueChallenge(
+      await subkey("challenge"),
+      await requestNetwork(),
+    );
     (await cookies()).set(CHALLENGE_COOKIE, cookie, cookieOptions(CHALLENGE_TTL_MS));
     return json(challenge);
   } catch (error) {

@@ -1,5 +1,6 @@
 import "server-only";
-import { Probarion, type ProbarionDeps, type ProbarionLogger } from "@probarion/sdk";
+import { Probarion, type ProbarionDeps, type ProbarionLogger, RpcClient } from "@probarion/sdk";
+import type { Network } from "@/lib/config";
 import { serviceDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
 import { SupabaseLedgerStore } from "@/lib/ledger/store";
@@ -35,22 +36,28 @@ function sdkLogger(o: TenantProbarionOptions): ProbarionLogger {
 }
 
 /**
- * One Probarion per request, for one tenant, on its Supabase ledger. NEARAI_MODEL passes through; unset means
- * the SDK resolves the default (Decision D8). Without NEARAI_API_KEY the cycle decides rules-only. `deps` is for
- * tests only.
+ * One Probarion per request, for one tenant, on its Supabase ledger. `network` is the tenant's own (`tenants.network`), and
+ * decides the chain and the RPC list it reads and signs on. NEARAI_MODEL passes through; unset means the SDK
+ * resolves the default (Decision D8). Without NEARAI_API_KEY the cycle decides rules-only. `deps` is for tests only.
+ *
+ * The SDK falls back to the process environment (NEAR_RPC_URLS, NEAR_ARCHIVAL_RPC_URLS) for what it is not given, and
+ * those variables are the default network's, whatever the tenant's network is. So it is given no environment
+ * (`env: {}`) and an explicit archival client from the network's own list (none when the list is empty).
  */
 export function makeTenantProbarion(
+  network: Network,
   o: TenantProbarionOptions,
   deps: ProbarionDeps = {},
 ): Probarion {
   const env = getEnv();
+  const archival = env.networks[network].archivalRpcUrls;
   return new Probarion(
     {
-      network: env.NEAR_NETWORK,
+      network,
       vault: o.tenant.vault_id,
       agentKey: o.agentKey,
       ledgerKey: o.ledgerKey,
-      rpcUrls: env.NEAR_RPC_URLS,
+      rpcUrls: env.networks[network].rpcUrls,
       model: env.NEARAI_API_KEY
         ? {
             provider: "near-ai-cloud",
@@ -62,6 +69,14 @@ export function makeTenantProbarion(
       ledger: new SupabaseLedgerStore(serviceDb(), o.tenant.tenant_id),
       requestId: o.requestId, // SDK v2: written into every ledger entry
     },
-    { logger: sdkLogger(o), ...deps },
+    {
+      logger: sdkLogger(o),
+      env: {},
+      archivalRpc:
+        archival.length > 0
+          ? new RpcClient({ urls: [...archival], maxRounds: 2, timeoutMs: 8_000 })
+          : null,
+      ...deps,
+    },
   );
 }

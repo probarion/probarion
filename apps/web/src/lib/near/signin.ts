@@ -99,9 +99,14 @@ const SIGN_IN_ERRORS: Record<string, string> = {
     "Your wallet's signature was not accepted. Choose an account whose full-access key can sign messages",
   challenge_missing_or_expired: "The sign-in challenge expired or was already used",
   verifier_unavailable: "No NEAR node could be reached to check your signature",
+  wrong_chain: "This site is connected to the wrong NEAR network right now, so sign-in is paused",
   invalid_input: "The wallet's answer was not in the expected form",
   bad_origin: "This page's address is not allowed to sign in",
   rate_limited: "Too many sign-in attempts",
+  // The verify route's 503 for every infrastructure failure. The wallet has signed by then, so the words do
+  // not say "nothing was signed" (SIGN_IN_UNAVAILABLE below does, before the wallet is asked).
+  unavailable: "Sign-in is unavailable right now, so you were not signed in. Try again later",
+  payload_too_large: "The wallet's answer was too large to be a sign-in",
 };
 
 /** The server's refusal code, with the plain-language reason when we know it. */

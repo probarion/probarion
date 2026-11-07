@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { buttonClass, Field, inputClass, Notice } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
+import type { DangerTone } from "@/lib/console/confirm-dialog";
 import { consoleOutOfNear } from "@/lib/console/display";
 import type { KeepState, KeyPurpose, KeySyncState, VaultCode } from "@/lib/keys/rules";
 import { lockKeyFor } from "@/lib/near/lock";
@@ -16,7 +17,7 @@ import type { WalletTx } from "@/lib/near/tx";
 type Generate = (
   purpose: KeyPurpose,
   label: string,
-) => Promise<WalletTx | { error: string; status?: 401 | 403 }>;
+) => Promise<WalletTx | { error: string; status?: 401 | 403 | 409 }>;
 type Sync = (prev: KeySyncState, formData?: FormData) => Promise<KeySyncState>;
 type Keep = (prev: KeepState, formData?: FormData) => Promise<KeepState>;
 
@@ -47,6 +48,7 @@ export function KeyTxButton(props: {
   tx: WalletTx;
   lockKey: string;
   confirm?: string;
+  confirmTone?: DangerTone;
   outOfNearCodes: string[];
   sync: Sync;
 }) {
@@ -58,6 +60,7 @@ export function KeyTxButton(props: {
       tx={props.tx}
       lockKey={props.lockKey}
       confirm={props.confirm}
+      confirmTone={props.confirmTone}
       describe={signerFirst(props.outOfNearCodes)}
       onResult={afterTx(props.sync)}
     />

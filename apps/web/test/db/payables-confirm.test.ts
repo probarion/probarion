@@ -58,14 +58,17 @@ const h = vi.hoisted(() => ({
   jar: new Map<string, string>(),
   panels: [] as Record<string, unknown>[],
 }));
-vi.mock("@/lib/env", () => ({
-  getEnv: () => ({
-    NEAR_NETWORK: "testnet",
-    NEAR_RPC_URLS: [h.url],
-    NEARAI_API_KEY: null,
-    NEARAI_MODEL: null,
-  }),
-}));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../fixtures/networks");
+  return {
+    // The vault is on testnet and this is a testnet address: the default network, with the fake chain's RPC.
+    getEnv: () => ({
+      ...networkPart({ defaultNetwork: "testnet", testnet: { rpcUrls: [h.url] } }),
+      NEARAI_API_KEY: null,
+      NEARAI_MODEL: null,
+    }),
+  };
+});
 vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
@@ -157,6 +160,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       vault: SCENARIO_VAULT,
       owner: OWNER,
       approvers: [SCENARIO_APPROVER],
+      network: "testnet",
     });
     for (const [purpose, pair] of [
       ["agent", TEST_KEYS.agent],
@@ -181,7 +185,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
     const rpc = new RpcClient({ urls: [server.url] });
     const reader = createVaultReader(rpc);
     const probarion = (o: Parameters<PipelineDeps["makeProbarion"]>[0]) =>
-      makeTenantProbarion(o, { now: () => NOW, archivalRpc: null });
+      makeTenantProbarion("testnet", o, { now: () => NOW, archivalRpc: null });
     pipeline = {
       db: h.db,
       master: MASTER,
@@ -936,7 +940,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
     async function signInAs(account: string) {
       h.jar.set(
         SESSION_COOKIE,
-        await createSessionToken(await deriveSubkey(MASTER, "session"), account),
+        await createSessionToken(await deriveSubkey(MASTER, "session"), account, "testnet"),
       );
     }
     const listHtml = async () =>

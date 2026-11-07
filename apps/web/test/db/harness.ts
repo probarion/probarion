@@ -52,12 +52,14 @@ export async function seedTenant(
     kind?: "team" | "external" | "canary";
     approvers?: string[];
     proofPublic?: boolean;
+    /** Default mainnet, as every test before the second network was served. */
+    network?: "mainnet" | "testnet";
   },
 ): Promise<string> {
   const r = await pg.query<{ id: string }>(
     `insert into public.tenants (vault_id, network, kind, owner_account, proof_public)
-     values ($1, 'mainnet', $2, $3, $4) returning id`,
-    [t.vault, t.kind ?? "external", t.owner, t.proofPublic ?? false],
+     values ($1, $5, $2, $3, $4) returning id`,
+    [t.vault, t.kind ?? "external", t.owner, t.proofPublic ?? false, t.network ?? "mainnet"],
   );
   const id = r.rows[0]?.id;
   if (!id) throw new Error("seedTenant: insert returned no id");
