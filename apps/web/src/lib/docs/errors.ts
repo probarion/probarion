@@ -416,10 +416,10 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 404,
     code: "not_found",
-    where: "Proof files (snapshot.json, ledger.jsonl)",
+    where: "Proof files (snapshot.json, ledger.jsonl), Top-up API (faucet)",
     meaning:
-      "There is no proof to give: the vault id is not a NEAR account id, nobody registered the vault, or its proof page is not public and you are not a member.",
-    next: "Check the vault id, or sign in as a member of the vault if its proof page is not public.",
+      "There is no proof to give: the vault id is not a NEAR account id, nobody registered the vault, or its proof page is not public and you are not a member. The faucet answers it at any address but testnet's, and to anyone but the vault's owner, so a vault id is not confirmed.",
+    next: "Check the vault id, or sign in as a member of the vault if its proof page is not public; for the faucet, sign in as the vault's owner at the testnet address.",
   },
   {
     status: 409,
@@ -455,7 +455,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     code: "mainnet_only",
     where: "Top-up API",
     meaning: "NEAR Intents and 1Click exist on mainnet only, so a testnet vault has no top-up.",
-    next: "On testnet, send test USDC to the vault from the owner's wallet instead (the owner signs).",
+    next: 'On testnet, press "Add test USDC" on the vault\'s Top-up tab instead.',
   },
   {
     status: 409,
@@ -474,10 +474,26 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   },
   {
     status: 409,
+    code: "not_owner",
+    where: "Top-up API (faucet)",
+    meaning:
+      "The chain names another account than the signed-in one as the vault's owner, so nothing was minted.",
+    next: "Sign in with the account the chain names as the vault's owner.",
+  },
+  {
+    status: 409,
     code: "wrong_network",
     where: "Console invoices API, Top-up API",
     meaning: "The vault is on the other network than the address the request came in at.",
     next: "Open the vault at its own network's address.",
+  },
+  {
+    status: 409,
+    code: "wrong_token",
+    where: "Top-up API (faucet)",
+    meaning:
+      "The vault's token is not testnet's USDC, so the faucet's test USDC would not count in it, and nothing was minted.",
+    next: "Use the faucet on a vault made for testnet's USDC; a vault's token is set when it is created.",
   },
   {
     status: 411,
@@ -539,6 +555,14 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     meaning:
       "The cycle stopped before any payment was sent, or the Canary attempt ran out of time; the invoice or the attempt is stored as an error.",
     next: "Upload the invoice again, or send a new Canary attempt.",
+  },
+  {
+    status: 502,
+    code: "mint_failed",
+    where: "Top-up API (faucet)",
+    meaning:
+      "The mint reached NEAR and the token refused it, so no test USDC arrived and the vault's day is used; the body adds `txHash`.",
+    next: "Send @probarionhq a direct message on X with your vault's name and the `txHash`.",
   },
   {
     status: 502,
