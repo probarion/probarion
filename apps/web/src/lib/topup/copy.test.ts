@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { NETWORKS } from "@probarion/core";
 import { describe, expect, it } from "vitest";
 import { FT_STORAGE_DEPOSIT } from "@/lib/near/tx";
+import { PRIVACY_PAGE } from "@/lib/site/ops-copy";
 import {
   baseCardNotAllowed,
   baseCardNotConfigured,
@@ -11,11 +12,17 @@ import {
   deadlineText,
   describeDeposit,
   FUNDING_NOTICE,
+  faucetAccountText,
+  faucetCapText,
+  faucetCopy,
+  faucetUsedText,
   ONLY_ON_MAINNET,
   registerDepositText,
   testnetBaseText,
   UNCONFIRMED_DEPOSIT_NOTE,
+  waitText,
 } from "./copy";
+import { FAUCET_USDC } from "./faucet";
 
 // The sentences the top-up page shows, held to the files they come from: if a contract, a runbook or a network
 // address changes, these fail until the sentence is true again.
@@ -128,5 +135,62 @@ describe("the other sentences of the page", () => {
   it("writes a deadline as a UTC date and minute", () => {
     expect(deadlineText("2026-11-08T10:30:00.000Z")).toBe("2026-11-08 10:30 UTC");
     expect(deadlineText("2026-11-08T10:30:59Z")).toBe("2026-11-08 10:30 UTC");
+  });
+});
+
+describe("the testnet faucet's words", () => {
+  const copy = faucetCopy(FAUCET_USDC);
+
+  it("says what the audit asked: the fixed amount, test tokens with no value, once a day per vault", () => {
+    expect(copy.title).toBe("Add 25 test USDC to this vault");
+    expect(copy.note).toBe("Test tokens from the Probarion team, no value. Once a day per vault.");
+    expect(copy.button).toBe("Add test USDC");
+    expect(copy.done).toBe("Added 25 test USDC to the vault.");
+  });
+
+  it("says who signs the mint, so the card's notice that Probarion never signs for you stays true", () => {
+    expect(copy.signer).toContain("The Probarion team's key signs this mint, not your wallet");
+    expect(copy.signer).toContain("only mint the test token");
+    expect(FUNDING_NOTICE.testnet).toMatch(/You sign each top-up in your own wallet/);
+  });
+
+  it("claims no real money, and names a contact that exists", () => {
+    for (const s of Object.values(copy)) expect(s).not.toMatch(/real money|\$|USD\b/);
+    expect(copy.fallback).toContain("@probarionhq");
+    expect(copy.unavailable).toContain("@probarionhq");
+    expect(read("README.md")).toContain("https://x.com/probarionhq");
+  });
+
+  it("says how long to wait in hours, or in minutes under an hour", () => {
+    expect(waitText(5 * 3600 - 10)).toBe("about 5 h");
+    expect(waitText(3600)).toBe("about 1 h");
+    expect(waitText(1799)).toBe("about 30 min");
+    expect(waitText(1)).toBe("about 1 min");
+    expect(faucetUsedText(7200)).toBe(
+      "This vault already got its test USDC today. Try again in about 2 h.",
+    );
+    expect(faucetAccountText(60, 3)).toBe(
+      "Your account already added test USDC to 3 vaults today. Try again in about 1 min.",
+    );
+    expect(faucetCapText(60)).toBe(
+      "Today's test USDC for all vaults is given out. Try again in about 1 min.",
+    );
+  });
+
+  it("is on /privacy and in the runbooks: the counters, the public mint and the key", () => {
+    const operations = PRIVACY_PAGE.sections.find((s) => s.id === "operations");
+    const text = operations?.paragraphs.join(" ") ?? "";
+    expect(text).toContain(
+      "the Add test USDC button counts its mints per vault, per owner account and for all vaults together, each for one UTC day",
+    );
+    expect(text).toContain("public on chain");
+    const runbook = read("docs", "RUNBOOK.md");
+    expect(runbook).toContain("## Testnet faucet");
+    expect(runbook).toContain("`faucet:testnet:vault:<vault>:<YYYY-MM-DD>`");
+    expect(runbook).toContain("`faucet:testnet:account:<account>:<YYYY-MM-DD>`");
+    expect(runbook).toContain("faucet.key_not_mint_only");
+    expect(runbook).toContain("--function-names 'mint'");
+    expect(runbook).toContain("--contract-account-id usdc.probarion.testnet");
+    expect(read("docs", "runbooks", "web-deploy.md")).toContain("`TESTNET_FAUCET_KEY`");
   });
 });

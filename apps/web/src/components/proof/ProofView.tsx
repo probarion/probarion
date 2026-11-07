@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { RouteLink } from "@/components/RouteLink";
+import { NextStep } from "@/components/site/NextStep";
 import {
   Badge,
   brandCardClass,
@@ -34,6 +35,7 @@ import {
   type UnprovenRow,
   unprovenRows,
 } from "@/lib/proof/view";
+import { NEXT_STEP } from "@/lib/site/next-step";
 
 // The public proof page, as a server component with no data access of its own: page.tsx loads the result and
 // hands it here. The result comes first, then the checks, the burns and the steps to verify it yourself.
@@ -386,7 +388,7 @@ function AttestationLine({ modelDecisions }: { modelDecisions: number }) {
   );
 }
 
-/** A vault's live checks a-i, with explorer links, its burns and the offline steps. */
+/** A vault's live checks a-i, with explorer links, its burns, the offline steps and the next step (the console). */
 export function ProofView({ result }: { result: ProofOk }) {
   const { vault, network, report, snapshot } = result;
   const rows = proofRows(report, snapshot, network);
@@ -444,6 +446,7 @@ export function ProofView({ result }: { result: ProofOk }) {
 
       <Burns burns={burns} />
       <VerifyYourself vault={vault} network={network} takenAt={takenAt} />
+      <NextStep step={NEXT_STEP.proof} className="mt-6 text-sm text-ink/80" linkClassName={link} />
     </div>
   );
 }

@@ -114,14 +114,19 @@ export const OWNER_CALLS: readonly CallSpec[] = [
   {
     group: "vault",
     name: "freeze",
-    description: "print freeze for the OWNER to sign (no deposit: any owner key may freeze)",
+    // No deposit, so a function-call key whose receiver is this vault can sign it (integration-tests/tests/security.rs,
+    // a dapp login key scoped to the vault). A key scoped to another contract cannot call the vault at all: that is
+    // the NEAR protocol's function-call key rule, not a vault check.
+    description:
+      "print freeze for the OWNER to sign (no deposit: the owner's full-access key, or a function-call key on the owner's account that may call this vault)",
     method: "freeze",
     gasTgas: "30.0",
     oneYocto: false,
     signer: "owner",
     options: [],
     args: () => ({}),
-    note: "Every spend and approval is refused until unfreeze.",
+    // checks.rs and held.rs: spend (and check_spend) and approve refuse Frozen; reject and expire_held do not check it.
+    note: "Every new spend and every approve is refused until unfreeze. reject and expire_held still work.",
   },
   {
     group: "vault",

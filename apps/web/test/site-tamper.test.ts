@@ -7,8 +7,12 @@ import { firstBrokenSeq, runChecks, type Snapshot } from "@probarion/core";
 import { createElement } from "react";
 import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { TamperPanel } from "@/components/site/TamperPanel";
-import { RECORDED_RESULT, TAMPER_COPY } from "@/lib/site/facts";
+import Home from "@/app/page";
+import { NextStep } from "@/components/site/NextStep";
+import { LedgerTest, TamperPanel } from "@/components/site/TamperPanel";
+import { TamperVerdict } from "@/components/site/TamperTest";
+import { CHECK_LIST, RECORDED_RESULT, TAMPER_COPY } from "@/lib/site/facts";
+import { NEXT_STEP } from "@/lib/site/next-step";
 import {
   applyTamper,
   ledgerRows,
@@ -19,12 +23,15 @@ import {
 import {
   checkView,
   notRunLine,
+  offersNext,
   passCaveat,
+  plainVerdict,
   resultSummary,
   runVerifier,
   statusLine,
 } from "@/lib/site/tamper-view";
 import fixture from "@/lib/site/valid-snapshot.json";
+import { elementsOf } from "./fixtures/elements";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(WEB, "..", "..");
@@ -243,6 +250,205 @@ describe("the left card's status line", () => {
   });
 });
 
+describe("the plain verdict", () => {
+  const verdictOf = async (id: TamperEditId | null) =>
+    plainVerdict(await verifyTamper(SNAPSHOT, id), TAMPER_COPY.firstBroken);
+
+  it("says in plain words what the real verifier found, for the fixture and for each edit", async () => {
+    expect(await verdictOf(null)).toBe("All 9 offline checks pass.");
+    expect(await verdictOf("amount")).toBe(
+      "Entry 2 was changed after it was signed, so its signature no longer matches.",
+    );
+    expect(await verdictOf("erase")).toBe(
+      "Entry 4 is missing, but the vault anchored a count that includes it.",
+    );
+    expect(await verdictOf("verdict")).toBe(
+      "Entry 4 was changed after it was signed, so its signature no longer matches.",
+    );
+  });
+
+  it("says the same at rest as a real run of the untouched fixture", async () => {
+    expect(plainVerdict(RECORDED_RESULT, TAMPER_COPY.firstBroken)).toBe(await verdictOf(null));
+  });
+
+  it("uses none of the verifier's own terms", async () => {
+    for (const id of [null, ...TAMPER_EDITS.map((e) => e.id)]) {
+      expect(await verdictOf(id), String(id)).not.toMatch(/body_hash|recompute|\bseq\b|--online/);
+    }
+  });
+
+  it("counts the checks it was given, and falls back to the counts for any other result", () => {
+    const pass = (id: string) => ({ id: id as "a", status: "pass" as const, detail: "" });
+    const eight = { ok: true, firstBroken: null, failed: 0, unproven: 0 };
+    expect(
+      plainVerdict(
+        { ...eight, passed: 8, checks: "abcdefgh".split("").map(pass) },
+        TAMPER_COPY.firstBroken,
+      ),
+    ).toBe("All 8 offline checks pass.");
+    const onlyD = {
+      ok: false,
+      firstBroken: 2,
+      passed: 8,
+      failed: 1,
+      unproven: 0,
+      checks: [{ id: "d" as const, status: "fail" as const, detail: "spend 2 does not match" }],
+    };
+    expect(plainVerdict(onlyD, TAMPER_COPY.firstBroken)).toBe(
+      "8 passed, 1 failed, 0 unproven. First broken entry: 2",
+    );
+    const skipped = {
+      ok: true,
+      firstBroken: null,
+      passed: 1,
+      failed: 0,
+      unproven: 0,
+      checks: [pass("a"), { id: "b" as const, status: "skip" as const, detail: "" }],
+    };
+    expect(plainVerdict(skipped, TAMPER_COPY.firstBroken)).toBe("1 passed, 0 failed, 0 unproven");
+  });
+
+  it("names a cause and an entry only when the verifier's own words name them", () => {
+    type Failing = { id: "a" | "b" | "c"; detail: string };
+    const result = (firstBroken: number, ...failing: Failing[]) => ({
+      ok: false,
+      firstBroken,
+      passed: 9 - failing.length,
+      failed: failing.length,
+      unproven: 0,
+      checks: failing.map((f) => ({ ...f, status: "fail" as const })),
+    });
+    const verdict = (r: ReturnType<typeof result>) => plainVerdict(r, TAMPER_COPY.firstBroken);
+    // Words the panel has no plain sentence for get the counts.
+    expect(
+      verdict(result(3, { id: "a", detail: "entry 3 signature is not by the ledger key" })),
+    ).toBe("8 passed, 1 failed, 0 unproven. First broken entry: 3");
+    expect(verdict(result(3, { id: "c", detail: "anchor 2 root does not match the ledger" }))).toBe(
+      "8 passed, 1 failed, 0 unproven. First broken entry: 3",
+    );
+    // An edited link is not an edited body: the signature still holds.
+    expect(
+      verdict(
+        result(
+          2,
+          { id: "b", detail: "entry 3 link does not recompute" },
+          { id: "c", detail: "anchor 1 root does not match entries 0 to 2" },
+        ),
+      ),
+    ).toBe("7 passed, 2 failed, 0 unproven. First broken entry: 2");
+    // The entry is the one the verifier names, not the lowest broken entry across the checks.
+    expect(
+      verdict(
+        result(
+          2,
+          { id: "a", detail: "entry 3 body_hash does not recompute from its body: a signature" },
+          { id: "c", detail: "anchor 1 root does not match entries 0 to 2" },
+        ),
+      ),
+    ).toBe("Entry 3 was changed after it was signed, so its signature no longer matches.");
+    // More than one entry cut from the end is not "entry N is missing".
+    expect(
+      verdict(
+        result(3, {
+          id: "c",
+          detail: "anchor 3 covers 5 entries but the ledger has 3: entry 3 and later are missing",
+        }),
+      ),
+    ).toBe("8 passed, 1 failed, 0 unproven. First broken entry: 3");
+  });
+});
+
+describe("the verdict panel after a run", () => {
+  const next = createElement("a", { href: "/proof" }, "next step");
+  const panel = async (id: TamperEditId | null, live: boolean, withNext = true) =>
+    renderToStaticMarkup(
+      createElement(TamperVerdict, {
+        result: id === null && !live ? RECORDED_RESULT : await verifyTamper(SNAPSHOT, id),
+        checks: CHECK_LIST,
+        live,
+        copy: TAMPER_COPY,
+        next: withNext ? next : undefined,
+      }),
+    );
+
+  it("puts the plain verdict beside the word, and the verifier's own words in a closed disclosure", async () => {
+    const html = await panel("amount", true);
+    expect(html).toMatch(
+      /<b class="[^"]*fail[^"]*">FAIL<\/b><span>Entry 2 was changed after it was signed, so its signature no longer matches\.<\/span>/,
+    );
+    const details = html.indexOf("<details");
+    expect(details).toBeGreaterThan(html.indexOf("</ul>"));
+    expect(html).not.toMatch(/<details[^>]* open/);
+    expect(html.slice(details)).toMatch(/^<details[^>]*><summary[^>]*>Verifier detail<\/summary>/);
+    const inside = html.slice(details, html.indexOf("</details>"));
+    expect(inside).toContain("6 passed, 3 failed, 0 unproven. First broken entry: 2");
+    expect(inside).toContain(
+      "entry 2 body_hash does not recompute from its body: a signature over a hash the body does not produce proves nothing about the body",
+    );
+    expect(inside).toContain(
+      "spend 2 does not match its decision seq 2 (spend vs decision): amount 40000000 vs 1",
+    );
+    // The list above keeps each check's word, without the verifier's words.
+    expect(html.slice(0, details)).not.toContain("body_hash");
+    expect(html.slice(0, details).match(/class="[^"]*checkBad[^"]*"/g)).toHaveLength(3);
+  });
+
+  it("names each failed check in the disclosure, and only the failed ones", async () => {
+    const html = await panel("erase", true);
+    const inside = html.slice(html.indexOf("<details"), html.indexOf("</details>"));
+    expect(inside).toContain(
+      "anchor 3 covers 5 entries but the ledger has 4: entry 4 and later are missing",
+    );
+    expect(inside.match(/<li/g)).toHaveLength(1);
+    expect(inside).not.toContain("every body_hash and link recomputes");
+  });
+
+  it("has no disclosure when every check passes", async () => {
+    expect(await panel(null, false)).not.toContain("<details");
+    expect(await panel(null, true)).not.toContain("<details");
+  });
+
+  it("puts the next step it is given last, after the disclosure and the note", async () => {
+    for (const id of TAMPER_EDITS.map((e) => e.id)) {
+      const html = await panel(id, true);
+      expect(html, id).toMatch(
+        /<\/details><p[^>]*>Run in your browser just now\.<\/p><a href="\/proof">next step<\/a>$/,
+      );
+    }
+    expect(await panel("amount", true, false)).not.toContain("next step");
+  });
+
+  it("offers the next step only for a run the verifier failed, while that run is the one shown", async () => {
+    const failedRun = await verifyTamper(SNAPSHOT, "amount");
+    const restored = await verifyTamper(SNAPSHOT, null);
+    expect(offersNext({ live: true, result: failedRun }, false)).toBe(true);
+    // At rest, after Restore, and for a result that is only unproven.
+    expect(offersNext({ live: false, result: RECORDED_RESULT }, false)).toBe(false);
+    expect(offersNext({ live: true, result: restored }, false)).toBe(false);
+    expect(offersNext({ live: true, result: { failed: 0 } }, false)).toBe(false);
+    // A later press that did not finish leaves the old result on screen, but not its next step.
+    expect(offersNext({ live: true, result: failedRun }, true)).toBe(false);
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/components/site/TamperTest.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(source).toContain("next={offersNext(shown, failed !== null) ? next : undefined}");
+  });
+
+  it("gives the next step on the landing page (/proof leaves it out: test/proof-routes.test.ts)", () => {
+    expect(elementsOf(Home(), LedgerTest)).toHaveLength(1);
+    const panels = elementsOf(LedgerTest(), TamperPanel);
+    expect(panels.map((p) => (p.props as { next?: boolean }).next)).toEqual([true]);
+  });
+
+  it("links the landing page's next step to /proof, after the word Caught", () => {
+    const html = renderToStaticMarkup(createElement(NextStep, { step: NEXT_STEP.tamper }));
+    expect(html).toMatch(
+      /^<p[^>]*>Caught\. <a[^>]*href="\/proof"[^>]*>A vault&#x27;s public proof page runs these same checks <span aria-hidden="true">→<\/span><\/a><\/p>$/,
+    );
+  });
+});
+
 describe("running the verifier from a button", () => {
   const result = RECORDED_RESULT;
 
@@ -295,10 +501,17 @@ describe("the ledger test's markup", () => {
     expect(line).toBeLessThan(html.indexOf("aria-live="));
   });
 
-  it("renders the summary as one text node, so a screen reader does not get bare numbers", () => {
+  it("renders the plain verdict as one text node, so a screen reader reads it whole", () => {
     expect(renderToString(createElement(TamperPanel))).toContain(
-      ">9 passed, 0 failed, 0 unproven</span>",
+      ">All 9 offline checks pass.</span>",
     );
+  });
+
+  it("shows no next step and no disclosure at rest, with or without one to give", () => {
+    for (const out of [html, renderToStaticMarkup(createElement(TamperPanel, { next: true }))]) {
+      expect(out).not.toContain("<details");
+      expect(out).not.toContain('href="/proof"');
+    }
   });
 
   it("shows the recorded caveat muted, at rest and with no JavaScript", () => {

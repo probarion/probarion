@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import type { Network } from "@/lib/config";
 import { describeRaw, RAW_SKIP_TEXT } from "./copy";
 import { CANARY_LIMITS } from "./limits";
 import { parseReplay, REPLAY } from "./replay";
@@ -43,6 +44,44 @@ describe("attack replay data", () => {
 
   it("returns [] for anything that is not an array", () => {
     expect(parseReplay({})).toEqual([]);
+  });
+
+  it("holds only the team's own recorded runs: every transaction in it is one a deployment record names", () => {
+    const record = (network: Network) =>
+      readFileSync(
+        fileURLToPath(
+          new URL(`../../../../../contracts/deployments/${network}.json`, import.meta.url),
+        ),
+        "utf8",
+      );
+    expect(REPLAY.length).toBeGreaterThan(0);
+    for (const e of REPLAY) {
+      // The contract answered on chain, so its entry has a transaction; a code refusal sent nothing and has none.
+      if (e.layer === "contract") expect(e.tx_hash, e.summary).not.toBeNull();
+      else expect(e.tx_hash, e.summary).toBeNull();
+      if (e.tx_hash !== null) expect(record(e.network), e.tx_hash).toContain(`"${e.tx_hash}"`);
+    }
+  });
+
+  it("starts with the smoke run's refusal: the agent key cited a mandate that does not exist, and the contract said no", () => {
+    const testnet = JSON.parse(
+      readFileSync(
+        fileURLToPath(
+          new URL("../../../../../contracts/deployments/testnet.json", import.meta.url),
+        ),
+        "utf8",
+      ),
+    ) as { smoke: { no_mandate_tx: string } };
+    expect(REPLAY[0]).toEqual({
+      at: "2026-11-01T07:10:31Z",
+      technique: "other",
+      summary:
+        "Our smoke test: the agent key went straight to the contract and cited mandate 999, which does not exist.",
+      layer: "contract",
+      result: "NoMandate",
+      tx_hash: testnet.smoke.no_mandate_tx,
+      network: "testnet",
+    });
   });
 
   it("ships as a list the owner fills in, and every entry in it is well formed", () => {

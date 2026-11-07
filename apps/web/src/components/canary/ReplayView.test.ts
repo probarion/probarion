@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ReplayEntry } from "@/lib/canary/replay";
 import type { Banner } from "@/lib/canary/view";
+import { LINKS } from "@/lib/site/facts";
 import { ReplayView } from "./ReplayView";
 
 const visible = (html: string) =>
@@ -21,76 +22,88 @@ const ENTRY: ReplayEntry = {
   layer: "contract",
   result: "NoMandate",
   tx_hash: "AbC123xyz",
-  network: "mainnet",
+  network: "testnet",
 };
 
-describe("the replay's three banners", () => {
-  const rows = " Each row is a recorded attempt, with its transaction when one was sent.";
+const BANNERS = {
+  off: "The live Canary is paused.",
+  replay: "This is a replay of recorded attacks.",
+  closed: "The live Canary is not open yet.",
+  full: "The live Canary is closed: its ledger is full.",
+} as const;
+const banners = Object.keys(BANNERS) as Banner[];
+
+describe("the replay's four banners", () => {
   const banner = (html: string) => /<p[^>]*role="status"[^>]*>(.*?)<\/p>/.exec(html)?.[1] ?? "";
 
-  it("says the live Canary is paused when the owner turned it off", () => {
-    expect(visible(render("off", [ENTRY]))).toContain(`The live Canary is paused.${rows}`);
-  });
-
-  it("says this is a replay when the owner chose one", () => {
-    expect(visible(render("replay", [ENTRY]))).toContain(
-      `This is a replay of recorded attacks.${rows}`,
-    );
-  });
-
-  it("is its first sentence alone, then No recorded attacks yet, when the list is empty", () => {
-    const expected = {
-      off: "The live Canary is paused.",
-      replay: "This is a replay of recorded attacks.",
-      closed: "The live Canary is not open yet.",
-    } as const;
-    for (const b of ["off", "replay", "closed"] as const) {
-      const html = render(b, []);
-      expect(visible(banner(html)).trim(), b).toBe(expected[b]);
-      expect(visible(html), b).not.toContain("Each row");
-      expect(visible(html), b).not.toContain("Every row");
-      expect(visible(html), b).toContain(
-        `${expected[b]} Recorded attacks No recorded attacks yet.`,
+  it("says why the live Canary is not shown, then that the rows come from the team's own tests", () => {
+    for (const b of banners) {
+      expect(visible(banner(render(b, [ENTRY]))).trim(), b).toBe(
+        `${BANNERS[b]} Below is an attack from our own tests on testnet, with what stopped it.`,
       );
     }
   });
 
-  it("says each row is a recorded attempt, and a transaction only when one was sent", () => {
-    expect(visible(render("replay", [ENTRY]))).toContain(
-      "Each row is a recorded attempt, with its transaction when one was sent.",
+  it("counts the attacks and names each network they ran on", () => {
+    const two = render("closed", [ENTRY, { ...ENTRY, network: "mainnet" }]);
+    expect(visible(banner(two)).trim()).toBe(
+      `${BANNERS.closed} Below are 2 attacks from our own tests on testnet and mainnet, each with what stopped it.`,
     );
-    expect(visible(render("replay", [ENTRY]))).not.toContain("Every row below");
   });
 
-  it("says the live Canary is not open yet when there is no vault or no environment", () => {
-    expect(visible(render("closed", [ENTRY]))).toContain(`The live Canary is not open yet.${rows}`);
+  it("is its first sentence alone when the list is empty", () => {
+    for (const b of banners) {
+      expect(visible(banner(render(b, []))).trim(), b).toBe(BANNERS[b]);
+    }
   });
 
   it("shows exactly one banner, as a status the page announces politely", () => {
-    for (const banner of ["off", "replay", "closed"] as const) {
-      const html = render(banner);
+    for (const b of banners) {
+      const html = render(b);
       expect([...html.matchAll(/role="status"/g)]).toHaveLength(1);
       const text = visible(html);
-      const said = ["is paused", "is a replay", "not open yet"].filter((t) => text.includes(t));
-      expect(said, banner).toHaveLength(1);
+      const said = Object.values(BANNERS).filter((t) => text.includes(t));
+      expect(said, b).toEqual([BANNERS[b]]);
     }
   });
 });
 
-describe("the recorded attacks", () => {
-  it("says there are none yet, with no table, when the list is empty", () => {
-    const html = render("replay", []);
-    expect(visible(html)).toContain("No recorded attacks yet.");
-    expect(html).not.toContain("<table");
+describe("what a visitor can do meanwhile", () => {
+  it("offers the ledger test, which needs no wallet, and the X account, in every state", () => {
+    for (const b of banners) {
+      for (const entries of [[], [ENTRY]]) {
+        const html = render(b, entries);
+        expect(visible(html), b).toContain(
+          "Meanwhile: Break a signed record (no wallet needed) · Follow @probarionhq (opens in a new tab) on X for news of the live Canary.",
+        );
+        expect(html).toMatch(/<a[^>]*href="\/#verify"[^>]*>Break a signed record<\/a>/);
+        expect(html).toContain(`href="${LINKS.x}"`);
+      }
+    }
   });
 
-  it("shows the owner's recorded list when it is not given one", () => {
-    // The shipped list is empty until the owner records an attack, and says so.
-    expect(visible(render("replay"))).toContain("Recorded attacks");
+  it("keeps the links out of the status, so a screen reader hears the banner alone", () => {
+    const status =
+      /<p[^>]*role="status"[^>]*>(.*?)<\/p>/.exec(render("closed", [ENTRY]))?.[1] ?? "";
+    expect(status).not.toContain("<a");
+  });
+});
+
+describe("the recorded attacks", () => {
+  it("shows no card and no table when the list is empty", () => {
+    const html = render("replay", []);
+    expect(visible(html)).not.toContain("Recorded attacks");
+    expect(html).not.toContain("<table");
+    expect(html).not.toContain("<h2");
+  });
+
+  it("shows the shipped list when it is not given one", () => {
+    expect(visible(render("closed"))).toContain("Recorded attacks");
+    expect(render("closed")).toContain("<table");
   });
 
   it("shows each attack: the time in UTC, the technique, what it tried, what stopped it and the transaction", () => {
-    const html = render("replay", [ENTRY]);
+    const html = render("replay", [{ ...ENTRY, network: "mainnet" }]);
     expect([...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])).toEqual([
       "When (UTC)",
       "Technique",
@@ -108,15 +121,15 @@ describe("the recorded attacks", () => {
   });
 
   it("links a testnet entry to the testnet explorer, whatever network the page is opened at", () => {
-    const html = render("replay", [{ ...ENTRY, network: "testnet" }]);
+    const html = render("replay", [ENTRY]);
     expect(html).toContain('href="https://testnet.nearblocks.io/txns/AbC123xyz"');
   });
 
   it("says an entry with no transaction was refused before sending", () => {
     const html = render("replay", [
-      { ...ENTRY, layer: "code", result: "mandate.payee_mismatch", tx_hash: null },
+      { ...ENTRY, layer: "code", result: "invoice.duplicate", tx_hash: null },
     ]);
-    expect(visible(html)).toContain("code: mandate.payee_mismatch");
+    expect(visible(html)).toContain("code: invoice.duplicate");
     expect(visible(html)).toContain("no tx (refused before sending)");
     expect(html).not.toContain("nearblocks");
   });

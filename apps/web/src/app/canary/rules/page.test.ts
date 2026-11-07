@@ -45,11 +45,13 @@ describe("/canary/rules", () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
-  it("asks for a report by email, and does not offer the finder anything", () => {
-    expect(text).toContain(
-      "Make the Canary vault pay anyone other than its single mandated payee. If you find a way, tell us how at security@probarion.xyz.",
+  it("asks for a report the way SECURITY.md does, and does not offer the finder anything", () => {
+    // an external link says it opens a new tab; the sentence is read without that note
+    expect(text.replace(/ \(opens in a new tab\)/g, "")).toContain(
+      "Make the Canary vault pay anyone other than its single mandated payee. If you find a way, tell us how: send a direct message to @probarionhq on X that says you have a security report, with no details, as SECURITY.md describes.",
     );
-    expect(hrefs).toContain("mailto:security@probarion.xyz");
+    expect(hrefs).toContain("https://x.com/probarionhq");
+    expect(html).not.toMatch(/mailto:|security@/);
     expect(text).not.toMatch(/bounty|keep what you extract|prize|reward/i);
   });
 

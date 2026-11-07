@@ -162,6 +162,13 @@
   font-weight: 500;
 }
 
+/* Under the three columns of an answer: where to go next. */
+.next {
+  margin-top: 16px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
 /* The three columns of an answer */
 .columns {
   display: grid;
@@ -345,6 +352,13 @@
 }
 .banner b {
   font-weight: 600;
+}
+/* What a visitor can do while the live Canary is not shown: just under the banner, aligned with its text. */
+.meanwhile {
+  margin: -12px 0 24px;
+  padding: 0 18px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
 }
 
 /* The rules */
