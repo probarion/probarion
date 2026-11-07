@@ -262,7 +262,8 @@ The software is an unaudited beta.
   reads "coming soon" any more. Security sits in the footer beside Terms and Privacy.
 - A browser smoke test of the built site runs locally with `pnpm --filter @probarion/web test:e2e`,
   after `pnpm build`. It builds with test settings only, and needs no wallet, database or chain. It
-  is not in CI.
+  serves both networks, testnet at `localhost:3100` and mainnet at `127.0.0.1:3100`, and checks that
+  the header fits on each address at 375, 1120, 1280 and 1440 px. It is not in CI.
 
 ### Changed
 
@@ -319,6 +320,9 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- With both networks served, the site header no longer runs past the window between 1101 and 1360 px
+  wide, where the network switch left no room for the links. At those widths the links move into the
+  menu, as they do below 1101 px. With one network the header is unchanged.
 - The browser-tab icon has a clear background instead of a white square, and its mark is larger. The
   bar under the coin is ink in a light browser theme and paper in a dark one.
 - Signing in now lands on the console. A prefetched redirect could leave the visitor on `/login` with

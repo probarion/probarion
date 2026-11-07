@@ -4,6 +4,9 @@ import { defineConfig, devices } from "@playwright/test";
 // The built site, served locally on one port with test settings only. Local only: no CI job runs it.
 const PORT = 3100;
 const ORIGIN = `http://localhost:${PORT}`;
+// The same server under a second loopback name, so that both networks are served, as in production: this address is
+// mainnet and ORIGIN is testnet, and every page's header carries the network switch.
+const MAINNET_ORIGIN = `http://127.0.0.1:${PORT}`;
 
 /**
  * Every setting the app knows (the names in .env.example), set to empty. Next.js does not load a value from a local
@@ -30,6 +33,8 @@ function inherited(): Record<string, string> {
 /** Test values that loadEnv accepts. No real service is reachable at these addresses. */
 const TEST_SETTINGS: Record<string, string> = {
   NEAR_NETWORK: "testnet",
+  APP_ORIGIN_TESTNET: ORIGIN,
+  APP_ORIGIN_MAINNET: MAINNET_ORIGIN,
   SUPABASE_URL: "https://example.invalid",
   NEXT_PUBLIC_SUPABASE_URL: "https://example.invalid",
   SUPABASE_SERVICE_ROLE_KEY: "e2e-not-a-key",
@@ -39,6 +44,7 @@ const TEST_SETTINGS: Record<string, string> = {
   CRON_SECRET: "e2e-".repeat(8),
   CANARY_MODE: "replay",
   NEAR_RPC_URLS_TESTNET: "https://rpc.example.invalid",
+  NEAR_RPC_URLS_MAINNET: "https://rpc.example.invalid",
   // Read by the Sentry build plugin and by the origin fallback, and not in .env.example (R14): blanked here so a
   // developer's .env.local or shell can never make the local build upload source maps or change the default origin.
   SENTRY_AUTH_TOKEN: "",
