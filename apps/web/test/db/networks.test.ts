@@ -10,6 +10,7 @@ import { pgliteDb } from "./pglite-db";
 // vault, the Telegram link answers the vault's network, and a registration cannot move a tenant to the other network
 // (W-NET-R4). The functions are called as the app calls them, as each role.
 const MIGRATIONS = fileURLToPath(new URL("../../supabase/migrations", import.meta.url));
+const NETWORKS_MIGRATION = "20261108000012_networks.sql";
 const H = (c: string) => c.repeat(64);
 
 const MAINNET_V = "acme.vaults.probarion.near";
@@ -340,8 +341,8 @@ describe("migration 0012: both networks", () => {
       const files = readdirSync(MIGRATIONS)
         .filter((f) => f.endsWith(".sql"))
         .sort();
-      expect(files.at(-1)).toBe("20261108000012_networks.sql");
-      const sql = readFileSync(`${MIGRATIONS}/20261108000012_networks.sql`, "utf8");
+      expect(files).toContain(NETWORKS_MIGRATION);
+      const sql = readFileSync(`${MIGRATIONS}/${NETWORKS_MIGRATION}`, "utf8");
       for (const fn of [
         "public_canary_feed",
         "public_canary_leaderboard",
@@ -357,14 +358,14 @@ describe("migration 0012: both networks", () => {
     });
 
     it("applies to a database that already holds attempts and subscriptions, and keeps them", async () => {
-      // Everything up to 0011, some rows in the tables the migration's functions read, then 0012.
+      // Every migration before 0012, some rows in the tables its functions read, then 0012 and every later one.
       const pre = new PGlite();
       try {
         await pre.exec(SUPABASE_STUB);
         const files = readdirSync(MIGRATIONS)
           .filter((f) => f.endsWith(".sql"))
           .sort();
-        for (const f of files.slice(0, -1))
+        for (const f of files.filter((name) => name < NETWORKS_MIGRATION))
           await pre.exec(readFileSync(`${MIGRATIONS}/${f}`, "utf8"));
         await pre.query(
           "insert into public.tenants (vault_id, network, kind, owner_account) values ($1, 'mainnet', 'canary', 'p.near')",
@@ -375,7 +376,9 @@ describe("migration 0012: both networks", () => {
            values ($1, $2, 'live', $3, 10, 'refused_by_code', 'r', 'mainnet')`,
           [H("1"), H("2"), H("3")],
         );
-        await pre.exec(readFileSync(`${MIGRATIONS}/${files.at(-1)}`, "utf8"));
+        await pre.exec(readFileSync(`${MIGRATIONS}/${NETWORKS_MIGRATION}`, "utf8"));
+        for (const f of files.filter((name) => name > NETWORKS_MIGRATION))
+          await pre.exec(readFileSync(`${MIGRATIONS}/${f}`, "utf8"));
         const db = pgliteDb(pre, "anon");
         expect(await db.rpc<unknown[]>("public_canary_feed", { network: "mainnet" })).toHaveLength(
           1,
