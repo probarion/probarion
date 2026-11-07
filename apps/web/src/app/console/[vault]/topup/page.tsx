@@ -21,7 +21,7 @@ export const metadata: Metadata = { title: "Top-up" };
 /** The wallet buttons here confirm their transaction on chain (FINAL), which can take a while. */
 export const maxDuration = 60;
 
-const muted = "text-[#0B0B0C]/60";
+const muted = "text-mute";
 
 /** The vault's config, or null when it cannot be read (it is then said on the page, never guessed). */
 async function readConfig(network: Network, vault: string): Promise<VaultConfig | null> {

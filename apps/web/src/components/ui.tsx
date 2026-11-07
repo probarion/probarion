@@ -1,21 +1,41 @@
 import { cloneElement, Fragment, type ReactElement, type ReactNode, useId } from "react";
 import { explorerAccountUrl, explorerTxUrl, type Network } from "@/lib/config";
+import type { DangerTone } from "@/lib/console/confirm-dialog";
+
+// The console's kit is the landing page's brand: ink pills at least 44px tall, 16px fields (a phone does not zoom in
+// on them), hairline cards with a large radius, and the colour tokens of app/globals.css. test/console-kit.test.ts
+// holds every text colour it pairs to WCAG AA.
 
 export type Tone = "neutral" | "good" | "warn" | "bad" | "info";
-const TONES: Record<Tone, string> = {
-  neutral: "bg-stone-100 text-stone-700",
-  good: "bg-emerald-100 text-emerald-800",
-  warn: "bg-amber-100 text-amber-900",
-  bad: "bg-rose-100 text-rose-800",
-  info: "bg-sky-100 text-sky-800",
+/** Each tone as a pair of colour tokens: a pale background and the text that reads on it. */
+export const TONE_CLASSES: Readonly<Record<Tone, string>> = {
+  neutral: "bg-plan-bg text-plan",
+  good: "bg-ok-bg text-ok",
+  warn: "bg-wait-bg text-wait",
+  bad: "bg-bad-bg text-bad",
+  info: "border border-line bg-paper text-ink",
 };
 
-export const inputClass = "w-full rounded border border-stone-300 bg-white px-2 py-1 text-sm";
-export const buttonClass =
-  "rounded bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50";
+// The focus ring is the site's (app/globals.css): 2px gold-small, 3px out. Written here too, as a select or a textarea
+// is not in that base rule.
+const ring =
+  "focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-gold-small";
+/** A field: 16px text, 44px tall, and the landing page's mute edge, which reads at 3:1 on a white card. */
+export const inputClass = `w-full min-h-11 rounded-xl border border-mute bg-surface px-3 py-2 text-base text-ink ${ring}`;
+const button = `inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors disabled:opacity-50 ${ring}`;
+/** The main button: an ink pill. */
+export const buttonClass = `${button} bg-ink text-paper hover:bg-ink/85`;
+/** A second choice beside the main one, such as a dialog's Cancel: an ink outline. */
+export const lineButtonClass = `${button} border border-ink/15 bg-surface text-ink hover:bg-ink/5`;
 /** The action button of a confirm dialog for something that cannot be taken back. */
-export const dangerButtonClass =
-  "rounded bg-rose-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-800 disabled:opacity-50";
+export const dangerButtonClass = `${button} bg-bad text-white hover:bg-bad/90`;
+/** A button for something that cannot be taken back, beside other actions (Reject next to Approve): a red outline. */
+export const dangerLineButtonClass = `${button} border border-bad/45 bg-surface text-bad hover:bg-bad-bg`;
+
+/** A wallet button's look follows its confirm dialog: the red outline when the dialog says it cannot be undone. */
+export function actionButtonClass(confirmTone?: DangerTone): string {
+  return confirmTone === "danger" ? dangerLineButtonClass : buttonClass;
+}
 
 // Brand v2 (light): ink pills, hairline cards with a large radius, and status panels whose colour carries meaning
 // (green passed, amber not proven or no result, red failed). The colours are the tokens in app/globals.css.
@@ -51,7 +71,9 @@ export function ExternalLink({
 
 export function Badge({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
   return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${TONES[tone]}`}>
+    <span
+      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[tone]}`}
+    >
       {children}
     </span>
   );
@@ -67,9 +89,9 @@ export function Card({
   children: ReactNode;
 }) {
   return (
-    <section className="mb-6 rounded-lg border border-stone-200 bg-white p-4">
-      <div className="mb-3 flex items-center justify-between gap-4">
-        <h2 className="text-base font-semibold">{title}</h2>
+    <section className="mb-6 rounded-3xl border border-line bg-surface p-5 sm:p-7">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-[22px] font-light tracking-tight">{title}</h2>
         {actions}
       </div>
       {children}
@@ -78,7 +100,9 @@ export function Card({
 }
 
 export function Notice({ tone = "info", children }: { tone?: Tone; children: ReactNode }) {
-  return <div className={`mb-4 rounded px-3 py-2 text-sm ${TONES[tone]}`}>{children}</div>;
+  return (
+    <div className={`mb-4 rounded-2xl px-4 py-3 text-sm ${TONE_CLASSES[tone]}`}>{children}</div>
+  );
 }
 
 type ControlProps = { id?: string; "aria-describedby"?: string; "aria-invalid"?: boolean };
@@ -115,12 +139,12 @@ export function Field({
       </label>
       {children.type === Fragment ? children : cloneElement(children, extra)}
       {hint && !error ? (
-        <span id={noteId} className="mt-1 block text-xs text-stone-500">
+        <span id={noteId} className="mt-1 block text-xs text-mute">
           {hint}
         </span>
       ) : null}
       {error ? (
-        <span id={noteId} className="mt-1 block text-xs text-rose-700">
+        <span id={noteId} className="mt-1 block text-xs text-bad">
           {error}
         </span>
       ) : null}
@@ -128,6 +152,8 @@ export function Field({
   );
 }
 
+const explorerLinkClass =
+  "mono text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink";
 const short = (s: string) => (s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-6)}` : s);
 
 export function TxLink({
@@ -141,7 +167,7 @@ export function TxLink({
 }) {
   return (
     <a
-      className="mono text-sky-700 underline"
+      className={explorerLinkClass}
       href={explorerTxUrl(network, hash)}
       target="_blank"
       rel="noreferrer"
@@ -154,7 +180,7 @@ export function TxLink({
 export function AccountLink({ network, account }: { network: Network; account: string }) {
   return (
     <a
-      className="mono text-sky-700 underline"
+      className={explorerLinkClass}
       href={explorerAccountUrl(network, account)}
       target="_blank"
       rel="noreferrer"

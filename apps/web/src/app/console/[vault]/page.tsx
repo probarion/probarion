@@ -35,7 +35,7 @@ export const metadata: Metadata = { title: "Vault" };
 /** Every wallet button here confirms through confirmTx, which waits for the transaction to be FINAL. */
 export const maxDuration = 60;
 
-const muted = "text-[#0B0B0C]/60";
+const muted = "text-mute";
 const DIGITS = /^(0|[1-9][0-9]*)$/;
 
 /** A U128 of the network's USDC (6 decimals), or a plain word when it is not a decimal (never "0"). */
@@ -259,9 +259,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                 <Figure
                   read={o.near}
                   fmt={(r) => (
-                    <span
-                      className={r.low ? "rounded bg-amber-100 px-1 text-amber-900" : undefined}
-                    >
+                    <span className={r.low ? "rounded bg-wait-bg px-1 text-wait" : undefined}>
                       {formatNear(r.freeYocto)} NEAR free, about {r.spends} paid spends
                       {r.alert
                         ? ` (below ${formatNear(NEAR_LOW_ALERT_YOCTO.toString())} NEAR: spends will soon fail with LackBalanceForState)`
@@ -321,10 +319,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
               o.spends.value.held.map((s) => {
                 const act = heldActions(s.held_until_ns, config.frozen, now);
                 return (
-                  <div
-                    key={s.id}
-                    className="mb-3 border-b border-[#0B0B0C]/10 pb-3 text-sm last:border-0"
-                  >
+                  <div key={s.id} className="mb-3 border-b border-line pb-3 text-sm last:border-0">
                     <div>
                       Spend #{s.id} · mandate #{s.mandate_id} · <strong>{amount(s.amount)}</strong>{" "}
                       to <span className="mono break-all">{payeeText(s.destination)}</span>
@@ -332,9 +327,9 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                     <div className={`text-xs ${muted}`}>
                       ref <span className="mono">{s.ref}</span> · hold ends {expiry(s)}
                     </div>
-                    {act.note ? <p className="text-xs text-amber-900">{act.note}</p> : null}
+                    {act.note ? <p className="text-xs text-wait">{act.note}</p> : null}
                     {isApprover ? (
-                      <div className="flex flex-wrap gap-4">
+                      <div className="mt-3 flex flex-wrap gap-3">
                         {act.canApprove ? (
                           <VaultTxButton
                             label="Approve"
@@ -405,7 +400,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
             ) : (
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-[#0B0B0C]/10">
+                  <tr className="border-b border-line">
                     <th>#</th>
                     <th>Amount</th>
                     <th>Status</th>
@@ -417,7 +412,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                   {o.spends.value.recent.map((s) => {
                     const v = spendStatusView(s.status);
                     return (
-                      <tr key={s.id} className="border-b border-[#0B0B0C]/10 last:border-0">
+                      <tr key={s.id} className="border-b border-line last:border-0">
                         <td>{s.id}</td>
                         <td>{amount(s.amount)}</td>
                         <td>

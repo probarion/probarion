@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, useState } from "react";
 import { prepareCreateVaultAction, registerVaultAction } from "@/app/console/actions";
-import { Field, inputClass, Notice, type Tone } from "@/components/ui";
+import { buttonClass, Field, inputClass, Notice, type Tone } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
 import { VAULT_DEFAULTS } from "@/lib/config";
@@ -132,7 +132,7 @@ export function CreateVaultPanel({
 
   return (
     <div>
-      <p className="mb-3 text-xs text-[#0B0B0C]/60">
+      <p className="mb-3 text-xs text-mute">
         Factory version {version} ({mode === "global" ? "global code" : "embedded code"}). You sign
         with your own wallet as <span className="mono">{owner}</span>, and that account becomes the
         vault&apos;s owner for good.
@@ -191,11 +191,7 @@ export function CreateVaultPanel({
           onResult={onResult}
         />
       ) : (
-        <button
-          type="button"
-          className="my-2 rounded-full bg-[#0B0B0C] px-4 py-1.5 text-sm text-[#F7F6F3] opacity-50"
-          disabled
-        >
+        <button type="button" className={`my-2 ${buttonClass}`} disabled>
           Create vault in my wallet
         </button>
       )}

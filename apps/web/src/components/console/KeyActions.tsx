@@ -75,9 +75,9 @@ export function KeySyncButton({ sync }: { sync: Sync }) {
       <button className={buttonClass} type="submit" disabled={pending}>
         {pending ? "Checking…" : "Check on-chain status"}
       </button>
-      {state?.ok === false ? <p className="mt-1 text-xs text-rose-700">{state.error}</p> : null}
+      {state?.ok === false ? <p className="mt-1 text-xs text-bad">{state.error}</p> : null}
       {state?.ok ? (
-        <div className="mt-1 text-xs text-stone-600">
+        <div className="mt-1 text-xs text-mute">
           <p>{state.message}</p>
           {state.notes.length > 0 ? (
             <ul className="list-disc pl-4">
@@ -100,7 +100,7 @@ export function KeyKeepButton({ keep }: { keep: Keep }) {
   const [state, action, pending] = useActionState(keep, null);
   return (
     <form action={action}>
-      <button type="submit" className="text-xs text-stone-600 underline" disabled={pending}>
+      <button type="submit" className="text-xs text-mute underline" disabled={pending}>
         {pending ? "Checking…" : "Keep"}
       </button>
       {state ? (
@@ -154,7 +154,7 @@ export function KeyActions(props: {
         />
       </div>
       <div>
-        <p className="mb-2 text-sm text-stone-600">
+        <p className="mb-2 text-sm text-mute">
           The ledger key signs ledger entries and anchors their root on chain. Setting a new one
           removes the old one from the vault.
         </p>

@@ -25,7 +25,7 @@ export const metadata: Metadata = { title: "Keys" };
 /** The wallet buttons confirm their transaction on chain (FINAL) through a server action. */
 export const maxDuration = 60;
 
-const muted = "text-[#0B0B0C]/60";
+const muted = "text-mute";
 
 const STATUS_TONE: Record<KeyStatus, Tone> = {
   pending: "warn",
@@ -116,7 +116,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
         {k.discardedOnChain ? <KeyKeepButton keep={keepKeyAction.bind(null, vault, k.id)} /> : null}
         {k.status === "pending" ? (
           <form action={discardKeyAction.bind(null, vault, k.id)}>
-            <button type="submit" className="text-xs text-stone-600 underline">
+            <button type="submit" className="text-xs text-mute underline">
               Discard
             </button>
           </form>
@@ -144,7 +144,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-[#0B0B0C]/10">
+              <tr className="border-b border-line">
                 <th>Purpose</th>
                 <th>Public key</th>
                 <th>Label</th>
@@ -155,19 +155,19 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             </thead>
             <tbody>
               {view.keys.map((k) => (
-                <tr key={k.id} className="border-b border-[#0B0B0C]/10 align-top last:border-0">
+                <tr key={k.id} className="border-b border-line align-top last:border-0">
                   <td>{k.purpose}</td>
                   <td className="mono text-xs break-all">{k.public_key}</td>
                   <td>{k.label}</td>
                   <td>
                     <Badge tone={STATUS_TONE[k.status]}>{k.status}</Badge>
                     {k.stuck ? (
-                      <p className="mt-1 text-xs text-rose-700">
+                      <p className="mt-1 text-xs text-bad">
                         Stuck: this key {stuckText(k.purpose, view.vaultCode)}
                       </p>
                     ) : null}
                     {k.discardedOnChain ? (
-                      <p className="mt-1 text-xs text-amber-900">
+                      <p className="mt-1 text-xs text-wait">
                         Discarded, but on chain: this key {DISCARDED_ON_CHAIN_TEXT[k.purpose]}
                       </p>
                     ) : null}

@@ -298,6 +298,24 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The console has the landing page's brand. It used a Tailwind kit from before the brand: buttons
+  about 32px tall, 14px fields that a phone zooms in on, and Approve and Reject buttons that looked
+  the same on a held payment.
+  - Buttons are ink pills at least 44px tall. Approve is the ink pill and Reject a red outline. Any
+    wallet button whose confirm dialog says it cannot be undone gets the red outline too: removing
+    an agent key and revoking a mandate.
+  - Fields are 16px, with the landing page's mute edge.
+  - Cards, notices, badges and status text use the colour tokens. A test reads them from
+    `globals.css` and checks that every text colour reads at WCAG AA.
+  - The vault's tabs mark the open one with an underline and `aria-current`. Each tab is 44px tall,
+    and on a phone they sit in one row that scrolls sideways.
+  - The confirm dialog's Cancel is an outline pill.
+  - Explorer links are ink rather than blue.
+  - A pending payout is gold, the brand's colour for in progress.
+  - Every page but the landing page now uses the header's frame: 1320px wide, with 16px gutters up
+    to 620px and 24px above, so the page's left edge lines up with the logo. The console's and the
+    extension page's content stays 1024px wide.
+  - The proof page's coloured result panels are unchanged.
 - The sign-in page says what signing in is for (a vault, a mandate and a key that can only call
   `spend`, or approving a held payment) and what it takes: on testnet, a NEAR testnet account, and
   about 3.3 test NEAR to create a vault later, which stays in the vault and cannot be withdrawn. On

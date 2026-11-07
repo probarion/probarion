@@ -52,6 +52,10 @@ describe("spendStatusView", () => {
     expect(spendStatusView("burned").tone).toBe("good");
     expect(spendStatusView("held").tone).toBe("warn");
   });
+
+  it("colours a payout still on its way gold, the brand's colour for in progress", () => {
+    expect(spendStatusView("pending")).toEqual({ tone: "warn", label: "pending" });
+  });
 });
 
 describe("heldActions", () => {

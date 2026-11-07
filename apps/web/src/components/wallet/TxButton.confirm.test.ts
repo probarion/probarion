@@ -72,3 +72,10 @@ describe("TxButton's confirm step", () => {
     }
   });
 });
+
+describe("TxButton's look", () => {
+  it("follows its confirm tone, so a held payment's Reject does not look like its Approve", () => {
+    expect(source).toContain("className={actionButtonClass(props.confirmTone)}");
+    expect(source).not.toContain("className={buttonClass}");
+  });
+});
