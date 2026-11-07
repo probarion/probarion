@@ -264,6 +264,21 @@ The software is an unaudited beta.
   after `pnpm build`. It builds with test settings only, and needs no wallet, database or chain. It
   is not in CI.
 
+- A signed-in Browser extension page, `/extension`, connects the Probarion browser extension to
+  your account on one network. Connect makes a 30-day connection and hands it only to the page
+  itself, for the extension to take; "Show a code instead" shows a one-time pairing code that works
+  for ten minutes, and warns that whoever enters it first gets the connection. Connected browsers
+  lists each connection by its last four characters and its times, and Revoke ends it. The page
+  says the extension is not released yet. The console header links it.
+- The extension's server side, at the address of each network: `POST /api/ext/pair` exchanges a
+  pairing code once for a connection token; `GET /api/ext/inbox` lets a token read what waits for
+  you on its network: invoices waiting for the owner, held payments an approver can still approve,
+  and the mandates an invoice can still be sent under; `POST /api/ext/revoke` ends the caller's own
+  connection. Pairing is rate-limited per IP address and for the whole network, the inbox per account
+  and network, and Connect and Show a code share one limit per account and network. An account keeps
+  at most 5 connections per network: a sixth ends the oldest.
+- Migration `20261108000013_extension_tokens.sql` stores the connections and pairing codes.
+
 ### Changed
 
 - Sessions name their network and belong to one address, so a person signs in at each network's
@@ -317,6 +332,24 @@ The software is an unaudited beta.
 - The deploy runbook's smoke test checks the health routes and security.txt. The key rotation
   runbook says that a new master key also resets duplicate matching by invoice number.
 
+- Signing in from the Browser extension page brings you back to it, with the extension's request
+  kept. Every other sign-in still returns to the console.
+- `/privacy` has a new last section, "Browser extension". For each connected browser it says what
+  Probarion keeps: a sha256 of the connection token, its last four characters, a browser name and
+  its times, kept after the connection ends. For a pairing code it keeps a sha256, your account, the
+  network and the times, and deletes the record, once the code is used or expired, the next time a
+  code is made. A connection cannot pay, approve or confirm a payment. It ends after 30 days, when a
+  sixth connection on the same network replaces it, or sooner with Revoke. The rate-limit sentence
+  names code pairing, counted per IP address like sign-in.
+- The threat model, the incident runbook, the key-rotation runbook, the monitoring guide and the
+  security policy cover the extension's connections: what a token can read, that it cannot pay,
+  approve or confirm, how to end one or all of them, and that a new master key does not end them.
+  The runbook has a new entry, "An extension token leaked" (SEV3). Ending every token deletes the
+  pairing codes first, in one transaction. For a stolen session it ends the sessions first, then
+  either ends every token with that SQL or waits out the session's pairing codes (10 minutes) before
+  revoking its tokens at that network's address. The threat model lists, as a known gap, that a few dozen
+  addresses can hold code pairing at its network-wide limit while Connect keeps working.
+
 ### Fixed
 
 - The browser-tab icon has a clear background instead of a white square, and its mark is larger. The
@@ -363,6 +396,9 @@ The software is an unaudited beta.
 - A database test of the alert list could fail when two subscriptions were created in the same
   instant and tied on their creation time.
 
+- A canary test could fail about once in 58 runs, when the agent key it changed already ended in
+  the character it wrote, so the key it called inactive was the active one.
+
 ### Security
 
 - Key sealing: the web console generates agent and ledger keys on the server and seals them at rest
@@ -393,6 +429,18 @@ The software is an unaudited beta.
   another host, and every known secret value and secret shape is masked. Tracing and browser sessions
   are off. The request that starts a server instance is left untagged, so its tags cannot reach other
   requests' reports.
+
+- An extension connection token is stored only as a sha256 and its last four characters, and a
+  pairing code only as a sha256. Logs and error reports mask any connection token they contain, and
+  tag the extension's errors as their own component.
+- A connection token cannot pay, approve or confirm a payment. `apps/web/test/ext-structure.test.ts`
+  reads, with the TypeScript parser, every app module the extension's server code can load, and fails
+  if one imports a module or function that pays, signs or opens a sealed key, imports anything from
+  near-api-js, names an RPC method that sends a transaction or a database function or column that
+  returns a sealed agent key, builds its own database client, asks for a subkey other than the
+  session's, loads a raw crypto package outside lib/crypto, uses the cookie session, or loads code
+  dynamically. It reads imports and names: it catches a plain import, not code written to get around
+  it, so review of every change to that code is the other control.
 
 ## 0.1.0 - 2026-11-07
 
