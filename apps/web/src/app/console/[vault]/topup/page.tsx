@@ -14,7 +14,7 @@ import { log } from "@/lib/log";
 import { chainErrorKind } from "@/lib/near/reader";
 import { chainConsts, getReader } from "@/lib/near/server";
 import { faucetCopy } from "@/lib/topup/copy";
-import { FAUCET_USDC } from "@/lib/topup/faucet";
+import { FAUCET_USDC, faucetConfigured } from "@/lib/topup/faucet";
 import { topupPlan } from "@/lib/topup/plan";
 
 export const metadata: Metadata = { title: "Top-up" };
@@ -82,7 +82,7 @@ export default async function TopUpPage({ params }: { params: Promise<{ vault: s
               <TestUsdcFaucet
                 vault={vault}
                 copy={faucetCopy(FAUCET_USDC)}
-                configured={env.TESTNET_FAUCET_KEY !== null}
+                configured={faucetConfigured(network, env.TESTNET_FAUCET_KEY)}
               />
             ) : null}
             <FundUsdcButton

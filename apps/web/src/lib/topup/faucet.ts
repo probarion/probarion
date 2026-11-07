@@ -1,5 +1,5 @@
 import "server-only";
-import { NETWORKS, USDC_DECIMALS } from "@probarion/core";
+import { type AccessKeyInfo, NETWORKS, USDC_DECIMALS } from "@probarion/core";
 import {
   type FunctionCallTx,
   NearApiJsSender,
@@ -11,11 +11,11 @@ import {
 import type { Network } from "@/lib/config";
 import { isVaultConfig } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
-import { json, problem } from "@/lib/http";
+import { json, problem, rateLimitOr429 } from "@/lib/http";
 import { log } from "@/lib/log";
 import { chainConsts, getReader, getRpc } from "@/lib/near/server";
-import { LIMITS, type RateDecision, takeToken } from "@/lib/ratelimit";
-import { faucetCapText, faucetCopy, faucetUsedText } from "./copy";
+import { LIMITS, takeToken } from "@/lib/ratelimit";
+import { faucetAccountText, faucetCapText, faucetCopy, faucetUsedText } from "./copy";
 
 // The testnet faucet (audit P0-2): a signed-in owner gets a fixed amount of test USDC minted straight into their
 // vault, so a visitor can fund a vault without asking the team. Testnet only, and only ever into a vault: the route
@@ -36,8 +36,16 @@ export const FAUCET_GAS = 30_000_000_000_000n;
 
 /** Each step of the send (signing, the send, a lookup) gets at most this, and all of them together `BUDGET_MS`. */
 const STEP_MS = 20_000;
-/** Inside the route's 60 s, with room for the reads before it. */
+/**
+ * The whole request's time on NEAR, inside the route's 60 s. It starts before the reads (faucetDeadline), so slow reads
+ * leave the send less time, never more than the route has.
+ */
 const BUDGET_MS = 45_000;
+/** What the send needs left of the budget. With less, the route stops before it counts the mint (faucetLate). */
+export const SEND_MIN_MS = 30_000;
+
+/** The least allowance the key may have left, 0.01 NEAR: a few mints. Below it the faucet stops before counting. */
+export const MIN_ALLOWANCE = 10n ** 22n;
 
 /** The one network the faucet serves. Its functions take it from the vault the guard found, never as a literal. */
 export type FaucetNetwork = Extract<Network, "testnet">;
@@ -53,18 +61,43 @@ export function faucetMintTx(vault: string): FunctionCallTx {
   };
 }
 
-/** One counter per vault, and one for all vaults together. Both are testnet's: the faucet has no other network. */
+/** The UTC day a mint counts against, as YYYY-MM-DD. */
+export function faucetDay(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/** Seconds until the next midnight UTC, when every faucet counter starts again (at least 1). */
+export function untilMidnightUtc(now: Date): number {
+  const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return Math.max(1, Math.ceil((midnight - now.getTime()) / 1000));
+}
+
+/**
+ * One counter per vault, one per owner account, and one for all vaults together, each named for the UTC day, so all of
+ * them start again together at midnight UTC. All are testnet's: the faucet has no other network.
+ */
 export const FAUCET_BUCKETS = {
-  vault: (vault: string) => `faucet:testnet:${vault}`,
-  global: "faucet:testnet",
+  vault: (vault: string, day: string) => `faucet:testnet:vault:${vault}:${day}`,
+  account: (account: string, day: string) => `faucet:testnet:account:${account}:${day}`,
+  global: (day: string) => `faucet:testnet:all:${day}`,
+  /** Presses per account in a 10-minute window (`LIMITS.faucetTries`), not per day. */
+  tries: (account: string) => `faucet:testnet:tries:${account}`,
 };
+
+/** When the request's time on NEAR runs out. The route takes it first, before any read. */
+export function faucetDeadline(now = Date.now()): number {
+  return now + BUDGET_MS;
+}
 
 /**
  * The sender for the faucet key, or null when the value is not a secret key. The message logged names the kind of
- * error, never the value or its text.
+ * error, never the value or its text. Each step of the send gets what is left before `deadline`, at most `STEP_MS`.
  */
-export function faucetSender(network: FaucetNetwork, secretKey: string): TxSender | null {
-  const deadline = Date.now() + BUDGET_MS;
+export function faucetSender(
+  network: FaucetNetwork,
+  secretKey: string,
+  deadline: number,
+): TxSender | null {
   try {
     return new NearApiJsSender({
       accountId: FAUCET_SIGNER,
@@ -122,41 +155,111 @@ export async function faucetVaultRefusal(
   return null;
 }
 
-interface Taken {
-  decision: RateDecision;
-  window: number;
+/** True for a function-call key that can call `mint` on testnet's USDC and nothing else. */
+function mintOnly(key: AccessKeyInfo | null): key is AccessKeyInfo & {
+  permission: Exclude<AccessKeyInfo["permission"], "FullAccess">;
+} {
+  const p = key?.permission;
+  return (
+    typeof p === "object" &&
+    p.receiver_id === NETWORKS.testnet.usdc &&
+    p.method_names.length === 1 &&
+    p.method_names[0] === "mint"
+  );
 }
 
-/** One hit on `bucket` under `limit` (a `LIMITS` entry), with the window it was taken under. */
+/**
+ * Null when the faucet key, as the chain holds it, is a function-call key for `mint` on testnet's USDC alone, with at
+ * least `MIN_ALLOWANCE` left. Else the answer to send, before anything is counted: a full-access key, a key for
+ * anything more, or a deleted key is not a faucet key (the server never signs with one), and a key out of allowance
+ * would only fail at the node after the vault's day was used.
+ */
+export async function faucetKeyRefusal(
+  network: FaucetNetwork,
+  publicKey: string,
+): Promise<Response | null> {
+  const copy = faucetCopy(FAUCET_USDC);
+  let key: AccessKeyInfo | null;
+  try {
+    key = await getRpc(network).viewAccessKey(FAUCET_SIGNER, publicKey);
+  } catch (error) {
+    log.warn("faucet.key_unreadable", { public_key: publicKey, error });
+    return problem(503, "unavailable", copy.unavailable);
+  }
+  if (!mintOnly(key)) {
+    const found =
+      key === null ? "missing" : key.permission === "FullAccess" ? "full_access" : "other";
+    log.error("faucet.key_not_mint_only", { public_key: publicKey, found });
+    return problem(503, "not_configured", copy.unavailable);
+  }
+  const { allowance } = key.permission;
+  if (allowance !== null && (!/^\d+$/.test(allowance) || BigInt(allowance) < MIN_ALLOWANCE)) {
+    log.error("faucet.allowance_low", { public_key: publicKey, allowance });
+    return problem(503, "unavailable", copy.unavailable);
+  }
+  return null;
+}
+
+/**
+ * One hit on the account's counter of presses, before any read of the chain, so one owner cannot make the server read
+ * NEAR without end. Null when it allows the press; else a 429, or 503 when the limiter cannot be reached.
+ */
+export async function faucetThrottled(account: string): Promise<Response | null> {
+  try {
+    return await rateLimitOr429(serviceDb(), FAUCET_BUCKETS.tries(account), LIMITS.faucetTries);
+  } catch (error) {
+    log.error("faucet.limiter_failed", { error });
+    return problem(503, "unavailable", "Try again in a minute.");
+  }
+}
+
+/** A 503 when the reads used so much of the budget that the send might not finish; null when enough is left. */
+export function faucetLate(deadline: number, now = Date.now()): Response | null {
+  if (deadline - now >= SEND_MIN_MS) return null;
+  log.warn("faucet.slow_reads", { left_ms: deadline - now });
+  return problem(503, "unavailable", faucetCopy(FAUCET_USDC).slow);
+}
+
+/** One hit on `bucket` under `limit` (a `LIMITS` entry): true when it is allowed. */
 async function take(
   db: ReturnType<typeof serviceDb>,
   bucket: string,
   [max, window]: readonly [number, number],
-): Promise<Taken> {
-  return { decision: await takeToken(db, bucket, max, window), window };
+): Promise<boolean> {
+  return (await takeToken(db, bucket, max, window)).allowed;
 }
 
-/** A 429 that says when to try again: from the database's clock, else (a value that is not a time) the whole window. */
-function refused({ decision, window }: Taken, text: (retrySeconds: number) => string): Response {
-  const resetMs = new Date(decision.reset_at).getTime();
-  const retry = Number.isFinite(resetMs)
-    ? Math.max(1, Math.ceil((resetMs - Date.now()) / 1000))
-    : window;
-  return problem(429, "rate_limited", text(retry), { "Retry-After": String(retry) });
+/** A 429 that says when to try again: at midnight UTC, when the day's counters start again. */
+function refused(retry: number, text: string): Response {
+  return problem(429, "rate_limited", text, { "Retry-After": String(retry) });
 }
 
 /**
- * One hit on the vault's counter, then, only if that one allows it, one on the counter for all vaults, so a vault
- * that clicks again cannot use up the cap of the others. Null when both allow a mint; else the answer: 429, or 503
- * when the limiter cannot be reached (a faucet that cannot count does not mint).
+ * One hit on the vault's counter for the day, then on the owner account's, then on the one for all vaults, each only
+ * if the one before allows it: a vault that clicks again uses nothing else, and an account with many vaults stops at
+ * its own cap. A refusal comes from a counter used up until midnight UTC, when every counter taken before it starts
+ * again too, so those lose nothing: the vault's one owner cannot mint again today either way. Null when all three
+ * allow a mint; else the answer: 429, or 503 when the limiter cannot be reached (a faucet that cannot count does not
+ * mint).
  */
-export async function faucetLimited(vault: string): Promise<Response | null> {
+export async function faucetLimited(
+  vault: string,
+  account: string,
+  now = new Date(),
+): Promise<Response | null> {
   const db = serviceDb();
+  const day = faucetDay(now);
+  const retry = untilMidnightUtc(now);
   try {
-    const own = await take(db, FAUCET_BUCKETS.vault(vault), LIMITS.faucetVault);
-    if (!own.decision.allowed) return refused(own, faucetUsedText);
-    const all = await take(db, FAUCET_BUCKETS.global, LIMITS.faucetGlobal);
-    if (!all.decision.allowed) return refused(all, faucetCapText);
+    if (!(await take(db, FAUCET_BUCKETS.vault(vault, day), LIMITS.faucetVault))) {
+      return refused(retry, faucetUsedText(retry));
+    }
+    if (!(await take(db, FAUCET_BUCKETS.account(account, day), LIMITS.faucetAccount))) {
+      return refused(retry, faucetAccountText(retry, LIMITS.faucetAccount[0]));
+    }
+    if (!(await take(db, FAUCET_BUCKETS.global(day), LIMITS.faucetGlobal))) {
+      return refused(retry, faucetCapText(retry));
+    }
     return null;
   } catch (error) {
     log.error("faucet.limiter_failed", { error });
@@ -164,11 +267,17 @@ export async function faucetLimited(vault: string): Promise<Response | null> {
   }
 }
 
+/** True when this server's faucet key parses as a secret key: what the page shows the button for (the route's parse). */
+export function faucetConfigured(network: FaucetNetwork, key: string | null): boolean {
+  return key !== null && faucetSender(network, key, faucetDeadline()) !== null;
+}
+
 /**
  * Signs and sends the mint, once. The answers: 200 minted (with the hash); 502 when the token refused it (for example
  * out of NEAR for a new vault's storage); 503 when the node refused the key or nothing could be sent; 202 when it was
  * sent and its outcome is not known. That one is never sent again: the vault's day is used, and the hash says where
- * to look.
+ * to look. A send that failed before anything left (TxSendFailed) also keeps the day: the limiter has no give-back,
+ * and the runbook's SQL gives a day back by hand.
  */
 export async function mintToVault(sender: TxSender, vault: string): Promise<Response> {
   const copy = faucetCopy(FAUCET_USDC);

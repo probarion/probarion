@@ -1,8 +1,10 @@
 import { NETWORKS } from "@probarion/core";
+import { KeyPair } from "near-api-js";
 import { notFound } from "next/navigation";
-import { createElement } from "react";
+import { createElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TestUsdcFaucet } from "@/components/console/TestUsdcFaucet";
 import { faucetCopy, testnetBaseText } from "@/lib/topup/copy";
 import { OWNER, VAULT, vaultConfig } from "../../../../../test/fixtures/topup";
 
@@ -59,10 +61,18 @@ vi.mock("@/components/wallet/TxButton", () => ({
 const { default: TopUpPage, maxDuration, metadata } = await import("./page");
 
 const JWT = "jwt-page-secret";
-const FAUCET_KEY = `ed25519:${"f".repeat(86)}`;
+/** A real secret key: the page shows the button only for a key the route can sign with. */
+const FAUCET_KEY = KeyPair.fromRandom("ed25519").toString();
 const FAUCET = faucetCopy("25");
 const html = async () =>
   renderToStaticMarkup(await TopUpPage({ params: Promise.resolve({ vault: VAULT }) }));
+/** Every element of `type` in the tree the page returns, before rendering: what a client component is handed. */
+function elementsOf(node: ReactNode, type: unknown): ReactElement[] {
+  if (Array.isArray(node)) return node.flatMap((n) => elementsOf(n, type));
+  if (!isValidElement(node)) return [];
+  const { children } = node.props as { children?: ReactNode };
+  return [...(node.type === type ? [node] : []), ...elementsOf(children, type)];
+}
 const text = (s: string) =>
   s
     .replace(/<[^>]+>/g, " ")
@@ -226,14 +236,26 @@ describe("the Top-up page", () => {
     expect(out).not.toContain(FAUCET_KEY.slice(8, 40));
   });
 
-  it("on testnet without a faucet key says whom to ask, and offers no faucet button", async () => {
+  it("hands the faucet button only the vault, its words and whether it is set up: never the key", async () => {
     h.network = "testnet";
     h.config = vaultConfig("testnet");
-    h.faucetKey = null;
-    const t = text(await html());
-    expect(t).toContain(FAUCET.fallback);
-    expect(t).not.toContain("Add test USDC");
-    expect(t).toContain("Send USDC to the vault from my wallet");
+    const tree = await TopUpPage({ params: Promise.resolve({ vault: VAULT }) });
+    const [faucet, ...more] = elementsOf(tree, TestUsdcFaucet);
+    expect(more).toEqual([]);
+    expect(faucet?.props).toEqual({ vault: VAULT, copy: FAUCET, configured: true });
+    expect(JSON.stringify(faucet?.props)).not.toContain(FAUCET_KEY.slice(8, 40));
+  });
+
+  it("on testnet without a faucet key, or with one that is not a key, says whom to ask and offers no button", async () => {
+    h.network = "testnet";
+    h.config = vaultConfig("testnet");
+    for (const key of [null, "ed25519:not-a-key"]) {
+      h.faucetKey = key;
+      const t = text(await html());
+      expect(t).toContain(FAUCET.fallback);
+      expect(t).not.toContain("Add test USDC");
+      expect(t).toContain("Send USDC to the vault from my wallet");
+    }
   });
 
   it("offers no faucet on mainnet, to a vault of another token, or when the chain names another owner", async () => {

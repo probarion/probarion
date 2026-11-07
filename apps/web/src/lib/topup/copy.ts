@@ -75,6 +75,7 @@ export function faucetCopy(usdc: string) {
     unavailable:
       "The test USDC button is not working right now. Send @probarionhq a direct message on X with your vault's name.",
     unreachable: "The server could not be reached. Try again.",
+    slow: "NEAR answered slowly, so nothing was minted and this vault's day is not used. Try again.",
     /** Shown in place of the button when this server has no faucet key. */
     fallback: "Need test USDC? Send @probarionhq a direct message on X with your vault's name.",
   };
@@ -88,9 +89,13 @@ export function waitText(seconds: number): string {
   return `about ${Math.max(1, Math.ceil(seconds / 60))} min`;
 }
 
-/** The faucet's answer when this vault had its mint in the last 24 hours. */
+/** The faucet's answer when this vault had its mint today (a UTC day: every faucet counter starts again at midnight UTC). */
 export const faucetUsedText = (retrySeconds: number) =>
-  `This vault already got its test USDC in the last 24 hours. Try again in ${waitText(retrySeconds)}.`;
+  `This vault already got its test USDC today. Try again in ${waitText(retrySeconds)}.`;
+
+/** The faucet's answer when the signed-in account's vaults had `vaults` mints today. */
+export const faucetAccountText = (retrySeconds: number, vaults: number) =>
+  `Your account already added test USDC to ${vaults} vaults today. Try again in ${waitText(retrySeconds)}.`;
 
 /** The faucet's answer when the daily cap for all vaults together is reached. */
 export const faucetCapText = (retrySeconds: number) =>

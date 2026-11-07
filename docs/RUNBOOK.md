@@ -202,7 +202,7 @@ Then post "Resolved".
 | `BETTERSTACK_HEARTBEAT_URL` | Vercel | Leak (its path carries a token) | A new heartbeat URL in Better Stack, set in Vercel (Sensitive), redeploy. |
 | `NEARAI_API_KEY` | Vercel | Leak, or spend cap reached | NEAR AI Cloud dashboard: a new key with a spend cap, set in Vercel, redeploy, then delete the old key. |
 | `ONECLICK_JWT` | Vercel (one key for the project, mainnet only) | Leak | 1Click's partner portal: a new JWT, set in Vercel, redeploy, then revoke the old one. |
-| `TESTNET_FAUCET_KEY` (a function-call key on `probarion.testnet` that can call `mint` on `usdc.probarion.testnet` only) | Vercel, Production (Sensitive) | Leak, allowance nearly used up (the log line `faucet.refused` with `NotEnoughAllowance`) | A new key, then delete the old one ([testnet faucet](#testnet-faucet), steps 1 to 4). A leak is SEV4: the key mints only test USDC, which has no value, and spends only its own allowance of testnet NEAR. |
+| `TESTNET_FAUCET_KEY` (a function-call key on `probarion.testnet` that can call `mint` on `usdc.probarion.testnet` only) | Vercel, Production (Sensitive) | Leak, allowance nearly used up (the log line `faucet.allowance_low`, or `faucet.refused` with `NotEnoughAllowance`) | A new key, then delete the old one ([testnet faucet](#testnet-faucet), steps 1 to 4). A leak is SEV4: the key mints only test USDC, which has no value, and spends only its own allowance of testnet NEAR. |
 | `RESEND_API_KEY` | Vercel | Leak | Resend dashboard: a new key, set in Vercel, redeploy, then delete the old one. |
 | RPC URLs that carry a key (`NEAR_RPC_URLS_<NET>`, `NEAR_ARCHIVAL_RPC_URLS_<NET>`, `BASE_RPC_URL`) | Vercel (Sensitive when they carry a key) | Leak | A new key from the provider, the new URLs in Vercel, redeploy. |
 | `NPM_TOKEN` | Environment secret of the `npm-release` environment (GitHub Settings > Environments), used by the release workflow | Leak | Revoke it in npm's account settings, create one with the same scope, and store it as the environment secret of `npm-release`, not as a repository secret: the environment admits only `sdk-v*` tags and waits for a reviewer (`.github/workflows/release.yml`). |
@@ -417,12 +417,31 @@ update public.tenants set kind = '<team|external|canary>' where vault_id = '<vau
   fixed (`apps/web/src/lib/topup/faucet.ts`). At any other address the route answers 404, and so it does to a
   stranger, an approver, a viewer and a vault registered on the other network.
 - It signs as `probarion.testnet`, the owner of `usdc.probarion.testnet`, with the function-call key in
-  `TESTNET_FAUCET_KEY`. That key can call only `mint` on the token and attaches no deposit. With the variable
-  unset, the tab says to ask @probarionhq instead.
-- Limits: one mint per vault in 24 hours (bucket `faucet:testnet:<vault>`) and 50 for all vaults together
-  (`faucet:testnet`). Every check that can refuse runs before a counter is taken, but a mint that fails after
-  that still uses the vault's day. To give it back (OWNER, SQL editor):
-  `delete from public.rate_limits where bucket = 'faucet:testnet:<vault>';`.
+  `TESTNET_FAUCET_KEY`. That key can call only `mint` on the token and attaches no deposit. Before each mint the
+  route reads the key from the chain and stops (503, nothing counted) unless it is a function-call key for `mint`
+  on `usdc.probarion.testnet` alone with at least 0.01 NEAR of allowance left: a full-access key in the variable
+  is refused, not used. With the variable unset, the tab says to ask @probarionhq instead.
+- Limits, per UTC day (every counter starts again at midnight UTC): one mint per vault (bucket
+  `faucet:testnet:vault:<vault>:<YYYY-MM-DD>`), mints into 3 vaults per owner account
+  (`faucet:testnet:account:<account>:<YYYY-MM-DD>`), and 50 for all vaults together
+  (`faucet:testnet:all:<YYYY-MM-DD>`). The vault's counter is taken first, then the account's, then the one for
+  all vaults. Every check that can refuse runs before a counter is taken (the chain's owner and token, the key,
+  and the time left: reads that leave the send under 30 s of its 45 s answer 503 with nothing counted), but a mint
+  that fails after that still uses the vault's day, and one of the account's 3 and of the 50. To give all three
+  back (OWNER, SQL editor, with the vault, its owner and the UTC day of the failed mint):
+
+  ```sql
+  delete from public.rate_limits where bucket = 'faucet:testnet:vault:<vault>:<YYYY-MM-DD>';
+  update public.rate_limits set count = count - 1
+    where bucket in ('faucet:testnet:account:<account>:<YYYY-MM-DD>', 'faucet:testnet:all:<YYYY-MM-DD>')
+      and count > 0;
+  ```
+
+- Before any of that, each press counts against the account's presses (`faucet:testnet:tries:<account>`, 10 in
+  10 minutes), so one owner cannot make the server read NEAR without end.
+- One person with many testnet accounts can still use up the 50 for all vaults: each account needs its own
+  vaults, registered in the console. If that happens, raise `faucetGlobal` in `apps/web/src/lib/ratelimit.ts`
+  for a day, or send test USDC by hand to the vaults that ask on X.
 - Cost: each mint prepays 30 Tgas, about 0.003 NEAR of the key's allowance. The first mint into a vault also
   registers the vault on the token, which pays 0.00125 NEAR of storage from its own balance. On 2026-11-07 the
   token account had about 0.22 NEAR free, enough for about 180 new vaults.
@@ -437,6 +456,10 @@ update public.tenants set kind = '<team|external|canary>' where vault_id = '<vau
   - `faucet.refused` with `NotEnoughAllowance` or `AccessKeyNotFound`: the key's allowance is used up, or the
     key is gone. Add a new key (steps 1 to 4 below).
   - `faucet.key_invalid`: `TESTNET_FAUCET_KEY` is not an `ed25519:` secret key.
+  - `faucet.key_not_mint_only`: the chain holds the key as `full_access`, as a key for `other` methods or
+    contracts, or not at all (`missing`). Set up a mint-only key (steps 1 to 4).
+  - `faucet.allowance_low`: under 0.01 NEAR of allowance is left. Add a new key (steps 1 to 4).
+  - `faucet.slow_reads`: the chain reads took so long that the mint was not sent. Nothing was counted.
   - `faucet.outcome_unknown`: the mint was sent and its answer was lost. Look its hash up on the explorer.
     Nothing is sent again, and the vault's day is used.
 - Set it up, or replace the key (OWNER, Git Bash, in the repository folder):
@@ -476,8 +499,10 @@ update public.tenants set kind = '<team|external|canary>' where vault_id = '<vau
   `ext:pair:<network>` for code pairing, `ext:inbox:<network>:<account>` for the inbox, and
   `ext:mint:<network>:<account>` for the tokens and codes the `/extension` page makes. Pairing codes are
   not in `rate_limits`.
-- The testnet faucet's buckets: `faucet:testnet:<vault>` (one mint per vault in 24 hours) and `faucet:testnet`
-  (50 for all vaults) ([testnet faucet](#testnet-faucet)).
+- The testnet faucet's buckets, each for one UTC day: `faucet:testnet:vault:<vault>:<YYYY-MM-DD>` (one mint per
+  vault), `faucet:testnet:account:<account>:<YYYY-MM-DD>` (3 vaults per owner account) and
+  `faucet:testnet:all:<YYYY-MM-DD>` (50 for all vaults), and `faucet:testnet:tries:<account>` (10 presses in 10
+  minutes, before the chain is read) ([testnet faucet](#testnet-faucet)).
 - `rate_limits_prune` (migration `20261108000009_metrics.sql`) deletes the rows whose window began more
   than a day ago, once per `/api/cron/metrics` run. No window is longer than a day
   (`apps/web/src/lib/ratelimit.test.ts` holds every window to it), so nothing live is deleted. A failed

@@ -12,6 +12,7 @@ import {
   deadlineText,
   describeDeposit,
   FUNDING_NOTICE,
+  faucetAccountText,
   faucetCapText,
   faucetCopy,
   faucetUsedText,
@@ -166,7 +167,10 @@ describe("the testnet faucet's words", () => {
     expect(waitText(1799)).toBe("about 30 min");
     expect(waitText(1)).toBe("about 1 min");
     expect(faucetUsedText(7200)).toBe(
-      "This vault already got its test USDC in the last 24 hours. Try again in about 2 h.",
+      "This vault already got its test USDC today. Try again in about 2 h.",
+    );
+    expect(faucetAccountText(60, 3)).toBe(
+      "Your account already added test USDC to 3 vaults today. Try again in about 1 min.",
     );
     expect(faucetCapText(60)).toBe(
       "Today's test USDC for all vaults is given out. Try again in about 1 min.",
@@ -177,12 +181,14 @@ describe("the testnet faucet's words", () => {
     const operations = PRIVACY_PAGE.sections.find((s) => s.id === "operations");
     const text = operations?.paragraphs.join(" ") ?? "";
     expect(text).toContain(
-      "the Add test USDC button counts its mints per vault and for all vaults together",
+      "the Add test USDC button counts its mints per vault, per owner account and for all vaults together, each for one UTC day",
     );
     expect(text).toContain("public on chain");
     const runbook = read("docs", "RUNBOOK.md");
     expect(runbook).toContain("## Testnet faucet");
-    expect(runbook).toContain("`faucet:testnet:<vault>`");
+    expect(runbook).toContain("`faucet:testnet:vault:<vault>:<YYYY-MM-DD>`");
+    expect(runbook).toContain("`faucet:testnet:account:<account>:<YYYY-MM-DD>`");
+    expect(runbook).toContain("faucet.key_not_mint_only");
     expect(runbook).toContain("--function-names 'mint'");
     expect(runbook).toContain("--contract-account-id usdc.probarion.testnet");
     expect(read("docs", "runbooks", "web-deploy.md")).toContain("`TESTNET_FAUCET_KEY`");
