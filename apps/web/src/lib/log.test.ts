@@ -485,6 +485,19 @@ describe("redaction: string values are scrubbed", () => {
     expect(line).not.toContain("SENTINEL");
   });
 
+  it("masks a browser extension token by its shape, in the message, a field and an error", () => {
+    // Built at run time, like the other fakes here: pbx_ and 43 base64url characters, as lib/ext/token.ts makes them.
+    const PBX = `pbx_${"Ab3-_9".repeat(8).slice(0, 43)}`;
+    const line = formatLog("error", `ext.pair_failed ${PBX}`, {
+      note: `refused ${PBX}`,
+      error: new Error(`bad ${PBX}`),
+    });
+    expect(line).not.toContain(PBX.slice(4));
+    expect(line.split("pbx_[redacted]")).toHaveLength(4);
+    // A name that starts with pbx_ is not a token.
+    expect(redact({ name: "pbx_token" })).toEqual({ name: "pbx_token" });
+  });
+
   it("leaves ordinary strings alone", () => {
     const strings = {
       request_id: "6f1c3a52-0f7d-4d0a-9d55-3a1b2c4d5e6f",

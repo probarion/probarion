@@ -302,6 +302,9 @@ describe("componentOfLog", () => {
       ["usage.load_failed", "usage"],
       ["health.settings_invalid", "health"],
       ["status.report_failed", "health"],
+      ["ext.pair_failed", "extension"],
+      ["ext.inbox_failed", "extension"],
+      ["ext.mint_failed", "extension"],
       ["sdk.something", null],
     ];
     for (const [key, component] of cases) expect(componentOfLog(key), key).toBe(component);

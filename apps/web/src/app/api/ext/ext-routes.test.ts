@@ -1,0 +1,338 @@
+import type { PGlite } from "@electric-sql/pglite";
+import type { MandateView, SpendView } from "@probarion/core";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Db } from "@/lib/db/port";
+import { createPairCode } from "@/lib/ext/store";
+import { codeHash } from "@/lib/ext/token";
+import { freshDb, seedTenant } from "../../../../test/db/harness";
+import { pgliteDb } from "../../../../test/db/pglite-db";
+import { MAINNET_HOST, TESTNET_HOST } from "../../../../test/fixtures/networks";
+import { quietLogs } from "../../../../test/fixtures/quiet-logs";
+
+const h = vi.hoisted(() => ({
+  db: null as unknown as Db,
+  host: null as string | null,
+  mandates: [] as MandateView[],
+  spends: [] as SpendView[],
+  dbDown: false,
+}));
+vi.mock("@/lib/env", async () => {
+  const { networkPart } = await import("../../../../test/fixtures/networks");
+  return { getEnv: () => networkPart({ defaultNetwork: "testnet", both: true }) };
+});
+vi.mock("@/lib/db/clients", () => ({
+  serviceDb: () => {
+    if (h.dbDown) throw new Error("db down");
+    return h.db;
+  },
+}));
+vi.mock("next/headers", () => ({
+  headers: async () => ({ get: (name: string) => (name === "host" ? h.host : null) }),
+  // The extension's routes never read a cookie: one that tried would fail every test here.
+  cookies: async () => {
+    throw new Error("the extension's routes never read cookies");
+  },
+}));
+vi.mock("@/lib/near/server", () => ({
+  getReader: () => ({
+    listMandates: async (_v: string, from: number, limit: number) =>
+      h.mandates.slice(from, from + limit),
+    listSpends: async (_v: string, from: number, limit: number) =>
+      h.spends.slice(from, from + limit),
+  }),
+}));
+
+const { POST: pair } = await import("./pair/route");
+const { GET: inbox } = await import("./inbox/route");
+const { POST: revoke } = await import("./revoke/route");
+
+const OWNER = "owner.testnet";
+const VAULT = "acme.vaults.probarion.testnet";
+const ns = (iso: string) => (BigInt(Date.parse(iso)) * 1_000_000n).toString();
+
+const mandate = (over: Partial<MandateView>): MandateView => ({
+  id: 1,
+  payee: { type: "near", account_id: "vendor.testnet" },
+  purpose_hash: "a".repeat(64),
+  max_per_payment: "100000000",
+  max_total: "1000000000",
+  spent: "0",
+  reserved: "0",
+  max_uses: 10,
+  uses: 0,
+  expires_at_ns: ns("2030-01-01T00:00:00Z"),
+  approval_above: "50000000",
+  agent_pk: "ed25519:agent",
+  label: "Hosting",
+  status: "active",
+  created_at_ns: ns("2026-11-01T00:00:00Z"),
+  ...over,
+});
+const spend = (over: Partial<SpendView>): SpendView => ({
+  id: 7,
+  mandate_id: 1,
+  amount: "60000000",
+  invoice_hash: "b".repeat(64),
+  ref: "inv-1",
+  decision_hash: "c".repeat(64),
+  agent_pk: "ed25519:agent",
+  destination: { type: "near", account_id: "vendor.testnet" },
+  status: "held",
+  created_at_ns: ns("2026-11-07T00:00:00Z"),
+  held_until_ns: ns("2030-01-01T00:00:00Z"),
+  memo: null,
+  ...over,
+});
+
+function at(host: string, path: string, init: RequestInit = {}) {
+  h.host = host;
+  return new Request(`https://${host}${path}`, init);
+}
+function pairRequest(code: unknown, host = TESTNET_HOST, ip = "203.0.113.7") {
+  const body = JSON.stringify({ code, label: "Chrome on Windows" });
+  return at(host, "/api/ext/pair", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "content-length": String(Buffer.byteLength(body)),
+      "x-forwarded-for": ip,
+    },
+    body,
+  });
+}
+const withToken = (token: string, host = TESTNET_HOST) =>
+  at(host, "/api/ext/inbox", { headers: { authorization: `Bearer ${token}` } });
+
+describe("the extension's API", () => {
+  const logs = quietLogs();
+  let pg: PGlite;
+
+  beforeAll(async () => {
+    pg = await freshDb();
+    h.db = pgliteDb(pg);
+    await seedTenant(pg, { vault: VAULT, owner: OWNER, network: "testnet" });
+    await seedTenant(pg, { vault: "acme.vaults.probarion.near", owner: OWNER, network: "mainnet" });
+  });
+  afterAll(async () => {
+    await pg.close();
+  });
+  beforeEach(async () => {
+    await pg.exec(
+      "delete from public.extension_tokens; delete from public.extension_pair_codes; delete from public.rate_limits;",
+    );
+    h.mandates = [];
+    h.spends = [];
+  });
+
+  async function connected(code = "K7QM4XRA") {
+    await createPairCode(h.db, OWNER, "testnet", codeHash(code));
+    const r = await pair(pairRequest(`${code.slice(0, 4)}-${code.slice(4)}`));
+    expect(r.status).toBe(200);
+    return (await r.json()) as {
+      token: string;
+      account: string;
+      network: string;
+      expires_at: string;
+    };
+  }
+
+  it("exchanges a code once for a token that reads the inbox", async () => {
+    const c = await connected();
+    expect(c).toMatchObject({ account: OWNER, network: "testnet" });
+    expect(c.token).toMatch(/^pbx_[A-Za-z0-9_-]{43}$/);
+    const r = await inbox(withToken(c.token));
+    expect(r.status).toBe(200);
+    const body = await r.json();
+    expect(body).toMatchObject({
+      network: "testnet",
+      account: OWNER,
+      counts: { awaiting: 0, held: 0 },
+    });
+    expect(body.vaults.map((v: { vault: string; role: string }) => [v.vault, v.role])).toEqual([
+      [VAULT, "owner"],
+    ]);
+    const again = await pair(pairRequest("K7QM-4XRA"));
+    expect(again.status).toBe(401);
+    expect(await again.json()).toMatchObject({ error: "bad_code" });
+  });
+
+  it("refuses a malformed code, or a body without its length, before it reads anything", async () => {
+    const r = await pair(pairRequest("nope"));
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ error: "bad_code_format" });
+    const noLength = at(TESTNET_HOST, "/api/ext/pair", { method: "POST", body: "{}" });
+    noLength.headers.delete("content-length");
+    expect((await pair(noLength)).status).toBe(400);
+  });
+
+  it("limits code guesses per address", async () => {
+    for (let i = 0; i < 10; i++) expect((await pair(pairRequest("AAAA-AAAA"))).status).toBe(401);
+    const r = await pair(pairRequest("AAAA-AAAA"));
+    expect(r.status).toBe(429);
+    expect(r.headers.get("retry-after")).toMatch(/^\d+$/);
+    expect((await pair(pairRequest("AAAA-AAAA", TESTNET_HOST, "198.51.100.9"))).status).toBe(401);
+  });
+
+  it("needs the bearer token: no header, a cookie or another scheme is a 401", async () => {
+    const cases: Record<string, string>[] = [
+      {},
+      { cookie: "pb_session=anything" },
+      { authorization: "Basic abc" },
+    ];
+    for (const headers of cases) {
+      const r = await inbox(at(TESTNET_HOST, "/api/ext/inbox", { headers }));
+      expect(r.status).toBe(401);
+      expect(await r.json()).toMatchObject({ error: "bad_token" });
+    }
+  });
+
+  it("is valid only at the address of its network, and a code only at its own", async () => {
+    const c = await connected();
+    const r = await inbox(withToken(c.token, MAINNET_HOST));
+    expect(r.status).toBe(401);
+    expect(await r.json()).toMatchObject({ error: "bad_token" });
+    const elsewhere = await revoke(
+      at(MAINNET_HOST, "/api/ext/revoke", {
+        method: "POST",
+        headers: { authorization: `Bearer ${c.token}` },
+      }),
+    );
+    expect(elsewhere.status).toBe(401);
+    // Neither call touched it: the token still works at its own address.
+    expect((await inbox(withToken(c.token))).status).toBe(200);
+    await createPairCode(h.db, OWNER, "testnet", codeHash("M7QM4XRA"));
+    const p = await pair(pairRequest("M7QM-4XRA", MAINNET_HOST));
+    expect(p.status).toBe(401);
+    expect(await p.json()).toMatchObject({ error: "bad_code" });
+  });
+
+  it("ends when the extension disconnects", async () => {
+    const c = await connected();
+    const r = await revoke(
+      at(TESTNET_HOST, "/api/ext/revoke", {
+        method: "POST",
+        headers: { authorization: `Bearer ${c.token}` },
+      }),
+    );
+    expect(r.status).toBe(204);
+    expect((await inbox(withToken(c.token))).status).toBe(401);
+  });
+
+  it("lists the active mandates and the held spends, and sends no CORS header", async () => {
+    h.mandates = [mandate({ id: 1 }), mandate({ id: 2, status: "revoked" })];
+    h.spends = [spend({ id: 7 }), spend({ id: 8, status: "paid" })];
+    const c = await connected();
+    const r = await inbox(withToken(c.token));
+    const body = await r.json();
+    expect(body.counts).toEqual({ awaiting: 0, held: 1 });
+    expect(body.vaults[0].mandates.map((m: { id: number }) => m.id)).toEqual([1]);
+    expect(body.vaults[0].held[0]).toMatchObject({
+      spend_id: 7,
+      url: `https://testnet.probarion.test/console/${VAULT}`,
+    });
+    for (const [name] of r.headers) expect(name.startsWith("access-control-")).toBe(false);
+  });
+
+  it("reads the account's vaults again on every request", async () => {
+    const c = await connected();
+    expect((await (await inbox(withToken(c.token))).json()).vaults).toHaveLength(1);
+    await pg.query("update public.tenant_members set role = 'viewer' where account_id = $1", [
+      OWNER,
+    ]);
+    try {
+      expect((await (await inbox(withToken(c.token))).json()).vaults).toEqual([]);
+    } finally {
+      await pg.query("update public.tenant_members set role = 'owner' where account_id = $1", [
+        OWNER,
+      ]);
+    }
+  });
+
+  it("answers every route without a CORS header, never cached, and an error as { error, detail }", async () => {
+    const c = await connected();
+    const answers: [string, Response][] = [
+      ["pair 400", await pair(pairRequest("nope"))],
+      ["inbox 401", await inbox(at(TESTNET_HOST, "/api/ext/inbox"))],
+      ["revoke 401", await revoke(at(TESTNET_HOST, "/api/ext/revoke", { method: "POST" }))],
+      ["inbox 200", await inbox(withToken(c.token))],
+    ];
+    for (const [name, r] of answers) {
+      for (const [header] of r.headers)
+        expect(header.startsWith("access-control-"), name).toBe(false);
+      expect(r.headers.get("cache-control"), name).toBe("no-store");
+      if (r.status >= 400)
+        expect(Object.keys(await r.json()).sort(), name).toEqual(["detail", "error"]);
+    }
+  });
+
+  it("limits the inbox per account", async () => {
+    const c = await connected();
+    for (let i = 0; i < 60; i++) expect((await inbox(withToken(c.token))).status).toBe(200);
+    const r = await inbox(withToken(c.token));
+    expect(r.status).toBe(429);
+    expect(await r.json()).toMatchObject({ error: "rate_limited" });
+  }, 30_000);
+
+  it("logs the connection with its request id, and never the token", async () => {
+    const c = await connected();
+    const paired = logs.lines.find((l) => l.includes('"msg":"ext.paired"'));
+    expect(paired).toBeDefined();
+    expect(paired).toContain('"connection":"');
+    expect(paired).toContain('"request_id":"');
+    for (const l of logs.lines) expect(l).not.toContain(c.token.slice(4));
+  });
+
+  it("finds the token's account in a vault: 400, 403 and 409 otherwise", async () => {
+    const { extMember } = await import("@/lib/ext/auth");
+    const token = {
+      id: "00000000-0000-4000-8000-0000000000aa",
+      account_id: OWNER,
+      network: "testnet" as const,
+      expires_at: "2030-01-01T00:00:00Z",
+    };
+    const refusal = async (r: unknown) =>
+      r instanceof Response ? [r.status, ((await r.json()) as { error: string }).error] : null;
+    expect(await extMember(token, VAULT)).toMatchObject({ vault_id: VAULT, role: "owner" });
+    expect(await refusal(await extMember(token, 7))).toEqual([400, "invalid_input"]);
+    expect(await refusal(await extMember({ ...token, account_id: "eve.testnet" }, VAULT))).toEqual([
+      403,
+      "not_member",
+    ]);
+    expect(await refusal(await extMember(token, VAULT, ["approver"]))).toEqual([403, "not_member"]);
+    expect(await refusal(await extMember({ ...token, network: "mainnet" }, VAULT))).toEqual([
+      409,
+      "wrong_network",
+    ]);
+  });
+
+  it("answers 503 unavailable as { error, detail }, and logs it with its request id, when the database is down", async () => {
+    const c = await connected();
+    h.dbDown = true;
+    try {
+      const answers: [string, Response][] = [
+        ["pair", await pair(pairRequest("M7QM-4XRA"))],
+        ["inbox", await inbox(withToken(c.token))],
+        [
+          "revoke",
+          await revoke(
+            at(TESTNET_HOST, "/api/ext/revoke", {
+              method: "POST",
+              headers: { authorization: `Bearer ${c.token}` },
+            }),
+          ),
+        ],
+      ];
+      for (const [name, r] of answers) {
+        expect(r.status, name).toBe(503);
+        const body = (await r.json()) as Record<string, unknown>;
+        expect(Object.keys(body).sort(), name).toEqual(["detail", "error"]);
+        expect(body.error, name).toBe("unavailable");
+        const line = logs.lines.find((l) => l.includes(`"msg":"ext.${name}_failed"`));
+        expect(line, name).toBeDefined();
+        expect(line, name).toContain('"request_id":"');
+      }
+    } finally {
+      h.dbDown = false;
+    }
+  });
+});

@@ -39,6 +39,7 @@ const COMPONENT_OF_KEY: ReadonlyArray<readonly [RegExp, Component]> = [
   [/^topup\./, "topup"],
   [/^usage\./, "usage"],
   [/^(health|status)\./, "health"],
+  [/^ext\./, "extension"],
 ];
 
 /** The component a log key belongs to, from its prefix, or null. */
