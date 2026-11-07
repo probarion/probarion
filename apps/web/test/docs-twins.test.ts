@@ -283,16 +283,13 @@ describe("mdxToMarkdown", () => {
     expect(card.trim()).toBe(`**[Errors](${ORIGIN}/docs.md)**\n\nCodes.`);
   });
 
-  it("writes the agents block as the page shows it: eyebrow, lede, files, no unbuilt page", () => {
+  it("writes the agents block as the page shows it: eyebrow, lede and the files", () => {
     const out = md('<HubAgents example="concepts/payment-checks" />');
     expect(out).toContain(`**${HUB_AGENTS.eyebrow}**`);
     expect(out).toContain(HUB_AGENTS.lede);
     for (const file of agentFiles("concepts/payment-checks")) {
       expect(out).toContain(`- [${file.href}](${ORIGIN}${file.href}): ${file.note}`);
     }
-    // The "For AI agents" page is not built yet, so neither side links it.
-    expect(findPage(HUB_AGENTS.more.path)).toBeUndefined();
-    expect(out).not.toContain(`[${HUB_AGENTS.more.label}]`);
   });
 });
 
@@ -465,6 +462,33 @@ describe("twins built from other data", () => {
     for (const c of SPEND_CHECKS) {
       expect(out).toContain(`| [\`${c.code}\`](${ORIGIN}/docs/build/errors.md#${c.code}) |`);
     }
+  });
+
+  it("leave the For AI agents link out on both sides while that page does not exist", async () => {
+    vi.resetModules();
+    // The double hides only that page, so the test holds before and after the page is written.
+    vi.doMock("@/lib/docs/registry", async (importOriginal) => {
+      const real = await importOriginal<typeof import("@/lib/docs/registry")>();
+      return {
+        ...real,
+        findPage: (path: string) =>
+          path === HUB_AGENTS.more.path ? undefined : real.findPage(path),
+      };
+    });
+    const fresh = await import("@/lib/docs/markdown");
+    const hub = await import("@/components/docs/hub");
+    const twin = fresh.mdxToMarkdown('<HubAgents example="concepts/payment-checks" />', {
+      file: "t.mdx",
+      origin: ORIGIN,
+    });
+    expect(twin).toContain(`**${HUB_AGENTS.eyebrow}**`);
+    expect(twin).not.toContain(`[${HUB_AGENTS.more.label}]`);
+    const page = renderToStaticMarkup(
+      createElement(hub.HubAgents, { example: "concepts/payment-checks" }),
+    );
+    expect(page).toContain(`>${HUB_AGENTS.eyebrow}</p>`);
+    expect(page).not.toContain(`>${HUB_AGENTS.more.label}</a>`);
+    expect(page).not.toContain(`/docs/${HUB_AGENTS.more.path}`);
   });
 
   it("link the For AI agents page from the agents block on both sides once it exists", async () => {

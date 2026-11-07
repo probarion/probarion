@@ -904,8 +904,7 @@ describe("the docs home blocks", () => {
     }
     expect(out).toContain(`>${HUB_AGENTS.eyebrow}</p>`);
     expect(out).toContain(`<p>${HUB_AGENTS.lede}</p>`);
-    // Its page is not built yet (docs-twins.test.ts covers the link once it is).
-    expect(out).not.toContain(`>${HUB_AGENTS.more.label}</a>`);
+    // The For AI agents link, with and without its page: docs-twins.test.ts (a registry double).
     expect(() => html(createElement(HubAgents, { example: "no/such" }))).toThrow(/no docs page/);
   });
 });
