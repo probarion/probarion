@@ -72,6 +72,9 @@ describe("redaction: the denylist", () => {
     "private_key",
     "agent_key",
     "ledger_key",
+    "faucet_key",
+    "faucetKey",
+    "TESTNET_FAUCET_KEY",
     "telegram_bot_token",
     "access_token",
   ];
@@ -167,6 +170,7 @@ describe("redaction: an Env-shaped object", () => {
     NEARAI_API_KEY: sentinel("NEARAI_API_KEY"),
     NEARAI_MODEL: sentinel("NEARAI_MODEL"),
     ONECLICK_JWT: sentinel("ONECLICK_JWT"),
+    TESTNET_FAUCET_KEY: sentinel("TESTNET_FAUCET_KEY"),
     SUPABASE_URL: sentinel("SUPABASE_URL"),
     SUPABASE_SERVICE_ROLE_KEY: sentinel("SUPABASE_SERVICE_ROLE_KEY"),
     NEXT_PUBLIC_SUPABASE_URL: sentinel("NEXT_PUBLIC_SUPABASE_URL"),

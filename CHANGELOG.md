@@ -35,6 +35,16 @@ The software is an unaudited beta.
   1Click stopped reporting its address as waiting, past its deadline, or when the amount typed
   changed. A cancelled or failed wallet attempt does not lift those guards. A new quote request clears
   the old quote and is switched off while the wallet is open.
+- A testnet faucet, so anyone can fund a testnet vault. On a testnet vault's Top-up tab, the owner
+  presses "Add test USDC", and `POST /api/topup/faucet` mints 25 test USDC straight into the vault,
+  not into a wallet. It works once a UTC day per vault, for 3 vaults a day per owner account and for
+  50 vaults a day in all, and only at the testnet address, for a signed-in owner whose vault the chain
+  agrees on; everyone else gets 404. It signs as `probarion.testnet` with `TESTNET_FAUCET_KEY`, a
+  function-call key that can call only `mint` on `usdc.probarion.testnet`: before each mint the route
+  reads the key from the chain and refuses a full-access key or one low on allowance, with nothing
+  counted. The amount and the vault come from the server, not the request. A mint whose outcome is unknown answers with its hash and is not sent again. Without the
+  key, the tab says to ask @probarionhq. The key is masked in logs, and `docs/RUNBOOK.md` has the
+  steps to set it up.
 - Owner-only top-up routes `POST /api/topup/quote`, `POST /api/topup/submit` and
   `GET /api/topup/status`, rate-limited per account, which answer fixed sentences rather than
   1Click's own error text.
