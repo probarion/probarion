@@ -1,3 +1,4 @@
+import { NETWORKS } from "@probarion/core";
 import type { FunctionCallTx } from "@probarion/sdk";
 import { ProbarionError, TxOutcomeUnknownError, TxRejectedError } from "@probarion/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,7 +25,7 @@ const h = vi.hoisted(() => ({
   vaultNetwork: "testnet" as "mainnet" | "testnet",
   /** The vault id the membership row holds, when a test wants it to differ from the request's. */
   rowVault: null as string | null,
-  memberCalls: [] as { vault: string; account: string; roles: unknown }[],
+  memberCalls: [] as { vault: string; roles: unknown }[],
   key: null as string | null,
   config: null as unknown,
   configError: null as Error | null,
@@ -38,16 +39,24 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/network", () => ({ requestNetwork: async () => h.network }));
+// The guard's own answers (lib/auth/guard.ts memberForApi): 401 without a session, 403 for a stranger or a role not
+// allowed, 409 for a vault registered on another network than the request's.
+const refusal = (status: number, error: string) =>
+  new Response(JSON.stringify({ error }), { status });
 vi.mock("@/lib/auth/guard", () => ({
-  getSession: async () => h.session,
-  membership: async (vault: string, account: string, roles: string[]) => {
-    h.memberCalls.push({ vault, account, roles });
-    if (h.role === null || !roles.includes(h.role)) return null;
+  memberForApi: async (vault: string, roles: string[]) => {
+    h.memberCalls.push({ vault, roles });
+    if (h.session === null) return refusal(401, "unauthenticated");
+    if (h.role === null || !roles.includes(h.role)) return refusal(403, "forbidden");
+    if (h.vaultNetwork !== h.network) return refusal(409, "wrong_network");
     return {
-      vault_id: h.rowVault ?? vault,
-      role: h.role,
-      network: h.vaultNetwork,
-      tenant_id: "t-1",
+      session: h.session,
+      member: {
+        vault_id: h.rowVault ?? vault,
+        role: h.role,
+        network: h.vaultNetwork,
+        tenant_id: "t-1",
+      },
     };
   },
 }));
@@ -77,6 +86,7 @@ vi.mock("@/lib/near/server", () => ({
     },
   }),
   getRpc: () => ({ currentUrl: "https://rpc.testnet.example" }),
+  chainConsts: (network: "mainnet" | "testnet") => NETWORKS[network],
 }));
 // The real sender would sign and send; this one records what it was built with and asked to send.
 vi.mock("@probarion/sdk", async (importOriginal) => {
@@ -176,10 +186,11 @@ describe("POST /api/topup/faucet", () => {
     nothingDone();
   });
 
-  it("answers 401 without a session, and looks up no membership", async () => {
+  it("answers 401 without a session", async () => {
     h.session = null;
-    expect((await send()).status).toBe(401);
-    expect(h.memberCalls).toEqual([]);
+    const r = await send();
+    expect(r.status).toBe(401);
+    expect(await answer(r)).toEqual({ error: "unauthenticated" });
     nothingDone();
   });
 
@@ -190,14 +201,19 @@ describe("POST /api/topup/faucet", () => {
       expect(r.status).toBe(404);
       expect(await answer(r)).toEqual({ error: "not_found" });
     }
-    expect(h.memberCalls.map((c) => c.roles)).toEqual([["owner"], ["owner"], ["owner"]]);
-    expect(h.memberCalls.every((c) => c.account === OWNER)).toBe(true);
+    expect(h.memberCalls).toEqual([
+      { vault: VAULT, roles: ["owner"] },
+      { vault: VAULT, roles: ["owner"] },
+      { vault: VAULT, roles: ["owner"] },
+    ]);
     nothingDone();
   });
 
-  it("answers 404 for a vault registered on mainnet, even to its owner", async () => {
+  it("answers 404 for a vault registered on mainnet, even to its owner (the guard's 409 is not passed on)", async () => {
     h.vaultNetwork = "mainnet";
-    expect((await send()).status).toBe(404);
+    const r = await send();
+    expect(r.status).toBe(404);
+    expect(await answer(r)).toEqual({ error: "not_found" });
     nothingDone();
   });
 

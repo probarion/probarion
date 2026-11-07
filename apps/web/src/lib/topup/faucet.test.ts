@@ -71,14 +71,14 @@ describe("the faucet's mint", () => {
 describe("faucetSender", () => {
   it("signs with the key as probarion.testnet", () => {
     const pair = KeyPair.fromRandom("ed25519");
-    const sender = faucetSender(pair.toString());
+    const sender = faucetSender("testnet", pair.toString());
     expect(sender?.accountId).toBe("probarion.testnet");
     expect(sender?.publicKey).toBe(pair.getPublicKey().toString());
   });
 
   it("is null for a value that is not a secret key, and logs neither the value nor its text", () => {
     for (const bad of ["ed25519:abc", "not-a-key", "ed25519:".padEnd(100, "Z")]) {
-      expect(faucetSender(bad)).toBeNull();
+      expect(faucetSender("testnet", bad)).toBeNull();
     }
     expect(logs.lines.length).toBe(3);
     for (const line of logs.lines) {

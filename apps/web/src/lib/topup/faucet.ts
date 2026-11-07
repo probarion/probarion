@@ -8,11 +8,12 @@ import {
   TxRejectedError,
   type TxSender,
 } from "@probarion/sdk";
+import type { Network } from "@/lib/config";
 import { isVaultConfig } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
 import { json, problem } from "@/lib/http";
 import { log } from "@/lib/log";
-import { getReader, getRpc } from "@/lib/near/server";
+import { chainConsts, getReader, getRpc } from "@/lib/near/server";
 import { LIMITS, type RateDecision, takeToken } from "@/lib/ratelimit";
 import { faucetCapText, faucetCopy, faucetUsedText } from "./copy";
 
@@ -38,6 +39,9 @@ const STEP_MS = 20_000;
 /** Inside the route's 60 s, with room for the reads before it. */
 const BUDGET_MS = 45_000;
 
+/** The one network the faucet serves. Its functions take it from the vault the guard found, never as a literal. */
+export type FaucetNetwork = Extract<Network, "testnet">;
+
 /** The one transaction the faucet signs: `mint` of the fixed amount to `vault`, on testnet's USDC, with no deposit. */
 export function faucetMintTx(vault: string): FunctionCallTx {
   return {
@@ -59,13 +63,13 @@ export const FAUCET_BUCKETS = {
  * The sender for the faucet key, or null when the value is not a secret key. The message logged names the kind of
  * error, never the value or its text.
  */
-export function faucetSender(secretKey: string): TxSender | null {
+export function faucetSender(network: FaucetNetwork, secretKey: string): TxSender | null {
   const deadline = Date.now() + BUDGET_MS;
   try {
     return new NearApiJsSender({
       accountId: FAUCET_SIGNER,
       secretKey,
-      rpcUrl: () => getRpc("testnet").currentUrl,
+      rpcUrl: () => getRpc(network).currentUrl,
       sendTimeoutMs: () => Math.min(STEP_MS, deadline - Date.now()),
     });
   } catch (error) {
@@ -78,7 +82,11 @@ export function faucetSender(secretKey: string): TxSender | null {
  * Null when the chain agrees with the console: `account` is the vault's owner and the vault holds testnet's USDC (test
  * USDC minted to a vault that counts another token would not be money it can spend). Else the answer to send.
  */
-export async function faucetVaultRefusal(vault: string, account: string): Promise<Response | null> {
+export async function faucetVaultRefusal(
+  network: FaucetNetwork,
+  vault: string,
+  account: string,
+): Promise<Response | null> {
   const unread = () =>
     problem(
       503,
@@ -87,7 +95,7 @@ export async function faucetVaultRefusal(vault: string, account: string): Promis
     );
   let config: unknown;
   try {
-    config = await getReader("testnet").getConfig(vault);
+    config = await getReader(network).getConfig(vault);
   } catch (error) {
     log.warn("faucet.config_unreadable", { vault, error });
     return unread();
@@ -103,7 +111,7 @@ export async function faucetVaultRefusal(vault: string, account: string): Promis
       `The chain names ${config.owner} as this vault's owner, not ${account}, so nothing was minted.`,
     );
   }
-  const { usdc } = NETWORKS.testnet;
+  const { usdc } = chainConsts(network);
   if (config.usdc !== usdc) {
     return problem(
       409,
