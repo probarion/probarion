@@ -115,14 +115,31 @@ const SUBKEY_PURPOSES = ["session"];
 const CRYPTO_ONLY: Record<string, string[]> = {
   "src/lib/crypto/sodium.ts": ["getSodium", "parseMasterKey", "deriveSubkey", "tenantInvoiceKey"],
 };
-/** The raw crypto libraries, which open a secretbox: only this module may load one, in any form. */
-const RAW_CRYPTO_HOME = "src/lib/crypto/sodium.ts";
-const RAW_CRYPTO = /^(libsodium|tweetnacl)([-/]|$)/;
 /**
- * Strings no module may hold: the database functions that return a sealed agent key (migration 0003) and the RPC
- * methods that send a transaction (the SDK's SEND_METHODS). The first `it` checks both lists against their source.
+ * The raw crypto libraries, which derive a subkey or open a secretbox by hand: only this module may load one, in any
+ * form. Not just libsodium and tweetnacl: the pnpm store also holds @noble and @stablelib, which reproduce the same
+ * BLAKE2b KDF and xsalsa20-poly1305 secretbox, so a graph module could redo lib/crypto's work through one of them.
  */
-const SEALED_KEY_FUNCTIONS = ["agent_key_secret", "agent_key_secret_for"];
+const RAW_CRYPTO_HOME = "src/lib/crypto/sodium.ts";
+const RAW_CRYPTO =
+  /^(libsodium|tweetnacl)([-/]|$)|^@noble\/(ciphers|hashes|curves|post-quantum)([/]|$)|^@stablelib\//;
+/** near-api-js and @near-js/*: Account, Signer and every key pair sign; the graph imports none of them, in any form. */
+const NEAR_SIGNING_IMPORTS = /^(near-api-js|@near-js\/)/;
+/**
+ * The master key's environment variable. Only lib/crypto (which parses and uses it), lib/env.ts (which validates it)
+ * and lib/log.ts (which redacts it) may name it; anywhere else would read the master key and derive a subkey by hand,
+ * with no refused name in sight.
+ */
+const MASTER_ENV = "KEY_ENCRYPTION_SECRET";
+const MASTER_ENV_OK = (f: string) =>
+  f.startsWith("src/lib/crypto/") || f === "src/lib/env.ts" || f === "src/lib/log.ts";
+/**
+ * Strings no module may hold: the database functions that return a sealed agent key and the sealed columns themselves
+ * (migration 0003), and the RPC methods that send a transaction (the SDK's SEND_METHODS). The first `it` checks the
+ * function list and the send-method list against their source, and that the function list is complete.
+ */
+const SEALED_KEY_FUNCTIONS = ["agent_key_secret", "agent_key_secret_for", "key_rotation_rows"];
+const SEALED_COLUMNS = ["secret_ciphertext", "secret_nonce"];
 const SEND_METHODS = ["send_tx", "broadcast_tx_commit", "broadcast_tx_async"];
 /**
  * The docs' no-pay claim (THREAT_MODEL's extension paragraph, SECURITY.md's extension-token row) in the words that hold
@@ -135,6 +152,12 @@ const NO_EXEMPTION_CLAIM = [
   "the app's modules or functions that pay",
   "derives no subkey of the master key but the session's",
 ];
+/**
+ * Once the queue ships, the docs must also name why loading `secrets.ts` (which imports `open`) is still no-pay: its
+ * `open` serves only its own opening functions, which the extension's code never imports. A narrowing that keeps the
+ * universal "opens a sealed key" claim without this carve-out is still an overclaim, and fails the docs pin below.
+ */
+const OPEN_EXCEPTION_CLAIM = "its own opening functions";
 
 interface Imp {
   from: string;
@@ -301,8 +324,14 @@ function subkeyMisuseOf(file: string): string[] {
 
 /** An app module's specifier: `@/…` or relative. Anything else is a package. */
 const isLocal = (spec: string) => spec.startsWith("@/") || spec.startsWith(".");
+/** Whether `f` lies inside directory `dir`. */
+const isUnder = (f: string, dir: string) => {
+  const r = relative(dir, f);
+  return r.length > 0 && !r.startsWith("..") && !/^[a-zA-Z]:/.test(r);
+};
 
-function resolveLocal(from: string, spec: string): string | null {
+/** The real file a local specifier names, wherever it lands (including the pnpm store). Null if it resolves nowhere. */
+function localTarget(from: string, spec: string): string | null {
   const base = spec.startsWith("@/")
     ? join(SRC, spec.slice(2))
     : spec.startsWith(".")
@@ -327,6 +356,16 @@ function resolveLocal(from: string, spec: string): string | null {
     if (isFile(c)) return c;
   }
   return null;
+}
+
+/**
+ * The app module a local specifier resolves to — only inside the app's own `src/`. A specifier that resolves outside
+ * it (a `../…` or `@/../…` reaching node_modules, say) is not an app module: the graph does not follow it, and a pin
+ * below refuses the escape, so a secretbox or KDF from the pnpm store cannot be loaded as if it were app code.
+ */
+function resolveLocal(from: string, spec: string): string | null {
+  const t = localTarget(from, spec);
+  return t !== null && isUnder(t, SRC) ? t : null;
 }
 
 /** Every app module the roots load, with its imports (type-only imports load nothing). */
@@ -384,6 +423,28 @@ describe("the extension's server code never pays", () => {
     for (const fn of SEALED_KEY_FUNCTIONS) {
       expect(migrations, fn).toContain(`create or replace function public.${fn}(`);
     }
+    // Completeness: every migration function whose body outputs the sealed column must be in SEALED_KEY_FUNCTIONS, so a
+    // new one (another `key_rotation_rows`) cannot slip past the list. The pattern is a jsonb builder emitting the
+    // column, e.g. `'secret_ciphertext', k.secret_ciphertext`.
+    const sealedReturners = new Set<string>();
+    const fnRe = /create\s+or\s+replace\s+function\s+public\.([a-z0-9_]+)\s*\(/gi;
+    for (let m = fnRe.exec(migrations); m !== null; m = fnRe.exec(migrations)) {
+      const rest = migrations.slice(m.index);
+      const tag = /\$[a-z_]*\$/i.exec(rest);
+      if (tag === null) continue;
+      const open = tag.index + tag[0].length;
+      const body = rest.slice(open, rest.indexOf(tag[0], open));
+      if (/'secret_ciphertext'\s*,\s*[a-z_]+\.secret_ciphertext/i.test(body))
+        sealedReturners.add(m[1]);
+    }
+    expect(
+      [...sealedReturners].sort(),
+      "SEALED_KEY_FUNCTIONS lists every function that returns the sealed column",
+    ).toEqual([...SEALED_KEY_FUNCTIONS].sort());
+    // The exempted readers of the master key's env var must each still name it, so an exemption is never dead.
+    for (const f of ["src/lib/crypto/server.ts", "src/lib/env.ts", "src/lib/log.ts"]) {
+      expect(readFileSync(join(WEB, f), "utf8"), `${f} names ${MASTER_ENV}`).toContain(MASTER_ENV);
+    }
     // The RPC methods that send a transaction are exactly the SDK's SEND_METHODS.
     const rpc = parse(join(REPO, "packages", "sdk", "src", "rpc.ts"));
     const sends: string[] = [];
@@ -414,10 +475,29 @@ describe("the extension's server code never pays", () => {
   });
 
   it("follows every app module it imports: none is left out of the check", () => {
-    const missing = loads
-      .filter((l) => isLocal(l.imp.from) && l.to === null)
-      .map((l) => `${posix(l.file)}: ${l.imp.from}`);
+    // Unresolvable means the specifier names no file at all; a file outside src/ resolves (localTarget) but is caught
+    // by the escape pin below, not counted as missing here.
+    const missing = [...g.entries()].flatMap(([f, imps]) =>
+      imps
+        .filter((i) => !i.typeOnly && isLocal(i.from) && localTarget(f, i.from) === null)
+        .map((i) => `${posix(f)}: ${i.from}`),
+    );
     expect(missing).toEqual([]);
+  });
+
+  it("loads only the app's own source: no local import resolves outside src/", () => {
+    // A `../…` or `@/../…` specifier that lands in node_modules would be followed as if it were an app module, so its
+    // names would never be checked. The pnpm store holds other BLAKE2b/secretbox implementations (@noble, @stablelib),
+    // which reproduce lib/crypto's agent-key derivation and open its output. Refuse the escape.
+    const found = [...g.entries()].flatMap(([f, imps]) =>
+      imps
+        .filter((i) => !i.typeOnly && isLocal(i.from))
+        .flatMap((i) => {
+          const t = localTarget(f, i.from);
+          return t !== null && !isUnder(t, SRC) ? [`${posix(f)}: ${i.from}`] : [];
+        }),
+    );
+    expect(found).toEqual([]);
   });
 
   it("loads no module that pays, signs or opens a key", () => {
@@ -521,7 +601,7 @@ describe("the extension's server code never pays", () => {
     expect(found).toEqual([]);
   });
 
-  it("loads libsodium and tweetnacl only through lib/crypto/sodium.ts, in any form", () => {
+  it("loads a raw crypto library (libsodium, tweetnacl, @noble, @stablelib) only through lib/crypto/sodium.ts, in any form", () => {
     // Type-only imports and re-exports count too; import() and require() are refused below.
     const found = [...g.entries()]
       .filter(([f]) => posix(f) !== RAW_CRYPTO_HOME)
@@ -531,12 +611,49 @@ describe("the extension's server code never pays", () => {
     expect(found).toEqual([]);
   });
 
-  it("names no database function that returns a sealed agent key, and no RPC method that sends a transaction", () => {
-    const refused = [...SEALED_KEY_FUNCTIONS, ...SEND_METHODS];
+  it("names no database function or sealed column that exposes an agent key, and no RPC method that sends a transaction", () => {
+    const refused = [...SEALED_KEY_FUNCTIONS, ...SEALED_COLUMNS, ...SEND_METHODS];
     const found = [...g.keys()].flatMap((f) =>
       stringsOf(f)
         .filter((s) => refused.some((r) => s.includes(r)))
         .map((s) => `${posix(f)}: ${JSON.stringify(s)}`),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("reads the master key's env var only in lib/crypto, lib/env.ts and lib/log.ts", () => {
+    // Reading KEY_ENCRYPTION_SECRET (through getEnv() or process.env) and deriving a subkey by hand needs no refused
+    // name. Only the three places that legitimately parse, use or redact it may name it; the graph has no other.
+    const found = [...g.keys()]
+      .filter((f) => !MASTER_ENV_OK(posix(f)))
+      .flatMap((f) => {
+        const sf = parse(f);
+        const hits: string[] = [];
+        const visit = (n: ts.Node): void => {
+          const isStr =
+            ts.isStringLiteralLike(n) ||
+            ts.isTemplateHead(n) ||
+            ts.isTemplateMiddle(n) ||
+            ts.isTemplateTail(n);
+          if (
+            (ts.isIdentifier(n) && n.text === MASTER_ENV) ||
+            (isStr && n.text.includes(MASTER_ENV))
+          ) {
+            hits.push(`${posix(f)}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`);
+          }
+          ts.forEachChild(n, visit);
+        };
+        visit(sf);
+        return hits;
+      });
+    expect(found).toEqual([]);
+  });
+
+  it("imports nothing from near-api-js or @near-js: no Account, Signer or key pair reaches the graph", () => {
+    // FORBIDDEN_EXPORTS names four of near-api-js's key pairs, but Account (which signs with a key string),
+    // KeyPairSecp256k1, KeyPairMLDSA65 and Signer are not named. Refuse the whole package instead, in any form.
+    const found = [...g.entries()].flatMap(([f, imps]) =>
+      imps.filter((i) => NEAR_SIGNING_IMPORTS.test(i.from)).map((i) => `${posix(f)}: ${i.from}`),
     );
     expect(found).toEqual([]);
   });
@@ -554,7 +671,13 @@ describe("the extension's server code never pays", () => {
           inUse.length === 0,
         );
       }
-      if (inUse.length > 0) expect(text, `${doc} names sealInvoice`).toContain("sealInvoice");
+      if (inUse.length > 0) {
+        expect(text, `${doc} names sealInvoice`).toContain("sealInvoice");
+        // The queue loads secrets.ts (under lib/crypto) for sealInvoice, and secrets.ts imports sodium's `open`. A
+        // narrowing that keeps the universal "opens a sealed key" claim without naming that carve-out is still an
+        // overclaim, so the honest claim must say `open` serves only its own opening functions.
+        expect(text, `${doc} names secrets.ts's open carve-out`).toContain(OPEN_EXCEPTION_CLAIM);
+      }
     }
   });
 
