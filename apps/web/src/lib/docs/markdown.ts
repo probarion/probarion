@@ -1,14 +1,24 @@
-import { CHECK_NAMES, VAULT_ERROR_CODES } from "@probarion/core";
-import type { Paragraph, PhrasingContent, Root, RootContent } from "mdast";
+import { CHECK_NAMES, type CheckId, VAULT_ERROR_CODES } from "@probarion/core";
+import type {
+  Heading,
+  List,
+  Paragraph,
+  PhrasingContent,
+  Root,
+  RootContent,
+  Table,
+  TableRow,
+} from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
 import { CHECK_LABELS } from "@/lib/site/facts";
+import { richParts } from "@/lib/site/rich";
 import { AGENT_RULES } from "./agents";
 import { CALLOUT_KINDS, calloutFooter, isCalloutKind } from "./callouts";
-import { HTTP_ERRORS, SDK_ERRORS, VAULT_ERRORS } from "./errors";
-import { attrOf, type JsxNode, parseMarkdown, parseMdx } from "./mdast";
-import { mdHref } from "./registry";
+import { errorAnchor, HTTP_ERRORS, SDK_ERRORS, VAULT_ERRORS } from "./errors";
+import { attrOf, inFile, type JsxNode, parseMdx } from "./mdast";
+import { docsHref, findPage, mdHref } from "./registry";
 import { SPEND_CHECKS } from "./spend-checks";
 import { docsStatusRows } from "./status";
 import { tabNames } from "./tabs";
@@ -42,8 +52,25 @@ function text(value: string): PhrasingContent {
   return { type: "text", value };
 }
 
+function inline(value: string): PhrasingContent {
+  return { type: "inlineCode", value };
+}
+
+function strong(value: string): PhrasingContent {
+  return { type: "strong", children: [text(value)] };
+}
+
 function para(children: PhrasingContent[]): Paragraph {
   return { type: "paragraph", children };
+}
+
+/**
+ * A line of generated copy as the page shows it (components/site/Rich.tsx): the parts in backticks
+ * are code and the rest is text, never parsed as Markdown. The stringifier escapes what Markdown
+ * needs, so `<Code>` or `*x*` in the copy reads the same in the twin.
+ */
+function rich(value: string): PhrasingContent[] {
+  return richParts(value).map((part) => (part.code ? inline(part.text) : text(part.text)));
 }
 
 /** Phrasing children (a one-line component) wrapped in a paragraph; block children as they are. */
@@ -53,21 +80,54 @@ function blocks(nodes: RootContent[]): RootContent[] {
     : nodes;
 }
 
-function cell(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
-}
+/** A table cell: generated copy (see rich), or nodes a handler built. */
+type Cell = string | PhrasingContent[];
 
 /** A GFM table as mdast nodes. */
-function table(headers: string[], rows: string[][]): RootContent[] {
-  const lines = [
-    `| ${headers.map(cell).join(" | ")} |`,
-    `| ${headers.map(() => "---").join(" | ")} |`,
-    ...rows.map((r) => `| ${r.map(cell).join(" | ")} |`),
-  ];
-  return parseMarkdown(lines.join("\n")).children;
+function table(headers: Cell[], rows: Cell[][]): Table {
+  const row = (cells: Cell[]): TableRow => ({
+    type: "tableRow",
+    children: cells.map((c) => ({
+      type: "tableCell",
+      // A line break would end the row.
+      children: typeof c === "string" ? rich(c.replace(/\n/g, " ")) : c,
+    })),
+  });
+  return {
+    type: "table",
+    align: headers.map(() => null),
+    children: [row(headers), ...rows.map(row)],
+  };
 }
 
-const code = (value: string) => `\`${value}\``;
+/** One verifier check: its H3, then what it proves and what it does not. */
+function checkBlock(id: CheckId): RootContent[] {
+  const heading: Heading = {
+    type: "heading",
+    depth: 3,
+    children: [text(`${id}. ${CHECK_LABELS[id]} (`), inline(CHECK_NAMES[id]), text(")")],
+  };
+  return [
+    heading,
+    para([strong("Proves."), text(" "), ...rich(VERIFIER_DOCS[id].proves)]),
+    para([strong("Does not prove."), text(" "), ...rich(VERIFIER_DOCS[id].limits)]),
+  ];
+}
+
+/** The rules for agents as a numbered list. */
+function rulesList(): List {
+  return {
+    type: "list",
+    ordered: true,
+    start: 1,
+    spread: false,
+    children: AGENT_RULES.map((rule) => ({
+      type: "listItem",
+      spread: false,
+      children: [para(rich(rule))],
+    })),
+  };
+}
 
 /**
  * Every docs component's Markdown form.
@@ -84,7 +144,7 @@ const HANDLERS: Record<string, Handler> = {
       {
         type: "blockquote",
         children: [
-          para([{ type: "strong", children: [text(title)] }]),
+          para([strong(title)]),
           ...(body as Paragraph[]),
           ...(footer ? [para([{ type: "emphasis", children: [text(footer)] }])] : []),
         ],
@@ -95,92 +155,105 @@ const HANDLERS: Record<string, Handler> = {
   Flow: (node, ctx) => ctx.convert(node.children as RootContent[]),
   CodeTabs(node, ctx) {
     const labels = attrOf(node, "labels", ctx.file) ?? "";
-    const codes = ctx.convert(node.children as RootContent[]).filter((n) => n.type === "code");
-    // The same label rule as the component (lib/docs/tabs.ts), with the page named.
-    let names: string[];
-    try {
-      names = tabNames(labels, codes.length);
-    } catch (error) {
-      throw new Error(`${(error as Error).message} in ${ctx.file}`);
+    const panels = ctx.convert(node.children as RootContent[]);
+    // The component makes each child a tab, so anything but a code block would be a tab of prose.
+    const stray = panels.find((n) => n.type !== "code");
+    if (stray) {
+      throw new Error(`CodeTabs: holds only code blocks, not a ${stray.type}, in ${ctx.file}`);
     }
-    return codes.flatMap((c, at) => [
-      para([{ type: "strong", children: [text(names[at] ?? "")] }]),
-      c,
-    ]);
+    // The same label rule as the component (lib/docs/tabs.ts), with the page named.
+    const names = inFile(ctx.file, () => tabNames(labels, panels.length));
+    return panels.flatMap((c, at) => [para([strong(names[at] ?? "")]), c]);
   },
   CodeBlock(node, ctx) {
-    const title = attrOf(node, "title", ctx.file) ?? "";
-    return [
-      para([{ type: "inlineCode", value: title }]),
-      ...ctx.convert(node.children as RootContent[]),
-    ];
+    const title = attrOf(node, "title", ctx.file);
+    if (!title) throw new Error(`CodeBlock: a title is required in ${ctx.file}`);
+    return [para([inline(title)]), ...ctx.convert(node.children as RootContent[])];
   },
   ErrorCatalog(node, ctx) {
     const kind = attrOf(node, "kind", ctx.file);
     if (kind === "vault") {
-      return table(
-        ["Code", "Meaning", "Raised by", "Retry helps", "What to do"],
-        VAULT_ERROR_CODES.map((c) => {
-          const e = VAULT_ERRORS[c];
-          return [code(c), e.meaning, e.raisedBy, e.retryable ? "Yes" : "No", e.next];
-        }),
-      );
+      return [
+        table(
+          ["Code", "Meaning", "Raised by", "Retry helps", "What to do"],
+          VAULT_ERROR_CODES.map((c) => {
+            const e = VAULT_ERRORS[c];
+            return [[inline(c)], e.meaning, e.raisedBy, e.retryable ? "Yes" : "No", e.next];
+          }),
+        ),
+      ];
     }
     if (kind === "sdk") {
-      return table(
-        ["Class", "`.code`", "When", "Extra fields"],
-        SDK_ERRORS.map((e) => [
-          `${code(e.name)} (extends ${e.parent})`,
-          code(e.code),
-          e.when,
-          e.fields || "None",
-        ]),
-      );
+      return [
+        table(
+          ["Class", [inline(".code")], "When", "Extra fields"],
+          SDK_ERRORS.map((e) => [
+            [inline(e.name), text(` (extends ${e.parent})`)],
+            [inline(e.code)],
+            e.when,
+            e.fields || "None",
+          ]),
+        ),
+      ];
     }
     if (kind === "http") {
-      return table(
-        ["Status", "Code", "Returned by", "Meaning", "What to do"],
-        HTTP_ERRORS.map((e) => [String(e.status), code(e.code), e.where, e.meaning, e.next]),
-      );
+      return [
+        table(
+          ["Status", "Code", "Returned by", "Meaning", "What to do"],
+          HTTP_ERRORS.map((e) => [String(e.status), [inline(e.code)], e.where, e.meaning, e.next]),
+        ),
+      ];
     }
     throw new Error(`ErrorCatalog: unknown kind "${String(kind)}" in ${ctx.file}`);
   },
-  SpendChecks: () =>
-    table(
-      ["#", "The vault asks", "Refused with"],
-      SPEND_CHECKS.map((c, at) => [String(at + 1), c.question, code(c.code)]),
-    ),
-  VerifierChecks(node, ctx) {
-    return selectChecks(attrOf(node, "only", ctx.file)).flatMap(
-      (id) =>
-        parseMarkdown(
-          [
-            `### ${id}. ${CHECK_LABELS[id]} (${code(CHECK_NAMES[id])})`,
-            `**Proves.** ${VERIFIER_DOCS[id].proves}`,
-            `**Does not prove.** ${VERIFIER_DOCS[id].limits}`,
-          ].join("\n\n"),
-        ).children,
-    );
+  SpendChecks(_node, ctx) {
+    // A code links to its entry on build/errors once that page exists, as in the component.
+    const errors = findPage("build/errors");
+    const refusal = (c: (typeof SPEND_CHECKS)[number]): PhrasingContent[] =>
+      errors
+        ? [
+            {
+              type: "link",
+              url: twinUrl(`${docsHref(errors.path)}#${errorAnchor(c.code)}`, ctx.origin),
+              children: [inline(c.code)],
+            },
+          ]
+        : [inline(c.code)];
+    return [
+      table(
+        ["#", "The vault asks", "Refused with"],
+        SPEND_CHECKS.map((c, at) => [String(at + 1), c.question, refusal(c)]),
+      ),
+    ];
   },
-  StatusTable: () =>
+  VerifierChecks(node, ctx) {
+    const only = attrOf(node, "only", ctx.file);
+    return inFile(ctx.file, () => selectChecks(only)).flatMap(checkBlock);
+  },
+  StatusTable: () => [
     table(
       ["Feature", "Status", "Detail"],
       docsStatusRows().map((r) => [r.feature, STATUS_LABELS[r.status], r.detail]),
     ),
-  AgentRules: () =>
-    parseMarkdown(AGENT_RULES.map((r, at) => `${at + 1}. ${r}`).join("\n")).children,
+  ],
+  AgentRules: () => [rulesList()],
 };
 
 /** The component names a page may use: exactly the ones with a Markdown form. */
 export const MDX_COMPONENT_NAMES: readonly string[] = Object.keys(HANDLERS);
 
+/** A path on this site: one leading slash, not a protocol-relative `//host`. */
+function isSitePath(url: string): boolean {
+  return url.startsWith("/") && !url.startsWith("//");
+}
+
 /**
  * An internal link made absolute; a docs page's link points at its .md twin. A link that is a
  * twin already (`/docs.md`, `/docs/<path>.md`) keeps its path: never a second .md. Hash links
- * stay as they are.
+ * and other sites' links stay as they are.
  */
 export function twinUrl(url: string, origin: string): string {
-  if (!url.startsWith("/")) return url;
+  if (!isSitePath(url)) return url;
   const at = url.indexOf("#");
   const path = at < 0 ? url : url.slice(0, at);
   const hash = at < 0 ? "" : url.slice(at);
@@ -234,6 +307,11 @@ function convert(nodes: RootContent[], opts: MarkdownOptions): RootContent[] {
       out.push(next);
       continue;
     }
+    // An image is a file, not a page: made absolute, never pointed at a twin.
+    if (node.type === "image") {
+      out.push({ ...node, url: isSitePath(node.url) ? `${opts.origin}${node.url}` : node.url });
+      continue;
+    }
     if ("children" in node && Array.isArray(node.children)) {
       out.push({ ...node, children: convert(node.children as RootContent[], opts) } as RootContent);
       continue;
@@ -258,4 +336,9 @@ export function mdxToMarkdown(source: string, opts: MarkdownOptions): string {
   const tree = parseMdx(source);
   const root: Root = { type: "root", children: convert(tree.children, opts) };
   return stringifier.stringify(root);
+}
+
+/** The rules for agents as a Markdown numbered list, for the llms files. */
+export function agentRulesMarkdown(): string {
+  return stringifier.stringify({ type: "root", children: [rulesList()] });
 }

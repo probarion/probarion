@@ -1,7 +1,7 @@
 import { VAULT_ERROR_CODES } from "@probarion/core";
 import type { Root } from "mdast";
 import { errorAnchor, HTTP_ERRORS, httpAnchor, SDK_ERRORS } from "./errors";
-import { attrOf, jsxNodes } from "./mdast";
+import { attrOf, inFile, jsxNodes } from "./mdast";
 import { docsStatusRows } from "./status";
 import { checkAnchor, selectChecks } from "./verifier";
 
@@ -20,9 +20,11 @@ export function generatedAnchors(tree: Root, file = "<page>"): string[] {
         if (kind === "http") out.push(...HTTP_ERRORS.map((e) => httpAnchor(e.status, e.code)));
         break;
       }
-      case "VerifierChecks":
-        out.push(...selectChecks(attrOf(node, "only", file)).map(checkAnchor));
+      case "VerifierChecks": {
+        const only = attrOf(node, "only", file);
+        out.push(...inFile(file, () => selectChecks(only)).map(checkAnchor));
         break;
+      }
       case "StatusTable":
         out.push(...docsStatusRows().map((r) => r.id));
         break;

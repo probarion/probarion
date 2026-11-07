@@ -1,15 +1,20 @@
 import { SITE_DESCRIPTION } from "@/lib/site/facts";
-import { AGENT_RULES, AGENT_RULES_TITLE } from "./agents";
+import { AGENT_RULES_TITLE } from "./agents";
+import { agentRulesMarkdown } from "./markdown";
 import { findPage, mdHref, PAGES, sidebarGroups } from "./registry";
 import { pageMarkdown } from "./twins";
 
+/**
+ * The rules, as llmstxt.org places details: a line and a numbered list before the first H2, since
+ * every H2 section is a list of links.
+ */
 function rulesBlock(): string[] {
-  return [`## ${AGENT_RULES_TITLE}`, "", ...AGENT_RULES.map((r, at) => `${at + 1}. ${r}`), ""];
+  return [`${AGENT_RULES_TITLE}:`, "", agentRulesMarkdown().trimEnd(), ""];
 }
 
 /**
- * /llms.txt in the llmstxt.org shape: H1, summary quote, the rules, then sections of links to the
- * .md twins.
+ * /llms.txt in the llmstxt.org shape: H1, summary quote, the rules, then H2 sections of links to
+ * the .md twins.
  */
 export function llmsIndex(origin: string): string {
   const home = findPage("");

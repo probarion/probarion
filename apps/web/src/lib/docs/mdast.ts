@@ -18,7 +18,10 @@ export function parseMdx(source: string): Root {
   return mdxParser.parse(source) as Root;
 }
 
-/** Plain Markdown (no JSX), for the tables and lists the twins generate. */
+/**
+ * Plain Markdown (no JSX), to read a twin back the way a Markdown reader would. Twins never parse
+ * generated copy with it: markdown.ts builds those nodes from the copy, so nothing in it is markup.
+ */
 export function parseMarkdown(source: string): Root {
   return mdParser.parse(source) as Root;
 }
@@ -52,6 +55,19 @@ export function attrOf(node: JsxNode, name: string, file: string): string | unde
     return a.value;
   }
   return undefined;
+}
+
+/**
+ * Runs `fn`, and throws its error again with the page named, so a failing build points at the
+ * file. For helpers shared with the components, whose own messages cannot know the page.
+ */
+export function inFile<T>(file: string, fn: () => T): T {
+  try {
+    return fn();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${message} in ${file}`, { cause: error });
+  }
 }
 
 export { childrenOf };
