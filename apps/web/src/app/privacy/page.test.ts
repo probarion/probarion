@@ -6,12 +6,17 @@ import PrivacyPage from "./page";
 const html = renderToStaticMarkup(createElement(PrivacyPage));
 
 describe("/privacy", () => {
-  it("ends its container with its last section, where plan 06 Task 1 adds the extension's", () => {
+  it("ends its container with its last section, the browser extension's", () => {
     expect(html).toMatch(/<\/section><\/div>$/);
   });
 
-  it("has no browser-extension section of its own", () => {
-    expect(html).not.toContain('id="browser-extension"');
+  it("has the browser extension's section once, as the last section, linking the Browser extension page", () => {
+    expect(html.match(/id="browser-extension"/g) ?? []).toHaveLength(1);
+    expect(html.lastIndexOf("<section")).toBe(html.indexOf('<section id="browser-extension"'));
+    expect(html).toContain('href="/extension"');
+    for (const fact of ["last four characters", "ten minutes", "not released yet"]) {
+      expect(html, fact).toContain(fact);
+    }
   });
 
   it("says when it was last updated, above the first section", () => {

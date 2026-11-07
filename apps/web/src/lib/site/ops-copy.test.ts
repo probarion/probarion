@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   BLAST_RADIUS,
+  EXTENSION_PRIVACY,
   LEGAL_STATUS,
   PRIVACY_PAGE,
   SECURITY_PAGE,
@@ -25,6 +26,7 @@ function strings(value: unknown): string[] {
 }
 const ALL = strings({
   BLAST_RADIUS,
+  EXTENSION_PRIVACY,
   LEGAL_STATUS,
   PRIVACY_PAGE,
   SECURITY_PAGE,
@@ -73,6 +75,8 @@ describe("the operations copy", () => {
   it("claims no analytics and no paid plan", () => {
     expect(ALL.join("\n")).not.toMatch(/paid plan|pricing/i);
     expect(PRIVACY_PAGE.sections.map((s) => s.id)).not.toContain("browser-extension");
+    // The extension's section is EXTENSION_PRIVACY, rendered once by components/site/ExtensionPrivacy.tsx.
+    expect(EXTENSION_PRIVACY.id).toBe("browser-extension");
   });
 
   it("puts the downloaded ledger where the relative --ledger path finds it", () => {

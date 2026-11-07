@@ -62,9 +62,9 @@ for (const path of ["/security", "/status", "/terms", "/privacy"]) {
   });
 }
 
-test("/privacy has no browser-extension section yet (plan 06 Task 1 adds it)", async ({ page }) => {
+test("/privacy has the browser-extension section the store links to", async ({ page }) => {
   await page.goto("/privacy");
-  await expect(page.locator("#browser-extension")).toHaveCount(0);
+  await expect(page.locator("#browser-extension h2")).toHaveText("Browser extension");
 });
 
 for (const width of [375, 1120, 1280]) {
