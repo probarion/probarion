@@ -5,16 +5,38 @@ import { join } from "node:path";
 import { createElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { bundledThemes } from "shiki";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import DocsNotFound from "@/app/docs/not-found";
+import { Breadcrumbs } from "@/components/docs/Breadcrumbs";
 import { Callout } from "@/components/docs/Callout";
 import { CodeFrame } from "@/components/docs/CodeFrame";
 import { CodeTabs } from "@/components/docs/CodeTabs";
+import { DocsBar } from "@/components/docs/DocsBar";
+import { Feedback } from "@/components/docs/Feedback";
 import { DOCS_COMPONENTS } from "@/components/docs/mdx";
+import { PageHead } from "@/components/docs/PageHead";
+import { Pager } from "@/components/docs/Pager";
+import { Sidebar } from "@/components/docs/Sidebar";
+import { SourceBox } from "@/components/docs/SourceBox";
+import { Toc } from "@/components/docs/Toc";
+import { TocDrop } from "@/components/docs/TocDrop";
+import { BetaStripView } from "@/components/site/BetaStrip";
+import { PhoneMenu } from "@/components/site/PhoneMenu";
+import { SiteFooter } from "@/components/site/SiteFooter";
+import { SiteHeader } from "@/components/site/SiteHeader";
+import { commitFrom } from "@/lib/docs/build-info";
 import { CALLOUT_KINDS, isCalloutKind } from "@/lib/docs/callouts";
 import { copyText } from "@/lib/docs/clipboard";
+import { SHELL_IDS } from "@/lib/docs/headings";
+import { editUrl, issueUrl, sourceUrl } from "@/lib/docs/links";
+import { docsJsonLd, docsMetadata, docsTitle } from "@/lib/docs/meta";
 import { codeText, nodeText } from "@/lib/docs/node-text";
 import { readCodeTab, writeCodeTab } from "@/lib/docs/prefs";
+import { findPage, PAGES, visibleTabs } from "@/lib/docs/registry";
 import { isTabKey, nextTab, tabFor, tabNames } from "@/lib/docs/tabs";
+import { pickActive } from "@/lib/docs/toc-spy";
+import { DOC_TYPE_LABELS, NETWORK_CHIPS, STATUS_LABELS } from "@/lib/docs/types";
+import { OG_IMAGE } from "@/lib/site/facts";
 import { WEB } from "./docs-helpers";
 
 const html = (node: ReactNode) => renderToStaticMarkup(node as never);
@@ -366,6 +388,254 @@ describe("the code theme", () => {
     for (const c of colours) {
       expect(c, "token colours are 6-digit hex").toMatch(/^#[0-9a-f]{6}$/);
       expect(contrast(c, band), c).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
+const article = () => {
+  const page = findPage("concepts/payment-checks");
+  if (!page) throw new Error("starter page missing");
+  return page;
+};
+
+describe("pickActive", () => {
+  it("marks the last heading that has passed the offset, else the first", () => {
+    const tops = [
+      { id: "a", top: 300 },
+      { id: "b", top: 900 },
+    ];
+    expect(pickActive(tops, 100)).toBe("a");
+    expect(
+      pickActive(
+        [
+          { id: "a", top: -400 },
+          { id: "b", top: 60 },
+          { id: "c", top: 500 },
+        ],
+        100,
+      ),
+    ).toBe("b");
+    expect(pickActive([], 100)).toBeNull();
+  });
+});
+
+describe("build commit and GitHub links", () => {
+  it("prefers Vercel's commit, then git, else none", () => {
+    expect(commitFrom({ VERCEL_GIT_COMMIT_SHA: "a".repeat(40) }, () => "b".repeat(40))).toBe(
+      "a".repeat(40),
+    );
+    expect(commitFrom({ VERCEL_GIT_COMMIT_SHA: " " }, () => "b".repeat(40))).toBe("b".repeat(40));
+    expect(commitFrom({}, () => null)).toBeNull();
+  });
+
+  it("point source at the build commit (else main), edits at dev, issues with the page", () => {
+    expect(sourceUrl("contracts/vault/src/checks.rs", "abc")).toBe(
+      "https://github.com/probarion/probarion/blob/abc/contracts/vault/src/checks.rs",
+    );
+    expect(sourceUrl("x", null)).toContain("/blob/main/x");
+    expect(editUrl(article())).toBe(
+      "https://github.com/probarion/probarion/edit/dev/apps/web/content/docs/concepts/payment-checks.mdx",
+    );
+    const issue = new URL(issueUrl(article(), "https://probarion.xyz"));
+    expect(issue.pathname).toBe("/probarion/probarion/issues/new");
+    expect(issue.searchParams.get("title")).toBe("Docs: How a payment is checked");
+    expect(issue.searchParams.get("body")).toContain(
+      "https://probarion.xyz/docs/concepts/payment-checks",
+    );
+  });
+});
+
+describe("docs metadata", () => {
+  it("titles every page for the docs, with a canonical address and the site image", () => {
+    const meta = docsMetadata(article());
+    expect(meta.title).toEqual({ absolute: "How a payment is checked · Probarion Docs" });
+    expect(meta.alternates?.canonical).toBe("/docs/concepts/payment-checks");
+    expect(JSON.stringify(meta.openGraph)).toContain(OG_IMAGE.url);
+    expect(docsTitle(PAGES[0] ?? article())).toBe("Probarion Docs");
+  });
+
+  it("writes JSON-LD that cannot close its script tag", () => {
+    const ld = docsJsonLd({ ...article(), title: "</script><b>" }, "https://probarion.xyz");
+    expect(ld).not.toContain("<");
+    const data = JSON.parse(ld) as { "@type": string }[];
+    expect(data.map((x) => x["@type"])).toEqual(["TechArticle", "BreadcrumbList"]);
+  });
+});
+
+describe("the docs shell", () => {
+  it("marks the current page in the sidebar and lists only sections with pages", () => {
+    const out = html(createElement(Sidebar, { current: "concepts/payment-checks" }));
+    expect(out).toContain('aria-label="Docs"');
+    // next/link puts href after the other props, so the match takes the two in either order.
+    expect(out).toMatch(
+      /<a(?=[^>]*href="\/docs\/concepts\/payment-checks")(?=[^>]*aria-current="page")[^>]*>/,
+    );
+    expect(out).toContain("Concepts");
+    expect(out).not.toContain("Operate");
+  });
+
+  it("gives the bar a search trigger that works without JavaScript, and a Contents drawer", () => {
+    const out = html(
+      createElement(DocsBar, { current: "guides", path: "concepts/payment-checks" }),
+    );
+    expect(out).toMatch(
+      /<a[^>]*data-docs-search[^>]*href="\/docs#popular"|<a[^>]*href="\/docs#popular"[^>]*data-docs-search/,
+    );
+    expect(out).toContain("<summary");
+    expect(out).toContain("Contents");
+    expect(out).toContain('aria-label="Docs contents"');
+    // No empty tabs nav: it shows once a tab's page exists.
+    expect(out.includes('aria-label="Docs sections"')).toBe(visibleTabs().length > 0);
+  });
+
+  it("shows breadcrumbs, the H1, lede, chips, and the page actions", () => {
+    expect(html(createElement(Breadcrumbs, { page: article() }))).toContain(
+      'aria-label="Breadcrumb"',
+    );
+    const page = article();
+    const head = html(createElement(PageHead, { page, minutes: 4, markdown: "# x" }));
+    expect(head).toContain("<h1");
+    // The chips come from the registry entry, so a rewrite of the entry keeps this test true.
+    const chips = [
+      ...(page.status ? [STATUS_LABELS[page.status]] : []),
+      ...(page.network ? NETWORK_CHIPS[page.network] : []),
+      DOC_TYPE_LABELS[page.type],
+    ];
+    for (const chip of chips) expect(head).toContain(chip);
+    expect(head).toContain("4 min read");
+    // The Markdown link: visible ".md", then sr-only text, no aria-label.
+    const md = /<a[^>]*href="\/docs\/concepts\/payment-checks\.md"[^>]*>(.*?)<\/a>/.exec(head);
+    expect(md).not.toBeNull();
+    expect(md?.[0]).not.toContain("aria-label");
+    expect(md?.[1]).toBe('.md<span class="sr-only"> (this page as Markdown)</span>');
+  });
+
+  it("names the build commit or a local build, and links each source", () => {
+    const out = html(createElement(SourceBox, { page: article(), commit: null }));
+    expect(out).toContain("a local build");
+    // Every source of the registry entry, so a rewrite of the entry keeps this test true.
+    const { sources } = article();
+    expect(sources.length).toBeGreaterThan(0);
+    for (const path of sources) expect(out).toContain(`/blob/main/${path}`);
+    const built = html(
+      createElement(SourceBox, { page: article(), commit: "0c7c5ba".padEnd(40, "0") }),
+    );
+    expect(built).toContain("<code>0c7c5ba</code>");
+  });
+
+  it("links the previous and next page", () => {
+    const out = html(createElement(Pager, { prev: PAGES[0], next: undefined }));
+    expect(out).toContain('rel="prev"');
+    expect(out).not.toContain('rel="next"');
+  });
+
+  it("lets PhoneMenu take a label, and keeps Menu as the default", () => {
+    expect(html(createElement(PhoneMenu, { label: "Contents", children: "x" }))).toContain(
+      ">Contents</summary>",
+    );
+    expect(html(createElement(PhoneMenu, { children: "x" }))).toContain(">Menu</summary>");
+  });
+});
+
+describe("the docs bar's tabs, once a tab's page exists", () => {
+  afterEach(() => {
+    vi.doUnmock("@/lib/docs/pages/build");
+    vi.resetModules();
+  });
+
+  it("shows only the tabs whose page exists, and marks the current one", async () => {
+    vi.resetModules();
+    const base = article();
+    vi.doMock("@/lib/docs/pages/build", () => ({
+      BUILD: [{ ...base, path: "build/install", title: "Install" }],
+    }));
+    const fresh = await import("@/components/docs/DocsBar");
+    const out = html(createElement(fresh.DocsBar, { current: "build", path: "build/install" }));
+    const tabs = /<nav aria-label="Docs sections"[^>]*>(.*?)<\/nav>/.exec(out)?.[1] ?? "";
+    expect(tabs).toMatch(
+      /<a(?=[^>]*href="\/docs\/build\/install")(?=[^>]*aria-current="true")[^>]*>Build<\/a>/,
+    );
+    // The other tabs' pages do not exist in this registry.
+    expect(tabs.match(/<a /g)).toHaveLength(1);
+  });
+});
+
+describe("the ids the shell puts on a docs page", () => {
+  it("are all reserved in SHELL_IDS, so a heading that takes one fails the duplicate-id check", () => {
+    const page = article();
+    const toc = [{ id: "the-14-checks-in-order", text: "The 14 checks, in order", depth: 2 }];
+    const out = html(
+      createElement(
+        "div",
+        null,
+        createElement(BetaStripView, { network: "testnet" }),
+        createElement(BetaStripView, { network: "mainnet" }),
+        createElement(SiteHeader),
+        createElement(DocsBar, { current: null, path: page.path }),
+        createElement(Sidebar, { current: page.path }),
+        createElement(Breadcrumbs, { page }),
+        createElement(TocDrop, { items: toc }),
+        createElement(PageHead, { page, minutes: 4, markdown: "# x" }),
+        createElement(SourceBox, { page, commit: null }),
+        createElement(Feedback, { page, origin: "https://probarion.xyz" }),
+        createElement(Pager, { prev: PAGES[0], next: page }),
+        createElement(Toc, { items: toc }),
+        createElement(DocsNotFound),
+        createElement(SiteFooter),
+      ),
+    );
+    const layout = readFileSync(join(WEB, "src", "app", "layout.tsx"), "utf8");
+    const ids = [...`${out}\n${layout}`.matchAll(/\sid="([^"]*)"/g)].map((m) => m[1]);
+    // The layout's main, the logo's gradient and both copies of the contents.
+    expect(ids).toEqual(
+      expect.arrayContaining(["main", "probarion-coin", "side-concepts", "drawer-concepts"]),
+    );
+    for (const id of new Set(ids)) expect(SHELL_IDS, id).toContain(id);
+  });
+});
+
+describe("docs.module.css", () => {
+  const css = readFileSync(join(WEB, "src", "components", "docs", "docs.module.css"), "utf8");
+  // A comment may name what no rule does, so the rule checks read the file without comments.
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("sizes every flexible grid track with minmax(0, ...)", () => {
+    for (const m of css.matchAll(/grid-(?:template|auto)-columns:\s*([^;]+);/g)) {
+      const tracks = (m[1] ?? "").replace(/minmax\(0,\s*[\d.]+fr\)/g, "");
+      expect(tracks, m[0]).not.toMatch(/fr\b/);
+    }
+  });
+
+  it("wraps long words in prose and scrolls code and tables inside their own box", () => {
+    expect(css).toMatch(/\.prose\s*\{[^}]*overflow-wrap:\s*anywhere/);
+    expect(css).toMatch(/\.pre\s*\{[^}]*overflow-x:\s*auto/);
+    expect(css).toMatch(/\.tableWrap\s*\{[^}]*overflow-x:\s*auto/);
+  });
+
+  it("never removes the focus ring or reaches outside the module", () => {
+    expect(rules).not.toMatch(/all:\s*unset/);
+    expect(rules).not.toContain(":global(");
+  });
+
+  it("gives each shell control its own gold ring, inside the box where it would be clipped", () => {
+    const ring = (control: string) =>
+      new RegExp(`\\.${control}:focus-visible[^{]*\\{([^}]*)\\}`).exec(rules)?.[1] ?? "";
+    const controls = [
+      "tag",
+      "tabLink",
+      "searchTrigger",
+      "drawerButton",
+      "tocDropButton",
+      "sideLink",
+      "metaButton",
+      "tocLink",
+      "pagerLink",
+    ];
+    for (const control of controls) {
+      expect(ring(control), control).toMatch(/outline:\s*2px solid var\(--color-gold-small\)/);
+    }
+    for (const control of ["sideLink", "tocLink", "tabLink"]) {
+      expect(ring(control), control).toMatch(/outline-offset:\s*-2px/);
     }
   });
 });

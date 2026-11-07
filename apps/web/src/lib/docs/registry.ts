@@ -72,6 +72,14 @@ export function sidebarGroups(): SidebarGroup[] {
   })).filter((g) => g.pages.length > 0);
 }
 
+/**
+ * The id of a group title in the sidebar ("side") or in the phone drawer ("drawer"). A docs page
+ * renders both, so the two copies need their own ids; headings.ts reserves every one of them.
+ */
+export function groupTitleId(where: "side" | "drawer", section: Section): string {
+  return `${where}-${section}`;
+}
+
 export function neighbours(path: string): { prev?: DocPage; next?: DocPage } {
   const at = PAGES.findIndex((p) => p.path === path);
   if (at < 0) return {};

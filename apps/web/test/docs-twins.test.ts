@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DOCS_COMPONENTS } from "@/components/docs/mdx";
 import { AGENT_RULES, AGENT_RULES_TITLE } from "@/lib/docs/agents";
 import { HTTP_ERRORS, httpAnchor, SDK_ERRORS, VAULT_ERRORS } from "@/lib/docs/errors";
-import { anchorsOf, duplicateAnchors, headingsOf, tocOf } from "@/lib/docs/headings";
+import { anchorsOf, duplicateAnchors, headingsOf, SHELL_IDS, tocOf } from "@/lib/docs/headings";
 import { llmsFull, llmsIndex } from "@/lib/docs/llms";
 import { MDX_COMPONENT_NAMES, mdxToMarkdown, twinUrl } from "@/lib/docs/markdown";
 import { parseMarkdown } from "@/lib/docs/mdast";
@@ -292,6 +292,17 @@ describe("headings", () => {
       "<StatusTable />",
     ].join("\n\n");
     expect(duplicateAnchors(all)).toEqual([]);
+  });
+
+  it("catch a heading whose id the shell around the page already uses", () => {
+    expect(duplicateAnchors("## Main")).toEqual(["main"]);
+    expect(duplicateAnchors("## Side concepts\n\n## Drawer start")).toEqual([
+      "side-concepts",
+      "drawer-start",
+    ]);
+    for (const id of SHELL_IDS) expect(duplicateAnchors(`## ${id}`), id).toEqual([id]);
+    // The anchors a link may target stay the page's own.
+    expect(anchorsOf("## Codes").has("main")).toBe(false);
   });
 
   it("leave no page with two elements of the same id", async () => {

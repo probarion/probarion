@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   docsHref,
   findPage,
@@ -11,11 +11,19 @@ import {
   sectionOf,
   sidebarGroups,
   slugParams,
+  TABS,
   tabOf,
   visibleTabs,
 } from "@/lib/docs/registry";
 import { DOCS_DIR } from "@/lib/docs/source";
-import { AUDIENCES, DOC_NETWORKS, DOC_TYPES, FEATURE_STATUSES, SECTIONS } from "@/lib/docs/types";
+import {
+  AUDIENCES,
+  DOC_NETWORKS,
+  DOC_TYPES,
+  FEATURE_STATUSES,
+  SECTION_LABELS,
+  SECTIONS,
+} from "@/lib/docs/types";
 import { DOCS_DIR_TEST, mdxPaths, ROOT } from "./docs-helpers";
 
 describe("the docs registry", () => {
@@ -99,8 +107,15 @@ describe("registry helpers", () => {
     expect(mdHref("concepts/payment-checks")).toBe("/docs/concepts/payment-checks.md");
   });
 
-  it("list only sections that have pages, and chain the pager in reading order", () => {
-    for (const g of sidebarGroups()) expect(g.pages.length).toBeGreaterThan(0);
+  it("list every page but the home once, under its section, sections in SECTIONS order", () => {
+    const groups = sidebarGroups();
+    expect(groups.flatMap((g) => g.pages)).toEqual(PAGES.slice(1));
+    const used = new Set(PAGES.slice(1).map((p) => sectionOf(p.path)));
+    expect(groups.map((g) => g.section)).toEqual(SECTIONS.filter((s) => used.has(s)));
+    for (const g of groups) expect(g.label).toBe(SECTION_LABELS[g.section]);
+  });
+
+  it("chain the pager in reading order", () => {
     const first = PAGES[1];
     if (first) expect(neighbours(first.path).prev?.path).toBe("");
     expect(neighbours("no/such")).toEqual({});
@@ -108,6 +123,30 @@ describe("registry helpers", () => {
 
   it("put each page under one tab and show only tabs whose page exists", () => {
     for (const p of PAGES.slice(1)) expect(tabOf(p), p.path).not.toBeNull();
-    for (const t of visibleTabs()) expect(findPage(t.path)).toBeDefined();
+    expect(visibleTabs()).toEqual(TABS.filter((t) => findPage(t.path) !== undefined));
+  });
+});
+
+describe("the docs bar's tabs on a registry with more pages", () => {
+  afterEach(() => {
+    vi.doUnmock("@/lib/docs/pages/build");
+    vi.doUnmock("@/lib/docs/pages/trust");
+    vi.resetModules();
+  });
+
+  it("show a tab once its first page exists, in TABS order, and no other", async () => {
+    const base = PAGES[1];
+    if (!base) throw new Error("no page besides the home");
+    vi.resetModules();
+    // build/errors exists but build/install does not: Reference shows and Build does not.
+    vi.doMock("@/lib/docs/pages/build", () => ({
+      BUILD: [{ ...base, path: "build/errors", type: "reference" }],
+    }));
+    vi.doMock("@/lib/docs/pages/trust", () => ({
+      TRUST: [{ ...base, path: "trust/verify-a-vault" }],
+    }));
+    const fresh = await import("@/lib/docs/registry");
+    expect(fresh.PAGES.map((p) => p.path)).toContain("build/errors");
+    expect(fresh.visibleTabs().map((t) => t.id)).toEqual(["trust", "reference"]);
   });
 });
