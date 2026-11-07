@@ -149,7 +149,7 @@ One place decides it for the server, the edge and the browser (`apps/web/src/lib
   is an event of its own (below).
 - Every string passes through the log's scrubber, which masks the value of every secret setting it knows, each
   secret URL also in the forms Sentry writes it (without the default port, with the host in lower case, without the
-  query), and secret shapes such as a Telegram bot token in a URL path.
+  query), and secret shapes such as a Telegram bot token in a URL path or a browser extension token (`pbx_…`).
 - Environment: `VERCEL_ENV` on the server and the edge (`production` or `preview`; `development` outside Vercel). The
   browser sets none, so Sentry's default, `production`, applies to browser events, also from a preview build that has
   a DSN.
@@ -172,23 +172,25 @@ nor as breadcrumbs of a later event: they stay in the Vercel logs, where the `re
 - `component`: one of `component:web`, `component:auth`, `component:console`, `component:payables`,
   `component:topup`, `component:canary`, `component:proof`, `component:usage`, `component:watcher`,
   `component:alerts`, `component:metrics`, `component:health` and `component:extension` (the last is for the browser
-  extension's routes, not built yet).
+  extension's routes, `/api/ext/*`, and the `ext.` lines of the `/extension` page's actions).
 
 Where the tags come from:
 
-- Four routes tag their own requests: the Payables upload (`component:payables`, with the network and the tenant),
-  the Canary attempt (`component:canary`, with the network), the watch cron (`component:watcher`) and the metrics cron
-  (`component:metrics`). The crons cover every network, so they set no network. Every event of those requests,
-  unhandled exceptions included, carries the route's component and request id, and a log line from them keeps the
-  route's component: `alerts.dispatch_failed` in a watch run is `component:watcher`.
+- Seven routes tag their own requests: the Payables upload (`component:payables`, with the network and the tenant),
+  the Canary attempt (`component:canary`, with the network), the watch cron (`component:watcher`), the metrics cron
+  (`component:metrics`), and the browser extension's pairing, inbox and revoke routes (`component:extension`, with
+  the network; the inbox and revoke routes once the token is verified). The crons cover every network, so they set no
+  network. Every event of those requests, unhandled exceptions included, carries the route's component and request
+  id, and a log line from them keeps the route's component: `alerts.dispatch_failed` in a watch run is
+  `component:watcher`.
 - One request of those routes is not tagged: the one that starts a new server instance. Next.js starts Sentry inside
   it, so Sentry has no scope of its own for it, and its scope is the process-wide one that every later request's scope
   is copied from. Tagging it would put its tenant, network and request id on the events of other requests, so
   `tagRequest` leaves it alone (`apps/web/src/lib/observe.ts`). Its log-line events still carry their own request id
   and network; an exception with no log line in it has `component:web`.
 - Any other event made from a log line takes the component of its key's prefix (`alerts.` and `telegram.` are
-  `component:alerts`, `topup.` is `component:topup`, `chain.` and `auth.` are `component:auth`, and so on). A key with
-  no known prefix stays `component:web`.
+  `component:alerts`, `topup.` is `component:topup`, `chain.` and `auth.` are `component:auth`, `ext.` is
+  `component:extension`, and so on). A key with no known prefix stays `component:web`.
 - Every event made from a log line takes the line's own `request_id` and `network` when the line has them, also in a
   tagged route: the line was written by the request that failed. A cron line that names its network
   (`cron.watch_failed`) is therefore tagged with that network.
@@ -204,7 +206,7 @@ The OWNER creates them in Sentry and sends a test notification for each. They fi
 | 1 | A new issue | environment is `production` | email the OWNER | 5 min |
 | 2 | A regression | environment is `production` | email | 5 min |
 | 3 | A burst: more than 20 events in 10 minutes | environment is `production` | email | 30 min |
-| 4 | Money path: a new issue, or more than 1 event in an hour | `component:payables`, `component:topup`, `component:canary`, `component:watcher` or `component:alerts` (and `component:extension` once the extension's routes exist) | email | 5 min |
+| 4 | Money path: a new issue, or more than 1 event in an hour | `component:payables`, `component:topup`, `component:canary`, `component:watcher` or `component:alerts` (and `component:extension` once the extension's queue route, `POST /api/ext/invoices` (plan 06 Task 2, E1b), exists) | email | 5 min |
 | 4b | Optional. Mainnet: a new issue | `network` is `mainnet` | email and push | 5 min |
 | 5 | Optional. Error rate (a metric alert) | only if the plan includes metric alerts (not verified) | email | not set |
 

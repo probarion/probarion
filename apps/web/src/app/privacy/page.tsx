@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import c from "@/components/site/canary.module.css";
+import { ExtensionPrivacy } from "@/components/site/ExtensionPrivacy";
 import { Rich } from "@/components/site/Rich";
 import s from "@/components/site/site.module.css";
 import { LEGAL_STATUS, PRIVACY_PAGE as P } from "@/lib/site/ops-copy";
@@ -8,8 +9,8 @@ export const metadata: Metadata = { title: P.meta.title, description: P.meta.des
 
 /**
  * The privacy notice. Static, the same on every address. Its sections are the container's last children, each
- * `<section id className="mb-8">` with an `h2.mb-2.text-lg.font-semibold`, so plan 06 Task 1 can add its section
- * after them with the same look. Nothing may follow the last section inside this container.
+ * `<section id className="mb-8">` with an `h2.mb-2.text-lg.font-semibold`. The browser extension's section
+ * (ExtensionPrivacy, plan 06 Task 1) is the last of them; nothing may follow it inside this container.
  */
 export default function PrivacyPage() {
   return (
@@ -28,7 +29,7 @@ export default function PrivacyPage() {
           ))}
         </section>
       ))}
-      {/* Plan 06 Task 1 (E1a) renders <ExtensionPrivacy /> here: the last section, before this container closes. */}
+      <ExtensionPrivacy />
     </div>
   );
 }

@@ -15,7 +15,7 @@ const TENANT_TABLES: Record<string, string> = {
   alert_subscriptions: "tenant_id",
   alerts_sent: "id",
 };
-// invoice_confirm_nonces (0007) belongs to a tenant, but no member reads it: like the global tables, it has no policy and no grant.
+// invoice_confirm_nonces (0007) belongs to a tenant, and extension_tokens and extension_pair_codes (0013) to an account and a network, but no member reads them: like the global tables, they have no policy and no grant.
 const GLOBAL_TABLES = [
   "canary_attempts",
   "metrics_daily",
@@ -23,6 +23,8 @@ const GLOBAL_TABLES = [
   "pilots",
   "rate_limits",
   "invoice_confirm_nonces",
+  "extension_tokens",
+  "extension_pair_codes",
 ];
 
 const RLS_ASSERT_SQL = readFileSync(

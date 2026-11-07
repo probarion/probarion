@@ -59,8 +59,8 @@ In scope:
 - the public site and web console in [`apps/web`](apps/web), deployed at
   <https://probarion.xyz> and <https://probarion.vercel.app>, NEAR testnet today (one deployment
   serves both networks, and the address decides which; a testnet address of the same deployment,
-  once it is set up, is in scope too), with its database migrations and its server-side key
-  sealing;
+  once it is set up, is in scope too), with its database migrations, its server-side key sealing,
+  and the browser extension's token API (`/api/ext/*`) and its `/extension` page;
 - the build, deploy and release scripts in [`scripts`](scripts) and the workflows in
   [`.github/workflows`](.github/workflows).
 
@@ -120,6 +120,7 @@ and again by the contract on chain, and every decision goes into a signed, hash-
 | **An approver** | Approve or reject a held spend (1 yoctoNEAR) | Approve while the vault is frozen, after the hold expired, or for a revoked mandate |
 | **The factory owner** | Publish a new vault version | Change, upgrade or take funds from a vault the factory created: such a vault starts with no access keys and has no upgrade method |
 | **The model** (NEAR AI Cloud, private TEE) | Propose `pay`, `hold` or `refuse` for one invoice | Decide alone. Its proposal is advice: the code rules run on every decision and the contract checks every spend, so text injected into an invoice cannot widen a mandate |
+| **An extension token** (`pbx_…`, held by a connected browser; the server keeps a sha256 of the token and its last four characters, with the account, network, browser name and times, not the token itself) | At its network's address, for 30 days unless revoked: read its account's waiting invoices, held spends and active mandates | Pay, approve, confirm, or change a mandate or a key: the extension's server code (`apps/web/src/lib/ext` and `apps/web/src/app/api/ext`), and every app module it loads, imports none of the app's modules or functions that pay, sign or open a sealed key, nothing from `near-api-js` or `@near-js`, and no signer from the SDK or `@probarion/core`; it names no RPC method that sends a transaction and no database function or column that returns a sealed agent key, builds no database client but `apps/web/src/lib/db/clients.ts`, which only calls functions, and names each function it calls as a literal; outside `apps/web/src/lib/crypto`, it asks `subkey` only for the session's, imports none of `masterKey`, `parseMasterKey`, `deriveSubkey`, `tenantInvoiceKey` or `getSodium`, and loads no libsodium, tweetnacl, `@noble` or `@stablelib` package (`apps/web/test/ext-structure.test.ts`). That test reads imports and names: it catches a plain import of any of these, not code written to get around it, so review of every change to that code is the other control. The inbox reads the chain through the SDK's `VaultClient`, built with no signer, and Confirm needs the owner's wallet signature |
 
 ### What `verify` proves
 

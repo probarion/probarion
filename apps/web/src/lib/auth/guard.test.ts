@@ -6,7 +6,7 @@ import { freshDb, seedTenant } from "../../../test/db/harness";
 import { pgliteDb } from "../../../test/db/pglite-db";
 import { MAINNET_HOST, MAINNET_ORIGIN, TESTNET_HOST } from "../../../test/fixtures/networks";
 import { issueChallenge } from "./challenge";
-import { loginPath, safeNextPath } from "./redirect";
+import { extensionNextPath, loginPath, safeNextPath } from "./redirect";
 import { createSessionToken, SESSION_COOKIE, SESSION_TTL_MS } from "./session";
 
 const MASTER = parseMasterKey(Buffer.alloc(32, 9).toString("base64"));
@@ -433,6 +433,35 @@ describe("safeNextPath", () => {
     expect(loginPath("//evil.example")).toBe("/login");
     expect(loginPath(undefined)).toBe("/login");
     expect(loginPath(null)).toBe("/login");
+  });
+});
+
+describe("extensionNextPath", () => {
+  it("keeps the extension's connect page, with or without its nonce, and nothing else", () => {
+    const nonce = "A-_9".repeat(6);
+    for (const ok of [
+      "/extension",
+      `/extension?nonce=${nonce}`,
+      `/extension?nonce=${"a".repeat(64)}`,
+    ]) {
+      expect(extensionNextPath(ok), ok).toBe(ok);
+    }
+    for (const bad of [
+      "/extensionx",
+      "/extension/",
+      "/extension?nonce=short",
+      `/extension?nonce=${"a".repeat(65)}`,
+      `/extension?nonce=${nonce}&next=//evil.example`,
+      "//evil.example/extension",
+      "https://evil.example/extension",
+      "/console",
+      ...HOSTILE_NEXT,
+    ]) {
+      expect(extensionNextPath(bad), JSON.stringify(bad)).toBeNull();
+    }
+    for (const notString of [undefined, null, 5, {}, ["/extension"]]) {
+      expect(extensionNextPath(notString)).toBeNull();
+    }
   });
 });
 

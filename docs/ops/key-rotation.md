@@ -100,7 +100,9 @@ is why the command uses trial decryption.
    limits start over). The invoice-number key changes (it is derived from `KEY_ENCRYPTION_SECRET`,
    `apps/web/src/lib/payables/pipeline.ts:111-112,126`), so a re-uploaded invoice is no longer matched by its number
    to invoices uploaded before the rotation; the text fingerprint (an unkeyed sha256, `pipeline.ts:263`) still catches
-   identical text.
+   identical text. Browser extension connections are not ended: their tokens are stored as a sha256, not sealed under
+   the master. End them as in the Extension tokens row of `docs/RUNBOOK.md`'s Key rotation table when the incident
+   calls for it.
 
 6. **Keep the OLD master until a later dry run shows every row opens under the NEW one.** Rows the app
    sealed between step 4 and step 5 are still under the old master. After the redeploy, run the dry run

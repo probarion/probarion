@@ -29,6 +29,8 @@ function isSecretKey(key: string, value: unknown): boolean {
 
 const TEXT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, `Bearer ${REDACTED}`],
+  // A browser extension token (pbx_ and 43 base64url characters, lib/ext/token.ts), wherever it appears.
+  [/\bpbx_[A-Za-z0-9_-]{20,}/g, `pbx_${REDACTED}`],
   // A NEAR secret key is base58 of 64 bytes (about 88 characters); a public key is about 44.
   [/\bed25519:[1-9A-HJ-NP-Za-km-z]{60,}/g, `ed25519:${REDACTED}`],
   [/(\bhttps?:\/\/)[^\s/@"']+@/gi, `$1${REDACTED}@`],

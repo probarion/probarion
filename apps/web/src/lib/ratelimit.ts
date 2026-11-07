@@ -37,6 +37,16 @@ export const LIMITS = {
   confirmGlobal: [300, 60],
   /** Register (app/console/actions.ts), per account and network: each attempt reads the chain and the membership. */
   registerPerAccount: [10, 600],
+  /** The extension's pairing-code exchange (app/api/ext/pair), per address and network: 40-bit codes, 10 minutes each. */
+  extPairPerIp: [10, 600],
+  /** The same, all addresses together, per network. */
+  extPairGlobal: [300, 600],
+  /** The extension's inbox (app/api/ext/inbox), per account and network: a popup open or a 5-minute badge read. */
+  extInbox: [60, 60],
+  /** Invoices the extension queues (app/api/ext/invoices), per account and network. */
+  extInvoice: [20, 600],
+  /** Tokens and pairing codes the /extension page makes, together, per account and network. */
+  extMint: [10, 600],
 } as const satisfies Record<string, readonly [number, number]>;
 
 /**

@@ -38,11 +38,12 @@ export async function requireSession(next?: string): Promise<Session> {
 /**
  * Tenant isolation lives here. The Task 3 RPCs trust their arguments, so every console page and route finds
  * its tenant through this one lookup: the tenant and the role come from the database row for (this vault,
- * the session's account), never from a request body, query string or token field. Null when the id is not a
+ * the account), never from a request body, query string or a field the caller sends. The account is the
+ * session's, or, for the extension's routes, the verified token's (lib/ext/auth.ts). Null when the id is not a
  * NEAR account (it never reaches the database), the account is no member, or the role is not allowed. A vault
  * that does not exist and a vault the account is no member of look the same.
  */
-async function membership(
+export async function membership(
   vaultId: string,
   account: string,
   roles: MemberRole[] | undefined,

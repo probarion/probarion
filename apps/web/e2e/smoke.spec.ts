@@ -18,6 +18,13 @@ test("a signed-out visit to a vault's console lands on sign-in, with the path ke
   await expect(page).toHaveURL(/\/login\?next=%2Fconsole%2Facme\.vaults\.probarion\.testnet$/);
 });
 
+test("a signed-out visit to the extension's connect page lands on sign-in, with its nonce kept", async ({
+  page,
+}) => {
+  await page.goto(`/extension?nonce=${"a".repeat(22)}`);
+  await expect(page).toHaveURL(/\/login\?next=%2Fextension%3Fnonce%3Da{22}$/);
+});
+
 test("security.txt names the contact and an expiry", async ({ request }) => {
   const res = await request.get("/.well-known/security.txt");
   expect(res.status()).toBe(200);
@@ -55,9 +62,11 @@ for (const path of ["/security", "/status", "/terms", "/privacy"]) {
   });
 }
 
-test("/privacy has no browser-extension section yet (plan 06 Task 1 adds it)", async ({ page }) => {
+test("/privacy has the browser-extension section the store listing will link to", async ({
+  page,
+}) => {
   await page.goto("/privacy");
-  await expect(page.locator("#browser-extension")).toHaveCount(0);
+  await expect(page.locator("#browser-extension h2")).toHaveText("Browser extension");
 });
 
 // The test settings serve both networks (playwright.config.ts), so the header carries the network switch, its widest

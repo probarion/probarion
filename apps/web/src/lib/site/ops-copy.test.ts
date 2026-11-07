@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   BLAST_RADIUS,
+  EXTENSION_PRIVACY,
   LEGAL_STATUS,
   PRIVACY_PAGE,
   SECURITY_PAGE,
@@ -25,6 +26,7 @@ function strings(value: unknown): string[] {
 }
 const ALL = strings({
   BLAST_RADIUS,
+  EXTENSION_PRIVACY,
   LEGAL_STATUS,
   PRIVACY_PAGE,
   SECURITY_PAGE,
@@ -70,9 +72,30 @@ describe("the operations copy", () => {
     for (const row of BLAST_RADIUS) expect(md).toContain(`| ${row.can} | ${row.cannot} |`);
   });
 
+  it("says what the server keeps of an extension token the same way in every doc as /privacy does", () => {
+    // The columns of extension_tokens (migration 0013): a hash and a four-character hint, not the token.
+    const KEPT =
+      "a sha256 of the token and its last four characters, with the account, network, browser name and times, not the token itself";
+    expect(EXTENSION_PRIVACY.paragraphs.join(" ")).toContain("last four characters");
+    for (const doc of [
+      ["docs", "THREAT_MODEL.md"],
+      ["SECURITY.md"],
+      ["docs", "RUNBOOK.md"],
+      ["docs", "specs", "2026-10-21-probarion-interfaces.md"],
+    ]) {
+      const md = read(...doc).replace(/\s+/g, " ");
+      expect(md, doc.join("/")).toContain(KEPT);
+      expect(md, doc.join("/")).not.toMatch(
+        /keeps only (a|its|their|each token's) sha256|only the token's sha256/i,
+      );
+    }
+  });
+
   it("claims no analytics and no paid plan", () => {
     expect(ALL.join("\n")).not.toMatch(/paid plan|pricing/i);
     expect(PRIVACY_PAGE.sections.map((s) => s.id)).not.toContain("browser-extension");
+    // The extension's section is EXTENSION_PRIVACY, rendered once by components/site/ExtensionPrivacy.tsx.
+    expect(EXTENSION_PRIVACY.id).toBe("browser-extension");
   });
 
   it("puts the downloaded ledger where the relative --ledger path finds it", () => {

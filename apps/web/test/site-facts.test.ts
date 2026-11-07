@@ -858,6 +858,7 @@ describe("the chrome's landmarks and headings", () => {
     expect(row).toMatch(
       /<span className="shrink-0 whitespace-nowrap">\s*<SignOutButton \/>\s*<\/span>/,
     );
+    expect(row).toContain('<Link href="/extension"');
   });
 });
 
@@ -921,6 +922,20 @@ describe("the sign-in page", () => {
     const page = text(WEB, "src", "app", "login", "page.tsx");
     expect(page).toContain("<SignInButton next={safeNext} />");
     expect(page).toContain('next.startsWith("/console") ? next : "/console"');
+    expect(page).toContain("const safeNext = extensionNextPath(next) ?? consoleNext;");
+  });
+
+  it("says on the Browser extension page that the extension is not released yet", () => {
+    const page = text(WEB, "src", "app", "extension", "page.tsx");
+    expect(page).toMatch(
+      /<Notice tone="info">\s*The Probarion extension for Chrome is not released yet\.\s*<\/Notice>/,
+    );
+    // Its intro puts what the extension does in the future tense, as /privacy does.
+    const words = page.replace(/\s+/g, " ");
+    expect(words).toContain(
+      "The extension will send invoices to wait for your confirmation and show what waits for you, but it can't pay or approve: an invoice it sends will be paid only after you confirm it in the console with your wallet.",
+    );
+    expect(words).not.toContain("The extension sends invoices");
   });
 });
 
