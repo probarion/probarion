@@ -86,7 +86,7 @@ export interface NewInvoice {
   amountIssue: AmountIssue | null;
   /** sha256 of the normalised text (fingerprintText): the duplicate guard's key. */
   fingerprint: string;
-  /** HMAC of the vault, the payee and the invoice number (pipeline.ts invoiceNumberKey), or null when none. */
+  /** HMAC of the vault, the payee and the invoice number (number-key.ts invoiceNumberKey), or null when none. */
   invoiceNumberKey: string | null;
   requestId: string;
   createdBy: string;
