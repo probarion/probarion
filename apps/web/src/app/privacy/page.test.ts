@@ -19,11 +19,13 @@ describe("/privacy", () => {
       "ten minutes",
       "not released yet",
       "set to end and revoked",
-      "its record is deleted the next time anyone asks for a code",
+      "its record is deleted the next time a code is made, for anyone",
       "a sixth connection on the same network ends the oldest one",
     ]) {
       expect(html, fact).toContain(fact);
     }
+    // The sweep is the first statement of ext_code_create (migration 0013): it runs only when a code is made.
+    expect(html).not.toContain("anyone asks for a code");
   });
 
   it("says when it was last updated, above the first section", () => {
