@@ -63,13 +63,19 @@ export function checkAnchor(id: CheckId): string {
   return `check-${id}`;
 }
 
-/** All checks, or the comma-separated letters in `only`. An unknown letter throws, so a typo fails the build. */
+/**
+ * All checks, or the comma-separated letters in `only`. An unknown or repeated letter throws, so a
+ * typo fails the build.
+ */
 export function selectChecks(only?: string): CheckId[] {
   const all = Object.keys(CHECK_NAMES) as CheckId[];
   if (only === undefined || only.trim() === "") return all;
+  const seen = new Set<string>();
   return only.split(",").map((raw) => {
     const id = raw.trim();
     if (!(all as string[]).includes(id)) throw new Error(`VerifierChecks: unknown check "${id}"`);
+    if (seen.has(id)) throw new Error(`VerifierChecks: repeated check "${id}"`);
+    seen.add(id);
     return id as CheckId;
   });
 }

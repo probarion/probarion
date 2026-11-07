@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { CHECK_NAMES, VAULT_ERROR_CODES } from "@probarion/core";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -28,7 +28,11 @@ describe("the spend checks", () => {
     const start = rs.indexOf("pub fn evaluate(");
     expect(start).toBeGreaterThan(-1);
     const body = rs.slice(start, rs.indexOf("Ok(Approved", start));
-    const order = [...new Set([...body.matchAll(/ErrorCode::([A-Za-z]+)/g)].map((m) => m[1]))];
+    const codes = [...body.matchAll(/ErrorCode::([A-Za-z]+)/g)].map((m) => m[1]);
+    // One check may name its code twice in a row: NoMandate for "no such position" and for "no
+    // mandate there" (checks.rs:32-33). Only those adjacent repeats collapse, so a later check that
+    // reuses an earlier code counts as a check of its own and breaks the 14.
+    const order = codes.filter((code, at) => at === 0 || codes[at - 1] !== code);
     expect(order).toHaveLength(14);
     expect(SPEND_CHECKS.map((c) => c.code)).toEqual(order);
     for (const c of SPEND_CHECKS) expect(c.question.endsWith("?"), c.code).toBe(true);
@@ -55,10 +59,32 @@ describe("the vault error codes", () => {
 describe("the SDK error classes", () => {
   // testing/ holds the test doubles (FakePanic, FakeRawPanic, FakeVmError, FakeRpcFault), which are
   // not SDK errors. walkFiles returns backslash paths on Windows, hence [\\/].
-  const sources = walkFiles(join(ROOT, "packages", "sdk", "src"), ".ts")
+  const files = walkFiles(join(ROOT, "packages", "sdk", "src"), ".ts")
     .filter((f) => !f.endsWith(".test.ts") && !/[\\/]testing[\\/]/.test(f))
-    .map((f) => readFileSync(f, "utf8"))
-    .join("\n");
+    .map((f) => readFileSync(f, "utf8"));
+  const sources = files.join("\n");
+
+  /** A class's own source: from `export class <name>` to the next top-level export of its file. */
+  function classBody(name: string): string {
+    for (const src of files) {
+      const start = src.search(new RegExp(`^export class ${name} `, "m"));
+      if (start < 0) continue;
+      const end = src.slice(start + 1).search(/^export /m);
+      return src.slice(start, end < 0 ? undefined : start + 1 + end);
+    }
+    throw new Error(`no export class ${name} in packages/sdk/src`);
+  }
+
+  /**
+   * The `.code` literals a class body sets itself: a `super` argument, a `?? "<code>"` fallback, or
+   * a `code = "<code>"` field.
+   */
+  const ownCodes = (body: string): string[] =>
+    [
+      ...body.matchAll(
+        /super\([^;]*?,\s*"([A-Za-z]+)"|\?\?\s*"([A-Za-z]+)"|\bcode\s*=\s*"([A-Za-z]+)"/g,
+      ),
+    ].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
 
   it("document every exported error class, with its parent", () => {
     const found = [...sources.matchAll(/export class (\w+) extends (\w+)/g)]
@@ -67,46 +93,198 @@ describe("the SDK error classes", () => {
     expect(SDK_ERRORS.map((e) => `${e.name} < ${e.parent}`).sort()).toEqual(found);
   });
 
-  it("name only codes the SDK source passes to a constructor or to super", () => {
-    for (const e of SDK_ERRORS) expect(sources, e.name).toMatch(new RegExp(`[,(]\\s*"${e.code}"`));
+  it("give each class the code its own body sets, else its parent's", () => {
+    const documented = new Map(SDK_ERRORS.map((e) => [e.name, e]));
+    for (const e of SDK_ERRORS) {
+      const own = ownCodes(classBody(e.name));
+      if (own.length > 0) {
+        expect(own, `the code ${e.name} sets in its own body`).toContain(e.code);
+        continue;
+      }
+      const parent = documented.get(e.parent);
+      if (parent !== undefined) {
+        expect(e.code, `${e.name} sets no code, so it carries ${e.parent}'s`).toBe(parent.code);
+        continue;
+      }
+      // The base class takes its code from each caller. Its row shows one of them as `.code` and
+      // names every code the SDK builds it with, in backticks, in `when`.
+      const built = [
+        ...new Set(
+          [...sources.matchAll(new RegExp(`new ${e.name}\\([^;]*?,\\s*"([A-Za-z]+)"`, "g"))].map(
+            (m) => m[1],
+          ),
+        ),
+      ].sort();
+      const named = [...new Set([...e.when.matchAll(/`([A-Za-z]+)`/g)].map((m) => m[1]))].sort();
+      expect(built.length, `the SDK builds ${e.name} with a code`).toBeGreaterThan(0);
+      expect(named, `the codes ${e.name}'s row names`).toEqual(built);
+      expect(built, e.name).toContain(e.code);
+    }
   });
 });
 
 describe("the HTTP error codes", () => {
-  // The (status, code) pairs the scan below cannot see. Each one names the file under apps/web/src
-  // that holds its code, and the test reads that file only, so a code renamed there fails it.
-  // api/auth/verify returns problem(401, result.reason) (reasons in lib/auth/verify.ts).
-  // api/canary/attempt returns problem(STATUS[r.reason], r.reason) (reasons in
-  // lib/canary/service.ts; its 502 failed is the same pair as the invoices route's json() answer).
-  // The console invoices route sends `duplicate` and `failed` through json(). Pairs the scan
-  // already finds (401 challenge_missing_or_expired, 400 empty, 409 busy, 429 budget,
-  // 503 not_ready) are not listed here.
-  const EXTRA_HTTP: readonly (readonly [number, string, string])[] = [
-    [400, "too_long", "lib/canary/service.ts"],
-    [401, "bad_signature", "lib/auth/verify.ts"],
-    [401, "invalid_input", "lib/auth/verify.ts"],
-    [409, "duplicate", "app/api/console/[vault]/invoices/route.ts"],
-    [502, "failed", "app/api/console/[vault]/invoices/route.ts"],
-    [503, "closed", "lib/canary/service.ts"],
+  const SRC = join(WEB, "src");
+  const pathOf = (f: string) => relative(SRC, f).split(sep).join("/");
+  const at = (path: string) => readFileSync(join(SRC, path), "utf8");
+  // lib/docs is the docs data itself, which names every code, so the scans leave it out.
+  const files = [...walkFiles(SRC, ".ts"), ...walkFiles(SRC, ".tsx")]
+    .filter((f) => !/\.test\.tsx?$/.test(f) && !/[\\/]lib[\\/]docs[\\/]/.test(f))
+    .map((f) => ({ path: pathOf(f), text: readFileSync(f, "utf8") }));
+
+  // Pairs that only a helper no route calls yet returns: [status, code, the helper's file, the
+  // helper]. They stay out of HTTP_ERRORS. The last test here fails once a route can call the
+  // helper, and says to restore the row.
+  const UNROUTED_HTTP: readonly (readonly [number, string, string, string])[] = [
+    [403, "not_member", "lib/ext/auth.ts", "extMember"],
   ];
 
+  /**
+   * The top-level comma-separated parts of the bracket that opens at `open` (a call's arguments, an
+   * object's entries), as trimmed source. Strings and comments are skipped.
+   */
+  function parts(text: string, open: number): string[] {
+    const out: string[] = [];
+    let depth = 0;
+    let from = open + 1;
+    for (let i = open; i < text.length; i++) {
+      const ch = text.charAt(i);
+      if (ch === '"' || ch === "'" || ch === "`") {
+        for (i++; i < text.length && text.charAt(i) !== ch; i++) if (text.charAt(i) === "\\") i++;
+      } else if (ch === "/" && text.charAt(i + 1) === "/") {
+        i = text.indexOf("\n", i);
+        if (i < 0) break;
+      } else if (ch === "/" && text.charAt(i + 1) === "*") {
+        i = text.indexOf("*/", i) + 1;
+        if (i < 1) break;
+      } else if ("([{".includes(ch)) {
+        depth++;
+      } else if (")]}".includes(ch) && --depth === 0) {
+        out.push(text.slice(from, i).trim());
+        return out.filter((part) => part !== "");
+      } else if (ch === "," && depth === 1) {
+        out.push(text.slice(from, i).trim());
+        from = i + 1;
+      }
+    }
+    throw new Error(`no closing bracket for the one at ${open}`);
+  }
+
+  /** Each problem(status, code) call: its first two arguments, as source. */
+  const problemCalls = (text: string) =>
+    [...text.matchAll(/(?<!function )\bproblem\(/g)].map((m) => {
+      const [status = "", code = ""] = parts(text, (m.index ?? 0) + m[0].length - 1);
+      return { status, code, literal: /^\d{3}$/.test(status) && /^"[a-z_]+"$/.test(code) };
+    });
+
+  /**
+   * api/canary/attempt answers a rejection with problem(STATUS[r.reason], r.reason): one pair per
+   * entry of its STATUS map, which must hold exactly the reasons runAttempt rejects with.
+   */
+  function canaryPairs(): (readonly [string, string])[] {
+    const route = at("app/api/canary/attempt/route.ts");
+    expect(route, "the Canary route answers by its STATUS map").toContain(
+      "problem(STATUS[r.reason], r.reason)",
+    );
+    const map = /const STATUS = \{([^}]*)\}/.exec(route)?.[1] ?? "";
+    const pairs = [...map.matchAll(/(\w+):\s*(\d{3})/g)].map((m) => [m[2], m[1]] as const);
+    const service = at("lib/canary/service.ts");
+    const type = service.slice(service.indexOf("export type AttemptResult"));
+    const union = /reason:\s*("[a-z_]+"(?:\s*\|\s*"[a-z_]+")*)\s*;/.exec(type)?.[1] ?? "";
+    const reasons = [...union.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+    expect(reasons.length, "the rejection reasons of AttemptResult").toBeGreaterThan(0);
+    expect(pairs.map(([, r]) => r).sort(), "one STATUS entry per rejection reason").toEqual(
+      [...reasons].sort(),
+    );
+    for (const r of reasons)
+      expect(service, `runAttempt rejects with "${r}"`).toContain(`rejected("${r}"`);
+    return pairs;
+  }
+
+  /**
+   * api/auth/verify answers verifier_unavailable with 503 unavailable (a literal pair) and every
+   * other reason of LoginResult with problem(401, result.reason).
+   */
+  function signInPairs(): (readonly [string, string])[] {
+    expect(at("app/api/auth/verify/route.ts"), "the sign-in route's failure answers").toMatch(
+      /result\.reason === "verifier_unavailable"\s*\?\s*problem\(503, "unavailable"\)\s*:\s*problem\(401, result\.reason\)/,
+    );
+    const verify = at("lib/auth/verify.ts");
+    const type = verify.slice(verify.indexOf("export type LoginResult"));
+    const union = /reason:\s*((?:\|\s*)?"[a-z_]+"(?:\s*\|\s*"[a-z_]+")*)\s*;/.exec(type)?.[1] ?? "";
+    const reasons = [...union.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+    expect(reasons, "the reasons of LoginResult").toContain("verifier_unavailable");
+    for (const r of reasons) {
+      // Once in the type, and again where verifyLogin returns it.
+      expect(verify.split(`"${r}"`).length - 1, `verifyLogin returns "${r}"`).toBeGreaterThan(1);
+    }
+    return reasons.filter((r) => r !== "verifier_unavailable").map((r) => ["401", r] as const);
+  }
+
   it("are every (status, code) pair the web app returns, and nothing else", () => {
-    // lib/docs is the docs data itself, which names every code, so the scan leaves it out.
-    const source = walkFiles(join(WEB, "src"), ".ts")
-      .filter((f) => !f.endsWith(".test.ts") && !/[\\/]lib[\\/]docs[\\/]/.test(f))
-      .map((f) => readFileSync(f, "utf8"))
-      .join("\n");
-    const found = new Set<string>();
-    for (const m of source.matchAll(/problem\(\s*(\d{3}),\s*"([a-z_]+)"/g)) {
-      found.add(`${m[1]} ${m[2]}`);
+    // Pair -> the files that return it.
+    const found = new Map<string, Set<string>>();
+    const add = (status: string, code: string, path: string) => {
+      const key = `${status} ${code}`;
+      found.set(key, (found.get(key) ?? new Set()).add(path));
+    };
+    for (const f of files) {
+      // Literal problem() calls. The test below lists the others.
+      for (const c of problemCalls(f.text))
+        if (c.literal) add(c.status, c.code.slice(1, -1), f.path);
+      // json({ error: "<code>", ... }, <status>): the status is the argument after the object.
+      for (const m of f.text.matchAll(/\bjson\(/g)) {
+        const [body = "", status = ""] = parts(f.text, (m.index ?? 0) + m[0].length - 1);
+        if (!body.startsWith("{")) continue;
+        const error = parts(body, 0).find((entry) => /^error\b/.test(entry));
+        if (error === undefined) continue;
+        const code = /^error:\s*"([a-z_]+)"$/.exec(error)?.[1];
+        expect(code, `json() in ${f.path} answers with a literal error code`).toBeDefined();
+        expect(status, `the status of json({ ${error} }) in ${f.path}`).toMatch(/^\d{3}$/);
+        add(status, code ?? "", f.path);
+      }
     }
-    for (const [status, code, file] of EXTRA_HTTP) {
-      const holder = readFileSync(join(WEB, "src", file), "utf8");
-      expect(holder, `${code} in ${file}`).toContain(`"${code}"`);
-      expect(found.has(`${status} ${code}`), `${status} ${code} is found by the scan`).toBe(false);
-      found.add(`${status} ${code}`);
+    for (const [status, code] of canaryPairs())
+      add(status, code, "app/api/canary/attempt/route.ts");
+    for (const [status, code] of signInPairs()) add(status, code, "app/api/auth/verify/route.ts");
+    for (const [status, code, holder, helper] of UNROUTED_HTTP) {
+      const key = `${status} ${code}`;
+      expect([...(found.get(key) ?? [])], `${helper} in ${holder} returns ${key}`).toContain(
+        holder,
+      );
+      expect(at(holder), `${holder} defines ${helper}`).toMatch(
+        new RegExp(`function ${helper}\\(`),
+      );
+      found.get(key)?.delete(holder);
+      if (found.get(key)?.size === 0) found.delete(key);
     }
-    expect(HTTP_ERRORS.map((e) => `${e.status} ${e.code}`).sort()).toEqual([...found].sort());
+    expect(HTTP_ERRORS.map((e) => `${e.status} ${e.code}`).sort()).toEqual(
+      [...found.keys()].sort(),
+    );
+  });
+
+  it("call problem() with a literal status and code, apart from the two read above", () => {
+    const dynamic = files.flatMap((f) =>
+      problemCalls(f.text)
+        .filter((c) => !c.literal)
+        .map((c) => `${f.path}: problem(${c.status}, ${c.code})`),
+    );
+    expect(dynamic.sort(), "a problem() call the pair scan cannot read").toEqual([
+      "app/api/auth/verify/route.ts: problem(401, result.reason)",
+      "app/api/canary/attempt/route.ts: problem(STATUS[r.reason], r.reason)",
+    ]);
+  });
+
+  it("leave each UNROUTED_HTTP helper uncalled, until a route can return its pair", () => {
+    for (const [status, code, holder, helper] of UNROUTED_HTTP) {
+      const callers = files
+        .filter((f) => f.path !== holder && new RegExp(`\\b${helper}\\b`).test(f.text))
+        .map((f) => f.path);
+      expect(
+        callers,
+        `${callers.join(", ")} now names ${helper}, so a route can return ${status} ${code}: restore its row in HTTP_ERRORS (lib/docs/errors.ts) and remove it from UNROUTED_HTTP`,
+      ).toEqual([]);
+    }
   });
 });
 
@@ -120,10 +298,11 @@ describe("the verifier checks", () => {
     }
   });
 
-  it("select a subset by letter, and refuse an unknown letter", () => {
+  it("select a subset by letter, and refuse an unknown or repeated letter", () => {
     expect(selectChecks()).toEqual(Object.keys(CHECK_NAMES));
     expect(selectChecks("a, c")).toEqual(["a", "c"]);
     expect(() => selectChecks("a,z")).toThrow(/unknown check "z"/);
+    expect(() => selectChecks("a, c, a")).toThrow(/repeated check "a"/);
   });
 });
 

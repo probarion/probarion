@@ -5,7 +5,10 @@ export interface VaultErrorDoc {
   meaning: string;
   /** The methods or the spend check that raise it, in code font. */
   raisedBy: string;
-  /** True when the same call can pass later without a change (for example after a wait). */
+  /**
+   * True when retrying the same call unchanged, after waiting, is the expected way it passes. The
+   * table shows it in the "Retry helps" column.
+   */
   retryable: boolean;
   /** What to do next, one imperative sentence. */
   next: string;
@@ -113,7 +116,7 @@ export const VAULT_ERRORS: Readonly<Record<VaultErrorCode, VaultErrorDoc>> = {
     meaning: "The caller is not one of the vault's approvers.",
     raisedBy: "`approve`, `reject`",
     retryable: false,
-    next: "Send the call from one of the vault's approver accounts.",
+    next: "Send the call from one of the vault's approver accounts (the approver signs).",
   },
   NotLedgerKey: {
     meaning: "`anchor` was not signed on the vault account with the vault's ledger key.",
@@ -162,10 +165,10 @@ export const VAULT_ERRORS: Readonly<Record<VaultErrorCode, VaultErrorDoc>> = {
   },
   InsufficientDeposit: {
     meaning:
-      "Less NEAR was attached than the call needs: for `create_mandate`, the mandate's storage plus, for a NEAR payee, the payee's USDC storage registration.",
+      "Less NEAR was attached than the call needs: for `create_vault`, the factory's `min_deposit`, plus the storage of the vault wasm when the current version is embedded; for `create_mandate`, the mandate's storage plus, for a NEAR payee, the payee's USDC storage registration.",
     raisedBy: "`create_mandate`, the factory's `create_vault`",
     retryable: false,
-    next: "Attach the NEAR the call needs, knowing that `create_mandate` sends any excess back to the owner (the owner signs).",
+    next: "For `create_vault`, attach at least the `min_deposit` that the factory's `get_config` returns, plus the wasm's storage for an embedded version; for `create_mandate`, attach more NEAR, since the vault refunds the excess (the owner signs).",
   },
   RequiresOneYocto: {
     meaning:
@@ -284,7 +287,10 @@ export interface HttpErrorDoc {
   next: string;
 }
 
-/** Every (status, code) the web app returns (a test compares this list with apps/web/src). */
+/**
+ * Every (status, code) a route of the web app returns (a test compares this list with apps/web/src).
+ * A pair only a helper no route calls yet can return is left out until a route calls it.
+ */
 export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 400,
@@ -406,13 +412,6 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     meaning:
       "The signed-in account is not a member of this vault with a role that may do this; a top-up quote also needs the vault's owner on chain.",
     next: "Sign in with an account that has the needed role on this vault.",
-  },
-  {
-    status: 403,
-    code: "not_member",
-    where: "Extension API (the vault-member check, which no route calls yet)",
-    meaning: "The extension's account is not a member of this vault, or its role cannot do this.",
-    next: "Use the extension with an account that has the needed role on this vault.",
   },
   {
     status: 404,
