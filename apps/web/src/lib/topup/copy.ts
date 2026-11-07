@@ -57,6 +57,50 @@ export function describeDeposit(r: TxResult): ResultWords | undefined {
   return undefined;
 }
 
+/**
+ * The testnet faucet's block on the USDC card (audit P0-2), all of it plain text so the page can hand it to the
+ * button. `usdc` is the fixed amount the route mints (`FAUCET_USDC` in faucet.ts), so the words follow it.
+ */
+export function faucetCopy(usdc: string) {
+  return {
+    title: `Add ${usdc} test USDC to this vault`,
+    note: "Test tokens from the Probarion team, no value. Once a day per vault.",
+    signer:
+      "The Probarion team's key signs this mint, not your wallet, and it can only mint the test token.",
+    button: "Add test USDC",
+    pending: "Adding test USDC…",
+    done: `Added ${usdc} test USDC to the vault.`,
+    unknown:
+      "The mint was sent and its result is not known yet. Check it on the explorer before you try again.",
+    unavailable:
+      "The test USDC button is not working right now. Send @probarionhq a direct message on X with your vault's name.",
+    unreachable: "The server could not be reached. Try again.",
+    slow: "NEAR answered slowly, so nothing was minted and this vault's day is not used. Try again.",
+    /** Shown in place of the button when this server has no faucet key. */
+    fallback: "Need test USDC? Send @probarionhq a direct message on X with your vault's name.",
+  };
+}
+
+export type FaucetCopy = ReturnType<typeof faucetCopy>;
+
+/** "about 3 h" or "about 20 min": how long until a refused faucet click can work. */
+export function waitText(seconds: number): string {
+  if (seconds >= 3600) return `about ${Math.ceil(seconds / 3600)} h`;
+  return `about ${Math.max(1, Math.ceil(seconds / 60))} min`;
+}
+
+/** The faucet's answer when this vault had its mint today (a UTC day: every faucet counter starts again at midnight UTC). */
+export const faucetUsedText = (retrySeconds: number) =>
+  `This vault already got its test USDC today. Try again in ${waitText(retrySeconds)}.`;
+
+/** The faucet's answer when the signed-in account's vaults had `vaults` mints today. */
+export const faucetAccountText = (retrySeconds: number, vaults: number) =>
+  `Your account already added test USDC to ${vaults} vaults today. Try again in ${waitText(retrySeconds)}.`;
+
+/** The faucet's answer when the daily cap for all vaults together is reached. */
+export const faucetCapText = (retrySeconds: number) =>
+  `Today's test USDC for all vaults is given out. Try again in ${waitText(retrySeconds)}.`;
+
 /** "2026-11-08 10:30 UTC". Text that is not a date comes back as it is. */
 export function deadlineText(iso: string): string {
   const ms = Date.parse(iso);

@@ -48,6 +48,12 @@ export interface Env {
   NEARAI_MODEL: string | null;
   /** 1Click is mainnet only (there is no testnet), so this one key serves the whole site. */
   ONECLICK_JWT: string | null;
+  /**
+   * The testnet faucet's function-call key on probarion.testnet (`ed25519:<secret>`), allowed to call only `mint` on
+   * usdc.probarion.testnet (lib/topup/faucet.ts). Unset: no faucet. Its format is checked where it is used, so a bad
+   * value turns the faucet off and not the site.
+   */
+  TESTNET_FAUCET_KEY: string | null;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   NEXT_PUBLIC_SUPABASE_URL: string;
@@ -376,6 +382,7 @@ export function loadEnv(src: Source): Env {
     NEARAI_API_KEY: opt(src.NEARAI_API_KEY),
     NEARAI_MODEL: opt(src.NEARAI_MODEL),
     ONECLICK_JWT: opt(src.ONECLICK_JWT),
+    TESTNET_FAUCET_KEY: opt(src.TESTNET_FAUCET_KEY),
     SUPABASE_URL: supabaseUrl,
     SUPABASE_SERVICE_ROLE_KEY: req("SUPABASE_SERVICE_ROLE_KEY"),
     NEXT_PUBLIC_SUPABASE_URL: publicSupabaseUrl,
