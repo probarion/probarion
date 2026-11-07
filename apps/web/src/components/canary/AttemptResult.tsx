@@ -1,9 +1,11 @@
 import c from "@/components/site/canary.module.css";
+import { NextStep } from "@/components/site/NextStep";
 import { TxLink } from "@/components/ui";
 import { CANARY_COPY, describeRaw, tokenNoun } from "@/lib/canary/copy";
 import { usdcFromUnits } from "@/lib/canary/format";
 import type { AttemptResult } from "@/lib/canary/service";
 import type { Network } from "@/lib/config";
+import { NEXT_STEP } from "@/lib/site/next-step";
 import { Chip } from "./Chip";
 
 type Done = Extract<AttemptResult, { status: "done" }>;
@@ -50,53 +52,57 @@ function CodeColumn({ code }: { code: Done["code"] }) {
 
 /**
  * One answer to an attempt, in three columns: what the model wanted, what the code decided, what the contract did.
- * What the model wrote is printed as text, as React does for every string.
+ * What the model wrote is printed as text, as React does for every string. Under them, whatever stopped it, the next
+ * step: the console, to put limits like these on the visitor's own agent.
  */
 export function AttemptResultView({ result, network }: { result: Done; network: Network }) {
   const raw = describeRaw(result.raw);
   const { proposal } = result;
   return (
-    <div className={c.columns}>
-      <section className={c.column}>
-        <h3 className={c.columnTitle}>{COPY.modelTitle}</h3>
-        {proposal ? (
-          <>
-            <p>{proposalLine(proposal, network)}</p>
-            <p className={c.reasoning}>
-              <q>{proposal.reasoning}</q>
-            </p>
-          </>
-        ) : (
-          <p>{COPY.noProposal}</p>
-        )}
-        {result.techniques.length > 0 ? (
-          <div className={c.chips}>
-            {result.techniques.map((t) => (
-              <Chip key={t}>
-                <code>{t}</code>
-              </Chip>
-            ))}
-          </div>
-        ) : null}
-      </section>
-      <section className={c.column}>
-        <h3 className={c.columnTitle}>{COPY.codeTitle}</h3>
-        <CodeColumn code={result.code} />
-      </section>
-      <section className={c.column}>
-        <h3 className={c.columnTitle}>{COPY.contractTitle}</h3>
-        <p>
-          <Chip tone={raw.tone}>
-            {result.raw.sent ? (result.raw.code ?? result.raw.status) : COPY.notSent}
-          </Chip>
-        </p>
-        <p>{raw.text}</p>
-        {result.raw.sent && result.raw.txHash ? (
+    <>
+      <div className={c.columns}>
+        <section className={c.column}>
+          <h3 className={c.columnTitle}>{COPY.modelTitle}</h3>
+          {proposal ? (
+            <>
+              <p>{proposalLine(proposal, network)}</p>
+              <p className={c.reasoning}>
+                <q>{proposal.reasoning}</q>
+              </p>
+            </>
+          ) : (
+            <p>{COPY.noProposal}</p>
+          )}
+          {result.techniques.length > 0 ? (
+            <div className={c.chips}>
+              {result.techniques.map((t) => (
+                <Chip key={t}>
+                  <code>{t}</code>
+                </Chip>
+              ))}
+            </div>
+          ) : null}
+        </section>
+        <section className={c.column}>
+          <h3 className={c.columnTitle}>{COPY.codeTitle}</h3>
+          <CodeColumn code={result.code} />
+        </section>
+        <section className={c.column}>
+          <h3 className={c.columnTitle}>{COPY.contractTitle}</h3>
           <p>
-            <TxLink network={network} hash={result.raw.txHash} label={COPY.explorer} />
+            <Chip tone={raw.tone}>
+              {result.raw.sent ? (result.raw.code ?? result.raw.status) : COPY.notSent}
+            </Chip>
           </p>
-        ) : null}
-      </section>
-    </div>
+          <p>{raw.text}</p>
+          {result.raw.sent && result.raw.txHash ? (
+            <p>
+              <TxLink network={network} hash={result.raw.txHash} label={COPY.explorer} />
+            </p>
+          ) : null}
+        </section>
+      </div>
+      <NextStep step={NEXT_STEP.canary} className={c.next} linkClassName={c.link} />
+    </>
   );
 }
