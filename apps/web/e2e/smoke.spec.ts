@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // The built site with test settings: public pages, the console redirect, security.txt and liveness. No chain, no
 // database, no wallet. The chain smoke (a real payment) is plan 03 Task 18, run by the OWNER.
@@ -60,16 +60,64 @@ test("/privacy has no browser-extension section yet (plan 06 Task 1 adds it)", a
   await expect(page.locator("#browser-extension")).toHaveCount(0);
 });
 
-for (const width of [375, 1120, 1280]) {
-  test(`the home page and its header fit at ${width} px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    expect(overflow).toBe(0);
-    const nav = await page.locator('nav[aria-label="Main"]').boundingBox();
-    expect(nav).not.toBeNull();
-    expect((nav?.x ?? 0) + (nav?.width ?? 0)).toBeLessThanOrEqual(width);
+// The test settings serve both networks (playwright.config.ts), so the header carries the network switch, its widest
+// form. The switch appears after mount: each check waits for it before it measures.
+const MAIN_NAV = 'nav[aria-label="Main"]';
+const SWITCH = `${MAIN_NAV} > ul[aria-label="Network"]`;
+
+/** How far the page, and the bar's own row, reach past their boxes: both 0 when the header fits. */
+function overflowOf(page: Page): Promise<{ page: number; bar: number }> {
+  return page.evaluate((nav) => {
+    const root = document.documentElement;
+    const bar = document.querySelector(nav);
+    return {
+      page: root.scrollWidth - root.clientWidth,
+      bar: bar === null ? -1 : bar.scrollWidth - bar.clientWidth,
+    };
+  }, MAIN_NAV);
+}
+
+/** The home page at `width`, with its network switch mounted. */
+async function homeWithSwitch(page: Page, url: string, width: number): Promise<void> {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto(url);
+  await expect(page.locator(SWITCH)).toBeAttached();
+}
+
+const ADDRESSES = [
+  { name: "Testnet", home: (baseURL: string) => new URL("/", baseURL).href },
+  {
+    name: "Mainnet",
+    home: (baseURL: string) => new URL("/", baseURL).href.replace("//localhost:", "//127.0.0.1:"),
+  },
+];
+
+for (const { name, home } of ADDRESSES) {
+  for (const width of [375, 1120, 1280, 1440]) {
+    test(`the home page and its header fit at ${width} px on the ${name} address`, async ({
+      page,
+      baseURL,
+    }) => {
+      await homeWithSwitch(page, home(baseURL ?? ""), width);
+      await expect(page.locator(`${SWITCH} [aria-current]`)).toHaveText(name);
+      // Below 761 px the switch is the phone menu's last row instead.
+      if (width > 760) await expect(page.locator(SWITCH)).toBeVisible();
+      expect(await overflowOf(page)).toEqual({ page: 0, bar: 0 });
+    });
+  }
+}
+
+// With one network served the switch renders nothing, so its bar is this one with the switch taken out: the links stay
+// in the bar from 1101 px up, as they did before the switch existed.
+for (const width of [1120, 1280]) {
+  test(`with one network served, the header keeps its links in the bar at ${width} px`, async ({
+    page,
+  }) => {
+    await homeWithSwitch(page, "/", width);
+    await page.locator(SWITCH).evaluate((el) => el.remove());
+    const nav = page.locator(MAIN_NAV);
+    await expect(nav.getByRole("link", { name: "Verify", exact: true })).toBeVisible();
+    await expect(nav.locator("summary")).toBeHidden();
+    expect(await overflowOf(page)).toEqual({ page: 0, bar: 0 });
   });
 }
