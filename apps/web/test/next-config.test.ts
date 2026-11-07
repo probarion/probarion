@@ -26,3 +26,32 @@ describe("next.config headers", () => {
     expect(await headersOf(withSentry)).toEqual(HEADERS);
   });
 });
+
+type Rewrite = { source: string; destination: string };
+type Rewrites =
+  | Rewrite[]
+  | { beforeFiles?: Rewrite[]; afterFiles?: Rewrite[]; fallback?: Rewrite[] };
+
+/** The rewrites as one list, whichever of Next's two shapes the config returns. */
+async function rewritesOf(config: typeof nextConfig): Promise<Rewrite[]> {
+  const out = ((await config.rewrites?.()) ?? []) as Rewrites;
+  if (Array.isArray(out)) return out.map(({ source, destination }) => ({ source, destination }));
+  return [...(out.beforeFiles ?? []), ...(out.afterFiles ?? []), ...(out.fallback ?? [])].map(
+    ({ source, destination }) => ({ source, destination }),
+  );
+}
+
+describe("next.config rewrites", () => {
+  const TWINS = [
+    { source: "/docs.md", destination: "/docs-md" },
+    { source: "/docs/:path*.md", destination: "/docs-md/:path*" },
+  ];
+
+  it("serve each docs page's Markdown twin from /docs-md", async () => {
+    expect(await rewritesOf(nextConfig)).toEqual(TWINS);
+  });
+
+  it("keep the same rewrites once MDX and Sentry wrap the config", async () => {
+    expect(await rewritesOf(withSentry)).toEqual(TWINS);
+  });
+});

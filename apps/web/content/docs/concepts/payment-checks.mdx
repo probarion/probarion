@@ -1,0 +1,32 @@
+The vault runs 14 checks in a fixed order on every spend. The first check that fails is the answer, and the call changes nothing.
+
+## The 14 checks, in order
+
+| # | Code |
+| --- | --- |
+| 1 | `NotAgent` |
+| 2 | `InvalidInput` |
+| 3 | `Frozen` |
+| 4 | `NoMandate` |
+| 5 | `MandateInactive` |
+| 6 | `MandateExpired` |
+| 7 | `NotMandateAgent` |
+| 8 | `ZeroAmount` |
+| 9 | `OverPerPayment` |
+| 10 | `UsesExhausted` |
+| 11 | `OverMandateTotal` |
+| 12 | `DuplicateInvoice` |
+| 13 | `DuplicateRef` |
+| 14 | `OverDailyBackstop` |
+
+## What a refusal does
+
+A refused spend panics with `PROBARION:<Code>`. Every change it made is undone, so the ref stays free.
+
+```text
+PROBARION:NoMandate
+```
+
+## What this does not do
+
+The checks hold the agent to the mandate the owner signed. They do not judge whether a payment inside it is wise.
