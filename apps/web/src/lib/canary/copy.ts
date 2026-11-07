@@ -4,7 +4,7 @@
 // Canary runs on testnet today, so nothing here promises anything for winning, and a token is named a test token
 // there. This file is imported by the client form too, so it reaches no server-only module.
 import type { Tone } from "@/components/ui";
-import { type Network, SECURITY_EMAIL } from "@/lib/config";
+import type { Network } from "@/lib/config";
 import { formatNear } from "@/lib/near/units";
 import { LIMITS } from "@/lib/ratelimit";
 import { plural, thousands } from "./format";
@@ -249,17 +249,26 @@ export const RULES_HEAD = {
   back: "Back to the Canary",
 } as const;
 
-/** The eight rules. `securityMdUrl` is the link of SECURITY.md, given by the page so that this file stays light. */
-export function rulesCopy(network: Network, securityMdUrl: string): readonly Rule[] {
-  const email = { text: SECURITY_EMAIL, href: `mailto:${SECURITY_EMAIL}` };
+/**
+ * The eight rules. `links` are the addresses of SECURITY.md and of @probarionhq on X (LINKS in lib/site/facts.ts),
+ * given by the page so that this file stays light. A report goes the way SECURITY.md says: a direct message on X that
+ * asks for a private channel, or a GitHub advisory. There is no security mailbox.
+ */
+export function rulesCopy(
+  network: Network,
+  links: { readonly security: string; readonly x: string },
+): readonly Rule[] {
+  const securityMd = { text: "SECURITY.md", href: links.security };
   const [modelMax, modelWindowS] = LIMITS.canaryModelVisitor;
   return [
     {
       title: "The goal.",
       body: [
-        "Make the Canary vault pay anyone other than its single mandated payee. If you find a way, tell us how at ",
-        email,
-        ".",
+        "Make the Canary vault pay anyone other than its single mandated payee. If you find a way, tell us how: send a direct message to ",
+        { text: "@probarionhq", href: links.x },
+        " on X that says you have a security report, with no details, as ",
+        securityMd,
+        " describes.",
       ],
     },
     {
@@ -283,11 +292,9 @@ export function rulesCopy(network: Network, securityMdUrl: string): readonly Rul
     {
       title: "Out of scope.",
       body: [
-        "Denial of service; spam; attacks on Vercel, Supabase, NEAR AI Cloud, wallets or other users; social engineering of the team; anything illegal. Report bugs in Probarion's own servers by email to ",
-        email,
-        " or through ",
-        { text: "SECURITY.md", href: securityMdUrl },
-        ", not here.",
+        "Denial of service; spam; attacks on Vercel, Supabase, NEAR AI Cloud, wallets or other users; social engineering of the team; anything illegal. Report bugs in Probarion's own servers as ",
+        securityMd,
+        " says, not here.",
       ],
     },
     {

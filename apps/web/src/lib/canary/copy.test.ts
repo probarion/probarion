@@ -94,7 +94,7 @@ function allCopy(): string[] {
       eyebrow(network),
       tokenNoun(network),
       runsOn(network),
-      ...strings(rulesCopy(network, LINKS.security)),
+      ...strings(rulesCopy(network, LINKS)),
     );
   }
   return out;
@@ -171,14 +171,14 @@ describe("a testnet-aware page", () => {
       ...strings(REPLY_TEXT),
       eyebrow("testnet"),
       runsOn("testnet"),
-      ...strings(rulesCopy("testnet", LINKS.security)),
+      ...strings(rulesCopy("testnet", LINKS)),
       ...rawCases.map((r) => describeRaw(r).text),
     ];
     expect(testnet.filter((t) => /mainnet/i.test(t))).toEqual([]);
   });
 
   it("says the testnet address runs on testnet in the rules, and the mainnet address makes no such claim", () => {
-    const fine = (n: Network) => strings(rulesCopy(n, LINKS.security).at(-1)?.body).join("");
+    const fine = (n: Network) => strings(rulesCopy(n, LINKS).at(-1)?.body).join("");
     expect(fine("testnet")).toContain("It runs on testnet, with test tokens that have no value.");
     expect(fine("mainnet")).not.toContain("test tokens");
     expect(runsOn("testnet")).toBe(
@@ -189,7 +189,7 @@ describe("a testnet-aware page", () => {
 
 describe("the numbers in the copy are the limits in code", () => {
   const limitsRule = (n: Network = "testnet") =>
-    strings(rulesCopy(n, LINKS.security).find((r) => r.title === "Limits.")?.body).join("");
+    strings(rulesCopy(n, LINKS).find((r) => r.title === "Limits.")?.body).join("");
 
   it("quotes the text length wherever a visitor can hit it", () => {
     const max = thousands(CANARY_LIMITS.maxTextChars);
@@ -316,7 +316,7 @@ describe("the scoreboard's sentences", () => {
 });
 
 describe("the rules of the challenge", () => {
-  const rules = rulesCopy("testnet", LINKS.security);
+  const rules = rulesCopy("testnet", LINKS);
   const links = (parts: readonly Part[]) =>
     parts.flatMap((p) => (typeof p === "string" ? [] : [p]));
 
@@ -333,22 +333,26 @@ describe("the rules of the challenge", () => {
     ]);
   });
 
-  it("asks for a report by email and does not offer to let the finder keep anything", () => {
+  it("asks for a report the way SECURITY.md does and does not offer to let the finder keep anything", () => {
     const goal = rules[0];
     expect(links(goal?.body ?? [])).toEqual([
-      { text: "security@probarion.xyz", href: "mailto:security@probarion.xyz" },
+      { text: "@probarionhq", href: "https://x.com/probarionhq" },
+      { text: "SECURITY.md", href: "https://github.com/probarion/probarion/blob/main/SECURITY.md" },
     ]);
     expect(strings(goal?.body).join("")).toContain(
       "pay anyone other than its single mandated payee",
     );
   });
 
-  it("sends bug reports to the email or to SECURITY.md on GitHub, and links no page that is not built", () => {
+  it("sends bug reports to SECURITY.md on GitHub, names no email address, and links no page that is not built", () => {
     const scope = rules.find((r) => r.title === "Out of scope.");
     expect(links(scope?.body ?? []).map((l) => l.href)).toEqual([
-      "mailto:security@probarion.xyz",
       "https://github.com/probarion/probarion/blob/main/SECURITY.md",
     ]);
+    // SECURITY.md reports through an X direct message or a GitHub advisory; there is no security mailbox
+    const all = rules.flatMap((r) => r.body);
+    expect(strings(all).join("")).not.toMatch(/@probarion\.xyz/);
+    expect(links(all).filter((l) => l.href.startsWith("mailto:"))).toEqual([]);
     const hrefs = [...links(rules.flatMap((r) => r.body)), CANARY_COPY.attacker].map((l) => l.href);
     for (const href of hrefs.filter((h) => h.startsWith("/"))) {
       expect(PLANNED_ROUTES).not.toContain(href.replace(/[?#].*$/, ""));
