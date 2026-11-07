@@ -484,7 +484,11 @@ describe("POST /api/canary/attempt", () => {
     });
 
     it("answers 503 when the mandate's key is not an active key here, and never signs with another one", async () => {
-      for (const pk of [pendingPk, agentB.pk.replace(/.$/, "1"), "ed25519:not-a-key"]) {
+      for (const pk of [
+        pendingPk,
+        agentB.pk.replace(/.$/, (c) => (c === "1" ? "2" : "1")),
+        "ed25519:not-a-key",
+      ]) {
         h.mandates = async () => [mandateFor(pk)];
         await notReady(await post({ text: TEXT }));
       }
