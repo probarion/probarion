@@ -54,7 +54,8 @@ export interface ModelUsage {
  *   spend, else why the transaction did not run (`TxSendFailed`, a `TxRejectedError` kind such as
  *   `NotEnoughAllowance`, `LackBalanceForState` / `NotEnoughBalance`, `TxFailed`).
  * - `unconfirmed`: `spend` was sent and may have paid. `txHash` is set whenever the sender knows it. Never
- *   send it again, least of all under a fresh `ref`: look the spend up by `ref` (`spends.get`) or wait. Until
+ *   send it again, least of all under a fresh `ref`: find the spend by `ref` in the vault's spends
+ *   (`VaultClient.listAllSpends()`; `spends.get` takes a spend id, and the contract has no lookup by ref) or wait. Until
  *   the chain shows the spend, or until `UNKNOWN_SETTLE_MS` (48 h, the transaction validity window plus a
  *   margin) has passed, this instance refuses the same invoice by code. `code` says what is unknown (`TxOutcomeUnknown`, `pending`, `callback_failed`,
  *   `unreadable_value`, or `DuplicateRef` / `DuplicateInvoice` when no spend could be found by ref).
