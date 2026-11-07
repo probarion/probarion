@@ -1,17 +1,19 @@
+import type { MandateView } from "@probarion/core";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CanaryForm } from "@/components/canary/CanaryForm";
 import { LatestAttempts, Scoreboard } from "@/components/canary/Leaderboard";
 import { ReplayView } from "@/components/canary/ReplayView";
-import { ByConstructionCard, SideCards } from "@/components/canary/StaticCards";
+import { ByConstructionCard, ReplayCards, SideCards } from "@/components/canary/StaticCards";
 import { VaultCard } from "@/components/canary/VaultCard";
 import c from "@/components/site/canary.module.css";
 import s from "@/components/site/site.module.css";
 import { brandCardClass, linePillClass } from "@/components/ui";
 import { loadBoard, loadFeed } from "@/lib/canary/board-data";
 import { CANARY_COPY, eyebrow } from "@/lib/canary/copy";
+import { loadReadiness } from "@/lib/canary/ready";
 import { summarizeVault, type VaultSummary } from "@/lib/canary/vault";
-import { canaryView } from "@/lib/canary/view";
+import { type Banner, canaryView } from "@/lib/canary/view";
 import type { Network } from "@/lib/config";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
@@ -40,7 +42,11 @@ function soft<T>(what: string, read: () => Promise<T>): Promise<T | null> {
     });
 }
 
-async function readVault(network: Network, vault: string): Promise<VaultSummary> {
+/** The vault card's reads, and its mandates as read (null when the read failed). */
+async function readVault(
+  network: Network,
+  vault: string,
+): Promise<{ summary: VaultSummary; mandates: MandateView[] | null }> {
   const consts = chainConsts(network);
   const reader = getReader(network);
   const [usdc, base, mandates] = await Promise.all([
@@ -48,7 +54,7 @@ async function readVault(network: Network, vault: string): Promise<VaultSummary>
     soft("base", () => reader.intentsBalance(consts.intents, vault, consts.allowedAssets.base)),
     soft("mandates", () => reader.listMandates(vault, 0, 10)),
   ]);
-  return summarizeVault({ usdc, base, mandates });
+  return { summary: summarizeVault({ usdc, base, mandates }), mandates };
 }
 
 /**
@@ -71,33 +77,48 @@ function Header({ network }: { network: Network }) {
   );
 }
 
+/** The replay: the banner that says why, what a visitor can do instead, the team's recorded attacks and two cards. */
+function Replay({ network, banner }: { network: Network; banner: Banner }) {
+  return (
+    <div className={`${s.site} ${s.wrap} ${c.page}`}>
+      <Header network={network} />
+      <ReplayView banner={banner} />
+      <ReplayCards />
+    </div>
+  );
+}
+
 /**
- * The public Canary. Live (or code-only) with a vault set, it has the vault read from the chain, the form, the
- * scoreboard and the latest attempts. Otherwise, or when the environment cannot be read, it is the replay of recorded
- * attacks with a banner that says why. It never fails for want of settings, and it shows no ledger (the Canary's is private).
- * It is the Canary of the network of the address it was opened at: that network's vault, chain and board.
+ * The public Canary. Live (or code-only) with a vault and the model key set, it has the vault read from the chain, the
+ * form, the scoreboard and the latest attempts, once the database and the chain agree: a private Canary tenant on this
+ * network with room in its ledger, a ledger key with gas for its anchors, and a vault that holds a mandate. Otherwise,
+ * or when the environment cannot be read, it is the replay with a banner that says why, so the page does not show a
+ * form that those checks would refuse. It never fails for want of settings, and it shows no ledger (the Canary's is
+ * private). It is the Canary of the network of the address it
+ * was opened at: that network's vault, chain and board.
  */
 export default async function CanaryPage() {
   const view = canaryView(getEnv, await softRequestNetwork());
-  if (view.kind === "replay") {
-    return (
-      <div className={`${s.site} ${s.wrap} ${c.page}`}>
-        <Header network={view.network} />
-        <ReplayView banner={view.banner} />
-      </div>
-    );
-  }
-  const [summary, board, feed] = await Promise.all([
+  if (view.kind === "replay") return <Replay network={view.network} banner={view.banner} />;
+  const readiness = await loadReadiness(view.network, view.vault);
+  if (readiness !== "ready") return <Replay network={view.network} banner={readiness} />;
+  const [vault, board, feed] = await Promise.all([
     readVault(view.network, view.vault).catch((error: unknown) => {
       // The reader could not even be built: the same "could not read" as a failed read.
       log.warn("canary.chain_unavailable", {
         error: error instanceof Error ? error.message : String(error),
       });
-      return summarizeVault({ usdc: null, base: null, mandates: null });
+      return {
+        summary: summarizeVault({ usdc: null, base: null, mandates: null }),
+        mandates: null,
+      };
     }),
     loadBoard(view.network),
     loadFeed(view.network),
   ]);
+  // A vault with no mandate answers every attempt "not ready". Mandates that could not be read are said so on the card.
+  if (vault.mandates?.length === 0) return <Replay network={view.network} banner="closed" />;
+  const { summary } = vault;
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
       <Header network={view.network} />

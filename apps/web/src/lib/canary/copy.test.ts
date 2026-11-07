@@ -20,6 +20,7 @@ import {
   REPLY_TEXT,
   RULES_HEAD,
   refusedSub,
+  replayRows,
   rulesCopy,
   runsOn,
   teamSub,
@@ -83,6 +84,8 @@ function allCopy(): string[] {
         "USDC",
       ),
     ),
+    replayRows([{ network: "testnet" }]),
+    replayRows([{ network: "testnet" }, { network: "mainnet" }]),
     limitText(1),
     limitText(41),
     limitText(60),
@@ -173,6 +176,8 @@ describe("a testnet-aware page", () => {
       runsOn("testnet"),
       ...strings(rulesCopy("testnet", LINKS)),
       ...rawCases.map((r) => describeRaw(r).text),
+      replayRows([{ network: "testnet" }]),
+      replayRows([{ network: "testnet" }, { network: "testnet" }]),
     ];
     expect(testnet.filter((t) => /mainnet/i.test(t))).toEqual([]);
   });

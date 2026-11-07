@@ -157,15 +157,22 @@ export const CANARY_COPY = {
     title: "What this page does not show",
     ipv6: "IPv6 visitors count per /64 network, so one large network can look like many visitors.",
     caps: "The hourly caps are shared, so a visitor with many network addresses can use them up for everyone.",
+    ledger:
+      "It shows no ledger: the model's answers in it can quote what visitors wrote, so it stays private. What the Canary sends to the contract is on chain for anyone to check.",
   },
   replay: {
     title: "Recorded attacks",
     off: "The live Canary is paused.",
     replay: "This is a replay of recorded attacks.",
     closed: "The live Canary is not open yet.",
-    /** Shown only when there is a row to describe. */
-    rows: "Each row is a recorded attempt, with its transaction when one was sent.",
-    empty: "No recorded attacks yet.",
+    full: "The live Canary is closed: its ledger is full.",
+    /** What a visitor can do while the live Canary is not shown. Neither needs a wallet. */
+    meanwhile: "Meanwhile:",
+    tamper: "Break a signed record",
+    tamperHref: "/#verify",
+    noWallet: "(no wallet needed)",
+    follow: "Follow @probarionhq",
+    followTail: "on X for news of the live Canary.",
     when: "When (UTC)",
     technique: "Technique",
     tried: "What it tried",
@@ -175,6 +182,19 @@ export const CANARY_COPY = {
     tableLabel: "Recorded attacks",
   },
 } as const;
+
+/**
+ * The banner's second sentence, shown only when there is a row to describe. Every row is a run of the team's own
+ * (replay.test.ts holds each transaction to a deployment record), on the networks the rows name.
+ */
+export function replayRows(entries: readonly { network: Network }[]): string {
+  const where = (["testnet", "mainnet"] as const)
+    .filter((n) => entries.some((e) => e.network === n))
+    .join(" and ");
+  return entries.length === 1
+    ? `Below is an attack from our own tests on ${where}, with what stopped it.`
+    : `Below are ${thousands(entries.length)} attacks from our own tests on ${where}, each with what stopped it.`;
+}
 
 /** The second half of the "does not show" card: the network of the address the page is opened at, and the audit. */
 export const runsOn = (network: Network): string =>
