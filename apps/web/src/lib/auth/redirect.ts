@@ -28,3 +28,11 @@ export function loginPath(next: unknown): string {
   const safe = safeNextPath(next);
   return safe === null ? "/login" : `/login?next=${encodeURIComponent(safe)}`;
 }
+
+/** The extension's connect page, with its nonce or without, exactly (lib/ext/token.ts reads the same nonce shape). */
+const EXTENSION_NEXT = /^\/extension(?:\?nonce=[A-Za-z0-9_-]{22,64})?$/;
+
+/** Where sign-in may return besides the console: `/extension` or `/extension?nonce=…`, else null. */
+export function extensionNextPath(next: unknown): string | null {
+  return typeof next === "string" && EXTENSION_NEXT.test(next) ? next : null;
+}

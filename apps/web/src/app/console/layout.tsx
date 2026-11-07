@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Container } from "@/components/site/Container";
 import { SignOutButton } from "@/components/wallet/SignInButton";
@@ -23,8 +24,13 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
           <span className="min-w-0">
             Signed in as <span className="mono wrap-anywhere">{session.accountId}</span>
           </span>
-          <span className="shrink-0 whitespace-nowrap">
-            <SignOutButton />
+          <span className="flex shrink-0 items-center gap-3">
+            <Link href="/extension" className="whitespace-nowrap underline">
+              Browser extension
+            </Link>
+            <span className="shrink-0 whitespace-nowrap">
+              <SignOutButton />
+            </span>
           </span>
         </div>
         {children}

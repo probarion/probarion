@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Container } from "@/components/site/Container";
 import { SignInButton } from "@/components/wallet/SignInButton";
 import { WalletProvider } from "@/components/wallet/WalletProvider";
+import { extensionNextPath } from "@/lib/auth/redirect";
 import { softRequestNetwork } from "@/lib/network";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -12,7 +13,8 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const { next } = await searchParams;
-  const safeNext = typeof next === "string" && next.startsWith("/console") ? next : "/console"; // no open redirect
+  const consoleNext = typeof next === "string" && next.startsWith("/console") ? next : "/console"; // no open redirect
+  const safeNext = extensionNextPath(next) ?? consoleNext;
   // The wallet list is the network's of the address this page is opened at; the session it starts is too.
   const network = await softRequestNetwork();
   return (

@@ -858,6 +858,7 @@ describe("the chrome's landmarks and headings", () => {
     expect(row).toMatch(
       /<span className="shrink-0 whitespace-nowrap">\s*<SignOutButton \/>\s*<\/span>/,
     );
+    expect(row).toContain('<Link href="/extension"');
   });
 });
 
@@ -921,6 +922,13 @@ describe("the sign-in page", () => {
     const page = text(WEB, "src", "app", "login", "page.tsx");
     expect(page).toContain("<SignInButton next={safeNext} />");
     expect(page).toContain('next.startsWith("/console") ? next : "/console"');
+    expect(page).toContain("const safeNext = extensionNextPath(next) ?? consoleNext;");
+  });
+
+  it("says on the Browser extension page that the extension is not released yet", () => {
+    expect(text(WEB, "src", "app", "extension", "page.tsx")).toMatch(
+      /<Notice tone="info">\s*The Probarion extension for Chrome is not released yet\.\s*<\/Notice>/,
+    );
   });
 });
 
