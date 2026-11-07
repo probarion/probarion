@@ -288,6 +288,12 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The sign-in page says what signing in is for (a vault, a mandate and a key that can only call
+  `spend`, or approving a held payment) and what it takes: on testnet, a NEAR testnet account, and
+  about 3.3 test NEAR to create a vault later, which stays in the vault and cannot be withdrawn. On
+  mainnet it says vaults cannot be created yet, as the factory is not deployed. Below the sign-in
+  button it links the ledger test, which needs no wallet, and the terms and the privacy notice. The
+  sign-in card had one button and no link.
 - The ledger test gives its verdict in one plain sentence beside PASS or FAIL, read from the
   verifier's result, such as "Entry 2 was changed after it was signed, so its signature no longer
   matches." It names a cause and an entry only when the verifier's own words name them, and
