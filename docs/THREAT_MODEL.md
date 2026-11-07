@@ -220,8 +220,10 @@ such a code into a token once; the page makes at most 10 tokens and codes per ac
 10 minutes. A pairing code has 40 bits, lives 10 minutes and works once; the exchange allows 10 tries
 per address and 300 in all per network in 10 minutes (`LIMITS` in `apps/web/src/lib/ratelimit.ts`).
 No code under `lib/ext` or `app/api/ext`, nor any app module it loads, imports the app's modules or
-functions that pay, sign or open a sealed key, or a signer from the SDK or `near-api-js`
-(`apps/web/test/ext-structure.test.ts`); the inbox reads the chain through the SDK's `VaultClient`,
+functions that pay, sign or open a sealed key, or a signer from the SDK, `@probarion/core` or
+`near-api-js`, or names an RPC method that sends a transaction. Outside `lib/crypto`, it derives no
+subkey of the master key but the session's, and loads neither libsodium nor tweetnacl
+(`apps/web/test/ext-structure.test.ts`). The inbox reads the chain through the SDK's `VaultClient`,
 built with no signer. A stolen token reads its account's waiting invoices, held spends and active
 mandates, and cannot pay or approve.
 

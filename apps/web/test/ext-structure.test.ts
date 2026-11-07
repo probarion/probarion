@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { isSourceFile, walk } from "./deploy-scan";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
+const REPO = join(WEB, "..", "..");
 const SRC = join(WEB, "src");
 const posix = (f: string) => relative(WEB, f).replaceAll("\\", "/");
 const isFile = (f: string) => existsSync(f) && statSync(f).isFile();
@@ -50,11 +51,13 @@ const FORBIDDEN_EXPORTS: Record<string, string[]> = {
     "reencryptInvoice",
   ],
   "src/lib/crypto/server.ts": ["masterKey"],
+  // `export * from "./keys.js"`: an Ed25519 signer from a secret key, and the secret key's bytes.
+  "@probarion/core": ["createEd25519Signer", "parseSecretKey"],
 };
 const FORBIDDEN_NAMES = Object.values(FORBIDDEN_EXPORTS).flat();
 /**
  * Names too common to refuse from every module, refused from the module where they open a sealed key. (`deriveSubkey`
- * stays allowed: the session check in lib/auth/guard.ts derives its subkey through lib/crypto/server.ts.)
+ * is left to lib/crypto/server.ts, which derives the session's subkey with it; CRYPTO_ONLY refuses it anywhere else.)
  */
 const FORBIDDEN_FROM: Record<string, string[]> = {
   "src/lib/crypto/sodium.ts": ["open"],
@@ -83,7 +86,12 @@ const isExempt = (file: string, to: string | null, name: string) =>
   to !== null &&
   EXEMPTIONS.some((e) => e.file === posix(file) && e.from === posix(to) && e.name === name);
 /** Packages that hold a signer: a namespace or default import of one would reach it as a property. */
-const SIGNING_PACKAGES = [/^@probarion\/sdk(\/|$)/, /^near-api-js(\/|$)/, /^@near-js\//];
+const SIGNING_PACKAGES = [
+  /^@probarion\/sdk(\/|$)/,
+  /^@probarion\/core(\/|$)/,
+  /^near-api-js(\/|$)/,
+  /^@near-js\//,
+];
 /** The cookie session: the extension's routes use the bearer token alone. */
 const SESSION_NAMES = [
   "cookies",
@@ -94,6 +102,38 @@ const SESSION_NAMES = [
   "sessionForAction",
   "memberForAction",
   "assertSameOrigin",
+];
+
+// Capabilities that no refused name shows: what would open a sealed agent key, sign or send by hand.
+/**
+ * The subkeys code outside lib/crypto may ask `subkey` (lib/crypto/server.ts) for: the session's, which lib/auth/guard.ts
+ * reads the session cookie with. With "agent_keys" a module would hold the key that seals every agent key, and no name it
+ * imports would show it.
+ */
+const SUBKEY_PURPOSES = ["session"];
+/** What reads or derives from the master key, or reaches libsodium itself: only modules under lib/crypto may import these. */
+const CRYPTO_ONLY: Record<string, string[]> = {
+  "src/lib/crypto/sodium.ts": ["getSodium", "parseMasterKey", "deriveSubkey", "tenantInvoiceKey"],
+};
+/** The raw crypto libraries, which open a secretbox: only this module may load one, in any form. */
+const RAW_CRYPTO_HOME = "src/lib/crypto/sodium.ts";
+const RAW_CRYPTO = /^(libsodium|tweetnacl)([-/]|$)/;
+/**
+ * Strings no module may hold: the database functions that return a sealed agent key (migration 0003) and the RPC
+ * methods that send a transaction (the SDK's SEND_METHODS). The first `it` checks both lists against their source.
+ */
+const SEALED_KEY_FUNCTIONS = ["agent_key_secret", "agent_key_secret_for"];
+const SEND_METHODS = ["send_tx", "broadcast_tx_commit", "broadcast_tx_async"];
+/**
+ * The docs' no-pay claim (THREAT_MODEL's extension paragraph, SECURITY.md's extension-token row) in the words that hold
+ * only while no exemption is in use. Once the queue's files exist, both docs must say the narrower claim instead: no
+ * function that pays, signs or opens a sealed key, and the queue's route reads the master key only to seal the invoice
+ * with sealInvoice and to key its duplicate guard.
+ */
+const NO_PAY_DOCS = ["docs/THREAT_MODEL.md", "SECURITY.md"];
+const NO_EXEMPTION_CLAIM = [
+  "the app's modules or functions that pay",
+  "derives no subkey of the master key but the session's",
 ];
 
 interface Imp {
@@ -203,6 +243,62 @@ function dynamicLoadsOf(file: string): string[] {
   return out;
 }
 
+/** The text of every string and template literal in a file, a template's parts between substitutions included. */
+function stringsOf(file: string): string[] {
+  const out: string[] = [];
+  const visit = (n: ts.Node): void => {
+    if (
+      ts.isStringLiteralLike(n) ||
+      ts.isTemplateHead(n) ||
+      ts.isTemplateMiddle(n) ||
+      ts.isTemplateTail(n)
+    ) {
+      out.push(n.text);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(parse(file));
+  return out;
+}
+
+/**
+ * Every use of `subkey` in a file (by its own name or the local name it is imported as), outside its imports, that is
+ * not a call with one string literal in SUBKEY_PURPOSES: a computed purpose, a re-export, or `subkey` passed on.
+ */
+function subkeyMisuseOf(file: string): string[] {
+  const sf = parse(file);
+  const names = new Set(["subkey"]);
+  for (const st of sf.statements) {
+    const nb = ts.isImportDeclaration(st) ? st.importClause?.namedBindings : undefined;
+    if (nb && ts.isNamedImports(nb)) {
+      for (const e of nb.elements)
+        if ((e.propertyName ?? e.name).text === "subkey") names.add(e.name.text);
+    }
+  }
+  const out: string[] = [];
+  const visit = (n: ts.Node): void => {
+    if (ts.isImportDeclaration(n)) return;
+    if (ts.isIdentifier(n) && names.has(n.text)) {
+      const call = n.parent;
+      const arg = ts.isCallExpression(call) ? call.arguments[0] : undefined;
+      const allowed =
+        ts.isCallExpression(call) &&
+        call.expression === n &&
+        call.arguments.length === 1 &&
+        arg !== undefined &&
+        ts.isStringLiteralLike(arg) &&
+        SUBKEY_PURPOSES.includes(arg.text);
+      if (!allowed) {
+        const line = sf.getLineAndCharacterOfPosition(n.getStart()).line + 1;
+        out.push(`${line}: ${call.getText().replace(/\s+/g, " ").slice(0, 80)}`);
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
 /** An app module's specifier: `@/…` or relative. Anything else is a package. */
 const isLocal = (spec: string) => spec.startsWith("@/") || spec.startsWith(".");
 
@@ -275,6 +371,35 @@ describe("the extension's server code never pays", () => {
       expect(isFile(join(WEB, e.from)), e.from).toBe(true);
       expect(exportsOf(join(WEB, e.from)), `${e.from} exports ${e.name}`).toContain(e.name);
     }
+    for (const [from, names] of Object.entries(CRYPTO_ONLY)) {
+      for (const n of names)
+        expect(exportsOf(join(WEB, from)), `${from} exports ${n}`).toContain(n);
+    }
+    expect(exportsOf(join(WEB, "src/lib/crypto/server.ts"))).toContain("subkey");
+    expect(isFile(join(WEB, RAW_CRYPTO_HOME)), RAW_CRYPTO_HOME).toBe(true);
+    const migrations = walk(join(WEB, "supabase", "migrations"))
+      .filter((f) => f.endsWith(".sql"))
+      .map((f) => readFileSync(f, "utf8"))
+      .join("\n");
+    for (const fn of SEALED_KEY_FUNCTIONS) {
+      expect(migrations, fn).toContain(`create or replace function public.${fn}(`);
+    }
+    // The RPC methods that send a transaction are exactly the SDK's SEND_METHODS.
+    const rpc = parse(join(REPO, "packages", "sdk", "src", "rpc.ts"));
+    const sends: string[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isStringLiteralLike(n)) sends.push(n.text);
+      ts.forEachChild(n, visit);
+    };
+    for (const st of rpc.statements) {
+      if (!ts.isVariableStatement(st)) continue;
+      for (const d of st.declarationList.declarations) {
+        if (ts.isIdentifier(d.name) && d.name.text === "SEND_METHODS" && d.initializer) {
+          visit(d.initializer);
+        }
+      }
+    }
+    expect(sends.sort()).toEqual([...SEND_METHODS].sort());
   });
 
   it("has the roots it is meant to check", () => {
@@ -374,6 +499,62 @@ describe("the extension's server code never pays", () => {
         ),
         `${e.file} imports ${e.name} from ${e.from}`,
       ).toBe(true);
+    }
+  });
+
+  it("asks lib/crypto for no subkey but the session's, by a literal name", () => {
+    const found = [...g.keys()]
+      .filter((f) => !posix(f).startsWith("src/lib/crypto/"))
+      .flatMap((f) => subkeyMisuseOf(f).map((s) => `${posix(f)}:${s}`));
+    expect(found).toEqual([]);
+  });
+
+  it("imports nothing, outside lib/crypto, that parses the master key, derives a subkey or reaches libsodium", () => {
+    const refused = Object.values(CRYPTO_ONLY).flat();
+    const found = [...g.entries()]
+      .filter(([f]) => !posix(f).startsWith("src/lib/crypto/"))
+      .flatMap(([f, imps]) =>
+        imps.flatMap((i) =>
+          i.names.filter((n) => refused.includes(n)).map((n) => `${posix(f)}: ${n}`),
+        ),
+      );
+    expect(found).toEqual([]);
+  });
+
+  it("loads libsodium and tweetnacl only through lib/crypto/sodium.ts, in any form", () => {
+    // Type-only imports and re-exports count too; import() and require() are refused below.
+    const found = [...g.entries()]
+      .filter(([f]) => posix(f) !== RAW_CRYPTO_HOME)
+      .flatMap(([f, imps]) =>
+        imps.filter((i) => RAW_CRYPTO.test(i.from)).map((i) => `${posix(f)}: ${i.from}`),
+      );
+    expect(found).toEqual([]);
+  });
+
+  it("names no database function that returns a sealed agent key, and no RPC method that sends a transaction", () => {
+    const refused = [...SEALED_KEY_FUNCTIONS, ...SEND_METHODS];
+    const found = [...g.keys()].flatMap((f) =>
+      stringsOf(f)
+        .filter((s) => refused.some((r) => s.includes(r)))
+        .map((s) => `${posix(f)}: ${JSON.stringify(s)}`),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("keeps the docs' no-pay claim no wider than the exemptions in use", () => {
+    // secrets.ts always exists; the queue's own files exist only once it ships.
+    const inUse = EXEMPTIONS.map((e) => e.file).filter(
+      (f) => f !== "src/lib/crypto/secrets.ts" && isFile(join(WEB, f)),
+    );
+    for (const doc of NO_PAY_DOCS) {
+      const text = readFileSync(join(REPO, doc), "utf8").replace(/\s+/g, " ");
+      for (const claim of NO_EXEMPTION_CLAIM) {
+        // Present while no exemption is in use, so that a rewording cannot switch this off; gone once one is.
+        expect(text.includes(claim), `${doc}: "${claim}" with ${inUse.length} in use`).toBe(
+          inUse.length === 0,
+        );
+      }
+      if (inUse.length > 0) expect(text, `${doc} names sealInvoice`).toContain("sealInvoice");
     }
   });
 
