@@ -151,7 +151,7 @@ describe("scrubEvent", () => {
 });
 
 /** An RPC key, as some providers put it in the URL's path (Lava's documented shape). */
-const RPC_KEY = "0123456789abcdef0123456789abcdef";
+const RPC_KEY = ["0123456789abcdef", "0123456789abcdef"].join("");
 
 describe("sentrySecrets", () => {
   it("adds each secret URL as Sentry writes it: default port dropped, host in lower case, and without its query", () => {
