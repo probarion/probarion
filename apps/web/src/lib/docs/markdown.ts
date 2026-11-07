@@ -14,10 +14,10 @@ import remarkStringify from "remark-stringify";
 import { unified } from "unified";
 import { CHECK_LABELS } from "@/lib/site/facts";
 import { richParts } from "@/lib/site/rich";
-import { AGENT_RULES } from "./agents";
+import { AGENT_RULES, agentFiles, HUB_AGENTS } from "./agents";
 import { CALLOUT_KINDS, calloutFooter, isCalloutKind } from "./callouts";
 import { errorAnchor, HTTP_ERRORS, SDK_ERRORS, VAULT_ERRORS } from "./errors";
-import { attrOf, inFile, type JsxNode, parseMarkdown, parseMdx } from "./mdast";
+import { attrOf, inFile, type JsxNode, parseMdx } from "./mdast";
 import { docsHref, findPage, mdHref } from "./registry";
 import { SPEND_CHECKS } from "./spend-checks";
 import { docsStatusRows } from "./status";
@@ -87,6 +87,11 @@ function need(node: JsxNode, name: string, file: string): string {
     throw new Error(`<${node.name}> needs ${name} in ${file}`);
   }
   return value;
+}
+
+/** An optional string attribute: absent is fine, but an empty one fails as `need` does. */
+function maybe(node: JsxNode, name: string, file: string): string | undefined {
+  return attrOf(node, name, file) === undefined ? undefined : need(node, name, file);
 }
 
 function linkTo(label: string, href: string, origin: string): PhrasingContent {
@@ -255,46 +260,58 @@ const HANDLERS: Record<string, Handler> = {
     ...ctx.convert(node.children as RootContent[]),
   ],
   HubDoors: (node, ctx) => ctx.convert(node.children as RootContent[]),
+  // The React Door's rules in the React Door's order (components/docs/hub.tsx), so a page that
+  // breaks them fails the twin, not only next build, and with the same message.
   Door(node, ctx) {
     const title = need(node, "title", ctx.file);
     const also = attrOf(node, "also", ctx.file);
     const alsoHref = attrOf(node, "alsoHref", ctx.file);
-    // The React Door's rules, so a page that breaks them fails the twin, not only next build.
     if ((also === undefined) !== (alsoHref === undefined)) {
       throw new Error(`<Door> "${title}": also and alsoHref go together in ${ctx.file}`);
     }
+    const second = maybe(node, "also", ctx.file);
+    const secondHref = maybe(node, "alsoHref", ctx.file);
     need(node, "go", ctx.file);
     const link = linkTo(title, need(node, "href", ctx.file), ctx.origin);
     return [
       para([{ type: "strong", children: [link] }, text(` (${need(node, "who", ctx.file)})`)]),
       ...blocks(ctx.convert(node.children as RootContent[])),
-      ...(also !== undefined && alsoHref !== undefined
-        ? [para([linkTo(also, alsoHref, ctx.origin)])]
+      ...(second !== undefined && secondHref !== undefined
+        ? [para([linkTo(second, secondHref, ctx.origin)])]
         : []),
     ];
   },
   HubCards: (node, ctx) => ctx.convert(node.children as RootContent[]),
   Card(node, ctx) {
-    const tag = attrOf(node, "tag", ctx.file);
     const title = linkTo(need(node, "title", ctx.file), need(node, "href", ctx.file), ctx.origin);
+    const tag = maybe(node, "tag", ctx.file);
     return [
       para([{ type: "strong", children: [title] }]),
       ...blocks(ctx.convert(node.children as RootContent[])),
-      ...(tag ? [para([inline(tag)])] : []),
+      ...(tag !== undefined ? [para([inline(tag)])] : []),
     ];
   },
+  // What HubAgents shows, from the same copy, with the last link under the same condition.
   HubAgents(node, ctx) {
     const example = need(node, "example", ctx.file);
     if (!findPage(example)) throw new Error(`HubAgents: no docs page "${example}" in ${ctx.file}`);
-    return parseMarkdown(
-      [
-        "Every page is also plain Markdown. Point a coding agent at the index, or paste a page into a chat.",
-        "",
-        `- [/llms.txt](${ctx.origin}/llms.txt): the index`,
-        `- [/llms-full.txt](${ctx.origin}/llms-full.txt): every page in one file`,
-        `- [${mdHref(example)}](${ctx.origin}${mdHref(example)}): one page`,
-      ].join("\n"),
-    ).children;
+    const files: List = {
+      type: "list",
+      ordered: false,
+      spread: false,
+      children: agentFiles(example).map((file) => ({
+        type: "listItem",
+        spread: false,
+        children: [para([linkTo(file.href, file.href, ctx.origin), text(`: ${file.note}`)])],
+      })),
+    };
+    const more = findPage(HUB_AGENTS.more.path);
+    return [
+      para([strong(HUB_AGENTS.eyebrow)]),
+      para([text(HUB_AGENTS.lede)]),
+      files,
+      ...(more ? [para([linkTo(HUB_AGENTS.more.label, docsHref(more.path), ctx.origin)])] : []),
+    ];
   },
 };
 

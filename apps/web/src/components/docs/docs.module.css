@@ -895,6 +895,10 @@ section.source code {
 .bigSearch:hover {
   border-color: var(--color-ink);
 }
+.bigSearch:focus-visible {
+  outline: 2px solid var(--color-gold-small);
+  outline-offset: 3px;
+}
 .hub .popular {
   display: flex;
   flex-wrap: wrap;
@@ -960,20 +964,23 @@ section.source code {
   border-color: var(--color-ink);
 }
 /*
- * The title link covers its card. Its focus ring moves to the card, so the whole target shows it.
+ * The title link covers its card. Where :has() works, its focus ring moves to the card, so the
+ * whole target shows it; elsewhere the link keeps the site's ring.
  */
 .cover::after {
   content: "";
   position: absolute;
   inset: 0;
 }
-.cover:focus-visible {
-  outline: none;
-}
-.door:has(.cover:focus-visible),
-.card:has(.cover:focus-visible) {
-  outline: 2px solid var(--color-gold-small);
-  outline-offset: 3px;
+@supports selector(:has(*)) {
+  .cover:focus-visible {
+    outline: none;
+  }
+  .door:has(.cover:focus-visible),
+  .card:has(.cover:focus-visible) {
+    outline: 2px solid var(--color-gold-small);
+    outline-offset: 3px;
+  }
 }
 .hub .who {
   margin: 0;
@@ -1010,6 +1017,12 @@ section.source code {
   line-height: 1.55;
   color: var(--color-mute);
 }
+/* A link in a door's or a card's text sits above the title's cover, as the second link does. */
+.hub .doorText a,
+.hub .cardText a {
+  position: relative;
+  z-index: 1;
+}
 .hub .go {
   display: flex;
   flex-wrap: wrap;
@@ -1037,8 +1050,8 @@ section.source code {
   color: var(--color-gold-bright);
 }
 /*
- * Only the second link of an ink door sits on ink. The ink door's own ring is drawn on the paper
- * outside it, so it keeps gold-small.
+ * The links inside an ink door sit on ink, so they ring in bright gold. The ink door's own ring is
+ * drawn on the paper outside it, so it keeps gold-small.
  */
 .doorInk .also:focus-visible {
   outline-color: var(--color-gold-bright);
@@ -1123,6 +1136,26 @@ section.source code {
 }
 .agentsLinks a:focus-visible,
 .agentsMore:focus-visible {
+  outline-color: var(--color-gold-bright);
+}
+/*
+ * Page prose on ink: an ink door's text and the flow strip's last step. Inline code and links take
+ * the key callout's colours, and a link rings in bright gold. A tight list item holds its text
+ * itself, so the step's code is any code outside a code block. After the other inline-code rules:
+ * rules that end in the same selector rise in specificity.
+ */
+.hub .doorInk :not(pre) > code,
+.hub .flow ol > li:last-child code:not(pre code) {
+  border-color: var(--color-band-line);
+  background: var(--color-code-active);
+  color: var(--color-band-fg);
+}
+.hub .doorInk .link,
+.hub .flow ol > li:last-child .link {
+  color: var(--color-gold-bright);
+}
+.hub .doorInk .link:focus-visible,
+.hub .flow ol > li:last-child .link:focus-visible {
   outline-color: var(--color-gold-bright);
 }
 

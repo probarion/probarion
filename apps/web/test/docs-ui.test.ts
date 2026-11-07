@@ -2,7 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createElement, isValidElement, type ReactNode } from "react";
+import { createElement, type FunctionComponent, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { bundledThemes } from "shiki";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +15,15 @@ import { CodeTabs } from "@/components/docs/CodeTabs";
 import { DocsBar } from "@/components/docs/DocsBar";
 import d from "@/components/docs/docs.module.css";
 import { Feedback } from "@/components/docs/Feedback";
-import { Card, Door, HUB_CLAIM, HubAgents, HubHero, HubSearch } from "@/components/docs/hub";
+import {
+  Card,
+  Door,
+  HUB_CLAIM,
+  HubAgents,
+  HubDoors,
+  HubHero,
+  HubSearch,
+} from "@/components/docs/hub";
 import { DOCS_COMPONENTS } from "@/components/docs/mdx";
 import { PageHead } from "@/components/docs/PageHead";
 import { Pager } from "@/components/docs/Pager";
@@ -27,11 +35,13 @@ import { BetaStripView } from "@/components/site/BetaStrip";
 import { PhoneMenu } from "@/components/site/PhoneMenu";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
+import { HUB_AGENTS } from "@/lib/docs/agents";
 import { commitFrom } from "@/lib/docs/build-info";
 import { CALLOUT_KINDS, isCalloutKind } from "@/lib/docs/callouts";
 import { copyText } from "@/lib/docs/clipboard";
-import { SHELL_IDS } from "@/lib/docs/headings";
+import { anchorsOf, SHELL_IDS } from "@/lib/docs/headings";
 import { editUrl, issueUrl, sourceUrl } from "@/lib/docs/links";
+import { mdxToMarkdown } from "@/lib/docs/markdown";
 import { docsJsonLd, docsMetadata, docsTitle } from "@/lib/docs/meta";
 import { codeText, nodeText } from "@/lib/docs/node-text";
 import { readCodeTab, writeCodeTab } from "@/lib/docs/prefs";
@@ -687,12 +697,59 @@ describe("docs.module.css", () => {
       "metaButton",
       "tocLink",
       "pagerLink",
+      "bigSearch",
     ];
     for (const control of controls) {
       expect(ring(control), control).toMatch(/outline:\s*2px solid var\(--color-gold-small\)/);
     }
     for (const control of ["sideLink", "tocLink", "tabLink"]) {
       expect(ring(control), control).toMatch(/outline-offset:\s*-2px/);
+    }
+  });
+
+  /** The declarations of every rule, nested ones too, whose selector list names `selector`. */
+  const declarationsOf = (selector: string) =>
+    [...rules.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
+      .filter((m) => (m[1] ?? "").split(",").some((s) => s.trim() === selector))
+      .map((m) => m[2] ?? "")
+      .join("\n");
+
+  it("moves a door's or a card's ring to the whole card only where :has() works", () => {
+    const supports = /@supports selector\(:has\(\*\)\)\s*\{([\s\S]*?)\n\}/.exec(rules)?.[1] ?? "";
+    expect(supports).toMatch(/\.cover:focus-visible\s*\{\s*outline:\s*none;?\s*\}/);
+    for (const card of ["door", "card"]) {
+      const ring = new RegExp(`\\.${card}:has\\(\\.cover:focus-visible\\)[^{]*\\{([^}]*)\\}`);
+      expect(ring.exec(supports)?.[1], card).toMatch(
+        /outline:\s*2px solid var\(--color-gold-small\)/,
+      );
+    }
+    // Outside that block nothing takes the cover link's own ring away.
+    expect(rules.replace(supports, "")).not.toMatch(/\.cover:focus-visible/);
+  });
+
+  it("lifts every other link in a door or a card above the title's cover", () => {
+    for (const link of [".also", ".hub .doorText a", ".hub .cardText a"]) {
+      expect(declarationsOf(link), link).toMatch(/position:\s*relative/);
+      expect(declarationsOf(link), link).toMatch(/z-index:\s*1\b/);
+    }
+  });
+
+  it("gives inline code and links on the home's ink surfaces the key callout's colours", () => {
+    const surfaces: [string, string][] = [
+      [".key", ":not(pre) > code"],
+      [".hub .doorInk", ":not(pre) > code"],
+      // A tight list item holds its text itself: `li :not(pre) > code` would miss its code.
+      [".hub .flow ol > li:last-child", "code:not(pre code)"],
+    ];
+    for (const [ink, inlineCode] of surfaces) {
+      const code = declarationsOf(`${ink} ${inlineCode}`);
+      expect(code, ink).toMatch(/border-color:\s*var\(--color-band-line\)/);
+      expect(code, ink).toMatch(/background:\s*var\(--color-code-active\)/);
+      expect(code, ink).toMatch(/color:\s*var\(--color-band-fg\)/);
+      expect(declarationsOf(`${ink} .link`), ink).toMatch(/color:\s*var\(--color-gold-bright\)/);
+      expect(declarationsOf(`${ink} .link:focus-visible`), ink).toMatch(
+        /outline-color:\s*var\(--color-gold-bright\)/,
+      );
     }
   });
 });
@@ -718,6 +775,8 @@ describe("the docs home blocks", () => {
     expect(out).toMatch(/id="popular"[^>]*data-docs-popular|data-docs-popular[^>]*id="popular"/);
   });
 
+  const links = (out: string) => out.match(/<a /g)?.length ?? 0;
+
   it("make each door one link, with an optional second link and an ink variant", () => {
     const props = {
       who: "Evaluator",
@@ -731,27 +790,111 @@ describe("the docs home blocks", () => {
     };
     const out = html(createElement(Door, props));
     expect(out).toContain("data-door");
+    expect(out).toContain(`class="${d.door} ${d.doorInk}"`);
     expect(out).toMatch(
       /<h3[^>]*><a[^>]*href="\/docs\/concepts\/payment-checks"[^>]*>Check it<\/a>/,
     );
     expect(out).toContain(">Verify a vault</a>");
     expect(out).toMatch(/aria-hidden="true">Verify it/);
+    // The title and the second link: "go" is a label, never a third link.
+    expect(links(out)).toBe(2);
     expect(() => html(createElement(Door, { ...props, alsoHref: undefined }))).toThrow(
+      /also and alsoHref go together/,
+    );
+    expect(() => html(createElement(Door, { ...props, also: undefined }))).toThrow(
       /also and alsoHref go together/,
     );
     expect(() => html(createElement(Door, { ...props, go: "" }))).toThrow(/needs go/);
   });
 
-  it("show a card's tag as code", () => {
+  it("make a door without also exactly one link, with no trailing class", () => {
     const out = html(
-      createElement(Card, {
-        title: "Errors",
+      createElement(Door, {
+        who: "Owner",
+        title: "Set up a vault",
         href: "/docs",
-        tag: "PROBARION:NoMandate",
-        children: "x",
+        go: "Read it",
+        children: "Text",
       }),
     );
-    expect(out).toContain("<code>PROBARION:NoMandate</code>");
+    expect(links(out)).toBe(1);
+    expect(out).toContain(`class="${d.door}"`);
+    expect(out).not.toContain(d.also);
+  });
+
+  it("show a card's tag as code, and no code line without one", () => {
+    const card = (tag?: string) =>
+      html(createElement(Card, { title: "Errors", href: "/docs", tag, children: "x" }));
+    expect(card("PROBARION:NoMandate")).toContain("<code>PROBARION:NoMandate</code>");
+    expect(card()).not.toContain("<code>");
+    expect(card()).not.toContain(d.cardTag);
+    expect(links(card())).toBe(1);
+    expect(() => card("")).toThrow(/<Card> needs tag/);
+  });
+
+  it("refuse an empty also or alsoHref, as a missing prop is refused", () => {
+    const door = (also: string, alsoHref: string) =>
+      html(
+        createElement(Door, {
+          who: "Owner",
+          title: "Set up a vault",
+          href: "/docs",
+          go: "Read it",
+          also,
+          alsoHref,
+          children: "Text",
+        }),
+      );
+    expect(() => door("", "/docs")).toThrow(/<Door> needs also/);
+    expect(() => door("More", " ")).toThrow(/<Door> needs alsoHref/);
+  });
+
+  it("fail a broken door or card with the twin's message, field by field in the same order", () => {
+    const door = { who: "Owner", title: "Start", href: "/docs", go: "Read it" };
+    const card = { title: "Errors", href: "/docs" };
+    const cases: ["Door" | "Card", Record<string, string>][] = [
+      ["Door", { ...door, title: "", go: "" }],
+      ["Door", { ...door, also: "More", go: "" }],
+      ["Door", { ...door, also: "", alsoHref: "/docs", go: "" }],
+      ["Door", { ...door, also: "More", alsoHref: "", go: "" }],
+      ["Door", { ...door, go: "", href: "", who: "" }],
+      ["Door", { ...door, href: "", who: "" }],
+      ["Door", { ...door, who: "" }],
+      ["Card", { ...card, title: "", href: "" }],
+      ["Card", { ...card, href: "", tag: "" }],
+      ["Card", { ...card, tag: "" }],
+    ];
+    const failure = (run: () => unknown) => {
+      try {
+        run();
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+      return "no error";
+    };
+    for (const [name, props] of cases) {
+      const component = { Door, Card }[name] as unknown as FunctionComponent<typeof props>;
+      const attrs = Object.entries(props).map(([k, v]) => `${k}="${v}"`);
+      const source = `<${name} ${attrs.join(" ")}>\nText\n</${name}>`;
+      const react = failure(() => html(createElement(component, props, "Text")));
+      const twin = failure(() => mdxToMarkdown(source, { file: "t.mdx", origin: "https://x" }));
+      expect(react, source).toMatch(/^<(Door|Card)> /);
+      expect(twin, source).toBe(`${react} in t.mdx`);
+    }
+  });
+
+  it("put on the page exactly the ids anchors.ts lists for them", () => {
+    const out = html(
+      createElement(
+        "div",
+        null,
+        createElement(HubSearch, { children: "list" }),
+        createElement(HubDoors, { children: "doors" }),
+      ),
+    );
+    const ids = [...out.matchAll(/\sid="([^"]*)"/g)].map((m) => m[1]);
+    const source = "<HubSearch>\n\n- x\n\n</HubSearch>\n\n<HubDoors>\n\n</HubDoors>";
+    expect(ids.sort()).toEqual([...anchorsOf(source)].sort());
   });
 
   it("point agents at the two llms files and one page's twin, and refuse an unknown page", () => {
@@ -759,6 +902,10 @@ describe("the docs home blocks", () => {
     for (const href of ["/llms.txt", "/llms-full.txt", "/docs/concepts/payment-checks.md"]) {
       expect(out).toContain(`href="${href}"`);
     }
+    expect(out).toContain(`>${HUB_AGENTS.eyebrow}</p>`);
+    expect(out).toContain(`<p>${HUB_AGENTS.lede}</p>`);
+    // Its page is not built yet (docs-twins.test.ts covers the link once it is).
+    expect(out).not.toContain(`>${HUB_AGENTS.more.label}</a>`);
     expect(() => html(createElement(HubAgents, { example: "no/such" }))).toThrow(/no docs page/);
   });
 });

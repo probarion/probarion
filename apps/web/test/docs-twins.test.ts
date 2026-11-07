@@ -1,8 +1,10 @@
 import { CHECK_NAMES, VAULT_ERROR_CODES } from "@probarion/core";
 import type { Root, RootContent, Table } from "mdast";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DOCS_COMPONENTS } from "@/components/docs/mdx";
-import { AGENT_RULES, AGENT_RULES_TITLE } from "@/lib/docs/agents";
+import { AGENT_RULES, AGENT_RULES_TITLE, agentFiles, HUB_AGENTS } from "@/lib/docs/agents";
 import { HTTP_ERRORS, httpAnchor, SDK_ERRORS, VAULT_ERRORS } from "@/lib/docs/errors";
 import { anchorsOf, duplicateAnchors, headingsOf, SHELL_IDS, tocOf } from "@/lib/docs/headings";
 import { llmsFull, llmsIndex } from "@/lib/docs/llms";
@@ -260,6 +262,38 @@ describe("mdxToMarkdown", () => {
       /<Door> "Start": also and alsoHref go together in test\.mdx/,
     );
   });
+
+  it("refuses an empty also, alsoHref or tag, as the components do", () => {
+    const doorWith = (attrs: string) =>
+      md(`<Door who="New here" title="Start" href="/docs" go="Go"${attrs}>\nOne.\n</Door>`);
+    expect(() => doorWith(' also="" alsoHref="/docs"')).toThrow(/<Door> needs also in test\.mdx/);
+    expect(() => doorWith(' also="More" alsoHref=" "')).toThrow(
+      /<Door> needs alsoHref in test\.mdx/,
+    );
+    expect(() => md('<Card title="x" href="/docs" tag="">\ny\n</Card>')).toThrow(
+      /<Card> needs tag in test\.mdx/,
+    );
+  });
+
+  it("writes a door without also as one link, and a card without tag without code", () => {
+    const door = md('<Door who="New here" title="Start" href="/docs" go="Go">\nOne.\n</Door>');
+    expect(door.match(/\]\(/g)).toHaveLength(1);
+    const card = md('<Card title="Errors" href="/docs">\nCodes.\n</Card>');
+    expect(card).not.toContain("`");
+    expect(card.trim()).toBe(`**[Errors](${ORIGIN}/docs.md)**\n\nCodes.`);
+  });
+
+  it("writes the agents block as the page shows it: eyebrow, lede, files, no unbuilt page", () => {
+    const out = md('<HubAgents example="concepts/payment-checks" />');
+    expect(out).toContain(`**${HUB_AGENTS.eyebrow}**`);
+    expect(out).toContain(HUB_AGENTS.lede);
+    for (const file of agentFiles("concepts/payment-checks")) {
+      expect(out).toContain(`- [${file.href}](${ORIGIN}${file.href}): ${file.note}`);
+    }
+    // The "For AI agents" page is not built yet, so neither side links it.
+    expect(findPage(HUB_AGENTS.more.path)).toBeUndefined();
+    expect(out).not.toContain(`[${HUB_AGENTS.more.label}]`);
+  });
 });
 
 describe("headings", () => {
@@ -292,6 +326,9 @@ describe("headings", () => {
     expect(anchors.has("NoMandate")).toBe(true);
     expect(anchors.has("check-b")).toBe(true);
     expect(anchors.has("check-a")).toBe(false);
+    const hub = anchorsOf("<HubSearch>\n\n- x\n\n</HubSearch>\n\n<HubDoors>\n\n</HubDoors>");
+    expect(hub.has("popular")).toBe(true);
+    expect(hub.has("choose-a-path")).toBe(true);
   });
 
   it("name the page when a generated component's prop is not a plain string", () => {
@@ -304,6 +341,12 @@ describe("headings", () => {
     expect(duplicateAnchors("## Canary\n\n<StatusTable />")).toEqual(["canary"]);
     expect(duplicateAnchors("## Check a\n\n<VerifierChecks />")).toEqual(["check-a"]);
     expect(duplicateAnchors('## Check a\n\n<VerifierChecks only="b" />')).toEqual([]);
+    expect(duplicateAnchors("## Choose a path\n\n<HubDoors>\n\n</HubDoors>")).toEqual([
+      "choose-a-path",
+    ]);
+    expect(duplicateAnchors("## Popular\n\n<HubSearch>\n\n- x\n\n</HubSearch>")).toEqual([
+      "popular",
+    ]);
     expect(
       duplicateAnchors('<ErrorCatalog kind="vault" />\n\n<ErrorCatalog kind="vault" />'),
     ).toEqual([...VAULT_ERROR_CODES]);
@@ -318,6 +361,8 @@ describe("headings", () => {
       '<ErrorCatalog kind="http" />',
       "<VerifierChecks />",
       "<StatusTable />",
+      "<HubSearch>\n\n- x\n\n</HubSearch>",
+      "<HubDoors>\n\n</HubDoors>",
     ].join("\n\n");
     expect(duplicateAnchors(all)).toEqual([]);
   });
@@ -420,6 +465,31 @@ describe("twins built from other data", () => {
     for (const c of SPEND_CHECKS) {
       expect(out).toContain(`| [\`${c.code}\`](${ORIGIN}/docs/build/errors.md#${c.code}) |`);
     }
+  });
+
+  it("link the For AI agents page from the agents block on both sides once it exists", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/docs/registry", async (importOriginal) => {
+      const real = await importOriginal<typeof import("@/lib/docs/registry")>();
+      const page = { ...real.PAGES[0], path: HUB_AGENTS.more.path, title: "For AI agents" };
+      return {
+        ...real,
+        findPage: (path: string) => (path === page.path ? page : real.findPage(path)),
+      };
+    });
+    const fresh = await import("@/lib/docs/markdown");
+    const hub = await import("@/components/docs/hub");
+    const twin = fresh.mdxToMarkdown('<HubAgents example="concepts/payment-checks" />', {
+      file: "t.mdx",
+      origin: ORIGIN,
+    });
+    expect(twin).toContain(`[${HUB_AGENTS.more.label}](${ORIGIN}/docs/${HUB_AGENTS.more.path}.md)`);
+    const page = renderToStaticMarkup(
+      createElement(hub.HubAgents, { example: "concepts/payment-checks" }),
+    );
+    expect(page).toMatch(
+      new RegExp(`<a[^>]*href="/docs/${HUB_AGENTS.more.path}"[^>]*>${HUB_AGENTS.more.label}</a>`),
+    );
   });
 
   it("keep a cell that looks like Markdown as text, as the page does", async () => {

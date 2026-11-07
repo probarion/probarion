@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { docsHref, findPage, mdHref } from "@/lib/docs/registry";
+import { agentFiles, HUB_AGENTS } from "@/lib/docs/agents";
+import { docsHref, findPage } from "@/lib/docs/registry";
 import type { DocPage } from "@/lib/docs/types";
 import d from "./docs.module.css";
 
@@ -51,7 +52,10 @@ export function HubSearch({ children }: { children: ReactNode }) {
   );
 }
 
-/** The four doors. Their heading is for the page outline and only screen readers show it. */
+/**
+ * The four doors. Their heading is for the page outline and only screen readers show it; its id is
+ * listed in lib/docs/anchors.ts, so a heading of the same name on the page is caught.
+ */
 export function HubDoors({ children }: { children: ReactNode }) {
   return (
     <section className={d.doorsWrap} aria-labelledby="choose-a-path">
@@ -68,9 +72,15 @@ function required(component: string, name: string, value: string | undefined): s
   return value;
 }
 
+/** An optional prop: absent is fine, but an empty one fails as a missing required prop does. */
+function optional(component: string, name: string, value: string | undefined): string | undefined {
+  return value === undefined ? undefined : required(component, name, value);
+}
+
 /**
  * One door. The title is the link and the whole card is its click target; `also` adds a second,
- * smaller link.
+ * smaller link. The props are checked in the order the Markdown twin checks them (markdown.ts), so
+ * a door with several faults fails with the same message on both sides.
  */
 export function Door({
   who,
@@ -91,23 +101,29 @@ export function Door({
   ink?: boolean;
   children: ReactNode;
 }) {
+  const name = required("Door", "title", title);
   if ((also === undefined) !== (alsoHref === undefined)) {
-    throw new Error(`<Door> "${title}": also and alsoHref go together`);
+    throw new Error(`<Door> "${name}": also and alsoHref go together`);
   }
+  const second = optional("Door", "also", also);
+  const secondHref = optional("Door", "alsoHref", alsoHref);
+  const action = required("Door", "go", go);
+  const target = required("Door", "href", href);
+  const audience = required("Door", "who", who);
   return (
-    <article className={`${d.door} ${ink ? d.doorInk : ""}`} data-door="">
-      <p className={d.who}>{required("Door", "who", who)}</p>
+    <article className={[d.door, ink && d.doorInk].filter(Boolean).join(" ")} data-door="">
+      <p className={d.who}>{audience}</p>
       <h3 className={d.doorTitle}>
-        <Link href={required("Door", "href", href)} className={d.cover}>
-          {required("Door", "title", title)}
+        <Link href={target} className={d.cover}>
+          {name}
         </Link>
       </h3>
       <div className={d.doorText}>{children}</div>
       <p className={d.go}>
-        <span aria-hidden="true">{required("Door", "go", go)} →</span>
-        {also !== undefined && alsoHref !== undefined && (
-          <Link href={alsoHref} className={d.also}>
-            {also}
+        <span aria-hidden="true">{action} →</span>
+        {second !== undefined && secondHref !== undefined && (
+          <Link href={secondHref} className={d.also}>
+            {second}
           </Link>
         )}
       </p>
@@ -121,7 +137,7 @@ export function HubCards({ children }: { children: ReactNode }) {
 
 /**
  * A card in a grid: the title is the link, the whole card is its click target, and `tag` shows as
- * code.
+ * code. Checked in the twin's order: title, href, then tag.
  */
 export function Card({
   title,
@@ -134,17 +150,20 @@ export function Card({
   tag?: string;
   children: ReactNode;
 }) {
+  const name = required("Card", "title", title);
+  const target = required("Card", "href", href);
+  const code = optional("Card", "tag", tag);
   return (
     <article className={d.card}>
       <h3 className={d.cardTitle}>
-        <Link href={required("Card", "href", href)} className={d.cover}>
-          {required("Card", "title", title)}
+        <Link href={target} className={d.cover}>
+          {name}
         </Link>
       </h3>
       <div className={d.cardText}>{children}</div>
-      {tag !== undefined && (
+      {code !== undefined && (
         <p className={d.cardTag}>
-          <code>{tag}</code>
+          <code>{code}</code>
         </p>
       )}
     </article>
@@ -155,38 +174,25 @@ export function Card({
 export function HubAgents({ example }: { example: string }) {
   const page = findPage(example);
   if (!page) throw new Error(`HubAgents: no docs page "${example}"`);
-  const forAgents = findPage("resources/for-ai-agents");
+  const forAgents = findPage(HUB_AGENTS.more.path);
   return (
     <div className={d.agents}>
-      <p className={d.agentsEyebrow}>For AI agents and their builders</p>
-      <p>
-        Every page is also plain Markdown. Point a coding agent at the index, or paste a page into a
-        chat.
-      </p>
+      <p className={d.agentsEyebrow}>{HUB_AGENTS.eyebrow}</p>
+      <p>{HUB_AGENTS.lede}</p>
       <ul className={d.agentsLinks}>
-        <li>
-          <a href="/llms.txt">
-            <code>/llms.txt</code>
-          </a>{" "}
-          the index
-        </li>
-        <li>
-          <a href="/llms-full.txt">
-            <code>/llms-full.txt</code>
-          </a>{" "}
-          every page in one file
-        </li>
-        <li>
-          <a href={mdHref(page.path)}>
-            <code>{mdHref(page.path)}</code>
-          </a>{" "}
-          one page
-        </li>
+        {agentFiles(page.path).map((file) => (
+          <li key={file.href}>
+            <a href={file.href}>
+              <code>{file.href}</code>
+            </a>{" "}
+            {file.note}
+          </li>
+        ))}
       </ul>
       {forAgents && (
         <p>
           <Link href={docsHref(forAgents.path)} className={d.agentsMore}>
-            For AI agents
+            {HUB_AGENTS.more.label}
           </Link>
         </p>
       )}

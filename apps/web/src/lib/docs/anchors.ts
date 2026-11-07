@@ -31,6 +31,10 @@ export function generatedAnchors(tree: Root, file = "<page>"): string[] {
       case "HubSearch":
         out.push("popular");
         break;
+      // The doors' screen-reader heading (components/docs/hub.tsx).
+      case "HubDoors":
+        out.push("choose-a-path");
+        break;
       default:
         break;
     }
