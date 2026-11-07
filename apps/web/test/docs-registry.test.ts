@@ -115,9 +115,15 @@ describe("registry helpers", () => {
     for (const g of groups) expect(g.label).toBe(SECTION_LABELS[g.section]);
   });
 
-  it("chain the pager in reading order", () => {
-    const first = PAGES[1];
-    if (first) expect(neighbours(first.path).prev?.path).toBe("");
+  it("chain the pager in reading order, with nothing before the home or after the last page", () => {
+    expect(PAGES.length).toBeGreaterThan(1);
+    PAGES.forEach((page, at) => {
+      expect(neighbours(page.path), page.path).toStrictEqual({
+        prev: PAGES[at - 1],
+        next: PAGES[at + 1],
+      });
+    });
+    expect(neighbours("")).toStrictEqual({ prev: undefined, next: PAGES[1] });
     expect(neighbours("no/such")).toEqual({});
   });
 

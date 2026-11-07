@@ -6,12 +6,14 @@ import { createElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { bundledThemes } from "shiki";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import DocsLayout from "@/app/docs/layout";
 import DocsNotFound from "@/app/docs/not-found";
 import { Breadcrumbs } from "@/components/docs/Breadcrumbs";
 import { Callout } from "@/components/docs/Callout";
 import { CodeFrame } from "@/components/docs/CodeFrame";
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { DocsBar } from "@/components/docs/DocsBar";
+import d from "@/components/docs/docs.module.css";
 import { Feedback } from "@/components/docs/Feedback";
 import { DOCS_COMPONENTS } from "@/components/docs/mdx";
 import { PageHead } from "@/components/docs/PageHead";
@@ -454,6 +456,17 @@ describe("docs metadata", () => {
     expect(docsTitle(PAGES[0] ?? article())).toBe("Probarion Docs");
   });
 
+  it("sets its own Twitter card, so the root layout's title never shows on a docs page", () => {
+    const page = article();
+    const meta = docsMetadata(page);
+    expect(meta.twitter).toMatchObject({
+      card: "summary_large_image",
+      title: "How a payment is checked · Probarion Docs",
+      description: page.description,
+    });
+    expect(JSON.stringify(meta.twitter)).toContain(OG_IMAGE.url);
+  });
+
   it("writes JSON-LD that cannot close its script tag", () => {
     const ld = docsJsonLd({ ...article(), title: "</script><b>" }, "https://probarion.xyz");
     expect(ld).not.toContain("<");
@@ -464,14 +477,23 @@ describe("docs metadata", () => {
 
 describe("the docs shell", () => {
   it("marks the current page in the sidebar and lists only sections with pages", () => {
-    const out = html(createElement(Sidebar, { current: "concepts/payment-checks" }));
+    const out = html(createElement(Sidebar, { current: "concepts/payment-checks", where: "side" }));
     expect(out).toContain('aria-label="Docs"');
+    expect(out).toContain('id="side-concepts"');
+    expect(out).toContain('aria-labelledby="side-concepts"');
     // next/link puts href after the other props, so the match takes the two in either order.
     expect(out).toMatch(
       /<a(?=[^>]*href="\/docs\/concepts\/payment-checks")(?=[^>]*aria-current="page")[^>]*>/,
     );
     expect(out).toContain("Concepts");
     expect(out).not.toContain("Operate");
+  });
+
+  it("takes the group ids' prefix from where it sits, not from its name", () => {
+    const drawer = html(createElement(Sidebar, { current: null, where: "drawer", label: "Docs" }));
+    expect(drawer).toContain('aria-label="Docs"');
+    expect(drawer).toContain('id="drawer-concepts"');
+    expect(drawer).not.toContain('id="side-');
   });
 
   it("gives the bar a search trigger that works without JavaScript, and a Contents drawer", () => {
@@ -484,6 +506,10 @@ describe("the docs shell", () => {
     expect(out).toContain("<summary");
     expect(out).toContain("Contents");
     expect(out).toContain('aria-label="Docs contents"');
+    expect(out).toContain('id="drawer-concepts"');
+    // The shortcut is announced by aria-keyshortcuts, so the visible key cap is hidden from it.
+    expect(out).toMatch(/<a[^>]*aria-keyshortcuts="Control\+K Meta\+K"/);
+    expect(out).toMatch(/<kbd[^>]*aria-hidden="true"[^>]*>Ctrl K<\/kbd>/);
     // No empty tabs nav: it shows once a tab's page exists.
     expect(out.includes('aria-label="Docs sections"')).toBe(visibleTabs().length > 0);
   });
@@ -508,6 +534,13 @@ describe("the docs shell", () => {
     expect(md).not.toBeNull();
     expect(md?.[0]).not.toContain("aria-label");
     expect(md?.[1]).toBe('.md<span class="sr-only"> (this page as Markdown)</span>');
+    // Copy page, its status region and the .md link wrap together as one group.
+    const actions = new RegExp(
+      `<span class="${d.actions}"><button[^>]*>Copy page</button><span role="status"[^>]*></span>` +
+        `<a [^>]*href="/docs/concepts/payment-checks\\.md"[^>]*>\\.md<span class="sr-only"> ` +
+        `\\(this page as Markdown\\)</span></a></span>`,
+    );
+    expect(head).toMatch(actions);
   });
 
   it("names the build commit or a local build, and links each source", () => {
@@ -569,6 +602,7 @@ describe("the ids the shell puts on a docs page", () => {
   it("are all reserved in SHELL_IDS, so a heading that takes one fails the duplicate-id check", () => {
     const page = article();
     const toc = [{ id: "the-14-checks-in-order", text: "The 14 checks, in order", depth: 2 }];
+    // The docs layout wraps every docs page, so whatever it mounts (the search dialog) counts too.
     const out = html(
       createElement(
         "div",
@@ -576,21 +610,30 @@ describe("the ids the shell puts on a docs page", () => {
         createElement(BetaStripView, { network: "testnet" }),
         createElement(BetaStripView, { network: "mainnet" }),
         createElement(SiteHeader),
-        createElement(DocsBar, { current: null, path: page.path }),
-        createElement(Sidebar, { current: page.path }),
-        createElement(Breadcrumbs, { page }),
-        createElement(TocDrop, { items: toc }),
-        createElement(PageHead, { page, minutes: 4, markdown: "# x" }),
-        createElement(SourceBox, { page, commit: null }),
-        createElement(Feedback, { page, origin: "https://probarion.xyz" }),
-        createElement(Pager, { prev: PAGES[0], next: page }),
-        createElement(Toc, { items: toc }),
-        createElement(DocsNotFound),
+        createElement(DocsLayout, {
+          children: createElement(
+            "div",
+            null,
+            createElement(DocsBar, { current: null, path: page.path }),
+            createElement(Sidebar, { current: page.path, where: "side" }),
+            createElement(Breadcrumbs, { page }),
+            createElement(TocDrop, { items: toc }),
+            createElement(PageHead, { page, minutes: 4, markdown: "# x" }),
+            createElement(SourceBox, { page, commit: null }),
+            createElement(Feedback, { page, origin: "https://probarion.xyz" }),
+            createElement(Pager, { prev: PAGES[0], next: page }),
+            createElement(Toc, { items: toc }),
+            createElement(DocsNotFound),
+          ),
+        }),
         createElement(SiteFooter),
       ),
     );
-    const layout = readFileSync(join(WEB, "src", "app", "layout.tsx"), "utf8");
-    const ids = [...`${out}\n${layout}`.matchAll(/\sid="([^"]*)"/g)].map((m) => m[1]);
+    const layouts = [
+      readFileSync(join(WEB, "src", "app", "layout.tsx"), "utf8"),
+      readFileSync(join(WEB, "src", "app", "docs", "layout.tsx"), "utf8"),
+    ].join("\n");
+    const ids = [...`${out}\n${layouts}`.matchAll(/\sid="([^"]*)"/g)].map((m) => m[1]);
     // The layout's main, the logo's gradient and both copies of the contents.
     expect(ids).toEqual(
       expect.arrayContaining(["main", "probarion-coin", "side-concepts", "drawer-concepts"]),
@@ -615,6 +658,14 @@ describe("docs.module.css", () => {
     expect(css).toMatch(/\.prose\s*\{[^}]*overflow-wrap:\s*anywhere/);
     expect(css).toMatch(/\.pre\s*\{[^}]*overflow-x:\s*auto/);
     expect(css).toMatch(/\.tableWrap\s*\{[^}]*overflow-x:\s*auto/);
+  });
+
+  it("keeps the page actions together at the end of the meta row", () => {
+    const actions = /\.actions\s*\{([^}]*)\}/.exec(rules)?.[1] ?? "";
+    expect(actions).toMatch(/display:\s*inline-flex/);
+    expect(actions).toMatch(/margin-left:\s*auto/);
+    expect(actions).toMatch(/flex-wrap:\s*nowrap/);
+    expect(rules).not.toMatch(/\.spacer\b/);
   });
 
   it("never removes the focus ring or reaches outside the module", () => {

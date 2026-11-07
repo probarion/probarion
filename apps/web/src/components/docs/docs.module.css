@@ -670,8 +670,13 @@ ol.rules > li + li {
   font-size: 13.5px;
   color: var(--color-mute);
 }
-.spacer {
-  flex: 1 1 auto;
+/* Copy page and .md: one group at the end of the row, so the two wrap together. */
+.actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 .metaButton {
   display: inline-flex;
@@ -860,11 +865,6 @@ section.source code {
   .flow ol > li + li {
     border-top: 1px solid var(--color-line);
     border-left: 0;
-  }
-}
-@media (min-width: 1180px) {
-  .tocDrop {
-    display: none;
   }
 }
 @media (max-width: 1179px) {

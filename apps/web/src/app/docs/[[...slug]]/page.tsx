@@ -75,7 +75,7 @@ export default async function DocsPage({ params }: PageProps<"/docs/[[...slug]]"
       <DocsBar current={tabOf(page)} path={page.path} />
       <div className={d.shell}>
         <div className={d.side}>
-          <Sidebar current={page.path} />
+          <Sidebar current={page.path} where="side" />
         </div>
         <article className={d.article}>
           <Breadcrumbs page={page} />

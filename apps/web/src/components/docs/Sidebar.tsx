@@ -2,9 +2,19 @@ import Link from "next/link";
 import { docsHref, groupTitleId, navLabel, sidebarGroups } from "@/lib/docs/registry";
 import d from "./docs.module.css";
 
-/** The docs contents. A Preview page has a dot and says so to screen readers. */
-export function Sidebar({ current, label = "Docs" }: { current: string | null; label?: string }) {
-  const where = label === "Docs" ? "side" : "drawer";
+/**
+ * The docs contents. A Preview page has a dot and says so to screen readers. `where` says which
+ * copy this is (the desktop column or the phone drawer), so the two copies' group ids differ.
+ */
+export function Sidebar({
+  current,
+  where,
+  label = "Docs",
+}: {
+  current: string | null;
+  where: "side" | "drawer";
+  label?: string;
+}) {
   return (
     <nav aria-label={label} className={d.sideNav}>
       <ul>

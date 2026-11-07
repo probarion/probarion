@@ -7,6 +7,8 @@ import d from "./docs.module.css";
 /**
  * H1, lede, then the chip row (status, network, type, audiences, reading time) and the page
  * actions. The Markdown link's name starts with its visible text: ".md (this page as Markdown)".
+ * The two actions, with Copy page's status region, sit in one group, so they wrap together and stay
+ * at the end of the row.
  */
 export function PageHead({
   page,
@@ -28,11 +30,12 @@ export function PageHead({
         <span>{DOC_TYPE_LABELS[page.type]}</span>
         <span>For {page.audiences.map((a) => AUDIENCE_LABELS[a]).join(", ")}</span>
         <span>{minutes} min read</span>
-        <span className={d.spacer} />
-        <CopyButton text={markdown} label="Copy page" className={d.metaButton} />
-        <a href={mdHref(page.path)} className={d.metaButton}>
-          .md<span className="sr-only"> (this page as Markdown)</span>
-        </a>
+        <span className={d.actions}>
+          <CopyButton text={markdown} label="Copy page" className={d.metaButton} />
+          <a href={mdHref(page.path)} className={d.metaButton}>
+            .md<span className="sr-only"> (this page as Markdown)</span>
+          </a>
+        </span>
       </div>
     </header>
   );

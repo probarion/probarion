@@ -8,8 +8,9 @@ export function docsTitle(page: DocPage): string {
 }
 
 /**
- * Title, description, canonical address (on metadataBase, the app origin) and Open Graph with the
- * site image.
+ * Title, description, canonical address (on metadataBase, the app origin), Open Graph and the
+ * Twitter card, both with the site image. Next merges metadata one key deep, so a page that left
+ * out `twitter` would keep the root layout's title and description in its card.
  */
 export function docsMetadata(page: DocPage): Metadata {
   const url = docsHref(page.path);
@@ -23,6 +24,12 @@ export function docsMetadata(page: DocPage): Metadata {
       title: docsTitle(page),
       description: page.description,
       url,
+      images: [OG_IMAGE],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: docsTitle(page),
+      description: page.description,
       images: [OG_IMAGE],
     },
   };

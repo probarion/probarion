@@ -42,7 +42,11 @@ export function DocsBar({ current, path }: { current: TabId | null; path: string
           aria-keyshortcuts="Control+K Meta+K"
         >
           <span>Search the docs</span>
-          <kbd className={d.kbd}>Ctrl K</kbd>
+          {/* biome-ignore lint/a11y/noAriaHiddenOnFocusable: a kbd is never focusable, and the
+              link's aria-keyshortcuts names the shortcut */}
+          <kbd className={d.kbd} aria-hidden="true">
+            Ctrl K
+          </kbd>
         </a>
         <PhoneMenu
           label="Contents"
@@ -50,7 +54,7 @@ export function DocsBar({ current, path }: { current: TabId | null; path: string
           summaryClassName={d.drawerButton}
           panelClassName={d.drawerPanel}
         >
-          <Sidebar current={path} label="Docs contents" />
+          <Sidebar current={path} where="drawer" label="Docs contents" />
         </PhoneMenu>
       </div>
     </div>
