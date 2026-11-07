@@ -1,6 +1,7 @@
 import type { VaultConfig } from "@probarion/core";
 import type { Metadata } from "next";
 import { FundUsdcButton } from "@/components/console/FundUsdcButton";
+import { TestUsdcFaucet } from "@/components/console/TestUsdcFaucet";
 import { TopUpPanel } from "@/components/console/TopUpPanel";
 import { VaultNav } from "@/components/console/VaultNav";
 import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
@@ -12,6 +13,8 @@ import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
 import { chainErrorKind } from "@/lib/near/reader";
 import { chainConsts, getReader } from "@/lib/near/server";
+import { faucetCopy } from "@/lib/topup/copy";
+import { FAUCET_USDC, faucetConfigured } from "@/lib/topup/faucet";
 import { topupPlan } from "@/lib/topup/plan";
 
 export const metadata: Metadata = { title: "Top-up" };
@@ -73,12 +76,22 @@ export default async function TopUpPage({ params }: { params: Promise<{ vault: s
       <Notice tone="warn">{plan.notice}</Notice>
       <Card title="USDC on NEAR (for NEAR payees)">
         {plan.fund.offer ? (
-          <FundUsdcButton
-            vault={vault}
-            owner={plan.fund.owner}
-            network={network}
-            token={consts.usdc}
-          />
+          <>
+            {/* Testnet only: the faucet mints test USDC into the vault, so an owner without any can still fund it. */}
+            {network === "testnet" ? (
+              <TestUsdcFaucet
+                vault={vault}
+                copy={faucetCopy(FAUCET_USDC)}
+                configured={faucetConfigured(network, env.TESTNET_FAUCET_KEY)}
+              />
+            ) : null}
+            <FundUsdcButton
+              vault={vault}
+              owner={plan.fund.owner}
+              network={network}
+              token={consts.usdc}
+            />
+          </>
         ) : (
           <p className={`text-sm ${muted}`}>{plan.fund.why}</p>
         )}

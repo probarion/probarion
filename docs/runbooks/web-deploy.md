@@ -125,6 +125,7 @@ Where things are defined (you do not edit these to deploy):
   | `NEARAI_API_KEY` | NEAR AI Cloud key; set a spend cap in the NEAR AI dashboard first | **yes** |
   | `NEARAI_MODEL` | leave unset: the SDK resolves a default | no |
   | `ONECLICK_JWT` | 1Click top-up quotes (mainnet only): one key for the whole project, used for mainnet vaults; a testnet vault is refused | **yes** |
+  | `TESTNET_FAUCET_KEY` | the testnet faucet: `ed25519:<secret>` of a function-call key on `probarion.testnet` that may call only `mint` on `usdc.probarion.testnet` ([incident runbook](../RUNBOOK.md#testnet-faucet) has the steps). A signed-in owner then gets an "Add test USDC" button on a testnet vault's Top-up tab: 25 test USDC, once a day per vault, 50 a day for all vaults. Testnet only: the route answers 404 at any other address. Unset, the tab says to ask @probarionhq instead | **yes** |
   | `CANARY_VAULT_ID`, `CANARY_MODE` | leave `CANARY_MODE` unset (it defaults to `code-only`); set the vault when the Canary is built. The vault is a network's own (3.5); `CANARY_MODE` is one switch for both | no |
   | `BASE_RPC_URL` | public Base RPC for settlement lookups, for example `https://mainnet.base.org` | no |
   | `SENTRY_DSN` | https DSN of a Sentry project | no |

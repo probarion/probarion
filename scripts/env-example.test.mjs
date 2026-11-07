@@ -43,6 +43,7 @@ const SECRETS = [
   "RESEND_API_KEY",
   "CRON_SECRET",
   "BETTERSTACK_HEARTBEAT_URL",
+  "TESTNET_FAUCET_KEY",
 ];
 
 const CANARY_MODES = ["live", "code-only", "replay", "off"];
