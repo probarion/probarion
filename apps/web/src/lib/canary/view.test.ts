@@ -7,12 +7,13 @@ const logs = quietLogs();
 const VAULT = "canary.vaults.probarion.testnet";
 /** Each network has its own Canary vault: `vault` is the testnet's, `mainnetVault` the mainnet's. */
 const env = (
-  over: Partial<Pick<CanaryEnv, "CANARY_MODE">> & {
+  over: Partial<Pick<CanaryEnv, "CANARY_MODE" | "NEARAI_API_KEY">> & {
     vault?: string | null;
     mainnetVault?: string | null;
   } = {},
 ): CanaryEnv => ({
   CANARY_MODE: over.CANARY_MODE ?? "code-only",
+  NEARAI_API_KEY: over.NEARAI_API_KEY === undefined ? "test-key" : over.NEARAI_API_KEY,
   networks: {
     testnet: { canaryVaultId: over.vault === undefined ? VAULT : over.vault },
     mainnet: { canaryVaultId: over.mainnetVault === undefined ? null : over.mainnetVault },
@@ -51,6 +52,25 @@ describe("canaryView", () => {
         network: "testnet",
       });
     }
+  });
+
+  it("is not open yet without the model key, in either live mode: every attempt would answer not ready", () => {
+    for (const CANARY_MODE of ["live", "code-only"] as const) {
+      expect(canaryView(() => env({ CANARY_MODE, NEARAI_API_KEY: null }), "testnet")).toEqual({
+        kind: "replay",
+        banner: "closed",
+        network: "testnet",
+      });
+    }
+  });
+
+  it("keeps the owner's paused and replay banners when the model key is missing too", () => {
+    expect(
+      canaryView(() => env({ CANARY_MODE: "off", NEARAI_API_KEY: null }), "testnet"),
+    ).toMatchObject({ banner: "off" });
+    expect(
+      canaryView(() => env({ CANARY_MODE: "replay", NEARAI_API_KEY: null }), "testnet"),
+    ).toMatchObject({ banner: "replay" });
   });
 
   it("does not show the live page in replay or off mode even when a vault is set", () => {

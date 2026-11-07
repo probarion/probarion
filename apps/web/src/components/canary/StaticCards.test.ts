@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Network } from "@/lib/config";
-import { ByConstructionCard, SideCards } from "./StaticCards";
+import { ByConstructionCard, ReplayCards, SideCards } from "./StaticCards";
 
 const visible = (html: string) =>
   html
@@ -43,7 +43,7 @@ describe("the two cards side by side", () => {
 
   it("says what the page does not show, in the owner's words, at the testnet address", () => {
     expect(visible(render("testnet"))).toContain(
-      "What this page does not show IPv6 visitors count per /64 network, so one large network can look like many visitors. The hourly caps are shared, so a visitor with many network addresses can use them up for everyone. This runs on testnet, and no third party has audited the code.",
+      "What this page does not show IPv6 visitors count per /64 network, so one large network can look like many visitors. The hourly caps are shared, so a visitor with many network addresses can use them up for everyone. It shows no ledger: the model's answers in it can quote what visitors wrote, so it stays private. What the Canary sends to the contract is on chain for anyone to check. This runs on testnet, and no third party has audited the code.",
     );
   });
 
@@ -61,5 +61,23 @@ describe("the two cards side by side", () => {
 
   it("is two cards", () => {
     expect([...render("testnet").matchAll(/<h2/g)]).toHaveLength(2);
+  });
+});
+
+describe("the two cards of the replay", () => {
+  const html = renderToStaticMarkup(createElement(ReplayCards));
+  const text = visible(html);
+
+  it("are the paid-to-an-attacker card and the Freysa card, which hold whether or not the Canary is live", () => {
+    expect([...html.matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1])).toEqual([
+      "Paid to an attacker: 0, by construction",
+      "Why this is not Freysa",
+    ]);
+    expect(html).toMatch(/<a[^>]*href="\/#payee"[^>]*>How the site shows this<\/a>/);
+  });
+
+  it("leave out what the live page does not show: there is no live page to describe", () => {
+    expect(text).not.toContain("What this page does not show");
+    expect(text).not.toContain("hourly caps");
   });
 });

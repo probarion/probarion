@@ -354,6 +354,21 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The Canary page shows its form only when the Canary vault and `NEARAI_API_KEY` are set, the
+  database holds a private Canary tenant for that vault on the page's network, its ledger has room,
+  its ledger key has gas for anchors, and the vault holds a mandate. It went live as soon as the vault
+  was set, with a form that could only answer "not ready" when the key, the tenant or the mandate was
+  missing. The page asks once a minute, with the same tenant and ledger key checks the attempt route
+  makes; otherwise it shows the replay.
+- Once the Canary's ledger is full, the page says the live Canary is closed instead of showing the
+  form.
+- The Canary replay shows attacks from the team's own tests, starting with the smoke run's refusal on
+  testnet: the agent key cited mandate 999 and the contract answered `NoMandate`. A test holds every
+  transaction in the list to a deployment record. The list was empty. Under the banner the page
+  offers the ledger test, which needs no wallet, and @probarionhq on X, and it shows the "paid to an
+  attacker" and Freysa cards, which hold whether or not the Canary is live.
+- The live Canary page says why it shows no ledger: the model's answers in it can quote what visitors
+  wrote, so it stays private.
 - Sign-in explains two more answers of the server in words: `unavailable` (sign-in could not finish,
   so you were not signed in) and `payload_too_large` (the wallet's answer was too large to be a
   sign-in). The page showed the bare code before.
