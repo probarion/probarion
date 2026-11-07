@@ -43,7 +43,7 @@ describe("docs/ops/MONITORING.md", () => {
     const used = [...doc.matchAll(/component:([a-z]+)/g)].map((m) => m[1] ?? "");
     const known: readonly string[] = COMPONENTS;
     expect(used.filter((c) => !known.includes(c))).toEqual([]);
-    for (const c of ["payables", "topup", "canary", "watcher", "alerts"])
+    for (const c of ["payables", "topup", "canary", "watcher", "alerts", "extension"])
       expect(used, c).toContain(c);
   });
 
