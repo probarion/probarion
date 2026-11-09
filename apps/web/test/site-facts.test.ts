@@ -638,7 +638,17 @@ describe("the live check", () => {
     const out = visibleText(html);
     expect(out).toContain(LIVE_CHECK.title);
     expect(out).toContain("No wallet or account needed");
-    expect(html).toMatch(/aria-live="polite"[^>]*>[\s\S]*The contract&#x27;s answer/);
+    expect(html).toContain("The contract&#x27;s answer");
+    // The live region holds the verdict and its sentence only, not the request preview that changes on every key.
+    const answer = html.slice(html.indexOf("The contract&#x27;s answer"));
+    const region = /<div[^>]*aria-live="polite"[^>]*>([\s\S]*?)<\/div>/.exec(answer)?.[1] ?? "";
+    expect(visibleText(region)).toContain("Would pay");
+    expect(region).not.toContain("check_spend(");
+  });
+
+  it("has its own title for a text that is not an amount, apart from the no-answer title", () => {
+    expect(LIVE_CHECK.copy.notAmountTitle).toBe("Not an amount");
+    expect(LIVE_CHECK.copy.notAmountTitle).not.toBe(LIVE_CHECK.copy.noAnswer);
   });
 
   it("is complete with no JavaScript: each scenario with its recorded answer and the date", () => {

@@ -25,11 +25,14 @@ import {
 import {
   type Answer,
   answerFromRecorded,
-  explain,
+  hintText,
   type LiveCopy,
   lastAnswer,
   nextAnswer,
   type Shown,
+  sentenceText,
+  verdictText,
+  verdictTone,
 } from "@/lib/site/live-check-view";
 import s from "./site.module.css";
 
@@ -99,7 +102,7 @@ export function LiveCheckClient({
         cache.set(c.mandateId, mandate);
       }
       try {
-        const [check, m] = await Promise.all([
+        const [checked, mandateRead] = await Promise.allSettled([
           viewCall(
             LIVE_RPC_URLS,
             LIVE_VAULT,
@@ -109,10 +112,14 @@ export function LiveCheckClient({
           ),
           mandate,
         ]);
+        if (checked.status === "rejected") throw checked.reason;
+        const check = checked.value;
         const answer: Answer = {
+          request: { mandateId: c.mandateId, units, key: c.key, scenario: matchScenario(c) },
           verdict: parseVerdict(check.value),
           raw: check.value,
-          mandate: m,
+          // A mandate that could not be read does not take the verdict down with it: it is shown as unread.
+          mandate: mandateRead.status === "fulfilled" ? mandateRead.value : undefined,
           blockHeight: check.blockHeight,
           at: new Date().toISOString(),
           rpcHost: check.rpcHost,
@@ -154,16 +161,17 @@ export function LiveCheckClient({
   const active = matchScenario(controls);
   const injected = scenarios.find((x) => x.id === active)?.injected;
   const answer = lastAnswer(shown);
+  // The panel describes the answer with the request it answers; the controls only drive the request preview.
   const units = parseUsdc(controls.amount) ?? 0n;
-  const m = answer?.mandate ?? null;
-  const verdictClass =
-    shown.kind === "failed" && shown.fallback === null
-      ? s.liveNone
-      : answer?.verdict.ok
-        ? answer.verdict.wouldHold
-          ? s.liveHold
-          : s.livePay
-        : s.liveRefuse;
+  const m = answer?.mandate;
+  const injectedIds = new Set(scenarios.filter((x) => x.injected !== undefined).map((x) => x.id));
+  const badAmount = shown.kind === "failed" && shown.reason === "badAmount";
+  const verdictClass = {
+    pay: s.livePay,
+    hold: s.liveHold,
+    refuse: s.liveRefuse,
+    none: s.liveNone,
+  }[verdictTone(shown)];
 
   return (
     <div className={s.liveGrid}>
@@ -212,6 +220,8 @@ export function LiveCheckClient({
             <input
               id="live-amount"
               inputMode="decimal"
+              aria-invalid={badAmount}
+              aria-describedby={badAmount ? "live-why" : undefined}
               value={controls.amount}
               onChange={(e) => change({ ...controls, amount: e.target.value }, true)}
             />
@@ -221,7 +231,9 @@ export function LiveCheckClient({
         <div className={s.field}>
           <span>{copy.payeeLabel}</span>
           <div className={s.payee}>
-            <code>{m === null ? copy.noPayee : payeeText(m.payee)}</code>
+            <code>
+              {m === undefined ? copy.payeeUnread : m === null ? copy.noPayee : payeeText(m.payee)}
+            </code>
             <span className={s.payeeLock}>{copy.payeeLock}</span>
           </div>
         </div>
@@ -242,54 +254,24 @@ export function LiveCheckClient({
         )}
       </div>
 
-      <div
-        className={`${s.livePanel} ${s.liveAnswer}`}
-        aria-live="polite"
-        aria-busy={shown.kind === "loading"}
-      >
+      <div className={`${s.livePanel} ${s.liveAnswer}`}>
         <h3>{copy.answerTitle}</h3>
         <p className={s.liveHint}>
-          {shown.kind === "loading"
-            ? fill(copy.asking, { vault: LIVE_VAULT })
-            : answer === null
-              ? ""
-              : fill(answer.recorded ? copy.recordedAt : copy.answeredAt, {
-                  vault: LIVE_VAULT,
-                  block: answer.blockHeight,
-                  date: answer.at.slice(0, 10),
-                  time: new Date(answer.at).toLocaleTimeString(),
-                  raw: JSON.stringify(answer.raw),
-                })}
+          {hintText(shown, copy, LIVE_VAULT, (iso) => new Date(iso).toLocaleTimeString())}
         </p>
-        <p className={`${s.liveVerdict} ${verdictClass}`}>
-          {shown.kind === "failed" && (shown.reason === "badAmount" || shown.fallback === null)
-            ? copy.noAnswer
-            : answer === null
-              ? ""
-              : answer.verdict.ok
-                ? answer.verdict.wouldHold
-                  ? copy.verdictHold
-                  : copy.verdictPay
-                : answer.verdict.code}
-        </p>
-        <p className={s.liveWhy}>
-          {shown.kind === "failed"
-            ? shown.reason === "badAmount"
-              ? copy.badAmount
-              : shown.fallback === null
-                ? copy.failedNoRecord
-                : `${copy.failed} ${explain(shown.fallback, units, injected !== undefined, copy, codes)}`
-            : answer === null
-              ? ""
-              : explain(answer, units, injected !== undefined, copy, codes)}
-        </p>
+        <div aria-live="polite">
+          <p className={`${s.liveVerdict} ${verdictClass}`}>{verdictText(shown, copy)}</p>
+          <p id="live-why" className={s.liveWhy}>
+            {sentenceText(shown, copy, codes, injectedIds)}
+          </p>
+        </div>
         {shown.kind === "failed" && shown.reason === "transport" ? (
           <button type="button" className={s.liveRetry} onClick={() => void ask(controls)}>
             {copy.retry}
           </button>
         ) : null}
         <pre className={s.liveRequest}>
-          {`check_spend({\n  request: {\n    mandate_id: ${controls.mandateId},\n    amount: "${units}",  // ${formatUsdc(units)} USDC\n    invoice_hash, ref, decision_hash,\n`}
+          {`check_spend({\n  request: {\n    mandate_id: ${controls.mandateId},\n    amount: "${units}",  // ${formatUsdc(units)} USDC\n    invoice_hash, ref, decision_hash,\n    `}
           <del className={s.liveGone}>recipient</del>
           {`  // ${copy.noRecipient}\n  },\n  signer_pk: "${(controls.key === "agent" ? agentPk : OTHER_PK).slice(0, 14)}…"  // ${controls.key === "agent" ? copy.agentKeyNote : copy.otherKeyNote}\n})`}
         </pre>
@@ -301,9 +283,11 @@ export function LiveCheckClient({
       </div>
 
       <div className={`${s.livePanel} ${s.liveMandate}`}>
-        <h3>{fill(copy.mandateTitle, { id: controls.mandateId })}</h3>
+        <h3>{fill(copy.mandateTitle, { id: answer?.request.mandateId ?? controls.mandateId })}</h3>
         <p className={s.liveHint}>{copy.mandateHint}</p>
-        {m === null ? (
+        {m === undefined ? (
+          <p>{copy.mandateUnread}</p>
+        ) : m === null ? (
           <p>{copy.noMandate}</p>
         ) : (
           <dl className={s.mandateFacts}>

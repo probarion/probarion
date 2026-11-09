@@ -3,7 +3,7 @@ import { explorerAccountUrl } from "@/lib/config";
 import { LIVE_CHECK } from "@/lib/site/facts";
 import { fill, LIVE_VAULT, type RecordedFile } from "@/lib/site/live-check";
 import recordedJson from "@/lib/site/live-check-recorded.json";
-import { answerFromRecorded } from "@/lib/site/live-check-view";
+import { answerFromRecorded, verdictWord } from "@/lib/site/live-check-view";
 import { LiveCheckClient } from "./LiveCheckClient";
 import { Rich } from "./Rich";
 import s from "./site.module.css";
@@ -24,7 +24,7 @@ function NoScriptAnswers() {
             return (
               <tr key={x.id}>
                 <th scope="row">{x.title}</th>
-                <td>{a.verdict.ok ? LIVE_CHECK.copy.verdictPay : a.verdict.code}</td>
+                <td>{verdictWord(a, LIVE_CHECK.copy)}</td>
               </tr>
             );
           })}

@@ -203,11 +203,14 @@ export const LIVE_CHECK = {
     verdictHold: "Held for a person",
     wouldPay:
       "Inside the mandate. {amount} USDC would go to {payee}, the payee the owner signed, whatever the prompt said.",
+    wouldPayUnknownPayee:
+      "Inside the mandate. {amount} USDC would be paid to the payee the owner signed, whatever the prompt said.",
     held: "Inside the mandate, but above its approval limit: the payment would wait for a person to approve it.",
     hijackTail:
       "At {max} USDC or less it would still go to {payee}, never to the address in the prompt.",
     unknownCode: "The contract refused it with {code}.",
     noAnswer: "No answer from testnet",
+    notAmountTitle: "Not an amount",
     failed: "No RPC host answered. This is the answer recorded for the same request.",
     failedNoRecord: "No RPC host answered, and there is no recorded answer for these fields.",
     badAmount: "Not an amount. Use digits and at most six decimals, up to 1,000,000.",
@@ -218,6 +221,8 @@ export const LIVE_CHECK = {
     mandateTitle: "Mandate {id}, as the chain has it",
     mandateHint: "The owner signed these limits in their own wallet. The agent cannot change them.",
     noMandate: "There is no mandate with this id.",
+    mandateUnread: "The mandate could not be read just now. Ask again to see it.",
+    payeeUnread: "could not be read",
     left: "{total} USDC ({left} left)",
     usesOf: "{uses} of {max}",
     noRecipient: "no such field",
