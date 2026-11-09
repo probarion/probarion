@@ -110,7 +110,7 @@ signs nothing and pays nothing. If no RPC host answers, the page shows the answe
    The CLI runs the same checks over the same fixture, offline, and exits 0:
 
    ```bash
-   node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json
+   npx probarion verify --offline packages/core/test/fixtures/valid-snapshot.json
    ```
 
    ```text

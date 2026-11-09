@@ -14,7 +14,14 @@ import {
 } from "@/components/ui";
 import type { Network } from "@/lib/config";
 import type { TenantKind } from "@/lib/db/tenants";
-import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
+import {
+  CLI_NOTE,
+  CLI_ON_NPM,
+  CLI_SETUP_LINES,
+  cli,
+  EVIDENCE_CLONE,
+  needsEvidenceClone,
+} from "@/lib/proof/cli";
 import { ledgerFileName } from "@/lib/proof/ledger-file";
 import { safeText } from "@/lib/proof/sanitize";
 import type { ProofErrorReason, ProofOk } from "@/lib/proof/service";
@@ -124,6 +131,17 @@ const INTO_REPO = CLI_ON_NPM ? "" : "into the repository folder ";
 const JUST_BEFORE =
   "just before you run the command (replace any earlier copy; again if the vault has acted since), then run:";
 
+/** With npx, a pre-ledger command reads the repository's evidence files from a clone in the same folder. */
+function EvidenceClone({ command }: { command: string }) {
+  if (!needsEvidenceClone(command)) return null;
+  return (
+    <p className="mt-1 text-xs">
+      It also reads the repository&apos;s evidence files: in the same folder, first run{" "}
+      <code>{EVIDENCE_CLONE}</code>.
+    </p>
+  );
+}
+
 function Unproven({ vault, rows }: { vault: string; rows: readonly UnprovenRow[] }) {
   if (rows.length === 0) return null;
   return (
@@ -139,6 +157,7 @@ function Unproven({ vault, rows }: { vault: string; rows: readonly UnprovenRow[]
             {JUST_BEFORE}
           </p>
           <code className={codeBlock}>{u.hint}</code>
+          <EvidenceClone command={u.hint} />
           {u.hint.includes("<tx hash>") ? (
             <p className="mt-1 text-xs">
               Find the tx hash on the vault&apos;s explorer page: the transaction that paid the
@@ -315,9 +334,11 @@ function VerifyYourself({
           differ from this page.
         </li>
         <li>
-          {CLI_ON_NPM ? "Run" : "From the repository folder, with the file in it, run"} the
-          open-source verifier. It needs no network and no keys, and prints the result per check for
-          that snapshot:
+          {CLI_ON_NPM
+            ? "In the folder that holds the file, run"
+            : "From the repository folder, with the file in it, run"}{" "}
+          the open-source verifier. It needs no network and no keys, and prints the result per check
+          for that snapshot:
           <code className={codeBlock}>{cli(`verify --offline ${file}`)}</code>
         </li>
         <li>
@@ -325,6 +346,7 @@ function VerifyYourself({
           <LedgerLink vault={vault} /> {INTO_REPO}
           {JUST_BEFORE}
           <code className={codeBlock}>{chainCommand(network, vault)}</code>
+          <EvidenceClone command={chainCommand(network, vault)} />
         </li>
       </ol>
       <p className={`mt-5 border-t border-ink/10 pt-4 text-xs ${muted}`}>
@@ -342,9 +364,12 @@ function VerifyYourself({
   );
 }
 
-/** While the CLI is not on npm: one line saying so, and the one-time set-up of the repository command. */
+/**
+ * The line before the commands: on npm, what npx needs; while the CLI is not on npm, one line saying so and the
+ * one-time set-up of the repository command.
+ */
 function CliSetup() {
-  if (CLI_ON_NPM) return null;
+  if (CLI_ON_NPM) return <p className="mt-3 text-sm text-ink/80">{CLI_NOTE}</p>;
   return (
     <p className="mt-3 text-sm text-ink/80">
       {CLI_NOTE} Set up once, one command per line:
@@ -507,6 +532,7 @@ function ChainCommand({ vault, network }: { vault: string; network: Network }) {
         {JUST_BEFORE}
       </p>
       <code className={codeBlock}>{chainCommand(network, vault)}</code>
+      <EvidenceClone command={chainCommand(network, vault)} />
     </>
   );
 }
