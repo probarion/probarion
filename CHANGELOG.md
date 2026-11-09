@@ -373,6 +373,22 @@ The software is an unaudited beta.
   and network, and Connect and Show a code share one limit per account and network. An account keeps
   at most 5 connections per network: a sixth ends the oldest.
 - Migration `20261108000013_extension_tokens.sql` stores the connections and pairing codes.
+- A connection can queue an invoice for the vault's owner: `POST /api/ext/invoices` takes the
+  vault, the mandate the member picked and the file (a PDF or a text file, at most 4 MiB), for a vault
+  where the connection's account is the owner or an approver, 20 per account and network in 10
+  minutes. It reads the invoice as the console upload does, runs the mandate's payee check (core's
+  `payeeHintContradiction`) and the vault contract's free `check_spend` view, and stores the
+  invoice waiting for the owner, with the checks it passed and the hold `extension.mandate_chosen`.
+  It runs no cycle, calls no model, opens no key and sends no transaction. Only the owner's
+  wallet-signed Confirm in the console pays it, and the contract checks that spend again. The same
+  invoice sent twice gives one row, and the second answer says it is a duplicate.
+- An invoice with an unclear amount, a mandate that cannot take invoices (revoked, expired, used up,
+  or with a payee Confirm cannot name), keys Confirm cannot sign with, a payee that contradicts the
+  mandate's, or a spend the contract would refuse is refused with its reason, and nothing is stored.
+  A Canary vault takes no invoices from the extension.
+- Migration `20261108000015_extension_queue.sql` adds `invoices.source` and
+  `invoices.queue_checks`, and `invoice_queue`, which stores an extension invoice in one
+  transaction and refuses one without the `extension.mandate_chosen` hold.
 
 ### Changed
 
@@ -531,6 +547,17 @@ The software is an unaudited beta.
   either ends every token with that SQL or waits out the session's pairing codes (10 minutes) before
   revoking its tokens at that network's address. The threat model lists, as a known gap, that a few dozen
   addresses can hold code pairing at its network-wide limit while Connect keeps working.
+- The console marks an invoice sent from the browser extension: the Waiting card says "Waiting for
+  you: sent from the browser extension", a queued invoice lists only its holds under "Why it waits"
+  and every check under "Checks when it was queued", and once a Confirm ran, the page says why the
+  signed ledger's purpose rule passes under the mandate the member picked. The extension's inbox says
+  where each waiting invoice came from.
+- /privacy's Browser extension section, the threat model, the security policy, the incident runbook
+  and the monitoring guide say that a connection can also queue an invoice, which waits for the
+  owner's Confirm: what is stored for it, its rate-limit bucket, who ends a leaked connection, and
+  that a queued or rejected invoice keeps its duplicate slot. Alert rule 4 (the money path) includes
+  `component:extension`. The /docs security model and "What works today" pages say the same, and
+  the /docs HTTP error table gains the Extension API rows.
 
 ### Fixed
 
@@ -667,6 +694,11 @@ The software is an unaudited beta.
   session's, loads a raw crypto package outside lib/crypto, uses the cookie session, or loads code
   dynamically. It reads imports and names: it catches a plain import, not code written to get around
   it, so review of every change to that code is the other control.
+- Since the queue, that test's claim is narrower: the extension's server code imports nothing that
+  pays or signs and, outside `lib/crypto`, nothing that opens a sealed key. The queue's route reads
+  the master key only to seal the invoice with `sealInvoice` and to key its duplicate guard, as the
+  console upload does. The test also fails if that code builds a `VaultClient` with anything but a
+  vault id and an RPC client, re-exports it, or imports the cycle's `decide`.
 
 ## 0.1.0 - 2026-11-09
 
