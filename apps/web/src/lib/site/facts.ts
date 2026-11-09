@@ -452,12 +452,27 @@ export const CHECK_LABELS: Readonly<Record<CheckId, string>> = {
   i: "Factory version",
 };
 
+/**
+ * One plain line under each name, for a reader who does not know NEAR. Each says what `verify.ts` checks, no more:
+ * h names the address and the amount, it does not prove that the money arrived.
+ */
+export const CHECK_HINTS: Readonly<Record<CheckId, string>> = {
+  a: "Every entry is signed by the vault's ledger key of its time.",
+  b: "Each entry carries the hash of the one before, so an edit breaks the chain.",
+  c: "The ledger matches the roots anchored on the vault.",
+  d: "Every payment on chain matches exactly one decision in the ledger.",
+  e: "Model advice, when used, is signed and tied to this exact place in the ledger.",
+  f: "No one holds a full-access key to the vault, and it runs a known build.",
+  g: "No key is registered for the vault in NEAR Intents, so only the vault contract can move its balance there.",
+  h: "Each withdrawal to another chain names the address in the mandate and the spend's amount.",
+  i: "If the vault came from a factory, it is Probarion's, and its version is one the factory lists.",
+};
+
 const CHECK_IDS = Object.keys(CHECK_LABELS) as CheckId[];
 
-export const CHECK_LIST: readonly { id: CheckId; label: string }[] = CHECK_IDS.map((id) => ({
-  id,
-  label: CHECK_LABELS[id],
-}));
+export const CHECK_LIST: readonly { id: CheckId; label: string; hint: string }[] = CHECK_IDS.map(
+  (id) => ({ id, label: CHECK_LABELS[id], hint: CHECK_HINTS[id] }),
+);
 
 /**
  * What the page shows before anyone clicks, with no JavaScript too. The test runs the real verifier against it. The
@@ -506,8 +521,8 @@ export const CHAIN = {
       tx: TX.nearPayment,
     },
     {
-      title: "Burned for a Base address",
-      body: "1 test USDC with the memo `WITHDRAW_TO:0x1111…1111` the vault built from the mandate. On testnet nothing leaves NEAR.",
+      title: "Withdrawal for a Base address",
+      body: "The vault burned 1 test USDC with the memo `WITHDRAW_TO:0x1111…1111`, which it built from the mandate. On testnet nothing leaves NEAR.",
       tx: TX.baseBurn,
     },
     {

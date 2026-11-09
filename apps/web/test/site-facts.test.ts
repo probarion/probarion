@@ -21,7 +21,9 @@ import {
   BAND,
   betaStrip,
   CHAIN,
+  CHECK_HINTS,
   CHECK_LABELS,
+  CHECK_LIST,
   CLOSING,
   COMPARE,
   CONTRACT_REFUSAL_CODE,
@@ -126,6 +128,43 @@ describe("the ledger test", () => {
     const report = await runChecks(SNAPSHOT);
     expect(Object.keys(CHECK_LABELS).sort()).toEqual(report.checks.map((c) => c.id).sort());
     expect(new Set(Object.values(CHECK_LABELS)).size).toBe(9);
+  });
+
+  it("says in one plain line what each check means (audit P1-11)", () => {
+    expect(Object.keys(CHECK_HINTS).sort()).toEqual(Object.keys(CHECK_LABELS).sort());
+    for (const [id, hint] of Object.entries(CHECK_HINTS)) {
+      expect(hint, id).toMatch(/^[A-Z].*\.$/);
+      expect(hint.length, id).toBeLessThanOrEqual(110);
+      expect(hint.split(/(?<=[.!?])\s+/), id).toHaveLength(1);
+    }
+    // The three the audit's verifier pass calibrated against verify.ts.
+    expect(CHECK_HINTS.c).toBe("The ledger matches the roots anchored on the vault.");
+    expect(CHECK_HINTS.e).toBe(
+      "Model advice, when used, is signed and tied to this exact place in the ledger.",
+    );
+    expect(CHECK_HINTS.g).toBe(
+      "No key is registered for the vault in NEAR Intents, so only the vault contract can move its balance there.",
+    );
+    // A withdrawal names the address; it does not prove the money arrived.
+    expect(CHECK_HINTS.h).not.toMatch(/\b(arriv|reach|paid out|went to)/i);
+    expect(CHECK_LIST.map((c) => c.hint)).toEqual(CHECK_LIST.map((c) => CHECK_HINTS[c.id]));
+  });
+
+  it("shows each check's line under its name, before anyone clicks", () => {
+    const out = visibleText(renderToStaticMarkup(createElement(Home)));
+    for (const { id, label, hint } of CHECK_LIST) {
+      expect(out, id).toContain(`${id} ${label} pass ${hint}`);
+    }
+  });
+
+  it("calls a cross-chain spend a withdrawal, not a burn, in the table and on the on-chain list", () => {
+    const out = visibleText(landing());
+    expect(out).toContain("Withdrawal to Base");
+    expect(CHAIN.rows[1].title).toBe("Withdrawal for a Base address");
+    expect(CHAIN.rows[1].body).toContain("`WITHDRAW_TO:0x1111…1111`");
+    expect(CHAIN.rows[1].body).toContain("On testnet nothing leaves NEAR.");
+    expect(out).not.toMatch(/Burned for/);
+    expect(out).not.toMatch(/paid out/i);
   });
 
   it("loads the verifier and the fixture on the first click, through dynamic imports", () => {
