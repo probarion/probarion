@@ -231,7 +231,8 @@ export const LIVE_CHECK = {
     notAmountTitle: "Not an amount",
     failed: "No RPC host answered. This is the answer recorded for the same request.",
     failedNoRecord: "No RPC host answered, and there is no recorded answer for these fields.",
-    failedAnswer: "A testnet RPC host answered, but not with a verdict this page can read.",
+    failedAnswer:
+      "A testnet RPC host answered, but not with a verdict this page can read. This is the answer recorded for the same request.",
     failedAnswerNoRecord:
       "A testnet RPC host answered, but not with a verdict this page can read, and there is no recorded answer for these fields.",
     waiting: "Asking the testnet",

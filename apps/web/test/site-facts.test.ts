@@ -698,10 +698,18 @@ describe("the live check", () => {
 
   it("has a line for a host that answered with something this page cannot read", () => {
     expect(LIVE_CHECK.copy.failedAnswer).toBe(
-      "A testnet RPC host answered, but not with a verdict this page can read.",
+      "A testnet RPC host answered, but not with a verdict this page can read. This is the answer recorded for the same request.",
     );
+    expect(LIVE_CHECK.copy.failedAnswerNoRecord).toBe(
+      "A testnet RPC host answered, but not with a verdict this page can read, and there is no recorded answer for these fields.",
+    );
+    expect(LIVE_CHECK.copy.waiting).toBe("Asking the testnet");
     expect(LIVE_CHECK.copy.failedAnswer).not.toContain("No RPC host answered");
     expect(LIVE_CHECK.copy.failed).toContain("No RPC host answered");
+    // With a recorded answer, both failure sentences say that what follows is recorded.
+    const recorded = "This is the answer recorded for the same request.";
+    expect(LIVE_CHECK.copy.failed).toContain(recorded);
+    expect(LIVE_CHECK.copy.failedAnswer).toContain(recorded);
   });
 
   it("labels the mandate fields with the names of the vault's own MandateView", () => {
