@@ -27,7 +27,7 @@ export function cliFallbackLines(factory: string, network: Network): string[] {
     lines.push(`# ${CLI_NOTE}`);
   } else {
     lines.push(
-      "# From a clone of the repository (the probarion npm package is coming), set up once:",
+      "# From a clone of the repository, set up once:",
       ...CLI_SETUP_LINES.map((l) => `#   ${l}`),
       "# then, from that folder:",
     );

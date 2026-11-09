@@ -5,7 +5,14 @@ import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Db, DbError } from "@/lib/db/port";
-import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
+import {
+  CLI_NOTE,
+  CLI_ON_NPM,
+  CLI_SETUP_LINES,
+  cli,
+  EVIDENCE_CLONE,
+  PRE_LEDGER_FLAGS,
+} from "@/lib/proof/cli";
 import { ProofEvidenceError } from "@/lib/proof/evidence";
 import { clearProofCache, type ProofDeps } from "@/lib/proof/service";
 import { elementsOf } from "./fixtures/elements";
@@ -95,6 +102,7 @@ import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
 import ProofPage, { generateMetadata } from "@/app/proof/[vault]/page";
 import { GET } from "@/app/proof/[vault]/snapshot.json/route";
 import ProofIndex from "@/app/proof/page";
+import { ProofLimited } from "@/components/proof/ProofView";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { TamperPanel } from "@/components/site/TamperPanel";
 import { SITE_NAV } from "@/lib/routes";
@@ -548,6 +556,25 @@ describe("/proof/[vault]", () => {
         ? "You can check this vault yourself"
         : "From the repository folder, you can check this vault yourself",
     );
+    // Not a pre-ledger vault: no evidence files, so no clone.
+    expect(t).not.toContain(EVIDENCE_CLONE);
+  });
+
+  it("gives a pre-ledger vault's chain command the clone its evidence flags read, from npm", () => {
+    const vault = "v0.probarion.near";
+    const t = text(
+      renderToStaticMarkup(createElement(ProofLimited, { vault, network: "mainnet" })),
+    );
+    const command = cli(
+      `verify --network mainnet --vault ${vault} --ledger probarion-${vault}-ledger.jsonl ${PRE_LEDGER_FLAGS}`,
+    );
+    expect(t).toContain(command);
+    const clone = `It also reads the repository&#x27;s evidence files: in the same folder, first run ${EVIDENCE_CLONE} .`;
+    if (CLI_ON_NPM) {
+      expect(t.indexOf(clone)).toBeGreaterThan(t.indexOf(command));
+    } else {
+      expect(t).not.toContain(clone);
+    }
   });
 
   it("names the ledger, not the chain, when the vault's ledger cannot be read", async () => {

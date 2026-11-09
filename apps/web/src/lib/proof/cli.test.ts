@@ -1,7 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli, PRE_LEDGER_FLAGS, REPO_URL } from "./cli";
+import {
+  CLI_NOTE,
+  CLI_ON_NPM,
+  CLI_SETUP_LINES,
+  cli,
+  EVIDENCE_CLONE,
+  needsEvidenceClone,
+  PRE_LEDGER_FLAGS,
+  REPO_URL,
+} from "./cli";
 
 const ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
 const read = (rel: string) => readFileSync(`${ROOT}${rel}`, "utf8");
@@ -30,9 +39,11 @@ describe("the probarion command the site shows (CLI_ON_NPM)", () => {
   it("says what the commands need: Node 24 for npx, or git, Node 24 and pnpm 10 for the repository", () => {
     expect(CLI_NOTE).toBe(
       CLI_ON_NPM
-        ? "These commands run the probarion package from npm with npx, which downloads it the first time. Needs Node 24 or later."
-        : "The probarion npm package is coming; until then, the commands below run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10. If you cloned it before, run git pull, pnpm install and the build line again.",
+        ? "These commands run the probarion package from npm with npx, which asks once before it downloads it. Needs Node 24 or later."
+        : "These commands run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10. If you cloned it before, run git pull, pnpm install and the build line again.",
     );
+    // The package is published: neither route calls it coming.
+    expect(CLI_NOTE).not.toMatch(/coming/);
     const engines = (JSON.parse(read("package.json")) as { engines: Record<string, string> })
       .engines;
     expect(engines).toEqual({ node: ">=24", pnpm: ">=10 <11" });
@@ -55,14 +66,20 @@ describe("the probarion command the site shows (CLI_ON_NPM)", () => {
     expect(root.bin).toBeUndefined();
   });
 
-  it("names the repository's evidence files for a pre-ledger spend", () => {
+  it("names the repository's evidence files for a pre-ledger spend, in the clone the npm command reads", () => {
     expect(PRE_LEDGER_FLAGS).toBe(
       CLI_ON_NPM
-        ? "--evidence <a copy of the repository's docs/evidence> --proof <a copy of the repository's docs/mainnet-proof.json>"
+        ? "--evidence probarion/docs/evidence --proof probarion/docs/mainnet-proof.json"
         : "--evidence docs/evidence --proof docs/mainnet-proof.json",
     );
     expect(existsSync(`${ROOT}docs/evidence`)).toBe(true);
     expect(existsSync(`${ROOT}docs/mainnet-proof.json`)).toBe(true);
+    // git clone names its folder after the repository: the "probarion/" the npm flags start with.
+    expect(EVIDENCE_CLONE).toBe(`git clone ${REPO_URL}`);
+    expect(REPO_URL.split("/").at(-1)).toBe("probarion");
+    const preLedger = cli(`verify --network mainnet --vault v0.probarion.near ${PRE_LEDGER_FLAGS}`);
+    expect(needsEvidenceClone(preLedger)).toBe(CLI_ON_NPM);
+    expect(needsEvidenceClone(cli("verify --network testnet --vault x.testnet"))).toBe(false);
   });
 
   it("points at the CLI's real bin, built from its own sources", () => {

@@ -27,7 +27,7 @@ import {
   usdcFixed,
 } from "@/lib/payables/view";
 import { loadWaitingView, type WaitingView } from "@/lib/payables/waiting";
-import { CLI_ON_NPM } from "@/lib/proof/cli";
+import { CLI_ON_NPM, EVIDENCE_CLONE, needsEvidenceClone } from "@/lib/proof/cli";
 import { safeText } from "@/lib/proof/sanitize";
 import { chainCommand } from "@/lib/proof/view";
 import { confirmInvoiceAction, prepareConfirmAction, rejectInvoiceAction } from "../actions";
@@ -380,6 +380,13 @@ export default async function InvoiceCyclePage({
           ? "has the ledger file to download first, then run"
           : "has the ledger file and the one-time setup, then run"}{" "}
         <code className="wrap-anywhere">{chainCommand(network, vault)}</code>.
+        {needsEvidenceClone(chainCommand(network, vault)) ? (
+          <>
+            {" "}
+            It also reads the repository&apos;s evidence files: in the same folder, first run{" "}
+            <code>{EVIDENCE_CLONE}</code>.
+          </>
+        ) : null}
         {confirmationInLedger
           ? " That command does not check an owner's confirmation yet: its signature can be re-checked from the ledger entry's custom.owner_confirmed record, and whether the key was the owner's at that block takes an archival node."
           : null}

@@ -28,16 +28,25 @@ export const CLI_SETUP_LINES: readonly string[] = [
  * on npm, and also git and pnpm 10 for the repository command.
  */
 export const CLI_NOTE = CLI_ON_NPM
-  ? "These commands run the probarion package from npm with npx, which downloads it the first time. Needs Node 24 or later."
-  : "The probarion npm package is coming; until then, the commands below run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10. If you cloned it before, run git pull, pnpm install and the build line again.";
+  ? "These commands run the probarion package from npm with npx, which asks once before it downloads it. Needs Node 24 or later."
+  : "These commands run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10. If you cloned it before, run git pull, pnpm install and the build line again.";
 
 /**
  * What a pre-ledger spend (mainnet v0 only) also needs: the documented Day-4 decisions and the recorded burn
- * transactions, both in the repository (docs/evidence and docs/mainnet-proof.json).
+ * transactions, both in the repository (docs/evidence and docs/mainnet-proof.json). With npx they are read from a
+ * clone made in the folder the command runs from (EVIDENCE_CLONE), next to the downloaded ledger.
  */
 export const PRE_LEDGER_FLAGS = CLI_ON_NPM
-  ? "--evidence <a copy of the repository's docs/evidence> --proof <a copy of the repository's docs/mainnet-proof.json>"
+  ? "--evidence probarion/docs/evidence --proof probarion/docs/mainnet-proof.json"
   : "--evidence docs/evidence --proof docs/mainnet-proof.json";
+
+/** The one command that puts the evidence files where a pre-ledger npx command reads them. */
+export const EVIDENCE_CLONE = `git clone ${REPO_URL}`;
+
+/** True when `command` reads the repository's evidence files from a clone the visitor makes first (npx only). */
+export function needsEvidenceClone(command: string): boolean {
+  return CLI_ON_NPM && command.includes(PRE_LEDGER_FLAGS);
+}
 
 /** The built CLI's bin (`packages/cli/package.json` "bin"), run from the repository folder. */
 const FROM_SOURCE = "node packages/cli/dist/bin.js";
