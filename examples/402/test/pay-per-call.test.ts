@@ -54,6 +54,8 @@ async function agentTools(): Promise<Client> {
       agentKey: TEST_KEYS.agent.secretKey,
       ledgerKey: TEST_KEYS.ledger.secretKey,
       rpcUrls: [rpc.url],
+      archivalRpcUrls: null,
+      agentPublicKey: TEST_KEYS.agent.publicKey,
       ledgerPath: join(tmpdir(), "probarion-402-unused", "ledger.jsonl"),
       readOnly: false,
     },
@@ -71,6 +73,7 @@ async function agentTools(): Promise<Client> {
     network: "testnet",
     version: "0.0.0-test",
     readOnly: false,
+    agentPublicKey: TEST_KEYS.agent.publicKey,
   });
   const [a, b] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "probarion-402-test", version: "0" });
@@ -148,11 +151,12 @@ describe("pay per call under a mandate of 20 uses", () => {
     const p = await paywall();
     const first = await fetchWithMandate(p.url, tools);
     expect(first).toMatchObject({ kind: "paid", status: 200 });
-    const offer = (await (await fetch(p.url)).json()) as { quote: string };
+    const offer = (await (await fetch(p.url)).json()) as { quote: string; redeem_token: string };
     const id = /id: (\S+)/.exec(offer.quote)?.[1] ?? "";
     const replay = await fetch(p.url, {
       headers: {
         "x-probarion-quote": id,
+        "x-probarion-redeem": offer.redeem_token,
         "x-probarion-vault": SCENARIO_VAULT,
         "x-probarion-spend": "1",
       },

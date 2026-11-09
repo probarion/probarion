@@ -49,19 +49,26 @@ function describe(n: number, r: CallResult): string {
       return `${tag} 402 for ${r.priceUsdc} USDC -> paid, spend ${r.spend.spend_id} ${r.spend.explorer ?? ""} -> ${r.status} ${JSON.stringify(r.body)}`;
     case "refused":
       return `${tag} 402 for ${r.priceUsdc} USDC -> ${r.spend.status} (${r.spend.code}): ${r.spend.note} The contract's own check_spend says: ${r.contract.ok ? "ok" : r.contract.code}.`;
+    case "pending":
+      return `${tag} 402 for ${r.priceUsdc} USDC -> ${r.spend.status}, spend ${r.spendId ?? "unknown"} still ${r.lastStatus}: not redeemed and not sent again. ${r.spend.note}`;
+    case "failed":
+      return `${tag} 402 for ${r.priceUsdc} USDC -> failed: ${r.spend.note}`;
   }
 }
 
 let paid = 0;
 let refused = 0;
+let pending = 0;
 try {
   for (let n = 1; n <= calls; n++) {
     const r = await fetchWithMandate(url, client);
     console.log(describe(n, r));
     if (r.kind === "paid" && r.status === 200) paid += 1;
     if (r.kind === "refused") refused += 1;
+    if (r.kind === "pending") pending += 1;
   }
-  console.log(`\n${paid} calls paid and served, ${refused} refused under the mandate.`);
+  const held = pending > 0 ? `, ${pending} held or unconfirmed` : "";
+  console.log(`\n${paid} calls paid and served, ${refused} refused under the mandate${held}.`);
 } finally {
   await client.close();
 }

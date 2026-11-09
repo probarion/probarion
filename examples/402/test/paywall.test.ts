@@ -31,7 +31,15 @@ function spend(over: Partial<SpendView>): SpendView {
   };
 }
 
-async function start(reader: PaymentReader, now = () => new Date("2026-11-11T00:00:00Z")) {
+const T0 = Date.parse("2026-11-11T00:00:00Z");
+/** A spend's chain time, in ns, `ms` after T0. */
+const chainNs = (ms: number) => (BigInt(T0 + ms) * 1_000_000n).toString();
+
+async function start(
+  reader: PaymentReader,
+  now = () => new Date(T0),
+  more: { maxQuotes?: number } = {},
+) {
   const p = await startPaywall({
     network: "testnet",
     payee: PAYEE,
@@ -41,21 +49,35 @@ async function start(reader: PaymentReader, now = () => new Date("2026-11-11T00:
     reader,
     now,
     newQuoteId: () => `q_${++ids}`,
+    ...more,
   });
   close = p.close;
   return p;
 }
 
-async function offer(url: string) {
-  const r = await fetch(url);
-  expect(r.status).toBe(402);
-  return (await r.json()) as { quote: string; quote_hash: string; payee: string; reason?: string };
+interface Offer {
+  quote: string;
+  quote_hash: string;
+  payee: string;
+  redeem_token: string;
+  reason?: string;
 }
 
-const retry = (url: string, quote: string, spendId = 1, vault = VAULT) =>
+const tokens = new Map<string, string>();
+async function offer(url: string): Promise<Offer> {
+  const r = await fetch(url);
+  expect(r.status).toBe(402);
+  const body = (await r.json()) as Offer;
+  tokens.set(parseQuote(body.quote).id, body.redeem_token);
+  return body;
+}
+
+/** The paid retry, with the redeem token the 402 gave for this quote unless `token` says otherwise. */
+const retry = (url: string, quote: string, spendId = 1, vault = VAULT, token?: string) =>
   fetch(url, {
     headers: {
       [PAYMENT_HEADERS.quote]: quote,
+      [PAYMENT_HEADERS.redeem]: token ?? tokens.get(quote) ?? "",
       [PAYMENT_HEADERS.vault]: vault,
       [PAYMENT_HEADERS.spend]: String(spendId),
     },
@@ -104,6 +126,9 @@ describe("the paywall", () => {
     const body = await offer(p.url);
     expect(body).toMatchObject({ payee: `near:${PAYEE}`, quote_hash: quoteHash(body.quote) });
     expect(parseQuote(body.quote)).toMatchObject({ payee: PAYEE, amount: "10000" });
+    // The redeem token is in the 402 body only: not in the quote text, so not in the spend on chain.
+    expect(body.redeem_token).toMatch(/^[0-9a-f]{32}$/);
+    expect(body.quote).not.toContain(body.redeem_token);
     expect((await fetch(p.url.replace("/forecast", "/other"))).status).toBe(404);
   });
 
@@ -111,7 +136,7 @@ describe("the paywall", () => {
     let paid: SpendView | null = null;
     const p = await start({ isProbarionVault: async () => true, getSpend: async () => paid });
     const body = await offer(p.url);
-    paid = spend({ invoice_hash: body.quote_hash });
+    paid = spend({ invoice_hash: body.quote_hash, created_at_ns: chainNs(1_000) });
     const id = parseQuote(body.quote).id;
     const ok = await retry(p.url, id);
     expect(ok.status).toBe(200);
@@ -140,20 +165,64 @@ describe("the paywall", () => {
     expect(await reasonOf(r)).toBe(reason);
   });
 
-  it("refuses a vault that Probarion's factory did not create, an unknown quote and an expired one", async () => {
-    let at = new Date("2026-11-11T00:00:00Z");
+  it("refuses a vault that Probarion's factory did not create, an unknown quote and bad headers", async () => {
     let factoryVault = false;
-    const p = await start(
-      { isProbarionVault: async () => factoryVault, getSpend: async () => spend({}) },
-      () => at,
-    );
+    const p = await start({
+      isProbarionVault: async () => factoryVault,
+      getSpend: async () => spend({}),
+    });
     const id = parseQuote((await offer(p.url)).quote).id;
     expect(await reasonOf(retry(p.url, id))).toBe("not_a_probarion_vault");
     expect(await reasonOf(retry(p.url, "q_nope"))).toBe("unknown_quote");
     factoryVault = true;
     expect(await reasonOf(retry(p.url, id, 1, "Not A Vault"))).toBe("bad_payment_headers");
     expect(await reasonOf(retry(p.url, id, 0))).toBe("bad_payment_headers");
-    at = new Date("2026-11-11T00:06:00Z");
-    expect(await reasonOf(retry(p.url, id))).toBe("quote_expired");
+  });
+
+  it("serves only the client that got the 402: the quote id and spend id on chain are not enough", async () => {
+    let paid: SpendView | null = null;
+    const p = await start({ isProbarionVault: async () => true, getSpend: async () => paid });
+    const body = await offer(p.url);
+    paid = spend({ invoice_hash: body.quote_hash, created_at_ns: chainNs(1_000) });
+    const id = parseQuote(body.quote).id;
+    // A watcher reads the ref (402:<quote id>) and the spend id from the vault, and has no token.
+    expect(await reasonOf(retry(p.url, id, 1, VAULT, ""))).toBe("bad_redeem_token");
+    expect(await reasonOf(retry(p.url, id, 1, VAULT, "0".repeat(32)))).toBe("bad_redeem_token");
+    expect((await retry(p.url, id)).status).toBe(200);
+  });
+
+  it("judges expiry by the spend's chain time: paid in time redeems through the grace period", async () => {
+    let at = new Date(T0);
+    let paid: SpendView | null = null;
+    const p = await start(
+      { isProbarionVault: async () => true, getSpend: async () => paid },
+      () => at,
+    );
+    const late = await offer(p.url);
+    const inTime = await offer(p.url);
+    const lateId = parseQuote(late.quote).id;
+    const inTimeId = parseQuote(inTime.quote).id;
+    at = new Date(T0 + 6 * 60_000);
+    // Spent at 6 minutes, after the 5-minute quote expired.
+    paid = spend({ invoice_hash: late.quote_hash, created_at_ns: chainNs(6 * 60_000) });
+    expect(await reasonOf(retry(p.url, lateId))).toBe("quote_expired");
+    // Spent at 4 minutes, redeemed at 6.
+    paid = spend({ invoice_hash: inTime.quote_hash, created_at_ns: chainNs(4 * 60_000) });
+    expect((await retry(p.url, inTimeId)).status).toBe(200);
+    // Past expiry plus the 10-minute grace, the quote is gone.
+    at = new Date(T0 + 16 * 60_000);
+    expect(await reasonOf(retry(p.url, lateId))).toBe("quote_expired");
+  });
+
+  it("keeps at most maxQuotes quotes, dropping the oldest", async () => {
+    const p = await start(
+      { isProbarionVault: async () => true, getSpend: async () => null },
+      () => new Date(T0),
+      { maxQuotes: 3 },
+    );
+    const first = parseQuote((await offer(p.url)).quote).id;
+    for (let n = 0; n < 4; n++) await offer(p.url);
+    expect(p.quotes()).toBe(3);
+    expect(await reasonOf(retry(p.url, first))).toBe("unknown_quote");
   });
 });
