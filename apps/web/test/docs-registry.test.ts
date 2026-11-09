@@ -66,7 +66,8 @@ describe("the docs registry", () => {
       if (p.status !== undefined) expect(FEATURE_STATUSES, p.path).toContain(p.status);
       if (p.network !== undefined) expect(DOC_NETWORKS, p.path).toContain(p.network);
       expect(p.locale).toBe("en");
-      expect(p.phase, p.path).toBe(1);
+      // Phases 1 and 2 have shipped; a phase-3 page joins with phase 3.
+      expect([1, 2], p.path).toContain(p.phase);
     }
   });
 
@@ -131,7 +132,13 @@ describe("registry helpers", () => {
     for (const p of PAGES.slice(1)) expect(tabOf(p), p.path).not.toBeNull();
     expect(visibleTabs()).toEqual(TABS.filter((t) => findPage(t.path) !== undefined));
     // The real registry: every tab's first page exists today.
-    expect(visibleTabs().map((t) => t.id)).toEqual(["guides", "build", "trust", "reference"]);
+    expect(visibleTabs().map((t) => t.id)).toEqual([
+      "guides",
+      "build",
+      "trust",
+      "reference",
+      "changelog",
+    ]);
   });
 
   it("file a reference page of build under Reference, its other pages under Build", () => {
@@ -143,6 +150,8 @@ describe("registry helpers", () => {
     expect(tab("build/errors")).toBe("reference");
     expect(tab("build/install")).toBe("build");
     expect(tab("trust/verify-a-vault")).toBe("trust");
+    expect(tab("resources/changelog")).toBe("changelog");
+    expect(tab("resources/glossary")).toBe("guides");
     expect(tab("concepts/payment-checks")).toBe("guides");
     expect(tab("start/what-is-probarion")).toBe("guides");
     expect(tab("")).toBeNull();
@@ -154,6 +163,7 @@ describe("the docs bar's tabs on a registry double", () => {
     vi.doUnmock("@/lib/docs/pages/start");
     vi.doUnmock("@/lib/docs/pages/build");
     vi.doUnmock("@/lib/docs/pages/trust");
+    vi.doUnmock("@/lib/docs/pages/resources");
     vi.resetModules();
   });
 
@@ -164,6 +174,7 @@ describe("the docs bar's tabs on a registry double", () => {
     // The double replaces every section that holds a tab's page, so later pages cannot change it.
     // build/errors exists but build/install does not: Reference shows and Build does not.
     vi.doMock("@/lib/docs/pages/start", () => ({ START: [] }));
+    vi.doMock("@/lib/docs/pages/resources", () => ({ RESOURCES: [] }));
     vi.doMock("@/lib/docs/pages/build", () => ({
       BUILD: [{ ...base, path: "build/errors", type: "reference" }],
     }));

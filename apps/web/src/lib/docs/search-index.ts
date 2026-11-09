@@ -14,6 +14,13 @@ export const BODY_LIMIT = 100_000;
 const ERRORS_PAGE = "build/errors";
 
 /**
+ * Pages whose body is a long generated document that keeps growing: the changelog. The index keeps
+ * their headings and lede, not every line, so a search for an error code or a command lands on the
+ * page that explains it, not on old release notes.
+ */
+const HEADINGS_ONLY: ReadonlySet<string> = new Set(["resources/changelog"]);
+
+/**
  * The kind a page shows in search. Null for the docs home (the hub): a page of links, which the
  * index leaves out so its popular searches do not outrank the pages they lead to.
  */
@@ -87,7 +94,8 @@ export async function buildSearchIndex(origin: string): Promise<SearchDoc[]> {
     });
     const tree = parseMarkdown(markdown);
     const section = sectionOf(page.path);
-    const codes = new Set(codesIn(markdown));
+    const whole = !HEADINGS_ONLY.has(page.path);
+    const codes = new Set(whole ? codesIn(markdown) : []);
     if (page.path === ERRORS_PAGE) for (const code of catalogCodes(markdown)) codes.add(code);
     docs.push({
       id: page.path,
@@ -100,7 +108,7 @@ export async function buildSearchIndex(origin: string): Promise<SearchDoc[]> {
         .map((n) => clip(plain(n), 200))
         .join("\n"),
       codes: [...codes].sort().join("\n"),
-      body: clip(plain(tree), BODY_LIMIT),
+      body: whole ? clip(plain(tree), BODY_LIMIT) : page.lede,
       summary: page.description,
     });
   }

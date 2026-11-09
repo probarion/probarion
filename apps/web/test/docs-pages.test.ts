@@ -19,8 +19,8 @@ function codesOf(tree: Root): Code[] {
   return out;
 }
 
-/** The phase-1 pages of spec §4, in reading order. A later page joins with its content. */
-const PHASE_1 = [
+/** The pages of spec §4 that exist, in reading order. A later page joins with its content. */
+const IN_ORDER = [
   "",
   "start/what-is-probarion",
   "start/how-one-payment-works",
@@ -44,6 +44,8 @@ const PHASE_1 = [
   "trust/security-model",
   "resources/glossary",
   "resources/for-ai-agents",
+  // Phase 2, cut by the OWNER on 2026-11-09 to the reference pages.
+  "resources/changelog",
 ];
 
 /** Flows not yet run end to end with real wallets (spec §13.7). Check again after T18. */
@@ -56,8 +58,8 @@ const PREVIEW = [
 ];
 
 describe("the phase-1 docs", () => {
-  it("are the 23 pages of the spec, in reading order", () => {
-    expect(PAGES.map((p) => p.path)).toEqual(PHASE_1);
+  it("are the pages of the spec, in reading order", () => {
+    expect(PAGES.map((p) => p.path)).toEqual(IN_ORDER);
   });
 
   it("parse as MDX, and a page that does not names its file", () => {

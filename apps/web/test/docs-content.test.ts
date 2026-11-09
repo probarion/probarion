@@ -232,6 +232,9 @@ describe("copy rules", () => {
     const found: string[] = [];
     for (const p of PAGES) {
       for (const b of bans(readMdx(p.path))) found.push(`${fileOf(p.path)}: ${b}`);
+      // The changelog page renders CHANGELOG.md, which keeps its own rules (no "never") and quotes
+      // commands as they were, such as a bare `npm install`. Its own MDX is checked above.
+      if (p.path === "resources/changelog") continue;
       for (const b of bans(await pageMarkdown(p, ORIGIN)))
         found.push(`twin of /docs/${p.path}: ${b}`);
     }

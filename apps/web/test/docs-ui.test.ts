@@ -636,6 +636,7 @@ describe("the docs bar's tabs, once a tab's page exists", () => {
     vi.doUnmock("@/lib/docs/pages/start");
     vi.doUnmock("@/lib/docs/pages/build");
     vi.doUnmock("@/lib/docs/pages/trust");
+    vi.doUnmock("@/lib/docs/pages/resources");
     vi.resetModules();
   });
 
@@ -648,6 +649,7 @@ describe("the docs bar's tabs, once a tab's page exists", () => {
       BUILD: [{ ...base, path: "build/install", title: "Install" }],
     }));
     vi.doMock("@/lib/docs/pages/trust", () => ({ TRUST: [] }));
+    vi.doMock("@/lib/docs/pages/resources", () => ({ RESOURCES: [] }));
     const fresh = await import("@/components/docs/DocsBar");
     const out = html(createElement(fresh.DocsBar, { current: "build", path: "build/install" }));
     const tabs = /<nav aria-label="Docs sections"[^>]*>(.*?)<\/nav>/.exec(out)?.[1] ?? "";
