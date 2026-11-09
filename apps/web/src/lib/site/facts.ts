@@ -100,6 +100,8 @@ export const TX = {
   nearPayment: tx("3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX", "3DFV2thB…Fy9cX"),
   baseBurn: tx("3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe", "3u4ffrwp…dcvYe"),
   noMandate: tx("AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY", "AkjyVPmb…dzgY"),
+  // 2026-11-09, after the smoke run: the agent key itself asked mandate 1 for 6 test USDC, above its 5 USDC limit.
+  overPerPayment: tx("4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1", "4715d4nb…Vsr1"),
 } as const;
 
 // --- hero -----------------------------------------------------------------------------------------
@@ -124,16 +126,17 @@ export const HERO = {
     tx: TX.nearPayment,
   },
   refused: {
-    aria: "A payment the contract refused",
-    mandate: "Mandate 999",
-    state: "Refused",
-    code: ["PROBARION:", "NoMandate"],
+    aria: "A payment the contract blocked",
+    mandate: "Mandate 1",
+    state: "Blocked",
+    big: "6 test USDC",
     caller: "Agent key",
-    payee: "None on record",
+    limit: "5 USDC a payment",
+    code: "OverPerPayment",
     paid: "Nothing",
-    tx: TX.noMandate,
+    tx: TX.overPerPayment,
   },
-  note: "Two real calls by one agent key on `v0.probarion.testnet`, with test tokens. The contract decided both.",
+  note: "Two real calls by one agent key on `v0.probarion.testnet`, with test tokens. For the second, the agent asked the contract directly. The contract decided both.",
 } as const;
 
 export const PROBLEM = {
