@@ -240,6 +240,7 @@ interface DeploymentRecord {
     versions?: { index: number; mode: string }[];
     smoke_vaults?: { account: string; version: number }[];
   };
+  demo_vault?: { account?: string };
 }
 const RECORDS: Record<string, DeploymentRecord> = {
   testnet: JSON.parse(read("contracts/deployments/testnet.json")),
@@ -263,6 +264,12 @@ function accountOf(network: string, key: "vault_v0" | "factory"): string {
 function siteText(site: { network: string; path: string }): string {
   const label = LABELS[site.network] ?? site.network;
   if (site.path === "vault_v0") return `${label}: \`${accountOf(site.network, "vault_v0")}\``;
+  if (site.path === "demo_vault") {
+    const demo = RECORDS[site.network]?.demo_vault?.account;
+    if (!demo)
+      throw new Error(`${site.network}.json runs a recorded build at demo_vault, no account`);
+    return `${label}: the demo vault \`${demo}\``;
+  }
   const factory = `\`${accountOf(site.network, "factory")}\``;
   if (site.path === "factory") return `${label}: the factory ${factory}`;
   // A code hash anywhere else in a record is a deployment this test and the table must learn.

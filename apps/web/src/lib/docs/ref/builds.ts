@@ -197,6 +197,8 @@ interface Deployment {
     readonly versions?: readonly { index: number; code_hash: string; mode: string }[];
     readonly smoke_vaults?: readonly { account: string; version: number }[];
   };
+  /** The public demo vault, made by the factory: the vault anyone can verify on its proof page. */
+  readonly demo_vault?: { readonly account?: string; readonly code_hash?: string | null };
 }
 
 /** Where a recorded hash runs, by the committed deployment records (not the chain), or "None". */
@@ -216,6 +218,10 @@ function deployedAt(hash: string): string {
       const smokeNames = smoke.map((s) => code(s.account)).join(", ");
       const also = smoke.length > 0 ? `, and its smoke vault ${smokeNames}` : "";
       out.push(`${label}: version ${v.index} (${v.mode}) of the factory ${code(factory)}${also}`);
+    }
+    const demo = d.demo_vault;
+    if (demo?.account && demo.code_hash === hash) {
+      out.push(`${label}: the demo vault ${code(demo.account)}`);
     }
   }
   return out.length > 0 ? out.join("; ") : "None";
