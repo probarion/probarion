@@ -63,18 +63,15 @@ describe("numberDuplicateNotice", () => {
   // text again would only answer 409, so the notice must not offer one. A row left in processing is one of them: the
   // tenant lease means its cycle is not running when this rule runs, so it was cut off and may have paid.
   it.each([
-    [
-      { status: "processing", outcome_status: null },
-      `If the vault's spends show it did not pay, ${NEW_NUMBER}.`,
-    ],
+    [{ status: "processing", outcome_status: null }, "A held spend may still pay."],
     [{ status: "decided", outcome_status: "paid" }, "was paid, so this one is not paid again."],
     [{ status: "decided", outcome_status: "burned" }, "was paid, so this one is not paid again."],
     [{ status: "decided", outcome_status: "settled" }, "was paid, so this one is not paid again."],
     [
       { status: "decided", outcome_status: "held" },
-      `even if the approver rejects it: then ${NEW_NUMBER}.`,
+      `even once the approver rejects it or it expires: then ${NEW_NUMBER}.`,
     ],
-    [{ status: "unconfirmed", outcome_status: "unconfirmed" }, `If it did not pay, ${NEW_NUMBER}.`],
+    [{ status: "unconfirmed", outcome_status: "unconfirmed" }, "A held spend may still pay."],
     [
       { status: "received", outcome_status: null },
       "The number stays blocked while that invoice may still pay.",
@@ -99,6 +96,21 @@ describe("numberDuplicateNotice", () => {
       );
     }
   });
+
+  // A spend the vault holds (SpendStatus Held) has not paid but may still be approved: a new number for that bill could
+  // be paid as well. For an earlier invoice whose outcome the app does not know, the advice waits for a spend that can
+  // no longer pay, or for none at all, under its ref.
+  it.each(["processing", "unconfirmed"] as const)(
+    "asks for a new number after a %s invoice only once its spend cannot pay",
+    (status) => {
+      const notice = numberDuplicateNotice(match({ status, outcome_status: null }));
+      expect(notice).toContain(
+        `If the vault's spends show none under that invoice's ref, or one that failed, was rejected or expired, ${NEW_NUMBER}.`,
+      );
+      expect(notice).toContain("A held spend may still pay.");
+      expect(notice).not.toMatch(/did not pay/);
+    },
+  );
 
   it("names neither the number nor the earlier invoice's hash", () => {
     for (const status of ["awaiting_owner", "processing", "unconfirmed", "decided"] as const) {

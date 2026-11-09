@@ -277,9 +277,9 @@ const ADDED_RULES: RefTable = {
       cells: {
         rule: "`custom.invoice_number_duplicate`",
         effect: "Refuse",
-        by: "Payables (Preview), as the first rule of the cycle, before `custom.owner_confirms_without_model`",
-        when: "Another invoice to the same payee has the same invoice number, and it may have paid or may still pay: it is processing, sent and not yet confirmed, waiting for the owner, or decided as paid, burned, settled, or held on chain with a spend. The texts differ: the same text is refused at intake as a duplicate, with no cycle. The detail names the earlier invoice by its invoice hash, not by its number.",
-        todo: "Nothing was sent. Look at the earlier invoice the detail names. If it waits for the owner and the owner rejects it, upload this one again: it runs on the same row and ref. Otherwise the number stays blocked, and a paid invoice is not paid again. Ask the payee for an invoice with a new number only when the earlier one did not pay: a spend held on chain that the approver rejected, or a payment not confirmed, or with an unknown outcome, that the vault's spends show did not go out.",
+        by: "Payables (Preview), as the first custom rule of the cycle, before `custom.owner_confirms_without_model`",
+        when: "Another invoice to the same payee has the same invoice number, and it may have paid or may still pay: it is processing, sent and not yet confirmed, waiting for the owner, or decided as paid, burned, settled, or held on chain with a spend. The texts differ: the same text is refused at intake as a duplicate, with no cycle. The detail names the earlier invoice by its invoice hash, not by its number. When a built-in rule of `decide()` refuses first, the outcome's code is that rule's, and the refusal is final like any other.",
+        todo: "Nothing was sent. Look at the earlier invoice the detail names. If it waits for the owner and the owner rejects it in the console, upload this one again: it runs on the same row and ref. Otherwise the number stays blocked, even after an approver rejects a held spend, and a paid invoice is not paid again. Ask the payee for an invoice with a new number only once the earlier one cannot pay: the vault's spends show none under its ref, or one that failed, was rejected or expired. A held spend may still pay.",
       },
     },
     {

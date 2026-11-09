@@ -36,22 +36,24 @@ function earlierState(m: NumberMatch): string {
  * invoice, a spend held on chain, a payment sent but not confirmed, or a row left in processing (its cycle was cut off
  * or could not record its outcome: the tenant lease means no cycle is still running when this one inserts). So only an
  * earlier invoice that waits for the owner stops blocking, when the owner rejects it, and only then is a re-upload
- * offered. The new-number advice is given only for an invoice that may not have paid: a paid one is not paid again.
+ * offered. The new-number advice is given only once the earlier invoice cannot pay: a paid one is not paid again, and a
+ * spend held on chain (SpendStatus Held) may still be approved, so a bill under a new number could be paid twice.
  */
 export function numberDuplicateNotice(match: NumberMatch): string {
   const head =
     "Duplicate number: another invoice to this payee has the same invoice number. Nothing was sent; the refusal is in the signed ledger.";
   const newNumber = "ask the payee for an invoice with a new number";
+  const cannotPay = `If the vault's spends show none under that invoice's ref, or one that failed, was rejected or expired, ${newNumber}. A held spend may still pay.`;
   switch (match.status) {
     case "awaiting_owner":
       return `${head} That invoice waits for the owner. If the owner rejects it, upload this one again.`;
     case "processing":
-      return `${head} That invoice's outcome is unknown and it may have paid, so the number stays blocked. If the vault's spends show it did not pay, ${newNumber}.`;
+      return `${head} That invoice's outcome is unknown and it may have paid, so the number stays blocked. ${cannotPay}`;
     case "unconfirmed":
-      return `${head} That invoice's payment was sent and is not confirmed, so the number stays blocked. If it did not pay, ${newNumber}.`;
+      return `${head} That invoice's payment was sent and is not confirmed, so the number stays blocked. ${cannotPay}`;
     case "decided":
       return match.outcome_status === "held"
-        ? `${head} That invoice's spend is held on chain for an approver. The number stays blocked even if the approver rejects it: then ${newNumber}.`
+        ? `${head} That invoice's spend is held on chain for an approver, so the number stays blocked, even once the approver rejects it or it expires: then ${newNumber}.`
         : `${head} That invoice was paid, so this one is not paid again.`;
     default:
       return `${head} The number stays blocked while that invoice may still pay.`;
