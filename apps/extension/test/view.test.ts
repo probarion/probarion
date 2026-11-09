@@ -4,6 +4,7 @@ import { DEFAULT_ORIGIN, OFFERED } from "../src/origins";
 import {
   browserLabel,
   connectChoices,
+  focusTarget,
   itemText,
   mandateLabel,
   NOTE,
@@ -150,5 +151,38 @@ describe("Connect's address list", () => {
     expect(
       connectChoices(["https://a.example", "https://b.example"], "https://c.example").selected,
     ).toBe("https://a.example");
+  });
+});
+
+describe("where focus goes after an action", () => {
+  const control = (key: string | undefined, enabled = true) => ({ key, enabled });
+
+  it("returns to the control that started the action, when it is still there and enabled", () => {
+    const controls = [control("switch"), control("send"), control("file")];
+    expect(focusTarget("send", controls)).toBe(1);
+    expect(focusTarget("switch", controls)).toBe(0);
+  });
+
+  it("goes to the screen's first enabled control when that one is disabled or gone", () => {
+    // Send is still on the screen but off (nothing is left to send), and a control without a name comes first.
+    const controls = [control(undefined), control("send", false), control("file")];
+    expect(focusTarget("send", controls)).toBe(0);
+    // The control that started it is not on the new screen (Disconnect leads to the connect screen).
+    expect(focusTarget("Disconnect", [control("connect-origin"), control("Connect")])).toBe(0);
+    // The first control is off while the action runs: the next enabled one gets focus.
+    expect(focusTarget("gone", [control("a", false), control("b"), control("c")])).toBe(1);
+  });
+
+  it("skips a disabled twin and takes the enabled control with the started name", () => {
+    expect(focusTarget("Retry", [control("Retry", false), control("x"), control("Retry")])).toBe(2);
+  });
+
+  it("takes the first enabled control when no control had focus", () => {
+    expect(focusTarget(undefined, [control("a", false), control("b")])).toBe(1);
+  });
+
+  it("answers null when the screen has no enabled control, so its heading gets focus", () => {
+    expect(focusTarget("send", [])).toBeNull();
+    expect(focusTarget("send", [control("send", false)])).toBeNull();
   });
 });

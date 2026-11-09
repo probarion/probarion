@@ -116,3 +116,20 @@ export function connectChoices(
     selected: offered.includes(preferred) ? preferred : (offered[0] ?? preferred),
   };
 }
+
+/**
+ * Which control of a new screen gets focus once an action that started from `started` (a control's data-focus name)
+ * is done: that control if it is still there and enabled, else the screen's first enabled control; null when it has
+ * none. `controls` are the screen's controls in page order, and the answer is an index into them.
+ */
+export function focusTarget(
+  started: string | undefined,
+  controls: ReadonlyArray<{ key: string | undefined; enabled: boolean }>,
+): number | null {
+  if (started !== undefined) {
+    const same = controls.findIndex((c) => c.enabled && c.key === started);
+    if (same >= 0) return same;
+  }
+  const first = controls.findIndex((c) => c.enabled);
+  return first >= 0 ? first : null;
+}

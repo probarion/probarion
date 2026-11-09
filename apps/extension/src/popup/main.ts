@@ -23,6 +23,7 @@ import { h } from "./dom";
 import {
   browserLabel,
   connectChoices,
+  focusTarget,
   itemText,
   mandateLabel,
   networkText,
@@ -59,12 +60,44 @@ const ui = {
   message: null as { tone: "ok" | "bad"; text: string; url?: string } | null,
 };
 
+/** The data-focus name of the control that has focus, if any. */
+function focusedKey(): string | undefined {
+  const active = document.activeElement;
+  return active instanceof HTMLElement ? active.dataset.focus : undefined;
+}
+
 function render(): void {
   // Every change rebuilds the popup, so the focused control is found again by its data-focus name.
-  const active = document.activeElement;
-  const key = active instanceof HTMLElement ? active.dataset.focus : undefined;
+  const key = focusedKey();
   app.replaceChildren(header(), ...body());
   if (key !== undefined) app.querySelector<HTMLElement>(`[data-focus="${key}"]`)?.focus();
+}
+
+type Focusable = HTMLButtonElement | HTMLSelectElement | HTMLInputElement;
+
+/**
+ * After an action that switched its control off while it worked, a disabled control can't hold focus, so it fell to
+ * the page. Focus goes back to the control that started the action if it is still there and enabled, else to the new
+ * screen's first control, else to its heading. If the person moved focus elsewhere meanwhile, it stays there.
+ */
+function settleFocus(started: string | undefined): void {
+  const active = document.activeElement;
+  if (active !== null && active !== document.body) return;
+  const controls = [...app.querySelectorAll<Focusable>("button, select, input")];
+  const at = focusTarget(
+    started,
+    controls.map((el) => ({ key: el.dataset.focus, enabled: !el.disabled })),
+  );
+  const target = at === null ? undefined : controls[at];
+  if (target !== undefined) {
+    target.focus();
+    return;
+  }
+  const heading = app.querySelector("h2");
+  if (heading !== null) {
+    heading.tabIndex = -1; // a heading takes focus only by script, and a screen reader reads it
+    heading.focus();
+  }
 }
 
 const open = (url: string): void => {
@@ -107,6 +140,7 @@ function select(
 /** Runs one action at a time: the buttons are off meanwhile, and a failure shows its sentence. */
 async function act(work: () => Promise<void>): Promise<void> {
   if (ui.busy) return;
+  const started = focusedKey();
   ui.busy = true;
   ui.message = null;
   render();
@@ -120,6 +154,7 @@ async function act(work: () => Promise<void>): Promise<void> {
   } finally {
     ui.busy = false;
     render();
+    settleFocus(started);
   }
 }
 
