@@ -23,7 +23,7 @@
     "@next/mdx": "16.4.3",
     "@probarion/core": "workspace:*",
     "@probarion/sdk": "workspace:*",
-    "@sentry/nextjs": "^11.8.0",
+    "@sentry/nextjs": "^11.11.0",
     "@shikijs/rehype": "4.6.0",
     "@supabase/supabase-js": "^2.118.0",
     "github-slugger": "2.0.0",
@@ -60,6 +60,6 @@
     "tsx": "^4.20.0",
     "tweetnacl": "^1.0.3",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.12"
   }
 }

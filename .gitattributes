@@ -2,3 +2,5 @@
 *.wasm binary
 # Invoice-text fixtures: A8 rebuilds the request from their exact bytes (plan 03 Task 14), so git never converts them.
 packages/core/test/fixtures/invoice-*.txt -text
+# The demo vault's invoices and PO: their sha256 is on chain, so git never converts them either.
+docs/evidence/demo-vault/*.txt -text

@@ -59,9 +59,13 @@ describe("next.config redirects", () => {
       "/docs/concepts",
       "/docs/build",
       "/docs/trust",
+      "/docs/operate",
       "/docs/resources",
     ]);
     expect(out?.find((r) => r.source === "/docs/build")?.destination).toBe("/docs/build/install");
+    expect(out?.find((r) => r.source === "/docs/operate")?.destination).toBe(
+      "/docs/operate/architecture",
+    );
   });
 
   it("keep the same redirects once MDX and Sentry wrap the config", async () => {

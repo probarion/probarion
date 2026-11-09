@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import type { InvoiceFacts, MandateView } from "@probarion/core";
+import type { CustomRule, DecisionInput, InvoiceFacts, MandateView } from "@probarion/core";
 import { hashInvoice, type SpendOutcome } from "@probarion/sdk";
 import { KeyPair } from "near-api-js";
 import { afterAll, beforeAll, describe, expect, it, type Mock, vi } from "vitest";
@@ -10,6 +10,7 @@ import { type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { generateKey } from "@/lib/keys/service";
 import { MAX_PDF_PAGES, MAX_TEXT_CHARS } from "@/lib/payables/extract";
 import { refFor } from "@/lib/payables/facts";
+import { NUMBER_DUPLICATE_RULE } from "@/lib/payables/number-duplicate";
 import { OWNER_CONFIRMS_RULE } from "@/lib/payables/owner-confirms";
 import {
   invoiceNumberKey,
@@ -133,6 +134,8 @@ describe("processInvoice", () => {
     process: Mock<ProbarionLike["process"]>;
     /** Every custom rule the pipeline added, by id. */
     added: string[];
+    /** The same rules, to run their checks. */
+    rules: CustomRule[];
   };
   function deps(
     mandates: MandateView[] | (() => Promise<MandateView[]>),
@@ -141,9 +144,15 @@ describe("processInvoice", () => {
   ): Deps {
     const proc = vi.fn(process);
     const added: string[] = [];
+    const rules: CustomRule[] = [];
     const make = vi.fn<PipelineDeps["makeProbarion"]>(() => ({
       process: proc,
-      rules: { add: (rule) => added.push(rule.id) },
+      rules: {
+        add: (rule) => {
+          added.push(rule.id);
+          rules.push(rule);
+        },
+      },
     }));
     return {
       db,
@@ -154,6 +163,7 @@ describe("processInvoice", () => {
       make,
       process: proc,
       added,
+      rules,
       ...over,
     };
   }
@@ -672,7 +682,6 @@ describe("processInvoice", () => {
     ["a final newline", "Invoice INV-50\nTotal 5 USDC\n"],
     ["CRLF line ends", "Invoice INV-50\r\nTotal 5 USDC"],
     ["a no-break space", "Invoice\u00a0INV-50\nTotal  5 USDC"],
-    ["the same invoice number and another amount", "Invoice INV-50\nTotal 6 USDC"],
   ])(
     "answers a re-upload that differs by %s as a duplicate, before anything is sent",
     async (_why, body) => {
@@ -692,6 +701,45 @@ describe("processInvoice", () => {
     },
   );
 
+  it("refuses another text with the same invoice number for the payee in decide(), by a rule the ledger records", async () => {
+    const t = await tenant();
+    const ms = [mandate(1, t.agent?.publicKey ?? "")];
+    const paid = "Invoice INV-50\nTotal 5 USDC";
+    expect(await run(deps(ms), t, paid)).toMatchObject({ outcome: { status: "paid" } });
+    const refused = outcome({
+      status: "refused_by_code",
+      spendId: null,
+      txHash: null,
+      code: NUMBER_DUPLICATE_RULE,
+    });
+    const d = deps(ms, async () => refused);
+    // The same number and another amount: another fingerprint, so the cycle runs.
+    const r = await run(d, t, "Invoice INV-50\nTotal 6 USDC");
+    expect(r).toMatchObject({
+      status: "decided",
+      invoiceStatus: "decided",
+      outcome: { status: "refused_by_code", code: NUMBER_DUPLICATE_RULE },
+    });
+    // Before the owner's rule, so the refusal's code is the number rule's, and the invoice never waits for the owner.
+    expect(d.added).toEqual([NUMBER_DUPLICATE_RULE, OWNER_CONFIRMS_RULE]);
+    expect(d.rules[0]?.check({} as DecisionInput, null)).toEqual({
+      id: NUMBER_DUPLICATE_RULE,
+      outcome: "refuse",
+      detail: `another invoice to near:vendor.near has the same invoice number: invoice ${hashInvoice(paid)}, which was paid. Nothing is sent.`,
+    });
+    expect((await rows(t.member.tenant_id)).map((x) => x.status)).toEqual(["decided", "decided"]);
+  });
+
+  it("adds no number rule when the invoice states no number, or no invoice that may pay has it", async () => {
+    const t = await tenant();
+    const ms = [mandate(1, t.agent?.publicKey ?? "")];
+    for (const body of ["Total 5 USDC", "Invoice INV-51\nTotal 5 USDC"]) {
+      const d = deps(ms);
+      expect(await run(d, t, body)).toMatchObject({ status: "decided" });
+      expect(d.added).toEqual([OWNER_CONFIRMS_RULE]);
+    }
+  });
+
   it.each([
     ["a zero-width space in the number", "INV-10\u200b01"],
     ["a soft hyphen in the number", "INV-10\u00ad01"],
@@ -699,24 +747,26 @@ describe("processInvoice", () => {
     ["a minus sign", "INV\u22121001"],
     ["a Cyrillic I", "\u0406NV-1001"],
   ])(
-    "answers a re-upload of a paid INV-1001 that writes %s as a duplicate, by its fingerprint and by its number",
+    "answers a re-upload of a paid INV-1001 that writes %s as a duplicate by its fingerprint, and refuses it by its number",
     async (_why, number) => {
       const t = await tenant({ zero: true });
       const ms = [mandate(1, t.agent?.publicKey ?? "")];
       const base = "Acme Design LLC\nInvoice INV-1001\nLogo design $7.00\nTotal: $7.00\n";
       expect(await run(deps(ms), t, base)).toMatchObject({ outcome: { status: "paid" } });
-      // The same text with the number rendered alike: the fingerprint matches.
+      // The same text with the number rendered alike: the fingerprint matches, at intake.
       const d = deps(ms);
       expect(await run(d, t, base.replace("INV-1001", number))).toMatchObject({
         status: "duplicate",
       });
-      // Another text with the same number (another amount): the number key matches. A number written with a
-      // Cyrillic letter is no number the guard reads; the fingerprint above is what catches that re-upload.
+      expect(d.make).not.toHaveBeenCalled();
+      // Another text with the same number (another amount): the number key matches, and the cycle carries the number
+      // rule. A number written with a Cyrillic letter is no number the guard reads; the fingerprint above is what
+      // catches that re-upload.
       if (!number.startsWith("\u0406")) {
         const other = `Acme Design LLC\nInvoice ${number}\nLogo design $9.00\nTotal: $9.00`;
-        expect(await run(d, t, other)).toMatchObject({ status: "duplicate" });
+        expect(await run(d, t, other)).toMatchObject({ status: "decided" });
+        expect(d.added).toEqual([NUMBER_DUPLICATE_RULE, OWNER_CONFIRMS_RULE]);
       }
-      expect(d.make).not.toHaveBeenCalled();
     },
   );
 
@@ -737,18 +787,21 @@ describe("processInvoice", () => {
     });
     expect(acme).toMatchObject({ status: "decided" });
     expect(beta).toMatchObject({ status: "decided" });
-    // The same vendor's #1001 again is a duplicate.
-    expect(
-      await run(deps(ms), t, "From: Acme Design LLC\nInvoice #1001\nTotal: $9.00"),
-    ).toMatchObject({ status: "duplicate" });
+    // The same vendor's #1001 again carries the number rule; the other vendor's did not.
+    const again = deps(ms);
+    expect(await run(again, t, "From: Acme Design LLC\nInvoice #1001\nTotal: $9.00")).toMatchObject(
+      { status: "decided" },
+    );
+    expect(again.added).toEqual([NUMBER_DUPLICATE_RULE, OWNER_CONFIRMS_RULE]);
     const keys = (
       await pg.query<{ k: string }>(
         "select invoice_number_hmac as k from invoices where tenant_id = $1 order by created_at",
         [t.member.tenant_id],
       )
     ).rows.map((r) => r.k);
-    expect(keys).toHaveLength(2);
+    expect(keys).toHaveLength(3);
     expect(keys[0]).not.toBe(keys[1]);
+    expect(keys[2]).toBe(keys[0]);
     // Not the unkeyed hash of the number, and another master key gives another key.
     expect(keys[0]).not.toBe(sha256Hex(`${t.member.tenant_id}:1001`));
     const acmePayee = { type: "near", account_id: "vendor.near" } as const;

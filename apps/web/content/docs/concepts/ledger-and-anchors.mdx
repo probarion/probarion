@@ -339,7 +339,7 @@ node packages/cli/dist/bin.js ledger export --out ledger-copy.jsonl
 
 The console keeps each vault's ledger in its database, in the table `ledger_entries`. Hosted Payables, the console's reference agent that pays invoices, writes its entries there, signed with a ledger key that Probarion's server holds. Triggers refuse every update and delete, for every role, the table owner included. Every write goes through `ledger_append`, a compare-and-append. The SDK's own code builds and signs each entry, so a row gives the same line that `FileLedgerStore` writes. The database guards the shape of the chain; the verifier still judges the signatures and the anchors.
 
-A vault's proof page serves that ledger as `/proof/<vault>/ledger.jsonl`, to the vault's members, or to anyone once its owner makes the proof public. The public proof page is Preview: built, with no public vault yet. See [What works today](/docs/start/what-works-today#public-proof-page).
+A vault's proof page serves that ledger as `/proof/<vault>/ledger.jsonl`, to the vault's members, or to anyone once its owner makes the proof public. The public proof page is Live for the testnet demo vault, `demo.vaults.probarion.testnet`, whose proof is public. See [What works today](/docs/start/what-works-today#public-proof-page).
 
 ### One writer per vault
 
@@ -371,4 +371,4 @@ The console's database is a ledger of its own. If hosted Payables runs on a vaul
 - It does not record approvals. They happen on chain, and the spend's own record shows that it was held.
 - Offline, it proves nothing about the chain. `verify --offline` checks a snapshot against itself: take the snapshot yourself, or run live.
 - It does not merge two ledgers. Two writers fork the history, and the SDK only warns.
-- `v0.probarion.testnet` has no ledger, so `verify` fails checks d and h there. The mainnet vault is planned.
+- `v0.probarion.testnet` has no ledger, so `verify` fails checks d and h there. The testnet demo vault, `demo.vaults.probarion.testnet`, has one with five anchors, and a live `verify` of it passes checks a to i. The mainnet vault is planned.

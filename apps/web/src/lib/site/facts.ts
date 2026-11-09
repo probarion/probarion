@@ -415,7 +415,7 @@ export const JOURNEY = {
       n: 3,
       title: "Code decides, and signs before anything moves",
       body: "Deterministic rules run first and cannot be removed. The SDK signs the decision into the ledger before anything is sent, and it records refusals too.",
-      tag: "The testnet smoke run sent spends without a ledger.",
+      tag: "On the testnet demo vault, every spend has its signed decision, and so does the refused invoice.",
       panelLabel: "Built-in rules",
       panel: [
         { note: "decide(), built-in rules include" },
@@ -439,8 +439,8 @@ export const JOURNEY = {
       title: "Check a published record",
       body: "With a ledger key, the SDK anchors the ledger root on the vault, and the owner can publish the ledger on a proof page. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
       tag: CLI_ON_NPM
-        ? "The testnet vault has no ledger key or anchors yet, so these commands run on a test fixture: this site serves an exact copy of the file in the repository."
-        : "The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture. Build it from a clone first (README step 1).",
+        ? "These commands run on a test fixture: this site serves an exact copy of the file in the repository. The testnet demo vault's proof page runs the same checks on its own ledger and chain data."
+        : "This command runs on a test fixture. Build it from a clone first (README step 1). The testnet demo vault's proof page runs the same checks on its own ledger and chain data.",
       panelLabel: "Verifier output",
       panel: [
         ...(CLI_ON_NPM ? [{ note: VERIFY_NOTE }] : []),
@@ -587,8 +587,8 @@ export const STATUS = {
     {
       id: "public-proof-page",
       row: "Public proof page",
-      pill: "Built, no public vault yet",
-      tone: "work",
+      pill: "Live for the testnet demo vault",
+      tone: "live",
     },
     { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
     { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
@@ -766,7 +766,7 @@ export const CLOSING = {
   line1: "Don't trust us.",
   line2: "Run the verifier.",
   sub: "Five minutes from a clone: build, verify a snapshot, then point it at a vault on testnet.",
-  live: "A live run reads the chain itself: `verify --vault`. On the testnet vault it fails checks d and h today, because the smoke run sent its spends without a ledger.",
+  live: "A live run reads the chain itself: `verify --vault`. On `demo.vaults.probarion.testnet` it passes checks a to i. On `v0.probarion.testnet` it fails checks d and h, because its smoke run sent spends without a ledger.",
   evaluate: "Evaluate in 5 minutes",
   spec: "Read the spec",
 } as const;

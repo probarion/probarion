@@ -10,6 +10,7 @@ import { listAll } from "@/lib/near/reader";
 import { getReader } from "@/lib/near/server";
 import { tagRequest } from "@/lib/observe";
 import { ExtractError, MAX_INVOICE_BYTES } from "@/lib/payables/extract";
+import { NUMBER_DUPLICATE_RULE } from "@/lib/payables/number-duplicate";
 import { type PipelineResult, processInvoice } from "@/lib/payables/pipeline";
 import {
   byteCount,
@@ -34,6 +35,10 @@ const PAYMENT_PENDING =
 /** Shown when no attested model confirmed the amount the code read: nothing was sent, the owner confirms. */
 const OWNER_CONFIRMS =
   "Nothing was sent. No attested model confirmed the amount the code read, so this invoice waits for the owner to confirm the amount.";
+
+/** Shown when the number rule refused the cycle: another text with the number of an invoice that may have paid. */
+const NUMBER_DUPLICATE =
+  "Duplicate number: another invoice to this payee has the same invoice number and was paid or may still be paid. Nothing was sent; the refusal is in the signed ledger. If the owner rejects that invoice, or it paid nothing, upload this one again.";
 
 const tooLarge = () =>
   problem(
@@ -95,6 +100,9 @@ function respond(r: PipelineResult, requestId: string): Response {
         requestId,
         ...(r.invoiceStatus === "unconfirmed" ? { notice: PAYMENT_PENDING } : {}),
         ...(r.invoiceStatus === "awaiting_owner" ? { notice: OWNER_CONFIRMS } : {}),
+        ...(r.outcome.status === "refused_by_code" && r.outcome.code === NUMBER_DUPLICATE_RULE
+          ? { notice: NUMBER_DUPLICATE }
+          : {}),
       });
     case "duplicate":
       return json(

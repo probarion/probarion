@@ -1,7 +1,9 @@
 import { VAULT_ERROR_CODES } from "@probarion/core";
 import type { Root } from "mdast";
+import { changelogAnchors } from "./changelog";
 import { errorAnchor, HTTP_ERRORS, httpAnchor, SDK_ERRORS } from "./errors";
 import { attrOf, inFile, jsxNodes } from "./mdast";
+import { refAnchors } from "./ref";
 import { docsStatusRows } from "./status";
 import { checkAnchor, selectChecks } from "./verifier";
 
@@ -25,6 +27,14 @@ export function generatedAnchors(tree: Root, file = "<page>"): string[] {
         out.push(...inFile(file, () => selectChecks(only)).map(checkAnchor));
         break;
       }
+      case "RefTable": {
+        const id = attrOf(node, "id", file) ?? "";
+        out.push(...inFile(file, () => refAnchors(id)));
+        break;
+      }
+      case "Changelog":
+        out.push(...changelogAnchors());
+        break;
       case "StatusTable":
         out.push(...docsStatusRows().map((r) => r.id));
         break;

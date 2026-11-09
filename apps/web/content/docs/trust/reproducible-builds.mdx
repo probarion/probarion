@@ -1,0 +1,149 @@
+This page rebuilds the vault or the factory contract from its source, in Docker, with the same build CI runs. You then check that your wasm has the code hash recorded in [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json) and the code hash of the contract deployed on NEAR testnet. A NEAR code hash is the base58 of the sha256 of the wasm, so equal hashes mean the deployed contract is the wasm built from that commit, and the source at that commit is the code that runs.
+
+<Callout kind="note">
+
+Rebuilding signs nothing and sends nothing. The last step reads public testnet data through an RPC node, with no key.
+
+</Callout>
+
+## What you need
+
+- **Docker**, running. The build runs inside the image in the table below, pulled by its digest.
+- **Linux on x86_64**, to follow CI exactly: CI runs on ubuntu, and the archive sha256 below is for its Linux x86_64 release archive of cargo-near.
+- **git, Node.js 24 or later and pnpm 10**, for the clone and its scripts.
+- **Rust through rustup.** `cargo near` is a cargo subcommand, and `rust-toolchain.toml` in the clone names the Rust version.
+- **cargo-near**, at the version in the table. Step 1 installs it.
+
+The build uses these, each read from the repository when this page is built:
+
+<RefTable id="builds-toolchain" />
+
+cargo-near runs the build inside the pinned image, with the compiler that image carries, so the compiler on the machine that starts it takes no part. On your machine, Rust only runs `cargo near` itself.
+
+## Rebuild a recorded build
+
+<Steps>
+
+1. **Install cargo-near and check its archive.** In a folder outside any clone, download the release archive CI installs and print its sha256:
+
+   ```bash
+   curl --proto '=https' --tlsv1.2 -fsSL -o cargo-near.tar.gz https://github.com/near/cargo-near/releases/download/cargo-near-v0.22.0/cargo-near-x86_64-unknown-linux-gnu.tar.gz
+   sha256sum cargo-near.tar.gz
+   ```
+
+   The sum must equal the [archive sha256](/docs/trust/reproducible-builds#builds-cargo-near-sha256). If it does not, stop. Otherwise install the binary where cargo finds it, as CI does:
+
+   ```bash
+   mkdir -p cargo-near
+   tar -xzf cargo-near.tar.gz --no-same-owner --strip-components 1 -C cargo-near
+   install -m 0755 cargo-near/cargo-near "$HOME/.cargo/bin/cargo-near"
+   cargo near --version
+   ```
+
+   The version it prints must be the [cargo-near version](/docs/trust/reproducible-builds#builds-cargo-near).
+
+2. **Clone the repository, and a second copy of its history beside it.** Run these lines one at a time:
+
+   ```bash
+   git clone https://github.com/probarion/probarion
+   cd probarion
+   pnpm install
+   pnpm --filter "{packages/cli}..." build
+   git clone --no-checkout . ../probarion-recorded
+   ```
+
+   The first four lines are the site's usual setup. The last one copies the history into `../probarion-recorded` with no files checked out. CI works the same way: it keeps the current scripts and builds the recorded commit in a separate copy. Run every later command from the `probarion` folder.
+
+3. **Check out the recorded commit.** Pick a row in [Recorded builds](/docs/trust/reproducible-builds#recorded-builds) and copy its commit. This example rebuilds the vault at commit `64ac3c0`:
+
+   ```bash
+   git -C ../probarion-recorded checkout --quiet --detach 64ac3c03547d59a1f563b5ddf5767c38ae781413
+   ```
+
+4. **Run the build CI runs.** `SRC_DIR` tells the script which checkout to build:
+
+   ```bash
+   export SRC_DIR=../probarion-recorded
+   bash scripts/build-reproducible.sh vault probarion_vault
+   ```
+
+   For a factory row, run `bash scripts/build-reproducible.sh factory probarion_factory` instead. The script refuses uncommitted changes under `contracts/`, runs `cargo near build reproducible-wasm` in the pinned image, and writes the wasm and its build info to `../probarion-recorded/contracts/target/reproducible/vault/`. Its last line is the wasm's code hash. The first run also pulls the image.
+
+5. **Compare it with the record.** This is the comparison CI makes. `check` reads the commit from the build info, finds the record for the source at that commit, and compares the two hashes:
+
+   ```bash
+   node scripts/code-hash.mjs check probarion-vault vault ../probarion-recorded/contracts/target/reproducible/vault/probarion_vault.wasm
+   ```
+
+   For the vault at `64ac3c0`, it prints:
+
+   ```text
+   probarion-vault: code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 matches the recorded build (commit 64ac3c03547d59a1f563b5ddf5767c38ae781413)
+   ```
+
+   For a factory row, pass `probarion-factory factory` and the path of `probarion_factory.wasm` under `reproducible/factory/`. Any other answer means your wasm is not the recorded build, and the command says why.
+
+6. **Compare it with the chain.** Read the code hash of an account the row's Deployed column names, here the smoke vault the testnet factory created:
+
+   ```bash
+   node scripts/testnet/chain.mjs code-hash smoke-embedded.vaults.probarion.testnet
+   ```
+
+   It asks a public testnet RPC node for the account and prints its base58 code hash. It must equal the code hash of step 4 and the row's code hash.
+
+</Steps>
+
+To check a vault's code hash and its keys in one run, with no rebuild, use the verifier: its [check f](/docs/trust/verifier-checks#check-f) accepts a vault whose code is a recorded vault build or, for a vault the canonical factory created, one of that factory's versions.
+
+## Recorded builds
+
+One row for each reproducible build in [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json), in the order it was recorded, so the newest is last. The site reads the file when it is built.
+
+<RefTable id="builds-recorded" />
+
+### Read the table
+
+- **Code hash** is what `view_account` reports as `code_hash` for an account that deploys the build as its own code, and what step 4 prints. An account on a global contract reports it as `global_contract_hash` instead.
+- **Commit** is the commit the wasm was built from and embeds. Check it out to rebuild the row.
+- **Deployed** comes from the committed deployment records, [`contracts/deployments/testnet.json`](https://github.com/probarion/probarion/blob/main/contracts/deployments/testnet.json) and `mainnet.json`, not from the chain. Step 6 reads the chain. None means no recorded deployment runs that build.
+- **Built with** is the cargo-near version and the image the record says built it.
+
+Each entry of the file also holds the git ids of the crate's source tree, of `contracts/Cargo.toml` and of `contracts/Cargo.lock`. `check` uses them to find the row for a build's source, and CI uses them to choose the commit it rebuilds. The first two vault rows share the crate's source tree but not `contracts/Cargo.toml` or `contracts/Cargo.lock`, so the record counts them as two sources. Any change to a contract, to `contracts/Cargo.toml` or to `contracts/Cargo.lock` leaves that contract without a row for its new source, until the build of the push that made the change is recorded.
+
+The verifier trusts the code hashes of the vault rows, as `KNOWN_VAULT_CODE_HASHES` in `@probarion/core`, generated from this file. It never trusts a factory row as a vault. It also trusts each version the canonical factory lists, for a vault that factory created.
+
+### What the record does not cover
+
+- Only the vault and the factory are recorded. The test token and NEAR Intents stub contracts on testnet, `test-ft` and `intents-stub`, are not.
+- A matching hash shows which source runs, not that the source is right. No third party has audited the contracts: see [What works today](/docs/start/what-works-today#a-third-party-audit).
+- The npm packages and the hosted app are not in this record.
+
+## What CI checks
+
+CI rebuilds both contracts, the vault and the factory, on every pull request into `dev` or `main`, on every push to those two branches and on every `v*` tag. The `reproducible` job of [`.github/workflows/ci.yml`](https://github.com/probarion/probarion/blob/main/.github/workflows/ci.yml) runs one leg per contract:
+
+- When the contract's current source is in the record, the leg rebuilds the commit recorded for that source, not the commit the run checked out, and fails when the code hash differs from the recorded one.
+- When the source is not in the record yet, as in a pull request that changes the contract, the leg builds the checked-out commit (in a pull request, GitHub's temporary merge commit) and warns that it is not recorded. On a `v*` tag it fails instead.
+- Each leg uploads the wasm and its build info as an artifact, `probarion-vault-wasm` or `probarion-factory-wasm`, kept for 90 days, and prints the build info in the run summary. The upload comes before the comparison, so a failed comparison still leaves the wasm to inspect.
+
+The `verify` check, the one check a branch rule requires, passes only when every job succeeded, this one included.
+
+`node scripts/code-hash.mjs record` adds a build to the record. It refuses a wasm with no build info beside it, or whose build info does not come from a CI push run with a run id. So it never takes the wasm of a pull request run, whose commit is a temporary merge commit, or of a local build, whose build info names no CI event. This guards against mistakes, not against a build info written by hand or a hand edit of `contracts/code-hashes.json`. What catches a wrong hash is CI: while a contract's source stays the recorded one, every run rebuilds the recorded commit and fails when the hash differs from the record. [AGENTS.md](https://github.com/probarion/probarion/blob/main/AGENTS.md#reproducible-builds-and-code-hashes) has the recording steps.
+
+## Common mistakes
+
+- **Building the current commit instead of the recorded one.** A reproducible wasm embeds the commit it was built from, as its NEP-330 `source_code_snapshot`. The same source built at another commit has another code hash, so `check` refuses it and names the commit to rebuild.
+- **Uncommitted changes under `contracts/`.** The script stops with `commit contracts/ first: the reproducible build uses the committed source`. Keep `../probarion-recorded` clean.
+- **A shallow clone.** `git clone --depth 1` leaves out the older commits, so the checkout of a recorded commit finds nothing. CI fetches the whole history for the same reason.
+- **A local build.** `pnpm contracts:build` runs `cargo near build non-reproducible-wasm` outside Docker, and adds `--no-abi` in a Windows shell such as Git Bash. It is for tests and testnet runs. Its hash matches no row, and the repository never records one.
+- **Comparing hex with base58.** `sha256sum` prints the sha256 in hex. NEAR reports the same sha256 in base58. `node scripts/code-hash.mjs hash <wasm>` prints the base58 form, and the build info next to the wasm holds both, as `code_hash` and `sha256`.
+- **A vault on a global contract.** Such an account has no code of its own: `view_account` reports the all-zero hash, `11111111111111111111111111111111`, as its `code_hash`, and the code's hash as `global_contract_hash`. `chain.mjs code-hash` prints `code_hash` only. The SDK, and so the verifier, reads `global_contract_hash` first.
+- **Looking on mainnet.** No vault or factory is deployed on mainnet yet, so there is no mainnet account to compare with. [Testnet and mainnet](/docs/start/testnet-and-mainnet) has the status.
+
+## Related pages
+
+- [Verify a vault yourself](/docs/trust/verify-a-vault): run the verifier, whose check f compares a vault's code hash with this record.
+- [Verifier checks](/docs/trust/verifier-checks): what each check proves, and what it leaves to trust.
+- [Security model](/docs/trust/security-model): what the vault enforces, and the [known gaps](/docs/trust/security-model#known-gaps).
+- [What works today](/docs/start/what-works-today#reproducible-builds): the status of reproducible builds, and why `v0.probarion.testnet` runs an older build.
+- [Contract reference](/docs/build/contract-reference): the methods of the code you rebuilt.

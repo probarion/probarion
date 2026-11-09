@@ -150,6 +150,104 @@ describe("invoice functions (migration 0006)", () => {
     });
   });
 
+  it("with the number rule, inserts a number-only match and names the earlier invoice, for decide() to refuse", async () => {
+    const { id } = await insertInvoice(db, a, invoice({ invoiceNumberKey: H("e") }));
+    await decide(a, id, "paid");
+    const earlier = await getInvoice(db, a, id);
+    // Another text (another fingerprint) with the same number for the same payee.
+    const again = await insertInvoice(db, a, invoice({ invoiceNumberKey: H("e") }), {
+      numberRule: true,
+    });
+    expect(again).toMatchObject({
+      duplicate: false,
+      retry: false,
+      number_match: {
+        id,
+        invoice_hash: earlier?.invoice_hash,
+        status: "decided",
+        outcome_status: "paid",
+      },
+    });
+    expect(again.id).not.toBe(id);
+    expect(await getInvoice(db, a, again.id)).toMatchObject({ status: "processing" });
+    // Without the rule (an app that does not refuse it in decide()), the same number stays a duplicate at intake.
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberKey: H("e") }))).toEqual({
+      id,
+      duplicate: true,
+      status: "decided",
+    });
+  });
+
+  it("with the number rule, still answers the same rendered text as a duplicate, and names no match that cannot pay", async () => {
+    const { id } = await insertInvoice(
+      db,
+      a,
+      invoice({ fingerprint: H("5"), invoiceNumberKey: H("6") }),
+    );
+    await decide(a, id, "paid");
+    expect(
+      await insertInvoice(db, a, invoice({ fingerprint: H("5") }), { numberRule: true }),
+    ).toEqual({ id, duplicate: true, status: "decided" });
+    // A refused invoice paid nothing: its number blocks nothing, and no match is named.
+    const { id: refused } = await insertInvoice(db, a, invoice({ invoiceNumberKey: H("4") }));
+    await decide(a, refused, "refused_by_code");
+    expect(
+      await insertInvoice(db, a, invoice({ invoiceNumberKey: H("4") }), { numberRule: true }),
+    ).toMatchObject({ duplicate: false, number_match: null });
+  });
+
+  it("runs a text the number rule refused again on its row once no invoice that may pay has its number", async () => {
+    const refusedBy = (tenant: string, id: string, code: string) =>
+      setInvoiceOutcome(db, tenant, id, {
+        status: "decided",
+        outcome: {
+          ...OUTCOME,
+          status: "refused_by_code",
+          spendId: null,
+          txHash: null,
+          code,
+        } as never,
+        anchorTxHash: null,
+        promptTokens: null,
+        completionTokens: null,
+      });
+    const { id: first } = await insertInvoice(db, a, invoice({ invoiceNumberKey: H("3") }));
+    const second = invoice({ invoiceNumberKey: H("3") });
+    const { id } = await insertInvoice(db, a, second, { numberRule: true });
+    await refusedBy(a, id, "custom.invoice_number_duplicate");
+    // While the first may still pay, the same text is a duplicate of its own row; without the rule, 0006's answer
+    // names the first, by its number.
+    expect(await insertInvoice(db, a, second, { numberRule: true })).toEqual({
+      id,
+      duplicate: true,
+      status: "decided",
+    });
+    expect(await insertInvoice(db, a, second)).toEqual({
+      id: first,
+      duplicate: true,
+      status: "processing",
+    });
+    // The first paid nothing after all: the same text runs again on its row and ref, with no match to name.
+    await refusedBy(a, first, "mandate.over_total");
+    expect(await insertInvoice(db, a, second)).toMatchObject({ id, duplicate: true });
+    expect(await insertInvoice(db, a, second, { numberRule: true })).toEqual({
+      id,
+      duplicate: false,
+      retry: true,
+      number_match: null,
+    });
+    expect(await getInvoice(db, a, id)).toMatchObject({ status: "processing", outcome: null });
+    // Another rule's refusal is final, as it always was: that row is not run again.
+    const other = invoice();
+    const { id: otherId } = await insertInvoice(db, a, other, { numberRule: true });
+    await refusedBy(a, otherId, "mandate.over_total");
+    expect(await insertInvoice(db, a, other, { numberRule: true })).toEqual({
+      id: otherId,
+      duplicate: true,
+      status: "decided",
+    });
+  });
+
   it("refuses a malformed fingerprint or invoice-number hash", async () => {
     for (const over of [{ fingerprint: "nope" }, { invoiceNumberKey: "XYZ" }]) {
       await expect(insertInvoice(db, a, invoice(over))).rejects.toMatchObject({

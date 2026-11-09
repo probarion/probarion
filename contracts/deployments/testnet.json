@@ -51,5 +51,50 @@
     "mandate": 1,
     "amount": "6000000",
     "over_per_payment_tx": "4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1"
+  },
+  "demo_vault": {
+    "account": "demo.vaults.probarion.testnet",
+    "created_on": "2026-11-09",
+    "factory_version": 1,
+    "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+    "owner": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+    "approvers": ["probarion-approver.testnet"],
+    "payee": "probarion-payee.testnet",
+    "agent_key": "ed25519:7qyNHfvNm2jpiGUVkmLo9gLWhe3C2XehtzhnKcFvSSuA",
+    "ledger_key": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN",
+    "create_vault_tx": "9NzRf9XVahsLNVCewTmaHnHVN5KW89fSTusmwUuiC2MB",
+    "add_agent_tx": "BT4a9ES8KXtnCGWeyWvw4t2oCYNWqhf2P1Xmazo7X2Ug",
+    "set_ledger_key_tx": "CDTnjRubFuosXhmA7jP9YdLPtRsPTVTWiuFMeTcaXpkY",
+    "faucet_mint_tx": "9GGZoC1aaAtmj366JXoTV2FkJBfbax3jsHYCqjcXjd5m",
+    "create_mandate_tx": "F8Qj4yNAK8eTqTtjs7QbQuxMHCrm228jWNfGJHEiHpav",
+    "spends": [
+      {
+        "id": 1,
+        "invoice": "INV-2001",
+        "amount": "2000000",
+        "spend_tx": "HFyW61UZXfwpqhgqWq9bXnRXaYiEnpk4WPUHDAEydQp1",
+        "result": "paid"
+      },
+      {
+        "id": 2,
+        "invoice": "INV-2003",
+        "amount": "4000000",
+        "spend_tx": "6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb",
+        "result": "held",
+        "approve_tx": "47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf",
+        "approved_by": "probarion-approver.testnet"
+      }
+    ],
+    "refusals": [{ "invoice": "INV-2002", "rule": "mandate.payee_mismatch", "ledger_seq": 3 }],
+    "anchors": 5,
+    "proof_page": "https://probarion.xyz/proof/demo.vaults.probarion.testnet",
+    "evidence": "docs/evidence/demo-vault",
+    "verify": {
+      "at": "2026-11-09T11:58:07Z",
+      "cli": "probarion@0.1.0",
+      "mode": "live",
+      "result": "PASS",
+      "passed": 9
+    }
   }
 }

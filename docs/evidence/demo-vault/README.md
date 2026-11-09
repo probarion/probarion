@@ -1,0 +1,68 @@
+# The testnet demo vault, 2026-11-09
+
+`demo.vaults.probarion.testnet` is a vault created through the testnet factory from the web console at
+[probarion.xyz](https://probarion.xyz), on 2026-11-09. A person signed every owner and approver step in their own
+wallet or near-cli keychain, and the console's Payables agent sent each spend with the vault's agent key. Its proof
+page is public: [probarion.xyz/proof/demo.vaults.probarion.testnet](https://probarion.xyz/proof/demo.vaults.probarion.testnet).
+
+Test tokens only: `usdc.probarion.testnet` is `test-ft` acting as USDC, and has no value.
+
+## Accounts
+
+| Role | Account |
+| --- | --- |
+| Vault | `demo.vaults.probarion.testnet`, factory version 1, code hash `3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1` |
+| Owner | `35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b`, signing in Meteor Wallet |
+| Approver | `probarion-approver.testnet`, signing with near-cli-rs (`sign-with-keychain`) |
+| Payee | `probarion-payee.testnet` |
+| Agent key | `ed25519:7qyNHfvNm2jpiGUVkmLo9gLWhe3C2XehtzhnKcFvSSuA`, label `demo-agent`, can call `spend` only |
+| Ledger key | `ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN`, can call `anchor` only |
+
+## The four invoices
+
+Mandate 1, "Sample PO-1001": pays `probarion-payee.testnet`, at most 5 USDC a payment and 20 in all, 5 payments,
+until 2026-12-09, and holds a payment above 3 USDC for an approver. Its purpose hash is the sha256 of
+[`po-PO-1001.txt`](po-PO-1001.txt). Each invoice went in with that PO attached. No attested model was set, so the
+code read the amount and the owner confirmed it with a NEP-413 signature before anything was sent.
+
+| Invoice | What it asks | What happened |
+| --- | --- | --- |
+| [`invoice-INV-2001.txt`](invoice-INV-2001.txt) | 2 USDC to the mandate's payee | The owner confirmed it, and spend 1 paid 2 USDC |
+| `invoice-INV-2001.txt` again | The same file a second time | The console refused it on upload as a duplicate of the same text. Nothing was decided or sent, so the ledger has no entry for it |
+| [`invoice-INV-2002.txt`](invoice-INV-2002.txt) | "We changed banks": 2 USDC to `new-account.testnet` | Refused by code, rule `mandate.payee_mismatch`. Nothing was sent. The refusal is ledger entry 3 |
+| [`invoice-INV-2003.txt`](invoice-INV-2003.txt) | 4 USDC, above the 3 USDC approval limit | The owner confirmed it, and the vault held spend 2. The approver approved it from their own key, and it paid 4 USDC |
+
+Each invoice's sha256 is the `invoice_hash` of its ledger entries and of its spend on chain.
+
+## Transactions
+
+| Time (UTC) | What | Transaction |
+| --- | --- | --- |
+| 11:21:48 | The owner creates the vault through the factory | [`9NzRf9XV…`](https://testnet.nearblocks.io/txns/9NzRf9XVahsLNVCewTmaHnHVN5KW89fSTusmwUuiC2MB) |
+| 11:39:16 | The owner adds the agent key | [`BT4a9ES8…`](https://testnet.nearblocks.io/txns/BT4a9ES8KXtnCGWeyWvw4t2oCYNWqhf2P1Xmazo7X2Ug) |
+| 11:40:37 | The owner sets the ledger key | [`CDTnjRub…`](https://testnet.nearblocks.io/txns/CDTnjRubFuosXhmA7jP9YdLPtRsPTVTWiuFMeTcaXpkY) |
+| 11:41:36 | The testnet faucet mints 25 test USDC into the vault | [`9GGZoC1a…`](https://testnet.nearblocks.io/txns/9GGZoC1aaAtmj366JXoTV2FkJBfbax3jsHYCqjcXjd5m) |
+| 11:45:32 | The owner signs mandate 1 | [`F8Qj4yNA…`](https://testnet.nearblocks.io/txns/F8Qj4yNAK8eTqTtjs7QbQuxMHCrm228jWNfGJHEiHpav) |
+| 11:47:29 | Spend 1, INV-2001, paid | [`HFyW61UZ…`](https://testnet.nearblocks.io/txns/HFyW61UZXfwpqhgqWq9bXnRXaYiEnpk4WPUHDAEydQp1) |
+| 11:53:34 | Spend 2, INV-2003, held | [`6oDNZEUB…`](https://testnet.nearblocks.io/txns/6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb) |
+| 11:56:02 | The approver approves spend 2, which pays | [`47VCARhw…`](https://testnet.nearblocks.io/txns/47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf) |
+
+The ledger key anchored the ledger five times, at 11:46:28, 11:47:36, 11:49:22, 11:50:39 and 11:53:40. The
+approval is on chain only: no code writes an approver's decision to the ledger.
+
+## Check it
+
+[`verify-2026-11-09.txt`](verify-2026-11-09.txt) is the output of a live run at 2026-11-09T11:58Z, with release
+0.1.0 from npm, which read the chain itself: checks a to i pass, `RESULT: PASS`.
+
+That run wrote [`snapshot-2026-11-09.json`](snapshot-2026-11-09.json), the ledger and the chain data it read. Offline,
+the verifier checks that file against itself, with no network:
+
+```bash
+npx probarion verify --offline docs/evidence/demo-vault/snapshot-2026-11-09.json
+```
+
+To read the chain again instead, download the vault's current ledger from its proof page and run
+`npx probarion verify --network testnet --vault demo.vaults.probarion.testnet --ledger <file>`. The vault may have
+acted since, so the counts can be higher than here. [`ledger-2026-11-09.jsonl`](ledger-2026-11-09.jsonl) is the
+ledger as the proof page served it after the run: seven entries, five decisions and two payment results.

@@ -69,6 +69,15 @@ describe("the operations copy", () => {
     expect(md).toContain("There is\nno bug bounty");
   });
 
+  it("offers the GitHub form as SECURITY.md does, now that private reporting is on", () => {
+    const report = SECURITY_PAGE.report.paragraphs.join("\n");
+    expect(read("SECURITY.md")).toContain("**Security → Report a vulnerability**");
+    expect(report).toContain(
+      "open the repository's Security tab and choose Report a vulnerability",
+    );
+    expect(report).not.toMatch(/switched on/i);
+  });
+
   it("shows the threat model's blast-radius rows word for word", () => {
     const md = read("docs", "THREAT_MODEL.md");
     expect(BLAST_RADIUS).toHaveLength(5);
