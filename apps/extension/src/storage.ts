@@ -122,9 +122,14 @@ export async function putConnection(
   });
 }
 
-export async function dropConnection(c: ChromeLike, origin: string): Promise<void> {
+/**
+ * Forgets the connection for `origin`, but only while it still holds `token`, the one that was just ended: a connection
+ * stored since (a connect page, a pairing code) is kept, and its token is not left live with nothing holding it.
+ */
+export async function dropConnection(c: ChromeLike, origin: string, token: string): Promise<void> {
   return locked(async () => {
     const s = await loadLocal(c);
+    if (s.connections[origin]?.token !== token) return;
     delete s.connections[origin];
     if (s.selectedOrigin === origin) s.selectedOrigin = Object.keys(s.connections)[0] ?? null;
     await saveLocal(c, s);

@@ -78,12 +78,27 @@ describe("the connections", () => {
     const c = fakeChrome();
     await putConnection(c, OTHER_ORIGIN, conn());
     await putConnection(c, ORIGIN, conn());
-    await dropConnection(c, ORIGIN);
+    await dropConnection(c, ORIGIN, TOKEN);
     expect(await loadLocal(c)).toEqual({
       connections: { [OTHER_ORIGIN]: conn() },
       selectedOrigin: OTHER_ORIGIN,
     });
-    await dropConnection(c, OTHER_ORIGIN);
+    await dropConnection(c, OTHER_ORIGIN, TOKEN);
+    expect(await loadLocal(c)).toEqual({ connections: {}, selectedOrigin: null });
+  });
+
+  it("are dropped only while they hold the token that was ended", async () => {
+    const c = fakeChrome();
+    await putConnection(c, ORIGIN, conn());
+    // A new connection for this address was stored while the old token's revoke was out.
+    await putConnection(c, ORIGIN, conn({ token: TOKEN_B }));
+    await dropConnection(c, ORIGIN, TOKEN);
+    expect(await loadLocal(c)).toEqual({
+      connections: { [ORIGIN]: conn({ token: TOKEN_B }) },
+      selectedOrigin: ORIGIN,
+    });
+    await dropConnection(c, OTHER_ORIGIN, TOKEN); // no connection there: nothing to do
+    await dropConnection(c, ORIGIN, TOKEN_B);
     expect(await loadLocal(c)).toEqual({ connections: {}, selectedOrigin: null });
   });
 

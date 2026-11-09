@@ -129,6 +129,8 @@ async function keep(d: Deps, origin: string, p: Paired): Promise<string | null> 
  * Ends, on Probarion, a token this extension no longer holds because a new connection replaced it, so that no live
  * token is left that the person can neither see nor end from the extension. Best effort: when Probarion can't be
  * reached the new connection stands, and the old token still ends at its 30-day end or from the Browser extension page.
+ * The answer is ignored, so a 401 changes nothing; a token made on the other network, if any, is not reachable from here
+ * (see disconnect).
  */
 async function endReplaced(d: Deps, origin: string, token: string | null): Promise<void> {
   if (token === null) return;
@@ -186,9 +188,12 @@ export async function connectWithCode(
 
 /**
  * Disconnect: ends the token on Probarion, then forgets it here. It forgets it even when Probarion can't be reached;
- * `revoked: false` then tells the popup to say where to end it. A connection marked expired is ended too: a 401 can
- * mean the token is dead, or only that it was made on the other network (the server answers both the same way), so the
- * one request is always sent. A 401 for it counts as ended.
+ * `revoked: false` then tells the popup to say where to end it. A connection marked expired here is sent the revoke too,
+ * since its token can still be live on this address. A 401 counts as ended. The server answers the same 401 for a token
+ * that is dead and for one made on the other network, so the extension cannot tell them apart: a token from the other
+ * network, if any, is not reachable from here. It is ended on the Browser extension page of its own address, or it
+ * expires after 30 days. The connection is forgotten only while it still holds the token that was ended: one stored
+ * during the revoke (it can take 15 s) is kept.
  */
 export async function disconnect(d: Deps, origin: string): Promise<{ revoked: boolean }> {
   const connection = (await loadLocal(d.chrome)).connections[origin];
@@ -199,7 +204,7 @@ export async function disconnect(d: Deps, origin: string): Promise<{ revoked: bo
   } catch (error) {
     revoked = error instanceof ApiError && error.status === 401;
   }
-  await dropConnection(d.chrome, origin);
+  await dropConnection(d.chrome, origin, connection.token);
   await ensureAlarm(d);
   await refresh(d);
   return { revoked };

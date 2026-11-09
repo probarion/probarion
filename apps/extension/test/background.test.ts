@@ -421,7 +421,27 @@ describe("Disconnect", () => {
     expect((await loadLocal(c)).connections).toEqual({});
   });
 
-  it("ends the token of a connection marked expired too, since a 401 may only mean another network", async () => {
+  it("keeps a connection stored while the revoke was out, and does not wipe its token", async () => {
+    await putConnection(c, ORIGIN, conn());
+    // The revoke is slow. Meanwhile a connect page or a pairing code stores a new connection for this address.
+    const f = fetchOf(async (url) => {
+      if (!url.endsWith("/api/ext/revoke")) return json(inboxBody());
+      await putConnection(c, ORIGIN, conn({ token: TOKEN_B }));
+      return new Response(null, { status: 204 });
+    });
+    expect(await disconnect(deps(f.fetch), ORIGIN)).toEqual({ revoked: true });
+    const s = await loadLocal(c);
+    expect(s.connections[ORIGIN]).toMatchObject({ token: TOKEN_B, expired: false });
+    expect(s.selectedOrigin).toBe(ORIGIN);
+    expect(c.alarmsSet.has(ALARM)).toBe(true);
+    // The kept connection is the one the badge reads.
+    expect(new Headers(f.calls.at(-1)?.init?.headers).get("authorization")).toBe(
+      `Bearer ${TOKEN_B}`,
+    );
+    expect(c.badge.text).toBe("3");
+  });
+
+  it("ends the token of a connection marked expired here, which may still be live on this address", async () => {
     await putConnection(c, ORIGIN, conn({ expired: true }));
     const f = fetchOf(() => new Response(null, { status: 204 }));
     expect(await disconnect(deps(f.fetch), ORIGIN)).toEqual({ revoked: true });
