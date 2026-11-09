@@ -98,8 +98,8 @@ is why the command uses trial decryption.
    emails stop working (the Remove button on the Alerts tab and Telegram's `/stop` still do, and later emails have
    working links), and visitor hashes change (Canary per-visitor
    limits start over). The invoice-number key changes (it is derived from `KEY_ENCRYPTION_SECRET`,
-   `apps/web/src/lib/payables/pipeline.ts:111-112,126`), so a re-uploaded invoice is no longer matched by its number
-   to invoices uploaded before the rotation; the text fingerprint (an unkeyed sha256, `pipeline.ts:263`) still catches
+   `apps/web/src/lib/payables/number-key.ts:6-7,22`), so a re-uploaded invoice is no longer matched by its number
+   to invoices uploaded before the rotation; the text fingerprint (an unkeyed sha256, `apps/web/src/lib/payables/pipeline.ts:239`) still catches
    identical text. Browser extension connections are not ended: their tokens are stored as a sha256, not sealed under
    the master. End them as in the Extension tokens row of `docs/RUNBOOK.md`'s Key rotation table when the incident
    calls for it.

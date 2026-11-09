@@ -4,6 +4,7 @@ import type { Sealed } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import type { InvoiceMediaType } from "./extract";
 import type { AmountIssue } from "./facts";
+import type { QueueCheck } from "./queue-rules";
 
 // The invoices rows as the service-role functions of migration 0006 read and write them. `tenantId` must come
 // from the session's membership (memberRole) or a server job's own tenant row, never from a request.
@@ -11,6 +12,8 @@ import type { AmountIssue } from "./facts";
 /**
  * received -> processing -> decided | unconfirmed | awaiting_owner | error (0006's check and functions).
  * awaiting_owner: no attested model confirmed the amount the code read, so nothing was sent; the owner confirms.
+ * processing -> awaiting_owner in one transaction (invoice_queue, migration 0015): an invoice sent from the browser
+ * extension, queued for the owner's Confirm; no cycle runs before it.
  * awaiting_owner -> processing (the owner confirmed, migration 0007) -> decided | unconfirmed | awaiting_owner.
  * awaiting_owner -> rejected (the owner rejected it, 0007): nothing was paid, and its guard keys are freed.
  */
@@ -72,6 +75,13 @@ export interface InvoiceRow {
   created_by: string;
   created_at: string;
   decided_at: string | null;
+  /**
+   * Where the invoice came from (migration 0015): the console upload, or the browser extension (queued for the owner's
+   * Confirm; no cycle runs before it).
+   */
+  source: "console" | "extension";
+  /** The checks an extension invoice passed when it was queued (0015), or null for a console upload. */
+  queue_checks: QueueCheck[] | null;
 }
 
 export interface NewInvoice {
@@ -86,7 +96,7 @@ export interface NewInvoice {
   amountIssue: AmountIssue | null;
   /** sha256 of the normalised text (fingerprintText): the duplicate guard's key. */
   fingerprint: string;
-  /** HMAC of the vault, the payee and the invoice number (pipeline.ts invoiceNumberKey), or null when none. */
+  /** HMAC of the vault, the payee and the invoice number (number-key.ts invoiceNumberKey), or null when none. */
   invoiceNumberKey: string | null;
   requestId: string;
   createdBy: string;
@@ -96,8 +106,8 @@ export type InsertResult =
   | { id: string; duplicate: false; retry: boolean }
   | { id: string; duplicate: true; status: InvoiceStatus };
 
-export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<InsertResult> {
-  return db.rpc<InsertResult>("invoice_insert", {
+function insertParams(tenantId: string, i: NewInvoice): Record<string, unknown> {
+  return {
     tenant_id: tenantId,
     invoice_hash: i.invoiceHash,
     ref: i.ref,
@@ -113,6 +123,38 @@ export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<
     amount_issue: i.amountIssue,
     request_id: i.requestId,
     created_by: i.createdBy,
+  };
+}
+
+export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<InsertResult> {
+  return db.rpc<InsertResult>("invoice_insert", insertParams(tenantId, i));
+}
+
+/** An invoice the browser extension queues: the console's row, plus what the owner is asked to confirm. */
+export interface QueuedInvoice extends NewInvoice {
+  /** The code's amount (USDC base units). */
+  suggestedAmount: string;
+  /** The mandate the member chose. */
+  mandateId: number;
+  /** The checks it was queued with: pass or hold only. */
+  checks: QueueCheck[];
+}
+
+export type QueueInsertResult =
+  | { id: string; duplicate: false; status: "awaiting_owner" }
+  | { id: string; duplicate: true; status: InvoiceStatus };
+
+/** invoice_insert's row, stored straight in awaiting_owner in the same transaction (migration 0015). */
+export function queueInvoiceRow(
+  db: Db,
+  tenantId: string,
+  q: QueuedInvoice,
+): Promise<QueueInsertResult> {
+  return db.rpc<QueueInsertResult>("invoice_queue", {
+    ...insertParams(tenantId, q),
+    suggested_amount: q.suggestedAmount,
+    mandate_id: q.mandateId,
+    queue_checks: q.checks,
   });
 }
 

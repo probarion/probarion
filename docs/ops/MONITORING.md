@@ -176,10 +176,11 @@ nor as breadcrumbs of a later event: they stay in the Vercel logs, where the `re
 
 Where the tags come from:
 
-- Seven routes tag their own requests: the Payables upload (`component:payables`, with the network and the tenant),
+- Eight routes tag their own requests: the Payables upload (`component:payables`, with the network and the tenant),
   the Canary attempt (`component:canary`, with the network), the watch cron (`component:watcher`), the metrics cron
-  (`component:metrics`), and the browser extension's pairing, inbox and revoke routes (`component:extension`, with
-  the network; the inbox and revoke routes once the token is verified). The crons cover every network, so they set no
+  (`component:metrics`), and the browser extension's pairing, inbox, revoke and invoice routes
+  (`component:extension`, with the network; the inbox, revoke and invoice routes once the token is verified). The
+  crons cover every network, so they set no
   network. Every event of those requests, unhandled exceptions included, carries the route's component and request
   id, and a log line from them keeps the route's component: `alerts.dispatch_failed` in a watch run is
   `component:watcher`.
@@ -206,7 +207,7 @@ The OWNER creates them in Sentry and sends a test notification for each. They fi
 | 1 | A new issue | environment is `production` | email the OWNER | 5 min |
 | 2 | A regression | environment is `production` | email | 5 min |
 | 3 | A burst: more than 20 events in 10 minutes | environment is `production` | email | 30 min |
-| 4 | Money path: a new issue, or more than 1 event in an hour | `component:payables`, `component:topup`, `component:canary`, `component:watcher` or `component:alerts` (and `component:extension` once the extension's queue route, `POST /api/ext/invoices` (plan 06 Task 2, E1b), exists) | email | 5 min |
+| 4 | Money path: a new issue, or more than 1 event in an hour | `component:payables`, `component:topup`, `component:canary`, `component:watcher`, `component:alerts` or `component:extension` | email | 5 min |
 | 4b | Optional. Mainnet: a new issue | `network` is `mainnet` | email and push | 5 min |
 | 5 | Optional. Error rate (a metric alert) | only if the plan includes metric alerts (not verified) | email | not set |
 

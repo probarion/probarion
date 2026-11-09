@@ -11,8 +11,12 @@ import {
   amountIssueText,
   amountMatch,
   buildCycleView,
+  cycleRanFor,
+  EXTENSION_LEDGER_NOTE,
+  EXTENSION_SOURCE_NOTE,
   invoiceStatusLabel,
   outcomeLabel,
+  queuedChecks,
   recentPayeeRows,
   rowResult,
   usdcFixed,
@@ -325,6 +329,80 @@ describe("rowResult", () => {
   });
 });
 
+describe("an invoice from the browser extension", () => {
+  const row = (over: Partial<InvoiceRow>) =>
+    ({
+      status: "awaiting_owner",
+      outcome: null,
+      source: "extension",
+      queue_checks: null,
+      ...over,
+    }) as InvoiceRow;
+
+  it("says where it came from while it waits, and a console row reads as before", () => {
+    expect(rowResult(row({}))).toEqual({
+      label: "Waiting for you: sent from the browser extension",
+      tone: "warn",
+    });
+    expect(rowResult(row({}), false).label).toBe(
+      "Waiting for the owner: sent from the browser extension",
+    );
+    expect(rowResult(row({ source: "console" }))).toEqual({
+      label: "Waiting for you: no attested model confirmed the amount",
+      tone: "warn",
+    });
+    expect(
+      rowResult(row({ status: "decided", outcome: outcome({ status: "paid", spendId: 1 }) })),
+    ).toEqual({ label: "Paid on NEAR", tone: "good" });
+  });
+
+  it("shows the checks it was queued with, made safe, and none for a console row", () => {
+    const checks = [
+      { id: "extension.mandate_chosen", outcome: "hold", detail: "chosen\u202E here" },
+      { id: "contract.check_spend", outcome: "pass", detail: "ok" },
+      { id: "x", outcome: "maybe", detail: "d" },
+    ] as InvoiceRow["queue_checks"];
+    const shown = queuedChecks(row({ queue_checks: checks }));
+    expect(shown.map((c) => [c.id, c.outcome])).toEqual([
+      ["extension.mandate_chosen", "hold"],
+      ["contract.check_spend", "pass"],
+      ["x", "unknown"],
+    ]);
+    expect(hasUnsafe(shown[0]?.detail ?? "")).toBe(false);
+    expect(queuedChecks(row({ source: "console", queue_checks: checks }))).toEqual([]);
+    expect(queuedChecks(row({ queue_checks: "nope" as never }))).toEqual([]);
+    expect(queuedChecks(row({ queue_checks: [null, 7, ...(checks ?? [])] as never }))).toHaveLength(
+      3,
+    );
+  });
+
+  it("knows whether a Confirm ran a cycle for it: an outcome, or a ledger decision for its invoice hash", () => {
+    const hash = "a".repeat(64);
+    const queued = row({ invoice_hash: hash });
+    // Queued, or rejected before any Confirm: no outcome, and the ledger holds nothing for this invoice.
+    expect(cycleRanFor(queued, [])).toBe(false);
+    expect(cycleRanFor(queued, [decision({ invoice_hash: "b".repeat(64) }), anchorEntry])).toBe(
+      false,
+    );
+    expect(cycleRanFor(row({ invoice_hash: hash, status: "rejected" }), null)).toBe(false);
+    // A Confirm that wrote its decision and then stopped: the row has no outcome, the ledger has the decision.
+    expect(cycleRanFor(queued, [decision({ invoice_hash: hash })])).toBe(true);
+    // Paid or held again: the row keeps the outcome, even when the ledger cannot be read.
+    expect(cycleRanFor(row({ invoice_hash: hash, outcome: outcome() }), null)).toBe(true);
+    expect(cycleRanFor(row({ invoice_hash: hash, outcome: outcome() }), [])).toBe(true);
+  });
+
+  it("says how the mandate was chosen in every state, and the ledger's purpose pass only after a cycle", () => {
+    expect(EXTENSION_SOURCE_NOTE).toBe(
+      "This invoice was sent from the browser extension, where a member of the vault chose the mandate. No purpose document was matched.",
+    );
+    expect(EXTENSION_LEDGER_NOTE).toBe(
+      "The owner's Confirm decided it under that mandate, so the signed ledger's invoice.po_mismatch rule passed with the mandate's own purpose.",
+    );
+    expect(EXTENSION_SOURCE_NOTE).not.toMatch(/Confirm|ledger/);
+  });
+});
+
 describe("amountIssueText", () => {
   it("gives every reason a plain sentence and says the owner can pay it by hand", () => {
     const seen = new Set<string>();
@@ -441,6 +519,27 @@ describe("recentPayeeRows", () => {
     const entries = [decided(2, 3, "5", 10), decided(2, 1, "5", 11), decided(3, 1, "5")];
     expect(recentPayeeRows(target, rows, entries, mandates, NOW).rows.map((x) => x.id)).toEqual([
       "id-2",
+    ]);
+  });
+
+  it("labels another waiting invoice of the payee that came from the browser extension as one", () => {
+    const target = row(1, { status: "awaiting_owner", suggested_amount: "5", mandate_id: 1 });
+    const fromExtension = row(2, {
+      status: "awaiting_owner",
+      suggested_amount: "5",
+      mandate_id: 1,
+      source: "extension",
+    });
+    const rows = [target, fromExtension, row(3, { status: "awaiting_owner", mandate_id: 1 })];
+    expect(recentPayeeRows(target, rows, [], mandates, NOW).rows.map((x) => x.label)).toEqual([
+      "Waiting for you: no attested model confirmed the amount",
+      "Waiting for you: sent from the browser extension",
+    ]);
+    expect(
+      recentPayeeRows(target, rows, [], mandates, NOW, false).rows.map((x) => x.label),
+    ).toEqual([
+      "Waiting for the owner: no attested model confirmed the amount",
+      "Waiting for the owner: sent from the browser extension",
     ]);
   });
 

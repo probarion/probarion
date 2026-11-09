@@ -135,9 +135,7 @@ describe("the HTTP error codes", () => {
   // Pairs that only a helper no route calls yet returns: [status, code, the helper's file, the
   // helper]. They stay out of HTTP_ERRORS. The last test here fails once a route can call the
   // helper, and says to restore the row.
-  const UNROUTED_HTTP: readonly (readonly [number, string, string, string])[] = [
-    [403, "not_member", "lib/ext/auth.ts", "extMember"],
-  ];
+  const UNROUTED_HTTP: readonly (readonly [number, string, string, string])[] = [];
 
   /**
    * The top-level comma-separated parts of the bracket that opens at `open` (a call's arguments, an
@@ -285,6 +283,13 @@ describe("the HTTP error codes", () => {
         `${callers.join(", ")} now names ${helper}, so a route can return ${status} ${code}: restore its row in HTTP_ERRORS (lib/docs/errors.ts) and remove it from UNROUTED_HTTP`,
       ).toEqual([]);
     }
+  });
+
+  it("send an Extension API caller to the console to paste text, which the extension cannot do", () => {
+    const rows = HTTP_ERRORS.filter((e) => e.where.includes("Extension API"));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const e of rows.filter((r) => /\bpaste\b/i.test(r.next)))
+      expect(e.next, `${e.status} ${e.code}`).toMatch(/\bin the console\b/);
   });
 });
 

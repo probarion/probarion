@@ -13,10 +13,12 @@ const SRC = join(WEB, "src");
 const posix = (f: string) => relative(WEB, f).replaceAll("\\", "/");
 const isFile = (f: string) => existsSync(f) && statSync(f).isFile();
 
-/** The extension's own server code: what a token can reach. Task E1b adds the queue. */
+/** The extension's own server code: what a token can reach, with the invoice queue (lib/payables/queue*.ts). */
 const ROOTS = [
   ...walk(join(SRC, "lib", "ext")).filter((f) => isSourceFile(f) && !/\.test\.tsx?$/.test(f)),
   ...walk(join(SRC, "app", "api", "ext")).filter((f) => /[\\/]route\.ts$/.test(f)),
+  join(SRC, "lib", "payables", "queue.ts"),
+  join(SRC, "lib", "payables", "queue-rules.ts"),
 ];
 
 /**
@@ -69,8 +71,8 @@ const FORBIDDEN_FROM: Record<string, string[]> = {
  * upload does. Neither opens anything. secrets.ts's own `open` serves only its opening functions, which every module
  * here is still refused by name, and a test below holds sealInvoice to sealing.
  *
- * Until E1b writes those files, none of these lets anything through. E1b adds its roots and changes nothing here. If
- * its files or imports differ from the plan, the controller rules: widening an exemption loosens the guard.
+ * E1b's files exist, so each of these is in use. Removing one is a tightening; widening one is the controller's
+ * ruling: it loosens the guard. If its files or imports differ from the plan, the controller rules.
  */
 const EXEMPTIONS: readonly { file: string; from: string; name: string }[] = [
   {
@@ -417,7 +419,7 @@ function graph(roots: string[]): Map<string, Imp[]> {
   return seen;
 }
 
-describe("the extension's server code imports nothing that pays, signs or opens a key", () => {
+describe("the extension's server code imports nothing that pays or signs, and nothing outside lib/crypto that opens a sealed key", () => {
   const g = graph(ROOTS);
   /** Every import that loads something, with the module it names and the app file it resolves to, if any. */
   const loads = [...g.entries()].flatMap(([f, imps]) =>
@@ -500,6 +502,9 @@ describe("the extension's server code imports nothing that pays, signs or opens 
         "src/app/api/ext/pair/route.ts",
         "src/app/api/ext/inbox/route.ts",
         "src/app/api/ext/revoke/route.ts",
+        "src/lib/payables/queue.ts",
+        "src/lib/payables/queue-rules.ts",
+        "src/app/api/ext/invoices/route.ts",
       ]),
     );
   });
@@ -726,6 +731,69 @@ describe("the extension's server code imports nothing that pays, signs or opens 
         expect(text, `${doc} names secrets.ts's open carve-out`).toContain(OPEN_EXCEPTION_CLAIM);
       }
     }
+  });
+
+  it("makes a VaultClient only with a contract and an RPC client, never with senders, and passes the class nowhere", () => {
+    // A third argument (senders) could sign. Every use of the class, by whatever local name a value import gives it,
+    // must be `new VaultClient(a, b)` with two arguments and no spread: an alias, a subclass or a re-export would let
+    // a later call add senders out of this test's sight. Types are not values and are skipped; `extends` is not.
+    // A re-export straight from another module (`export { VaultClient as VC } from …`) passes the class on under a
+    // name this test would not follow, so it is refused where it is written.
+    const found: string[] = [];
+    for (const f of g.keys()) {
+      const sf = parse(f);
+      const names = new Set<string>();
+      for (const st of sf.statements) {
+        if (
+          ts.isExportDeclaration(st) &&
+          !st.isTypeOnly &&
+          st.moduleSpecifier &&
+          st.exportClause &&
+          ts.isNamedExports(st.exportClause)
+        ) {
+          for (const e of st.exportClause.elements) {
+            if (!e.isTypeOnly && (e.propertyName ?? e.name).text === "VaultClient") {
+              found.push(`${posix(f)}:${sf.getLineAndCharacterOfPosition(e.getStart()).line + 1}`);
+            }
+          }
+        }
+        const c = ts.isImportDeclaration(st) ? st.importClause : undefined;
+        const nb = c && !c.isTypeOnly ? c.namedBindings : undefined;
+        if (nb && ts.isNamedImports(nb)) {
+          for (const e of nb.elements) {
+            if (!e.isTypeOnly && (e.propertyName ?? e.name).text === "VaultClient") {
+              names.add(e.name.text);
+            }
+          }
+        }
+      }
+      if (names.size === 0) continue;
+      const visit = (n: ts.Node): void => {
+        if (ts.isImportDeclaration(n)) return;
+        if (ts.isTypeNode(n) && !ts.isExpressionWithTypeArguments(n)) return;
+        if (ts.isIdentifier(n) && names.has(n.text)) {
+          const p = n.parent;
+          const ok =
+            ts.isNewExpression(p) &&
+            p.expression === n &&
+            p.arguments?.length === 2 &&
+            !p.arguments.some((a) => ts.isSpreadElement(a));
+          if (!ok) {
+            found.push(`${posix(f)}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`);
+          }
+        }
+        ts.forEachChild(n, visit);
+      };
+      visit(sf);
+    }
+    expect(found).toEqual([]);
+  });
+
+  it("imports no decide() from @probarion/core: the queue runs the payee check and check_spend, not the cycle", () => {
+    const found = loads
+      .filter((l) => /^@probarion\/core(\/|$)/.test(l.imp.from) && l.imp.names.includes("decide"))
+      .map((l) => `${posix(l.file)}: ${l.imp.from}`);
+    expect(found).toEqual([]);
   });
 
   it("reaches nothing as a property: no namespace or export * of an app module, nor a whole signing package", () => {

@@ -390,6 +390,8 @@ export const START: readonly DocPage[] = [
       "packages/core/package.json",
       "packages/sdk/package.json",
       "packages/cli/package.json",
+      "apps/web/src/app/api/ext/invoices/route.ts",
+      "apps/web/src/lib/payables/queue.ts",
       "contracts/deployments/testnet.json",
     ],
     reviewed: "2026-11-09",
