@@ -51,7 +51,7 @@ The console, its API routes and the watcher are one Next.js app, `apps/web`, dep
   - `/api/auth`: the sign-in challenge, its check and sign-out.
   - `/api/console`: the Payables invoice upload.
   - `/api/topup`: on testnet, the faucet. On mainnet, the 1Click top-up of the vault's Base USDC inside NEAR Intents, in three routes, `/api/topup/quote`, `/api/topup/submit` and `/api/topup/status`, which has not been tried with a live quote yet.
-  - `/api/ext`: the server half of a browser extension, which can read what waits for you and cannot pay.
+  - `/api/ext`: the server half of the browser extension. A connection reads what waits for you and queues an invoice for the owner's Confirm; it cannot pay, approve or confirm.
   - `/api/alerts` and `/api/telegram`: the email confirm and stop links, and the Telegram bot's `/start` and `/stop`.
   - `/api/canary`: one attempt at the Canary, the public challenge, which is not open yet.
   - `/api/cron`: the watcher and the daily usage numbers.
@@ -105,5 +105,5 @@ The hosted app talks to a few more services that the diagram leaves out:
 - **The watcher writes nothing to the chain.** It reads, records and sends alerts, and holds no key.
 - **It does not run NEAR Intents or the bridge.** On mainnet a Base or Solana payout leaves the vault as an `ft_withdraw` on `intents.near`, and the POA bridge releases it on the other chain. Probarion trusts both to do so.
 - **It has no public agent HTTP API, no MCP server and no outbound webhook.** An agent pays from its own process through the SDK, or through Payables in the console, which needs a signed-in owner or approver. The MCP server is Planned. The one webhook route takes Telegram's updates in, and alerts go out only by Telegram and email.
-- **It does not include the browser extension.** This repository holds only the extension's server half, at `/extension` and `/api/ext`, which is Preview.
+- **The browser extension cannot pay.** `apps/extension` connects with a revocable token, shows what waits for you and queues an invoice through `/api/ext`; only the owner's wallet-signed Confirm in the console pays it. It is not in the Chrome Web Store yet.
 - **It does not serve mainnet yet.** No mainnet vault or factory exists, and only the testnet address is served.
