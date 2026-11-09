@@ -17,7 +17,7 @@
   also="What is Probarion"
   alsoHref="/docs/start/what-is-probarion"
 >
-Follow one payment from the owner's mandate to the contract's decision and a record anyone can check. No wallet needed.
+Follow one payment from the owner's mandate to the contract's decision and a record its owner can publish for anyone to check. No wallet needed.
 </Door>
 
 <Door
@@ -62,7 +62,7 @@ The model may advise. Code decides. The contract has the last word.
 2. **Code** Decides to allow the payment, hold it or refuse it, with built-in rules that cannot be removed. A model may advise, but it cannot widen the mandate. The SDK signs the decision into the ledger before anything is sent, refusals included. If code refuses, nothing is sent.
 3. **Agent** Asks to spend. Its `spend` request carries a mandate id, an amount, a ref and two hashes, one of them the signed decision's. It has no field for a payee.
 4. **Contract** Runs 14 checks in a fixed order. It pays the mandate's payee, holds the spend for an approver, or refuses with a code such as `NoMandate`. The SDK signs that outcome into the ledger.
-5. **Anyone** Checks the record. Each ledger entry is chained by hash to the one before, and the SDK anchors the root on the vault with the ledger key. The verifier runs checks a to i with no account and ends with PASS, FAIL or UNPROVEN.
+5. **Anyone** Checks a published record. Each ledger entry is chained by hash to the one before, and the SDK anchors the root on the vault with the ledger key. The verifier runs checks a to i with no account and ends with PASS, FAIL or UNPROVEN.
 
 </Flow>
 

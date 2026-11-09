@@ -6,7 +6,7 @@ export const START: readonly DocPage[] = [
     title: "What is Probarion",
     description:
       "Probarion is a mandate layer for AI agents on NEAR: an owner signs spending limits, a vault contract checks every payment, a signed ledger records it.",
-    lede: "Probarion is a mandate layer for AI agents on NEAR. The agent pays people and services only inside mandates its owner signed, a NEAR contract checks every payment, and the SDK signs every decision into a ledger anyone can verify.",
+    lede: "Probarion is a mandate layer for AI agents on NEAR. The agent pays people and services only inside mandates its owner signed, a NEAR contract checks every payment, and the SDK signs every decision into a ledger the owner can publish for anyone to verify.",
     type: "explanation",
     audiences: ["beginner", "partner"],
     status: "live",
@@ -53,7 +53,7 @@ export const START: readonly DocPage[] = [
     title: "How one payment works",
     nav: "One payment",
     description:
-      "Follow one payment from the owner's mandate through code, the vault contract's 14 checks and the signed ledger to a record anyone can verify.",
+      "Follow one payment from the owner's mandate through code, the vault's 14 checks and the signed ledger to a record the owner can publish for anyone to verify.",
     lede: "An owner signs a mandate. When an invoice comes in, code decides and signs that decision into a ledger, the agent asks the vault to pay under the mandate, the vault contract checks the request again and pays, holds or refuses, and anyone can later tie the payment to its decision.",
     type: "explanation",
     audiences: ["beginner"],

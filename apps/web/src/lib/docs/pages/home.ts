@@ -6,7 +6,7 @@ export const HOME: DocPage = {
   nav: "Docs home",
   description:
     "Guides, references and verify-it-yourself recipes for Probarion, a mandate layer that lets AI agents pay on NEAR only inside limits an owner signed.",
-  lede: "You sign the limits in a NEAR contract, the agent pays inside them, and anyone can check every payment.",
+  lede: "You sign the limits in a NEAR contract, the agent pays inside them, and every payment is on chain for anyone to check.",
   type: "hub",
   audiences: ["beginner", "user", "developer", "builder", "partner", "evaluator", "agent"],
   sources: [

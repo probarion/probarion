@@ -101,7 +101,7 @@ A held spend pays nothing until one approver from the vault's list approves it, 
 
 If the payout fails, the spend becomes `failed` and its reservation is released. On testnet, `intents-stub.probarion.testnet` stands in for `intents.near` and nothing leaves NEAR.
 
-## The ledger records it, and anyone can check
+## The ledger records it, and anyone can check a published record
 
 After a `check_spend` refusal or a `spend` attempt, the SDK writes a second entry with the outcome. Each entry is signed with the ledger key (Ed25519) and [chained to the one before it](/docs/concepts/ledger-and-anchors).
 

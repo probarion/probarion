@@ -14,7 +14,7 @@ The limit sits on the money's path, not in a prompt or in the agent's own proces
 2. **Code decides** `decide()` runs built-in rules that cannot be removed. The SDK signs the decision into the ledger before anything moves.
 3. **Contract enforces** The vault checks the spend against its mandate, then pays, holds it for an approver, or refuses.
 4. **Ledger records** The SDK signs every decision, refusals included, and the result of each spend it sends, each chained to the entry before it.
-5. **Anyone re-checks** The verifier ties each spend to exactly one decision in the ledger.
+5. **Anyone re-checks** Once the owner publishes the ledger, the verifier ties each spend to exactly one decision in it.
 
 </Flow>
 
