@@ -410,6 +410,11 @@ The software is an unaudited beta.
   and the contract answered `PROBARION:OverPerPayment` (tx `4715d4nb…Vsr1`, recorded in
   `contracts/deployments/testnet.json`). Step 3 of the README's evaluation and step 5 of the docs'
   evaluation read it from an archival node.
+- The site, the docs, the Terms and the READMEs no longer say that anyone can verify the ledger
+  without a condition: a ledger is private until its owner publishes it, so they now say the owner
+  can publish it for anyone to verify. A test keeps the unconditional claim out of the site's
+  code, the docs and the READMEs. The landing's hero also names the category above the headline
+  ("A mandate layer for AI agents on NEAR") and says who it is for under the buttons.
 - A spend that waits for approval now comes first on the vault's overview, right under the tabs.
   A hold that ran out does not count, since the vault refuses approve then. The "Approval needed"
   alert, by Telegram and email, links straight to the card (`/console/<vault>#held`); before, it
