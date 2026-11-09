@@ -1,0 +1,87 @@
+The vault and the factory are the two contracts Probarion ships, written in Rust with near-sdk. Every vault runs a recorded build of the code in `contracts/vault/src`, and the factory in `contracts/factory/src/lib.rs` creates vaults from a version of that code. A test reads both sources and fails when a method is added or removed, or when its kind, deposit rule, arguments, return type, events or error codes change without its row, so these tables follow the code in the repository.
+
+## How to read the tables
+
+- **Kind**: a `view` takes `&self`. It reads state, changes nothing and runs as a free RPC query, with no transaction and no key. A `call` takes `&mut self` and runs in a signed transaction. An `init` runs once, when the contract is deployed. A `private callback` is the second half of a cross-contract call, and only the contract itself may call it: near-sdk answers any other caller with `Method <name> is private`.
+- **Who may call**: the vault checks the caller before the deposit, so a stranger who attaches nothing gets [`NotOwner`](/docs/build/errors#NotOwner) or `NotApprover`, not `RequiresOneYocto`. [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) explains each role and each key.
+- **Deposit**: "Exactly 1 yoctoNEAR" means any other amount, none included, fails with [`RequiresOneYocto`](/docs/build/errors#RequiresOneYocto). Only a full-access key can attach a deposit, which is [why most owner calls need one](/docs/concepts/vaults-roles-and-keys#why-most-owner-calls-need-exactly-1-yoctonear). A call whose deposit reads None is not `#[payable]`, and near-sdk refuses an attached deposit on it with `Method <name> doesn't accept deposit`. A view has no such guard.
+- **Arguments** are one JSON object with the names shown. A `U128` or a `U64` travels as a decimal string, such as `"6000000"`, and amounts are in the token's base units. A public key is a string such as `ed25519:...`. A paged view takes `from_index`, a position counted from 0, and `limit`, and returns at most 100 items. Mandate, spend, anchor and version ids count from 1.
+- **Returns**: a `Promise` or a `PromiseOrValue` resolves when its receipts finish, and the transaction's result is the value of the last one, such as the callback's `SpendResult`. Null is JSON `null`.
+- **Events emitted** names the NEP-297 events a call logs as `EVENT_JSON:` lines, the vault's under the standard `probarion` and the factory's under `probarion_factory`. An event that a private callback logs, such as a payout's last event, comes in a later receipt of the same transaction, and the cell names that callback. A callback that finds the call before it failed can log another event, or none. [Events](/docs/build/events) lists each event's fields.
+- **Errors** lists the `PROBARION:<Code>` panics a caller can meet, in the order the method checks them. Each code has its own anchor on [Errors](/docs/build/errors), such as [`/docs/build/errors#NotAgent`](/docs/build/errors#NotAgent). A panic reverts every change the call made. The factory panics with the vault's codes. A few defensive checks cannot fail once the method's own checks have passed, such as those inside a payout and its callbacks, and the tables leave them out.
+
+## Vault methods
+
+Each row is anchored at `vault-<method>`, such as [`vault-spend`](#vault-spend). The rows run in this order: config, owner controls, mandates, keys, spends, holds and anchors.
+
+<RefTable id="contract-vault-methods" />
+
+The 14 checks behind `spend` and `check_spend` are listed in the order they run on [How a payment is checked](/docs/concepts/payment-checks#the-14-checks-in-order), and [Holds and approvals](/docs/concepts/holds-and-approvals) follows a held spend to its end.
+
+`spend` and `anchor` are signed with the vault's own function-call keys, the agent key and the ledger key. Neither key may call any other method or attach a deposit.
+
+<Callout kind="owner-signs">
+
+The owner signs `create_mandate`, `revoke_mandate`, `add_agent`, `remove_agent`, `set_ledger_key`, `freeze`, `unfreeze`, `withdraw` and `withdraw_intents` from their own wallet. Each one needs a full-access key except `freeze`, which takes no deposit so that the owner can stop the vault fast.
+
+</Callout>
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` or `reject` from their own wallet, with exactly 1 yoctoNEAR attached. One approver is enough, and the owner's signature counts only when the owner is on the approver list.
+
+</Callout>
+
+## Factory methods
+
+The factory creates each vault as `<name>.<factory>`, such as `acme.vaults.probarion.testnet`, with no access keys, from its current version. No factory method calls a vault after `create_vault`, so the factory cannot change, upgrade or take funds from a vault it created. Each row is anchored at `factory-<method>`, such as [`factory-create_vault`](#factory-create_vault).
+
+<RefTable id="contract-factory-methods" />
+
+<Callout kind="owner-signs">
+
+The account that calls `create_vault` becomes the new vault's owner and pays its deposit from its own wallet. The approvers are named in the same call, and no vault method changes them later.
+
+</Callout>
+
+A version's mode trades each vault's deposit against the factory's own cost. An `embedded` version gives every new vault its own copy of the wasm, so every vault pays for the storage of that copy. A `global` version points every new vault at one global contract by its code hash, so the factory pays once, when the code is published. A version's life runs `store_code`, then `add_version` in `embedded` mode, and, to go global, `publish_global` and an `add_version` in `global` mode with the same hash. A version applies only to the vaults created after it: a vault keeps the code it was created with.
+
+## Read a contract
+
+The views need no account and no key. With near-cli-rs:
+
+```bash
+near contract call-function as-read-only vaults.probarion.testnet get_config json-args '{}' network-config testnet now
+near contract call-function as-read-only vaults.probarion.testnet versions json-args '{}' network-config testnet now
+near contract call-function as-read-only v0.probarion.testnet list_mandates json-args '{"from_index":0,"limit":100}' network-config testnet now
+```
+
+## Deployed on testnet
+
+`contracts/deployments/testnet.json` records these accounts:
+
+- `vaults.probarion.testnet` is the factory. Its owner is `probarion-owner.testnet`, its `min_deposit` is 0.5 NEAR, and it creates vaults named `<name>.vaults.probarion.testnet`. The record lists only embedded versions: there is no global version on testnet.
+- `v0.probarion.testnet` is the first vault. Its deploy script ran `new` as the vault account itself, so its `get_config` shows `factory` as null.
+- `usdc.probarion.testnet` is the test USDC token. `base-usdc.probarion.testnet` and `sol-usdc.probarion.testnet` stand in for the Base and Solana assets inside `intents-stub.probarion.testnet`, the stand-in for NEAR Intents. All of them are subaccounts of `probarion.testnet`, and [Testnet and mainnet](/docs/start/testnet-and-mainnet) explains the stand-ins.
+
+No method returns the code hash of its own account: NEAR reports that with the account. To see which code a factory vault was made from, read its version with `vault_version`, then that version's `code_hash` in `versions`. [Reproducible builds](/docs/trust/reproducible-builds) lists the commit and the code hash of each recorded build of the vault and the factory, from `contracts/code-hashes.json`, and [check f](/docs/trust/verifier-checks#check-f) of the verifier compares a vault's code hash with the recorded vault builds and, for a vault whose `factory` is its network's factory, with that factory's versions. `v0.probarion.testnet` and the vaults made from the factory's version 1 run two different recorded builds, while the tables on this page describe the source in the repository.
+
+Mainnet is Planned. `contracts/deployments/mainnet.json` names `v0.probarion.near` and `vaults.probarion.near` and records no deploy yet.
+
+## What the tables leave out
+
+- Gas and the contracts' limits: [Limits and costs](/docs/build/limits-and-costs).
+- Each event's fields: [Events](/docs/build/events).
+- What each code means and what to do next: [Errors](/docs/build/errors).
+- The CLI commands that print these calls for a wallet to sign: [CLI reference](/docs/build/cli-reference).
+- The workspace's other contracts, `test-ft` and `intents-stub`: testnet stand-ins for the USDC token and for NEAR Intents, deployed as the accounts above. [Testnet and mainnet](/docs/start/testnet-and-mainnet) explains them.
+- The calls the vault makes to other contracts: `ft_transfer` and `storage_deposit` on the USDC token, and `ft_withdraw` on NEAR Intents. Those contracts define them.
+- The JSON shape of a mandate and of a spend request: [Mandates](/docs/concepts/mandates) shows every mandate field, and [How a payment is checked](/docs/concepts/payment-checks#what-the-agent-can-ask-for) shows what an agent can ask for.
+
+## Related pages
+
+- [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys): who holds which key, and why `freeze` is the one owner call with no deposit.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): `approve`, `reject` and `expire_held` in use.
+- [The ledger and anchors](/docs/concepts/ledger-and-anchors): what `anchor` pins on chain.
+- [Verify a vault yourself](/docs/trust/verify-a-vault): the verifier reads these views.
+- The sources: [`contracts/vault/src`](https://github.com/probarion/probarion/tree/main/contracts/vault/src), [`contracts/factory/src/lib.rs`](https://github.com/probarion/probarion/blob/main/contracts/factory/src/lib.rs) and [`contracts/deployments/testnet.json`](https://github.com/probarion/probarion/blob/main/contracts/deployments/testnet.json).

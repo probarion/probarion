@@ -1,0 +1,129 @@
+Probarion's limits live in its code: the caps and formats the vault and the factory enforce, the deposit and gas of each call, what a vault spends from its own NEAR, and the hosted app's upload and rate limits. A test reads `contracts/vault/src`, `contracts/factory/src/lib.rs` and the TypeScript modules that define these values, and fails when a row on this page no longer matches them.
+
+## How to read the tables
+
+- **Constant** is the name in the source, such as `MAX_AGENTS` in `contracts/vault/src/lib.rs`. A Rust value is shown as the source computes it, and a TypeScript value comes from the module that exports it.
+- **Units.** 1 NEAR is 10^24 yoctoNEAR, and 1 Tgas is 10^12 gas. Times on chain are in nanoseconds, as `block_timestamp` counts them, and times in TypeScript are in milliseconds. USDC amounts travel in base units, with 6 decimals.
+- **Past the limit** and **Refused with** name the `PROBARION:<Code>` panic a call fails with, such as [`InvalidInput`](/docs/build/errors#InvalidInput). A panic reverts every change the call made, and [Errors](/docs/build/errors) explains each code.
+- **Anchors.** Each row has its own anchor, such as [`limits-vault-max_agents`](#limits-vault-max_agents) or [`limits-deposit-create_mandate`](#limits-deposit-create_mandate).
+
+## Vault limits
+
+Every vault that runs the code in `contracts/vault/src` has these limits. No method changes the approvers, the allowed assets, the daily backstop or the hold time that `new` set, so a vault keeps them for life.
+
+<RefTable id="limits-vault" />
+
+The limits of each payment are the owner's to choose when they create a mandate. [Mandates](/docs/concepts/mandates) lists every field, and [How a payment is checked](/docs/concepts/payment-checks#the-14-checks-in-order) shows the order the vault checks them in, the daily backstop included.
+
+## String and hash formats
+
+The vault and the factory check these shapes before they store a mandate or an agent key, take a spend, record an anchor, create a vault or add a version. A malformed value fails the call. The policy engine in `@probarion/core` checks a spend's `invoice_hash` and `ref` before the SDK sends it, and the console and the CLI check both labels before they build the call.
+
+<RefTable id="limits-formats" />
+
+## Factory limits
+
+The factory checks the new vault's limits before it creates anything, so a `create_vault` the vault would refuse fails in the factory and no account is made. A taken name is the one failure the factory cannot see in advance: the new account fails, and `on_vault_created` refunds the deposit from the factory's own balance.
+
+<RefTable id="limits-factory" />
+
+Read the factory's `min_deposit` and current version on testnet, with no key:
+
+```bash
+near contract call-function as-read-only vaults.probarion.testnet get_config json-args '{}' network-config testnet now
+near contract call-function as-read-only vaults.probarion.testnet versions json-args '{}' network-config testnet now
+```
+
+## Deposits and gas per call
+
+- **Deposit the contract asks** is what the method checks. "Exactly 1 yoctoNEAR" means any other amount, none included, fails with [`RequiresOneYocto`](/docs/build/errors#RequiresOneYocto). Only a full-access key can attach a deposit, which is [why most owner calls need one](/docs/concepts/vaults-roles-and-keys#why-most-owner-calls-need-exactly-1-yoctonear). A method whose deposit reads None is not `#[payable]`, and near-sdk refuses a deposit sent to it.
+- **Deposit the console and the CLI attach** is what the two tools put in the transaction they prepare. Their mandate deposit has a wide margin, and [the vault refunds the rest](/docs/concepts/mandates#the-deposit).
+- **Prepaid gas** is the gas the console and the CLI attach, and for `spend` and `anchor` the gas the SDK attaches. The console and the CLI agree on every call they both build. A call signed by hand sets its own.
+
+<RefTable id="limits-deposits" />
+
+<Callout kind="owner-signs">
+
+The owner signs `create_vault`, `create_mandate`, `revoke_mandate`, `add_agent`, `remove_agent`, `set_ledger_key`, `freeze`, `unfreeze`, `withdraw` and `withdraw_intents` from their own wallet, and the USDC token calls that fund the vault or pay a top-up. Their wallet pays each call's gas and deposit.
+
+</Callout>
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` or `reject` from their own wallet, with exactly 1 yoctoNEAR, and their wallet pays the gas.
+
+</Callout>
+
+## Gas the contracts attach
+
+When a method calls another contract, the gas for that call comes out of the prepaid gas of the transaction that started it. That is why the calls that reach the USDC token or NEAR Intents prepay more than a plain owner call, and a payout also runs a callback. The 1 yoctoNEAR the vault attaches to a payout comes from the vault's own NEAR.
+
+<RefTable id="limits-gas" />
+
+## What a builder pays
+
+Probarion takes no fee, and there is no price list or paid plan ([Pricing](/docs/start/what-works-today#pricing)). A vault costs NEAR, paid to the network, from three places:
+
+- **The owner's wallet** pays the gas of every call it signs, the 1 yoctoNEAR most of them attach, the `create_vault` deposit, each mandate's deposit, and 0.00125 NEAR to register an account on the USDC token when funding the vault or paying a top-up. The `create_vault` deposit is not spent: it becomes the vault's own NEAR, and the vault's storage is staked out of it. A mandate's deposit pays for the mandate's storage and a NEAR payee's USDC registration, and the vault refunds the rest.
+- **An approver's wallet** pays the gas of `approve` and `reject`.
+- **The vault's own NEAR** pays the gas of every `spend` and `anchor`, since the agent key and the ledger key sign as the vault account. It also pays the storage each spend leaves behind, and the storage of each agent key, the ledger key and each anchor: `add_agent` and `set_ledger_key` attach only 1 yoctoNEAR. Each key's allowance caps the gas that key can burn. The vault has no method to withdraw NEAR, so NEAR sent to it stays there.
+
+When the vault's free NEAR runs out, a spend fails with the chain's `LackBalanceForState` or `NotEnoughBalance`, not a `PROBARION:` code, and a plain NEAR transfer to the vault tops it up ([Transaction failures](/docs/build/errors#transaction-failures)). The console's figures for that NEAR:
+
+<RefTable id="limits-runway" />
+
+The free NEAR is the balance minus the storage stake, `amount - storage_usage * 10^19` in yoctoNEAR. near-cli-rs shows both for any vault:
+
+```bash
+near account view-account-summary v0.probarion.testnet network-config testnet now
+```
+
+### Key allowances
+
+An agent key and the ledger key sign as the vault account, so the gas they burn comes out of the vault's NEAR, up to the key's allowance. A key that has burned its whole allowance can no longer sign, and the owner adds a new key.
+
+<RefTable id="limits-keys" />
+
+### Cross-chain payouts
+
+Probarion adds no fee to a payout to a Base or Solana payee: the vault sends `ft_withdraw` the spend's amount, and its code computes no bridge or token fee. On testnet the stand-in for NEAR Intents, `intents-stub.probarion.testnet`, takes no fee. A fee that NEAR Intents or its bridge may take on mainnet is not modelled in this code, and this page does not cover it. The mainnet vault is Planned.
+
+### Top-ups through 1Click
+
+The console's top-up buys a vault's Base USDC balance inside NEAR Intents through 1Click, and works on mainnet only. It asks 1Click for the exact amount out with a 1 percent slippage tolerance, and refuses a quote that would cost more than 5 percent over that amount. The owner then pays the quote from their own wallet, with a `storage_deposit` and an `ft_transfer` on the USDC token.
+
+## Hosted app limits
+
+The hosted app adds limits of its own: what the Payables upload takes and reads, the mandate form, the top-up, the Testnet faucet, alerts and the browser extension's inbox. During the beta its mandate form is stricter than the vault: the CLI accepts 1 to 4,294,967,295 for `--uses`, and the contract any expiry in the future.
+
+<RefTable id="limits-console" />
+
+### Rate limits
+
+Each limiter allows the hits shown in its window, for each IP address, account, vault or email address it counts. A route past its limit answers [`429 rate_limited`](/docs/build/errors#http-429-rate_limited) with a `Retry-After` header, and a page or a console action shows a message instead. No window is longer than a day (`RATE_LIMIT_KEEP_S`), because a daily job deletes older counters. [HTTP API](/docs/build/http-api) lists each route with its callers and errors.
+
+<RefTable id="limits-rate" />
+
+## SDK and core limits
+
+These bound what `@probarion/sdk` and `@probarion/core` send, keep and wait for.
+
+<RefTable id="limits-sdk" />
+
+## What the tables leave out
+
+- The limits an owner sets for each payment and for the vault's day: [Mandates](/docs/concepts/mandates) and [How a payment is checked](/docs/concepts/payment-checks).
+- The arguments, return values and errors of each method: [Contract reference](/docs/build/contract-reference).
+- The body, callers and errors of each route: [HTTP API](/docs/build/http-api).
+- The Canary's own caps on `POST /api/canary/attempt`, in `CANARY_LIMITS` (`apps/web/src/lib/canary/limits.ts`): attempts from one address and from everyone in an hour and a day, a daily budget of model tokens, the length of a message, and how often an attempt may go on chain. An attempt past an attempt cap or the token budget gets [`429 budget`](/docs/build/errors#http-429-budget), not `rate_limited`.
+- Caps the hosted app keeps on its own work and display, such as how far behind a node the health check accepts and how much of a ledger string the proof page shows.
+- The NEAR protocol's own limits, such as the most gas one transaction may carry, and the price of gas.
+- Mainnet values. The code is the same on both networks, but the mainnet vault and factory are Planned, and no mainnet `min_deposit` is recorded. [Testnet and mainnet](/docs/start/testnet-and-mainnet) explains the difference.
+
+## Related pages
+
+- [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys): who holds which key, and the allowance on each function-call key.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): what `approve` pays out, and when a hold expires.
+- [Errors](/docs/build/errors): every code the tables name.
+- [Contract reference](/docs/build/contract-reference): every method of the vault and the factory.
+- The sources: [`contracts/vault/src/lib.rs`](https://github.com/probarion/probarion/blob/main/contracts/vault/src/lib.rs), [`contracts/factory/src/lib.rs`](https://github.com/probarion/probarion/blob/main/contracts/factory/src/lib.rs), [`apps/web/src/lib/near/runway.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/near/runway.ts) and [`apps/web/src/lib/ratelimit.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/ratelimit.ts).
