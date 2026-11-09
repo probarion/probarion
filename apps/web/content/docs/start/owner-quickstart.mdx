@@ -49,12 +49,12 @@ You sign every owner transaction on this page (creating the vault, adding the tw
    Expected: the console registers the vault for you and says:
 
    ```text
-   Registered <name>.vaults.probarion.testnet. It is listed under your vaults.
+   Registered <name>.vaults.probarion.testnet. Opening it…
    ```
 
-   The vault is in your list with the role `owner`. If the note says the vault could not be registered yet, wait a few seconds and enter its account in "Register a vault you already own" on the same page.
+   Then the console opens the vault's own page, and a line under its account ends in "you are owner". Its "Your first agent payment" card lists five steps to a first payment, with "Agent key and ledger key" next and a "Go to Keys" link. This page adds the test USDC first, and either order works. If the note says the vault could not be registered yet, wait a few seconds and enter its account in "Register a vault you already own" on the same page.
 
-3. **Add test USDC.** Open your vault, then its "Top-up" tab (`/console/<vault>/topup`), which only the vault's owner can use. In the card "USDC on NEAR (for NEAR payees)", under "Add 25 test USDC to this vault", click "Add test USDC". The server mints 25 test USDC straight into the vault. No wallet opens: the Probarion team's mint-only key signs this mint. It works once a UTC day per vault, and for up to 3 vaults per signed-in account a day. The banner at the top of the tab, which says you sign each top-up in your own wallet and Probarion never signs for you, is about the top-ups you send from your wallet. The faucet block itself says "The Probarion team's key signs this mint, not your wallet, and it can only mint the test token."
+3. **Add test USDC.** Open your vault's "Top-up" tab (`/console/<vault>/topup`), which only the vault's owner can use. In the card "USDC on NEAR (for NEAR payees)", under "Add 25 test USDC to this vault", click "Add test USDC". The server mints 25 test USDC straight into the vault. No wallet opens: the Probarion team's mint-only key signs this mint. It works once a UTC day per vault, and for up to 3 vaults per signed-in account a day. The banner at the top of the tab, which says you sign each top-up in your own wallet and Probarion never signs for you, is about the top-ups you send from your wallet. The faucet block itself says "The Probarion team's key signs this mint, not your wallet, and it can only mint the test token."
 
    Expected, with a link to the transaction:
 
@@ -78,7 +78,7 @@ You sign every owner transaction on this page (creating the vault, adding the tw
 
    These two keys are for Payables, the agent Probarion runs for you, and the console never shows their secrets. With them, this vault belongs to hosted Payables. A vault has one ledger key, and the SDK's `process()` refuses to run when its `ledgerKey` is not the vault's, so an agent you run yourself with the SDK needs a second vault of its own: create it with steps 2 and 3, skip this Keys step, and add the agent's own keys as the [developer quickstart](/docs/start/developer-quickstart) shows. By the code, two ledger writers on one vault would give it two histories, and the verifier's anchor check would then fail. This is inferred: no test shows it yet.
 
-5. **Sign your first mandate.** Open the "Mandates" tab and fill in the "New mandate" card:
+5. **Sign your first mandate.** Open the "Mandates" tab. In the "New mandate" card, skip the "Trying it out?" box above "Payee type": its "Use the sample PO" button fills the form for a different test, one that pays you and holds no payment. Fill in the card by hand:
 
    - "Payee type": "NEAR account (USDC on NEAR)". On testnet a Base payee is paid to a stand-in for NEAR Intents, and nothing leaves NEAR. The faucet adds only USDC on NEAR, and the Top-up tab cannot top up a Base balance on testnet, so a Base payee on this vault has nothing to pay from.
    - "Payee": the testnet account to pay. It never changes, so check every character.
