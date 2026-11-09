@@ -24,7 +24,7 @@ mandate, a key or the vault's settings: those are the owner's, signed in the own
 
 ## What the agent's keys can do
 
-The server holds two function-call keys of the vault, never an owner key:
+The server holds two function-call keys of the vault and no owner key:
 
 - `PROBARION_AGENT_KEY` can call `spend` and nothing else, with no deposit.
 - `PROBARION_LEDGER_KEY` can call `anchor` and nothing else. It also signs each ledger entry.

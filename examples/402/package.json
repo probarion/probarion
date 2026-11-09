@@ -1,0 +1,29 @@
+{
+  "name": "@probarion/example-402",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pay-per-call with Probarion: an endpoint answers 402 with a price, an agent pays it under a mandate through @probarion/mcp and calls again. Testnet only.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "server": "tsx src/run-server.ts",
+    "agent": "tsx src/run-agent.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@probarion/core": "workspace:*",
+    "@probarion/mcp": "workspace:*",
+    "@probarion/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12"
+  }
+}
