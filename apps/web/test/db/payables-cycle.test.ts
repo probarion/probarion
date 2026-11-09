@@ -22,6 +22,7 @@ import { type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { generateKey } from "@/lib/keys/service";
 import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { createVaultReader, listAll } from "@/lib/near/reader";
+import { NUMBER_DUPLICATE_RULE } from "@/lib/payables/number-duplicate";
 import { OWNER_CONFIRMS_RULE } from "@/lib/payables/owner-confirms";
 import { type PipelineDeps, processInvoice } from "@/lib/payables/pipeline";
 import { getInvoice } from "@/lib/payables/store";
@@ -419,6 +420,58 @@ describe("a Payables cycle on the fake chain", () => {
     } finally {
       h.key = NEARAI_KEY;
       Object.assign(balances, saved);
+    }
+  });
+
+  it("refuses by code, in a signed decision entry, another text with the number of a paid invoice: nothing is sent", async () => {
+    const first = `Invoice INV-30\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 3.00 USDC`;
+    const paid = await cycle(first, "req-number-paid");
+    expect(paid.r.outcome).toMatchObject({ status: "paid" });
+    expect(paid.decision?.rules.some((x) => x.id === NUMBER_DUPLICATE_RULE)).toBe(false);
+    // The vendor sends INV-30 again with another total: another text, the same number, the same payee.
+    const { r, sent, decision } = await cycle(
+      first.replace("Total 3.00", "Total 4.00"),
+      "req-number-again",
+    );
+    expect(sent).toBe(0);
+    expect(r.invoiceStatus).toBe("decided");
+    expect(r.outcome).toMatchObject({
+      status: "refused_by_code",
+      code: NUMBER_DUPLICATE_RULE,
+      spendId: null,
+      txHash: null,
+    });
+    expect(decision).toMatchObject({ verdict: "refuse", request_id: "req-number-again" });
+    expect(decision?.rules.find((x) => x.id === NUMBER_DUPLICATE_RULE)).toEqual({
+      id: NUMBER_DUPLICATE_RULE,
+      outcome: "refuse",
+      detail: `another invoice to near:${SCENARIO_NEAR_PAYEE} has the same invoice number: invoice ${hashInvoice(first)}, which was paid. Nothing is sent.`,
+    });
+    const entry = (await store.all()).filter((e) => e.body.kind === "decision").at(-1);
+    expect(entry?.signer).toBe(TEST_KEYS.ledger.publicKey);
+    expect(entry && verifyEntrySignature(entry)).toBe(true);
+  });
+
+  it("rules-only: a same-number invoice is refused by the number rule, not left waiting for the owner", async () => {
+    h.key = null;
+    try {
+      const waiting = `Invoice INV-32\nPO: PO-1001\nPay to ${SCENARIO_NEAR_PAYEE}\nTotal 7.00 USDC`;
+      expect((await cycle(waiting, "req-number-waiting")).r.invoiceStatus).toBe("awaiting_owner");
+      // Above the approval threshold, the owner rule refuses too; the number rule runs first, so its refusal stands.
+      const { r, sent, owner } = await cycle(
+        waiting.replace("Total 7.00", "Total 55.00"),
+        "req-number-waiting-again",
+      );
+      expect(sent).toBe(0);
+      expect(owner).toMatchObject({ outcome: "refuse" });
+      expect(r.outcome).toMatchObject({ status: "refused_by_code", code: NUMBER_DUPLICATE_RULE });
+      expect(r.invoiceStatus).toBe("decided");
+      expect(await getInvoice(h.db, member.tenant_id, r.invoiceId)).toMatchObject({
+        status: "decided",
+        suggested_amount: null,
+      });
+    } finally {
+      h.key = NEARAI_KEY;
     }
   });
 

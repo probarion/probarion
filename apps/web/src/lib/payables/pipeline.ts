@@ -12,6 +12,7 @@ import { log, scrubText } from "@/lib/log";
 import { extractInvoice, type InvoiceMediaType } from "./extract";
 import { type AmountIssue, extractFacts, fingerprintText, numberKeyText, refFor } from "./facts";
 import { signingMandate } from "./mandate";
+import { numberDuplicateRule } from "./number-duplicate";
 import { OWNER_CONFIRMS_RULE, ownerConfirms } from "./owner-confirms";
 import { payeeId } from "./payee";
 import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
@@ -250,24 +251,30 @@ export async function processInvoice(
     PROCESS_LEASE_SECONDS,
     async (): Promise<PipelineResult> => {
       const zero = tenant.zero_retention;
-      const inserted = await insertInvoice(deps.db, tenant.tenant_id, {
-        invoiceHash,
-        ref,
-        filename: zero ? null : upload.filename, // a file name can carry details
-        mediaType: upload.mediaType,
-        documentSha256: sha256Hex(upload.bytes),
-        sealed: zero ? null : await sealInvoice(deps.master, tenant.tenant_id, upload.bytes),
-        facts: zero ? null : { ...facts, invoice_number: invoiceNumber },
-        amountIssue,
-        // The duplicate guard: another text that renders the same invoice, or the same number for the same payee.
-        fingerprint: sha256Hex(fingerprintText(text)),
-        invoiceNumberKey:
-          invoiceNumber === null
-            ? null
-            : invoiceNumberKey(deps.master, tenant.vault_id, mandate.payee, invoiceNumber),
-        requestId,
-        createdBy: input.actor,
-      });
+      const inserted = await insertInvoice(
+        deps.db,
+        tenant.tenant_id,
+        {
+          invoiceHash,
+          ref,
+          filename: zero ? null : upload.filename, // a file name can carry details
+          mediaType: upload.mediaType,
+          documentSha256: sha256Hex(upload.bytes),
+          sealed: zero ? null : await sealInvoice(deps.master, tenant.tenant_id, upload.bytes),
+          facts: zero ? null : { ...facts, invoice_number: invoiceNumber },
+          amountIssue,
+          // The duplicate guard: another text that renders the same invoice, or the same number for the same payee.
+          fingerprint: sha256Hex(fingerprintText(text)),
+          invoiceNumberKey:
+            invoiceNumber === null
+              ? null
+              : invoiceNumberKey(deps.master, tenant.vault_id, mandate.payee, invoiceNumber),
+          requestId,
+          createdBy: input.actor,
+        },
+        // A match on the number alone runs the cycle, and the number rule refuses it in the signed ledger.
+        { numberRule: true },
+      );
       if (inserted.duplicate) {
         return { status: "duplicate", invoiceId: inserted.id, invoiceStatus: inserted.status };
       }
@@ -282,6 +289,9 @@ export async function processInvoice(
           ledgerKey: ledger.key.secret,
           requestId,
         });
+        // First, so the refusal's code is the number rule's and the invoice never waits for the owner (waitsForOwner).
+        const match = inserted.number_match ?? null;
+        if (match !== null) pb.rules.add(numberDuplicateRule(match, mandate.payee));
         pb.rules.add(owner.rule);
         outcome = await pb.process({ text, facts, ref });
       } catch (e) {

@@ -33,6 +33,7 @@ import { generateKey } from "@/lib/keys/service";
 import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { createVaultReader, listAll } from "@/lib/near/reader";
 import { CONFIRM_RECIPIENT } from "@/lib/payables/confirm-message";
+import { NUMBER_DUPLICATE_RULE } from "@/lib/payables/number-duplicate";
 import {
   OWNER_CONFIRMED_RULE,
   verifyOwnerConfirmedDetail,
@@ -895,7 +896,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
 
   it("Reject ends the row with the snapshot the owner saw, and frees its keys for a corrected upload", async () => {
     const row = await upload("31.00", { number: "INV-R-77" });
-    // While it waits, a corrected invoice with the same number is a duplicate.
+    // While it waits, a corrected invoice with the same number is refused by the number rule, in the ledger.
     const corrected = () =>
       processInvoice(pipeline, {
         tenant: member,
@@ -910,7 +911,15 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
         actor: OWNER,
         requestId: `req-corrected-${Date.now()}-${Math.random()}`,
       });
-    expect(await corrected()).toMatchObject({ status: "duplicate", invoiceId: row.id });
+    const refused = await corrected();
+    expect(refused).toMatchObject({
+      status: "decided",
+      invoiceStatus: "decided",
+      outcome: { status: "refused_by_code", code: NUMBER_DUPLICATE_RULE, spendId: null },
+    });
+    // The same corrected text again, while the first still waits: a duplicate at intake, as any same text is.
+    const correctedId = refused.status === "decided" ? refused.invoiceId : "";
+    expect(await corrected()).toMatchObject({ status: "duplicate", invoiceId: correctedId });
     const seen = { suggestedAmount: "31000000", invoiceHash: row.invoice_hash, mandateId: 1 };
     // An older snapshot (another amount) changes nothing.
     expect(
@@ -933,8 +942,13 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       status: "rejected",
       rejected_by: OWNER,
     });
+    // Rejected, the first blocks nothing: the corrected text runs again on its own row, and now waits for the owner.
     const again = await corrected();
-    expect(again).toMatchObject({ status: "decided", invoiceStatus: "awaiting_owner" });
+    expect(again).toMatchObject({
+      status: "decided",
+      invoiceStatus: "awaiting_owner",
+      invoiceId: correctedId,
+    });
   });
 
   describe("the console", () => {
