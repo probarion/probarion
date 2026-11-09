@@ -8,7 +8,7 @@ One message per alert and event. The kinds (a new alert takes all of them; the d
 
 | Kind | Message | Tells you |
 | --- | --- | --- |
-| `spend_held` | Approval needed | A spend is held until an approver signs. Says when the hold ends, and links the console. |
+| `spend_held` | Approval needed | A spend is held until an approver signs. Says when the hold ends, and links the held card on the vault's overview (`/console/<vault>#held`). |
 | `refused_by_contract` | Contract refused a spend | The vault rejected a spend with the code it gave (`NoMandate` and so on). No funds moved. Links the failed transaction. |
 | `spend_paid` | Paid | A spend was paid on NEAR. |
 | `spend_burned` | Paid to Base | A spend was withdrawn through NEAR Intents to the mandate's Base address. |

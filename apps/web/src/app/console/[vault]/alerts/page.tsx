@@ -58,8 +58,12 @@ export default async function AlertsPage({
       <Notice>
         A message goes out when the watcher records an event on this vault that an alert is set for
         (the kinds are listed under Active alerts). The watcher checks a vault right after an
-        invoice upload, once a day, and every minute once its schedule is on, so a change made only
-        on the chain can wait for the next check.
+        invoice is uploaded on Payables
+        {member.kind === "canary" ? ", and this Canary vault after each attempt on it" : ""}.
+        Anything else waits for its next scheduled run: once a day at 00:00 UTC, or every minute if
+        this site&apos;s operator has turned on the per-minute schedule. So a change made only on
+        the chain, such as a spend an agent sends from the SDK, can take until that run to reach
+        you.
       </Notice>
       {canChange ? null : (
         <Notice>Only the vault&apos;s owners and approvers can add or remove alerts.</Notice>

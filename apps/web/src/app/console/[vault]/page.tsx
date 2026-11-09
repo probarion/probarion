@@ -7,7 +7,9 @@ import { SettingsForm } from "@/components/console/SettingsForm";
 import { VaultNav } from "@/components/console/VaultNav";
 import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
 import { VaultTxButton } from "@/components/console/VaultTxButton";
+import { RouteLink } from "@/components/RouteLink";
 import { AccountLink, Badge, Card, Notice } from "@/components/ui";
+import { heldAlertIsOn } from "@/lib/alerts/held";
 import { requireMember } from "@/lib/auth/guard";
 import type { Network } from "@/lib/config";
 import { firstPaymentChecklist } from "@/lib/console/checklist";
@@ -42,6 +44,8 @@ export const metadata: Metadata = { title: "Vault" };
 export const maxDuration = 60;
 
 const muted = "text-mute";
+const textLink =
+  "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink";
 const DIGITS = /^(0|[1-9][0-9]*)$/;
 
 /** A U128 of the network's USDC (6 decimals), or a plain word when it is not a decimal (never "0"). */
@@ -223,6 +227,94 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
         })
       : null;
 
+  // A spend that still waits for approval puts the held card first, right under the tabs (site audit P1-18): an alert's
+  // "Approve or reject" link lands on #held. A hold that ran out does not count, as the vault refuses approve then (it
+  // waits only for a Reject). With nothing waiting, or the spends unread, the card keeps its place below the balances.
+  const heldFirst =
+    config !== null &&
+    o.spends.ok &&
+    o.spends.value.held.some((s) => heldActions(s.held_until_ns, false, now).canApprove);
+  // Owners and approvers can set an alert, as on the Alerts tab. Their alerts are read only while something waits.
+  const offerAlert =
+    heldFirst && (member.role === "owner" || member.role === "approver")
+      ? !(await heldAlertIsOn(serviceDb(), member.tenant_id))
+      : false;
+  const heldCard =
+    config === null ? null : (
+      <div id="held">
+        <Card
+          actions={
+            offerAlert ? (
+              <RouteLink
+                route="/console/[vault]/alerts"
+                href={`/console/${encodeURIComponent(vault)}/alerts`}
+                className={textLink}
+              >
+                Get a message next time <span aria-hidden="true">→</span>
+              </RouteLink>
+            ) : undefined
+          }
+          title={
+            o.spends.ok ? `Held for approval (${o.spends.value.held.length})` : "Held for approval"
+          }
+        >
+          {!o.spends.ok ? (
+            <Notice tone="warn">
+              The spend list is {UNAVAILABLE} ({whyUnavailable(o.spends.kind)}). Payments may be
+              waiting for approval: check again before you assume there are none.
+            </Notice>
+          ) : o.spends.value.held.length === 0 ? (
+            <p className={`text-sm ${muted}`}>Nothing waiting.</p>
+          ) : (
+            o.spends.value.held.map((s) => {
+              const act = heldActions(s.held_until_ns, config.frozen, now);
+              return (
+                <div key={s.id} className="mb-3 border-b border-line pb-3 text-sm last:border-0">
+                  <div>
+                    Spend #{s.id} · mandate #{s.mandate_id} · <strong>{amount(s.amount)}</strong> to{" "}
+                    <span className="mono break-all">{payeeText(s.destination)}</span>
+                  </div>
+                  <div className={`text-xs ${muted}`}>
+                    ref <span className="mono">{s.ref}</span> · hold ends {expiry(s)}
+                  </div>
+                  {act.note ? <p className="text-xs text-wait">{act.note}</p> : null}
+                  {isApprover ? (
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      {act.canApprove ? (
+                        <VaultTxButton
+                          label="Approve"
+                          network={network}
+                          expectedSigner={session.accountId}
+                          tx={approveTx(vault, s.id)}
+                          confirm={`Approve paying ${amount(s.amount)} to ${payeeText(s.destination)} (spend #${s.id})?`}
+                          outOfNearCodes={OUT_OF_NEAR.codes}
+                          vaultNearLow={vaultNearLow}
+                        />
+                      ) : null}
+                      <VaultTxButton
+                        label="Reject"
+                        network={network}
+                        expectedSigner={session.accountId}
+                        tx={rejectTx(vault, s.id)}
+                        confirm={`Reject spend #${s.id}? Its reservation goes back to the mandate.`}
+                        confirmTone="danger"
+                        outOfNearCodes={OUT_OF_NEAR.codes}
+                        vaultNearLow={vaultNearLow}
+                      />
+                    </div>
+                  ) : (
+                    <p className={`text-xs ${muted}`}>
+                      Only the vault&apos;s approvers can approve or reject.
+                    </p>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </Card>
+      </div>
+    );
+
   return (
     <div>
       <h1 className="mono mb-1 text-2xl font-semibold break-all">{vault}</h1>
@@ -231,6 +323,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
         {member.kind !== "external" ? ` · ${member.kind} vault` : ""}
       </p>
       <VaultNav vault={vault} />
+      {heldFirst ? heldCard : null}
       {checklist !== null ? <FirstPaymentChecklist vault={vault} checklist={checklist} /> : null}
 
       {config === null ? (
@@ -329,67 +422,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
             />
           </Card>
 
-          <Card
-            title={
-              o.spends.ok
-                ? `Held for approval (${o.spends.value.held.length})`
-                : "Held for approval"
-            }
-          >
-            {!o.spends.ok ? (
-              <Notice tone="warn">
-                The spend list is {UNAVAILABLE} ({whyUnavailable(o.spends.kind)}). Payments may be
-                waiting for approval: check again before you assume there are none.
-              </Notice>
-            ) : o.spends.value.held.length === 0 ? (
-              <p className={`text-sm ${muted}`}>Nothing waiting.</p>
-            ) : (
-              o.spends.value.held.map((s) => {
-                const act = heldActions(s.held_until_ns, config.frozen, now);
-                return (
-                  <div key={s.id} className="mb-3 border-b border-line pb-3 text-sm last:border-0">
-                    <div>
-                      Spend #{s.id} · mandate #{s.mandate_id} · <strong>{amount(s.amount)}</strong>{" "}
-                      to <span className="mono break-all">{payeeText(s.destination)}</span>
-                    </div>
-                    <div className={`text-xs ${muted}`}>
-                      ref <span className="mono">{s.ref}</span> · hold ends {expiry(s)}
-                    </div>
-                    {act.note ? <p className="text-xs text-wait">{act.note}</p> : null}
-                    {isApprover ? (
-                      <div className="mt-3 flex flex-wrap gap-3">
-                        {act.canApprove ? (
-                          <VaultTxButton
-                            label="Approve"
-                            network={network}
-                            expectedSigner={session.accountId}
-                            tx={approveTx(vault, s.id)}
-                            confirm={`Approve paying ${amount(s.amount)} to ${payeeText(s.destination)} (spend #${s.id})?`}
-                            outOfNearCodes={OUT_OF_NEAR.codes}
-                            vaultNearLow={vaultNearLow}
-                          />
-                        ) : null}
-                        <VaultTxButton
-                          label="Reject"
-                          network={network}
-                          expectedSigner={session.accountId}
-                          tx={rejectTx(vault, s.id)}
-                          confirm={`Reject spend #${s.id}? Its reservation goes back to the mandate.`}
-                          confirmTone="danger"
-                          outOfNearCodes={OUT_OF_NEAR.codes}
-                          vaultNearLow={vaultNearLow}
-                        />
-                      </div>
-                    ) : (
-                      <p className={`text-xs ${muted}`}>
-                        Only the vault&apos;s approvers can approve or reject.
-                      </p>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </Card>
+          {heldFirst ? null : heldCard}
 
           <Card title="Mandates and spends">
             <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">

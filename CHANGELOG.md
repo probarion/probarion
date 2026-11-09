@@ -313,6 +313,17 @@ The software is an unaudited beta.
 
 ### Changed
 
+- A spend that waits for approval now comes first on the vault's overview, right under the tabs.
+  A hold that ran out does not count, since the vault refuses approve then. The "Approval needed"
+  alert, by Telegram and email, links straight to the card (`/console/<vault>#held`); before, it
+  opened the overview, where the held card was the third or fourth. While a spend waits, the card
+  offers an owner or approver "Get a message next time", a link to the Alerts tab, unless a
+  confirmed alert of the vault already sends held spends.
+- The Alerts tab says when a message can arrive: right after an invoice is uploaded on Payables
+  (and, on the Canary vault, after each attempt), otherwise at the watcher's next run, once a day
+  at 00:00 UTC or every minute if the per-minute schedule is turned on. A test holds the time to
+  the schedule in `apps/web/vercel.json`. Before, it read as if a check every minute were already
+  running.
 - The console has the landing page's brand. It used a Tailwind kit from before the brand: buttons
   about 32px tall, 14px fields that a phone zooms in on, and Approve and Reject buttons that looked
   the same on a held payment.
