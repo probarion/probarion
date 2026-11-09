@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { buttonClass, dangerButtonClass } from "@/components/ui";
+import { buttonClass, dangerButtonClass, lineButtonClass } from "@/components/ui";
 import {
   type Asker,
   actionClickAllowed,
@@ -20,9 +20,6 @@ import {
 
 const focusable = (e: Element | null): e is HTMLElement =>
   !!e && typeof (e as HTMLElement).focus === "function";
-
-const cancelClass =
-  "rounded border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-ink hover:bg-stone-100";
 
 /**
  * The dialog itself. Renders nothing while `options` is null; with options, opens as a modal as soon as it mounts. It
@@ -64,7 +61,7 @@ export function ConfirmDialog({
       role={danger ? "alertdialog" : undefined}
       aria-labelledby={`${id}-title`}
       aria-describedby={danger ? `${id}-warning ${id}-body` : `${id}-body`}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-3xl border border-ink/10 bg-white p-0 text-ink backdrop:bg-ink/45"
+      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-3xl border border-line bg-surface p-0 text-ink backdrop:bg-ink/45"
       onCancel={(e) => {
         e.preventDefault(); // the owner's answer closes it (by unmounting), not the browser
         onSettle("escape");
@@ -89,23 +86,23 @@ export function ConfirmDialog({
         {danger ? (
           <p
             id={`${id}-warning`}
-            className="mb-1 text-xs font-medium uppercase tracking-wide text-rose-700"
+            className="mb-1 text-xs font-medium uppercase tracking-wide text-bad"
           >
             Cannot be undone
           </p>
         ) : null}
-        <h2 id={`${id}-title`} className="text-lg font-semibold">
+        <h2 id={`${id}-title`} className="text-[22px] font-light tracking-tight">
           {options.title}
         </h2>
         <p id={`${id}-body`} className="mt-2 whitespace-pre-line text-sm text-ink/80">
           {options.body}
         </p>
-        {options.footnote ? <p className="mt-3 text-xs text-ink/60">{options.footnote}</p> : null}
+        {options.footnote ? <p className="mt-3 text-xs text-mute">{options.footnote}</p> : null}
         <div className="mt-6 flex flex-wrap justify-end gap-3">
           <button
             ref={cancel}
             type="button"
-            className={cancelClass}
+            className={lineButtonClass}
             // biome-ignore lint/a11y/noAutofocus: a modal's initial focus, on its safe choice. React does not set the attribute on a dialog opened later, so the effect above focuses it too.
             autoFocus
             onClick={() => onSettle("cancel-button")}

@@ -2,6 +2,7 @@
 
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { checkPayeeAction, prepareMandateAction } from "@/app/console/[vault]/mandates/actions";
+import { type SampleNote, SampleOffer, sampleLinkClass } from "@/components/console/SampleOffer";
 import { Field, inputClass, Notice } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
@@ -23,6 +24,7 @@ import {
   tryUsdcUnits,
 } from "@/lib/console/mandates";
 import { expiryText } from "@/lib/console/mandates-view";
+import { loadSampleMandate, SAMPLE_PO, SAMPLE_PO_PATH } from "@/lib/console/samples";
 import { MANDATE_STORAGE_DEPOSIT } from "@/lib/near/tx";
 import { formatNear, formatUsdc } from "@/lib/near/units";
 import { parseBaseAddress } from "@/lib/near/validate";
@@ -31,7 +33,7 @@ import { sha256HexOf } from "./sha256";
 /** How long the owner stops typing before the console asks whether the payee account exists. */
 const PAYEE_CHECK_DELAY_MS = 500;
 
-const muted = "text-[#0B0B0C]/60";
+const muted = "text-mute";
 
 export function MandateFormPanel(props: {
   vault: string;
@@ -62,6 +64,8 @@ export function MandateFormPanel(props: {
   // The file input is uncontrolled, so a new form needs a new input: changing its key makes React mount a
   // fresh one, and the old file name does not stay on screen beside a blank hash.
   const [fileKey, setFileKey] = useState(0);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [sampleNote, setSampleNote] = useState<SampleNote | null>(null);
   const [payeeCheck, setPayeeCheck] = useState<{
     account: string;
     exists: boolean | null;
@@ -136,6 +140,8 @@ export function MandateFormPanel(props: {
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     setFileNote(null);
+    // A file of the owner's own replaces the sample's hash, so the note about the sample no longer holds.
+    setSampleNote(null);
     if (!file) return;
     const tooLarge = purposeFileTooLarge(file.size);
     if (tooLarge !== null) {
@@ -148,6 +154,35 @@ export function MandateFormPanel(props: {
       setFileNote(`Hashed ${file.name.slice(0, 80)} in your browser. The file was not uploaded.`);
     } catch {
       setFileNote("The file could not be read. Paste its sha256 instead.");
+    }
+  }
+
+  // Testnet (site audit P1-8): the form filled from the sample PO, hashed here as it is served, as a picked file is,
+  // and only once the hash is the pinned one.
+  async function fillSample() {
+    setSampleLoading(true);
+    setSampleNote(null);
+    try {
+      const now = new Date();
+      const agentPk = form.agentPk || firstAgent;
+      const filled = await loadSampleMandate((path) => fetch(path), {
+        now,
+        owner: props.owner,
+        agentPk,
+      });
+      setForm(filled);
+      setFileNote(null);
+      setFileKey((k) => k + 1);
+      setSampleNote({
+        text: `Filled from the sample purchase order ${SAMPLE_PO.ref}, hashed in your browser. Check the form, then sign it. On Payables, the sample invoice attaches the same file.`,
+      });
+    } catch {
+      setSampleNote({
+        text: "The sample could not be loaded. Reload the page and try again.",
+        failed: true,
+      });
+    } finally {
+      setSampleLoading(false);
     }
   }
 
@@ -164,6 +199,7 @@ export function MandateFormPanel(props: {
       setFileNote(null);
       setFileKey((k) => k + 1);
       setPayeeCheck(null);
+      setSampleNote(null);
     },
   });
 
@@ -174,6 +210,19 @@ export function MandateFormPanel(props: {
         payment and in all, and until when. The payee never changes: to pay someone else, create a
         new mandate. You sign with your own wallet as <span className="mono">{props.owner}</span>.
       </p>
+      {props.network === "testnet" ? (
+        <SampleOffer
+          text={`Fill the form from the sample purchase order ${SAMPLE_PO.ref}: ${SAMPLE_PO.perPaymentUsdc} test USDC a payment, ${SAMPLE_PO.totalUsdc} in all, ${SAMPLE_PO.uses} payments, for ${SAMPLE_PO.days} days, paid to you.`}
+          label="Use the sample PO"
+          onUse={fillSample}
+          busy={sampleLoading}
+          note={sampleNote}
+        >
+          <a href={SAMPLE_PO_PATH} download className={sampleLinkClass}>
+            Download the sample PO
+          </a>
+        </SampleOffer>
+      ) : null}
       <Field label="Payee type">
         <select className={inputClass} value={form.payeeKind} onChange={set("payeeKind")}>
           <option value="near">NEAR account (USDC on NEAR)</option>
@@ -215,7 +264,10 @@ export function MandateFormPanel(props: {
         <input
           className={`${inputClass} mono`}
           value={form.purposeHash}
-          onChange={set("purposeHash")}
+          onChange={(e) => {
+            setSampleNote(null);
+            set("purposeHash")(e);
+          }}
           placeholder="or paste the sha256 of the document"
           autoComplete="off"
           spellCheck={false}
@@ -297,7 +349,7 @@ export function MandateFormPanel(props: {
       {check.ok ? (
         <section
           aria-label="What you are about to sign"
-          className="mb-3 rounded-2xl border border-[#0B0B0C]/10 bg-[#F7F6F3] p-4 text-sm"
+          className="mb-3 rounded-2xl border border-line bg-paper p-4 text-sm"
         >
           <h3 className="mb-2 font-semibold">You are about to create</h3>
           <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1">

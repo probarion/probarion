@@ -69,7 +69,7 @@ export function CliFallback({
         <span className="mono">{factory}</span>) right now: {REASONS[reason]}. Nothing was prepared
         or signed. You can create the vault with the CLI instead, then register it below:
       </p>
-      <pre className="overflow-x-auto rounded-2xl bg-[#0B0B0C] p-4 text-xs text-[#F7F6F3]">
+      <pre className="overflow-x-auto rounded-2xl bg-ink p-4 text-xs text-paper">
         {cliFallbackLines(factory, network).join("\n")}
       </pre>
     </div>

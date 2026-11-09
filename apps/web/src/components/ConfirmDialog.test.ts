@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ConfirmOptions } from "@/lib/console/confirm-dialog";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { buttonClass, dangerButtonClass } from "./ui";
+import { buttonClass, dangerButtonClass, lineButtonClass } from "./ui";
 
 // The dialog's markup as the server renders it (no browser here). Opening it, focus and the keyboard are
 // the browser's `<dialog>` and are held by the pure logic in lib/console/confirm-dialog.test.ts, plus the wiring
@@ -120,15 +120,23 @@ describe("ConfirmDialog markup", () => {
       expect(render({ ...base, tone: "normal" })).toBe(render(base));
     });
 
-    it("a danger dialog has the 'Cannot be undone' eyebrow above its title, and a rose action button", () => {
+    it("a danger dialog has the 'Cannot be undone' eyebrow above its title, and a red action button", () => {
       const html = render({ ...base, tone: "danger" });
       expect(html.indexOf("Cannot be undone")).toBeGreaterThan(-1);
       expect(html.indexOf("Cannot be undone")).toBeLessThan(html.indexOf("<h2"));
+      expect(openTag(html, /<p\b[^>]*>(?=Cannot be undone)/)).toMatch(/class="[^"]*\btext-bad\b/);
       const [, action] = buttons(html);
       expect(attr(action?.attrs ?? "", "class")).toBe(dangerButtonClass);
-      expect(dangerButtonClass).toContain("bg-rose-700");
-      expect(dangerButtonClass).toContain("hover:bg-rose-800");
+      expect(dangerButtonClass).toContain("bg-bad");
       expect(dangerButtonClass).toContain("text-white");
+    });
+
+    it("its Cancel is the console's outline button, in either tone", () => {
+      for (const tone of ["normal", "danger"] as const) {
+        const [cancel] = buttons(render({ ...base, tone }));
+        expect(cancel?.text, tone).toBe("Cancel");
+        expect(attr(cancel?.attrs ?? "", "class"), tone).toBe(lineButtonClass);
+      }
     });
 
     it("the eyebrow is not the title: the dialog is still named by the action", () => {
@@ -163,8 +171,8 @@ describe("ConfirmDialog markup", () => {
     it("is a white panel with a hairline border and a large radius, over a dimmed backdrop", () => {
       const cls = attr(openTag(render(base), /^<dialog\b[^>]*>/), "class") ?? "";
       expect(cls).toContain("rounded-3xl");
-      expect(cls).toContain("border-ink/10");
-      expect(cls).toContain("bg-white");
+      expect(cls).toContain("border-line");
+      expect(cls).toContain("bg-surface");
       expect(cls).toContain("backdrop:bg-ink/45");
       // Tailwind's reset zeroes the margin the browser centres a modal with.
       expect(cls).toContain("m-auto");

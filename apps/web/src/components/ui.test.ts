@@ -1,7 +1,22 @@
 import { type ComponentProps, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Field, inputClass } from "./ui";
+import {
+  AccountLink,
+  actionButtonClass,
+  Badge,
+  buttonClass,
+  Card,
+  dangerButtonClass,
+  dangerLineButtonClass,
+  Field,
+  inputClass,
+  lineButtonClass,
+  Notice,
+  TONE_CLASSES,
+  type Tone,
+  TxLink,
+} from "./ui";
 
 // `children` is passed as createElement's third argument, so the props object leaves it out.
 const props = (p: Omit<ComponentProps<typeof Field>, "children">) =>
@@ -108,5 +123,139 @@ describe("Field", () => {
     // @ts-expect-error a list of elements is not one element
     const list: ComponentProps<typeof Field> = { label: "x", children: [one, one] };
     expect([text.label, list.label]).toEqual(["x", "x"]);
+  });
+});
+
+// Brand v2 in the console (site audit P1-21): the console's buttons, fields, cards and notices are the landing page's
+// ink pills, hairlines and colour tokens, not the Tailwind kit that came before the brand.
+describe("the console kit", () => {
+  const classes = (s: string) => s.split(/\s+/);
+
+  it("every button is a pill at least 44px tall, with the site's gold focus ring", () => {
+    for (const [name, cls] of Object.entries({
+      buttonClass,
+      lineButtonClass,
+      dangerButtonClass,
+      dangerLineButtonClass,
+    })) {
+      expect(classes(cls), name).toEqual(
+        expect.arrayContaining([
+          "min-h-11",
+          "rounded-full",
+          "focus-visible:outline-2",
+          "focus-visible:outline-gold-small",
+        ]),
+      );
+      expect(classes(cls), name).toContain("disabled:opacity-50");
+      expect(cls, name).not.toMatch(/focus-visible:outline-(?:ink|bad)\b/);
+    }
+  });
+
+  it("the main button is ink on paper, and the line button an ink outline", () => {
+    expect(classes(buttonClass)).toEqual(expect.arrayContaining(["bg-ink", "text-paper"]));
+    expect(classes(lineButtonClass)).toEqual(expect.arrayContaining(["border", "text-ink"]));
+    expect(classes(lineButtonClass)).not.toContain("bg-ink");
+  });
+
+  it("the danger buttons use the bad token: solid for a dialog's action, an outline beside other actions", () => {
+    expect(classes(dangerButtonClass)).toEqual(expect.arrayContaining(["bg-bad", "text-white"]));
+    expect(classes(dangerLineButtonClass)).toEqual(
+      expect.arrayContaining(["border", "border-bad/45", "text-bad", "hover:bg-bad-bg"]),
+    );
+  });
+
+  it("an input is 16px, so a phone does not zoom in on focus, and 44px tall", () => {
+    expect(classes(inputClass)).toEqual(
+      expect.arrayContaining(["text-base", "min-h-11", "rounded-xl", "bg-surface"]),
+    );
+    expect(inputClass).not.toMatch(/\btext-sm\b/);
+  });
+
+  it("an input's edge is the landing page's mute border, which reads at 3:1 on a white card, and its ring is gold", () => {
+    expect(classes(inputClass)).toEqual(
+      expect.arrayContaining([
+        "border",
+        "border-mute",
+        "focus-visible:outline-2",
+        "focus-visible:outline-gold-small",
+      ]),
+    );
+  });
+
+  it("each tone is a pair of colour tokens", () => {
+    expect(TONE_CLASSES).toEqual({
+      neutral: "bg-plan-bg text-plan",
+      good: "bg-ok-bg text-ok",
+      warn: "bg-wait-bg text-wait",
+      bad: "bg-bad-bg text-bad",
+      info: "border border-line bg-paper text-ink",
+    });
+  });
+
+  it("a badge and a notice wear their tone's tokens", () => {
+    for (const tone of Object.keys(TONE_CLASSES) as Tone[]) {
+      const badge = renderToStaticMarkup(
+        createElement(Badge, { tone } as ComponentProps<typeof Badge>, "x"),
+      );
+      const notice = renderToStaticMarkup(
+        createElement(Notice, { tone } as ComponentProps<typeof Notice>, "x"),
+      );
+      for (const cls of classes(TONE_CLASSES[tone])) {
+        expect(attr(badge, "span", "class"), `badge ${tone}`).toContain(cls);
+        expect(attr(notice, "div", "class"), `notice ${tone}`).toContain(cls);
+      }
+    }
+    expect(attr(renderToStaticMarkup(createElement(Badge, null, "x")), "span", "class")).toContain(
+      "rounded-full",
+    );
+    expect(attr(renderToStaticMarkup(createElement(Notice, null, "x")), "div", "class")).toContain(
+      "rounded-2xl",
+    );
+  });
+
+  it("a card is a hairline panel with a large radius, and its title is light and large", () => {
+    const html = renderToStaticMarkup(
+      createElement(Card, { title: "Held for approval" } as ComponentProps<typeof Card>, "x"),
+    );
+    expect(classes(attr(html, "section", "class") ?? "")).toEqual(
+      expect.arrayContaining(["rounded-3xl", "border", "border-line", "bg-surface"]),
+    );
+    expect(classes(attr(html, "h2", "class") ?? "")).toEqual(
+      expect.arrayContaining(["text-[22px]", "font-light"]),
+    );
+  });
+
+  it("a field's hint is muted and its error is the bad token", () => {
+    const hint = renderToStaticMarkup(
+      createElement(Field, props({ label: "A", hint: "one" }), createElement("input")),
+    );
+    const error = renderToStaticMarkup(
+      createElement(Field, props({ label: "A", error: "two" }), createElement("input")),
+    );
+    expect(hint).toMatch(/<span[^>]*class="[^"]*\btext-mute\b[^"]*"[^>]*>one<\/span>/);
+    expect(error).toMatch(/<span[^>]*class="[^"]*\btext-bad\b[^"]*"[^>]*>two<\/span>/);
+  });
+
+  it("explorer links are ink links like the site's, in a new tab", () => {
+    for (const html of [
+      renderToStaticMarkup(createElement(TxLink, { network: "testnet", hash: "abc" })),
+      renderToStaticMarkup(
+        createElement(AccountLink, { network: "testnet", account: "a.testnet" }),
+      ),
+    ]) {
+      expect(classes(attr(html, "a", "class") ?? "")).toEqual(
+        expect.arrayContaining(["text-ink", "underline"]),
+      );
+      expect(html).not.toContain("sky-");
+      expect(attr(html, "a", "target")).toBe("_blank");
+    }
+  });
+});
+
+describe("actionButtonClass", () => {
+  it("is the main button for a normal action, and the danger outline for one whose dialog says it cannot be undone", () => {
+    expect(actionButtonClass()).toBe(buttonClass);
+    expect(actionButtonClass(undefined)).toBe(buttonClass);
+    expect(actionButtonClass("danger")).toBe(dangerLineButtonClass);
   });
 });

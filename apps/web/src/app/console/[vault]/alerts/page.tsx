@@ -11,7 +11,7 @@ import { addEmailAction, connectTelegramAction, removeSubscriptionAction } from 
 
 export const metadata: Metadata = { title: "Alerts" };
 
-const muted = "text-[#0B0B0C]/60";
+const muted = "text-mute";
 
 /** One entry of `alert_subscriptions_list` (migration 0011). It never has a link code. */
 interface Sub {
@@ -58,8 +58,12 @@ export default async function AlertsPage({
       <Notice>
         A message goes out when the watcher records an event on this vault that an alert is set for
         (the kinds are listed under Active alerts). The watcher checks a vault right after an
-        invoice upload, once a day, and every minute once its schedule is on, so a change made only
-        on the chain can wait for the next check.
+        invoice is uploaded on Payables
+        {member.kind === "canary" ? ", and this Canary vault after each attempt on it" : ""}.
+        Anything else waits for its next scheduled run: once a day at 00:00 UTC, or every minute if
+        this site&apos;s operator has turned on the per-minute schedule. So a change made only on
+        the chain, such as a spend an agent sends from the SDK, can take until that run to reach
+        you.
       </Notice>
       {canChange ? null : (
         <Notice>Only the vault&apos;s owners and approvers can add or remove alerts.</Notice>
@@ -91,7 +95,7 @@ export default async function AlertsPage({
                   )}
                   {canChange ? (
                     <form action={removeSubscriptionAction.bind(null, vault, s.id)}>
-                      <button type="submit" className="text-xs text-stone-600 underline">
+                      <button type="submit" className="text-xs text-mute underline">
                         Remove
                       </button>
                     </form>

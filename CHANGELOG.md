@@ -14,6 +14,21 @@ The software is an unaudited beta.
 
 ### Added
 
+- A new vault's overview shows its owner "Your first agent payment": the five steps from a new
+  vault to a payment its agent makes inside a mandate. They are the vault, an agent key and a
+  ledger key that the console holds active (as Payables needs), USDC in the vault (on NEAR, or as
+  Base USDC in Intents), an active mandate, and the first paid spend. The steps are worked out from
+  what the overview reads and from the console's own key rows. The next step links to its tab as
+  the ink pill, a step whose read failed says it could not be checked, and the card goes away after
+  the first paid spend. It is not shown when the spends cannot be read. It shows on external vaults
+  in this network's USDC, to their owner. Create a vault now opens the new vault's page, where the
+  card starts; before, it said "Registered" and stayed on the form.
+  - On testnet, Mandates offers "Use the sample PO". It fills the form from a sample purchase
+    order: 5 test USDC a payment, 20 in all, 5 payments, 30 days, paid to the owner. The PO is
+    hashed in the browser as it is served, and the form refuses it unless the hash is the pinned
+    one. Payables offers "Use the sample invoice", a 2 test USDC invoice with a fresh invoice
+    number each time, sent with the same PO attached. The files are in
+    `apps/web/public/samples/`. Mainnet offers neither.
 - The ledger test on the landing page, each Canary answer and each proof page whose checks ran now
   end with a link to the next page. On the landing page, a run the verifier failed ends with
   "Caught." and a link to `/proof`. A Canary answer ends with "Put limits like these on your own
@@ -298,6 +313,35 @@ The software is an unaudited beta.
 
 ### Changed
 
+- A spend that waits for approval now comes first on the vault's overview, right under the tabs.
+  A hold that ran out does not count, since the vault refuses approve then. The "Approval needed"
+  alert, by Telegram and email, links straight to the card (`/console/<vault>#held`); before, it
+  opened the overview, where the held card was the third or fourth. While a spend waits, the card
+  offers an owner or approver "Get a message next time", a link to the Alerts tab, unless a
+  confirmed alert of the vault already sends held spends.
+- The Alerts tab says when a message can arrive: right after an invoice is uploaded on Payables
+  (and, on the Canary vault, after each attempt), otherwise at the watcher's next run, once a day
+  at 00:00 UTC or every minute if the per-minute schedule is turned on. A test holds the time to
+  the schedule in `apps/web/vercel.json`. Before, it read as if a check every minute were already
+  running.
+- The console has the landing page's brand. It used a Tailwind kit from before the brand: buttons
+  about 32px tall, 14px fields that a phone zooms in on, and Approve and Reject buttons that looked
+  the same on a held payment.
+  - Buttons are ink pills at least 44px tall. Approve is the ink pill and Reject a red outline. Any
+    wallet button whose confirm dialog says it cannot be undone gets the red outline too: removing
+    an agent key and revoking a mandate.
+  - Fields are 16px, with the landing page's mute edge.
+  - Cards, notices, badges and status text use the colour tokens. A test reads them from
+    `globals.css` and checks that every text colour reads at WCAG AA.
+  - The vault's tabs mark the open one with an underline and `aria-current`. Each tab is 44px tall,
+    and on a phone they sit in one row that scrolls sideways.
+  - The confirm dialog's Cancel is an outline pill.
+  - Explorer links are ink rather than blue.
+  - A pending payout is gold, the brand's colour for in progress.
+  - Every page but the landing page now uses the header's frame: 1320px wide, with 16px gutters up
+    to 620px and 24px above, so the page's left edge lines up with the logo. The console's and the
+    extension page's content stays 1024px wide.
+  - The proof page's coloured result panels are unchanged.
 - The sign-in page says what signing in is for (a vault, a mandate and a key that can only call
   `spend`, or approving a held payment) and what it takes: on testnet, a NEAR testnet account, and
   about 3.3 test NEAR to create a vault later, which stays in the vault and cannot be withdrawn. On

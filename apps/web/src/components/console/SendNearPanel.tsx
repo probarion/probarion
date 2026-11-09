@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Field, inputClass } from "@/components/ui";
+import { buttonClass, Field, inputClass } from "@/components/ui";
 import type { Network } from "@/lib/config";
 import { DEFAULT_TOPUP_YOCTO, MAX_TOPUP_YOCTO } from "@/lib/near/runway";
 import { asWalletTx, sendNearTx } from "@/lib/near/transfer";
@@ -39,7 +39,7 @@ export function SendNearPanel({
   const [amount, setAmount] = useState(formatNear(DEFAULT_TOPUP_YOCTO.toString()));
   const parsed = parseTopup(amount);
   return (
-    <div id="send-near" className="mt-4 border-t border-[#0B0B0C]/10 pt-3">
+    <div id="send-near" className="mt-4 border-t border-line pt-3">
       <Field
         label="Send NEAR to this vault"
         hint="A plain transfer. It pays the vault's storage and gas (about 0.0053 NEAR per paid spend) and can never be withdrawn."
@@ -63,19 +63,13 @@ export function SendNearPanel({
             outOfNearCodes={outOfNearCodes}
             vaultNearLow={false}
           />
-          <p className="mt-1 text-xs text-[#0B0B0C]/60">
-            Or from a terminal (near-cli-rs, you sign):
-          </p>
-          <pre className="mt-1 overflow-x-auto rounded-2xl bg-[#0B0B0C] p-3 text-xs text-[#F7F6F3]">
+          <p className="mt-1 text-xs text-mute">Or from a terminal (near-cli-rs, you sign):</p>
+          <pre className="mt-1 overflow-x-auto rounded-2xl bg-ink p-3 text-xs text-paper">
             {`near tokens ${signer} send-near ${vault} '${formatNear(parsed.yocto, 6)} NEAR' network-config ${network} sign-with-keychain send`}
           </pre>
         </>
       ) : (
-        <button
-          type="button"
-          className="my-2 rounded-full bg-[#0B0B0C] px-4 py-1.5 text-sm text-[#F7F6F3] opacity-50"
-          disabled
-        >
+        <button type="button" className={`my-2 ${buttonClass}`} disabled>
           Send NEAR
         </button>
       )}

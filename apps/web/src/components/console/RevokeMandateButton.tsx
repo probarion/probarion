@@ -44,7 +44,7 @@ export function RevokeMandateButton(props: {
           return v === null ? undefined : { detail: v.text };
         }}
       />
-      {props.note ? <p className="mt-1 max-w-xs text-xs text-[#0B0B0C]/60">{props.note}</p> : null}
+      {props.note ? <p className="mt-1 max-w-xs text-xs text-mute">{props.note}</p> : null}
     </div>
   );
 }

@@ -50,7 +50,7 @@ export default async function PayablesPage({ params }: { params: Promise<{ vault
 
       {canUpload ? (
         <Card title="New invoice">
-          <InvoiceUploadForm vault={vault} />
+          <InvoiceUploadForm vault={vault} network={member.network} />
         </Card>
       ) : (
         <p className={`mb-6 text-sm ${muted}`}>

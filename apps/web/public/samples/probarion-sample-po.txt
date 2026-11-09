@@ -1,0 +1,4 @@
+Probarion sample purchase order PO-1001 (testnet only: test USDC, no value)
+Buyer: the owner of the vault that signs a mandate for it.
+Scope: test payouts that show an agent paying inside a mandate, to the payee the mandate names.
+Cap: at most 5 test USDC per payment, 20 test USDC in total, 5 payments, for 30 days from the mandate.

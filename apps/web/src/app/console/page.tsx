@@ -55,13 +55,11 @@ export default async function ConsolePage() {
       <h1 className="mb-6 text-2xl font-semibold">Your vaults</h1>
       <Card title="Vaults you own, approve or view">
         {vaults.length === 0 ? (
-          <p className="text-sm text-[#0B0B0C]/60">
-            No vaults yet. Create one, or register one you own.
-          </p>
+          <p className="text-sm text-mute">No vaults yet. Create one, or register one you own.</p>
         ) : (
           <ul className="text-sm">
             {vaults.map((v) => (
-              <li key={v.tenant_id} className="border-b border-[#0B0B0C]/10 py-2 last:border-0">
+              <li key={v.tenant_id} className="border-b border-line py-2 last:border-0">
                 <Link
                   className="mono underline"
                   href={`/console/${encodeURIComponent(v.vault_id)}`}
@@ -99,7 +97,7 @@ export default async function ConsolePage() {
         )}
       </Card>
       <Card title="Register a vault you already own">
-        <p className="mb-3 text-sm text-[#0B0B0C]/60">
+        <p className="mb-3 text-sm text-mute">
           Sign in as its on-chain owner. The console checks that the account runs a Probarion vault
           build, and reads the approvers from the chain.
         </p>

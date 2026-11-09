@@ -44,7 +44,7 @@ export function TxResultNote({
       {view.explorer === "account" && account ? (
         <AccountLink network={network} account={account} />
       ) : null}
-      {view.detail ? <span className="mt-1 block text-stone-600">{view.detail}</span> : null}
+      {view.detail ? <span className="mt-1 block text-mute">{view.detail}</span> : null}
     </p>
   );
 }

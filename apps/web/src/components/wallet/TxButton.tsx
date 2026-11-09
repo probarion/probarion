@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { buttonClass } from "@/components/ui";
+import { actionButtonClass } from "@/components/ui";
 import type { Network } from "@/lib/config";
 import { type DangerTone, walletConfirm } from "@/lib/console/confirm-dialog";
 import { actionKey, browserStore, clearLock, readLock, writeLock } from "@/lib/near/lock";
@@ -130,24 +130,24 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
     <div className="my-2">
       <button
         type="button"
-        className={buttonClass}
+        className={actionButtonClass(props.confirmTone)}
         disabled={!ready || busy || wrongSigner || locked}
         onClick={(e) => run(e.currentTarget)}
       >
         {busy ? "Waiting for your wallet and the network…" : props.label}
       </button>
       {wrongSigner ? (
-        <p className="mt-1 text-xs text-rose-700">
+        <p className="mt-1 text-xs text-bad">
           Your wallet is connected as {accountId}; switch to {props.expectedSigner}.
         </p>
       ) : null}
       {preview ? (
-        <p className="mt-1 text-xs text-stone-500">
+        <p className="mt-1 text-xs text-mute">
           You sign: {preview.summary} — {preview.receiverId}.
           {preview.actions.map(actionLabel).join(" + ")}
         </p>
       ) : null}
-      {error ? <p className="mt-1 text-xs text-rose-700">{error}</p> : null}
+      {error ? <p className="mt-1 text-xs text-bad">{error}</p> : null}
       {result ? (
         <TxResultNote
           result={result}
@@ -159,7 +159,7 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
       {locked ? (
         <button
           type="button"
-          className="mt-1 text-xs text-stone-600 underline"
+          className="mt-1 text-xs text-mute underline"
           onClick={() => {
             clearLock(browserStore(), key ?? (preview ? actionKey(preview) : null));
             setResult(null);

@@ -22,7 +22,7 @@ export function QuoteSummary({ quote }: { quote: VerifiedQuote }) {
         1Click credit <strong>{quote.amountOutFormatted} Base USDC</strong> to {quote.recipient}
         &apos;s account in NEAR Intents.
       </p>
-      <p className="mt-1 text-xs text-stone-600">
+      <p className="mt-1 text-xs text-mute">
         Checked on Probarion&apos;s server before showing you this: the signature (against
         1Click&apos;s signing key as pinned in Probarion and in its SDK); that the signed request is
         the one Probarion sent (this vault as recipient, your refund address, the assets, the
@@ -30,13 +30,13 @@ export function QuoteSummary({ quote }: { quote: VerifiedQuote }) {
         for; that you pay at most 5% more than that; that it was signed less than 5 minutes ago; and
         that its deposit address is not this vault, your account, or the USDC or Intents contract.
       </p>
-      <p className="mt-1 text-xs text-stone-600">
+      <p className="mt-1 text-xs text-mute">
         Per 1Click&apos;s API documentation, input above what the swap needs is refunded to{" "}
         {quote.refundTo} on NEAR once the swap completes. Your deposit must reach 1Click before{" "}
         {deadlineText(quote.deadline)}. After that, 1Click says the deposit address becomes inactive
         and funds may be lost.
       </p>
-      <p className="mt-1 text-xs break-all text-stone-500">
+      <p className="mt-1 text-xs break-all text-mute">
         Deposit address {quote.depositAddress}
         {quote.timeEstimate > 0
           ? ` · 1Click estimates about ${quote.timeEstimate} s once the deposit is confirmed`
@@ -49,7 +49,7 @@ export function QuoteSummary({ quote }: { quote: VerifiedQuote }) {
 /** The id 1Click gave the quote, for a support question. It is not part of what the signature covers. */
 export function QuoteReference({ id }: { id: string }) {
   return (
-    <p className="mt-1 text-xs break-all text-stone-500">
+    <p className="mt-1 text-xs break-all text-mute">
       1Click reference {id} (not covered by the signature).
     </p>
   );
