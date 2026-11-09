@@ -9,10 +9,14 @@ import { CONSOLE_ROUTE, PROOF_ROUTE } from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
 
 describe("the next steps", () => {
-  it("go to the proof page after the ledger test, and to the console after the Canary and a proof page", () => {
+  it("go to the proof page after the ledger test, and to the console after the Canary, a proof page and the landing's close", () => {
     expect(NEXT_STEP.tamper.route).toBe(PROOF_ROUTE);
     expect(NEXT_STEP.canary.route).toBe(CONSOLE_ROUTE);
     expect(NEXT_STEP.proof.route).toBe(CONSOLE_ROUTE);
+    expect(NEXT_STEP.closing).toEqual({
+      text: "Put your agent behind a mandate",
+      route: CONSOLE_ROUTE,
+    });
   });
 
   it("go only to pages that are built, so none of them is a 'coming soon' label", () => {

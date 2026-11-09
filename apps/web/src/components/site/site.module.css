@@ -1377,6 +1377,11 @@ a.netPill:hover {
 .closeNote code {
   white-space: nowrap;
 }
+/* After the two ways out to the evaluation and the spec, the way into the product. */
+.closeNext {
+  margin-top: 28px;
+  font-size: 17px;
+}
 
 /* Footer */
 .footer {
