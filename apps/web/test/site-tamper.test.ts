@@ -55,7 +55,7 @@ describe("the fixture", () => {
       { seq: 0, kind: "Decision", outcome: "Allow", mandate: "1", amount: "25.000000" },
       { seq: 1, kind: "Payment", outcome: "Paid", mandate: "1", amount: "25.000000" },
       { seq: 2, kind: "Decision", outcome: "Allow", mandate: "2", amount: "40.000000" },
-      { seq: 3, kind: "Payment", outcome: "Burned for Base", mandate: "2", amount: "40.000000" },
+      { seq: 3, kind: "Payment", outcome: "Withdrawal to Base", mandate: "2", amount: "40.000000" },
       {
         seq: 4,
         kind: "Decision",

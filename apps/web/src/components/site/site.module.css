@@ -1206,6 +1206,13 @@ a.netPill:hover {
 .checkBad .checkWord {
   color: var(--color-bad);
 }
+/* What the check means, in one line, the same whether it passed or failed. */
+.checkHint {
+  grid-column: 2 / -1;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-mute);
+}
 .why {
   grid-column: 2 / -1;
   font-family: var(--font-mono);

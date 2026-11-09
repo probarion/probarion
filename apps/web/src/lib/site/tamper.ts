@@ -145,7 +145,7 @@ function outcomeOf({ body }: LedgerEntry): string {
   }
   const status = body.contract?.status ?? "";
   if (status === "burned" && body.settlement !== null) {
-    return `Burned for ${CHAIN_NAME[body.settlement.chain] ?? body.settlement.chain}`;
+    return `Withdrawal to ${CHAIN_NAME[body.settlement.chain] ?? body.settlement.chain}`;
   }
   return capitalized(status);
 }
