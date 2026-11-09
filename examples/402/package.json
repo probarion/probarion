@@ -9,7 +9,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "server": "tsx src/run-server.ts",
+    "paywall": "tsx src/run-server.ts",
     "agent": "tsx src/run-agent.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"

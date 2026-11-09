@@ -1,4 +1,4 @@
-// pnpm --filter @probarion/example-402 agent
+// pnpm --filter @probarion/example-402 run agent
 // Calls PAYWALL_URL (default http://127.0.0.1:4020/forecast) CALLS times (default 21), paying each 402
 // through the probarion-mcp server, which it starts over stdio with the vault's two function-call keys.
 // Testnet only. Run `pnpm build` in the repository first: this starts packages/mcp/dist/bin.js.

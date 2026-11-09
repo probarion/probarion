@@ -36,7 +36,7 @@ pnpm build
 In one terminal, start the endpoint (it is paid at `probarion-payee.testnet` unless you set `PAYWALL_PAYEE`):
 
 ```sh
-pnpm --filter @probarion/example-402 server
+pnpm --filter @probarion/example-402 run paywall
 ```
 
 In another, run the agent with the vault's keys in the environment (they go to the MCP server it starts,
@@ -45,7 +45,7 @@ and are not printed):
 ```sh
 PROBARION_VAULT_ID=<your vault>.vaults.probarion.testnet \
 PROBARION_AGENT_KEY=ed25519:... PROBARION_LEDGER_KEY=ed25519:... \
-pnpm --filter @probarion/example-402 agent
+pnpm --filter @probarion/example-402 run agent
 ```
 
 You see 20 lines like `#01 402 for 0.01 USDC -> paid, spend 1 https://testnet.nearblocks.io/txns/... -> 200`,
@@ -54,7 +54,7 @@ then `#21 ... -> refused_by_code (mandate.uses_exhausted)` with the contract's `
 ## Run it without a network
 
 ```sh
-pnpm --filter @probarion/example-402 test
+pnpm --filter @probarion/example-402 run test
 ```
 
 `test/pay-per-call.test.ts` runs the same 21 calls against the SDK's fake chain.

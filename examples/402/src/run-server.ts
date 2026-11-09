@@ -1,4 +1,4 @@
-// pnpm --filter @probarion/example-402 server
+// pnpm --filter @probarion/example-402 run paywall
 // Serves GET /forecast for PAYWALL_PRICE_USDC (default 0.01) per call, paid to PAYWALL_PAYEE. Testnet only.
 import { NETWORKS } from "@probarion/core";
 import { parseUsdc } from "@probarion/mcp";
