@@ -78,7 +78,11 @@ describe("numberDuplicateNotice", () => {
     expect(notice).toMatch(
       /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
     );
-    expect(notice.endsWith("If the owner rejects it, upload this one again.")).toBe(true);
+    expect(
+      notice.endsWith(
+        "If the owner rejects it, and any other invoice with this number that waits for them, upload this one again.",
+      ),
+    ).toBe(true);
   });
 
   // A Confirm can end held on chain (the number stays blocked), with a failure that leaves the row waiting or in

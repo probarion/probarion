@@ -703,8 +703,10 @@ The software is an unaudited beta.
   pay as an invoice that may pay: `invoice.duplicate` or `ledger.unresolved` in its signed decision
   (also when another rule refused first), or the contract's `DuplicateInvoice` or `DuplicateRef`.
   The same holds at intake and at the owner's Confirm. The guard also names an invoice that may
-  have paid before one that waits for the owner, so the notice no longer offers a re-upload after
-  a Reject that would only get a 409. A Reject still frees the number. The migration
+  have paid before one that waits for the owner, so the notice offers a re-upload after a Reject
+  only when no invoice with the number may have paid. When two invoices with the number wait (the
+  browser extension and the console raced), the notice asks the owner to reject each. A Reject
+  still frees the number of the invoice it rejects. The migration
   `apps/web/supabase/migrations/20261110000017_invoice_guard_paid_refusals.sql` changes
   `invoice_insert` and `invoice_confirm_begin`.
 

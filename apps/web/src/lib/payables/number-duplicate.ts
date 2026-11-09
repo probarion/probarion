@@ -48,7 +48,9 @@ function earlierState(m: NumberMatch): string {
  * waiting or in processing; or with a refusal because that invoice's text was already paid or may still pay
  * (invoice.duplicate, ledger.unresolved, the contract's DuplicateInvoice), which keeps the number blocked (0017). The
  * guard names an invoice that may have paid before one that waits for the owner (0017), so this Reject is offered
- * only when no invoice with the number may have paid. Nothing in the app moves a paid invoice, a spend held on chain,
+ * only when no invoice with the number may have paid. Two invoices with the number can both wait (the extension queues
+ * without the tenant lease, 0015), and the takeover runs only once no invoice that may pay has the number, so the
+ * notice asks for a Reject of each. Nothing in the app moves a paid invoice, a spend held on chain,
  * a payment sent but not confirmed, a refusal because the text was already paid, or a row left in processing (its
  * cycle was cut off or could not record its outcome: the tenant lease means no cycle is still running when this one
  * inserts), even once that spend fails, is rejected or expires.
@@ -71,7 +73,7 @@ export function numberDuplicateNotice(match: NumberMatch, recorded: boolean): st
     "The console does not yet free a number when that spend fails, is rejected or expires.";
   switch (match.status) {
     case "awaiting_owner":
-      return `${head} That invoice waits for the owner. If the owner rejects it, upload this one again.`;
+      return `${head} That invoice waits for the owner. If the owner rejects it, and any other invoice with this number that waits for them, upload this one again.`;
     case "processing":
       return `${head} That invoice's outcome is unknown and it may have paid, so the number stays blocked. ${notFreed}`;
     case "unconfirmed":

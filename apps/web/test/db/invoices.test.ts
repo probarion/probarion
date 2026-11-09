@@ -484,6 +484,42 @@ describe("invoice functions (migration 0006)", () => {
     });
   });
 
+  // The extension queues without the tenant lease (0015), so two invoices with the number can both wait. The refused
+  // text runs again only once the owner rejected each of them, as the notice says.
+  it("frees the number only once the owner rejected every waiting invoice that has it", async () => {
+    const num = key();
+    const first = await awaiting({ invoiceNumberKey: num });
+    const twin = await awaiting({});
+    await pg.query("update invoices set invoice_number_hmac = $2 where id = $1", [twin, num]);
+    const text = invoice({ invoiceNumberKey: num });
+    const refused = await insertInvoice(db, a, text, { numberRule: true });
+    expect(refused).toMatchObject({ number_match: { id: first, status: "awaiting_owner" } });
+    await refuse(a, refused.id, "refused_by_code", "custom.invoice_number_duplicate");
+    const reject = async (id: string) => {
+      const row = await getInvoice(db, a, id);
+      expect(
+        await setInvoiceRejected(db, a, id, "alice.near", {
+          suggestedAmount: "5",
+          invoiceHash: row?.invoice_hash ?? "",
+          mandateId: null,
+        }),
+      ).toEqual({ changed: true, status: "rejected" });
+    };
+    await reject(first);
+    expect(await insertInvoice(db, a, text, { numberRule: true })).toEqual({
+      id: refused.id,
+      duplicate: true,
+      status: "decided",
+    });
+    await reject(twin);
+    expect(await insertInvoice(db, a, text, { numberRule: true })).toEqual({
+      id: refused.id,
+      duplicate: false,
+      retry: true,
+      number_match: null,
+    });
+  });
+
   it("refuses a malformed fingerprint or invoice-number hash", async () => {
     for (const over of [{ fingerprint: "nope" }, { invoiceNumberKey: "XYZ" }]) {
       await expect(insertInvoice(db, a, invoice(over))).rejects.toMatchObject({
