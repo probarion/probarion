@@ -25,6 +25,8 @@ export interface ProbarionPort {
   checkSpend(input: SpendInput): Promise<CheckSpendVerdict>;
   requestSpend(input: SpendInput & { proposal: ModelProposal }): Promise<SpendOutcome>;
   getSpend(spendId: number): Promise<SpendView | null>;
+  /** The vault's spend under this ref, if any: the contract takes each ref once, and has no lookup by ref. */
+  findSpendByRef(ref: string): Promise<SpendView | null>;
   verify(): Promise<VerifyReport>;
 }
 
@@ -33,4 +35,6 @@ export interface ServerInfo {
   network: "mainnet" | "testnet";
   version: string;
   readOnly: boolean;
+  /** The agent key's public half, so list_mandates can say which mandates this server's key may use. */
+  agentPublicKey: string | null;
 }

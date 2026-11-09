@@ -1,6 +1,8 @@
 // One ledger per vault. A vault has one hash-chained ledger; a second writer with its own ledger file forks
 // it, and verify check c then fails for the ranges the other file anchored. Before a spend, the server checks
-// that the vault's latest on-chain anchor covers this machine's ledger, entry for entry.
+// that this machine's ledger holds every entry the vault's latest on-chain anchor covers, with the same root at
+// that count. That catches another writer once it has anchored; one that has not anchored yet is caught later,
+// by verify check d (a decision in this ledger behind every spend).
 import type { ProbarionPort } from "./port.js";
 
 export class LedgerForkError extends Error {}
@@ -51,6 +53,7 @@ export function withSingleWriterGuard(
       return port.requestSpend(input);
     },
     getSpend: (spendId) => port.getSpend(spendId),
+    findSpendByRef: (ref) => port.findSpendByRef(ref),
     verify: () => port.verify(),
   };
 }

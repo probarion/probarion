@@ -59,7 +59,7 @@ describe("no MCP tool accepts an address or changes a mandate", () => {
 
   it("the port the server talks to has no member that could change a mandate", () => {
     expectTypeOf<keyof ProbarionPort>().toEqualTypeOf<
-      "listMandates" | "checkSpend" | "requestSpend" | "getSpend" | "verify"
+      "listMandates" | "checkSpend" | "requestSpend" | "getSpend" | "findSpendByRef" | "verify"
     >();
   });
 

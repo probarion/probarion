@@ -38,6 +38,8 @@ function cfg(over: Partial<McpConfig> = {}): McpConfig {
     agentKey: TEST_KEYS.agent.secretKey,
     ledgerKey: TEST_KEYS.ledger.secretKey,
     rpcUrls: [server.url],
+    archivalRpcUrls: null,
+    agentPublicKey: TEST_KEYS.agent.publicKey,
     ledgerPath: join(tmpdir(), "probarion-mcp-unused", "ledger.jsonl"),
     readOnly: false,
     ...over,
@@ -58,7 +60,12 @@ async function open(ledger = new InMemoryLedgerStore(), over: Partial<McpConfig>
   const port = buildPort(c, deps(), ledger);
   return {
     ledger,
-    ...(await connect(port, { vault: c.vault, network: c.network, readOnly: c.readOnly })),
+    ...(await connect(port, {
+      vault: c.vault,
+      network: c.network,
+      readOnly: c.readOnly,
+      agentPublicKey: c.agentPublicKey,
+    })),
   };
 }
 
@@ -153,6 +160,14 @@ describe("probarion-mcp over the SDK", () => {
     const sameRef = jsonOf(await client.callTool(pay({ invoice_hash: "d".repeat(64) })));
     const sameInvoice = jsonOf(await client.callTool(pay({ ref: "vendor:INV-1b" })));
     expect(sameRef).toMatchObject({ status: "refused_by_code", spend_id: null, tx_hash: null });
+    // The retry under the first ref names the spend that already paid it, so the agent does not pay again.
+    expect(sameRef.earlier_spend).toMatchObject({
+      spend_id: 1,
+      status: "paid",
+      ref: "vendor:INV-1",
+    });
+    expect(sameRef.note).toContain("already has spend 1");
+    expect(sameInvoice.earlier_spend).toBeUndefined();
     expect(sameInvoice).toMatchObject({
       status: "refused_by_code",
       code: "invoice.duplicate",

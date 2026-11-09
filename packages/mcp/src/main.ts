@@ -38,7 +38,7 @@ export async function main(io: MainIo): Promise<McpServer | 2> {
     }
     throw e;
   }
-  mkdirSync(dirname(cfg.ledgerPath), { recursive: true });
+  if (!cfg.readOnly) mkdirSync(dirname(cfg.ledgerPath), { recursive: true });
   const logger = {
     warn: (message: string) => {
       io.stderr.write(`probarion-mcp: ${safeMessage(message)}\n`);
@@ -49,6 +49,7 @@ export async function main(io: MainIo): Promise<McpServer | 2> {
     network: cfg.network,
     version: VERSION,
     readOnly: cfg.readOnly,
+    agentPublicKey: cfg.agentPublicKey,
   });
   await server.connect(new StdioServerTransport(io.stdin, io.stdout));
   io.stderr.write(

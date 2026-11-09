@@ -1,7 +1,7 @@
 // The five tools. Each is a thin call into the port; amounts go in as USDC and come out in both forms.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type ModelProposal, NETWORKS } from "@probarion/core";
-import type { SpendOutcomeStatus } from "@probarion/sdk";
+import type { SpendOutcome, SpendOutcomeStatus } from "@probarion/sdk";
 import { mandateSummary, spendSummary, verifySummary } from "./format.js";
 import type { ProbarionPort, ServerInfo } from "./port.js";
 import {
@@ -37,13 +37,19 @@ const fail = (message: string): ToolResult => ({
 
 /**
  * Error text for the client. Secret-length ed25519 strings (64-byte keys) are redacted, public keys stay
- * readable, and a URL's query string (where an RPC provider's API key would sit) is dropped.
+ * readable, and a URL is cut to its origin: an RPC provider's API key can sit in its path, query or user info.
  */
 export function safeMessage(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e);
   return m
     .replace(/ed25519:[1-9A-HJ-NP-Za-km-z]{80,}/g, "ed25519:[redacted]")
-    .replace(/(https?:\/\/[^\s?#"']+)[?#][^\s"']*/g, "$1?[redacted]")
+    .replace(/https?:\/\/[^\s"'<>)]+/gi, (url) => {
+      try {
+        return new URL(url).origin;
+      } catch {
+        return "[url]";
+      }
+    })
     .slice(0, 1000);
 }
 
@@ -60,7 +66,7 @@ const NOTES: Readonly<Record<SpendOutcomeStatus, string>> = {
   burned:
     "Sent across chains through NEAR Intents; the bridge releases the funds on the destination chain. Poll get_spend_status.",
   settled: "Settled on the destination chain.",
-  held: "Held for a human approver: the amount is above the mandate's approval threshold. With a spend_id, poll get_spend_status; do not send it again.",
+  held: "Held for a human approver: the amount is above the mandate's approval threshold. Poll get_spend_status with the spend_id; do not send it again.",
   refused_by_code:
     "Refused by Probarion's rules before any transaction; the refusal is in the vault's signed ledger. Do not retry with another amount or ref to get around it.",
   refused_by_contract:
@@ -69,6 +75,22 @@ const NOTES: Readonly<Record<SpendOutcomeStatus, string>> = {
   unconfirmed:
     "The spend was sent and may have paid. Do not send it again, least of all under a new ref: check get_spend_status (with a spend_id) or ask the vault owner.",
 };
+
+/** A hold with no spend on chain is Probarion's own (see code): nothing was sent and no approver sees it. */
+const HELD_OFF_CHAIN =
+  "Held by Probarion's rules (see code; intents.balance_low means the vault's NEAR Intents balance is too low for this payee). Nothing was sent and nothing waits for an approver; the same ref can be retried once the cause is fixed.";
+
+/** The note for an outcome: a hold with no spend_id is not the approval-threshold hold. */
+function noteFor(out: SpendOutcome): string {
+  return out.status === "held" && out.spendId === null ? HELD_OFF_CHAIN : NOTES[out.status];
+}
+
+/** Outcomes after which the vault may already hold a spend under this ref, from an earlier call. */
+const LOOK_UP_REF: ReadonlySet<SpendOutcomeStatus> = new Set([
+  "refused_by_code",
+  "refused_by_contract",
+  "unconfirmed",
+]);
 
 const READ_ONLY = {
   readOnlyHint: true,
@@ -86,7 +108,7 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
     {
       title: "List mandates",
       description:
-        "List the spending mandates of this Probarion vault: for each, the payee, the per-payment cap, the total cap and what is left of it, the uses left, the approval threshold and the expiry. The vault owner signs mandates; you cannot create or change one, and you cannot pay anyone who is not the payee of an active mandate.",
+        "List the spending mandates of this Probarion vault: for each, the payee, the per-payment cap, the total cap and what is left of it, the uses left, the approval threshold, the expiry and the agent key it is bound to (agent_key at the top is this server's). The vault owner signs mandates; you cannot create or change one, and you cannot pay anyone who is not the payee of an active mandate bound to this server's key.",
       inputSchema: listMandatesInput,
       annotations: READ_ONLY,
     },
@@ -96,6 +118,7 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
           vault: info.vault,
           network: info.network,
           read_only: info.readOnly,
+          agent_key: info.agentPublicKey,
           mandates: (await port.listMandates()).map(mandateSummary),
         }),
       ),
@@ -134,12 +157,12 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
     {
       title: "Pay under a mandate",
       description:
-        "Ask the vault to pay an invoice under a mandate. There is no recipient parameter: the vault pays the mandate's payee and nobody else. Probarion's rules and then the contract check the mandate's caps, uses and expiry; a payment above the approval threshold waits for a human approver. Each ref and each invoice_hash pays at most once, so retrying with the same ref is safe. Your reasoning is stored in the vault's signed ledger.",
+        "Ask the vault to pay an invoice under a mandate. There is no recipient parameter: the vault pays the mandate's payee and nobody else. Probarion's rules and then the contract check the mandate's caps, uses and expiry; a payment above the approval threshold waits for a human approver. Each ref and each invoice_hash pays at most once: a second request with the same ref does not pay again, it is refused, and when the vault already holds a spend under that ref the answer names it as earlier_spend. Every request, refusals included, is stored in the vault's signed ledger with your reasoning.",
       inputSchema: requestSpendInput,
       annotations: {
         readOnlyHint: false,
         destructiveHint: true,
-        idempotentHint: true,
+        idempotentHint: false,
         openWorldHint: true,
       },
     },
@@ -166,6 +189,12 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
           ref: args.ref,
           proposal,
         });
+        // A refusal (or an unknown result) after an earlier call under this ref: name that spend, so the agent
+        // reads it instead of paying again. A failed lookup leaves the answer as it is.
+        const earlier =
+          LOOK_UP_REF.has(out.status) && out.spendId === null
+            ? await port.findSpendByRef(args.ref).catch(() => null)
+            : null;
         return ok({
           status: out.status,
           spend_id: out.spendId,
@@ -177,7 +206,11 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
           anchor_tx_hash: out.anchorTxHash,
           ...(out.ledgerComplete === false ? { ledger_complete: false } : {}),
           amount_usdc: formatUsdc(amount),
-          note: NOTES[out.status],
+          ...(earlier === null ? {} : { earlier_spend: spendSummary(earlier) }),
+          note:
+            earlier === null
+              ? noteFor(out)
+              : `The vault already has spend ${earlier.id} under this ref, status ${earlier.status}: this request did not pay it again. Read it with get_spend_status; do not pay it under another ref.`,
         });
       }),
   );
@@ -209,7 +242,18 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
       inputSchema: verifyInput,
       annotations: READ_ONLY,
     },
-    async () => guarded(async () => ok(verifySummary(await port.verify()))),
+    async () =>
+      guarded(async () => {
+        const report = await port.verify();
+        return ok({
+          ...verifySummary(report),
+          ...(report.entries === 0
+            ? {
+                note: "The local ledger file has no entries, so the checks ran against an empty ledger. Set PROBARION_LEDGER_PATH to the ledger file of the process that writes for this vault.",
+              }
+            : {}),
+        });
+      }),
   );
 
   return server;

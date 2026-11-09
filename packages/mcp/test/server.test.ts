@@ -2,7 +2,17 @@ import type { SpendOutcome } from "@probarion/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { withSingleWriterGuard } from "../src/guard.js";
 import { safeMessage, TOOL_NAMES } from "../src/server.js";
-import { connect, fakePort, isError, jsonOf, OUTCOME, TX, textOf } from "./helpers.js";
+import {
+  AGENT_PK,
+  connect,
+  fakePort,
+  isError,
+  jsonOf,
+  OUTCOME,
+  REPORT,
+  TX,
+  textOf,
+} from "./helpers.js";
 
 const spendArgs = {
   mandate_id: 1,
@@ -19,6 +29,78 @@ describe("probarion-mcp tools", () => {
     for (const t of tools) {
       expect(t.annotations?.readOnlyHint, t.name).toBe(t.name !== "request_spend");
     }
+    // A second request_spend with the same ref is refused, not answered with the first outcome.
+    expect(tools.find((t) => t.name === "request_spend")?.annotations?.idempotentHint).toBe(false);
+    await close();
+  });
+
+  it("list_mandates names this server's agent key and the key each mandate is bound to", async () => {
+    const { client, close } = await connect(fakePort());
+    const body = jsonOf(await client.callTool({ name: "list_mandates", arguments: {} }));
+    expect(body.agent_key).toBe(AGENT_PK);
+    expect((body.mandates as { agent_key: string }[])[0]?.agent_key).toBe(AGENT_PK);
+    await close();
+  });
+
+  it("a refused retry under a ref the vault already paid names that spend", async () => {
+    const port = fakePort({
+      requestSpend: vi.fn(async () => ({
+        ...OUTCOME,
+        status: "refused_by_code" as const,
+        spendId: null,
+        code: "mandate.uses_exhausted",
+        txHash: null,
+      })),
+    });
+    const { client, close } = await connect(port);
+    const args = {
+      mandate_id: 1,
+      amount: "25.50",
+      invoice_hash: "a".repeat(64),
+      ref: "vendor:INV-1",
+      reasoning: "retry after a timeout",
+    };
+    const out = jsonOf(await client.callTool({ name: "request_spend", arguments: args }));
+    expect(port.findSpendByRef).toHaveBeenCalledWith("vendor:INV-1");
+    expect(out).toMatchObject({
+      status: "refused_by_code",
+      earlier_spend: { spend_id: 7, status: "paid" },
+    });
+    expect(out.note).toContain("already has spend 7");
+    const fresh = jsonOf(
+      await client.callTool({ name: "request_spend", arguments: { ...args, ref: "vendor:INV-2" } }),
+    );
+    expect(fresh.earlier_spend).toBeUndefined();
+    expect(fresh.note).toContain("Refused by Probarion's rules");
+    await close();
+  });
+
+  it("a hold with no spend on chain says no approver waits on it", async () => {
+    const port = fakePort({
+      requestSpend: vi.fn(async () => ({
+        ...OUTCOME,
+        status: "held" as const,
+        spendId: null,
+        code: "intents.balance_low",
+        txHash: null,
+      })),
+    });
+    const { client, close } = await connect(port);
+    const out = jsonOf(
+      await client.callTool({
+        name: "request_spend",
+        arguments: {
+          mandate_id: 1,
+          amount: "1",
+          invoice_hash: "b".repeat(64),
+          ref: "vendor:INV-3",
+          reasoning: "pay",
+        },
+      }),
+    );
+    expect(out).toMatchObject({ status: "held", spend_id: null, code: "intents.balance_low" });
+    expect(out.note).toContain("nothing waits for an approver");
+    expect(out.note).not.toContain("approval threshold");
     await close();
   });
 
@@ -93,8 +175,18 @@ describe("probarion-mcp tools", () => {
     ["unconfirmed", /Do not send it again, least of all under a new ref/],
     ["held", /Held for a human approver/],
   ])("request_spend explains a %s outcome", async (status, note) => {
-    const out: SpendOutcome = { ...OUTCOME, status, txHash: null, spendId: null };
-    const { client, close } = await connect(fakePort({ requestSpend: vi.fn(async () => out) }));
+    // A hold above the approval threshold has a spend on chain; no earlier spend sits under this ref.
+    const out: SpendOutcome = {
+      ...OUTCOME,
+      status,
+      txHash: null,
+      spendId: status === "held" ? 9 : null,
+    };
+    const port = fakePort({
+      requestSpend: vi.fn(async () => out),
+      findSpendByRef: vi.fn(async () => null),
+    });
+    const { client, close } = await connect(port);
     const body = jsonOf(
       await client.callTool({ name: "request_spend", arguments: { ...spendArgs, reasoning: "x" } }),
     );
@@ -179,28 +271,36 @@ describe("probarion-mcp tools", () => {
 
   it("verify returns every check", async () => {
     const { client, close } = await connect(fakePort());
-    expect(jsonOf(await client.callTool({ name: "verify", arguments: {} }))).toMatchObject({
-      ok: true,
-      entries: 3,
-      checks: [{ id: "a", status: "pass" }],
-    });
+    const body = jsonOf(await client.callTool({ name: "verify", arguments: {} }));
+    expect(body).toMatchObject({ ok: true, entries: 3, checks: [{ id: "a", status: "pass" }] });
+    expect(body.note).toBeUndefined();
     await close();
   });
 
-  it("a port failure becomes an error result with secret-length keys and URL queries redacted", async () => {
+  it("verify says when the local ledger file is empty", async () => {
+    const port = fakePort({ verify: vi.fn(async () => ({ ...REPORT, ok: false, entries: 0 })) });
+    const { client, close } = await connect(port);
+    const body = jsonOf(await client.callTool({ name: "verify", arguments: {} }));
+    expect(body.note).toContain("PROBARION_LEDGER_PATH");
+    await close();
+  });
+
+  it("a port failure becomes an error result with secret-length keys redacted and URLs cut to their origin", async () => {
     const secret = `ed25519:${"3".repeat(87)}`;
     const port = fakePort({
       verify: vi.fn(async () => {
-        throw new Error(`rpc https://rpc.example/v1?apikey=s3cr3t failed while using ${secret}`);
+        throw new Error(
+          `rpc https://rpc.example/v1?apikey=s3cr3t https://user:pa55@b.example/k3y/x and https://c.example/v2/t0ken failed while using ${secret}`,
+        );
       }),
     });
     const { client, close } = await connect(port);
     const r = await client.callTool({ name: "verify", arguments: {} });
     expect(isError(r)).toBe(true);
     expect(textOf(r)).toContain("ed25519:[redacted]");
-    expect(textOf(r)).toContain("https://rpc.example/v1?[redacted]");
-    expect(textOf(r)).not.toContain(secret);
-    expect(textOf(r)).not.toContain("s3cr3t");
+    expect(textOf(r)).toContain("rpc https://rpc.example https://b.example and");
+    expect(textOf(r)).toContain("https://b.example and https://c.example failed");
+    for (const s of [secret, "s3cr3t", "pa55", "k3y", "t0ken"]) expect(textOf(r)).not.toContain(s);
     await close();
   });
 

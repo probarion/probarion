@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { isNearAccountId, NETWORKS } from "@probarion/core";
+import { isNearAccountId, NETWORKS, publicKeyFromSecret } from "@probarion/core";
 import { envValue } from "@probarion/sdk";
 
 export interface McpConfig {
@@ -8,6 +8,10 @@ export interface McpConfig {
   agentKey: string | null;
   ledgerKey: string | null;
   rpcUrls: string[];
+  /** NEAR_ARCHIVAL_RPC_URLS, checked like NEAR_RPC_URLS; null for the SDK's default archival nodes. */
+  archivalRpcUrls: string[] | null;
+  /** The agent key's public half, or null in read-only mode. */
+  agentPublicKey: string | null;
   ledgerPath: string;
   readOnly: boolean;
 }
@@ -17,7 +21,51 @@ export class ConfigError extends Error {}
 type Env = Readonly<Record<string, string | undefined>>;
 
 /** A node on this machine (a sandbox, a test double) may speak plain http. */
-const LOCAL_HTTP = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/;
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** A comma-separated URL list: https only (http only on this machine), and no user name or password in a URL. */
+function urlList(env: Env, name: string, problems: string[]): string[] {
+  const urls = (envValue(env, name) ?? "")
+    .split(",")
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
+  const bad = urls.some((url) => {
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      return true;
+    }
+    if (u.username !== "" || u.password !== "") return true;
+    return !(u.protocol === "https:" || (u.protocol === "http:" && LOCAL_HOSTS.has(u.hostname)));
+  });
+  if (bad) {
+    problems.push(
+      `${name} must be a comma-separated list of https:// URLs (http:// only for a node on this machine), with no user name or password in a URL`,
+    );
+  }
+  return urls;
+}
+
+/** The key's public half, or a problem named by its variable when it is not an ed25519 secret key. */
+function publicHalf(
+  key: string | null,
+  name: string,
+  role: string,
+  problems: string[],
+): string | null {
+  if (key === null) return null;
+  if (!key.startsWith("ed25519:")) {
+    problems.push(`${name} must start with "ed25519:" (${role})`);
+    return null;
+  }
+  try {
+    return publicKeyFromSecret(key);
+  } catch {
+    problems.push(`${name} is not a valid ed25519 secret key (${role})`);
+    return null;
+  }
+}
 
 /**
  * The server's settings from its environment (an MCP client passes them in its config file). Every problem is
@@ -43,30 +91,25 @@ export function loadConfig(env: Env, home: string): McpConfig {
   }
   const agentKey = envValue(env, "PROBARION_AGENT_KEY") ?? null;
   const ledgerKey = envValue(env, "PROBARION_LEDGER_KEY") ?? null;
-  if (agentKey !== null && !agentKey.startsWith("ed25519:")) {
-    problems.push(
-      'PROBARION_AGENT_KEY must start with "ed25519:" (the vault\'s function-call key that can only call spend)',
-    );
-  }
-  if (ledgerKey !== null && !ledgerKey.startsWith("ed25519:")) {
-    problems.push(
-      'PROBARION_LEDGER_KEY must start with "ed25519:" (the vault\'s function-call key that can only call anchor)',
-    );
-  }
+  const agentPublicKey = publicHalf(
+    agentKey,
+    "PROBARION_AGENT_KEY",
+    "the vault's function-call key that can only call spend",
+    problems,
+  );
+  publicHalf(
+    ledgerKey,
+    "PROBARION_LEDGER_KEY",
+    "the vault's function-call key that can only call anchor",
+    problems,
+  );
   if ((agentKey === null) !== (ledgerKey === null)) {
     problems.push(
       "set both PROBARION_AGENT_KEY and PROBARION_LEDGER_KEY, or neither for read-only mode",
     );
   }
-  const rpcUrls = (envValue(env, "NEAR_RPC_URLS") ?? "")
-    .split(",")
-    .map((url) => url.trim())
-    .filter((url) => url.length > 0);
-  if (rpcUrls.some((url) => !url.startsWith("https://") && !LOCAL_HTTP.test(url))) {
-    problems.push(
-      "NEAR_RPC_URLS must be a comma-separated list of https:// URLs (http:// only for a node on this machine)",
-    );
-  }
+  const rpcUrls = urlList(env, "NEAR_RPC_URLS", problems);
+  const archivalRpcUrls = urlList(env, "NEAR_ARCHIVAL_RPC_URLS", problems);
   if (problems.length > 0) {
     throw new ConfigError(`invalid configuration:\n- ${problems.join("\n- ")}`);
   }
@@ -77,6 +120,8 @@ export function loadConfig(env: Env, home: string): McpConfig {
     agentKey,
     ledgerKey,
     rpcUrls: rpcUrls.length > 0 ? rpcUrls : [...NETWORKS[net].rpcUrls],
+    archivalRpcUrls: archivalRpcUrls.length > 0 ? archivalRpcUrls : null,
+    agentPublicKey,
     ledgerPath:
       envValue(env, "PROBARION_LEDGER_PATH") ?? join(home, ".probarion", vault, "ledger.jsonl"),
     readOnly: agentKey === null,

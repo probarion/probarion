@@ -8,7 +8,7 @@ import type { ProbarionPort, ServerInfo } from "../src/port.js";
 import { createServer } from "../src/server.js";
 
 export const TX = "8qkFz1q7mJpQd9wZ3yX4hT6uV2bN5cR1sE7gK3aL9mP";
-const AGENT_PK = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp";
+export const AGENT_PK = "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp";
 
 export const MANDATE: MandateView = {
   id: 1,
@@ -70,6 +70,7 @@ export function fakePort(over: Partial<ProbarionPort> = {}) {
     checkSpend: vi.fn(async () => ({ ok: true, code: null, would_hold: false })),
     requestSpend: vi.fn(async () => OUTCOME),
     getSpend: vi.fn(async (id: number) => (id === 7 ? SPEND : null)),
+    findSpendByRef: vi.fn(async (ref: string) => (ref === SPEND.ref ? SPEND : null)),
     verify: vi.fn(async () => REPORT),
     ...over,
   };
@@ -81,6 +82,7 @@ export async function connect(port: ProbarionPort, info: Partial<ServerInfo> = {
     network: "testnet",
     version: "0.0.0-test",
     readOnly: false,
+    agentPublicKey: AGENT_PK,
     ...info,
   });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

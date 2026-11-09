@@ -1,13 +1,17 @@
 import { join } from "node:path";
+import { generateKeyPair } from "@probarion/core";
 import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "../src/config.js";
 
 const HOME = "/home/pilot";
+// Keys made from fixed seeds when the test runs, so no secret sits in the repository.
+const AGENT = generateKeyPair(new Uint8Array(32).fill(7));
+const LEDGER = generateKeyPair(new Uint8Array(32).fill(8));
 const valid = {
   NEAR_NETWORK: "testnet",
   PROBARION_VAULT_ID: "acme.vaults.probarion.testnet",
-  PROBARION_AGENT_KEY: "ed25519:agentsecretplaceholderforthetest",
-  PROBARION_LEDGER_KEY: "ed25519:ledgersecretplaceholderforthetest",
+  PROBARION_AGENT_KEY: AGENT.secretKey,
+  PROBARION_LEDGER_KEY: LEDGER.secretKey,
 };
 
 describe("loadConfig", () => {
@@ -17,8 +21,53 @@ describe("loadConfig", () => {
       vault: "acme.vaults.probarion.testnet",
       readOnly: false,
       rpcUrls: ["https://rpc.testnet.fastnear.com"],
+      archivalRpcUrls: null,
+      agentPublicKey: AGENT.publicKey,
       ledgerPath: join(HOME, ".probarion", "acme.vaults.probarion.testnet", "ledger.jsonl"),
     });
+  });
+
+  it("refuses a key that has the prefix but is not an ed25519 secret key, naming only the variable", () => {
+    const bad = `ed25519:${"1".repeat(40)}`;
+    try {
+      loadConfig({ ...valid, PROBARION_LEDGER_KEY: bad }, HOME);
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toBeInstanceOf(ConfigError);
+      expect((e as Error).message).toContain(
+        "PROBARION_LEDGER_KEY is not a valid ed25519 secret key",
+      );
+      expect((e as Error).message).not.toContain(bad);
+    }
+  });
+
+  it("refuses an RPC URL with a user name or password, or plain http to another host, archival URLs included", () => {
+    for (const [name, url] of [
+      ["NEAR_RPC_URLS", "https://user:pass@rpc.example"],
+      ["NEAR_RPC_URLS", "http://rpc.example"],
+      ["NEAR_RPC_URLS", "not a url"],
+      ["NEAR_ARCHIVAL_RPC_URLS", "https://key@archival.example"],
+      ["NEAR_ARCHIVAL_RPC_URLS", "http://archival.example"],
+    ] as const) {
+      try {
+        loadConfig({ ...valid, [name]: url }, HOME);
+        expect.unreachable(url);
+      } catch (e) {
+        expect(e, url).toBeInstanceOf(ConfigError);
+        expect((e as Error).message, url).toContain(name);
+        expect((e as Error).message, url).not.toContain(url);
+      }
+    }
+    expect(
+      loadConfig(
+        {
+          ...valid,
+          NEAR_RPC_URLS: "http://127.0.0.1:3030",
+          NEAR_ARCHIVAL_RPC_URLS: "https://a.example",
+        },
+        HOME,
+      ),
+    ).toMatchObject({ rpcUrls: ["http://127.0.0.1:3030"], archivalRpcUrls: ["https://a.example"] });
   });
 
   it("runs read-only when neither key is set, and honours NEAR_RPC_URLS and PROBARION_LEDGER_PATH", () => {

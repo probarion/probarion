@@ -32,6 +32,7 @@ export function mandateSummary(m: MandateView) {
     uses_left: Math.max(0, m.max_uses - m.uses),
     approval_above_usdc: formatUsdc(m.approval_above),
     expires_at: nsToIso(m.expires_at_ns),
+    agent_key: m.agent_pk,
   };
 }
 
