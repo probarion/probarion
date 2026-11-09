@@ -1,5 +1,6 @@
 import { SITE_DESCRIPTION } from "@/lib/site/facts";
 import { AGENT_RULES_TITLE } from "./agents";
+import { buildCommit } from "./build-info";
 import { agentRulesMarkdown } from "./markdown";
 import { findPage, mdHref, PAGES, sidebarGroups } from "./registry";
 import { pageMarkdown } from "./twins";
@@ -43,8 +44,11 @@ export function llmsIndex(origin: string): string {
   return lines.join("\n");
 }
 
-/** /llms-full.txt: the same head, then every page's twin in reading order. */
-export async function llmsFull(origin: string): Promise<string> {
+/** /llms-full.txt: the same head, then every page's twin in reading order, each naming the commit. */
+export async function llmsFull(
+  origin: string,
+  commit: string | null = buildCommit(),
+): Promise<string> {
   const head = [
     "# Probarion docs, full text",
     "",
@@ -52,6 +56,6 @@ export async function llmsFull(origin: string): Promise<string> {
     "",
     ...rulesBlock(),
   ].join("\n");
-  const pages = await Promise.all(PAGES.map((p) => pageMarkdown(p, origin)));
+  const pages = await Promise.all(PAGES.map((p) => pageMarkdown(p, origin, commit)));
   return `${head}\n${pages.join("\n---\n\n")}`;
 }

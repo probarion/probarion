@@ -14,6 +14,7 @@ Each file here is one page of `/docs`. The page's metadata lives in the registry
 ## Truth
 
 - Every claim traces to a file on `dev`. Where a brief and the code disagree, the code wins.
+- An edit that re-checks a page against the code sets the entry's `reviewed` to that day and adds every file it read to `sources`.
 - Status words are Live (works in this deployment), Preview (built, not yet run end to end with real wallets, or not open yet) and Planned (not built). Nothing else.
 - Only NEAR testnet is live. The mainnet vault is planned.
 - The packages are on npm at 0.1.0. An install line names only them: `npm install @probarion/core`, `npm install @probarion/sdk @probarion/core` or `npm install -g probarion`.

@@ -31,21 +31,21 @@ Each twin opens with the page's own fields, then the body:
 
 <lede>
 
-Status: <status> · Network: <network> · Reviewed: <YYYY-MM-DD>
+Status: <status> · Network: <network> · Reviewed: <YYYY-MM-DD> · Built from: <commit>
 
 Canonical page: <site origin>/docs/<section>/<page>
 
 <the page body as Markdown>
 ```
 
-Status and Network appear only when the page has them. Reviewed is always there. The body is the page's source turned into plain Markdown:
+Status and Network appear only when the page has them. Reviewed is always there. Built from gives the full 40-character commit the docs were built from, and appears when the build knows it. The body is the page's source turned into plain Markdown:
 
 - A link to this site becomes absolute, and a link to a docs page points at that page's twin, with its anchor kept. A link to an anchor on the same page stays as written, and so does a link to another site.
 - A callout becomes a quote whose first line is its title in bold. A signing callout keeps its last line, such as "The owner signs this transaction. Probarion never signs it."
 - Code tabs become one code block per tab, each under its label in bold.
 - The generated tables, such as the error codes, the 14 spend checks and the status list, become Markdown tables. Each verifier check becomes a heading with what it proves and what it does not. The rules on this page become a numbered list.
 
-A twin names the day its page was reviewed, but not the commit. The commit is on the HTML page: every page but the docs home has a box near its end, above the feedback links and the pager. The box reads "Built from", the short commit, then "reviewed" and the day, and links the files the page was checked against, at that commit. A build with no known commit reads "Built from a local build", and its file links point at `main`. The docs home's HTML page has no such box and shows neither the commit nor the review day. Its JSON-LD carries the review day as `dateModified`, as every docs page's JSON-LD does, and its twin names it.
+A twin names the day its page was reviewed and the commit the docs were built from. The build takes the commit from Vercel's `VERCEL_GIT_COMMIT_SHA`, else from `git rev-parse HEAD`. A build that knows neither leaves Built from out. The HTML page names both too: every page but the docs home has a box near its end, above the feedback links and the pager. The box reads "Built from", the short commit, then "reviewed" and the day, and links the files the page was checked against, at that commit. A build with no known commit reads "Built from a local build", and its file links point at `main`. The docs home's HTML page has no such box and shows neither the commit nor the review day. Its JSON-LD carries the review day as `dateModified`, as every docs page's JSON-LD does, and its twin names both.
 
 ### Fetch one page
 
@@ -107,7 +107,7 @@ These rules sit right after the summary at the top of `/llms.txt` and `/llms-ful
 | No payee field | [What the agent sends](/docs/concepts/why-spend-has-no-payee#what-the-agent-sends) |
 | Never resend `unconfirmed` | [Unconfirmed](/docs/build/spend-outcomes#unconfirmed), and [below](#when-the-outcome-is-unconfirmed) |
 | `PROBARION:<Code>` | [Vault error codes](/docs/build/errors#vault-error-codes) |
-| The commit and the review day | [What a twin holds](#what-a-twin-holds): every twin names the review day, and so does the JSON-LD of every HTML page, the docs home's included. Only an HTML page names the commit, in the box every page but the docs home has. No twin and neither llms file names a commit. |
+| The commit and the review day | [What a twin holds](#what-a-twin-holds): every twin names the review day and the commit, so `/llms-full.txt` names them page by page. Every HTML page but the docs home names both in its box, and the JSON-LD of every HTML page carries the review day. `/llms.txt` names neither. |
 | `AGENTS.md` | [For agents that build or review this repository](#for-agents-that-build-or-review-this-repository) |
 
 ## For agents that pay

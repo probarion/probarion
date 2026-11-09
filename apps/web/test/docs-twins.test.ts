@@ -21,6 +21,7 @@ import { CHECK_LABELS } from "@/lib/site/facts";
 import { richParts } from "@/lib/site/rich";
 
 const ORIGIN = "https://probarion.xyz";
+const SHA = "0123456789abcdef0123456789abcdef01234567";
 const md = (source: string) => mdxToMarkdown(source, { file: "test.mdx", origin: ORIGIN });
 
 /**
@@ -386,13 +387,24 @@ describe("headings", () => {
 describe("page twins and llms files", () => {
   it("convert every page, under its title, with its description and status line", async () => {
     for (const page of PAGES) {
-      const out = await pageMarkdown(page, ORIGIN);
+      const out = await pageMarkdown(page, ORIGIN, SHA);
       expect(out.startsWith(`# ${page.title}\n\n> ${page.description}\n`), page.path).toBe(true);
-      expect(out, page.path).toContain(`Reviewed: ${page.reviewed}`);
+      expect(out, page.path).toContain(`Reviewed: ${page.reviewed} · Built from: ${SHA}\n`);
       // No MDX escapes: { is never escaped, and < only where Markdown would read a tag.
       expect(out, page.path).not.toContain("\\{");
       expect(out, page.path).not.toMatch(/\\<(?![!/?A-Za-z])/);
     }
+  });
+
+  it("name the build commit in the facts line, and leave it out when the commit is unknown", async () => {
+    const page = findPage("build/errors");
+    if (!page) throw new Error("no build/errors page");
+    const facts = (out: string) => out.split("\n\n")[3];
+    const both = `Status: Live · Network: Testnet and Mainnet · Reviewed: ${page.reviewed}`;
+    expect(facts(await pageMarkdown(page, ORIGIN, SHA))).toBe(`${both} · Built from: ${SHA}`);
+    const local = await pageMarkdown(page, ORIGIN, null);
+    expect(facts(local)).toBe(both);
+    expect(local).not.toContain("Built from");
   });
 
   it("estimate reading time at 220 words a minute, at least 1", () => {
@@ -424,7 +436,7 @@ describe("page twins and llms files", () => {
   });
 
   it("llms-full.txt holds the rules and every page", async () => {
-    const out = await llmsFull(ORIGIN);
+    const out = await llmsFull(ORIGIN, SHA);
     const lines = out.split("\n");
     expect(lines[0]).toBe("# Probarion docs, full text");
     const intro = lines.indexOf(`${AGENT_RULES_TITLE}:`);
@@ -432,6 +444,7 @@ describe("page twins and llms files", () => {
     expect(intro).toBeLessThan(lines.indexOf(`# ${PAGES[0]?.title}`));
     expect(out).not.toContain(`## ${AGENT_RULES_TITLE}`);
     for (const page of PAGES) expect(out, page.path).toContain(`\n# ${page.title}\n`);
+    expect(out.split(` · Built from: ${SHA}\n`).length - 1).toBe(PAGES.length);
   });
 });
 
