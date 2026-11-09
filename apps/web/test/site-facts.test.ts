@@ -768,6 +768,38 @@ describe("the rendered landing page", () => {
     expect(rest).not.toMatch(/audit/i);
   });
 
+  it("puts the sections in the order of the spec", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    const ids = [
+      "problem",
+      "try",
+      "compare",
+      "payment",
+      "integrate",
+      "payee",
+      "verify",
+      "chain",
+      "status",
+    ];
+    const at = ids.map((id) => html.indexOf(`id="${id}"`));
+    for (const [i, pos] of at.entries()) expect(pos, ids[i]).toBeGreaterThan(-1);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
+  it("links the journey's check_spend step to the live check", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    expect(JOURNEY.steps[3].tryIt).toBe("Try it yourself above.");
+    expect(html).toMatch(/href="#try"[^>]*>Try it yourself above\.</);
+  });
+
+  it("says under the closing headline how long the evaluation takes", () => {
+    expect(CLOSING.sub).toBe(
+      "Five minutes from a clone: build, verify a snapshot, then point it at a vault on testnet.",
+    );
+    expect(README).toContain("## How to evaluate Probarion in 5 minutes");
+    expect(visibleText(landing())).toContain(CLOSING.sub);
+  });
+
   it("links to no planned route, and marks each one it names as coming soon", () => {
     const html = landing();
     const planned = (href: string) =>

@@ -292,6 +292,8 @@ export interface JourneyStep {
   body: string;
   /** An unfinished part of this step, marked as unfinished. */
   tag?: string;
+  /** A link from this step to the live check above. */
+  tryIt?: string;
   panelLabel: string;
   panel: readonly PanelLine[];
 }
@@ -360,6 +362,7 @@ export const JOURNEY = {
       n: 4,
       title: "The contract decides last",
       body: "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for a person.",
+      tryIt: "Try it yourself above.",
       panelLabel: "check_spend results on the testnet vault",
       panel: [
         { note: "check_spend on mandate 1, at most 5 USDC, valid until 2026-12-01" },
@@ -665,6 +668,7 @@ export const INTEGRATE = {
 export const CLOSING = {
   line1: "Don't trust us.",
   line2: "Run the verifier.",
+  sub: "Five minutes from a clone: build, verify a snapshot, then point it at a vault on testnet.",
   live: "A live run reads the chain itself: `verify --vault`. On the testnet vault it fails checks d and h today, because the smoke run sent its spends without a ledger.",
   evaluate: "Evaluate in 5 minutes",
   spec: "Read the spec",
