@@ -1,9 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { verifyEntrySignature } from "@probarion/core";
-import { RpcClient } from "@probarion/sdk";
+import { hashInvoice, RpcClient } from "@probarion/sdk";
 import {
   createScenarioChain,
   type FakeRpcServer,
+  SCENARIO_APPROVER,
   SCENARIO_NEAR_PAYEE,
   SCENARIO_NOW,
   SCENARIO_VAULT,
@@ -16,7 +17,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth/session";
 import { fullAccessKeyVerifier, rpcLoginProvider } from "@/lib/auth/verify";
-import { deriveSubkey } from "@/lib/crypto/sodium";
+import { deriveSubkey, sha256Hex } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import { type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { mintToken, revokeToken } from "@/lib/ext/store";
@@ -26,9 +27,11 @@ import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { createVaultReader } from "@/lib/near/reader";
 import { CONFIRM_RECIPIENT } from "@/lib/payables/confirm-message";
 import { MAX_INVOICE_BYTES } from "@/lib/payables/extract";
+import { extractFacts, fingerprintText, refFor } from "@/lib/payables/facts";
+import { invoiceNumberKey } from "@/lib/payables/number-key";
 import { OWNER_CONFIRMED_RULE } from "@/lib/payables/owner-confirmed";
 import { CHECK_SPEND_RULE, EXTENSION_MANDATE_RULE, PAYEE_RULE } from "@/lib/payables/queue-rules";
-import { getInvoice, type InvoiceRow, listInvoices } from "@/lib/payables/store";
+import { getInvoice, type InvoiceRow, insertInvoice, listInvoices } from "@/lib/payables/store";
 import { signNep413 } from "../fixtures/nep413";
 import { quietLogs } from "../fixtures/quiet-logs";
 import { asRole, freshDb, seedTenant } from "./harness";
@@ -111,6 +114,8 @@ const OWNER = "owner.testnet";
 const URL_ = "https://testnet.probarion.test/api/ext/invoices";
 /** 2100-01-01: the route checks a mandate against the wall clock, which passes the scenario's 2027 expiry one day. */
 const FAR = "4102444800000000000";
+/** The 401's detail (lib/ext/auth.ts RECONNECT, delta §7). */
+const RECONNECT = "Connect the extension again: open Probarion, then Browser extension.";
 
 describe("an invoice queued from the browser extension", () => {
   const logs = quietLogs();
@@ -245,8 +250,8 @@ describe("an invoice queued from the browser extension", () => {
   const send = (o: { body?: string; vault?: string; mandate?: string; bearer?: string } = {}) =>
     post(form({ vault: o.vault, mandate: o.mandate, body: o.body }), { bearer: o.bearer });
 
-  async function confirmAsOwner(invoiceId: string) {
-    const p = await prepareConfirmation(deps, { member, account: OWNER, invoiceId });
+  async function confirmAsOwner(invoiceId: string, using: ConfirmDeps = deps) {
+    const p = await prepareConfirmation(using, { member, account: OWNER, invoiceId });
     if (!p.ok) return p;
     const s = signNep413({
       message: p.message,
@@ -254,7 +259,7 @@ describe("an invoice queued from the browser extension", () => {
       recipient: CONFIRM_RECIPIENT,
       keyPair: ownerKey,
     });
-    return confirmInvoice(deps, {
+    return confirmInvoice(using, {
       member,
       account: OWNER,
       invoiceId,
@@ -350,29 +355,56 @@ describe("an invoice queued from the browser extension", () => {
     expect(otherPayee.status).toBe(422);
     expect(otherPayee.headers.get("cache-control")).toBe("no-store");
     const refused = (await otherPayee.json()) as Record<string, unknown>;
-    // R6: the one error with a third key.
+    // R6: the one error with a third key. R42: E2 reads `rule` and `detail` exactly.
     expect(Object.keys(refused).sort()).toEqual(["detail", "error", "rule"]);
-    expect(refused).toMatchObject({ error: "refused_by_code", rule: PAYEE_RULE });
+    expect(refused).toEqual({
+      error: "refused_by_code",
+      rule: PAYEE_RULE,
+      detail: `invoice names NEAR account other.testnet; the mandate pays ${SCENARIO_NEAR_PAYEE}`,
+    });
     const overPerPayment = await send({ body: text("500.00") });
     expect(overPerPayment.status).toBe(422);
     const over = (await overPerPayment.json()) as Record<string, unknown>;
     expect(Object.keys(over).sort()).toEqual(["detail", "error", "rule"]);
-    expect(over).toMatchObject({ error: "refused_by_code", rule: CHECK_SPEND_RULE });
+    expect(over).toEqual({
+      error: "refused_by_code",
+      rule: CHECK_SPEND_RULE,
+      detail: "the vault would refuse this payment now (OverPerPayment)",
+    });
     const noTotal = await send({ body: "Invoice EXT-1\nPay to vendor.testnet\nThanks" });
     expect(noTotal.status).toBe(422);
-    expect(await noTotal.json()).toMatchObject({ error: "amount_unclear" });
-    expect((await send({ mandate: "99" })).status).toBe(404);
+    expect(await noTotal.json()).toEqual({
+      error: "amount_unclear",
+      detail: "Couldn't read one clear amount. Upload it in the console instead.",
+    });
+    const unknownMandate = await send({ mandate: "99" });
+    expect(unknownMandate.status).toBe(404);
+    expect(await unknownMandate.json()).toEqual({
+      error: "mandate_not_found",
+      detail: "This mandate is not on the vault.",
+    });
     expect((await rows()).length).toBe(before);
   });
 
   it("answers each refusal of the request's shape with its code, and stores nothing", async () => {
     const before = (await rows()).length;
-    const code = async (r: Response) => [r.status, ((await r.json()) as { error: string }).error];
-    expect(await code(await post(form({ vault: null })))).toEqual([400, "invalid_input"]);
-    expect(await code(await post(form({ mandate: "abc" })))).toEqual([400, "invalid_input"]);
-    expect(await code(await post(form({ file: null })))).toEqual([400, "invalid_input"]);
-    expect(await code(await post('{"vault":"x"}'))).toEqual([400, "invalid_input"]);
-    expect(await code(await post(form(), { length: false }))).toEqual([411, "length_required"]);
+    /** The answer's status and its whole body: E2 shows `detail` as it is (R42). */
+    const answer = async (r: Response) => [r.status, await r.json()];
+    const invalid = (detail: string) => [400, { error: "invalid_input", detail }];
+    expect(await answer(await post(form({ vault: null })))).toEqual(invalid("Name the vault."));
+    expect(await answer(await post(form({ mandate: "abc" })))).toEqual(
+      invalid("Choose a mandate."),
+    );
+    expect(await answer(await post(form({ file: null })))).toEqual(
+      invalid("Attach a PDF or a text file."),
+    );
+    expect(await answer(await post('{"vault":"x"}'))).toEqual(
+      invalid("Send the invoice as multipart/form-data"),
+    );
+    expect(await answer(await post(form(), { length: false }))).toEqual([
+      411,
+      { error: "length_required", detail: "Send the request with a Content-Length header" },
+    ]);
     const tooLong = await post(form(), {
       headers: { "content-length": String(MAX_INVOICE_BYTES + 16 * 1024 + 1) },
     });
@@ -394,8 +426,14 @@ describe("an invoice queued from the browser extension", () => {
     const docx = new File(["x"], "a.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
-    expect(await code(await post(form({ file: docx })))).toEqual([415, "unsupported"]);
-    expect(await code(await send({ body: "   \n " }))).toEqual([422, "empty"]);
+    expect(await answer(await post(form({ file: docx })))).toEqual([
+      415,
+      { error: "unsupported", detail: "Send the invoice as a PDF or a plain text (.txt) file" },
+    ]);
+    expect(await answer(await send({ body: "   \n " }))).toEqual([
+      422,
+      { error: "empty", detail: "No text in this file. Upload it in the console instead." },
+    ]);
     const notUtf8 = new File([new Uint8Array([0xff, 0xfe, 0xfd])], "a.txt", { type: "text/plain" });
     const unreadable = await post(form({ file: notUtf8 }));
     expect(unreadable.status).toBe(422);
@@ -441,8 +479,12 @@ describe("an invoice queued from the browser extension", () => {
     );
     const limited = await send();
     expect(limited.status).toBe(429);
-    expect(limited.headers.get("retry-after")).toMatch(/^[0-9]+$/);
-    expect(await limited.json()).toMatchObject({ error: "rate_limited" });
+    const retry = limited.headers.get("retry-after");
+    expect(retry).toMatch(/^[0-9]+$/);
+    expect(await limited.json()).toEqual({
+      error: "rate_limited",
+      detail: `Try again in ${retry} s`,
+    });
     expect((await rows()).length).toBe(before);
   });
 
@@ -547,22 +589,39 @@ describe("an invoice queued from the browser extension", () => {
     const before = (await rows()).length;
     const again = await send({ body });
     expect(again.status).toBe(422);
-    expect(await again.json()).toMatchObject({
+    expect(await again.json()).toEqual({
       error: "refused_by_code",
       rule: CHECK_SPEND_RULE,
-      detail: expect.stringContaining("DuplicateInvoice"),
+      detail: "the vault would refuse this payment now (DuplicateInvoice)",
     });
     expect((await rows()).length).toBe(before);
   });
 
-  it("checks the network, the membership and the token", async () => {
+  it("checks the network, the membership and the token, and stores nothing for any of them", async () => {
     const otherVault = "other.vaults.probarion.near";
-    await seedTenant(pg, { vault: otherVault, owner: OWNER, network: "mainnet" });
+    const otherTenant = await seedTenant(pg, {
+      vault: otherVault,
+      owner: OWNER,
+      network: "mainnet",
+    });
+    const before = (await rows()).length;
     const wrong = await send({ vault: otherVault });
     expect(wrong.status).toBe(409);
-    expect(await wrong.json()).toMatchObject({ error: "wrong_network" });
-    expect((await send({ vault: "nobody.vaults.probarion.testnet" })).status).toBe(403);
-    expect((await send({ bearer: "pbx_nope" })).status).toBe(401);
+    expect(await wrong.json()).toEqual({
+      error: "wrong_network",
+      detail: "This vault is on NEAR mainnet, which this site does not serve yet.",
+    });
+    const stranger = await send({ vault: "nobody.vaults.probarion.testnet" });
+    expect(stranger.status).toBe(403);
+    expect(await stranger.json()).toEqual({
+      error: "not_member",
+      detail: "You are not a member of this vault, or your role cannot do this.",
+    });
+    const noToken = await send({ bearer: "pbx_nope" });
+    expect(noToken.status).toBe(401);
+    expect(await noToken.json()).toEqual({ error: "bad_token", detail: RECONNECT });
+    expect((await rows()).length).toBe(before);
+    expect(await listInvoices(h.db, otherTenant, 500)).toEqual([]);
   });
 
   it("refuses a revoked token, a token of the other network and a cookie with no token", async () => {
@@ -590,12 +649,13 @@ describe("an invoice queued from the browser extension", () => {
       await post(form(), { bearer: null, headers: { cookie: `${SESSION_COOKIE}=x` } }),
     ]) {
       expect(r.status).toBe(401);
-      expect(await r.json()).toMatchObject({ error: "bad_token" });
+      expect(await r.json()).toEqual({ error: "bad_token", detail: RECONNECT });
     }
     expect((await rows()).length).toBe(before);
   });
 
-  it("refuses a viewer and a Canary vault, by the role and kind it reads on this request", async () => {
+  it("refuses a viewer and a Canary vault, by the role and kind it reads on this request, and stores nothing", async () => {
+    const before = (await rows()).length;
     await pg.query(
       "update public.tenant_members set role = 'viewer' where tenant_id = $1 and account_id = $2",
       [member.tenant_id, OWNER],
@@ -603,21 +663,145 @@ describe("an invoice queued from the browser extension", () => {
     try {
       const r = await send();
       expect(r.status).toBe(403);
-      expect(await r.json()).toMatchObject({ error: "not_member" });
+      expect(await r.json()).toEqual({
+        error: "not_member",
+        detail: "You are not a member of this vault, or your role cannot do this.",
+      });
     } finally {
       await pg.query(
         "update public.tenant_members set role = 'owner' where tenant_id = $1 and account_id = $2",
         [member.tenant_id, OWNER],
       );
     }
+    expect((await rows()).length).toBe(before);
     const canary = "canary.vaults.probarion.testnet";
-    await seedTenant(pg, { vault: canary, owner: OWNER, kind: "canary", network: "testnet" });
+    const canaryTenant = await seedTenant(pg, {
+      vault: canary,
+      owner: OWNER,
+      kind: "canary",
+      network: "testnet",
+    });
     const r = await send({ vault: canary });
     expect(r.status).toBe(403);
     expect(await r.json()).toEqual({
       error: "not_member",
       detail: "This vault takes no invoices from the extension.",
     });
+    // The Canary tenant's own rows: none was stored there, nor in the scenario vault.
+    expect(await listInvoices(h.db, canaryTenant, 500)).toEqual([]);
+    expect((await rows()).length).toBe(before);
+  });
+
+  it("lets an approver of the vault queue with its own token, and the invoice still waits for the owner", async () => {
+    await pg.query(
+      "insert into public.tenant_members (tenant_id, account_id, role) values ($1, $2, 'approver')",
+      [member.tenant_id, SCENARIO_APPROVER],
+    );
+    try {
+      const t = newToken();
+      await mintToken(h.db, {
+        account: SCENARIO_APPROVER,
+        network: "testnet",
+        sha256: t.sha256,
+        hint: t.hint,
+        label: "approver",
+      });
+      const spends = server.chain.spends.length;
+      const r = await send({ bearer: t.token });
+      expect(r.status).toBe(201);
+      const id = await idOf(r);
+      const row = (await getInvoice(h.db, member.tenant_id, id)) as InvoiceRow;
+      expect(row).toMatchObject({
+        status: "awaiting_owner",
+        source: "extension",
+        outcome: null,
+        created_by: SCENARIO_APPROVER,
+      });
+      expect(row.queue_checks?.[0]?.detail).toBe(
+        `${SCENARIO_APPROVER} chose mandate 1 in the browser extension. No purpose document was matched, so only the owner's signed Confirm can pay it.`,
+      );
+      // Only the owner confirms or rejects it: the approver is offered neither, and its prepare is refused.
+      const approver = (await memberRole(h.db, SCENARIO_VAULT, SCENARIO_APPROVER)) as MemberTenant;
+      expect(approver.role).toBe("approver");
+      const w = await loadWaitingView(
+        { db: h.db, master: MASTER, reader: createVaultReader(new RpcClient({ urls: [h.url] })) },
+        {
+          member: approver,
+          account: SCENARIO_APPROVER,
+          row,
+          entries: await store.all(),
+          now: new Date(),
+        },
+      );
+      expect(w).toMatchObject({
+        canConfirm: false,
+        canReject: false,
+        whyNot: "Only the owner can confirm or reject this invoice.",
+      });
+      expect(
+        await prepareConfirmation(deps, {
+          member: approver,
+          account: SCENARIO_APPROVER,
+          invoiceId: id,
+        }),
+      ).toMatchObject({ ok: false, reason: "not_owner" });
+      expect(server.chain.spends).toHaveLength(spends);
+      expect(await getInvoice(h.db, member.tenant_id, id)).toMatchObject({
+        status: "awaiting_owner",
+      });
+    } finally {
+      await pg.query("delete from public.tenant_members where tenant_id = $1 and account_id = $2", [
+        member.tenant_id,
+        SCENARIO_APPROVER,
+      ]);
+    }
+  });
+
+  it("answers an invoice whose number the payee's invoice from the other intake has as a duplicate", async () => {
+    // The console upload keys an invoice as pipeline.ts does: the fingerprint of its text, and the HMAC of the vault,
+    // the mandate's payee and the invoice number. Another layout of the same invoice has another text and hash.
+    const payee = { type: "near" as const, account_id: SCENARIO_NEAR_PAYEE };
+    const consoleRow = (body: string) => {
+      const hash = hashInvoice(body);
+      const { invoiceNumber } = extractFacts(body, hash, null);
+      if (invoiceNumber === null) throw new Error("the test's invoice has no number");
+      return insertInvoice(h.db, member.tenant_id, {
+        invoiceHash: hash,
+        ref: refFor(hash),
+        filename: null,
+        mediaType: "text/plain",
+        documentSha256: sha256Hex(body),
+        sealed: null,
+        facts: null,
+        amountIssue: null,
+        fingerprint: sha256Hex(fingerprintText(body)),
+        invoiceNumberKey: invoiceNumberKey(MASTER, SCENARIO_VAULT, payee, invoiceNumber),
+        requestId: `req-console-${hash.slice(0, 8)}`,
+        createdBy: OWNER,
+      });
+    };
+    // The extension first, then the console upload of another layout of it.
+    const queued = await send({ body: "Invoice NUM-501\nPay to vendor.testnet\nTotal 20.00 USDC" });
+    expect(queued.status).toBe(201);
+    const queuedId = await idOf(queued);
+    expect(
+      await consoleRow("INVOICE NUM-501\nBill to Acme\nPay to vendor.testnet\nTotal 20.00 USDC"),
+    ).toEqual({ id: queuedId, duplicate: true, status: "awaiting_owner" });
+    // The console upload first (its cycle still running), then the extension's copy in another layout.
+    const uploaded = await consoleRow("Invoice NUM-502\nPay to vendor.testnet\nTotal 21.00 USDC");
+    expect(uploaded).toMatchObject({ duplicate: false });
+    const before = (await rows()).length;
+    const again = await send({
+      body: "INVOICE NUM-502\nBill to Acme\nPay to vendor.testnet\nTotal 21.00 USDC",
+    });
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({
+      invoice_id: uploaded.id,
+      status: "processing",
+      duplicate: true,
+      url: `https://testnet.probarion.test/console/${SCENARIO_VAULT}/payables/${uploaded.id}`,
+    });
+    expect((await rows()).length).toBe(before);
   });
 
   it("lets members read source and queue_checks", async () => {
@@ -719,6 +903,59 @@ describe("an invoice queued from the browser extension", () => {
     expect(paid).toContain("No purpose document was matched.");
     expect(paid).toContain(EXTENSION_MANDATE_RULE);
     expect(paid).toContain("· sent from the browser extension");
+  });
+
+  it("says a Confirm that the code held again ran a cycle, and that nothing was sent", async () => {
+    const id = await idOf(await send());
+    // A rule of the code holds the confirmed cycle. Below the approval limit the contract would pay at once, so the
+    // SDK holds it off chain and sends nothing, and the row waits for the owner again, now with that outcome.
+    const HOLD = "custom.test_hold" as const;
+    const holding: ConfirmDeps = {
+      ...deps,
+      makeProbarion: (o) => {
+        const pb = deps.makeProbarion(o);
+        pb.rules.add({
+          id: HOLD,
+          check: () => ({ id: HOLD, outcome: "hold", detail: "Held by the test's own rule." }),
+        });
+        return pb;
+      },
+    };
+    const spends = server.chain.spends.length;
+    const c = await confirmAsOwner(id, holding);
+    if (!c.ok) throw new Error(`not confirmed: ${JSON.stringify(c)}`);
+    expect(c.outcome).toMatchObject({ status: "held", spendId: null, txHash: null });
+    expect(server.chain.spends).toHaveLength(spends);
+    const row = (await getInvoice(h.db, member.tenant_id, id)) as InvoiceRow;
+    expect(row).toMatchObject({
+      status: "awaiting_owner",
+      source: "extension",
+      confirmed_by: OWNER,
+    });
+    expect(row.outcome).toMatchObject({ status: "held", code: HOLD });
+    const w = await loadWaitingView(
+      { db: h.db, master: MASTER, reader: createVaultReader(new RpcClient({ urls: [h.url] })) },
+      { member, account: OWNER, row, entries: await store.all(), now: new Date() },
+    );
+    expect(w).toMatchObject({
+      source: "extension",
+      queued: false,
+      lastConfirmation: { by: OWNER },
+    });
+    expect(w.reasons.before.map((r) => [r.id, r.outcome])).toContainEqual([HOLD, "hold"]);
+    h.jar.set(
+      SESSION_COOKIE,
+      await createSessionToken(await deriveSubkey(MASTER, "session"), OWNER, "testnet"),
+    );
+    const page = renderToStaticMarkup(
+      (await InvoicePage({
+        params: Promise.resolve({ vault: SCENARIO_VAULT, id }),
+      })) as ReactElement,
+    );
+    expect(page).toContain("Waiting for you: sent from the browser extension");
+    expect(page).toContain("Confirm ran a cycle, which the rule below held, and nothing was sent.");
+    expect(page).not.toContain("no cycle ran");
+    expect(page).toContain(HOLD);
   });
 
   it("lets only the service role call invoice_queue, as a definer with a fixed search path", async () => {

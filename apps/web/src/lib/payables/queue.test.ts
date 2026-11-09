@@ -5,8 +5,12 @@ import {
   ZERO_HEX32,
 } from "@probarion/core";
 import { describe, expect, it } from "vitest";
+import { sha256Hex } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import type { MemberTenant } from "@/lib/db/tenants";
+import { loadInbox } from "@/lib/ext/inbox";
+import { fingerprintText } from "./facts";
+import { invoiceNumberKey } from "./number-key";
 import { mandateProblem, type QueueDeps, queueInvoice } from "./queue";
 import { CHECK_SPEND_RULE, EXTENSION_MANDATE_RULE, PAYEE_RULE } from "./queue-rules";
 
@@ -16,6 +20,8 @@ const ns = (iso: string) => (BigInt(Date.parse(iso)) * 1_000_000n).toString();
 const AGENT = "ed25519:test-double-agent";
 const LEDGER = "ed25519:test-double-ledger";
 const QUEUED = "11111111-1111-4111-8111-111111111111";
+/** The harness's master key: a test value, made here. */
+const MASTER = new Uint8Array(32).fill(7);
 const TENANT: MemberTenant = {
   tenant_id: "00000000-0000-4000-8000-0000000000aa",
   vault_id: "acme.vaults.probarion.testnet",
@@ -75,7 +81,7 @@ function harness(o: Opts = {}) {
   };
   const deps: QueueDeps = {
     db,
-    master: new Uint8Array(32).fill(7),
+    master: MASTER,
     now: () => NOW,
     mandates: async () => {
       if (o.mandates instanceof Error) throw o.mandates;
@@ -146,6 +152,24 @@ describe("queueing an invoice from the browser extension", () => {
         signer: AGENT,
       },
     ]);
+  });
+
+  it("keys the duplicate guard as the console upload does: the text's fingerprint and the payee's invoice number", async () => {
+    const h = harness();
+    await h.run(INVOICE);
+    const p = h.stored()[0]?.p;
+    // pipeline.ts computes both keys with these calls and arguments, so a copy of an invoice sent through one intake
+    // is a duplicate of the other's.
+    expect(p?.fingerprint_sha256).toBe(sha256Hex(fingerprintText(INVOICE)));
+    expect(p?.invoice_number_hmac).toBe(
+      invoiceNumberKey(
+        MASTER,
+        TENANT.vault_id,
+        { type: "near", account_id: "vendor.testnet" },
+        "INV-1001",
+      ),
+    );
+    expect(p?.invoice_number_hmac).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("records the vault's own hold for its approvers", async () => {
@@ -298,9 +322,10 @@ describe("queueing an invoice from the browser extension", () => {
     }
   });
 
-  it("takes an invoice under exactly the mandates the extension's inbox offers", () => {
-    // The eight mandates of src/lib/ext/inbox.test.ts ("lists the holds an approver can still approve, and the
-    // mandates an invoice can still go under"), whose inbox offers 1 and 5, and three more the inbox leaves out.
+  it("takes an invoice under exactly the mandates the extension's inbox offers", async () => {
+    // One list for both filters: the eight mandates of src/lib/ext/inbox.test.ts ("lists the holds an approver can
+    // still approve, and the mandates an invoice can still go under"), whose inbox offers 1 and 5, and three more the
+    // inbox leaves out. The inbox's own loadInbox runs over the same list, so neither filter can drift alone.
     const shapes = [
       mandate({ id: 1 }),
       mandate({ id: 2, status: "revoked" }),
@@ -314,7 +339,26 @@ describe("queueing an invoice from the browser extension", () => {
       mandate({ id: 10, expires_at_ns: "soon" }),
       mandate({ id: 11, status: "paused" as unknown as MandateView["status"] }),
     ];
-    expect(shapes.filter((m) => mandateProblem(m, NOW) === null).map((m) => m.id)).toEqual([1, 5]);
+    const queueTakes = shapes.filter((m) => mandateProblem(m, NOW) === null).map((m) => m.id);
+    const db: Db = {
+      async rpc<T>(fn: string): Promise<T> {
+        if (fn === "member_tenants") return [TENANT] as T;
+        if (fn === "invoice_list") return [] as T;
+        throw new Error(`unexpected rpc ${fn}`);
+      },
+    };
+    const inbox = await loadInbox(
+      {
+        db,
+        chain: { mandates: async () => shapes, spends: async () => [] },
+        origin: "https://testnet.probarion.test",
+        now: NOW,
+      },
+      { account: TENANT.owner_account, network: "testnet" },
+    );
+    expect(inbox.vaults.map((v) => v.chain)).toEqual(["ok"]);
+    expect(inbox.vaults[0]?.mandates.map((m) => m.id)).toEqual(queueTakes);
+    expect(queueTakes).toEqual([1, 5]);
     expect(mandateProblem(shapes[10] as MandateView, NOW)).toBe(
       "mandate 11's status or expiry cannot be read",
     );

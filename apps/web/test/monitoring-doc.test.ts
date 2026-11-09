@@ -43,8 +43,11 @@ describe("docs/ops/MONITORING.md", () => {
     const used = [...doc.matchAll(/component:([a-z]+)/g)].map((m) => m[1] ?? "");
     const known: readonly string[] = COMPONENTS;
     expect(used.filter((c) => !known.includes(c))).toEqual([]);
+    // Rule 4's own row, not the whole page: the page names each component elsewhere too.
+    const rule4 = doc.match(/^\| 4 \| Money path.*$/m)?.[0] ?? "";
+    expect(rule4).not.toBe("");
     for (const c of ["payables", "topup", "canary", "watcher", "alerts", "extension"])
-      expect(used, c).toContain(c);
+      expect(rule4, c).toContain(`\`component:${c}\``);
   });
 
   it("names the three health routes and the status page setting", () => {

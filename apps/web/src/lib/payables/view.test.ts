@@ -493,6 +493,27 @@ describe("recentPayeeRows", () => {
     ]);
   });
 
+  it("labels another waiting invoice of the payee that came from the browser extension as one", () => {
+    const target = row(1, { status: "awaiting_owner", suggested_amount: "5", mandate_id: 1 });
+    const fromExtension = row(2, {
+      status: "awaiting_owner",
+      suggested_amount: "5",
+      mandate_id: 1,
+      source: "extension",
+    });
+    const rows = [target, fromExtension, row(3, { status: "awaiting_owner", mandate_id: 1 })];
+    expect(recentPayeeRows(target, rows, [], mandates, NOW).rows.map((x) => x.label)).toEqual([
+      "Waiting for you: no attested model confirmed the amount",
+      "Waiting for you: sent from the browser extension",
+    ]);
+    expect(
+      recentPayeeRows(target, rows, [], mandates, NOW, false).rows.map((x) => x.label),
+    ).toEqual([
+      "Waiting for the owner: no attested model confirmed the amount",
+      "Waiting for the owner: sent from the browser extension",
+    ]);
+  });
+
   it("says the payee is unknown when the waiting invoice's mandate is not on chain", () => {
     const target = row(1, { status: "awaiting_owner", suggested_amount: "5", mandate_id: 99 });
     const r = recentPayeeRows(target, [target, row(2)], [decided(2, 1, "5")], mandates, NOW);
