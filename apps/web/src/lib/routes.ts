@@ -37,12 +37,15 @@ export const FOOTER_NAV: readonly NavItem[] = [
   { route: "/status", label: "Status" },
 ];
 
-/** The tabs of a vault's console, as the path after `/console/<vault>`. */
+/**
+ * The tabs of a vault's console, as the path after `/console/<vault>`, in the order a first payment needs them: the
+ * agent's key before a mandate, money in the vault before an invoice.
+ */
 export const VAULT_TABS: readonly { path: string; label: string }[] = [
   { path: "", label: "Overview" },
-  { path: "/mandates", label: "Mandates" },
   { path: "/keys", label: "Keys" },
-  { path: "/payables", label: "Payables" },
+  { path: "/mandates", label: "Mandates" },
   { path: "/topup", label: "Top-up" },
+  { path: "/payables", label: "Payables" },
   { path: "/alerts", label: "Alerts" },
 ];

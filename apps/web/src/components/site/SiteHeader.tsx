@@ -5,11 +5,13 @@ import { SITE_NAV } from "@/lib/routes";
 import { CONSOLE_ROUTE, HEADER_ANCHORS, HERO, LINKS, PROOF_ROUTE } from "@/lib/site/facts";
 import { BrandMark } from "./BrandMark";
 import { NetworkSwitch } from "./NetworkSwitch";
+import { NotOnLogin } from "./NotOnLogin";
 import { PhoneMenu } from "./PhoneMenu";
 import s from "./site.module.css";
 
 // The console and the proof page are pills in the bar. A page that is still planned (src/lib/routes.ts) is left out of
-// every menu until it is built, and then it shows up here by itself.
+// every menu until it is built, and then it shows up here by itself. On /login the console is left out: it would lead
+// to /console and straight back, and the bar's pill would outweigh the page's own sign-in button.
 const PILLS = [CONSOLE_ROUTE, PROOF_ROUTE];
 const otherPages = SITE_NAV.filter(({ route }) => !PILLS.includes(route));
 
@@ -48,13 +50,15 @@ export function SiteHeader() {
           <RouteLink route={PROOF_ROUTE} whenPlanned="hide" className={`${s.btn} ${s.quietSm}`}>
             Proof
           </RouteLink>
-          <RouteLink
-            route={CONSOLE_ROUTE}
-            whenPlanned="hide"
-            className={`${s.btn} ${s.solid} ${s.barConsole}`}
-          >
-            {HERO.openConsole}
-          </RouteLink>
+          <NotOnLogin>
+            <RouteLink
+              route={CONSOLE_ROUTE}
+              whenPlanned="hide"
+              className={`${s.btn} ${s.solid} ${s.barConsole}`}
+            >
+              {HERO.openConsole}
+            </RouteLink>
+          </NotOnLogin>
           <PhoneMenu
             className={s.phoneMenu}
             summaryClassName={s.menuButton}
@@ -65,9 +69,11 @@ export function SiteHeader() {
               <RouteLink route={PROOF_ROUTE} whenPlanned="hide">
                 Proof
               </RouteLink>
-              <RouteLink route={CONSOLE_ROUTE} whenPlanned="hide">
-                {HERO.openConsole}
-              </RouteLink>
+              <NotOnLogin>
+                <RouteLink route={CONSOLE_ROUTE} whenPlanned="hide">
+                  {HERO.openConsole}
+                </RouteLink>
+              </NotOnLogin>
               <OtherPageLinks />
               <ExternalLink href={LINKS.github}>GitHub</ExternalLink>
               <NetworkSwitch variant="menu" />

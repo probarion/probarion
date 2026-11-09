@@ -57,6 +57,7 @@ import {
   VERIFY_NOTE,
 } from "@/lib/site/facts";
 import recordedJson from "@/lib/site/live-check-recorded.json";
+import { NEXT_STEP } from "@/lib/site/next-step";
 import { TERMS_PAGE } from "@/lib/site/ops-copy";
 import { ledgerRows, verifyTamper } from "@/lib/site/tamper";
 import fixture from "@/lib/site/valid-snapshot.json";
@@ -347,6 +348,15 @@ describe("the claims about the code", () => {
     expect([...landing().matchAll(/\sid="payee"/g)]).toHaveLength(1);
   });
 
+  it("says in the ink band that a forged invoice cannot add a payee either (audit P1-5)", () => {
+    expect(BAND.body).toBe(
+      "A forged invoice or a hijacked prompt can ask to pay anyone. `spend` has no field to put an address in, so the money can only go to a payee you signed. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
+    );
+    expect(visibleText(renderToStaticMarkup(createElement(InkBand)))).toContain(
+      "so the money can only go to a payee you signed.",
+    );
+  });
+
   it("shows mandate fields that exist on a mandate", () => {
     const mandate = fieldsOf("MandateInput");
     const step = JOURNEY.steps[0];
@@ -627,6 +637,42 @@ describe("the payment journey", () => {
     if (found === undefined) throw new Error(`no step ${n}`);
     return found;
   };
+
+  it("follows one invoice, and says the agent only asks to pay it (audit P1-5, P1-6)", () => {
+    expect(JOURNEY.title).toBe("What happens to one invoice");
+    expect(JOURNEY.intro).toBe(
+      "The owner signs the rules once. When an invoice arrives, your agent asks to pay it. It never holds the money or types an address. The model may advise, code decides, and the contract has the last word.",
+    );
+    const out = visibleText(landing());
+    expect(out).toContain(JOURNEY.title);
+    expect(out).toContain(JOURNEY.intro);
+    expect(out).not.toContain("Three parties");
+  });
+
+  it("says a held spend waits for an approver's own wallet, which the agent's key can never be (audit P1-6)", () => {
+    expect(step(4).body).toBe(
+      "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for an approver's own wallet. The agent's key cannot approve anything, not even its own payment.",
+    );
+    // approve and reject take an approver's account and 1 yoctoNEAR, which a function-call key cannot attach.
+    const held = text(ROOT, "contracts", "vault", "src", "held.rs");
+    for (const method of ["approve", "reject"]) {
+      const head = new RegExp(`pub fn ${method}\\([^)]*\\)[^{]*\\{\\s*([^;]+;)\\s*([^;]+;)`).exec(
+        held,
+      );
+      expect(head?.slice(1, 3), method).toEqual([
+        "self.assert_approver();",
+        "require_one_yocto();",
+      ]);
+    }
+    expect(held).toMatch(
+      /fn assert_approver\(&self\) \{\s*if !self\.approvers\.contains\(&env::predecessor_account_id\(\)\)/,
+    );
+    // The agent's key can call `spend` on the vault and no other method.
+    const keys = text(ROOT, "contracts", "vault", "src", "keys.rs");
+    expect(keys).toMatch(
+      /\.add_access_key_allowance\(\s*public_key\.clone\(\),\s*allowance,\s*env::current_account_id\(\),\s*"spend",\s*\)/,
+    );
+  });
 
   it("says the testnet vault has no ledger key or anchors yet, as the README does", () => {
     expect(prose).toContain("this vault has no ledger key and no anchors yet");
@@ -1038,6 +1084,15 @@ describe("the rendered landing page", () => {
     );
     expect(README).toContain("## How to evaluate Probarion in 5 minutes");
     expect(visibleText(landing())).toContain(CLOSING.sub);
+  });
+
+  it("ends with a way into the console, not only to the evaluation and the spec (audit P1-16)", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    const close = html.slice(html.lastIndexOf("Run the verifier."));
+    expect(close).toMatch(
+      /<a[^>]*href="\/console"[^>]*>Put your agent behind a mandate <span aria-hidden="true">→<\/span><\/a>/,
+    );
+    expect(close.indexOf(CLOSING.spec)).toBeLessThan(close.indexOf(NEXT_STEP.closing.text));
   });
 
   it("links to no planned route, and marks each one it names as coming soon", () => {

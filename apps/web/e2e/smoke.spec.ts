@@ -10,6 +10,8 @@ test("the sign-in page offers the wallet button and the beta label", async ({ pa
     page.getByRole("button", { name: /Sign in with NEAR wallet|Loading wallets/ }),
   ).toBeVisible();
   await expect(page.getByText("Unaudited beta").first()).toBeVisible();
+  // The header's console links would lead to /console and straight back here (site audit P1-7).
+  await expect(page.getByRole("link", { name: "Open console" })).toHaveCount(0);
 });
 
 test("a signed-out visit to a vault's console lands on sign-in, with the path kept", async ({
