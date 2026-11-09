@@ -502,7 +502,7 @@ the Windows run of that day:
 - in the CLI, 15 tests: one file-permission test, and the tests that parse the printed commands
   with near-cli-rs, which need `near` on PATH.
 
-The Playwright specs in [`apps/web/e2e`](apps/web/e2e), 40 tests, run locally against a build with
+The Playwright specs in [`apps/web/e2e`](apps/web/e2e), 43 tests, run locally against a build with
 test settings: `pnpm build`, then `pnpm --filter @probarion/web test:e2e`.
 
 Some checks need Linux or Docker, so they run in [CI](.github/workflows/ci.yml) (GitHub Actions,
