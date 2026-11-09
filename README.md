@@ -135,6 +135,14 @@ Bash on Windows). The steps use the repository's test fixture and scripts, so th
    RESULT: PASS
    ```
 
+   No clone? The site serves the same file, byte for byte, so the CLI from npm runs the same check
+   in an empty folder (in Windows PowerShell 5.1, type `curl.exe` for `curl`):
+
+   ```bash
+   curl -O https://probarion.xyz/samples/valid-snapshot.json
+   npx probarion verify --offline valid-snapshot.json
+   ```
+
 3. **Check the testnet vault on chain.** These read public RPC data, with no key.
 
    ```bash
