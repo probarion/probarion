@@ -1,0 +1,209 @@
+import MiniSearch, { type SearchResult } from "minisearch";
+
+// The docs search, shared by the server (which builds the index) and the dialog (which loads it).
+// No node imports.
+
+export const SEARCH_KINDS = ["guide", "concept", "reference", "error"] as const;
+export type SearchKind = (typeof SEARCH_KINDS)[number];
+export const SEARCH_FILTERS = ["all", ...SEARCH_KINDS] as const;
+export type SearchFilter = (typeof SEARCH_FILTERS)[number];
+
+export const FILTER_LABELS: Readonly<Record<SearchFilter, string>> = {
+  all: "All",
+  guide: "Guides",
+  concept: "Concepts",
+  reference: "Reference",
+  error: "Errors",
+};
+
+/** The kind shown on each result. */
+export const KIND_LABELS: Readonly<Record<SearchKind, string>> = {
+  guide: "Guide",
+  concept: "Concept",
+  reference: "Reference",
+  error: "Error code",
+};
+
+export const SEARCH_INDEX_URL = "/docs/search-index.json";
+/** Dispatch on window, with an optional `detail.query`, to open the search dialog. */
+export const SEARCH_EVENT = "probarion:docs-search";
+
+/**
+ * One entry of the index: a page, or one vault error code. Every field is a string, so the JSON
+ * stays flat.
+ */
+export interface SearchDoc {
+  id: string;
+  href: string;
+  title: string;
+  section: string;
+  kind: SearchKind;
+  /** The page's H2 and H3 texts, one per line. */
+  headings: string;
+  /** Error codes and CLI commands the entry names, space separated. */
+  codes: string;
+  body: string;
+  summary: string;
+}
+
+const FIELDS = [
+  "id",
+  "href",
+  "title",
+  "section",
+  "kind",
+  "headings",
+  "codes",
+  "body",
+  "summary",
+] as const;
+
+/**
+ * The index as the server wrote it. Throws on anything else, so a bad file shows the error state.
+ */
+export function parseIndex(value: unknown): SearchDoc[] {
+  if (!Array.isArray(value)) throw new Error("search index: not a list");
+  return value.map((entry: unknown, i) => {
+    if (typeof entry !== "object" || entry === null) {
+      throw new Error(`search index: entry ${i} is not an object`);
+    }
+    const e = entry as Record<string, unknown>;
+    for (const f of FIELDS) {
+      if (typeof e[f] !== "string") throw new Error(`search index: entry ${i} has no ${f}`);
+    }
+    if (!(SEARCH_KINDS as readonly string[]).includes(e.kind as string)) {
+      throw new Error(`search index: entry ${i} has kind "${String(e.kind)}"`);
+    }
+    return Object.fromEntries(FIELDS.map((f) => [f, e[f]])) as unknown as SearchDoc;
+  });
+}
+
+/** A request that aborts when it has no answer in 10 s, so the dialog shows Try again. */
+const timedFetch = (url: string) => fetch(url, { signal: AbortSignal.timeout(10_000) });
+
+/**
+ * The index, or null when it does not load (an HTTP error, no network, no answer in 10 s, bad JSON,
+ * a bad entry).
+ */
+export async function loadIndex(
+  fetcher: (url: string) => Promise<Response> = timedFetch,
+): Promise<SearchDoc[] | null> {
+  try {
+    const res = await fetcher(SEARCH_INDEX_URL);
+    if (!res.ok) return null;
+    return parseIndex(await res.json());
+  } catch {
+    return null;
+  }
+}
+
+export function createSearch(docs: readonly SearchDoc[]): MiniSearch<SearchDoc> {
+  const ms = new MiniSearch<SearchDoc>({
+    fields: ["title", "headings", "codes", "body"],
+    storeFields: ["href", "title", "section", "kind", "summary", "codes"],
+    searchOptions: { boost: { title: 4, headings: 2.5, codes: 2 }, fuzzy: 0.2, prefix: true },
+  });
+  ms.addAll(docs);
+  return ms;
+}
+
+export interface SearchHit {
+  id: string;
+  href: string;
+  title: string;
+  section: string;
+  kind: SearchKind;
+  summary: string;
+  codes: string;
+  /** The index terms that matched, lower case. */
+  terms: string[];
+}
+
+function toHit(r: SearchResult): SearchHit {
+  return {
+    id: String(r.id),
+    href: r.href,
+    title: r.title,
+    section: r.section,
+    kind: r.kind,
+    summary: r.summary,
+    codes: r.codes,
+    terms: r.terms,
+  };
+}
+
+/** 0: the error entry whose code is the query; 1: a page that names that code; 2: the rest. */
+function exactRank(hit: SearchHit, query: string): number {
+  if (!hit.codes.toLowerCase().split(" ").includes(query)) return 2;
+  return hit.kind === "error" ? 0 : 1;
+}
+
+/**
+ * Every word must match; when nothing does, any word may. A query that is exactly a code puts its
+ * entry first.
+ */
+export function runSearch(
+  ms: MiniSearch<SearchDoc>,
+  query: string,
+  filter: SearchFilter = "all",
+  limit = 20,
+): SearchHit[] {
+  const q = query.trim();
+  if (q === "") return [];
+  const only = filter === "all" ? {} : { filter: (r: SearchResult) => r.kind === filter };
+  let results = ms.search(q, { ...only, combineWith: "AND" });
+  if (results.length === 0) results = ms.search(q, { ...only, combineWith: "OR" });
+  const lower = q.toLowerCase();
+  return results
+    .map(toHit)
+    .map((hit, i) => ({ hit, i, rank: exactRank(hit, lower) }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map(({ hit }) => hit)
+    .slice(0, limit);
+}
+
+export interface HitGroup {
+  section: string;
+  hits: SearchHit[];
+}
+
+/**
+ * Hits grouped by section. A group comes where its best hit ranks, so the first option is the best
+ * hit.
+ */
+export function groupHits(hits: readonly SearchHit[]): HitGroup[] {
+  const groups = new Map<string, SearchHit[]>();
+  for (const hit of hits) groups.set(hit.section, [...(groups.get(hit.section) ?? []), hit]);
+  return [...groups].map(([section, list]) => ({ section, hits: list }));
+}
+
+export interface Segment {
+  text: string;
+  mark: boolean;
+  /** Where the segment starts in the text: a stable React key. */
+  at: number;
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The text cut into marked and plain segments, matching the terms whatever their case. */
+export function highlight(text: string, terms: readonly string[]): Segment[] {
+  const words = [...new Set(terms.filter((t) => t.length > 1))].sort((a, b) => b.length - a.length);
+  if (words.length === 0 || text === "") return [{ text, mark: false, at: 0 }];
+  const out: Segment[] = [];
+  let at = 0;
+  for (const m of text.matchAll(new RegExp(words.map(escapeRegExp).join("|"), "gi"))) {
+    const start = m.index ?? 0;
+    if (start > at) out.push({ text: text.slice(at, start), mark: false, at });
+    out.push({ text: m[0], mark: true, at: start });
+    at = start + m[0].length;
+  }
+  if (at < text.length) out.push({ text: text.slice(at), mark: false, at });
+  return out;
+}
+
+/** The next active option, wrapping round; -1 when there is none. */
+export function moveActive(current: number, delta: number, count: number): number {
+  if (count <= 0) return -1;
+  return (((current + delta) % count) + count) % count;
+}
