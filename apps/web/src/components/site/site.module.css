@@ -42,6 +42,21 @@
   color: var(--color-ink);
   font-weight: 500;
 }
+.betaLink {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* A phone gets the first sentence, which opens to the rest; the wide row hides below 760px (audit P1-10). */
+.betaNarrow {
+  display: none;
+}
+.betaNarrow summary {
+  cursor: pointer;
+}
+.betaNarrow p {
+  margin: 4px 0 0;
+}
 
 /* Skip link */
 .skip {
@@ -890,15 +905,18 @@ a.netPill:hover {
   max-width: 31em;
   font-size: 16px;
 }
-.tag {
-  display: inline-block;
-  margin-top: 14px;
-  font-size: 13px;
+/* What is true today, set apart by a gold rule rather than a filled pill (audit P1-10). */
+.today {
+  margin: 14px 0 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--color-gold-deep);
+  font-size: 14px;
+}
+.todayLabel {
+  display: block;
+  font-size: 12px;
   font-weight: 500;
-  padding: 3px 11px;
-  border-radius: 12px;
-  background: var(--color-wait-bg);
-  color: var(--color-wait);
+  color: var(--color-gold-small);
 }
 .tryIt {
   display: inline-block;
@@ -1425,6 +1443,21 @@ a.netPill:hover {
   color: var(--color-mute);
   max-width: 52em;
 }
+/* Every caveat the landing used to repeat, said once (audit P1-10). The beta strip links here. */
+.gapsTitle {
+  margin: 28px 0 8px;
+  font-size: 17px;
+  font-weight: 500;
+}
+.gaps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 15px;
+  max-width: 52em;
+}
+.gaps li + li {
+  margin-top: 8px;
+}
 
 /* Closing */
 .close {
@@ -1609,6 +1642,12 @@ a.netPill:hover {
   }
   .storyGrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .betaWide {
+    display: none;
+  }
+  .betaNarrow {
+    display: block;
   }
 }
 @media (max-width: 960px) {

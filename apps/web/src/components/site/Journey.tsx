@@ -55,7 +55,12 @@ function Step({ step }: { step: JourneyStep }) {
         <p>
           <Rich text={step.body} />
         </p>
-        {step.tag === undefined ? null : <span className={s.tag}>{step.tag}</span>}
+        {step.tag === undefined ? null : (
+          <div className={s.today}>
+            <span className={s.todayLabel}>{JOURNEY.today}</span>
+            <Rich text={step.tag} />
+          </div>
+        )}
         {step.tryIt === undefined ? null : (
           <a className={`${s.link} ${s.tryIt}`} href="#try">
             {step.tryIt}
