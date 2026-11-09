@@ -15,9 +15,10 @@ Windows PowerShell 5.1, one per line; run `pnpm` ones from the repository root.
       it), and test USDC (Top-up tab, "Add test USDC"). The vault's "Your first agent payment" card lists these steps.
 - [ ] Test files, in a scratch folder: a copy of `apps/web/public/samples/probarion-sample-invoice.txt` with
       `INV-1001` changed to a number not used before (a fresh one each run); a second copy with the line
-      `Pay to: other-payee.testnet` added; a PDF of the first copy (open it in a Chrome tab, press Ctrl+P, choose Save
-      as PDF); a `.docx` (any file with that extension); and a 5 MiB file named `big.pdf` (the popup refuses it by its
-      size alone). In PowerShell, from the scratch folder:
+      `Pay to: other-payee.testnet` added; a third copy with another new number (for the optional approver step); a PDF
+      of the first copy (open it in a Chrome tab, press Ctrl+P, choose Save as PDF); a `.docx` (any file with that
+      extension); and a 5 MiB file named `big.pdf` (the popup refuses it by its size alone). In PowerShell, from the
+      scratch folder:
 
       ```powershell
       [IO.File]::WriteAllBytes("$PWD\big.pdf", (New-Object byte[] 5242880))
@@ -75,13 +76,16 @@ click's `activeTab` grant lets the extension read.
       invoice must be 4 MiB at most." Nothing is sent.
 - [ ] Send the copy with `Pay to: other-payee.testnet`: "Probarion's rules refused it: invoice names NEAR account
       other-payee.testnet; …", and the console's Payables list does not change.
-- [ ] Optional, with a second wallet that is an approver of the vault: connect it and send another fresh invoice:
-      "Queued. It waits for the owner's confirmation."
+- [ ] Optional, with a second wallet that is an approver of the vault: press **Disconnect** in the popup (it ends the
+      owner's token), sign in at localhost:3000 with the approver's wallet, press **Connect**, and send the third copy:
+      "Queued. It waits for the owner's confirmation." Then press **Disconnect**, sign in again with the owner's
+      wallet, and press **Connect** again. The steps below need the owner's connection.
 
 ## Confirm, the mandate and the connection
 
-- [ ] In the console, **Confirm** the queued invoice with the wallet. The vault pays it on testnet; the extension
-      paid nothing. Open the popup: the invoice is gone from "Waiting for you", and the badge drops.
+- [ ] In the console, **Confirm** the first queued invoice (the one you sent as the owner) with the wallet. The vault
+      pays it on testnet; the extension paid nothing. Open the popup: that invoice is gone from "Waiting for you",
+      and the badge drops.
 - [ ] Send the same `.txt` again: "Probarion's rules refused it: the vault already paid this invoice or is holding a
       payment for it."
 - [ ] **Open in a tab** in the popup, then **Choose file** with the same `.txt`. In the console's Mandates tab revoke
@@ -89,15 +93,17 @@ click's `activeTab` grant lets the extension read.
       invoices now: mandate N is revoked." (N is the mandate's number. The tab keeps the list it read before, which
       is why a revoked mandate can still be chosen.)
 - [ ] Stop `next dev`, then open the popup: "Couldn't reach Probarion. Retry". Start it again → **Retry** works.
-- [ ] On `/extension` press **Revoke** for this browser. Open the popup: "Your connection expired", the badge shows
-      `!`, and **Reconnect** (with `next dev` running) works.
+- [ ] On `/extension` press **Revoke** on this browser's row (the newest "Chrome on ..." row). Open the popup: "Your
+      connection expired", the badge shows `!`, and **Reconnect** (with `next dev` running) works.
 - [ ] In the service worker's DevTools console (`chrome://extensions` → Inspect views: service worker), set the
       connection's `expires_at` in the past. If Chrome asks, type `allow pasting` and press Enter first, then paste:
       `chrome.storage.local.get("connections").then(({connections}) => { for (const c of Object.values(connections)) c.expires_at = "2020-01-01T00:00:00.000Z"; return chrome.storage.local.set({connections}); })`.
       Open `chrome-extension://<the extension's ID, shown on chrome://extensions>/popup.html?view=tab` in a tab, press
       F12, choose the Network tab, and press Ctrl+R. The page says "Your connection expired", the badge shows `!`, and
-      the Network list has no request to `/api/ext/inbox`.
-- [ ] Press **Reconnect** and connect again. The old token was still live on Probarion, and the extension ends it:
-      `/extension` lists one connected browser, not two.
-- [ ] Press **Disconnect**. The popup shows Connect, and on `/extension` (reload it) Connected browsers says "No
-      browser is connected": Disconnect ended the token on Probarion.
+      the Network list has no request to `/api/ext/inbox`. Then reload `/extension` and write down the Connected time
+      of this browser's row (the newest "Chrome on ..." row).
+- [ ] Press **Reconnect** and connect again. The old token was still live on Probarion, and the extension ends it.
+      Reload `/extension`: the row with the Connected time you wrote down is gone, and a row with a newer Connected
+      time is listed. Write down that newer time.
+- [ ] Press **Disconnect**. The popup shows Connect. Reload `/extension`: the row with the Connected time you just wrote
+      down is gone from Connected browsers. Disconnect ended that token on Probarion.

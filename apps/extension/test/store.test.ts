@@ -33,6 +33,25 @@ describe("the store pack", () => {
     expect(at(/Stop `next dev`/)).toBeLessThan(at(/`expires_at` in the past/));
   });
 
+  it("checks the Connected browsers list by a row's Connected time, and puts the owner back after the approver", () => {
+    const items = read("TESTING.md")
+      .split(/^- \[ \] /m)
+      .slice(1);
+    const find = (text: RegExp) => items.find((i) => text.test(i)) ?? "";
+    // Other live connections of the account share the list, so a count cannot tell which row is this browser's.
+    for (const step of [find(/\*\*Reconnect\*\* and connect again/), items.at(-1) ?? ""]) {
+      expect(step).toMatch(/Connected time/);
+      expect(step).not.toMatch(/not two|No browser is connected/);
+    }
+    // The approver's connection replaces the owner's and ends its token, so the owner connects again before the
+    // steps that need the owner.
+    const approver = find(/^Optional, with a second wallet/);
+    expect(approver).toMatch(/Disconnect[\s\S]*Connect\*\* again/);
+    expect(items.indexOf(find(/\*\*Confirm\*\* the first queued invoice/))).toBeGreaterThan(
+      items.indexOf(approver),
+    );
+  });
+
   it("gives commands a shell can run: no && for Windows PowerShell 5.1", () => {
     for (const path of ["README.md", "TESTING.md", "store/README.md"]) {
       const lines = read(path)
