@@ -21,10 +21,15 @@ record that anyone can check afterwards.
 
 ## Install
 
-<!-- TODO(release): once @probarion/sdk is on npm, replace the clone steps with its npm install line -->
+```sh
+npm install @probarion/sdk @probarion/core
+```
 
-`@probarion/sdk` and `@probarion/core` are not on npm yet (0.1.0 is planned), so build them from a
-clone of the repository:
+The examples below import from both packages, so install both. ESM only, Node 24 or newer. Import it
+with `import`; there is no CommonJS build. To import `@probarion/sdk/testing` from TypeScript, set
+`"moduleResolution"` to `"NodeNext"` or `"Bundler"`.
+
+To build them from source instead, from a clone of the repository:
 
 ```sh
 git clone https://github.com/probarion/probarion.git
@@ -33,11 +38,9 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-ESM only, Node 24 or newer. Import it with `import`; there is no CommonJS build. A script in the
-repository folder imports the builds as `./packages/sdk/dist/index.js` and
-`./packages/core/dist/index.js`. The examples below import them by name, which works in a package of
-the clone's pnpm workspace that depends on them. To import `@probarion/sdk/testing` from TypeScript,
-set `"moduleResolution"` to `"NodeNext"` or `"Bundler"`.
+A script in the repository folder then imports the builds as `./packages/sdk/dist/index.js` and
+`./packages/core/dist/index.js`, and a package of the clone's pnpm workspace that depends on them
+imports them by name, as the examples below do.
 
 ## Quick start
 

@@ -145,7 +145,7 @@ describe("the page with its numbers", () => {
 
   it("links only the definitions and the Canary, and no page that is not built", async () => {
     const links = hrefs(await page());
-    expect(links).toEqual(["#definitions", "/canary"]);
+    expect(links).toEqual(["#definitions", "/canary?via=usage"]);
     for (const l of links) expect(PLANNED_ROUTES).not.toContain(l);
   });
 

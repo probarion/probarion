@@ -31,7 +31,7 @@ export const STATUS_PAGE = {
   whatWorks: "What works today, and what does not",
 } as const;
 
-export const LAST_UPDATED = "2026-11-07";
+export const LAST_UPDATED = "2026-11-09";
 
 /** The lede of /terms and /privacy (spec §13, Legal row). */
 export const LEGAL_STATUS =
@@ -260,7 +260,7 @@ export const PRIVACY_PAGE = {
       id: "canary",
       title: "The Canary",
       paragraphs: [
-        "A message you send to the Canary goes to a private model on NEAR AI Cloud. We store a sha256 hash of the message, not its text, plus technique labels and the on-chain result. The model's answer, which can quote your message, goes into the Canary's own signed ledger, which is not public. Your IP address and a cookie are stored as keyed hashes with each attempt, for rate limits and for the leaderboard's count of visitors.",
+        "A message you send to the Canary goes to a private model on NEAR AI Cloud. We store a sha256 hash of the message, not its text, plus technique labels and the on-chain result. The model's answer, which can quote your message, goes into the Canary's own signed ledger, which is not public. Your IP address and a cookie are stored as keyed hashes with each attempt, for rate limits and for the leaderboard's count of visitors. A link of ours can say where it was posted, as in /canary?via=x on a post on X. Your attempt then also stores that one word, so we can tell which links bring people. A word that is not one of ours is not stored.",
       ],
     },
     {
@@ -279,7 +279,7 @@ export const PRIVACY_PAGE = {
       paragraphs: [
         "Vercel hosts the site. Supabase holds the database. NEAR AI Cloud runs the model. Telegram and Resend deliver alerts. Sentry receives error reports once it is enabled.",
         "On mainnet, a top-up sends NEAR Intents 1Click the amount and the asset, your account name (for a refund) and the vault's (to receive the funds). Chain reads go to NEAR RPC providers. Your browser loads the wallet connectors' code from GitHub.",
-        "We use no analytics and no advertising trackers.",
+        "We use no analytics service and no advertising trackers.",
       ],
     },
     {

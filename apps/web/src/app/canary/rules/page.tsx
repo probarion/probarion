@@ -4,6 +4,7 @@ import c from "@/components/site/canary.module.css";
 import s from "@/components/site/site.module.css";
 import { ExternalLink, linePillClass } from "@/components/ui";
 import { type Part, RULES_HEAD, rulesCopy } from "@/lib/canary/copy";
+import { parseVia, withVia } from "@/lib/canary/via";
 import { softRequestNetwork } from "@/lib/network";
 import { LINKS } from "@/lib/site/facts";
 
@@ -39,8 +40,14 @@ function Parts({ parts }: { parts: readonly Part[] }) {
  * The rules of the Canary challenge, for the network of the address it was opened at (so it is rendered per request,
  * not at build time). It needs no secret: if the settings cannot be read the network comes from the public map built into
  * the page. Every number in it comes from CANARY_LIMITS (lib/canary/copy.ts), and every link goes to a page that exists.
+ * The way back keeps the source the visitor came with (`?via=x`), so an attempt made after reading the rules counts.
  */
-export default async function CanaryRules() {
+export default async function CanaryRules({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const via = parseVia((await searchParams).via);
   const rules = rulesCopy(await softRequestNetwork(), LINKS);
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
@@ -54,7 +61,7 @@ export default async function CanaryRules() {
         ))}
       </ol>
       <p className={c.back}>
-        <Link className={linePillClass} href="/canary">
+        <Link className={linePillClass} href={withVia("/canary", via)}>
           {RULES_HEAD.back}
         </Link>
       </p>

@@ -13,6 +13,7 @@ import { loadBoard, loadFeed } from "@/lib/canary/board-data";
 import { CANARY_COPY, eyebrow } from "@/lib/canary/copy";
 import { loadReadiness } from "@/lib/canary/ready";
 import { summarizeVault, type VaultSummary } from "@/lib/canary/vault";
+import { type CanaryVia, parseVia, withVia } from "@/lib/canary/via";
 import { type Banner, canaryView } from "@/lib/canary/view";
 import type { Network } from "@/lib/config";
 import { getEnv } from "@/lib/env";
@@ -61,14 +62,14 @@ async function readVault(
  * The header has no link to a proof page: the Canary's ledger is private (the database forbids making it public), so
  * `/proof/<its vault>` is "page not found" for everyone but its team.
  */
-function Header({ network }: { network: Network }) {
+function Header({ network, via }: { network: Network; via: CanaryVia | null }) {
   return (
     <header>
       <p className={s.eyebrow}>{eyebrow(network)}</p>
       <h1 className={c.title}>{H.title}</h1>
       <p className={c.lede}>{H.lede}</p>
       <div className={c.pills}>
-        <Link className={linePillClass} href="/canary/rules">
+        <Link className={linePillClass} href={withVia("/canary/rules", via)}>
           {H.rules}
         </Link>
         {network === "testnet" ? <span className={c.statePill}>{H.testnetPill}</span> : null}
@@ -78,10 +79,18 @@ function Header({ network }: { network: Network }) {
 }
 
 /** The replay: the banner that says why, what a visitor can do instead, the team's recorded attacks and two cards. */
-function Replay({ network, banner }: { network: Network; banner: Banner }) {
+function Replay({
+  network,
+  banner,
+  via,
+}: {
+  network: Network;
+  banner: Banner;
+  via: CanaryVia | null;
+}) {
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
-      <Header network={network} />
+      <Header network={network} via={via} />
       <ReplayView banner={banner} />
       <ReplayCards />
     </div>
@@ -95,13 +104,20 @@ function Replay({ network, banner }: { network: Network; banner: Banner }) {
  * or when the environment cannot be read, it is the replay with a banner that says why, so the page does not show a
  * form that those checks would refuse. It never fails for want of settings, and it shows no ledger (the Canary's is
  * private). It is the Canary of the network of the address it
- * was opened at: that network's vault, chain and board.
+ * was opened at: that network's vault, chain and board. A link of ours names its source in the address (`?via=x`), and
+ * the form sends it with each attempt; any other value is no source.
  */
-export default async function CanaryPage() {
+export default async function CanaryPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const via = parseVia((await searchParams).via);
   const view = canaryView(getEnv, await softRequestNetwork());
-  if (view.kind === "replay") return <Replay network={view.network} banner={view.banner} />;
+  if (view.kind === "replay")
+    return <Replay network={view.network} banner={view.banner} via={via} />;
   const readiness = await loadReadiness(view.network, view.vault);
-  if (readiness !== "ready") return <Replay network={view.network} banner={readiness} />;
+  if (readiness !== "ready") return <Replay network={view.network} banner={readiness} via={via} />;
   const [vault, board, feed] = await Promise.all([
     readVault(view.network, view.vault).catch((error: unknown) => {
       // The reader could not even be built: the same "could not read" as a failed read.
@@ -117,16 +133,17 @@ export default async function CanaryPage() {
     loadFeed(view.network),
   ]);
   // A vault with no mandate answers every attempt "not ready". Mandates that could not be read are said so on the card.
-  if (vault.mandates?.length === 0) return <Replay network={view.network} banner="closed" />;
+  if (vault.mandates?.length === 0)
+    return <Replay network={view.network} banner="closed" via={via} />;
   const { summary } = vault;
   return (
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
-      <Header network={view.network} />
+      <Header network={view.network} via={via} />
       <VaultCard network={view.network} vault={view.vault} summary={summary} />
       <ByConstructionCard />
       <section className={brandCardClass}>
         <h2 className={c.cardTitle}>{CANARY_COPY.form.title}</h2>
-        <CanaryForm network={view.network} mode={view.mode} />
+        <CanaryForm network={view.network} mode={view.mode} via={via} />
       </section>
       <Scoreboard board={board} />
       <LatestAttempts feed={feed} network={view.network} />

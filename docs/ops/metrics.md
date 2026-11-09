@@ -63,6 +63,99 @@ curl -s -H "Authorization: Bearer $CRON_SECRET" https://<deployment-url>/api/cro
 
 Then in the SQL Editor: `select * from public.metrics_runs;` shows when each network was last computed, and `select day, network, segment, metric, value, computed_at from public.metrics_daily order by day desc, segment, metric limit 40;` shows the counts. An empty `metrics_daily` is right for a network where nothing has happened yet; its `metrics_runs` row still says it was computed.
 
+## Where people come from, and how far owners get
+
+OWNER only, by hand in the SQL Editor. None of this is on `/usage`. Each query is for one network: change `mainnet` for `testnet`. Quote only what a query returns, and only with the day you ran it. `test/db/metrics-queries.test.ts` runs these exact blocks on the real schema, so keep the `<!-- query: ... -->` line above each one.
+
+### Canary attempts by source
+
+A link of ours names where it was posted: `https://probarion.xyz/canary?via=x`. The form sends that word with the attempt, and migration `20261108000014_canary_via.sql` stores it in `canary_attempts.via`. The set is closed and lives in `apps/web/src/lib/canary/via.ts`:
+
+| `via` | Where the link is |
+| --- | --- |
+| `x` | a post on X (@probarionhq). Every post that links the Canary uses `?via=x` |
+| `readme` | the Canary row of the repository's README |
+| `usage` | the Canary pill on `/usage` |
+| `home` | the landing page (not linked with it yet) |
+| `tamper` | the "break a signed record" demo (not linked with it yet) |
+| `proof` | a proof page (not linked with it yet) |
+| `ext` | the browser extension (not linked with it yet) |
+| `share` | a shared result of an attempt (no such link yet) |
+
+Any other value, and a visit by the site's own menu, is stored as no source, shown as `(none)`. Attempts made before the migration have none too. The Canary's Rules link and the way back from the rules keep the source. A source is counted only when the visitor sends an attempt: opening the page records nothing. The team's own attempts are left out, as on the leaderboard. `browsers` counts distinct visitor cookies, so one person on two browsers counts twice. The source is whatever word the browser sent, so anyone can send any word of the set: read the numbers as where people say they came from, not as proof.
+
+<!-- query: canary-by-source -->
+```sql
+select coalesce(via, '(none)') as via,
+       count(*)::int as attempts,
+       count(distinct visitor_hash)::int as browsers
+from public.canary_attempts
+where network = 'mainnet' and not is_team
+group by 1
+order by attempts desc, via;
+```
+
+### Outside owners, stage by stage
+
+For vaults of outside owners (`tenants.kind = 'external'`). Each column counts the vaults that reached that stage and every stage before it:
+
+- `vaults`: vaults created.
+- `with_agent_key`: an agent key was active at some point (a key revoked since still counts).
+- `with_mandate`: and the watcher saw a mandate created.
+- `first_payment`: and the watcher saw a payment made, to NEAR or to Base.
+- `first_payment_7_days_ago`: those whose first payment is at least 7 days old, the vaults old enough for the next column.
+- `active_7_days_later`: of those, the ones with a spend or mandate event recorded 7 days or more after their first payment. Anchors, low-balance alerts and a hold that expired do not count: they happen without the owner or the agent doing anything.
+
+The last four read `vault_events`, which the watcher fills (`docs/ops/watcher.md`). It records a vault's history when it first reads the vault, so `observed_at` is when the watcher saw an event, not when it happened on chain, and a long history can take several runs. Those catch-up events are marked `initial` and do not count as staying: only events seen after the watcher caught up do.
+
+<!-- query: owner-funnel -->
+```sql
+with v as (
+  select t.id,
+         exists (select 1 from public.agent_keys k
+                 where k.tenant_id = t.id and k.purpose = 'agent' and k.activated_at is not null) as has_key,
+         exists (select 1 from public.vault_events e
+                 where e.tenant_id = t.id and e.kind = 'mandate_created') as has_mandate,
+         (select min(e.observed_at) from public.vault_events e
+          where e.tenant_id = t.id and e.kind in ('spend_paid', 'spend_burned')) as first_paid
+  from public.tenants t
+  where t.kind = 'external' and t.network = 'mainnet'
+), f as (
+  select v.*,
+         has_key and has_mandate and first_paid is not null as paid,
+         exists (select 1 from public.vault_events e
+                 where e.tenant_id = v.id and e.observed_at >= v.first_paid + interval '7 days' and not e.initial
+                   and e.kind in ('mandate_created', 'spend_held', 'spend_pending', 'spend_paid', 'spend_burned',
+                                  'spend_failed', 'spend_rejected', 'refused_by_contract')) as stayed
+  from v
+)
+select count(*)::int as vaults,
+       count(*) filter (where has_key)::int as with_agent_key,
+       count(*) filter (where has_key and has_mandate)::int as with_mandate,
+       count(*) filter (where paid)::int as first_payment,
+       count(*) filter (where paid and first_paid <= now() - interval '7 days')::int as first_payment_7_days_ago,
+       count(*) filter (where paid and first_paid <= now() - interval '7 days' and stayed)::int as active_7_days_later
+from f;
+```
+
+### First payments by week
+
+The number to watch: outside vaults whose agent made its first payment, by the week (from Monday, UTC) the watcher saw it. It counts every outside vault with a payment, so its total can be above the funnel's `first_payment` when the console holds no agent key of that vault (one added with the CLI) or the watcher saw no mandate. A vault whose history the watcher read late is counted in the week it read it.
+
+<!-- query: first-payments-by-week -->
+```sql
+select date_trunc('week', first_paid at time zone 'utc')::date as week, count(*)::int as vaults
+from (
+  select e.tenant_id, min(e.observed_at) as first_paid
+  from public.vault_events e
+  join public.tenants t on t.id = e.tenant_id
+  where t.kind = 'external' and t.network = 'mainnet' and e.kind in ('spend_paid', 'spend_burned')
+  group by e.tenant_id
+) p
+group by 1
+order by 1;
+```
+
 ## The price behind "USD per decision"
 
 The page shows tokens per decision as measured, and a dollar figure only when a price is set. Edit `NEARAI_PRICE` in `apps/web/src/lib/usage/pricing.ts` with the input and output price per million tokens for the model the app really uses (`NEARAI_MODEL`), taken from NEAR AI Cloud's own price list, and write the date you read it in `source`:

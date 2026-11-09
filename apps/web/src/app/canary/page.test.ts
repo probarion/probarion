@@ -20,6 +20,17 @@ const net = vi.hoisted(() => ({
   readers: [] as string[],
 }));
 
+/** What the page handed the form, one entry per render: the form itself is the real one. */
+const form = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }));
+vi.mock("@/components/canary/CanaryForm", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/components/canary/CanaryForm")>();
+  return {
+    CanaryForm: (p: Parameters<typeof real.CanaryForm>[0]) => {
+      form.props.push(p);
+      return real.CanaryForm(p);
+    },
+  };
+});
 vi.mock("@/lib/env", () => ({ getEnv: mocks.env }));
 vi.mock("@/lib/network", () => ({ softRequestNetwork: async () => net.network }));
 vi.mock("@/lib/canary/board-data", () => ({ loadBoard: mocks.board, loadFeed: mocks.feed }));
@@ -122,6 +133,7 @@ beforeEach(() => {
   for (const m of Object.values(mocks)) m.mockReset();
   net.network = "testnet";
   net.readers = [];
+  form.props = [];
   mocks.env.mockReturnValue(env());
   mocks.board.mockResolvedValue(BOARD);
   mocks.feed.mockResolvedValue(FEED);
@@ -131,7 +143,9 @@ beforeEach(() => {
   mocks.ready.mockResolvedValue("ready");
 });
 
-const page = async () => renderToStaticMarkup(await CanaryPage());
+/** The page as opened at /canary, with the query given (`?via=x` is { via: "x" }). */
+const page = async (search: Record<string, string | string[]> = {}) =>
+  renderToStaticMarkup(await CanaryPage({ searchParams: Promise.resolve(search) }));
 const visible = (html: string) =>
   html
     .replace(/<\/?(?:p|h1|h2|h3|section|div|li|tr|td|th|header)\b[^>]*>/g, " ")
@@ -217,6 +231,23 @@ describe("the live page", () => {
     expect(text).toContain("At least 4 visitors");
     expect(text).toContain("Attempts 31");
     expect(text).toContain("2026-11-06 10:15 payee_change custom.canary_no_autopay NoMandate");
+  });
+
+  it("hands the form the source its address names (?via=x), and none for one that is not ours", async () => {
+    await page({ via: "x" });
+    await page({ via: "readme" });
+    await page();
+    await page({ via: "twitter" });
+    await page({ via: ["x", "readme"] });
+    expect(form.props.map((p) => p.via)).toEqual(["x", "readme", null, null, null]);
+  });
+
+  it("keeps the source on its Rules link, live or replay, so the way back from the rules keeps it too", async () => {
+    const rules = (via: string) => new RegExp(`<a[^>]*href="/canary/rules${via}"[^>]*>Rules</a>`);
+    expect(await page({ via: "x" })).toMatch(rules("\\?via=x"));
+    expect(await page({ via: "twitter" })).toMatch(rules(""));
+    mocks.env.mockReturnValue(env({ CANARY_MODE: "replay" }));
+    expect(await page({ via: "x" })).toMatch(rules("\\?via=x"));
   });
 
   it("says Raw mode on in live mode", async () => {
