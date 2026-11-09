@@ -9,7 +9,7 @@ import { VaultNav } from "@/components/console/VaultNav";
 import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
 import { Badge, Card, Notice, type Tone } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
-import { VAULT_DEFAULTS } from "@/lib/config";
+import { keyAllowances } from "@/lib/config";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { rpcChainReads } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
@@ -65,6 +65,9 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
   // code could not be read, a new ledger key is not offered (it could only move the stuck pointer).
   const ledgerBlocked = view.ledgerStuck && view.vaultCode !== "current";
   const isOwner = member.role === "owner";
+  // A Canary vault's keys get larger allowances than any other vault's: the Canary does not open while its ledger key
+  // is under its floor, and its raw mode stops while the agent key is under its own.
+  const allowance = keyAllowances(member.kind);
   const sync = syncKeysAction.bind(null, vault);
   const codes = OUT_OF_NEAR.codes;
 
@@ -86,7 +89,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
           <KeyTxButton
             {...common}
             label="Add on-chain"
-            tx={addAgentTx(vault, k.public_key, VAULT_DEFAULTS.agentAllowanceYocto, k.label)}
+            tx={addAgentTx(vault, k.public_key, allowance.agentAllowanceYocto, k.label)}
             lockKey={lockKeyFor(`keys:add:${vault}:${k.public_key}`)}
           />
         ) : null}
@@ -94,7 +97,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
           <KeyTxButton
             {...common}
             label="Set as ledger key"
-            tx={setLedgerKeyTx(vault, k.public_key, VAULT_DEFAULTS.ledgerAllowanceYocto)}
+            tx={setLedgerKeyTx(vault, k.public_key, allowance.ledgerAllowanceYocto)}
             lockKey={lockKeyFor(`keys:set-ledger:${vault}:${k.public_key}`)}
             confirm={
               view.ledgerActive

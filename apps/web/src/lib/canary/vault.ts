@@ -7,6 +7,8 @@ export interface VaultReads {
   /** The vault's Base USDC balance inside Intents. */
   base: string | null;
   mandates: MandateView[] | null;
+  /** `get_config().frozen`; absent when the page did not read it. */
+  frozen?: boolean | null;
 }
 
 export type MandateLine =
@@ -27,6 +29,8 @@ export interface VaultSummary {
   /** Shown only when it was read and is above zero. */
   base: string | null;
   mandate: MandateLine;
+  /** True only when the config was read and the owner has frozen the vault: a failed read shows nothing. */
+  frozen: boolean;
 }
 
 const usdc = usdcFromUnits;
@@ -57,5 +61,6 @@ export function summarizeVault(reads: VaultReads): VaultSummary {
     balance: usdc(reads.usdc),
     base: base !== null && BigInt(reads.base ?? "0") > 0n ? base : null,
     mandate: mandateLine(reads.mandates),
+    frozen: reads.frozen === true,
   };
 }
