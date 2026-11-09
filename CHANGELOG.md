@@ -677,7 +677,8 @@ The software is an unaudited beta.
   intake. When this rule's refusal is the outcome's code, the console's notice says whether an
   upload can run again: when the earlier invoice waits for the owner, after the owner rejects it.
   Otherwise the number stays blocked: a paid invoice, a spend held on chain (even one the approver
-  rejects), a payment sent but not confirmed, and a cycle cut off with an unknown outcome. A paid
+  rejects), a payment sent but not confirmed, a cycle cut off with an unknown outcome, and a
+  refusal that could not be written to the new invoice. A paid
   invoice is not paid again. The notice gives no advice to reissue the bill under a new number:
   the console cannot yet show that the earlier spend can no longer pay, and a new number would
   pass every duplicate check. The migration

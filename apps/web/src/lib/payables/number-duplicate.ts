@@ -47,12 +47,12 @@ function earlierState(m: NumberMatch): string {
  * paid twice.
  *
  * `recorded` is false when this cycle's refusal could not be written to the new invoice's row. The row stays in
- * processing, so an upload of this text again answers 409, and the number stays blocked whatever happens to the
- * earlier invoice.
+ * processing, which the console labels "Outcome unknown: do not resend" (view.ts invoiceStatusLabel), so an upload of
+ * this text again answers 409, and the number stays blocked whatever happens to the earlier invoice.
  */
 export function numberDuplicateNotice(match: NumberMatch, recorded: boolean): string {
   if (!recorded)
-    return "Duplicate number: another invoice to this payee has the same invoice number. Nothing was sent, but the refusal could not be written to this invoice: it shows as processing, and the number stays blocked.";
+    return 'Duplicate number: another invoice to this payee has the same invoice number. Nothing was sent, but the refusal could not be written to this invoice: the console shows it as "Outcome unknown: do not resend", and the number stays blocked.';
   const head =
     "Duplicate number: another invoice to this payee has the same invoice number. Nothing was sent; the refusal is in the signed ledger.";
   const notFreed =

@@ -432,7 +432,7 @@ describe("POST /api/console/[vault]/invoices", () => {
     const out = (await body(r)) as { recorded?: boolean; notice?: string };
     expect(out.recorded).toBe(false);
     expect(out.notice).toMatch(
-      /^Duplicate number: .*Nothing was sent, but the refusal could not be written to this invoice: it shows as processing, and the number stays blocked\.$/,
+      /^Duplicate number: .*Nothing was sent, but the refusal could not be written to this invoice: the console shows it as "Outcome unknown: do not resend", and the number stays blocked\.$/,
     );
     expect(out.notice).not.toContain("upload this one again");
   });

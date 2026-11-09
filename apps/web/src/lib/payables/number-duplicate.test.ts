@@ -82,7 +82,7 @@ describe("numberDuplicateNotice", () => {
   it.each(STATES)("offers no re-upload when the refusal was not recorded, for %j", (state) => {
     const notice = numberDuplicateNotice(match(state), false);
     expect(notice).toBe(
-      "Duplicate number: another invoice to this payee has the same invoice number. Nothing was sent, but the refusal could not be written to this invoice: it shows as processing, and the number stays blocked.",
+      'Duplicate number: another invoice to this payee has the same invoice number. Nothing was sent, but the refusal could not be written to this invoice: the console shows it as "Outcome unknown: do not resend", and the number stays blocked.',
     );
   });
 
