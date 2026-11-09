@@ -50,7 +50,7 @@ export function UsageHeader({ network }: { network: Network }) {
         <a className={linePillClass} href="#definitions">
           {H.definitions}
         </a>
-        <Link className={linePillClass} href="/canary">
+        <Link className={linePillClass} href="/canary?via=usage">
           {H.canary}
         </Link>
         {network === "testnet" ? <span className={c.statePill}>{H.testnetPill}</span> : null}

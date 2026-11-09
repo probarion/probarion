@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { CANARY_VIA } from "@/lib/canary/via";
 import {
   BLAST_RADIUS,
   EXTENSION_PRIVACY,
@@ -96,6 +97,14 @@ describe("the operations copy", () => {
     expect(PRIVACY_PAGE.sections.map((s) => s.id)).not.toContain("browser-extension");
     // The extension's section is EXTENSION_PRIVACY, rendered once by components/site/ExtensionPrivacy.tsx.
     expect(EXTENSION_PRIVACY.id).toBe("browser-extension");
+  });
+
+  it("says a Canary attempt also stores the one word its link names, from the app's own set", () => {
+    const canary = PRIVACY_PAGE.sections.find((s) => s.id === "canary")?.paragraphs.join(" ");
+    expect(canary).toContain("/canary?via=x");
+    expect(CANARY_VIA).toContain("x");
+    expect(canary).toContain("one word");
+    expect(canary).toContain("is not stored");
   });
 
   it("puts the downloaded ledger where the relative --ledger path finds it", () => {

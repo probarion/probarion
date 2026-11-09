@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/guard";
 import { makeCanaryProbarion } from "@/lib/canary/probarion";
 import { runAttempt } from "@/lib/canary/service";
 import { findCanaryTenant, ledgerKeyAllowance } from "@/lib/canary/tenant";
+import { parseVia } from "@/lib/canary/via";
 import type { Network } from "@/lib/config";
 import { masterKey, subkey } from "@/lib/crypto/server";
 import { keyedHashHex } from "@/lib/crypto/sodium";
@@ -49,9 +50,9 @@ const STATUS = {
 } as const;
 
 /**
- * One attempt at the Canary challenge: `{ text }` in, an `AttemptResult` out. Public (no session), same-origin only, rate
- * limited per address and in total. The visitor is told apart by a keyed hash of an httpOnly cookie and of their IP, and
- * the text itself is never stored.
+ * One attempt at the Canary challenge: `{ text, via? }` in, an `AttemptResult` out. Public (no session), same-origin
+ * only, rate limited per address and in total. The visitor is told apart by a keyed hash of an httpOnly cookie and of
+ * their IP, and the text itself is never stored. `via` is the source the visitor's link named (lib/canary/via.ts).
  */
 export async function POST(req: Request) {
   // The attempt's deadline (CANARY_LIMITS.attemptBudgetMs) counts from here.
@@ -103,7 +104,7 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
     (await rateLimitOr429(db, "canary:model:global", LIMITS.canaryModelGlobal));
   if (limited) return limited;
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { text?: unknown; via?: unknown } | null;
   if (typeof body?.text !== "string") return problem(400, "invalid_input");
   const isTeam = await isTeamMember(db, network);
   const store = new SupabaseLedgerStore(db, tenant.tenant_id);
@@ -139,7 +140,8 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
       },
       ledgerByHash: (hash) => store.getByHash(hash),
     },
-    { text: body.text, visitorHash, ipHash, isTeam, requestId, startedAt },
+    // A source that is not exactly one of ours is stored as none: the attempt never fails for it.
+    { text: body.text, visitorHash, ipHash, isTeam, requestId, startedAt, via: parseVia(body.via) },
   );
   if (r.status === "done") return json(r);
   // Every 429 says when to come back: the seconds until the limit that was hit is over.

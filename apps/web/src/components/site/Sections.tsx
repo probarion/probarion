@@ -69,6 +69,7 @@ export function Closing() {
           <span>{CLOSING.line1}</span>
           <span className={s.gold}>{CLOSING.line2}</span>
         </h2>
+        <p className={s.closeNote}>{CLOSING.sub}</p>
         <p className={s.closeNote}>
           <Rich text={CLOSING.live} />
         </p>
