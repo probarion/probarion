@@ -830,14 +830,14 @@ describe("the landing page and the menu", () => {
     expect(text(out)).toContain("packages/core/test/fixtures/valid-snapshot.json");
     if (CLI_ON_NPM) {
       expect(text(out)).toContain(
-        "The testnet vault has no ledger key or anchors yet, so these commands run on a test fixture: this site serves an exact copy of the file in the repository.",
+        "These commands run on a test fixture: this site serves an exact copy of the file in the repository. The testnet demo vault&#x27;s proof page runs the same checks on its own ledger and chain data.",
       );
       expect(text(out)).toContain("curl -O https://probarion.xyz/samples/valid-snapshot.json");
       expect(text(out)).toContain("npx probarion verify --offline valid-snapshot.json");
       expect(text(out)).not.toContain("run it at the root of a clone");
     } else {
       expect(text(out)).toContain(
-        "The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture. Build it from a clone first (README step 1).",
+        "This command runs on a test fixture. Build it from a clone first (README step 1). The testnet demo vault&#x27;s proof page runs the same checks on its own ledger and chain data.",
       );
       expect(text(out)).not.toContain("npx probarion");
     }

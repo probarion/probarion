@@ -18,7 +18,7 @@ The limit sits on the money's path, not in a prompt or in the agent's own proces
 
 </Flow>
 
-The ledger is kept by the SDK, not required by the contract. The vault checks only the form of a spend's decision hash, not that a ledger holds the decision, so a spend sent with the agent key alone has no decision in the ledger, and [verifier check d](/docs/trust/verifier-checks#check-d) fails on it. That is the case today on `v0.probarion.testnet`: its 2026-11-01 smoke run sent spends with no SDK and no ledger, so a live verify of that vault prints `RESULT: FAIL`.
+The ledger is kept by the SDK, not required by the contract. The vault checks only the form of a spend's decision hash, not that a ledger holds the decision, so a spend sent with the agent key alone has no decision in the ledger, and [verifier check d](/docs/trust/verifier-checks#check-d) fails on it. That is the case today on `v0.probarion.testnet`: its 2026-11-01 smoke run sent spends with no SDK and no ledger, so a live verify of that vault prints `RESULT: FAIL`. On the testnet demo vault, `demo.vaults.probarion.testnet`, the console's Payables agent signed each decision into the ledger before its spend, so a live verify of it prints `RESULT: PASS`.
 
 Some outcomes stay out of the ledger. A result entry that fails to write is skipped, and the outcome says `ledgerComplete: false`. An approver's later approve or reject, and the expiry of a hold, are recorded on chain, and no code writes them to the ledger. That last point is inferred: it follows from the code, and no test shows it yet.
 
