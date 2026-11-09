@@ -197,6 +197,10 @@ The software is an unaudited beta.
   `npx probarion verify` passed checks a to i. The invoices, the ledger, the snapshot and the
   verifier's output are in `docs/evidence/demo-vault`; the transactions are in the `demo_vault`
   block of `contracts/deployments/testnet.json`.
+- The landing page's payment journey ends with those four invoices: one card each says what the invoice
+  asked, what the vault did (paid, refused on upload, refused by code, held then paid) and links the
+  invoice file, its transactions and its lines in the signed ledger, then the demo vault's proof page.
+  A test holds each card to the evidence files and the deployment record.
 - Deploy and smoke scripts for testnet, runbooks for testnet, the factory and the planned mainnet
   vault (each signing step is the owner's), and `pnpm proof` for the mainnet evidence file.
 - Web console, in progress: wallet sign-in with near-connect and NEP-413, checked on
@@ -409,6 +413,14 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing page states each caveat once. The beta strip says "Unaudited beta on NEAR testnet,
+  test tokens only." and that Probarion holds no owner key, links the known gaps, and folds to its
+  first sentence on a phone; only mainnet asks for small amounts, and the footer no longer does.
+  The status list gives the web console two rows, "Tried on testnet" and "Built, not tried yet",
+  says which tests check the page, and ends with a "Known gaps" list: no third-party audit, and
+  `v0.probarion.testnet`'s missing ledger, its failing checks d and h, and its older build, which
+  the on-chain section and the closing used to repeat. In the payment journey, what is true today
+  is a note labelled "Today" with a gold rule, on steps 2 and 5.
 - The site header has "Docs" right after the Canary, and Usage moves to the footer's Product
   column. The landing page's closing button "Evaluate in 5 minutes" opens the docs page of that
   name in the same tab, not the README section. The sitemap lists every docs page with the date it
@@ -668,6 +680,26 @@ The software is an unaudited beta.
 
 - A canary test could fail about once in 58 runs, when the agent key it changed already ended in
   the character it wrote, so the key it called inactive was the active one.
+
+- Another invoice uploaded in the console with the same number for the same payee as one that was
+  paid or may still pay is refused by code, rule `custom.invoice_number_duplicate`, and the
+  decision entry signed by the ledger key says why. Before, the upload got a 409 before any rule
+  ran, and nothing reached the ledger. An invoice queued from the browser extension with that
+  number, and the same text uploaded again while the number stays blocked, are still duplicates at
+  intake. When this rule's refusal is the outcome's code, the console's notice says whether an
+  upload can run again: when the earlier invoice waits for the owner, after the owner rejects it.
+  Otherwise the number stays blocked: a paid invoice, a spend held on chain (even one the approver
+  rejects), a payment sent but not confirmed, a cycle cut off with an unknown outcome, and a
+  refusal that could not be written to the new invoice. A paid
+  invoice is not paid again. The notice gives no advice to reissue the bill under a new number:
+  the console cannot yet show that the earlier spend can no longer pay, and a new number would
+  pass every duplicate check. The migration
+  `apps/web/supabase/migrations/20261108000016_invoice_number_rule.sql` changes `invoice_insert`.
+
+- An on-demand render of `/docs/trust/reproducible-builds` on Vercel, such as a POST, which skips
+  the prerender, answered 500: the function did not carry `.github/workflows/ci.yml`. The page's
+  data now reads each file by a literal path. The docs functions carry the 8 repository files they
+  read (0.09 MB), not about 1,170 (17.7 MB).
 
 ### Security
 

@@ -100,7 +100,7 @@ const FOOTER_PRODUCT: readonly string[] = ["/usage"];
 
 export const FOOTER = {
   motto: "TEE protects the data. The contract protects the money.",
-  note: "Unaudited beta. Use small amounts. Built for the NEAR Hackathon 2026. MIT license.",
+  note: "Unaudited beta. Built for the NEAR Hackathon 2026. MIT license.",
   /** Internal links: SITE_NAV and FOOTER_NAV stay the source of the routes. */
   product: listed([
     ...SITE_NAV,
@@ -354,7 +354,7 @@ export interface JourneyStep {
   n: number;
   title: string;
   body: string;
-  /** An unfinished part of this step, marked as unfinished. */
+  /** What is true of this step today, shown under the label `JOURNEY.today`. */
   tag?: string;
   /** A link from this step to the live check above. */
   tryIt?: string;
@@ -380,6 +380,8 @@ export const CONTRACT_REFUSAL_CODE = "OverPerPayment";
 
 export const JOURNEY = {
   title: "What happens to one invoice",
+  /** The label of a step's note on what is true today (audit P1-10). */
+  today: "Today",
   intro:
     "The owner signs the rules once. When an invoice arrives, your agent asks to pay it. It never holds the money or types an address. The model may advise, code decides, and the contract has the last word.",
   steps: [
@@ -415,7 +417,6 @@ export const JOURNEY = {
       n: 3,
       title: "Code decides, and signs before anything moves",
       body: "Deterministic rules run first and cannot be removed. The SDK signs the decision into the ledger before anything is sent, and it records refusals too.",
-      tag: "On the testnet demo vault, every spend has its signed decision, and so does the refused invoice.",
       panelLabel: "Built-in rules",
       panel: [
         { note: "decide(), built-in rules include" },
@@ -450,6 +451,89 @@ export const JOURNEY = {
       ],
     },
   ] satisfies readonly JourneyStep[],
+} as const;
+
+// --- the demo vault's four invoices ---------------------------------------------------------------
+
+/** The run of 2026-11-09 on the testnet demo vault, in docs/evidence/demo-vault (test/invoice-story.test.ts). */
+const DEMO_EVIDENCE = "docs/evidence/demo-vault";
+const demoLedger = (lines: string) => blob(`${DEMO_EVIDENCE}/ledger-2026-11-09.jsonl#${lines}`);
+const demoInvoice = (id: string) => ({
+  label: "Invoice",
+  url: blob(`${DEMO_EVIDENCE}/invoice-${id}.txt`),
+});
+const demoTx = (verb: string, fact: TxFact) => ({ label: `${verb}${fact.label}`, url: fact.url });
+
+export type StoryTone = "paid" | "refused" | "held";
+
+export interface StoryInvoice {
+  /** The invoice number, which names its file in DEMO_EVIDENCE. */
+  invoice: string;
+  title: string;
+  asks: string;
+  pill: string;
+  tone: StoryTone;
+  body: string;
+  links: readonly { label: string; url: string }[];
+}
+
+export const STORY = {
+  title: "Four invoices on the testnet demo vault",
+  caption: "Invoices we sent to our own demo vault on NEAR testnet.",
+  intro:
+    "Its mandate pays `probarion-payee.testnet`, at most 5 test USDC a payment, and holds anything above 3 for an approver. Whatever an invoice says, the money can only go to that payee. No model read these invoices: the code read each amount, and nothing was sent until the owner confirmed it in their wallet.",
+  invoices: [
+    {
+      invoice: "INV-2001",
+      title: "INV-2001",
+      asks: "2 test USDC to the mandate's payee",
+      pill: "Paid",
+      tone: "paid",
+      body: "The owner confirmed the amount. The agent's key sent spend 1, and the vault paid `probarion-payee.testnet`.",
+      links: [
+        demoInvoice("INV-2001"),
+        demoTx("Tx ", tx("HFyW61UZXfwpqhgqWq9bXnRXaYiEnpk4WPUHDAEydQp1", "HFyW61UZ…dQp1")),
+        { label: "Ledger entries 0 to 2", url: demoLedger("L1-L3") },
+      ],
+    },
+    {
+      invoice: "INV-2001",
+      title: "INV-2001, sent again",
+      asks: "The same file a second time",
+      pill: "Refused on upload",
+      tone: "refused",
+      body: 'The console answered "This invoice was already processed." Nothing was decided or sent, so the ledger has no entry for it.',
+      links: [],
+    },
+    {
+      invoice: "INV-2002",
+      title: "INV-2002",
+      asks: '"We changed banks": 2 test USDC to `new-account.testnet`',
+      pill: "Refused by code",
+      tone: "refused",
+      body: "Rule `mandate.payee_mismatch`: the mandate pays another account, so nothing was sent. The refusal is signed into the ledger as entry 3.",
+      links: [demoInvoice("INV-2002"), { label: "Ledger entry 3", url: demoLedger("L4") }],
+    },
+    {
+      invoice: "INV-2003",
+      title: "INV-2003",
+      asks: "4 test USDC, above the 3 USDC approval limit",
+      pill: "Held, then paid",
+      tone: "held",
+      body: "The owner confirmed it, and the vault held spend 2. The approver approved it from their own key, and the vault paid.",
+      links: [
+        demoInvoice("INV-2003"),
+        demoTx("Held ", tx("6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb", "6oDNZEUB…y2Tb")),
+        demoTx("Approved ", tx("47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf", "47VCARhw…NCJf")),
+        { label: "Ledger entries 4 to 6", url: demoLedger("L5-L7") },
+      ],
+    },
+  ] satisfies readonly StoryInvoice[],
+  proof: {
+    text: "Its proof page runs checks a to i on this ledger and the chain.",
+    label: "Open the proof page",
+    href: "/proof/demo.vaults.probarion.testnet",
+  },
 } as const;
 
 // --- the ink band ---------------------------------------------------------------------------------
@@ -546,8 +630,7 @@ export const TAMPER_COPY = {
 
 export const CHAIN = {
   title: "Read it on chain",
-  intro:
-    "A smoke run of the contract alone on NEAR testnet, on 2026-11-01. Test tokens, no model and no ledger in this run.",
+  intro: "A smoke run of the contract alone on NEAR testnet, with test tokens, on 2026-11-01.",
   rows: [
     {
       title: "Paid a NEAR account",
@@ -583,7 +666,18 @@ export const STATUS = {
     },
     { id: "reproducible-builds", row: "Reproducible builds", pill: "Shipped", tone: "live" },
     { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
-    { id: "web-console", row: "Web console", pill: "In progress", tone: "work" },
+    {
+      id: "web-console",
+      row: "Web console: vault, keys, faucet, mandate, Payables, proof page",
+      pill: "Tried on testnet",
+      tone: "live",
+    },
+    {
+      id: "web-console-not-tried",
+      row: "Web console: Freeze, approving in the console, USDC top-up",
+      pill: "Built, not tried yet",
+      tone: "work",
+    },
     {
       id: "public-proof-page",
       row: "Public proof page",
@@ -602,11 +696,17 @@ export const STATUS = {
     { id: "mcp-server", row: "MCP server", pill: "Planned", tone: "plan" },
     { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },
   ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
-  noteBefore: "No third party has audited this code. Read the ",
-  noteLink: "threat model",
-  noteAfter: ", including what `verify` does not prove yet.",
-  build:
-    "`v0.probarion.testnet` runs a build older than the current source; the vaults the testnet factory creates run the fixed build recorded in `contracts/code-hashes.json`.",
+  checked:
+    "The numbers, transactions and status rows on this page are checked against the repository by tests (`apps/web/test/site-facts.test.ts`).",
+  /** Every caveat the landing used to repeat, said once (audit P1-10). The beta strip links `id`. */
+  gaps: {
+    id: "known-gaps",
+    title: "Known gaps",
+    auditBefore: "No third party has audited this code. The ",
+    auditLink: "threat model",
+    auditAfter: " says what `verify` does not prove yet.",
+    v0: "`v0.probarion.testnet`, the vault of the 2026-11-01 smoke run, sent its spends with the agent key alone, without a ledger, so a live `verify --vault` on it fails checks d and h. It also runs a build from before the 2026-11-03 `set_ledger_key` fix. The vaults the testnet factory creates, the demo vault among them, run the fixed build recorded in `contracts/code-hashes.json`.",
+  },
 } as const;
 
 type StatusRow = (typeof STATUS.rows)[number];
@@ -719,8 +819,8 @@ export const INTEGRATE = {
     },
     {
       title: "Web console",
-      body: "Create a vault and mandates, approve held payments and read the ledger. Sign in with a NEAR wallet.",
-      status: "Web console",
+      body: "Create a vault, its keys and mandates, pay invoices with Payables and publish a proof page. Sign in with a NEAR wallet.",
+      status: "Web console: vault, keys, faucet, mandate, Payables, proof page",
       link: { route: CONSOLE_ROUTE, label: "Open console" },
     },
     {
@@ -766,7 +866,7 @@ export const CLOSING = {
   line1: "Don't trust us.",
   line2: "Run the verifier.",
   sub: "Five minutes from a clone: build, verify a snapshot, then point it at a vault on testnet.",
-  live: "A live run reads the chain itself: `verify --vault`. On `demo.vaults.probarion.testnet` it passes checks a to i. On `v0.probarion.testnet` it fails checks d and h, because its smoke run sent spends without a ledger.",
+  live: "A live run reads the chain itself: `verify --vault`. On `demo.vaults.probarion.testnet` it passes checks a to i.",
   evaluate: "Evaluate in 5 minutes",
   spec: "Read the spec",
 } as const;

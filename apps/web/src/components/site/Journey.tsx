@@ -1,9 +1,23 @@
-import { JOURNEY, type JourneyStep, type PanelLine } from "@/lib/site/facts";
+import Link from "next/link";
+import { ExternalLink } from "@/components/ui";
+import {
+  JOURNEY,
+  type JourneyStep,
+  type PanelLine,
+  STORY,
+  type StoryInvoice,
+  type StoryTone,
+} from "@/lib/site/facts";
 import { Rich } from "./Rich";
 import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
 
 const TONE = { pass: s.pass, fail: s.fail } as const;
+const STORY_TONE: Readonly<Record<StoryTone, string | undefined>> = {
+  paid: s.live,
+  refused: s.refusedPill,
+  held: s.work,
+};
 
 function Line({ line }: { line: PanelLine }) {
   if ("note" in line) return <div className={s.panelNote}>{line.note}</div>;
@@ -41,7 +55,12 @@ function Step({ step }: { step: JourneyStep }) {
         <p>
           <Rich text={step.body} />
         </p>
-        {step.tag === undefined ? null : <span className={s.tag}>{step.tag}</span>}
+        {step.tag === undefined ? null : (
+          <div className={s.today}>
+            <span className={s.todayLabel}>{JOURNEY.today}</span>
+            <Rich text={step.tag} />
+          </div>
+        )}
         {step.tryIt === undefined ? null : (
           <a className={`${s.link} ${s.tryIt}`} href="#try">
             {step.tryIt}
@@ -57,6 +76,56 @@ function Step({ step }: { step: JourneyStep }) {
   );
 }
 
+function StoryCard({ card }: { card: StoryInvoice }) {
+  return (
+    <li className={s.storyCard}>
+      <div className={s.storyTop}>
+        <h4>{card.title}</h4>
+        <span className={`${s.pill} ${s.pillInline} ${STORY_TONE[card.tone]}`}>{card.pill}</span>
+      </div>
+      <p className={s.storyAsks}>
+        <Rich text={card.asks} />
+      </p>
+      <p>
+        <Rich text={card.body} />
+      </p>
+      {card.links.length === 0 ? null : (
+        <div className={s.storyLinks}>
+          {card.links.map((l) => (
+            <ExternalLink key={l.url} className={s.link} href={l.url}>
+              {l.label}
+            </ExternalLink>
+          ))}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** The journey, as it ran: the four invoices of the testnet demo vault (audit P1-5). */
+function Story() {
+  return (
+    <div className={s.story}>
+      <h3>{STORY.title}</h3>
+      <p className={s.storyCaption}>{STORY.caption}</p>
+      <p className={s.storyIntro}>
+        <Rich text={STORY.intro} />
+      </p>
+      <ul className={s.storyGrid}>
+        {STORY.invoices.map((card) => (
+          <StoryCard key={card.title} card={card} />
+        ))}
+      </ul>
+      <p className={s.storyProof}>
+        {STORY.proof.text}{" "}
+        <Link className={s.link} href={STORY.proof.href}>
+          {STORY.proof.label} →
+        </Link>
+      </p>
+    </div>
+  );
+}
+
 export function Journey() {
   return (
     <section className={s.section} id="payment">
@@ -68,6 +137,7 @@ export function Journey() {
         {JOURNEY.steps.map((step) => (
           <Step key={step.n} step={step} />
         ))}
+        <Story />
       </div>
     </section>
   );
