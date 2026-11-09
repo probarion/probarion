@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -61,6 +63,7 @@ const logs = quietLogs();
 
 const V = "acme.vaults.probarion.near";
 const OTHER = "other.vaults.probarion.near";
+const CANARY = "canary.vaults.probarion.near";
 // The confirmation link is on the request network's origin (the env mock above), not on the production address.
 const ORIGIN = "https://probarion.xyz";
 
@@ -79,6 +82,7 @@ beforeAll(async () => {
     [tenant],
   );
   otherTenant = await seedTenant(pg, { vault: OTHER, owner: "mallory.near" });
+  await seedTenant(pg, { vault: CANARY, owner: "acme.near", kind: "canary" });
 });
 afterAll(async () => {
   vi.unstubAllEnvs();
@@ -195,10 +199,34 @@ describe("the alerts page", () => {
     await signInAs("acme.near");
     const out = await html();
     expect(out).toContain(
-      "right after an invoice upload, once a day, and every minute once its schedule is on",
+      "The watcher checks a vault right after an invoice is uploaded on Payables.",
     );
-    expect(out).toContain("a change made only on the chain can wait for the next check");
+    expect(out).toContain(
+      "or every minute if this site's operator has turned on the per-minute schedule",
+    );
+    expect(out).toContain("can take until that run to reach you");
     expect(out).not.toMatch(/within (about )?a minute/i);
+    expect(out).not.toContain("attempt");
+  });
+
+  it("names the Canary's attempts too on the Canary vault, which the watcher checks after each one", async () => {
+    await signInAs("acme.near");
+    expect(await html(CANARY)).toContain(
+      "The watcher checks a vault right after an invoice is uploaded on Payables, and this Canary vault after each attempt on it.",
+    );
+  });
+
+  it("says the daily run's time as vercel.json schedules it", async () => {
+    const vercel = JSON.parse(readFileSync(join(__dirname, "../../../../../vercel.json"), "utf8"));
+    const watch = (vercel.crons as { path: string; schedule: string }[]).find(
+      (c) => c.path === "/api/cron/watch",
+    );
+    // A daily schedule, "minute hour * * *": anything else would make "once a day at" untrue.
+    const [minute, hour, ...rest] = (watch?.schedule ?? "").split(" ");
+    expect(rest).toEqual(["*", "*", "*"]);
+    const at = `${hour?.padStart(2, "0")}:${minute?.padStart(2, "0")} UTC`;
+    await signInAs("acme.near");
+    expect(await html()).toContain(`once a day at ${at}`);
   });
 
   it("says there are no alerts yet when there are none, and lists none", async () => {

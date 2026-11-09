@@ -79,7 +79,8 @@ export function formatAlert(
       lines.push(`${spendWords(e)} is held until an approver signs.`);
       const ends = holdEnds(payload);
       if (ends !== null) lines.push(`The hold ends ${ends}.`);
-      lines.push(`Approve or reject: ${consoleUrl}`);
+      // The overview's held card (id="held"), which comes first while a spend waits.
+      lines.push(`Approve or reject: ${consoleUrl}#held`);
       break;
     }
     case "spend_paid":
