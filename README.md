@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/readme-banner.png" alt="Probarion. Spend by mandate. Prove every payment. An AI agent pays only inside mandates its owner signed; the vault contract checks every payment and a signed ledger records every decision. In a smoke run on NEAR testnet with test tokens, the vault v0.probarion.testnet paid 1 USDC to a NEAR account, burned 1 USDC with a WITHDRAW_TO memo for a Base address, and refused mandate 999 with PROBARION:NoMandate." width="100%">
+<img src="docs/assets/readme-banner.png" alt="Probarion. Spend by mandate. Prove every payment. An AI agent pays only inside mandates its owner signed; the vault contract checks every payment and a signed ledger records every decision. On NEAR testnet with test tokens, the agent key of the vault v0.probarion.testnet made three calls: one paid 1 USDC to a NEAR account, one burned 1 USDC with a WITHDRAW_TO memo for a Base address, and the contract blocked one of 6 USDC on mandate 1, whose limit is 5 USDC a payment, with PROBARION:OverPerPayment." width="100%">
 
 # Probarion
 
@@ -127,13 +127,14 @@ signs nothing and pays nothing. If no RPC host answers, the page shows the answe
    node scripts/testnet/chain.mjs key-count v0.probarion.testnet         # 1: the agent's spend-only key
    ```
 
-   Then read the three smoke transactions from an archival node:
+   Then read the three smoke transactions, and the refusal the landing page shows, from an archival node:
 
    ```bash
    tx() { curl -s https://archival-rpc.testnet.fastnear.com -H 'Content-Type: application/json' -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tx\",\"params\":{\"tx_hash\":\"$1\",\"sender_account_id\":\"v0.probarion.testnet\",\"wait_until\":\"NONE\"}}"; }
    tx 3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX | grep -o 'spend_paid' | sort -u                  # spend_paid
    tx 3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe | grep -o 'WITHDRAW_TO:0x[0-9a-f]*' | sort -u     # the burn memo, built from the mandate
    tx AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY | grep -o 'PROBARION:[A-Za-z]*' | sort -u         # PROBARION:NoMandate
+   tx 4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1 | grep -o 'PROBARION:[A-Za-z]*' | sort -u         # PROBARION:OverPerPayment
    ```
 
 4. **Ask the vault itself.** A read-only `Probarion` instance (no keys, `model: null`) lists the
@@ -368,6 +369,7 @@ the burn's tx hash.
 | The agent key called `spend` on mandate 1, a NEAR payee | [`3DFV2thB…Fy9cX`](https://testnet.nearblocks.io/txns/3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX) | Spend 1 `paid`: 1 test USDC to `probarion-payee.testnet` (`spend_submitted`, `ft_transfer`, `spend_paid`) |
 | The agent key called `spend` on mandate 2, a Base payee | [`3u4ffrwp…dcvYe`](https://testnet.nearblocks.io/txns/3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe) | Spend 2 `burned`: 1 test USDC, `mt_burn` and `ft_burn` with the memo `WITHDRAW_TO:0x1111111111111111111111111111111111111111` the vault built from the mandate |
 | The agent key called `spend` on mandate 999, which does not exist | [`AkjyVPmb…dzgY`](https://testnet.nearblocks.io/txns/AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY) | Refused by the contract: `PROBARION:NoMandate` |
+| The agent key called `spend` on mandate 1 for 6 test USDC, above its limit of 5 test USDC per payment (2026-11-09, after the smoke run) | [`4715d4nb…Vsr1`](https://testnet.nearblocks.io/txns/4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1) | Refused by the contract: `PROBARION:OverPerPayment`. Nothing was paid, and no call reached the USDC contract |
 
 NearBlocks' testnet index can lag behind the chain. Step 3 of
 [the evaluation](#how-to-evaluate-probarion-in-5-minutes) reads the same transactions from an archival

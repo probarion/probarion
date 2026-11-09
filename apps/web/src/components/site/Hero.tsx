@@ -54,19 +54,21 @@ function RefusedCard() {
         <span>{c.mandate}</span>
         <span className={s.state}>{c.state}</span>
       </div>
-      <div className={`${s.cardBig} ${s.cardCode}`}>
-        {c.code[0]}
-        <wbr />
-        {c.code[1]}
-      </div>
+      <div className={s.cardBig}>{c.big}</div>
       <dl className={s.rows}>
         <div>
           <dt>Caller</dt>
           <dd>{c.caller}</dd>
         </div>
         <div>
-          <dt>Payee</dt>
-          <dd>{c.payee}</dd>
+          <dt>Limit</dt>
+          <dd>{c.limit}</dd>
+        </div>
+        <div>
+          <dt>Code</dt>
+          <dd>
+            <code>{c.code}</code>
+          </dd>
         </div>
         <div>
           <dt>Paid</dt>

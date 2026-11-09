@@ -368,14 +368,6 @@ a.netPill:hover {
   letter-spacing: -0.03em;
   overflow-wrap: anywhere;
 }
-.cardCode {
-  font-size: clamp(20px, 1.95vw, 27px);
-  font-family: var(--font-mono);
-  font-weight: 400;
-  letter-spacing: -0.03em;
-  line-height: 1.18;
-  min-height: 2.36em;
-}
 .rows {
   display: grid;
   gap: 0;
@@ -1623,9 +1615,6 @@ a.netPill:hover {
   }
   .duel {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .cardCode {
-    min-height: 0;
   }
   .status {
     grid-template-columns: minmax(0, 1fr);
