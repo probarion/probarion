@@ -15,7 +15,15 @@ import { extractInvoice } from "./extract";
 import { payeeId } from "./payee";
 import { invoiceLines, sourceLine, verbatimLine } from "./source-line";
 import { type InvoiceRow, invoiceContent, listPayeeRecent, type RowSnapshot } from "./store";
-import { type PayeeRow, payeeOf, recentPayeeRows, type ShownRule, waitReasons } from "./view";
+import {
+  cycleRanFor,
+  type PayeeRow,
+  payeeOf,
+  queuedChecks,
+  recentPayeeRows,
+  type ShownRule,
+  waitReasons,
+} from "./view";
 
 // What the page shows next to an invoice that waits for the owner, before any button (rulings W-T14-R0, R1 and R2): the
 // amount, why it waits, the mandate as the chain shows it, the invoice (its text and the line the reader read the total
@@ -53,6 +61,15 @@ export type InvoiceShown =
 
 export interface WaitingView {
   amount: string;
+  /** Where the invoice came from (migration 0015): the console upload, or the browser extension. */
+  source: "console" | "extension";
+  /** An extension invoice no cycle has run for yet: its row has no outcome, and the ledger no decision for it. */
+  queued: boolean;
+  /**
+   * An extension invoice whose Confirm wrote its decision and then stopped before anything was sent (the Confirm was
+   * aborted): the row waits again with no outcome, and the ledger holds the decision.
+   */
+  stopped: boolean;
   reasons: { owner: ShownRule | null; before: ShownRule[] };
   uploadedBy: string;
   uploadedAt: string;
@@ -240,9 +257,17 @@ export async function loadWaitingView(
                   : list.payeeProblem !== null
                     ? "Confirm is not offered until this payee's other invoices can be listed."
                     : null;
+  const extension = row.source === "extension";
+  const cycleRan = cycleRanFor(row, a.entries);
   return {
     amount: row.suggested_amount ?? "0",
-    reasons: row.outcome ? waitReasons(a.entries, row.outcome) : { owner: null, before: [] },
+    source: extension ? "extension" : "console",
+    queued: extension && !cycleRan,
+    stopped: extension && row.outcome === null && cycleRan,
+    // Why it waits: the holds alone. The page lists every check the row was queued with in its own card.
+    reasons: row.outcome
+      ? waitReasons(a.entries, row.outcome)
+      : { owner: null, before: queuedChecks(row).filter((r) => r.outcome !== "pass") },
     uploadedBy: safeText(row.created_by, 64),
     uploadedAt: row.created_at,
     mandate: mandate === null ? null : summary(mandate),

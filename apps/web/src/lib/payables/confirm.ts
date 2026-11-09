@@ -59,7 +59,9 @@ import { invoiceStatusLabel, outcomeLabel, usdcFixed } from "./view";
 //
 // Why requestSpend and not process(): a zero-retention row keeps no text to run process() on, and the owner signed
 // for one mandate, one amount and one invoice hash, which requestSpend takes as they are (the text checks ran when
-// the invoice was uploaded, and the row waits only when nothing but the owner rule held it).
+// the invoice was uploaded, and the row waits only when nothing but the owner rule held it). An invoice queued from
+// the browser extension (migration 0015) is different: no cycle ran before its Confirm, only core's payee check and
+// the contract's check_spend view ran when it was queued, and it waits on extension.mandate_chosen.
 
 /** What the confirm service needs from the SDK's Probarion (and what tests fake). */
 export interface ConfirmProbarion {
