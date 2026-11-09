@@ -415,6 +415,13 @@ The software is an unaudited beta.
   can publish it for anyone to verify. A test keeps the unconditional claim out of the site's
   code, the docs and the READMEs. The landing's hero also names the category above the headline
   ("A mandate layer for AI agents on NEAR") and says who it is for under the buttons.
+- The landing's offline check runs in an empty folder with npx alone. The site serves a
+  byte-for-byte copy of the test fixture at `/samples/valid-snapshot.json`, and step 5 prints the
+  download and the verify on separate lines, with a note to type `curl.exe` in Windows PowerShell
+  5.1. Step 2 of the README's evaluation gives the same two lines for a reader with no clone.
+- The ledger test on the landing page and on /proof puts a plain line under each of the nine
+  checks, and calls a cross-chain spend a withdrawal ("Withdrawal to Base") in place of "Burned for
+  Base" (site audit P1-11).
 - A spend that waits for approval now comes first on the vault's overview, right under the tabs.
   A hold that ran out does not count, since the vault refuses approve then. The "Approval needed"
   alert, by Telegram and email, links straight to the card (`/console/<vault>#held`); before, it
