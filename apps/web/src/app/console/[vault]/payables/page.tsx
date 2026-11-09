@@ -6,9 +6,17 @@ import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
 import { Badge, Card, linePillClass, Notice } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import { serviceDb } from "@/lib/db/clients";
+import { getReader } from "@/lib/near/server";
+import { readSpendsNow } from "@/lib/payables/chain";
 import { utcMinute } from "@/lib/payables/forms";
 import { listInvoices } from "@/lib/payables/store";
-import { amountIssueText, rowResult } from "@/lib/payables/view";
+import {
+  amountIssueText,
+  needsSpendsNow,
+  rowResult,
+  type SpendsNow,
+  waitingNotice,
+} from "@/lib/payables/view";
 import { safeText } from "@/lib/proof/sanitize";
 import { setZeroRetentionAction } from "./actions";
 
@@ -26,6 +34,10 @@ export default async function PayablesPage({ params }: { params: Promise<{ vault
   const canUpload = member.role === "owner" || member.role === "approver";
   const invoices = await listInvoices(serviceDb(), member.tenant_id, 50);
   const waiting = invoices.filter((i) => i.status === "awaiting_owner").length;
+  // A spend the contract held may since have been approved, rejected or expired: only the chain knows (a view call).
+  const spends: SpendsNow | undefined = needsSpendsNow(invoices)
+    ? await readSpendsNow(getReader(member.network), vault)
+    : undefined;
   const base = `/console/${encodeURIComponent(vault)}/payables`;
 
   return (
@@ -39,14 +51,7 @@ export default async function PayablesPage({ params }: { params: Promise<{ vault
         invoice waits for you. Named code rules decide, the vault contract enforces, and the payee
         always comes from the mandate, never from the invoice.
       </Notice>
-      {waiting > 0 ? (
-        <Notice tone="warn">
-          {waiting} invoice{waiting === 1 ? "" : "s"}{" "}
-          {owner
-            ? "wait for you to confirm or reject the amount."
-            : "wait for the owner to confirm or reject the amount."}
-        </Notice>
-      ) : null}
+      {waiting > 0 ? <Notice tone="warn">{waitingNotice(waiting, owner)}</Notice> : null}
 
       {canUpload ? (
         <Card title="New invoice">
@@ -91,6 +96,12 @@ export default async function PayablesPage({ params }: { params: Promise<{ vault
       </Card>
 
       <Card title="Recent invoices">
+        {spends === "unread" ? (
+          <Notice tone="warn">
+            The vault&apos;s spends could not be read from the chain, so a held invoice shows the
+            status its cycle recorded. Reload to read them again.
+          </Notice>
+        ) : null}
         {invoices.length === 0 ? (
           <p className={`text-sm ${muted}`}>No invoices yet.</p>
         ) : (
@@ -107,7 +118,7 @@ export default async function PayablesPage({ params }: { params: Promise<{ vault
               </thead>
               <tbody>
                 {invoices.map((i) => {
-                  const r = rowResult(i, owner);
+                  const r = rowResult(i, owner, spends);
                   return (
                     <tr key={i.id} className="border-b border-ink/10 align-top last:border-0">
                       <td className="whitespace-nowrap">{utcMinute(i.created_at)}</td>

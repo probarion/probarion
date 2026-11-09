@@ -702,6 +702,18 @@ The software is an unaudited beta.
   pass every duplicate check. The migration
   `apps/web/supabase/migrations/20261108000016_invoice_number_rule.sql` changes `invoice_insert`.
 
+- Web console, Payables: an invoice whose spend the vault held for an approver shows what the chain
+  says of that spend now. The list and the invoice's page read the vault's spends with the same
+  `list_spends` view the overview reads, and match the spend by its id and decision hash. An approved
+  spend reads "Approved and paid on NEAR"; a rejected one, or one whose hold expired, says nothing was
+  paid. Both pages kept "Held for approval", the outcome stored when the cycle ran: on testnet,
+  INV-2003 and INV-2004 of `demo.vaults.probarion.testnet` were paid on chain but read held. The pages
+  only read the chain: the stored outcome and the signed ledger do not change. When the spends cannot
+  be read, the page says so and shows the status the cycle recorded.
+- Web console, Payables: the banner says "1 invoice waits for you", not "1 invoice wait".
+- Web console, Mandates: the table gives each column room. At desktop width its headers ran together
+  ("PaymentsExpires").
+
 - An on-demand render of `/docs/trust/reproducible-builds` on Vercel, such as a POST, which skips
   the prerender, answered 500: the function did not carry `.github/workflows/ci.yml`. The page's
   data now reads each file by a literal path. The docs functions carry the 8 repository files they

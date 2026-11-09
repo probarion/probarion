@@ -59,6 +59,8 @@ const h = vi.hoisted(() => ({
   db: null as unknown as Db,
   jar: new Map<string, string>(),
   panels: [] as Record<string, unknown>[],
+  /** The pages' reader answers list_spends with an error: the chain's spends cannot be read. */
+  spendsFail: false,
 }));
 vi.mock("@/lib/env", async () => {
   const { networkPart } = await import("../fixtures/networks");
@@ -98,7 +100,10 @@ vi.mock("@/lib/near/server", async () => {
   const { NETWORKS: N } = await import("@probarion/core");
   return {
     getRpc: () => new Rpc({ urls: [h.url] }),
-    getReader: () => reader(new Rpc({ urls: [h.url] })),
+    getReader: () => {
+      const r = reader(new Rpc({ urls: [h.url] }));
+      return h.spendsFail ? { ...r, listSpends: () => Promise.reject(new Error("no node")) } : r;
+    },
     chainConsts: () => N.testnet,
   };
 });
@@ -1529,6 +1534,71 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       }
     });
 
+    it("shows a held spend as the chain has it now: approved and paid, rejected or expired, and never writes", async () => {
+      await signInAs(OWNER);
+      const row = await upload("57.00");
+      const p = await prepared(row);
+      const r = await confirmInvoice(deps, {
+        member,
+        account: OWNER,
+        invoiceId: row.id,
+        nonce: p.nonce,
+        signed: sign(p),
+      });
+      if (!r.ok) throw new Error(JSON.stringify(r));
+      expect(r.outcome).toMatchObject({ status: "held", spendId: expect.any(Number) });
+      const spend = server.chain.spends.find((s) => s.id === r.outcome.spendId);
+      if (!spend) throw new Error("no spend on the fake chain");
+      const ref = (await getInvoice(h.db, member.tenant_id, row.id))?.ref ?? "";
+      /** This invoice's row of the list (the list holds every other test's invoices too). */
+      const listed = async () => (await listHtml()).split("<tr").find((t) => t.includes(ref)) ?? "";
+      /** The invoice page's "Contract did" column, up to its decision hash. */
+      const contractDid = async () =>
+        (await html(row.id)).split(">Contract did</h2>")[1]?.split("decision_hash")[0] ?? "";
+      const before = await state(row.id);
+      try {
+        // Still held on chain: as the cycle recorded it.
+        expect(await listed()).toContain("Held for approval");
+        expect(await contractDid()).toContain("Held for approval");
+        // An approver approved it and the payout went out.
+        spend.status = "paid";
+        expect(await listed()).toContain("Approved and paid on NEAR");
+        expect(await listed()).not.toContain("Held for approval");
+        const paid = await html(row.id);
+        expect(paid).toMatch(/bg-ok-bg[^"]*">Approved and paid on NEAR/);
+        expect(paid).toMatch(/bg-ok-bg[^"]*">Confirmed by the owner/);
+        expect(paid).toContain(
+          `The vault held spend #${spend.id} for an approver. Its status above is the chain&#x27;s now.`,
+        );
+        expect(paid).not.toContain("Held for approval");
+        // Rejected, or its hold expired: nothing was paid, and it never reads as paid.
+        for (const [status, label] of [
+          ["rejected", "Rejected by an approver: nothing was paid"],
+          ["expired", "Hold expired: nothing was paid"],
+        ] as const) {
+          spend.status = status;
+          expect(await listed()).toContain(label);
+          const out = await html(row.id);
+          expect(out).toContain(label);
+          expect(out).not.toMatch(/paid on NEAR|Held for approval/i);
+        }
+        // The chain cannot be read: the recorded status, and the page says why.
+        h.spendsFail = true;
+        expect(await listed()).toContain("Held for approval");
+        expect(await listHtml()).toContain(
+          "The vault&#x27;s spends could not be read from the chain, so a held invoice shows the status its cycle recorded. Reload to read them again.",
+        );
+        expect(await html(row.id)).toContain(
+          "The vault&#x27;s spends could not be read from the chain, so this is the status the cycle recorded. Reload to read them again.",
+        );
+        // Reading the chain changed nothing: not the row, not the ledger.
+        expect(await state(row.id)).toEqual(before);
+      } finally {
+        h.spendsFail = false;
+        spend.status = "held";
+      }
+    });
+
     it("says plainly when the server could not reject", async () => {
       const row = await upload("50.00");
       await signInAs(OWNER);
@@ -1659,6 +1729,14 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
       const out = await listHtml();
       expect(out).toContain(waiting.ref);
       expect(out).toContain("Waiting for you: no attested model confirmed the amount");
+      // The banner's verb agrees with its count.
+      const waits = (await listInvoices(h.db, member.tenant_id, 50)).filter(
+        (i) => i.status === "awaiting_owner",
+      ).length;
+      expect(out).toContain(
+        `${waits} invoice${waits === 1 ? " waits" : "s wait"} for you to confirm or reject the amount.`,
+      );
+      expect(out).not.toMatch(/\b1 invoice wait\b/);
       expect(out).toContain("Not sent: code refused it");
       expect(out).toContain("The total is not in USD or USDC.");
       expect(out).toContain("by hand");
