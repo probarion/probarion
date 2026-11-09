@@ -15,7 +15,7 @@
 <a href="#how-to-evaluate-probarion-in-5-minutes"><img src="docs/assets/readme/verify-a-ledger.png" alt="Verify a ledger: checks a to i, offline" height="48"></a>
 <a href="https://x.com/probarionhq"><img src="docs/assets/readme/follow-the-build.png" alt="Follow the build: @probarionhq on X" height="48"></a>
 
-**[Live site](https://probarion.xyz)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
+**[Live site](https://probarion.xyz)** · **[Docs](https://probarion.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
 
 <sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts · NEAR AI Cloud private models · TypeScript SDK and CLI</sub>
 
@@ -45,6 +45,7 @@ the vault, and anyone can re-check the record against the chain.
 - [Status](#status)
 - [What Probarion does](#what-probarion-does)
 - [Why it is different](#why-it-is-different)
+- [NEAR technology used, and how](#near-technology-used-and-how)
 - [How a payment works](#how-a-payment-works)
 - [Safety architecture](#safety-architecture)
 - [On-chain proof](#on-chain-proof)
@@ -59,6 +60,19 @@ the vault, and anyone can re-check the record against the chain.
 
 You need Node.js 24 and pnpm 10, and a bash-compatible shell (Linux, macOS, or Git Bash on Windows).
 No wallet, no key and no account: every step either runs offline or reads public NEAR testnet data.
+
+**In a browser first, with nothing to install:**
+
+- Open [Evaluate in 5 minutes](https://probarion.xyz/docs/start/evaluate-in-5-minutes) in the docs.
+  It walks the steps below, with each command and the output to expect.
+- On any docs page, press Ctrl K (⌘K on a Mac), type `NoMandate` and press Enter. You land on that
+  code's row in the error catalog: what it means, which call raises it and what to do next.
+- Add `.md` to a docs address, for example
+  [/docs/concepts/payment-checks.md](https://probarion.xyz/docs/concepts/payment-checks.md), and you
+  get the page as Markdown. [/llms.txt](https://probarion.xyz/llms.txt) lists every page for an AI
+  agent.
+
+**Then in a terminal:**
 
 1. **Install and build.** About three and a half minutes on a first install here (2 min 42 s to
    install, 34 s to build).
@@ -192,7 +206,8 @@ What exists at this commit, and what does not yet.
 | `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped** in source. `vault create` reads the testnet factory and prints its `create_vault` call for the owner to sign | [`packages/cli`](packages/cli) |
 | CLI `check`, `verify` and `ledger export` | **Shipped** in source. `verify` exits 0 when every check passes, 1 when one fails or verify cannot run, 2 when a burn is unproven | [`packages/cli`](packages/cli) |
 | npm release 0.1.0 of the packages | **Planned**. The tag-driven release pipeline is in place; nothing is published | [`.github/workflows/release.yml`](.github/workflows/release.yml) |
-| Web console (Next.js 16 and Supabase): the public site, wallet sign-in, vault overview, freeze, approvals, keys, mandates, top-up, Payables, the public proof page | **In progress**. Deployed at [probarion.xyz](https://probarion.xyz) on testnet, from `main`. The top-up tab sends USDC on NEAR from the owner's wallet. On testnet it also has a faucet button that adds 25 test USDC straight into the vault, once a UTC day per vault and for up to 3 vaults per owner account, with no wallet: built and tested, and live on the site once the OWNER sets its key ([runbook](docs/RUNBOOK.md#testnet-faucet)). The 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet. Sign-in and Create a vault have been tried there with a real wallet (Meteor, on testnet: `trial.vaults.probarion.testnet`); the other console actions have not yet. The sign-in page says what a vault takes (on testnet, a testnet account and about 3.3 test NEAR; on mainnet, vaults cannot be created yet) and links the ledger test for visitors with no wallet. The console uses the landing page's brand: 44px ink pills, a red-outlined Reject beside Approve on a held payment, 16px fields, colour tokens that read at WCAG AA, and tabs that mark the open one. Create a vault opens the new vault's page, where a checklist shows its owner the five steps to the first agent payment (keys, USDC, a mandate, an invoice paid) and links each to its tab; on testnet, Mandates and Payables fill themselves from a sample purchase order and invoice in one click. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
+| Web console (Next.js 16 and Supabase): the public site, wallet sign-in, vault overview, freeze, approvals, keys, mandates, top-up, Payables, the public proof page | **In progress**. Deployed at [probarion.xyz](https://probarion.xyz) on testnet, from `main`. The top-up tab sends USDC on NEAR from the owner's wallet. On testnet it also has a faucet button that adds 25 test USDC straight into the vault, once a UTC day per vault and for up to 3 vaults per owner account, with no wallet: built and tested, and its key is set on probarion.xyz; the button has not been tried there with a real vault yet ([runbook](docs/RUNBOOK.md#testnet-faucet)). The 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet. Sign-in and Create a vault have been tried there with a real wallet (Meteor, on testnet: `trial.vaults.probarion.testnet`); the other console actions have not yet. The sign-in page says what a vault takes (on testnet, a testnet account and about 3.3 test NEAR; on mainnet, vaults cannot be created yet) and links the ledger test for visitors with no wallet. The console uses the landing page's brand: 44px ink pills, a red-outlined Reject beside Approve on a held payment, 16px fields, colour tokens that read at WCAG AA, and tabs that mark the open one. Create a vault opens the new vault's page, where a checklist shows its owner the five steps to the first agent payment (keys, USDC, a mandate, an invoice paid) and links each to its tab; on testnet, Mandates and Payables fill themselves from a sample purchase order and invoice in one click. Deploy checks run with its tests, and the first-deploy checklist is [`docs/runbooks/web-deploy.md`](docs/runbooks/web-deploy.md) | [`apps/web`](apps/web) |
+| Docs Center at `/docs`: 23 pages in five sections (Start here, Concepts, Build, Verify & trust, Resources), search, a Markdown twin of every page, `llms.txt` and `llms-full.txt` | **Built** and tested. Each page was written from the code and then checked against it by separate reviewers. Each page marks what is Live, Preview or Planned, and its source box names the commit it was built from, the date it was reviewed and the files it was checked against. Ctrl K (⌘K) search loads a static index on first open and finds pages, error codes and CLI commands. The reference tables are generated from their sources, and tests fail when a table drifts from them: the vault's 14 checks, the error codes, the verifier's checks a to i and the status list. Every owner and approver command is marked with who signs it. A Playwright spec checks the fold, the keyboard path through search, the phone drawer, the 404s, a blocked clipboard and the docs without JavaScript | [`apps/web/content/docs`](apps/web/content/docs), [`apps/web/src/lib/docs`](apps/web/src/lib/docs), [`apps/web/e2e/docs.spec.ts`](apps/web/e2e/docs.spec.ts) |
 | Mainnet vault `v0.probarion.near` | **Planned**. The runbook is ready; the owner signs every step | [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) |
 | MCP server `@probarion/mcp` | **Planned** | |
 | Payables, the reference agent that pays invoices in USDC | **In progress**. The pipeline, its invoice API and the console pages are built and tested against a fake chain, and deploy with the console; nothing has been tried with a real wallet yet. It pays by itself only when an attested NEAR AI model confirms the amount the code read; without one, nothing is sent and the invoice waits for the owner, who can pay it with a wallet signature or reject it. The amount reader refuses any total it cannot read with certainty. An unfinished payment stays marked "do not resend" until the reconcile job is built | [`apps/web/src/lib/payables`](apps/web/src/lib/payables) |
@@ -247,6 +262,20 @@ request that starts a server instance, reaches Sentry without a request id.
   about the chain ([what is not proven yet](SECURITY.md#what-is-not-proven-yet)). Contract builds are
   reproducible, their code hashes are recorded, and two public RPC calls show that a vault has no
   full-access key and which code it runs.
+
+## NEAR technology used, and how
+
+| NEAR technology | How Probarion uses it | Where |
+| --- | --- | --- |
+| **Smart contracts in Rust** (near-sdk 5.29.1) | The vault holds the USDC and checks every payment against its mandate before anything moves. The rule lives on the money's path, not in a prompt | [`contracts/vault`](contracts/vault) |
+| **Function-call access keys** | The vault adds the agent's key to itself, limited to `spend`, and a second key limited to `anchor`. NEAR lets a function-call key call only its listed methods and attach no deposit, so the vault methods that move value or change authority take exactly 1 yoctoNEAR and need the owner's full-access key | [`contracts/vault/src`](contracts/vault/src) |
+| **NEP-141 fungible tokens** | The vault pays a NEAR payee in USDC with `ft_transfer` | [`contracts/vault`](contracts/vault) |
+| **NEAR Intents** | A Base or Solana payee is paid with `ft_withdraw` on `intents.near` and the memo `WITHDRAW_TO:<address>`, which the vault builds from the mandate. The POA bridge then releases the USDC on the other chain. On mainnet, the console's top-up asks the 1Click API for a quote into the vault's Intents balance | [`contracts/vault`](contracts/vault), [`apps/web/src/app/api/topup`](apps/web/src/app/api/topup) |
+| **Global contracts** | The factory creates keyless vaults. It can deploy them from code stored once on chain and referenced by hash (`use_global_contract`), or from an embedded copy, and it keeps a version registry. The testnet factory serves the embedded copy today, and the global version is not deployed yet | [`contracts/factory`](contracts/factory) |
+| **NEAR AI Cloud** | A private model in a TEE proposes pay, hold or refuse through `@nearai/inference-sdk`. A nonce binds its attestation report to one ledger position, and the provider's TEE key signs its answer. The model only advises: the code and the contract decide | [`packages/sdk/src/nearai.ts`](packages/sdk/src/nearai.ts), [`packages/core`](packages/core) |
+| **near-api-js 7** | The SDK reads vaults and sends the agent's transactions over RPC with failover. The console verifies wallet sign-in as a NEP-413 signed message | [`packages/sdk`](packages/sdk), [`apps/web/src/lib/auth/verify.ts`](apps/web/src/lib/auth/verify.ts) |
+| **NEAR Connect** (`@hot-labs/near-connect`) | Wallet sign-in on the console. The user also signs every owner and approver transaction there, in their own wallet | [`apps/web/src/components/wallet`](apps/web/src/components/wallet), [`apps/web/src/lib/near/send.ts`](apps/web/src/lib/near/send.ts) |
+| **near-cli-rs** | The CLI prints each owner and approver transaction as a near-cli-rs command for the owner to review and sign. The CLI signs nothing | [`packages/cli`](packages/cli) |
 
 ## How a payment works
 
@@ -399,6 +428,7 @@ mainnet claim.
 | [`packages/sdk`](packages/sdk) | `@probarion/sdk`: the RPC client, the vault, intents and factory clients, the NEAR AI Cloud adapter, the ledger stores, the `Probarion` class, `snapshot()` and `verify()`, and test doubles |
 | [`packages/cli`](packages/cli) | `probarion`: owner and approver transaction printers and key generation |
 | [`apps/web`](apps/web) | The web console (Next.js 16, Supabase with row-level security), in progress |
+| [`apps/web/content/docs`](apps/web/content/docs) | The Docs Center's pages, one MDX file each, with the [authoring guide](apps/web/content/docs/README.md). The registry that lists them is in [`apps/web/src/lib/docs/pages`](apps/web/src/lib/docs/pages) |
 | [`scripts`](scripts) | Contract builds, the reproducible build and code-hash record, testnet deploy and smoke, the proof file and the release check |
 | [`docs/specs`](docs/specs) | The design spec and the shared interfaces |
 | [`docs/runbooks`](docs/runbooks), [`docs/ops`](docs/ops) | Deploy runbooks (testnet, factory, mainnet v0, the web console), the key rotation procedure, the guide to the usage numbers, the watcher's runbook and the alerts runbook |
@@ -445,6 +475,7 @@ stores.
 
 | | |
 | --- | --- |
+| **Docs Center** | [Docs home](https://probarion.xyz/docs) · [Evaluate in 5 minutes](https://probarion.xyz/docs/start/evaluate-in-5-minutes) · [Owner quickstart](https://probarion.xyz/docs/start/owner-quickstart) · [Developer quickstart](https://probarion.xyz/docs/start/developer-quickstart) · [Errors](https://probarion.xyz/docs/build/errors) · [For AI agents](https://probarion.xyz/docs/resources/for-ai-agents) · [llms.txt](https://probarion.xyz/llms.txt) |
 | **Design** | [Design spec](docs/specs/2026-10-21-probarion-design.md) · [Interfaces: ABI, ledger, attestation checks, verifier](docs/specs/2026-10-21-probarion-interfaces.md) · [Security policy](SECURITY.md) · [Threat model](docs/THREAT_MODEL.md) |
 | **Packages** | [`@probarion/core`](packages/core/README.md) · [`@probarion/sdk`](packages/sdk/README.md) · [`probarion` CLI](packages/cli/README.md) · [`intents-stub`](contracts/intents-stub/README.md) |
 | **Operations** | [Testnet runbook](docs/runbooks/testnet.md) · [Factory runbook](docs/runbooks/factory.md) · [Mainnet v0 runbook](docs/runbooks/mainnet-v0.md) · [Web deploy runbook](docs/runbooks/web-deploy.md) · [Key rotation](docs/ops/key-rotation.md) · [Usage numbers](docs/ops/metrics.md) · [Watcher](docs/ops/watcher.md) · [Alerts](docs/ops/alerts.md) · [Incident runbook](docs/RUNBOOK.md) · [Monitoring](docs/ops/MONITORING.md) |
@@ -461,12 +492,18 @@ pnpm verify        # Rust unit and property tests, then lint, build, typecheck, 
 pnpm verify:ts     # the TypeScript part only, no Rust needed
 ```
 
-As of 2026-11-03, `pnpm verify` runs 301 Rust tests (227 vault unit tests, 2 error-coverage
-tests, 2 property tests that take about two minutes, 53 factory, 12 intents-stub and 5 test-ft tests)
-and 3,878 TypeScript tests: 270 Node script tests, 806 in `@probarion/core`, 767 in `@probarion/sdk`,
-230 in the CLI, 1,641 in the web console and 164 launch checks. Skipped in that run: the two tests of
-a recorded real NEAR AI Cloud decision, which wait for that recording, and, on Windows, one
-file-permission test.
+As of 2026-11-03, `pnpm verify` ran 301 Rust tests: 227 vault unit tests, 2 error-coverage tests,
+2 property tests that take about two minutes, and 53 factory, 12 intents-stub and 5 test-ft tests.
+As of 2026-11-09 it runs 10,583 TypeScript tests: 290 Node script tests, 806 in `@probarion/core`,
+782 in `@probarion/sdk`, 341 in the CLI, 8,165 in the web console and 199 launch checks. Skipped on
+the Windows run of that day:
+- in the SDK, the two tests of a recorded real NEAR AI Cloud decision, which wait for that
+  recording;
+- in the CLI, 15 tests: one file-permission test, and the tests that parse the printed commands
+  with near-cli-rs, which need `near` on PATH.
+
+The Playwright specs in [`apps/web/e2e`](apps/web/e2e), 40 tests, run locally against a build with
+test settings: `pnpm build`, then `pnpm --filter @probarion/web test:e2e`.
 
 Some checks need Linux or Docker, so they run in [CI](.github/workflows/ci.yml) (GitHub Actions,
 ubuntu) on every pull request into `dev` or `main`, every push to those two branches and every `v*` tag:

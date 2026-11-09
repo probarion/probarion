@@ -14,6 +14,26 @@ The software is an unaudited beta.
 
 ### Added
 
+- The Docs Center at `/docs`: 23 pages in five sections (Start here, Concepts, Build, Verify &
+  trust, Resources), with a home of four doors (new here, owner, developer, evaluator). Each page
+  was written from the code and checked against it by separate reviewers. Each page says what is
+  Live, Preview or Planned. Its source box shows the commit the page was built from, the date it
+  was reviewed and the files it was checked against.
+  - The reference tables are generated from their sources, and tests pin them, so a table that
+    drifts fails the build: the vault's 14 checks in their order, every `PROBARION:` code with the
+    call that raises it and what to do next, the SDK and HTTP errors, the verifier's checks a to i,
+    and the status list.
+  - Every owner and approver command carries a callout naming who signs it. A test checks every
+    CLI line in the pages against the CLI's own commands.
+  - Search opens with Ctrl K or ⌘K, from the docs bar or from the home's search box. It loads a
+    static index of every page's full text on first open and finds pages, error codes and CLI
+    commands. An exact error code goes to its row in the catalog. Without JavaScript, the search
+    links go to the home's list of popular searches.
+  - Every page has a Markdown twin at `/docs/<page>.md` and a "Copy page" button. `/llms.txt` lists
+    the pages, and `/llms-full.txt` holds them all, for AI agents.
+  - A Playwright spec checks the home's fold at 1440×900, the keyboard path through search, the
+    table of contents, the phone drawer, sideways overflow, the twins' headers, the 404s, the docs
+    without JavaScript and a blocked clipboard.
 - A new vault's overview shows its owner "Your first agent payment": the five steps from a new
   vault to a payment its agent makes inside a mandate. They are the vault, an agent key and a
   ledger key that the console holds active (as Payables needs), USDC in the vault (on NEAR, or as
@@ -313,6 +333,10 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The site header has "Docs" right after the Canary, and Usage moves to the footer's Product
+  column. The landing page's closing button "Evaluate in 5 minutes" opens the docs page of that
+  name in the same tab, not the README section. The sitemap lists every docs page with the date it
+  was reviewed.
 - A spend that waits for approval now comes first on the vault's overview, right under the tabs.
   A hold that ran out does not count, since the vault refuses approve then. The "Approval needed"
   alert, by Telegram and email, links straight to the card (`/console/<vault>#held`); before, it
