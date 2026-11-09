@@ -45,6 +45,7 @@ import {
   publicRoutes,
   RECORDED_RESULT,
   RULES_SHOWN,
+  SAMPLE_SNAPSHOT,
   SDK_SNIPPET,
   SITE_DESCRIPTION,
   SPEND_REQUEST_FIELDS,
@@ -52,6 +53,8 @@ import {
   TAMPER_COPY,
   TX,
   VERIFIER_OUTPUT,
+  VERIFY_LINES,
+  VERIFY_NOTE,
 } from "@/lib/site/facts";
 import recordedJson from "@/lib/site/live-check-recorded.json";
 import { TERMS_PAGE } from "@/lib/site/ops-copy";
@@ -367,7 +370,7 @@ describe("the claims about the code", () => {
     expect(out).toContain(VERIFIER_OUTPUT.result);
     expect(out).toContain(CONTRACT_REFUSAL_CODE);
     expect(out).toContain(cli("verify --offline"));
-    expect(out).toContain(FIXTURE_PATH);
+    for (const line of VERIFY_LINES) expect(out).toContain(line);
   });
 
   it("links only to files and headings that exist in the repository", () => {
@@ -628,7 +631,8 @@ describe("the payment journey", () => {
   it("says the testnet vault has no ledger key or anchors yet, as the README does", () => {
     expect(prose).toContain("this vault has no ledger key and no anchors yet");
     expect(step(5).tag).toContain("The testnet vault has no ledger key or anchors yet");
-    expect(step(5).tag).toContain("runs on a test fixture");
+    // With npx the tag says "these commands run", from a clone "this command runs".
+    expect(step(5).tag).toContain("on a test fixture");
     expect(step(5).body).toContain("With a ledger key, the SDK anchors the ledger root");
   });
 
@@ -638,19 +642,31 @@ describe("the payment journey", () => {
     expect(step(3).tag).toContain("smoke run sent spends without a ledger");
   });
 
-  it("shows the verifier's command on one line, as the README has it, with a prompt that does not copy", () => {
-    const command = cli(`verify --offline ${FIXTURE_PATH}`);
-    expect(README).toContain(command);
-    expect(step(5).panel).toContainEqual({ command });
+  it("shows the verifier's commands one per line, on the README's fixture, with a prompt that does not copy", () => {
+    // The README runs the verifier on the fixture in a clone. With npx the landing runs it on the site's copy of that
+    // file (byte for byte, test/site-tamper.test.ts), downloaded into an empty folder.
+    expect(README).toContain(cli(`verify --offline ${FIXTURE_PATH}`));
     // The site shows the npm form exactly when CLI_ON_NPM is set.
     const onNpm = cli("verify") === cli("verify", true);
+    expect(VERIFY_LINES).toEqual(
+      onNpm
+        ? [`curl -O ${SAMPLE_SNAPSHOT.url}`, cli(`verify --offline ${SAMPLE_SNAPSHOT.file}`)]
+        : [cli(`verify --offline ${FIXTURE_PATH}`)],
+    );
+    const commands = step(5).panel.flatMap((line) => ("command" in line ? [line.command] : []));
+    expect(commands).toEqual(VERIFY_LINES);
+    // One command per line, so Windows PowerShell 5.1 (no `&&`) runs each as written.
+    for (const command of commands) expect(command).not.toMatch(/&&|;|\|/);
     expect(step(5).tag).toContain(
       onNpm
-        ? "The fixture is a file in the repository: run it at the root of a clone."
+        ? "this site serves an exact copy of the file in the repository."
         : "Build it from a clone first (README step 1).",
     );
+    // PowerShell 5.1 reads `curl` as Invoke-WebRequest, so the panel says to type curl.exe there.
+    if (onNpm) expect(step(5).panel[0]).toEqual({ note: VERIFY_NOTE });
+    expect(VERIFY_NOTE).toContain("type curl.exe for curl");
     const html = renderToStaticMarkup(createElement(Home));
-    expect(html).toContain(`>$ </span>${command}`);
+    for (const command of commands) expect(html).toContain(`>$ </span>${command}`);
     const css = text(WEB, "src", "components", "site", "site.module.css");
     expect(css).toMatch(/\.prompt {[^}]*user-select: none/);
   });
