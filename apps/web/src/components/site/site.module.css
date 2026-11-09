@@ -1034,6 +1034,58 @@ a.netPill:hover {
   color: var(--color-bad);
 }
 
+/* The console: real testnet screenshots, three across. On a phone the row scrolls sideways, one shot at a time. */
+.shots {
+  padding-bottom: 0;
+}
+/* Positioned, so that a link's absolutely positioned screen-reader text stays inside the row when it scrolls. */
+.shotRow {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  min-width: 0;
+}
+.shot {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.shotImage {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+.shotImage img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.shot h3 {
+  font-weight: 500;
+  font-size: 17px;
+}
+.shot p {
+  margin-top: 4px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.shot .shotMeta {
+  font-size: 13px;
+  color: var(--color-mute);
+}
+.shotMeta a {
+  white-space: nowrap;
+}
+.shotProof {
+  margin-top: 22px;
+  font-size: 15px;
+  color: var(--color-mute);
+}
+
 /* Ink band */
 .band {
   background: var(--color-band);
@@ -1642,6 +1694,17 @@ a.netPill:hover {
   }
   .storyGrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .shotRow {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 86%;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 8px;
+  }
+  .shot {
+    scroll-snap-align: start;
   }
   .betaWide {
     display: none;

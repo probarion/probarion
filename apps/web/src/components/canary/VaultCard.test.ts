@@ -26,6 +26,7 @@ const summary = (over: Partial<VaultSummary> = {}): VaultSummary => ({
     maxPerPayment: "1",
     holdsEverySpend: true,
   },
+  frozen: false,
   ...over,
 });
 
@@ -108,7 +109,9 @@ describe("the vault card", () => {
   });
 
   it("says it could not read the chain, and shows no zero, when a read failed", () => {
-    const text = visible(render({ balance: null, base: null, mandate: { kind: "unreadable" } }));
+    const text = visible(
+      render({ balance: null, base: null, mandate: { kind: "unreadable" }, frozen: false }),
+    );
     expect(text.match(/Could not read the chain right now/g)).toHaveLength(2);
     expect(text).not.toContain(" 0 ");
     expect(text).not.toContain("USDC");
@@ -122,5 +125,12 @@ describe("the vault card", () => {
 
   it("shows a zero balance that was read as zero", () => {
     expect(visible(render(summary({ balance: "0" })))).toContain("0 test USDC");
+  });
+
+  it("says the owner froze the vault, and only when it is frozen", () => {
+    const FROZEN =
+      "Frozen by its owner: the vault refuses every spend and every approval until the owner unfreezes it.";
+    expect(visible(render(summary({ frozen: true })))).toContain(FROZEN);
+    expect(visible(render(summary()))).not.toContain("Frozen");
   });
 });

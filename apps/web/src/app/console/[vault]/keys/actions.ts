@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { VAULT_DEFAULTS } from "@/lib/config";
+import { keyAllowances } from "@/lib/config";
 import { isDenied, memberForAction } from "@/lib/console/action-auth";
 import { rpcChainReads } from "@/lib/console/vaults";
 import { masterKey } from "@/lib/crypto/server";
@@ -61,9 +61,10 @@ export async function generateKeyAction(
     return { error: "The key could not be created. Try again." };
   }
   revalidatePath(`/console/${member.vault_id}/keys`);
+  const allowance = keyAllowances(member.kind);
   return purpose === "agent"
-    ? addAgentTx(member.vault_id, publicKey, VAULT_DEFAULTS.agentAllowanceYocto, clean.value)
-    : setLedgerKeyTx(member.vault_id, publicKey, VAULT_DEFAULTS.ledgerAllowanceYocto);
+    ? addAgentTx(member.vault_id, publicKey, allowance.agentAllowanceYocto, clean.value)
+    : setLedgerKeyTx(member.vault_id, publicKey, allowance.ledgerAllowanceYocto);
 }
 
 /**

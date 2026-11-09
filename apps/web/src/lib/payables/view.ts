@@ -4,6 +4,7 @@ import {
   type MandateView,
   type ModelProposal,
   type RuleResult,
+  type SpendView,
 } from "@probarion/core";
 import type { SpendOutcome } from "@probarion/sdk";
 import type { Tone } from "@/components/ui";
@@ -16,7 +17,8 @@ import { payeeId } from "./payee";
 import type { InvoiceRow, InvoiceStatus } from "./store";
 
 // How the console shows one Payables cycle (plan 04 Task 14): what the model wanted, what the code allowed, what the
-// contract did. Pure: it reads the signed ledger, the SDK outcome and the invoice row, and nothing else.
+// contract did. Pure: it reads the signed ledger, the SDK outcome, the invoice row and, for a spend the contract held,
+// the vault's spends as the page read them from the chain, and nothing else.
 //
 // Every string that came from the invoice text (the model's reasoning, its payee hint, rule details that quote the
 // invoice, file names) is attacker-influenced, and the ledger can hold any custom rule id, so each one passes through
@@ -52,11 +54,15 @@ export interface CycleView {
     firstBlocking: ShownRule | null;
   };
   contractDid: {
+    /** The cycle's own outcome. `label` and `tone` may say more: what the chain shows now for a spend it held. */
     status: SpendOutcome["status"];
     code: string | null;
     spendId: number | null;
     txUrl: string | null;
     label: string;
+    tone: Tone;
+    /** Set for a spend the contract held: that the label is the chain's now, or why it is the cycle's own. */
+    note: string | null;
   };
   attestation: {
     state: AttestationState;
@@ -101,6 +107,81 @@ export function outcomeLabel(
   }
 }
 
+/** The badge of an SDK outcome in the Contract did column: paid is good, held or unconfirmed waits, the rest is bad. */
+const outcomeTone = (s: SpendOutcome["status"]): Tone =>
+  s === "paid" || s === "settled" || s === "burned"
+    ? "good"
+    : s === "held" || s === "unconfirmed"
+      ? "warn"
+      : "bad";
+
+/**
+ * The vault's spends by id, as a page read them from the chain (list_spends), or "unread" when the read failed. The
+ * stored outcome of a cycle the contract held says "held" for good; only the chain knows whether an approver has since
+ * approved or rejected the spend, or its hold expired.
+ */
+export type SpendsNow = ReadonlyMap<number, SpendView> | "unread";
+
+/** What a held spend came to after its cycle, from its status on chain now, or null while it is still held. */
+export function heldSpendResult(status: string): { label: string; tone: Tone } | null {
+  switch (status) {
+    case "held":
+      return null;
+    case "pending":
+      return { label: "Approved, payout in progress: do not resend", tone: "warn" };
+    case "paid":
+      return { label: "Approved and paid on NEAR", tone: "good" };
+    case "burned":
+      return {
+        label: "Approved and withdrawn from NEAR to Base or Solana (release pending)",
+        tone: "good",
+      };
+    case "failed":
+      return {
+        label: "Approved, but the payout failed; the reservation was released",
+        tone: "bad",
+      };
+    case "rejected":
+      return { label: "Rejected by an approver: nothing was paid", tone: "neutral" };
+    case "expired":
+      return { label: "Hold expired: nothing was paid", tone: "neutral" };
+    default:
+      return {
+        label: `Unknown spend status (${safeText(status, 40)}): check the vault before you act`,
+        tone: "warn",
+      };
+  }
+}
+
+/** A decided row whose cycle the contract held with a spend id: the one kind of row whose result can move on chain. */
+const heldOnChain = (row: Pick<InvoiceRow, "status" | "outcome">): boolean =>
+  row.status === "decided" && row.outcome?.status === "held" && row.outcome.spendId !== null;
+
+/** Whether a page must read the vault's spends to show these rows: only when one of them the contract held. */
+export const needsSpendsNow = (rows: readonly Pick<InvoiceRow, "status" | "outcome">[]): boolean =>
+  rows.some(heldOnChain);
+
+/**
+ * The spend a held outcome names, as the chain shows it now: the spend with its id whose decision_hash is the
+ * outcome's, so that a spend of another decision is never read as this one. Null for any other outcome, when the
+ * spends were not read, or when the chain has no such spend.
+ */
+export function heldSpendNow(
+  outcome: SpendOutcome | null | undefined,
+  spends: SpendsNow | undefined,
+): SpendView | null {
+  if (outcome?.status !== "held" || outcome.spendId === null) return null;
+  if (spends === undefined || spends === "unread") return null;
+  const s = spends.get(outcome.spendId);
+  return s !== undefined && s.decision_hash === outcome.decisionHash ? s : null;
+}
+
+/** The Payables banner while invoices wait for the owner: "1 invoice waits", "2 invoices wait". */
+export function waitingNotice(count: number, owner: boolean): string {
+  const who = owner ? "you" : "the owner";
+  return `${count} invoice${count === 1 ? " waits" : "s wait"} for ${who} to confirm or reject the amount.`;
+}
+
 /** What an invoice row's status means. `owner` false words a waiting invoice for an approver or viewer. */
 export function invoiceStatusLabel(status: InvoiceStatus, owner = true): string {
   switch (status) {
@@ -131,9 +212,19 @@ export function invoiceStatusLabel(status: InvoiceStatus, owner = true): string 
 export const shownOutcome = (row: Pick<InvoiceRow, "status" | "outcome">): InvoiceRow["outcome"] =>
   row.status === "processing" ? null : row.outcome;
 
-/** What an invoice row came to, in words, with the tone of its badge: the SDK outcome once decided, else the status. */
-export function rowResult(row: InvoiceRow, owner = true): { label: string; tone: Tone } {
+/**
+ * What an invoice row came to, in words, with the tone of its badge: the SDK outcome once decided, else the status. A
+ * spend the contract held reads as the chain shows it now when `spends` holds it, else as its cycle recorded it.
+ */
+export function rowResult(
+  row: InvoiceRow,
+  owner = true,
+  spends?: SpendsNow,
+): { label: string; tone: Tone } {
   if (row.status === "decided" && row.outcome) {
+    const now = heldSpendNow(row.outcome, spends);
+    const moved = now ? heldSpendResult(now.status) : null;
+    if (moved) return moved;
     const s = row.outcome.status;
     return {
       label: outcomeLabel(s, row.outcome.code, row.outcome.spendId),
@@ -260,14 +351,53 @@ export function decisionOf(
 }
 
 /**
+ * What the Contract did column shows. For a spend the contract held, the chain's status now once it moved on, and a
+ * note that says which of the two the badge shows.
+ */
+function contractResult(
+  outcome: SpendOutcome,
+  spends: SpendsNow | undefined,
+): { label: string; tone: Tone; note: string | null } {
+  const recorded = {
+    label: outcomeLabel(outcome.status, outcome.code, outcome.spendId),
+    tone: outcomeTone(outcome.status),
+  };
+  if (outcome.status !== "held" || outcome.spendId === null || spends === undefined) {
+    return { ...recorded, note: null };
+  }
+  if (spends === "unread") {
+    return {
+      ...recorded,
+      note: "The vault's spends could not be read from the chain, so this is the status the cycle recorded. Reload to read them again.",
+    };
+  }
+  const now = heldSpendNow(outcome, spends);
+  if (now === null) {
+    return {
+      ...recorded,
+      note: `The chain shows no spend #${outcome.spendId} for this decision, so this is the status the cycle recorded: check the vault's spends before you act.`,
+    };
+  }
+  const moved = heldSpendResult(now.status);
+  return moved
+    ? {
+        ...moved,
+        note: `The vault held spend #${outcome.spendId} for an approver. Its status above is the chain's now.`,
+      }
+    : { ...recorded, note: null };
+}
+
+/**
  * The three columns of one cycle. `anchorTxHash` is the invoice row's `anchor_tx_hash` (R20): no ledger entry holds
- * the hash of the transaction that anchors it, so a ledger `anchor` entry is never read here.
+ * the hash of the transaction that anchors it, so a ledger `anchor` entry is never read here. `spends` is the vault's
+ * spends as the page read them, for an outcome the contract held; undefined when the page did not read them.
  */
 export function buildCycleView(
   entries: readonly LedgerEntry[],
   outcome: SpendOutcome,
   network: Network,
   anchorTxHash: string | null = null,
+  spends?: SpendsNow,
 ): CycleView {
   const decision = decisionOf(entries, outcome);
   const body = decision?.body ?? null;
@@ -302,7 +432,7 @@ export function buildCycleView(
       code: nullableText(outcome.code),
       spendId: outcome.spendId,
       txUrl: txUrl(network, outcome.txHash),
-      label: outcomeLabel(outcome.status, outcome.code, outcome.spendId),
+      ...contractResult(outcome, spends),
     },
     attestation: {
       state,

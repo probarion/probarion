@@ -1,4 +1,5 @@
 import { Compare } from "@/components/site/Compare";
+import { ConsoleShots } from "@/components/site/ConsoleShots";
 import { Hero, Problem } from "@/components/site/Hero";
 import { InkBand } from "@/components/site/InkBand";
 import { Integrate } from "@/components/site/Integrate";
@@ -18,6 +19,7 @@ export default function Home() {
       <Journey />
       <Integrate />
       <InkBand />
+      <ConsoleShots />
       <LedgerTest />
       <ChainList />
       <StatusList />
