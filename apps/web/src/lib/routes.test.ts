@@ -19,6 +19,17 @@ describe("route registry", () => {
     expect(new Set(FOOTER_NAV.map((i) => i.route)).size).toBe(FOOTER_NAV.length);
     expect(new Set(VAULT_TABS.map((t) => t.path)).size).toBe(VAULT_TABS.length);
   });
+
+  it("orders a vault's tabs the way a first payment needs them: keys before mandates, money before invoices (audit P1-8)", () => {
+    expect(VAULT_TABS.map((t) => t.label)).toEqual([
+      "Overview",
+      "Keys",
+      "Mandates",
+      "Top-up",
+      "Payables",
+      "Alerts",
+    ]);
+  });
 });
 
 describe("the Usage page", () => {

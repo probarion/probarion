@@ -379,9 +379,9 @@ export const VERIFIER_OUTPUT = {
 export const CONTRACT_REFUSAL_CODE = "OverPerPayment";
 
 export const JOURNEY = {
-  title: "What happens to one payment",
+  title: "What happens to one invoice",
   intro:
-    "Three parties look at it in turn. The model may advise. Code decides. The contract has the last word.",
+    "The owner signs the rules once. When an invoice arrives, your agent asks to pay it. It never holds the money or types an address. The model may advise, code decides, and the contract has the last word.",
   steps: [
     {
       n: 1,
@@ -425,7 +425,7 @@ export const JOURNEY = {
     {
       n: 4,
       title: "The contract decides last",
-      body: "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for a person.",
+      body: "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for an approver's own wallet. The agent's key cannot approve anything, not even its own payment.",
       tryIt: "Try it yourself above.",
       panelLabel: "check_spend results on the testnet vault",
       panel: [
@@ -465,7 +465,7 @@ export const SPEND_REQUEST_FIELDS = [
 
 export const BAND = {
   title: "The agent cannot name a payee.",
-  body: "A hijacked prompt can ask for anything. `spend` has no field to put an address in. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
+  body: "A forged invoice or a hijacked prompt can ask to pay anyone. `spend` has no field to put an address in, so the money can only go to a payee you signed. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
   structName: "SpendRequest",
   gone: "recipient",
   goneNote: "does not exist",

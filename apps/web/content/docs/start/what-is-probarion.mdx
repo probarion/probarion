@@ -37,7 +37,7 @@ The 9 checks belong to the verifier, which reads the record afterwards. They are
 
 <Callout kind="key" title="The agent cannot name a payee.">
 
-A hijacked prompt can ask for anything. `spend` has no field to put an address in. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate. [Why spend has no payee](/docs/concepts/why-spend-has-no-payee) explains the design.
+A forged invoice or a hijacked prompt can ask to pay anyone. `spend` has no field to put an address in, so the money can only go to a payee you signed. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate. [Why spend has no payee](/docs/concepts/why-spend-has-no-payee) explains the design.
 
 </Callout>
 

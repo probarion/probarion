@@ -24,4 +24,6 @@ export const NEXT_STEP = {
   canary: { text: "Put limits like these on your own agent", route: CONSOLE_ROUTE },
   /** At the foot of a proof page whose checks ran, public or for members only. */
   proof: { text: "Put your agent behind a mandate", route: CONSOLE_ROUTE },
+  /** At the end of the landing page, after the evaluation and the spec, which both leave the product. */
+  closing: { text: "Put your agent behind a mandate", route: CONSOLE_ROUTE },
 } as const satisfies Record<string, NextStepCopy>;
