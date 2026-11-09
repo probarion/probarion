@@ -414,6 +414,22 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     next: "Sign in with an account that has the needed role on this vault.",
   },
   {
+    status: 403,
+    code: "not_member",
+    where: "Extension API (queue an invoice)",
+    meaning:
+      "The token's account is not an owner or an approver of this vault (a vault that does not exist gets the same answer), or the vault is a Canary vault, which takes no invoices from the extension; nothing was stored.",
+    next: "Choose a vault where the connected account is an owner or an approver, and not a Canary vault.",
+  },
+  {
+    status: 404,
+    code: "mandate_not_found",
+    where: "Extension API (queue an invoice)",
+    meaning:
+      "The vault's mandates, as the chain lists them now, have no mandate with this id; nothing was stored.",
+    next: "Choose a mandate that the extension lists for this vault.",
+  },
+  {
     status: 404,
     code: "not_found",
     where: "Proof files (snapshot.json, ledger.jsonl), Top-up API (faucet)",
@@ -460,8 +476,9 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 409,
     code: "no_keys",
-    where: "Console invoices API",
-    meaning: "The vault has no active agent key, or no active ledger key, in this console.",
+    where: "Console invoices API, Extension API (queue an invoice)",
+    meaning:
+      "The vault has no active agent key, or no active ledger key, in this console; for the extension, the agent key must be the one the chosen mandate names.",
     next: "Activate the missing key on the Keys tab (the owner signs).",
   },
   {
@@ -483,7 +500,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 409,
     code: "wrong_network",
-    where: "Console invoices API, Top-up API",
+    where: "Console invoices API, Extension API (queue an invoice), Top-up API",
     meaning: "The vault is on the other network than the address the request came in at.",
     next: "Open the vault at its own network's address.",
   },
@@ -498,7 +515,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 411,
     code: "length_required",
-    where: "Console invoices API",
+    where: "Console invoices API, Extension API (queue an invoice)",
     meaning: "The upload has no valid Content-Length header.",
     next: "Send the upload with a Content-Length header, as a browser form does.",
   },
@@ -512,17 +529,57 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 413,
     code: "too_large",
-    where: "Console invoices API",
+    where: "Console invoices API, Extension API (queue an invoice)",
     meaning:
-      "The upload is too large: over 4 MiB for the invoice or the purpose document, or over 4 MiB plus 64 KiB for the whole request.",
-    next: "Upload a smaller file, or paste the invoice text instead.",
+      "The upload is too large: the invoice or the purpose document is over 4 MiB, or the whole request is over 4 MiB plus 64 KiB (4 MiB plus 16 KiB for the extension, which sends no purpose document).",
+    next: "Send a smaller file, or paste the invoice text in the console instead.",
   },
   {
     status: 415,
     code: "unsupported",
-    where: "Console invoices API",
+    where: "Console invoices API, Extension API (queue an invoice)",
     meaning: "The invoice file is not a PDF or a plain text file.",
-    next: "Upload the invoice as a PDF or a plain text (`.txt`) file, or paste its text.",
+    next: "Send the invoice as a PDF or a plain text (`.txt`) file, or paste its text in the console instead.",
+  },
+  {
+    status: 422,
+    code: "amount_unclear",
+    where: "Extension API (queue an invoice)",
+    meaning:
+      "The code could not read one clear USDC total from the invoice: the text has no total it can read, has totals that disagree, shows a zero total or another currency, is cut short, or is not a payable invoice; nothing was stored.",
+    next: "Upload the invoice in the console instead, or send an invoice that states one clear total.",
+  },
+  {
+    status: 422,
+    code: "empty",
+    where: "Extension API (queue an invoice)",
+    meaning:
+      "There is no text in the file (a scanned PDF has no text layer, or the text file is blank); nothing was stored.",
+    next: "Upload the invoice in the console instead, where you can paste its text.",
+  },
+  {
+    status: 422,
+    code: "mandate_inactive",
+    where: "Extension API (queue an invoice)",
+    meaning:
+      "The chosen mandate cannot take an invoice now: it is revoked or expired, has no uses or no total left, has a status, expiry, use count or total the code cannot read, or has a payee the owner's confirmation message cannot name; the `detail` names the mandate and the reason, and nothing was stored.",
+    next: "Choose another mandate of this vault, or create a new one for this payee (the owner signs).",
+  },
+  {
+    status: 422,
+    code: "refused_by_code",
+    where: "Extension API (queue an invoice)",
+    meaning:
+      "The code refused the invoice, and the body adds `rule`: `mandate.payee_mismatch` when the payee the invoice names contradicts the mandate's payee, or `contract.check_spend` when the vault's free `check_spend` view says the vault would refuse this payment now (the `detail` names the contract's code, for example `DuplicateInvoice`); nothing was stored.",
+    next: "Choose the mandate that pays the payee on the invoice, or look up the contract code in `detail` in the vault error codes and fix what it names.",
+  },
+  {
+    status: 422,
+    code: "unreadable",
+    where: "Extension API (queue an invoice)",
+    meaning:
+      "The invoice file could not be read: it is sent as a PDF but is not one, the PDF could not be read or took too long, or the text file is not UTF-8; the `detail` says which, and nothing was stored.",
+    next: "Send a readable PDF or a UTF-8 text file, or upload the invoice in the console instead.",
   },
   {
     status: 429,
@@ -588,7 +645,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 503,
     code: "chain_unavailable",
-    where: "Console invoices API, Top-up API (quote)",
+    where: "Console invoices API, Extension API (queue an invoice), Top-up API (quote)",
     meaning: "The vault could not be read from NEAR, so nothing was stored or sent.",
     next: "Try again when the NEAR RPC answers.",
   },

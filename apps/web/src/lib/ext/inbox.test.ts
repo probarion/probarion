@@ -82,6 +82,7 @@ const awaiting = (id: string, over: Record<string, unknown> = {}) => ({
   suggested_amount: "20000000",
   mandate_id: 1,
   created_at: "2026-11-08T10:00:00Z",
+  source: "console",
   ...over,
 });
 
@@ -130,6 +131,7 @@ describe("the extension's inbox", () => {
         payee: expect.stringContaining("vendor.testnet"),
         created_at: "2026-11-08T10:00:00Z",
         url: `${ORIGIN}/console/acme.vaults.probarion.testnet/payables/i1`,
+        source: "console",
       },
     ]);
     expect(b?.awaiting).toEqual([]);
@@ -191,5 +193,24 @@ describe("the extension's inbox", () => {
     expect(inbox.vaults[0]).toMatchObject({ chain: "unavailable", held: [], mandates: [] });
     expect(inbox.vaults[0]?.awaiting).toHaveLength(1);
     expect(inbox.vaults[0]?.awaiting[0]?.payee).toBeNull();
+  });
+
+  it("says where each waiting invoice came from", async () => {
+    const owner = tenant({});
+    const db = fakeDb([owner], {
+      [owner.tenant_id]: [awaiting("i1"), awaiting("i2", { source: "extension" })],
+    });
+    const inbox = await loadInbox(
+      { db, chain: chainOf([mandate()], []), origin: ORIGIN, now: NOW },
+      { account: "owner.testnet", network: "testnet" },
+    );
+    const shown = inbox.vaults[0]?.awaiting ?? [];
+    expect(shown).toHaveLength(2);
+    expect(shown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "i1", source: "console" }),
+        expect.objectContaining({ id: "i2", source: "extension" }),
+      ]),
+    );
   });
 });
