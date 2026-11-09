@@ -22,9 +22,11 @@ build also trusts localhost, so do not upload it.
 It needs a vault and a mandate on NEAR testnet; the console's first-run checklist makes both, with test USDC that
 has no value.
 
-1. Click the Probarion icon, then **Connect**. Sign in on the page that opens with a NEAR testnet wallet, and press
-   **Connect extension**. The page says "Connected. You can close this tab."
-2. Open https://probarion.xyz/samples/probarion-sample-invoice.txt, select its text, right-click, and choose
+1. Click the Probarion icon, set **Probarion address** to `probarion.vercel.app`, then press **Connect**. Sign in on
+   the page that opens with a NEAR testnet wallet, and press **Connect extension**. The page says "Connected. You
+   can close this tab." (These steps use `probarion.vercel.app` because it serves NEAR testnet. `probarion.xyz` is
+   the main address and will serve NEAR mainnet once mainnet opens.)
+2. Open https://probarion.vercel.app/samples/probarion-sample-invoice.txt, select its text, right-click, and choose
    **Send selection as invoice text**. The popup opens with the text.
 3. Choose the vault and the mandate and press **Send to Probarion**. You see "Queued. It waits for your
    confirmation." (A second send of the same text says it is already queued.)

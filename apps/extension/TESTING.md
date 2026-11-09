@@ -18,15 +18,17 @@ Run it before each store upload. Write the date, the Chrome version and each res
 
 ## Connect
 
-- [ ] Popup → choose `localhost:3000` → **Connect**. `/extension?nonce=…` opens. Sign in with the wallet → **Connect
+- [ ] Popup → **Probarion address** → `localhost:3000` → **Connect**. `/extension?nonce=…` opens. Sign in with the wallet → **Connect
       extension** → the page says "Connected. You can close this tab."
 - [ ] The popup shows the Testnet pill, your account, and "Waiting for you".
 - [ ] Open `/extension?nonce=AAAAAAAAAAAAAAAAAAAAAA` (a nonce you made up) and press **Connect extension**. The page
       says "The extension didn't take it", and the popup keeps its connection. Revoke that unused connection under
       Connected browsers.
-- [ ] **Disconnect.** On `/extension` press **Show a code instead**, type the code into the popup → **Use code**. It
-      connects. **Disconnect**, then type the same code again: "This code is wrong, used or expired. Show a new one
-      on the Browser extension page."
+- [ ] **Disconnect.** On `/extension` press **Show a code instead**. Then in the popup: **Probarion address** →
+      `localhost:3000`, type the code → **Use code**. (The popup starts on `probarion.xyz` each time it opens, and
+      the code exists only on your local database, so a code sent there is refused.) It connects. **Disconnect**,
+      then **Probarion address** → `localhost:3000` again and type the same code again: "This code is wrong, used or
+      expired. Show a new one on the Browser extension page."
 
 ## Capture (a release-style test: not localhost)
 

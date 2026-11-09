@@ -5,7 +5,11 @@ Claude prepared everything in this folder. Claude does not pay, upload or publis
 0. Before you upload: `dev` is promoted to `main` and deployed, you have run migration
    `20261108000015_extension_queue.sql` (the Session pooler one-liner), and
    `curl.exe -i -X POST https://probarion.xyz/api/ext/invoices` answers `401` with `bad_token` (a `404` means the
-   queue is not deployed yet). Until then a reviewer who connects cannot queue an invoice.
+   queue is not deployed yet). Until then a reviewer who connects cannot queue an invoice. Also check the network each
+   address serves: `curl.exe -s https://probarion.vercel.app/api/health` must show `"network":"testnet"`, because
+   `review-notes.md` sends the reviewer there with a testnet wallet. (`probarion.xyz` serves mainnet once mainnet
+   opens.) If `probarion.vercel.app` ever shows mainnet, change the address in `review-notes.md` to one that serves
+   testnet before you upload.
 1. Register a Chrome Web Store developer account at https://chrome.google.com/webstore/devconsole. It is a one-time
    US$5 fee, and the Google account needs 2-step verification.
 2. Build the zip from a clean checkout of `main`:
