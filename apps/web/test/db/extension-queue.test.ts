@@ -113,7 +113,7 @@ const URL_ = "https://testnet.probarion.test/api/ext/invoices";
 const FAR = "4102444800000000000";
 
 describe("an invoice queued from the browser extension", () => {
-  quietLogs();
+  const logs = quietLogs();
   let pg: PGlite;
   let server: FakeRpcServer;
   let member: MemberTenant;
@@ -444,6 +444,60 @@ describe("an invoice queued from the browser extension", () => {
     expect(limited.headers.get("retry-after")).toMatch(/^[0-9]+$/);
     expect(await limited.json()).toMatchObject({ error: "rate_limited" });
     expect((await rows()).length).toBe(before);
+  });
+
+  /**
+   * The route's answer when one read of the chain fails, and what it leaves behind: no row, no spend, and a warning
+   * (not the error Sentry alerts on). The node answers that read with HTTP 400, which the RPC client does not retry,
+   * so exactly one request fails. It returns the contract views the fake chain served.
+   */
+  async function whenNearFails(failAfter: "nothing" | "list_mandates") {
+    const before = await rows();
+    const spends = server.chain.spends.length;
+    const reads: string[] = [];
+    const view = server.chain.view.bind(server.chain);
+    const spy = vi.spyOn(server.chain, "view").mockImplementation((contract, method, args) => {
+      reads.push(method);
+      // The request after this one is the one that fails.
+      if (method === failAfter) server.failNext([400]);
+      return view(contract, method, args);
+    });
+    try {
+      if (failAfter === "nothing") server.failNext([400]);
+      const r = await send();
+      expect(r.status).toBe(503);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+      expect(await r.json()).toEqual({
+        error: "chain_unavailable",
+        detail: "NEAR could not be read. Nothing was queued. Try again.",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await rows()).toEqual(before);
+    expect(server.chain.spends).toHaveLength(spends);
+    const said = logs.lines.flatMap((l) => {
+      try {
+        return [JSON.parse(l) as { level?: unknown; msg?: unknown }];
+      } catch {
+        return [];
+      }
+    });
+    expect(said.filter((l) => l.msg === "payables.queue_chain_unavailable")).toEqual([
+      expect.objectContaining({ level: "warn" }),
+    ]);
+    expect(said.some((l) => l.msg === "ext.invoice_failed")).toBe(false);
+    return reads;
+  }
+
+  it("answers 503 chain_unavailable when the vault's mandates cannot be read, and stores nothing", async () => {
+    // The route's first read of the chain is list_mandates: it fails, so the fake chain serves no view.
+    expect(await whenNearFails("nothing")).toEqual([]);
+  });
+
+  it("answers 503 chain_unavailable when the contract's check_spend view cannot be read, and stores nothing", async () => {
+    // The mandates are read, the keys and the payee pass, then the free check_spend view fails.
+    expect(await whenNearFails("list_mandates")).toEqual(["list_mandates"]);
   });
 
   it("keeps no file, name or facts in zero-retention mode", async () => {
