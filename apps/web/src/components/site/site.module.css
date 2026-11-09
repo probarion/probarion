@@ -234,6 +234,9 @@ a.netPill:hover {
 .hero {
   padding-block: clamp(36px, 6vw, 76px) clamp(48px, 7vw, 96px);
 }
+.heroEyebrow {
+  margin-bottom: 14px;
+}
 .h1 {
   font-weight: 300;
   font-size: clamp(46px, 9.1vw, 134px);
@@ -276,6 +279,9 @@ a.netPill:hover {
   font-size: 14px;
   color: var(--color-mute);
   max-width: 34em;
+}
+.audience {
+  margin-top: 10px;
 }
 
 .duel {

@@ -30,7 +30,7 @@ export const LINKS = {
 
 export const SITE_TITLE = "Probarion. Spend by mandate. Prove every payment.";
 export const SITE_DESCRIPTION =
-  "A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and anyone can verify the signed ledger.";
+  "A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and the owner can publish the signed ledger for anyone to verify.";
 export const OG_IMAGE = {
   url: "/og.png",
   width: 1280,
@@ -107,14 +107,17 @@ export const TX = {
 // --- hero -----------------------------------------------------------------------------------------
 
 export const HERO = {
+  eyebrow: "A mandate layer for AI agents on NEAR",
   line1: "Spend by mandate.",
   line2: "Prove every payment.",
-  lede: "Give your AI agent a budget, not your wallet. It can pay only the payee you named, up to the limits you signed. A NEAR contract refuses everything else, and every decision goes into a ledger anyone can check.",
+  lede: "Give your AI agent a budget, not your wallet. It can pay only the payee you named, up to the limits you signed. A NEAR contract refuses everything else, and every decision goes into a signed ledger you can publish.",
   openConsole: "Open console",
   tryLive: "Try a payment, live",
   integrate: "Plug in your agent",
   fineprint:
     "Testnet today, mainnet planned. You need no account to read the chain or run the verifier.",
+  audience:
+    "For teams whose AI agent pays supplier invoices (Payables, in progress), and for developers who want to give an agent money without the keys.",
   paid: {
     aria: "A payment the contract allowed",
     mandate: "Mandate 1",
@@ -398,8 +401,8 @@ export const JOURNEY = {
     },
     {
       n: 5,
-      title: "Anyone can check the record",
-      body: "The SDK anchors the ledger root on the vault. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
+      title: "Check a published record",
+      body: "With a ledger key, the SDK anchors the ledger root on the vault, and the owner can publish the ledger on a proof page. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
       tag: `The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture.${
         CLI_ON_NPM
           ? " The fixture is a file in the repository: run it at the root of a clone."
