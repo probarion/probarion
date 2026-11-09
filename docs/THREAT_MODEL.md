@@ -412,3 +412,27 @@ Checklist (C1 to C10 are the plan's ten items):
 Findings: 3 known gaps (no Content-Security-Policy, `wee_alloc`, no dependency audit in CI) and the
 repository settings that are off. Fixed in this review: none (no code change was needed). Every other
 item is answered yes, N/A today, or left to the repository owner above.
+
+### 2026-11-09: Dependabot triage
+
+Run on the branch `fix/dependabot-alerts`, cut from `dev` at `5077325`. GitHub listed 18 open
+Dependabot alerts on `main` (3 critical, 12 medium, 3 low; it withdrew alert 17). They were read with
+`gh api repos/probarion/probarion/dependabot/alerts --paginate`, and each was traced through its
+lockfile, with `cargo tree -i <crate> --target all` for `contracts/Cargo.lock`. Fixed in this review:
+vitest 3.2.7 to 4.1.12 in the root and every package, and `@sentry/nextjs` 11.10.0 to 11.11.0 in
+`apps/web`. An alert closes once the fix reaches `main`.
+
+| Alerts | Package | Where | Reached at run time? | Patched in | Decision |
+|---|---|---|---|---|---|
+| 1, 6, 7, 8, 9, 12 (GHSA-82fw-gwwq-j7x9) | `vitest` | `package.json` of the root, `apps/web` and the three packages; `pnpm-lock.yaml` | No: the test runner, a dev dependency | 4.1.11 | Fixed: 4.1.12 |
+| 11 (GHSA-82fw-gwwq-j7x9), 15 (GHSA-qxg6-89mg-rqv8) | `@vitest/mocker` | `pnpm-lock.yaml`, through vitest | No: dev only | 4.1.11, 4.1.12 | Fixed: 4.1.12 |
+| 13 (GHSA-85c8-ppgw-ccpr), 14 (GHSA-5gmw-xhrv-c9v3), critical | `tinypool` | `pnpm-lock.yaml`, through vitest 3 | No: dev only | 2.1.2, 2.1.1 | Fixed: vitest 4 has no `tinypool`, so it left the lockfile |
+| 16 (GHSA-3g3m-2fjr-6pw4) | `glob` 13.0.6 | `pnpm-lock.yaml`, through `@sentry/nextjs` and `@sentry/node` → `@sentry/bundler-plugins` | No: the plugin globs our own build output at build time, and the flaw needs an `AbortSignal` | 14.0.2 | Fixed: 14.0.4, through `@sentry/nextjs` 11.11.0 |
+| 19 (GHSA-g3hv-75wg-m249) | `minimatch` 10.2.6 | `pnpm-lock.yaml`, through that `glob` | No: build time, and the patterns are the plugin's own, never a request's | 11.0.1 | Fixed: 11.0.5, through `glob` 14 |
+| 10 (GHSA-848j-6mx2-7j84), low | `elliptic` 6.6.1 | `pnpm-lock.yaml`, through `@nearai/inference-sdk` 0.2.1 → `@phala/dcap-qvl` 0.7.0 | Loaded only by the CLI's `verify --online` (an optional dependency); the web app does not have it. The flaw is in signing: a truncated nonce can leak the signer's private key. `dcap-qvl` only verifies P-256 signatures with a public key (`keyFromPublic`, `verify`) and never signs | None | Waits on upstream: `elliptic` 6.6.1 is the latest, `dcap-qvl` 0.7.1 still depends on it, and `@nearai/inference-sdk` 0.3.0 pins `dcap-qvl` 0.7.0 |
+| 18 (GHSA-rc23-xxgq-x27g), critical | `wee_alloc` 0.4.5 | `contracts/Cargo.lock`, through near-sdk 5.29.1's default feature `wee_alloc` | Yes: it is the allocator of the deployed vault and factory. A NEAR call runs in a fresh wasm memory, so a leak can make that one call run out of memory and fail; nothing carries over to the next call | None (unmaintained) | Not a version bump: the fix is a new vault and factory version built without near-sdk's default features, with new reproducible builds ([known gap](#known-gaps)) |
+| 2 (GHSA-2mjx-qc3c-rqvc), 3 (GHSA-h2v8-394m-p7vv), 4 (GHSA-c8m5-c952-6cm4), 5 (GHSA-w44r-93j7-qv28) | `rustls` 0.23.43 | `contracts/Cargo.lock`, through `near-workspaces` 0.23.0 (`reqwest`, and `ureq` in `near-sandbox`) | No: only the sandbox tests (`contracts/integration-tests`) use it; it is in no contract and no npm package | 0.23.45, 0.23.46 | Deferred: bumping it changes `contracts/Cargo.lock`, which makes both recorded code hashes stale (R9 in [AGENTS.md](../AGENTS.md)). It ships with the next contract change, which needs a new record anyway: `cargo update --manifest-path contracts/Cargo.toml -p rustls --precise 0.23.46` |
+
+Findings: 12 alerts fixed by the two bumps. `elliptic` is not reachable and waits on upstream,
+`wee_alloc` stays a known gap, and the 4 `rustls` alerts are test-only and wait for the next
+contract change.

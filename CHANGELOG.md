@@ -721,6 +721,14 @@ The software is an unaudited beta.
   the master key only to seal the invoice with `sealInvoice` and to key its duplicate guard, as the
   console upload does. The test also fails if that code builds a `VaultClient` with anything but a
   vault id and an RPC client, re-exports it, or imports the cycle's `decide`.
+- Dependabot triage: vitest 4.1.12 (it was 3.2.7) in the root and every package, and
+  `@sentry/nextjs` 11.11.0 (it was 11.10.0) in `apps/web`, fix 12 of the 18 open alerts: `vitest`,
+  `@vitest/mocker` and `tinypool` (dev only; vitest 4 no longer uses `tinypool`), and `glob` and
+  `minimatch` (Sentry's build plugin, build time only). `elliptic` has no patched version and is not
+  reachable: only the CLI's `verify --online` loads it, to verify TDX quote signatures, and the flaw
+  is in signing. `wee_alloc` stays a known gap until a new vault version. `rustls` reaches only the
+  sandbox tests and is bumped with the next contract change, since changing `contracts/Cargo.lock`
+  makes the recorded code hashes stale. Every alert is in the threat model's review log.
 
 ## 0.1.0 - 2026-11-09
 

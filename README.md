@@ -551,7 +551,7 @@ stores.
 ## Development
 
 Rust 1.99.1 (`rust-toolchain.toml`, target `wasm32-unknown-unknown`), near-sdk 5.29.1, Node.js 24,
-pnpm 10, TypeScript 5, Vitest 3, Biome 2, Next.js 16 and Supabase.
+pnpm 10, TypeScript 5, Vitest 4, Biome 2, Next.js 16 and Supabase.
 
 ```bash
 pnpm install --frozen-lockfile
