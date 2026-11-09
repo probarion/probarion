@@ -11,7 +11,7 @@ import { addEmailAction, connectTelegramAction, removeSubscriptionAction } from 
 
 export const metadata: Metadata = { title: "Alerts" };
 
-const muted = "text-[#0B0B0C]/60";
+const muted = "text-mute";
 
 /** One entry of `alert_subscriptions_list` (migration 0011). It never has a link code. */
 interface Sub {
@@ -91,7 +91,7 @@ export default async function AlertsPage({
                   )}
                   {canChange ? (
                     <form action={removeSubscriptionAction.bind(null, vault, s.id)}>
-                      <button type="submit" className="text-xs text-stone-600 underline">
+                      <button type="submit" className="text-xs text-mute underline">
                         Remove
                       </button>
                     </form>

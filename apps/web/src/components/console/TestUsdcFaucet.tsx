@@ -12,7 +12,7 @@ type State =
   | { kind: "unknown"; txHash: string }
   | { kind: "error"; text: string };
 
-const muted = "text-[#0B0B0C]/60";
+const muted = "text-mute";
 
 /**
  * Testnet only (audit P0-2). One click asks the server to mint the faucet's fixed amount of test USDC straight into
@@ -62,7 +62,7 @@ export function TestUsdcFaucet({
 
   const sent = state.kind === "minted" || state.kind === "unknown";
   return (
-    <div className="mb-4 border-b border-stone-200 pb-4">
+    <div className="mb-4 border-b border-line pb-4">
       <p className="text-sm font-medium">{copy.title}</p>
       <p className={`mb-2 text-sm ${muted}`}>
         {copy.note} {copy.signer}
@@ -76,17 +76,17 @@ export function TestUsdcFaucet({
         {state.kind === "pending" ? copy.pending : copy.button}
       </button>
       {state.kind === "minted" ? (
-        <p className="mt-2 text-sm text-emerald-800" role="status">
+        <p className="mt-2 text-sm text-ok" role="status">
           {copy.done} <TxLink network="testnet" hash={state.txHash} />
         </p>
       ) : null}
       {state.kind === "unknown" ? (
-        <p className="mt-2 text-sm text-amber-900" role="status">
+        <p className="mt-2 text-sm text-wait" role="status">
           {copy.unknown} <TxLink network="testnet" hash={state.txHash} />
         </p>
       ) : null}
       {state.kind === "error" ? (
-        <p className="mt-2 text-sm text-rose-800" role="alert">
+        <p className="mt-2 text-sm text-bad" role="alert">
           {state.text}
         </p>
       ) : null}

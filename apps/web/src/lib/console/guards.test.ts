@@ -337,7 +337,7 @@ describe("vault page: honest balances", () => {
       });
     const out = await html(VAULT);
     expect(out).toContain("0.09 NEAR free");
-    expect(out).toContain("bg-amber-100");
+    expect(out).toContain("bg-wait-bg");
   });
 });
 

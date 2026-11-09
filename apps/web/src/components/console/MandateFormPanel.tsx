@@ -31,7 +31,7 @@ import { sha256HexOf } from "./sha256";
 /** How long the owner stops typing before the console asks whether the payee account exists. */
 const PAYEE_CHECK_DELAY_MS = 500;
 
-const muted = "text-[#0B0B0C]/60";
+const muted = "text-mute";
 
 export function MandateFormPanel(props: {
   vault: string;
@@ -297,7 +297,7 @@ export function MandateFormPanel(props: {
       {check.ok ? (
         <section
           aria-label="What you are about to sign"
-          className="mb-3 rounded-2xl border border-[#0B0B0C]/10 bg-[#F7F6F3] p-4 text-sm"
+          className="mb-3 rounded-2xl border border-line bg-paper p-4 text-sm"
         >
           <h3 className="mb-2 font-semibold">You are about to create</h3>
           <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1">

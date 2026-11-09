@@ -156,11 +156,11 @@ export function TopUpPanel({
       </button>
       {error ? <Notice tone="bad">{error}</Notice> : null}
       {quoted ? (
-        <div className="mt-4 rounded border border-stone-200 p-3">
+        <div className="mt-4 rounded-2xl border border-line p-3">
           <QuoteSummary quote={quoted.quote} />
           {quoted.quote.correlationId ? <QuoteReference id={quoted.quote.correlationId} /> : null}
           {block ? <Notice tone="warn">{BLOCK_TEXT[block]}</Notice> : null}
-          <p className="mt-2 text-xs text-stone-600">{registerDepositText}</p>
+          <p className="mt-2 text-xs text-mute">{registerDepositText}</p>
           {/* A disabled fieldset switches off the button inside without unmounting it, so a signature in progress keeps its result. */}
           <fieldset disabled={block !== null} className="m-0 min-w-0 border-0 p-0">
             <TxButton

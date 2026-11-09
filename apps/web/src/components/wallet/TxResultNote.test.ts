@@ -80,9 +80,9 @@ describe("TxResultNote", () => {
   });
 
   it("colours success green, an unconfirmed send amber and a refusal red", () => {
-    expect(render(r({}))).toContain("bg-emerald-100");
-    expect(render(r({ status: "unknown" }))).toContain("bg-amber-100");
-    expect(render(r({ status: "failed", error: "no" }))).toContain("bg-rose-100");
+    expect(render(r({}))).toContain("bg-ok-bg");
+    expect(render(r({ status: "unknown" }))).toContain("bg-wait-bg");
+    expect(render(r({ status: "failed", error: "no" }))).toContain("bg-bad-bg");
   });
 
   it("escapes the wallet's text", () => {
@@ -118,7 +118,7 @@ describe("TxResultNote with a wrapper's describe", () => {
     expect(html).toContain("Your account is short of NEAR");
     expect(html).not.toContain("the vault is out of free NEAR");
     expect(html).toContain("Sent: confirm on the explorer");
-    expect(html).toContain("bg-amber-100");
+    expect(html).toContain("bg-wait-bg");
     expect(hrefs(html)).toEqual([`https://testnet.nearblocks.io/txns/${HASH}`]);
   });
 

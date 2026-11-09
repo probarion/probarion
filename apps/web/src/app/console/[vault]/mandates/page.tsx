@@ -32,7 +32,7 @@ export const metadata: Metadata = { title: "Mandates" };
 /** The wallet buttons here confirm their transaction on chain (FINAL), which can take a while. */
 export const maxDuration = 60;
 
-const muted = "text-[#0B0B0C]/60";
+const muted = "text-mute";
 
 /** One chain read, kept apart from the others: a failure is "unavailable" for that part only, never an empty list or a zero. */
 async function attempt<T>(what: string, vault: string, run: () => Promise<T>): Promise<Read<T>> {
@@ -186,7 +186,7 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-[#0B0B0C]/10">
+                <tr className="border-b border-line">
                   <th>#</th>
                   <th>Name</th>
                   <th>Pays</th>
@@ -210,7 +210,7 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
                     /^[0-9]+$/.test(m.max_per_payment) &&
                     BigInt(m.approval_above) < BigInt(m.max_per_payment);
                   return (
-                    <tr key={m.id} className="border-b border-[#0B0B0C]/10 align-top last:border-0">
+                    <tr key={m.id} className="border-b border-line align-top last:border-0">
                       <td>{m.id}</td>
                       <td>
                         {label}
