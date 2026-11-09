@@ -7,9 +7,6 @@ import type { RefColumn, RefRow, RefTable } from "./types";
 // on first use, not on import, so a route that only loads this module (the on-demand docs 404)
 // opens no file.
 
-/** The repository root. Next builds and vitest both run from apps/web. */
-const ROOT = join(process.cwd(), "..", "..");
-
 const CI_FILE = ".github/workflows/ci.yml";
 const RECORD_FILE = "contracts/code-hashes.json";
 const TOOLCHAIN_FILE = "rust-toolchain.toml";
@@ -20,7 +17,41 @@ const DEPLOYMENT_FILES = [
   { file: "contracts/deployments/mainnet.json", label: "Mainnet" },
 ] as const;
 
-const read = (path: string) => readFileSync(join(ROOT, path), "utf8");
+/**
+ * Each file the tables read, by its path from the repository root. Next builds and vitest both run from apps/web, so
+ * every path starts at process.cwd(), "..", "..". Each one is a literal, so Next's file tracing puts exactly these
+ * files in the docs functions: a path built at run time traced the whole repository into them and still left out
+ * .github, so an on-demand render of the page could not find ci.yml.
+ */
+const FILES: Readonly<Record<string, () => string>> = {
+  [CI_FILE]: () =>
+    readFileSync(join(process.cwd(), "..", "..", ".github", "workflows", "ci.yml"), "utf8"),
+  [RECORD_FILE]: () =>
+    readFileSync(join(process.cwd(), "..", "..", "contracts", "code-hashes.json"), "utf8"),
+  [TOOLCHAIN_FILE]: () =>
+    readFileSync(join(process.cwd(), "..", "..", "rust-toolchain.toml"), "utf8"),
+  "contracts/vault/Cargo.toml": () =>
+    readFileSync(join(process.cwd(), "..", "..", "contracts", "vault", "Cargo.toml"), "utf8"),
+  "contracts/factory/Cargo.toml": () =>
+    readFileSync(join(process.cwd(), "..", "..", "contracts", "factory", "Cargo.toml"), "utf8"),
+  "contracts/deployments/testnet.json": () =>
+    readFileSync(
+      join(process.cwd(), "..", "..", "contracts", "deployments", "testnet.json"),
+      "utf8",
+    ),
+  "contracts/deployments/mainnet.json": () =>
+    readFileSync(
+      join(process.cwd(), "..", "..", "contracts", "deployments", "mainnet.json"),
+      "utf8",
+    ),
+};
+
+function read(path: string): string {
+  const file = FILES[path];
+  if (!file) throw new Error(`builds: ${path} is not one of the files in FILES`);
+  return file();
+}
+
 const code = (text: string) => `\`${text}\``;
 
 /** The one value all matches of `re` capture; throws when there is none, or more than one. */

@@ -14,7 +14,7 @@ import { signingMandate } from "./mandate";
 import { numberDuplicateRule } from "./number-duplicate";
 import { invoiceNumberKey } from "./number-key";
 import { OWNER_CONFIRMS_RULE, ownerConfirms } from "./owner-confirms";
-import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
+import { type InvoiceStatus, insertInvoice, type NumberMatch, setInvoiceOutcome } from "./store";
 import type { InvoiceUpload } from "./upload";
 
 export { invoiceNumberKey } from "./number-key";
@@ -74,6 +74,8 @@ export type PipelineResult =
       recorded: boolean;
       /** Why the code read the amount as "0" (the policy then refuses it), or null when it read one. */
       amountIssue: AmountIssue | null;
+      /** The earlier invoice with this number, when the number rule ran in this cycle (migration 0016), or null. */
+      numberMatch: NumberMatch | null;
     }
   | { status: "duplicate"; invoiceId: string; invoiceStatus: InvoiceStatus }
   | { status: "busy" }
@@ -256,6 +258,7 @@ export async function processInvoice(
       }
 
       let outcome: SpendOutcome;
+      const match = inserted.number_match ?? null;
       // The owner confirms the amount unless an attested model does: without that, nothing is sent.
       const owner = ownerConfirms();
       try {
@@ -266,7 +269,6 @@ export async function processInvoice(
           requestId,
         });
         // First, so the refusal's code is the number rule's and the invoice never waits for the owner (waitsForOwner).
-        const match = inserted.number_match ?? null;
         if (match !== null) pb.rules.add(numberDuplicateRule(match, mandate.payee));
         pb.rules.add(owner.rule);
         outcome = await pb.process({ text, facts, ref });
@@ -338,6 +340,7 @@ export async function processInvoice(
         outcome,
         recorded,
         amountIssue,
+        numberMatch: match,
       };
     },
   );
