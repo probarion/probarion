@@ -11,6 +11,31 @@ const blob = (path: string) => `${REPO_URL}/blob/main/${path}`;
 
 export const FIXTURE_PATH = "packages/core/test/fixtures/valid-snapshot.json";
 
+/**
+ * The site's byte-for-byte copy of FIXTURE_PATH (test/site-tamper.test.ts compares the two), so that the landing's
+ * check runs with npx alone, in an empty folder. `curl -O` saves the URL's last segment, which is `file`.
+ */
+export const SAMPLE_SNAPSHOT = {
+  path: "/samples/valid-snapshot.json",
+  url: "https://probarion.xyz/samples/valid-snapshot.json",
+  file: "valid-snapshot.json",
+} as const;
+
+/**
+ * The landing's offline check, one command per line so that every shell runs them (Windows PowerShell 5.1 has no
+ * `&&`). With npx: download the site's copy, then verify it. Built from a clone: verify the fixture at the clone's root.
+ */
+export const VERIFY_LINES: readonly string[] = CLI_ON_NPM
+  ? [`curl -O ${SAMPLE_SNAPSHOT.url}`, cli(`verify --offline ${SAMPLE_SNAPSHOT.file}`)]
+  : [cli(`verify --offline ${FIXTURE_PATH}`)];
+
+/**
+ * Said above VERIFY_LINES with npx. Windows PowerShell 5.1 reads `curl` as its own Invoke-WebRequest, which fails on
+ * `-O <url>`; curl.exe, part of Windows 10 and 11, runs the line as written.
+ */
+export const VERIFY_NOTE =
+  "In an empty folder, with Node 24 or later. In Windows PowerShell 5.1, type curl.exe for curl.";
+
 export const LINKS = {
   github: REPO_URL,
   evaluate: `${REPO_URL}#how-to-evaluate-probarion-in-5-minutes`,
@@ -397,14 +422,13 @@ export const JOURNEY = {
       n: 5,
       title: "Anyone can check the record",
       body: "The SDK anchors the ledger root on the vault. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
-      tag: `The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture.${
-        CLI_ON_NPM
-          ? " The fixture is a file in the repository: run it at the root of a clone."
-          : " Build it from a clone first (README step 1)."
-      }`,
+      tag: CLI_ON_NPM
+        ? "The testnet vault has no ledger key or anchors yet, so these commands run on a test fixture: this site serves an exact copy of the file in the repository."
+        : "The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture. Build it from a clone first (README step 1).",
       panelLabel: "Verifier output",
       panel: [
-        { command: cli(`verify --offline ${FIXTURE_PATH}`) },
+        ...(CLI_ON_NPM ? [{ note: VERIFY_NOTE }] : []),
+        ...VERIFY_LINES.map((command) => ({ command })),
         { text: VERIFIER_OUTPUT.summary },
         { text: VERIFIER_OUTPUT.result, tone: "pass" },
       ],
