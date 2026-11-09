@@ -740,8 +740,14 @@ describe("the rendered landing page", () => {
   });
 
   it("offers the two closing links on main", () => {
-    const links = hrefs(landing());
+    const html = landing();
+    const links = hrefs(html);
     expect(links).toContain("/docs/start/evaluate-in-5-minutes");
+    expect(links).not.toContain(LINKS.evaluate);
+    // An internal page opens in the same tab: the evaluate button is a Link, not ExternalLink.
+    const evaluate = html.match(/<a[^>]*href="\/docs\/start\/evaluate-in-5-minutes"[^>]*>/g) ?? [];
+    expect(evaluate).toHaveLength(1);
+    expect(evaluate[0]).not.toMatch(/\starget=/);
     expect(links).toContain(
       "https://github.com/probarion/probarion/blob/main/docs/specs/2026-10-21-probarion-design.md",
     );
@@ -852,6 +858,18 @@ describe("the header", () => {
     expect(inMenu).toContain("/proof");
     expect(inMenu).toContain("/console");
     expect(inMenu).toContain(LINKS.github);
+  });
+
+  it("puts Docs in the bar and in the phone menu, and leaves Usage to the footer", () => {
+    const at = html.indexOf("<details");
+    expect(at).toBeGreaterThan(0);
+    for (const [where, part] of [
+      ["bar", html.slice(0, at)],
+      ["phone menu", html.slice(at)],
+    ] as const) {
+      expect(hrefs(part), where).toContain("/docs");
+      expect(hrefs(part), where).not.toContain("/usage");
+    }
   });
 });
 
@@ -1003,9 +1021,12 @@ describe("robots and the sitemap", () => {
       ...PAGES.map((p) => docsHref(p.path)),
     ]);
     expect(new Set(paths).size).toBe(paths.length);
-    for (const e of sitemap().filter((x) => new URL(x.url).pathname.startsWith("/docs"))) {
-      expect(e.lastModified, e.url).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    }
+    const docs = sitemap().filter((x) => new URL(x.url).pathname.startsWith("/docs"));
+    for (const e of docs) expect(e.lastModified, e.url).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Each docs entry carries its own page's review date, in registry order.
+    expect(docs.map((e) => [new URL(e.url).pathname, e.lastModified])).toEqual(
+      PAGES.map((p) => [docsHref(p.path), p.reviewed]),
+    );
   });
 });
 

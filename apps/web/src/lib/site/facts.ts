@@ -36,7 +36,10 @@ export const OG_IMAGE = {
   alt: "Probarion. Spend by mandate. Prove every payment. Mandates for AI agents on NEAR.",
 } as const;
 
-/** What the sitemap lists: the landing page, /proof and any public page as it gets built. The console is private. */
+/**
+ * The site's public pages: the landing page, /proof and the menus' built pages, not the console.
+ * The sitemap adds the docs pages from the registry (app/sitemap.ts).
+ */
 export function publicRoutes(): string[] {
   const nav = [...SITE_NAV, ...FOOTER_NAV].map(({ route }) => route);
   return [...new Set(["/", "/proof", ...nav])].filter(
