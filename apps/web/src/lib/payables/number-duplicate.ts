@@ -18,7 +18,7 @@ export const NUMBER_DUPLICATE_RULE = "custom.invoice_number_duplicate" as const;
 function earlierState(m: NumberMatch): string {
   switch (m.status) {
     case "processing":
-      return "is being processed";
+      return "has an unknown outcome";
     case "unconfirmed":
       return "was sent, confirmation pending";
     case "awaiting_owner":
@@ -32,10 +32,11 @@ function earlierState(m: NumberMatch): string {
 
 /**
  * What the console says after this rule refused an upload, by what happened to the earlier invoice. invoice_insert
- * (0016) runs this text again only once no invoice that may pay has the number: the owner rejected the earlier one
- * while it waited, or its cycle ended without a payment. A paid invoice, a spend held on chain and a payment sent but
- * not confirmed keep the number blocked, and nothing in the app frees it, so the notice offers a re-upload only for
- * an earlier invoice that waits for the owner or is still being processed.
+ * (0016) runs this text again only once no invoice that may pay has the number. Nothing in the app moves a paid
+ * invoice, a spend held on chain, a payment sent but not confirmed, or a row left in processing (its cycle was cut off
+ * or could not record its outcome: the tenant lease means no cycle is still running when this one inserts). So only an
+ * earlier invoice that waits for the owner stops blocking, when the owner rejects it, and only then is a re-upload
+ * offered. The new-number advice is given only for an invoice that may not have paid: a paid one is not paid again.
  */
 export function numberDuplicateNotice(match: NumberMatch): string {
   const head =
@@ -45,7 +46,7 @@ export function numberDuplicateNotice(match: NumberMatch): string {
     case "awaiting_owner":
       return `${head} That invoice waits for the owner. If the owner rejects it, upload this one again.`;
     case "processing":
-      return `${head} That invoice is still being processed. If it ends without a payment, upload this one again.`;
+      return `${head} That invoice's outcome is unknown and it may have paid, so the number stays blocked. If the vault's spends show it did not pay, ${newNumber}.`;
     case "unconfirmed":
       return `${head} That invoice's payment was sent and is not confirmed, so the number stays blocked. If it did not pay, ${newNumber}.`;
     case "decided":

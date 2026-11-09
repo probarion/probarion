@@ -456,8 +456,8 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     code: "duplicate",
     where: "Console invoices API",
     meaning:
-      "The vault already has this invoice (the same text once normalised, or the same invoice number for the same payee); the body adds `invoiceId` and `status`.",
-    next: "Read the invoice's `status` instead of sending it again, and upload a corrected invoice as a new one.",
+      "The vault already has this invoice: the same text once normalised, or this text again after `custom.invoice_number_duplicate` refused it while the number is still blocked. The body adds `invoiceId` and `status`. Another text with the number of an invoice that was paid or may still pay is not a 409: its cycle runs, and that rule refuses it with a `notice`.",
+    next: "Read the invoice's `status` instead of sending it again. A paid invoice is not paid again. A corrected invoice with the same number runs only once the earlier one is rejected; if the earlier one did not pay and cannot be rejected, ask the payee for an invoice with a new number.",
   },
   {
     status: 409,

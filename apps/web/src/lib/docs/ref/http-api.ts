@@ -113,7 +113,7 @@ export const TABLES: readonly RefTable[] = [
         who: `Signed-in session of the vault's owner or an approver, ${SAME}`,
         body: `\`multipart/form-data\`: the invoice as \`file\` (PDF or \`.txt\`) or as \`text\`, and an optional \`purpose\` file. A \`Content-Length\` header is required: ${thousands(INVOICE_REQUEST_BYTES)} bytes at most in all, and ${thousands(MAX_INVOICE_BYTES)} bytes at most for each file.`,
         success:
-          "`200` with `{ invoiceId, status, outcome, recorded, amountIssue, requestId }`, and a `notice` when `status` is `unconfirmed` or `awaiting_owner`",
+          "`200` with `{ invoiceId, status, outcome, recorded, amountIssue, requestId }`, and a `notice` when `status` is `unconfirmed` or `awaiting_owner`, or when `custom.invoice_number_duplicate` refused the cycle: then it says whether an upload can run again",
         errors:
           "`403 bad_origin`, `401 unauthenticated`, `403 forbidden`, `409 wrong_network`, `429 rate_limited`, `411 length_required`, `413 too_large`, `400 invalid_input`, `415 unsupported`, `409 duplicate`, `409 busy`, `409 no_keys`, `409 no_mandate`, `409 key_unavailable`, `503 key_unavailable`, `503 chain_unavailable`, `400 empty`, `400 unreadable`, `502 failed`, `500 internal`, `503 unavailable`",
         limit: limit("invoiceUpload", "per vault"),

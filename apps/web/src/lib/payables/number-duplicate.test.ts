@@ -37,7 +37,7 @@ describe("numberDuplicateRule", () => {
     [{ status: "decided", outcome_status: "held" }, "is held for approval"],
     [{ status: "unconfirmed", outcome_status: "unconfirmed" }, "was sent, confirmation pending"],
     [{ status: "awaiting_owner", outcome_status: "held" }, "waits for the owner"],
-    [{ status: "processing", outcome_status: null }, "is being processed"],
+    [{ status: "processing", outcome_status: null }, "has an unknown outcome"],
   ] as const)("words an earlier invoice %j as %j", (state, words) => {
     expect(check(match(state)).detail).toContain(`, which ${words}. Nothing is sent.`);
   });
@@ -47,30 +47,26 @@ describe("numberDuplicateNotice", () => {
   const AGAIN = "upload this one again";
   const NEW_NUMBER = "ask the payee for an invoice with a new number";
 
-  it.each([
-    [
-      { status: "awaiting_owner", outcome_status: "held" },
-      "If the owner rejects it, upload this one again.",
-    ],
-    [
-      { status: "processing", outcome_status: null },
-      "If it ends without a payment, upload this one again.",
-    ],
-  ] as const)(
-    "offers a re-upload for an earlier invoice %j, which can still end without a payment",
-    (state, tail) => {
-      const notice = numberDuplicateNotice(match(state));
-      expect(notice).toMatch(
-        /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
-      );
-      expect(notice.endsWith(tail)).toBe(true);
-      expect(notice).not.toContain(NEW_NUMBER);
-    },
-  );
+  // The owner's Reject (0007 invoice_reject) frees the number, and the takeover runs this text again on its row.
+  it("offers a re-upload only for an earlier invoice that waits for the owner", () => {
+    const notice = numberDuplicateNotice(
+      match({ status: "awaiting_owner", outcome_status: "held" }),
+    );
+    expect(notice).toMatch(
+      /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
+    );
+    expect(notice.endsWith("If the owner rejects it, upload this one again.")).toBe(true);
+    expect(notice).not.toContain(NEW_NUMBER);
+  });
 
   // invoice_insert (0016) keeps these numbers blocked, and nothing in the app moves such a row on: an upload of this
-  // text again would only answer 409, so the notice must not offer one.
+  // text again would only answer 409, so the notice must not offer one. A row left in processing is one of them: the
+  // tenant lease means its cycle is not running when this rule runs, so it was cut off and may have paid.
   it.each([
+    [
+      { status: "processing", outcome_status: null },
+      `If the vault's spends show it did not pay, ${NEW_NUMBER}.`,
+    ],
     [{ status: "decided", outcome_status: "paid" }, "was paid, so this one is not paid again."],
     [{ status: "decided", outcome_status: "burned" }, "was paid, so this one is not paid again."],
     [{ status: "decided", outcome_status: "settled" }, "was paid, so this one is not paid again."],
@@ -94,6 +90,15 @@ describe("numberDuplicateNotice", () => {
       expect(notice).not.toContain(AGAIN);
     },
   );
+
+  // A new number for a bill that was paid would let it pass both guards and the contract's DuplicateInvoice.
+  it("gives no new-number advice for an earlier invoice that was paid", () => {
+    for (const outcome_status of ["paid", "burned", "settled"] as const) {
+      expect(numberDuplicateNotice(match({ status: "decided", outcome_status }))).not.toContain(
+        NEW_NUMBER,
+      );
+    }
+  });
 
   it("names neither the number nor the earlier invoice's hash", () => {
     for (const status of ["awaiting_owner", "processing", "unconfirmed", "decided"] as const) {
