@@ -49,6 +49,7 @@ export function VaultCard({
         {V.account} <AccountLink network={network} account={vault} />
       </p>
       <MandateText line={summary.mandate} noun={noun} />
+      {summary.frozen ? <p className={c.line}>{V.frozen}</p> : null}
     </section>
   );
 }

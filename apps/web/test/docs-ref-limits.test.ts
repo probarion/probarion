@@ -3,7 +3,7 @@ import { basename, dirname, join, relative } from "node:path";
 import * as core from "@probarion/core";
 import * as sdk from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
-import { VAULT_DEFAULTS } from "@/lib/config";
+import { CANARY_KEY_ALLOWANCES, VAULT_DEFAULTS } from "@/lib/config";
 import { TABLES } from "@/lib/docs/ref/limits";
 import type { RefRow, RefTable } from "@/lib/docs/ref/types";
 import * as runway from "@/lib/near/runway";
@@ -1014,9 +1014,15 @@ describe("limits: the hosted app's values", () => {
       expect(cell(r, "rule")).toMatch(/above 0/);
       expect(cell(r, "rule")).toContain("`InvalidInput`");
       const [field, builder] = consoleDefault[name];
-      expect(keysActions).toMatch(new RegExp(`${builder}\\([^;]*VAULT_DEFAULTS\\.${field}`));
+      // The console asks for keyAllowances(kind): VAULT_DEFAULTS, or CANARY_KEY_ALLOWANCES for the Canary's vault.
+      expect(keysActions).toMatch(/const allowance = keyAllowances\(member\.kind\);/);
+      expect(keysActions).toMatch(new RegExp(`${builder}\\([^;]*allowance\\.${field}`));
       expect(cell(r, "allowance")).toContain(`${nearDecimal(BigInt(VAULT_DEFAULTS[field]))} NEAR`);
       expect(cell(r, "allowance")).toContain(`\`VAULT_DEFAULTS.${field}\``);
+      expect(cell(r, "allowance")).toContain(
+        `${nearDecimal(BigInt(CANARY_KEY_ALLOWANCES[field]))} NEAR`,
+      );
+      expect(cell(r, "allowance")).toContain(`\`CANARY_KEY_ALLOWANCES.${field}\``);
       const cliDefault = /\.option\(\s*"--allowance <near>",\s*"[^"]*",\s*"([\d.]+)"\s*\)/.exec(
         readFileSync(cli[name], "utf8"),
       )?.[1];

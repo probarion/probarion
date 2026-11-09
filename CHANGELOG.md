@@ -590,6 +590,12 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The console's Keys page asks for larger allowances on the Canary's vault: 3 NEAR for its agent key
+  and 2 NEAR for its ledger key. With the allowances every other vault gets (1 NEAR and 0.25 NEAR),
+  the Canary could not open, since it does not run while its ledger key holds under 0.5 NEAR. A key's
+  allowance is fixed when the vault adds it, so these apply to keys added from now on.
+- The Canary's vault card says when the owner froze the vault: it then refuses every spend and every
+  approval until the owner unfreezes it. A config read that failed adds nothing to the card.
 - The Canary page shows its form only when the Canary vault and `NEARAI_API_KEY` are set, the
   database holds a private Canary tenant for that vault on the page's network, its ledger has room,
   its ledger key has gas for anchors, and the vault holds a mandate. It went live as soon as the vault

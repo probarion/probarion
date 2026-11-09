@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   ftBalance: vi.fn(),
   intentsBalance: vi.fn(),
   listMandates: vi.fn(),
+  getConfig: vi.fn(),
   ready: vi.fn(),
 }));
 /** The network of the address the page is opened at, and the networks the page asked a chain reader for. */
@@ -42,6 +43,7 @@ vi.mock("@/lib/near/server", () => ({
       ftBalance: mocks.ftBalance,
       intentsBalance: mocks.intentsBalance,
       listMandates: mocks.listMandates,
+      getConfig: mocks.getConfig,
     };
   },
   chainConsts: () => ({
@@ -140,6 +142,7 @@ beforeEach(() => {
   mocks.ftBalance.mockResolvedValue("25500000");
   mocks.intentsBalance.mockResolvedValue("0");
   mocks.listMandates.mockResolvedValue([mandate]);
+  mocks.getConfig.mockResolvedValue({ frozen: false });
   mocks.ready.mockResolvedValue("ready");
 });
 
@@ -155,9 +158,14 @@ const visible = (html: string) =>
     .trim();
 const hrefs = (html: string) => [...html.matchAll(/\shref="([^"]*)"/g)].map((m) => m[1]);
 const touchedTheChain = () =>
-  [mocks.ftBalance, mocks.intentsBalance, mocks.listMandates, mocks.board, mocks.feed].some(
-    (m) => m.mock.calls.length > 0,
-  );
+  [
+    mocks.ftBalance,
+    mocks.intentsBalance,
+    mocks.listMandates,
+    mocks.getConfig,
+    mocks.board,
+    mocks.feed,
+  ].some((m) => m.mock.calls.length > 0);
 
 describe("the page's settings", () => {
   it("reads the chain and the database on every request, and describes the page as the owner asked", () => {
@@ -222,6 +230,19 @@ describe("the live page", () => {
     expect(text).toContain(
       "Its only mandate pays canary-payee.probarion.testnet, at most 1 test USDC per payment, and holds every spend for a human.",
     );
+  });
+
+  // The owner's Freeze, read from get_config, shows on the public card; a config read that failed shows nothing.
+  it("says the vault is frozen when its owner froze it, and not when the read failed", async () => {
+    const FROZEN = "Frozen by its owner: the vault refuses every spend and every approval";
+    expect(visible(await page())).not.toContain(FROZEN);
+    expect(mocks.getConfig).toHaveBeenCalledWith(VAULT);
+    mocks.getConfig.mockResolvedValue({ frozen: true });
+    expect(visible(await page())).toContain(FROZEN);
+    mocks.getConfig.mockRejectedValue(new Error("rpc down"));
+    const text = visible(await page());
+    expect(text).not.toContain(FROZEN);
+    expect(text).toContain("25.5 test USDC");
   });
 
   it("shows the form with the mode pill, the scoreboard and the latest attempts", async () => {

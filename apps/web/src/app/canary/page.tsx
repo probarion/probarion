@@ -50,12 +50,16 @@ async function readVault(
 ): Promise<{ summary: VaultSummary; mandates: MandateView[] | null }> {
   const consts = chainConsts(network);
   const reader = getReader(network);
-  const [usdc, base, mandates] = await Promise.all([
+  const [usdc, base, mandates, config] = await Promise.all([
     soft("usdc", () => reader.ftBalance(consts.usdc, vault)),
     soft("base", () => reader.intentsBalance(consts.intents, vault, consts.allowedAssets.base)),
     soft("mandates", () => reader.listMandates(vault, 0, 10)),
+    soft("config", () => reader.getConfig(vault)),
   ]);
-  return { summary: summarizeVault({ usdc, base, mandates }), mandates };
+  return {
+    summary: summarizeVault({ usdc, base, mandates, frozen: config?.frozen ?? null }),
+    mandates,
+  };
 }
 
 /**
@@ -125,7 +129,7 @@ export default async function CanaryPage({
         error: error instanceof Error ? error.message : String(error),
       });
       return {
-        summary: summarizeVault({ usdc: null, base: null, mandates: null }),
+        summary: summarizeVault({ usdc: null, base: null, mandates: null, frozen: null }),
         mandates: null,
       };
     }),
