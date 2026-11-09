@@ -60,7 +60,7 @@ Code: [`apps/web/src/lib/topup/faucet.ts`](https://github.com/probarion/probario
 
 ### Browser extension, server half
 
-Preview. Built and tested. The signed-in `/extension` page connects a browser for one network, and `GET /api/ext/inbox` lets that connection read what waits for its account: invoices waiting for the owner, holds an approver can still approve, and the mandates an invoice can still be sent under. A connection cannot pay, approve or confirm.
+Preview. Built and tested. The signed-in `/extension` page connects a browser for one network, and `GET /api/ext/inbox` lets that connection read what waits for its account: invoices waiting for the owner, holds an approver can still approve, and the mandates an invoice can still be sent under. `POST /api/ext/invoices` lets it queue an invoice under one of those mandates, for a vault where the account is an owner or an approver, at most 20 in 10 minutes: the invoice waits in the console for the owner's wallet-signed Confirm. A connection cannot pay, approve or confirm.
 
 Code: [`apps/web/src/lib/ext`](https://github.com/probarion/probarion/tree/main/apps/web/src/lib/ext)
 

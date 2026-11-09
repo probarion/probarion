@@ -21,8 +21,13 @@ import { getInvoice } from "@/lib/payables/store";
 import {
   amountIssueText,
   buildCycleView,
+  cycleRanFor,
+  EXTENSION_LEDGER_NOTE,
+  EXTENSION_SOURCE_NOTE,
   type PayeeRow,
+  queuedChecks,
   rowResult,
+  type ShownRule,
   shownOutcome,
   usdcFixed,
 } from "@/lib/payables/view";
@@ -33,6 +38,9 @@ import { chainCommand } from "@/lib/proof/view";
 import { confirmInvoiceAction, prepareConfirmAction, rejectInvoiceAction } from "../actions";
 
 export const metadata: Metadata = { title: "Invoice" };
+/** A check's badge: a refusal is bad, a pass is good, a hold or an unknown outcome waits. */
+const checkTone = (o: ShownRule["outcome"]): Tone =>
+  o === "refuse" ? "bad" : o === "pass" ? "good" : "warn";
 /**
  * Confirm runs the whole payment cycle (check_spend, spend, anchor) in its server action, under the tenant's process
  * lease (PROCESS_LEASE_SECONDS, 90 s), which outlasts this with a 30 s margin; payables-confirm.test.ts checks it.
@@ -106,17 +114,43 @@ function Waiting({
   return (
     <Card title={owner ? "Waiting for you" : "Waiting for the owner"}>
       <p className="mb-3 text-sm">
-        No attested model confirmed the amount the code read, so nothing was sent. The code read{" "}
-        <strong>{usdcFixed(w.amount)} USDC</strong> ({w.amount} base units). The invoice was
-        uploaded by <span className="mono break-all">{w.uploadedBy}</span> at{" "}
-        {utcMinute(w.uploadedAt)}.
+        {w.queued ? (
+          <>
+            This invoice was sent from the browser extension, so no cycle ran and nothing was sent.
+            The code read <strong>{usdcFixed(w.amount)} USDC</strong> ({w.amount} base units).{" "}
+            <span className="mono break-all">{w.uploadedBy}</span> chose the mandate at{" "}
+            {utcMinute(w.uploadedAt)}.
+          </>
+        ) : w.stopped ? (
+          <>
+            This invoice was sent from the browser extension. The owner&apos;s Confirm started a
+            cycle, which stopped before anything was sent, so the invoice waits for a new Confirm.
+            The code read <strong>{usdcFixed(w.amount)} USDC</strong> ({w.amount} base units).{" "}
+            <span className="mono break-all">{w.uploadedBy}</span> chose the mandate at{" "}
+            {utcMinute(w.uploadedAt)}.
+          </>
+        ) : w.source === "extension" ? (
+          <>
+            This invoice was sent from the browser extension. The owner&apos;s Confirm ran a cycle,
+            which the rule below held, and nothing was sent. The code read{" "}
+            <strong>{usdcFixed(w.amount)} USDC</strong> ({w.amount} base units).{" "}
+            <span className="mono break-all">{w.uploadedBy}</span> chose the mandate at{" "}
+            {utcMinute(w.uploadedAt)}.
+          </>
+        ) : (
+          <>
+            No attested model confirmed the amount the code read, so nothing was sent. The code read{" "}
+            <strong>{usdcFixed(w.amount)} USDC</strong> ({w.amount} base units). The invoice was
+            uploaded by <span className="mono break-all">{w.uploadedBy}</span> at{" "}
+            {utcMinute(w.uploadedAt)}.
+          </>
+        )}
       </p>
       <h3 className="mt-4 mb-1 text-sm font-semibold">Why it waits</h3>
       <ul className="text-xs">
         {w.reasons.before.map((r) => (
           <li key={r.id} className="mb-1 wrap-anywhere">
-            <Badge tone={r.outcome === "refuse" ? "bad" : "warn"}>{r.outcome}</Badge>{" "}
-            <code>{r.id}</code> {r.detail}
+            <Badge tone={checkTone(r.outcome)}>{r.outcome}</Badge> <code>{r.id}</code> {r.detail}
           </li>
         ))}
         {w.reasons.owner ? (
@@ -286,6 +320,7 @@ export default async function InvoiceCyclePage({
         {inv.retained
           ? ` · ${inv.filename ? safeText(inv.filename, 120) : "pasted text"}`
           : " · not stored (zero-retention)"}
+        {inv.source === "extension" ? " · sent from the browser extension" : null}
       </p>
       {inv.amount_issue ? <Notice tone="bad">{amountIssueText(inv.amount_issue)}</Notice> : null}
       {inv.status === "processing" ? (
@@ -354,6 +389,24 @@ export default async function InvoiceCyclePage({
           This invoice waits for the owner, but the ledger could not be read, so nothing is offered.
           Reload to try again.
         </Notice>
+      ) : null}
+
+      {inv.source === "extension" ? (
+        <Card title="Sent from the browser extension">
+          <p className="mb-3 text-sm">
+            {EXTENSION_SOURCE_NOTE}
+            {cycleRanFor(inv, entries) ? ` ${EXTENSION_LEDGER_NOTE}` : null}
+          </p>
+          <h3 className="mt-4 mb-1 text-sm font-semibold">Checks when it was queued</h3>
+          <ul className="text-xs">
+            {queuedChecks(inv).map((r) => (
+              <li key={r.id} className="mb-1 wrap-anywhere">
+                <Badge tone={checkTone(r.outcome)}>{r.outcome}</Badge> <code>{r.id}</code>{" "}
+                {r.detail}
+              </li>
+            ))}
+          </ul>
+        </Card>
       ) : null}
 
       {outcome && entries !== null ? (

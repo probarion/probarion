@@ -141,6 +141,12 @@ export function rowResult(row: InvoiceRow, owner = true): { label: string; tone:
         s === "paid" || s === "settled" || s === "burned" ? "good" : s === "held" ? "warn" : "bad",
     };
   }
+  if (row.status === "awaiting_owner" && row.source === "extension") {
+    return {
+      label: `Waiting for ${owner ? "you" : "the owner"}: sent from the browser extension`,
+      tone: "warn",
+    };
+  }
   const tone: Tone =
     row.status === "error"
       ? "bad"
@@ -197,11 +203,43 @@ const RULE_OUTCOMES = ["pass", "hold", "refuse"] as const;
 const VERDICTS = ["allow", "hold", "refuse"] as const;
 const DECIDERS = ["model+rules", "rules-only"] as const;
 
-const shownRule = (r: RuleResult): ShownRule => ({
+export const shownRule = (r: { id: unknown; outcome: unknown; detail: unknown }): ShownRule => ({
   id: safeText(r.id, SHORT),
   outcome: knownOr(r.outcome, RULE_OUTCOMES),
   detail: safeText(r.detail, LONG),
 });
+
+/** The checks an extension invoice passed when it was queued (migration 0015's queue_checks), made safe to show. */
+export function queuedChecks(row: Pick<InvoiceRow, "source" | "queue_checks">): ShownRule[] {
+  if (row.source !== "extension" || !Array.isArray(row.queue_checks)) return [];
+  return row.queue_checks
+    .filter((c) => typeof c === "object" && c !== null)
+    .slice(0, 10)
+    .map(shownRule);
+}
+
+/** On an extension invoice's page in every state: who chose the mandate, and that no purpose document was matched. */
+export const EXTENSION_SOURCE_NOTE =
+  "This invoice was sent from the browser extension, where a member of the vault chose the mandate. No purpose document was matched.";
+
+/** After EXTENSION_SOURCE_NOTE, only once a Confirm ran a cycle for the row (cycleRanFor): why the ledger's purpose rule passed. */
+export const EXTENSION_LEDGER_NOTE =
+  "The owner's Confirm decided it under that mandate, so the signed ledger's invoice.po_mismatch rule passed with the mandate's own purpose.";
+
+/**
+ * Whether a cycle ran for this row: it has an outcome (paid, refused, or held again), or the signed ledger holds a
+ * decision for its invoice hash (a Confirm that wrote its decision and then stopped, so the row went back to waiting
+ * with no outcome). An extension row that is queued, or was rejected before any Confirm, has neither. With the ledger
+ * unreadable (null), only the outcome counts.
+ */
+export function cycleRanFor(
+  row: Pick<InvoiceRow, "outcome" | "invoice_hash">,
+  entries: readonly LedgerEntry[] | null,
+): boolean {
+  return (
+    row.outcome !== null || (entries !== null && latestDecision(entries, row.invoice_hash) !== null)
+  );
+}
 
 const nullableText = (v: unknown, max = SHORT): string | null =>
   v === null || v === undefined ? null : safeText(v, max);
@@ -392,10 +430,7 @@ export function recentPayeeRows(
           id: r.id,
           ref: safeText(r.ref, 64),
           status: r.status,
-          label:
-            r.status === "decided" && r.outcome
-              ? outcomeLabel(r.outcome.status, r.outcome.code, r.outcome.spendId)
-              : invoiceStatusLabel(r.status, owner),
+          label: rowResult(r, owner).label,
           amount: theirs.amount,
           match: amountMatch(theirs.amount, mine.amount),
           createdBy: safeText(r.created_by, 64),
