@@ -38,6 +38,9 @@ Each file here is one page of `/docs`. The page's metadata lives in the registry
 | `<VerifierChecks />`, `<VerifierChecks only="a, c" />` | The verifier checks, each anchored at `#check-a` ... `#check-i`. |
 | `<StatusTable />` | The landing's status rows, each anchored by its id. |
 | `<AgentRules />` | The rules for agents (the same text as `/llms.txt`). |
+| `<RefTable id="sdk-client" />` | A reference table from `src/lib/docs/ref/`. The rows are data there, pinned to the code by `test/docs-ref-<area>.test.ts`; the page explains how to read them and never repeats them. Each row with an id is an anchor. |
+| `<Changelog />` | The repository `CHANGELOG.md`, on `resources/changelog` only. Each heading is an anchor. |
+| `<ArchitectureDiagram />` | The diagram in `src/lib/docs/architecture.ts`, on `operate/architecture` only. |
 | `<HubSearch>`, `<HubDoors>`, `<Door who title href go also? alsoHref? ink?>`, `<HubCards>`, `<Card title href tag?>`, `<HubAgents example="<page path>" />` | The docs home only. `?` marks an optional prop. Every door needs `go`, and `also` and `alsoHref` go together: one without the other fails the build. Write `ink` bare, for the ink door. `index.mdx` must contain `<HubSearch>`, which wraps the list of popular searches (`#popular`), and must not write a "Choose a path" heading: `<HubDoors>` renders it. A door's `href` and `alsoHref` and a card's `href` point at a docs page, never at a `.md` twin or an llms file: `<HubAgents>` links those. |
 
 Write a component's children on their own lines, with a blank line around fenced blocks. Props are plain strings (`kind="note"`) or a bare name (`ink`), never expressions. No `import`, no `export`, no `{...}` expressions: the build fails on them. In prose, put `<` and `{` in inline code or escape them as `\<` and `\{`.

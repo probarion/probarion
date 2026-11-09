@@ -39,12 +39,21 @@ const IN_ORDER = [
   "build/let-an-agent-pay",
   "build/spend-outcomes",
   "build/errors",
+  // Phase 2, cut by the OWNER on 2026-11-09 to the reference pages.
+  "build/sdk-reference",
+  "build/policy-rules",
+  "build/cli-reference",
+  "build/contract-reference",
+  "build/events",
+  "build/http-api",
+  "build/limits-and-costs",
   "trust/verify-a-vault",
   "trust/verifier-checks",
   "trust/security-model",
+  "trust/reproducible-builds",
+  "operate/architecture",
   "resources/glossary",
   "resources/for-ai-agents",
-  // Phase 2, cut by the OWNER on 2026-11-09 to the reference pages.
   "resources/changelog",
 ];
 

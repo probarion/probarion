@@ -161,7 +161,12 @@ describe("the architecture diagram", () => {
       nodes: [
         base,
         { ...base, id: "twin", x: base.x + 10 },
-        { ...base, id: "wide", label: "A label far too long for any box of this size", y: 400 },
+        {
+          ...base,
+          id: "wide",
+          label: "A label far too long for any box of this size",
+          y: ARCHITECTURE.height,
+        },
       ],
       edges: [{ from: base.id, to: "ghost", label: "x" }],
     };

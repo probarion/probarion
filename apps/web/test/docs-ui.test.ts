@@ -498,7 +498,8 @@ describe("the docs shell", () => {
       /<a(?=[^>]*href="\/docs\/concepts\/payment-checks")(?=[^>]*aria-current="page")[^>]*>/,
     );
     expect(out).toContain("Concepts");
-    expect(out).not.toContain("Operate");
+    // The console section has no page yet (phase 2 was cut to the reference pages).
+    expect(out).not.toContain("Use the console");
   });
 
   it("puts a legend under the groups of both copies, and keeps the dot's screen-reader text", () => {
