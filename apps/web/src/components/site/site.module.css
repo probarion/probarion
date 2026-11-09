@@ -234,6 +234,9 @@ a.netPill:hover {
 .hero {
   padding-block: clamp(36px, 6vw, 76px) clamp(48px, 7vw, 96px);
 }
+.heroEyebrow {
+  margin-bottom: 14px;
+}
 .h1 {
   font-weight: 300;
   font-size: clamp(46px, 9.1vw, 134px);
@@ -276,6 +279,9 @@ a.netPill:hover {
   font-size: 14px;
   color: var(--color-mute);
   max-width: 34em;
+}
+.audience {
+  margin-top: 10px;
 }
 
 .duel {
@@ -368,14 +374,6 @@ a.netPill:hover {
   letter-spacing: -0.03em;
   overflow-wrap: anywhere;
 }
-.cardCode {
-  font-size: clamp(20px, 1.95vw, 27px);
-  font-family: var(--font-mono);
-  font-weight: 400;
-  letter-spacing: -0.03em;
-  line-height: 1.18;
-  min-height: 2.36em;
-}
 .rows {
   display: grid;
   gap: 0;
@@ -410,24 +408,6 @@ a.netPill:hover {
   font-size: 14px;
   color: var(--color-mute);
   padding-inline: 4px;
-}
-
-/* Thesis */
-.thesis {
-  border-top: 1px solid var(--color-line);
-  padding-block: clamp(56px, 8vw, 116px);
-}
-.thesis p {
-  font-weight: 300;
-  font-size: clamp(30px, 4.7vw, 66px);
-  line-height: 1.08;
-  letter-spacing: -0.032em;
-  max-width: 19em;
-  text-wrap: balance;
-}
-.thesis em {
-  font-style: normal;
-  color: var(--color-mute);
 }
 
 /* Numbers */
@@ -495,6 +475,392 @@ a.netPill:hover {
   color: var(--color-mute);
 }
 
+/* Live check: two panels and the mandate under them. The answer panel is the ink band's colours. */
+.liveGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+}
+.livePanel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 20px;
+  padding: 24px;
+  min-width: 0;
+}
+.livePanel h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.liveHint {
+  margin: 4px 0 18px;
+  font-size: 13.5px;
+  color: var(--color-mute);
+  overflow-wrap: anywhere;
+}
+.scenarios {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.scenario {
+  text-align: left;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1.35;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.scenario small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--color-mute);
+}
+.scenario[aria-pressed="true"] {
+  border-color: var(--color-ink);
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--color-ink);
+}
+.field {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--color-line);
+  font-size: 14.5px;
+}
+.field > span:first-child,
+.field > label {
+  color: var(--color-mute);
+}
+.field select,
+.field input:not([type="range"]) {
+  font: inherit;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  min-width: 0;
+  width: 100%;
+}
+.amountRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.amountRow input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--color-gold-deep);
+}
+.amountRow input:not([type="range"]) {
+  width: 104px;
+  flex: none;
+}
+.payee {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.payee code {
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+  padding: 3px 8px;
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+}
+.payeeLock {
+  font-size: 12.5px;
+  color: var(--color-wait);
+  background: var(--color-wait-bg);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.injected {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--color-bad-bg);
+  color: var(--color-bad);
+  font-size: 14px;
+}
+.liveAnswer {
+  background: var(--color-band);
+  color: var(--color-band-fg);
+  border-color: var(--color-band-line);
+}
+.liveAnswer .liveHint {
+  color: var(--color-band-mute);
+}
+.liveAnswer :focus-visible {
+  outline-color: var(--color-band-fg);
+}
+.liveVerdict {
+  margin: 6px 0 10px;
+  font-weight: 300;
+  font-size: clamp(32px, 3.4vw, 44px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+.livePay {
+  color: var(--color-band-fg);
+}
+.liveRefuse {
+  color: var(--color-band-bad);
+}
+.liveHold {
+  color: var(--color-gold-light);
+}
+.liveNone {
+  color: var(--color-band-mute);
+}
+.liveWhy {
+  font-size: 16px;
+  min-height: 50px;
+  margin-bottom: 18px;
+}
+.liveRetry {
+  margin-bottom: 14px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--color-band-fg);
+  background: none;
+  color: var(--color-band-fg);
+  font: inherit;
+  cursor: pointer;
+}
+.liveRequest {
+  border: 1px solid var(--color-band-line);
+  border-radius: 12px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+.liveRequest pre {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 14px;
+}
+.liveGone {
+  color: var(--color-band-bad);
+}
+.liveMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12.5px;
+  color: var(--color-band-mute);
+}
+.liveMeta a {
+  color: var(--color-band-fg);
+}
+.liveMandate {
+  grid-column: 1 / -1;
+}
+.mandateFacts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-size: 13.5px;
+}
+.mandateFacts dt {
+  color: var(--color-mute);
+}
+.mandateFacts dd {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.liveTable th,
+.liveTable td {
+  text-align: left;
+  padding: 4px 16px 4px 0;
+}
+
+/* Problem: two columns, then the numbers */
+.vs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: clamp(32px, 4vw, 56px);
+}
+.vsCol {
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  padding: 26px;
+  background: var(--color-surface);
+}
+.vsWith {
+  border-color: var(--color-ink);
+}
+.vsCol h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.vsCol ul {
+  display: grid;
+  gap: 12px;
+}
+.vsCol li {
+  position: relative;
+  padding-left: 32px;
+  font-size: 16px;
+}
+.vsNo,
+.vsYes {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 600;
+}
+.vsNo {
+  color: var(--color-bad);
+}
+.vsYes {
+  color: var(--color-ok);
+}
+
+/* Compare: a real table; under 960 px each row stacks as a card with its column names */
+.compare {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--color-surface);
+  font-size: 15px;
+}
+.compare th,
+.compare td {
+  text-align: left;
+  vertical-align: top;
+  padding: 16px 20px;
+  border-top: 1px solid var(--color-line);
+}
+.compareHead th {
+  border-top: 0;
+  background: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+.compareRow {
+  font-weight: 500;
+  width: 30%;
+}
+.compareDiy {
+  color: var(--color-mute);
+}
+
+/* Integrate */
+.ways {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.way {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  padding: 20px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+.way h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.way p {
+  flex: 1;
+  font-size: 14.5px;
+  color: var(--color-mute);
+}
+.codeBox {
+  border-radius: 16px;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+  border: 1px solid var(--color-band-line);
+  overflow: hidden;
+}
+.codeBox :focus-visible {
+  outline-color: var(--color-band-fg);
+}
+.codeHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-band-line);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--color-band-mute);
+}
+.codeMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.codeBody {
+  overflow-x: auto;
+}
+.codeBody pre {
+  padding: 18px 20px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+.codeNote {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.who {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 28px;
+}
+.who > div {
+  border-top: 1px solid var(--color-ink);
+  padding-top: 12px;
+  font-size: 15px;
+}
+.who b {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.who span {
+  color: var(--color-mute);
+}
+
 /* Journey */
 .step {
   display: grid;
@@ -533,6 +899,11 @@ a.netPill:hover {
   border-radius: 12px;
   background: var(--color-wait-bg);
   color: var(--color-wait);
+}
+.tryIt {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 15px;
 }
 .panel {
   background: var(--color-surface);
@@ -835,6 +1206,13 @@ a.netPill:hover {
 .checkBad .checkWord {
   color: var(--color-bad);
 }
+/* What the check means, in one line, the same whether it passed or failed. */
+.checkHint {
+  grid-column: 2 / -1;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-mute);
+}
 .why {
   grid-column: 2 / -1;
   font-family: var(--font-mono);
@@ -851,10 +1229,47 @@ a.netPill:hover {
   color: var(--color-mute);
   overflow-wrap: anywhere;
 }
+/* The verifier's own words, closed until asked for: the plain verdict above says what they mean. */
+.detail {
+  margin: 0 20px 14px;
+  font-size: 14px;
+}
+.detail summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--color-mute);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.detail p {
+  margin-top: 8px;
+  color: var(--color-mute);
+}
+.detail ul {
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+.detail li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
 .sheetNote {
   padding: 0 20px 18px;
   font-size: 14px;
   color: var(--color-mute);
+}
+/* After a run the verifier failed: where to go next. */
+.sheetNext {
+  margin-top: -6px;
+  padding: 0 20px 18px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
 }
 .sheetError {
   padding: 0 20px 18px;
@@ -925,6 +1340,12 @@ a.netPill:hover {
 .plan {
   background: var(--color-plan-bg);
   color: var(--color-plan);
+}
+/* A pill inside running text or a card: it moves to the next line whole, never splits across two. */
+.pillInline {
+  display: inline-block;
+  max-width: none;
+  white-space: nowrap;
 }
 .statusNote {
   margin-top: 28px;
@@ -1111,6 +1532,42 @@ a.netPill:hover {
   }
 }
 @media (max-width: 960px) {
+  .liveGrid {
+    grid-template-columns: 1fr;
+  }
+  .vs {
+    grid-template-columns: 1fr;
+  }
+  .ways {
+    grid-template-columns: 1fr 1fr;
+  }
+  .compareHead {
+    display: none;
+  }
+  .compare tr,
+  .compare th,
+  .compare td {
+    display: block;
+    width: auto;
+  }
+  .compare .compareRow {
+    padding-bottom: 4px;
+  }
+  .compare td {
+    border-top: 0;
+    padding-block: 4px;
+  }
+  .compare td::before {
+    content: attr(data-label) ": ";
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+  .compare tr + tr th {
+    border-top: 1px solid var(--color-line);
+  }
+  .compare td:last-child {
+    padding-bottom: 16px;
+  }
   .heroGrid,
   .bandGrid,
   .tamper {
@@ -1158,11 +1615,19 @@ a.netPill:hover {
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
+  .scenarios {
+    grid-template-columns: 1fr;
+  }
+  .ways,
+  .who {
+    grid-template-columns: 1fr;
+  }
+  .field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
   .duel {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .cardCode {
-    min-height: 0;
   }
   .status {
     grid-template-columns: minmax(0, 1fr);
@@ -1234,6 +1699,9 @@ a.netPill:hover {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .scenario {
+    transition: none;
+  }
   .card {
     animation: none;
   }

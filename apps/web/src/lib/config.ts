@@ -4,10 +4,8 @@ import { productionOrigin } from "@/lib/site/network";
 export type Network = NetworkId;
 
 export const AUTH_RECIPIENT = "probarion.xyz";
-export const SECURITY_EMAIL = "security@probarion.xyz";
-export const SUPPORT_EMAIL = "support@probarion.xyz";
+// No security or support mailbox and no status host: a security report goes the way SECURITY.md says.
 export const ALERT_FROM = "Probarion Alerts <alerts@probarion.xyz>";
-export const STATUS_PAGE_URL = "https://status.probarion.xyz";
 
 /** Spec §12 defaults; the UI pre-fills these. */
 export const VAULT_DEFAULTS = {

@@ -202,6 +202,7 @@ Then post "Resolved".
 | `BETTERSTACK_HEARTBEAT_URL` | Vercel | Leak (its path carries a token) | A new heartbeat URL in Better Stack, set in Vercel (Sensitive), redeploy. |
 | `NEARAI_API_KEY` | Vercel | Leak, or spend cap reached | NEAR AI Cloud dashboard: a new key with a spend cap, set in Vercel, redeploy, then delete the old key. |
 | `ONECLICK_JWT` | Vercel (one key for the project, mainnet only) | Leak | 1Click's partner portal: a new JWT, set in Vercel, redeploy, then revoke the old one. |
+| `TESTNET_FAUCET_KEY` (a function-call key on `probarion.testnet` that can call `mint` on `usdc.probarion.testnet` only) | Vercel, Production (Sensitive) | Leak, allowance nearly used up (the log line `faucet.allowance_low`, or `faucet.refused` with `NotEnoughAllowance`) | A new key, then delete the old one ([testnet faucet](#testnet-faucet), steps 1 to 4). A leak is SEV4: the key mints only test USDC, which has no value, and spends only its own allowance of testnet NEAR. |
 | `RESEND_API_KEY` | Vercel | Leak | Resend dashboard: a new key, set in Vercel, redeploy, then delete the old one. |
 | RPC URLs that carry a key (`NEAR_RPC_URLS_<NET>`, `NEAR_ARCHIVAL_RPC_URLS_<NET>`, `BASE_RPC_URL`) | Vercel (Sensitive when they carry a key) | Leak | A new key from the provider, the new URLs in Vercel, redeploy. |
 | `NPM_TOKEN` | Environment secret of the `npm-release` environment (GitHub Settings > Environments), used by the release workflow | Leak | Revoke it in npm's account settings, create one with the same scope, and store it as the environment secret of `npm-release`, not as a repository secret: the environment admits only `sdk-v*` tags and waits for a reviewer (`.github/workflows/release.yml`). |
@@ -279,7 +280,7 @@ A cross-chain payout has two halves: the vault's `ft_withdraw` on NEAR burns the
 | Intents balance low (the rule `intents.balance_low` holds a spend) | SEV4 | Tell the owner to top up on the Top-up tab ([Intents top-up](#intents-top-up)). |
 | Anchoring fails (`PROBARION:BadSeq`, or the ledger key's allowance is used up) | SEV3 | `BadSeq` means two writers on one ledger: stop the second. An allowance used up means a new ledger key with a new allowance: on a hosted vault, "Generate ledger key and set it in my wallet" on the Keys page; for an SDK vault, `node packages/cli/dist/bin.js ledger set-key --vault <vault> --pk <new pk> --allowance <near>` (**OWNER SIGNS**, 1 yoctoNEAR). Spends are unaffected, and `verify` reports the entries that no anchor covers yet. |
 | Agent key leaked | SEV2 | The key can only call `spend`, inside its mandates and the vault's daily backstop. **OWNER SIGNS** a freeze if any spend looks wrong, then replace the key ([key rotation](#key-rotation)), review every spend since the suspected leak, and run `verify`. |
-| An owner's console session stolen (for example through an XSS in the console), or a function-call key on an owner's account leaked (for example a dapp login key) | SEV2 | The console signs nothing itself: every transaction that changes a vault opens a wallet prompt. A function-call key attaches no deposit, so it cannot approve, reject, withdraw, add or remove keys, revoke mandates or unfreeze (`PROBARION:RequiresOneYocto`), and it cannot create mandates (they need a storage deposit). On the owner's account it can only call `freeze`, which is safe. Remove a leaked key from the owner account in the wallet, check the vault's recent transactions on the explorer, and fix the web bug. Deploy the fix before anyone signs in again: until it is live, the steps below use the SQL, which needs no sign-in, not `/extension`. Rotating `KEY_ENCRYPTION_SECRET` signs everyone out ([key rotation](#key-rotation)). A stolen session may also have minted extension tokens and pairing codes on `/extension`, and those outlive it: a code still turns into a token for up to 10 minutes, with no session, and Revoke on `/extension` ends tokens only. End the sessions first, by rotating `KEY_ENCRYPTION_SECRET`, because until then the session can mint new tokens and codes. Then either end every token with the SQL in the Extension tokens row ([key rotation](#key-rotation)), which deletes the pairing codes first, or wait at least 10 minutes from the moment the sessions ended, so that every code the session showed has expired, then revoke its tokens on `/extension` and check Connected browsers again, at the address of the network the session was stolen on (each network's address, if unsure). |
+| An owner's console session stolen (for example through an XSS in the console), or a function-call key on an owner's account leaked (for example a dapp login key) | SEV2 | The console signs nothing itself: every transaction that changes a vault opens a wallet prompt. The one exception is the testnet faucet, whose mint only adds test USDC to a testnet vault, once a day. A function-call key attaches no deposit, so it cannot approve, reject, withdraw, add or remove keys, revoke mandates or unfreeze (`PROBARION:RequiresOneYocto`), and it cannot create mandates (they need a storage deposit). On the owner's account it can only call `freeze`, which is safe. Remove a leaked key from the owner account in the wallet, check the vault's recent transactions on the explorer, and fix the web bug. Deploy the fix before anyone signs in again: until it is live, the steps below use the SQL, which needs no sign-in, not `/extension`. Rotating `KEY_ENCRYPTION_SECRET` signs everyone out ([key rotation](#key-rotation)). A stolen session may also have minted extension tokens and pairing codes on `/extension`, and those outlive it: a code still turns into a token for up to 10 minutes, with no session, and Revoke on `/extension` ends tokens only. End the sessions first, by rotating `KEY_ENCRYPTION_SECRET`, because until then the session can mint new tokens and codes. Then either end every token with the SQL in the Extension tokens row ([key rotation](#key-rotation)), which deletes the pairing codes first, or wait at least 10 minutes from the moment the sessions ended, so that every code the session showed has expired, then revoke its tokens on `/extension` and check Connected browsers again, at the address of the network the session was stolen on (each network's address, if unsure). |
 | An extension token leaked | SEV3 | It reads its account's waiting invoices, held spends and active mandates on its network, and it can queue invoices, 20 in 10 minutes, for a vault where the account is an owner or an approver: each under a usable mandate, to the payee that mandate already names, and each waits in the console for the owner's wallet-signed Confirm. It cannot pay or approve. The owner revokes it on `/extension` and rejects any invoice it queued; the OWNER can end every token ([key rotation](#key-rotation)). A freeze is not needed. |
 | A vault (the Canary or any other) pays an account no mandate names | **SEV1** | **OWNER SIGNS** a freeze of every vault Probarion runs, at once. Tell every owner ([message](#owners-vaults)), snapshot every vault ([first 15 minutes](#first-15-minutes), step 6), post on X, and publish a postmortem within 72 hours. |
 
@@ -407,7 +408,87 @@ update public.tenants set kind = '<team|external|canary>' where vault_id = '<vau
 - In an incident, never ask an owner to send a deposit again for a quote that may have been paid: check
   `/api/topup/status` first.
 - On testnet an owner funds a vault with NEAR USDC (`usdc.probarion.testnet`) from their own wallet, on the
-  same tab.
+  same tab, or with the [testnet faucet](#testnet-faucet).
+
+## Testnet faucet
+
+- Testnet only. A signed-in owner of a testnet vault presses "Add test USDC" on the Top-up tab, and
+  `POST /api/topup/faucet` mints 25 test USDC straight into the vault: never into a wallet, and the amount is
+  fixed (`apps/web/src/lib/topup/faucet.ts`). At any other address the route answers 404, and so it does to a
+  stranger, an approver, a viewer and a vault registered on the other network.
+- It signs as `probarion.testnet`, the owner of `usdc.probarion.testnet`, with the function-call key in
+  `TESTNET_FAUCET_KEY`. That key can call only `mint` on the token and attaches no deposit. Before each mint the
+  route reads the key from the chain and stops (503, nothing counted) unless it is a function-call key for `mint`
+  on `usdc.probarion.testnet` alone with at least 0.01 NEAR of allowance left: a full-access key in the variable
+  is refused, not used. With the variable unset, the tab says to ask @probarionhq instead.
+- Limits, per UTC day (every counter starts again at midnight UTC): one mint per vault (bucket
+  `faucet:testnet:vault:<vault>:<YYYY-MM-DD>`), mints into 3 vaults per owner account
+  (`faucet:testnet:account:<account>:<YYYY-MM-DD>`), and 50 for all vaults together
+  (`faucet:testnet:all:<YYYY-MM-DD>`). The vault's counter is taken first, then the account's, then the one for
+  all vaults. Every check that can refuse runs before a counter is taken (the chain's owner and token, the key,
+  and the time left: reads that leave the send under 30 s of its 45 s answer 503 with nothing counted), but a mint
+  that fails after that still uses the vault's day, and one of the account's 3 and of the 50. To give all three
+  back (OWNER, SQL editor, with the vault, its owner and the UTC day of the failed mint):
+
+  ```sql
+  delete from public.rate_limits where bucket = 'faucet:testnet:vault:<vault>:<YYYY-MM-DD>';
+  update public.rate_limits set count = count - 1
+    where bucket in ('faucet:testnet:account:<account>:<YYYY-MM-DD>', 'faucet:testnet:all:<YYYY-MM-DD>')
+      and count > 0;
+  ```
+
+- Before any of that, each press counts against the account's presses (`faucet:testnet:tries:<account>`, 10 in
+  10 minutes), so one owner cannot make the server read NEAR without end.
+- One person with many testnet accounts can still use up the 50 for all vaults: each account needs its own
+  vaults, registered in the console. If that happens, raise `faucetGlobal` in `apps/web/src/lib/ratelimit.ts`
+  for a day, or send test USDC by hand to the vaults that ask on X.
+- Cost: each mint prepays 30 Tgas, about 0.003 NEAR of the key's allowance. The first mint into a vault also
+  registers the vault on the token, which pays 0.00125 NEAR of storage from its own balance. On 2026-11-07 the
+  token account had about 0.22 NEAR free, enough for about 180 new vaults.
+- What the log lines mean:
+  - `faucet.mint_failed` with `LackBalanceForState`: the token account is out of NEAR for storage. Send it
+    testnet NEAR (OWNER):
+
+    ```bash
+    near tokens probarion.testnet send-near usdc.probarion.testnet '1 NEAR' network-config testnet sign-with-keychain send
+    ```
+
+  - `faucet.refused` with `NotEnoughAllowance` or `AccessKeyNotFound`: the key's allowance is used up, or the
+    key is gone. Add a new key (steps 1 to 4 below).
+  - `faucet.key_invalid`: `TESTNET_FAUCET_KEY` is not an `ed25519:` secret key.
+  - `faucet.key_not_mint_only`: the chain holds the key as `full_access`, as a key for `other` methods or
+    contracts, or not at all (`missing`). Set up a mint-only key (steps 1 to 4).
+  - `faucet.allowance_low`: under 0.01 NEAR of allowance is left. Add a new key (steps 1 to 4).
+  - `faucet.slow_reads`: the chain reads took so long that the mint was not sent. Nothing was counted.
+  - `faucet.outcome_unknown`: the mint was sent and its answer was lost. Look its hash up on the explorer.
+    Nothing is sent again, and the vault's day is used.
+- Set it up, or replace the key (OWNER, Git Bash, in the repository folder):
+  1. Make a key pair. The public key is printed; the secret stays in the file, and `.keys/` is ignored by git.
+
+     ```bash
+     node packages/cli/dist/bin.js agent keygen --out .keys/testnet-faucet.json
+     ```
+
+  2. Add it to `probarion.testnet` as a function-call key for `mint` on the token, with a 2 NEAR allowance:
+
+     ```bash
+     near account add-key probarion.testnet grant-function-call-access --allowance '2 NEAR' --contract-account-id usdc.probarion.testnet --function-names 'mint' use-manually-provided-public-key <public key from step 1> network-config testnet sign-with-keychain send
+     ```
+
+  3. Copy the secret to the clipboard without printing it, paste it in Vercel as `TESTNET_FAUCET_KEY`
+     (Production, Sensitive), then redeploy:
+
+     ```bash
+     node.exe -e 'process.stdout.write(require("./.keys/testnet-faucet.json").secret_key)' | clip
+     ```
+
+  4. When replacing a key, delete the old one:
+
+     ```bash
+     near account delete-keys probarion.testnet public-keys <old public key> network-config testnet sign-with-keychain send
+     ```
+
+- To turn the faucet off: unset `TESTNET_FAUCET_KEY` and redeploy, or delete the key (step 4).
 
 ## Rate limits
 
@@ -419,6 +500,10 @@ update public.tenants set kind = '<team|external|canary>' where vault_id = '<vau
   `ext:invoice:<network>:<account>` for the invoices it queues, and
   `ext:mint:<network>:<account>` for the tokens and codes the `/extension` page makes. Pairing codes are
   not in `rate_limits`.
+- The testnet faucet's buckets, each for one UTC day: `faucet:testnet:vault:<vault>:<YYYY-MM-DD>` (one mint per
+  vault), `faucet:testnet:account:<account>:<YYYY-MM-DD>` (3 vaults per owner account) and
+  `faucet:testnet:all:<YYYY-MM-DD>` (50 for all vaults), and `faucet:testnet:tries:<account>` (10 presses in 10
+  minutes, before the chain is read) ([testnet faucet](#testnet-faucet)).
 - `rate_limits_prune` (migration `20261108000009_metrics.sql`) deletes the rows whose window began more
   than a day ago, once per `/api/cron/metrics` run. No window is longer than a day
   (`apps/web/src/lib/ratelimit.test.ts` holds every window to it), so nothing live is deleted. A failed

@@ -41,6 +41,7 @@ import {
 import { OWNER_CONFIRMS_RULE } from "@/lib/payables/owner-confirms";
 import { type PipelineDeps, PROCESS_LEASE_SECONDS, processInvoice } from "@/lib/payables/pipeline";
 import { getInvoice, type InvoiceRow, insertInvoice, listInvoices } from "@/lib/payables/store";
+import { CLI_ON_NPM, cli } from "@/lib/proof/cli";
 import { signNep413 } from "../fixtures/nep413";
 import { quietLogs } from "../fixtures/quiet-logs";
 import { freshDb, seedTenant } from "./harness";
@@ -1469,7 +1470,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
           signed: sign(p1),
         }),
       ).toMatchObject({ ok: true, outcome: { status: "paid" } });
-      expect(await html(paid.id)).toMatch(/bg-emerald-100[^"]*">Confirmed by the owner/);
+      expect(await html(paid.id)).toMatch(/bg-ok-bg[^"]*">Confirmed by the owner/);
       // Held on chain for the approvers: amber.
       const held = await upload("61.00");
       const p2 = await prepared(held);
@@ -1482,7 +1483,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
           signed: sign(p2),
         }),
       ).toMatchObject({ ok: true, outcome: { status: "held" } });
-      expect(await html(held.id)).toMatch(/bg-amber-100[^"]*">Confirmed by the owner/);
+      expect(await html(held.id)).toMatch(/bg-wait-bg[^"]*">Confirmed by the owner/);
       // Confirmed, held again, then rejected: no green, and it says what the confirmation came to.
       const balances = server.chain.intents.balances;
       const saved = { ...balances };
@@ -1507,7 +1508,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
           },
         );
         const out = await html(again.id);
-        expect(out).toMatch(/bg-stone-100[^"]*">An earlier confirmation by owner\.testnet/);
+        expect(out).toMatch(/bg-plan-bg[^"]*">An earlier confirmation by owner\.testnet/);
         expect(out).not.toContain("Confirmed by the owner");
       } finally {
         Object.assign(balances, saved);
@@ -1727,7 +1728,13 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
           expect(paid).toContain(`https://testnet.nearblocks.io/txns/${r.outcome.txHash}`);
         const anchor = (await getInvoice(h.db, member.tenant_id, row.id))?.anchor_tx_hash;
         if (anchor) expect(paid).toContain(`https://testnet.nearblocks.io/txns/${anchor}`);
-        expect(paid).toContain("node packages/cli/dist/bin.js verify --network testnet");
+        expect(paid).toContain(cli("verify --network testnet"));
+        // npx needs no set-up: only the repository command has one.
+        expect(paid).toContain(
+          CLI_ON_NPM
+            ? "has the ledger file to download first, then run"
+            : "has the ledger file and the one-time setup, then run",
+        );
       } finally {
         await setTenantSettings(h.db, member.tenant_id, { zeroRetention: false });
         member = (await memberRole(h.db, SCENARIO_VAULT, OWNER)) as MemberTenant;

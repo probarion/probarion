@@ -1,0 +1,210 @@
+`verify` reads a vault's state on chain and its signed ledger, or a saved snapshot of both, then runs `runChecks()` from `@probarion/core` on them: nine checks, a to i, in that order. Each check gives one status and a detail line. This page says what a pass on each check establishes, and what it leaves to trust.
+
+<Callout kind="note" title="Not the contract's checks">
+
+Checks a to i run off chain, after the fact, on the record. The vault contract runs a different list, 14 ordered checks on every spend before it pays: see [Payment checks](/docs/concepts/payment-checks#the-14-checks-in-order).
+
+</Callout>
+
+## Statuses
+
+| Status | In the report row | Which checks | The report is ok |
+| --- | --- | --- | --- |
+| `pass` | `PASS` | Any | Yes, if no other check fails or is unproven |
+| `fail` | `FAIL` | Any | No |
+| `skip` | `SKIP` | Only i, for a vault with no factory | Yes, if no other check fails or is unproven |
+| `unproven` | `UNPROVEN` | Only h, for a burn whose transaction was not read | No |
+
+The report's `ok` is true only when no check fails and none is unproven. An unproven check is not a pass: it means `verify` could not look at what the check needs.
+
+`runChecks()` is pure and offline, and it never throws. A snapshot of the wrong shape fails all nine checks with `the snapshot is malformed: ...`, and a check that crashes on a bad entry fails with `check crashed on a malformed snapshot: ...`.
+
+The CLI reads an `--offline` file before `runChecks()` sees it. A file that is not a `v: 1` snapshot with a `ledger` array and a `chain` object stops with `error: --offline <file> is not a Probarion snapshot (v: 1)`, prints no rows and exits 1. A snapshot whose `vault`, `network` or `taken_at` is invalid is a usage error and exits 64. Other wrong shapes reach `runChecks()`, which reports them as above.
+
+### Exit codes
+
+The CLI prints one row per check, then the counts and a `RESULT` line, and exits with:
+
+| Exit code | When |
+| --- | --- |
+| 0 | Every check passes. A skipped check i still allows this: the count line then ends in `1 skipped`, and the result is `RESULT: PASS`. |
+| 1 | A check fails, or `verify` could not run (`error:` on stderr, no `RESULT` line). A fail always wins over unproven. |
+| 2 | No check fails, but at least one is unproven. |
+| 64 | A usage error: a missing, malformed or conflicting flag, or an `--offline` snapshot whose `vault`, `network` or `taken_at` is invalid. |
+
+### The first broken seq
+
+A `FAIL` row ends in `[first broken seq N]` when the check can name a ledger entry, and the result line names the lowest such seq across the failing checks: `RESULT: FAIL (first broken seq N)`. Change the amount of entry 2 in the test fixture and check a fails with `[first broken seq 2]`, and the result is `RESULT: FAIL (first broken seq 2)`.
+
+| Check | The entry a failure names |
+| --- | --- |
+| a, b | The exact entry that fails: its signer, signature, hash, link or position. Check a names no entry when it fails on the vault's own ledger key: a `config.ledger_key` that is neither a key nor null, or a ledger key that is not an anchor-only function-call key on the vault. The row then has no `[first broken seq N]`. That is inferred: it follows from the code, and no test shows it yet. |
+| c | The first entry of the anchor range it cannot prove. An anchor pins a whole range, so it cannot say which entry inside it is wrong. In the JSON, `lastUnprovenSeq` gives the end of the range, as information only. |
+| d | The decision of the spend that fails to bind, when that decision is in the ledger. A spend whose `decision_hash` is in no ledger entry fails with no seq. |
+| e | The entry whose attestation fails. |
+| h | The decision of the spend whose burn fails, when that decision is in the ledger. |
+| f, g, i | None. They judge the vault account, not an entry. |
+
+An unproven check names no broken seq.
+
+### An unproven row
+
+Today only check h can be unproven. The row lists each spend it could not prove, the reason and what to supply:
+
+```text
+h  burn-memos             UNPROVEN  0 of 1 burned spend has a proven burn pair; not proven, so the report is not ok: ...
+   unproven: spend 2 (approver_tx): supply the burn tx with --burn-tx or --proof
+i  factory-version        PASS      created by vaults.probarion.testnet at version 1
+
+8 passed, 0 failed, 1 unproven
+RESULT: UNPROVEN (no check failed; what the UNPROVEN rows name is not proven)
+```
+
+Rows a to g come above the h row and are cut here, and so is the end of the h detail. The unproven lines sit right under the h row, before row i.
+
+| Reason | What happened | What to supply |
+| --- | --- | --- |
+| `approver_tx` | A held spend that an approver paid out. Its burn is in the approver's transaction, which was not read. | `--burn-tx` or `--proof` |
+| `not_recorded` | A spend bound to its decision, but no payment entry in the ledger names its burn transaction. | `--burn-tx` or `--proof` |
+| `pre_ledger_no_tx` | A burned spend that check d exempts as pre-ledger, with no burn transaction supplied. | `--burn-tx` or `--proof` |
+| `tx_unavailable` | The burn transaction could not be read right now: an RPC outage, an answer the client cannot read, or an old transaction with no archival RPC. | Run again, or add `--archival-rpc` |
+
+These flags go on a live run with `--vault`, or on the live run that takes a snapshot with `--snapshot <file>`. `--offline` refuses `--burn-tx`, `--proof` and `--archival-rpc` (exit 64), and the same snapshot checked offline again gives the same result. Offline, each unproven line ends in `(when the snapshot is taken: probarion verify --network <network> --vault <vault> --snapshot <file>)`. Run that command as `node packages/cli/dist/bin.js --network <network> verify --vault <vault> --snapshot <file>`, with the flag the row asks for.
+
+A burn record that names a transaction which was read and holds no burn pair fails check h, and so does a transaction the node says does not exist. Supplying a transaction is not taking it on trust: `verify` reads each one and looks for the burn in it.
+
+### The JSON report
+
+`--json` prints the report itself:
+
+| Field | What it holds |
+| --- | --- |
+| `vault`, `network` | The vault checked, and `testnet` or `mainnet`. |
+| `ok` | True only when no check fails and none is unproven. |
+| `checks` | One result per check, a to i: `id`, `name`, `status`, `detail`, plus `firstBrokenSeq` on a failure that names an entry and `lastUnprovenSeq` on a check c failure. |
+| `entries`, `anchors` | The number of ledger entries, and of anchors on chain. |
+| `generated_at` | When the report was made. |
+| `unproven` | The burns check h could not prove, each with `check`, `spend_id` and `reason`. Empty unless h is unproven. |
+
+## The checks
+
+Each check has its own anchor, `#check-a` to `#check-i`. The label is the one the site shows, and the code name is the one in the report row and the JSON.
+
+<VerifierChecks />
+
+## Reading a result
+
+### A rules-only decision
+
+A decision made by the rules alone has `decided_by` set to `rules-only`. Check e does not fail a rules-only decision on A1 to A7. With no evidence, it lists the seq as reported, not failed. With evidence, it runs A1 to A7 and lists the seq as reported either way, with `(unattested: ...)` and the ids of the failed checks when they fail. Evidence whose nonce binds another vault or another position fails A6, so for a rules-only decision it is reported as unattested, not failed. An entry with evidence whose own body names another vault, or that is not at its own chain position, still fails e (and b): that test runs before the rules-only exemption. In the test fixture, seq 4 is a rules-only refusal, so e passes with `rules-only or unattested (reported, not failed): seq 4`. A decision marked `model+rules` that carries no evidence fails e, and so does a decision with any other `decided_by`.
+
+### A8 and the mandate match
+
+A8 rebuilds the request the model was sent from the recorded inputs, the invoice text and the ledger nonce, and checks that it hashes to the request the model signed. It runs together with the mandate match, which compares the mandates the model was shown with the vault's. The two are one verdict: A8 with the mandate match passes or fails as one.
+
+A8 needs the invoice texts, and the ledger stores only their hashes. The SDK's `verify()` runs it when it is given `invoiceTexts`. The CLI passes none, so its check e row says `A8 not run`, which is neither a pass nor a fail.
+
+### What a locked vault means
+
+A pass on check f means the vault account has no full-access key, its other keys are the current ledger key (which may call only `anchor`) or agent keys (which may call only `spend`), and its code is a trusted build. The vault contract has no upgrade method, so with no full-access key nothing can deploy new code to the account. It does not mean the vault never changes: the owner still signs freeze, withdraw and mandate calls from their own account. [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) lists who holds which key.
+
+The trusted builds are the recorded reproducible builds in `KNOWN_VAULT_CODE_HASHES`. For a vault whose recorded factory is the network's canonical factory, they also include the versions that factory lists. A vault that names any other factory, or none, rests on `KNOWN_VAULT_CODE_HASHES` alone, so it fails check f when it runs a factory version's code that is not a recorded build. If the snapshot's own `expected_code_hashes` lists any hash outside that set, check f fails. An account with no contract code fails too. A vault the canonical factory created at version N must run version N's code.
+
+### Burns on testnet
+
+On testnet, `intents-stub.probarion.testnet` stands in for NEAR Intents, and test tokens stand in for the POA USDC tokens. Checks g and h hold a testnet vault to that stub. A pass on h there shows a matched burn pair on the test token and the stub. Nothing crosses to Base or Solana. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+### A vault with no factory
+
+A vault records as its factory the account that called its `new`, unless that was the vault account itself. A vault that deployed and initialized itself has no factory, and check i skips it. A vault initialized by any other account names that account, and check i fails unless it is the network's canonical factory: `vaults.probarion.testnet`, or on mainnet `vaults.probarion.near`, which is not deployed yet. The mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+## Online checks O1 and O2
+
+O1 checks each attested decision's TDX quote through Intel DCAP, and requires debug off, a TCB status of `UpToDate`, `OutOfDate` or `TDRelaunchAdvised`, and report data equal to the evidence's. When there is an NVIDIA GPU payload, O2 checks that it carries the request's nonce, then has NVIDIA NRAS verify it. Neither pins the measurement of NEAR AI's published image yet, so the attestation result's `quote_verified` stays false (check e's online detail says so) and O1 does not show which image the TEE runs. Both need `--online` and the optional package `@nearai/inference-sdk`.
+
+```bash
+node packages/cli/dist/bin.js --network testnet verify --vault <vault> --online
+```
+
+O1 and O2 run only on `model+rules` decisions that carry an attestation report. No real one has been recorded yet, and a ledger written with `model: null` has none. On such a ledger the run prints `online: O1 and O2 did not run (no attested decision in this ledger)` under the rows and as a warning on stderr, and check e keeps its offline result.
+
+O1 and O2 are part of check e, not checks of their own. An online failure fails e, and they never turn an offline failure into a pass. When the package cannot be loaded, the report says `online: O1 and O2 did not run (<reason>)` and e keeps its offline result. `--online` also looks burns up in FastNEAR's transaction index, and it cannot be combined with `--offline`.
+
+## What no check covers
+
+<Callout kind="warning">
+
+What this cannot prove: that the TEE hardware is honest, that the POA bridge operator releases funds on Base or Solana, or how the DAO roles of the NEAR Intents Verifier contract, such as `ft_force_withdraw` and `force_lock_account`, are used.
+
+</Callout>
+
+- **Offline, a snapshot is checked against itself.** `verify --offline` takes the chain data from the same file as the ledger. An edit to a ledger entry that was not signed again fails check a or b. Nothing signs the chain data in the file, so an edit there needs no signature: a full-access key dropped from `chain.access_keys` passes check f. A forged snapshot with entries signed again and chain data edited to agree passes too. Only a live run with `--vault` reads the chain. See [Offline and live runs](/docs/concepts/ledger-and-anchors#offline-and-live-runs).
+- **A8 needs the invoice texts.** Only someone who holds the invoices can show that the model saw the standard request for each one. A8 does not show that an invoice is authentic.
+- **Entries after the last anchor** are checked against the ledger key only. No anchor pins them yet. See [The gap after the last anchor](/docs/concepts/ledger-and-anchors#the-gap-after-the-last-anchor).
+- **Historical mandate state.** A mandate's remaining amount and status at decision time need archival chain state. When A8 runs (the SDK's `verify()` with `invoiceTexts`), its mandate match reports a difference there as a note in check e's detail, not a failure. The CLI does not run A8, so it never shows the note.
+- **Testnet has no real bridge.** A cross-chain burn on testnet does not leave NEAR.
+- **No recorded real decision yet.** The NEAR AI Cloud adapter is tested against a fake NEAR AI Cloud. No real attested decision has been recorded and verified yet.
+- **No check judges a decision.** Check d ties each spend to its own decision. The verifier does not run the policy again.
+- **No third party has audited the code.** Check f shows which build runs, not that the build is free of bugs.
+
+The project's own list is in [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md), under "What `verify` proves" and "What is not proven yet".
+
+## Run them
+
+### On the test fixture
+
+From a clone built as [Install](/docs/build/install) shows, run the checks on the test fixture snapshot in the repository. It needs no network and no keys, and exits 0:
+
+```bash
+node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json
+```
+
+This is what a pass looks like on each check. The rows, the count and the result:
+
+```text
+a  ledger-signatures      PASS      5 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+b  hash-links             PASS      5 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      3 anchors match the ledger; 0 entries after the last anchored count (5) are not chain-attested
+d  spends-have-decisions  PASS      2 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount)
+e  attestations           PASS      2 attested decisions pass A1–A7; quote not verified offline (run --online for O1; re-take the snapshot live with --online); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 4
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 9xTTGSkSHPbw2DCumDxoraeR7uL8Pc2ANm5XKjhohnWL is version 1 of the canonical factory vaults.probarion.testnet; it is the code of factory version 1
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      1 burned spend has a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount
+i  factory-version        PASS      created by vaults.probarion.testnet at version 1
+
+9 passed, 0 failed, 0 unproven
+RESULT: PASS
+```
+
+The fixture's vault, `x.vaults.probarion.testnet`, exists only in the file. Above the rows, the report names the vault and its network, the counts of entries and anchors, the time of the run and, offline, the time the snapshot was taken.
+
+### On a live vault
+
+A live run reads the chain itself:
+
+```bash
+node packages/cli/dist/bin.js --network testnet verify --vault <vault> --ledger .probarion/ledger.jsonl
+```
+
+For a held spend that an approver paid out, name the approver's transaction so check h can read the burn. The value is `<spend_id>=<tx hash>[@<signer>]`: the spend id the unproven line names (`spend 2` above), the approver's transaction hash and, after `@`, the approver's account. A malformed value is a usage error (exit 64). For spend 2:
+
+```bash
+node packages/cli/dist/bin.js --network testnet verify --vault <vault> --burn-tx 2=<tx_hash>@<approver_account>
+```
+
+<Callout kind="warning" title="A live FAIL on the smoke vault is expected">
+
+On `v0.probarion.testnet`, a live run fails checks d and h today, because the smoke run sent its spends without a ledger. To see d and h pass on chain, verify a vault whose spends the SDK sent with its ledger, and pass that ledger file. The [Developer quickstart](/docs/start/developer-quickstart) sets up such a vault, sends one payment with the SDK and runs `verify` on its ledger.
+
+</Callout>
+
+[Verify a vault](/docs/trust/verify-a-vault) walks through a run, from the fixture to a live vault.
+
+## Related pages
+
+- [Verify a vault](/docs/trust/verify-a-vault): run the checks yourself.
+- [Ledger and anchors](/docs/concepts/ledger-and-anchors): what checks a to d read, and what a rewrite looks like.
+- [Payment checks](/docs/concepts/payment-checks): the contract's 14 checks, which are not these.
+- [Security model](/docs/trust/security-model): who holds each key, and what each one can do.
+- [Glossary](/docs/resources/glossary): the words this page uses.
+- [The CLI's README](https://github.com/probarion/probarion/blob/main/packages/cli/README.md): every flag of `verify`.

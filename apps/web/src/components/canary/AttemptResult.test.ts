@@ -134,7 +134,8 @@ describe("the three columns of an answer", () => {
       done({ raw: { sent: true, status: "unconfirmed", code: "deadline", txHash: null } }),
     );
     expect(visible(html)).toContain("Contract result: unconfirmed.");
-    expect(html).not.toContain("<a ");
+    expect(html).not.toContain("nearblocks");
+    expect(html.match(/<a /g)).toHaveLength(1); // the next step's, below the columns
   });
 
   it("shows a held or paid raw spend with the reassurance about the payee", () => {
@@ -143,5 +144,34 @@ describe("the three columns of an answer", () => {
       expect(visible(html)).toMatch(/mandated payee/);
       expect(html).toContain('data-tone="warn"');
     }
+  });
+});
+
+describe("the next step under an answer", () => {
+  const answers: Done[] = [
+    done(),
+    done({ code: { status: "held", rule: null, txHash: null } }),
+    done({ raw: { sent: true, status: "refused_by_contract", code: "NoMandate", txHash: "T" } }),
+    done({ raw: { sent: true, status: "paid", code: null, txHash: "T" } }),
+    done({ proposal: null }),
+  ];
+
+  it("ends every answer, whatever stopped it, with a link to the console", () => {
+    for (const result of answers) {
+      const html = render(result);
+      const text = visible(html);
+      expect(text).toContain("Put limits like these on your own agent →");
+      expect(html).toMatch(
+        /<a[^>]*href="\/console"[^>]*>Put limits like these on your own agent <span aria-hidden="true">→<\/span><\/a>/,
+      );
+      expect(text.indexOf("Put limits like these")).toBeGreaterThan(
+        text.indexOf("The contract did"),
+      );
+    }
+  });
+
+  it("opens the console in this tab, not a new one", () => {
+    const link = render(done()).match(/<a[^>]*href="\/console"[^>]*>/)?.[0] ?? "";
+    expect(link).not.toContain("target=");
   });
 });

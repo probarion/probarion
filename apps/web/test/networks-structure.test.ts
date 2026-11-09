@@ -202,6 +202,7 @@ describe("the routes and the actions of a vault", () => {
   it("finds every action and every handler (a new one must be added here, and is then held to the guard)", () => {
     expect(entries.map((e) => `${e.file}: ${e.name}`).sort()).toEqual([
       "src/app/api/console/[vault]/invoices/route.ts: POST",
+      "src/app/api/topup/faucet/route.ts: POST",
       "src/app/api/topup/quote/route.ts: POST",
       "src/app/api/topup/status/route.ts: GET",
       "src/app/api/topup/submit/route.ts: POST",

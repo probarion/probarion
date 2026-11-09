@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   ftBalance: vi.fn(),
   intentsBalance: vi.fn(),
   listMandates: vi.fn(),
+  ready: vi.fn(),
 }));
 /** The network of the address the page is opened at, and the networks the page asked a chain reader for. */
 const net = vi.hoisted(() => ({
@@ -19,9 +20,21 @@ const net = vi.hoisted(() => ({
   readers: [] as string[],
 }));
 
+/** What the page handed the form, one entry per render: the form itself is the real one. */
+const form = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }));
+vi.mock("@/components/canary/CanaryForm", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/components/canary/CanaryForm")>();
+  return {
+    CanaryForm: (p: Parameters<typeof real.CanaryForm>[0]) => {
+      form.props.push(p);
+      return real.CanaryForm(p);
+    },
+  };
+});
 vi.mock("@/lib/env", () => ({ getEnv: mocks.env }));
 vi.mock("@/lib/network", () => ({ softRequestNetwork: async () => net.network }));
 vi.mock("@/lib/canary/board-data", () => ({ loadBoard: mocks.board, loadFeed: mocks.feed }));
+vi.mock("@/lib/canary/ready", () => ({ loadReadiness: mocks.ready }));
 vi.mock("@/lib/near/server", () => ({
   getReader: (network: string) => {
     net.readers.push(network);
@@ -39,6 +52,7 @@ vi.mock("@/lib/near/server", () => ({
 }));
 
 import { parseBoard, parseFeed } from "@/lib/canary/board";
+import { LINKS } from "@/lib/site/facts";
 import CanaryPage, { dynamic, metadata } from "./page";
 
 const logs = quietLogs();
@@ -50,6 +64,7 @@ const env = (
   over: {
     CANARY_MODE?: string;
     CANARY_VAULT_ID?: string | null;
+    NEARAI_API_KEY?: string | null;
     vaults?: { mainnet: string | null; testnet: string | null };
   } = {},
 ) => {
@@ -57,6 +72,7 @@ const env = (
   const vaults = over.vaults ?? { mainnet: vault, testnet: vault };
   return {
     CANARY_MODE: over.CANARY_MODE ?? "code-only",
+    NEARAI_API_KEY: "NEARAI_API_KEY" in over ? (over.NEARAI_API_KEY ?? null) : "test-key",
     networks: {
       mainnet: { canaryVaultId: vaults.mainnet },
       testnet: { canaryVaultId: vaults.testnet },
@@ -117,15 +133,19 @@ beforeEach(() => {
   for (const m of Object.values(mocks)) m.mockReset();
   net.network = "testnet";
   net.readers = [];
+  form.props = [];
   mocks.env.mockReturnValue(env());
   mocks.board.mockResolvedValue(BOARD);
   mocks.feed.mockResolvedValue(FEED);
   mocks.ftBalance.mockResolvedValue("25500000");
   mocks.intentsBalance.mockResolvedValue("0");
   mocks.listMandates.mockResolvedValue([mandate]);
+  mocks.ready.mockResolvedValue("ready");
 });
 
-const page = async () => renderToStaticMarkup(await CanaryPage());
+/** The page as opened at /canary, with the query given (`?via=x` is { via: "x" }). */
+const page = async (search: Record<string, string | string[]> = {}) =>
+  renderToStaticMarkup(await CanaryPage({ searchParams: Promise.resolve(search) }));
 const visible = (html: string) =>
   html
     .replace(/<\/?(?:p|h1|h2|h3|section|div|li|tr|td|th|header)\b[^>]*>/g, " ")
@@ -213,6 +233,23 @@ describe("the live page", () => {
     expect(text).toContain("2026-11-06 10:15 payee_change custom.canary_no_autopay NoMandate");
   });
 
+  it("hands the form the source its address names (?via=x), and none for one that is not ours", async () => {
+    await page({ via: "x" });
+    await page({ via: "readme" });
+    await page();
+    await page({ via: "twitter" });
+    await page({ via: ["x", "readme"] });
+    expect(form.props.map((p) => p.via)).toEqual(["x", "readme", null, null, null]);
+  });
+
+  it("keeps the source on its Rules link, live or replay, so the way back from the rules keeps it too", async () => {
+    const rules = (via: string) => new RegExp(`<a[^>]*href="/canary/rules${via}"[^>]*>Rules</a>`);
+    expect(await page({ via: "x" })).toMatch(rules("\\?via=x"));
+    expect(await page({ via: "twitter" })).toMatch(rules(""));
+    mocks.env.mockReturnValue(env({ CANARY_MODE: "replay" }));
+    expect(await page({ via: "x" })).toMatch(rules("\\?via=x"));
+  });
+
   it("says Raw mode on in live mode", async () => {
     mocks.env.mockReturnValue(env({ CANARY_MODE: "live" }));
     const text = visible(await page());
@@ -224,10 +261,13 @@ describe("the live page", () => {
     expect(hrefs(await page())).toContain("/#payee");
   });
 
-  it("promises nothing for winning, and shows no ledger", async () => {
+  it("promises nothing for winning, and shows no ledger: it names one only to say why it stays private", async () => {
     const text = visible(await page());
     expect(text).not.toMatch(/bounty|keep what you extract|prize|reward|PayeeMismatch/i);
-    expect(text).not.toMatch(/ledger/i);
+    const why =
+      "It shows no ledger: the model's answers in it can quote what visitors wrote, so it stays private. What the Canary sends to the contract is on chain for anyone to check.";
+    expect(text).toContain(why);
+    expect(text.replace(why, "")).not.toMatch(/ledger/i);
   });
 
   it("links to no page that does not exist yet", async () => {
@@ -334,20 +374,21 @@ describe("the replay states", () => {
     "Scoreboard",
     "The vault, read from the chain",
     "Proof page",
+    "What this page does not show",
   ];
+  const ROWS = "Below is an attack from our own tests on testnet, with what stopped it.";
 
   it("says the live Canary is paused in off mode, with no form, no scoreboard and no read of the chain", async () => {
     const { text } = await say({ CANARY_MODE: "off" });
-    // The shipped list is empty: the banner is its first sentence alone, then the empty list says so.
-    expect(text).toContain("The live Canary is paused. Recorded attacks No recorded attacks yet.");
-    expect(text).not.toContain("Each row");
+    expect(text).toContain(`The live Canary is paused. ${ROWS}`);
     for (const t of NOT_HERE) expect(text).not.toContain(t);
     expect(touchedTheChain()).toBe(false);
+    expect(mocks.ready).not.toHaveBeenCalled();
   });
 
   it("says this is a replay in replay mode", async () => {
     const { text } = await say({ CANARY_MODE: "replay" });
-    expect(text).toContain("This is a replay of recorded attacks.");
+    expect(text).toContain(`This is a replay of recorded attacks. ${ROWS}`);
     for (const t of NOT_HERE) expect(text).not.toContain(t);
     expect(touchedTheChain()).toBe(false);
   });
@@ -359,6 +400,60 @@ describe("the replay states", () => {
       for (const t of NOT_HERE) expect(text).not.toContain(t);
     }
     expect(touchedTheChain()).toBe(false);
+  });
+
+  it("is not open yet without the model key: the form would only ever answer not ready", async () => {
+    for (const CANARY_MODE of ["live", "code-only"]) {
+      const { text } = await say({ CANARY_MODE, NEARAI_API_KEY: null });
+      expect(text).toContain(`The live Canary is not open yet. ${ROWS}`);
+      for (const t of NOT_HERE) expect(text).not.toContain(t);
+    }
+    expect(touchedTheChain()).toBe(false);
+    expect(mocks.ready).not.toHaveBeenCalled();
+  });
+
+  it("asks the database whether the network's Canary vault can take attempts, before any read of the chain", async () => {
+    const MAINNET_VAULT = "canary.vaults.probarion.near";
+    await say({ vaults: { mainnet: MAINNET_VAULT, testnet: VAULT } });
+    expect(mocks.ready.mock.calls).toEqual([["testnet", VAULT]]);
+    net.network = "mainnet";
+    await say({ vaults: { mainnet: MAINNET_VAULT, testnet: VAULT } });
+    expect(mocks.ready.mock.calls).toEqual([
+      ["testnet", VAULT],
+      ["mainnet", MAINNET_VAULT],
+    ]);
+    expect(mocks.ready.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.listMandates.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it("is not open yet when the database says the vault cannot take attempts, with no read of the chain", async () => {
+    mocks.ready.mockResolvedValue("closed");
+    const { text } = await say({});
+    expect(text).toContain(`The live Canary is not open yet. ${ROWS}`);
+    for (const t of NOT_HERE) expect(text).not.toContain(t);
+    expect(touchedTheChain()).toBe(false);
+  });
+
+  it("says the live Canary is closed once its ledger is full", async () => {
+    mocks.ready.mockResolvedValue("full");
+    const { text } = await say({ CANARY_MODE: "live" });
+    expect(text).toContain(`The live Canary is closed: its ledger is full. ${ROWS}`);
+    expect(text).not.toContain("not open yet");
+    for (const t of NOT_HERE) expect(text).not.toContain(t);
+    expect(touchedTheChain()).toBe(false);
+  });
+
+  it("is not open yet when the vault has no mandate: every attempt would answer not ready", async () => {
+    mocks.listMandates.mockResolvedValue([]);
+    const { text } = await say({});
+    expect(text).toContain(`The live Canary is not open yet. ${ROWS}`);
+    for (const t of NOT_HERE) expect(text).not.toContain(t);
+  });
+
+  it("stays live when the mandates cannot be read: the page says so instead of guessing", async () => {
+    mocks.listMandates.mockRejectedValue(new Error("rpc down"));
+    expect(visible(await page())).toContain("Your message to the agent");
   });
 
   it("says the live Canary is not open yet, and does not fail, when the environment cannot be read", async () => {
@@ -376,10 +471,24 @@ describe("the replay states", () => {
     expect(logs.lines.filter((l) => l.includes("canary.page_env_unavailable"))).toHaveLength(1);
   });
 
-  it("shows the owner's recorded attacks, or says there are none yet", async () => {
+  it("shows the recorded attacks, then the two cards that hold whether or not the Canary is live", async () => {
     const { text } = await say({ CANARY_MODE: "replay" });
-    expect(text).toContain("Recorded attacks");
-    expect(text).toContain("No recorded attacks yet.");
+    const order = [
+      "This is a replay of recorded attacks.",
+      "Meanwhile: Break a signed record",
+      "Recorded attacks",
+      "Our smoke test: the agent key went straight to the contract",
+      "Paid to an attacker: 0, by construction",
+      "Why this is not Freysa",
+    ].map((t) => text.indexOf(t));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(text).not.toContain("No recorded attacks yet.");
+  });
+
+  it("offers what a visitor can do without the live Canary: the ledger test and the X account", async () => {
+    const { html } = await say({ CANARY_MODE: "off" });
+    expect(hrefs(html)).toEqual(expect.arrayContaining(["/#verify", LINKS.x, "/#payee"]));
   });
 
   it("keeps the testnet pill in the replay of a testnet build", async () => {

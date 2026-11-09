@@ -1,5 +1,6 @@
 import { NETWORKS } from "@probarion/core";
 import { describe, expect, it } from "vitest";
+import { MAX_INVOICE_BYTES } from "@/lib/payables/limits";
 import {
   approvalSummary,
   asMandateForm,
@@ -21,6 +22,7 @@ import {
   MISSING_ACCOUNT_WARNING,
   nearPayeeWarnings,
   payeeToCheck,
+  purposeFileTooLarge,
   tryUsdcUnits,
   UNCHECKED_ACCOUNT_NOTE,
 } from "./mandates";
@@ -876,5 +878,20 @@ describe("isImplicitAccount and payeeToCheck: which NEAR payees are looked up", 
         nearPayeeWarnings({ payeeKind: "near", payee: p, exists: null }),
       );
     }
+  });
+});
+
+describe("purposeFileTooLarge", () => {
+  // The form only hashes the file, but Payables pays an invoice only with this same document attached. The invoices
+  // route refuses a purpose document over MAX_INVOICE_BYTES, and a request over MAX_INVOICE_BYTES + 64 KiB for the
+  // invoice, the document and the form together (api/console/[vault]/invoices/route.ts).
+  it("refuses a purpose document Payables could not take, and says the invoice shares the 4 MiB", () => {
+    expect(MAX_INVOICE_BYTES).toBe(4 * 1024 * 1024);
+    expect(purposeFileTooLarge(0)).toBeNull();
+    expect(purposeFileTooLarge(MAX_INVOICE_BYTES)).toBeNull();
+    expect(purposeFileTooLarge(MAX_INVOICE_BYTES + 1)).toBe(
+      "That file is over 4 MiB. The Payables upload takes the invoice and this document together, 4 MiB at most. To pay through your own SDK instead, paste its sha256.",
+    );
+    expect(purposeFileTooLarge(25 * 1024 * 1024)).not.toBeNull();
   });
 });

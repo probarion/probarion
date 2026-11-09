@@ -495,9 +495,9 @@ describe("the console list, at the mainnet address", () => {
     expect(out).toContain(TESTNET_VAULT);
     // The mainnet vault has no network badge; the testnet one has, and it is a link that reads "testnet ↗".
     expect(out).toMatch(
-      /<a href="https:\/\/testnet\.probarion\.test\/console\/acme\.vaults\.probarion\.testnet"><span [^>]*bg-amber-100[^>]*>testnet <span aria-hidden="true">↗<\/span><\/span><\/a>/,
+      /<a href="https:\/\/testnet\.probarion\.test\/console\/acme\.vaults\.probarion\.testnet"><span [^>]*bg-wait-bg[^>]*>testnet <span aria-hidden="true">↗<\/span><\/span><\/a>/,
     );
-    expect([...out.matchAll(/bg-amber-100/g)]).toHaveLength(1);
+    expect([...out.matchAll(/bg-wait-bg/g)]).toHaveLength(1);
     // The vault's own link in the row is still the page on this address, which says where the vault is.
     expect(out).toContain('href="/console/acme.vaults.probarion.testnet"');
   });
@@ -507,7 +507,7 @@ describe("the console list, at the mainnet address", () => {
     h.defaultNetwork = "mainnet";
     const out = await rendered();
     expect(out).toContain(TESTNET_VAULT);
-    expect(out).toMatch(/<span [^>]*bg-amber-100[^>]*>testnet<\/span>/);
+    expect(out).toMatch(/<span [^>]*bg-wait-bg[^>]*>testnet<\/span>/);
     expect(out).not.toContain("testnet ↗");
     expect(out).not.toContain("testnet.probarion.test");
   });

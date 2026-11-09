@@ -26,19 +26,21 @@ export default async function ExtensionPage({
   const items = await listTokens(serviceDb(), session.accountId, session.network);
   return (
     <Container>
-      <h1 className="mb-2 text-2xl font-semibold">Browser extension</h1>
-      <p className="mb-6 text-sm text-[#0B0B0C]/70">
-        The extension will send invoices to wait for your confirmation and show what waits for you,
-        but it can't pay or approve: an invoice it sends will be paid only after you confirm it in
-        the console with your wallet.
-      </p>
-      <Notice tone="info">The Probarion extension for Chrome is not released yet.</Notice>
-      <Card title="Connect this browser">
-        <ConnectPanel nonce={nonce} account={session.accountId} network={session.network} />
-      </Card>
-      <Card title="Connected browsers">
-        <ConnectedBrowsers items={items} />
-      </Card>
+      <div className="max-w-5xl">
+        <h1 className="mb-2 text-2xl font-semibold">Browser extension</h1>
+        <p className="mb-6 text-sm text-mute">
+          The extension will send invoices to wait for your confirmation and show what waits for
+          you, but it can't pay or approve: an invoice it sends will be paid only after you confirm
+          it in the console with your wallet.
+        </p>
+        <Notice tone="info">The Probarion extension for Chrome is not released yet.</Notice>
+        <Card title="Connect this browser">
+          <ConnectPanel nonce={nonce} account={session.accountId} network={session.network} />
+        </Card>
+        <Card title="Connected browsers">
+          <ConnectedBrowsers items={items} />
+        </Card>
+      </div>
     </Container>
   );
 }

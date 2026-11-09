@@ -1,0 +1,208 @@
+## The short answer
+
+The agent's request to pay, `SpendRequest`, has no field for an address. When the vault pays, it reads the payee from the mandate the owner signed, so whoever controls the agent can choose how much to spend under a mandate, within its limits, but not where the money goes.
+
+<Callout kind="key">
+
+There is no payee field. The vault pays only the payee stored in the mandate the owner signed.
+
+</Callout>
+
+<Flow>
+
+1. **The owner signs a mandate** The vault stores its payee, its limits and the one agent key that may use it.
+2. **The agent sends a spend** It names a mandate, an amount, an invoice hash, a ref and a decision hash. No payee.
+3. **The vault pays the stored payee** It reads the destination from the mandate in its own storage.
+
+</Flow>
+
+## What the agent sends
+
+The contract and the TypeScript package define the same five fields:
+
+<CodeTabs labels="Rust (contract), TypeScript (core)">
+
+```rust
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpendRequest {
+    pub mandate_id: u64,
+    pub amount: U128,
+    pub invoice_hash: String,
+    pub r#ref: String,
+    pub decision_hash: String,
+}
+```
+
+```ts
+export interface SpendRequest {
+  mandate_id: number;
+  amount: U128;
+  invoice_hash: string;
+  ref: string;
+  decision_hash: string;
+}
+```
+
+</CodeTabs>
+
+The Rust tab is from `contracts/vault/src/types.rs`. The TypeScript tab is from `packages/core/src/types.ts`, exported by `@probarion/core`. `ref` is a Rust keyword, so the contract writes the field `r#ref`; on the wire the JSON key is `ref`.
+
+| Field | What it holds |
+| --- | --- |
+| `mandate_id` | The mandate to spend under. Ids start at 1. The payee comes with the mandate. |
+| `amount` | A decimal string in the token's smallest unit. USDC has 6 decimals, so 5 USDC is `"5000000"`. It must be above 0. |
+| `invoice_hash` | 64 lowercase hex. While a spend with this hash is held, pending, paid or burned, the vault refuses another one. A failed, rejected or expired spend gives the hash back. |
+| `ref` | 1 to 64 bytes, an idempotency key the caller picks. Once the contract accepts a spend, held or sent for payout, its ref stays used, even if the payout fails. A refused spend undoes every change, so its ref stays free. |
+| `decision_hash` | 64 lowercase hex: the body hash of the signed decision entry in the ledger. The contract checks only its form. The verifier ties it to a decision. |
+
+None of the five is an address. The agent key is a function-call key that the vault adds to itself for the method `spend` only, so this request is all the agent key can send. The free `check_spend` view takes the same request plus a signer key, and has no payee either.
+
+## Where the money goes instead
+
+Both `spend` and `approve` hand the payout to the same function, `execute_payout`. It reads the payee from the mandate in the vault's storage, never from the request:
+
+<CodeBlock title="contracts/vault/src/spend.rs">
+
+```rust
+        let payee = self
+            .mandate(spend.mandate_id)
+            .map(|m| m.payee.clone())
+            .unwrap_or_else(|| fail(ErrorCode::NoMandate));
+```
+
+</CodeBlock>
+
+The vault's record of a spend has no destination field either. When you read a spend with `get_spend`, its `destination` is filled in from the mandate.
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` or `reject` for a held spend from their own wallet, with exactly 1 yoctoNEAR attached. `approve` names only the spend id, so the payout still goes to the mandate's payee.
+
+</Callout>
+
+### A NEAR payee
+
+The vault calls `ft_transfer` on its USDC token, to the mandate's `account_id`, with the memo `probarion:<spend id>`. When the transfer succeeds, the spend becomes `paid`.
+
+### A Base or Solana payee
+
+The vault calls `ft_withdraw` on the NEAR Intents contract for the mandate's [POA asset](/docs/resources/glossary#poa-asset), the token inside NEAR Intents that stands for USDC on the payee's chain, with the memo `WITHDRAW_TO:<address>`. The vault builds that memo from the mandate alone:
+
+<CodeBlock title="contracts/vault/src/types.rs">
+
+```rust
+impl Payee {
+    /// `WITHDRAW_TO:<address>` for an Intents payee, built only from mandate storage (I7).
+    pub fn withdraw_memo(&self) -> Option<String> {
+        match self {
+            Payee::Intents { address, .. } => Some(format!("{WITHDRAW_MEMO_PREFIX}{address}")),
+            Payee::Near { .. } => None,
+        }
+    }
+}
+```
+
+</CodeBlock>
+
+`create_mandate` accepts only an asset on the vault's allow list, which is set when the vault is created. Before it sends, the vault checks the mandate's asset against that list again, or refuses with `AssetNotAllowed`. When the withdrawal runs on NEAR, the spend becomes `burned`, and `get_spend` shows the same memo. On mainnet, which is planned, the POA bridge then releases the USDC on the payee's chain, Base or Solana.
+
+The console offers NEAR and Base payees. The CLI and the contract also accept a Solana address.
+
+### On testnet
+
+`intents-stub.probarion.testnet` stands in for `intents.near`, and the tokens are test tokens: a burn is recorded, and nothing leaves NEAR. On 2026-11-01 a smoke run on `v0.probarion.testnet` sent one spend to a NEAR account and one to a Base address, with the agent key signing `spend` directly:
+
+| Payee | Transaction | What the vault sent |
+| --- | --- | --- |
+| `probarion-payee.testnet`, a NEAR account | [`3DFV2thB…Fy9cX`](https://testnet.nearblocks.io/txns/3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX) | `ft_transfer` of 1 test USDC with the memo `probarion:1` |
+| `0x1111…1111`, a Base address | [`3u4ffrwp…dcvYe`](https://testnet.nearblocks.io/txns/3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe) | `ft_withdraw` of 1 test USDC with the memo `WITHDRAW_TO:0x1111111111111111111111111111111111111111`, built from mandate 2 |
+
+The run had no Solana payee.
+
+## The code layer refuses a contradicting payee
+
+The SDK, `@probarion/sdk`, has `process()`, which runs one whole payment cycle for an invoice. An optional model reads the invoice and proposes to pay, hold or refuse, and its answer comes with an [attestation](/docs/resources/glossary#attestation), a signed report that the SDK checks. [How one payment works](/docs/start/how-one-payment-works) walks through the cycle.
+
+Before anything is sent, `decide()` in `@probarion/core` runs the rule `mandate.payee_mismatch`. It compares a `payee_hint` with the payee of the chosen mandate. A hint can come from two places:
+
+- the invoice facts the caller passes to `process()`;
+- the model's proposal, but only when its attestation checks passed.
+
+`requestSpend()` passes no invoice hint, so there only the model's hint is compared. A hint is what the invoice claims, and the type says what it is for:
+
+<CodeBlock title="packages/core/src/types.ts">
+
+```ts
+export interface ModelProposal {
+  action: "pay" | "hold" | "refuse";
+  mandate_id: number | null;
+  amount: string | null; // smallest units
+  payee_hint: PayeeHint | null; // what the invoice claims; never used as destination
+  reasoning: string; // ≤ 2000 chars
+  confidence: number; // 0..1
+}
+export interface PayeeHint {
+  near_account?: string;
+  chain?: "base" | "solana";
+  address?: string;
+  name?: string;
+}
+```
+
+</CodeBlock>
+
+| The mandate pays | A hint refuses when it names |
+| --- | --- |
+| A NEAR account | Another NEAR account, or any chain or address |
+| A Base or Solana address | Any NEAR account, another chain, or another address |
+
+Base addresses match in any letter case. Solana addresses must match exactly, which is inferred: it follows from the code (`sameAddress` in `policy.ts`), and no test shows it yet. A `name` alone never refuses. A refusal ends the cycle: `process()` returns `refused_by_code`, the decision goes into the ledger, and nothing is sent.
+
+The hint is compared, never passed to the contract. When the rule refuses, its detail in the decision entry quotes the account, chain or address the hint names. `decide()` returns a verdict, a mandate id, an amount, the rules and who decided, with no destination. The SDK builds `SpendRequest` from the decision's mandate id and amount, the invoice hash, the ref and the decision hash, so no hint reaches the contract.
+
+The model gets the same rule. Its default system prompt includes this line:
+
+<CodeBlock title="packages/core/src/proposal-request.ts">
+
+```ts
+  "Payments always go to the mandate's payee. Put the payee the invoice claims (NEAR account, chain and address, name) in payee_hint. If it differs from the mandate payee, choose refuse.",
+```
+
+</CodeBlock>
+
+The model is shown the invoice text and the candidate mandate, payee included, but not the hint the caller passed.
+
+This rule runs off chain only. The contract has no `PayeeMismatch` code, because it receives no payee to compare. A caller who signs `spend` with the agent key directly skips the rule, as the testnet smoke run did. `requestSpend()` with `skipPreflight: true` also skips `decide()`, so no hint is compared. Either way, the vault still pays only the mandate's payee.
+
+## How this is kept true
+
+- **The field names.** A web test reads `SpendRequest` from `packages/core/src/types.ts` and fails if any field name matches `/recipient|payee|address|receiver|destination/i`. A second test reads the contract's `SpendRequest` from `contracts/vault/src/types.rs` and fails unless its fields are the same five, in the same order. Both are in `apps/web/test/site-facts.test.ts`.
+- **The memo.** A sandbox test in `contracts/integration-tests/tests/flows.rs` creates a mandate for a Base address and spends 7 USDC of a test token under it. It checks that the burn carries exactly `WITHDRAW_TO:` and the mandate's address, on the allowed asset, and that `get_spend` shows the same memo.
+- **The decision.** A test in `packages/core/test/policy.test.ts` checks that `decide()` refuses whenever the invoice or the model names another payee, and that a decision has no destination field.
+- **The payee never changes.** `create_mandate` is the only vault method that takes a payee, and no method edits one. `withdraw` and `withdraw_intents` send only to the owner's own account. To pay someone new, the owner signs a new mandate, and can revoke the old one with `revoke_mandate` so it refuses new spends. The CLI's `mandate create` prints the rule with the transaction: "The payee of a mandate never changes: a new payee needs a new mandate." This is inferred: it follows from the code, and no test checks that text yet.
+- **After the fact.** The verifier's [check h](/docs/trust/verifier-checks#check-h) looks at every burned spend. It passes when each one has exactly one matched burn pair, on a POA asset of the vault's network: a POA `ft_burn` whose memo is `WITHDRAW_TO:` and the mandate's address, and the vault's Intents `mt_burn` for the spend amount. A burn is `unproven` when its transaction could not be read right now, or when no transaction was named for it because the spend is pre-ledger, was paid out by an approver, or has no payment entry. A transaction that was read and holds no such pair fails h, and so does any other burned spend whose burn is not found.
+
+<Callout kind="owner-signs">
+
+Choosing a payee is an owner action: it happens once, when the owner signs the mandate. The owner signs `create_mandate` from their own wallet and attaches a storage deposit, and the vault sends back what it does not need. Revoking a mandate with `revoke_mandate` takes exactly 1 yoctoNEAR.
+
+</Callout>
+
+## Where to go next
+
+- [Mandates](/docs/concepts/mandates): every field of a mandate, the payee included.
+- [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys): who holds the agent key, and what it can call.
+- [Payment checks](/docs/concepts/payment-checks): the 14 checks every spend meets.
+- [How one payment works](/docs/start/how-one-payment-works): the whole cycle, from mandate to record.
+- [Let an agent pay](/docs/build/let-an-agent-pay): run the cycle from your agent.
+- [Security model](/docs/trust/security-model): what each key can and cannot do.
+- [Glossary](/docs/resources/glossary): the terms on this page.
+
+## What this does not do
+
+- It does not stop a stolen agent key from spending. Whoever holds an agent key can spend inside the open mandates that name that key, with invoice hashes of its choosing, up to their limits and the [daily backstop](/docs/resources/glossary#daily-backstop). It cannot pay anyone a mandate does not name.
+- It does not check that the owner chose the right payee. The vault pays the payee the mandate names. The contract refuses a NEAR payee that is the vault itself and checks the form of a Base or Solana address. The console also refuses the vault's USDC token, its Intents contract and its allowed POA assets as a NEAR payee.
+- It does not show that an invoice is real. The ledger stores no invoice text.
+- It does not compare a hint on chain. The hint check runs off chain, and a caller can skip it: see [The code layer refuses a contradicting payee](/docs/concepts/why-spend-has-no-payee#the-code-layer-refuses-a-contradicting-payee).
+- It does not show delivery on Base or Solana on testnet. A cross-chain payout stops at the stand-in contract, and nothing leaves NEAR.

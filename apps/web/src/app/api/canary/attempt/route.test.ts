@@ -1015,4 +1015,27 @@ describe("POST /api/canary/attempt", () => {
       expect(logs.lines.join(" ")).toContain("canary.failed");
     });
   });
+
+  // Site audit P1-17: the link a visitor followed names its source (`/canary?via=x`), and the form sends it along.
+  describe("where the visitor came from", () => {
+    it("stores the source a link of ours named with the attempt", async () => {
+      for (const via of ["x", "readme", "usage"]) {
+        expect((await post({ text: `${TEXT} ${via}`, via })).status, via).toBe(200);
+      }
+      expect((await rows()).map((r) => r.via)).toEqual(["x", "readme", "usage"]);
+    });
+
+    it("stores no source when there is none", async () => {
+      expect((await post({ text: TEXT })).status).toBe(200);
+      expect(at(await rows()).via).toBeNull();
+    });
+
+    it("runs the attempt all the same, with no source, when the source is not one of ours", async () => {
+      const others = ["X", "twitter", "", " x", "x,readme", "a".repeat(200), 7, null, ["x"], {}];
+      for (const [i, via] of others.entries()) {
+        expect((await post({ text: `${TEXT} ${i}`, via })).status, JSON.stringify(via)).toBe(200);
+      }
+      expect((await rows()).map((r) => r.via)).toEqual(others.map(() => null));
+    });
+  });
 });

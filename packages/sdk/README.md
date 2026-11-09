@@ -1,7 +1,7 @@
 # @probarion/sdk
 
 Let an AI agent pay people and services on NEAR only inside mandates that a human signed, and keep a
-record that anyone can check afterwards.
+record that this human can publish for anyone to check afterwards.
 
 **Unaudited beta.** Versions 0.x may change the API in a minor release. MIT licensed.
 
@@ -14,7 +14,7 @@ record that anyone can check afterwards.
 - The **agent key** is a function-call key that can call `spend` and nothing else. The **ledger key**
   is another function-call key that can call `anchor` and nothing else. The SDK holds only these two.
   Owner actions (create a vault or a mandate, add a key, freeze, approve) are signed by people in their
-  own wallet; the [`probarion` CLI](https://www.npmjs.com/package/probarion) prints them for that.
+  own wallet; the [`probarion` CLI](https://github.com/probarion/probarion/tree/main/packages/cli) prints them for that.
 - This SDK runs one payment cycle: the code decides, an optional model gives an attested proposal, the
   contract checks and pays, and every step is written to a signed, hash-chained **ledger** that is
   anchored on chain.
@@ -25,8 +25,22 @@ record that anyone can check afterwards.
 npm install @probarion/sdk @probarion/core
 ```
 
-ESM only, Node 24 or newer. Import it with `import`; there is no CommonJS build. To import
-`@probarion/sdk/testing` from TypeScript, set `"moduleResolution"` to `"NodeNext"` or `"Bundler"`.
+The examples below import from both packages, so install both. ESM only, Node 24 or newer. Import it
+with `import`; there is no CommonJS build. To import `@probarion/sdk/testing` from TypeScript, set
+`"moduleResolution"` to `"NodeNext"` or `"Bundler"`.
+
+To build them from source instead, from a clone of the repository:
+
+```sh
+git clone https://github.com/probarion/probarion.git
+cd probarion
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+A script in the repository folder then imports the builds as `./packages/sdk/dist/index.js` and
+`./packages/core/dist/index.js`, and a package of the clone's pnpm workspace that depends on them
+imports them by name, as the examples below do.
 
 ## Quick start
 
@@ -39,8 +53,11 @@ const probarion = new Probarion({
   vault: "acme.vaults.probarion.testnet",
   agentKey: process.env.PROBARION_AGENT_KEY, // function-call key: can only call `spend`
   ledgerKey: process.env.PROBARION_LEDGER_KEY, // function-call key: can only call `anchor`
-  // The NEAR AI Cloud model step. Use `model: null` to decide with code only.
-  model: { provider: "near-ai-cloud", apiKey: process.env.NEARAI_API_KEY ?? "" },
+  // The NEAR AI Cloud model step needs a key: an empty `apiKey` throws a ConfigError here.
+  // With no key, `model: null` decides with code only.
+  model: process.env.NEARAI_API_KEY
+    ? { provider: "near-ai-cloud", apiKey: process.env.NEARAI_API_KEY }
+    : null,
 });
 
 const outcome = await probarion.process({
@@ -62,13 +79,28 @@ console.log(outcome.status, outcome.code, outcome.spendId, outcome.txHash);
 
 - `refused_by_code`: a rule said no, and nothing was sent.
 - `refused_by_contract`: the vault said no.
-- `held`: the spend waits for an approver.
+- `held`: with `spendId` set, the contract holds the spend until an approver approves or rejects it.
+  With `spendId` null, a code rule held it (`code` names the rule) and nothing was sent; there is no
+  approval to give for a code hold.
 - `paid`: paid on NEAR.
 - `burned`: paid out through NEAR Intents for Base or Solana. The release on the other chain is
   observed later, so `process` does not return `settled`.
 - `failed`: definitely not paid.
-- `unconfirmed`: a `spend` was sent and may have paid. Find out on the chain whether it did
-  (`probarion.spends.get`) before anything else, and do not send it again under a new `ref`.
+- `unconfirmed`: a `spend` was sent and may have paid. Find out on the chain whether it did before
+  anything else, and do not send it again under a new `ref`. The contract has no lookup by `ref`:
+  list the vault's spends and match `ref`, as below. `probarion.spends.get(id)` reads one spend by
+  its id.
+
+```ts
+import { RpcClient, resolveRpcUrls, VaultClient } from "@probarion/sdk";
+
+// A read-only client: no sender, so it cannot sign anything. listAllSpends pages the contract's list_spends.
+const vault = new VaultClient(
+  "acme.vaults.probarion.testnet",
+  new RpcClient({ urls: resolveRpcUrls("testnet") }),
+);
+const spend = (await vault.listAllSpends()).find((s) => s.ref === "INV-2026-001") ?? null;
+```
 
 ## The `Probarion` class
 

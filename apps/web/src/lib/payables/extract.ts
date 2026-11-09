@@ -1,12 +1,10 @@
 import "pdf-parse/worker"; // must load before pdf-parse on Node/Vercel (pdf-parse troubleshooting doc)
 import { PDFParse } from "pdf-parse";
 import { normaliseLineEnds, wellFormed } from "./amount";
+import { MAX_INVOICE_BYTES } from "./limits";
 
-/**
- * The largest invoice file read. The route caps the whole request at this plus 64 KiB for the form, which stays
- * under Vercel's 4.5 MB body cap.
- */
-export const MAX_INVOICE_BYTES = 4 * 1024 * 1024;
+/** The largest invoice file read (4 MiB): defined in limits.ts, which client code can load. */
+export { MAX_INVOICE_BYTES };
 /** The text the model is shown is at most this many UTF-16 units; the invoice hash is the hash of exactly that text. */
 export const MAX_TEXT_CHARS = 50_000;
 /** An invoice is a few pages: anything past this is not read (and not hashed), and the amount is refused. */

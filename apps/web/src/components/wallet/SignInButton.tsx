@@ -33,7 +33,7 @@ export function SignInButton({ next = "/console" }: { next?: string }) {
       >
         {ready ? (busy ? "Check your wallet…" : "Sign in with NEAR wallet") : "Loading wallets…"}
       </button>
-      {error ? <p className="mt-2 text-sm text-rose-700">{error}</p> : null}
+      {error ? <p className="mt-2 text-sm text-bad">{error}</p> : null}
     </div>
   );
 }
@@ -46,7 +46,7 @@ export function SignOutButton() {
     <span className="relative">
       <button
         type="button"
-        className="text-sm text-stone-600 underline"
+        className="text-sm text-mute underline"
         onClick={async () => {
           setError(null);
           try {
@@ -61,7 +61,7 @@ export function SignOutButton() {
         Sign out
       </button>
       {error ? (
-        <span className="absolute top-full right-0 z-10 mt-1 w-max max-w-64 whitespace-normal bg-paper text-right text-xs text-rose-700">
+        <span className="absolute top-full right-0 z-10 mt-1 w-max max-w-64 whitespace-normal bg-paper text-right text-xs text-bad">
           {error}
         </span>
       ) : null}

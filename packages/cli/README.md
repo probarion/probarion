@@ -19,11 +19,25 @@ copies the ledger. They do not sign or send anything either.
 ## Install
 
 ```sh
-npm install --global probarion
+npm install -g probarion
 probarion --help
 ```
 
-Node 24 or newer. You also need `near-cli-rs` (the `near` command) to sign what the CLI prints.
+Or run it without installing: `npx probarion --help`. Node 24 or newer. You also need `near-cli-rs`
+(the `near` command) to sign what the CLI prints.
+
+To build it from source instead, from a clone of the repository (pnpm 10):
+
+```sh
+git clone https://github.com/probarion/probarion.git
+cd probarion
+pnpm install --frozen-lockfile
+pnpm build
+node packages/cli/dist/bin.js --help
+```
+
+In the repository folder, `node packages/cli/dist/bin.js` is the `probarion` command of the examples
+below.
 
 ## Commands
 
@@ -179,8 +193,8 @@ The flags:
   payload carries the request nonce and that NVIDIA NRAS verifies it. Check e's row says how many
   quotes and GPU payloads were checked.
   - What it needs: the network, and `@nearai/inference-sdk`. `probarion` lists that package as an
-    optional dependency, so `npm install --global probarion` installs it too, unless npm cannot (an
-    optional dependency that fails to install is left out). The package declares Node 24.22.1 or newer.
+    optional dependency, so `pnpm install` in the clone installs it too, unless it cannot (an optional
+    dependency that fails to install is left out). The package declares Node 24.22.1 or newer.
   - When the package cannot be loaded, verify prints `online: O1 and O2 did not run (<reason>)`, in the
     report and on stderr, and check e keeps its offline result.
   - When O1 or O2 ran, the report adds an `online legend` line that says what each one checks. When

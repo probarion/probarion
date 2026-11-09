@@ -1,6 +1,5 @@
-import { RouteLink } from "@/components/RouteLink";
 import { ExternalLink } from "@/components/ui";
-import { CONSOLE_ROUTE, HERO, NUMBERS, THESIS, type TxFact } from "@/lib/site/facts";
+import { HERO, NUMBERS, PROBLEM, type TxFact } from "@/lib/site/facts";
 import { Rich } from "./Rich";
 import s from "./site.module.css";
 
@@ -55,19 +54,21 @@ function RefusedCard() {
         <span>{c.mandate}</span>
         <span className={s.state}>{c.state}</span>
       </div>
-      <div className={`${s.cardBig} ${s.cardCode}`}>
-        {c.code[0]}
-        <wbr />
-        {c.code[1]}
-      </div>
+      <div className={s.cardBig}>{c.big}</div>
       <dl className={s.rows}>
         <div>
           <dt>Caller</dt>
           <dd>{c.caller}</dd>
         </div>
         <div>
-          <dt>Payee</dt>
-          <dd>{c.payee}</dd>
+          <dt>Limit</dt>
+          <dd>{c.limit}</dd>
+        </div>
+        <div>
+          <dt>Code</dt>
+          <dd>
+            <code>{c.code}</code>
+          </dd>
         </div>
         <div>
           <dt>Paid</dt>
@@ -83,6 +84,7 @@ export function Hero() {
   return (
     <section className={s.hero}>
       <div className={s.wrap}>
+        <p className={`${s.eyebrow} ${s.heroEyebrow}`}>{HERO.eyebrow}</p>
         <h1 className={s.h1}>
           <span>{HERO.line1}</span>
           <span className={s.gold}>{HERO.line2}</span>
@@ -91,14 +93,15 @@ export function Hero() {
           <div>
             <p className={s.lede}>{HERO.lede}</p>
             <div className={s.cta}>
-              <RouteLink route={CONSOLE_ROUTE} className={`${s.btn} ${s.solid} ${s.big}`}>
-                {HERO.openConsole}
-              </RouteLink>
-              <a className={`${s.btn} ${s.big}`} href="#verify">
-                {HERO.breakTheLedger}
+              <a className={`${s.btn} ${s.solid} ${s.big}`} href="#try">
+                {HERO.tryLive}
+              </a>
+              <a className={`${s.btn} ${s.big}`} href="#integrate">
+                {HERO.integrate}
               </a>
             </div>
             <p className={s.fineprint}>{HERO.fineprint}</p>
+            <p className={`${s.fineprint} ${s.audience}`}>{HERO.audience}</p>
           </div>
           <div className={s.duel}>
             <PaidCard />
@@ -113,32 +116,59 @@ export function Hero() {
   );
 }
 
-export function Thesis() {
+export function Problem() {
   return (
-    <section className={s.thesis}>
+    <section className={s.section} id="problem">
       <div className={s.wrap}>
-        <p>
-          {THESIS.lead} <em>{THESIS.rule}</em>
-        </p>
+        <p className={s.eyebrow}>{PROBLEM.eyebrow}</p>
+        <div className={s.sectionHead}>
+          <h2 className={s.h2}>{PROBLEM.title}</h2>
+          <p>{PROBLEM.sub}</p>
+        </div>
+        <div className={s.vs}>
+          <div className={s.vsCol}>
+            <h3>{PROBLEM.withoutTitle}</h3>
+            <ul>
+              {PROBLEM.without.map((line) => (
+                <li key={line}>
+                  <span className={s.vsNo} role="img" aria-label={PROBLEM.noLabel}>
+                    ✕
+                  </span>
+                  <span>
+                    <Rich text={line} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className={`${s.vsCol} ${s.vsWith}`}>
+            <h3>{PROBLEM.withTitle}</h3>
+            <ul>
+              {PROBLEM.with.map((line) => (
+                <li key={line}>
+                  <span className={s.vsYes} role="img" aria-label={PROBLEM.yesLabel}>
+                    ✓
+                  </span>
+                  <span>
+                    <Rich text={line} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <div className={s.numbers}>
+          {NUMBERS.map(({ name, value, rest }) => (
+            <div key={name}>
+              <b>{value}</b>
+              <p>
+                <strong>{name}</strong>
+                <Rich text={rest} />
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
-  );
-}
-
-export function Numbers() {
-  return (
-    <div className={s.wrap}>
-      <div className={s.numbers}>
-        {NUMBERS.map(({ name, value, rest }) => (
-          <div key={name}>
-            <b>{value}</b>
-            <p>
-              <strong>{name}</strong>
-              <Rich text={rest} />
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { type ChangeEvent, useState } from "react";
 import { prepareCreateVaultAction, registerVaultAction } from "@/app/console/actions";
-import { Field, inputClass, Notice, type Tone } from "@/components/ui";
+import { buttonClass, Field, inputClass, Notice, type Tone } from "@/components/ui";
 import { TxButton } from "@/components/wallet/TxButton";
 import type { Network } from "@/lib/config";
 import { VAULT_DEFAULTS } from "@/lib/config";
@@ -86,6 +87,7 @@ export function CreateVaultPanel({
     heldTtlHours: String(VAULT_DEFAULTS.heldTtlHours),
     depositNear: formatNearUp(defaultDeposit, 6),
   });
+  const router = useRouter();
   const [note, setNote] = useState<Note>(null);
   const set = (k: keyof typeof form) => (e: ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: e.target.value });
@@ -97,7 +99,9 @@ export function CreateVaultPanel({
     for (let i = 0; i < tries; i++) {
       const reg = await registerVaultAction(id);
       if (reg.ok) {
-        setNote({ tone: "good", text: `Registered ${id}. It is listed under your vaults.` });
+        // The new vault's own page, where its first-payment checklist starts (site audit P1-8).
+        setNote({ tone: "good", text: `Registered ${id}. Opening it…` });
+        router.push(`/console/${encodeURIComponent(id)}`);
         return;
       }
       if (reg.code !== "not_found" || i === tries - 1) {
@@ -132,7 +136,7 @@ export function CreateVaultPanel({
 
   return (
     <div>
-      <p className="mb-3 text-xs text-[#0B0B0C]/60">
+      <p className="mb-3 text-xs text-mute">
         Factory version {version} ({mode === "global" ? "global code" : "embedded code"}). You sign
         with your own wallet as <span className="mono">{owner}</span>, and that account becomes the
         vault&apos;s owner for good.
@@ -191,11 +195,7 @@ export function CreateVaultPanel({
           onResult={onResult}
         />
       ) : (
-        <button
-          type="button"
-          className="my-2 rounded-full bg-[#0B0B0C] px-4 py-1.5 text-sm text-[#F7F6F3] opacity-50"
-          disabled
-        >
+        <button type="button" className={`my-2 ${buttonClass}`} disabled>
           Create vault in my wallet
         </button>
       )}

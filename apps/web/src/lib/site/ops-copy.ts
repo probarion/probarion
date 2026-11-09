@@ -1,5 +1,5 @@
 import type { Network } from "@/lib/config";
-import { CLI_NOTE, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
+import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 import { ledgerFileName } from "@/lib/proof/ledger-file";
 
 // The words of the operations pages (/status, /security, /terms, /privacy), in one module so that ops-copy.test.ts can
@@ -31,7 +31,7 @@ export const STATUS_PAGE = {
   whatWorks: "What works today, and what does not",
 } as const;
 
-export const LAST_UPDATED = "2026-11-08";
+export const LAST_UPDATED = "2026-11-09";
 
 /** The lede of /terms and /privacy (spec §13, Legal row). */
 export const LEGAL_STATUS =
@@ -130,10 +130,10 @@ export const SECURITY_PAGE = {
   verify: {
     title: "Check a vault yourself",
     note: CLI_NOTE,
-    setup: "Set up once, one command per line:",
-    setupLines: CLI_SETUP_LINES,
-    hosted:
-      "For a vault hosted on Probarion, first download its signed ledger from `/proof/<vault>/ledger.jsonl` into the repository folder, on the address of its network: a member of the vault can, and anyone can when its proof page is public. Then run this from the repository folder, with `--network mainnet` for a mainnet vault:",
+    // npx fetches the package, so only the repository command has a set-up.
+    setup: CLI_ON_NPM ? "" : "Set up once, one command per line:",
+    setupLines: CLI_ON_NPM ? [] : CLI_SETUP_LINES,
+    hosted: `For a vault hosted on Probarion, first download its signed ledger from \`/proof/<vault>/ledger.jsonl\`${CLI_ON_NPM ? "" : " into the repository folder"}, on the address of its network: a member of the vault can, and anyone can when its proof page is public. Then run this ${CLI_ON_NPM ? "in the folder that holds it" : "from the repository folder"}, with \`--network mainnet\` for a mainnet vault:`,
     command: cli(`verify --network testnet --vault <vault> --ledger ${ledgerFileName("<vault>")}`),
     why: "Without `--ledger`, the command checks the chain against an empty ledger, and a vault with an anchor fails. The vault's proof page at `/proof/<vault>` shows the same command for that vault.",
   },
@@ -155,7 +155,7 @@ export const TERMS_PAGE = {
   rules: [
     {
       title: "What Probarion is.",
-      body: "Software that lets an AI agent pay invoices in USDC inside mandates that the vault's owner signs. A NEAR contract checks every payment, and anyone can verify the signed ledger.",
+      body: "Software that lets an AI agent pay invoices in USDC inside mandates that the vault's owner signs. A NEAR contract checks every payment, and the vault's owner can publish the signed ledger for anyone to verify.",
     },
     {
       title: "It does not hold your funds.",
@@ -260,7 +260,7 @@ export const PRIVACY_PAGE = {
       id: "canary",
       title: "The Canary",
       paragraphs: [
-        "A message you send to the Canary goes to a private model on NEAR AI Cloud. We store a sha256 hash of the message, not its text, plus technique labels and the on-chain result. The model's answer, which can quote your message, goes into the Canary's own signed ledger, which is not public. Your IP address and a cookie are stored as keyed hashes with each attempt, for rate limits and for the leaderboard's count of visitors.",
+        "A message you send to the Canary goes to a private model on NEAR AI Cloud. We store a sha256 hash of the message, not its text, plus technique labels and the on-chain result. The model's answer, which can quote your message, goes into the Canary's own signed ledger, which is not public. Your IP address and a cookie are stored as keyed hashes with each attempt, for rate limits and for the leaderboard's count of visitors. A link of ours can say where it was posted, as in /canary?via=x on a post on X. Your attempt then also stores that one word, so we can tell which links bring people. A word that is not one of ours is not stored.",
       ],
     },
     {
@@ -269,6 +269,7 @@ export const PRIVACY_PAGE = {
       paragraphs: [
         "Our servers log events such as sign-in, invoice uploads and payments, each with a request id. A line can name your account and your vault. Known secrets are masked before a line is written. Vercel, which hosts the site, also keeps its own request logs.",
         "Rate limits on sign-in, alert links, the proof pages and downloads, and pairing the browser extension with a code count requests per IP address (an IPv6 address cut to its /64). That address is stored as it is, in a counter that a daily cleanup deletes about two days after your last request. The Canary keeps only keyed hashes.",
+        "On testnet, the Add test USDC button counts its mints per vault, per owner account and for all vaults together, each for one UTC day, with no IP address, in counters the same cleanup deletes. Each mint is a NEAR transaction that names your vault, so it is public on chain.",
         "Error reports go to Sentry once it is enabled, without cookies, request headers or query strings. A report carries the log line of the error, which can name your vault or your account, and the page or route it came from.",
       ],
     },
@@ -278,7 +279,7 @@ export const PRIVACY_PAGE = {
       paragraphs: [
         "Vercel hosts the site. Supabase holds the database. NEAR AI Cloud runs the model. Telegram and Resend deliver alerts. Sentry receives error reports once it is enabled.",
         "On mainnet, a top-up sends NEAR Intents 1Click the amount and the asset, your account name (for a refund) and the vault's (to receive the funds). Chain reads go to NEAR RPC providers. Your browser loads the wallet connectors' code from GitHub.",
-        "We use no analytics and no advertising trackers.",
+        "We use no analytics service and no advertising trackers.",
       ],
     },
     {

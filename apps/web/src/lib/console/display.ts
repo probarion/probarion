@@ -49,7 +49,7 @@ export function spendStatusView(status: string): StatusView {
     case "held":
       return { tone: "warn", label: "held for approval" };
     case "pending":
-      return { tone: "info", label: "pending" };
+      return { tone: "warn", label: "pending" };
     case "paid":
       return { tone: "good", label: "paid" };
     case "burned":

@@ -5,7 +5,7 @@ export const REQUEST_ID_HEADER = "x-request-id";
 
 /** Field names whose values never reach a log line (matched anywhere in the name, any case). */
 const SECRET_KEY =
-  /secret|token|password|passphrase|mnemonic|seed|authorization|bearer|cookie|api_?key|private|service_?role|jwt|heartbeat|rpc_?urls?|dsn|(agent|ledger|signing)_?key$/i;
+  /secret|token|password|passphrase|mnemonic|seed|authorization|bearer|cookie|api_?key|private|service_?role|jwt|heartbeat|rpc_?urls?|dsn|(agent|ledger|signing|faucet)_?key$/i;
 /** A hash of a secret is not the secret (`token_hash`), except a password hash. */
 const HASH_KEY = /hash$/i;
 const PASSWORD_KEY = /password/i;
@@ -64,6 +64,7 @@ export const SECRET_ENV_NAMES = [
   "BASE_RPC_URL",
   "PROBARION_AGENT_KEY",
   "PROBARION_LEDGER_KEY",
+  "TESTNET_FAUCET_KEY",
   "OLD_KEY_ENCRYPTION_SECRET",
   "NEW_KEY_ENCRYPTION_SECRET",
 ] as const;

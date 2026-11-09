@@ -1,18 +1,21 @@
+import Link from "next/link";
 import c from "@/components/site/canary.module.css";
 import { ScrollRegion } from "@/components/site/ScrollRegion";
-import { brandCardClass, TxLink } from "@/components/ui";
-import { CANARY_COPY } from "@/lib/canary/copy";
+import { brandCardClass, ExternalLink, TxLink } from "@/components/ui";
+import { CANARY_COPY, replayRows } from "@/lib/canary/copy";
 import { utcMinute } from "@/lib/canary/format";
 import { REPLAY, type ReplayEntry } from "@/lib/canary/replay";
 import type { Banner } from "@/lib/canary/view";
+import { LINKS } from "@/lib/site/facts";
 import { Chip } from "./Chip";
 
 const R = CANARY_COPY.replay;
 
 /**
  * Cut line 7 of the spec: the Canary falls back to a replay of recorded attacks. It shows when the live Canary is paused,
- * when a replay is chosen and when the live one is not open, and the banner says which. The list is `REPLAY`, which the
- * owner records in content/attack-replay.json.
+ * when a replay is chosen, when the live one is not open and when its ledger is full, and the banner says which. Under
+ * the banner, what a visitor can do instead with no wallet. The list is `REPLAY`, the team's own runs, which the owner
+ * records in content/attack-replay.json; an empty list draws no card.
  */
 export function ReplayView({
   banner,
@@ -25,13 +28,22 @@ export function ReplayView({
     <div>
       <p role="status" className={c.banner}>
         <b>{R[banner]}</b>
-        {entries.length > 0 ? ` ${R.rows}` : null}
+        {entries.length > 0 ? ` ${replayRows(entries)}` : null}
       </p>
-      <section className={brandCardClass}>
-        <h2 className={c.cardTitle}>{R.title}</h2>
-        {entries.length === 0 ? (
-          <p className={c.muted}>{R.empty}</p>
-        ) : (
+      <p className={c.meanwhile}>
+        {R.meanwhile}{" "}
+        <Link className={c.link} href={R.tamperHref}>
+          {R.tamper}
+        </Link>{" "}
+        {R.noWallet} ·{" "}
+        <ExternalLink className={c.link} href={LINKS.x}>
+          {R.follow}
+        </ExternalLink>{" "}
+        {R.followTail}
+      </p>
+      {entries.length === 0 ? null : (
+        <section className={brandCardClass}>
+          <h2 className={c.cardTitle}>{R.title}</h2>
           <ScrollRegion label={R.tableLabel} className={c.scroll}>
             <table className={c.table}>
               <thead>
@@ -68,8 +80,8 @@ export function ReplayView({
               </tbody>
             </table>
           </ScrollRegion>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }

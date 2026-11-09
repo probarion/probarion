@@ -1,0 +1,5 @@
+Invoice INV-1001
+A Probarion testnet sample: test USDC, no value.
+Payee: the payee named in the mandate for the sample purchase order.
+Purchase order: PO-1001
+Total due: 2.00 USDC

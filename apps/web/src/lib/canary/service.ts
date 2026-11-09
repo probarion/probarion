@@ -24,6 +24,7 @@ import {
   tokensToday,
 } from "./limits";
 import { classify, type Technique } from "./technique";
+import type { CanaryVia } from "./via";
 
 // The Canary's cycle (spec §14.3, plan 04 Task 17). A visitor's text goes to a deliberately gullible model, then
 // through the SDK's `process` exactly as Payables' invoices do: code rules and the vault contract decide, and the
@@ -90,6 +91,8 @@ export interface AttemptInput {
   requestId: string;
   /** When the route started (epoch ms): the attempt's deadline counts from here. Default: now. */
   startedAt?: number;
+  /** The source the visitor's link named (lib/canary/via.ts), already checked. Default: none. */
+  via?: CanaryVia | null;
 }
 
 export type AttemptResult =
@@ -582,6 +585,7 @@ async function cycle(
     est_tokens: est,
     code_status: "running",
     network: deps.tenant.network,
+    via: input.via ?? null,
   });
   // The ref comes from the attempt's id and the time, never from the text's hash.
   const ref = `canary-${attemptId.replaceAll("-", "").slice(0, 20)}-${deps.now().getTime().toString(36)}`;

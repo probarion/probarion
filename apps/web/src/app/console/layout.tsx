@@ -20,7 +20,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
   return (
     <WalletProvider network={network}>
       <Container>
-        <div className="mb-4 flex items-center justify-between gap-3 text-sm text-[#0B0B0C]/60">
+        <div className="mb-4 flex items-center justify-between gap-3 text-sm text-mute">
           <span className="min-w-0">
             Signed in as <span className="mono wrap-anywhere">{session.accountId}</span>
           </span>
@@ -33,7 +33,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
             </span>
           </span>
         </div>
-        {children}
+        <div className="max-w-5xl">{children}</div>
       </Container>
     </WalletProvider>
   );

@@ -6,6 +6,7 @@ import { inkPillClass } from "@/components/ui";
 import { CANARY_COPY, characterCount } from "@/lib/canary/copy";
 import { CANARY_LIMITS } from "@/lib/canary/limits";
 import { type Answer, type AttemptIo, submitAttempt } from "@/lib/canary/reply";
+import type { CanaryVia } from "@/lib/canary/via";
 import type { Network } from "@/lib/config";
 import { AttemptResultView } from "./AttemptResult";
 import { Chip } from "./Chip";
@@ -22,7 +23,16 @@ const IO: AttemptIo = {
  * The visitor's message and the answer to it. It is not a `<form>` and the textarea has no name, so that with no
  * JavaScript nothing can put the text in an address. The answer arrives in a live region, so a screen reader hears it.
  */
-export function CanaryForm({ network, mode }: { network: Network; mode: "live" | "code-only" }) {
+export function CanaryForm({
+  network,
+  mode,
+  via = null,
+}: {
+  network: Network;
+  mode: "live" | "code-only";
+  /** The source the page's address named (`/canary?via=x`), already checked: sent with each attempt. */
+  via?: CanaryVia | null;
+}) {
   const id = useId();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,7 +49,7 @@ export function CanaryForm({ network, mode }: { network: Network; mode: "live" |
     setBusy(true);
     setAnswer(null);
     try {
-      setAnswer(await submitAttempt(text, IO));
+      setAnswer(await submitAttempt(text, IO, via));
     } finally {
       running.current = false;
       setBusy(false);

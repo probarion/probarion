@@ -7,7 +7,7 @@ agents on NEAR: spend by mandate, prove every payment.
 
 Decisions, hashes and checks are deterministic functions of their inputs. There is no network, no
 filesystem and no Node built-in, so the same code decides, hashes and verifies in the SDK, the CLI, a
-server and a browser. The network and files live in [`@probarion/sdk`](https://www.npmjs.com/package/@probarion/sdk).
+server and a browser. The network and files live in [`@probarion/sdk`](https://github.com/probarion/probarion/tree/main/packages/sdk).
 
 ## What is in it
 
@@ -39,6 +39,19 @@ npm install @probarion/core
 ```
 
 ESM only, Node 24 or newer. Import it with `import`; there is no CommonJS build.
+
+To build it from source instead, from a clone of the repository:
+
+```sh
+git clone https://github.com/probarion/probarion.git
+cd probarion
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+A script in the repository folder then imports the build as `./packages/core/dist/index.js`, and a
+package of the clone's pnpm workspace that depends on `@probarion/core` imports it by name, as the
+examples below do.
 
 ## Example
 

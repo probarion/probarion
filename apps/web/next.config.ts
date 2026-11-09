@@ -1,5 +1,7 @@
+import createMDX from "@next/mdx";
 import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
+import { docsHref, sidebarGroups } from "./src/lib/docs/registry";
 import { publicRoutingVars } from "./src/lib/site/network";
 
 // Which network an address is, as the browser needs it: the default network (NEAR_NETWORK) and each network's origin
@@ -41,8 +43,40 @@ export const nextConfig: NextConfig = {
       },
     ];
   },
+  // A docs section's own address opens its first page, in sidebar order, from the registry.
+  async redirects() {
+    return sidebarGroups().flatMap((g) => {
+      const first = g.pages[0];
+      return first === undefined
+        ? []
+        : [{ source: `/docs/${g.section}`, destination: docsHref(first.path), permanent: true }];
+    });
+  },
+  // The Markdown twin of each docs page (app/docs-md). /docs.md is the docs home's twin.
+  async rewrites() {
+    return [
+      { source: "/docs.md", destination: "/docs-md" },
+      { source: "/docs/:path*.md", destination: "/docs-md/:path*" },
+    ];
+  },
 };
 
-// Sentry's build step. Quiet, no telemetry. It uploads source maps only when the OWNER sets SENTRY_AUTH_TOKEN,
-// SENTRY_ORG and SENTRY_PROJECT in the Vercel build settings; the plugin reads them, the app does not.
-export default withSentryConfig(nextConfig, { silent: true, telemetry: false });
+// Docs pages are MDX (content/docs). Turbopack takes plugins by name, with options that are plain
+// JSON. Shiki runs at build time, so a code block ships no highlighting code to the browser.
+const withMDX = createMDX({
+  options: {
+    remarkPlugins: ["remark-gfm"],
+    rehypePlugins: [
+      "rehype-slug",
+      ["@shikijs/rehype", { theme: "github-dark-high-contrast", addLanguageClass: true }] as [
+        string,
+        unknown,
+      ],
+    ],
+  },
+});
+
+// Sentry's build step. Quiet, no telemetry. It uploads source maps only when the OWNER sets
+// SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT in the Vercel build settings; the plugin reads
+// them, the app does not.
+export default withSentryConfig(withMDX(nextConfig), { silent: true, telemetry: false });

@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth/guard";
 import { makeCanaryProbarion } from "@/lib/canary/probarion";
 import { runAttempt } from "@/lib/canary/service";
+import { findCanaryTenant, ledgerKeyAllowance } from "@/lib/canary/tenant";
+import { parseVia } from "@/lib/canary/via";
 import type { Network } from "@/lib/config";
 import { masterKey, subkey } from "@/lib/crypto/server";
 import { keyedHashHex } from "@/lib/crypto/sodium";
@@ -48,9 +50,9 @@ const STATUS = {
 } as const;
 
 /**
- * One attempt at the Canary challenge: `{ text }` in, an `AttemptResult` out. Public (no session), same-origin only, rate
- * limited per address and in total. The visitor is told apart by a keyed hash of an httpOnly cookie and of their IP, and
- * the text itself is never stored.
+ * One attempt at the Canary challenge: `{ text, via? }` in, an `AttemptResult` out. Public (no session), same-origin
+ * only, rate limited per address and in total. The visitor is told apart by a keyed hash of an httpOnly cookie and of
+ * their IP, and the text itself is never stored. `via` is the source the visitor's link named (lib/canary/via.ts).
  */
 export async function POST(req: Request) {
   // The attempt's deadline (CANARY_LIMITS.attemptBudgetMs) counts from here.
@@ -77,26 +79,10 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
   // The gullible agent needs the model: without a key there would be nothing to fool.
   if (!env.NEARAI_API_KEY) return problem(503, "not_ready");
   const db = serviceDb();
-  const found = await db.rpc<{
-    tenant_id: string;
-    vault_id: string;
-    network: Network;
-    kind: string;
-    proof_public: boolean;
-  } | null>("tenant_by_vault", { vault_id: canaryVault });
-  if (found?.kind !== "canary") return problem(503, "not_ready");
-  // The network's Canary vault is registered on the other one: a setting gone wrong, not a vault to run an attempt on.
-  if (found.network !== network) {
-    log.error("canary.vault_on_other_network", { request_id: requestId, network });
-    return problem(503, "not_ready");
-  }
-  // The Canary's ledger must be private: the gullible model quotes what visitors type into signed, append-only entries,
-  // and a public ledger would publish that for good (W-T17-R1). No model call and no chain call while it is public.
-  if (found.proof_public) {
-    log.error("canary.public_ledger", { request_id: requestId, tenant: found.tenant_id });
-    return problem(503, "not_ready");
-  }
-  const tenant = { tenant_id: found.tenant_id, vault_id: found.vault_id, network: found.network };
+  // A Canary tenant, on this network, with a private ledger: else no model call and no chain call (lib/canary/tenant.ts).
+  const found = await findCanaryTenant(db, canaryVault, network, { request_id: requestId });
+  if (!found.ok) return problem(503, "not_ready");
+  const { tenant } = found;
 
   const visitorKey = await subkey("visitor");
   const ipHash = await keyedHashHex(visitorKey, `ip:${clientIp(req.headers)}`);
@@ -118,7 +104,7 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
     (await rateLimitOr429(db, "canary:model:global", LIMITS.canaryModelGlobal));
   if (limited) return limited;
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { text?: unknown; via?: unknown } | null;
   if (typeof body?.text !== "string") return problem(400, "invalid_input");
   const isTeam = await isTeamMember(db, network);
   const store = new SupabaseLedgerStore(db, tenant.tenant_id);
@@ -141,23 +127,21 @@ async function attempt(req: Request, requestId: string, startedAt: number): Prom
         if (!k.exists) return 0n;
         return k.allowance === null ? null : BigInt(k.allowance);
       },
-      async ledgerAllowance() {
-        // The tenant's active LEDGER key pays for the anchor of every attempt. No such key reads as 0 (not ready).
-        const key = (await listKeys(db, tenant.tenant_id)).find(
-          (k) => k.purpose === "ledger" && k.status === "active",
-        );
-        if (!key) return 0n;
-        const k = await getReader(tenant.network).accessKey(tenant.vault_id, key.public_key);
-        if (!k.exists) return 0n;
-        return k.allowance === null ? null : BigInt(k.allowance);
-      },
+      // The tenant's active LEDGER key pays for the anchor of every attempt. No such key reads as 0 (not ready).
+      ledgerAllowance: () =>
+        ledgerKeyAllowance(
+          () => listKeys(db, tenant.tenant_id),
+          (account, pk) => getReader(tenant.network).accessKey(account, pk),
+          tenant,
+        ),
       async ledgerSize() {
         const head = await store.head();
         return head === null ? 0 : head.body.seq + 1;
       },
       ledgerByHash: (hash) => store.getByHash(hash),
     },
-    { text: body.text, visitorHash, ipHash, isTeam, requestId, startedAt },
+    // A source that is not exactly one of ours is stored as none: the attempt never fails for it.
+    { text: body.text, visitorHash, ipHash, isTeam, requestId, startedAt, via: parseVia(body.via) },
   );
   if (r.status === "done") return json(r);
   // Every 429 says when to come back: the seconds until the limit that was hit is over.

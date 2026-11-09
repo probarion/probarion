@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { CANARY_VIA } from "@/lib/canary/via";
+import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES } from "@/lib/proof/cli";
 import {
   BLAST_RADIUS,
   EXTENSION_PRIVACY,
@@ -50,7 +52,8 @@ const BANNED: readonly RegExp[] = [
   /support@/i,
   /security@/i,
   /—/,
-  /npx probarion/,
+  // npx probarion runs only once the package is on npm.
+  ...(CLI_ON_NPM ? [] : [/npx probarion/]),
 ];
 
 describe("the operations copy", () => {
@@ -98,9 +101,25 @@ describe("the operations copy", () => {
     expect(EXTENSION_PRIVACY.id).toBe("browser-extension");
   });
 
+  it("says a Canary attempt also stores the one word its link names, from the app's own set", () => {
+    const canary = PRIVACY_PAGE.sections.find((s) => s.id === "canary")?.paragraphs.join(" ");
+    expect(canary).toContain("/canary?via=x");
+    expect(CANARY_VIA).toContain("x");
+    expect(canary).toContain("one word");
+    expect(canary).toContain("is not stored");
+  });
+
   it("puts the downloaded ledger where the relative --ledger path finds it", () => {
-    expect(SECURITY_PAGE.verify.hosted).toContain("into the repository folder");
+    expect(SECURITY_PAGE.verify.hosted).toContain(
+      CLI_ON_NPM ? "Then run this in the folder that holds it" : "into the repository folder",
+    );
     expect(SECURITY_PAGE.verify.hosted).toContain("`--network mainnet`");
+  });
+
+  it("shows the repository set-up only while the CLI is not on npm", () => {
+    expect(SECURITY_PAGE.verify.note).toBe(CLI_NOTE);
+    expect(SECURITY_PAGE.verify.setupLines).toEqual(CLI_ON_NPM ? [] : CLI_SETUP_LINES);
+    if (CLI_ON_NPM) expect(SECURITY_PAGE.verify.hosted).not.toContain("repository folder");
   });
 
   it("does not limit the zero-retention amount to the wait for a Confirm", () => {

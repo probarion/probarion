@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 // The built site with test settings: public pages, the console redirect, security.txt and liveness. No chain, no
@@ -31,6 +32,17 @@ test("security.txt names the contact and an expiry", async ({ request }) => {
   const body = await res.text();
   expect(body).toMatch(/^Contact: https:\/\/x\.com\/probarionhq$/m);
   expect(body).toMatch(/^Expires: /m);
+});
+
+test("the landing's download line gets the core test fixture, byte for byte", async ({
+  request,
+}) => {
+  const res = await request.get("/samples/valid-snapshot.json");
+  expect(res.status()).toBe(200);
+  const fixture = readFileSync(
+    new URL("../../../packages/core/test/fixtures/valid-snapshot.json", import.meta.url),
+  );
+  expect((await res.body()).equals(fixture)).toBe(true);
 });
 
 test("the liveness route answers for the default network", async ({ request }) => {

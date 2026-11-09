@@ -5,7 +5,7 @@ All notable changes to this repository: the NEAR contracts in `contracts/`, the 
 The MCP server `@probarion/mcp` is planned and does not exist yet.
 
 Versions follow semver. The npm packages share one version, released by the tag `sdk-v<version>`;
-none is published yet. A contract crate carries its own version, and each build of it is identified
+0.1.0 was published on 2026-11-09. A contract crate carries its own version, and each build of it is identified
 by the code hash of its reproducible build in `contracts/code-hashes.json`. The web console is not
 versioned yet, and it deploys from `main` to <https://probarion.xyz>. While the version is 0.x, a minor version may change the API.
 The software is an unaudited beta.
@@ -14,6 +14,89 @@ The software is an unaudited beta.
 
 ### Added
 
+- The Docs Center at `/docs`: 23 pages in five sections (Start here, Concepts, Build, Verify &
+  trust, Resources), with a home of four doors (new here, owner, developer, evaluator). Each page
+  was written from the code and checked against it in a separate verification pass. Each guide,
+  tutorial and explanation marks what is Live, Preview or Planned; the sidebar's legend says what
+  Preview means. Every page but the docs home has a source box with the date it was reviewed, the
+  commit it was built from and the files it was checked against, and a "Copy page" button.
+  - The reference tables are rendered from typed lists that tests pin to the code, so a table that
+    drifts fails CI: the vault's 14 checks in their order, every `PROBARION:` code with the call
+    that raises it and what to do next, the SDK and HTTP errors, the verifier's checks a to i, and
+    the status list.
+  - Every owner and approver command carries a callout naming who signs it. A test checks every
+    CLI line in the pages against the CLI's own commands and options, and each callout's signer
+    against the CLI's owner and approver calls.
+  - Search opens with Ctrl K or ⌘K, from the docs bar or from the home's search box. It loads a
+    static index of every page but the home on first open and finds pages, error codes and CLI
+    commands. An exact error code, or a pasted `PROBARION:<Code>` line, ranks that code's row in
+    the catalog first, and opening a result moves focus to it. Without JavaScript, the search links
+    go to the home's list of popular searches.
+  - Every page has a Markdown twin at `/docs/<page>.md` whose first lines name the date it was
+    reviewed and the commit it was built from. `/llms.txt` lists the pages, and `/llms-full.txt`
+    holds them all for AI agents, with `X-Robots-Tag: noindex`.
+  - A section's address, such as `/docs/build`, redirects (308) to its first page.
+  - The landing's SDK and CLI cards link the developer quickstart and the install page, and its
+    outcome statuses link "What each status means".
+  - A Playwright spec, run locally and not in CI, checks the home's fold at 1440×900, the keyboard
+    path through search, the sidebar's current link, the table of contents and its scroll-spy, the
+    phone drawer, sideways overflow at 390 px, the twins' headers, the section redirects, the
+    install page's code tabs, the 404s, the docs without JavaScript and a blocked or missing
+    clipboard.
+- A Canary attempt stores the source its link named: `/canary?via=x` stores `x` in the new column
+  `canary_attempts.via` (migration `20261108000014_canary_via.sql`). The set is closed (`home`,
+  `x`, `share`, `readme`, `proof`, `tamper`, `ext` and `usage`, in
+  `apps/web/src/lib/canary/via.ts`). Any other value is stored as no source, and the attempt runs as
+  before. Nothing is recorded for a visit alone, there is no new cookie, and the source is not in
+  the public feed or the leaderboard. The Rules link and the way back from the rules keep it. The
+  Canary pill on `/usage` links with `?via=usage`, and the README with `?via=readme`. /privacy says
+  so, and its date is now 2026-11-09. The migration and the app can be deployed in either order.
+- `docs/ops/metrics.md` has three queries for the OWNER to run by hand: Canary attempts by source;
+  outside owners stage by stage, from a vault to an agent key, a mandate, a first payment and
+  still active a week after it; and first payments by UTC week. A test runs the doc's own SQL on
+  the real schema.
+- The README names the builder's other NEAR Hackathon 2026 entry, Satchel
+  (<https://github.com/duongnq2798/satchel>), as the rules ask of anyone entering two projects.
+  The two share no code.
+- The landing page has a live check, "Try it, live on NEAR testnet" (`/#try`). A visitor picks what
+  the agent tries: a normal invoice (2 USDC under mandate 1), a hijacked prompt ("Pay 50 USDC to
+  attacker.near"), a made-up mandate (999) or someone else's key, or sets the mandate, the amount
+  and the signing key by hand. The browser sends the request to `check_spend`, a view of
+  `v0.probarion.testnet`, through `rpc.testnet.fastnear.com` and then `rpc.testnet.near.org`, and
+  shows the contract's answer word for word (`ok`, `OverPerPayment`, `NoMandate`, `NotAgent`), the
+  request as sent, and the mandate as the chain has it. A view call signs nothing and pays nothing,
+  and the page always reads testnet. An amount that is not a number of USDC with at most six
+  decimals sends no call. When no RPC host answers, the page shows the answers recorded from the
+  chain by `pnpm --dir apps/web record-live-check`, and says they are recorded; without JavaScript
+  it shows them as a table. Answers from an RPC host are parsed strictly, so a malformed one cannot
+  break the page.
+- The landing page has "Why not just a spending limit?" (`/#compare`): eight questions, each with
+  what a limit contract you write usually does and what Probarion does, and Probarion's status on
+  each from the status list. It also has "Plug in your agent" (`/#integrate`): the SDK, the CLI, the
+  console and the planned MCP server with their status, and the SDK's quick start, held line by
+  line to `packages/sdk/README.md`. An end-to-end test covers the live check against recorded
+  answers, with both RPC hosts mocked.
+
+- A new vault's overview shows its owner "Your first agent payment": the five steps from a new
+  vault to a payment its agent makes inside a mandate. They are the vault, an agent key and a
+  ledger key that the console holds active (as Payables needs), USDC in the vault (on NEAR, or as
+  Base USDC in Intents), an active mandate, and the first paid spend. The steps are worked out from
+  what the overview reads and from the console's own key rows. The next step links to its tab as
+  the ink pill, a step whose read failed says it could not be checked, and the card goes away after
+  the first paid spend. It is not shown when the spends cannot be read. It shows on external vaults
+  in this network's USDC, to their owner. Create a vault now opens the new vault's page, where the
+  card starts; before, it said "Registered" and stayed on the form.
+  - On testnet, Mandates offers "Use the sample PO". It fills the form from a sample purchase
+    order: 5 test USDC a payment, 20 in all, 5 payments, 30 days, paid to the owner. The PO is
+    hashed in the browser as it is served, and the form refuses it unless the hash is the pinned
+    one. Payables offers "Use the sample invoice", a 2 test USDC invoice with a fresh invoice
+    number each time, sent with the same PO attached. The files are in
+    `apps/web/public/samples/`. Mainnet offers neither.
+- The ledger test on the landing page, each Canary answer and each proof page whose checks ran now
+  end with a link to the next page. On the landing page, a run the verifier failed ends with
+  "Caught." and a link to `/proof`. A Canary answer ends with "Put limits like these on your own
+  agent", and a proof page with "Put your agent behind a mandate"; both link to the console. They
+  ended at GitHub or an explorer.
 - The console has a Top-up tab. The owner sends USDC on NEAR from their own wallet to the vault. On
   mainnet only, the owner can also ask 1Click for a quote that tops up the vault's Base USDC balance
   inside NEAR Intents, and signs the deposit in their own wallet. On testnet, which has no Intents or
@@ -30,6 +113,16 @@ The software is an unaudited beta.
   1Click stopped reporting its address as waiting, past its deadline, or when the amount typed
   changed. A cancelled or failed wallet attempt does not lift those guards. A new quote request clears
   the old quote and is switched off while the wallet is open.
+- A testnet faucet, so anyone can fund a testnet vault. On a testnet vault's Top-up tab, the owner
+  presses "Add test USDC", and `POST /api/topup/faucet` mints 25 test USDC straight into the vault,
+  not into a wallet. It works once a UTC day per vault, for 3 vaults a day per owner account and for
+  50 vaults a day in all, and only at the testnet address, for a signed-in owner whose vault the chain
+  agrees on; everyone else gets 404. It signs as `probarion.testnet` with `TESTNET_FAUCET_KEY`, a
+  function-call key that can call only `mint` on `usdc.probarion.testnet`: before each mint the route
+  reads the key from the chain and refuses a full-access key or one low on allowance, with nothing
+  counted. The amount and the vault come from the server, not the request. A mint whose outcome is unknown answers with its hash and is not sent again. Without the
+  key, the tab says to ask @probarionhq. The key is masked in logs, and `docs/RUNBOOK.md` has the
+  steps to set it up.
 - Owner-only top-up routes `POST /api/topup/quote`, `POST /api/topup/submit` and
   `GET /api/topup/status`, rate-limited per account, which answer fixed sentences rather than
   1Click's own error text.
@@ -80,7 +173,8 @@ The software is an unaudited beta.
   (spent plus reserved stays within the total; an invoice is paid at most once), and near-workspaces
   sandbox tests of the key limits, holds, payouts and the factory, which run in CI on Linux.
 - Reproducible contract builds in CI (cargo-near 0.22.0 in Docker, pinned by digest), with each
-  recorded build's code hash in `contracts/code-hashes.json` and compared on every push.
+  recorded build's code hash in `contracts/code-hashes.json` and compared on every pull request
+  into `dev` or `main` and every push to them.
 - Testnet deployment on 2026-11-01: the test tokens, the intents stub and the vault
   `v0.probarion.testnet`, which has no full-access key and runs the recorded reproducible build.
   Its smoke run paid 1 test USDC to a NEAR account, burned 1 test USDC with a `WITHDRAW_TO:` memo for
@@ -167,7 +261,7 @@ The software is an unaudited beta.
 - The Canary challenge has its backend, `POST /api/canary/attempt`: anyone can send text to a
   deliberately gullible AI accounts-payable agent and try to talk it into paying. The Canary does not
   pay from its own cycle: a code rule refuses every attempt, and the answer shows which rule refused
-  and why. Its page, public feed and leaderboard are not built yet.
+  and why. Its page, feed and scoreboard are described below.
 - In live mode, a "pay" the code refused is also sent to the contract unfiltered, but only when the
   contract's own free dry run says it would refuse it, so visitors can watch the contract's refusal
   (for example `OverPerPayment`); the dry run makes sure such a spend pays nothing. This is limited to one on-chain
@@ -282,6 +376,93 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The site header has "Docs" right after the Canary, and Usage moves to the footer's Product
+  column. The landing page's closing button "Evaluate in 5 minutes" opens the docs page of that
+  name in the same tab, not the README section. The sitemap lists every docs page with the date it
+  was reviewed.
+- The docs, the README and the landing say that release 0.1.0 of `@probarion/core`,
+  `@probarion/sdk` and the `probarion` CLI is on npm: the install page, the developer quickstart,
+  the status table, and the landing's "0.1.0 on npm" pill for the SDK and CLI and "Shipped, on npm"
+  for the offline verifier. The README's browser checks add the verifier at `/#verify`, and its
+  "NEAR technology used, and how" table adds NEP-297 events, near-workspaces and cargo-near and
+  says what is not done live yet: the first mainnet payout, a 1Click top-up with a live quote and
+  an attested NEAR AI Cloud decision.
+- The site writes its CLI commands as `npx probarion …` now that 0.1.0 is on npm: the landing, the
+  proof page, /security and the console's CLI fallback, under one line saying that npx needs Node
+  24 and asks once before it downloads the package, with no set-up. A mainnet pre-ledger check on
+  the proof page also reads the repository's evidence files, so for it the page says to
+  `git clone` the repository first. The root `package.json` is renamed `probarion-monorepo`, so
+  `npx probarion` also runs at the root of a clone. The README's offline verify step and the deploy
+  runbook's smoke step 7 use `npx probarion`, and the install page says so.
+- The READMEs of `@probarion/core`, `@probarion/sdk` and the `probarion` CLI install from npm
+  (`npm install @probarion/core`, `npm install @probarion/sdk @probarion/core`, `npm install -g probarion`
+  or `npx probarion`) and keep the steps to build from a clone. These are the pages npm shows for
+  0.1.0. Their release notes are closed, so `pnpm release:check sdk-v0.1.0` passes.
+- The landing page leads with what an owner gets: "Give your AI agent a budget, not your wallet",
+  with buttons to the live check and to "Plug in your agent". The thesis and the numbers band are
+  one section, "The problem": an agent with its own wallet key next to an agent with a mandate. The
+  order is the problem, the live check, the comparison, how a payment works, plugging in an agent,
+  the payee, the ledger test, the chain and the status list. The header's first link is "Try it",
+  the fourth step of "How a payment works" links to the live check, and the closing says what to do
+  next above its links.
+- The landing's refused card and the README banner show a real refusal from 2026-11-09 in place of
+  mandate 999: the agent key asked mandate 1 for 6 test USDC, over its limit of 5 USDC a payment,
+  and the contract answered `PROBARION:OverPerPayment` (tx `4715d4nb…Vsr1`, recorded in
+  `contracts/deployments/testnet.json`). Step 3 of the README's evaluation and step 5 of the docs'
+  evaluation read it from an archival node.
+- The site, the docs, the Terms and the READMEs no longer say that anyone can verify the ledger
+  without a condition: a ledger is private until its owner publishes it, so they now say the owner
+  can publish it for anyone to verify. A test keeps the unconditional claim out of the site's
+  code, the docs and the READMEs. The landing's hero also names the category above the headline
+  ("A mandate layer for AI agents on NEAR") and says who it is for under the buttons.
+- The landing's offline check runs in an empty folder with npx alone. The site serves a
+  byte-for-byte copy of the test fixture at `/samples/valid-snapshot.json`, and step 5 prints the
+  download and the verify on separate lines, with a note to type `curl.exe` in Windows PowerShell
+  5.1. Step 2 of the README's evaluation gives the same two lines for a reader with no clone.
+- The ledger test on the landing page and on /proof puts a plain line under each of the nine
+  checks, and calls a cross-chain spend a withdrawal ("Withdrawal to Base") in place of "Burned for
+  Base" (site audit P1-11).
+- A spend that waits for approval now comes first on the vault's overview, right under the tabs.
+  A hold that ran out does not count, since the vault refuses approve then. The "Approval needed"
+  alert, by Telegram and email, links straight to the card (`/console/<vault>#held`); before, it
+  opened the overview, where the held card was the third or fourth. While a spend waits, the card
+  offers an owner or approver "Get a message next time", a link to the Alerts tab, unless a
+  confirmed alert of the vault already sends held spends.
+- The Alerts tab says when a message can arrive: right after an invoice is uploaded on Payables
+  (and, on the Canary vault, after each attempt), otherwise at the watcher's next run, once a day
+  at 00:00 UTC or every minute if the per-minute schedule is turned on. A test holds the time to
+  the schedule in `apps/web/vercel.json`. Before, it read as if a check every minute were already
+  running.
+- The console has the landing page's brand. It used a Tailwind kit from before the brand: buttons
+  about 32px tall, 14px fields that a phone zooms in on, and Approve and Reject buttons that looked
+  the same on a held payment.
+  - Buttons are ink pills at least 44px tall. Approve is the ink pill and Reject a red outline. Any
+    wallet button whose confirm dialog says it cannot be undone gets the red outline too: removing
+    an agent key and revoking a mandate.
+  - Fields are 16px, with the landing page's mute edge.
+  - Cards, notices, badges and status text use the colour tokens. A test reads them from
+    `globals.css` and checks that every text colour reads at WCAG AA.
+  - The vault's tabs mark the open one with an underline and `aria-current`. Each tab is 44px tall,
+    and on a phone they sit in one row that scrolls sideways.
+  - The confirm dialog's Cancel is an outline pill.
+  - Explorer links are ink rather than blue.
+  - A pending payout is gold, the brand's colour for in progress.
+  - Every page but the landing page now uses the header's frame: 1320px wide, with 16px gutters up
+    to 620px and 24px above, so the page's left edge lines up with the logo. The console's and the
+    extension page's content stays 1024px wide.
+  - The proof page's coloured result panels are unchanged.
+- The sign-in page says what signing in is for (a vault, a mandate and a key that can only call
+  `spend`, or approving a held payment) and what it takes: on testnet, a NEAR testnet account, and
+  about 3.3 test NEAR to create a vault later, which stays in the vault and cannot be withdrawn. On
+  mainnet it says vaults cannot be created yet, as the factory is not deployed. Below the sign-in
+  button it links the ledger test, which needs no wallet, and the terms and the privacy notice. The
+  sign-in card had one button and no link.
+- The ledger test gives its verdict in one plain sentence beside PASS or FAIL, read from the
+  verifier's result, such as "Entry 2 was changed after it was signed, so its signature no longer
+  matches." It names a cause and an entry only when the verifier's own words name them, and
+  otherwise gives the counts. The counts and the verifier's words on each check that did not pass sit behind "Verifier
+  detail". The test printed the counts as its verdict and the verifier's words under each failed
+  check.
 - Sessions name their network and belong to one address, so a person signs in at each network's
   address with a wallet of that network. After this change everyone signs in once more. A vault's
   routes and actions answer `409 wrong_network` at the other network's address, and a registered
@@ -353,6 +534,46 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The Canary page shows its form only when the Canary vault and `NEARAI_API_KEY` are set, the
+  database holds a private Canary tenant for that vault on the page's network, its ledger has room,
+  its ledger key has gas for anchors, and the vault holds a mandate. It went live as soon as the vault
+  was set, with a form that could only answer "not ready" when the key, the tenant or the mandate was
+  missing. The page asks once a minute, with the same tenant and ledger key checks the attempt route
+  makes; otherwise it shows the replay.
+- Once the Canary's ledger is full, the page says the live Canary is closed instead of showing the
+  form.
+- The Canary replay shows attacks from the team's own tests, starting with the smoke run's refusal on
+  testnet: the agent key cited mandate 999 and the contract answered `NoMandate`. A test holds every
+  transaction in the list to a deployment record. The list was empty. Under the banner the page
+  offers the ledger test, which needs no wallet, and @probarionhq on X, and it shows the "paid to an
+  attacker" and Freysa cards, which hold whether or not the Canary is live.
+- The live Canary page says why it shows no ledger: the model's answers in it can quote what visitors
+  wrote, so it stays private.
+- Sign-in explains two more answers of the server in words: `unavailable` (sign-in could not finish,
+  so you were not signed in) and `payload_too_large` (the wallet's answer was too large to be a
+  sign-in). The page showed the bare code before.
+- The mandate form refuses a purpose document over 4 MiB. It took 25 MB, but the Payables upload
+  takes the invoice and its purpose document together in 4 MiB, so a mandate made from a larger
+  document could not be paid through Payables. The form still only hashes the file, in the browser.
+- The `near_low` alert links to "Send NEAR to this vault" on the vault's Overview. It linked to
+  Top-up, which funds USDC only.
+- The Canary rules ask for a report the way SECURITY.md does, with a direct message to @probarionhq on
+  X. They named an email address that does not exist.
+- The package READMEs built the packages from a clone while none was on npm; they had shown
+  `npm install`. The SDK quick start no longer passes an empty `NEARAI_API_KEY`, which throws a
+  `ConfigError`. The SDK README says that a code hold has no approval to give, and that an
+  unconfirmed spend is found by listing the vault's spends and matching `ref`: `spends.get` takes a
+  spend id, and the contract has no lookup by ref.
+- `freeze` takes no deposit, but a function-call key can sign it only when it may call the vault. The
+  CLI's `vault freeze` help, SECURITY.md and the README said any owner key could freeze. The CLI's
+  note also says that `reject` and `expire_held` still work while the vault is frozen.
+- THREAT_MODEL: the SDK and the CLI read the bare `NEAR_RPC_URLS`, and only the web app reads the
+  per-network names; the SDK already marks a ledger fork risk (`LEDGER_FORK_RISK`); and CI runs on
+  pull requests into `dev` and `main` and on pushes to them. The README and this changelog said CI
+  runs on every push.
+- This changelog no longer contradicts itself about the Canary page, the pages that once read
+  "coming soon" and the factory's fixed vault build, and the 0.1.0 heading says it is not released
+  yet.
 - With both networks served, the site header no longer runs past the window between 1101 and 1360 px
   wide, where the network switch left no room for the links. At those widths the links move into the
   menu, as they do below 1101 px. With one network the header is unchanged.
@@ -364,9 +585,9 @@ The software is an unaudited beta.
   answer 503, when the database or the server's environment fails. They answered 500 before.
 - A failed sign-in challenge says sign-in is unavailable and nothing was signed. The sign-in page no
   longer names wallets the picker may not offer.
-- Web console: pages that are not built yet (Canary, open metrics, Payables, Top-up, Alerts,
-  Security, Status, Terms, Privacy) show as "coming soon" instead of a link that answers 404, and the
-  landing page does not present them as available.
+- Web console: no link answers 404. While the Canary, the open metrics (now `/usage`), Payables,
+  Top-up, Alerts, Security, Status, Terms and Privacy pages were being built, a link to one showed as
+  "coming soon" and the landing page did not present it as available. Each is now a real page.
 - Proof page: text from a ledger or the chain cannot disguise a result. Bidi and control characters
   are replaced, long values are cut, and only well-formed transaction hashes and account ids become
   links. A database or chain failure shows "No result" with the reason, and it is not shown as a pass.
@@ -375,8 +596,9 @@ The software is an unaudited beta.
   page's server functions trace a few dozen files instead of the whole app (about 225 files before).
 - Vault: `set_ledger_key` deletes the old ledger key and adds the new one in two separate receipts,
   the delete first. A failed delete no longer rolls back the new key and leaves the vault unable to
-  anchor, and a rotation fits on a vault with no spare NEAR. The testnet vault runs the build from
-  before this fix; the fixed build is recorded (code hash `3cQXYDvf…`) and not deployed yet.
+  anchor, and a rotation fits on a vault with no spare NEAR. `v0.probarion.testnet` runs the build
+  from before this fix. The fixed build (code hash `3cQXYDvf…`) is version 1 of the testnet factory
+  `vaults.probarion.testnet`, so every vault the factory creates runs it.
 - Web console: a payment is signed with the key its mandate is bound to; a key made active again keeps
   its first activation date; and a discarded key that shows up on chain is reported, for the owner to
   keep or remove.
@@ -415,7 +637,7 @@ The software is an unaudited beta.
   `docs/ops/key-rotation.md`.
 - Release pipeline: `release.yml` publishes only from a `sdk-v*` tag on `main`, through the protected
   `npm-release` environment, with npm provenance, and the job that publishes runs no repository code.
-  The release check gates the versions, this changelog, open `TODO(release)` notes and the packed
+  The release check gates the versions, this changelog, open release-note comments and the packed
   tarballs. A version already on npm is skipped only when npm holds the same bytes. `release.yml` is
   pinned by sha256, every step runs with `pipefail`, and a test refuses any step that would swallow a
   failure. Third-party actions are pinned by commit SHA, and the cargo-near download is checked by
@@ -446,7 +668,7 @@ The software is an unaudited beta.
   dynamically. It reads imports and names: it catches a plain import, not code written to get around
   it, so review of every change to that code is the other control.
 
-## 0.1.0 - 2026-11-07
+## 0.1.0 - 2026-11-09
 
 ### Added
 
@@ -454,4 +676,3 @@ The software is an unaudited beta.
 - `@probarion/sdk`: a NEAR JSON-RPC client with failover and backoff; vault, intents and factory clients; function-call key signing through near-api-js 7; the NEAR AI Cloud adapter (private TEE models, a nonce-bound attestation report, the `provider_tee` signature); the JSONL file ledger store (locked, which needs a local file system with hard links) and the in-memory store; the `Probarion` class with `process`, `requestSpend`, `checkSpend`, `mandates`, `spends`, `anchors`, `rules`, `snapshot` and `verify` (with optional online TEE quote checks through `@nearai/inference-sdk`); and `@probarion/sdk/testing` test doubles (fake chain, fake NEAR JSON-RPC server, fake NEAR AI Cloud).
 - `probarion` CLI: `vault create`, `mandate create`, `mandate revoke`, `agent add`, `agent remove`, `ledger set-key`, `spend approve`, `spend reject`, `vault freeze`, `vault unfreeze`, `vault withdraw` and `vault withdraw-intents` check their input against the contract and print the transaction for the owner or approver to sign with `near-cli-rs` (1 yoctoNEAR where the contract requires it); the CLI does not sign. `agent keygen` makes an ed25519 key pair (`--out <file>` or `--print-secret`). `check` dry-runs a spend against the contract; `verify` runs checks a to i on a live vault or, with `--offline`, on a saved snapshot, prints a table or `--json`, and exits 0 (pass), 1 (a check fails or verify cannot run), 2 (a burn is unproven) or 64 (usage); `--online` adds the TEE quote checks O1 and O2 when `@nearai/inference-sdk` is installed and says when they did not run. `ledger export` copies the ledger to a new file.
 - Packaging: ESM only, Node 24 or newer. Each tarball holds `dist/` (without source maps), `README.md` and `LICENSE`, and is published from CI with npm provenance when the repository is public.
-<!-- TODO(release): set the date above to the day the tag is pushed -->

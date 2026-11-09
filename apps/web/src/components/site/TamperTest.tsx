@@ -6,9 +6,12 @@ import type { LedgerRow, TamperEdit, TamperEditId, TamperResult } from "@/lib/si
 import {
   checkView,
   notRunLine,
+  offersNext,
+  plainVerdict,
   resultSummary,
   runVerifier,
   statusLine,
+  VERIFIER_DETAIL,
 } from "@/lib/site/tamper-view";
 import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
@@ -67,38 +70,63 @@ function Row({ row, edit }: { row: LedgerRow; edit: TamperEdit | undefined }) {
   );
 }
 
-function Result({
+/**
+ * The verdict panel: PASS or FAIL with one plain sentence, each check's word, and the verifier's own words on the
+ * checks that did not pass in a closed disclosure. `next` goes last; TamperTest passes it only when `offersNext`.
+ */
+export function TamperVerdict({
   result,
   checks,
   live,
   copy,
+  next,
 }: {
   result: TamperResult;
-  checks: readonly { id: CheckId; label: string }[];
+  checks: readonly { id: CheckId; label: string; hint: string }[];
   live: boolean;
   copy: TamperCopy;
+  next?: ReactNode;
 }) {
+  const views = checks.map(({ id, label, hint }) => ({
+    id,
+    label,
+    hint,
+    ...checkView(result.checks.find((c) => c.id === id)),
+  }));
+  const explained = views.filter((v) => v.why !== "");
   return (
     <>
       <div className={s.verdict} aria-atomic="true">
         <b className={result.ok ? s.pass : s.fail}>{result.ok ? "PASS" : "FAIL"}</b>
-        <span>{resultSummary(result, copy.firstBroken)}</span>
+        <span>{plainVerdict(result, copy.firstBroken)}</span>
       </div>
       <ul className={s.checks}>
-        {checks.map(({ id, label }) => {
-          const { word, bad, why, caveat } = checkView(result.checks.find((c) => c.id === id));
-          return (
-            <li key={id} className={bad ? s.checkBad : undefined} aria-atomic="true">
-              <span className={s.checkId}>{id}</span>
-              <span>{label}</span>
-              <span className={s.checkWord}>{word}</span>
-              {why === "" ? null : <span className={s.why}>{why}</span>}
-              {caveat === "" ? null : <span className={s.caveat}>{caveat}</span>}
-            </li>
-          );
-        })}
+        {views.map(({ id, label, hint, word, bad, caveat }) => (
+          <li key={id} className={bad ? s.checkBad : undefined} aria-atomic="true">
+            <span className={s.checkId}>{id}</span>
+            <span>{label}</span>
+            <span className={s.checkWord}>{word}</span>
+            <span className={s.checkHint}>{hint}</span>
+            {caveat === "" ? null : <span className={s.caveat}>{caveat}</span>}
+          </li>
+        ))}
       </ul>
+      {explained.length === 0 ? null : (
+        <details className={s.detail}>
+          <summary>{VERIFIER_DETAIL}</summary>
+          <p>{resultSummary(result, copy.firstBroken)}</p>
+          <ul>
+            {explained.map(({ id, why }) => (
+              <li key={id}>
+                <span className={s.checkId}>{id}</span>
+                <span className={s.why}>{why}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <p className={s.sheetNote}>{live ? copy.live : copy.recorded}</p>
+      {next}
     </>
   );
 }
@@ -114,13 +142,16 @@ export function TamperTest({
   recorded,
   copy,
   source,
+  next,
 }: {
   rows: readonly LedgerRow[];
-  checks: readonly { id: CheckId; label: string }[];
+  checks: readonly { id: CheckId; label: string; hint: string }[];
   edits: readonly TamperEdit[];
   recorded: TamperResult;
   copy: TamperCopy;
   source: ReactNode;
+  /** Where to go once the verifier has caught an edit. Left out where the page already gives the next step. */
+  next?: ReactNode;
 }) {
   const verifier = useRef<Promise<Verify> | null>(null);
   const [shown, setShown] = useState<{
@@ -214,7 +245,13 @@ export function TamperTest({
         <div className={s.sheetFoot}>{source}</div>
       </div>
       <div className={s.sheet} aria-live="polite" aria-busy={busy !== null}>
-        <Result result={shown.result} checks={checks} live={shown.live} copy={copy} />
+        <TamperVerdict
+          result={shown.result}
+          checks={checks}
+          live={shown.live}
+          copy={copy}
+          next={offersNext(shown, failed !== null) ? next : undefined}
+        />
         {failed === null ? null : (
           <p className={s.sheetError}>
             {failed === "load_failed" ? copy.loadFailed : copy.runFailed}
