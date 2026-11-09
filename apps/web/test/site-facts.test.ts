@@ -248,13 +248,22 @@ describe("what an offline run shows", () => {
     expect(verify).toContain('.option("--vault <id>"');
   });
 
-  it("warns under the closing headline that a live run on the testnet vault fails today", () => {
+  it("says under the closing headline which testnet vault passes a live run, and which fails it", () => {
     expect(CLOSING.live).toBe(
-      "A live run reads the chain itself: `verify --vault`. On the testnet vault it fails checks d and h today, because the smoke run sent its spends without a ledger.",
+      "A live run reads the chain itself: `verify --vault`. On `demo.vaults.probarion.testnet` it passes checks a to i. On `v0.probarion.testnet` it fails checks d and h, because its smoke run sent spends without a ledger.",
     );
     expect(CHECK_LABELS.d).toBe("A decision for every spend");
     expect(CHECK_LABELS.h).toBe("Burn memos");
-    expect(visibleText(landing())).toContain("it fails checks d and h today");
+    expect(visibleText(landing())).toContain("it passes checks a to i");
+    // The pass is the recorded live run's (test/demo-vault.test.ts ties it to the chain); the fail is the README's.
+    const demo = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")).demo_vault;
+    expect(demo.account).toBe("demo.vaults.probarion.testnet");
+    expect(text(ROOT, "docs", "evidence", "demo-vault", "verify-2026-11-09.txt")).toContain(
+      "RESULT: PASS",
+    );
+    expect(README.replace(/\s+/g, " ")).toContain(
+      "`verify --vault v0.probarion.testnet` prints `RESULT: FAIL` today: check d finds spends with no decision in the ledger, and check h",
+    );
   });
 
   it("does not say on-chain in the step that describes a snapshot", () => {
@@ -564,8 +573,13 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Public proof page",
-      pill: "Built, no public vault yet",
-      readme: [{ start: "Public `/proof/<vault>` page", says: ["**Built**"] }],
+      pill: "Live for the testnet demo vault",
+      readme: [
+        {
+          start: "Public `/proof/<vault>` page",
+          says: ["**Live**", "`demo.vaults.probarion.testnet`"],
+        },
+      ],
     },
     {
       row: "Payables agent",
@@ -674,18 +688,28 @@ describe("the payment journey", () => {
     );
   });
 
-  it("says the testnet vault has no ledger key or anchors yet, as the README does", () => {
-    expect(prose).toContain("this vault has no ledger key and no anchors yet");
-    expect(step(5).tag).toContain("The testnet vault has no ledger key or anchors yet");
+  it("runs the commands on the README's fixture, and points to the demo vault's proof page for a real ledger", () => {
     // With npx the tag says "these commands run", from a clone "this command runs".
     expect(step(5).tag).toContain("on a test fixture");
+    expect(step(5).tag).not.toContain("no ledger key or anchors yet");
+    expect(step(5).tag).toContain(
+      "The testnet demo vault's proof page runs the same checks on its own ledger and chain data.",
+    );
     expect(step(5).body).toContain("With a ledger key, the SDK anchors the ledger root");
   });
 
-  it("marks the ledger as what the SDK does, and says the smoke run had none", () => {
+  it("marks the ledger as what the SDK does, and says the demo vault's ledger holds a refusal too", () => {
     expect(prose).toContain("without the SDK, a model or a ledger");
     expect(step(3).body).toContain("The SDK signs the decision into the ledger");
-    expect(step(3).tag).toContain("smoke run sent spends without a ledger");
+    expect(step(3).tag).toBe(
+      "On the testnet demo vault, every spend has its signed decision, and so does the refused invoice.",
+    );
+    // Check d ties each spend to its decision; the refusal is a decision with no spend (test/demo-vault.test.ts).
+    const demo = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")).demo_vault;
+    expect(demo.spends).toHaveLength(2);
+    expect(demo.refusals).toEqual([
+      { invoice: "INV-2002", rule: "mandate.payee_mismatch", ledger_seq: 3 },
+    ]);
   });
 
   it("shows the verifier's commands one per line, on the README's fixture, with a prompt that does not copy", () => {
@@ -749,8 +773,8 @@ describe("the status list", () => {
       {
         id: "public-proof-page",
         row: "Public proof page",
-        pill: "Built, no public vault yet",
-        tone: "work",
+        pill: "Live for the testnet demo vault",
+        tone: "live",
       },
       { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
       { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
@@ -1432,8 +1456,10 @@ describe("the sign-in page", () => {
     // Its intro puts what the extension does in the future tense, as /privacy does.
     const words = page.replace(/\s+/g, " ");
     expect(words).toContain(
-      "The extension will send invoices to wait for your confirmation and show what waits for you, but it can't pay or approve: an invoice it sends will be paid only after you confirm it in the console with your wallet.",
+      "The extension will send invoices to wait for the owner's confirmation and show what waits for you, but it can't pay or approve: an invoice it sends is paid only after the vault's owner confirms it in the console with their wallet.",
     );
+    // An approver's connection can send invoices too, and only the vault's owner confirms (lib/payables/confirm.ts).
+    expect(words).not.toContain("after you confirm it");
     expect(words).not.toContain("The extension sends invoices");
   });
 });

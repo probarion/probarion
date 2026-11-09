@@ -9,8 +9,17 @@ import { log, newRequestId } from "@/lib/log";
 import { listAll } from "@/lib/near/reader";
 import { getReader } from "@/lib/near/server";
 import { tagRequest } from "@/lib/observe";
-import { ExtractError, type InvoiceMediaType, MAX_INVOICE_BYTES } from "@/lib/payables/extract";
-import { type InvoiceUpload, type PipelineResult, processInvoice } from "@/lib/payables/pipeline";
+import { ExtractError, MAX_INVOICE_BYTES } from "@/lib/payables/extract";
+import { NUMBER_DUPLICATE_RULE } from "@/lib/payables/number-duplicate";
+import { type PipelineResult, processInvoice } from "@/lib/payables/pipeline";
+import {
+  byteCount,
+  cleanName,
+  fileTooLarge,
+  type InvoiceUpload,
+  MAX_REQUEST_BYTES,
+  mediaTypeOf,
+} from "@/lib/payables/upload";
 import { LIMITS } from "@/lib/ratelimit";
 import { makeTenantProbarion } from "@/lib/sdk/factory";
 import { kickWatcher } from "@/lib/watcher/server";
@@ -18,14 +27,6 @@ import { kickWatcher } from "@/lib/watcher/server";
 export const dynamic = "force-dynamic";
 // The tenant lease (PROCESS_LEASE_SECONDS, 90 s) outlasts this with a 30 s margin; route.test.ts checks it.
 export const maxDuration = 60;
-
-/**
- * The whole multipart body (the invoice, the optional purpose document and the framing) is at most the invoice cap
- * plus 64 KiB, 4,259,840 bytes: a maximum-size invoice fits with its form, and the limit stays under
- * Vercel's 4.5 MB body cap, which refuses a larger body before this code runs. A request must state its length
- * (Content-Length), so the limit is checked before any of the body is read.
- */
-const MAX_REQUEST_BYTES = MAX_INVOICE_BYTES + 64 * 1024;
 
 /** Shown for an unconfirmed outcome: the spend was sent and is never sent again. */
 const PAYMENT_PENDING =
@@ -35,45 +36,16 @@ const PAYMENT_PENDING =
 const OWNER_CONFIRMS =
   "Nothing was sent. No attested model confirmed the amount the code read, so this invoice waits for the owner to confirm the amount.";
 
-/** 4259840 -> "4,259,840". */
-const bytes = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+/** Shown when the number rule refused the cycle: another text with the number of an invoice that may have paid. */
+const NUMBER_DUPLICATE =
+  "Duplicate number: another invoice to this payee has the same invoice number and was paid or may still be paid. Nothing was sent; the refusal is in the signed ledger. If the owner rejects that invoice, or it paid nothing, upload this one again.";
 
 const tooLarge = () =>
   problem(
     413,
     "too_large",
-    `The request must be ${bytes(MAX_REQUEST_BYTES)} bytes (4 MiB + 64 KiB) at most: the invoice, its purpose document and the form together.`,
+    `The request must be ${byteCount(MAX_REQUEST_BYTES)} bytes (4 MiB + 64 KiB) at most: the invoice, its purpose document and the form together.`,
   );
-const fileTooLarge = (what: string) =>
-  problem(
-    413,
-    "too_large",
-    `The ${what} is larger than 4 MiB (${bytes(MAX_INVOICE_BYTES)} bytes).`,
-  );
-
-/**
- * What a stored file name must not keep: C0 and C1 controls, format characters (U+202E reverses how the rest of
- * a name is shown), and the line and paragraph separators.
- */
-const UNSAFE_NAME_CHAR = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
-
-/** Only the base name, without unsafe characters, at most 200 characters (the column's limit). */
-function cleanName(name: string): string | null {
-  const last = name.split(/[\\/]/).pop() ?? "";
-  const base = [...last]
-    .filter((c) => !UNSAFE_NAME_CHAR.test(c))
-    .join("")
-    .trim();
-  return base === "" ? null : [...base].slice(0, 200).join("");
-}
-
-function mediaTypeOf(file: File): InvoiceMediaType | null {
-  const type = (file.type.split(";")[0] ?? "").trim().toLowerCase();
-  const name = file.name.toLowerCase();
-  if (type === "application/pdf" || name.endsWith(".pdf")) return "application/pdf";
-  if (type === "text/plain" || name.endsWith(".txt")) return "text/plain";
-  return null;
-}
 
 type Read = { upload: InvoiceUpload; purposeBytes: Uint8Array | null } | Response;
 
@@ -128,6 +100,9 @@ function respond(r: PipelineResult, requestId: string): Response {
         requestId,
         ...(r.invoiceStatus === "unconfirmed" ? { notice: PAYMENT_PENDING } : {}),
         ...(r.invoiceStatus === "awaiting_owner" ? { notice: OWNER_CONFIRMS } : {}),
+        ...(r.outcome.status === "refused_by_code" && r.outcome.code === NUMBER_DUPLICATE_RULE
+          ? { notice: NUMBER_DUPLICATE }
+          : {}),
       });
     case "duplicate":
       return json(

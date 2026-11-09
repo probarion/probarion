@@ -1,6 +1,6 @@
 # The watcher (`/api/cron/watch`)
 
-OWNER only. The watcher reads every vault on the chain, and its ledger, and writes what it sees into the table `vault_events`, one row per event. The public page `/usage` counts those rows (payments, mandates, held payments, refusals by the contract), and the alerts (`docs/ops/alerts.md`) send them. This page says what it records, when it runs, how to turn on the per-minute schedule, and how to check it.
+OWNER only. The watcher reads each vault registered with the app from the chain, and its ledger, and writes what it sees into the table `vault_events`, one row per event. The public page `/usage` counts those rows (payments, mandates, held payments, refusals by the contract), and the alerts (`docs/ops/alerts.md`) send them. This page says what it records, when it runs, how to turn on the per-minute schedule, and how to check it.
 
 ## What it records
 

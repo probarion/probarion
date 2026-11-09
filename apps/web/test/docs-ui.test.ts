@@ -498,7 +498,8 @@ describe("the docs shell", () => {
       /<a(?=[^>]*href="\/docs\/concepts\/payment-checks")(?=[^>]*aria-current="page")[^>]*>/,
     );
     expect(out).toContain("Concepts");
-    expect(out).not.toContain("Operate");
+    // The console section has no page yet (phase 2 was cut to the reference pages).
+    expect(out).not.toContain("Use the console");
   });
 
   it("puts a legend under the groups of both copies, and keeps the dot's screen-reader text", () => {
@@ -636,6 +637,7 @@ describe("the docs bar's tabs, once a tab's page exists", () => {
     vi.doUnmock("@/lib/docs/pages/start");
     vi.doUnmock("@/lib/docs/pages/build");
     vi.doUnmock("@/lib/docs/pages/trust");
+    vi.doUnmock("@/lib/docs/pages/resources");
     vi.resetModules();
   });
 
@@ -648,6 +650,7 @@ describe("the docs bar's tabs, once a tab's page exists", () => {
       BUILD: [{ ...base, path: "build/install", title: "Install" }],
     }));
     vi.doMock("@/lib/docs/pages/trust", () => ({ TRUST: [] }));
+    vi.doMock("@/lib/docs/pages/resources", () => ({ RESOURCES: [] }));
     const fresh = await import("@/components/docs/DocsBar");
     const out = html(createElement(fresh.DocsBar, { current: "build", path: "build/install" }));
     const tabs = /<nav aria-label="Docs sections"[^>]*>(.*?)<\/nav>/.exec(out)?.[1] ?? "";

@@ -1,6 +1,5 @@
 import "server-only";
-import { createHmac, hkdfSync } from "node:crypto";
-import type { CustomRule, InvoiceFacts, MandateView, Payee, RuleResult } from "@probarion/core";
+import type { CustomRule, InvoiceFacts, MandateView, RuleResult } from "@probarion/core";
 import { hashInvoice, type SpendOutcome } from "@probarion/sdk";
 import { sealInvoice } from "@/lib/crypto/secrets";
 import { sha256Hex } from "@/lib/crypto/sodium";
@@ -9,12 +8,17 @@ import { type MemberTenant, withLease } from "@/lib/db/tenants";
 import { type KeyProblem, openKey } from "@/lib/keys/open";
 import { listKeys, loadActiveSecret, loadActiveSecretFor } from "@/lib/keys/service";
 import { log, scrubText } from "@/lib/log";
-import { extractInvoice, type InvoiceMediaType } from "./extract";
-import { type AmountIssue, extractFacts, fingerprintText, numberKeyText, refFor } from "./facts";
+import { extractInvoice } from "./extract";
+import { type AmountIssue, extractFacts, fingerprintText, refFor } from "./facts";
 import { signingMandate } from "./mandate";
+import { numberDuplicateRule } from "./number-duplicate";
+import { invoiceNumberKey } from "./number-key";
 import { OWNER_CONFIRMS_RULE, ownerConfirms } from "./owner-confirms";
-import { payeeId } from "./payee";
 import { type InvoiceStatus, insertInvoice, setInvoiceOutcome } from "./store";
+import type { InvoiceUpload } from "./upload";
+
+export { invoiceNumberKey } from "./number-key";
+export type { InvoiceUpload } from "./upload";
 
 // The Payables cycle (spec §8, plan 04 Task 13): extract the invoice text, read its facts, store it sealed or as
 // hashes only, and run `Probarion.process()` with the agent key the mandate is bound to. The code decides, the
@@ -50,12 +54,6 @@ export interface PipelineDeps {
   }): ProbarionLike;
   /** The clock the mandate pre-selection uses (default: now). Give the SDK the same one. */
   now?: () => Date;
-}
-
-export interface InvoiceUpload {
-  bytes: Uint8Array;
-  mediaType: InvoiceMediaType;
-  filename: string | null;
 }
 
 /** Why a key could not be used (src/lib/keys/open.ts, shared with the owner's Confirm). */
@@ -107,27 +105,6 @@ export interface PipelineInput {
 
 const messageOf = (e: unknown): string =>
   scrubText(e instanceof Error ? e.message : String(e)).slice(0, 500) || "unknown error";
-
-/** The HKDF label of the invoice-number key: a key of its own, derived from KEY_ENCRYPTION_SECRET. */
-const NUMBER_KEY_INFO = "probarion/payables/invoice-number-key/v1";
-
-/**
- * The duplicate guard's second key: HMAC-SHA256, under a server-side key derived from the master key with HKDF, of
- * the vault, the mandate's payee and the invoice number (its skeleton, so case and look-alikes do not matter).
- * Keyed, so the zero-retention mode keeps nothing a member could enumerate back to the number; scoped by payee, so
- * two vendors' "#1001" do not block each other.
- */
-export function invoiceNumberKey(
-  master: Uint8Array,
-  vault: string,
-  payee: Payee,
-  invoiceNumber: string,
-): string {
-  const key = Buffer.from(hkdfSync("sha256", master, new Uint8Array(0), NUMBER_KEY_INFO, 32));
-  return createHmac("sha256", key)
-    .update(`${vault}\n${payeeId(payee)}\n${numberKeyText(invoiceNumber)}`)
-    .digest("hex");
-}
 
 /** A NEAR transaction hash (base58): anything else stays in `outcome` but not in the anchor column. */
 const TX_HASH = /^[1-9A-HJ-NP-Za-km-z]{32,64}$/;
@@ -250,24 +227,30 @@ export async function processInvoice(
     PROCESS_LEASE_SECONDS,
     async (): Promise<PipelineResult> => {
       const zero = tenant.zero_retention;
-      const inserted = await insertInvoice(deps.db, tenant.tenant_id, {
-        invoiceHash,
-        ref,
-        filename: zero ? null : upload.filename, // a file name can carry details
-        mediaType: upload.mediaType,
-        documentSha256: sha256Hex(upload.bytes),
-        sealed: zero ? null : await sealInvoice(deps.master, tenant.tenant_id, upload.bytes),
-        facts: zero ? null : { ...facts, invoice_number: invoiceNumber },
-        amountIssue,
-        // The duplicate guard: another text that renders the same invoice, or the same number for the same payee.
-        fingerprint: sha256Hex(fingerprintText(text)),
-        invoiceNumberKey:
-          invoiceNumber === null
-            ? null
-            : invoiceNumberKey(deps.master, tenant.vault_id, mandate.payee, invoiceNumber),
-        requestId,
-        createdBy: input.actor,
-      });
+      const inserted = await insertInvoice(
+        deps.db,
+        tenant.tenant_id,
+        {
+          invoiceHash,
+          ref,
+          filename: zero ? null : upload.filename, // a file name can carry details
+          mediaType: upload.mediaType,
+          documentSha256: sha256Hex(upload.bytes),
+          sealed: zero ? null : await sealInvoice(deps.master, tenant.tenant_id, upload.bytes),
+          facts: zero ? null : { ...facts, invoice_number: invoiceNumber },
+          amountIssue,
+          // The duplicate guard: another text that renders the same invoice, or the same number for the same payee.
+          fingerprint: sha256Hex(fingerprintText(text)),
+          invoiceNumberKey:
+            invoiceNumber === null
+              ? null
+              : invoiceNumberKey(deps.master, tenant.vault_id, mandate.payee, invoiceNumber),
+          requestId,
+          createdBy: input.actor,
+        },
+        // A match on the number alone runs the cycle, and the number rule refuses it in the signed ledger.
+        { numberRule: true },
+      );
       if (inserted.duplicate) {
         return { status: "duplicate", invoiceId: inserted.id, invoiceStatus: inserted.status };
       }
@@ -282,6 +265,9 @@ export async function processInvoice(
           ledgerKey: ledger.key.secret,
           requestId,
         });
+        // First, so the refusal's code is the number rule's and the invoice never waits for the owner (waitsForOwner).
+        const match = inserted.number_match ?? null;
+        if (match !== null) pb.rules.add(numberDuplicateRule(match, mandate.payee));
         pb.rules.add(owner.rule);
         outcome = await pb.process({ text, facts, ref });
       } catch (e) {

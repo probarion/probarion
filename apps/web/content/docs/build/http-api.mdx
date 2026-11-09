@@ -1,0 +1,128 @@
+There is no public agent HTTP API. The routes under `/api` serve the hosted site and its console: sign-in, Payables, the browser extension, top-up, the Canary, health checks, scheduled jobs, Telegram and the alert links. An agent pays from its own process through the SDK, which sends `spend` to the vault on NEAR with the agent's own key. See [Let an agent pay](/docs/build/let-an-agent-pay).
+
+## How to read the tables
+
+Each row is one method of one route. Its anchor is `http-api-`, the method and the path after `/api`, such as [`POST /api/auth/verify`](/docs/build/http-api#http-api-post-auth-verify).
+
+- **Route**: the method and the path. `:vault` stands for a vault's account id.
+- **Who may call**: one of five callers.
+  - Public: no credential, or the code or token the request carries is the credential.
+  - A signed-in session: the `pb_session` cookie that sign-in sets. The role the row names is the one the vault's membership row must hold, read from the database on every request.
+  - An extension token: an `Authorization: Bearer pbx_...` header, never a cookie. These routes send no CORS headers, so no other page can read their answers.
+  - `CRON_SECRET`: the bearer secret the scheduler sends. A secret shorter than 32 characters refuses every call.
+  - The Telegram secret: the header Telegram sends with each update.
+- "From a page at the same address" means the route compares the request's `Origin` with its own host and answers `403 bad_origin` when they differ.
+- **Body**: JSON, unless the row says form data or a query.
+- **Success**: the status and the answer's fields. Every JSON answer is sent with `cache-control: no-store`.
+- **Errors**: every `{ error }` code the route can answer, as its status and code. Each one is a row on Errors, with what it means and what to do next, anchored as `http-<status>-<code>`, for example [`429 rate_limited`](/docs/build/errors#http-429-rate_limited).
+- **Rate limit**: the most calls in a window, what the window counts, and the key of the limit in `LIMITS` (`apps/web/src/lib/ratelimit.ts`). The limiter's `429 rate_limited` carries a `Retry-After` header. An IPv6 address counts by its /64. When the limiter's database cannot be reached, the route answers `503` and does nothing.
+
+## The network of a call
+
+A route works on the network of the address it is called at: the server matches the request's host against the origins it serves, as [Testnet and mainnet](/docs/start/testnet-and-mainnet#how-the-site-picks-a-network) explains. A session, a sign-in challenge and an extension token each belong to the network they were made on. The routes that need a session answer `409 wrong_network` for a vault registered on the other network, and the faucet answers `404 not_found` instead.
+
+The 1Click top-up routes are built for mainnet only and answer `409 mainnet_only` elsewhere. The faucet serves testnet only. Only NEAR testnet is live today, and the mainnet vault is Planned: see [What works today](/docs/start/what-works-today).
+
+## Sign-in
+
+Sign-in takes two calls. `GET /api/auth/challenge` returns a message with a fresh nonce for the wallet to sign as NEP-413, and keeps a copy in the `pb_chal` cookie. `POST /api/auth/verify` takes the wallet's answer. The server uses its own message, nonce and recipient, never the ones a body carries. It burns the nonce before it reads the signature, so a challenge is good once, success or not, and it checks on chain that `publicKey` is a full-access key of `accountId`.
+
+The session is a stateless signed cookie that lasts 12 hours. `POST /api/auth/logout` clears it in the browser, but a copy someone kept still verifies until it expires. Membership is read from the database on every request, so removing an account from a vault takes effect at once.
+
+<RefTable id="http-api-auth" />
+
+## Console
+
+`POST /api/console/:vault/invoices` runs one Payables cycle on an invoice, for the vault's owner or an approver. Payables is Preview. The console finds the mandate whose purpose document the upload carries, then runs the SDK's `process()` on the invoice text. `outcome` is that cycle's `SpendOutcome`, which [Spend outcomes](/docs/build/spend-outcomes) explains. When `status` is `unconfirmed`, the payment was sent and its confirmation is pending: do not upload the invoice again.
+
+<Callout kind="note" title="Who signs a hosted payment">
+
+Your wallet signs nothing in this cycle. The console sends `spend` with the agent key the mandate is bound to, and anchors the ledger with the vault's ledger key: the two keys activated on the vault's Keys tab. The vault still runs every one of its checks, so the console can pay only what the mandate allows. See [How a payment is checked](/docs/concepts/payment-checks).
+
+</Callout>
+
+<RefTable id="http-api-console" />
+
+## Browser extension
+
+These routes let the browser extension pair with an account, read what waits for it, and queue invoices for the owner's Confirm. They are Preview: built and tested, while the extension for Chrome that calls them is Planned and not released yet ([What works today](/docs/start/what-works-today#browser-extension-server-half)).
+
+A token is `pbx_` and 43 more characters. The server keeps its hash and, as a hint, its last four characters, which the Browser extension page shows under Connected browsers. The signed-in Browser extension page (`/extension`) connects the extension or shows a pairing code, and `POST /api/ext/pair` exchanges that code for a token. A code is 8 letters and digits, shown as `XXXX-XXXX`, and is good once, for 10 minutes.
+
+`POST /api/ext/invoices` queues one invoice under the mandate the member chose in the extension, for a vault where the token's account is the owner or an approver. The role is read again on each call, and a Canary vault takes no invoices. The server reads the invoice as the console upload does, then runs these checks in order. Each refusal stores nothing:
+
+- the file cannot be read (`422 unreadable`) or has no text (`422 empty`), or the code cannot read one clear total (`422 amount_unclear`);
+- the mandate is not on the vault as the chain lists it now (`404 mandate_not_found`), or cannot take an invoice now (`422 mandate_inactive`);
+- the mandate's agent key or the vault's ledger key is not active in the console (`409 no_keys`);
+- the payee the invoice names contradicts the mandate's, or the vault's free `check_spend` view says it would refuse this payment now: [`422 refused_by_code`](/docs/build/errors#http-422-refused_by_code), whose `rule` is `mandate.payee_mismatch` or `contract.check_spend`.
+
+When NEAR cannot be read for the mandates or the view, the answer is `503 chain_unavailable`, and nothing is stored either. An invoice that passes these checks is stored in `awaiting_owner` with three checks: the hold `extension.mandate_chosen`, since no purpose document was matched; `mandate.payee_mismatch` as a pass; and `contract.check_spend` as a pass, or as a hold when the amount is above the mandate's approval limit and the vault would hold the payment for its approvers. The answer is `201`. When the vault already holds the invoice, nothing new is stored, and the answer is `200` with `duplicate: true` and the stored invoice's `status`.
+
+<Callout kind="note" title="Who pays a queued invoice">
+
+The route never pays. It calls no model, opens no agent or ledger key and sends no transaction. A queued invoice is paid only after the owner's Confirm in the console: a NEP-413 signature from the owner's wallet, which the server checks against a full-access key of the vault's on-chain owner before it sends the spend. The vault still runs every one of its checks on that spend, and holds it for the approvers when it is above the mandate's approval limit. The owner can reject the invoice instead, and nothing is paid.
+
+</Callout>
+
+A token can do what these routes do and nothing more: read the inbox, queue an invoice and end itself. It cannot pay, approve, confirm, or change a mandate or a key.
+
+<RefTable id="http-api-extension" />
+
+## Top-up
+
+On mainnet the vault's Top-up tab is built to add Base USDC to the vault's own NEAR Intents account through 1Click. It has not been tried with a live quote yet. `POST /api/topup/quote` asks 1Click for a quote and answers only with one whose signature verifies against 1Click's key and that says what was asked. It builds the deposit transaction from that quote and the network's USDC, never from what the browser sent, and only when the chain names the signed-in account as the vault's owner. `POST /api/topup/submit` tells 1Click which transaction paid the deposit address. It only speeds things up, since 1Click also finds the deposit itself. `GET /api/topup/status` passes on 1Click's status word for the deposit.
+
+<Callout kind="owner-signs">
+
+The owner signs the deposit transaction that `POST /api/topup/quote` returns, in their own wallet: a `storage_deposit` and an `ft_transfer` of USDC to the 1Click deposit address. The route only builds it.
+
+</Callout>
+
+On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your wallet signs nothing: the team's mint-only key signs the mint. The faucet is Preview: it is built and tested, and its button has not yet been tried on the site with a real vault. It works once a UTC day per vault, within daily caps per account and for all vaults together. Those day counters start again at midnight UTC, and a `429` from one of them gives the seconds until then as its `Retry-After`. Each press also counts against a press limit per account, before any read of the chain, and that limit's `429` gives the end of its own window instead. A refusal from the checks that run before the day counters does not use up the vault's day.
+
+<RefTable id="http-api-topup" />
+
+## Canary
+
+`POST /api/canary/attempt` is the public Canary challenge, which is Preview: built, and not open yet. A visitor's text goes to a deliberately gullible model, then through the SDK's `process()` as an invoice does: `code` is what the code rules and the vault decided. `raw` says whether a payment the code refused was also sent to the vault unfiltered, which happens only when the vault's free dry run says it would refuse it too. An attempt is stored as hashes and labels, never as the visitor's text, and a visitor is told apart by a keyed hash of the `pb_canary` cookie and of the IP address. `429 budget` carries a `Retry-After` with the seconds until that limit is over.
+
+<RefTable id="http-api-canary" />
+
+## Health
+
+The health routes are for uptime monitors. They answer `ok` and, where they give one, a `detail` the server writes itself, never a third party's own text, and they have no `{ error }` codes. `GET /api/health` calls no other service: it says whether this deployment can read its settings. The RPC and NEAR AI Cloud probes make one call each, of 5 seconds at most.
+
+<RefTable id="http-api-health" />
+
+## Scheduled jobs
+
+The scheduler calls these routes with `Authorization: Bearer` and the `CRON_SECRET`, and any other call gets `401 unauthorized`. `vercel.json` runs `/api/cron/watch` at 00:00 UTC and `/api/cron/metrics` at 00:10 UTC each day. The watch reads what is new on each vault registered with the app, network by network, pings the heartbeat monitor when every network was healthy, then sends those vaults' alerts. The metrics run computes the usage numbers and prunes the rate limiter's old rows. Both cover every network the deployment serves, mainnet first, and answer with counts only.
+
+<RefTable id="http-api-cron" />
+
+## Telegram
+
+Telegram calls `POST /api/telegram/webhook` for each update to the alerts bot. An owner or an approver opens the bot link from the vault's alerts page, Telegram sends `/start <code>`, and the chat is linked to the vault. `/stop` ends every alert of the chat. A wrong secret is a `401` before anything is read. Past that check and the rate limit, the route answers `200`, so Telegram does not resend an update the route has read. A `429`, or a `503` when the key or the limiter's database fails, comes before the update is read: a status Telegram retries, so the update is not dropped.
+
+<RefTable id="http-api-telegram" />
+
+## Alert links
+
+An alert email's confirmation link opens a page whose button posts the code to `POST /api/alerts/confirm`. The code is good once, for 24 hours. The unsubscribe link, from the email's `List-Unsubscribe` header or the stop page's button, posts to `POST /api/alerts/stop`. Both routes take a POST only, because mail scanners open links and opening one must change nothing. Neither checks the origin: the code or the token is the credential.
+
+<RefTable id="http-api-alerts" />
+
+## What these tables do not cover
+
+- An agent API, an MCP server or a webhook to your server. An agent pays through the SDK ([SDK reference](/docs/build/sdk-reference)). An MCP server is Planned. Probarion calls no URL of yours: alerts go out by email and Telegram.
+- What the console's screens and the Browser extension page do besides the routes above. That runs as Next.js server actions under `apps/web/src/app/console` and `apps/web/src/app/extension`, not as routes under `/api`.
+- The public files outside `/api`: the proof files `/proof/<vault>/snapshot.json` and `/proof/<vault>/ledger.jsonl`, which [Verify a vault yourself](/docs/trust/verify-a-vault) reads, and the docs' own `/docs/<page>.md` twins, `/llms.txt`, `/llms-full.txt` and `/docs/search-index.json`.
+
+## Related pages
+
+- [Errors](/docs/build/errors#http-api-errors): what each HTTP error code means and what to do next.
+- [Let an agent pay](/docs/build/let-an-agent-pay): the payment loop an agent runs, with no HTTP call to Probarion.
+- [Spend outcomes](/docs/build/spend-outcomes): how to read the `outcome` of a Payables cycle.
+- [Security model](/docs/trust/security-model): who holds which key, including the agent and ledger keys the console keeps sealed.
+- [What works today](/docs/start/what-works-today): what is Live, Preview and Planned.
+- The sources: [`apps/web/src/app/api`](https://github.com/probarion/probarion/tree/main/apps/web/src/app/api), [`apps/web/src/lib/http.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/http.ts) and [`apps/web/src/lib/ratelimit.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/ratelimit.ts).

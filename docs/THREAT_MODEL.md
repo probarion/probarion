@@ -206,7 +206,7 @@ wallet connector's executor scripts load from GitHub at pinned 40-hex commits
 when it is a UUID (`apps/web/src/proxy.ts:21`), and it serves only to match log lines, ledger entries and
 Sentry events; it grants nothing.
 
-**The browser extension's connections.** `/api/ext/inbox` and `/api/ext/revoke` take
+**The browser extension's connections.** `/api/ext/inbox`, `/api/ext/invoices` and `/api/ext/revoke` take
 `Authorization: Bearer pbx_…` alone, and `/api/ext/pair` takes a one-time pairing code; none of them
 reads a cookie (`apps/web/src/lib/ext/auth.ts`, `apps/web/src/app/api/ext/pair/route.ts`), so no other
 page can make these calls for someone. They send no CORS header, so no other page can read an answer
@@ -219,25 +219,40 @@ again. Only a signed session on `/extension` mints a token or a pairing code, an
 such a code into a token once; the page makes at most 10 tokens and codes per account and network in
 10 minutes. A pairing code has 40 bits, lives 10 minutes and works once; the exchange allows 10 tries
 per address and 300 in all per network in 10 minutes (`LIMITS` in `apps/web/src/lib/ratelimit.ts`).
-No code under `lib/ext` or `app/api/ext`, nor any app module it loads, imports the app's modules or
-functions that pay, sign or open a sealed key, anything from `near-api-js` or `@near-js`, or a signer
-from the SDK or `@probarion/core`. It names no RPC method that sends a transaction and no database
-function or column that returns a sealed agent key, builds no database client but
-`lib/db/clients.ts`, which only calls functions, and names each function it calls as a literal.
-Outside `lib/crypto`, it asks `subkey` only for the session's, imports none of `masterKey`,
-`parseMasterKey`, `deriveSubkey`, `tenantInvoiceKey` or `getSodium`, and loads no libsodium,
-tweetnacl, `@noble` or `@stablelib` package (`apps/web/test/ext-structure.test.ts`). The test reads
-imports and names. It catches a plain import of any of these, not code written to get around it: the
-master key's value is still reachable in that graph, because the log scrubber reads it to redact it.
-Review of every change to that code is the other control. The inbox reads the chain through the SDK's
-`VaultClient`, built with no signer. A stolen token reads its account's waiting invoices, held spends and active
-mandates, and cannot pay or approve.
+`/api/ext/invoices` queues an invoice for an owner or an approver of the vault it names, not a Canary
+vault, whose role it reads again on every request, at most 20 per account and network in 10 minutes.
+It reads the text and its facts as the console upload does, and refuses, storing nothing, an invoice
+whose mandate cannot take invoices now, whose payee contradicts the chosen mandate's (core's
+`payeeHintContradiction`, the check the cycle runs, `packages/core/src/policy.ts:201-203`), or that
+the contract's `check_spend` view would refuse now. It stores the rest straight in `awaiting_owner`,
+as an upload is stored (the file sealed, or in zero-retention mode no file, name or facts but the
+amount), with the checks it passed and the hold `extension.mandate_chosen`, without which
+`invoice_queue` stores nothing (`apps/web/supabase/migrations/20261108000015_extension_queue.sql`).
+No cycle runs for it and nothing is sent: only the owner's wallet-signed Confirm pays it, and the
+contract checks that spend again.
+No code under `lib/ext`, `app/api/ext` or `lib/payables/queue*.ts`, nor any app module it loads, imports a
+function that pays or signs, or, from outside `lib/crypto`, one that opens a sealed key, anything from
+`near-api-js` or `@near-js`, or a signer from the SDK or `@probarion/core`. It names no RPC method that
+sends a transaction and no database function or column that returns a sealed agent key, builds no
+database client but `lib/db/clients.ts`, which only calls functions, and names each function it calls
+as a literal. Outside `lib/crypto`, it asks `subkey` only for the session's, imports none of
+`parseMasterKey`, `deriveSubkey`, `tenantInvoiceKey` or `getSodium`, and only the queue's route imports
+`masterKey`, and it loads no libsodium, tweetnacl, `@noble` or `@stablelib` package
+(`apps/web/test/ext-structure.test.ts`). `secrets.ts` opens a sealed value only inside its own opening
+functions, which the extension's server code never imports. The queue's route reads the master key only
+to seal the invoice with `sealInvoice` and to key its duplicate guard (an HMAC under a key derived from it
+with HKDF, `lib/payables/number-key.ts`), as the console upload does. The test reads imports and names.
+It catches a plain import of any of these, not code written to get around it: the master key's value is
+also reachable in that graph through the log scrubber, which reads it to redact it. Review of every
+change to that code is the other control. The inbox and the queue read the chain through the SDK's
+`VaultClient`, built with no signer, and the test refuses any other use of it. A stolen token reads its
+account's waiting invoices, held spends and active mandates, and can queue invoices under its vaults'
+usable mandates, to the payees they already name and within their limits; it cannot pay, confirm or
+approve.
 
 **Planned surfaces.**
 
-- The browser extension itself (plan 06 Task 3, E2), and its queue route `POST /api/ext/invoices` (Task
-  2, E1b), which leaves each invoice waiting for the owner's wallet-signed Confirm. This section is
-  updated when they ship.
+- The browser extension itself (plan 06 Task 3, E2). This section is updated when it ships.
 - An MCP server whose tools take no address (`MCP-NOADDR`, planned).
 
 ## Blast radius if Probarion is breached
@@ -293,10 +308,20 @@ mandates, and cannot pay or approve.
   nonce-based policy that works with the wallet connector's executors needs its own design and tests.
 - **Extension tokens outlive the session that made them.** A token lasts 30 days unless it is revoked.
   Signing out, the session's 12-hour expiry and a new `KEY_ENCRYPTION_SECRET` do not end it: a token is
-  a plain sha256 in the database, not sealed under the master key. It reads the waiting list and cannot
-  pay. The owner revokes it on `/extension`, and the OWNER can end every token at once
-  ([RUNBOOK](RUNBOOK.md#key-rotation)). A pairing code the session made outlives it too: for up to 10
-  minutes it turns into a token with no session, and Revoke does not end a code. After a stolen
+  a plain sha256 in the database, not sealed under the master key. It reads the waiting list, and it can
+  add to it: up to 20 invoices in 10 minutes per account and network, each under a usable mandate of a
+  vault where the account is an owner or an approver (not a Canary vault), to the payee that mandate
+  already names. It cannot pay: each invoice waits for the owner's wallet-signed Confirm, and the owner
+  can Reject it. A queued invoice takes its place in the duplicate guard, so a stolen token can block a
+  later upload of the same invoice (the same text, or the same invoice number for that payee) until the
+  owner rejects it, and after a Reject the same text cannot be queued or uploaded again: only another
+  text, such as a re-issued invoice, can. A row names the account that sent it, not the token. The
+  account a token belongs to revokes it on its own `/extension` page, and the vault's owner cannot
+  revoke an approver's token; a vault's approvers are fixed when it is created, so the owner cannot
+  remove one either. The OWNER can end every token at once ([RUNBOOK](RUNBOOK.md#key-rotation)). Then the
+  owner rejects each waiting invoice from the browser extension that they do not recognise. A pairing
+  code the session made outlives it too: for up to 10 minutes it turns into a token with no session,
+  and Revoke does not end a code. After a stolen
   session, follow the RUNBOOK's steps: end every token with the SQL, which deletes the codes first, or
   wait out the codes before revoking. The row of an ended connection is kept; there is no purge yet.
 - **Anyone can use up code pairing's network-wide limit.** `/api/ext/pair` allows 300 tries in all per
@@ -313,15 +338,17 @@ mandates, and cannot pay or approve.
   so the fix ships only as a new vault version with new reproducible builds.
 - **No dependency-audit job in CI.** Dependabot alerts cover `pnpm-lock.yaml` and `contracts/Cargo.lock`,
   and the review log below records each triage. `cargo audit` has not been run.
-- **Repository security settings are off:** private vulnerability reporting, secret scanning, push
-  protection and Dependabot security updates. Turning them on is the repository owner's call. CI's
+- **GitHub's secret scanning looks for provider patterns only.** Private vulnerability reporting,
+  secret scanning, push protection and Dependabot security updates are on for the repository
+  (checked 2026-11-09); secret scanning's non-provider patterns and validity checks are off. CI's
   gitleaks job scans the full history on every pull request into `dev` or `main` and every push to
   them ([`ci.yml`](../.github/workflows/ci.yml)).
-- **Contacts and status.** The only reporting channel is a direct message on X until an email address
-  passes a delivery test. There is no third-party status page yet: `/status` on each address and
+- **Contacts and status.** A report goes by a direct message on X or the repository's private
+  advisory form ([SECURITY.md](../SECURITY.md#reporting-a-vulnerability)). There is no email address
+  until one passes a delivery test, and no third-party status page yet: `/status` on each address and
   posts on X stand in.
-- **Request ids in Sentry.** An exception with no log line, on a route other than the seven tagged
-  ones (the Payables upload, the Canary attempt, the two crons and the browser extension's three
+- **Request ids in Sentry.** An exception with no log line, on a route other than the eight tagged
+  ones (the Payables upload, the Canary attempt, the two crons and the browser extension's four
   routes), reaches Sentry with `component:web` and no request id ([monitoring](ops/MONITORING.md)).
 - **What `verify` does not prove yet** is listed in
   [SECURITY.md](../SECURITY.md#what-is-not-proven-yet).
@@ -385,3 +412,27 @@ Checklist (C1 to C10 are the plan's ten items):
 Findings: 3 known gaps (no Content-Security-Policy, `wee_alloc`, no dependency audit in CI) and the
 repository settings that are off. Fixed in this review: none (no code change was needed). Every other
 item is answered yes, N/A today, or left to the repository owner above.
+
+### 2026-11-09: Dependabot triage
+
+Run on the branch `fix/dependabot-alerts`, cut from `dev` at `5077325`. GitHub listed 18 open
+Dependabot alerts on `main` (3 critical, 12 medium, 3 low; it withdrew alert 17). They were read with
+`gh api repos/probarion/probarion/dependabot/alerts --paginate`, and each was traced through its
+lockfile, with `cargo tree -i <crate> --target all` for `contracts/Cargo.lock`. Fixed in this review:
+vitest 3.2.7 to 4.1.12 in the root and every package, and `@sentry/nextjs` 11.10.0 to 11.11.0 in
+`apps/web`. An alert closes once the fix reaches `main`.
+
+| Alerts | Package | Where | Reached at run time? | Patched in | Decision |
+|---|---|---|---|---|---|
+| 1, 6, 7, 8, 9, 12 (GHSA-82fw-gwwq-j7x9) | `vitest` | `package.json` of the root, `apps/web` and the three packages; `pnpm-lock.yaml` | No: the test runner, a dev dependency | 4.1.11 | Fixed: 4.1.12 |
+| 11 (GHSA-82fw-gwwq-j7x9), 15 (GHSA-qxg6-89mg-rqv8) | `@vitest/mocker` | `pnpm-lock.yaml`, through vitest | No: dev only | 4.1.11, 4.1.12 | Fixed: 4.1.12 |
+| 13 (GHSA-85c8-ppgw-ccpr), 14 (GHSA-5gmw-xhrv-c9v3), critical | `tinypool` | `pnpm-lock.yaml`, through vitest 3 | No: dev only | 2.1.2, 2.1.1 | Fixed: vitest 4 has no `tinypool`, so it left the lockfile |
+| 16 (GHSA-3g3m-2fjr-6pw4) | `glob` 13.0.6 | `pnpm-lock.yaml`, through `@sentry/nextjs` and `@sentry/node` → `@sentry/bundler-plugins` | No: the plugin globs our own build output at build time, and the flaw needs an `AbortSignal` | 14.0.2 | Fixed: 14.0.4, through `@sentry/nextjs` 11.11.0 |
+| 19 (GHSA-g3hv-75wg-m249) | `minimatch` 10.2.6 | `pnpm-lock.yaml`, through that `glob` | No: build time, and the patterns are the plugin's own, never a request's | 11.0.1 | Fixed: 11.0.5, through `glob` 14 |
+| 10 (GHSA-848j-6mx2-7j84), low | `elliptic` 6.6.1 | `pnpm-lock.yaml`, through `@nearai/inference-sdk` 0.2.1 → `@phala/dcap-qvl` 0.7.0 | Loaded only by the CLI's `verify --online` (an optional dependency); the web app does not have it. The flaw is in signing: a truncated nonce can leak the signer's private key. `dcap-qvl` only verifies P-256 signatures with a public key (`keyFromPublic`, `verify`) and never signs | None | Waits on upstream: `elliptic` 6.6.1 is the latest, `dcap-qvl` 0.7.1 still depends on it, and `@nearai/inference-sdk` 0.3.0 pins `dcap-qvl` 0.7.0 |
+| 18 (GHSA-rc23-xxgq-x27g), critical | `wee_alloc` 0.4.5 | `contracts/Cargo.lock`, through near-sdk 5.29.1's default feature `wee_alloc` | Yes: it is the allocator of the deployed vault and factory. A NEAR call runs in a fresh wasm memory, so a leak can make that one call run out of memory and fail; nothing carries over to the next call | None (unmaintained) | Not a version bump: the fix is a new vault and factory version built without near-sdk's default features, with new reproducible builds ([known gap](#known-gaps)) |
+| 2 (GHSA-2mjx-qc3c-rqvc), 3 (GHSA-h2v8-394m-p7vv), 4 (GHSA-c8m5-c952-6cm4), 5 (GHSA-w44r-93j7-qv28) | `rustls` 0.23.43 | `contracts/Cargo.lock`, through `near-workspaces` 0.23.0 (`reqwest`, and `ureq` in `near-sandbox`) | No: only the sandbox tests (`contracts/integration-tests`) use it; it is in no contract and no npm package | 0.23.45, 0.23.46 | Deferred: bumping it changes `contracts/Cargo.lock`, which makes both recorded code hashes stale (R9 in [AGENTS.md](../AGENTS.md)). It ships with the next contract change, which needs a new record anyway: `cargo update --manifest-path contracts/Cargo.toml -p rustls --precise 0.23.46` |
+
+Findings: 12 alerts fixed by the two bumps. `elliptic` is not reachable and waits on upstream,
+`wee_alloc` stays a known gap, and the 4 `rustls` alerts are test-only and wait for the next
+contract change.

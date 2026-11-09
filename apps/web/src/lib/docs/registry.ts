@@ -1,6 +1,7 @@
 import { BUILD } from "./pages/build";
 import { CONCEPTS } from "./pages/concepts";
 import { HOME } from "./pages/home";
+import { OPERATE } from "./pages/operate";
 import { RESOURCES } from "./pages/resources";
 import { START } from "./pages/start";
 import { TRUST } from "./pages/trust";
@@ -18,6 +19,7 @@ export const PAGES: readonly DocPage[] = [
   ...CONCEPTS,
   ...BUILD,
   ...TRUST,
+  ...OPERATE,
   ...RESOURCES,
 ];
 
@@ -94,10 +96,12 @@ export const TABS = [
   { id: "build", label: "Build", path: "build/install" },
   { id: "trust", label: "Verify & trust", path: "trust/verify-a-vault" },
   { id: "reference", label: "Reference", path: "build/errors" },
+  { id: "changelog", label: "Changelog", path: "resources/changelog" },
 ] as const;
 export type TabId = (typeof TABS)[number]["id"];
 
 export function tabOf(page: DocPage): TabId | null {
+  if (page.path === "resources/changelog") return "changelog";
   const section = sectionOf(page.path);
   if (section === null) return null;
   if (section === "trust") return "trust";

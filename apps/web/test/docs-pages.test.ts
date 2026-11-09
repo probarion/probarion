@@ -19,8 +19,8 @@ function codesOf(tree: Root): Code[] {
   return out;
 }
 
-/** The phase-1 pages of spec §4, in reading order. A later page joins with its content. */
-const PHASE_1 = [
+/** The pages of spec §4 that exist, in reading order. A later page joins with its content. */
+const IN_ORDER = [
   "",
   "start/what-is-probarion",
   "start/how-one-payment-works",
@@ -39,11 +39,22 @@ const PHASE_1 = [
   "build/let-an-agent-pay",
   "build/spend-outcomes",
   "build/errors",
+  // Phase 2, cut by the OWNER on 2026-11-09 to the reference pages.
+  "build/sdk-reference",
+  "build/policy-rules",
+  "build/cli-reference",
+  "build/contract-reference",
+  "build/events",
+  "build/http-api",
+  "build/limits-and-costs",
   "trust/verify-a-vault",
   "trust/verifier-checks",
   "trust/security-model",
+  "trust/reproducible-builds",
+  "operate/architecture",
   "resources/glossary",
   "resources/for-ai-agents",
+  "resources/changelog",
 ];
 
 /** Flows not yet run end to end with real wallets (spec §13.7). Check again after T18. */
@@ -55,9 +66,9 @@ const PREVIEW = [
   "build/let-an-agent-pay",
 ];
 
-describe("the phase-1 docs", () => {
-  it("are the 23 pages of the spec, in reading order", () => {
-    expect(PAGES.map((p) => p.path)).toEqual(PHASE_1);
+describe("the docs pages", () => {
+  it("are the pages of the spec, in reading order", () => {
+    expect(PAGES.map((p) => p.path)).toEqual(IN_ORDER);
   });
 
   it("parse as MDX, and a page that does not names its file", () => {
@@ -103,5 +114,33 @@ describe("the phase-1 docs", () => {
       .map((n) => attrOf(n, "href", fileOf("")));
     expect(hrefs).toHaveLength(4);
     expect(hrefs[0]).toBe("/docs/start/how-one-payment-works");
+  });
+
+  it("say what an extension token can do now that it queues invoices, as SECURITY.md and the threat model do", () => {
+    // SECURITY.md's token row and THREAT_MODEL's known gap: the token reads and queues, only the owner's wallet-signed
+    // Confirm pays, and the structure claim is the narrowed one (test/ext-structure.test.ts).
+    const lines = readMdx("trust/security-model").split("\n");
+    const row = lines.find((l) => l.startsWith("| **An extension token**")) ?? "";
+    for (const said of [
+      "a sha256 of the token and its last four characters",
+      "`POST /api/ext/invoices`, at most 20 per account and network in 10 minutes",
+      "where the account is an owner or an approver",
+      "not a Canary vault",
+      "waits for the owner's wallet-signed Confirm",
+      "`sealInvoice`",
+      "its own opening functions",
+    ])
+      expect(row, said).toContain(said);
+    expect(row).not.toContain("imports nothing that pays, signs or opens a sealed key");
+    expect(row).not.toMatch(/keeps only (a|its) sha256/i);
+    const gap = lines.find((l) => l.startsWith("- **Extension tokens outlive")) ?? "";
+    expect(gap).toContain("It reads the waiting list and can add to it");
+    expect(gap).toContain(
+      "It cannot pay: each invoice waits for the owner's wallet-signed Confirm",
+    );
+    expect(gap).not.toContain("The owner revokes it");
+    const today = readMdx("start/what-works-today").replace(/\s+/g, " ");
+    expect(today).toContain("`POST /api/ext/invoices` lets it queue an invoice");
+    for (const page of [row, gap, today]) expect(page).not.toMatch(/extension (pays|can pay)/i);
   });
 });

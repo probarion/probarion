@@ -15,9 +15,12 @@ import { unified } from "unified";
 import { CHECK_LABELS } from "@/lib/site/facts";
 import { richParts } from "@/lib/site/rich";
 import { AGENT_RULES, agentFiles, HUB_AGENTS } from "./agents";
+import { ARCH_GROUP_LABELS, ARCHITECTURE, type Architecture } from "./architecture";
 import { CALLOUT_KINDS, calloutFooter, isCalloutKind } from "./callouts";
+import { changelogTree } from "./changelog";
 import { errorAnchor, HTTP_ERRORS, SDK_ERRORS, VAULT_ERRORS } from "./errors";
 import { attrOf, inFile, type JsxNode, parseMdx } from "./mdast";
+import { refTable } from "./ref";
 import { docsHref, findPage, mdHref } from "./registry";
 import { SPEND_CHECKS } from "./spend-checks";
 import { docsStatusRows } from "./status";
@@ -116,6 +119,34 @@ function table(headers: Cell[], rows: Cell[][]): Table {
     align: headers.map(() => null),
     children: [row(headers), ...rows.map(row)],
   };
+}
+
+/** A bulleted list of one-paragraph items. */
+function bullets(items: PhrasingContent[][]): List {
+  return {
+    type: "list",
+    ordered: false,
+    spread: false,
+    children: items.map((c) => ({ type: "listItem", spread: false, children: [para(c)] })),
+  };
+}
+
+/** The architecture diagram in words: the summary, the boxes, then the arrows. */
+function architectureBlocks(arch: Architecture): RootContent[] {
+  const label = (id: string) => arch.nodes.find((n) => n.id === id)?.label ?? id;
+  return [
+    para([strong(arch.title)]),
+    para([text(arch.summary)]),
+    para([strong("Parts")]),
+    bullets(
+      arch.nodes.map((n) => [
+        strong(n.label),
+        text(` (${ARCH_GROUP_LABELS[n.group]}): ${n.detail}`),
+      ]),
+    ),
+    para([strong("Arrows")]),
+    bullets(arch.edges.map((e) => [text(`${label(e.from)} → ${label(e.to)}: ${e.label}`)])),
+  ];
 }
 
 /** One verifier check: its H3, then what it proves and what it does not. */
@@ -255,6 +286,20 @@ const HANDLERS: Record<string, Handler> = {
     ),
   ],
   AgentRules: () => [rulesList()],
+  RefTable(node, ctx) {
+    const id = need(node, "id", ctx.file);
+    const t = inFile(ctx.file, () => refTable(id));
+    return [
+      table(
+        t.columns.map((c) => c.label),
+        t.rows.map((r) => t.columns.map((c) => r.cells[c.key] ?? "")),
+      ),
+    ];
+  },
+  // The changelog as written, without its H1: the twin has the page title already. Its nodes are
+  // converted like the page's own, so a site path in it becomes absolute here too.
+  Changelog: (_node, ctx) => ctx.convert(changelogTree().children),
+  ArchitectureDiagram: () => architectureBlocks(ARCHITECTURE),
   HubSearch: (node, ctx) => [
     para([strong("Popular searches")]),
     ...ctx.convert(node.children as RootContent[]),

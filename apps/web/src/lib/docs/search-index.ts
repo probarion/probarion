@@ -3,6 +3,7 @@ import type { Root, RootContent } from "mdast";
 import { HTTP_ERRORS, SDK_ERRORS, VAULT_ERRORS } from "./errors";
 import { mdxToMarkdown } from "./markdown";
 import { parseMarkdown } from "./mdast";
+import { TABLES as CLI_TABLES } from "./ref/cli";
 import { docsHref, findPage, PAGES, pageFile, sectionOf } from "./registry";
 import type { SearchDoc, SearchKind } from "./search";
 import { readSource } from "./source";
@@ -12,6 +13,14 @@ import { type DocPage, SECTION_LABELS } from "./types";
 export const BODY_LIMIT = 100_000;
 
 const ERRORS_PAGE = "build/errors";
+const CLI_PAGE = "build/cli-reference";
+
+/**
+ * Pages whose body is a long generated document that keeps growing: the changelog. The index keeps
+ * their headings and lede, not every line, so a search for an error code or a command lands on the
+ * page that explains it, not on old release notes.
+ */
+const HEADINGS_ONLY: ReadonlySet<string> = new Set(["resources/changelog"]);
 
 /**
  * The kind a page shows in search. Null for the docs home (the hub): a page of links, which the
@@ -73,6 +82,21 @@ function catalogCodes(markdown: string): string[] {
 const unquote = (s: string) => s.replace(/`/g, "");
 
 /**
+ * Every two-word command the CLI reference has a row for, such as `spend approve`. Its tables
+ * write commands bare, not after `node packages/cli/dist/bin.js`, so the CLI pattern above does not
+ * see them, and an exact search for a command would rank a guide that runs it above the page that
+ * documents it. A one-word command (`verify`, `help`) is also a plain word, left to the text score.
+ */
+function cliCommands(): string[] {
+  return CLI_TABLES.flatMap((t) =>
+    t.rows.flatMap((r) => {
+      const command = unquote(r.cells.command ?? "").trim();
+      return command.includes(" ") ? [command] : [];
+    }),
+  );
+}
+
+/**
  * One entry per page but the docs home, in reading order, then one per vault error code once the
  * errors page exists.
  */
@@ -87,8 +111,10 @@ export async function buildSearchIndex(origin: string): Promise<SearchDoc[]> {
     });
     const tree = parseMarkdown(markdown);
     const section = sectionOf(page.path);
-    const codes = new Set(codesIn(markdown));
+    const whole = !HEADINGS_ONLY.has(page.path);
+    const codes = new Set(whole ? codesIn(markdown) : []);
     if (page.path === ERRORS_PAGE) for (const code of catalogCodes(markdown)) codes.add(code);
+    if (page.path === CLI_PAGE) for (const command of cliCommands()) codes.add(command);
     docs.push({
       id: page.path,
       href: docsHref(page.path),
@@ -100,7 +126,7 @@ export async function buildSearchIndex(origin: string): Promise<SearchDoc[]> {
         .map((n) => clip(plain(n), 200))
         .join("\n"),
       codes: [...codes].sort().join("\n"),
-      body: clip(plain(tree), BODY_LIMIT),
+      body: whole ? clip(plain(tree), BODY_LIMIT) : page.lede,
       summary: page.description,
     });
   }
