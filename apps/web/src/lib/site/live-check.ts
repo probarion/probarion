@@ -109,6 +109,13 @@ export class LiveCheckError extends Error {
 const bad = (what: string) => new LiveCheckError("rpc", `unreadable ${what}`);
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const isU128 = (v: unknown): v is string => typeof v === "string" && /^\d{1,39}$/.test(v);
+const U64_MAX = 2n ** 64n - 1n;
+/** A u64 as the contract's JSON has it: a decimal string of at most 20 digits that fits. */
+const isU64 = (v: unknown): v is string =>
+  typeof v === "string" && /^\d{1,20}$/.test(v) && BigInt(v) <= U64_MAX;
+
+/** What a refusal code looks like: letters only, so it can never be an object key like `__proto__`. */
+const CODE = /^[A-Za-z]{1,64}$/;
 
 export interface Verdict {
   ok: boolean;
@@ -122,11 +129,9 @@ export function parseVerdict(raw: unknown): Verdict {
   const { ok, code, would_hold } = raw;
   if (typeof ok !== "boolean" || typeof would_hold !== "boolean") throw bad("verdict");
   if (ok ? code !== null : typeof code !== "string" || code === "") throw bad("verdict");
-  return {
-    ok,
-    code: typeof code === "string" ? code.replace(/^PROBARION:/, "") : null,
-    wouldHold: would_hold,
-  };
+  const bare = typeof code === "string" ? code.replace(/^PROBARION:/, "") : null;
+  if (bare !== null && !CODE.test(bare)) throw bad("verdict code");
+  return { ok, code: bare, wouldHold: would_hold };
 }
 
 export type Payee =
@@ -168,15 +173,10 @@ function parsePayee(p: unknown): Payee {
 export function parseMandate(raw: unknown): MandateFacts | null {
   if (raw === null) return null;
   if (!isObj(raw)) throw bad("mandate");
-  const u128 = [
-    "max_per_payment",
-    "max_total",
-    "spent",
-    "reserved",
-    "expires_at_ns",
-    "approval_above",
-  ];
-  for (const k of u128) if (!isU128(raw[k])) throw bad(`mandate.${k}`);
+  for (const k of ["max_per_payment", "max_total", "spent", "reserved", "approval_above"]) {
+    if (!isU128(raw[k])) throw bad(`mandate.${k}`);
+  }
+  if (!isU64(raw.expires_at_ns)) throw bad("mandate.expires_at_ns");
   for (const k of ["id", "max_uses", "uses"]) {
     if (!Number.isSafeInteger(raw[k])) throw bad(`mandate.${k}`);
   }
@@ -209,7 +209,9 @@ export function remaining(m: MandateFacts): bigint {
 }
 
 export function expiryDate(m: MandateFacts): string {
-  return new Date(Number(BigInt(m.expiresAtNs) / 1_000_000n)).toISOString().slice(0, 10);
+  const date = new Date(Number(BigInt(m.expiresAtNs) / 1_000_000n));
+  // A time the calendar cannot hold stays as the chain wrote it, rather than throwing in a render.
+  return Number.isNaN(date.getTime()) ? m.expiresAtNs : date.toISOString().slice(0, 10);
 }
 
 // --- the RPC call ---------------------------------------------------------------------------------
@@ -337,7 +339,7 @@ export async function viewCall(
 /** `{name}` placeholders in a sentence from facts.ts. An unknown name stays, so a missing value shows in review. */
 export function fill(template: string, vars: Readonly<Record<string, string | number>>): string {
   return template.replace(/\{(\w+)\}/g, (all, name: string) =>
-    name in vars ? String(vars[name]) : all,
+    Object.hasOwn(vars, name) ? String(vars[name]) : all,
   );
 }
 
@@ -362,5 +364,6 @@ export interface RecordedFile {
   vault: string;
   accessKeys: { public_key: string; access_key: { permission: unknown } }[];
   mandates: Record<string, unknown>;
-  answers: Record<ScenarioId, { value: unknown; blockHeight: number }>;
+  /** `args` is the exact `check_spend` argument object the recorder sent for the answer (spec 5.3). */
+  answers: Record<ScenarioId, { args: CheckSpendArgs; value: unknown; blockHeight: number }>;
 }

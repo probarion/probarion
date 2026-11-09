@@ -118,6 +118,12 @@ describe("parseVerdict", () => {
     { ok: true, code: "NoMandate", would_hold: false },
     { ok: false, code: null, would_hold: false },
     { ok: false, code: "", would_hold: false },
+    // A hostile or broken answer must not reach the sentence lookup as an object key.
+    { ok: false, code: "__proto__", would_hold: false },
+    { ok: false, code: "PROBARION:__proto__", would_hold: false },
+    { ok: false, code: "Over1", would_hold: false },
+    { ok: false, code: "Over Payment", would_hold: false },
+    { ok: false, code: "A".repeat(65), would_hold: false },
   ])("refuses %j as an rpc error", (raw) => {
     expect(() => parseVerdict(raw)).toThrow(LiveCheckError);
     try {
@@ -125,6 +131,13 @@ describe("parseVerdict", () => {
     } catch (e) {
       expect((e as LiveCheckError).kind).toBe("rpc");
     }
+  });
+
+  it("lets a plain word like `constructor` through as a code: the sentence lookup, not the parser, refuses it", () => {
+    // /^[A-Za-z]{1,64}$/ is all letters; live-check-view.test.ts holds that such a word gets the unknown-code sentence.
+    expect(parseVerdict({ ok: false, code: "constructor", would_hold: false }).code).toBe(
+      "constructor",
+    );
   });
 });
 
@@ -139,6 +152,22 @@ describe("parseMandate", () => {
 
   it("reads null as no mandate", () => {
     expect(parseMandate(null)).toBeNull();
+  });
+
+  it("takes expires_at_ns as a u64 decimal string and nothing larger", () => {
+    const max = "18446744073709551615";
+    expect(parseMandate({ ...MANDATE_1, expires_at_ns: max })?.expiresAtNs).toBe(max);
+    for (const bad of ["18446744073709551616", "1".repeat(21), "1".repeat(39), "", "-1", "1e9"]) {
+      expect(() => parseMandate({ ...MANDATE_1, expires_at_ns: bad }), bad).toThrow(LiveCheckError);
+    }
+  });
+
+  it("shows the raw text of an expiry the calendar cannot hold", () => {
+    const m = parseMandate(MANDATE_1);
+    if (m === null) throw new Error("mandate 1 did not parse");
+    expect(expiryDate({ ...m, expiresAtNs: "9999999999999999999999" })).toBe(
+      "9999999999999999999999",
+    );
   });
 
   it("shortens an Intents payee and names its chain", () => {
@@ -269,6 +298,40 @@ describe("viewCall", () => {
     expect(a.value).toBe(1);
   });
 
+  it.each([[[1, 300]], [[1.5]], [["a"]], [[-1]], ["not an array"]])(
+    "refuses a result that is not a byte array (%j) on every host",
+    async (bytes) => {
+      let n = 0;
+      const fetch = (async () => {
+        n++;
+        return new Response(
+          JSON.stringify({ result: { result: bytes, logs: [], block_height: 3 } }),
+        );
+      }) as unknown as typeof globalThis.fetch;
+      await expect(
+        viewCall(LIVE_RPC_URLS, "v0.probarion.testnet", "get_mandate", args, { fetch }),
+      ).rejects.toMatchObject({ kind: "rpc" });
+      expect(n).toBe(LIVE_RPC_URLS.length);
+    },
+  );
+
+  it("makes no request at all when the caller has already aborted", async () => {
+    const ctl = new AbortController();
+    ctl.abort();
+    let n = 0;
+    const fetch = (async () => {
+      n++;
+      return rpcOk(1);
+    }) as unknown as typeof globalThis.fetch;
+    await expect(
+      viewCall(LIVE_RPC_URLS, "v0.probarion.testnet", "get_mandate", args, {
+        fetch,
+        signal: ctl.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(n).toBe(0);
+  });
+
   it("stops at once, and tries no other host, when the caller aborts", async () => {
     const ctl = new AbortController();
     let n = 0;
@@ -311,6 +374,12 @@ describe("fill", () => {
   it("replaces each {name}, and leaves an unknown one as it is", () => {
     expect(fill("{amount} USDC to {payee}, {x}", { amount: 2, payee: "a.testnet" })).toBe(
       "2 USDC to a.testnet, {x}",
+    );
+  });
+
+  it("ignores names a plain object inherits", () => {
+    expect(fill("{constructor} {toString} {__proto__} {hasOwnProperty}", {})).toBe(
+      "{constructor} {toString} {__proto__} {hasOwnProperty}",
     );
   });
 });
