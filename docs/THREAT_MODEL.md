@@ -23,8 +23,6 @@ How evidence is named in this file:
   (`smoke`).
 - Eval case ids and mainnet transaction ids are **pending**: the repository has no eval dataset yet,
   and `docs/mainnet-proof.json` records no transaction.
-- `MCP-NOADDR` (no MCP tool takes an address) is **planned**: there is no MCP server and no marker
-  yet.
 
 ## Deployments and hosts
 
@@ -113,8 +111,15 @@ The ten attacks of the design report, plus one (11) covered by the one-yocto rul
 | 10 | Failed asynchronous callback | Payee not registered for USDC storage | Reserve before transfer, release in `on_transfer` / `on_withdraw`; storage registration at mandate creation; credit only after final execution | Contract | claim `I2` (`contracts/vault/tests/invariants.rs:459`); sandbox tests `a_failed_near_payout_releases_the_reservation`, `a_failed_intents_payout_releases_the_reservation` and `the_payout_callbacks_refuse_every_caller_but_the_vault` (`contracts/integration-tests/tests/security.rs:190,237,347`) |
 | 11 | Compromised web session or dapp login key | XSS in the console, a hijacked browser session, or the Function-Call key a wallet creates at dapp sign-in (it calls the vault as the owner account) tries to approve a held spend, withdraw, add or remove keys, revoke a mandate or unfreeze | Owner and approver methods require exactly 1 yoctoNEAR, otherwise `PROBARION:RequiresOneYocto`; Function-Call keys cannot attach deposits, so only a full-access key through an explicit wallet prompt can call them; `create_mandate` needs a storage deposit; `freeze` stays deposit-free so stopping is fast | Protocol + contract | claim `ONE-YOCTO` (`contracts/vault/src/held.rs:234`); sandbox test `a_dapp_login_key_on_the_owner_account_cannot_withdraw_but_can_freeze` (`contracts/integration-tests/tests/security.rs:156`); `METHOD_DEPOSIT` (`apps/web/src/lib/near/tx.ts:19-30`); the mainnet approval is pending. There is no Content-Security-Policy yet ([known gaps](#known-gaps)) |
 
-Two further surfaces: MCP clients (planned; `MCP-NOADDR` above), and the hosted service itself, which
-the next section and the [blast radius](#blast-radius-if-probarion-is-breached) cover.
+Two further surfaces: MCP clients, and the hosted service itself, which the next section and the
+[blast radius](#blast-radius-if-probarion-is-breached) cover. An MCP client reaches a vault through
+`@probarion/mcp`, which runs beside the agent over stdio, holds the agent and ledger keys and no owner
+key, and has no tool that creates, changes or removes a mandate, a key or the vault's settings. None of
+its five tools takes an address, and each input rejects fields it does not know, so a prompt-injected
+`to` is refused before anything runs (claim `MCP-NOADDR`, `packages/mcp/test/safety.test.ts:12`). Its
+`request_spend` goes through `decide()` and the vault's `spend`, as an SDK agent's does, and stops with
+`LEDGER_FORK_RISK` when the vault's latest anchor does not cover its own ledger file
+(`packages/mcp/src/guard.ts`).
 
 ## The hosted service
 
@@ -253,7 +258,6 @@ approve.
 **Planned surfaces.**
 
 - The browser extension itself (plan 06 Task 3, E2). This section is updated when it ships.
-- An MCP server whose tools take no address (`MCP-NOADDR`, planned).
 
 ## Blast radius if Probarion is breached
 
@@ -402,7 +406,7 @@ Checklist (C1 to C10 are the plan's ten items):
 | C6 | Zero-retention keeps only the invoice's hashes | Yes, and stronger: the content is never stored, rather than deleted after the decision | The `invoices_retention` constraint (`20261108000006_invoices.sql:56-59`) and `invoice_insert`'s refusal (`:158-159`) |
 | C7 | No route takes a payee or a destination when it creates a spend | Yes | `SpendRequest` has no address field (`contracts/vault/src/types.rs:84-90`); no `apps/web/src/app/api` route reads a payee or a destination; a payee enters only through a mandate the owner signs in the wallet |
 | C8 | `verify` passes for the demo vault from a clean clone | N/A today | No vault's proof page is public yet, so there is no demo vault to check |
-| C9 | The demo, Canary and MCP demo vaults have only function-call keys | N/A today for the demo and MCP demo vaults, which do not exist; the repository owner names the testnet Canary vault to check it | claim `I9` (a factory vault starts with no access key); `verify` check f; the testnet smoke vault records 0 access keys (`contracts/deployments/testnet.json`) |
+| C9 | The demo, Canary and MCP demo vaults have only function-call keys | Yes for the testnet demo vault and the testnet MCP vault `percall.vaults.probarion.testnet`, whose live `verify` runs pass check f ([demo](evidence/demo-vault/verify-2026-11-09.txt), [MCP](evidence/402-vault/verify-2026-11-09.txt)); the repository owner names the testnet Canary vault to check it | claim `I9` (a factory vault starts with no access key); `verify` check f; the testnet smoke vault records 0 access keys (`contracts/deployments/testnet.json`) |
 | C10 | `intents.near` `public_keys_of` is empty for those vaults | N/A today: mainnet only, and no mainnet vault exists | claim `I8` (the vault never calls `add_public_key`); `verify` check g |
 | C11 | A Content-Security-Policy | No: known gap | [Known gaps](#known-gaps) |
 | C12 | Dependabot triage | Done | The triage table above |

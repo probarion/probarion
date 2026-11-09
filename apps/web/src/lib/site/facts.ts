@@ -693,7 +693,7 @@ export const STATUS = {
       pill: "Page built, not open yet",
       tone: "work",
     },
-    { id: "mcp-server", row: "MCP server", pill: "Planned", tone: "plan" },
+    { id: "mcp-server", row: "MCP server", pill: "Tried on testnet, not on npm", tone: "work" },
     { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },
   ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
   checked:
