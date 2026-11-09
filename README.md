@@ -521,8 +521,8 @@ pnpm verify:ts     # the TypeScript part only, no Rust needed
 
 As of 2026-11-03, `pnpm verify` ran 301 Rust tests: 227 vault unit tests, 2 error-coverage tests,
 2 property tests that take about two minutes, and 53 factory, 12 intents-stub and 5 test-ft tests.
-As of 2026-11-09 it runs 10,761 TypeScript tests: 290 Node script tests, 806 in `@probarion/core`,
-782 in `@probarion/sdk`, 341 in the CLI, 8,343 in the web console and 199 launch checks. Skipped on
+As of 2026-11-09 it runs 10,767 TypeScript tests: 290 Node script tests, 806 in `@probarion/core`,
+782 in `@probarion/sdk`, 341 in the CLI, 8,349 in the web console and 199 launch checks. Skipped on
 the Windows run of that day:
 - in the SDK, the two tests of a recorded real NEAR AI Cloud decision, which wait for that
   recording;
