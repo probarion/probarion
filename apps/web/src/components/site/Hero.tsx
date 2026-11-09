@@ -84,6 +84,7 @@ export function Hero() {
   return (
     <section className={s.hero}>
       <div className={s.wrap}>
+        <p className={`${s.eyebrow} ${s.heroEyebrow}`}>{HERO.eyebrow}</p>
         <h1 className={s.h1}>
           <span>{HERO.line1}</span>
           <span className={s.gold}>{HERO.line2}</span>
@@ -100,6 +101,7 @@ export function Hero() {
               </a>
             </div>
             <p className={s.fineprint}>{HERO.fineprint}</p>
+            <p className={`${s.fineprint} ${s.audience}`}>{HERO.audience}</p>
           </div>
           <div className={s.duel}>
             <PaidCard />

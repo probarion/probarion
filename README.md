@@ -4,7 +4,7 @@
 
 # Probarion
 
-**A mandate layer for AI agents on NEAR. The agent pays people and services only inside mandates its owner signed: a NEAR contract checks every payment, and every decision goes into a signed, hash-chained ledger that anyone can verify.**
+**A mandate layer for AI agents on NEAR. The agent pays people and services only inside mandates its owner signed: a NEAR contract checks every payment, and every decision goes into a signed, hash-chained ledger that the owner can publish for anyone to verify.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/probarion/probarion/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/probarion/probarion/actions/workflows/ci.yml)
 [![Status: unaudited beta](https://img.shields.io/badge/status-unaudited%20beta-b45309?style=flat-square)](SECURITY.md)
@@ -28,7 +28,7 @@ function-call key that can call `spend` and nothing else, and `spend` has no rec
 the payee always comes from the mandate. Before anything is sent, deterministic code decides, with a
 private model on NEAR AI Cloud as an attested adviser, and then the contract checks again. Every
 decision, refusals included, is signed into a hash-chained Ed25519 ledger whose root is anchored on
-the vault, and anyone can re-check the record against the chain.
+the vault once it has a ledger key, and anyone can re-check a published record against the chain.
 
 > TEE protects the data. The contract protects the money.
 

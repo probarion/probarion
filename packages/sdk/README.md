@@ -1,7 +1,7 @@
 # @probarion/sdk
 
 Let an AI agent pay people and services on NEAR only inside mandates that a human signed, and keep a
-record that anyone can check afterwards.
+record that this human can publish for anyone to check afterwards.
 
 **Unaudited beta.** Versions 0.x may change the API in a minor release. MIT licensed.
 
