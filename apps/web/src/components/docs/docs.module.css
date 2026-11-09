@@ -1525,7 +1525,16 @@ section.source code {
 .arch svg {
   display: block;
   width: 100%;
+  min-width: 640px;
   height: auto;
+}
+/* Below 640px the labels would shrink past reading size, so the diagram scrolls instead. */
+.archScroll {
+  overflow-x: auto;
+}
+.archScroll:focus-visible {
+  outline: 2px solid var(--color-gold-small);
+  outline-offset: 2px;
 }
 .archNode rect {
   fill: var(--color-surface);
