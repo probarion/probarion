@@ -273,6 +273,16 @@ const ADDED_RULES: RefTable = {
       },
     },
     {
+      id: "policy-added-custom-invoice_number_duplicate",
+      cells: {
+        rule: "`custom.invoice_number_duplicate`",
+        effect: "Refuse",
+        by: "Payables (Preview), as the first rule of the cycle, before `custom.owner_confirms_without_model`",
+        when: "Another invoice to the same payee has the same invoice number, and it may have paid or may still pay: it is processing, sent and not yet confirmed, waiting for the owner, or decided as paid, burned, settled, or held on chain with a spend. The texts differ: the same text is refused at intake as a duplicate, with no cycle. The detail names the earlier invoice by its invoice hash, not by its number.",
+        todo: "Nothing was sent. Look at the earlier invoice the detail names. If the owner rejects it, or it paid nothing, upload this one again: it runs on the same row and ref.",
+      },
+    },
+    {
       id: "policy-added-custom-owner_confirms_without_model",
       cells: {
         rule: "`custom.owner_confirms_without_model`",

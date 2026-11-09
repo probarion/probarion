@@ -102,8 +102,25 @@ export interface NewInvoice {
   createdBy: string;
 }
 
+/**
+ * The earlier invoice of the same payee with the same invoice number, which may have paid or may still pay (migration
+ * 0016): `outcome_status` is its SDK outcome's status, null while it has none.
+ */
+export interface NumberMatch {
+  id: string;
+  invoice_hash: string;
+  status: InvoiceStatus;
+  outcome_status: string | null;
+}
+
 export type InsertResult =
-  | { id: string; duplicate: false; retry: boolean }
+  | {
+      id: string;
+      duplicate: false;
+      retry: boolean;
+      /** Set with `numberRule` (0016): the earlier invoice with this number, or null. Absent before 0016 runs. */
+      number_match?: NumberMatch | null;
+    }
   | { id: string; duplicate: true; status: InvoiceStatus };
 
 function insertParams(tenantId: string, i: NewInvoice): Record<string, unknown> {
@@ -126,8 +143,21 @@ function insertParams(tenantId: string, i: NewInvoice): Record<string, unknown> 
   };
 }
 
-export function insertInvoice(db: Db, tenantId: string, i: NewInvoice): Promise<InsertResult> {
-  return db.rpc<InsertResult>("invoice_insert", insertParams(tenantId, i));
+/**
+ * `numberRule`: the caller refuses a same-number invoice in decide() itself (number-duplicate.ts), so a match on the
+ * invoice-number key alone is inserted and named in `number_match` instead of answered as a duplicate. The same text
+ * and the same fingerprint stay duplicates. Before migration 0016 the flag is ignored: a match is a duplicate.
+ */
+export function insertInvoice(
+  db: Db,
+  tenantId: string,
+  i: NewInvoice,
+  opts: { numberRule?: boolean } = {},
+): Promise<InsertResult> {
+  return db.rpc<InsertResult>("invoice_insert", {
+    ...insertParams(tenantId, i),
+    ...(opts.numberRule ? { number_rule: true } : {}),
+  });
 }
 
 /** An invoice the browser extension queues: the console's row, plus what the owner is asked to confirm. */

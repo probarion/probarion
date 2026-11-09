@@ -141,7 +141,9 @@ afterAll(async () => {
   await pg.close();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Each test uploads against a fresh hourly allowance; the rate-limit tests fill the bucket themselves.
+  await pg.query("delete from rate_limits");
   h.auth = null;
   h.roles = [];
   h.made = [];
@@ -381,6 +383,32 @@ describe("POST /api/console/[vault]/invoices", () => {
       error: "duplicate",
       status: "unconfirmed",
       detail: expect.stringMatching(/already sent/),
+    });
+  });
+
+  it("runs another text with the number of a paid invoice, and says the number rule refused it in the ledger", async () => {
+    const text = fresh();
+    expect((await post(invoiceForm({ text }))).status).toBe(200);
+    h.rules = [];
+    h.process = async () => ({
+      ...PAID,
+      status: "refused_by_code",
+      spendId: null,
+      txHash: null,
+      code: "custom.invoice_number_duplicate",
+    });
+    const r = await post(invoiceForm({ text: text.replace("Total 5 USDC", "Total 6 USDC") }));
+    expect(r.status).toBe(200);
+    expect(h.rules).toEqual([
+      "custom.invoice_number_duplicate",
+      "custom.owner_confirms_without_model",
+    ]);
+    expect(await body(r)).toMatchObject({
+      status: "decided",
+      outcome: { status: "refused_by_code", code: "custom.invoice_number_duplicate" },
+      notice: expect.stringMatching(
+        /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
+      ),
     });
   });
 
