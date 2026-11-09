@@ -1044,12 +1044,27 @@ describe("the numbers on the HTTP API page", () => {
     expect(cell("POST /api/auth/verify", "body")).toContain(`${verify} bytes at most`);
     const pair = constIn("src/app/api/ext/pair/route.ts", "MAX_BODY_BYTES");
     expect(cell("POST /api/ext/pair", "body")).toContain(`${pair / 1024} KiB at most`);
-    const form = /\bconst MAX_REQUEST_BYTES = MAX_INVOICE_BYTES \+ (\d+) \* 1024;/.exec(
-      src("src/app/api/console/[vault]/invoices/route.ts"),
+    // The console route checks lib/payables/upload.ts's MAX_REQUEST_BYTES, and the extension route its own sum.
+    const consoleRoute = src("src/app/api/console/[vault]/invoices/route.ts");
+    expect(consoleRoute, "the invoices route reads upload.ts's cap").toMatch(
+      /import \{[^}]*\bMAX_REQUEST_BYTES\b[^}]*\} from "@\/lib\/payables\/upload";/,
+    );
+    expect(consoleRoute).toMatch(/\bNumber\(length\) > MAX_REQUEST_BYTES\b/);
+    const form = /\bexport const MAX_REQUEST_BYTES = MAX_INVOICE_BYTES \+ (\d+) \* 1024;/.exec(
+      src("src/lib/payables/upload.ts"),
     )?.[1];
-    expect(form, "MAX_REQUEST_BYTES in the invoices route").toBeDefined();
+    expect(form, "MAX_REQUEST_BYTES in lib/payables/upload.ts").toBeDefined();
     expect(cell("POST /api/console/:vault/invoices", "body")).toContain(
       `${grouped(MAX_INVOICE_BYTES + Number(form) * 1024)} bytes at most in all, and ${grouped(MAX_INVOICE_BYTES)} bytes at most for each file`,
+    );
+    const extRoute = src("src/app/api/ext/invoices/route.ts");
+    expect(extRoute).toMatch(/\bNumber\(length\) > MAX_EXT_REQUEST_BYTES\b/);
+    const extForm = /\bconst MAX_EXT_REQUEST_BYTES = MAX_INVOICE_BYTES \+ (\d+) \* 1024;/.exec(
+      extRoute,
+    )?.[1];
+    expect(extForm, "MAX_EXT_REQUEST_BYTES in the extension's invoices route").toBeDefined();
+    expect(cell("POST /api/ext/invoices", "body")).toContain(
+      `${grouped(MAX_INVOICE_BYTES + Number(extForm) * 1024)} bytes at most in all, and ${grouped(MAX_INVOICE_BYTES)} bytes at most for the file`,
     );
   });
 

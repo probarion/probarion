@@ -746,6 +746,8 @@ const UNSHOWN_CAPS: Record<string, string> = {
     "The create form's copy of the factory's MAX_APPROVERS, which the factory table shows",
   MAX_HELD_TTL_HOURS: "The create form's copy of MAX_HELD_TTL_NS, in hours",
   MAX_READ_UNITS: "The amount reader's copy of MAX_TEXT_CHARS",
+  MAX_REQUEST_BYTES:
+    "MAX_INVOICE_BYTES plus the form's KiB, which the MAX_INVOICE_BYTES row states and the upload request cap test reads",
   MAX_NFKC_UNITS: "Internal to the amount reader: how far NFKC may grow the text it reads",
   MAX_BLOCK_LAG_S: "The health check's own work: how stale a node it accepts",
   MAX_PROVIDERS: "The health check's own work: the probes one list may hold",
@@ -963,14 +965,20 @@ describe("limits: the hosted app's values", () => {
     ]);
     expect(CONSOLE.rows.map((r) => subject(r, "name")).filter((n) => !shown.has(n))).toEqual([]);
 
+    // The invoices route checks the request against lib/payables/upload.ts's MAX_REQUEST_BYTES.
     const route = readFileSync(
       join(WEB, "src", "app", "api", "console", "[vault]", "invoices", "route.ts"),
       "utf8",
     );
-    const form = /MAX_REQUEST_BYTES\s*=\s*MAX_INVOICE_BYTES\s*\+\s*(\d+)\s*\*\s*1024/.exec(
-      route,
-    )?.[1];
-    expect(form, "the invoices route's request cap").toBeDefined();
+    expect(route, "the invoices route reads upload.ts's cap").toMatch(
+      /import \{[^}]*\bMAX_REQUEST_BYTES\b[^}]*\} from "@\/lib\/payables\/upload";/,
+    );
+    expect(route).toMatch(/\bNumber\(length\) > MAX_REQUEST_BYTES\b/);
+    const form =
+      /export const MAX_REQUEST_BYTES\s*=\s*MAX_INVOICE_BYTES\s*\+\s*(\d+)\s*\*\s*1024/.exec(
+        APP_TEXT.get(join(APP, "lib", "payables", "upload.ts")) ?? "",
+      )?.[1];
+    expect(form, "the upload request cap in lib/payables/upload.ts").toBeDefined();
     expect(cell(rowAbout(CONSOLE, "name", "MAX_INVOICE_BYTES") ?? { cells: {} }, "what")).toContain(
       `${form} KiB`,
     );

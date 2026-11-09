@@ -40,11 +40,18 @@ function limit(key: keyof typeof LIMITS, scope: string): string {
 const thousands = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 /**
- * The invoices route caps the whole request at the invoice cap plus 64 KiB for the form. A route file may export only
- * what Next.js reads, so its `MAX_REQUEST_BYTES` cannot be imported here: the test reads the route's sum and holds
- * this one to it.
+ * The console's invoices route caps the whole request at the invoice cap plus 64 KiB for the form: `MAX_REQUEST_BYTES`
+ * in lib/payables/upload.ts. That module loads pdf-parse (through extract.ts), so it is not imported here: the test
+ * reads its sum and holds this one to it.
  */
 const INVOICE_REQUEST_BYTES = MAX_INVOICE_BYTES + 64 * 1024;
+
+/**
+ * The extension's invoices route caps the whole request at the invoice cap plus 16 KiB, as it sends no purpose
+ * document. A route file exports only its handlers and its config, so its `MAX_EXT_REQUEST_BYTES` cannot be imported
+ * here: the test reads the route's sum and holds this one to it.
+ */
+const EXT_INVOICE_REQUEST_BYTES = MAX_INVOICE_BYTES + 16 * 1024;
 
 const SAME = "from a page at the same address";
 const BEARER = "`Authorization: Bearer pbx_...`";
@@ -138,6 +145,19 @@ export const TABLES: readonly RefTable[] = [
           "`200` with `{ network, account, counts, vaults }`. Each vault lists its `awaiting` invoices, its `held` spends and its `mandates`.",
         errors: "`401 bad_token`, `429 rate_limited`, `503 unavailable`",
         limit: limit("extInbox", "per account and network"),
+      },
+    },
+    {
+      id: "http-api-post-ext-invoices",
+      cells: {
+        route: "`POST /api/ext/invoices`",
+        who: `Extension token: ${BEARER}, of an account that is the vault's owner or an approver. The role is read again on every request, and a Canary vault takes none.`,
+        body: `\`multipart/form-data\`: \`vault\`, the vault's account id, \`mandate\`, the id of the mandate the member chose, and the invoice as \`file\` (PDF or \`.txt\`). A \`Content-Length\` header is required: ${thousands(EXT_INVOICE_REQUEST_BYTES)} bytes at most in all, and ${thousands(MAX_INVOICE_BYTES)} bytes at most for the file.`,
+        success:
+          "`201` with `{ invoice_id, status, url }`: `status` is `awaiting_owner`, and `url` opens the invoice in the console. Nothing is paid: the invoice waits there for the owner's wallet-signed Confirm. `200` with `{ invoice_id, status, duplicate, url }` when the invoice passes every check and the vault already holds it (the same text once normalised, or the same invoice number for the same payee): `duplicate` is `true`, `status` is the stored invoice's, and nothing new is stored.",
+        errors:
+          "`401 bad_token`, `429 rate_limited`, `411 length_required`, `413 too_large`, `400 invalid_input`, `403 not_member`, `409 wrong_network`, `415 unsupported`, `422 unreadable`, `422 empty`, `422 amount_unclear`, `503 chain_unavailable`, `404 mandate_not_found`, `422 mandate_inactive`, `409 no_keys`, `422 refused_by_code`, `503 unavailable`",
+        limit: limit("extInvoice", "per account and network"),
       },
     },
     {

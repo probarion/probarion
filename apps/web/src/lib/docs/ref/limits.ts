@@ -635,7 +635,10 @@ const KEYS: RefTable = {
 
 // --- hosted app -----------------------------------------------------------------------------------
 
-/** The hosted app's own caps: Payables, the mandate form, top-ups, the faucet, alerts and the extension's inbox. */
+/**
+ * The hosted app's own caps: Payables, the mandate form, top-ups, the faucet, alerts, and the extension's inbox and
+ * invoice queue.
+ */
 const CONSOLE: RefTable = {
   id: "limits-console",
   label: "Hosted app limits",
@@ -644,7 +647,7 @@ const CONSOLE: RefTable = {
     row("limits-console-max_invoice_bytes", {
       name: "`MAX_INVOICE_BYTES`",
       value: bytes(MAX_INVOICE_BYTES),
-      what: "The largest invoice file, pasted invoice text or purpose document the Payables upload takes. The whole request may be 64 KiB larger, for the form. Past either, `413 too_large`",
+      what: "The largest invoice file, pasted invoice text or purpose document the console's Payables upload takes, and the largest invoice file the browser extension queues. The upload's whole request may be 64 KiB larger, for the form: `MAX_REQUEST_BYTES` in `lib/payables/upload.ts`. Past a cap, `413 too_large`",
     }),
     row("limits-console-max_text_chars", {
       name: "`MAX_TEXT_CHARS`",
@@ -767,8 +770,9 @@ const RATE_SCOPE: Readonly<Record<keyof typeof LIMITS, { per: string; where: str
   extPairGlobal: { per: "All addresses together, per network", where: "`POST /api/ext/pair`" },
   extInbox: { per: "Extension token's account and network", where: "`GET /api/ext/inbox`" },
   extInvoice: {
-    per: "Account and network",
-    where: "Planned: invoices the browser extension will queue. No route reads this limiter yet",
+    per: "Extension token's account and network",
+    where:
+      "`POST /api/ext/invoices`: invoices the browser extension queues for the owner's Confirm",
   },
   extMint: {
     per: "Signed-in account and network",

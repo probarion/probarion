@@ -45,9 +45,26 @@ Your wallet signs nothing in this cycle. The console sends `spend` with the agen
 
 ## Browser extension
 
-The browser extension pairs with an account, then reads what waits for it. A token is `pbx_` and 43 more characters. The server keeps its hash and, as a hint, its last four characters, which the Browser extension page shows under Connected browsers. The signed-in Browser extension page (`/extension`) connects the extension or shows a pairing code, and `POST /api/ext/pair` exchanges that code for a token. A code is 8 letters and digits, shown as `XXXX-XXXX`, and is good once, for 10 minutes.
+These routes let the browser extension pair with an account, read what waits for it, and queue invoices for the owner's Confirm. They are Preview: built and tested, while the extension for Chrome that calls them is Planned and not released yet ([What works today](/docs/start/what-works-today#browser-extension-server-half)).
 
-A token can do what these routes do and nothing more: read the inbox and end itself. It cannot pay, approve, or change a mandate or a key. Queueing an invoice from the extension is Planned: `LIMITS` already holds an `extInvoice` entry, and no route uses it yet.
+A token is `pbx_` and 43 more characters. The server keeps its hash and, as a hint, its last four characters, which the Browser extension page shows under Connected browsers. The signed-in Browser extension page (`/extension`) connects the extension or shows a pairing code, and `POST /api/ext/pair` exchanges that code for a token. A code is 8 letters and digits, shown as `XXXX-XXXX`, and is good once, for 10 minutes.
+
+`POST /api/ext/invoices` queues one invoice under the mandate the member chose in the extension, for a vault where the token's account is the owner or an approver. The role is read again on each call, and a Canary vault takes no invoices. The server reads the invoice as the console upload does, then runs these checks in order. Each refusal stores nothing:
+
+- the file cannot be read (`422 unreadable`) or has no text (`422 empty`), or the code cannot read one clear total (`422 amount_unclear`);
+- the mandate is not on the vault as the chain lists it now (`404 mandate_not_found`), or cannot take an invoice now (`422 mandate_inactive`);
+- the mandate's agent key or the vault's ledger key is not active in the console (`409 no_keys`);
+- the payee the invoice names contradicts the mandate's, or the vault's free `check_spend` view says it would refuse this payment now: [`422 refused_by_code`](/docs/build/errors#http-422-refused_by_code), whose `rule` is `mandate.payee_mismatch` or `contract.check_spend`.
+
+When NEAR cannot be read for the mandates or the view, the answer is `503 chain_unavailable`, and nothing is stored either. An invoice that passes these checks is stored in `awaiting_owner` with three checks: the hold `extension.mandate_chosen`, since no purpose document was matched; `mandate.payee_mismatch` as a pass; and `contract.check_spend` as a pass, or as a hold when the amount is above the mandate's approval limit and the vault would hold the payment for its approvers. The answer is `201`. When the vault already holds the invoice, nothing new is stored, and the answer is `200` with `duplicate: true` and the stored invoice's `status`.
+
+<Callout kind="note" title="Who pays a queued invoice">
+
+The route never pays. It calls no model, opens no agent or ledger key and sends no transaction. A queued invoice is paid only after the owner's Confirm in the console: a NEP-413 signature from the owner's wallet, which the server checks against a full-access key of the vault's on-chain owner before it sends the spend. The vault still runs every one of its checks on that spend, and holds it for the approvers when it is above the mandate's approval limit. The owner can reject the invoice instead, and nothing is paid.
+
+</Callout>
+
+A token can do what these routes do and nothing more: read the inbox, queue an invoice and end itself. It cannot pay, approve, confirm, or change a mandate or a key.
 
 <RefTable id="http-api-extension" />
 
