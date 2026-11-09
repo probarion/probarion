@@ -103,13 +103,43 @@ export async function loadIndex(
   }
 }
 
+/** How many results the dialog lists. */
+export const RESULT_LIMIT = 20;
+
+/**
+ * `probarion:` right before a code. Every vault code carries it, so the index and the query drop
+ * it: the word "probarion" then finds the pages about Probarion, not every error entry.
+ */
+const PREFIX = /\bprobarion:(?=\w)/gi;
+const unprefixed = (s: string) => s.replace(PREFIX, "");
+
+/** Each engine's error entries, by code key: a pasted `PROBARION:<Code>` puts its entry first. */
+const ERROR_IDS = new WeakMap<MiniSearch<SearchDoc>, ReadonlyMap<string, string>>();
+
 export function createSearch(docs: readonly SearchDoc[]): MiniSearch<SearchDoc> {
   const ms = new MiniSearch<SearchDoc>({
-    fields: ["title", "headings", "codes", "body"],
+    // titleTerms and codeTerms index the title and the codes without the prefix. The stored title
+    // and codes keep it: extractField reads the stored fields too.
+    fields: ["titleTerms", "headings", "codeTerms", "body"],
     storeFields: ["href", "title", "section", "kind", "summary", "codes"],
-    searchOptions: { boost: { title: 4, headings: 2.5, codes: 2 }, fuzzy: 0.2, prefix: true },
+    extractField: (doc, field) => {
+      if (field === "titleTerms") return unprefixed(doc.title);
+      if (field === "codeTerms") return unprefixed(doc.codes);
+      return doc[field as keyof SearchDoc];
+    },
+    searchOptions: {
+      boost: { titleTerms: 4, headings: 2.5, codeTerms: 2 },
+      fuzzy: 0.2,
+      prefix: true,
+    },
   });
   ms.addAll(docs);
+  const ids = new Map<string, string>();
+  for (const d of docs) {
+    if (d.kind !== "error") continue;
+    for (const code of d.codes.split("\n")) if (code !== "") ids.set(codeKey(code), d.id);
+  }
+  ERROR_IDS.set(ms, ids);
   return ms;
 }
 
@@ -162,27 +192,57 @@ function exactRank(hit: SearchHit, key: string): number {
 }
 
 /**
+ * The error entry of the first `PROBARION:<Code>` in the query whose code the index holds, when the
+ * filter shows errors. A pasted refusal names its code that way.
+ */
+function pastedError(
+  ms: MiniSearch<SearchDoc>,
+  query: string,
+  filter: SearchFilter,
+): SearchHit | null {
+  if (filter !== "all" && filter !== "error") return null;
+  const ids = ERROR_IDS.get(ms);
+  for (const m of query.matchAll(/\bprobarion:(\w+)/gi)) {
+    const code = (m[1] ?? "").toLowerCase();
+    const id = ids?.get(code);
+    const stored = id === undefined ? undefined : ms.getStoredFields(id);
+    if (id === undefined || stored === undefined) continue;
+    const fields = stored as Pick<
+      SearchHit,
+      "href" | "title" | "section" | "kind" | "summary" | "codes"
+    >;
+    return { id, ...fields, terms: [code] };
+  }
+  return null;
+}
+
+/**
  * Every word must match; when nothing does, any word may. A query that is exactly a code puts its
- * entry first.
+ * entry first, and so does a query that holds `PROBARION:<Code>`, such as a pasted refusal.
  */
 export function runSearch(
   ms: MiniSearch<SearchDoc>,
   query: string,
   filter: SearchFilter = "all",
-  limit = 20,
+  limit = RESULT_LIMIT,
 ): SearchHit[] {
   const q = query.trim();
   if (q === "") return [];
   const only = filter === "all" ? {} : { filter: (r: SearchResult) => r.kind === filter };
-  let results = ms.search(q, { ...only, combineWith: "AND" });
-  if (results.length === 0) results = ms.search(q, { ...only, combineWith: "OR" });
+  // The index holds no `probarion:` before a code, so the query drops it too.
+  const words = unprefixed(q);
+  let results = ms.search(words, { ...only, combineWith: "AND" });
+  if (results.length === 0) results = ms.search(words, { ...only, combineWith: "OR" });
   const key = codeKey(q);
-  return results
+  const hits = results
     .map(toHit)
     .map((hit, i) => ({ hit, i, rank: exactRank(hit, key) }))
     .sort((a, b) => a.rank - b.rank || a.i - b.i)
-    .map(({ hit }) => hit)
-    .slice(0, limit);
+    .map(({ hit }) => hit);
+  const pasted = pastedError(ms, q, filter);
+  if (pasted === null) return hits.slice(0, limit);
+  const own = hits.find((h) => h.id === pasted.id) ?? pasted;
+  return [own, ...hits.filter((h) => h.id !== pasted.id)].slice(0, limit);
 }
 
 export interface HitGroup {
@@ -244,10 +304,15 @@ export function optionId(base: string, id: string): string {
   return `${base}-opt-${encodeURIComponent(id)}`;
 }
 
-/** What the live region says, and the empty view shows, once a query has run. */
-export function resultsMessage(count: number, query: string): string {
-  if (count === 0) return `No results for "${query}".`;
-  return count === 1 ? "1 result" : `${count} results`;
+/**
+ * What the live region says, and the empty view shows, once a query has run. `more` says that the
+ * list stops at its limit and the search found more.
+ */
+export function resultsMessage(count: number, query: string, more = false): string {
+  const q = `"${query}"`;
+  if (count === 0) return `No results for ${q}.`;
+  if (more) return `Top ${count} results for ${q}`;
+  return count === 1 ? `1 result for ${q}` : `${count} results for ${q}`;
 }
 
 /** The keys of a keydown that may open the search; `key` is missing on some synthetic events. */

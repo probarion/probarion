@@ -25,6 +25,7 @@ import {
   loadIndex,
   moveActive,
   optionId,
+  RESULT_LIMIT,
   resultsMessage,
   runSearch,
   SEARCH_EVENT,
@@ -164,11 +165,16 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
   }, [open]);
 
   const q = query.trim();
-  const hits = useMemo(
+  // One more than the dialog lists, so the message can say when the list stops at the limit.
+  const found = useMemo(
     () =>
-      load === "ready" && engine.current !== null ? runSearch(engine.current, query, filter) : [],
+      load === "ready" && engine.current !== null
+        ? runSearch(engine.current, query, filter, RESULT_LIMIT + 1)
+        : [],
     [load, query, filter],
   );
+  const more = found.length > RESULT_LIMIT;
+  const hits = useMemo(() => found.slice(0, RESULT_LIMIT), [found]);
   const groups = useMemo(() => groupHits(hits), [hits]);
   const flat = useMemo(() => groups.flatMap((g) => g.hits), [groups]);
   const indexOf = useMemo(() => new Map(flat.map((h, i) => [h.id, i])), [flat]);
@@ -180,7 +186,7 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
   // The one polite live region: the loading state, then the count once typing pauses.
   let message = "";
   if (load === "loading") message = "Loading the search index";
-  else if (load === "ready" && q !== "") message = resultsMessage(flat.length, q);
+  else if (load === "ready" && q !== "") message = resultsMessage(flat.length, q, more);
   useEffect(() => {
     const timer = window.setTimeout(() => setAnnounced(message), ANNOUNCE_MS);
     return () => window.clearTimeout(timer);

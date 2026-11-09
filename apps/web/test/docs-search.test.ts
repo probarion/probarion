@@ -14,6 +14,7 @@ import {
   moveActive,
   optionId,
   parseIndex,
+  RESULT_LIMIT,
   resultsMessage,
   runSearch,
   type SearchDoc,
@@ -112,6 +113,55 @@ describe("runSearch", () => {
     expect(runSearch(search, "spend  Approve")[0]?.id).toBe("concepts/holds-and-approvals");
   });
 
+  it("puts the error entry of a pasted PROBARION:<Code> first, as the filter allows", () => {
+    const search = createSearch([
+      ...DOCS,
+      doc({
+        id: "error:OverPerPayment",
+        href: "/docs/build/errors#OverPerPayment",
+        title: "PROBARION:OverPerPayment",
+        kind: "error",
+        section: "Errors",
+        codes: "OverPerPayment\nPROBARION:OverPerPayment",
+        body: "The amount is above the mandate's limit per payment.",
+      }),
+      doc({ id: "concepts/refusals", title: "Refusals", body: "A smart contract panicked." }),
+    ]);
+    const order = (q: string, filter?: Parameters<typeof runSearch>[2]) =>
+      runSearch(search, q, filter).map((h) => h.id);
+    expect(order("Smart contract panicked: PROBARION:NoMandate")[0]).toBe("error:NoMandate");
+    expect(order("REFUSED: PROBARION:OverPerPayment")[0]).toBe("error:OverPerPayment");
+    // The entry comes from the index, so it shows even when no other word of the line matched it.
+    const hit = runSearch(search, "REFUSED: PROBARION:OverPerPayment")[0];
+    expect(hit?.href).toBe("/docs/build/errors#OverPerPayment");
+    expect(hit?.title).toBe("PROBARION:OverPerPayment");
+    expect(order("Smart contract panicked: PROBARION:NoMandate", "error")[0]).toBe(
+      "error:NoMandate",
+    );
+    expect(order("Smart contract panicked: PROBARION:NoMandate", "concept")).not.toContain(
+      "error:NoMandate",
+    );
+    // A code the index does not hold promotes nothing.
+    expect(order("Smart contract panicked: PROBARION:NoSuchCode")[0]).toBe("concepts/refusals");
+  });
+
+  it("does not let the PROBARION: prefix of every code score the word probarion", () => {
+    const search = createSearch([
+      ...DOCS,
+      doc({
+        id: "start/what-is-probarion",
+        title: "What is Probarion",
+        kind: "guide",
+        section: "Start here",
+        body: "Probarion is a mandate layer for AI agents.",
+      }),
+    ]);
+    expect(runSearch(search, "probarion")[0]?.id).toBe("start/what-is-probarion");
+    expect(runSearch(search, "probarion").map((h) => h.id)).not.toContain("error:NoMandate");
+    // The stored title keeps the prefix: only the index drops it.
+    expect(runSearch(search, "NoMandate")[0]?.title).toBe("PROBARION:NoMandate");
+  });
+
   it("gives a bare PROBARION: no exact rank, so a page with no codes is not promoted", () => {
     const search = createSearch([
       doc({
@@ -168,10 +218,21 @@ describe("the dialog's pure logic", () => {
     expect(optionId("b", "a b")).not.toMatch(/\s/);
   });
 
-  it("phrases the result count", () => {
+  it("phrases the result count, naming the query, and says Top when the list stops at the limit", () => {
     expect(resultsMessage(0, "zzzqqq")).toBe('No results for "zzzqqq".');
-    expect(resultsMessage(1, "vault")).toBe("1 result");
-    expect(resultsMessage(20, "vault")).toBe("20 results");
+    expect(resultsMessage(1, "vault")).toBe('1 result for "vault"');
+    expect(resultsMessage(19, "vault")).toBe('19 results for "vault"');
+    expect(resultsMessage(20, "vault")).toBe('20 results for "vault"');
+    expect(resultsMessage(RESULT_LIMIT, "vault", true)).toBe('Top 20 results for "vault"');
+  });
+
+  it("lists up to RESULT_LIMIT results, and one more when asked, so the dialog can tell", () => {
+    const many = Array.from({ length: RESULT_LIMIT + 5 }, (_, i) =>
+      doc({ id: `concepts/vault-${i}`, title: `Vault ${i}`, body: "vault" }),
+    );
+    const search = createSearch(many);
+    expect(runSearch(search, "vault")).toHaveLength(RESULT_LIMIT);
+    expect(runSearch(search, "vault", "all", RESULT_LIMIT + 1)).toHaveLength(RESULT_LIMIT + 1);
   });
 
   it("opens on Ctrl K or ⌘K alone, on any keyboard layout", () => {
@@ -345,10 +406,23 @@ describe("the search index", () => {
       }
     });
 
-    it("puts a vault code's own entry first, with or without its prefix", () => {
+    it("puts a vault code's own entry first, with or without its prefix, in any case", () => {
       expect(first("NoMandate")?.id).toBe("error:NoMandate");
       expect(first("PROBARION:NoMandate")?.id).toBe("error:NoMandate");
+      expect(first("probarion:nomandate")?.id).toBe("error:NoMandate");
       expect(first("NoMandate")?.href).toBe("/docs/build/errors#NoMandate");
+    });
+
+    it("ranks What is Probarion in the top 3 for the word probarion, not a wall of codes", () => {
+      const top = runSearch(ms, "probarion")
+        .slice(0, 3)
+        .map((h) => h.id);
+      expect(top).toContain("start/what-is-probarion");
+    });
+
+    it("puts the error entry first for a pasted refusal line", () => {
+      expect(first("Smart contract panicked: PROBARION:NoMandate")?.id).toBe("error:NoMandate");
+      expect(first("REFUSED: PROBARION:OverPerPayment")?.id).toBe("error:OverPerPayment");
     });
 
     it("ranks one word of a CLI command by its pages, and the whole command by its own", () => {
