@@ -87,7 +87,7 @@ export const SECURITY_PAGE = {
     title: "How to report a vulnerability",
     paragraphs: [
       "Send a direct message to @probarionhq on X that says you have a security report, with no details. We answer with a private channel for them.",
-      "Once private vulnerability reporting is switched on for the repository, you can also use its private GitHub form.",
+      "You can also report it privately on GitHub: open the repository's Security tab and choose Report a vulnerability. Only you and the maintainers see that advisory.",
       "We aim to acknowledge a report within 72 hours. There is no bug bounty. Test only against vaults you deployed yourself, on testnet or in the sandbox, or against the Canary under its rules.",
     ],
     x: "@probarionhq on X",

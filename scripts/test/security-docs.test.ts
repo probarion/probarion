@@ -102,7 +102,10 @@ describe("SECURITY.md", () => {
       "**Unaudited beta.** No third party has audited the contracts or the packages.",
     );
     expect(md).toContain("[@probarionhq](https://x.com/probarionhq)");
-    expect(md).toContain("once private vulnerability reporting is switched on");
+    expect(md).toContain(
+      `[**Security → Report a vulnerability**](${REPO}/security/advisories/new)`,
+    );
+    expect(md).not.toContain("switched on");
     expect(md).toContain("72 hours");
   });
 
@@ -214,6 +217,34 @@ describe("docs/THREAT_MODEL.md", () => {
       }
     }
     expect(missing).toEqual([]);
+  });
+
+  it("says the repository's security settings are on, and keeps gitleaks as the backstop", () => {
+    // Checked with `gh api repos/probarion/probarion --jq .security_and_analysis` on 2026-11-09.
+    const gaps = md
+      .slice(md.indexOf("## Known gaps"), md.indexOf("## Out of scope"))
+      .replace(/\s+/g, " ");
+    expect(gaps).not.toContain("security settings are off");
+    expect(gaps).toContain(
+      "Private vulnerability reporting, secret scanning, push protection and Dependabot security updates are on",
+    );
+    expect(gaps).toContain(
+      "CI's gitleaks job scans the full history on every pull request into `dev` or `main`",
+    );
+    expect(gaps).not.toContain("The only reporting channel is a direct message on X");
+  });
+
+  it("is followed by the Docs Center's security model page: the settings are on, two report channels", () => {
+    const page = read("apps/web/content/docs/trust/security-model.mdx");
+    expect(page).not.toContain("security settings are off");
+    expect(page).not.toContain("Private vulnerability reporting is off");
+    expect(page).not.toContain("**One report channel.**");
+    expect(page).toContain(
+      "Private vulnerability reporting, secret scanning, push protection and Dependabot security updates are on",
+    );
+    expect(page).toContain(
+      `[**Security → Report a vulnerability**](${REPO}/security/advisories/new)`,
+    );
   });
 
   it("names none of the owner's other projects", () => {

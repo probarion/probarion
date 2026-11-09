@@ -687,6 +687,11 @@ The software is an unaudited beta.
   failure. Third-party actions are pinned by commit SHA, and the cargo-near download is checked by
   sha256.
 - CI scans the whole git history for secrets with gitleaks.
+- The repository's GitHub security settings are on: private vulnerability reporting, secret scanning,
+  push protection and Dependabot security updates. `SECURITY.md`, `/security`, the Docs Center's
+  security model page and the issue form now offer the private advisory form (**Security → Report a
+  vulnerability**) beside the direct message on X, and the threat model's known gaps no longer list
+  the settings as off; secret scanning's non-provider patterns and validity checks stay off.
 - The console refuses, at start, settings that could point a network at the other chain: an
   unsuffixed per-network setting while both networks are served, a mainnet account id ending in
   `.testnet` or a testnet one ending in `.near`, and an RPC host named after the other network. The
