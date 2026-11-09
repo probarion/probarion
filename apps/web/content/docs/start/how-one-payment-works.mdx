@@ -121,7 +121,7 @@ On 2026-11-01 a smoke run sent test-token spends to `v0.probarion.testnet` with 
 | Burned for a Base address | [`3u4ffrwp…dcvYe`](https://testnet.nearblocks.io/txns/3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe) | Spend 2 `burned`: 1 test USDC, memo `WITHDRAW_TO:0x1111…1111` |
 | Refused mandate 999, which does not exist | [`AkjyVPmb…dzgY`](https://testnet.nearblocks.io/txns/AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY) | `PROBARION:NoMandate`, nothing paid |
 
-With no ledger, the vault has no ledger key or anchors yet. So `verify --vault v0.probarion.testnet` prints `RESULT: FAIL` today: check d finds spends with no decision in the ledger, and check h cannot find the burn of spend 2, because no ledger entry records the hash of the transaction that made it. To try the free checks with no wallet, see [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes).
+With no ledger, the vault has no ledger key or anchors yet. So `verify --vault v0.probarion.testnet` prints `RESULT: FAIL` today: check d finds spends with no decision in the ledger, and check h cannot find the burn of spend 2, because no ledger entry records the hash of the transaction that made it. On the testnet demo vault, `demo.vaults.probarion.testnet`, the console's Payables agent signed each decision into the ledger before its spend, and a live `verify` of it prints `RESULT: PASS` with 9 checks passed. To try the free checks with no wallet, see [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes).
 
 ## Where to go next
 
