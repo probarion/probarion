@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  asPageMessage,
   connectUrl,
   fromOwnPage,
   isConnectPage,
@@ -56,6 +57,20 @@ describe("the page's connect message", () => {
     ["an array", [good]],
   ])("is ignored with %s", (_name, data) => {
     expect(readConnectMessage(data, NOW)).toBeNull();
+  });
+});
+
+describe("the message the content script hands the worker", () => {
+  it("is read again, as it is, by the worker", () => {
+    const read = readConnectMessage(good, NOW);
+    if (read === null) throw new Error("the page's message should be readable");
+    expect(readConnectMessage(asPageMessage(read), NOW)).toEqual(read);
+  });
+
+  it("carries only the connect fields, not whatever else the page added", () => {
+    const read = readConnectMessage({ ...good, extra: "x" }, NOW);
+    if (read === null) throw new Error("the page's message should be readable");
+    expect(asPageMessage(read)).toEqual(good);
   });
 });
 

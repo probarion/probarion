@@ -47,6 +47,20 @@ export function readConnectMessage(data: unknown, now: number): ConnectMessage |
   return { nonce, token, account, network, expires_at };
 }
 
+/**
+ * A read message in the shape the page posts it. The content script hands this to the worker, which reads it again
+ * with readConnectMessage: both sides read one shape, and only the connect fields cross.
+ */
+export const asPageMessage = (m: ConnectMessage) => ({
+  type: "probarion:connect" as const,
+  v: 1 as const,
+  nonce: m.nonce,
+  token: m.token,
+  account: m.account,
+  network: m.network,
+  expires_at: m.expires_at,
+});
+
 /** Whether a `message` event came from this very window, at its own address, and that address is Probarion's. */
 export function fromOwnPage(
   event: { source: unknown; origin: string },
