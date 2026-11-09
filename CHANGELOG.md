@@ -669,6 +669,22 @@ The software is an unaudited beta.
 - A canary test could fail about once in 58 runs, when the agent key it changed already ended in
   the character it wrote, so the key it called inactive was the active one.
 
+- Another invoice with the same number for the same payee as one that was paid or may still pay is
+  refused by code, rule `custom.invoice_number_duplicate`, and the decision entry signed by the
+  ledger key says why. Before, the upload got a 409 before any rule ran, and nothing reached the
+  ledger. The same text uploaded again is still a duplicate at intake. The console's notice says
+  whether an upload can run again: only when the earlier invoice waits for the owner, after the
+  owner rejects it. Otherwise the number stays blocked: a paid invoice, a spend held on chain (even
+  one the approver rejects), a payment sent but not confirmed, and a cycle cut off with an unknown
+  outcome. A paid invoice is not paid again. For the others, the notice says to ask the payee for
+  an invoice with a new number if the earlier one did not pay. The migration
+  `apps/web/supabase/migrations/20261108000016_invoice_number_rule.sql` changes `invoice_insert`.
+
+- An on-demand render of `/docs/trust/reproducible-builds` on Vercel, such as a POST, which skips
+  the prerender, answered 500: the function did not carry `.github/workflows/ci.yml`. The page's
+  data now reads each file by a literal path. The docs functions carry the 8 repository files they
+  read (0.09 MB), not about 1,170 (17.7 MB).
+
 ### Security
 
 - Key sealing: the web console generates agent and ledger keys on the server and seals them at rest
