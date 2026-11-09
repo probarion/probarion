@@ -225,10 +225,11 @@ It reads the text and its facts as the console upload does, and refuses, storing
 whose mandate cannot take invoices now, whose payee contradicts the chosen mandate's (core's
 `payeeHintContradiction`, the check the cycle runs, `packages/core/src/policy.ts:201-203`), or that
 the contract's `check_spend` view would refuse now. It stores the rest straight in `awaiting_owner`,
-as an upload is stored (the file sealed, or in zero-retention mode no file, name or facts), with the
-checks it passed and the hold `extension.mandate_chosen`, without which `invoice_queue` stores nothing
-(`apps/web/supabase/migrations/20261108000015_extension_queue.sql`). No cycle runs for it and nothing
-is sent: only the owner's wallet-signed Confirm pays it, and the contract checks that spend again.
+as an upload is stored (the file sealed, or in zero-retention mode no file, name or facts but the
+amount), with the checks it passed and the hold `extension.mandate_chosen`, without which
+`invoice_queue` stores nothing (`apps/web/supabase/migrations/20261108000015_extension_queue.sql`).
+No cycle runs for it and nothing is sent: only the owner's wallet-signed Confirm pays it, and the
+contract checks that spend again.
 No code under `lib/ext`, `app/api/ext` or `lib/payables/queue*.ts`, nor any app module it loads, imports a
 function that pays or signs, or, from outside `lib/crypto`, one that opens a sealed key, anything from
 `near-api-js` or `@near-js`, or a signer from the SDK or `@probarion/core`. It names no RPC method that
@@ -309,11 +310,18 @@ approve.
   Signing out, the session's 12-hour expiry and a new `KEY_ENCRYPTION_SECRET` do not end it: a token is
   a plain sha256 in the database, not sealed under the master key. It reads the waiting list, and it can
   add to it: up to 20 invoices in 10 minutes per account and network, each under a usable mandate of a
-  vault the account owns or approves (not a Canary vault), to the payee that mandate already names. It
-  cannot pay: each invoice waits for the owner's wallet-signed Confirm, and the owner can Reject it. The
-  owner revokes a token on `/extension`, and the OWNER can end every token at once
-  ([RUNBOOK](RUNBOOK.md#key-rotation)). A pairing code the session made outlives it too: for up to 10
-  minutes it turns into a token with no session, and Revoke does not end a code. After a stolen
+  vault where the account is an owner or an approver (not a Canary vault), to the payee that mandate
+  already names. It cannot pay: each invoice waits for the owner's wallet-signed Confirm, and the owner
+  can Reject it. A queued invoice takes its place in the duplicate guard, so a stolen token can block a
+  later upload of the same invoice (the same text, or the same invoice number for that payee) until the
+  owner rejects it, and after a Reject the same text cannot be queued or uploaded again: only another
+  text, such as a re-issued invoice, can. A row names the account that sent it, not the token. The
+  account a token belongs to revokes it on its own `/extension` page, and the vault's owner cannot
+  revoke an approver's token; a vault's approvers are fixed when it is created, so the owner cannot
+  remove one either. The OWNER can end every token at once ([RUNBOOK](RUNBOOK.md#key-rotation)). Then the
+  owner rejects each waiting invoice from the browser extension that they do not recognise. A pairing
+  code the session made outlives it too: for up to 10 minutes it turns into a token with no session,
+  and Revoke does not end a code. After a stolen
   session, follow the RUNBOOK's steps: end every token with the SQL, which deletes the codes first, or
   wait out the codes before revoking. The row of an ended connection is kept; there is no purge yet.
 - **Anyone can use up code pairing's network-wide limit.** `/api/ext/pair` allows 300 tries in all per

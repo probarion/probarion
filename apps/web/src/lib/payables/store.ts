@@ -12,6 +12,8 @@ import type { QueueCheck } from "./queue-rules";
 /**
  * received -> processing -> decided | unconfirmed | awaiting_owner | error (0006's check and functions).
  * awaiting_owner: no attested model confirmed the amount the code read, so nothing was sent; the owner confirms.
+ * processing -> awaiting_owner in one transaction (invoice_queue, migration 0015): an invoice sent from the browser
+ * extension, queued for the owner's Confirm; no cycle runs before it.
  * awaiting_owner -> processing (the owner confirmed, migration 0007) -> decided | unconfirmed | awaiting_owner.
  * awaiting_owner -> rejected (the owner rejected it, 0007): nothing was paid, and its guard keys are freed.
  */
@@ -73,7 +75,10 @@ export interface InvoiceRow {
   created_by: string;
   created_at: string;
   decided_at: string | null;
-  /** Where the invoice came from (migration 0015): the console upload, or the browser extension (queued, never run). */
+  /**
+   * Where the invoice came from (migration 0015): the console upload, or the browser extension (queued for the owner's
+   * Confirm; no cycle runs before it).
+   */
   source: "console" | "extension";
   /** The checks an extension invoice passed when it was queued (0015), or null for a console upload. */
   queue_checks: QueueCheck[] | null;
@@ -131,7 +136,7 @@ export interface QueuedInvoice extends NewInvoice {
   suggestedAmount: string;
   /** The mandate the member chose. */
   mandateId: number;
-  /** The checks it passed: pass or hold only. */
+  /** The checks it was queued with: pass or hold only. */
   checks: QueueCheck[];
 }
 

@@ -284,6 +284,13 @@ describe("the HTTP error codes", () => {
       ).toEqual([]);
     }
   });
+
+  it("send an Extension API caller to the console to paste text, which the extension cannot do", () => {
+    const rows = HTTP_ERRORS.filter((e) => e.where.includes("Extension API"));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const e of rows.filter((r) => /\bpaste\b/i.test(r.next)))
+      expect(e.next, `${e.status} ${e.code}`).toMatch(/\bin the console\b/);
+  });
 });
 
 describe("the verifier checks", () => {

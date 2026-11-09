@@ -3,8 +3,9 @@
 -- The extension never runs a payment cycle. It sends an invoice and the mandate the member chose. The server reads the
 -- text and its facts as the console upload does, and runs the code's own checks: the invoice's payee against the
 -- mandate's, and the contract's free check_spend view. Then it stores the row straight in awaiting_owner. The owner pays
--- it, or not, with the wallet-signed Confirm of migration 0007: the only way such a row is ever paid. No cycle ran, so
--- the row has no outcome. It keeps the checks it passed in queue_checks, and says source = 'extension'.
+-- it, or not, with the wallet-signed Confirm of migration 0007: the only way such a row is ever paid. No cycle runs
+-- before that Confirm, so until then the row has no outcome. It keeps the checks it was queued with in queue_checks,
+-- and says source = 'extension'.
 
 alter table public.invoices
   add column source text not null default 'console' check (source in ('console', 'extension')),
@@ -13,7 +14,7 @@ alter table public.invoices
 alter table public.invoices add constraint invoices_queue_checks_source
   check ((source = 'extension') = (queue_checks is not null));
 comment on column public.invoices.source is
-  'Where the invoice came from: the console upload, or the browser extension (queued for the owner, never run).';
+  'Where the invoice came from: the console upload, or the browser extension (queued for the owner''s Confirm; no cycle runs before it).';
 comment on column public.invoices.queue_checks is
   'The checks an extension invoice passed when it was queued, {id, outcome: pass | hold, detail} each; null otherwise.';
 

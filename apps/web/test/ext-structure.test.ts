@@ -419,7 +419,7 @@ function graph(roots: string[]): Map<string, Imp[]> {
   return seen;
 }
 
-describe("the extension's server code imports nothing that pays, signs or opens a key", () => {
+describe("the extension's server code imports nothing that pays or signs, and nothing outside lib/crypto that opens a sealed key", () => {
   const g = graph(ROOTS);
   /** Every import that loads something, with the module it names and the app file it resolves to, if any. */
   const loads = [...g.entries()].flatMap(([f, imps]) =>

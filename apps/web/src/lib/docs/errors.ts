@@ -539,7 +539,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     code: "unsupported",
     where: "Console invoices API, Extension API (queue an invoice)",
     meaning: "The invoice file is not a PDF or a plain text file.",
-    next: "Upload the invoice as a PDF or a plain text (`.txt`) file, or paste its text.",
+    next: "Send the invoice as a PDF or a plain text (`.txt`) file, or paste its text in the console instead.",
   },
   {
     status: 422,
