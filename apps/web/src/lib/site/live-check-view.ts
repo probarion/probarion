@@ -4,7 +4,10 @@ import {
   fill,
   formatUsdc,
   type KeyChoice,
+  LiveCheckError,
   type MandateFacts,
+  OTHER_PK,
+  type Payee,
   parseMandate,
   parseUsdc,
   parseVerdict,
@@ -38,10 +41,19 @@ export interface Answer {
   recorded: boolean;
 }
 
+/**
+ * failed / transport: no host answered. failed / answer: a host answered, but with an error or something unreadable.
+ * loading / previous null: asking again after a failure that had no recorded answer to show.
+ */
 export type Shown =
   | { kind: "answer"; answer: Answer }
-  | { kind: "loading"; previous: Answer }
-  | { kind: "failed"; fallback: Answer | null; reason: "transport" | "badAmount" };
+  | { kind: "loading"; previous: Answer | null }
+  | { kind: "failed"; fallback: Answer | null; reason: "transport" | "answer" | "badAmount" };
+
+/** Why a request failed, from the error it threw: only a `LiveCheckError` of kind rpc or contract is an answer. */
+export function failureKind(e: unknown): "transport" | "answer" {
+  return e instanceof LiveCheckError && e.kind !== "transport" ? "answer" : "transport";
+}
 
 /** The live check's copy as `facts.ts` has it. Type-only: the client's first load must not reach the facts file. */
 export type LiveCopy = typeof LIVE_CHECK.copy;
@@ -50,6 +62,39 @@ export type LiveCopyShape = Pick<
   LiveCopy,
   "wouldPay" | "wouldPayUnknownPayee" | "held" | "hijackTail" | "unknownCode"
 >;
+
+/** The payee the panel shows for the chosen mandate. A payee never changes on chain, so the recorded one is right. */
+export function payeeShown(
+  recorded: RecordedFile,
+  mandateId: number,
+  answer: Answer | null,
+): Payee | null | undefined {
+  const key = String(mandateId);
+  if (Object.hasOwn(recorded.mandates, key)) {
+    // null: the record knows there is no such mandate.
+    return parseMandate(recorded.mandates[key] ?? null)?.payee ?? null;
+  }
+  // Not recorded: the answer's own mandate counts only when the answer is for this very id.
+  if (answer === null || answer.request.mandateId !== mandateId) return undefined;
+  return answer.mandate == null ? answer.mandate : answer.mandate.payee;
+}
+
+/** The key the "agent key" choice signs with: the chosen mandate's own, else mandate 1's, else a key no mandate has. */
+export function agentKeyFor(recorded: RecordedFile, mandateId: number): string {
+  const of = (id: number) => parseMandate(recorded.mandates[String(id)] ?? null)?.agentPk;
+  return of(mandateId) ?? of(1) ?? OTHER_PK;
+}
+
+/** The amount line of the request preview. A text that is not an amount is quoted as it was typed. */
+export function amountLine(
+  amount: string,
+  copy: Pick<LiveCopy, "unit" | "previewNotAmount">,
+): string {
+  const units = parseUsdc(amount);
+  return units === null
+    ? `amount: ${JSON.stringify(amount)},  // ${copy.previewNotAmount}`
+    : `amount: "${units}",  // ${formatUsdc(units)} ${copy.unit}`;
+}
 
 export function answerFromRecorded(recorded: RecordedFile, id: ScenarioId): Answer {
   const input = SCENARIO_INPUTS.find((s) => s.id === id);
@@ -87,8 +132,11 @@ export function explain(
       : fill(copy.wouldPay, { amount, payee: payeeText(a.mandate.payee) });
   }
   const code = a.verdict.code ?? "";
-  const said = codes[code] ?? fill(copy.unknownCode, { code });
-  if (!injected || a.mandate == null) return said;
+  const said = Object.hasOwn(codes, code)
+    ? (codes[code] ?? fill(copy.unknownCode, { code }))
+    : fill(copy.unknownCode, { code });
+  // "Still goes to the payee at the limit" is true only of a refusal for being over the limit.
+  if (!injected || code !== "OverPerPayment" || a.mandate == null) return said;
   const max = formatUsdc(a.mandate.maxPerPayment);
   return `${said} ${fill(copy.hijackTail, { max, payee: payeeText(a.mandate.payee) })}`;
 }
@@ -104,11 +152,12 @@ export type Tone = "pay" | "hold" | "refuse" | "none";
 /** The answer panel's headline for a state. A text that is not an amount has its own title. */
 export function verdictText(
   shown: Shown,
-  copy: Pick<LiveCopy, "verdictPay" | "verdictHold" | "noAnswer" | "notAmountTitle">,
+  copy: Pick<LiveCopy, "verdictPay" | "verdictHold" | "noAnswer" | "notAmountTitle" | "waiting">,
 ): string {
   if (shown.kind === "failed" && shown.reason === "badAmount") return copy.notAmountTitle;
   const a = lastAnswer(shown);
-  return a === null ? copy.noAnswer : verdictWord(a, copy);
+  if (a === null) return shown.kind === "loading" ? copy.waiting : copy.noAnswer;
+  return verdictWord(a, copy);
 }
 
 export function verdictTone(shown: Shown): Tone {
@@ -122,20 +171,30 @@ export function verdictTone(shown: Shown): Tone {
 /** The sentence under the headline. `injectedIds`: the scenarios whose invoice text carries a hijack. */
 export function sentenceText(
   shown: Shown,
-  copy: LiveCopyShape & Pick<LiveCopy, "failed" | "failedNoRecord" | "badAmount">,
+  copy: LiveCopyShape &
+    Pick<
+      LiveCopy,
+      "failed" | "failedNoRecord" | "failedAnswer" | "failedAnswerNoRecord" | "badAmount"
+    >,
   codes: Readonly<Record<string, string>>,
   injectedIds: ReadonlySet<string>,
 ): string {
   if (shown.kind === "failed" && shown.reason === "badAmount") return copy.badAmount;
   const a = lastAnswer(shown);
-  if (a === null) return copy.failedNoRecord;
+  if (a === null) {
+    if (shown.kind === "loading") return "";
+    return shown.kind === "failed" && shown.reason === "answer"
+      ? copy.failedAnswerNoRecord
+      : copy.failedNoRecord;
+  }
   const said = explain(
     a,
     a.request.scenario !== null && injectedIds.has(a.request.scenario),
     copy,
     codes,
   );
-  return shown.kind === "failed" ? `${copy.failed} ${said}` : said;
+  if (shown.kind !== "failed") return said;
+  return `${shown.reason === "answer" ? copy.failedAnswer : copy.failed} ${said}`;
 }
 
 /** The line above the headline: where the answer came from. Empty when there is no answer to describe. */

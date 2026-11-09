@@ -648,14 +648,16 @@ a.netPill:hover {
   cursor: pointer;
 }
 .liveRequest {
+  border: 1px solid var(--color-band-line);
+  border-radius: 12px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+.liveRequest pre {
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.6;
-  border: 1px solid var(--color-band-line);
-  border-radius: 12px;
   padding: 14px;
-  overflow-x: auto;
-  margin-bottom: 12px;
 }
 .liveGone {
   color: var(--color-band-bad);

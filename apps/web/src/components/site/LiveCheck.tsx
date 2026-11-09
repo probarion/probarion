@@ -17,7 +17,7 @@ function NoScriptAnswers() {
       <p className={s.liveHint}>
         {fill(LIVE_CHECK.copy.noScript, { date: recorded.recordedAt.slice(0, 10) })}
       </p>
-      <table className={s.liveTable}>
+      <table className={s.liveTable} aria-label={LIVE_CHECK.copy.noScriptTable}>
         <tbody>
           {LIVE_CHECK.scenarios.map((x) => {
             const a = answerFromRecorded(recorded, x.id);

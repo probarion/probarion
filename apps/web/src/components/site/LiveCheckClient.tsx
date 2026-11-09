@@ -24,16 +24,21 @@ import {
 } from "@/lib/site/live-check";
 import {
   type Answer,
+  agentKeyFor,
+  amountLine,
   answerFromRecorded,
+  failureKind,
   hintText,
   type LiveCopy,
   lastAnswer,
   nextAnswer,
+  payeeShown,
   type Shown,
   sentenceText,
   verdictText,
   verdictTone,
 } from "@/lib/site/live-check-view";
+import { ScrollRegion } from "./ScrollRegion";
 import s from "./site.module.css";
 
 export interface LiveCheckProps {
@@ -66,7 +71,6 @@ export function LiveCheckClient({
   codes,
   explorer,
 }: LiveCheckProps) {
-  const agentPk = parseMandate(recorded.mandates["1"] ?? null)?.agentPk ?? OTHER_PK;
   const [controls, setControls] = useState<Controls>(asControls(DEFAULT));
   const [shown, setShown] = useState<Shown>({
     kind: "answer",
@@ -88,10 +92,8 @@ export function LiveCheckClient({
       }
       const ctl = new AbortController();
       inflight.current = ctl;
-      setShown((cur) => {
-        const prev = lastAnswer(cur);
-        return prev === null ? cur : { kind: "loading", previous: prev };
-      });
+      // Asking again after a failure with no recorded answer still shows that it is asking: previous may be null.
+      setShown((cur) => ({ kind: "loading", previous: lastAnswer(cur) }));
       const cache = mandateCache.current;
       let mandate = cache.get(c.mandateId);
       if (mandate === undefined) {
@@ -107,7 +109,11 @@ export function LiveCheckClient({
             LIVE_RPC_URLS,
             LIVE_VAULT,
             "check_spend",
-            checkSpendArgs(c.mandateId, units, c.key === "agent" ? agentPk : OTHER_PK),
+            checkSpendArgs(
+              c.mandateId,
+              units,
+              c.key === "agent" ? agentKeyFor(recorded, c.mandateId) : OTHER_PK,
+            ),
             { signal: ctl.signal },
           ),
           mandate,
@@ -135,21 +141,26 @@ export function LiveCheckClient({
         setShown((cur) =>
           nextAnswer(cur, seq.current, {
             seq: mine,
-            shown: { kind: "failed", fallback, reason: "transport" },
+            shown: { kind: "failed", fallback, reason: failureKind(e) },
           }),
         );
       }
     },
-    [agentPk, recorded],
+    [recorded],
   );
 
+  // The first call runs once, on mount, whatever happens to `ask`'s identity afterwards.
+  const askRef = useRef(ask);
   useEffect(() => {
-    void ask(asControls(DEFAULT));
+    askRef.current = ask;
+  }, [ask]);
+  useEffect(() => {
+    void askRef.current(asControls(DEFAULT));
     return () => {
       inflight.current?.abort();
       if (timer.current !== null) clearTimeout(timer.current);
     };
-  }, [ask]);
+  }, []);
 
   const change = (next: Controls, debounce: boolean) => {
     setControls(next);
@@ -162,8 +173,24 @@ export function LiveCheckClient({
   const injected = scenarios.find((x) => x.id === active)?.injected;
   const answer = lastAnswer(shown);
   // The panel describes the answer with the request it answers; the controls only drive the request preview.
-  const units = parseUsdc(controls.amount) ?? 0n;
   const m = answer?.mandate;
+  const payee = payeeShown(recorded, controls.mandateId, answer);
+  const signerPk = controls.key === "agent" ? agentKeyFor(recorded, controls.mandateId) : OTHER_PK;
+  // The request preview follows the controls, quoting a text that is not an amount as it was typed.
+  const requestHead = [
+    "check_spend({",
+    "  request: {",
+    `    mandate_id: ${controls.mandateId},`,
+    `    ${amountLine(controls.amount, copy)}`,
+    `    ${copy.requestFields},`,
+    "    ",
+  ].join("\n");
+  const requestTail = [
+    `  // ${copy.noRecipient}`,
+    "  },",
+    `  signer_pk: "${signerPk.slice(0, 14)}…"  // ${controls.key === "agent" ? copy.agentKeyNote : copy.otherKeyNote}`,
+    "})",
+  ].join("\n");
   const injectedIds = new Set(scenarios.filter((x) => x.injected !== undefined).map((x) => x.id));
   const badAmount = shown.kind === "failed" && shown.reason === "badAmount";
   const verdictClass = {
@@ -225,14 +252,18 @@ export function LiveCheckClient({
               value={controls.amount}
               onChange={(e) => change({ ...controls, amount: e.target.value }, true)}
             />
-            <span>USDC</span>
+            <span>{copy.unit}</span>
           </div>
         </div>
         <div className={s.field}>
           <span>{copy.payeeLabel}</span>
           <div className={s.payee}>
             <code>
-              {m === undefined ? copy.payeeUnread : m === null ? copy.noPayee : payeeText(m.payee)}
+              {payee === undefined
+                ? copy.payeeUnread
+                : payee === null
+                  ? copy.noPayee
+                  : payeeText(payee)}
             </code>
             <span className={s.payeeLock}>{copy.payeeLock}</span>
           </div>
@@ -265,16 +296,18 @@ export function LiveCheckClient({
             {sentenceText(shown, copy, codes, injectedIds)}
           </p>
         </div>
-        {shown.kind === "failed" && shown.reason === "transport" ? (
+        {shown.kind === "failed" && shown.reason !== "badAmount" ? (
           <button type="button" className={s.liveRetry} onClick={() => void ask(controls)}>
             {copy.retry}
           </button>
         ) : null}
-        <pre className={s.liveRequest}>
-          {`check_spend({\n  request: {\n    mandate_id: ${controls.mandateId},\n    amount: "${units}",  // ${formatUsdc(units)} USDC\n    invoice_hash, ref, decision_hash,\n    `}
-          <del className={s.liveGone}>recipient</del>
-          {`  // ${copy.noRecipient}\n  },\n  signer_pk: "${(controls.key === "agent" ? agentPk : OTHER_PK).slice(0, 14)}…"  // ${controls.key === "agent" ? copy.agentKeyNote : copy.otherKeyNote}\n})`}
-        </pre>
+        <ScrollRegion className={s.liveRequest} label={copy.requestLabel}>
+          <pre>
+            {requestHead}
+            <del className={s.liveGone}>{copy.recipientField}</del>
+            {requestTail}
+          </pre>
+        </ScrollRegion>
         <p className={s.liveMeta}>
           <span>{copy.method.replace(/`/g, "")}</span>
           {answer?.rpcHost ? <span>{fill(copy.rpc, { host: answer.rpcHost })}</span> : null}
@@ -291,23 +324,27 @@ export function LiveCheckClient({
           <p>{copy.noMandate}</p>
         ) : (
           <dl className={s.mandateFacts}>
-            <dt>payee</dt>
+            <dt>{copy.fields.payee}</dt>
             <dd>{payeeText(m.payee)}</dd>
-            <dt>max_per_payment</dt>
-            <dd>{formatUsdc(m.maxPerPayment)} USDC</dd>
-            <dt>max_total</dt>
+            <dt>{copy.fields.maxPerPayment}</dt>
+            <dd>
+              {formatUsdc(m.maxPerPayment)} {copy.unit}
+            </dd>
+            <dt>{copy.fields.maxTotal}</dt>
             <dd>
               {fill(copy.left, { total: formatUsdc(m.maxTotal), left: formatUsdc(remaining(m)) })}
             </dd>
-            <dt>uses</dt>
+            <dt>{copy.fields.uses}</dt>
             <dd>{fill(copy.usesOf, { uses: m.uses, max: m.maxUses })}</dd>
-            <dt>approval_above</dt>
-            <dd>{formatUsdc(m.approvalAbove)} USDC</dd>
-            <dt>expires</dt>
+            <dt>{copy.fields.approvalAbove}</dt>
+            <dd>
+              {formatUsdc(m.approvalAbove)} {copy.unit}
+            </dd>
+            <dt>{copy.fields.expires}</dt>
             <dd>{expiryDate(m)}</dd>
-            <dt>agent_pk</dt>
+            <dt>{copy.fields.agentPk}</dt>
             <dd>{`${m.agentPk.slice(0, 18)}…`}</dd>
-            <dt>status</dt>
+            <dt>{copy.fields.status}</dt>
             <dd>{m.status}</dd>
           </dl>
         )}
