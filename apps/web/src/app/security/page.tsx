@@ -105,10 +105,12 @@ export default function SecurityPage() {
 
       <section className={brandCardClass}>
         <h2 className={H2}>{P.verify.title}</h2>
-        <p>
-          {P.verify.note} {P.verify.setup}
+        <p className="mb-2">
+          {P.verify.setup ? `${P.verify.note} ${P.verify.setup}` : P.verify.note}
         </p>
-        <code className={CODE_BLOCK}>{P.verify.setupLines.join("\n")}</code>
+        {P.verify.setupLines.length > 0 ? (
+          <code className={CODE_BLOCK}>{P.verify.setupLines.join("\n")}</code>
+        ) : null}
         <p>
           <Rich text={P.verify.hosted} />
         </p>

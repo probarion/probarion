@@ -315,9 +315,11 @@ function VerifyYourself({
           differ from this page.
         </li>
         <li>
-          {CLI_ON_NPM ? "Run" : "From the repository folder, with the file in it, run"} the
-          open-source verifier. It needs no network and no keys, and prints the result per check for
-          that snapshot:
+          {CLI_ON_NPM
+            ? "In the folder that holds the file, run"
+            : "From the repository folder, with the file in it, run"}{" "}
+          the open-source verifier. It needs no network and no keys, and prints the result per check
+          for that snapshot:
           <code className={codeBlock}>{cli(`verify --offline ${file}`)}</code>
         </li>
         <li>
@@ -342,9 +344,12 @@ function VerifyYourself({
   );
 }
 
-/** While the CLI is not on npm: one line saying so, and the one-time set-up of the repository command. */
+/**
+ * The line before the commands: on npm, what npx needs; while the CLI is not on npm, one line saying so and the
+ * one-time set-up of the repository command.
+ */
 function CliSetup() {
-  if (CLI_ON_NPM) return null;
+  if (CLI_ON_NPM) return <p className="mt-3 text-sm text-ink/80">{CLI_NOTE}</p>;
   return (
     <p className="mt-3 text-sm text-ink/80">
       {CLI_NOTE} Set up once, one command per line:

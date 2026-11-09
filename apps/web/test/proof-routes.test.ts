@@ -405,18 +405,23 @@ describe("/proof/[vault]", () => {
     }
   });
 
-  it("shows the command that runs today: the repository, until the npm package is out", async () => {
+  it("shows the command that runs today: npx probarion from npm, or else the repository's", async () => {
     const { snapshot, out } = await served("ok");
     const t = text(out);
     expect(t).toContain(cli(`verify --offline probarion-${snapshot.vault}-snapshot.json`));
+    expect(t).toContain(CLI_NOTE);
+    const raw = out.replace(/<[^>]+>/g, "").replaceAll("&quot;", '"');
     if (CLI_ON_NPM) {
-      expect(t).not.toContain(CLI_NOTE);
+      // npx fetches the package, so there is nothing to set up, and the relative file name needs its folder.
+      for (const line of CLI_SETUP_LINES) expect(raw).not.toContain(line);
+      expect(t).toContain(
+        "In the folder that holds the file, run the open-source verifier. It needs no network and no keys, and prints the result per check for that snapshot:",
+      );
+      expect(t).not.toContain("repository folder");
       return;
     }
-    expect(t).toContain(CLI_NOTE);
     // The four set-up commands, one per line (as React writes them: & and " escaped).
     // Four commands separated by real newlines, so text without styles (an AI reading the page, say) keeps them apart.
-    const raw = out.replace(/<[^>]+>/g, "").replaceAll("&quot;", '"');
     // A newline before the first command and after the last, so neither runs into the prose around it.
     expect(raw).toContain(`\n${CLI_SETUP_LINES.join("\n")}\n`);
     expect(raw).not.toContain(`:${CLI_SETUP_LINES[0]}`);
@@ -535,11 +540,14 @@ describe("/proof/[vault]", () => {
     expect(t).toContain(
       `download probarion-${vault}-ledger.jsonl ${CLI_ON_NPM ? "" : "into the repository folder "}just before you run the command (replace any earlier copy; again if the vault has acted since), then run:`,
     );
-    if (!CLI_ON_NPM) {
-      expect(t.indexOf(CLI_NOTE)).toBeGreaterThan(-1);
-      expect(t.indexOf(CLI_NOTE)).toBeLessThan(t.indexOf(command));
-      expect(t).toContain("From the repository folder, you can check this vault yourself");
-    }
+    // What the command needs comes before it, on npm too (Node 24).
+    expect(t.indexOf(CLI_NOTE)).toBeGreaterThan(-1);
+    expect(t.indexOf(CLI_NOTE)).toBeLessThan(t.indexOf(command));
+    expect(t).toContain(
+      CLI_ON_NPM
+        ? "You can check this vault yourself"
+        : "From the repository folder, you can check this vault yourself",
+    );
   });
 
   it("names the ledger, not the chain, when the vault's ledger cannot be read", async () => {
@@ -793,7 +801,11 @@ describe("the landing page and the menu", () => {
     expect(text(out)).not.toMatch(/are coming/);
     expect(text(out)).toContain(cli("verify --offline"));
     expect(text(out)).toContain("packages/core/test/fixtures/valid-snapshot.json");
-    if (!CLI_ON_NPM) {
+    if (CLI_ON_NPM) {
+      expect(text(out)).toContain(
+        "The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture. The fixture is a file in the repository: run it at the root of a clone.",
+      );
+    } else {
       expect(text(out)).toContain(
         "The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture. Build it from a clone first (README step 1).",
       );

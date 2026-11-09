@@ -398,7 +398,9 @@ export const JOURNEY = {
       title: "Anyone can check the record",
       body: "The SDK anchors the ledger root on the vault. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
       tag: `The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture.${
-        CLI_ON_NPM ? "" : " Build it from a clone first (README step 1)."
+        CLI_ON_NPM
+          ? " The fixture is a file in the repository: run it at the root of a clone."
+          : " Build it from a clone first (README step 1)."
       }`,
       panelLabel: "Verifier output",
       panel: [

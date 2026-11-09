@@ -27,6 +27,7 @@ import {
   usdcFixed,
 } from "@/lib/payables/view";
 import { loadWaitingView, type WaitingView } from "@/lib/payables/waiting";
+import { CLI_ON_NPM } from "@/lib/proof/cli";
 import { safeText } from "@/lib/proof/sanitize";
 import { chainCommand } from "@/lib/proof/view";
 import { confirmInvoiceAction, prepareConfirmAction, rejectInvoiceAction } from "../actions";
@@ -375,7 +376,9 @@ export default async function InvoiceCyclePage({
         <RouteLink route="/proof/[vault]" href={`/proof/${encodeURIComponent(vault)}`}>
           proof page
         </RouteLink>{" "}
-        has the ledger file and the one-time setup, then run{" "}
+        {CLI_ON_NPM
+          ? "has the ledger file to download first, then run"
+          : "has the ledger file and the one-time setup, then run"}{" "}
         <code className="wrap-anywhere">{chainCommand(network, vault)}</code>.
         {confirmationInLedger
           ? " That command does not check an owner's confirmation yet: its signature can be re-checked from the ledger entry's custom.owner_confirmed record, and whether the key was the owner's at that block takes an archival node."

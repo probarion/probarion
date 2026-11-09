@@ -6,7 +6,7 @@ import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli, PRE_LEDGER_FLAGS, REPO_URL 
 const ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
 const read = (rel: string) => readFileSync(`${ROOT}${rel}`, "utf8");
 
-// These tests hold whichever way CLI_ON_NPM is set: flipping it is a one-constant change.
+// These tests hold whichever way CLI_ON_NPM is set: flipping it changes the constant and smoke step 7.
 describe("the probarion command the site shows (CLI_ON_NPM)", () => {
   it("is the repository command when the switch is off, and npx probarion when it is on", () => {
     expect(cli("verify --offline x.json", false)).toBe(
@@ -27,13 +27,32 @@ describe("the probarion command the site shows (CLI_ON_NPM)", () => {
     for (const line of CLI_SETUP_LINES) expect(line).not.toMatch(/&&|;|\|/);
   });
 
-  it("says the package is coming, and what the repository command needs", () => {
+  it("says what the commands need: Node 24 for npx, or git, Node 24 and pnpm 10 for the repository", () => {
     expect(CLI_NOTE).toBe(
-      "The probarion npm package is coming; until then, the commands below run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10. If you cloned it before, run git pull, pnpm install and the build line again.",
+      CLI_ON_NPM
+        ? "These commands run the probarion package from npm with npx, which downloads it the first time. Needs Node 24 or later."
+        : "The probarion npm package is coming; until then, the commands below run from a clone of the public repository. Needs git, Node 24 or later and pnpm 10. If you cloned it before, run git pull, pnpm install and the build line again.",
     );
     const engines = (JSON.parse(read("package.json")) as { engines: Record<string, string> })
       .engines;
     expect(engines).toEqual({ node: ">=24", pnpm: ">=10 <11" });
+    const cliEngines = (
+      JSON.parse(read("packages/cli/package.json")) as { engines: Record<string, string> }
+    ).engines;
+    expect(cliEngines).toEqual({ node: ">=24" });
+  });
+
+  it("runs as npx probarion at the root of a clone too: the root package is not also named probarion", () => {
+    // npx resolves a name that matches the current project to that project, and the root has no bin, so with the
+    // same name `npx probarion` fails there with "could not determine executable to run".
+    const root = JSON.parse(read("package.json")) as {
+      name: string;
+      private: boolean;
+      bin?: unknown;
+    };
+    expect(root.private).toBe(true);
+    expect(root.name).not.toBe("probarion");
+    expect(root.bin).toBeUndefined();
   });
 
   it("names the repository's evidence files for a pre-ledger spend", () => {
@@ -73,18 +92,22 @@ describe("the probarion command the site shows (CLI_ON_NPM)", () => {
     expect(step7).toContain(
       "it is the very snapshot the page checked, and a verifier built from the current repository gives the same result",
     );
-    // pnpm 10 does not install before a script runs, so an older clone needs pnpm install before the build.
-    expect(step7).toContain(
-      "if you cloned it before, run `git pull`, `pnpm install` and the build line again",
-    );
     expect(step7).toContain("its result can differ from the page");
     expect(step7).not.toMatch(
       /up to a minute|newer one|matches this page unless|unless the vault changed/,
     );
-    // While the package is not on npm, step 7 shows the repository commands. After the flip, update it by hand.
-    if (!CLI_ON_NPM) {
+    // Step 7 shows the command the pages show. Flipping CLI_ON_NPM means updating it by hand.
+    expect(step7).toContain(`\`${cli("verify --offline <the downloaded file>")}\``);
+    if (CLI_ON_NPM) {
+      expect(step7).toContain("Node 24 or later");
+      expect(step7).not.toContain("packages/cli/dist/bin.js");
+      for (const line of CLI_SETUP_LINES) expect(step7).not.toContain(line);
+    } else {
       for (const line of CLI_SETUP_LINES) expect(step7).toContain(`\`${line}\``);
-      expect(step7).toContain(cli("verify --offline"));
+      // pnpm 10 does not install before a script runs, so an older clone needs pnpm install before the build.
+      expect(step7).toContain(
+        "if you cloned it before, run `git pull`, `pnpm install` and the build line again",
+      );
       expect(step7).not.toContain("npx probarion");
     }
   });
