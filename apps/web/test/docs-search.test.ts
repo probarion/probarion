@@ -10,6 +10,7 @@ import {
   groupHits,
   highlight,
   isSearchShortcut,
+  landingTarget,
   loadIndex,
   moveActive,
   optionId,
@@ -210,6 +211,17 @@ describe("the dialog's pure logic", () => {
     expect(activeIndex(5, 3)).toBe(2);
     expect(activeIndex(1, 3)).toBe(1);
     expect(activeIndex(0, 0)).toBe(-1);
+  });
+
+  it("finds where an opened result lands, once its page shows: the hash's element, else the h1", () => {
+    const at = (path: string) => ({ pathname: path, href: `https://probarion.xyz${path}` });
+    const errors = at("/docs/build/errors");
+    expect(landingTarget(errors, "/docs/build/errors#NoMandate")).toEqual({ id: "NoMandate" });
+    expect(landingTarget(errors, "/docs/build/errors")).toEqual({ id: null });
+    expect(landingTarget(errors, "/docs/build/errors#a%20b")).toEqual({ id: "a b" });
+    expect(landingTarget(errors, "/docs/build/errors#%E0%A4%A")).toEqual({ id: "%E0%A4%A" });
+    // The old page still shows: wait.
+    expect(landingTarget(at("/docs/start/what-is-probarion"), "/docs/build/errors#x")).toBeNull();
   });
 
   it("gives each option an id from its entry, valid in HTML", () => {

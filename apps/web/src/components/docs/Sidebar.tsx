@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { docsHref, groupTitleId, navLabel, sidebarGroups } from "@/lib/docs/registry";
+import { CurrentInView } from "./CurrentInView";
 import d from "./docs.module.css";
 
+/** The legend under the groups: the docs' own definition of Preview (start/what-works-today). */
+export const PREVIEW_LEGEND = "Preview: built, not yet run end to end";
+
 /**
- * The docs contents. A Preview page has a dot and says so to screen readers. `where` says which
- * copy this is (the desktop column or the phone drawer), so the two copies' group ids differ.
+ * The docs contents. A Preview page has a dot and says so to screen readers, and a legend under
+ * the groups says what the dot means. `where` says which copy this is (the desktop column or the
+ * phone drawer), so the two copies' group ids differ. CurrentInView keeps the current page's link
+ * in view in either copy.
  */
 export function Sidebar({
   current,
@@ -17,6 +23,7 @@ export function Sidebar({
 }) {
   return (
     <nav aria-label={label} className={d.sideNav}>
+      <CurrentInView current={current} />
       <ul>
         <li>
           <Link
@@ -54,6 +61,10 @@ export function Sidebar({
           </ul>
         </div>
       ))}
+      <p className={d.legend}>
+        <span className={d.dotPreview} aria-hidden="true" />
+        {PREVIEW_LEGEND}
+      </p>
     </nav>
   );
 }

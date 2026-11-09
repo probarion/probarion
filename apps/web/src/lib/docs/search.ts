@@ -315,6 +315,25 @@ export function resultsMessage(count: number, query: string, more = false): stri
   return count === 1 ? `1 result for ${q}` : `${count} results for ${q}`;
 }
 
+/**
+ * Where an opened result lands, once the address bar shows its page: the id its hash names, or a
+ * null id for the page's h1. Null while another page shows.
+ */
+export function landingTarget(
+  here: { pathname: string; href: string },
+  href: string,
+): { id: string | null } | null {
+  const to = new URL(href, here.href);
+  if (to.pathname !== here.pathname) return null;
+  const hash = to.hash.slice(1);
+  if (hash === "") return { id: null };
+  try {
+    return { id: decodeURIComponent(hash) };
+  } catch {
+    return { id: hash };
+  }
+}
+
 /** The keys of a keydown that may open the search; `key` is missing on some synthetic events. */
 export interface ShortcutKeys {
   key?: string;

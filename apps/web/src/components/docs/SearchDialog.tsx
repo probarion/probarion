@@ -22,6 +22,7 @@ import {
   highlight,
   isSearchShortcut,
   KIND_LABELS,
+  landingTarget,
   loadIndex,
   moveActive,
   optionId,
@@ -52,6 +53,34 @@ const keepFocus = (e: MouseEvent) => e.preventDefault();
 /** How long the live region waits for typing to pause before it speaks. */
 const ANNOUNCE_MS = 300;
 
+/** How long focus waits for an opened result's page to show. */
+const LANDING_MS = 5000;
+
+/**
+ * Moves keyboard focus to where an opened result lands, once its page shows: the element its hash
+ * names, else the page's h1. The link has scrolled there, so focus does not scroll. An element
+ * that takes no focus of its own gets tabindex -1.
+ */
+function focusWhenShown(href: string) {
+  const until = performance.now() + LANDING_MS;
+  const step = () => {
+    const target = landingTarget(window.location, href);
+    const el =
+      target === null
+        ? null
+        : target.id === null
+          ? document.querySelector("h1")
+          : document.getElementById(target.id);
+    if (el instanceof HTMLElement) {
+      if (!el.hasAttribute("tabindex")) el.tabIndex = -1;
+      el.focus({ preventScroll: true });
+      return;
+    }
+    if (performance.now() < until) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 function Marked({ segments }: { segments: Segment[] }) {
   return (
     <>
@@ -73,6 +102,8 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const opener = useRef<HTMLElement | null>(null);
+  // The result a plain click or Enter opened: focus goes there, not back to the opener.
+  const opened = useRef<string | null>(null);
   // Where the last press began. A click closes the dialog only when it began on the backdrop too.
   const pressed = useRef<EventTarget | null>(null);
   const engine = useRef<MiniSearch<SearchDoc> | null>(null);
@@ -199,8 +230,11 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
   const close = () => dialog.current?.close();
   const onClose = () => {
     const back = opener.current;
+    const to = opened.current;
     opener.current = null;
-    if (back?.isConnected) back.focus();
+    opened.current = null;
+    if (to !== null) focusWhenShown(to);
+    else if (back?.isConnected) back.focus();
   };
   const onBackdrop = (e: MouseEvent<HTMLDialogElement>) => {
     const backdrop = isBackdropClick({
@@ -311,7 +345,9 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
                   onMouseMove={() => setActive(i)}
                   onClick={(e) => {
                     // A modified click opens a new tab, as Link leaves it to the browser.
-                    if (!modified(e)) close();
+                    if (modified(e)) return;
+                    opened.current = hit.href;
+                    close();
                   }}
                 >
                   <span className={d.searchTitle}>

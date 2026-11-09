@@ -58,7 +58,7 @@ In Windows PowerShell 5.1, `curl` is an alias of `Invoke-WebRequest`, so type `c
 
 ## The agent indexes
 
-Both files are served as `text/plain; charset=utf-8`. Every link to a docs page is absolute, on the site's production address, and points at that page's twin. A link to another path on the site becomes absolute as it is. Links to other sites and to an anchor on the same page stay as written.
+Both files are served as `text/plain; charset=utf-8`. `/llms-full.txt` also sends `X-Robots-Tag: noindex`, so search engines list the pages and not this copy of them, while `/llms.txt` sends no robots header. Every link to a docs page is absolute, on the site's production address, and points at that page's twin. A link to another path on the site becomes absolute as it is. Links to other sites and to an anchor on the same page stay as written.
 
 ### `/llms.txt`
 

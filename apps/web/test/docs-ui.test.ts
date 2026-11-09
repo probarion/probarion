@@ -12,6 +12,7 @@ import { Breadcrumbs } from "@/components/docs/Breadcrumbs";
 import { Callout } from "@/components/docs/Callout";
 import { CodeFrame } from "@/components/docs/CodeFrame";
 import { CodeTabs } from "@/components/docs/CodeTabs";
+import { scrollTopFor } from "@/components/docs/CurrentInView";
 import { DocsBar } from "@/components/docs/DocsBar";
 import d from "@/components/docs/docs.module.css";
 import { Feedback } from "@/components/docs/Feedback";
@@ -27,7 +28,7 @@ import {
 import { DOCS_COMPONENTS } from "@/components/docs/mdx";
 import { PageHead } from "@/components/docs/PageHead";
 import { Pager } from "@/components/docs/Pager";
-import { Sidebar } from "@/components/docs/Sidebar";
+import { PREVIEW_LEGEND, Sidebar } from "@/components/docs/Sidebar";
 import { SourceBox } from "@/components/docs/SourceBox";
 import { Toc } from "@/components/docs/Toc";
 import { TocDrop } from "@/components/docs/TocDrop";
@@ -49,7 +50,7 @@ import { findPage, PAGES, visibleTabs } from "@/lib/docs/registry";
 import { isTabKey, nextTab, tabFor, tabNames } from "@/lib/docs/tabs";
 import { pickActive } from "@/lib/docs/toc-spy";
 import { DOC_TYPE_LABELS, NETWORK_CHIPS, STATUS_LABELS } from "@/lib/docs/types";
-import { OG_IMAGE } from "@/lib/site/facts";
+import { HERO, OG_IMAGE } from "@/lib/site/facts";
 import { WEB } from "./docs-helpers";
 
 const html = (node: ReactNode) => renderToStaticMarkup(node as never);
@@ -500,6 +501,30 @@ describe("the docs shell", () => {
     expect(out).not.toContain("Operate");
   });
 
+  it("puts a legend under the groups of both copies, and keeps the dot's screen-reader text", () => {
+    expect(PREVIEW_LEGEND).toBe("Preview: built, not yet run end to end");
+    for (const where of ["side", "drawer"] as const) {
+      const out = html(createElement(Sidebar, { current: "concepts/payment-checks", where }));
+      expect(out, where).toMatch(
+        /<p class="[^"]*"><span class="[^"]*" aria-hidden="true"><\/span>Preview: built, not yet run end to end<\/p><\/nav>$/,
+      );
+      // CurrentInView's mark sits in the nav it works on.
+      expect(out, where).toMatch(/^<nav[^>]*><span hidden=""><\/span>/);
+      expect(out, where).toContain('<span class="sr-only"> (Preview)</span>');
+    }
+  });
+
+  it("scrolls the current link to the middle of its box only when it is not in full view", () => {
+    const box = { top: 100, bottom: 500 };
+    expect(scrollTopFor(box, { top: 120, bottom: 150 }, 0)).toBeNull();
+    expect(scrollTopFor(box, { top: 100, bottom: 500 }, 40)).toBeNull();
+    // 400 px of room and a 30 px link: 185 px above it once it is in the middle.
+    expect(scrollTopFor(box, { top: 700, bottom: 730 }, 0)).toBe(415);
+    expect(scrollTopFor(box, { top: 490, bottom: 520 }, 0)).toBe(205);
+    expect(scrollTopFor(box, { top: 40, bottom: 70 }, 900)).toBe(655);
+    expect(scrollTopFor(box, { top: 60, bottom: 90 }, 10)).toBe(0);
+  });
+
   it("takes the group ids' prefix from where it sits, not from its name", () => {
     const drawer = html(createElement(Sidebar, { current: null, where: "drawer", label: "Docs" }));
     expect(drawer).toContain('aria-label="Docs"');
@@ -679,6 +704,35 @@ describe("docs.module.css", () => {
     expect(rules).not.toMatch(/\.spacer\b/);
   });
 
+  it("marks the current tab, link and heading, and shows the Preview dot, in forced colours", () => {
+    const forced = /@media \(forced-colors: active\) \{([\s\S]*?)\n\}/.exec(rules)?.[1] ?? "";
+    const rule = (selector: string) =>
+      new RegExp(
+        `(?:^|\\n)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`,
+      ).exec(forced)?.[1] ?? "";
+    expect(rule(".tabLink")).toMatch(/border-bottom-color: Canvas;/);
+    expect(rule(".tabLink[aria-current]")).toMatch(/border-bottom-color: Highlight;/);
+    expect(rule(".tocLink[aria-current]")).toMatch(/border-left: 3px solid Highlight;/);
+    // A focused one keeps its own ring.
+    for (const selector of [
+      '.tab[aria-selected="true"]:not(:focus-visible)',
+      '.sideLink[aria-current="page"]:not(:focus-visible)',
+    ]) {
+      expect(rule(selector), selector).toMatch(
+        /outline: 2px solid Highlight;\s*outline-offset: -2px;/,
+      );
+    }
+    expect(rule(".dotPreview")).toMatch(/forced-color-adjust: none;/);
+    expect(rule(".dotPreview")).toMatch(/background: CanvasText;/);
+  });
+
+  it("hides the docs home's key cap on a phone, as the bar's", () => {
+    const phone = [...rules.matchAll(/@media \(max-width: 767px\) \{([\s\S]*?)\n\}/g)]
+      .map((m) => m[1] ?? "")
+      .join("\n");
+    expect(phone).toMatch(/\.searchTrigger \.kbd,\s*\.bigSearch \.kbd \{\s*display: none;/);
+  });
+
   it("never removes the focus ring or reaches outside the module", () => {
     expect(rules).not.toMatch(/all:\s*unset/);
     expect(rules).not.toContain(":global(");
@@ -764,8 +818,13 @@ describe("the docs home blocks", () => {
   it("lead with the eyebrow, the claim as the H1, and the lede", () => {
     const out = html(createElement(HubHero, { page: home() }));
     expect(out).toContain(`>${home().title}</p>`);
-    expect(out).toMatch(/<h1[^>]*>Give an AI agent a budget, <span/);
+    expect(out).toMatch(/<h1[^>]*>Give your AI agent a budget, <span/);
     expect(out).toContain(HUB_CLAIM.gold);
+  });
+
+  it("make the claim the landing's own first words", () => {
+    expect(HUB_CLAIM).toEqual({ plain: "Give your AI agent a budget,", gold: "not your wallet." });
+    expect(HERO.lede.startsWith(`${HUB_CLAIM.plain} ${HUB_CLAIM.gold}`)).toBe(true);
   });
 
   it("make the search box a link to the popular list, so it works without JavaScript", () => {

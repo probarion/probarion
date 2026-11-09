@@ -625,6 +625,15 @@ ol.rules > li + li {
   border-radius: 999px;
   background: var(--color-wait);
 }
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 22px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  color: var(--color-mute);
+}
 
 /* Page head */
 .crumbs ol {
@@ -1395,7 +1404,8 @@ section.source code {
   }
   .side,
   .tabs,
-  .searchTrigger .kbd {
+  .searchTrigger .kbd,
+  .bigSearch .kbd {
     display: none;
   }
   .drawer {
@@ -1474,5 +1484,32 @@ section.source code {
   }
   .searchButton[aria-pressed="true"]:not(:focus-visible) {
     outline: 2px solid Highlight;
+  }
+  /*
+   * The tabs, the On this page list, a code tab and the sidebar mark the current one with a colour,
+   * a tint or an inset shadow, which forced colours drop. A transparent border would show, so a
+   * tab that is not current gets a Canvas one. A focused tab or link keeps its own ring.
+   */
+  .tabLink {
+    border-bottom-color: Canvas;
+  }
+  .tabLink[aria-current] {
+    border-bottom-color: Highlight;
+  }
+  .tocLink[aria-current] {
+    border-left: 3px solid Highlight;
+  }
+  .tab[aria-selected="true"]:not(:focus-visible) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .sideLink[aria-current="page"]:not(:focus-visible) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  /* Forced colours drop a background, so the Preview dot keeps its own, in the text colour. */
+  .dotPreview {
+    forced-color-adjust: none;
+    background: CanvasText;
   }
 }

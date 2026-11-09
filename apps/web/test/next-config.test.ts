@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { docsHref, sidebarGroups } from "@/lib/docs/registry";
 import withSentry, { nextConfig } from "../next.config";
 
 const HEADERS = {
@@ -40,6 +41,33 @@ async function rewritesOf(config: typeof nextConfig): Promise<Rewrite[]> {
     ({ source, destination }) => ({ source, destination }),
   );
 }
+
+describe("next.config redirects", () => {
+  // From the registry, so a new section or a reordered sidebar needs no edit here.
+  const firstPages = () =>
+    sidebarGroups().map((g) => ({
+      source: `/docs/${g.section}`,
+      destination: docsHref(g.pages[0]?.path ?? ""),
+      permanent: true,
+    }));
+
+  it("send a docs section's address to its first page in sidebar order, with a 308", async () => {
+    const out = await nextConfig.redirects?.();
+    expect(out).toEqual(firstPages());
+    expect(out?.map((r) => r.source)).toEqual([
+      "/docs/start",
+      "/docs/concepts",
+      "/docs/build",
+      "/docs/trust",
+      "/docs/resources",
+    ]);
+    expect(out?.find((r) => r.source === "/docs/build")?.destination).toBe("/docs/build/install");
+  });
+
+  it("keep the same redirects once MDX and Sentry wrap the config", async () => {
+    expect(await withSentry.redirects?.()).toEqual(firstPages());
+  });
+});
 
 describe("next.config rewrites", () => {
   const TWINS = [

@@ -6,10 +6,13 @@ import type { DocPage } from "@/lib/docs/types";
 import d from "./docs.module.css";
 
 /**
- * The docs home's claim, from the mockup. The registry title stays "Probarion docs" and is the
- * eyebrow.
+ * The docs home's claim: the landing's own first words (HERO.lede in lib/site/facts.ts). The
+ * registry title stays "Probarion docs" and is the eyebrow.
  */
-export const HUB_CLAIM = { plain: "Give an AI agent a budget,", gold: "not your keys." } as const;
+export const HUB_CLAIM = {
+  plain: "Give your AI agent a budget,",
+  gold: "not your wallet.",
+} as const;
 
 export function HubHero({ page }: { page: DocPage }) {
   return (

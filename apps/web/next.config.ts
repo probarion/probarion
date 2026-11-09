@@ -1,6 +1,7 @@
 import createMDX from "@next/mdx";
 import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
+import { docsHref, sidebarGroups } from "./src/lib/docs/registry";
 import { publicRoutingVars } from "./src/lib/site/network";
 
 // Which network an address is, as the browser needs it: the default network (NEAR_NETWORK) and each network's origin
@@ -41,6 +42,15 @@ export const nextConfig: NextConfig = {
         ],
       },
     ];
+  },
+  // A docs section's own address opens its first page, in sidebar order, from the registry.
+  async redirects() {
+    return sidebarGroups().flatMap((g) => {
+      const first = g.pages[0];
+      return first === undefined
+        ? []
+        : [{ source: `/docs/${g.section}`, destination: docsHref(first.path), permanent: true }];
+    });
   },
   // The Markdown twin of each docs page (app/docs-md). /docs.md is the docs home's twin.
   async rewrites() {

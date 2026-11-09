@@ -435,6 +435,15 @@ describe("page twins and llms files", () => {
     expect(out).toContain(`(${ORIGIN}/llms-full.txt)`);
   });
 
+  it("ask search engines not to list llms-full.txt, and leave llms.txt as it is", async () => {
+    const full = await (await import("@/app/llms-full.txt/route")).GET();
+    expect(full.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+    expect(full.headers.get("X-Robots-Tag")).toBe("noindex");
+    const index = await (await import("@/app/llms.txt/route")).GET();
+    expect(index.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+    expect(index.headers.get("X-Robots-Tag")).toBeNull();
+  });
+
   it("llms-full.txt holds the rules and every page", async () => {
     const out = await llmsFull(ORIGIN, SHA);
     const lines = out.split("\n");

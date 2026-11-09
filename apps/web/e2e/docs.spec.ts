@@ -117,6 +117,31 @@ test("Ctrl K finds an error code, the arrow keys move, and Enter opens its row",
   await expect(page.locator('[id="NoMandate"]')).toBeInViewport();
   // In view, and not under the sticky site header.
   await expect.poll(() => clearance(page, "NoMandate")).toBeGreaterThanOrEqual(0);
+  // Keyboard focus went to the row, not back to the page the search was opened on.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const row = document.getElementById("NoMandate");
+        return row?.contains(document.activeElement) === true;
+      }),
+    )
+    .toBe(true);
+  // Focusing it did not scroll it under the header either.
+  expect(await clearance(page, "NoMandate")).toBeGreaterThanOrEqual(0);
+});
+
+test("the sidebar shows the current page's link inside its own box, and the window stays put", async ({
+  page,
+}) => {
+  // Short, so the sidebar box scrolls; its last page sits below the box's first view.
+  await page.setViewportSize({ width: 1440, height: 600 });
+  await page.goto("/docs/resources/for-ai-agents");
+  await searchReady(page);
+  const side = page.getByRole("navigation", { name: "Docs", exact: true });
+  const current = side.locator('[aria-current="page"]');
+  await expect(current).toHaveAttribute("href", "/docs/resources/for-ai-agents");
+  await expect(current).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
 test("Escape closes the search and gives focus back", async ({ page }) => {
@@ -243,13 +268,13 @@ test("the Markdown twins and the llms files carry their routes' headers", async 
   expect(res.headers()["content-type"]).toMatch(/^text\/markdown/);
   expect(res.headers()["x-robots-tag"]).toBe("noindex");
   expect(await res.text()).toMatch(new RegExp(`^# ${ARTICLE_TITLE}$`, "m"));
-  // As each route sets them: app/docs-md/[[...slug]]/route.ts for the twins, and the llms.txt and
-  // llms-full.txt routes, which set no X-Robots-Tag.
+  // As each route sets them: app/docs-md/[[...slug]]/route.ts for the twins, the llms.txt route,
+  // which sets no X-Robots-Tag, and the llms-full.txt route, which sets noindex.
   for (const { path, type, robots } of [
     { path: `${ARTICLE}.md`, type: "text/markdown; charset=utf-8", robots: "noindex" },
     { path: "/docs.md", type: "text/markdown; charset=utf-8", robots: "noindex" },
     { path: "/llms.txt", type: "text/plain; charset=utf-8", robots: undefined },
-    { path: "/llms-full.txt", type: "text/plain; charset=utf-8", robots: undefined },
+    { path: "/llms-full.txt", type: "text/plain; charset=utf-8", robots: "noindex" },
   ]) {
     const answer = await request.get(path);
     expect(answer.status(), path).toBe(200);
@@ -283,6 +308,15 @@ for (const path of ["/docs/zzz", "/docs/start/zzz", "/docs/start/what-is-probari
     expect(await bar.evaluate((e) => e.closest("section") === null)).toBe(true);
   });
 }
+
+test("a docs section's address redirects (308) to its first page", async ({ page, request }) => {
+  const answer = await request.get("/docs/build", { maxRedirects: 0 });
+  expect(answer.status()).toBe(308);
+  expect(answer.headers().location).toBe("/docs/build/install");
+  await page.goto("/docs/build");
+  await expect(page).toHaveURL(/\/docs\/build\/install$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install the packages");
+});
 
 test("an unknown Markdown twin answers 404", async ({ request }) => {
   expect((await request.get("/docs/zzz.md")).status()).toBe(404);
