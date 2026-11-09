@@ -194,7 +194,7 @@ node packages/cli/dist/bin.js --network testnet verify --vault <vault> --burn-tx
 
 <Callout kind="warning" title="A live FAIL on the smoke vault is expected">
 
-On `v0.probarion.testnet`, a live run fails checks d and h today, because the smoke run sent its spends without a ledger. To see d and h pass on chain, verify a vault whose spends the SDK sent with its ledger, and pass that ledger file. The [Developer quickstart](/docs/start/developer-quickstart) sets up such a vault, sends one payment with the SDK and runs `verify` on its ledger.
+On `v0.probarion.testnet`, a live run fails checks d and h today, because the smoke run sent its spends without a ledger. To see d and h pass on chain, verify a vault whose spends the SDK sent with its ledger, and pass that ledger file. The testnet demo vault, `demo.vaults.probarion.testnet`, is one: its [proof page](/proof/demo.vaults.probarion.testnet) offers its ledger, and a live run with that file passes checks a to i. The [Developer quickstart](/docs/start/developer-quickstart) sets up such a vault, sends one payment with the SDK and runs `verify` on its ledger.
 
 </Callout>
 

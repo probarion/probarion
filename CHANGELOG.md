@@ -180,6 +180,14 @@ The software is an unaudited beta.
   Its smoke run paid 1 test USDC to a NEAR account, burned 1 test USDC with a `WITHDRAW_TO:` memo for
   a Base address, and was refused with `NoMandate`. The transactions are in
   `contracts/deployments/testnet.json`.
+- The testnet demo vault `demo.vaults.probarion.testnet`, run end to end through the console on
+  2026-11-09: created through the factory, given an agent key and a ledger key, filled from the faucet
+  and given a mandate. Payables paid 2 test USDC, then 4 test USDC once its approver approved the hold,
+  refused a changed-bank invoice with `mandate.payee_mismatch` in the signed ledger, and refused a
+  re-sent invoice on upload. Its proof page is public, and `/proof` on probarion.xyz opens it. A live
+  `npx probarion verify` passed checks a to i. The invoices, the ledger, the snapshot and the
+  verifier's output are in `docs/evidence/demo-vault`; the transactions are in the `demo_vault`
+  block of `contracts/deployments/testnet.json`.
 - Deploy and smoke scripts for testnet, runbooks for testnet, the factory and the planned mainnet
   vault (each signing step is the owner's), and `pnpm proof` for the mainnet evidence file.
 - Web console, in progress: wallet sign-in with near-connect and NEP-413, checked on

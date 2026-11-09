@@ -1,0 +1,741 @@
+{
+  "v": 1,
+  "vault": "demo.vaults.probarion.testnet",
+  "network": "testnet",
+  "taken_at": "2026-11-09T11:58:06.558Z",
+  "ledger": [
+    {
+      "body": {
+        "v": 1,
+        "vault": "demo.vaults.probarion.testnet",
+        "seq": 0,
+        "prev_link": "0000000000000000000000000000000000000000000000000000000000000000",
+        "kind": "decision",
+        "at": "2026-11-09T11:46:25.314Z",
+        "request_id": "b1d4b442-8dc8-4f59-a3b6-73710749d406",
+        "mandate_id": 1,
+        "invoice_hash": "1de7c11a31f2fe1f24dc950ae419ee045b3ceeedc3cf2f5110f61910644476c1",
+        "amount": "2000000",
+        "proposal": null,
+        "evidence": null,
+        "rules": [
+          {
+            "id": "vault.frozen",
+            "outcome": "pass",
+            "detail": "vault is not frozen"
+          },
+          {
+            "id": "mandate.none",
+            "outcome": "pass",
+            "detail": "mandate 1 selected by purpose_hash"
+          },
+          {
+            "id": "mandate.inactive",
+            "outcome": "pass",
+            "detail": "mandate 1 is not revoked (status active)"
+          },
+          {
+            "id": "mandate.expired",
+            "outcome": "pass",
+            "detail": "expires at 1796860799000000000 ns"
+          },
+          {
+            "id": "mandate.agent_mismatch",
+            "outcome": "pass",
+            "detail": "agent key matches the mandate"
+          },
+          {
+            "id": "invoice.po_mismatch",
+            "outcome": "pass",
+            "detail": "purpose matches mandate 1"
+          },
+          {
+            "id": "mandate.payee_mismatch",
+            "outcome": "pass",
+            "detail": "destination is the mandate payee near:probarion-payee.testnet"
+          },
+          {
+            "id": "invoice.amount_invalid",
+            "outcome": "pass",
+            "detail": "amount 2000000"
+          },
+          {
+            "id": "mandate.over_per_payment",
+            "outcome": "pass",
+            "detail": "amount 2000000 vs per-payment cap 5000000"
+          },
+          {
+            "id": "mandate.uses_exhausted",
+            "outcome": "pass",
+            "detail": "0 of 5 uses consumed"
+          },
+          {
+            "id": "mandate.over_total",
+            "outcome": "pass",
+            "detail": "spent + reserved + amount = 2000000 vs total cap 20000000"
+          },
+          {
+            "id": "invoice.duplicate",
+            "outcome": "pass",
+            "detail": "invoice and ref are unused"
+          },
+          {
+            "id": "vault.daily_backstop",
+            "outcome": "pass",
+            "detail": "today 2000000 of backstop 500000000"
+          },
+          {
+            "id": "intents.balance_low",
+            "outcome": "pass",
+            "detail": "not an Intents payee"
+          },
+          {
+            "id": "custom.owner_confirms_without_model",
+            "outcome": "hold",
+            "detail": "no model read this invoice: nothing is sent; the owner confirms the amount"
+          }
+        ],
+        "verdict": "hold",
+        "decided_by": "rules-only",
+        "contract": null,
+        "settlement": null,
+        "refs": null
+      },
+      "body_hash": "f3d01f37c9e3b875b4cc34e78759c5a0752595d26bdb4532b58a87566175757d",
+      "sig": "ed25519:47g7unb3J3aUPJb5PBKRRJhK1FG56Qhn3YjwDJfz3BXGrLiSdYkYsjAy6k24HxSrbxMioJmwiCZKXNQrhWzUKjbK",
+      "signer": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN",
+      "link": "c8321fad6c669fc399e5b9ad3f9d205c44000d3d999279fab973535af816e4d5"
+    },
+    {
+      "body": {
+        "v": 1,
+        "vault": "demo.vaults.probarion.testnet",
+        "seq": 1,
+        "prev_link": "c8321fad6c669fc399e5b9ad3f9d205c44000d3d999279fab973535af816e4d5",
+        "kind": "decision",
+        "at": "2026-11-09T11:47:27.204Z",
+        "request_id": "f990751d-b0ab-4825-862a-dc6a57cd1557",
+        "mandate_id": 1,
+        "invoice_hash": "1de7c11a31f2fe1f24dc950ae419ee045b3ceeedc3cf2f5110f61910644476c1",
+        "amount": "2000000",
+        "proposal": null,
+        "evidence": null,
+        "rules": [
+          {
+            "id": "vault.frozen",
+            "outcome": "pass",
+            "detail": "vault is not frozen"
+          },
+          {
+            "id": "mandate.none",
+            "outcome": "pass",
+            "detail": "mandate 1 selected by purpose_hash"
+          },
+          {
+            "id": "mandate.inactive",
+            "outcome": "pass",
+            "detail": "mandate 1 is not revoked (status active)"
+          },
+          {
+            "id": "mandate.expired",
+            "outcome": "pass",
+            "detail": "expires at 1796860799000000000 ns"
+          },
+          {
+            "id": "mandate.agent_mismatch",
+            "outcome": "pass",
+            "detail": "agent key matches the mandate"
+          },
+          {
+            "id": "invoice.po_mismatch",
+            "outcome": "pass",
+            "detail": "purpose matches mandate 1"
+          },
+          {
+            "id": "mandate.payee_mismatch",
+            "outcome": "pass",
+            "detail": "destination is the mandate payee near:probarion-payee.testnet"
+          },
+          {
+            "id": "invoice.amount_invalid",
+            "outcome": "pass",
+            "detail": "amount 2000000"
+          },
+          {
+            "id": "mandate.over_per_payment",
+            "outcome": "pass",
+            "detail": "amount 2000000 vs per-payment cap 5000000"
+          },
+          {
+            "id": "mandate.uses_exhausted",
+            "outcome": "pass",
+            "detail": "0 of 5 uses consumed"
+          },
+          {
+            "id": "mandate.over_total",
+            "outcome": "pass",
+            "detail": "spent + reserved + amount = 2000000 vs total cap 20000000"
+          },
+          {
+            "id": "invoice.duplicate",
+            "outcome": "pass",
+            "detail": "invoice and ref are unused"
+          },
+          {
+            "id": "vault.daily_backstop",
+            "outcome": "pass",
+            "detail": "today 2000000 of backstop 500000000"
+          },
+          {
+            "id": "intents.balance_low",
+            "outcome": "pass",
+            "detail": "not an Intents payee"
+          },
+          {
+            "id": "custom.owner_confirmed",
+            "outcome": "pass",
+            "detail": "owner 35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b signed it (NEP-413, recipient probarion.xyz/payables/confirm) | key ed25519:4Zu6sqAxL8ATXq18df1aMZCdcv1TtLzNJyAAjQXge64J, FullAccess at final block 276915992 8aceRZeBsVZ4URvpRotyhWMXdpAUzcKCeAm8oSu2ZEGG | nonce 396d0fa8e0a1f32a29de7ba1b18654fa9d967861dfa67aa00663018eb70e79ba | message sha256 3628f8f533644f2580bd097977bce1949766022de5bd3af76aa2b209eac27e10 | signature 3m+DGBeKVa4bALAZJcdWS0hmpBUAXnOVVo3478DYL+uIhGfczzxnt2DHQFvGrkh9pB0zFXMl4VZ5mqjD8YGCDw== | message: Probarion confirm v1 | pay 2.000000 USDC (2000000 base units) to near:probarion-payee.testnet | vault demo.vaults.probarion.testnet (testnet) | owner 35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b | mandate 1 | invoice f7f5255c-da2a-4929-91c9-7e66dd792ccd | sha256 1de7c11a31f2fe1f24dc950ae419ee045b3ceeedc3cf2f5110f61910644476c1 | nonce 396d0fa8e0a1f32a29de7ba1b18654fa9d967861dfa67aa00663018eb70e79ba | expires 2026-11-09T11:52:18Z"
+          }
+        ],
+        "verdict": "allow",
+        "decided_by": "rules-only",
+        "contract": null,
+        "settlement": null,
+        "refs": null
+      },
+      "body_hash": "48f645ac947aec67481156fcef5f41dd944ea02be82c05b17ed6f3ea02d0b533",
+      "sig": "ed25519:2ZEXafAKXqQo8ZBVn892QaygSjUc7MKQ4ZfKKDnudFnZVAEfjERaVV31GZvAnWxb1LKkD7fXrD1zP6GDj5pHeBU",
+      "signer": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN",
+      "link": "b53eb02eb0c79d32a51c9a40d27ab01465ec7b6d19b438dd2e784098a4ef5968"
+    },
+    {
+      "body": {
+        "v": 1,
+        "vault": "demo.vaults.probarion.testnet",
+        "seq": 2,
+        "prev_link": "b53eb02eb0c79d32a51c9a40d27ab01465ec7b6d19b438dd2e784098a4ef5968",
+        "kind": "payment",
+        "at": "2026-11-09T11:47:33.512Z",
+        "request_id": "f990751d-b0ab-4825-862a-dc6a57cd1557",
+        "mandate_id": 1,
+        "invoice_hash": "1de7c11a31f2fe1f24dc950ae419ee045b3ceeedc3cf2f5110f61910644476c1",
+        "amount": "2000000",
+        "proposal": null,
+        "evidence": null,
+        "rules": [],
+        "verdict": null,
+        "decided_by": null,
+        "contract": {
+          "code": null,
+          "tx_hash": "HFyW61UZXfwpqhgqWq9bXnRXaYiEnpk4WPUHDAEydQp1",
+          "spend_id": 1,
+          "status": "paid"
+        },
+        "settlement": null,
+        "refs": {
+          "decision_body_hash": "48f645ac947aec67481156fcef5f41dd944ea02be82c05b17ed6f3ea02d0b533"
+        }
+      },
+      "body_hash": "f068e0843b1363f31c17bdbbabe4307491cae8bb47be9fca3834fd7705750ad2",
+      "sig": "ed25519:5zi8B9i1eds5Fv6XLSdnBHUYBTJrVncG9sQmDgiANNijvkLixjMCLrMEjz6oEp2rjAJ3mYVCZrJBHcbf48xsMvtY",
+      "signer": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN",
+      "link": "c30b9ed79ba934c33cf8f6d097e3226feefbbc3d3becb56576b6a08fa2ba5704"
+    },
+    {
+      "body": {
+        "v": 1,
+        "vault": "demo.vaults.probarion.testnet",
+        "seq": 3,
+        "prev_link": "c30b9ed79ba934c33cf8f6d097e3226feefbbc3d3becb56576b6a08fa2ba5704",
+        "kind": "decision",
+        "at": "2026-11-09T11:49:20.271Z",
+        "request_id": "2d8a6ff9-5dd8-4869-a103-cd629e6620c6",
+        "mandate_id": 1,
+        "invoice_hash": "1b239f1818388735b42c02f047e02b76136088e8eb1953953a39284911e17b92",
+        "amount": "2000000",
+        "proposal": null,
+        "evidence": null,
+        "rules": [
+          {
+            "id": "vault.frozen",
+            "outcome": "pass",
+            "detail": "vault is not frozen"
+          },
+          {
+            "id": "mandate.none",
+            "outcome": "pass",
+            "detail": "mandate 1 selected by purpose_hash"
+          },
+          {
+            "id": "mandate.inactive",
+            "outcome": "pass",
+            "detail": "mandate 1 is not revoked (status active)"
+          },
+          {
+            "id": "mandate.expired",
+            "outcome": "pass",
+            "detail": "expires at 1796860799000000000 ns"
+          },
+          {
+            "id": "mandate.agent_mismatch",
+            "outcome": "pass",
+            "detail": "agent key matches the mandate"
+          },
+          {
+            "id": "invoice.po_mismatch",
+            "outcome": "pass",
+            "detail": "purpose matches mandate 1"
+          },
+          {
+            "id": "mandate.payee_mismatch",
+            "outcome": "refuse",
+            "detail": "invoice names NEAR account new-account.testnet; the mandate pays probarion-payee.testnet"
+          },
+          {
+            "id": "invoice.amount_invalid",
+            "outcome": "pass",
+            "detail": "amount 2000000"
+          },
+          {
+            "id": "mandate.over_per_payment",
+            "outcome": "pass",
+            "detail": "amount 2000000 vs per-payment cap 5000000"
+          },
+          {
+            "id": "mandate.uses_exhausted",
+            "outcome": "pass",
+            "detail": "1 of 5 uses consumed"
+          },
+          {
+            "id": "mandate.over_total",
+            "outcome": "pass",
+            "detail": "spent + reserved + amount = 4000000 vs total cap 20000000"
+          },
+          {
+            "id": "invoice.duplicate",
+            "outcome": "pass",
+            "detail": "invoice and ref are unused"
+          },
+          {
+            "id": "vault.daily_backstop",
+            "outcome": "pass",
+            "detail": "today 4000000 of backstop 500000000"
+          },
+          {
+            "id": "intents.balance_low",
+            "outcome": "pass",
+            "detail": "not an Intents payee"
+          },
+          {
+            "id": "custom.owner_confirms_without_model",
+            "outcome": "hold",
+            "detail": "no model read this invoice: nothing is sent; the owner confirms the amount"
+          }
+        ],
+        "verdict": "refuse",
+        "decided_by": "rules-only",
+        "contract": null,
+        "settlement": null,
+        "refs": null
+      },
+      "body_hash": "5093d6ab22d9056ad3508116c954801a4d4c0e8d633f50346052787b8092952e",
+      "sig": "ed25519:2CYMMbvAzrThtessyNZnqP1ipYygMi82fzLpoKCnjmF2apq7mgW2VAxgmuAszRcKKrwVWzsTh8b9H2bxeFPVE3Yr",
+      "signer": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN",
+      "link": "168e9101170ac4c9dcafcf299f3a0c6cb179e64b85a0c818d2f1480ef65e3cb0"
+    },
+    {
+      "body": {
+        "v": 1,
+        "vault": "demo.vaults.probarion.testnet",
+        "seq": 4,
+        "prev_link": "168e9101170ac4c9dcafcf299f3a0c6cb179e64b85a0c818d2f1480ef65e3cb0",
+        "kind": "decision",
+        "at": "2026-11-09T11:50:36.176Z",
+        "request_id": "1f766d09-cbab-4018-a9ad-509ed408d063",
+        "mandate_id": 1,
+        "invoice_hash": "cda476164618dfcc2ef19647f8af40d51fd4cd5fc4465ed68926c7e8f6a57128",
+        "amount": "4000000",
+        "proposal": null,
+        "evidence": null,
+        "rules": [
+          {
+            "id": "vault.frozen",
+            "outcome": "pass",
+            "detail": "vault is not frozen"
+          },
+          {
+            "id": "mandate.none",
+            "outcome": "pass",
+            "detail": "mandate 1 selected by purpose_hash"
+          },
+          {
+            "id": "mandate.inactive",
+            "outcome": "pass",
+            "detail": "mandate 1 is not revoked (status active)"
+          },
+          {
+            "id": "mandate.expired",
+            "outcome": "pass",
+            "detail": "expires at 1796860799000000000 ns"
+          },
+          {
+            "id": "mandate.agent_mismatch",
+            "outcome": "pass",
+            "detail": "agent key matches the mandate"
+          },
+          {
+            "id": "invoice.po_mismatch",
+            "outcome": "pass",
+            "detail": "purpose matches mandate 1"
+          },
+          {
+            "id": "mandate.payee_mismatch",
+            "outcome": "pass",
+            "detail": "destination is the mandate payee near:probarion-payee.testnet"
+          },
+          {
+            "id": "invoice.amount_invalid",
+            "outcome": "pass",
+            "detail": "amount 4000000"
+          },
+          {
+            "id": "mandate.over_per_payment",
+            "outcome": "pass",
+            "detail": "amount 4000000 vs per-payment cap 5000000"
+          },
+          {
+            "id": "mandate.uses_exhausted",
+            "outcome": "pass",
+            "detail": "1 of 5 uses consumed"
+          },
+          {
+            "id": "mandate.over_total",
+            "outcome": "pass",
+            "detail": "spent + reserved + amount = 6000000 vs total cap 20000000"
+          },
+          {
+            "id": "invoice.duplicate",
+            "outcome": "pass",
+            "detail": "invoice and ref are unused"
+          },
+          {
+            "id": "vault.daily_backstop",
+            "outcome": "pass",
+            "detail": "today 6000000 of backstop 500000000"
+          },
+          {
+            "id": "intents.balance_low",
+            "outcome": "pass",
+            "detail": "not an Intents payee"
+          },
+          {
+            "id": "custom.owner_confirms_without_model",
+            "outcome": "refuse",
+            "detail": "no model read this invoice: nothing is sent; the owner confirms the amount (above the approval threshold, a hold would send it for approval)"
+          }
+        ],
+        "verdict": "refuse",
+        "decided_by": "rules-only",
+        "contract": null,
+        "settlement": null,
+        "refs": null
+      },
+      "body_hash": "bdf1fdfd2b4dff4079258648cddeb3d6894efdddca7595f8b6bb9d0cb4b4a852",
+      "sig": "ed25519:5LP4yUhbp9UhDs8jbexCkn6sccxqkuAtfDb8c7drbia3X7xvKMbvYpdy4ejonpAbQjAbgMsKhThw9BH3Lq9HbyBN",
+      "signer": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN",
+      "link": "e351b481ad6a05ce7032c18d2806c401d6926cdea192a767419ba865be11f07a"
+    },
+    {
+      "body": {
+        "v": 1,
+        "vault": "demo.vaults.probarion.testnet",
+        "seq": 5,
+        "prev_link": "e351b481ad6a05ce7032c18d2806c401d6926cdea192a767419ba865be11f07a",
+        "kind": "decision",
+        "at": "2026-11-09T11:53:32.867Z",
+        "request_id": "9892252e-2bf8-49c3-ba57-04227caeedbb",
+        "mandate_id": 1,
+        "invoice_hash": "cda476164618dfcc2ef19647f8af40d51fd4cd5fc4465ed68926c7e8f6a57128",
+        "amount": "4000000",
+        "proposal": null,
+        "evidence": null,
+        "rules": [
+          {
+            "id": "vault.frozen",
+            "outcome": "pass",
+            "detail": "vault is not frozen"
+          },
+          {
+            "id": "mandate.none",
+            "outcome": "pass",
+            "detail": "mandate 1 selected by purpose_hash"
+          },
+          {
+            "id": "mandate.inactive",
+            "outcome": "pass",
+            "detail": "mandate 1 is not revoked (status active)"
+          },
+          {
+            "id": "mandate.expired",
+            "outcome": "pass",
+            "detail": "expires at 1796860799000000000 ns"
+          },
+          {
+            "id": "mandate.agent_mismatch",
+            "outcome": "pass",
+            "detail": "agent key matches the mandate"
+          },
+          {
+            "id": "invoice.po_mismatch",
+            "outcome": "pass",
+            "detail": "purpose matches mandate 1"
+          },
+          {
+            "id": "mandate.payee_mismatch",
+            "outcome": "pass",
+            "detail": "destination is the mandate payee near:probarion-payee.testnet"
+          },
+          {
+            "id": "invoice.amount_invalid",
+            "outcome": "pass",
+            "detail": "amount 4000000"
+          },
+          {
+            "id": "mandate.over_per_payment",
+            "outcome": "pass",
+            "detail": "amount 4000000 vs per-payment cap 5000000"
+          },
+          {
+            "id": "mandate.uses_exhausted",
+            "outcome": "pass",
+            "detail": "1 of 5 uses consumed"
+          },
+          {
+            "id": "mandate.over_total",
+            "outcome": "pass",
+            "detail": "spent + reserved + amount = 6000000 vs total cap 20000000"
+          },
+          {
+            "id": "invoice.duplicate",
+            "outcome": "pass",
+            "detail": "invoice and ref are unused"
+          },
+          {
+            "id": "vault.daily_backstop",
+            "outcome": "pass",
+            "detail": "today 6000000 of backstop 500000000"
+          },
+          {
+            "id": "intents.balance_low",
+            "outcome": "pass",
+            "detail": "not an Intents payee"
+          },
+          {
+            "id": "custom.owner_confirmed",
+            "outcome": "pass",
+            "detail": "owner 35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b signed it (NEP-413, recipient probarion.xyz/payables/confirm) | key ed25519:4Zu6sqAxL8ATXq18df1aMZCdcv1TtLzNJyAAjQXge64J, FullAccess at final block 276916596 5ccLfARppyZTXFckgTWJKgebpTZivqGvgN4qnNDt5w3G | nonce 56d553ee23e7380ceaacd129dbaa02cf81de010aa8fe9a977a4b0d0992e4cfb5 | message sha256 563d5bc735434f262471f10c7132ff0950db05f7e495bf668bae3b1cfa9580c0 | signature gtua6/izljLJzWSRK9POw8Ebo52zB0gnO8BZgBCK1w/ujksg6jJwq8eBHP6tMpg09y1zwnY78GVOGg2+Q3+oAA== | message: Probarion confirm v1 | pay 4.000000 USDC (4000000 base units) to near:probarion-payee.testnet | vault demo.vaults.probarion.testnet (testnet) | owner 35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b | mandate 1 | invoice e1a99c0d-297a-4770-93db-c054b5111e19 | sha256 cda476164618dfcc2ef19647f8af40d51fd4cd5fc4465ed68926c7e8f6a57128 | nonce 56d553ee23e7380ceaacd129dbaa02cf81de010aa8fe9a977a4b0d0992e4cfb5 | expires 2026-11-09T11:56:52Z"
+          }
+        ],
+        "verdict": "allow",
+        "decided_by": "rules-only",
+        "contract": null,
+        "settlement": null,
+        "refs": null
+      },
+      "body_hash": "efb3799f94e7f4292829f55eaf0242a2accc7533deeb2858042f3a45bc90366d",
+      "sig": "ed25519:4ut1VJP5dG4XfwrrgocsaSrhSyDKufMQVX7p1DSSqPqh4Hw1GpfUz3FgLdwwXEgSxC6LLS1EcVqH3urZ8RixFPAb",
+      "signer": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN",
+      "link": "02f66b474d5baac2dd48f3d347f752fc7b33d67ef81e694740a3c1e9030e80e5"
+    },
+    {
+      "body": {
+        "v": 1,
+        "vault": "demo.vaults.probarion.testnet",
+        "seq": 6,
+        "prev_link": "02f66b474d5baac2dd48f3d347f752fc7b33d67ef81e694740a3c1e9030e80e5",
+        "kind": "payment",
+        "at": "2026-11-09T11:53:37.301Z",
+        "request_id": "9892252e-2bf8-49c3-ba57-04227caeedbb",
+        "mandate_id": 1,
+        "invoice_hash": "cda476164618dfcc2ef19647f8af40d51fd4cd5fc4465ed68926c7e8f6a57128",
+        "amount": "4000000",
+        "proposal": null,
+        "evidence": null,
+        "rules": [],
+        "verdict": null,
+        "decided_by": null,
+        "contract": {
+          "code": null,
+          "tx_hash": "6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb",
+          "spend_id": 2,
+          "status": "held"
+        },
+        "settlement": null,
+        "refs": {
+          "decision_body_hash": "efb3799f94e7f4292829f55eaf0242a2accc7533deeb2858042f3a45bc90366d"
+        }
+      },
+      "body_hash": "1d184b286269b561ca895801a2c0d7b0d16c114945179017ff05699af89c62c9",
+      "sig": "ed25519:43yVP4vpKK54CB4LXeXjuptCKhbrXvefDfMgMLDzky7FVkjtbNhirL7CUT2XYLW8G4JCaPq77JAU7K9YKiar1pBt",
+      "signer": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN",
+      "link": "e923e0acedb220d0e94f943012814dd355968959f9d08d609996085061adf31d"
+    }
+  ],
+  "chain": {
+    "access_keys": [
+      {
+        "public_key": "ed25519:7qyNHfvNm2jpiGUVkmLo9gLWhe3C2XehtzhnKcFvSSuA",
+        "permission": {
+          "receiver_id": "demo.vaults.probarion.testnet",
+          "method_names": [
+            "spend"
+          ],
+          "allowance": "998992529576132800000000"
+        }
+      },
+      {
+        "public_key": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN",
+        "permission": {
+          "receiver_id": "demo.vaults.probarion.testnet",
+          "method_names": [
+            "anchor"
+          ],
+          "allowance": "248963873380499700000000"
+        }
+      }
+    ],
+    "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+    "config": {
+      "owner": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+      "approvers": [
+        "probarion-approver.testnet"
+      ],
+      "usdc": "usdc.probarion.testnet",
+      "intents": "intents-stub.probarion.testnet",
+      "allowed_assets": [
+        "base-usdc.probarion.testnet",
+        "sol-usdc.probarion.testnet"
+      ],
+      "daily_backstop": "500000000",
+      "held_ttl_ns": "259200000000000",
+      "frozen": false,
+      "factory": "vaults.probarion.testnet",
+      "version": "0.1.0",
+      "ledger_key": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN"
+    },
+    "anchors": [
+      {
+        "seq": 1,
+        "root": "c8321fad6c669fc399e5b9ad3f9d205c44000d3d999279fab973535af816e4d5",
+        "count": 1,
+        "at_ns": "1794224788512349072",
+        "ledger_key": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN"
+      },
+      {
+        "seq": 2,
+        "root": "c30b9ed79ba934c33cf8f6d097e3226feefbbc3d3becb56576b6a08fa2ba5704",
+        "count": 3,
+        "at_ns": "1794224856482671701",
+        "ledger_key": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN"
+      },
+      {
+        "seq": 3,
+        "root": "168e9101170ac4c9dcafcf299f3a0c6cb179e64b85a0c818d2f1480ef65e3cb0",
+        "count": 4,
+        "at_ns": "1794224962903019878",
+        "ledger_key": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN"
+      },
+      {
+        "seq": 4,
+        "root": "e351b481ad6a05ce7032c18d2806c401d6926cdea192a767419ba865be11f07a",
+        "count": 5,
+        "at_ns": "1794225039289488033",
+        "ledger_key": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN"
+      },
+      {
+        "seq": 5,
+        "root": "e923e0acedb220d0e94f943012814dd355968959f9d08d609996085061adf31d",
+        "count": 7,
+        "at_ns": "1794225220165576274",
+        "ledger_key": "ed25519:A5uLDeBHrSNB5nJQDmpzR3BHPhg4bN3YKQ6yhJwMh7vN"
+      }
+    ],
+    "spends": [
+      {
+        "id": 1,
+        "mandate_id": 1,
+        "amount": "2000000",
+        "invoice_hash": "1de7c11a31f2fe1f24dc950ae419ee045b3ceeedc3cf2f5110f61910644476c1",
+        "ref": "inv-1de7c11a31f2fe1f24dc950a",
+        "decision_hash": "48f645ac947aec67481156fcef5f41dd944ea02be82c05b17ed6f3ea02d0b533",
+        "agent_pk": "ed25519:7qyNHfvNm2jpiGUVkmLo9gLWhe3C2XehtzhnKcFvSSuA",
+        "destination": {
+          "type": "near",
+          "account_id": "probarion-payee.testnet"
+        },
+        "status": "paid",
+        "created_at_ns": "1794224849652614233",
+        "held_until_ns": null,
+        "memo": null
+      },
+      {
+        "id": 2,
+        "mandate_id": 1,
+        "amount": "4000000",
+        "invoice_hash": "cda476164618dfcc2ef19647f8af40d51fd4cd5fc4465ed68926c7e8f6a57128",
+        "ref": "inv-cda476164618dfcc2ef19647",
+        "decision_hash": "efb3799f94e7f4292829f55eaf0242a2accc7533deeb2858042f3a45bc90366d",
+        "agent_pk": "ed25519:7qyNHfvNm2jpiGUVkmLo9gLWhe3C2XehtzhnKcFvSSuA",
+        "destination": {
+          "type": "near",
+          "account_id": "probarion-payee.testnet"
+        },
+        "status": "paid",
+        "created_at_ns": "1794225214587415271",
+        "held_until_ns": "1794484414587415271",
+        "memo": null
+      }
+    ],
+    "intents_public_keys": [],
+    "intents_predecessor_auth": true,
+    "factory_version": 1,
+    "factory_versions": [
+      {
+        "index": 1,
+        "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+        "mode": "embedded",
+        "notes": "vault 0.1.0 embedded (testnet)",
+        "at_ns": "1793895729563869289"
+      }
+    ],
+    "mandates": [
+      {
+        "id": 1,
+        "payee": {
+          "type": "near",
+          "account_id": "probarion-payee.testnet"
+        },
+        "purpose_hash": "30739be9a9186c8884c598e6f46ef54a7ebc14c401548f59b43b512b0496278d",
+        "max_per_payment": "5000000",
+        "max_total": "20000000",
+        "spent": "6000000",
+        "reserved": "0",
+        "max_uses": 5,
+        "uses": 2,
+        "expires_at_ns": "1796860799000000000",
+        "approval_above": "3000000",
+        "agent_pk": "ed25519:7qyNHfvNm2jpiGUVkmLo9gLWhe3C2XehtzhnKcFvSSuA",
+        "label": "Sample PO-1001",
+        "status": "active",
+        "created_at_ns": "1794224733397211931"
+      }
+    ],
+    "burns": []
+  },
+  "expected_code_hashes": [
+    "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
+    "54Ne1r9g2Smf2Qtrt9VznmPpEAAHzvK4hbQSJ9voQmuD",
+    "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1"
+  ],
+  "pre_ledger_decision_hashes": []
+}

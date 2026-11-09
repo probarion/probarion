@@ -48,7 +48,7 @@ Code: [`.github/workflows/release.yml`](https://github.com/probarion/probarion/b
 
 ### Test USDC on testnet
 
-The testnet faucet is Preview: it is built and tested, and its key is set on probarion.xyz, but its button has not yet been tried on the site with a real vault.
+The testnet faucet is Preview: it is built and tested, and its key is set on probarion.xyz. On 2026-11-09 its button minted 25 test USDC into the testnet demo vault, `demo.vaults.probarion.testnet`.
 
 On a testnet vault's Top-up tab (`/console/<vault>/topup`), signed in as the vault's owner, the "Add test USDC" button mints 25 test USDC into the vault, with no wallet: the Probarion team's key signs the mint, and that key can only mint the test token. It works once a UTC day per vault, and for up to 3 vaults per signed-in account a day. A cap of 50 mints a UTC day for all vaults together can also stop it until midnight UTC, and the button then answers "Today's test USDC for all vaults is given out." with the time to wait.
 
