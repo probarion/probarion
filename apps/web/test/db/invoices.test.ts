@@ -369,13 +369,11 @@ describe("invoice functions (migration 0006)", () => {
     const { id } = await insertInvoice(db, a, invoice({ invoiceNumberKey: num, fingerprint: fp }));
     await refuse(a, id, status, code);
     expect(
-      (await insertInvoice(db, a, invoice({ invoiceNumberKey: num }), { numberRule: true }))
-        .number_match ?? null,
-    ).toEqual(
-      blocks
-        ? { id, invoice_hash: expect.any(String), status: "decided", outcome_status: status }
-        : null,
-    );
+      await insertInvoice(db, a, invoice({ invoiceNumberKey: num }), { numberRule: true }),
+    ).toMatchObject({
+      duplicate: false,
+      number_match: blocks ? { id, status: "decided", outcome_status: status } : null,
+    });
     expect((await insertInvoice(db, a, invoice({ fingerprint: fp }))).duplicate).toBe(blocks);
   });
 
