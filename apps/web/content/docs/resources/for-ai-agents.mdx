@@ -1,0 +1,195 @@
+Every docs page is also served as plain Markdown, at its own path plus `.md`. At the site root, [`/llms.txt`](/llms.txt) lists every page and [`/llms-full.txt`](/llms-full.txt) holds them all, and both give the rules on this page right after a one-line summary. Only NEAR testnet is live, and the mainnet vault is Planned.
+
+## Read these docs as Markdown
+
+| URL | Content | Use it for |
+| --- | --- | --- |
+| `/docs/<section>/<page>.md` | One page as Markdown, such as [`/docs/concepts/payment-checks.md`](/docs/concepts/payment-checks.md) | Reading one page, or pasting it into a chat |
+| [`/docs.md`](/docs.md) | The docs home as Markdown | Starting from the overview and its links |
+| [`/llms.txt`](/llms.txt) | The summary and the rules, then one link per page to its Markdown twin, with the page's description | Picking the pages you need |
+| [`/llms-full.txt`](/llms-full.txt) | The summary and the rules, then every page as Markdown, in reading order | Loading all the docs in one request |
+
+These are generated when the site is built. [`/robots.txt`](/robots.txt) disallows only `/console` and `/api`, so a crawler that follows it may fetch every one of them.
+
+To get a page's twin, add `.md` to its path: `/docs/build/errors` becomes `/docs/build/errors.md`. A path that is not a docs page answers 404. A twin answers with these headers:
+
+```text
+Content-Type: text/markdown; charset=utf-8
+X-Robots-Tag: noindex
+```
+
+`noindex` asks search engines not to list the twin. The HTML page is the canonical one. On every page but the docs home, "Copy page" in the page head copies the same Markdown, and the ".md" link beside it opens the twin.
+
+### What a twin holds
+
+Each twin opens with the page's own fields, then the body:
+
+```text
+# <title>
+
+> <description>
+
+<lede>
+
+Status: <status> · Network: <network> · Reviewed: <YYYY-MM-DD> · Built from: <commit>
+
+Canonical page: <site origin>/docs/<section>/<page>
+
+<the page body as Markdown>
+```
+
+Status and Network appear only when the page has them. Reviewed is always there. Built from gives the full 40-character commit the docs were built from, and appears when the build knows it. The body is the page's source turned into plain Markdown:
+
+- A link to this site becomes absolute, and a link to a docs page points at that page's twin, with its anchor kept. A link to an anchor on the same page stays as written, and so does a link to another site.
+- A callout becomes a quote whose first line is its title in bold. A signing callout keeps its last line, such as "The owner signs this transaction. Probarion never signs it."
+- Code tabs become one code block per tab, each under its label in bold.
+- The generated tables, such as the error codes, the 14 spend checks and the status list, become Markdown tables. Each verifier check becomes a heading with what it proves and what it does not. The rules on this page become a numbered list.
+
+A twin names the day its page was reviewed and the commit the docs were built from. The build takes the commit from Vercel's `VERCEL_GIT_COMMIT_SHA`, else from `git rev-parse HEAD`. A build that knows neither leaves Built from out. The HTML page names both too: every page but the docs home has a box near its end, above the feedback links and the pager. The box reads "Built from", the short commit, then "reviewed" and the day, and links the files the page was checked against, at that commit. A build with no known commit reads "Built from a local build", and its file links point at `main`. The docs home's HTML page has no such box and shows neither the commit nor the review day. Its JSON-LD carries the review day as `dateModified`, as every docs page's JSON-LD does, and its twin names both.
+
+### Fetch one page
+
+```bash
+curl -s https://probarion.xyz/docs/concepts/payment-checks.md
+curl -s https://probarion.xyz/llms.txt
+```
+
+In Windows PowerShell 5.1, `curl` is an alias of `Invoke-WebRequest`, so type `curl.exe` instead.
+
+## The agent indexes
+
+Both files are served as `text/plain; charset=utf-8`. `/llms-full.txt` also sends `X-Robots-Tag: noindex`, so search engines list the pages and not this copy of them, while `/llms.txt` sends no robots header. Every link to a docs page is absolute, on the site's production address, and points at that page's twin. A link to another path on the site becomes absolute as it is. Links to other sites and to an anchor on the same page stay as written.
+
+### `/llms.txt`
+
+The index follows the llmstxt.org shape, with the rules placed after the summary:
+
+1. The title `# Probarion docs`, then the site's one-line summary as a quote.
+2. The line "Rules for agents reading these docs:", then the rules as a numbered list.
+3. `## Docs home`, with one link to `/docs.md`.
+4. One H2 for each docs section that has pages, under its sidebar label: today Start here, Concepts, Build, Verify and trust, and Resources. Each line links a page's twin, then gives a colon and the page's description.
+5. `## Optional`, with one link to `/llms-full.txt`.
+
+It starts like this:
+
+```text
+# Probarion docs
+
+> A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and the owner can publish the signed ledger for anyone to verify.
+
+Rules for agents reading these docs:
+
+1. Status words mean what they say. ...
+```
+
+### `/llms-full.txt`
+
+The title `# Probarion docs, full text`, the same summary and rules, then every page's twin in reading order: the docs home first, then each section. A `---` line separates each page from the next, and each page starts with its own `# <title>` line. When your context is short, read `/llms.txt` first and fetch only the twins you need.
+
+## Rules an agent follows
+
+<Callout kind="key">
+
+These rules sit right after the summary at the top of `/llms.txt` and `/llms-full.txt`. This page, its twin and both llms files print them from one constant, `AGENT_RULES` in `apps/web/src/lib/docs/agents.ts`, so every copy is the same text.
+
+</Callout>
+
+<AgentRules />
+
+### Where each rule is explained
+
+| Rule | Read |
+| --- | --- |
+| Status words | [What works today](/docs/start/what-works-today): the status list in Live, Preview and Planned |
+| Testnet only | [Testnet and mainnet](/docs/start/testnet-and-mainnet) |
+| The packages are on npm | [Install the packages](/docs/build/install) |
+| The agent key calls only `spend` | [The agent key](/docs/concepts/vaults-roles-and-keys#the-agent-key), and [who signs what](#who-signs-what) below |
+| No payee field | [What the agent sends](/docs/concepts/why-spend-has-no-payee#what-the-agent-sends) |
+| Never resend `unconfirmed` | [Unconfirmed](/docs/build/spend-outcomes#unconfirmed), and [below](#when-the-outcome-is-unconfirmed) |
+| `PROBARION:<Code>` | [Vault error codes](/docs/build/errors#vault-error-codes) |
+| The commit and the review day | [What a twin holds](#what-a-twin-holds): every twin names the review day and the commit, so `/llms-full.txt` names them page by page. Every HTML page but the docs home names both in its box, and the JSON-LD of every HTML page carries the review day. `/llms.txt` names neither. |
+| `AGENTS.md` | [For agents that build or review this repository](#for-agents-that-build-or-review-this-repository) |
+
+## For agents that pay
+
+An agent pays through the SDK, in its own process, with keys the vault owner has added to the vault. Install the SDK from npm as [Install the packages](/docs/build/install) shows, then follow [Let an agent pay](/docs/build/let-an-agent-pay). That loop is Preview: it has not yet run end to end with real wallets. Everything runs on NEAR testnet with test tokens.
+
+### Who signs what
+
+| Call | Signed by | With |
+| --- | --- | --- |
+| `spend` | The agent | The agent key: a function-call key the vault adds to its own account, allowed to call only `spend`. It attaches no deposit. |
+| `anchor` | The agent's server, through the SDK | The ledger key, allowed to call only `anchor`. It also signs every ledger entry. |
+| `approve`, `reject` | An approver | The approver's own wallet. Each call attaches exactly 1 yoctoNEAR. |
+| `freeze`, `unfreeze`, `withdraw`, `withdraw_intents`, `create_mandate`, `revoke_mandate`, `add_agent`, `remove_agent`, `set_ledger_key`, and `create_vault` on the factory | The owner | The owner's own wallet, or near-cli-rs |
+| `expire_held` | Anyone, once the hold has expired | Any account's own key, with near-cli-rs. It attaches no deposit. The CLI and the console have no command for it, and the agent key cannot call it, since that key may call only `spend`. See [release an expired hold](/docs/concepts/holds-and-approvals#release-an-expired-hold). |
+
+<Callout kind="owner-signs">
+
+An agent never signs an owner call and never asks for the owner's key. The CLI only prints each owner call, with its arguments in a file, for the owner to check and sign. `freeze` takes no deposit, `create_mandate` takes a storage deposit and refunds the excess, and the other owner calls on the vault attach exactly 1 yoctoNEAR, which a function-call key cannot attach. See [why most owner calls need exactly 1 yoctoNEAR](/docs/concepts/vaults-roles-and-keys#why-most-owner-calls-need-exactly-1-yoctonear).
+
+</Callout>
+
+<Callout kind="approver-signs">
+
+`approve` and `reject` decide a spend the vault holds. An approver signs each one in their own wallet. An agent never signs them and never asks for an approver's key. See [holds and approvals](/docs/concepts/holds-and-approvals).
+
+</Callout>
+
+### What the agent sends
+
+A spend request carries `mandate_id`, `amount`, `invoice_hash`, `ref` and `decision_hash`, and no payee. The vault pays the payee the mandate names, so an agent never puts an address in a spend. See [why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+The vault runs the 14 spend checks on every spend, in a fixed order. The first check that fails refuses the spend with `PROBARION:<Code>`, and the call changes nothing. See [how a payment is checked](/docs/concepts/payment-checks) and the [vault error codes](/docs/build/errors#vault-error-codes).
+
+With the SDK, each cycle of `process()` returns one `SpendOutcome` or throws: see [when process() throws](/docs/build/spend-outcomes#when-process-throws). [Spend outcomes](/docs/build/spend-outcomes) gives the seven statuses `process()` returns and what to do after each one.
+
+### Refs
+
+`ref` is your reference for one payment: 1 to 64 bytes of UTF-8 text. It is used up once the vault accepts a spend, whether it holds the spend or pays it, and it stays used even if the payout later fails, so a retry of that invoice needs a new ref. A spend the vault refuses reverts every change, so its ref stays free. See [refs and retries](/docs/build/let-an-agent-pay#refs-and-retries).
+
+### When the outcome is unconfirmed
+
+<Callout kind="warning" title="Never resend an unconfirmed spend.">
+
+`unconfirmed` means `spend` was sent and may have paid. Do not send it again, under the same ref or a new one.
+
+</Callout>
+
+Find the spend by its ref in the vault's spend list: `listAllSpends()` on a `VaultClient` reads the contract's `list_spends`. `probarion.spends.get(id)`, and `getSpend` on a `VaultClient`, take a spend id, not a ref, and the contract has no lookup by ref. Until the chain shows the spend, or 48 hours have passed, a cycle that writes to the same ledger refuses that invoice by code with `ledger.unresolved`, under any ref. The guard reads the cycle's payment entry. When the outcome also carries `ledgerComplete: false`, that entry was never written, so nothing guards the invoice: find the spend by its ref before you run any cycle for that invoice. This follows from the SDK's code; no test shows it yet. See [find a spend by its ref](/docs/build/spend-outcomes#find-a-spend-by-its-ref) and [the 48-hour guard](/docs/build/spend-outcomes#the-48-hour-guard).
+
+## For agents that build or review this repository
+
+[`AGENTS.md`](https://github.com/probarion/probarion/blob/main/AGENTS.md) is for AI agents and humans who build, verify or review the repository. It covers setup, `pnpm verify` (which needs no keys), the repo map, reproducible builds and the deployed contracts. It is not a rule book for an agent that pays: that agent follows the rules above. Its rules, verbatim:
+
+<CodeBlock title="AGENTS.md">
+
+```md
+## Rules for agents
+
+1. Never sign a transaction, create an account or deploy. Steps marked **OWNER** or **OWNER SIGNS** are for the human owner.
+2. Never commit secrets. `.env.example` lists every variable. Real values live in `.env`, which git ignores.
+3. Names, JSON shapes, error codes and constants come from `docs/specs/2026-10-21-probarion-interfaces.md`.
+4. Test first. `pnpm verify` stays green on every commit.
+```
+
+</CodeBlock>
+
+To check a vault's record without any key, see [Verify a vault](/docs/trust/verify-a-vault).
+
+## What is not here yet
+
+| Part | Status | Use instead |
+| --- | --- | --- |
+| [MCP server](/docs/start/what-works-today#mcp-server), `@probarion/mcp` | Planned | The SDK, in your agent's own process |
+| [Mainnet vault](/docs/start/what-works-today#mainnet-vault) | Planned | A vault on NEAR testnet, with test tokens |
+
+There is no public HTTP API for agents, and none is on the status list. The console's routes serve the console: its invoice upload, for one, takes only a same-origin request from a signed-in owner or approver of the vault. The HTTP codes on the errors page belong to the hosted app's routes, such as the console, sign-in and top-up, and none of them is an agent API: see [who calls these routes](/docs/build/errors#who-calls-these-routes).
+
+## Related pages
+
+- [Let an agent pay](/docs/build/let-an-agent-pay): the paying loop, from keys to outcomes.
+- [Spend outcomes](/docs/build/spend-outcomes): what each outcome means and what to do next.
+- [Errors](/docs/build/errors): every `PROBARION:` code, and the SDK and HTTP errors.
+- [Testnet and mainnet](/docs/start/testnet-and-mainnet): what differs between testnet and mainnet.
+- [What works today](/docs/start/what-works-today): the status list.

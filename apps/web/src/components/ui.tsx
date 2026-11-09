@@ -55,14 +55,17 @@ export const PANEL_TONES: Readonly<Record<PanelTone, { box: string; dot: string 
 export function ExternalLink({
   href,
   className,
+  title,
   children,
 }: {
   href: string;
   className?: string;
+  /** A Markdown link's title, kept as the tooltip. */
+  title?: string;
   children: ReactNode;
 }) {
   return (
-    <a className={className} href={href} target="_blank" rel="noreferrer">
+    <a className={className} href={href} title={title} target="_blank" rel="noreferrer">
       {children}
       <span className="sr-only"> (opens in a new tab)</span>
     </a>

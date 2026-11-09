@@ -21,8 +21,6 @@ export const LINKS = {
   runbook: blob("docs/RUNBOOK.md"),
   changelog: blob("CHANGELOG.md"),
   fixture: blob(FIXTURE_PATH),
-  sdkReadme: blob("packages/sdk/README.md"),
-  cliReadme: blob("packages/cli/README.md"),
   x: "https://x.com/probarionhq",
 } as const;
 
@@ -38,7 +36,10 @@ export const OG_IMAGE = {
   alt: "Probarion. Spend by mandate. Prove every payment. Mandates for AI agents on NEAR.",
 } as const;
 
-/** What the sitemap lists: the landing page, /proof and any public page as it gets built. The console is private. */
+/**
+ * The site's public pages: the landing page, /proof and the menus' built pages, not the console.
+ * The sitemap adds the docs pages from the registry (app/sitemap.ts).
+ */
 export function publicRoutes(): string[] {
   const nav = [...SITE_NAV, ...FOOTER_NAV].map(({ route }) => route);
   return [...new Set(["/", "/proof", ...nav])].filter(
@@ -59,6 +60,8 @@ export const HEADER_ANCHORS: readonly { href: string; label: string }[] = [
 
 export const PROOF_ROUTE = "/proof";
 export const CONSOLE_ROUTE = "/console";
+/** The landing's closing button: the docs tutorial that walks an evaluator through the product. */
+export const EVALUATE_ROUTE = "/docs/start/evaluate-in-5-minutes";
 
 /**
  * Planned pages the footer leaves out until they exist, because it already covers them some other way (for
@@ -67,13 +70,20 @@ export const CONSOLE_ROUTE = "/console";
 const COVERED_WHILE_PLANNED: readonly string[] = ["/security"];
 const listed = (items: readonly NavItem[]) =>
   items.filter(({ route }) => isBuilt(route) || !COVERED_WHILE_PLANNED.includes(route));
+/** FOOTER_NAV pages that the footer lists with the product pages, not with the legal ones. */
+const FOOTER_PRODUCT: readonly string[] = ["/usage"];
 
 export const FOOTER = {
   motto: "TEE protects the data. The contract protects the money.",
   note: "Unaudited beta. Use small amounts. Built for the NEAR Hackathon 2026. MIT license.",
   /** Internal links: SITE_NAV and FOOTER_NAV stay the source of the routes. */
-  product: listed(SITE_NAV),
-  legal: listed(FOOTER_NAV).filter(({ route }) => !SITE_NAV.some((i) => i.route === route)),
+  product: listed([
+    ...SITE_NAV,
+    ...FOOTER_NAV.filter(({ route }) => FOOTER_PRODUCT.includes(route)),
+  ]),
+  legal: listed(FOOTER_NAV).filter(
+    ({ route }) => !SITE_NAV.some((i) => i.route === route) && !FOOTER_PRODUCT.includes(route),
+  ),
   developers: [
     { href: LINKS.github, label: "GitHub" },
     { href: LINKS.interfaces, label: "Interfaces" },
@@ -525,19 +535,34 @@ export type StatusTone = "live" | "work" | "plan";
 export const STATUS = {
   title: "What works today, and what does not",
   rows: [
-    { row: "Vault contract", pill: "On testnet", tone: "live" },
-    { row: "Offline verifier, checks a to i", pill: "Shipped in source", tone: "live" },
-    { row: "Reproducible builds", pill: "Shipped", tone: "live" },
-    { row: "Vault factory", pill: "On testnet", tone: "live" },
-    { row: "Web console", pill: "In progress", tone: "work" },
-    { row: "Public proof page", pill: "Built, no public vault yet", tone: "work" },
-    { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
-    { row: "Payables agent", pill: "In progress", tone: "work" },
-    { row: "Live attested model run", pill: "In progress", tone: "work" },
-    { row: "Canary public challenge", pill: "Page built, not open yet", tone: "work" },
-    { row: "MCP server", pill: "Planned", tone: "plan" },
-    { row: "Mainnet vault", pill: "Planned", tone: "plan" },
-  ] as const satisfies readonly { row: string; pill: string; tone: StatusTone }[],
+    { id: "vault-contract", row: "Vault contract", pill: "On testnet", tone: "live" },
+    {
+      id: "offline-verifier",
+      row: "Offline verifier, checks a to i",
+      pill: "Shipped, on npm",
+      tone: "live",
+    },
+    { id: "reproducible-builds", row: "Reproducible builds", pill: "Shipped", tone: "live" },
+    { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
+    { id: "web-console", row: "Web console", pill: "In progress", tone: "work" },
+    {
+      id: "public-proof-page",
+      row: "Public proof page",
+      pill: "Built, no public vault yet",
+      tone: "work",
+    },
+    { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
+    { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
+    { id: "attested-model-run", row: "Live attested model run", pill: "In progress", tone: "work" },
+    {
+      id: "canary",
+      row: "Canary public challenge",
+      pill: "Page built, not open yet",
+      tone: "work",
+    },
+    { id: "mcp-server", row: "MCP server", pill: "Planned", tone: "plan" },
+    { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },
+  ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
   noteBefore: "No third party has audited this code. Read the ",
   noteLink: "threat model",
   noteAfter: ", including what `verify` does not prove yet.",
@@ -645,13 +670,13 @@ export const INTEGRATE = {
       title: "TypeScript SDK",
       body: "One call runs the cycle: code decides, the contract checks and pays, the ledger records it.",
       status: "TypeScript SDK and CLI",
-      link: { href: LINKS.sdkReadme, label: "SDK README" },
+      link: { route: "/docs/start/developer-quickstart", label: "Developer quickstart" },
     },
     {
       title: "CLI",
       body: "`verify` checks a vault or a snapshot. Other commands print owner actions for the owner's wallet to sign.",
       status: "TypeScript SDK and CLI",
-      link: { href: LINKS.cliReadme, label: "CLI README" },
+      link: { route: "/docs/build/install", label: "Install" },
     },
     {
       title: "Web console",
@@ -669,6 +694,8 @@ export const INTEGRATE = {
   fileName: "agent.ts",
   codeLabel: "@probarion/sdk",
   statusesLead: "`outcome.status` is one of:",
+  /** After the statuses: the docs page that says what each one means and what to do next. */
+  statusesLink: { route: "/docs/build/spend-outcomes", label: "What each status means" },
   statuses: [
     "refused_by_code",
     "refused_by_contract",

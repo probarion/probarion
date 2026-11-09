@@ -1,0 +1,147 @@
+Only NEAR testnet is live. Where a Live part runs on a chain, it runs on NEAR testnet with test tokens. Nothing runs on mainnet yet: the mainnet vault `v0.probarion.near` and the mainnet factory `vaults.probarion.near` are not deployed. [Testnet and mainnet](/docs/start/testnet-and-mainnet) says what differs between the two networks.
+
+## The status list
+
+<StatusTable />
+
+The Detail column is the landing page's own wording for each row. Each row's id is its anchor here. In the order of the rows, the ids are `vault-contract`, `offline-verifier`, `reproducible-builds`, `vault-factory`, `web-console`, `public-proof-page`, `sdk-and-cli`, `payables-agent`, `attested-model-run`, `canary`, `mcp-server` and `mainnet-vault`, so [`#mainnet-vault`](#mainnet-vault) links the last row.
+
+Under its list, the landing page adds one line about the contract build: "`v0.probarion.testnet` runs a build older than the current source; the vaults the testnet factory creates run the fixed build recorded in `contracts/code-hashes.json`." The vault source changed after `v0.probarion.testnet` was deployed, with a `set_ledger_key` fix on 2026-11-03. On the older build, replacing the ledger key could fail in a way that left the vault unable to anchor again. Every vault the testnet factory creates, the console's included, runs the fixed build. [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json) records the hash of each reproducible build, and [verify a vault](/docs/trust/verify-a-vault) shows how to run the verifier on a vault yourself.
+
+<Callout kind="note" title="Unaudited beta.">
+
+No third party has audited this code. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#what-is-not-proven-yet) lists what `verify` does not prove yet, and the [security model](/docs/trust/security-model) covers the rest.
+
+</Callout>
+
+## Also in the source
+
+The status list leaves these parts out, among others. Each one follows one row of the [README Status table](https://github.com/probarion/probarion/blob/main/README.md#status) and has its own section below, with the code it links.
+
+| Part | Status |
+| --- | --- |
+| [NEAR AI Cloud adapter](#near-ai-cloud-adapter) | Preview |
+| [npm release 0.1.0](#npm-release-010) | Live |
+| [Test USDC on testnet](#test-usdc-on-testnet) | Preview |
+| [Browser extension, server half](#browser-extension-server-half) | Preview |
+| [Browser extension for Chrome](#browser-extension-for-chrome) | Planned |
+| [Testnet and mainnet from one deployment](#testnet-and-mainnet-from-one-deployment) | Preview |
+| [Owner alerts by Telegram and email](#owner-alerts-by-telegram-and-email) | Preview |
+| [Watcher](#watcher) | Preview |
+| [Usage page](#usage-page) | Preview |
+| [Health checks and the status page](#health-checks-and-the-status-page) | Preview |
+| [Error reports to Sentry](#error-reports-to-sentry) | Preview |
+
+The README Status table also has rows that this page does not cover: the incident runbook, the threat model and the security contact, which are documents in the repository ([`docs/RUNBOOK.md`](https://github.com/probarion/probarion/blob/main/docs/RUNBOOK.md), [`docs/THREAT_MODEL.md`](https://github.com/probarion/probarion/blob/main/docs/THREAT_MODEL.md), [`SECURITY.md`](https://github.com/probarion/probarion/blob/main/SECURITY.md)); the [/security](/security), [/terms](/terms) and [/privacy](/privacy) pages, built and tested; and a browser smoke test of the built site ([`apps/web/e2e/smoke.spec.ts`](https://github.com/probarion/probarion/blob/main/apps/web/e2e/smoke.spec.ts)), which runs locally only and is not in CI.
+
+### NEAR AI Cloud adapter
+
+Preview. Built and tested against a fake NEAR AI Cloud. No real attested decision has been recorded and verified yet: that first run is the [attested model run](#attested-model-run) row above, and its status is Preview too.
+
+Code: [`packages/sdk/src/nearai.ts`](https://github.com/probarion/probarion/blob/main/packages/sdk/src/nearai.ts)
+
+### npm release 0.1.0
+
+Live. On 2026-11-09, release 0.1.0 of `@probarion/core`, `@probarion/sdk` and `probarion`, the CLI, was published to npm under the `latest` tag. It came from the tag `sdk-v0.1.0` on `main`, through the release workflow, with npm provenance (SLSA v1). [Install the packages](/docs/build/install) has the install lines, and the build from a clone that the evaluation uses.
+
+Code: [`.github/workflows/release.yml`](https://github.com/probarion/probarion/blob/main/.github/workflows/release.yml)
+
+### Test USDC on testnet
+
+The testnet faucet is Preview: it is built and tested, and its key is set on probarion.xyz, but its button has not yet been tried on the site with a real vault.
+
+On a testnet vault's Top-up tab (`/console/<vault>/topup`), signed in as the vault's owner, the "Add test USDC" button mints 25 test USDC into the vault, with no wallet: the Probarion team's key signs the mint, and that key can only mint the test token. It works once a UTC day per vault, and for up to 3 vaults per signed-in account a day. A cap of 50 mints a UTC day for all vaults together can also stop it until midnight UTC, and the button then answers "Today's test USDC for all vaults is given out." with the time to wait.
+
+An approver or a viewer who opens the tab sees no button, only "Only this vault's owner can top it up."
+
+Without a faucet key on the server, the tab shows instead: "Need test USDC? Send @probarionhq a direct message on X with your vault's name."
+
+Code: [`apps/web/src/lib/topup/faucet.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/topup/faucet.ts)
+
+### Browser extension, server half
+
+Preview. Built and tested. The signed-in `/extension` page connects a browser for one network, and `GET /api/ext/inbox` lets that connection read what waits for its account: invoices waiting for the owner, holds an approver can still approve, and the mandates an invoice can still be sent under. A connection cannot pay, approve or confirm.
+
+Code: [`apps/web/src/lib/ext`](https://github.com/probarion/probarion/tree/main/apps/web/src/lib/ext)
+
+### Browser extension for Chrome
+
+Planned. Not built. Nothing is in the Chrome Web Store.
+
+Code: none yet.
+
+### Testnet and mainnet from one deployment
+
+Preview. Built and tested. The address a request was opened at sets its network, and the console's invoice and top-up APIs answer `409 wrong_network` for a vault of the other network, except the testnet faucet, which answers `404 not_found` so that a vault id is never confirmed. Only the testnet address is live.
+
+Code: [`apps/web/src/lib/network.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/network.ts)
+
+### Owner alerts by Telegram and email
+
+Preview. Built and tested against a fake Telegram and a fake Resend. No real bot message or email has been sent yet. Each channel switches on by itself. Telegram needs `TELEGRAM_BOT_TOKEN` set and the bot's webhook registered by the setup script, since a chat links through that webhook. Email needs `RESEND_API_KEY` set and `probarion.xyz`, the domain the alerts are sent from, verified in Resend. The runbook [`docs/ops/alerts.md`](https://github.com/probarion/probarion/blob/main/docs/ops/alerts.md) has the setup.
+
+Code: [`apps/web/src/lib/alerts`](https://github.com/probarion/probarion/tree/main/apps/web/src/lib/alerts)
+
+### Watcher
+
+Preview. Built and tested against a fake chain. It records each vault's chain events for `/usage` and the alerts. It runs once a day on Vercel and right after an invoice upload or a Canary attempt. Its runbook [`docs/ops/watcher.md`](https://github.com/probarion/probarion/blob/main/docs/ops/watcher.md) also sets out a per-minute schedule through Supabase Cron, but those statements have not been run or tested yet.
+
+Code: [`apps/web/src/lib/watcher`](https://github.com/probarion/probarion/tree/main/apps/web/src/lib/watcher)
+
+### Usage page
+
+Preview. Built and tested. [/usage](/usage) shows counts, not dollar volumes, refreshed at most hourly while people view it and once a day by a job, for the network of the address it is opened at.
+
+Code: [`apps/web/src/app/usage`](https://github.com/probarion/probarion/tree/main/apps/web/src/app/usage)
+
+### Health checks and the status page
+
+Preview. Built and tested. [/status](/status) shows the health checks live for its network. The uptime monitors are not set up yet.
+
+Code: [`apps/web/src/lib/health.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/health.ts)
+
+### Error reports to Sentry
+
+Preview. Built and tested with the real SDK sending nothing. Off until `SENTRY_DSN` is set.
+
+Code: [`apps/web/src/lib/sentry-scrub.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/sentry-scrub.ts)
+
+## What does not exist
+
+None of these is on the status list as Planned. The README's known limitations, such as no Content-Security-Policy yet, and the threat model's [known gaps](https://github.com/probarion/probarion/blob/main/docs/THREAT_MODEL.md#known-gaps) list the rest.
+
+### Outbound webhooks
+
+The code has no webhook that calls a server of yours. Its one webhook is incoming: Telegram calls `/api/telegram/webhook` for the alert bot. To follow a vault yourself, index the NEP-297 events its contract logs (`EVENT_JSON:` lines with the standard `probarion`).
+
+### A public HTTP API for agents
+
+The console's invoice API answers only a signed-in owner or approver, on a same-origin request. An agent pays through the SDK, in its own process: [let an agent pay](/docs/build/let-an-agent-pay) shows how. The one agent interface planned is the [MCP server](#mcp-server).
+
+### Pricing
+
+There is no price list and no paid plan. The [terms](/terms) say "Probarion charges nothing for the console." Your wallet pays for the transactions you sign and for the storage deposits: when you create the vault, and for each mandate. The agent's spends and the ledger key's anchors burn gas from the vault's own NEAR, up to each key's allowance, so the vault needs some NEAR of its own. [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) explains the allowances.
+
+### A third-party audit
+
+No third party has audited this code, as the note under the status list says. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#reporting-a-vulnerability) says how to report a vulnerability.
+
+## How this list stays true
+
+The status list is `STATUS.rows` in [`apps/web/src/lib/site/facts.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/site/facts.ts), the module the landing page renders. The docs home and this page render the same rows and turn each row's tone into a docs word: `live` becomes Live, `work` becomes Preview and `plan` becomes Planned.
+
+Tests hold the list to the repository:
+
+- [`apps/web/test/site-facts.test.ts`](https://github.com/probarion/probarion/blob/main/apps/web/test/site-facts.test.ts) holds each row to the words of its README Status row, and pins the exact rows, ids and pills. A row cannot change unless that test changes with it.
+- [`apps/web/test/docs-reference.test.ts`](https://github.com/probarion/probarion/blob/main/apps/web/test/docs-reference.test.ts) checks that every row maps to Live, Preview or Planned and has a stable id, the anchor of its row on this page.
+- [`apps/web/test/docs-pages.test.ts`](https://github.com/probarion/probarion/blob/main/apps/web/test/docs-pages.test.ts) checks that this page renders the table.
+
+The sections under [also in the source](#also-in-the-source) and [what does not exist](#what-does-not-exist) are written by hand, so no test holds them to the README. Where the two differ, the README Status table and the code it links are the record.
+
+## Related pages
+
+- [What is Probarion](/docs/start/what-is-probarion): the parts, and who does what.
+- [Testnet and mainnet](/docs/start/testnet-and-mainnet): what differs between the two networks.
+- [Install](/docs/build/install): install the SDK and the CLI from npm, or build them from source.
+- [Verify a vault](/docs/trust/verify-a-vault): run the verifier on a vault yourself.
+- [Security model](/docs/trust/security-model): the security design in one page.

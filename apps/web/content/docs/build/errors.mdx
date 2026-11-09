@@ -1,0 +1,238 @@
+Probarion reports a problem in one of these layers, and each layer has its own codes:
+
+- **The vault contract** refuses a call with a panic whose message is exactly `PROBARION:<Code>`. The whole call reverts.
+- **The SDK** throws errors that extend `ProbarionError` and carry `.code`. What the vault or the node answered about a spend comes back in the outcome's `code` instead.
+- **The hosted app's HTTP routes** answer with an HTTP status and a JSON body, `{ error, detail? }`.
+
+Every vault code and SDK error class has its own anchor, so you can link it, for example `/docs/build/errors#NoMandate`. Each HTTP row is anchored by its status and code, for example `/docs/build/errors#http-404-not_found`. The transaction failure codes and the unknown outcome codes are linked through their sections' anchors, [Transaction failures](/docs/build/errors#transaction-failures) and [Unknown outcomes](/docs/build/errors#unknown-outcomes). SDK rule ids such as `mandate.over_per_payment` are not errors. They are the reasons a decision gives, and they are on [Spend outcomes](/docs/build/spend-outcomes).
+
+## Where a code shows up
+
+The contract builds every refusal message in one place:
+
+<CodeBlock title="contracts/vault/src/errors.rs">
+
+```rust
+    pub fn message(self) -> String {
+        format!("PROBARION:{}", self.as_str())
+    }
+```
+
+</CodeBlock>
+
+On NEAR, a panic undoes every state change the call made. The failed transaction stays on chain, and the code reaches you in one of these forms:
+
+| Where | What you see |
+| --- | --- |
+| An explorer, near-cli-rs or an RPC transaction status | `Smart contract panicked: PROBARION:<Code>` |
+| `process()` in the SDK | The status `refused_by_contract`, with the bare code in `code`, such as `DuplicateRef` when another spend took the ref after the SDK read the vault. `txHash` is null when the `check_spend` dry run refused, and the failed transaction's hash when `spend` itself panicked. |
+| `checkSpend()` in the SDK | `ok: false` and the bare code, with no `PROBARION:` prefix. |
+| A `ViewError` | `probarionCode`, when the view call panicked with a vault code. |
+| A `ContractError` | `vaultCode`, and the same value in `.code`, when a transaction the SDK sent was refused, for example by `VaultClient.anchor()`. |
+| `check` in the CLI | `REFUSED: PROBARION:<Code>` on the first line, and exit code 1. |
+
+The README's evaluation records this `checkSpend()` answer for 6 USDC on a mandate that allows at most 5 USDC per payment:
+
+```text
+6 USDC: { ok: false, code: 'OverPerPayment', would_hold: false }
+```
+
+<Callout kind="note" title="A message without PROBARION: is not a vault code">
+
+A failure message without the `PROBARION:` prefix did not come from the vault's own checks. It came from the NEAR node, from near-sdk, or from a contract the vault called, such as the USDC token or NEAR Intents. For a spend it sent, the SDK names those failures with its own codes, under [Transaction failures](/docs/build/errors#transaction-failures), and the near-sdk messages you may meet are under [Messages that are not Probarion codes](/docs/build/errors#messages-that-are-not-probarion-codes).
+
+</Callout>
+
+### Read a code in your own code
+
+The SDK exports these helpers for vault codes and for the out-of-NEAR codes:
+
+- `extractProbarionCode(value)` reads the first `PROBARION:<Code>` in a string, an error or a nested RPC failure. It returns the bare code when it is a vault code, else null, even when a vault code comes later.
+- `isVaultErrorCode(code)` is true only for a code in `VAULT_ERROR_CODES`.
+- `normalizeVaultCode(code)` strips a `PROBARION:` prefix and checks nothing else, so test its result with `isVaultErrorCode`.
+- `isOutOfNearCode(code)` is true for `LackBalanceForState` and `NotEnoughBalance`.
+
+<CodeBlock title="codes.mjs">
+
+```js
+import {
+  extractProbarionCode,
+  isOutOfNearCode,
+  isVaultErrorCode,
+  normalizeVaultCode,
+} from "./packages/sdk/dist/index.js";
+
+console.log(extractProbarionCode("Smart contract panicked: PROBARION:NoMandate")); // NoMandate
+console.log(extractProbarionCode("PROBARION:PayeeMismatch")); // null: not a vault code
+console.log(normalizeVaultCode("PROBARION:Frozen")); // Frozen
+console.log(isVaultErrorCode("LackBalanceForState")); // false
+console.log(isOutOfNearCode("LackBalanceForState")); // true
+```
+
+</CodeBlock>
+
+The comments give what `packages/sdk/src/errors.ts` and `packages/sdk/src/tx.ts` return for these inputs. Save the file in the root of a clone built as [Install](/docs/build/install) shows, and run `node codes.mjs` there.
+
+### The CLI
+
+`check` asks the vault's free `check_spend` view and prints its answer on the first line. A refusal looks like this, and the command exits 1:
+
+```text
+REFUSED: PROBARION:OverPerPayment
+```
+
+Any other failure of the CLI prints `error: <message>` on stderr and exits 1. `check` and `verify` exit 64 for a usage error, so a bad flag never looks like a refusal or a failed check.
+
+The CLI signs no owner or approver call. It checks the input, writes the arguments to a file and prints the near-cli-rs command. When the vault refuses that call, near-cli-rs shows `Smart contract panicked: PROBARION:<Code>`.
+
+## Vault error codes
+
+The table lists every code in `VAULT_ERROR_CODES` (`packages/core/src/types.ts`), in the contract's own order. The factory contract writes its refusals in the same format, with the same names.
+
+- **Raised by** names the methods that refuse with the code. "check n" is the n-th of the 14 spend checks that `spend` and `check_spend` run, in the order on [How a payment is checked](/docs/concepts/payment-checks). When two checks would fail, the first one is the answer.
+- **Retry helps** is Yes when the same call, sent again unchanged after a wait, is expected to pass. No means something has to change first, such as the request, the signer or a mandate.
+
+<ErrorCatalog kind="vault" />
+
+<Callout kind="owner-signs">
+
+Several next actions on this page are owner transactions: `create_mandate`, `unfreeze`, and `remove_agent` then `add_agent` for an agent key. The CLI prints them and signs nothing, and the owner signs them from their own wallet. `freeze` takes no deposit. Most other owner methods need exactly 1 yoctoNEAR. `create_mandate` takes a storage deposit and refunds the excess.
+
+</Callout>
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` and `reject` from their own wallet, with exactly 1 yoctoNEAR attached. The CLI's `spend approve` and `spend reject` print the transaction and sign nothing.
+
+</Callout>
+
+With `process()`, many of these codes never reach the vault. The SDK's `decide()` mirrors most spend checks and refuses first, as `refused_by_code` with a rule id. Then `process()` asks `check_spend` before it sends anything. [Spend outcomes](/docs/build/spend-outcomes) lists the seven statuses `process()` returns. The order, the limits and the counters behind each check are on [How a payment is checked](/docs/concepts/payment-checks) and [Mandates](/docs/concepts/mandates).
+
+### When the vault answers DuplicateRef or DuplicateInvoice
+
+A ref is used up once the vault accepts a spend, held or paid, and it stays used even if the payout fails. A refused spend reverts every change, so its ref stays free. An `invoice_hash` is taken only while a spend on it is held, pending, paid or burned.
+
+`process()` refuses a used ref and a taken invoice by code first, with `invoice.duplicate`, so the vault answers [`DuplicateRef`](/docs/build/errors#DuplicateRef) or [`DuplicateInvoice`](/docs/build/errors#DuplicateInvoice) only when a spend with that ref or invoice landed after the SDK read the vault.
+
+When the `check_spend` dry run answers the duplicate code, `process()` returns `refused_by_contract` with that code and `txHash` null at once, because nothing of this cycle was sent. When `spend` itself answers it, the spend that holds the ref or the invoice can be this cycle's own first copy, whose answer was lost. So for that answer the SDK does not report the code at once. It lists the vault's spends and looks for this decision's own spend, with the same ref, decision hash, invoice, mandate and amount:
+
+| What the SDK finds | The outcome |
+| --- | --- |
+| This decision's spend, paid, burned or held | That status, with the spend's id. |
+| This decision's spend, still pending | `unconfirmed`, with the code `pending`. |
+| This decision's spend, released as failed, rejected or expired | `failed`, with that status as the code. |
+| Another decision's spend holds the ref, or holds the invoice live | `refused_by_contract`, with the duplicate code. |
+| No spend holds it, or the list could not be read | `unconfirmed`, with the duplicate code. It may have paid. |
+
+A spend that may have paid is never reported as refused or failed. To look a spend up yourself, read the vault's spend list: `spends.get` takes a spend id, not a ref, and the contract has no lookup by ref. [Let an agent pay](/docs/build/let-an-agent-pay) shows the lookup.
+
+## SDK errors
+
+Every error class the SDK exports extends `ProbarionError`, so one `instanceof ProbarionError` catches them all, and `.code` names the case. A subclass can share its parent's `.code`, so test the class with `instanceof` when the difference matters.
+
+<ErrorCatalog kind="sdk" />
+
+### Thrown or returned
+
+`process()` returns an outcome, not an error, for everything the vault or the node answers about the spend: a refusal, a failed transaction and an unknown outcome are statuses. It throws when something is wrong before a spend can be sent:
+
+- `ConfigError`: the instance has no agent key or no ledger key, the agent key does not sign as the vault account, or the ledger key is not the vault's. It is also thrown when the agent's sender refuses the call as not set up: the decision entry is then written, and nothing is sent. The constructor throws it too for a model with no API key. Pass `model: null` to decide by code only.
+- `ProbarionError` with the code `InvalidInput`: an input it cannot use, for example a `facts.invoice_hash` that is not `hashInvoice(text)`, or a `facts.po_ref` that is neither null nor a verbatim part of the text. Nothing is written.
+- `RpcError` or `ViewError`: a read of the vault failed.
+- `LedgerConflictError`: another writer moved the ledger since this decision was made. No entry was written and no spend was sent, and the SDK never retries it by itself.
+- `LedgerError`: the ledger store failed.
+- `ProbarionError` with the code `Internal`: a failed internal consistency check, which you should report. Nothing is written and nothing is sent.
+
+Once `spend` is sent, `process()` does not throw: every answer becomes an outcome. That is inferred: it follows from the code, and no test shows it yet. These failures are not thrown at all:
+
+- A model step that fails is logged, and the cycle decides with the rules only.
+- A failed anchor is logged, and the outcome's `anchorTxHash` is null. The next cycle anchors the whole tail.
+- A payment entry that could not be written leaves the outcome as it is, with `ledgerComplete: false`.
+
+Called directly, `VaultClient.spend()` throws where `process()` returns an outcome: a `TxRejectedError` when the node refused the signed transaction for any reason except the vault's NEAR balance, a `ProbarionError` with the code `TxSendFailed` when nothing was sent, and a [`TxOutcomeUnknownError`](/docs/build/errors#TxOutcomeUnknownError) when the outcome is not known. A vault refusal, and a node refusal for `LackBalanceForState` or `NotEnoughBalance`, come back as a value, with `ok: false` and the code.
+
+## Transaction failures
+
+These codes are not vault codes. `process()` returns them in the outcome's `code`, with the status `failed`, when the spend did not run or its own receipt failed:
+
+| Code | What happened | What to do |
+| --- | --- | --- |
+| `TxSendFailed` | The SDK could not build or sign the transaction, so nothing was sent. This includes an agent key the vault account does not have: the SDK reads the key before it signs, and the message says the access key does not exist. | Fix what the message names, then run the cycle again. Sending again is safe. For a missing key, do what the `AccessKeyNotFound` row says. |
+| `NotEnoughAllowance` | The node refused the signed spend before it ran: the agent key's allowance is used up. | The owner removes the key and adds it again with a new allowance: `remove_agent`, then `add_agent`. |
+| `AccessKeyNotFound` | The node refused it: the agent key is not on the vault account. A missing key usually shows up as `TxSendFailed`. This code appears when the key goes away between the SDK's read of it and the send. | Have the owner add the key with `add_agent`. If the vault still lists it in `list_agents`, the owner first removes it with `remove_agent`, then adds it. |
+| `InvalidNonce` | The node kept refusing the key's nonce, through several fresh signatures. | Look for another process that signs with the same key, then run the cycle again. |
+| Another refusal kind | The node refused the transaction for another reason, which the code names. Nothing ran. | Read the message, fix the cause, then run the cycle again. |
+| `LackBalanceForState` | The chain refused the call: the vault account would fall below the NEAR its storage needs. | Top the vault up with a plain NEAR transfer. The SDK's message says each paid spend keeps about 0.0048 NEAR of storage. |
+| `NotEnoughBalance` | The vault holds less NEAR than the spend must prepay for gas. | Top the vault up with a plain NEAR transfer. The SDK's message puts the gas at about 0.02 NEAR for 200 Tgas. |
+| `TxFailed` | The spend's own receipt failed without a vault code, for example with `Exceeded the prepaid gas.` | Read the message, fix the cause, then run the cycle again. |
+
+The node refusals are the kinds of a `TxRejectedError`. In every row `spendId` is null: the vault did not accept the spend. For `TxSendFailed` and a node refusal nothing ran at all, so the ref is still free. For the out-of-NEAR codes and `TxFailed`, the chain refused the call or the spend's own receipt failed, and a failed receipt reverts like a refusal, so the ref stays free there too. That is inferred: it follows from the code, and no test shows it yet.
+
+How a missing agent key shows up is inferred too. The SDK reads the key from the vault account before it signs, so a key the account does not have fails there, as `TxSendFailed`, and `AccessKeyNotFound` needs the key to go away after that read. With `process()`, a key the vault does not list never gets that far: it is refused by code when no mandate names it, and else the `check_spend` dry run answers [`NotAgent`](/docs/build/errors#NotAgent). The missing key `process()` can meet is one the vault still lists, for example after its key-adding receipt failed.
+
+A `failed` outcome can also carry a spend status as its code, with `spendId` set. Then the vault accepted the spend and released it: the payout failed, or the spend the SDK found by ref was rejected or expired. Its ref is used up, so the same invoice needs a new ref.
+
+### Unknown outcomes
+
+These codes come with the status `unconfirmed`. The spend was sent, or may have been, and may have paid:
+
+| Code | What is not known |
+| --- | --- |
+| `TxOutcomeUnknown` | The spend was signed and sent, but the node's answer was lost, or a sender the SDK does not know failed in a way that may have sent it. |
+| `pending` | The vault accepted the spend, and its payout is still pending. |
+| `callback_failed` | The spend's receipt ran and a later receipt failed, or the result does not show which one failed. The payout may have gone out. |
+| `unreadable_value` | The transaction succeeded, but its return value is not a spend result. |
+| `DuplicateRef`, `DuplicateInvoice` | The vault answered with a duplicate code, and no spend holding the ref or the invoice was found, or the spend list could not be read. |
+
+<Callout kind="warning" title="Never send an unconfirmed spend again">
+
+Do not send it under a new ref either. Find the spend by its ref in the vault's spend list, or wait. Until the chain shows the spend, or for 48 hours (`UNKNOWN_SETTLE_MS`), the SDK refuses the same invoice by code with `ledger.unresolved`.
+
+</Callout>
+
+## HTTP API errors
+
+The hosted app's routes answer an error with a JSON body that is never cached:
+
+- the headers `content-type: application/json; charset=utf-8` and `cache-control: no-store`;
+- the body `{ "error": "<code>" }`, with a `"detail"` string when the route has more to say. A few rows add fields, which the table names.
+
+For example, a request the rate limiter refuses gets this body:
+
+```json
+{ "error": "rate_limited", "detail": "Try again in 12 s" }
+```
+
+A `429` from the shared rate limiter also sends a `Retry-After` header with the same number of seconds as its detail, `Try again in N s`. The faucet's daily limits answer `429` with a sentence of their own instead, and a `Retry-After` that runs to midnight UTC.
+
+### Who calls these routes
+
+The routes belong to the hosted app: its console, sign-in, top-up and proof files, among others. They are not an agent API.
+
+- The console routes need a signed-in wallet session.
+- The sign-in, sign-out, console, top-up and Canary routes that a page posts to check that the request comes from a page at the same address, and answer `403 bad_origin` otherwise. The alert links' confirm and stop routes do not check it: the code or token from the alert email is the credential.
+- In the console routes, a vault that does not exist gets the same `403 forbidden` as one you are not a member of, so a route never confirms a vault id. The faucet answers `404 not_found` instead, for these, for a member who is not the owner and for a vault registered on the other network.
+
+An agent pays from its own process, through the SDK. The CLI sends no spend: `check` only dry-runs one. See [Let an agent pay](/docs/build/let-an-agent-pay).
+
+On a testnet vault, test USDC comes from the faucet. Signed in as the vault's owner, open its Top-up tab (`/console/<vault>/topup`) and press the "Add test USDC" button. It mints 25 test USDC into the vault, and your wallet signs nothing: the team's mint-only key signs the mint. It works once a UTC day per vault, for up to 3 vaults per signed-in account a day. When the server has no faucet key, the tab shows instead: "Need test USDC? Send @probarionhq a direct message on X with your vault's name." The rows that name Top-up API (faucet) cover the faucet's own answers, such as `not_owner` and `mint_failed`. The faucet also answers [`503 not_configured`](/docs/build/errors#http-503-not_configured) when the server's faucet key does not parse or is not a mint-only key.
+
+<ErrorCatalog kind="http" />
+
+## Messages that are not Probarion codes
+
+| Message | Where it comes from | What it means |
+| --- | --- | --- |
+| `Method <name> is private` | near-sdk, on the vault's payout callbacks `on_transfer` and `on_withdraw`, and on the factory's callback `on_vault_created` | Only the contract itself may call its callbacks. Any other caller gets this message. |
+| `Method <name> doesn't accept deposit` | near-sdk, on `freeze`, `spend`, `anchor`, `expire_held`, the payout callbacks, the `new` init of the vault and the factory, and the factory's `on_vault_created` | These methods refuse any attached deposit. View methods have no such guard. For `spend` the node refuses first, because the agent's function-call key cannot attach a deposit. |
+| `PayeeMismatch` | The SDK's rule `mandate.payee_mismatch`, off chain | It is not a contract code. `spend` has no address field, so the vault has no payee to compare. The SDK refuses by code, as `refused_by_code`, when the invoice or the model names a payee that contradicts the mandate's. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee). |
+
+## Related pages
+
+- [How a payment is checked](/docs/concepts/payment-checks): the 14 spend checks, in the order that decides which code you get.
+- [Spend outcomes](/docs/build/spend-outcomes): the seven statuses `process()` returns, and the SDK's rule ids.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): the life of a held spend, behind `NotHeld`, `HoldExpired` and `HoldNotExpired`.
+- [Mandates](/docs/concepts/mandates): the limits behind the mandate codes.
+- [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys): who may call what, behind `NotOwner`, `NotApprover`, `NotAgent` and `NotLedgerKey`.
+- [Let an agent pay](/docs/build/let-an-agent-pay): the payment loop, refs and retries, and how to find a spend by its ref.
+- The sources: [`contracts/vault/src/errors.rs`](https://github.com/probarion/probarion/blob/main/contracts/vault/src/errors.rs), [`packages/sdk/src/errors.ts`](https://github.com/probarion/probarion/blob/main/packages/sdk/src/errors.ts) and [`apps/web/src/lib/http.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/http.ts).

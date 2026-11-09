@@ -1,0 +1,344 @@
+When a check fails, the vault refuses the spend: the call panics with `PROBARION:<Code>`, which stops it and undoes every change it made, so the vault is left as it was. A spend that passes is reserved first. Then its payout starts in the same call, or it is held for an approver. The vault's free `check_spend` view runs the same checks and sends nothing, so you can learn the answer before you spend.
+
+## The path of one spend
+
+<Flow>
+
+1. **Mandate** The owner signs the limits from their own wallet.
+2. **Spend** The agent's key calls `spend` on the vault.
+3. **14 checks** The first one that fails refuses the spend.
+4. **Hold or pay** Above `approval_above`, an approver decides. Otherwise the vault starts the payout at once.
+5. **Ledger** The SDK signs the decision before the spend and the outcome after it, and anchors its ledger on the vault.
+
+</Flow>
+
+The contract's `spend` method is steps 2 to 4:
+
+<CodeBlock title="contracts/vault/src/spend.rs">
+
+```rust
+    /// Agent key only: the vault itself signs (predecessor == vault) with a registered agent key.
+    pub fn spend(&mut self, request: SpendRequest) -> PromiseOrValue<SpendResult> {
+        if env::predecessor_account_id() != env::current_account_id() {
+            fail(ErrorCode::NotAgent)
+        }
+        let signer_pk = env::signer_account_pk();
+        let now = env::block_timestamp();
+        let approved = match self.evaluate(&request, &signer_pk, now) {
+            Ok(approved) => approved,
+            Err(code) => fail(code),
+        };
+        let spend_id = self.reserve(request, signer_pk, now, &approved);
+        if approved.hold {
+            return PromiseOrValue::Value(self.hold(spend_id));
+        }
+        PromiseOrValue::Promise(self.execute_payout(spend_id))
+    }
+```
+
+</CodeBlock>
+
+Before any check, `spend` refuses a call that does not come from the vault account itself. An agent key is a function-call key on the vault account that may call only `spend`, so a spend signed with it comes from the vault. A call from any other account, the owner's included, gets [`NotAgent`](/docs/build/errors#NotAgent) at once. Then `evaluate()` runs the 14 checks, `reserve()` books the spend, and the vault holds it or starts the payout.
+
+## What the agent can ask for
+
+The request names a mandate, an amount, the invoice, a ref and the decision behind it:
+
+<CodeBlock title="contracts/vault/src/types.rs">
+
+```rust
+pub struct SpendRequest {
+    pub mandate_id: u64,
+    pub amount: U128,
+    pub invoice_hash: String,
+    pub r#ref: String,
+    pub decision_hash: String,
+}
+```
+
+</CodeBlock>
+
+| Field | What the checks read |
+| --- | --- |
+| `mandate_id` | The mandate to spend under. Ids start at 1. An unknown id is `NoMandate`. The checks after it on revocation, expiry, the agent key, the per-payment cap, uses and the total read this mandate, and so does the hold. |
+| `amount` | A decimal string in USDC's smallest unit: `"5000000"` is 5 USDC. It is checked against zero, `max_per_payment`, `max_total` and the daily backstop, then compared with `approval_above` for the hold. |
+| `invoice_hash` | 64 lowercase hex: the sha256 of the invoice text, as the SDK's `hashInvoice()` computes it. It must not belong to a spend that is still held, pending, paid or burned (`DuplicateInvoice`). |
+| `ref` | 1 to 64 bytes, chosen by the caller. The vault accepts a ref once (`DuplicateRef`). |
+| `decision_hash` | 64 lowercase hex: the body hash of the decision entry in the ledger. The vault checks its shape, stores it with the spend and puts it in the `spend_submitted` event. |
+
+In the `invoice_hash` row, `pending` means the payout was sent and its callback has not come back yet, and [`burned`](/docs/resources/glossary#burned) means a payout to a Base or Solana payee left the vault through NEAR Intents, which burns the token on NEAR for delivery on that chain. A burned spend was paid out, not lost.
+
+The signing key is not a field. `spend` reads it from the transaction, and `check_spend` takes it as an argument.
+
+<Callout kind="key" title="There is no payee field">
+
+The agent says which mandate, how much and for which invoice. The vault reads the destination from the mandate the owner signed. A hijacked prompt has no field to put an address in. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+</Callout>
+
+## The 14 checks, in order
+
+`evaluate()` in `contracts/vault/src/checks.rs` runs these checks, and both `spend` and `check_spend` call it. When two checks would fail, the first one is the answer: a spend over the per-payment cap on a frozen vault gets `Frozen`. The contract's own tests pin the order, pair by pair.
+
+<SpendChecks />
+
+`NotAgent` can come from either place: from `spend` itself, when the call does not come from the vault account, or from check 1, when the signing key is not in the vault's list of agent keys. The 14 are the checks of `evaluate()` only.
+
+### The edges of each limit
+
+The amount limits are inclusive: a value equal to the limit passes. Expiry is not: a spend at exactly `expires_at_ns` is refused.
+
+| Check | Refuses when | Exactly at the limit |
+| --- | --- | --- |
+| `MandateExpired` | The block time is at or after `expires_at_ns`. | Refused. The mandate is valid until the instant it expires. |
+| `OverPerPayment` | The amount is above `max_per_payment`. | Passes. |
+| `UsesExhausted` | `uses` has reached `max_uses`. | The last use passes. |
+| `OverMandateTotal` | `spent` plus `reserved` plus the amount is above `max_total`. | Passes. |
+| `OverDailyBackstop` | The vault's total for the day plus the amount is above `daily_backstop`. | Passes. |
+
+The hold rule, which is not a check, is strict as well: only an amount above `approval_above` is held.
+
+### What the counters count
+
+- `uses` and `reserved` grow when the vault accepts a spend, before any payout. Held and in-flight spends count against `max_uses` and `max_total` before they settle. A failed, rejected or expired spend gives its use and its amount back.
+- The daily backstop is one counter for the whole vault, across all its mandates, for the UTC day of the block (`block_timestamp / DAY_NS`). Held, pending, paid and burned spends of that day count. It starts again at UTC midnight, and a spend released on the day it was counted gives its share back. On `v0.probarion.testnet` the backstop is 500 test USDC.
+- An `invoice_hash` is taken while a spend on it is held, pending, paid or burned. A failed, rejected or expired spend frees it for a retry.
+- A `ref` is taken once the vault accepts a spend with it, whether the spend is held or paid at once. It stays taken even if the payout fails or the hold is rejected or expires. A refused spend never takes its ref.
+
+### The source
+
+The checks as the contract runs them:
+
+<CodeBlock title="contracts/vault/src/checks.rs">
+
+```rust
+    /// Preconditions: the signer is an agent (`NotAgent`) and the request is well formed
+    /// (`InvalidInput`). Then, in order: frozen, mandate exists, active, not expired, agent
+    /// matches, amount > 0, <= per-payment, uses left, spent + reserved + amount <= total,
+    /// invoice unused, ref unused, daily backstop.
+    pub fn evaluate(
+        &self,
+        req: &SpendRequest,
+        signer_pk: &PublicKey,
+        now: u64,
+    ) -> Result<Approved, ErrorCode> {
+        if !self.is_agent(signer_pk) {
+            return Err(ErrorCode::NotAgent);
+        }
+        if !is_hex64(&req.invoice_hash) || !is_hex64(&req.decision_hash) || !is_ref(&req.r#ref) {
+            return Err(ErrorCode::InvalidInput);
+        }
+        if self.frozen {
+            return Err(ErrorCode::Frozen);
+        }
+        let mandate_idx = Self::position(req.mandate_id).ok_or(ErrorCode::NoMandate)?;
+        let m = self.mandates.get(mandate_idx).ok_or(ErrorCode::NoMandate)?;
+        if m.revoked {
+            return Err(ErrorCode::MandateInactive);
+        }
+        if now >= m.expires_at_ns {
+            return Err(ErrorCode::MandateExpired);
+        }
+        if m.agent_pk != *signer_pk {
+            return Err(ErrorCode::NotMandateAgent);
+        }
+        let amount = req.amount.0;
+        if amount == 0 {
+            return Err(ErrorCode::ZeroAmount);
+        }
+        if amount > m.max_per_payment {
+            return Err(ErrorCode::OverPerPayment);
+        }
+        if m.uses >= m.max_uses {
+            return Err(ErrorCode::UsesExhausted);
+        }
+        if m.spent.saturating_add(m.reserved).saturating_add(amount) > m.max_total {
+            return Err(ErrorCode::OverMandateTotal);
+        }
+        if self.invoices.contains_key(&req.invoice_hash) {
+            return Err(ErrorCode::DuplicateInvoice);
+        }
+        if self.refs.contains(&req.r#ref) {
+            return Err(ErrorCode::DuplicateRef);
+        }
+        let day = now / DAY_NS;
+        if self.day_total_on(day).saturating_add(amount) > self.daily_backstop {
+            return Err(ErrorCode::OverDailyBackstop);
+        }
+        Ok(Approved {
+            mandate_idx,
+            hold: amount > m.approval_above,
+            day,
+        })
+    }
+```
+
+</CodeBlock>
+
+## What a refusal does
+
+Every refusal goes through one helper, and its message is exactly `PROBARION:<Code>`:
+
+<CodeBlock title="contracts/vault/src/errors.rs">
+
+```rust
+/// Aborts the call with `PROBARION:<Code>`. All state changes of the call are reverted.
+pub fn fail(code: ErrorCode) -> ! {
+    env::panic_str(&code.message())
+}
+```
+
+</CodeBlock>
+
+On NEAR, a panic undoes every state change the call made. After a refused spend:
+
+- nothing is reserved, and the mandate's `uses`, `reserved` and `spent` are as they were;
+- the vault's total for the day is unchanged;
+- the vault has not recorded the `invoice_hash` or the `ref`, so both stay free;
+- no transfer was scheduled.
+
+The vault's property test, `contracts/vault/tests/invariants.rs`, runs random sequences of spends, approvals, rejections, expiries and callbacks. It asserts that `spend` refuses exactly when `check_spend` refuses, with the same code, and that a refused spend changes no state.
+
+The SDK reports a refusal as `refused_by_contract` with the bare code, such as `OverPerPayment`. Look each code up in [Errors](/docs/build/errors).
+
+<Callout kind="warning" title="A refusal costs nothing but gas">
+
+The call is reverted, nothing is reserved, and the ref can be used again. Fix what the code names and send the spend again.
+
+</Callout>
+
+An accepted spend is different. If its payout fails, if its hold is rejected, or if `expire_held` releases it after the hold expires, the vault gives back the amount, the use and the `invoice_hash`, but not the `ref`. A corrected retry needs a new ref. A hold whose time has passed gives nothing back by itself: it stays held, with its use, its reservation and its `invoice_hash`, until an approver rejects it or someone calls `expire_held`. `reject` has no time check, so an approver can still reject a hold after its time. That is inferred: it follows from the code, and no test pins it yet. Until the hold is released, a retry of the same invoice still gets `DuplicateInvoice`.
+
+## Paid now, or held for a person
+
+A spend that passes the 14 checks is reserved before anything is sent. `reserve()` adds the amount to the mandate's `reserved` and to the vault's total for the day, adds one to the mandate's `uses`, records the `invoice_hash` and the `ref`, and stores the spend under the next spend id. Then one comparison decides:
+
+| Amount | What happens |
+| --- | --- |
+| Above `approval_above` | Held. `spend` returns the status `held`, and nothing is paid out yet. The spend waits for an approver until its `held_until_ns`, 72 hours after the spend on `v0.probarion.testnet`. |
+| At or below `approval_above` | The payout starts in the same call. Its callback marks the spend `paid`, `burned` or `failed`. |
+
+A held spend needs one approver from the vault's list. That approver can approve it or reject it, and once the hold has expired anyone can call `expire_held` to release it. `approve` does not run the 14 checks again. It checks the approver and the 1 yoctoNEAR, that the vault is not frozen, that the spend is still held, that the hold has not expired and that the mandate is not revoked. Then it starts the payout. More on [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` or `reject` from their own wallet, with exactly 1 yoctoNEAR attached.
+
+</Callout>
+
+For a payout, the vault reads the payee from the mandate. A NEAR payee is paid with `ft_transfer` on the vault's USDC token. A Base or Solana payee is paid through NEAR Intents with `ft_withdraw` and the memo `WITHDRAW_TO:<address>`, which the vault builds from the mandate. On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+Whether the payout starts from `spend` or from `approve`, its callback marks the spend `paid`, `burned` or `failed`. A failed spend gives back the amount, the use and the `invoice_hash`, but not the ref. A payout to a NEAR payee fails, for example, when the vault holds less USDC than the amount: the 14 checks do not read its balance.
+
+<Callout kind="note" title="One refusal can come after the checks">
+
+Before it sends a payout to a Base or Solana payee, the vault checks that the mandate's asset is still in its allowed assets, and refuses with [`AssetNotAllowed`](/docs/build/errors#AssetNotAllowed) if not. This guard is not one of the 14, and `check_spend` does not run it. Like any refusal, it undoes the call that started the payout: `spend`, or `approve` for a held spend. `create_mandate` already refuses an asset outside the list, and no vault method changes the list after the vault is created. So this guard should never fire on a vault today. That is inferred: it follows from the code, and no test shows it yet.
+
+</Callout>
+
+## Try a spend without sending it
+
+`check_spend` is a view method: it costs nothing, needs no signature and changes no state. It runs the same `evaluate()` for the key you pass, at the current block's time:
+
+<CodeBlock title="contracts/vault/src/checks.rs">
+
+```rust
+    /// Free dry run of `spend` for `signer_pk`. No state change.
+    pub fn check_spend(&self, request: SpendRequest, signer_pk: PublicKey) -> Verdict {
+        match self.evaluate(&request, &signer_pk, env::block_timestamp()) {
+            Ok(approved) => Verdict {
+                ok: true,
+                code: None,
+                would_hold: approved.hold,
+            },
+            Err(code) => Verdict {
+                ok: false,
+                code: Some(code.as_str().to_string()),
+                would_hold: false,
+            },
+        }
+    }
+```
+
+</CodeBlock>
+
+It returns `{ ok, code, would_hold }`. The `code` is the bare name, such as `OverPerPayment` with no `PROBARION:` prefix, and `would_hold` is false on a refusal. It judges the key it is given, not the caller. It does not run the rule of `spend` about the calling account, or the payout's `AssetNotAllowed` guard.
+
+The answer holds for the block it was asked in. A spend sent later can get another answer if the vault changed in between: another spend took the last use or the ref, the mandate expired, or a new UTC day began.
+
+In a clone built the way [Install](/docs/build/install) shows, the CLI's `check` asks the vault for you. It hashes the invoice file the way the SDK does and passes a zero `decision_hash` to the view. With no `--agent-pk` and no `PROBARION_AGENT_KEY`, it checks as the agent key the mandate names. Nothing is signed or sent:
+
+```bash
+printf 'Invoice TRY-1 for 6 test USDC\n' > try-invoice.txt
+node packages/cli/dist/bin.js --network testnet check --vault v0.probarion.testnet --mandate 1 \
+  --amount 6 --invoice try-invoice.txt --ref TRY-1
+```
+
+Its first line is one of these, and the next lines name the key it checked as and the `invoice_hash`:
+
+```text
+OK: the vault would accept this spend.
+OK: the vault would accept this spend and hold it for an approver.
+REFUSED: PROBARION:<Code>
+```
+
+It exits 0 when the vault would accept the spend, 1 when the vault would refuse it or the check could not run, and 64 for a usage error.
+
+This example asks for 6 test USDC on a mandate that allows at most 5, so its first line is `REFUSED: PROBARION:OverPerPayment` and it exits 1. If `PROBARION_AGENT_KEY` holds a key that is not one of this vault's agent keys, the answer is `NotAgent` instead, because the CLI checks as that key. Unset it to check as the agent key the mandate names.
+
+The README's evaluation asks the same vault through the SDK's `checkSpend()`. Its recorded answers on mandate 1 for 2 and 6 USDC:
+
+```text
+2 USDC: { ok: true, code: null, would_hold: false }
+6 USDC: { ok: false, code: 'OverPerPayment', would_hold: false }
+```
+
+Mandate 1 was created by the vault's 2026-11-01 smoke run and expires 30 days later, on 2026-12-01, at the time of day of that run. After that, the CLI example and both SDK calls should answer `MandateExpired`, because expiry is checked before the per-payment cap. That is inferred: it follows from the code, and no test shows it on this vault yet. [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes) runs that step with no wallet.
+
+## Code checks first, the contract decides last
+
+In the SDK, `process()` runs `decide()` from `@probarion/core` before anything reaches the vault. If code refuses, `process()` returns `refused_by_code` and never asks the vault. The built-in rules that mirror the vault's checks run in the contract's order, with the contract's comparisons, so the first mirrored rule that refuses names the code `spend` would panic with: `vault.frozen` for `Frozen`, `mandate.none` for `NoMandate`, `vault.daily_backstop` for `OverDailyBackstop`. `NotAgent` has no mirror, because `decide()` takes the agent key as given.
+
+`decide()` also runs rules the contract cannot check. The purchase order (`invoice.po_mismatch`) and a payee named on the invoice (`mandate.payee_mismatch`) run between the mirrored rules, after the agent key's rule and before the amount rule. The Intents balance (`intents.balance_low`, which holds) and the model's proposal, when one passes its attestation checks, run after the last mirrored rule, `vault.daily_backstop`.
+
+Then `process()` asks `check_spend`, with the agent's key, before it sends `spend`:
+
+| `check_spend` says | What `process()` does |
+| --- | --- |
+| Refused | Returns `refused_by_contract` with the bare code and `txHash` null. Nothing was sent. |
+| Would pay at once, but code held the payment | Returns `held` with `spendId` null. Nothing was sent. |
+| Accepted | Sends `spend`, signed with the agent key. |
+
+No call releases a code hold, the `held` with `spendId` null. Change what caused the hold, then run the cycle again. If a sent `spend` panics anyway because the vault changed after the dry run, for example with `Frozen`, `process()` returns `refused_by_contract` with the failed transaction's hash.
+
+A `DuplicateRef` or `DuplicateInvoice` panic is the exception. The SDK looks the spend up by ref in the vault's spend list:
+
+- If a spend of another decision holds the ref or the invoice, the outcome is `refused_by_contract` with the hash.
+- If the spend is this decision's own, because an earlier copy of the transaction landed and its answer was lost, its status decides: `paid`, `burned` or `held` as it stands, `unconfirmed` while it is pending, and `failed` once the vault released it.
+- If no spend holds it in the list read, or the lookup fails, the outcome is `unconfirmed`. It may have paid, so never send it again.
+
+The low-level `requestSpend()` asks `check_spend` too, unless it is called with `skipPreflight: true`.
+
+The contract is the final word. Even if every line of off-chain code were wrong, the vault refuses a spend outside its mandate. What to do with each result is on [Spend outcomes](/docs/build/spend-outcomes), which lists the seven statuses `process()` returns.
+
+## Where to go next
+
+- [Why spend has no payee](/docs/concepts/why-spend-has-no-payee): how the destination stays out of the agent's hands.
+- [Mandates](/docs/concepts/mandates): every mandate field these checks read.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): what happens to a held spend.
+- [Ledger and anchors](/docs/concepts/ledger-and-anchors): how the SDK records each decision and outcome.
+- [Errors](/docs/build/errors): every vault code, and what to do about it.
+- [Let an agent pay](/docs/build/let-an-agent-pay): run the cycle from your own code.
+- [How one payment works](/docs/start/how-one-payment-works): the whole path, from mandate to record.
+- [Glossary](/docs/resources/glossary): the words this page uses.
+
+## What this does not do
+
+- The checks hold the agent to the mandate. They do not judge whether a payment inside it is wise.
+- The vault never sees the invoice, only its hash. It does not compare a spend with the purchase order: that rule runs off chain, in `decide()`.
+- The vault checks only the shape of `decision_hash`. Tying each spend to its decision is check d of the verifier, on [Verifier checks](/docs/trust/verifier-checks). Those checks a to i are a different list from these 14.
+- The checks do not read the vault's USDC balance. A spend the vault cannot cover passes them and is reserved, then its transfer fails: the callback marks it `failed` and gives back the amount, the use and the `invoice_hash`, but not the ref. See [Spend outcomes](/docs/build/spend-outcomes).
+- `check_spend` reserves nothing. A pass now does not keep the use, the amount or the ref for a later spend.
+- `approve` does not run the 14 checks again.
+- The daily backstop is one limit for the whole vault, not one per mandate or per agent key.
+- Only NEAR testnet is live. The mainnet vault is Planned.

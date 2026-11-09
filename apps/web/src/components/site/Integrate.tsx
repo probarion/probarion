@@ -72,6 +72,10 @@ export function Integrate() {
               <code>{x}</code>
             </span>
           ))}
+          .{" "}
+          <RouteLink route={INTEGRATE.statusesLink.route} className={s.link}>
+            {INTEGRATE.statusesLink.label}
+          </RouteLink>
         </p>
         <div className={s.who}>
           {INTEGRATE.who.map((w) => (

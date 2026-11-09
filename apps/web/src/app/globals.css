@@ -23,6 +23,10 @@
   --color-surface: #ffffff;
   --color-mute: #5f5c55;
   --color-line: #e2dfd6;
+  /* Docs: the soft fill under inline code and hovered links. */
+  --color-soft: #efede7;
+  /* Docs, on ink: the active code tab, a hovered Copy button, and inline code in a key callout. */
+  --color-code-active: #1f1e1b;
 
   /* Status: green passed or live, red failed, gold in progress, grey planned. */
   --color-ok: #17693f;

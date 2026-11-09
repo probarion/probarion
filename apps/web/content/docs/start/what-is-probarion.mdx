@@ -1,0 +1,110 @@
+An owner puts USDC in a vault, a NEAR contract of their own, and signs mandates from their own wallet: who gets paid, how much per payment and in total, how many times, until when, and above what amount a person must approve. The agent gets one key that can call `spend` and nothing else.
+
+Testnet today, mainnet planned. [Testnet and mainnet](/docs/start/testnet-and-mainnet) says what differs between the two.
+
+## The problem it solves
+
+Giving an AI agent a wallet means trusting a prompt with money. Probarion moves the rule into a NEAR contract.
+
+The limit sits on the money's path, not in a prompt or in the agent's own process. Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. A payment made through the SDK passes these layers, in this order:
+
+<Flow>
+
+1. **Model proposes** A private model on NEAR AI Cloud may advise. It is optional and cannot widen a mandate. Its first live attested run is in progress.
+2. **Code decides** `decide()` runs built-in rules that cannot be removed. The SDK signs the decision into the ledger before anything moves.
+3. **Contract enforces** The vault checks the spend against its mandate, then pays, holds it for an approver, or refuses.
+4. **Ledger records** The SDK signs every decision, refusals included, and the result of each spend it sends, each chained to the entry before it.
+5. **Anyone re-checks** Once the owner publishes the ledger, the verifier ties each spend to exactly one decision in it.
+
+</Flow>
+
+The ledger is kept by the SDK, not required by the contract. The vault checks only the form of a spend's decision hash, not that a ledger holds the decision, so a spend sent with the agent key alone has no decision in the ledger, and [verifier check d](/docs/trust/verifier-checks#check-d) fails on it. That is the case today on `v0.probarion.testnet`: its 2026-11-01 smoke run sent spends with no SDK and no ledger, so a live verify of that vault prints `RESULT: FAIL`.
+
+Some outcomes stay out of the ledger. A result entry that fails to write is skipped, and the outcome says `ledgerComplete: false`. An approver's later approve or reject, and the expiry of a hold, are recorded on chain, and no code writes them to the ledger. That last point is inferred: it follows from the code, and no test shows it yet.
+
+[How one payment works](/docs/start/how-one-payment-works) follows one payment through these steps.
+
+## The idea in four numbers
+
+| Number | What it counts |
+| --- | --- |
+| 0 | Full-access keys on the vault. A public RPC call shows it. |
+| 1 | Method the agent's key can call: `spend`. |
+| 0 | Recipient arguments on `spend`. The payee comes from the mandate. |
+| 9 | Checks anyone can run. Live, they read the chain. Offline, they check a snapshot, a saved file of a ledger and its chain data, against itself, so [take the snapshot yourself](/docs/trust/verify-a-vault#offline-is-not-live). |
+
+The 9 checks belong to the verifier, which reads the record afterwards. They are not the 14 checks the vault runs on every spend before it pays. [Payment checks](/docs/concepts/payment-checks) lists the 14, and [verifier checks](/docs/trust/verifier-checks) lists the 9.
+
+<Callout kind="key" title="The agent cannot name a payee.">
+
+A hijacked prompt can ask for anything. `spend` has no field to put an address in. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate. [Why spend has no payee](/docs/concepts/why-spend-has-no-payee) explains the design.
+
+</Callout>
+
+The request an agent sends, in full:
+
+<CodeBlock title="packages/core/src/types.ts">
+
+```ts
+export interface SpendRequest {
+  mandate_id: number;
+  amount: U128;
+  invoice_hash: string;
+  ref: string;
+  decision_hash: string;
+}
+```
+
+</CodeBlock>
+
+## The parts
+
+| Part | What it is | Status |
+| --- | --- | --- |
+| Mandates | The owner signs each one from their own wallet: one payee (a NEAR account, or a Base or Solana address paid out through NEAR Intents), `max_per_payment`, `max_total`, `max_uses`, `expires_at_ns`, `approval_above`, and the one agent key that may use it. | Live |
+| The vault contract | The owner's own contract. It holds the USDC, checks every spend against its mandate and a daily backstop (a cap on the total it pays or sets aside in one UTC day, fixed when the vault is created), holds a spend above `approval_above` for an approver, and pays the mandate's payee. | Live |
+| The factory | Creates vaults with no access keys. On testnet it is `vaults.probarion.testnet`. | Live |
+| The agent key | A function-call key the vault adds to itself on the owner's instruction, limited to `spend`. | Live |
+| The ledger key | A second function-call key, limited to `anchor`. The SDK signs every ledger entry with it and anchors the ledger root on the vault. | Preview |
+| `@probarion/core` | `decide()`, the pure policy engine, plus the ledger and the verifier's checks a to i. No network, no file system. | Live |
+| `@probarion/sdk` | The `Probarion` class, which runs one payment cycle with `process()`, plus the ledger stores, `snapshot()` and `verify()`. 0.1.0 is on npm. | Live |
+| The `probarion` CLI | Prints each owner and approver transaction for `near-cli-rs` and signs none. It also makes agent keys, runs `check_spend` (the contract's free dry run of a spend) and runs the verifier. 0.1.0 is on npm. | Live |
+| The web console | Wallet sign-in, vaults, mandates, keys, top-up, alerts, and Payables, the reference agent that pays invoices. It runs on testnet: open it with "Open console" in the site header. | Preview |
+
+Live means it works in this deployment; where a Live part runs on a chain, it runs on NEAR testnet. On testnet a stub stands in for NEAR Intents, so a Base or Solana payout is only logged as a burn with its memo, and nothing leaves NEAR. Preview means it is built but not yet run end to end with real wallets, or not open yet.
+
+`@probarion/core` counts as Live because its verifier already runs on this site. The "Change one field. Watch it break." test on the landing page runs checks a to i in your browser, and so does "Try the verifier here" on [/proof](/proof) while no public vault is listed there. In the status list it is the [offline verifier](/docs/start/what-works-today#offline-verifier) row. The three packages, `@probarion/core`, `@probarion/sdk` and the `probarion` CLI, are on npm at 0.1.0: see [Install the packages](/docs/build/install). In the status list the SDK and the CLI are the [TypeScript SDK and CLI](/docs/start/what-works-today#sdk-and-cli) row, Live since that release. Their read-only calls run against the testnet vault, as [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes) shows. The payment loop through `process()` has not yet run end to end against a real vault, so the pages that walk it are Preview. [What works today](/docs/start/what-works-today) has the full status list.
+
+## Who does what
+
+- **The owner** signs every mandate, adds and removes agent keys and sets the ledger key, all from their own wallet. Without Probarion, the owner can also freeze the vault, unfreeze it, and withdraw its USDC and its NEAR Intents balance, the tokens it holds inside NEAR Intents to pay Base and Solana payees. Freeze takes no deposit. A mandate takes a storage deposit, and the vault sends back the excess. Most other owner methods need exactly 1 yoctoNEAR, which a function-call key cannot attach, so a dapp login key on the owner's account cannot call them.
+- **Approvers** decide a held spend: approve sends the payment, reject releases the amount the hold set aside under the mandate. They are named when the vault is created, and no method changes them later.
+- **The agent** asks to spend. Its key can call `spend` and nothing else, and only under the mandates that name that key.
+- **Anyone** can read a vault on chain and run the verifier, with no account.
+- **Probarion** runs the site and the console. If you use the console's Keys tab or Payables, Probarion generates the vault's agent and ledger keys on its server and stores each secret encrypted.
+
+[Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) covers each role and key in full, and [mandates](/docs/concepts/mandates) covers every mandate field.
+
+## Where to go next
+
+- **You own the money.** The [owner quickstart](/docs/start/owner-quickstart) sets up a testnet vault in the web console, with test USDC, an agent key, a ledger key and one signed mandate.
+- **You build the agent.** The [developer quickstart](/docs/start/developer-quickstart) connects your agent to a testnet vault with the TypeScript SDK and runs one payment cycle with `process()`.
+- **You want to check the claims.** [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes) runs the verifier and reads the testnet vault with no wallet, key or account.
+
+The two quickstarts are Preview: their flows have not yet run end to end with real wallets.
+
+## What this does not do
+
+- **It holds no owner key.** In the site's own words: "Non-custodial: Probarion holds no owner key." The agent and ledger keys the console makes are another matter: see [who does what](#who-does-what).
+- **It cannot change the rules underneath the owner.** The vault has no upgrade method, no method to change the owner, and no full-access key.
+- **It does not edit a mandate.** The payee is fixed when the mandate is created. A new payee needs a new mandate, and the owner can revoke the old one.
+- **A vault's NEAR does not come back out.** The vault pays for its storage and its spends' gas from its own NEAR, and it has no method to withdraw NEAR. That NEAR is the vault's runway, and one plain transfer tops it up.
+- **The contract does not judge whether a payment is wise.** It holds the agent to the limits the owner signed, and a spend above `approval_above` waits for a person. Off chain, `decide()` can still hold or refuse a payment the mandate allows, through its built-in rules, your own `custom.*` rules or an attested model's proposal.
+- **It has no HTTP API that an agent pays through.** The console's invoice API answers only a signed-in owner or approver, on a same-origin request. An agent pays through the SDK, in its own process.
+- **Some parts are not done yet.** An MCP server and a mainnet vault are both Planned. The mainnet vault's runbook is ready.
+
+<Callout kind="note" title="Unaudited beta.">
+
+No third party has audited this code. It runs on NEAR testnet with test tokens: use small amounts. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#what-is-not-proven-yet) lists what the verifier does not prove yet, and the [security model](/docs/trust/security-model) covers the rest.
+
+</Callout>

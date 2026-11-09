@@ -1,0 +1,263 @@
+The owner controls a vault from their own wallet, and approvers decide the spends it holds. A vault holds up to 16 agent keys and at most one ledger key, each a function-call key on the vault's own account limited to one method: `spend` for an agent key, `anchor` for the ledger key. Each owner and approver method that moves money or changes a key needs exactly 1 yoctoNEAR, a deposit that only a full-access key can attach, so neither a stolen agent key nor a dapp login key can take control of the vault.
+
+## The vault in one paragraph
+
+A vault is a NEAR contract account of its own. It holds the owner's USDC, stores the owner's mandates and checks every spend against them before it pays. Whoever signs `create_vault` on the factory becomes the vault's owner, and the approvers are named in that same call. The vault adds keys to itself only when the owner tells it to: an agent key with `add_agent`, a ledger key with `set_ledger_key`. Its `get_config` view shows the owner, the approvers, the ledger key, whether the vault is frozen, and `factory`: the account that ran its init, which is the factory for a factory vault, or null for a vault that ran its own init, such as `v0.probarion.testnet`.
+
+<Callout kind="key" title="No one can sign as the vault">
+
+A vault the factory creates has no full-access key: it starts with no access keys at all, and the factory owner cannot change, upgrade or take funds from it. `v0.probarion.testnet` was deployed directly, and its deploy script deleted its only full-access key, so its one access key is the agent's `spend`-only key. On these vaults nobody, Probarion included, can sign as the vault except through `spend` and `anchor`. [Check f](/docs/trust/verifier-checks#check-f) fails any vault that still has a full-access key.
+
+</Callout>
+
+## Who can do what
+
+| Who | Can | Cannot |
+| --- | --- | --- |
+| **The owner**, the account named as owner when the vault was created, signing with a full-access key | Create and revoke mandates, add and remove agent keys, set the ledger key, freeze, unfreeze, and withdraw the USDC and the NEAR Intents balance to the owner's own account | Withdraw to any other account, change a mandate's payee, change the owner or the approvers, or upgrade the vault: no method does any of these. Approve or reject a held spend, unless the owner is also on the approver list |
+| **An approver**, one of the 1 to 10 accounts named when the vault was created | Approve or reject a held spend, alone | Approve while the vault is frozen, after the hold expired, or for a revoked mandate. Change a mandate, a key or a setting |
+| **An agent key**, a function-call key on the vault, method `spend` only, up to 16 per vault | Call `spend` under a mandate that names this key | Choose the payee, go past the mandate's limits or the vault's daily backstop, call any other method, or attach a deposit |
+| **The ledger key**, a function-call key on the vault, method `anchor` only | Anchor the next range of the ledger, with `seq` exactly one above the last | Spend, or change a mandate or a key |
+| **Anyone** | Call `expire_held` once a hold has passed its time, with no deposit. Read the vault, dry-run a spend with `check_spend` and run the verifier | Call any other method that changes the vault |
+| **A dapp login key**, a function-call key on the owner's or an approver's account | On the owner's account, call `freeze`, if the key may call this vault | Call any method that needs a deposit: every other owner method, and `approve` and `reject` |
+
+A stolen agent key can therefore spend only under the mandates that name it, to the payees those mandates fix, within their limits and the daily backstop. Every call it signs, refused or not, also burns gas from the vault's NEAR, up to the key's allowance: 1 NEAR by default in the console and the CLI. `spend` has no field for an address, so the key cannot pick the recipient. [Why spend has no payee](/docs/concepts/why-spend-has-no-payee) explains that design, and the [security model](/docs/trust/security-model) covers a breached server.
+
+One approver is enough: there is no M-of-N quorum. `approve` sends the payout at once. `reject` releases the reservation, and it still works while the vault is frozen or after the mandate was revoked. [Holds and approvals](/docs/concepts/holds-and-approvals) covers both.
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` or `reject` from their own wallet, with exactly 1 yoctoNEAR attached. The owner's signature does not count unless the owner is on the approver list: the vault answers [`NotApprover`](/docs/build/errors#NotApprover).
+
+</Callout>
+
+## The agent key
+
+An agent key is a function-call key that the vault adds to its own account when the owner calls `add_agent(public_key, allowance, label)`. Its receiver is the vault and its one method is `spend`:
+
+<CodeBlock title="contracts/vault/src/keys.rs">
+
+```rust
+        Promise::new(env::current_account_id())
+            .add_access_key_allowance(
+                public_key.clone(),
+                allowance,
+                env::current_account_id(),
+                "spend",
+            )
+            .detach();
+```
+
+</CodeBlock>
+
+Because the key lives on the vault account, the agent signs as the vault itself. `spend` refuses a call from any other account with [`NotAgent`](/docs/build/errors#NotAgent).
+
+- **Allowance.** The key carries a limited NEAR allowance for gas. The gas comes out of the vault's own NEAR, and the allowance caps how much of it this key can burn. An allowance of zero would mean no limit, so the vault refuses it with `InvalidInput`. The console and the CLI both default to 1 NEAR.
+- **Limits.** A vault holds at most 16 agent keys, and a key's label is at most 64 bytes. A key that is already an agent key or the ledger key is refused with `InvalidInput`.
+- **Mandates.** Each mandate names one agent key. A spend passes only if its signer is a current agent key (`NotAgent` otherwise) and is the key the mandate names (`NotMandateAgent` otherwise). [Mandates](/docs/concepts/mandates) covers every other field.
+
+With the CLI, the owner prints the transaction and signs it in their own wallet:
+
+```bash
+node packages/cli/dist/bin.js --network testnet agent add --vault <vault-id> --pk ed25519:... --label invoices
+```
+
+The command writes the arguments to `add_agent.<12 hex>.args.json` and prints the `near-cli-rs` command to sign. Illustrative, shortened:
+
+```text
+OWNER SIGNS: probarion never signs owner or approver transactions. Review the arguments, then sign with your own wallet or near-cli-rs:
+
+near contract call-function as-transaction <vault-id> add_agent file-args ./add_agent.<12 hex>.args.json prepaid-gas '30.0 Tgas' attached-deposit '1 yoctoNEAR' sign-as <owner-account-id> network-config testnet sign-with-keychain send
+
+add_agent arguments (./add_agent.<12 hex>.args.json):
+{
+  "public_key": "ed25519:...",
+  "allowance": "1000000000000000000000000",
+  "label": "invoices"
+}
+
+The vault adds a function-call key to itself that can only call spend and can never attach a deposit. The vault holds at most 16 agent keys, and a key cannot be both an agent and the ledger key.
+```
+
+<Callout kind="owner-signs">
+
+The owner signs `add_agent` from their own wallet, with exactly 1 yoctoNEAR attached. The transaction carries the agent's public key only, never its secret.
+
+</Callout>
+
+## The ledger key
+
+The ledger key is another function-call key on the vault account, limited to `anchor`. The SDK signs every ledger entry with it, and after each payment cycle it calls `anchor` to pin the ledger's latest link on chain. [Ledger and anchors](/docs/concepts/ledger-and-anchors) explains the ledger itself.
+
+- **One per vault.** The owner sets it with `set_ledger_key(public_key, allowance)`, with exactly 1 yoctoNEAR. A new ledger key replaces the old one in the vault's config, and the vault deletes the old access key.
+- **Only the current key anchors.** `anchor` accepts a call only from the vault account, signed with the current ledger key. A call from any other account or key gets `NotLedgerKey`, and an agent key cannot reach `anchor` at all.
+- **Never an agent key.** `set_ledger_key` refuses an agent key with `InvalidInput`. It also refuses the current ledger key: this follows from the contract's code, and no test shows it yet.
+- **Allowance.** The console and the CLI both default to 0.25 NEAR.
+- **Old ranges stay checkable.** Each anchor stores the key that signed it, so a range anchored before a rotation stays verifiable after it.
+
+`v0.probarion.testnet` has no ledger key and no anchors yet: its smoke run sent spends with the agent key directly, without the SDK.
+
+## Why most owner calls need exactly 1 yoctoNEAR
+
+Most owner methods, and both approver methods, need exactly 1 yoctoNEAR attached, because the NEAR protocol lets only a full-access key attach a deposit. A function-call key, such as the login key a wallet creates when you sign in to a dapp, can call only its one receiver, and there only its listed methods, or any method when the list is empty. It can never attach a deposit. A call without the yoctoNEAR fails with [`RequiresOneYocto`](/docs/build/errors#RequiresOneYocto), so only a full-access key, through a wallet prompt, can make it:
+
+<CodeBlock title="contracts/vault/src/errors.rs">
+
+```rust
+/// The one-yocto rule (interfaces v2 §4.2): exactly 1 yoctoNEAR attached. Only a full-access key,
+/// through an explicit wallet prompt, can attach a deposit. A dapp-login Function-Call key, or an
+/// XSS in the web app, therefore cannot call a method that requires this.
+pub fn require_one_yocto() {
+    if env::attached_deposit() != NearToken::from_yoctonear(1) {
+        fail(ErrorCode::RequiresOneYocto)
+    }
+}
+```
+
+</CodeBlock>
+
+| Method | Signed by | Deposit |
+| --- | --- | --- |
+| `add_agent`, `remove_agent`, `set_ledger_key` | The owner | Exactly 1 yoctoNEAR |
+| `revoke_mandate`, `unfreeze`, `withdraw`, `withdraw_intents` | The owner | Exactly 1 yoctoNEAR |
+| `create_mandate` | The owner | A storage deposit. The vault sends back the excess |
+| `freeze` | The owner | None |
+| `approve`, `reject` | An approver | Exactly 1 yoctoNEAR |
+| `spend` | An agent key | None |
+| `anchor` | The ledger key | None |
+| `expire_held` | Anyone | None |
+
+`create_mandate` pays for the mandate's storage and, for a NEAR payee, the payee's USDC storage registration. A deposit that falls short is refused with `InsufficientDeposit`. A function-call key cannot attach that deposit either, so a login key cannot create a mandate. Reads such as `get_config` and `check_spend` are views and need no deposit.
+
+The vault checks who is calling before it checks the deposit, so a stranger who attaches nothing gets `NotOwner` or `NotApprover`, not `RequiresOneYocto`.
+
+### Freeze is the exception
+
+`freeze` takes no deposit, so the owner can stop the vault fast. It works from the owner's full-access key, or from a function-call key on the owner's account that may call the vault: one whose receiver is the vault and whose method list is empty or names `freeze`, such as a dapp login key scoped to the vault. A login key scoped to another contract cannot call the vault at all.
+
+<CodeBlock title="contracts/vault/src/admin.rs">
+
+```rust
+    /// Protective, so it is the one owner method with no deposit: any key on the owner's
+    /// account can stop the vault fast. `unfreeze` is the careful direction.
+    pub fn freeze(&mut self) {
+        self.assert_owner();
+        self.frozen = true;
+        VaultEvent::Frozen {
+            by: env::predecessor_account_id(),
+        }
+        .emit();
+    }
+```
+
+</CodeBlock>
+
+The comment's "any key on the owner's account" says too much. The NEAR protocol limits a function-call key to its receiver and its methods, so only a key that may call this vault can freeze it. The sandbox test signs `freeze` with a login key scoped to the vault.
+
+While the vault is frozen, every new spend and every `approve` is refused with `Frozen`. `reject` and `expire_held` still work. The owner can still change keys and withdraw, since none of those methods checks the freeze: this follows from the contract's code, and no test shows it yet. `unfreeze` needs exactly 1 yoctoNEAR, so only a full-access key can undo a freeze: a login key that froze the vault cannot unfreeze it.
+
+<Callout kind="owner-signs">
+
+The owner signs `freeze` and `unfreeze`. `freeze` needs no deposit and may come from a login key that may call the vault. `unfreeze` needs exactly 1 yoctoNEAR, so it takes the owner's full-access key.
+
+</Callout>
+
+## Where the keys live
+
+| Key | Where it lives | What signs with it |
+| --- | --- | --- |
+| The owner's key | The owner's own wallet: a full-access key on the owner's account | Every owner transaction |
+| An approver's key | The approver's own wallet | `approve` and `reject` |
+| An agent key | Sealed on Probarion's server if the console made it. If `agent keygen` made it, in the file you named with `--out`, or wherever you put it after `--print-secret` | `spend`, through the SDK or Payables, the agent Probarion runs for you in the console |
+| The ledger key | The same places as an agent key | Every ledger entry and `anchor`, through the SDK |
+| A full-access key on the vault | Nowhere on a vault the factory creates, or on `v0.probarion.testnet`. Check f of the verifier fails any vault that has one | Nothing |
+
+**Keys made in the console.** The console's Keys tab generates agent and ledger keys on Probarion's server and stores each secret encrypted with libsodium secretbox, under a master key kept outside the database. You then add each key to your vault from your own wallet, with its public key only. Payables signs each payment with the agent key its mandate names. Probarion holds no owner key. The Keys tab is Preview: it is built but has not yet run end to end with a real wallet.
+
+**Keys made with the CLI.** `agent keygen` makes an ed25519 key pair on your machine. With `--out <file>` it saves the pair to a new file and prints only the public key. With `--print-secret` it prints the secret to your terminal, where it stays in the scrollback. It never overwrites a key file, and the same command makes a ledger key.
+
+```bash
+node packages/cli/dist/bin.js agent keygen --out ~/probarion-keys/agent.json
+```
+
+The CLI warns when the file is inside a git repository, as any path inside the clone is. A relative path such as `../agent-key.json` keeps the file outside it. On Windows, file mode bits do not restrict the file, so keep it in a folder only you can read. Your agent passes the secret to the SDK as `agentKey` or `ledgerKey`, for example from `PROBARION_AGENT_KEY` or `PROBARION_LEDGER_KEY`. [Install](/docs/build/install) builds the CLI from a clone.
+
+## Replacing a key
+
+Both replacements below are owner transactions, and neither one touches the USDC in the vault.
+
+### Remove an agent key
+
+With `remove_agent(public_key)`, the vault drops the key from its list and deletes its access key, so the key can sign no more spends. A key that is not on the list is refused with `InvalidInput`. If its access key is already gone, the vault still clears the list, and only the delete fails.
+
+<Callout kind="owner-signs">
+
+The owner signs `remove_agent` from their own wallet, with exactly 1 yoctoNEAR attached.
+
+</Callout>
+
+What happens to the work already in flight:
+
+- **Held spends still wait for an approver.** Removing the key does not cancel them: an approver can still approve or reject each one, and anyone can expire it once its time is up. This follows from the contract's code, because `approve`, `reject` and `expire_held` do not look at the agent key. No test shows it yet.
+- **Mandates that name the key keep their status, but no spend can pass under them.** A spend needs a signature from that key, and a `check_spend` dry run for it answers `NotAgent`. A mandate's agent key cannot be changed.
+- **A removed key can be added again.** The vault accepts it as a new agent key. Mandates that name it should then work again: this follows from the contract's code, and no test shows it yet.
+
+The console has no one-click rotation of an agent key: generate a new key and add it, create new mandates that name it, then revoke the old mandates and remove the old key. Removing the old key first stops payments at once: Payables stops using it, and no spend passes under the mandates that name it.
+
+### Rotate the ledger key
+
+The owner signs `set_ledger_key` with a new key. The vault records the new key at once, then deletes the old access key and adds the new one in two separate receipts, delete first. Deleting first frees the old key's storage before the new key is charged, so a rotation fits even on a vault with no free NEAR. A sandbox test rotates a key on exactly such a vault.
+
+This two-receipt, delete-first order is the `set_ledger_key` fix of 2026-11-03. Vaults the testnet factory creates run the fixed build, and `v0.probarion.testnet` runs the build from before it.
+
+<Callout kind="warning" title="Anchor the ledger before you rotate">
+
+Entries already covered by an anchor stay verifiable against the key recorded with that anchor. Entries after the last anchor must be signed by the new key, so an old-key entry that is not anchored yet fails the verifier's signature check after the rotation.
+
+</Callout>
+
+First check that the ledger is anchored. The SDK anchors the ledger's tail at the end of each payment cycle, and a failed anchor is only logged, so the next cycle anchors the whole tail. Neither the SDK nor the CLI has a separate anchor command. The ledger is anchored when the `count` of the SDK's `anchors.latest()` equals the number of entries in your ledger. If it is lower, the next payment cycle, still signed with the old key, anchors the tail.
+
+Then the owner sets the new key. On the console's Keys tab, choose "Generate ledger key and set it in my wallet", or "Set as ledger key" on a ledger key generated earlier. With the CLI, the owner prints the transaction and signs it in their own wallet:
+
+```bash
+node packages/cli/dist/bin.js --network testnet ledger set-key --vault <vault-id> --pk ed25519:...
+```
+
+<Callout kind="owner-signs">
+
+The owner signs `set_ledger_key` from their own wallet, with exactly 1 yoctoNEAR attached. The transaction carries the new public key only.
+
+</Callout>
+
+Last, give the SDK the new key as its `ledgerKey`. The SDK refuses to write an entry when its ledger key is not the vault's.
+
+### If the new ledger key does not land
+
+When the delete frees nothing, the new key's AddKey can fail with `LackBalanceForState` if the vault's free NEAR does not cover it, for example once agent gas has used up the vault's free NEAR. The delete frees nothing when there is no old key, as with a vault's first ledger key, and a sandbox test reaches this case. It also frees nothing when the old key's access key is already gone: this follows from the contract's code, and no test shows it yet. The vault's config then already names the new key, but the key is not on the account, so nothing can anchor. On the fixed build, to recover:
+
+1. Top up the vault's NEAR with a plain transfer.
+2. Call `set_ledger_key` again with a different new key. Setting the same key again is refused with `InvalidInput`, because it is already the recorded ledger key: this follows from the contract's code, and no test shows it yet.
+
+The delete of the missing key then fails on its own, with `DeleteKeyDoesNotExist`, and the new key lands. The console's Keys tab marks such a key as stuck, and on the fixed build it offers a new ledger key as the way out.
+
+## Where to go next
+
+- [Owner quickstart](/docs/start/owner-quickstart): set up a testnet vault in the console, with an agent key, a ledger key and one mandate.
+- [Mandates](/docs/concepts/mandates): every field of the mandate an agent key spends under.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): what an approver decides, and when a hold expires.
+- [Ledger and anchors](/docs/concepts/ledger-and-anchors): what the ledger key signs and anchors.
+- [Security model](/docs/trust/security-model): what a breached server or a leaked key can and cannot do.
+- [Verifier checks](/docs/trust/verifier-checks): check f fails a vault with a full-access key, or with any key that is neither an agent key nor the current ledger key.
+- [Glossary](/docs/resources/glossary): the terms on this page.
+
+## What this does not do
+
+- **It does not let anyone change the owner or the approvers, or upgrade the vault.** No method does. A fix ships as a new vault.
+- **It does not edit a mandate.** A mandate's payee and agent key are fixed when it is created. A new key needs new mandates.
+- **Removing an agent key does not cancel its held spends.** An approver still decides each one, or it expires. This follows from the contract's code, and no test shows it yet.
+- **It has no approval quorum.** One approver's `approve` pays at once.
+- **The one-yocto rule does not stop a login key from freezing.** `freeze` takes no deposit on purpose. Only `unfreeze` needs the full-access key.
+- **It cannot protect a stolen owner key.** The vault checks only that a call comes from the owner's account, so whoever holds a full-access key on that account acts as the owner. Its holder can withdraw to that account, unfreeze, and sign a mandate to any payee with an agent key of their own. The [security model](/docs/trust/security-model) covers it.
+- **It does not hold the keys you make with the CLI.** `agent keygen` saves the secret to the file you name, or prints it to your terminal, and keeping it safe is up to you.
+- **The contract does not stop a vault deployed by hand from keeping a full-access key.** The factory adds none, and the verifier fails any vault that has one.

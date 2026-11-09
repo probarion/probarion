@@ -15,6 +15,7 @@ import { InkBand } from "@/components/site/InkBand";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { explorerTxUrl } from "@/lib/config";
+import { docsHref, findPage, PAGES } from "@/lib/docs/registry";
 import { cli } from "@/lib/proof/cli";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import {
@@ -24,7 +25,9 @@ import {
   CHECK_LABELS,
   CLOSING,
   COMPARE,
+  CONSOLE_ROUTE,
   CONTRACT_REFUSAL_CODE,
+  EVALUATE_ROUTE,
   FIXTURE_PATH,
   FOOTER,
   HEADER_ANCHORS,
@@ -491,10 +494,10 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Offline verifier, checks a to i",
-      pill: "Shipped in source",
+      pill: "Shipped, on npm",
       readme: [
-        { start: "`@probarion/core`", says: ["**Shipped** in source"] },
-        { start: "CLI `check`, `verify`", says: ["**Shipped** in source"] },
+        { start: "`@probarion/core`", says: ["**Shipped**", "on npm"] },
+        { start: "CLI `check`, `verify`", says: ["**Shipped**", "0.1.0"] },
       ],
     },
     {
@@ -549,11 +552,11 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "TypeScript SDK and CLI",
-      pill: "In source, not on npm",
+      pill: "0.1.0 on npm",
       readme: [
-        { start: "`@probarion/sdk`", says: ["**Shipped** in source"] },
-        { start: "`probarion` CLI", says: ["**Shipped** in source"] },
-        { start: "npm release 0.1.0", says: ["**Planned**", "nothing is published"] },
+        { start: "`@probarion/sdk`", says: ["**Shipped**", "on npm"] },
+        { start: "`probarion` CLI", says: ["**Shipped**", "on npm"] },
+        { start: "npm release 0.1.0", says: ["**Shipped**", "2026-11-09", "provenance"] },
       ],
     },
   ];
@@ -632,18 +635,38 @@ describe("the payment journey", () => {
 describe("the status list", () => {
   it("is exactly the rows and pills that are true today", () => {
     expect(STATUS.rows).toEqual([
-      { row: "Vault contract", pill: "On testnet", tone: "live" },
-      { row: "Offline verifier, checks a to i", pill: "Shipped in source", tone: "live" },
-      { row: "Reproducible builds", pill: "Shipped", tone: "live" },
-      { row: "Vault factory", pill: "On testnet", tone: "live" },
-      { row: "Web console", pill: "In progress", tone: "work" },
-      { row: "Public proof page", pill: "Built, no public vault yet", tone: "work" },
-      { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
-      { row: "Payables agent", pill: "In progress", tone: "work" },
-      { row: "Live attested model run", pill: "In progress", tone: "work" },
-      { row: "Canary public challenge", pill: "Page built, not open yet", tone: "work" },
-      { row: "MCP server", pill: "Planned", tone: "plan" },
-      { row: "Mainnet vault", pill: "Planned", tone: "plan" },
+      { id: "vault-contract", row: "Vault contract", pill: "On testnet", tone: "live" },
+      {
+        id: "offline-verifier",
+        row: "Offline verifier, checks a to i",
+        pill: "Shipped, on npm",
+        tone: "live",
+      },
+      { id: "reproducible-builds", row: "Reproducible builds", pill: "Shipped", tone: "live" },
+      { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
+      { id: "web-console", row: "Web console", pill: "In progress", tone: "work" },
+      {
+        id: "public-proof-page",
+        row: "Public proof page",
+        pill: "Built, no public vault yet",
+        tone: "work",
+      },
+      { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
+      { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
+      {
+        id: "attested-model-run",
+        row: "Live attested model run",
+        pill: "In progress",
+        tone: "work",
+      },
+      {
+        id: "canary",
+        row: "Canary public challenge",
+        pill: "Page built, not open yet",
+        tone: "work",
+      },
+      { id: "mcp-server", row: "MCP server", pill: "Planned", tone: "plan" },
+      { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },
     ]);
   });
 
@@ -889,11 +912,32 @@ describe("the problem, the comparison and the integrate section", () => {
     expect([...INTEGRATE.statuses]).toEqual(listed);
   });
 
-  it("is reachable from the hero, and its README links exist", () => {
+  it("is reachable from the hero, and links the docs pages that start each part", () => {
     const html = renderToStaticMarkup(createElement(Home));
     for (const id of ["compare", "integrate"]) expect(html).toContain(`id="${id}"`);
-    expect(LINKS.sdkReadme.endsWith("/packages/sdk/README.md")).toBe(true);
-    expect(LINKS.cliReadme.endsWith("/packages/cli/README.md")).toBe(true);
+    expect(INTEGRATE.cards.map((c) => c.link)).toEqual([
+      { route: "/docs/start/developer-quickstart", label: "Developer quickstart" },
+      { route: "/docs/build/install", label: "Install" },
+      { route: CONSOLE_ROUTE, label: "Open console" },
+      { href: "#status", label: "See the status list" },
+    ]);
+    expect(INTEGRATE.statusesLink).toEqual({
+      route: "/docs/build/spend-outcomes",
+      label: "What each status means",
+    });
+    // Each is a docs page, linked in the app (RouteLink), not as an external link.
+    const integrate = html.slice(html.indexOf('id="integrate"'));
+    for (const route of [
+      "/docs/start/developer-quickstart",
+      "/docs/build/install",
+      "/docs/build/spend-outcomes",
+    ]) {
+      expect(findPage(route.slice("/docs/".length)), route).toBeDefined();
+      const link = new RegExp(`<a[^>]*href="${route}"[^>]*>`).exec(integrate)?.[0] ?? "";
+      expect(link, route).not.toBe("");
+      expect(link, route).not.toContain('target="_blank"');
+    }
+    expect(integrate).toMatch(/href="\/docs\/build\/spend-outcomes"[^>]*>What each status means</);
   });
 });
 
@@ -1022,16 +1066,39 @@ describe("the rendered landing page", () => {
   });
 
   it("offers the two closing links on main", () => {
-    const links = hrefs(landing());
-    expect(links).toContain(
-      "https://github.com/probarion/probarion#how-to-evaluate-probarion-in-5-minutes",
-    );
+    const html = landing();
+    const links = hrefs(html);
+    expect(links).toContain("/docs/start/evaluate-in-5-minutes");
+    expect(links).not.toContain(LINKS.evaluate);
+    // An internal page opens in the same tab: the evaluate button is a Link, not ExternalLink.
+    const evaluate = html.match(/<a[^>]*href="\/docs\/start\/evaluate-in-5-minutes"[^>]*>/g) ?? [];
+    expect(evaluate).toHaveLength(1);
+    expect(evaluate[0]).not.toMatch(/\starget=/);
     expect(links).toContain(
       "https://github.com/probarion/probarion/blob/main/docs/specs/2026-10-21-probarion-design.md",
     );
     expect(links).toContain("#try");
     expect(links).toContain("#integrate");
     expect(links).toContain("/console");
+  });
+
+  it("sends the evaluate button to the docs page that walks through it", () => {
+    expect(EVALUATE_ROUTE).toBe("/docs/start/evaluate-in-5-minutes");
+    expect(findPage(EVALUATE_ROUTE.slice("/docs/".length))?.type).toBe("tutorial");
+  });
+});
+
+describe("the footer columns", () => {
+  it("put Docs and Usage with the product pages and keep the legal ones apart", () => {
+    expect(FOOTER.product.map((i) => i.route)).toEqual([
+      "/console",
+      "/proof",
+      "/canary",
+      "/docs",
+      "/status",
+      "/usage",
+    ]);
+    expect(FOOTER.legal.map((i) => i.route)).toEqual(["/terms", "/privacy", "/security"]);
   });
 });
 
@@ -1118,6 +1185,18 @@ describe("the header", () => {
     expect(inMenu).toContain("/proof");
     expect(inMenu).toContain("/console");
     expect(inMenu).toContain(LINKS.github);
+  });
+
+  it("puts Docs in the bar and in the phone menu, and leaves Usage to the footer", () => {
+    const at = html.indexOf("<details");
+    expect(at).toBeGreaterThan(0);
+    for (const [where, part] of [
+      ["bar", html.slice(0, at)],
+      ["phone menu", html.slice(at)],
+    ] as const) {
+      expect(hrefs(part), where).toContain("/docs");
+      expect(hrefs(part), where).not.toContain("/usage");
+    }
   });
 });
 
@@ -1264,7 +1343,17 @@ describe("robots and the sitemap", () => {
     expect(paths).toContain("/usage");
     expect(paths.filter((p) => p.startsWith("/console") || p.startsWith("/api"))).toEqual([]);
     expect(paths.filter((p) => PLANNED_ROUTES.includes(p))).toEqual([]);
-    expect(paths).toEqual(publicRoutes());
+    expect(paths).toEqual([
+      ...publicRoutes().filter((r) => r !== "/docs"),
+      ...PAGES.map((p) => docsHref(p.path)),
+    ]);
+    expect(new Set(paths).size).toBe(paths.length);
+    const docs = sitemap().filter((x) => new URL(x.url).pathname.startsWith("/docs"));
+    for (const e of docs) expect(e.lastModified, e.url).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Each docs entry carries its own page's review date, in registry order.
+    expect(docs.map((e) => [new URL(e.url).pathname, e.lastModified])).toEqual(
+      PAGES.map((p) => [docsHref(p.path), p.reviewed]),
+    );
   });
 });
 
@@ -1364,6 +1453,15 @@ describe("colours", () => {
       ["band-bad", "band-bad-bg"],
       ["band-bad", "band"],
       ["gold-light", "ink"],
+      ["mute", "soft"],
+      ["ink", "soft"],
+      ["gold-ink", "paper"],
+      ["gold-ink", "surface"],
+      ["gold-ink", "soft"],
+      ["gold-ink", "wait-bg"],
+      ["band-fg", "code-active"],
+      ["band-mute", "code-active"],
+      ["gold-bright", "band"],
     ];
     for (const [fg, bg] of pairs) {
       expect(contrast(token(fg), token(bg)), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
@@ -1389,11 +1487,16 @@ describe("colours", () => {
     }
   });
 
-  it("are read from tokens: site.module.css holds no literal colour", () => {
-    const module = text(WEB, "src", "components", "site", "site.module.css");
-    expect(module.replace(/url\("data:[^"]*"\)/g, "")).not.toMatch(
-      /#[0-9a-f]{3,8}\b|\brgba?\(\s*\d/i,
-    );
+  it("are read from tokens: site.module.css and docs.module.css hold no literal colour", () => {
+    for (const parts of [
+      ["src", "components", "site", "site.module.css"],
+      ["src", "components", "docs", "docs.module.css"],
+    ]) {
+      const module = text(WEB, ...parts);
+      expect(module.replace(/url\("data:[^"]*"\)/g, ""), parts.join("/")).not.toMatch(
+        /#[0-9a-f]{3,8}\b|\brgba?\(\s*\d/i,
+      );
+    }
   });
 });
 
