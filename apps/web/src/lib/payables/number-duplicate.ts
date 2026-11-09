@@ -32,28 +32,32 @@ function earlierState(m: NumberMatch): string {
 
 /**
  * What the console says after this rule refused an upload, by what happened to the earlier invoice. invoice_insert
- * (0016) runs this text again only once no invoice that may pay has the number. Nothing in the app moves a paid
- * invoice, a spend held on chain, a payment sent but not confirmed, or a row left in processing (its cycle was cut off
- * or could not record its outcome: the tenant lease means no cycle is still running when this one inserts). So only an
- * earlier invoice that waits for the owner stops blocking, when the owner rejects it, and only then is a re-upload
- * offered. The new-number advice is given only once the earlier invoice cannot pay: a paid one is not paid again, and a
- * spend held on chain (SpendStatus Held) may still be approved, so a bill under a new number could be paid twice.
+ * (0016) runs this text again only once no invoice that may pay has the number. The owner frees it for an earlier
+ * invoice that waits for them: a Reject (0007 invoice_reject), or a Confirm whose payment is refused or fails, both
+ * leave a row that no longer blocks. Nothing in the app moves a paid invoice, a spend held on chain, a payment sent but
+ * not confirmed, or a row left in processing (its cycle was cut off or could not record its outcome: the tenant lease
+ * means no cycle is still running when this one inserts), even once that spend fails, is rejected or expires.
+ *
+ * The notice gives no advice to reissue the bill under a new number. The console cannot show that the earlier spend
+ * can no longer pay: a held spend may still be approved, a transaction whose outcome is unknown can land for 48 hours
+ * (UNKNOWN_SETTLE_MS), and a new number passes both guards and the contract's DuplicateInvoice. So the bill could be
+ * paid twice.
  */
 export function numberDuplicateNotice(match: NumberMatch): string {
   const head =
     "Duplicate number: another invoice to this payee has the same invoice number. Nothing was sent; the refusal is in the signed ledger.";
-  const newNumber = "ask the payee for an invoice with a new number";
-  const cannotPay = `If the vault's spends show none under that invoice's ref, or one that failed, was rejected or expired, ${newNumber}. A held spend may still pay.`;
+  const notFreed =
+    "The console does not yet free a number when that spend fails, is rejected or expires.";
   switch (match.status) {
     case "awaiting_owner":
-      return `${head} That invoice waits for the owner. If the owner rejects it, upload this one again.`;
+      return `${head} That invoice waits for the owner. If the owner rejects it, or confirms it and its payment is refused or fails, upload this one again.`;
     case "processing":
-      return `${head} That invoice's outcome is unknown and it may have paid, so the number stays blocked. ${cannotPay}`;
+      return `${head} That invoice's outcome is unknown and it may have paid, so the number stays blocked. ${notFreed}`;
     case "unconfirmed":
-      return `${head} That invoice's payment was sent and is not confirmed, so the number stays blocked. ${cannotPay}`;
+      return `${head} That invoice's payment was sent and is not confirmed, so the number stays blocked. ${notFreed}`;
     case "decided":
       return match.outcome_status === "held"
-        ? `${head} That invoice's spend is held on chain for an approver, so the number stays blocked, even once the approver rejects it or it expires: then ${newNumber}.`
+        ? `${head} That invoice's spend is held on chain for an approver, so the number stays blocked. ${notFreed}`
         : `${head} That invoice was paid, so this one is not paid again.`;
     default:
       return `${head} The number stays blocked while that invoice may still pay.`;

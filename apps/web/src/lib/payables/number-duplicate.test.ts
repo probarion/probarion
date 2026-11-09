@@ -45,9 +45,21 @@ describe("numberDuplicateRule", () => {
 
 describe("numberDuplicateNotice", () => {
   const AGAIN = "upload this one again";
-  const NEW_NUMBER = "ask the payee for an invoice with a new number";
+  const NOT_FREED =
+    "The console does not yet free a number when that spend fails, is rejected or expires.";
+  const STATES = [
+    { status: "awaiting_owner", outcome_status: "held" },
+    { status: "processing", outcome_status: null },
+    { status: "unconfirmed", outcome_status: "unconfirmed" },
+    { status: "decided", outcome_status: "paid" },
+    { status: "decided", outcome_status: "burned" },
+    { status: "decided", outcome_status: "settled" },
+    { status: "decided", outcome_status: "held" },
+    { status: "received", outcome_status: null },
+  ] as const;
 
-  // The owner's Reject (0007 invoice_reject) frees the number, and the takeover runs this text again on its row.
+  // The owner frees the number: a Reject (0007 invoice_reject), or a Confirm whose payment is refused or fails, leaves
+  // a row that no longer blocks, and the takeover runs this text again on its row.
   it("offers a re-upload only for an earlier invoice that waits for the owner", () => {
     const notice = numberDuplicateNotice(
       match({ status: "awaiting_owner", outcome_status: "held" }),
@@ -55,23 +67,29 @@ describe("numberDuplicateNotice", () => {
     expect(notice).toMatch(
       /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
     );
-    expect(notice.endsWith("If the owner rejects it, upload this one again.")).toBe(true);
-    expect(notice).not.toContain(NEW_NUMBER);
+    expect(
+      notice.endsWith(
+        "If the owner rejects it, or confirms it and its payment is refused or fails, upload this one again.",
+      ),
+    ).toBe(true);
   });
 
   // invoice_insert (0016) keeps these numbers blocked, and nothing in the app moves such a row on: an upload of this
   // text again would only answer 409, so the notice must not offer one. A row left in processing is one of them: the
   // tenant lease means its cycle is not running when this rule runs, so it was cut off and may have paid.
   it.each([
-    [{ status: "processing", outcome_status: null }, "A held spend may still pay."],
+    [
+      { status: "processing", outcome_status: null },
+      `may have paid, so the number stays blocked. ${NOT_FREED}`,
+    ],
     [{ status: "decided", outcome_status: "paid" }, "was paid, so this one is not paid again."],
     [{ status: "decided", outcome_status: "burned" }, "was paid, so this one is not paid again."],
     [{ status: "decided", outcome_status: "settled" }, "was paid, so this one is not paid again."],
+    [{ status: "decided", outcome_status: "held" }, `so the number stays blocked. ${NOT_FREED}`],
     [
-      { status: "decided", outcome_status: "held" },
-      `even once the approver rejects it or it expires: then ${NEW_NUMBER}.`,
+      { status: "unconfirmed", outcome_status: "unconfirmed" },
+      `is not confirmed, so the number stays blocked. ${NOT_FREED}`,
     ],
-    [{ status: "unconfirmed", outcome_status: "unconfirmed" }, "A held spend may still pay."],
     [
       { status: "received", outcome_status: null },
       "The number stays blocked while that invoice may still pay.",
@@ -88,29 +106,12 @@ describe("numberDuplicateNotice", () => {
     },
   );
 
-  // A new number for a bill that was paid would let it pass both guards and the contract's DuplicateInvoice.
-  it("gives no new-number advice for an earlier invoice that was paid", () => {
-    for (const outcome_status of ["paid", "burned", "settled"] as const) {
-      expect(numberDuplicateNotice(match({ status: "decided", outcome_status }))).not.toContain(
-        NEW_NUMBER,
-      );
-    }
+  // A bill reissued under a new number passes both guards and the contract's DuplicateInvoice. The console cannot show
+  // that the earlier spend can no longer pay (a held spend may still be approved, a transaction whose outcome is
+  // unknown can land for 48 hours), so no state's notice suggests one.
+  it.each(STATES)("gives no advice to reissue the bill under a new number, for %j", (state) => {
+    expect(numberDuplicateNotice(match(state))).not.toMatch(/new number|reissue|another number/i);
   });
-
-  // A spend the vault holds (SpendStatus Held) has not paid but may still be approved: a new number for that bill could
-  // be paid as well. For an earlier invoice whose outcome the app does not know, the advice waits for a spend that can
-  // no longer pay, or for none at all, under its ref.
-  it.each(["processing", "unconfirmed"] as const)(
-    "asks for a new number after a %s invoice only once its spend cannot pay",
-    (status) => {
-      const notice = numberDuplicateNotice(match({ status, outcome_status: null }));
-      expect(notice).toContain(
-        `If the vault's spends show none under that invoice's ref, or one that failed, was rejected or expired, ${NEW_NUMBER}.`,
-      );
-      expect(notice).toContain("A held spend may still pay.");
-      expect(notice).not.toMatch(/did not pay/);
-    },
-  );
 
   it("names neither the number nor the earlier invoice's hash", () => {
     for (const status of ["awaiting_owner", "processing", "unconfirmed", "decided"] as const) {

@@ -457,7 +457,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     where: "Console invoices API",
     meaning:
       "The vault already has this invoice: the same text once normalised, or this text again after `custom.invoice_number_duplicate` refused it while the number is still blocked. The body adds `invoiceId` and `status`. Another text with the number of an invoice that was paid or may still pay is not a 409: its cycle runs and that rule refuses it, and when the rule's refusal is the outcome's code the answer adds a `notice`.",
-    next: "Read the invoice's `status` instead of sending it again. A paid invoice is not paid again. A text the number rule refused goes through only after the owner rejects the earlier invoice in the console while it waits for the owner; an approver's rejection of a held spend keeps the number blocked. Ask the payee for an invoice with a new number only once the earlier one cannot pay: the vault's spends show none under its ref, or one that failed, was rejected or expired.",
+    next: "Read the invoice's `status` instead of sending it again. A paid invoice is not paid again. A text the number rule refused goes through only after the earlier invoice, while it waits for the owner, is rejected in the console, or confirmed and its payment is refused or fails. An approver's rejection of a held spend keeps the number blocked: the console does not yet free a number when that spend fails, is rejected or expires.",
   },
   {
     status: 409,

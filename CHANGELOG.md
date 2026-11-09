@@ -674,12 +674,12 @@ The software is an unaudited beta.
   ledger key says why. Before, the upload got a 409 before any rule ran, and nothing reached the
   ledger. The same text uploaded again is still a duplicate at intake. When this rule's refusal is
   the outcome's code, the console's notice says whether an upload can run again: only when the
-  earlier invoice waits for the owner, after the owner rejects it. Otherwise the number stays
-  blocked: a paid invoice, a spend held on chain (even one the approver rejects), a payment sent
-  but not confirmed, and a cycle cut off with an unknown outcome. A paid invoice is not paid
-  again. For the others, the notice says to ask the payee for an invoice with a new number only
-  once the earlier one cannot pay: the vault's spends show none under its ref, or one that failed,
-  was rejected or expired. A held spend may still pay. The migration
+  earlier invoice waits for the owner, after the owner rejects it, or confirms it and its payment
+  is refused or fails. Otherwise the number stays blocked: a paid invoice, a spend held on chain
+  (even one the approver rejects), a payment sent but not confirmed, and a cycle cut off with an
+  unknown outcome. A paid invoice is not paid again. The notice gives no advice to reissue the
+  bill under a new number: the console cannot yet show that the earlier spend can no longer pay,
+  and a new number would pass every duplicate check. The migration
   `apps/web/supabase/migrations/20261108000016_invoice_number_rule.sql` changes `invoice_insert`.
 
 - An on-demand render of `/docs/trust/reproducible-builds` on Vercel, such as a POST, which skips
