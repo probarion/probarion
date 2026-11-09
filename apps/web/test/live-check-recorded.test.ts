@@ -5,10 +5,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  checkSpendArgs,
   LIVE_VAULT,
   MANDATE_IDS,
   OTHER_PK,
   parseMandate,
+  parseUsdc,
   parseVerdict,
   type RecordedFile,
   SCENARIO_INPUTS,
@@ -53,6 +55,26 @@ describe("the recorded live-check answers", () => {
       FunctionCall: expect.objectContaining({ method_names: ["spend"], receiver_id: LIVE_VAULT }),
     });
     expect(recorded.accessKeys.every((k) => k.access_key.permission !== "FullAccess")).toBe(true);
+  });
+
+  it("have, for every mandate, an agent key the recorder found on the vault", () => {
+    const found = recorded.accessKeys.map((k) => k.public_key);
+    for (const id of MANDATE_IDS) {
+      const m = parseMandate(recorded.mandates[String(id)]);
+      if (m !== null) expect(found, `mandate ${id}`).toContain(m.agentPk);
+    }
+  });
+
+  it("store the request each answer is to, as the page sends it", () => {
+    const agent = parseMandate(recorded.mandates["1"])?.agentPk ?? "";
+    for (const s of SCENARIO_INPUTS) {
+      const units = parseUsdc(s.amount);
+      expect(units, s.id).not.toBeNull();
+      const key = s.key === "agent" ? agent : OTHER_PK;
+      expect(recorded.answers[s.id].args, s.id).toEqual(
+        checkSpendArgs(s.mandateId, units ?? 0n, key),
+      );
+    }
   });
 
   it("use an other key that is no key of the vault", () => {

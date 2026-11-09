@@ -4,7 +4,9 @@
  *
  *   pnpm --filter @probarion/web record-live-check
  *
- * Reads the chain, signs nothing. Re-run it when the vault's answers change, and commit the file.
+ * Reads the chain, signs nothing. Re-run it when the vault answers change, then format the file with
+ *   pnpm exec biome format --write apps/web/src/lib/site/live-check-recorded.json
+ * (the repository lint checks its layout) and commit it.
  */
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -54,13 +56,10 @@ for (const s of SCENARIO_INPUTS) {
   const units = parseUsdc(s.amount);
   if (units === null) throw new Error(`bad amount in scenario ${s.id}`);
   const key = s.key === "agent" ? agent.agentPk : OTHER_PK;
-  const a = await viewCall(
-    LIVE_RPC_URLS,
-    LIVE_VAULT,
-    "check_spend",
-    checkSpendArgs(s.mandateId, units, key),
-  );
-  answers[s.id as ScenarioId] = { value: a.value, blockHeight: a.blockHeight };
+  // The exact object sent is stored with its answer (spec 5.3): the file says which request each answer is to.
+  const args = checkSpendArgs(s.mandateId, units, key);
+  const a = await viewCall(LIVE_RPC_URLS, LIVE_VAULT, "check_spend", args);
+  answers[s.id as ScenarioId] = { args, value: a.value, blockHeight: a.blockHeight };
   height = Math.max(height, a.blockHeight);
 }
 

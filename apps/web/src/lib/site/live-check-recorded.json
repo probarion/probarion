@@ -1,6 +1,6 @@
 {
-  "recordedAt": "2026-11-09T00:57:49.383Z",
-  "blockHeight": 276851248,
+  "recordedAt": "2026-11-09T02:34:31.111Z",
+  "blockHeight": 276860837,
   "vault": "v0.probarion.testnet",
   "accessKeys": [
     {
@@ -64,36 +64,76 @@
   },
   "answers": {
     "normal": {
+      "args": {
+        "request": {
+          "mandate_id": 1,
+          "amount": "2000000",
+          "invoice_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "ref": "landing-demo",
+          "decision_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "signer_pk": "ed25519:5errZXjDMXpk51BLypA3hBRUfBfh9v4bHeyU9vRmzYFK"
+      },
       "value": {
         "ok": true,
         "code": null,
         "would_hold": false
       },
-      "blockHeight": 276851246
+      "blockHeight": 276860836
     },
     "hijack": {
+      "args": {
+        "request": {
+          "mandate_id": 1,
+          "amount": "50000000",
+          "invoice_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "ref": "landing-demo",
+          "decision_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "signer_pk": "ed25519:5errZXjDMXpk51BLypA3hBRUfBfh9v4bHeyU9vRmzYFK"
+      },
       "value": {
         "ok": false,
         "code": "OverPerPayment",
         "would_hold": false
       },
-      "blockHeight": 276851247
+      "blockHeight": 276860836
     },
     "nomandate": {
+      "args": {
+        "request": {
+          "mandate_id": 999,
+          "amount": "1000000",
+          "invoice_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "ref": "landing-demo",
+          "decision_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "signer_pk": "ed25519:5errZXjDMXpk51BLypA3hBRUfBfh9v4bHeyU9vRmzYFK"
+      },
       "value": {
         "ok": false,
         "code": "NoMandate",
         "would_hold": false
       },
-      "blockHeight": 276851246
+      "blockHeight": 276860837
     },
     "otherkey": {
+      "args": {
+        "request": {
+          "mandate_id": 1,
+          "amount": "1000000",
+          "invoice_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "ref": "landing-demo",
+          "decision_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "signer_pk": "ed25519:22222222222222222222222222222222222222222222"
+      },
       "value": {
         "ok": false,
         "code": "NotAgent",
         "would_hold": false
       },
-      "blockHeight": 276851248
+      "blockHeight": 276860837
     }
   }
 }
