@@ -1,0 +1,150 @@
+<Callout kind="note">
+Probarion is an unaudited beta, and this quickstart runs on NEAR testnet, where every token is a test token with no value. The page is marked Preview: sign-in and creating a vault have been tried with a real wallet (Meteor, on testnet), and the later steps have not yet been run end to end with one.
+</Callout>
+
+## Before you start
+
+- A NEAR testnet account, such as `name.testnet`, with a full-access key in a wallet the console lists for testnet: Meteor Wallet, Nightly Wallet or Ledger. Only Meteor has been tried with a real wallet so far.
+- At least 3.4 test NEAR in that account. Step 2's deposit is 3.23352 NEAR, which the sign-in page rounds up to about 3.3. Step 5 attaches 0.05 NEAR, and the vault sends most of it back. Each transaction you sign also needs some NEAR for its gas. The 3.4 is inferred from the code, with a little room: no test runs these steps from an account that holds only that much.
+- Probarion does not hand out test NEAR. NEAR's faucet service funds new testnet accounts: the repository's testnet runbook makes its accounts with near-cli-rs, `near account create-account sponsor-by-faucet-service`, and each starts with 10 test NEAR.
+- A testnet account for the mandate to pay, such as a second account of yours.
+- A small file to stand for the purchase order, such as a text file. Only its sha256 goes on chain.
+
+You sign every owner transaction on this page (creating the vault, adding the two keys, signing the mandate) in your own wallet, and Probarion never signs one of those for you. Two kinds of transaction are signed by keys Probarion holds. The test USDC mint in step 3 is signed by the Probarion team's key, which can only mint the test token. The agent and ledger keys from step 4 are kept on Probarion's server for Payables, and they sign `spend` and `anchor` on your vault: the vault lets them call nothing else.
+
+## Set up your vault
+
+<Steps>
+
+1. **Sign in.** Open [/console](/console) on this site. Today every address of the site serves NEAR testnet. Without a session you land on "Sign in with your NEAR wallet". Click "Sign in with NEAR wallet" and pick your wallet. The wallet signs a message for the recipient `probarion.xyz`, not a transaction:
+
+   ```text
+   Sign in to Probarion
+
+   This proves you control this NEAR account. It does not move funds or add keys.
+
+   Nonce: <64 hex characters>
+   ```
+
+   Expected: the "Your vaults" page opens, its top line says "Signed in as" with your account, and the list says "No vaults yet. Create one, or register one you own." The session lasts 12 hours.
+
+2. **Create a vault.** On "Your vaults", fill in the "Create a vault" card:
+
+   - "Vault name": 2 to 31 characters, lowercase letters, digits, `-` or `_`, starting with a letter or a digit. The hint shows the vault's account, `<name>.vaults.probarion.testnet`.
+   - "Approvers": at least 1 and at most 10 NEAR accounts, comma separated, who approve held payments. A second person is best. If you name only yourself, the form warns: "You are the only approver, so a held payment needs nobody else's signature. A second person is safer."
+   - "Daily backstop (USDC)": 500. Its hint says "Hard cap on the total spent per day, enforced by the contract."
+   - "Held payments expire after (hours)": 72, from 1 to 720.
+   - "Deposit (NEAR)": the form pre-fills what the factory requires, its `min_deposit` plus the console's estimate of the storage for the vault's own copy of its code. With today's testnet factory that is 3.23352 NEAR. The form refuses more than 5 NEAR.
+
+   Click "Create vault in my wallet", read the confirmation, and sign in your wallet.
+
+   <Callout kind="owner-signs">
+   Your wallet signs `create_vault` on the factory, `vaults.probarion.testnet`, as the account you signed in with, and attaches the deposit. That account becomes the vault's owner for good.
+   </Callout>
+
+   <Callout kind="warning">
+   The deposit becomes the vault's runway and cannot be withdrawn. If the name is taken, the factory refunds it.
+   </Callout>
+
+   Expected: the console registers the vault for you and says:
+
+   ```text
+   Registered <name>.vaults.probarion.testnet. Opening it…
+   ```
+
+   Then the console opens the vault's own page, and a line under its account ends in "you are owner". Its "Your first agent payment" card lists five steps to a first payment, with "Agent key and ledger key" next and a "Go to Keys" link. This page adds the test USDC first, and either order works. If the note says the vault could not be registered yet, wait a few seconds and enter its account in "Register a vault you already own" on the same page.
+
+3. **Add test USDC.** Open your vault's "Top-up" tab (`/console/<vault>/topup`), which only the vault's owner can use. In the card "USDC on NEAR (for NEAR payees)", under "Add 25 test USDC to this vault", click "Add test USDC". The server mints 25 test USDC straight into the vault. No wallet opens: the Probarion team's mint-only key signs this mint. It works once a UTC day per vault, and for up to 3 vaults per signed-in account a day. The banner at the top of the tab, which says you sign each top-up in your own wallet and Probarion never signs for you, is about the top-ups you send from your wallet. The faucet block itself says "The Probarion team's key signs this mint, not your wallet, and it can only mint the test token."
+
+   Expected, with a link to the transaction:
+
+   ```text
+   Added 25 test USDC to the vault.
+   ```
+
+   The "Balances" card on the "Overview" tab now shows the 25 test USDC under "USDC on NEAR".
+
+   If the card shows a sentence instead of the button, this server has no faucet key yet. Do what it says: "Need test USDC? Send @probarionhq a direct message on X with your vault's name." Test USDC is a test token that only its owner account can mint, so it comes from the Probarion team. Steps 4 to 6 do not need the USDC, so go on while you wait. Until it arrives, step 5 shows this warning, which does not stop you from creating the mandate: "The per-payment cap (5 USDC) is more than the USDC on NEAR the vault holds now (0 USDC). You can still create the mandate, but a payment above 0 USDC will fail until you add funds."
+
+   If you already hold test USDC, the same card sends it from your wallet: set "Amount (test USDC)" and click "Send USDC to the vault from my wallet". You sign that transaction, and it also registers the vault on the USDC contract. The second card, "Base USDC inside NEAR Intents (for Base payees)", offers nothing on testnet: NEAR Intents and 1Click exist on mainnet only.
+
+4. **Add the agent key and the ledger key.** Open the "Keys" tab. In the "Add keys" card, keep the "Agent key label" `payables` and click "Generate agent key and add it in my wallet". Then click "Generate ledger key and set it in my wallet". Probarion generates each key on its server and stores its secret encrypted, and your wallet adds only the public key to the vault. The vault limits the agent key to `spend`, with a gas allowance of 1 NEAR, and the ledger key to `anchor`, with 0.25 NEAR. The ledger key signs ledger entries and anchors their root on chain.
+
+   <Callout kind="owner-signs">
+   Each button is one transaction on your vault: `add_agent` for the agent key, `set_ledger_key` for the ledger key. Each attaches exactly 1 yoctoNEAR.
+   </Callout>
+
+   Expected: after each signature the page reads the chain again, and the "Keys" table shows an `agent` row labelled `payables` and a `ledger` row, both with the status `active`. If a key still says `pending`, click "Check on-chain status".
+
+   These two keys are for Payables, the agent Probarion runs for you, and the console never shows their secrets. With them, this vault belongs to hosted Payables. A vault has one ledger key, and the SDK's `process()` refuses to run when its `ledgerKey` is not the vault's, so an agent you run yourself with the SDK needs a second vault of its own: create it with steps 2 and 3, skip this Keys step, and add the agent's own keys as the [developer quickstart](/docs/start/developer-quickstart) shows. By the code, two ledger writers on one vault would give it two histories, and the verifier's anchor check would then fail. This is inferred: no test shows it yet.
+
+5. **Sign your first mandate.** Open the "Mandates" tab. In the "New mandate" card, skip the "Trying it out?" box above "Payee type": its "Use the sample PO" button fills the form for a different test, one that pays you and holds no payment. Fill in the card by hand:
+
+   - "Payee type": "NEAR account (USDC on NEAR)". On testnet a Base payee is paid to a stand-in for NEAR Intents, and nothing leaves NEAR. The faucet adds only USDC on NEAR, and the Top-up tab cannot top up a Base balance on testnet, so a Base payee on this vault has nothing to pay from.
+   - "Payee": the testnet account to pay. It never changes, so check every character.
+   - "Purpose document (PO or contract)": choose your small file. Your browser hashes it and does not upload it: only its sha256 goes on chain. The form takes a file of at most 4 MiB, or the sha256 pasted into "Purpose hash (sha256, 64 hex)". Keep the file: Payables pays an invoice only when the purchase order sent with it hashes to this value.
+   - "Max per payment (USDC)", "Max total (USDC)", "Max number of payments" and "Hold for approval above (USDC)" start at 100, 1000, 10 and 100. For this test, set them to 5, 20, 5 and 2, so the 25 test USDC cover the caps and a payment above 2 USDC waits for an approver.
+   - "Expires on (UTC)": a date at least one hour and at most 366 days ahead. The mandate runs to the end of that UTC day.
+   - "Agent key": `payables`, the key from step 4.
+   - "Name": for example `First test`.
+
+   Check the summary under "You are about to create". Its approval line reads "Payments above 2 USDC are held for an approver's signature; smaller ones are paid at once." Click "Sign mandate in my wallet". The console asks you to confirm:
+
+   ```text
+   Create mandate "First test"?
+
+   Pays <payee> (USDC on NEAR) up to 5 USDC per payment and 20 USDC in all, at most 5 payments, until <expiry>.
+
+   The payee can never be changed. Your wallet attaches 0.05 NEAR; the vault refunds what the storage does not use.
+   ```
+
+   <Callout kind="owner-signs">
+   Your wallet signs `create_mandate` on your vault and attaches 0.05 NEAR. The vault keeps what the mandate's storage costs, plus 0.00125 NEAR to register a NEAR payee on the USDC contract, and sends the rest back to you.
+   </Callout>
+
+   Expected: the "Mandates" table lists the mandate with the status `active`.
+
+6. **Know your emergency stop.** On the "Overview" tab, the "Vault" card has a "Freeze vault" button. Its confirmation says "Freeze stops every spend and every approval until you unfreeze. Continue?" Do not freeze now. Know where the button is.
+
+   <Callout kind="owner-signs">
+   `freeze` takes no deposit. "Unfreeze vault" signs `unfreeze`, which attaches exactly 1 yoctoNEAR, as most other owner calls do.
+   </Callout>
+
+</Steps>
+
+## What you have now
+
+| What | Where to see it | What it is |
+| --- | --- | --- |
+| Your vault, `<name>.vaults.probarion.testnet` | "Overview" tab, "Vault" card | You are its owner. It has your approvers, a daily backstop of 500 USDC unless you changed it, and held payments that expire after 72 hours. |
+| Its NEAR runway | "Overview" tab, "Balances" card, "NEAR runway" | What is left of the deposit after storage. It pays the vault's storage and gas. |
+| Test USDC: 25 from the button, or what the team sent you | "Overview" tab, "Balances" card, "USDC on NEAR" | What a mandate to a NEAR payee pays from. |
+| The agent key `payables` | "Keys" tab, status `active` | May call only `spend` on the vault, with a 1 NEAR gas allowance. |
+| The ledger key | "Keys" tab, and "Ledger key" in the "Vault" card | May call only `anchor`, with a 0.25 NEAR gas allowance. |
+| One mandate | "Mandates" tab, status `active` | One payee, 5 USDC per payment, 20 USDC in all, 5 payments, your expiry date, held above 2 USDC, bound to `payables`. |
+
+Terms used on this page are in the [glossary](/docs/resources/glossary).
+
+## Common mistakes
+
+- **No agent key yet.** Until the vault has an agent key on chain, the "New mandate" card shows "A mandate belongs to one agent key, and this vault has none yet. Add one on the Keys tab first." instead of the form. Do step 4 first.
+- **A deposit above 5 NEAR.** The form refuses it: "At most 5 NEAR: if the name is taken, the factory refunds the deposit from a float sized for that."
+- **The wrong key at sign-in.** Sign-in takes only an ed25519 full-access key of the account. A function-call key gets "Your wallet's signature was not accepted. Choose an account whose full-access key can sign messages (bad_signature)". A key of another type gets "The wallet's answer was not in the expected form (invalid_input)". See [bad_signature](/docs/build/errors#http-401-bad_signature) and [invalid_input](/docs/build/errors#http-401-invalid_input).
+- **The other network.** This quickstart is testnet only. A session and a vault belong to the network of the address they were made at, and today every address serves testnet. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+- **A second faucet try the same day.** Each vault gets one mint a UTC day, so a second try answers "This vault already got its test USDC today." with the time left until midnight UTC. A fourth vault of the same account that day, or a day when the test USDC for all vaults is given out, gets a similar answer. If the button answers "The test USDC button is not working right now. Send @probarionhq a direct message on X with your vault's name.", do that.
+- **Trying to edit a mandate.** The console only creates and revokes mandates.
+
+  <Callout kind="warning">
+  A mandate cannot be edited, and its payee can never change. To change a limit or the payee, revoke the mandate on the "Mandates" tab and sign a new one.
+  </Callout>
+
+## Next steps
+
+- [Mandates](/docs/concepts/mandates): what each limit you just signed means.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): what happens to a payment above your approval threshold.
+- [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys): who may do what on your vault.
+- [How a payment is checked](/docs/concepts/payment-checks): the checks the vault runs on every spend.
+- [Developer quickstart](/docs/start/developer-quickstart): connect an agent you run yourself with the SDK, on a second vault.
+- [Security model](/docs/trust/security-model): what the design protects against, and what it does not.
+
+Guides to paying invoices with Payables, approving held payments in the console, and freezing and withdrawing come in a later phase.

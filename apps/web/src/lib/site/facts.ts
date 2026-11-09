@@ -11,6 +11,31 @@ const blob = (path: string) => `${REPO_URL}/blob/main/${path}`;
 
 export const FIXTURE_PATH = "packages/core/test/fixtures/valid-snapshot.json";
 
+/**
+ * The site's byte-for-byte copy of FIXTURE_PATH (test/site-tamper.test.ts compares the two), so that the landing's
+ * check runs with npx alone, in an empty folder. `curl -O` saves the URL's last segment, which is `file`.
+ */
+export const SAMPLE_SNAPSHOT = {
+  path: "/samples/valid-snapshot.json",
+  url: "https://probarion.xyz/samples/valid-snapshot.json",
+  file: "valid-snapshot.json",
+} as const;
+
+/**
+ * The landing's offline check, one command per line so that every shell runs them (Windows PowerShell 5.1 has no
+ * `&&`). With npx: download the site's copy, then verify it. Built from a clone: verify the fixture at the clone's root.
+ */
+export const VERIFY_LINES: readonly string[] = CLI_ON_NPM
+  ? [`curl -O ${SAMPLE_SNAPSHOT.url}`, cli(`verify --offline ${SAMPLE_SNAPSHOT.file}`)]
+  : [cli(`verify --offline ${FIXTURE_PATH}`)];
+
+/**
+ * Said above VERIFY_LINES with npx. Windows PowerShell 5.1 reads `curl` as its own Invoke-WebRequest, which fails on
+ * `-O <url>`; curl.exe, part of Windows 10 and 11, runs the line as written.
+ */
+export const VERIFY_NOTE =
+  "In an empty folder, with Node 24 or later. In Windows PowerShell 5.1, type curl.exe for curl.";
+
 export const LINKS = {
   github: REPO_URL,
   evaluate: `${REPO_URL}#how-to-evaluate-probarion-in-5-minutes`,
@@ -21,8 +46,6 @@ export const LINKS = {
   runbook: blob("docs/RUNBOOK.md"),
   changelog: blob("CHANGELOG.md"),
   fixture: blob(FIXTURE_PATH),
-  sdkReadme: blob("packages/sdk/README.md"),
-  cliReadme: blob("packages/cli/README.md"),
   x: "https://x.com/probarionhq",
 } as const;
 
@@ -30,7 +53,7 @@ export const LINKS = {
 
 export const SITE_TITLE = "Probarion. Spend by mandate. Prove every payment.";
 export const SITE_DESCRIPTION =
-  "A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and anyone can verify the signed ledger.";
+  "A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and the owner can publish the signed ledger for anyone to verify.";
 export const OG_IMAGE = {
   url: "/og.png",
   width: 1280,
@@ -38,7 +61,10 @@ export const OG_IMAGE = {
   alt: "Probarion. Spend by mandate. Prove every payment. Mandates for AI agents on NEAR.",
 } as const;
 
-/** What the sitemap lists: the landing page, /proof and any public page as it gets built. The console is private. */
+/**
+ * The site's public pages: the landing page, /proof and the menus' built pages, not the console.
+ * The sitemap adds the docs pages from the registry (app/sitemap.ts).
+ */
 export function publicRoutes(): string[] {
   const nav = [...SITE_NAV, ...FOOTER_NAV].map(({ route }) => route);
   return [...new Set(["/", "/proof", ...nav])].filter(
@@ -59,6 +85,8 @@ export const HEADER_ANCHORS: readonly { href: string; label: string }[] = [
 
 export const PROOF_ROUTE = "/proof";
 export const CONSOLE_ROUTE = "/console";
+/** The landing's closing button: the docs tutorial that walks an evaluator through the product. */
+export const EVALUATE_ROUTE = "/docs/start/evaluate-in-5-minutes";
 
 /**
  * Planned pages the footer leaves out until they exist, because it already covers them some other way (for
@@ -67,13 +95,20 @@ export const CONSOLE_ROUTE = "/console";
 const COVERED_WHILE_PLANNED: readonly string[] = ["/security"];
 const listed = (items: readonly NavItem[]) =>
   items.filter(({ route }) => isBuilt(route) || !COVERED_WHILE_PLANNED.includes(route));
+/** FOOTER_NAV pages that the footer lists with the product pages, not with the legal ones. */
+const FOOTER_PRODUCT: readonly string[] = ["/usage"];
 
 export const FOOTER = {
   motto: "TEE protects the data. The contract protects the money.",
   note: "Unaudited beta. Use small amounts. Built for the NEAR Hackathon 2026. MIT license.",
   /** Internal links: SITE_NAV and FOOTER_NAV stay the source of the routes. */
-  product: listed(SITE_NAV),
-  legal: listed(FOOTER_NAV).filter(({ route }) => !SITE_NAV.some((i) => i.route === route)),
+  product: listed([
+    ...SITE_NAV,
+    ...FOOTER_NAV.filter(({ route }) => FOOTER_PRODUCT.includes(route)),
+  ]),
+  legal: listed(FOOTER_NAV).filter(
+    ({ route }) => !SITE_NAV.some((i) => i.route === route) && !FOOTER_PRODUCT.includes(route),
+  ),
   developers: [
     { href: LINKS.github, label: "GitHub" },
     { href: LINKS.interfaces, label: "Interfaces" },
@@ -100,19 +135,24 @@ export const TX = {
   nearPayment: tx("3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX", "3DFV2thB…Fy9cX"),
   baseBurn: tx("3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe", "3u4ffrwp…dcvYe"),
   noMandate: tx("AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY", "AkjyVPmb…dzgY"),
+  // 2026-11-09, after the smoke run: the agent key itself asked mandate 1 for 6 test USDC, above its 5 USDC limit.
+  overPerPayment: tx("4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1", "4715d4nb…Vsr1"),
 } as const;
 
 // --- hero -----------------------------------------------------------------------------------------
 
 export const HERO = {
+  eyebrow: "A mandate layer for AI agents on NEAR",
   line1: "Spend by mandate.",
   line2: "Prove every payment.",
-  lede: "Give your AI agent a budget, not your wallet. It can pay only the payee you named, up to the limits you signed. A NEAR contract refuses everything else, and every decision goes into a ledger anyone can check.",
+  lede: "Give your AI agent a budget, not your wallet. It can pay only the payee you named, up to the limits you signed. A NEAR contract refuses everything else, and every decision goes into a signed ledger you can publish.",
   openConsole: "Open console",
   tryLive: "Try a payment, live",
   integrate: "Plug in your agent",
   fineprint:
     "Testnet today, mainnet planned. You need no account to read the chain or run the verifier.",
+  audience:
+    "For teams whose AI agent pays supplier invoices (Payables, in progress), and for developers who want to give an agent money without the keys.",
   paid: {
     aria: "A payment the contract allowed",
     mandate: "Mandate 1",
@@ -124,16 +164,17 @@ export const HERO = {
     tx: TX.nearPayment,
   },
   refused: {
-    aria: "A payment the contract refused",
-    mandate: "Mandate 999",
-    state: "Refused",
-    code: ["PROBARION:", "NoMandate"],
+    aria: "A payment the contract blocked",
+    mandate: "Mandate 1",
+    state: "Blocked",
+    big: "6 test USDC",
     caller: "Agent key",
-    payee: "None on record",
+    limit: "5 USDC a payment",
+    code: "OverPerPayment",
     paid: "Nothing",
-    tx: TX.noMandate,
+    tx: TX.overPerPayment,
   },
-  note: "Two real calls by one agent key on `v0.probarion.testnet`, with test tokens. The contract decided both.",
+  note: "Two real calls by one agent key on `v0.probarion.testnet`, with test tokens. For the second, the agent asked the contract directly. The contract decided both.",
 } as const;
 
 export const PROBLEM = {
@@ -338,9 +379,9 @@ export const VERIFIER_OUTPUT = {
 export const CONTRACT_REFUSAL_CODE = "OverPerPayment";
 
 export const JOURNEY = {
-  title: "What happens to one payment",
+  title: "What happens to one invoice",
   intro:
-    "Three parties look at it in turn. The model may advise. Code decides. The contract has the last word.",
+    "The owner signs the rules once. When an invoice arrives, your agent asks to pay it. It never holds the money or types an address. The model may advise, code decides, and the contract has the last word.",
   steps: [
     {
       n: 1,
@@ -384,7 +425,7 @@ export const JOURNEY = {
     {
       n: 4,
       title: "The contract decides last",
-      body: "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for a person.",
+      body: "Even if every line of off-chain code were wrong, the vault refuses a payment outside its mandate. Above the approval limit, the spend waits for an approver's own wallet. The agent's key cannot approve anything, not even its own payment.",
       tryIt: "Try it yourself above.",
       panelLabel: "check_spend results on the testnet vault",
       panel: [
@@ -395,14 +436,15 @@ export const JOURNEY = {
     },
     {
       n: 5,
-      title: "Anyone can check the record",
-      body: "The SDK anchors the ledger root on the vault. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
-      tag: `The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture.${
-        CLI_ON_NPM ? "" : " Build it from a clone first (README step 1)."
-      }`,
+      title: "Check a published record",
+      body: "With a ledger key, the SDK anchors the ledger root on the vault, and the owner can publish the ledger on a proof page. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
+      tag: CLI_ON_NPM
+        ? "The testnet vault has no ledger key or anchors yet, so these commands run on a test fixture: this site serves an exact copy of the file in the repository."
+        : "The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture. Build it from a clone first (README step 1).",
       panelLabel: "Verifier output",
       panel: [
-        { command: cli(`verify --offline ${FIXTURE_PATH}`) },
+        ...(CLI_ON_NPM ? [{ note: VERIFY_NOTE }] : []),
+        ...VERIFY_LINES.map((command) => ({ command })),
         { text: VERIFIER_OUTPUT.summary },
         { text: VERIFIER_OUTPUT.result, tone: "pass" },
       ],
@@ -423,7 +465,7 @@ export const SPEND_REQUEST_FIELDS = [
 
 export const BAND = {
   title: "The agent cannot name a payee.",
-  body: "A hijacked prompt can ask for anything. `spend` has no field to put an address in. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
+  body: "A forged invoice or a hijacked prompt can ask to pay anyone. `spend` has no field to put an address in, so the money can only go to a payee you signed. For a cross-chain payee, the vault builds the withdrawal memo itself, from the mandate.",
   structName: "SpendRequest",
   gone: "recipient",
   goneNote: "does not exist",
@@ -444,12 +486,27 @@ export const CHECK_LABELS: Readonly<Record<CheckId, string>> = {
   i: "Factory version",
 };
 
+/**
+ * One plain line under each name, for a reader who does not know NEAR. Each says what `verify.ts` checks, no more:
+ * h names the address and the amount, it does not prove that the money arrived.
+ */
+export const CHECK_HINTS: Readonly<Record<CheckId, string>> = {
+  a: "Every entry is signed by the vault's ledger key of its time.",
+  b: "Each entry carries the hash of the one before, so an edit breaks the chain.",
+  c: "The ledger matches the roots anchored on the vault.",
+  d: "Every payment on chain matches exactly one decision in the ledger.",
+  e: "Model advice, when used, is signed and tied to this exact place in the ledger.",
+  f: "No one holds a full-access key to the vault, and it runs a known build.",
+  g: "No key is registered for the vault in NEAR Intents, so only the vault contract can move its balance there.",
+  h: "Each withdrawal to another chain names the address in the mandate and the spend's amount.",
+  i: "If the vault came from a factory, it is Probarion's, and its version is one the factory lists.",
+};
+
 const CHECK_IDS = Object.keys(CHECK_LABELS) as CheckId[];
 
-export const CHECK_LIST: readonly { id: CheckId; label: string }[] = CHECK_IDS.map((id) => ({
-  id,
-  label: CHECK_LABELS[id],
-}));
+export const CHECK_LIST: readonly { id: CheckId; label: string; hint: string }[] = CHECK_IDS.map(
+  (id) => ({ id, label: CHECK_LABELS[id], hint: CHECK_HINTS[id] }),
+);
 
 /**
  * What the page shows before anyone clicks, with no JavaScript too. The test runs the real verifier against it. The
@@ -498,8 +555,8 @@ export const CHAIN = {
       tx: TX.nearPayment,
     },
     {
-      title: "Burned for a Base address",
-      body: "1 test USDC with the memo `WITHDRAW_TO:0x1111…1111` the vault built from the mandate. On testnet nothing leaves NEAR.",
+      title: "Withdrawal for a Base address",
+      body: "The vault burned 1 test USDC with the memo `WITHDRAW_TO:0x1111…1111`, which it built from the mandate. On testnet nothing leaves NEAR.",
       tx: TX.baseBurn,
     },
     {
@@ -517,19 +574,34 @@ export type StatusTone = "live" | "work" | "plan";
 export const STATUS = {
   title: "What works today, and what does not",
   rows: [
-    { row: "Vault contract", pill: "On testnet", tone: "live" },
-    { row: "Offline verifier, checks a to i", pill: "Shipped in source", tone: "live" },
-    { row: "Reproducible builds", pill: "Shipped", tone: "live" },
-    { row: "Vault factory", pill: "On testnet", tone: "live" },
-    { row: "Web console", pill: "In progress", tone: "work" },
-    { row: "Public proof page", pill: "Built, no public vault yet", tone: "work" },
-    { row: "TypeScript SDK and CLI", pill: "In source, not on npm", tone: "work" },
-    { row: "Payables agent", pill: "In progress", tone: "work" },
-    { row: "Live attested model run", pill: "In progress", tone: "work" },
-    { row: "Canary public challenge", pill: "Page built, not open yet", tone: "work" },
-    { row: "MCP server", pill: "Planned", tone: "plan" },
-    { row: "Mainnet vault", pill: "Planned", tone: "plan" },
-  ] as const satisfies readonly { row: string; pill: string; tone: StatusTone }[],
+    { id: "vault-contract", row: "Vault contract", pill: "On testnet", tone: "live" },
+    {
+      id: "offline-verifier",
+      row: "Offline verifier, checks a to i",
+      pill: "Shipped, on npm",
+      tone: "live",
+    },
+    { id: "reproducible-builds", row: "Reproducible builds", pill: "Shipped", tone: "live" },
+    { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
+    { id: "web-console", row: "Web console", pill: "In progress", tone: "work" },
+    {
+      id: "public-proof-page",
+      row: "Public proof page",
+      pill: "Built, no public vault yet",
+      tone: "work",
+    },
+    { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
+    { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
+    { id: "attested-model-run", row: "Live attested model run", pill: "In progress", tone: "work" },
+    {
+      id: "canary",
+      row: "Canary public challenge",
+      pill: "Page built, not open yet",
+      tone: "work",
+    },
+    { id: "mcp-server", row: "MCP server", pill: "Planned", tone: "plan" },
+    { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },
+  ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
   noteBefore: "No third party has audited this code. Read the ",
   noteLink: "threat model",
   noteAfter: ", including what `verify` does not prove yet.",
@@ -637,13 +709,13 @@ export const INTEGRATE = {
       title: "TypeScript SDK",
       body: "One call runs the cycle: code decides, the contract checks and pays, the ledger records it.",
       status: "TypeScript SDK and CLI",
-      link: { href: LINKS.sdkReadme, label: "SDK README" },
+      link: { route: "/docs/start/developer-quickstart", label: "Developer quickstart" },
     },
     {
       title: "CLI",
       body: "`verify` checks a vault or a snapshot. Other commands print owner actions for the owner's wallet to sign.",
       status: "TypeScript SDK and CLI",
-      link: { href: LINKS.cliReadme, label: "CLI README" },
+      link: { route: "/docs/build/install", label: "Install" },
     },
     {
       title: "Web console",
@@ -661,6 +733,8 @@ export const INTEGRATE = {
   fileName: "agent.ts",
   codeLabel: "@probarion/sdk",
   statusesLead: "`outcome.status` is one of:",
+  /** After the statuses: the docs page that says what each one means and what to do next. */
+  statusesLink: { route: "/docs/build/spend-outcomes", label: "What each status means" },
   statuses: [
     "refused_by_code",
     "refused_by_contract",

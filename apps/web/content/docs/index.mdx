@@ -1,0 +1,137 @@
+<HubSearch>
+
+- [mandate fields](/docs/concepts/mandates)
+- [PROBARION:NoMandate](/docs/build/errors#NoMandate)
+- [verify --offline](/docs/trust/verify-a-vault)
+- [unconfirmed](/docs/build/spend-outcomes)
+
+</HubSearch>
+
+<HubDoors>
+
+<Door
+  who="New here · 5 min"
+  title="What Probarion is, in one payment"
+  href="/docs/start/how-one-payment-works"
+  go="Start here"
+  also="What is Probarion"
+  alsoHref="/docs/start/what-is-probarion"
+>
+Follow one payment from the owner's mandate to the contract's decision and a record its owner can publish for anyone to check. No wallet needed.
+</Door>
+
+<Door
+  who="Owner · 10 min"
+  title="Set up a vault and your first mandate"
+  href="/docs/start/owner-quickstart"
+  go="Owner quickstart"
+>
+Sign in with a NEAR wallet, create a testnet vault, fund it with test USDC, add an agent key and sign the limits.
+</Door>
+
+<Door
+  who="Developer · 15 min"
+  title="Let your agent request its first spend"
+  href="/docs/start/developer-quickstart"
+  go="Developer quickstart"
+>
+Build the SDK from source, run one payment on testnet and branch on the seven statuses `process()` returns.
+</Door>
+
+<Door
+  who="Evaluator · Don't trust us"
+  title="Check it without a wallet"
+  href="/docs/start/evaluate-in-5-minutes"
+  go="Evaluate in 5 minutes"
+  also="Verify a vault yourself"
+  alsoHref="/docs/trust/verify-a-vault"
+  ink
+>
+Ask the contract in your browser, then run the verifier on a signed test ledger and read the testnet vault on chain.
+</Door>
+
+</HubDoors>
+
+## What happens to one invoice
+
+The model may advise. Code decides. The contract has the last word.
+
+<Flow>
+
+1. **Owner** Signs a mandate: who gets paid, how much per payment and in total, how many times, until when, which agent key may use it, and above what amount a person must approve.
+2. **Code** Decides to allow the payment, hold it or refuse it, with built-in rules that cannot be removed. A model may advise, but it cannot widen the mandate. The SDK signs the decision into the ledger before anything is sent, refusals included. If code refuses, nothing is sent.
+3. **Agent** Asks to spend. Its `spend` request carries a mandate id, an amount, a ref and two hashes, one of them the signed decision's. It has no field for a payee.
+4. **Contract** Runs 14 checks in a fixed order. It pays the mandate's payee, holds the spend for an approver, or refuses with a code such as `NoMandate`. The SDK signs that outcome into the ledger.
+5. **Anyone** Checks a published record. Each ledger entry is chained by hash to the one before, and the SDK anchors the root on the vault with the ledger key. The verifier runs checks a to i with no account and ends with PASS, FAIL or UNPROVEN.
+
+</Flow>
+
+Follow the whole path in [How one payment works](/docs/start/how-one-payment-works), or see each check in [How a payment is checked](/docs/concepts/payment-checks).
+
+## Popular guides
+
+The ideas behind every payment, one page each. New words are in the [glossary](/docs/resources/glossary).
+
+<HubCards>
+
+<Card title="Write a mandate" href="/docs/concepts/mandates">
+Every field, what the contract checks when the owner signs one, and why a mandate is never edited.
+</Card>
+
+<Card title="Approve a held payment" href="/docs/concepts/holds-and-approvals">
+What puts a payment on hold, who may approve or reject it, and what happens when the hold expires.
+</Card>
+
+<Card title="Give each agent its own key" href="/docs/concepts/vaults-roles-and-keys">
+Who may call what: the owner, the approvers, the spend-only agent key and the anchor-only ledger key.
+</Card>
+
+<Card title="Why the agent cannot name a payee" href="/docs/concepts/why-spend-has-no-payee">
+A spend request has no address field. The vault pays the payee the owner set in the mandate.
+</Card>
+
+<Card title="Read the signed ledger" href="/docs/concepts/ledger-and-anchors">
+How each decision is signed into a hash-chained ledger before money moves, and how anchors pin it on the vault.
+</Card>
+
+<Card title="Read the security model" href="/docs/trust/security-model">
+Who holds which key, what the vault enforces whatever the off-chain code does, and the known gaps.
+</Card>
+
+</HubCards>
+
+## Build on it
+
+The SDK, the core library and the CLI are on npm, at 0.1.0. A clone of the repository builds them from source too.
+
+<HubCards>
+
+<Card title="Install the packages" href="/docs/build/install" tag="@probarion/sdk">
+Install the SDK, the core library and the CLI from npm, or build them from a clone.
+</Card>
+
+<Card title="Let an agent pay" href="/docs/build/let-an-agent-pay" tag="process()">
+One payment cycle with the SDK: decide, sign the decision, check, spend, record the outcome.
+</Card>
+
+<Card title="Spend outcomes" href="/docs/build/spend-outcomes" tag="SpendOutcome">
+The seven statuses `process()` returns, what each one means, and what to do next.
+</Card>
+
+<Card title="Errors" href="/docs/build/errors" tag="PROBARION:OverPerPayment">
+Each `PROBARION:` code: what it means, which call raises it and what to do next. The SDK and HTTP errors are there too.
+</Card>
+
+</HubCards>
+
+## Docs your agent can read
+
+<HubAgents example="concepts/payment-checks" />
+
+## What works today, and what does not
+
+Live works in this deployment. Preview is built but not yet run end to end, or not open yet. Planned is not built.
+
+<StatusTable />
+
+Only NEAR testnet is live, and no third party has audited this code. [What works today](/docs/start/what-works-today) adds the parts this list leaves out, and [Testnet and mainnet](/docs/start/testnet-and-mainnet) says what differs between the two networks.

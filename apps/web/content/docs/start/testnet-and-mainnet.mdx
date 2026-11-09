@@ -1,0 +1,149 @@
+Probarion runs on NEAR testnet today. The vault contract and the factory are Live there, with test tokens in place of USDC. The web console is deployed there too, as Preview: sign-in and Create a vault have been tried with a real wallet, and its other actions not yet. Mainnet is planned: `contracts/deployments/mainnet.json` names the mainnet accounts but records no transaction, so no mainnet vault or factory exists yet.
+
+One deployment of the site is built to serve both networks, and the address you open decides which one you get. That is Preview too: today only testnet is served, so every live address serves testnet.
+
+## The two networks side by side
+
+| What | Testnet (Live) | Mainnet (Planned) |
+| --- | --- | --- |
+| USDC | `usdc.probarion.testnet`, a test token | `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`, native USDC |
+| USDC decimals | 6 | 6 |
+| NEAR Intents | `intents-stub.probarion.testnet`, a stand-in | `intents.near` |
+| Base USDC | `base-usdc.probarion.testnet`, a test token | `base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near`, POA USDC on Base |
+| Solana USDC | `sol-usdc.probarion.testnet`, a test token | `sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near`, POA USDC on Solana, marked as a stretch goal in the code |
+| Vault factory | `vaults.probarion.testnet`, deployed 2026-11-05 | `vaults.probarion.near`, not deployed |
+| First vault | `v0.probarion.testnet`, deployed 2026-11-01 | `v0.probarion.near`, Planned |
+| A new vault | `<name>.vaults.probarion.testnet`. The console asks for about 3.3 test NEAR, which stays in the vault for its storage and gas | Cannot be created yet: the factory is not deployed |
+| Wallet | A testnet account, such as `name.testnet` | A mainnet account |
+| Default RPC | `https://rpc.testnet.fastnear.com` | `https://rpc.mainnet.fastnear.com`, then `https://rpc.intea.rs` |
+| Explorer | `testnet.nearblocks.io` | `nearblocks.io` |
+
+The first vaults are recorded in `contracts/deployments/testnet.json` and `contracts/deployments/mainnet.json`. The tokens, the Intents account, the factory, the default RPCs and the explorers come from one map in the code, which the SDK, the CLI and the web console all read:
+
+<CodeBlock title="packages/core/src/constants.ts">
+
+```ts
+export const NETWORKS = {
+  mainnet: {
+    rpcUrls: ["https://rpc.mainnet.fastnear.com", "https://rpc.intea.rs"], // intea answered on 2026-10-21 but ran nearcore 2.14.0-rc.2; S3 confirms. Configurable via NEAR_RPC_URLS
+    usdc: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1", // native USDC, 6 decimals
+    intents: "intents.near",
+    allowedAssets: {
+      base: "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", // POA USDC on Base, 6 decimals
+      solana: "sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near", // POA USDC on Solana, 6 decimals (stretch)
+    },
+    factory: "vaults.probarion.near",
+    explorerTx: "https://nearblocks.io/txns/",
+  },
+  testnet: {
+    rpcUrls: ["https://rpc.testnet.fastnear.com"],
+    usdc: "usdc.probarion.testnet", // test-ft deployment
+    intents: "intents-stub.probarion.testnet", // intents-stub deployment (Intents has no testnet)
+    allowedAssets: { base: "base-usdc.probarion.testnet", solana: "sol-usdc.probarion.testnet" }, // test-ft deployments acting as POA tokens
+    factory: "vaults.probarion.testnet",
+    explorerTx: "https://testnet.nearblocks.io/txns/",
+  },
+} as const;
+```
+
+</CodeBlock>
+
+## What is different on testnet
+
+- **The tokens are test tokens.** Test USDC and the Base and Solana assets are deployments of `test-ft`, a test token contract. Only the token's owner account, `probarion.testnet`, can mint it. Any other caller gets `test-ft: only the owner can mint`.
+- **Test USDC comes from the faucet.** On a testnet vault's Top-up tab (`/console/<vault>/topup`), the "Add test USDC" button mints 25 test USDC into the vault. Only the vault's owner can use it. No wallet signs: the Probarion team's key signs the mint, and that key can only mint the test token. It works once a UTC day per vault, and for up to 3 vaults per signed-in account a day. When the server has no faucet key, the tab shows this instead: "Need test USDC? Send @probarionhq a direct message on X with your vault's name."
+- **NEAR Intents is a stand-in.** Intents has no testnet, so `intents-stub.probarion.testnet` takes the place of `intents.near`. For a payout to a Base or Solana payee, the stub lowers the vault's balance in its own records and logs the burn events, `mt_burn` and then `ft_burn` with the `WITHDRAW_TO:` memo the vault built from the mandate. No token is burned: the test tokens stay in the stub's account on the token contract, and nothing leaves NEAR.
+- **There is no Base top-up.** In the console's words, "NEAR Intents and 1Click exist on mainnet only", so the Top-up tab cannot top up a Base balance on testnet. The mainnet version of that top-up has not been tried with a live quote yet.
+- **The protocol versions differ.** On 2026-11-01 testnet ran NEAR protocol 88 and mainnet ran 86. A testnet pass does not prove mainnet behaviour for anything that changed between the two.
+- **The first vault runs an older build.** `v0.probarion.testnet` runs a build older than the current source, from before a `set_ledger_key` fix on 2026-11-03. The vaults the testnet factory creates run the fixed build recorded in `contracts/code-hashes.json`. The first vault's test spends, from the smoke run of 2026-11-01, were also sent without a ledger, so the verifier fails [check d](/docs/trust/verifier-checks#check-d) and [check h](/docs/trust/verifier-checks#check-h) on it today. Check d ties each spend to one decision in the ledger, and check h matches each burned spend with its burn.
+
+## How the site picks a network
+
+From the address you opened, and from nothing else.
+
+<Flow>
+
+1. **You open an address** The site reads the host of the request: the first `X-Forwarded-Host` value, else `Host`. It never reads a query parameter, a cookie or the request body to pick a network.
+2. **The address names the network** An address equal to a network's configured origin is that network. Every other address, including `probarion.vercel.app`, previews and `localhost`, is the default network, which is testnet.
+3. **Everything follows that network** Sign-in, the vault pages, a vault's Alerts tab and `/usage` each work on that one network.
+
+</Flow>
+
+One exception: the landing's live check and its links to the smoke run always read NEAR testnet, whatever network the page is on.
+
+The watcher and metrics runs are not tied to an address: each run covers every served network in turn and keeps each network's records apart.
+
+What that means when you use the console:
+
+- **A vault of the other network does not open here.** Signed in as a member of the vault, you see its page say "This vault is on NEAR" and the vault's network, with a link to that network's address when the site serves it, and the API answers [409 `wrong_network`](/docs/build/errors#http-409-wrong_network) with one of the two sentences below. Anyone else gets the same answer as for a vault that does not exist, so a stranger is never told which network a vault is on.
+- **A registered vault keeps its network.** Registering it again at the other network's address is refused. A member of the vault, whatever their role, gets 409 and the same sentence as a vault page (below), before anything reads the chain. If two registrations race, the database refuses the second with "This vault is already registered on the other network. A vault stays on the network it was registered on."
+- **A session belongs to its address.** It names the network you signed in on. Signing in at one network's address does not sign you in at the other, and there you sign in with a wallet of that network. The message your wallet signs names `probarion.xyz` as its recipient on every address.
+- **The console checks the chain before sign-in and Register.** Before either creates lasting state, it asks each RPC URL which chain it serves, and the owner's Settings button "Re-sync approvers from the chain" runs the same check. A URL that serves the other chain stops them: sign-in answers [503 `wrong_chain`](/docs/build/errors#http-503-wrong_chain) and makes no session, and Register shows "This site is connected to the wrong NEAR network right now, so nothing was registered. Try again later."
+- **The network switch stays hidden today.** The header shows its Testnet and Mainnet switch only when the other network is served, so today it does not show.
+
+The `wrong_network` answer carries the first sentence when the site serves the vault's network, and the second while it has no address for it:
+
+```text
+This vault is on NEAR <network>. Open it at the <network> address.
+This vault is on NEAR <network>, which this site does not serve yet.
+```
+
+## For developers: match the network
+
+The SDK and the CLI take the network as a setting. The vault id and the RPC URLs you use must belong to that same network: a testnet vault ends in `.testnet`, a mainnet vault in `.near`.
+
+- **SDK.** `new Probarion(...)` takes `network: "testnet"` or `network: "mainnet"`. Any other value throws a `ConfigError`. The RPC comes from the `rpcUrls` option, else `NEAR_RPC_URLS`, else the network's defaults in the table above.
+- **CLI.** `--network` falls back to `NEAR_NETWORK`, then `testnet`. `--rpc` takes comma-separated URLs and falls back to `NEAR_RPC_URLS`, then the network's defaults.
+
+Put both options on the command line and no environment variable can change the network or the RPC. `verify` still reads its archival RPC, for burn transactions older than about 2.5 days, from `NEAR_ARCHIVAL_RPC_URLS` unless you pass `--archival-rpc`. A testnet run:
+
+```bash
+node packages/cli/dist/bin.js --network testnet --rpc https://rpc.testnet.fastnear.com verify --vault v0.probarion.testnet
+```
+
+On this vault the run ends in `RESULT: FAIL` today, for the reason given above: its test spends of 2026-11-01 were sent without a ledger, so checks d and h fail. [Verify a vault](/docs/trust/verify-a-vault) walks through this run and its output.
+
+<Callout kind="warning" title="NEAR_RPC_URLS is not per network.">
+
+The SDK and the CLI read `NEAR_RPC_URLS` and `NEAR_ARCHIVAL_RPC_URLS` for whichever network you pass, and the CLI reads `PROBARION_FACTORY_ID` and `PROBARION_VAULT_ID` the same way. The repository's `.env.example` sets all of them to testnet values:
+
+```text
+NEAR_NETWORK=testnet
+NEAR_RPC_URLS=https://rpc.testnet.fastnear.com
+NEAR_ARCHIVAL_RPC_URLS=https://archival-rpc.testnet.fastnear.com
+PROBARION_FACTORY_ID=vaults.probarion.testnet
+PROBARION_VAULT_ID=v0.probarion.testnet
+```
+
+Nothing in the packages asks an RPC which chain it serves, and the CLI checks only that a factory or vault id is a well-formed account id. So a mainnet run with these values loaded talks to testnet, `vault create` prints a call to the testnet factory, and a command without `--vault` aims at `v0.probarion.testnet`. That follows from the code, and no test shows it yet. The `_MAINNET` and `_TESTNET` forms in the same file are the web console's settings: the SDK and the CLI never read them.
+
+For a mainnet run, pass `rpcUrls` or `--rpc`, or set `NEAR_RPC_URLS` to mainnet URLs. Also set `NEAR_ARCHIVAL_RPC_URLS` to a mainnet archival URL, or leave it unset so the network's FastNEAR archival node is used. `verify` also takes `--archival-rpc`. The SDK reads `NEAR_ARCHIVAL_RPC_URLS`, and a host can pass its own archival client instead, as the second constructor argument: `new Probarion(opts, { archivalRpc })`. Unset `PROBARION_FACTORY_ID` and `PROBARION_VAULT_ID` or set them to mainnet accounts, and pass `--vault`.
+
+</Callout>
+
+## When mainnet opens
+
+All of this is Planned.
+
+- **The first mainnet vault.** `v0.probarion.near` follows the [mainnet runbook](https://github.com/probarion/probarion/blob/main/docs/runbooks/mainnet-v0.md): a NEAR payment, a Base payout through NEAR Intents and a `NoMandate` refusal, with small amounts. The owner runs every step on their own machine: the owner calls are signed in the owner's own wallet, and the spends with the vault's agent key file.
+- **The mainnet factory.** Until `vaults.probarion.near` is deployed, the console cannot create a mainnet vault. Registering a vault that runs a recorded build, as `contracts/code-hashes.json` lists them, does not read the factory, but until a mainnet address is served the console cannot open or register a mainnet vault either.
+- **The addresses.** The plan is that `probarion.xyz` serves mainnet and `testnet.probarion.xyz` serves testnet. Testnet sessions on the main address then end, and people sign in again at the testnet address. Neither change is live.
+- **The docs.** Before the main address serves mainnet, the pages that say only testnet is live and the rules for agents are revised, and the site is built again: the Markdown twins and the llms files carry absolute links on the production address.
+- **The record.** Until the first mainnet run, [`contracts/deployments/mainnet.json`](https://github.com/probarion/probarion/blob/main/contracts/deployments/mainnet.json) and [`docs/mainnet-proof.json`](https://github.com/probarion/probarion/blob/main/docs/mainnet-proof.json) hold no transactions.
+
+## Where to go next
+
+- [What works today](/docs/start/what-works-today) gives the status of every part.
+- The [owner quickstart](/docs/start/owner-quickstart) sets up a testnet vault in the console, with test USDC from the faucet.
+- The [developer quickstart](/docs/start/developer-quickstart) runs one payment cycle against a testnet vault with the SDK.
+- [Verify a vault](/docs/trust/verify-a-vault) runs the verifier on `v0.probarion.testnet` and shows why checks d and h fail there.
+- [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) covers who signs what.
+- The [security model](/docs/trust/security-model) covers what is proven and what is not, and the [glossary](/docs/resources/glossary) defines Probarion's terms.
+
+## What this does not do
+
+- **A testnet result is not a mainnet result.** The protocol versions differ, NEAR Intents is a stand-in, and no mainnet transaction is recorded.
+- **Test tokens have no value.** A testnet result shows how the contract, the SDK and the console behave. It moves no real money, and the test USDC in a vault cannot pay a real invoice.
+- **The site never moves a vault between networks.** Neither the address nor a setting changes the network a vault was registered on.
+- **No mainnet address is served yet.** The addresses under [When mainnet opens](#when-mainnet-opens) are the plan, not a deployment.
+- **The SDK and the CLI do not check the RPC's chain.** The console does, for sign-in and Register. In your own code, the network, the vault id, the factory and the RPC URLs must agree.

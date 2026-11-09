@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 // The built site with test settings: public pages, the console redirect, security.txt and liveness. No chain, no
@@ -9,6 +10,8 @@ test("the sign-in page offers the wallet button and the beta label", async ({ pa
     page.getByRole("button", { name: /Sign in with NEAR wallet|Loading wallets/ }),
   ).toBeVisible();
   await expect(page.getByText("Unaudited beta").first()).toBeVisible();
+  // The header's console links would lead to /console and straight back here (site audit P1-7).
+  await expect(page.getByRole("link", { name: "Open console" })).toHaveCount(0);
 });
 
 test("a signed-out visit to a vault's console lands on sign-in, with the path kept", async ({
@@ -31,6 +34,17 @@ test("security.txt names the contact and an expiry", async ({ request }) => {
   const body = await res.text();
   expect(body).toMatch(/^Contact: https:\/\/x\.com\/probarionhq$/m);
   expect(body).toMatch(/^Expires: /m);
+});
+
+test("the landing's download line gets the core test fixture, byte for byte", async ({
+  request,
+}) => {
+  const res = await request.get("/samples/valid-snapshot.json");
+  expect(res.status()).toBe(200);
+  const fixture = readFileSync(
+    new URL("../../../packages/core/test/fixtures/valid-snapshot.json", import.meta.url),
+  );
+  expect((await res.body()).equals(fixture)).toBe(true);
 });
 
 test("the liveness route answers for the default network", async ({ request }) => {

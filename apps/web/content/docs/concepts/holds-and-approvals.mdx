@@ -1,0 +1,318 @@
+The contract holds a spend whose amount is above its mandate's `approval_above`: the amount is reserved against the mandate, and the spend has an id that every call ending the hold names. A code hold has no spend id and puts no spend on chain. Nothing was sent, so the way out is to change what caused the hold, then run the cycle again.
+
+<Callout kind="note" title="Preview">
+
+Holds and approvals are covered by the contract's unit tests and its sandbox tests; rejections and expiries by its unit tests. None has been recorded on NEAR testnet yet.
+
+</Callout>
+
+## Two kinds of hold
+
+The SDK reports both as `held`. The spend id tells them apart.
+
+| What | Contract hold | Code hold |
+| --- | --- | --- |
+| Why | The amount is above the mandate's `approval_above`. | A code rule returned `hold`, and `check_spend` says the contract would pay at once. |
+| `process()` and `requestSpend()` return | `held` with a `spendId` | `held` with `spendId` null, and `code` naming the rule |
+| On chain | A spend with status `held` and a `held_until_ns` | No spend: only the cycle's ledger anchor |
+| Reserved | The amount, one use, a share of the day's backstop, the invoice hash and the ref | Nothing |
+| Who can end it | An approver (approve or reject), or anyone once its time has passed | Nobody on chain: you change the cause and run the cycle again |
+| In Payables, the console's reference agent that pays invoices | "Held for approval" | "Held by code: nothing was sent". When Payables' own owner-confirms rule held it, the owner reads "Waiting for you: no attested model confirmed the amount", and anyone else reads "Waiting for the owner" in place of "Waiting for you" |
+
+## When the contract holds a spend
+
+The hold is the last step of the vault's check. A spend first passes all 14 checks on [Payment checks](/docs/concepts/payment-checks). Then, if its amount is above the mandate's `approval_above`, the vault holds it. The rule is strict: an amount equal to `approval_above` pays at once. A mandate whose `approval_above` is at or above its `max_per_payment` never holds a spend, and the CLI's `mandate create` says so when you print one. Every limit is on [Mandates](/docs/concepts/mandates).
+
+A held spend is reserved exactly like a spend that pays at once. The vault adds the amount to the mandate's `reserved`, counts one use, adds the amount to the day's backstop total, and marks the invoice hash and the ref as used. Then it stores the spend with status `held` and sends nothing. `spend` answers at once with `{"spend_id":N,"status":"held"}`, and logs a `spend_held` event with `spend_id`, `mandate_id`, `amount`, `invoice_hash`, `decision_hash` and `held_until_ns`.
+
+`held_until_ns` is the block time at which the vault accepted the spend plus the vault's `held_ttl_ns`. That hold time is one value for the whole vault, not per mandate. It is set when the vault is created, must be above 0 and at most 30 days, and no vault method changes it later. The CLI's `vault create` and the console's create form both default to 72 hours and take whole hours from 1 to 720. `v0.probarion.testnet` uses 72 hours.
+
+A held spend counts against its mandate while it waits. If it takes the mandate's last use, the mandate reads `exhausted` until a release gives the use back.
+
+To learn before sending whether the vault would hold a spend, dry-run it with the free `check_spend` view. The CLI commands on this page run from a clone built as [Install](/docs/build/install) shows, and the `near` commands are near-cli-rs:
+
+```bash
+# Illustrative values: mandate 1 of this vault holds any spend above 2 USDC.
+node packages/cli/dist/bin.js --network testnet check --vault acme.vaults.probarion.testnet \
+  --mandate 1 --amount 3 --invoice ../invoice.txt --ref INV-3
+```
+
+The first line of the answer says the vault would hold it:
+
+```text
+OK: the vault would accept this spend and hold it for an approver.
+```
+
+A dry run changes nothing, so it uses up no ref.
+
+## Approve, reject or let it expire
+
+<Flow>
+
+1. **Held** The spend passed the 14 checks and is reserved. Nothing is paid out yet.
+2. **Decided** An approver approves or rejects it, or, once its time has passed, anyone expires it.
+3. **Closed** An approval pays out: `paid` or `burned`, or `failed` and released. A rejection or an expiry releases it as `rejected` or `expired`.
+
+</Flow>
+
+| Call | Who | Deposit | Allowed when | Result |
+| --- | --- | --- | --- | --- |
+| `approve(spend_id)` | One of the vault's approvers | Exactly 1 yoctoNEAR | The spend is `held`, the block time is at or before `held_until_ns`, the vault is not frozen, and the mandate is not revoked | `spend_approved`, then the payout. The spend turns `pending`, then `paid`, `burned` or `failed`. |
+| `reject(spend_id)` | One of the vault's approvers | Exactly 1 yoctoNEAR | The spend is `held`. Also while the vault is frozen, after the mandate is revoked, and after the hold has run out | Released as `rejected`, with a `spend_rejected` event |
+| `expire_held(spend_id)` | Anyone | None | The spend is `held` and the block time is past `held_until_ns` | Released as `expired`, with a `spend_expired` event |
+
+One approver is enough: there is no quorum. The approver list is set when the vault is created, 1 to 10 accounts, and no vault method changes it. The owner is not an approver unless the vault was created with the owner on that list. When the owner is the only approver, the console's create form warns: "You are the only approver, so a held payment needs nobody else's signature. A second person is safer."
+
+`approve` and `expire_held` never overlap. Up to and including `held_until_ns`, `approve` works and `expire_held` is refused with [`HoldNotExpired`](/docs/build/errors#HoldNotExpired). Once the block time is past it, `approve` is refused with [`HoldExpired`](/docs/build/errors#HoldExpired) and `expire_held` works. `reject` has no time check at all.
+
+A hold does not end by itself. Past `held_until_ns` the spend still reads `held` on chain and keeps its reservation until an approver rejects it or someone calls `expire_held`. Nothing in the app calls `expire_held`.
+
+### Find the held spend
+
+The spend id comes back as the outcome's `spendId` and in the `spend_held` event. On the vault's page in the console, the "Held for approval" card lists each held spend as Spend #N, with its mandate, amount, payee, ref and the time its hold ends. Without the console, read the vault's spend list with `list_spends` and look for the ref: `get_spend` takes a spend id, not a ref. Both are free view calls. `list_spends` returns at most 100 spends a call, starting at the 0-based `from_index`, so the next page starts at `from_index` 100. `get_spend` shows one spend's `status` and `held_until_ns`:
+
+```bash
+near contract call-function as-read-only acme.vaults.probarion.testnet list_spends json-args '{"from_index":0,"limit":100}' network-config testnet now
+near contract call-function as-read-only acme.vaults.probarion.testnet get_spend json-args '{"spend_id":3}' network-config testnet now
+```
+
+### Sign approve or reject
+
+In the console, an approver sees Reject on each held spend, and Approve unless the hold has run out or the vault is frozen. Anyone else who can open the vault's page, the owner too unless the owner is on the approver list, reads "Only the vault's approvers can approve or reject." With the CLI, the approver prints the transaction and signs it in their own wallet:
+
+```bash
+# Illustrative values: your vault, the held spend's id and your approver account.
+node packages/cli/dist/bin.js --network testnet spend approve --vault acme.vaults.probarion.testnet \
+  --spend 3 --sign-as cfo.testnet --out-dir probarion-tx
+node packages/cli/dist/bin.js --network testnet spend reject --vault acme.vaults.probarion.testnet \
+  --spend 3 --sign-as cfo.testnet --out-dir probarion-tx
+```
+
+`spend approve` prints `approve` with 150 Tgas, because the payout and its callback run inside it. `spend reject` prints `reject` with 30 Tgas. Illustrative, shortened:
+
+```text
+APPROVER SIGNS: probarion never signs owner or approver transactions. Review the arguments, then sign with your own wallet or near-cli-rs:
+
+near contract call-function as-transaction acme.vaults.probarion.testnet approve file-args ./probarion-tx/approve.<12 hex>.args.json prepaid-gas '150.0 Tgas' attached-deposit '1 yoctoNEAR' sign-as cfo.testnet network-config testnet sign-with-keychain send
+
+approve arguments (./probarion-tx/approve.<12 hex>.args.json):
+{
+  "spend_id": 3
+}
+
+This executes the payout to the mandate's payee. It is valid until the hold expires and refused while the vault is frozen.
+```
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` or `reject` from their own wallet, with exactly 1 yoctoNEAR attached. The CLI prints the transaction and never signs it.
+
+</Callout>
+
+### Release an expired hold
+
+The CLI and the console have no command for `expire_held`. Any account can send it with near-cli-rs, with no deposit:
+
+```bash
+# Illustrative: any account may sign. 30 Tgas, as for reject, which runs the same release.
+near contract call-function as-transaction acme.vaults.probarion.testnet expire_held \
+  json-args '{"spend_id":3}' prepaid-gas '30 Tgas' attached-deposit '0 NEAR' \
+  sign-as <your-account-id> network-config testnet sign-with-keychain send
+```
+
+## What approve checks, and what it does not
+
+`approve` checks, in this order, and the first failure is the answer:
+
+1. The caller is one of the vault's approvers, else [`NotApprover`](/docs/build/errors#NotApprover). A stranger who attaches no deposit gets `NotApprover`, not [`RequiresOneYocto`](/docs/build/errors#RequiresOneYocto).
+2. Exactly 1 yoctoNEAR is attached, else `RequiresOneYocto`.
+3. The vault is not frozen, else [`Frozen`](/docs/build/errors#Frozen).
+4. The spend exists and is `held`, else [`NotHeld`](/docs/build/errors#NotHeld).
+5. The block time is at or before `held_until_ns`, else `HoldExpired`.
+6. The mandate exists and is not revoked, else [`MandateInactive`](/docs/build/errors#MandateInactive).
+
+Then it logs `spend_approved` with the spend id and the approver, and sends the payout to the mandate's payee. The reservation stays until the payout's callback settles the spend or releases it. A second `approve`, by the same approver or another, gets `NotHeld`: the spend is no longer `held`, so it cannot be paid twice.
+
+Sending the payout can refuse too. For a Base or Solana payee, the vault first checks that the mandate's asset is still in its allowed assets, and refuses with [`AssetNotAllowed`](/docs/build/errors#AssetNotAllowed) if not. Like any refusal, that undoes the whole `approve`. `create_mandate` already refuses an asset outside the list, and no vault method changes the list after the vault is created, so this should never fire. That is inferred: it follows from the code, and no test shows it yet.
+
+<CodeBlock title="contracts/vault/src/held.rs">
+
+```rust
+#[payable]
+pub fn approve(&mut self, spend_id: u64) -> PromiseOrValue<SpendResult> {
+    self.assert_approver();
+    require_one_yocto();
+    if self.frozen {
+        fail(ErrorCode::Frozen)
+    }
+    let spend = self.held_spend(spend_id);
+    if env::block_timestamp() > spend.held_until_ns.unwrap_or(0) {
+        fail(ErrorCode::HoldExpired)
+    }
+    if self.mandate(spend.mandate_id).is_none_or(|m| m.revoked) {
+        fail(ErrorCode::MandateInactive)
+    }
+    VaultEvent::SpendApproved {
+        spend_id,
+        by: env::predecessor_account_id(),
+    }
+    .emit();
+    PromiseOrValue::Promise(self.execute_payout(spend_id))
+}
+
+#[payable]
+pub fn reject(&mut self, spend_id: u64) {
+    self.assert_approver();
+    require_one_yocto();
+    self.held_spend(spend_id);
+    self.release(spend_id, SpendStatus::Rejected);
+    VaultEvent::SpendRejected {
+        spend_id,
+        by: env::predecessor_account_id(),
+    }
+    .emit();
+}
+
+pub fn expire_held(&mut self, spend_id: u64) {
+    let spend = self.held_spend(spend_id);
+    if env::block_timestamp() <= spend.held_until_ns.unwrap_or(u64::MAX) {
+        fail(ErrorCode::HoldNotExpired)
+    }
+    self.release(spend_id, SpendStatus::Expired);
+    VaultEvent::SpendExpired { spend_id }.emit();
+}
+```
+
+</CodeBlock>
+
+`approve` does not run the 14 checks again. The mandate's expiry, its per-payment cap, its uses, its total and the daily backstop were checked when the spend was reserved, and the reservation already counts them. So a spend held before its mandate expired can still be approved after the expiry, while the hold is alive and the mandate is not revoked. This follows from the contract's code; no test shows it yet. To stop such a payment, the owner revokes the mandate: the console offers Revoke on an expired mandate that still has funds reserved, with the note "Expired, but part of it is still reserved by held or pending payments. Revoking stops any held payments from being approved." When the reserved figure cannot be read, it offers Revoke too, with a note that ends the same way.
+
+`approve` does not check the balance the payout draws on either: the vault's USDC on NEAR for a NEAR payee, or its balance inside intents for a Base or Solana payee. If that balance is too low when an approver approves, the payout fails, and the spend becomes `failed` and is released.
+
+## What a release gives back
+
+A release happens when an approver rejects a held spend, when someone expires it, or when a payout fails. The vault reads the spend it reserved and gives part of it back:
+
+| Reserved at spend | After a release |
+| --- | --- |
+| The amount, in the mandate's `reserved` | Given back |
+| One of the mandate's uses | Given back |
+| The invoice hash | Given back: the same invoice can be paid again |
+| The amount's share of the day's backstop | Given back only on the same UTC day the spend was counted in |
+| The ref | Never given back |
+
+A hold that waits 72 hours always expires on a later UTC day, so its share stays on the day it was counted in. That share no longer limits anything: the backstop counts only the current day, and a new day starts from zero.
+
+The ref stays used for good. A ref is used up once the contract accepts a spend, held or paid, and it stays used even if the payout fails or the hold is rejected or expires. A corrected retry sends the same invoice under a new ref; the old ref gets [`DuplicateRef`](/docs/build/errors#DuplicateRef). A spend the vault refuses reverts every change, so its ref stays free.
+
+<CodeBlock title="contracts/vault/src/spend.rs">
+
+```rust
+/// Gives back the reservation, the use and the invoice_hash, so a corrected retry is possible.
+/// It also gives back the backstop share, but only when the release happens in the UTC day the
+/// reservation was counted in. The ref stays consumed forever: it is an idempotency key.
+/// Only a Held or Pending spend holds a reservation, so only those can be released.
+pub(crate) fn release(&mut self, spend_id: u64, status: SpendStatus) -> Spend {
+    let spend = self
+        .spend_record(spend_id)
+        .cloned()
+        .unwrap_or_else(|| fail(ErrorCode::InvalidInput));
+    if !matches!(spend.status, SpendStatus::Held | SpendStatus::Pending) {
+        fail(ErrorCode::InvalidInput)
+    }
+    let mandate = self.mandate_mut(spend.mandate_id);
+    mandate.reserved -= spend.amount;
+    mandate.uses -= 1;
+    let today = env::block_timestamp() / DAY_NS;
+    if spend.day == today && spend.day == self.day_bucket {
+        self.day_total = self.day_total.saturating_sub(spend.amount);
+    }
+    self.invoices.remove(&spend.invoice_hash);
+    self.set_status(spend_id, status);
+    spend
+}
+```
+
+</CodeBlock>
+
+The spend statuses, as `get_spend` and `list_spends` show them:
+
+| Status | What it means | What can follow |
+| --- | --- | --- |
+| `held` | Reserved and waiting for an approver. Nothing is paid out yet. | `pending` through `approve`, `rejected`, or `expired` |
+| `pending` | The payout was sent and its callback has not settled it yet. | `paid`, `burned` or `failed` |
+| `paid` | The NEAR payee was paid. | Nothing: final |
+| `burned` | The withdrawal for a Base or Solana payee ran on NEAR. | Nothing: final |
+| `failed` | The payout failed and the spend was released. | Nothing: final |
+| `rejected` | An approver rejected it and the spend was released. | Nothing: final |
+| `expired` | `expire_held` released it after its time. | Nothing: final |
+
+## Code holds: nothing was sent
+
+Before it sends anything, the SDK decides with `decide()` from `@probarion/core`. When no rule refuses and at least one rule holds, the verdict is `hold`. The SDK then asks `check_spend`. If the contract would refuse, the outcome is `refused_by_contract`. If the contract would accept and pay at once, the SDK holds the payment itself and sends nothing:
+
+<CodeBlock title="packages/sdk/src/probarion.ts">
+
+```ts
+if (d.verdict === "hold" && !verdict.would_hold) {
+  // The code holds but the contract would pay at once: hold off-chain, send nothing.
+  const code = firstRule(d.rules, "hold");
+  return finish({ status: "held", spendId: null, code, txHash: null }, null);
+}
+```
+
+</CodeBlock>
+
+The rules that can hold:
+
+| Rule | Holds when |
+| --- | --- |
+| `intents.balance_low` | The payee is a Base or Solana address paid through NEAR Intents, and the vault's balance of that asset inside intents is unknown or below the amount. |
+| `model.refused` | A model proposal whose attestation checks passed asked to hold. |
+| `model.low_confidence` | That trusted proposal's confidence is below `confidenceFloor`, 0.7 by default. |
+| `custom.*` | One of your own rules returned `hold`. Payables adds `custom.owner_confirms_without_model` to every cycle: it holds when no attested model confirmed the amount the code read, and refuses instead when the contract would hold that amount itself. |
+
+The cycle still writes its decision entry, with the verdict `hold`. No payment entry follows, and no spend transaction reaches the vault: the only transaction is the usual ledger anchor, signed by the ledger key, when the SDK has one. The outcome is `held` with `spendId` null, `txHash` null, and `code` set to the first rule that held, for example `intents.balance_low`.
+
+No spend is on chain, so no approver can act on a code hold and no call releases it. Change what caused the hold, then run the cycle again. For `intents.balance_low`, the owner tops up the vault's balance inside intents. In Payables, an invoice its owner-confirms rule held shows a "Waiting for you" card, where the owner confirms the amount. No spend reached the vault, so the invoice and the ref are still free for the new cycle.
+
+If code holds and the contract would hold the spend too, the SDK sends it and the contract holds it: the outcome is `held` with a `spendId`, and an approver decides. This follows from the SDK's code; no test shows it yet.
+
+## Revoke, freeze and key removal while a spend is held
+
+| While a spend is held, the owner | `approve` | `reject` | `expire_held` |
+| --- | --- | --- | --- |
+| Revokes its mandate | Refused with `MandateInactive` | Works | Works |
+| Freezes the vault | Refused with `Frozen` | Works | Works |
+| Removes the agent key that sent it | Works | Works | Works |
+
+- **Revoke.** The held spend stays `held` until an approver rejects it or, after its time, anyone expires it. Expiring a hold on a revoked mandate follows from the contract's code; no test shows it yet. An owner who is not an approver cannot reject a held spend, so revoking its mandate is how the owner stops it from being paid. Revoking also ends the mandate for every later spend, and it cannot be undone.
+- **Freeze.** Every new spend and every `approve` is refused until `unfreeze`. Freezing does not stop a hold's clock: `held_until_ns` stays as it was, so a hold can run out while the vault is frozen. After `unfreeze`, an approver can approve only a hold that is still alive.
+- **Key removal.** The vault deletes the agent's key, so it can sign no further spends. Spends already held still wait for an approver, because `approve` does not look at the agent key. This follows from the contract's code; no test shows it yet.
+
+<Callout kind="owner-signs">
+
+The owner signs `revoke_mandate`, `freeze`, `unfreeze` and `remove_agent` from their own wallet. `freeze` takes no deposit, so any key on the owner's account that may call the vault can freeze it. The other three need exactly 1 yoctoNEAR.
+
+</Callout>
+
+## Where to go next
+
+- [Install](/docs/build/install): build the CLI from a clone, to run the commands on this page.
+- [Mandates](/docs/concepts/mandates): `approval_above` and the other limits a held spend counts against.
+- [Payment checks](/docs/concepts/payment-checks): the 14 checks a spend passes before it can be held.
+- [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys): the owner, the approvers and the vault's keys.
+- [Spend outcomes](/docs/build/spend-outcomes): what to do with each of the seven statuses `process()` returns, both kinds of `held` included.
+- [Errors](/docs/build/errors): every vault code, with `HoldExpired`, `HoldNotExpired`, `NotHeld` and `NotApprover` among them.
+- [What works today](/docs/start/what-works-today): what is Live, Preview and Planned.
+- [Glossary](/docs/resources/glossary): the terms on this page.
+
+## What this does not do
+
+- A hold does not wait for several approvers. One listed approver's `approve` sends the payout, and one approver's `reject` releases the spend for good.
+- The owner cannot approve or reject unless the vault was created with the owner as an approver. The approver list and the hold time are fixed when the vault is created.
+- A hold does not end by itself. Until an approver rejects it or someone calls `expire_held`, a hold past its time stays `held` and keeps its reservation.
+- `approve` does not re-run the 14 checks. By the contract's code, a spend held before its mandate expired can still be paid unless the owner revokes the mandate; no test shows it yet.
+- A hold reserves the amount against the mandate, not the USDC itself. `withdraw` and `withdraw_intents` do not look at reservations, so the owner can take out USDC a held spend needs; an approved payout then fails and is released.
+- No approver can approve or release a code hold. Nothing was sent, so there is no spend on chain to act on.
+- On NEAR testnet, no hold, approve, reject or expiry has been recorded yet. Unit tests cover all four, and sandbox tests cover a hold and its approval, so this page is Preview.

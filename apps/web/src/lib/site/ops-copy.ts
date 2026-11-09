@@ -1,5 +1,5 @@
 import type { Network } from "@/lib/config";
-import { CLI_NOTE, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
+import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 import { ledgerFileName } from "@/lib/proof/ledger-file";
 
 // The words of the operations pages (/status, /security, /terms, /privacy), in one module so that ops-copy.test.ts can
@@ -130,10 +130,10 @@ export const SECURITY_PAGE = {
   verify: {
     title: "Check a vault yourself",
     note: CLI_NOTE,
-    setup: "Set up once, one command per line:",
-    setupLines: CLI_SETUP_LINES,
-    hosted:
-      "For a vault hosted on Probarion, first download its signed ledger from `/proof/<vault>/ledger.jsonl` into the repository folder, on the address of its network: a member of the vault can, and anyone can when its proof page is public. Then run this from the repository folder, with `--network mainnet` for a mainnet vault:",
+    // npx fetches the package, so only the repository command has a set-up.
+    setup: CLI_ON_NPM ? "" : "Set up once, one command per line:",
+    setupLines: CLI_ON_NPM ? [] : CLI_SETUP_LINES,
+    hosted: `For a vault hosted on Probarion, first download its signed ledger from \`/proof/<vault>/ledger.jsonl\`${CLI_ON_NPM ? "" : " into the repository folder"}, on the address of its network: a member of the vault can, and anyone can when its proof page is public. Then run this ${CLI_ON_NPM ? "in the folder that holds it" : "from the repository folder"}, with \`--network mainnet\` for a mainnet vault:`,
     command: cli(`verify --network testnet --vault <vault> --ledger ${ledgerFileName("<vault>")}`),
     why: "Without `--ledger`, the command checks the chain against an empty ledger, and a vault with an anchor fails. The vault's proof page at `/proof/<vault>` shows the same command for that vault.",
   },
@@ -155,7 +155,7 @@ export const TERMS_PAGE = {
   rules: [
     {
       title: "What Probarion is.",
-      body: "Software that lets an AI agent pay invoices in USDC inside mandates that the vault's owner signs. A NEAR contract checks every payment, and anyone can verify the signed ledger.",
+      body: "Software that lets an AI agent pay invoices in USDC inside mandates that the vault's owner signs. A NEAR contract checks every payment, and the vault's owner can publish the signed ledger for anyone to verify.",
     },
     {
       title: "It does not hold your funds.",

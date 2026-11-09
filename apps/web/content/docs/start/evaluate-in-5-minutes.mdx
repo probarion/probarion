@@ -1,0 +1,266 @@
+In about five minutes, with Node.js 24, pnpm 10, git and a bash-compatible shell (Linux, macOS or Git Bash on Windows), you check Probarion's main claims yourself: the verifier catches a one-field edit, the testnet vault has no full-access key, the contract refuses what a mandate does not allow, and the CLI signs nothing. These are the terminal steps of the [README's evaluation](https://github.com/probarion/probarion/blob/main/README.md#how-to-evaluate-probarion-in-5-minutes), with the build line the site uses, for after the browser check below. Step 5 also uses `curl`.
+
+<Callout kind="note" title="Before you install anything">
+
+Two checks run in your browser, on the landing page. In the [live check](/#try), pick "A hijacked prompt": the vault's `check_spend` view answers `OverPerPayment`. The other scenarios answer `ok`, `NoMandate` and `NotAgent`. The [ledger test](/#verify) runs the verifier from `@probarion/core` in your browser on the signed test fixture of step 2.
+
+</Callout>
+
+<Callout kind="note" title="No wallet, no key, no account">
+
+Nothing on this page signs or sends a transaction. After the build, steps 2, 3 and 7 run offline, and steps 4 to 6 read public NEAR testnet data with no key.
+
+</Callout>
+
+## Run the checks
+
+<Steps>
+
+1. **Build from source.** The checks use files of the repository: the signed test fixture, `scripts/testnet/chain.mjs` and `contracts/code-hashes.json`. So you build the packages from a clone of the public repository, not from npm. The last line builds the CLI and the two workspace packages it needs, `@probarion/core` and `@probarion/sdk`. Steps 2 and 6 import from their `dist` folders.
+
+   ```bash
+   git clone https://github.com/probarion/probarion
+   cd probarion
+   pnpm install
+   pnpm --filter "{packages/cli}..." build
+   ```
+
+   Run every later command from the `probarion` folder. If you cloned it before, run `git pull`, `pnpm install` and the build line again. The README's own step 1 runs `pnpm install --frozen-lockfile` and `pnpm build`, which also builds the web app; you do not need it here.
+
+2. **Watch the verifier catch a one-field edit.** `runChecks` from `@probarion/core` runs checks a to i over a snapshot of a ledger and its chain state. The snapshot here is a committed test fixture, [`valid-snapshot.json`](https://github.com/probarion/probarion/blob/main/packages/core/test/fixtures/valid-snapshot.json), signed with test keys. It is not a live vault. The script checks it as recorded, changes the amount of one decision, and checks it again.
+
+   ```bash
+   node --input-type=module -e '
+   import { readFileSync } from "node:fs";
+   import { firstBrokenSeq, runChecks } from "./packages/core/dist/index.js";
+   const snapshot = JSON.parse(readFileSync("packages/core/test/fixtures/valid-snapshot.json", "utf8"));
+   const report = await runChecks(snapshot);
+   console.log("as recorded:", report.ok, report.checks.map((c) => `${c.id} ${c.status}`).join(", "));
+   snapshot.ledger[2].body.amount = "1"; // one decision: 40 USDC becomes 0.000001 USDC
+   const edited = await runChecks(snapshot);
+   console.log("after one edit:", edited.ok, "first broken entry:", firstBrokenSeq(edited));
+   for (const c of edited.checks) if (c.status !== "pass") console.log(`  ${c.id} ${c.status}: ${c.detail}`);
+   '
+   ```
+
+   Expected output:
+
+   ```text
+   as recorded: true a pass, b pass, c pass, d pass, e pass, f pass, g pass, h pass, i pass
+   after one edit: false first broken entry: 2
+     a fail: entry 2 body_hash does not recompute from its body: a signature over a hash the body does not produce proves nothing about the body
+     b fail: entry 2 body_hash does not recompute from its body
+     d fail: spend 2 does not match its decision seq 2 (spend vs decision): amount 40000000 vs 1
+   ```
+
+   One changed field no longer matches the entry's signed `body_hash`, so checks a and b fail on entry 2, and its amount no longer matches the spend in the snapshot's chain state, so check d fails. The verifier names entry 2 as the first broken one.
+
+3. **Run the same checks with the CLI.** The CLI you just built runs the same checks over the same fixture, offline. The README's step runs it as `npx probarion verify --offline …` instead, which downloads release 0.1.0 from npm once and prints the same report.
+
+   ```bash
+   node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json
+   ```
+
+   It exits 0 and prints the report below. The `generated` time on the second line is the moment you run it, so it reads `<timestamp>` here; every other line is as the CLI prints it. The header names the fixture's vault, `x.vaults.probarion.testnet (testnet)`, which is test data and not a real vault. The second line counts its 5 entries and 3 anchors, and the third says that the chain data comes from the file, as recorded when the snapshot was taken. Then come one PASS row for each check a to i and the totals.
+
+   ```text
+   Probarion verify: x.vaults.probarion.testnet (testnet)
+   entries 5, anchors 3, generated <timestamp>
+   snapshot taken 2026-11-05T12:00:00.000Z: its chain data is the file's and was not read from the chain again
+
+   a  ledger-signatures      PASS      5 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+   b  hash-links             PASS      5 entries: every body_hash and link recomputes, chained from the zero link
+   c  anchors                PASS      3 anchors match the ledger; 0 entries after the last anchored count (5) are not chain-attested
+   d  spends-have-decisions  PASS      2 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount)
+   e  attestations           PASS      2 attested decisions pass A1–A7; quote not verified offline (run --online for O1; re-take the snapshot live with --online); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 4
+   f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 9xTTGSkSHPbw2DCumDxoraeR7uL8Pc2ANm5XKjhohnWL is version 1 of the canonical factory vaults.probarion.testnet; it is the code of factory version 1
+   g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+   h  burn-memos             PASS      1 burned spend has a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount
+   i  factory-version        PASS      created by vaults.probarion.testnet at version 1
+
+   9 passed, 0 failed, 0 unproven
+   RESULT: PASS
+   ```
+
+   `verify` exits 0 when every check passes, 1 when a check fails or verify cannot run, 2 when no check fails but one is unproven, and 64 for a usage error. On the snapshot as step 2 edits it, the CLI's tests show exit 1 and the line `RESULT: FAIL (first broken seq 2)`.
+
+4. **Read the testnet vault on chain.** These commands read public RPC data, with no key. [`chain.mjs`](https://github.com/probarion/probarion/blob/main/scripts/testnet/chain.mjs) only reads: it signs and sends nothing.
+
+   ```bash
+   node scripts/testnet/chain.mjs code-hash v0.probarion.testnet         # 6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR
+   grep -n 6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR contracts/code-hashes.json   # the recorded reproducible build
+   node scripts/testnet/chain.mjs full-access-keys v0.probarion.testnet  # prints an empty line: no full-access key
+   node scripts/testnet/chain.mjs key-count v0.probarion.testnet         # 1: one access key
+   ```
+
+   Expected output:
+
+   ```text
+   6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR
+   10:      "code_hash": "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
+
+   1
+   ```
+
+   The vault's code hash is the reproducible build recorded in [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json). The empty third line means the vault has no full-access key. `key-count` counts access keys of any kind, so the last line shows only that the vault has one. Its kind comes from check f of `verify --vault v0.probarion.testnet`, the run in the callout at the end of this page. Check f reads each key's permission and passes only when every key is the ledger key or a spend-only agent key on the vault. It passes on this vault, which has no ledger key, so the one key is a spend-only agent key. That run fails on checks d and h, for the reasons the callout gives.
+
+5. **Read the smoke run's transactions.** On 2026-11-01 the agent key called `spend` directly: once on mandate 1, a NEAR payee; once on mandate 2, a Base payee; and once on mandate 999, which does not exist. A payment to a Base address is a burn: the vault calls `ft_withdraw` on the intents contract with the [`WITHDRAW_TO` memo](/docs/resources/glossary#withdraw_to-memo), `WITHDRAW_TO:<address>`, and the spend becomes [burned](/docs/resources/glossary#burned). On mainnet, which is planned, the POA bridge then releases the USDC to that address on Base. On 2026-11-09 the agent key also called `spend` on mandate 1 for 6 test USDC, above its limit of 5 per payment: the refusal the landing page shows. Read each transaction from an archival node:
+
+   ```bash
+   tx() { curl -s https://archival-rpc.testnet.fastnear.com -H 'Content-Type: application/json' -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tx\",\"params\":{\"tx_hash\":\"$1\",\"sender_account_id\":\"v0.probarion.testnet\",\"wait_until\":\"NONE\"}}"; }
+   tx 3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX | grep -o 'spend_paid' | sort -u                  # spend_paid
+   tx 3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe | grep -o 'WITHDRAW_TO:0x[0-9a-f]*' | sort -u     # the burn memo, built from the mandate
+   tx AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY | grep -o 'PROBARION:[A-Za-z]*' | sort -u         # PROBARION:NoMandate
+   tx 4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1 | grep -o 'PROBARION:[A-Za-z]*' | sort -u         # PROBARION:OverPerPayment
+   ```
+
+   Expected output, one line for each transaction:
+
+   ```text
+   spend_paid
+   WITHDRAW_TO:0x1111111111111111111111111111111111111111
+   PROBARION:NoMandate
+   PROBARION:OverPerPayment
+   ```
+
+   The first spend paid a NEAR account. For the second, the vault built the `WITHDRAW_TO:` memo itself, from mandate 2: the spend request carries no address. The third was refused by the contract with [`NoMandate`](/docs/build/errors#NoMandate), and the fourth with [`OverPerPayment`](/docs/build/errors#OverPerPayment): nothing was paid. On testnet, [`intents-stub.probarion.testnet`](/docs/resources/glossary#intents-stub) stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR. These reads need the archival node to answer; NearBlocks' testnet index can lag behind the chain.
+
+6. **Ask the vault itself.** A read-only `Probarion` instance (no keys, `model: null`) lists the mandates and runs the contract's free `check_spend` dry run. Mandate 1 allows at most 5 test USDC per payment, so the contract accepts 2 and refuses 6. Amounts are in USDC's smallest unit: `2000000` is 2 test USDC.
+
+   ```bash
+   node --input-type=module -e '
+   import { Probarion } from "./packages/sdk/dist/index.js";
+   const vault = new Probarion({ network: "testnet", vault: "v0.probarion.testnet", model: null });
+   for (const m of await vault.mandates.list())
+     console.log(`mandate ${m.id} "${m.label}": ${m.status}, pays ${m.payee.account_id ?? m.payee.address}, at most ${m.max_per_payment} per payment`);
+   const invoiceHash = "ab".repeat(32);
+   console.log("2 USDC:", await vault.checkSpend({ mandateId: 1, amount: "2000000", invoiceHash, ref: "README-1" }));
+   console.log("6 USDC:", await vault.checkSpend({ mandateId: 1, amount: "6000000", invoiceHash, ref: "README-1" }));
+   '
+   ```
+
+   Expected output:
+
+   ```text
+   mandate 1 "smoke near": active, pays probarion-payee.testnet, at most 5000000 per payment
+   mandate 2 "smoke base": active, pays 0x1111111111111111111111111111111111111111, at most 5000000 per payment
+   2 USDC: { ok: true, code: null, would_hold: false }
+   6 USDC: { ok: false, code: 'OverPerPayment', would_hold: false }
+   ```
+
+   Mandate 2's payee is the address in step 5's burn memo. The 6 USDC answer is [`OverPerPayment`](/docs/build/errors#OverPerPayment). `would_hold` is false in both answers: 2 test USDC is not above the mandate's 5 test USDC approval threshold, and a refused dry run always answers `would_hold: false`. The smoke mandates set that threshold equal to the per-payment limit, so no spend on them is ever held. The [`ref`](/docs/resources/glossary#ref) is the caller's own key for one payment: once the contract accepts a spend, held or paid, its ref is used up, and a later spend with the same ref is refused with `DuplicateRef`. A dry run changes nothing, so both calls can pass `README-1`.
+
+   <Callout kind="warning" title="The smoke mandates expire on 2026-12-01">
+
+   The smoke mandates expire 30 days after the 2026-11-01 run, and the answers above hold until then. After that, both dry runs should answer `MandateExpired`, because the contract checks expiry before the per-payment limit. `mandates.list()` will still print `active`: a mandate's status does not count its expiry. This follows from the contract's code; no test shows it on this vault yet.
+
+   </Callout>
+
+7. **Print an owner transaction without signing it.** The CLI checks the input against the contract's rules, writes the arguments to a file and prints the `near-cli-rs` command for the owner to review and sign in their own wallet. It signs nothing.
+
+   ```bash
+   node packages/cli/dist/bin.js mandate create --vault v0.probarion.testnet \
+     --payee near:probarion-payee.testnet --max-per 5 --max-total 20 --uses 5 --expires 2026-12-31 \
+     --approval-above 2 --agent-pk ed25519:5errZXjDMXpk51BLypA3hBRUfBfh9v4bHeyU9vRmzYFK \
+     --purpose docs/evidence/v0-po.txt --label "Contractor" --out-dir probarion-tx
+   node packages/cli/dist/bin.js mandate create --vault v0.probarion.testnet --payee base:0x1234 \
+     --max-per 5 --max-total 20 --uses 5 --expires 2026-12-31 --approval-above 2 \
+     --agent-pk ed25519:5errZXjDMXpk51BLypA3hBRUfBfh9v4bHeyU9vRmzYFK --purpose docs/evidence/v0-po.txt --label x
+   # error: --payee base:0x1234 is not a 0x-prefixed 20-byte address
+   ```
+
+   The first command exits 0. It writes `create_mandate.c6242930417b.args.json` into `probarion-tx`, where `c6242930417b` is the start of the file's sha256, and prints the transaction for the owner:
+
+   ```text
+   OWNER SIGNS: probarion never signs owner or approver transactions. Review the arguments, then sign with your own wallet or near-cli-rs:
+
+   near contract call-function as-transaction v0.probarion.testnet create_mandate file-args ./probarion-tx/create_mandate.c6242930417b.args.json prepaid-gas '100.0 Tgas' attached-deposit '0.05 NEAR' sign-as <owner-account-id> network-config testnet sign-with-keychain send
+   sha256 of the args file: c6242930417b2efaa85ee46ff5a2346b7ba8e0fa9a94125ae7fe3b57ad132016  (check: sha256sum ./probarion-tx/create_mandate.c6242930417b.args.json, or Get-FileHash -Algorithm SHA256 ./probarion-tx/create_mandate.c6242930417b.args.json in PowerShell)
+   Run it in bash, zsh or PowerShell (not cmd.exe).
+
+   create_mandate arguments (./probarion-tx/create_mandate.c6242930417b.args.json):
+   {
+     "input": {
+       "payee": {
+         "type": "near",
+         "account_id": "probarion-payee.testnet"
+       },
+       "purpose_hash": "30cdebeaa06b60c55f48662123b77b7fe97c0d44ce3c9d10c861c690e21488dc",
+       "max_per_payment": "5000000",
+       "max_total": "20000000",
+       "max_uses": 5,
+       "expires_at_ns": "1798761599999000000",
+       "approval_above": "2000000",
+       "agent_pk": "ed25519:5errZXjDMXpk51BLypA3hBRUfBfh9v4bHeyU9vRmzYFK",
+       "label": "Contractor"
+     }
+   }
+
+   The payee of a mandate never changes: a new payee needs a new mandate.
+   The vault registers the payee's storage on the USDC contract (0.00125 NEAR) out of the deposit; the excess is refunded to you.
+
+   With a Ledger hardware wallet, replace `sign-with-keychain send` with `sign-with-ledger usb send`.
+   ```
+
+   The amounts are in USDC's smallest unit, `purpose_hash` is the sha256 of `docs/evidence/v0-po.txt`, and `expires_at_ns` is the end of 2026-12-31 UTC, in nanoseconds. The command attaches the default 0.05 NEAR deposit, of which the vault refunds the excess, and leaves `<owner-account-id>` for the owner to fill in. `--expires` must be in the future: after 2026-12-31, this command answers `error: --expires 2026-12-31 is not in the future`, so use a later date, which changes the file name, its sha256 and `expires_at_ns`.
+
+   The second command stops at the payee, because a Base address is `0x` and 40 hex digits. It writes no file, exits 1 and prints:
+
+   ```text
+   error: --payee base:0x1234 is not a 0x-prefixed 20-byte address
+   ```
+
+   <Callout kind="owner-signs">
+
+   The printed `create_mandate` transaction is one the vault's owner would sign in their own wallet. This tutorial does not run the printed command, so nothing is signed or sent. To create a mandate on your own vault, see [Owner quickstart](/docs/start/owner-quickstart).
+
+   </Callout>
+
+</Steps>
+
+## What you just checked
+
+| Step | What it shows |
+| --- | --- |
+| 1 | The CLI, the SDK and the core library build from the public source. |
+| 2 and 3 | The verifier catches a one-field edit to a signed ledger and names the first broken entry. The CLI runs the same checks offline. |
+| 4 | `v0.probarion.testnet` runs the build recorded in `contracts/code-hashes.json` and has no full-access key. |
+| 5 | The contract refused a spend on a mandate that does not exist, and the vault built a cross-chain memo from the mandate, not from the request. |
+| 6 | A mandate fixes one payee and its limits, and the contract's free dry run refuses an amount over the per-payment limit. |
+| 7 | The CLI checks an owner transaction and prints it for the owner. It signs nothing. |
+
+To see why the agent's request has no payee field, read [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+## What this does not show
+
+- The fixture of steps 2 and 3 is test data signed with test keys. Its vault, `x.vaults.probarion.testnet`, is not a real vault.
+- `verify --offline` checks a snapshot against itself, so a snapshot you did not take proves nothing about the chain. `verify --vault` reads the chain itself.
+- The vault source changed after the `v0.probarion.testnet` deployment, with a `set_ledger_key` fix on 2026-11-03, so this vault runs the earlier build. The vaults the testnet factory creates run the later build, code hash `3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`, also recorded in `contracts/code-hashes.json`.
+- Everything here is NEAR testnet, with test tokens. The mainnet vault is planned.
+- The contract source has not been audited. [SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#what-is-not-proven-yet) lists what `verify` does not prove yet.
+
+<Callout kind="warning" title="A live verify of the testnet vault fails today">
+
+```bash
+node packages/cli/dist/bin.js verify --vault v0.probarion.testnet
+```
+
+It exits 1 and prints `RESULT: FAIL`. On stderr it first warns that the default ledger file, `./.probarion/ledger.jsonl`, does not exist, so it verifies the chain against an empty ledger. That is expected here. The smoke run sent its spends with the agent key directly, without the SDK, a model or a ledger, so this vault has no ledger key and no anchors. Check d finds spends with no decision in the ledger, and check h finds no burn event without the burn's tx hash. Check f, which step 4 relies on, passes, and its row reads:
+
+```text
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+```
+
+</Callout>
+
+## Next steps
+
+- [Verify a vault](/docs/trust/verify-a-vault): run `verify --vault` and read its report.
+- [Verifier checks](/docs/trust/verifier-checks): what checks a to i prove, and what they do not.
+- [Security model](/docs/trust/security-model): what a leaked agent key can and cannot do.
+- [How one payment works](/docs/start/how-one-payment-works): the path from an invoice to a paid, recorded spend.
+- [Payment checks](/docs/concepts/payment-checks): the 14 checks the vault runs on every spend, in order.
+- [Install](/docs/build/install): build the packages to use them in your own code.
+- [What works today](/docs/start/what-works-today): what is Live, Preview and Planned.
+
+To run every test as well, `pnpm verify` runs the Rust unit and property tests, Biome, the build, the typecheck, every TypeScript test and the launch checks. It needs Rust too: rustup installs the pinned toolchain from `rust-toolchain.toml`. On Windows, set `AWS_LC_SYS_PREBUILT_NASM=1` first or install NASM.

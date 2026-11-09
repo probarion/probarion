@@ -1,5 +1,8 @@
+import Link from "next/link";
 import { ExternalLink } from "@/components/ui";
-import { CHAIN, CLOSING, LINKS, STATUS, type StatusTone } from "@/lib/site/facts";
+import { CHAIN, CLOSING, EVALUATE_ROUTE, LINKS, STATUS, type StatusTone } from "@/lib/site/facts";
+import { NEXT_STEP } from "@/lib/site/next-step";
+import { NextStep } from "./NextStep";
 import { Rich } from "./Rich";
 import s from "./site.module.css";
 
@@ -73,13 +76,14 @@ export function Closing() {
           <Rich text={CLOSING.live} />
         </p>
         <div className={s.cta}>
-          <ExternalLink className={`${s.btn} ${s.solid} ${s.big}`} href={LINKS.evaluate}>
+          <Link className={`${s.btn} ${s.solid} ${s.big}`} href={EVALUATE_ROUTE}>
             {CLOSING.evaluate}
-          </ExternalLink>
+          </Link>
           <ExternalLink className={`${s.btn} ${s.big}`} href={LINKS.spec}>
             {CLOSING.spec}
           </ExternalLink>
         </div>
+        <NextStep step={NEXT_STEP.closing} className={s.closeNext} linkClassName={s.link} />
       </div>
     </section>
   );

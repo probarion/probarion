@@ -1,0 +1,204 @@
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { agentFiles, HUB_AGENTS } from "@/lib/docs/agents";
+import { docsHref, findPage } from "@/lib/docs/registry";
+import type { DocPage } from "@/lib/docs/types";
+import d from "./docs.module.css";
+
+/**
+ * The docs home's claim: the landing's own first words (HERO.lede in lib/site/facts.ts). The
+ * registry title stays "Probarion docs" and is the eyebrow.
+ */
+export const HUB_CLAIM = {
+  plain: "Give your AI agent a budget,",
+  gold: "not your wallet.",
+} as const;
+
+export function HubHero({ page }: { page: DocPage }) {
+  return (
+    <header className={d.hero}>
+      <p className={d.eyebrow}>{page.title}</p>
+      <h1 className={d.heroTitle}>
+        {HUB_CLAIM.plain} <span className={d.gold}>{HUB_CLAIM.gold}</span>
+      </h1>
+      <p className={d.heroLede}>{page.lede}</p>
+    </header>
+  );
+}
+
+/**
+ * The big search box and the popular searches. Without JavaScript the box jumps to the list, and
+ * each popular search is a link to the page that answers it. With JavaScript the box opens the
+ * search dialog, and a popular search opens it with that query (SearchDialog listens for both).
+ */
+export function HubSearch({ children }: { children: ReactNode }) {
+  return (
+    <div className={d.hubSearch}>
+      <a
+        href="#popular"
+        data-docs-search=""
+        className={d.bigSearch}
+        aria-keyshortcuts="Control+K Meta+K"
+      >
+        <span>Search pages, error codes and CLI commands</span>
+        {/* biome-ignore lint/a11y/noAriaHiddenOnFocusable: a kbd is never focusable, and the
+            link's aria-keyshortcuts names the shortcut */}
+        <kbd className={d.kbd} aria-hidden="true">
+          Ctrl K
+        </kbd>
+      </a>
+      <div id="popular" className={d.popular} data-docs-popular="">
+        <p>Popular searches</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The four doors. Their heading is for the page outline and only screen readers show it; its id is
+ * listed in lib/docs/anchors.ts, so a heading of the same name on the page is caught.
+ */
+export function HubDoors({ children }: { children: ReactNode }) {
+  return (
+    <section className={d.doorsWrap} aria-labelledby="choose-a-path">
+      <h2 id="choose-a-path" className="sr-only">
+        Choose a path
+      </h2>
+      <div className={d.doors}>{children}</div>
+    </section>
+  );
+}
+
+function required(component: string, name: string, value: string | undefined): string {
+  if (value === undefined || value.trim() === "") throw new Error(`<${component}> needs ${name}`);
+  return value;
+}
+
+/** An optional prop: absent is fine, but an empty one fails as a missing required prop does. */
+function optional(component: string, name: string, value: string | undefined): string | undefined {
+  return value === undefined ? undefined : required(component, name, value);
+}
+
+/**
+ * One door. The title is the link and the whole card is its click target; `also` adds a second,
+ * smaller link. The props are checked in the order the Markdown twin checks them (markdown.ts), so
+ * a door with several faults fails with the same message on both sides.
+ */
+export function Door({
+  who,
+  title,
+  href,
+  go,
+  also,
+  alsoHref,
+  ink = false,
+  children,
+}: {
+  who: string;
+  title: string;
+  href: string;
+  go: string;
+  also?: string;
+  alsoHref?: string;
+  ink?: boolean;
+  children: ReactNode;
+}) {
+  const name = required("Door", "title", title);
+  if ((also === undefined) !== (alsoHref === undefined)) {
+    throw new Error(`<Door> "${name}": also and alsoHref go together`);
+  }
+  const second = optional("Door", "also", also);
+  const secondHref = optional("Door", "alsoHref", alsoHref);
+  const action = required("Door", "go", go);
+  const target = required("Door", "href", href);
+  const audience = required("Door", "who", who);
+  return (
+    <article className={[d.door, ink && d.doorInk].filter(Boolean).join(" ")} data-door="">
+      <p className={d.who}>{audience}</p>
+      <h3 className={d.doorTitle}>
+        <Link href={target} className={d.cover}>
+          {name}
+        </Link>
+      </h3>
+      <div className={d.doorText}>{children}</div>
+      <p className={d.go}>
+        <span aria-hidden="true">{action} →</span>
+        {second !== undefined && secondHref !== undefined && (
+          <Link href={secondHref} className={d.also}>
+            {second}
+          </Link>
+        )}
+      </p>
+    </article>
+  );
+}
+
+export function HubCards({ children }: { children: ReactNode }) {
+  return <div className={d.cards}>{children}</div>;
+}
+
+/**
+ * A card in a grid: the title is the link, the whole card is its click target, and `tag` shows as
+ * code. Checked in the twin's order: title, href, then tag.
+ */
+export function Card({
+  title,
+  href,
+  tag,
+  children,
+}: {
+  title: string;
+  href: string;
+  tag?: string;
+  children: ReactNode;
+}) {
+  const name = required("Card", "title", title);
+  const target = required("Card", "href", href);
+  const code = optional("Card", "tag", tag);
+  return (
+    <article className={d.card}>
+      <h3 className={d.cardTitle}>
+        <Link href={target} className={d.cover}>
+          {name}
+        </Link>
+      </h3>
+      <div className={d.cardText}>{children}</div>
+      {code !== undefined && (
+        <p className={d.cardTag}>
+          <code>{code}</code>
+        </p>
+      )}
+    </article>
+  );
+}
+
+/** The ink block for agent builders: the two llms files and one page's Markdown twin. */
+export function HubAgents({ example }: { example: string }) {
+  const page = findPage(example);
+  if (!page) throw new Error(`HubAgents: no docs page "${example}"`);
+  const forAgents = findPage(HUB_AGENTS.more.path);
+  return (
+    <div className={d.agents}>
+      <p className={d.agentsEyebrow}>{HUB_AGENTS.eyebrow}</p>
+      <p>{HUB_AGENTS.lede}</p>
+      <ul className={d.agentsLinks}>
+        {agentFiles(page.path).map((file) => (
+          <li key={file.href}>
+            <a href={file.href}>
+              <code>{file.href}</code>
+            </a>{" "}
+            {file.note}
+          </li>
+        ))}
+      </ul>
+      {forAgents && (
+        <p>
+          <Link href={docsHref(forAgents.path)} className={d.agentsMore}>
+            {HUB_AGENTS.more.label}
+          </Link>
+        </p>
+      )}
+    </div>
+  );
+}

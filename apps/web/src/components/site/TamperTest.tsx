@@ -82,14 +82,15 @@ export function TamperVerdict({
   next,
 }: {
   result: TamperResult;
-  checks: readonly { id: CheckId; label: string }[];
+  checks: readonly { id: CheckId; label: string; hint: string }[];
   live: boolean;
   copy: TamperCopy;
   next?: ReactNode;
 }) {
-  const views = checks.map(({ id, label }) => ({
+  const views = checks.map(({ id, label, hint }) => ({
     id,
     label,
+    hint,
     ...checkView(result.checks.find((c) => c.id === id)),
   }));
   const explained = views.filter((v) => v.why !== "");
@@ -100,11 +101,12 @@ export function TamperVerdict({
         <span>{plainVerdict(result, copy.firstBroken)}</span>
       </div>
       <ul className={s.checks}>
-        {views.map(({ id, label, word, bad, caveat }) => (
+        {views.map(({ id, label, hint, word, bad, caveat }) => (
           <li key={id} className={bad ? s.checkBad : undefined} aria-atomic="true">
             <span className={s.checkId}>{id}</span>
             <span>{label}</span>
             <span className={s.checkWord}>{word}</span>
+            <span className={s.checkHint}>{hint}</span>
             {caveat === "" ? null : <span className={s.caveat}>{caveat}</span>}
           </li>
         ))}
@@ -143,7 +145,7 @@ export function TamperTest({
   next,
 }: {
   rows: readonly LedgerRow[];
-  checks: readonly { id: CheckId; label: string }[];
+  checks: readonly { id: CheckId; label: string; hint: string }[];
   edits: readonly TamperEdit[];
   recorded: TamperResult;
   copy: TamperCopy;

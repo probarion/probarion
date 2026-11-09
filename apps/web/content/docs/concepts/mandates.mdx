@@ -1,0 +1,342 @@
+Two rules matter most when you sign a mandate: its payee can never change, and its on-chain `status` never says expired, so an expired mandate can still read `active`. This page covers both, field by field.
+
+## What a mandate is
+
+A vault holds USDC and any number of mandates. Each mandate names:
+
+- **one payee**: a NEAR account, or an address on Base or Solana paid through NEAR Intents;
+- **one agent key**: the only key that may spend under it;
+- **fixed limits**: the most per payment, the most in all, the most payments, and the time it expires;
+- **an approval threshold**: a spend above it waits for an approver;
+- **a purpose hash**: the sha256 of the purchase order or contract it pays against.
+
+The agent never names a payee. A spend names a mandate id, an amount, an invoice hash, a ref and a decision hash, and the vault reads the destination from the mandate in its own storage. The [ref](/docs/resources/glossary#ref) is the caller's one-time key for that spend, and the [decision hash](/docs/resources/glossary#decision_hash) is the hash of the signed decision in the ledger that allowed it. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+Only the vault's owner creates and revokes mandates, from the owner's own wallet. The agent key may call only `spend`, so it cannot create, change or revoke a mandate. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+## Every field
+
+The owner fills in the `MandateInput` that `create_mandate` takes. Verbatim, lines 39 to 51:
+
+<CodeBlock title="contracts/vault/src/types.rs">
+
+```rust
+#[near(serializers = [json])]
+#[derive(Clone, Debug)]
+pub struct MandateInput {
+    pub payee: Payee,
+    pub purpose_hash: String,
+    pub max_per_payment: U128,
+    pub max_total: U128,
+    pub max_uses: u32,
+    pub expires_at_ns: U64,
+    pub approval_above: U128,
+    pub agent_pk: PublicKey,
+    pub label: String,
+}
+```
+
+</CodeBlock>
+
+| Field | Type | Meaning | Checked at creation |
+| --- | --- | --- | --- |
+| `payee` | An object tagged by `type` | Who is paid. `near` has `account_id`. `intents` has `chain` (`base` or `solana`), `address` and `asset`. It never changes. | A NEAR payee is not the vault itself (`InvalidInput`). An Intents payee's `asset` is in the vault's `allowed_assets` and starts with its chain's prefix, `base-` or `sol-` (`AssetNotAllowed`). Its address is `0x` plus 40 hex digits for Base, or 32 to 44 base58 characters for Solana (`InvalidInput`). |
+| `purpose_hash` | String | The sha256 of the purchase order or contract. Only the hash goes on chain. The SDK picks the mandate for an invoice by this hash. | 64 lowercase hex (`InvalidInput`). |
+| `max_per_payment` | U128, a decimal string | The largest single payment. A payment equal to it passes. | Above 0 and at most `max_total` (`InvalidInput`). |
+| `max_total` | U128, a decimal string | The most the mandate pays in all. A new spend must fit under it together with `spent` and `reserved`. | At least `max_per_payment` (`InvalidInput`). |
+| `max_uses` | u32, a JSON number | The most payments. | Above 0 (`InvalidInput`). |
+| `expires_at_ns` | U64, a decimal string of nanoseconds | From this time on, the vault refuses every new spend. | After the block time (`InvalidInput`). |
+| `approval_above` | U128, a decimal string | A spend above this amount is held for an approver. A spend equal to it pays at once. | Not checked, and not compared with `max_per_payment`. |
+| `agent_pk` | A public key, `ed25519:...` | The one agent key that may spend under this mandate. | Not checked against the vault's agent keys. |
+| `label` | String | A name for people. | At most 64 bytes (`InvalidInput`). |
+
+Amounts are in USDC's smallest unit, 6 decimals, so `"5000000"` is 5 USDC. The codes are explained on [Errors](/docs/build/errors#InvalidInput).
+
+Illustrative: the `input` argument of `create_mandate` for a NEAR payee and for a Base payee on testnet, with placeholder accounts, hash and key. The expiry is 2026-12-31 23:59:59 UTC, as the console writes it: `1798761599000000000`. The CLI's `--expires 2026-12-31` in step 3 below writes 23:59:59.999 UTC instead: `1798761599999000000`.
+
+<CodeTabs labels="NEAR payee, Base payee">
+
+```json
+{
+  "payee": { "type": "near", "account_id": "payee.testnet" },
+  "purpose_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "max_per_payment": "5000000",
+  "max_total": "20000000",
+  "max_uses": 5,
+  "expires_at_ns": "1798761599000000000",
+  "approval_above": "2000000",
+  "agent_pk": "ed25519:...",
+  "label": "First test"
+}
+```
+
+```json
+{
+  "payee": {
+    "type": "intents",
+    "chain": "base",
+    "address": "0x1111111111111111111111111111111111111111",
+    "asset": "base-usdc.probarion.testnet"
+  },
+  "purpose_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "max_per_payment": "5000000",
+  "max_total": "20000000",
+  "max_uses": 5,
+  "expires_at_ns": "1798761599000000000",
+  "approval_above": "2000000",
+  "agent_pk": "ed25519:...",
+  "label": "Base contractor"
+}
+```
+
+</CodeTabs>
+
+On testnet, a stand-in contract takes the place of NEAR Intents, so a payout to a Base or Solana address does not leave NEAR.
+
+## What the vault adds
+
+When a mandate is read with `get_mandate` or `list_mandates`, the vault returns the fields above and six more:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `id` | u64 | Given in order, starting at 1, in each vault. Id 0 names nothing. |
+| `spent` | U128 | What spends that ended `paid` or `burned` have paid out. [`burned`](/docs/resources/glossary#burned) is the status of a payout to a Base or Solana address once NEAR Intents accepts the withdrawal. Nothing lowers it. |
+| `reserved` | U128 | What spends that are `held` or `pending` hold back. When one settles, its amount moves to `spent`. When one is released, its amount comes back. |
+| `uses` | u32 | The spends that are `held`, `pending`, `paid` or `burned`. A `failed`, `rejected` or `expired` spend gives its use back. |
+| `status` | `active`, `revoked` or `exhausted` | Worked out from the other fields each time the mandate is read. See the status section below. |
+| `created_at_ns` | U64 | The block time of the `create_mandate` call. |
+
+What the mandate can still pay is `max_total` minus `spent` minus `reserved`. The console shows it as "Remaining / total".
+
+## Creating a mandate
+
+Only the owner can create a mandate: any other caller gets `NotOwner`. The console's "Mandates" tab and the CLI's `mandate create` build the same `MandateInput`, and the owner signs it. In the console, the form appears once you are signed in as the vault's owner on chain and the vault has an agent key: see [Owner quickstart](/docs/start/owner-quickstart).
+
+<Steps>
+
+1. **Prepare the input.** In the console, fill in the "New mandate" card on the "Mandates" tab. With the CLI, pass each field as a flag. `--purpose` takes the file, which it hashes with sha256, or its sha256 as 64 lowercase hex: the CLI does not lowercase a hash for you, and reads an uppercase one as a file name. `--expires` takes `YYYY-MM-DD`, which means the end of that UTC day (23:59:59.999), or an ISO-8601 time with its zone.
+
+2. **Attach the deposit.** The console attaches 0.05 NEAR, and the CLI's `--deposit` defaults to 0.05. The vault keeps what it needs and sends the rest back to the owner. See [The deposit](#the-deposit).
+
+3. **Sign as the owner.** In the console, click "Sign mandate in my wallet" and sign in your wallet. The CLI never signs: it writes the arguments to a file and prints the transaction for the owner to sign with their own wallet or near-cli-rs.
+
+   ```bash
+   # Illustrative values: use your vault, the payee, the owner's account and the agent's public key.
+   node packages/cli/dist/bin.js --network testnet mandate create --vault acme.vaults.probarion.testnet \
+     --payee near:payee.testnet --max-per 5 --max-total 20 --uses 5 --expires 2026-12-31 \
+     --approval-above 2 --agent-pk ed25519:... --purpose ../po.txt --label "First test" \
+     --sign-as owner.testnet --out-dir probarion-tx
+   ```
+
+   The printed transaction starts with this line:
+
+   ```text
+   OWNER SIGNS: probarion never signs owner or approver transactions. Review the arguments, then sign with your own wallet or near-cli-rs:
+   ```
+
+   <Callout kind="owner-signs">
+   The owner's wallet signs `create_mandate` on the vault and attaches the deposit.
+   </Callout>
+
+4. **Read back the id.** `create_mandate` returns the new mandate's id and emits a `mandate_created` event. The console's "Mandates" table lists the mandate under `#` with the status `active`. The SDK reads it with `mandates.get(id)`, or every mandate with `mandates.list()`.
+
+</Steps>
+
+### The deposit
+
+The deposit the vault requires is the storage the new mandate takes, at NEAR's byte cost, plus 0.00125 NEAR when the payee is a NEAR account.
+
+- **A NEAR payee.** The vault passes the 0.00125 NEAR to the USDC contract's `storage_deposit` for the payee, as a registration only, so the payee can receive USDC. The vault does not wait for the result of that call.
+- **An Intents payee.** No registration is needed, so the deposit covers storage only.
+- **Too little.** The call fails with [`InsufficientDeposit`](/docs/build/errors#InsufficientDeposit), and no mandate is stored.
+- **More than needed.** The vault sends the excess back to the owner, who made the call.
+
+### What the contract checks
+
+`create_mandate` runs these checks in order. The first one that fails refuses the call, and nothing is stored.
+
+1. The caller is the owner, else `NotOwner`.
+2. The shape, else `InvalidInput`: `purpose_hash` is 64 lowercase hex, `max_per_payment` is above 0 and at most `max_total`, `max_uses` is above 0, `expires_at_ns` is after the block time, and `label` is at most 64 bytes.
+3. The payee. A NEAR payee that is the vault itself gets `InvalidInput`. For an Intents payee, an asset outside `allowed_assets`, or one without its chain's prefix, gets [`AssetNotAllowed`](/docs/build/errors#AssetNotAllowed). Then an address in the wrong format for its chain gets `InvalidInput`. A Base address is `0x` in lowercase followed by 40 hex digits in any case.
+4. The deposit, else `InsufficientDeposit`.
+
+Verbatim, lines 120 to 153:
+
+<CodeBlock title="contracts/vault/src/mandates.rs">
+
+```rust
+    fn validate_mandate(&self, m: &MandateInput) {
+        let shape_ok = is_hex64(&m.purpose_hash)
+            && m.max_per_payment.0 > 0
+            && m.max_per_payment.0 <= m.max_total.0
+            && m.max_uses > 0
+            && m.expires_at_ns.0 > env::block_timestamp()
+            && m.label.len() <= 64;
+        if !shape_ok {
+            fail(ErrorCode::InvalidInput)
+        }
+        match &m.payee {
+            Payee::Near { account_id } => {
+                if *account_id == env::current_account_id() {
+                    fail(ErrorCode::InvalidInput)
+                }
+            }
+            Payee::Intents {
+                chain,
+                address,
+                asset,
+            } => {
+                if !self.allowed_assets.contains(asset) || !asset_matches_chain(*chain, asset) {
+                    fail(ErrorCode::AssetNotAllowed)
+                }
+                let address_ok = match chain {
+                    Chain::Base => is_evm_address(address),
+                    Chain::Solana => is_solana_address(address),
+                };
+                if !address_ok {
+                    fail(ErrorCode::InvalidInput)
+                }
+            }
+        }
+    }
+```
+
+</CodeBlock>
+
+Two things are not checked at creation:
+
+- **`agent_pk` is not checked against the vault's agent keys.** A mandate for a key that is not an agent key yet is stored, but no spend under it can pass until the owner adds that key. Until then the spend check answers `NotAgent`.
+- **`approval_above` is not compared with `max_per_payment`.** A spend is held when its amount is above `approval_above`. So a threshold at or above `max_per_payment` means no spend is ever held, and a threshold of 0 holds every spend. The console's summary says which: "No payment is held for approval: every payment up to the per-payment cap is paid at once." or "Every payment is held for an approver's signature."
+
+### What the console and the CLI check first
+
+<Callout kind="note" title="The console is stricter than the contract">
+
+The console refuses, before you sign, some mandates the contract would accept. The rules below are the console's own, not the contract's.
+
+</Callout>
+
+- The payee type is "NEAR account (USDC on NEAR)" or "Base address (USDC on Base via NEAR Intents)". The console does not offer a Solana payee. The contract and the CLI accept one.
+- A mixed-case Base address must match its EIP-55 checksum, and the zero address is refused.
+- A NEAR payee may not be the vault's USDC contract, its Intents contract or one of its allowed asset contracts: what is sent to a token contract is lost.
+- "Max number of payments" is at most 10,000 during the beta. The contract takes any u32 above 0.
+- "Expires on (UTC)" is at least one hour and at most 366 days ahead, and means the end of that UTC day (23:59:59).
+- "Agent key" must be one of the vault's active agent keys. Any other key gets "Pick an agent key that is active on this vault".
+- "Name" is not empty and is plain text, with no line break, control or direction character.
+
+The console also warns, without blocking, when the per-payment cap is above what the vault holds or above its [daily backstop](/docs/resources/glossary#daily-backstop), the vault-wide cap on what spends may reserve or pay in one UTC day.
+
+The CLI checks the shape before it prints anything: `--max-per` above 0 and at most `--max-total`, `--uses` from 1 to 4294967295, a future `--expires`, a `--label` of at most 64 bytes, a payee in the right format, and a NEAR payee other than the vault. It checks only the agent key's format, not that the key is on the vault.
+
+## Status: active, revoked, exhausted, and the expired trap
+
+The contract stores whether a mandate is revoked, and works out its `status` each time the mandate is read. Verbatim, lines 194 to 203:
+
+<CodeBlock title="contracts/vault/src/types.rs">
+
+```rust
+impl Mandate {
+    pub fn status(&self) -> MandateStatus {
+        if self.revoked {
+            MandateStatus::Revoked
+        } else if self.uses >= self.max_uses || self.spent >= self.max_total {
+            MandateStatus::Exhausted
+        } else {
+            MandateStatus::Active
+        }
+    }
+```
+
+</CodeBlock>
+
+| Status | Shown by | When | What a new spend gets |
+| --- | --- | --- | --- |
+| `active` | The chain and the console | Not revoked, a use left, and `spent` below `max_total` | Accepted if every other check passes, the expiry check included |
+| `revoked` | The chain and the console | The owner revoked it. This is final. | `MandateInactive` |
+| `exhausted` | The chain and the console | `uses` reached `max_uses`, or `spent` reached `max_total` | `UsesExhausted` or `OverMandateTotal` |
+| `expired` | The console only | The time is at or past `expires_at_ns`, and the mandate is not revoked | `MandateExpired` |
+
+Revoked wins over everything: a revoked mandate reads `revoked` even after it expires.
+
+The last column names the code the mandate's own state causes. The contract runs its checks in order, so an earlier one can fail first: `Frozen` on a frozen vault, or `MandateExpired` for an exhausted mandate that has also expired. See [How a payment is checked](/docs/concepts/payment-checks).
+
+### Expired still reads active
+
+The contract stores `expires_at_ns`, but `status` is worked out from `revoked`, `uses`, `max_uses`, `spent` and `max_total` and never reads the clock, so the on-chain `status` never says expired. Once the block time reaches `expires_at_ns`, the contract refuses every new spend, with `MandateExpired` unless an earlier check such as `NotAgent`, `InvalidInput` or `Frozen` fails first, while `status` still says `active` for a mandate that was active. The SDK's own `mandate.expired` rule reads `expires_at_ns`, never `status`. The console shows "expired" from that same time.
+
+<Callout kind="warning">
+
+The chain's `status` never says expired: an expired mandate keeps reading `active`, or `exhausted` or `revoked`. Check `expires_at_ns`, not `status`.
+
+</Callout>
+
+Expiry stops new spends only. `approve` checks that the mandate is not revoked, and does not look at its expiry. So a spend held before the mandate expired can still be approved after it, until the hold itself expires. This is inferred: it follows from the code, and no test shows it yet. Revoking is what stops that: see [Revoking](#revoking).
+
+### Exhausted is not always final
+
+`uses` counts held and pending spends too. A mandate whose last uses are held or pending reads `exhausted`. If one of those spends is released, because its payout failed, it was rejected, or its hold ran out and someone called `expire_held`, its use comes back and the mandate reads `active` again. A hold that runs out does not release itself: until `expire_held` is called, the spend stays held and keeps its use, so the mandate still reads `exhausted`.
+
+`spent` counts only payouts that settled, and nothing lowers it. A mandate that is exhausted because `spent` reached `max_total` stays exhausted.
+
+`status` also ignores `reserved`. A mandate with uses left whose remaining total is all held back by held or pending spends still reads `active`, and a new spend gets `OverMandateTotal`. The console's "Remaining / total" takes `reserved` into account.
+
+## Revoking
+
+The owner revokes a mandate with `revoke_mandate`, which takes the mandate id and exactly 1 yoctoNEAR. A wrong deposit gets `RequiresOneYocto`, an unknown id gets `NoMandate`, and a mandate that is already revoked gets `MandateInactive`. Revoking emits a `mandate_revoked` event and cannot be undone.
+
+In the console, the vault's owner, signed in as the owner on chain, gets a "Revoke" button on a mandate's row in the "Mandates" table. An approver or a viewer sees none. The button's confirmation says: "This cannot be undone. The agent can no longer spend on it and a held payment can no longer be approved; a payout already pending still settles." With the CLI:
+
+```bash
+# Illustrative values: use your vault, the mandate id and the owner's account.
+node packages/cli/dist/bin.js --network testnet mandate revoke --vault acme.vaults.probarion.testnet \
+  --mandate 1 --sign-as owner.testnet --out-dir probarion-tx
+```
+
+<Callout kind="owner-signs">
+
+The owner's wallet signs `revoke_mandate` on the vault and attaches exactly 1 yoctoNEAR, as most owner calls do. `freeze` takes no deposit, and `create_mandate` takes a storage deposit and refunds the excess.
+
+</Callout>
+
+| What | After the revoke |
+| --- | --- |
+| A new spend | Refused with `MandateInactive`. |
+| A held spend | `approve` refuses it with `MandateInactive`. An approver can still reject it, and once its hold has expired anyone can call `expire_held`. Either one releases it. |
+| A pending payout | Keeps its reservation until its callback resolves, then settles as `paid` or `burned`, or is released as `failed`. |
+| The mandate | Reads `revoked` for good. |
+
+Revoking an expired mandate still matters while it has held spends, because `approve` does not look at the mandate's expiry: by the code, those spends can still be approved, though no test shows it yet. The console offers "Revoke" on an expired mandate only while part of it is still reserved, or when that figure cannot be read. While part is reserved, the note says: "Expired, but part of it is still reserved by held or pending payments. Revoking stops any held payments from being approved." When the figure cannot be read, it says: "Expired, and how much of it is still reserved could not be read. Revoking stops any held payments from being approved." It offers the owner "Revoke" on every mandate that is active or exhausted and not expired, and never on a revoked one.
+
+The code of `create_mandate` and `revoke_mandate` has no frozen check, so the owner can still create and revoke mandates while the vault is frozen. This is inferred: it follows from the code, and no test shows it yet.
+
+## Why a mandate cannot be edited
+
+The vault has two owner methods for mandates: `create_mandate` and `revoke_mandate`. No method changes a field the owner signed, and none clears `revoked`. Only the spend flow moves `spent`, `reserved` and `uses`.
+
+A spend carries only a mandate id, and the vault reads the payee and the limits from that mandate when it pays. Because a mandate never changes, a mandate id always means the payee and the limits the owner signed. A decision in the ledger and a spend on chain both name the mandate id, so whoever checks them later reads the same payee and limits they were made under.
+
+<Callout kind="key">
+
+The payee never changes. To pay someone else, sign a new mandate. The old one keeps paying its payee until it is revoked, expires or runs out.
+
+</Callout>
+
+To change a limit or the payee, sign a new mandate: it gets the next id and takes its own deposit. Nothing requires a revoke, so the old one keeps working until you revoke it, it expires or it runs out. If both cover the same purpose document, revoke the old one. For a purpose hash, the SDK picks the mandate with the lowest id that can still pay: one that is not revoked or expired, is bound to its agent key, and has a use and room left. While the old one can still pay, the SDK keeps picking it.
+
+## Where to go next
+
+- [How a payment is checked](/docs/concepts/payment-checks): the 14 checks every spend meets, the mandate checks among them.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): what happens to a spend above `approval_above`.
+- [Owner quickstart](/docs/start/owner-quickstart): sign a first mandate on testnet.
+- [Errors](/docs/build/errors): every vault code, such as `InsufficientDeposit`, `AssetNotAllowed` and `InvalidInput`.
+- [Glossary](/docs/resources/glossary): the terms used here.
+
+## What this does not do
+
+- **It does not set money aside.** A mandate is a limit, not a balance. The vault's own USDC pays every mandate, and the console lets the owner create a mandate whose per-payment cap is above what the vault holds, with a warning. A payout the vault cannot cover fails, and the vault releases it.
+- **It does not read the purpose document.** The contract stores the hash and checks only its format. Matching an invoice to its purchase order happens off chain, in the SDK.
+- **It is not a cap for the whole vault.** Each mandate has its own limits. The cap across all mandates is the vault's daily backstop, `OverDailyBackstop`.
+- **It does not check the agent key or the threshold when it is created.** See [What the contract checks](#what-the-contract-checks).
+- **Its status does not show expiry.** Read `expires_at_ns`.
+- **It cannot be edited or restored.** A revoked mandate stays revoked.
+- **It does not run on mainnet yet.** Only NEAR testnet is live. The mainnet vault is Planned.

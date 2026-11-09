@@ -16,12 +16,16 @@ export interface NavItem {
   label: string;
 }
 
-/** /security is in FOOTER_NAV only: with it, the header's links do not fit in the bar at 1120 px. */
+/**
+ * /security and /usage are in FOOTER_NAV only:
+ * with them, the header's links do not fit in the bar at 1120 px.
+ * The footer still lists Usage with the product pages (FOOTER_PRODUCT in lib/site/facts.ts).
+ */
 export const SITE_NAV: readonly NavItem[] = [
   { route: "/console", label: "Console" },
   { route: "/proof", label: "Proof" },
   { route: "/canary", label: "Canary" },
-  { route: "/usage", label: "Usage" },
+  { route: "/docs", label: "Docs" },
   { route: "/status", label: "Status" },
 ];
 
@@ -29,15 +33,19 @@ export const FOOTER_NAV: readonly NavItem[] = [
   { route: "/terms", label: "Terms" },
   { route: "/privacy", label: "Privacy" },
   { route: "/security", label: "Security" },
+  { route: "/usage", label: "Usage" },
   { route: "/status", label: "Status" },
 ];
 
-/** The tabs of a vault's console, as the path after `/console/<vault>`. */
+/**
+ * The tabs of a vault's console, as the path after `/console/<vault>`, in the order a first payment needs them: the
+ * agent's key before a mandate, money in the vault before an invoice.
+ */
 export const VAULT_TABS: readonly { path: string; label: string }[] = [
   { path: "", label: "Overview" },
-  { path: "/mandates", label: "Mandates" },
   { path: "/keys", label: "Keys" },
-  { path: "/payables", label: "Payables" },
+  { path: "/mandates", label: "Mandates" },
   { path: "/topup", label: "Top-up" },
+  { path: "/payables", label: "Payables" },
   { path: "/alerts", label: "Alerts" },
 ];
