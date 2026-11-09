@@ -12,17 +12,20 @@ export function RouteLink({
   href = route,
   whenPlanned = "label",
   className,
+  "aria-current": ariaCurrent,
   children,
 }: {
   route: string;
   href?: string;
   whenPlanned?: "label" | "hide";
   className?: string;
+  /** "page" on the link to the page this is (a tab that is open). */
+  "aria-current"?: "page";
   children: ReactNode;
 }) {
   if (isBuilt(route)) {
     return (
-      <Link href={href} className={className}>
+      <Link href={href} className={className} aria-current={ariaCurrent}>
         {children}
       </Link>
     );

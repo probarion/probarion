@@ -1469,7 +1469,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
           signed: sign(p1),
         }),
       ).toMatchObject({ ok: true, outcome: { status: "paid" } });
-      expect(await html(paid.id)).toMatch(/bg-emerald-100[^"]*">Confirmed by the owner/);
+      expect(await html(paid.id)).toMatch(/bg-ok-bg[^"]*">Confirmed by the owner/);
       // Held on chain for the approvers: amber.
       const held = await upload("61.00");
       const p2 = await prepared(held);
@@ -1482,7 +1482,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
           signed: sign(p2),
         }),
       ).toMatchObject({ ok: true, outcome: { status: "held" } });
-      expect(await html(held.id)).toMatch(/bg-amber-100[^"]*">Confirmed by the owner/);
+      expect(await html(held.id)).toMatch(/bg-wait-bg[^"]*">Confirmed by the owner/);
       // Confirmed, held again, then rejected: no green, and it says what the confirmation came to.
       const balances = server.chain.intents.balances;
       const saved = { ...balances };
@@ -1507,7 +1507,7 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
           },
         );
         const out = await html(again.id);
-        expect(out).toMatch(/bg-stone-100[^"]*">An earlier confirmation by owner\.testnet/);
+        expect(out).toMatch(/bg-plan-bg[^"]*">An earlier confirmation by owner\.testnet/);
         expect(out).not.toContain("Confirmed by the owner");
       } finally {
         Object.assign(balances, saved);

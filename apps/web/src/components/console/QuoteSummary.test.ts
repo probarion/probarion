@@ -31,9 +31,9 @@ const text = (s: string) =>
 
 describe("a verified quote as the owner reads it", () => {
   it("shows a badge only for each fact the server checked, with the values it checked", () => {
-    const badges = [
-      ...html().matchAll(/<span class="[^"]*bg-emerald-100[^"]*">([^<]*)<\/span>/g),
-    ].map((m) => m[1] ?? "");
+    const badges = [...html().matchAll(/<span class="[^"]*bg-ok-bg[^"]*">([^<]*)<\/span>/g)].map(
+      (m) => m[1] ?? "",
+    );
     expect(badges).toEqual([
       "Signature verified",
       "Recipient = acme.vaults.probarion.near (Intents account)",

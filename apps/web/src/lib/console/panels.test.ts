@@ -21,6 +21,12 @@ const h = vi.hoisted(() => ({
   prepareCalls: 0,
   registerCalls: [] as unknown[],
   registerAnswer: { ok: true, vaultId: "" } as unknown,
+  pushes: [] as string[],
+}));
+
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: () => {}, push: (href: string) => h.pushes.push(href) }),
 }));
 
 vi.mock("@/components/wallet/TxButton", () => ({
@@ -58,6 +64,7 @@ beforeEach(() => {
   h.prepareCalls = 0;
   h.registerCalls.length = 0;
   h.registerAnswer = { ok: true, vaultId: "" };
+  h.pushes.length = 0;
 });
 
 function renderPanel(owner = "acme.near") {
@@ -99,6 +106,25 @@ describe("CreateVaultPanel (W-T8-R1 item 1)", () => {
     await create.onResult?.(result({ status: "ok" }));
     expect(h.registerCalls).toEqual([".vaults.probarion.near"]); // the empty name in this render
     expect(h.prepareCalls).toBe(0);
+  });
+
+  it("opens the new vault's page once it is registered (site audit P1-8)", async () => {
+    const { create } = renderPanel();
+    await create.onResult?.(result({ status: "ok" }));
+    expect(h.pushes).toEqual([`/console/${encodeURIComponent(".vaults.probarion.near")}`]);
+  });
+
+  it("opens it too after an unknown outcome, when the one registration read finds it", async () => {
+    const { create } = renderPanel();
+    await create.onResult?.(result({ status: "unknown", error: "no answer" }));
+    expect(h.pushes).toHaveLength(1);
+  });
+
+  it("stays on the page when the registration fails, so its reason stays on screen", async () => {
+    const { create } = renderPanel();
+    h.registerAnswer = { ok: false, error: "Not this account's vault.", code: "forbidden" };
+    await create.onResult?.(result({ status: "ok" }));
+    expect(h.pushes).toEqual([]);
   });
 
   it("a refused create neither registers nor signs again", async () => {

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { registerVaultAction } from "@/app/console/actions";
-import { inputClass, Notice } from "@/components/ui";
+import { buttonClass, inputClass, Notice } from "@/components/ui";
 
 export function RegisterVaultForm({ placeholder }: { placeholder: string }) {
   const router = useRouter();
@@ -40,11 +40,7 @@ export function RegisterVaultForm({ placeholder }: { placeholder: string }) {
         onChange={(e) => setVault(e.target.value)}
         placeholder={placeholder}
       />
-      <button
-        className="rounded-full bg-[#0B0B0C] px-4 py-1.5 text-sm font-medium text-[#F7F6F3] disabled:opacity-50"
-        type="submit"
-        disabled={busy}
-      >
+      <button className={buttonClass} type="submit" disabled={busy}>
         {busy ? "Checking the chain…" : "Register existing vault"}
       </button>
       {msg ? (
