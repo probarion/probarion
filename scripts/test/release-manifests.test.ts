@@ -206,8 +206,7 @@ const SWALLOWS: Array<[RegExp, string]> = [
 ];
 
 // pnpm-workspace.yaml chooses the packages that `pnpm -r` runs and can hold settings (scriptShell).
-const WORKSPACE_YAML =
-  'packages:\n  - "packages/*"\n  - "apps/*"\n  - "eval"\n  - "examples/*"\n';
+const WORKSPACE_YAML = 'packages:\n  - "packages/*"\n  - "apps/*"\n  - "eval"\n  - "examples/*"\n';
 // scripts/vitest.config.ts chooses which scripts/test files verify:launch runs. Update with:
 // node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync("scripts/vitest.config.ts","utf8").replace(/\r\n/g,"\n")).digest("hex"))'
 const SCRIPTS_VITEST_SHA256 = "b2c667b89f365ece33ad8b5fdb0024cd6ce82b64bd6916cb5b5696776e8f9b70";
