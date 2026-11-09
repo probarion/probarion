@@ -201,6 +201,12 @@ The software is an unaudited beta.
   asked, what the vault did (paid, refused on upload, refused by code, held then paid) and links the
   invoice file, its transactions and its lines in the signed ledger, then the demo vault's proof page.
   A test holds each card to the evidence files and the deployment record.
+- "The console" on the landing page, after the ink band: three screenshots of the testnet console from
+  2026-11-09, taken while a fifth invoice (INV-2004, 4 test USDC) went through the demo vault. They show
+  the spend held for an approver, the invoice's page in Payables, and the vault's spends once the
+  approver approved it with near-cli. Each caption names the network, the date and the vault, and links
+  its transaction where it has one; on a phone the row scrolls sideways. The images are WebP files in
+  `apps/web/public/shots/`, and a test reads each one's size from its header.
 - Deploy and smoke scripts for testnet, runbooks for testnet, the factory and the planned mainnet
   vault (each signing step is the owner's), and `pnpm proof` for the mainnet evidence file.
 - Web console, in progress: wallet sign-in with near-connect and NEP-413, checked on
