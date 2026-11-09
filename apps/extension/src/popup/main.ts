@@ -27,7 +27,9 @@ import {
   itemText,
   mandateLabel,
   networkText,
+  noMandates,
   noteFor,
+  roleFor,
   sentText,
   vaultsWithMandates,
   waitingCount,
@@ -76,17 +78,19 @@ function render(): void {
 type Focusable = HTMLButtonElement | HTMLSelectElement | HTMLInputElement;
 
 /**
- * After an action that switched its control off while it worked, a disabled control can't hold focus, so it fell to
- * the page. Focus goes back to the control that started the action if it is still there and enabled, else to the new
- * screen's first control, else to its heading. If the person moved focus elsewhere meanwhile, it stays there.
+ * After an action that switched its control off while it worked, or whose control is gone from the new screen (Clear,
+ * Choose file), focus fell to the page. It goes back to the control that started the action if it is still there and
+ * enabled, else to `landing` (where the action leads), else to the new screen's first control, else to its heading. If
+ * the person moved focus elsewhere meanwhile, it stays there.
  */
-function settleFocus(started: string | undefined): void {
+function settleFocus(started: string | undefined, landing?: string): void {
   const active = document.activeElement;
   if (active !== null && active !== document.body) return;
   const controls = [...app.querySelectorAll<Focusable>("button, select, input")];
   const at = focusTarget(
     started,
     controls.map((el) => ({ key: el.dataset.focus, enabled: !el.disabled })),
+    landing,
   );
   const target = at === null ? undefined : controls[at];
   if (target !== undefined) {
@@ -137,8 +141,11 @@ function select(
   return el;
 }
 
-/** Runs one action at a time: the buttons are off meanwhile, and a failure shows its sentence. */
-async function act(work: () => Promise<void>): Promise<void> {
+/**
+ * Runs one action at a time: the buttons are off meanwhile, and a failure shows its sentence. `landing` is the control
+ * focus goes to when the one that started the action is not on the new screen.
+ */
+async function act(work: () => Promise<void>, landing?: string): Promise<void> {
   if (ui.busy) return;
   const started = focusedKey();
   ui.busy = true;
@@ -154,7 +161,7 @@ async function act(work: () => Promise<void>): Promise<void> {
   } finally {
     ui.busy = false;
     render();
-    settleFocus(started);
+    settleFocus(started, landing);
   }
 }
 
@@ -288,6 +295,7 @@ function errorSection(text: string): HTMLElement {
     h("h2", {}, "Waiting for you"),
     h("p", { class: "bad", attrs: { role: "alert" } }, text),
     button("Retry", () => void act(reload)),
+    messageLine(),
   );
 }
 
@@ -303,13 +311,17 @@ function waitingSection(s: Ok): HTMLElement {
       : h(
           "ul",
           { class: "rows" },
-          ...rows.map((r) =>
+          ...rows.map((r, i) =>
             h(
               "li",
               {},
               h(
                 "button",
-                { class: "row", attrs: { type: "button" }, on: { click: () => open(r.url) } },
+                {
+                  class: "row",
+                  attrs: { type: "button", "data-focus": `row-${i}` },
+                  on: { click: () => open(r.url) },
+                },
                 h("span", { class: "title" }, r.title),
                 h("span", { class: "detail" }, r.detail),
               ),
@@ -331,7 +343,7 @@ function waitingSection(s: Ok): HTMLElement {
 
 function sendSection(s: Ok): HTMLElement {
   const vaults = vaultsWithMandates(s.inbox);
-  const role = (vaults.find((v) => v.vault === ui.vault) ?? vaults[0])?.role ?? "owner";
+  const role = roleFor(s.inbox, ui.vault);
   const send = button(
     ui.busy ? "Sending…" : "Send to Probarion",
     () => void sendInvoice(s),
@@ -344,12 +356,21 @@ function sendSection(s: Ok): HTMLElement {
     {},
     h("h2", {}, "Send an invoice"),
     captured(),
-    vaults.length === 0
-      ? h("p", { class: "mute" }, "No active mandate can take invoices. Create one in the console.")
-      : chooser(vaults),
+    vaults.length === 0 ? noMandatesBlock(s) : chooser(vaults),
     h("p", { class: "note" }, noteFor(role)),
     send,
     messageLine(),
+  );
+}
+
+/** Why no vault takes invoices now: no active mandate, or NEAR couldn't be read (then Retry is offered). */
+function noMandatesBlock(s: Ok): HTMLElement {
+  const none = noMandates(s.inbox);
+  return h(
+    "div",
+    {},
+    h("p", { class: "mute" }, none.text),
+    none.retry ? button("Retry", () => void act(reload)) : null,
   );
 }
 
@@ -384,7 +405,7 @@ function captured(): HTMLElement {
     tabPdf
       ? button(
           "Use the PDF in this tab",
-          () => void act(async () => hold(await captureUrl(tabPdf, d.fetch))),
+          () => void act(async () => hold(await captureUrl(tabPdf, d.fetch)), "send"),
         )
       : null,
     h("label", { class: "secondary file" }, "Choose file", file),
@@ -420,6 +441,9 @@ async function hold(r: CaptureResult): Promise<void> {
   ui.pending = p;
   ui.message = null;
   render();
+  // The control that took the file (Choose file) is not on the new screen: focus goes to Send, or back to Choose file
+  // when the file was refused. A caller that runs inside act() settles focus itself, once the buttons are on again.
+  if (!ui.busy) settleFocus(undefined, r.ok ? "send" : "file");
   // Kept in session storage too, so it is still here when the popup opens again. If storage refuses it, the popup
   // still has it in memory and can send it now.
   await setPending(c, p).catch(() => {});
@@ -428,6 +452,7 @@ async function hold(r: CaptureResult): Promise<void> {
 async function forget(): Promise<void> {
   ui.pending = null;
   render();
+  settleFocus(undefined, "file"); // Clear is gone: focus goes to Choose file
   await clearPending(c);
 }
 

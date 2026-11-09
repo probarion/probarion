@@ -8,7 +8,9 @@ import {
   itemText,
   mandateLabel,
   NOTE,
+  noMandates,
   noteFor,
+  roleFor,
   sentText,
   sizeText,
   usdc,
@@ -41,6 +43,49 @@ describe("the popup's text", () => {
     expect(sentText({ ...sent, duplicate: true }, "approver")).toBe(
       "Already queued. It waits for the owner's confirmation.",
     );
+  });
+
+  it("names the role the note speaks to: the shown vault's, else the person's across their vaults", () => {
+    const vault = inbox.vaults[0];
+    if (vault === undefined) throw new Error("fixture");
+    const approver = { ...vault, vault: "b.testnet", role: "approver" as const };
+    const none = (v: typeof vault) => ({ ...v, mandates: [] });
+    const of = (vaults: Array<typeof vault>, chosen: string | null = null) =>
+      roleFor({ ...inbox, vaults }, chosen);
+    // A vault that takes invoices decides: the one chosen, else the first.
+    expect(of([vault, approver], "b.testnet")).toBe("approver");
+    expect(of([none(vault), approver], null)).toBe("approver");
+    expect(of([vault, approver], null)).toBe("owner");
+    // No vault takes invoices: an account that owns none of them is an approver.
+    expect(of([none(approver)])).toBe("approver");
+    expect(of([none(vault), none(approver)])).toBe("owner");
+    expect(of([])).toBe("owner");
+  });
+
+  it("says why no vault takes invoices now, to the right person", () => {
+    const vault = inbox.vaults[0];
+    if (vault === undefined) throw new Error("fixture");
+    const none = { ...vault, mandates: [] };
+    const owner = {
+      text: "No active mandate can take invoices. Create one in the console.",
+      retry: false,
+    };
+    expect(noMandates({ ...inbox, vaults: [none] })).toEqual(owner);
+    expect(noMandates({ ...inbox, vaults: [] })).toEqual(owner);
+    expect(noMandates({ ...inbox, vaults: [{ ...none, role: "approver" }] })).toEqual({
+      text: "No active mandate can take invoices. The vault's owner creates one in the console.",
+      retry: false,
+    });
+  });
+
+  it("says NEAR couldn't be read, not that there is no mandate, when a chain read failed", () => {
+    const vault = inbox.vaults[0];
+    if (vault === undefined) throw new Error("fixture");
+    const down = { ...vault, chain: "unavailable" as const, mandates: [], held: [] };
+    expect(noMandates({ ...inbox, vaults: [down] })).toEqual({
+      text: "NEAR couldn't be read, so Probarion can't list the mandates now. Try again.",
+      retry: true,
+    });
   });
 
   it("writes amounts in USDC", () => {
@@ -179,6 +224,18 @@ describe("where focus goes after an action", () => {
 
   it("takes the first enabled control when no control had focus", () => {
     expect(focusTarget(undefined, [control("a", false), control("b")])).toBe(1);
+  });
+
+  it("goes to the landing control when the one that started the action is gone", () => {
+    // Choose file took a file: its input is not on the new screen, Send is.
+    const screen = [control("switch"), control("send"), control("Clear")];
+    expect(focusTarget("file", screen, "send")).toBe(1);
+    expect(focusTarget(undefined, screen, "send")).toBe(1);
+    // The control that started it is still there: it keeps focus.
+    expect(focusTarget("Clear", screen, "send")).toBe(2);
+    // The landing control is off or missing: the first enabled one.
+    expect(focusTarget("file", [control("switch"), control("send", false)], "send")).toBe(0);
+    expect(focusTarget("file", screen, "elsewhere")).toBe(0);
   });
 
   it("answers null when the screen has no enabled control, so its heading gets focus", () => {

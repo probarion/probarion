@@ -112,6 +112,7 @@ p {
 
 .rows {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   margin: 0;
   padding: 0;
@@ -120,6 +121,7 @@ p {
 
 .row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   width: 100%;
   padding: 8px 10px;
@@ -135,6 +137,11 @@ p {
 .row:hover,
 .row:focus-visible {
   border-color: var(--gold);
+}
+
+.title,
+.detail {
+  overflow-wrap: anywhere;
 }
 
 .title {

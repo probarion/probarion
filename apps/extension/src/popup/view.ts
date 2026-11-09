@@ -79,6 +79,40 @@ export const waitingCount = (inbox: Inbox): number => inbox.counts.awaiting + in
 export const vaultsWithMandates = (inbox: Inbox): InboxVault[] =>
   inbox.vaults.filter((v) => v.mandates.length > 0);
 
+/**
+ * The role the note and the "no mandate" sentence speak to: the role in the vault the Send section shows (the chosen
+ * one when it takes invoices, else the first that does). When no vault takes invoices, the person is an approver only
+ * if they own none of their vaults, since only an owner confirms and creates mandates.
+ */
+export function roleFor(inbox: Inbox, chosen: string | null): "owner" | "approver" {
+  const usable = vaultsWithMandates(inbox);
+  const shown = usable.find((v) => v.vault === chosen) ?? usable[0];
+  if (shown !== undefined) return shown.role;
+  return inbox.vaults.length > 0 && inbox.vaults.every((v) => v.role === "approver")
+    ? "approver"
+    : "owner";
+}
+
+/**
+ * What the Send section says when no vault takes invoices now. When NEAR couldn't be read for a vault, its mandates are
+ * missing from the answer, so saying "no mandate" would be wrong: it says what happened and offers Retry.
+ */
+export function noMandates(inbox: Inbox): { text: string; retry: boolean } {
+  if (inbox.vaults.some((v) => v.chain === "unavailable")) {
+    return {
+      text: "NEAR couldn't be read, so Probarion can't list the mandates now. Try again.",
+      retry: true,
+    };
+  }
+  return {
+    text:
+      roleFor(inbox, null) === "approver"
+        ? "No active mandate can take invoices. The vault's owner creates one in the console."
+        : "No active mandate can take invoices. Create one in the console.",
+    retry: false,
+  };
+}
+
 /** What a send came to. For an approver the owner is the one who confirms. */
 export function sentText(s: Sent, role: "owner" | "approver" = "owner"): string {
   const who = role === "owner" ? "your confirmation" : "the owner's confirmation";
@@ -119,15 +153,18 @@ export function connectChoices(
 
 /**
  * Which control of a new screen gets focus once an action that started from `started` (a control's data-focus name)
- * is done: that control if it is still there and enabled, else the screen's first enabled control; null when it has
- * none. `controls` are the screen's controls in page order, and the answer is an index into them.
+ * is done: that control if it is still there and enabled, else `landing` (the control the action leads to, such as Send
+ * after a file was taken) if it is there and enabled, else the screen's first enabled control; null when it has none.
+ * `controls` are the screen's controls in page order, and the answer is an index into them.
  */
 export function focusTarget(
   started: string | undefined,
   controls: ReadonlyArray<{ key: string | undefined; enabled: boolean }>,
+  landing?: string,
 ): number | null {
-  if (started !== undefined) {
-    const same = controls.findIndex((c) => c.enabled && c.key === started);
+  for (const key of [started, landing]) {
+    if (key === undefined) continue;
+    const same = controls.findIndex((c) => c.enabled && c.key === key);
     if (same >= 0) return same;
   }
   const first = controls.findIndex((c) => c.enabled);
