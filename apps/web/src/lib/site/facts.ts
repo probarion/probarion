@@ -55,7 +55,7 @@ export const LINKS = {
 
 export const SITE_TITLE = "Probarion. Spend by mandate. Prove every payment.";
 export const SITE_DESCRIPTION =
-  "A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and anyone can verify the signed ledger.";
+  "A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and the owner can publish the signed ledger for anyone to verify.";
 export const OG_IMAGE = {
   url: "/og.png",
   width: 1280,
@@ -125,19 +125,24 @@ export const TX = {
   nearPayment: tx("3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX", "3DFV2thB…Fy9cX"),
   baseBurn: tx("3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe", "3u4ffrwp…dcvYe"),
   noMandate: tx("AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY", "AkjyVPmb…dzgY"),
+  // 2026-11-09, after the smoke run: the agent key itself asked mandate 1 for 6 test USDC, above its 5 USDC limit.
+  overPerPayment: tx("4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1", "4715d4nb…Vsr1"),
 } as const;
 
 // --- hero -----------------------------------------------------------------------------------------
 
 export const HERO = {
+  eyebrow: "A mandate layer for AI agents on NEAR",
   line1: "Spend by mandate.",
   line2: "Prove every payment.",
-  lede: "Give your AI agent a budget, not your wallet. It can pay only the payee you named, up to the limits you signed. A NEAR contract refuses everything else, and every decision goes into a ledger anyone can check.",
+  lede: "Give your AI agent a budget, not your wallet. It can pay only the payee you named, up to the limits you signed. A NEAR contract refuses everything else, and every decision goes into a signed ledger you can publish.",
   openConsole: "Open console",
   tryLive: "Try a payment, live",
   integrate: "Plug in your agent",
   fineprint:
     "Testnet today, mainnet planned. You need no account to read the chain or run the verifier.",
+  audience:
+    "For teams whose AI agent pays supplier invoices (Payables, in progress), and for developers who want to give an agent money without the keys.",
   paid: {
     aria: "A payment the contract allowed",
     mandate: "Mandate 1",
@@ -149,16 +154,17 @@ export const HERO = {
     tx: TX.nearPayment,
   },
   refused: {
-    aria: "A payment the contract refused",
-    mandate: "Mandate 999",
-    state: "Refused",
-    code: ["PROBARION:", "NoMandate"],
+    aria: "A payment the contract blocked",
+    mandate: "Mandate 1",
+    state: "Blocked",
+    big: "6 test USDC",
     caller: "Agent key",
-    payee: "None on record",
+    limit: "5 USDC a payment",
+    code: "OverPerPayment",
     paid: "Nothing",
-    tx: TX.noMandate,
+    tx: TX.overPerPayment,
   },
-  note: "Two real calls by one agent key on `v0.probarion.testnet`, with test tokens. The contract decided both.",
+  note: "Two real calls by one agent key on `v0.probarion.testnet`, with test tokens. For the second, the agent asked the contract directly. The contract decided both.",
 } as const;
 
 export const PROBLEM = {
@@ -420,8 +426,8 @@ export const JOURNEY = {
     },
     {
       n: 5,
-      title: "Anyone can check the record",
-      body: "The SDK anchors the ledger root on the vault. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
+      title: "Check a published record",
+      body: "With a ledger key, the SDK anchors the ledger root on the vault, and the owner can publish the ledger on a proof page. The verifier ties each spend in a snapshot to exactly one decision, with no server and no account. Offline, those spends come from the file. A live run reads them from the chain.",
       tag: CLI_ON_NPM
         ? "The testnet vault has no ledger key or anchors yet, so these commands run on a test fixture: this site serves an exact copy of the file in the repository."
         : "The testnet vault has no ledger key or anchors yet, so this command runs on a test fixture. Build it from a clone first (README step 1).",

@@ -27,25 +27,25 @@
     <g clip-path="url(#rb-lk-disc)"><g filter="url(#rb-lk-grain)"><rect x="12" y="-132" width="120" height="120" fill="url(#rb-lk-sheen)"/><rect x="12" y="-132" width="120" height="120" fill="url(#rb-lk-deep)"/><rect x="12" y="-132" width="120" height="120" fill="url(#rb-lk-warm)"/><rect x="12" y="-132" width="120" height="120" fill="url(#rb-lk-hi)"/></g></g>
     <rect x="0" y="-16" width="144" height="16" rx="2" fill="#0B0B0C"/><g transform="translate(188 0)"><path d="M6.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M7.5 -100 V42 M125.5 -100 V0 M125.5 -50 A42.5 42.5 0 0 1 191.77 -85.23 M213.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M331.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M332.5 -150 V0 M449.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M535.5 -100 V0 M568.5 -100 V0 M568.5 -50 A42.5 42.5 0 0 1 634.77 -85.23 M657.5 -100 V0 M689.5 -50 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 M808.5 -100 V0 M808.5 -50 A42.5 42.5 0 0 1 893.5 -50 V0" fill="none" stroke="#0B0B0C" stroke-width="15" stroke-linecap="butt"/><circle cx="657.5" cy="-130" r="9.3" fill="#0B0B0C"/></g></g>
      <text x="347.91499999999996" y="94" font-family="Segoe UI" font-size="15" letter-spacing="0.4" fill="#6B6A66">Built on NEAR · Unaudited beta</text>
-     <text x="60" y="196" font-family="Segoe UI Semilight" font-size="64" letter-spacing="-2.2" fill="#0B0B0C">Spend by mandate.</text>
-     <text x="60" y="270" font-family="Segoe UI Semilight" font-size="64" letter-spacing="-2.2" fill="url(#rb-text)">Prove every payment.</text>
+     <text x="60" y="196" font-family="'Segoe UI Semilight', 'Segoe UI'" font-weight="350" font-size="64" letter-spacing="-2.2" fill="#0B0B0C">Spend by mandate.</text>
+     <text x="60" y="270" font-family="'Segoe UI Semilight', 'Segoe UI'" font-weight="350" font-size="64" letter-spacing="-2.2" fill="url(#rb-text)">Prove every payment.</text>
      <text x="64" y="318" font-family="Segoe UI" font-size="17.5" fill="#6B6A66">An AI agent pays only inside mandates its owner signed. The vault</text>
      <text x="64" y="344" font-family="Segoe UI" font-size="17.5" fill="#6B6A66">contract checks every payment; a signed ledger records every decision.</text>
      <clipPath id="rb-card"><rect x="776" y="52" width="448" height="296" rx="24"/></clipPath>
      <g clip-path="url(#rb-card)"><g filter="url(#rb-grain)"><rect x="776" y="52" width="448" height="296" fill="url(#rb-sheen)"/><rect x="776" y="52" width="448" height="296" fill="url(#rb-deep)"/><rect x="776" y="52" width="448" height="296" fill="url(#rb-warm)"/><rect x="776" y="52" width="448" height="296" fill="url(#rb-hi)"/></g></g>
-     <text x="808" y="104" font-family="Segoe UI Semilight" font-size="26" letter-spacing="-0.6" fill="#1C1407">v0.probarion.testnet</text>
-     <text x="808" y="130" font-family="Segoe UI" font-size="13" letter-spacing="0.3" fill="#1C1407" fill-opacity="0.72">Smoke run on NEAR testnet, test tokens, 2026-11-01</text>
+     <text x="808" y="104" font-family="'Segoe UI Semilight', 'Segoe UI'" font-weight="350" font-size="26" letter-spacing="-0.6" fill="#1C1407">v0.probarion.testnet</text>
+     <text x="808" y="130" font-family="Segoe UI" font-size="13" letter-spacing="0.3" fill="#1C1407" fill-opacity="0.72">Calls by its agent key on NEAR testnet, test tokens</text>
      
     <text x="808" y="174" font-family="Segoe UI" font-size="12.5" letter-spacing="1.6" fill="#1C1407" fill-opacity="0.68">SPEND 1</text>
-    <text x="1192" y="174" text-anchor="end" font-family="Segoe UI Semilight" font-size="18" fill="#1C1407">paid 1 USDC to a NEAR account</text>
+    <text x="1192" y="174" text-anchor="end" font-family="'Segoe UI Semilight', 'Segoe UI'" font-weight="350" font-size="18" fill="#1C1407">paid 1 USDC to a NEAR account</text>
     <path d="M808 191 H1192" stroke="#1C1407" stroke-opacity="0.2" stroke-width="1"/>
      
     <text x="808" y="216" font-family="Segoe UI" font-size="12.5" letter-spacing="1.6" fill="#1C1407" fill-opacity="0.68">SPEND 2</text>
-    <text x="1192" y="216" text-anchor="end" font-family="Segoe UI Semilight" font-size="18" fill="#1C1407">burned 1 USDC, WITHDRAW_TO Base</text>
+    <text x="1192" y="216" text-anchor="end" font-family="'Segoe UI Semilight', 'Segoe UI'" font-weight="350" font-size="18" fill="#1C1407">burned 1 USDC, WITHDRAW_TO Base</text>
     <path d="M808 233 H1192" stroke="#1C1407" stroke-opacity="0.2" stroke-width="1"/>
      
-    <text x="808" y="258" font-family="Segoe UI" font-size="12.5" letter-spacing="1.6" fill="#1C1407" fill-opacity="0.68">MANDATE 999</text>
-    <text x="1192" y="258" text-anchor="end" font-family="Segoe UI Semilight" font-size="18" fill="#1C1407">refused: PROBARION:NoMandate</text>
+    <text x="808" y="258" font-family="Segoe UI" font-size="12.5" letter-spacing="1.6" fill="#1C1407" fill-opacity="0.68">MANDATE 1</text>
+    <text x="1192" y="258" text-anchor="end" font-family="'Segoe UI Semilight', 'Segoe UI'" font-weight="350" font-size="18" fill="#1C1407">blocked: 6 USDC, limit 5 USDC</text>
     <path d="M808 275 H1192" stroke="#1C1407" stroke-opacity="0.2" stroke-width="1"/>
      <rect x="798" y="286" width="404" height="42" rx="21" fill="#0B0B0C"/>
      <text x="1000" y="312.5" text-anchor="middle" font-family="Segoe UI" font-size="15.5" fill="#FFF0C2">The rule lives in the contract, not in the prompt</text></svg>

@@ -52,6 +52,7 @@ import {
   VERIFY_NOTE,
 } from "@/lib/site/facts";
 import recordedJson from "@/lib/site/live-check-recorded.json";
+import { TERMS_PAGE } from "@/lib/site/ops-copy";
 import { ledgerRows, verifyTamper } from "@/lib/site/tamper";
 import fixture from "@/lib/site/valid-snapshot.json";
 import { directives, importsOf, resolveLocal, toPosix, walk } from "./deploy-scan";
@@ -218,7 +219,7 @@ describe("what an offline run shows", () => {
     expect(body).toContain("snapshot");
     expect(body).not.toMatch(/on[- ]chain/i);
     expect(sentences(body)).toEqual([
-      "The SDK anchors the ledger root on the vault.",
+      "With a ledger key, the SDK anchors the ledger root on the vault, and the owner can publish the ledger on a proof page.",
       "The verifier ties each spend in a snapshot to exactly one decision, with no server and no account.",
       "Offline, those spends come from the file.",
       "A live run reads them from the chain.",
@@ -248,12 +249,14 @@ describe("transactions", () => {
   const deployment = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
     accounts: { vault_v0: string };
     smoke: { near_payment_tx: string; base_burn_tx: string; no_mandate_tx: string };
+    direct_refusal: { over_per_payment_tx: string };
   };
 
   it("match the testnet deployment record and appear in the README", () => {
     expect(TX.nearPayment.hash).toBe(deployment.smoke.near_payment_tx);
     expect(TX.baseBurn.hash).toBe(deployment.smoke.base_burn_tx);
     expect(TX.noMandate.hash).toBe(deployment.smoke.no_mandate_tx);
+    expect(TX.overPerPayment.hash).toBe(deployment.direct_refusal.over_per_payment_tx);
     for (const t of Object.values(TX)) expect(README).toContain(t.hash);
   });
 
@@ -425,10 +428,50 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(README).toContain("**Unaudited beta.** No third party has audited this code.");
   });
 
-  it("the code the contract refused with", () => {
-    expect(HERO.refused.code.join("")).toBe("PROBARION:NoMandate");
+  it("the hero's refusal: the agent key asked mandate 1 for more than its limit, and the contract said no", () => {
+    expect(HERO.refused.tx).toBe(TX.overPerPayment);
+    expect(HERO.refused.code).toBe(CONTRACT_REFUSAL_CODE);
+    expect(HERO.refused.mandate).toBe(HERO.paid.mandate);
+    expect(HERO.refused.caller).toBe(HERO.paid.caller);
+    expect(HERO.refused.paid).toBe("Nothing");
+    // The limit is mandate 1's, as step 4 and the README show it; the amount asked is above it.
+    const limit = /at most (\d+) USDC/.exec(JSON.stringify(JOURNEY.steps[3].panel))?.[1];
+    expect(HERO.refused.limit).toBe(`${limit} USDC a payment`);
+    const asked = /^(\d+) test USDC$/.exec(HERO.refused.big)?.[1];
+    expect(Number(asked)).toBeGreaterThan(Number(limit));
+    expect(README).toContain(
+      `The agent key called \`spend\` on mandate 1 for ${asked} test USDC, above its limit of ${limit} test USDC per payment`,
+    );
+    expect(README).toContain(`Refused by the contract: \`PROBARION:${HERO.refused.code}\``);
+    // Signed by the agent key itself, so no off-chain check stood in the way.
+    expect(HERO.note).toContain("asked the contract directly");
+  });
+
+  it("the smoke run's refusal stays on the on-chain list", () => {
     expect(CHAIN.rows[2].body).toContain("`PROBARION:NoMandate`");
     expect(README).toContain("PROBARION:NoMandate");
+  });
+
+  it("the hero cards as a visitor sees them: outcome first, the code below", () => {
+    const out = visibleText(landing());
+    expect(out).toContain(
+      `${HERO.refused.mandate} ${HERO.refused.state} ${HERO.refused.big} Caller ${HERO.refused.caller} Limit ${HERO.refused.limit} Code ${HERO.refused.code} Paid ${HERO.refused.paid} Tx ${HERO.refused.tx.label}`,
+    );
+    expect(HERO.refused.state).toBe("Blocked");
+    expect(out).not.toContain("Mandate 999 Refused");
+  });
+
+  it("the README banner shows the same refusal as the hero", () => {
+    const svg = text(ROOT, "docs", "assets", "readme-banner.svg");
+    const usdc = (s: string) => s.replace(" test", "").replace(" a payment", "");
+    expect(svg).toContain(
+      `>blocked: ${usdc(HERO.refused.big)}, limit ${usdc(HERO.refused.limit)}<`,
+    );
+    expect(svg).toContain(">MANDATE 1<");
+    expect(svg).not.toContain("MANDATE 999");
+    const alt = /<img src="docs\/assets\/readme-banner\.png" alt="([^"]*)"/.exec(README)?.[1] ?? "";
+    expect(alt).toContain(`PROBARION:${HERO.refused.code}`);
+    expect(alt).not.toContain("NoMandate");
   });
 
   it("what the smoke run was, and that mainnet is still planned", () => {
@@ -546,8 +589,9 @@ describe("the payment journey", () => {
   it("says the testnet vault has no ledger key or anchors yet, as the README does", () => {
     expect(prose).toContain("this vault has no ledger key and no anchors yet");
     expect(step(5).tag).toContain("The testnet vault has no ledger key or anchors yet");
+    // With npx the tag says "these commands run", from a clone "this command runs".
     expect(step(5).tag).toContain("on a test fixture");
-    expect(step(5).body).toContain("The SDK anchors the ledger root");
+    expect(step(5).body).toContain("With a ledger key, the SDK anchors the ledger root");
   });
 
   it("marks the ledger as what the SDK does, and says the smoke run had none", () => {
@@ -1366,5 +1410,87 @@ describe("colours", () => {
     expect(module.replace(/url\("data:[^"]*"\)/g, "")).not.toMatch(
       /#[0-9a-f]{3,8}\b|\brgba?\(\s*\d/i,
     );
+  });
+});
+
+describe("who can check the record (audit P1-12)", () => {
+  // A ledger is private until its owner publishes it (the Canary's never is), and a root is anchored only once the
+  // vault has a ledger key. So "anyone can verify" is true only of a published ledger, or of what is on chain.
+  const CLAIM = /\banyone\b[^.!?]{0,40}?\b(?:re-?)?(?:check|verif)\w*/i;
+  const SCOPED = /publish|public|on chain/i;
+  const sentencesOf = (copy: string) => copy.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/);
+  const unscoped = (copy: string) =>
+    sentencesOf(copy).filter((s) => CLAIM.test(s) && !SCOPED.test(s));
+
+  it("finds a claim that leaves out the publishing, and passes one that names it", () => {
+    expect(unscoped("A contract checks it. Anyone can verify the signed ledger.")).toEqual([
+      "Anyone can verify the signed ledger.",
+    ]);
+    expect(unscoped("The owner can publish the ledger for anyone to verify.")).toEqual([]);
+    expect(unscoped("What it sends is on chain for anyone to check.")).toEqual([]);
+    expect(unscoped("9 checks anyone can run.")).toEqual([]);
+    // Every form of the verb, as a docs flow step writes it.
+    expect(unscoped("**Anyone** Checks the record.")).toHaveLength(1);
+    expect(unscoped("**Anyone re-checks** it.")).toHaveLength(1);
+    expect(unscoped("Anyone verifies it.")).toHaveLength(1);
+  });
+
+  it("makes no unscoped claim in the site's source, its content, the READMEs or SECURITY.md", () => {
+    const files = [
+      ...walk(SRC).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f)),
+      ...walk(join(WEB, "content")),
+      join(ROOT, "README.md"),
+      join(ROOT, "SECURITY.md"),
+      ...["core", "sdk", "cli"].map((p) => join(ROOT, "packages", p, "README.md")),
+    ];
+    const found = files.flatMap((f) =>
+      unscoped(readFileSync(f, "utf8")).map((s) => `${toPosix(relative(ROOT, f))}: ${s}`),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("says in the description, the hero, step 5 and the Terms that the owner publishes the ledger", () => {
+    expect(SITE_DESCRIPTION).toBe(
+      "A mandate layer for AI agents on NEAR. The agent pays only inside mandates its owner signed, a NEAR contract checks every payment, and the owner can publish the signed ledger for anyone to verify.",
+    );
+    expect(
+      HERO.lede.endsWith("and every decision goes into a signed ledger you can publish."),
+    ).toBe(true);
+    expect(JOURNEY.steps[4].title).toBe("Check a published record");
+    const terms = TERMS_PAGE.rules.find((r) => r.title === "What Probarion is.");
+    expect(terms?.body).toContain(
+      "the vault's owner can publish the signed ledger for anyone to verify",
+    );
+    expect(README).toContain(
+      "every decision goes into a signed, hash-chained ledger that the owner can publish for anyone to verify.",
+    );
+    expect(README.replace(/\s+/g, " ")).toContain(
+      "whose root is anchored on the vault once it has a ledger key, and anyone can re-check a published record against the chain.",
+    );
+  });
+});
+
+describe("the hero says what it is and who it is for (audit P1-3)", () => {
+  it("names the category above the headline, in the words the description starts with", () => {
+    expect(HERO.eyebrow).toBe("A mandate layer for AI agents on NEAR");
+    expect(SITE_DESCRIPTION.startsWith(`${HERO.eyebrow}.`)).toBe(true);
+    const html = renderToStaticMarkup(createElement(Home));
+    const eyebrowAt = html.indexOf(`>${HERO.eyebrow}</p>`);
+    expect(eyebrowAt).toBeGreaterThan(-1);
+    expect(eyebrowAt).toBeLessThan(html.indexOf("<h1"));
+  });
+
+  it("keeps the lede to about 40 words, so both buttons stay above the fold on a phone", () => {
+    expect(HERO.lede.split(/\s+/).length).toBeLessThanOrEqual(40);
+  });
+
+  it("says who it is for under the buttons, after the fine print, with the Payables status the status list has", () => {
+    expect(HERO.audience).toBe(
+      "For teams whose AI agent pays supplier invoices (Payables, in progress), and for developers who want to give an agent money without the keys.",
+    );
+    const payables = STATUS.rows.find((r) => r.row === "Payables agent");
+    expect(HERO.audience).toContain(`(Payables, ${payables?.pill.toLowerCase()})`);
+    const out = visibleText(landing());
+    expect(out).toContain(`${HERO.fineprint} ${HERO.audience}`);
   });
 });
