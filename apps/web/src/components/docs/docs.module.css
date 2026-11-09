@@ -1273,7 +1273,6 @@ section.source code {
   gap: 2px 12px;
   padding: 10px 12px;
   border-radius: 10px;
-  outline: 2px solid transparent;
   color: var(--color-ink);
   text-decoration: none;
 }
@@ -1464,12 +1463,16 @@ section.source code {
     background: none;
     color: CanvasText;
   }
-  /* Forced colours drop the tint, the bar and the inverted fill: an outline marks them instead. */
+  /*
+   * Forced colours drop the tint, the bar and the inverted fill: an outline marks them instead.
+   * Only the selected option has one (a base outline would be painted on every option), and a
+   * pressed filter with keyboard focus keeps its focus ring.
+   */
   .searchOption[aria-selected="true"] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }
-  .searchButton[aria-pressed="true"] {
+  .searchButton[aria-pressed="true"]:not(:focus-visible) {
     outline: 2px solid Highlight;
   }
 }

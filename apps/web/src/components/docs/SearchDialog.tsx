@@ -374,10 +374,11 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
               aria-pressed={filter === f}
               className={d.searchButton}
               onMouseDown={keepFocus}
-              onClick={() => {
+              onClick={(e) => {
                 setFilter(f);
                 setActive(0);
-                input.current?.focus();
+                // A pointer goes back to the box; Space or Enter keeps focus on the pressed toggle.
+                if (e.detail > 0) input.current?.focus();
               }}
             >
               {FILTER_LABELS[f]}

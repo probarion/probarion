@@ -9,7 +9,7 @@ import { readSource } from "./source";
 import { type DocPage, SECTION_LABELS } from "./types";
 
 /** A guard against a runaway page, not a cut: every page is indexed whole. */
-const BODY_LIMIT = 100_000;
+export const BODY_LIMIT = 100_000;
 
 const ERRORS_PAGE = "build/errors";
 
@@ -62,10 +62,12 @@ export function codesIn(markdown: string): string[] {
 /**
  * The codes the errors page's generated tables list besides the vault codes: each SDK error class
  * and its code, and each HTTP error code. As codes, an exact paste of one ranks that page first.
+ * Only identifier-shaped ones (an underscore or a capital, as in rate_limited or TxOutcomeUnknown)
+ * count: a plain word such as `failed` or `duplicate` is a word, not a code.
  */
 function catalogCodes(markdown: string): string[] {
   const all = [...SDK_ERRORS.flatMap((e) => [e.name, e.code]), ...HTTP_ERRORS.map((e) => e.code)];
-  return all.filter((code) => markdown.includes(code));
+  return all.filter((code) => /[_A-Z]/.test(code) && markdown.includes(code));
 }
 
 const unquote = (s: string) => s.replace(/`/g, "");

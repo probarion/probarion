@@ -18,7 +18,7 @@ import {
   runSearch,
   type SearchDoc,
 } from "@/lib/docs/search";
-import { buildSearchIndex, codesIn, kindOf } from "@/lib/docs/search-index";
+import { BODY_LIMIT, buildSearchIndex, codesIn, kindOf } from "@/lib/docs/search-index";
 import type { DocPage } from "@/lib/docs/types";
 import { WEB } from "./docs-helpers";
 
@@ -111,6 +111,21 @@ describe("runSearch", () => {
     expect(runSearch(search, "spend")[0]?.id).toBe("build/spend-outcomes");
     expect(runSearch(search, "spend  Approve")[0]?.id).toBe("concepts/holds-and-approvals");
   });
+
+  it("gives a bare PROBARION: no exact rank, so a page with no codes is not promoted", () => {
+    const search = createSearch([
+      doc({
+        id: "build/errors",
+        title: "Probarion errors",
+        kind: "reference",
+        codes: "PROBARION:NoMandate",
+      }),
+      doc({ id: "start/what-is-probarion", title: "What it is", body: "Probarion is a layer." }),
+    ]);
+    const order = (q: string) => runSearch(search, q).map((h) => h.id);
+    expect(order("PROBARION:")).toEqual(order("probarion"));
+    expect(order("PROBARION:")[0]).toBe("build/errors");
+  });
 });
 
 describe("the dialog's pure logic", () => {
@@ -181,6 +196,36 @@ describe("the dialog's pure logic", () => {
     expect(key({ ctrlKey: true, altKey: true })).toBe(false);
     expect(key({ ctrlKey: true, key: "j", code: "KeyJ" })).toBe(false);
     expect(key({ ctrlKey: true, key: undefined, code: "" })).toBe(false);
+    // Colemak and Workman put e on the physical K key: Ctrl E stays the browser's.
+    expect(key({ ctrlKey: true, key: "e", code: "KeyK" })).toBe(false);
+    expect(key({ metaKey: true, key: "E", code: "KeyK" })).toBe(false);
+  });
+});
+
+describe("the dialog's styles", () => {
+  // Without comments: a comment may name what no rule does.
+  const css = readFileSync(
+    join(WEB, "src", "components", "docs", "docs.module.css"),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\//g, "");
+  const forced = /@media \(forced-colors: active\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
+  const rule = (block: string, selector: string) =>
+    new RegExp(
+      `(?:^|\\n)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`,
+    ).exec(block)?.[1];
+
+  it("marks only the selected option and an unfocused pressed filter in forced colours", () => {
+    // Forced colours paint a transparent outline, so a base outline would ring every option.
+    expect(rule(css, ".searchOption")).toBeDefined();
+    expect(rule(css, ".searchOption")).not.toMatch(/outline/);
+    expect(rule(forced, '.searchOption[aria-selected="true"]')).toMatch(
+      /outline: 2px solid Highlight/,
+    );
+    // The focus ring keeps its own colour on the pressed filter a keyboard reaches first.
+    expect(rule(forced, '.searchButton[aria-pressed="true"]')).toBeUndefined();
+    expect(rule(forced, '.searchButton[aria-pressed="true"]:not(:focus-visible)')).toMatch(
+      /outline: 2px solid Highlight/,
+    );
   });
 });
 
@@ -289,8 +334,9 @@ describe("the search index", () => {
       expect(pages.map((d) => d.href)).toEqual(listed.map((p) => docsHref(p.path)));
       expect(pages.map((d) => d.kind)).toEqual(listed.map(kindOf));
       expect(new Set(index.map((d) => d.id)).size).toBe(index.length);
-      // The whole page is indexed: the limit guards against a runaway page and cuts none.
-      for (const d of index) expect(d.body.length, d.id).toBeLessThan(100_000);
+      // No page comes near the limit, so none is clipped: a clipped body sits just under
+      // BODY_LIMIT, far above half of it.
+      for (const d of index) expect(d.body.length, d.id).toBeLessThan(BODY_LIMIT / 2);
       expect(parseIndex(JSON.parse(JSON.stringify(index)))).toEqual(index);
       if (findPage("build/errors")) {
         expect(index.filter((d) => d.kind === "error").map((d) => d.href)).toEqual(
@@ -325,6 +371,16 @@ describe("the search index", () => {
       const body = (id: string) => index.find((d) => d.id === id)?.body ?? "";
       expect(body("start/evaluate-in-5-minutes").indexOf("rustup")).toBeGreaterThan(6000);
       expect(body("build/install").indexOf("invoiceHash")).toBeGreaterThan(6000);
+    });
+
+    it("lists only identifier-shaped catalog codes: a plain word does not pin build/errors", () => {
+      const errors = index.find((d) => d.id === "build/errors")?.codes.split("\n") ?? [];
+      expect(errors).toEqual(expect.arrayContaining(["rate_limited", "not_found"]));
+      expect(errors).toEqual(expect.arrayContaining(["TxOutcomeUnknown"]));
+      expect(errors).not.toContain("failed");
+      expect(errors).not.toContain("duplicate");
+      expect(first("failed")?.id).not.toBe("build/errors");
+      expect(first("duplicate")?.id).not.toBe("build/errors");
     });
   });
 

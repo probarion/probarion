@@ -151,10 +151,13 @@ const codeKey = (s: string) =>
 
 /**
  * 0: the error entry whose code is the query; 1: a page that names that code; 2: the rest. A code
- * is a whole line of `codes`, so one word of a CLI command is not the command.
+ * is a whole line of `codes`, so one word of a CLI command is not the command. An empty key (the
+ * query `PROBARION:` alone) and an empty line (a page with no codes) never match.
  */
 function exactRank(hit: SearchHit, key: string): number {
-  if (!hit.codes.split("\n").some((c) => codeKey(c) === key)) return 2;
+  if (key === "") return 2;
+  const codes = hit.codes.split("\n").filter((c) => c !== "");
+  if (!codes.some((c) => codeKey(c) === key)) return 2;
   return hit.kind === "error" ? 0 : 1;
 }
 
@@ -259,9 +262,11 @@ export interface ShortcutKeys {
 
 /**
  * Ctrl K or ⌘K, with no other modifier (Ctrl and ⌘ together do not count). The physical K key
- * counts too, so a layout without a Latin k still opens the search.
+ * counts only when the key is not a Latin letter, so a Cyrillic layout opens the search while
+ * Colemak's e on that key stays Ctrl E.
  */
 export function isSearchShortcut(e: ShortcutKeys): boolean {
   if (e.shiftKey || e.altKey || e.ctrlKey === e.metaKey) return false;
-  return e.key?.toLowerCase() === "k" || e.code === "KeyK";
+  const k = (e.key ?? "").toLowerCase();
+  return k === "k" || (e.code === "KeyK" && !/^[a-z]$/.test(k));
 }
