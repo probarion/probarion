@@ -1,6 +1,7 @@
 import type { Payee, SpendView, VaultConfig } from "@probarion/core";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { FirstPaymentChecklist } from "@/components/console/FirstPaymentChecklist";
 import { SendNearPanel } from "@/components/console/SendNearPanel";
 import { SettingsForm } from "@/components/console/SettingsForm";
 import { VaultNav } from "@/components/console/VaultNav";
@@ -9,6 +10,7 @@ import { VaultTxButton } from "@/components/console/VaultTxButton";
 import { AccountLink, Badge, Card, Notice } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import type { Network } from "@/lib/config";
+import { firstPaymentChecklist } from "@/lib/console/checklist";
 import {
   heldActions,
   mandateStatusView,
@@ -16,8 +18,11 @@ import {
   UNAVAILABLE,
   whyUnavailable,
 } from "@/lib/console/display";
+import { readKeyReadiness } from "@/lib/console/key-readiness";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { loadOverview, type Read, rpcChainReads } from "@/lib/console/vaults";
+import { serviceDb } from "@/lib/db/clients";
+import { getEnv } from "@/lib/env";
 import { NEAR_LOW_ALERT_YOCTO } from "@/lib/near/runway";
 import { chainConsts, getReader, getRpc } from "@/lib/near/server";
 import {
@@ -29,6 +34,7 @@ import {
   withdrawTx,
 } from "@/lib/near/tx";
 import { formatNear, formatUsdc, nsToDate } from "@/lib/near/units";
+import { FAUCET_USDC, faucetConfigured } from "@/lib/topup/faucet";
 import { refreshMembersAction, updateSettingsAction } from "./actions";
 
 export const metadata: Metadata = { title: "Vault" };
@@ -185,6 +191,10 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
   // The vault's own network, which is the request's: nothing below reads the other one.
   const network = member.network;
   const consts = chainConsts(network);
+  // "Your first agent payment" (site audit P1-8) is for the owner of an external vault. Its one extra read, the
+  // console's own key rows, starts beside the chain reads and only for them; it never rejects.
+  const firstRun = member.role === "owner" && member.kind === "external";
+  const keys = firstRun ? readKeyReadiness(serviceDb(), member.tenant_id) : null;
   const o = await loadOverview(getReader(network), rpcChainReads(getRpc(network)), vault, {
     base: consts.allowedAssets.base,
   });
@@ -195,6 +205,23 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
   const vaultNearLow = o.near.ok && o.near.value.low;
   const amount = tokenAmount(config?.usdc ?? consts.usdc, consts.usdc);
   const now = Date.now();
+  // Shown until the first payment, when the chain agrees this account is the owner, and only for a vault in this
+  // network's USDC: Mandates cannot serve any other token.
+  const checklist =
+    keys !== null && config !== null && isOwner && config.usdc === consts.usdc
+      ? firstPaymentChecklist({
+          network,
+          keys: await keys,
+          usdc: o.usdc,
+          intentsBase: o.intentsBase,
+          mandates: o.mandates,
+          spends: o.spends,
+          faucetUsdc:
+            network === "testnet" && faucetConfigured(network, getEnv().TESTNET_FAUCET_KEY)
+              ? FAUCET_USDC
+              : null,
+        })
+      : null;
 
   return (
     <div>
@@ -204,6 +231,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
         {member.kind !== "external" ? ` · ${member.kind} vault` : ""}
       </p>
       <VaultNav vault={vault} />
+      {checklist !== null ? <FirstPaymentChecklist vault={vault} checklist={checklist} /> : null}
 
       {config === null ? (
         <>

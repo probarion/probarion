@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { type ChangeEvent, useState } from "react";
 import { prepareCreateVaultAction, registerVaultAction } from "@/app/console/actions";
 import { buttonClass, Field, inputClass, Notice, type Tone } from "@/components/ui";
@@ -86,6 +87,7 @@ export function CreateVaultPanel({
     heldTtlHours: String(VAULT_DEFAULTS.heldTtlHours),
     depositNear: formatNearUp(defaultDeposit, 6),
   });
+  const router = useRouter();
   const [note, setNote] = useState<Note>(null);
   const set = (k: keyof typeof form) => (e: ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: e.target.value });
@@ -97,7 +99,9 @@ export function CreateVaultPanel({
     for (let i = 0; i < tries; i++) {
       const reg = await registerVaultAction(id);
       if (reg.ok) {
-        setNote({ tone: "good", text: `Registered ${id}. It is listed under your vaults.` });
+        // The new vault's own page, where its first-payment checklist starts (site audit P1-8).
+        setNote({ tone: "good", text: `Registered ${id}. Opening it…` });
+        router.push(`/console/${encodeURIComponent(id)}`);
         return;
       }
       if (reg.code !== "not_found" || i === tries - 1) {
