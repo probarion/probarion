@@ -416,6 +416,27 @@ describe("POST /api/console/[vault]/invoices", () => {
     expect(out.notice).not.toContain("upload this one again");
   });
 
+  it("says the number stays blocked when the number rule's refusal could not be written to the invoice", async () => {
+    const text = fresh();
+    expect((await post(invoiceForm({ text }))).status).toBe(200);
+    h.process = async () => ({
+      ...PAID,
+      status: "refused_by_code",
+      spendId: null,
+      txHash: null,
+      code: "custom.invoice_number_duplicate",
+    });
+    h.failDb = "invoice_set_outcome";
+    const r = await post(invoiceForm({ text: text.replace("Total 5 USDC", "Total 6 USDC") }));
+    expect(r.status).toBe(200);
+    const out = (await body(r)) as { recorded?: boolean; notice?: string };
+    expect(out.recorded).toBe(false);
+    expect(out.notice).toMatch(
+      /^Duplicate number: .*Nothing was sent, but the refusal could not be written to this invoice: it shows as processing, and the number stays blocked\.$/,
+    );
+    expect(out.notice).not.toContain("upload this one again");
+  });
+
   it("shows an invoice that waits for the owner: nothing was sent, and the code's amount is kept", async () => {
     h.process = async () => ({
       ...PAID,

@@ -97,11 +97,11 @@ function respond(r: PipelineResult, requestId: string): Response {
         ...(r.invoiceStatus === "unconfirmed" ? { notice: PAYMENT_PENDING } : {}),
         ...(r.invoiceStatus === "awaiting_owner" ? { notice: OWNER_CONFIRMS } : {}),
         // The number rule refused another text with the number of an invoice that may have paid: whether an upload
-        // can ever run again depends on what happened to that one.
+        // can ever run again depends on what happened to that one, and on whether this refusal reached the row.
         ...(r.outcome.status === "refused_by_code" &&
         r.outcome.code === NUMBER_DUPLICATE_RULE &&
         r.numberMatch !== null
-          ? { notice: numberDuplicateNotice(r.numberMatch) }
+          ? { notice: numberDuplicateNotice(r.numberMatch, r.recorded) }
           : {}),
       });
     case "duplicate":

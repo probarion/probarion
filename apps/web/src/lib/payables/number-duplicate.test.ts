@@ -58,20 +58,32 @@ describe("numberDuplicateNotice", () => {
     { status: "received", outcome_status: null },
   ] as const;
 
-  // The owner frees the number: a Reject (0007 invoice_reject), or a Confirm whose payment is refused or fails, leaves
-  // a row that no longer blocks, and the takeover runs this text again on its row.
-  it("offers a re-upload only for an earlier invoice that waits for the owner", () => {
+  // The owner's Reject (0007 invoice_reject) clears the earlier invoice's number, and the takeover runs this text
+  // again on its row.
+  it("offers a re-upload only for an earlier invoice that waits for the owner, after a Reject", () => {
     const notice = numberDuplicateNotice(
       match({ status: "awaiting_owner", outcome_status: "held" }),
+      true,
     );
     expect(notice).toMatch(
       /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
     );
-    expect(
-      notice.endsWith(
-        "If the owner rejects it, or confirms it and its payment is refused or fails, upload this one again.",
-      ),
-    ).toBe(true);
+    expect(notice.endsWith("If the owner rejects it, upload this one again.")).toBe(true);
+  });
+
+  // A Confirm can end held on chain (the number stays blocked), with a failure that leaves the row waiting or in
+  // processing, or refused because that invoice's text was already paid (which frees the number of a paid bill).
+  it.each(STATES)("does not offer a re-upload after a Confirm, for %j", (state) => {
+    expect(numberDuplicateNotice(match(state), true)).not.toMatch(/\bconfirms?\b/i);
+  });
+
+  // invoice_set_outcome did not write this cycle's refusal: the new row stays in processing, so an upload of it again
+  // answers 409 whatever happens to the earlier invoice.
+  it.each(STATES)("offers no re-upload when the refusal was not recorded, for %j", (state) => {
+    const notice = numberDuplicateNotice(match(state), false);
+    expect(notice).toBe(
+      "Duplicate number: another invoice to this payee has the same invoice number. Nothing was sent, but the refusal could not be written to this invoice: it shows as processing, and the number stays blocked.",
+    );
   });
 
   // invoice_insert (0016) keeps these numbers blocked, and nothing in the app moves such a row on: an upload of this
@@ -97,7 +109,7 @@ describe("numberDuplicateNotice", () => {
   ] as const)(
     "offers no re-upload for an earlier invoice %j, whose number stays blocked",
     (state, tail) => {
-      const notice = numberDuplicateNotice(match(state));
+      const notice = numberDuplicateNotice(match(state), true);
       expect(notice).toMatch(
         /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
       );
@@ -110,12 +122,18 @@ describe("numberDuplicateNotice", () => {
   // that the earlier spend can no longer pay (a held spend may still be approved, a transaction whose outcome is
   // unknown can land for 48 hours), so no state's notice suggests one.
   it.each(STATES)("gives no advice to reissue the bill under a new number, for %j", (state) => {
-    expect(numberDuplicateNotice(match(state))).not.toMatch(/new number|reissue|another number/i);
+    for (const recorded of [true, false]) {
+      expect(numberDuplicateNotice(match(state), recorded)).not.toMatch(
+        /new number|reissue|another number/i,
+      );
+    }
   });
 
   it("names neither the number nor the earlier invoice's hash", () => {
     for (const status of ["awaiting_owner", "processing", "unconfirmed", "decided"] as const) {
-      expect(numberDuplicateNotice(match({ status }))).not.toContain(EARLIER);
+      for (const recorded of [true, false]) {
+        expect(numberDuplicateNotice(match({ status }), recorded)).not.toContain(EARLIER);
+      }
     }
   });
 });
