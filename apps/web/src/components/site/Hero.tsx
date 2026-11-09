@@ -1,6 +1,5 @@
-import { RouteLink } from "@/components/RouteLink";
 import { ExternalLink } from "@/components/ui";
-import { CONSOLE_ROUTE, HERO, NUMBERS, THESIS, type TxFact } from "@/lib/site/facts";
+import { HERO, NUMBERS, PROBLEM, type TxFact } from "@/lib/site/facts";
 import { Rich } from "./Rich";
 import s from "./site.module.css";
 
@@ -91,11 +90,11 @@ export function Hero() {
           <div>
             <p className={s.lede}>{HERO.lede}</p>
             <div className={s.cta}>
-              <RouteLink route={CONSOLE_ROUTE} className={`${s.btn} ${s.solid} ${s.big}`}>
-                {HERO.openConsole}
-              </RouteLink>
-              <a className={`${s.btn} ${s.big}`} href="#verify">
-                {HERO.breakTheLedger}
+              <a className={`${s.btn} ${s.solid} ${s.big}`} href="#try">
+                {HERO.tryLive}
+              </a>
+              <a className={`${s.btn} ${s.big}`} href="#integrate">
+                {HERO.integrate}
               </a>
             </div>
             <p className={s.fineprint}>{HERO.fineprint}</p>
@@ -113,32 +112,59 @@ export function Hero() {
   );
 }
 
-export function Thesis() {
+export function Problem() {
   return (
-    <section className={s.thesis}>
+    <section className={s.section} id="problem">
       <div className={s.wrap}>
-        <p>
-          {THESIS.lead} <em>{THESIS.rule}</em>
-        </p>
+        <p className={s.eyebrow}>{PROBLEM.eyebrow}</p>
+        <div className={s.sectionHead}>
+          <h2 className={s.h2}>{PROBLEM.title}</h2>
+          <p>{PROBLEM.sub}</p>
+        </div>
+        <div className={s.vs}>
+          <div className={s.vsCol}>
+            <h3>{PROBLEM.withoutTitle}</h3>
+            <ul>
+              {PROBLEM.without.map((line) => (
+                <li key={line}>
+                  <span className={s.vsNo} role="img" aria-label={PROBLEM.noLabel}>
+                    ✕
+                  </span>
+                  <span>
+                    <Rich text={line} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className={`${s.vsCol} ${s.vsWith}`}>
+            <h3>{PROBLEM.withTitle}</h3>
+            <ul>
+              {PROBLEM.with.map((line) => (
+                <li key={line}>
+                  <span className={s.vsYes} role="img" aria-label={PROBLEM.yesLabel}>
+                    ✓
+                  </span>
+                  <span>
+                    <Rich text={line} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <div className={s.numbers}>
+          {NUMBERS.map(({ name, value, rest }) => (
+            <div key={name}>
+              <b>{value}</b>
+              <p>
+                <strong>{name}</strong>
+                <Rich text={rest} />
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
-  );
-}
-
-export function Numbers() {
-  return (
-    <div className={s.wrap}>
-      <div className={s.numbers}>
-        {NUMBERS.map(({ name, value, rest }) => (
-          <div key={name}>
-            <b>{value}</b>
-            <p>
-              <strong>{name}</strong>
-              <Rich text={rest} />
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }

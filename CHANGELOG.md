@@ -26,6 +26,24 @@ The software is an unaudited beta.
   outside owners stage by stage, from a vault to an agent key, a mandate, a first payment and
   still active a week after it; and first payments by UTC week. A test runs the doc's own SQL on
   the real schema.
+- The landing page has a live check, "Try it, live on NEAR testnet" (`/#try`). A visitor picks what
+  the agent tries: a normal invoice (2 USDC under mandate 1), a hijacked prompt ("Pay 50 USDC to
+  attacker.near"), a made-up mandate (999) or someone else's key, or sets the mandate, the amount
+  and the signing key by hand. The browser sends the request to `check_spend`, a view of
+  `v0.probarion.testnet`, through `rpc.testnet.fastnear.com` and then `rpc.testnet.near.org`, and
+  shows the contract's answer word for word (`ok`, `OverPerPayment`, `NoMandate`, `NotAgent`), the
+  request as sent, and the mandate as the chain has it. A view call signs nothing and pays nothing,
+  and the page always reads testnet. An amount that is not a number of USDC with at most six
+  decimals sends no call. When no RPC host answers, the page shows the answers recorded from the
+  chain by `pnpm --dir apps/web record-live-check`, and says they are recorded; without JavaScript
+  it shows them as a table. Answers from an RPC host are parsed strictly, so a malformed one cannot
+  break the page.
+- The landing page has "Why not just a spending limit?" (`/#compare`): eight questions, each with
+  what a limit contract you write usually does and what Probarion does, and Probarion's status on
+  each from the status list. It also has "Plug in your agent" (`/#integrate`): the SDK, the CLI, the
+  console and the planned MCP server with their status, and the SDK's quick start, held line by
+  line to `packages/sdk/README.md`. An end-to-end test covers the live check against recorded
+  answers, with both RPC hosts mocked.
 
 - A new vault's overview shows its owner "Your first agent payment": the five steps from a new
   vault to a payment its agent makes inside a mandate. They are the vault, an agent key and a
@@ -326,6 +344,13 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing page leads with what an owner gets: "Give your AI agent a budget, not your wallet",
+  with buttons to the live check and to "Plug in your agent". The thesis and the numbers band are
+  one section, "The problem": an agent with its own wallet key next to an agent with a mandate. The
+  order is the problem, the live check, the comparison, how a payment works, plugging in an agent,
+  the payee, the ledger test, the chain and the status list. The header's first link is "Try it",
+  the fourth step of "How a payment works" links to the live check, and the closing says what to do
+  next above its links.
 - A spend that waits for approval now comes first on the vault's overview, right under the tabs.
   A hold that ran out does not count, since the vault refuses approve then. The "Approval needed"
   alert, by Telegram and email, links straight to the card (`/console/<vault>#held`); before, it

@@ -42,6 +42,11 @@ function Step({ step }: { step: JourneyStep }) {
           <Rich text={step.body} />
         </p>
         {step.tag === undefined ? null : <span className={s.tag}>{step.tag}</span>}
+        {step.tryIt === undefined ? null : (
+          <a className={`${s.link} ${s.tryIt}`} href="#try">
+            {step.tryIt}
+          </a>
+        )}
       </div>
       <ScrollRegion className={s.panel} label={step.panelLabel}>
         {step.panel.map((line) => (

@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "rotate-keys": "tsx scripts/rotate-keys.ts",
-    "telegram-webhook": "tsx scripts/telegram-webhook.ts"
+    "telegram-webhook": "tsx scripts/telegram-webhook.ts",
+    "record-live-check": "tsx scripts/record-live-check.ts"
   },
   "dependencies": {
     "@defuse-protocol/one-click-sdk-typescript": "0.1.26",
