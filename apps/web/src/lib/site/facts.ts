@@ -452,6 +452,89 @@ export const JOURNEY = {
   ] satisfies readonly JourneyStep[],
 } as const;
 
+// --- the demo vault's four invoices ---------------------------------------------------------------
+
+/** The run of 2026-11-09 on the testnet demo vault, in docs/evidence/demo-vault (test/invoice-story.test.ts). */
+const DEMO_EVIDENCE = "docs/evidence/demo-vault";
+const demoLedger = (lines: string) => blob(`${DEMO_EVIDENCE}/ledger-2026-11-09.jsonl#${lines}`);
+const demoInvoice = (id: string) => ({
+  label: "Invoice",
+  url: blob(`${DEMO_EVIDENCE}/invoice-${id}.txt`),
+});
+const demoTx = (verb: string, fact: TxFact) => ({ label: `${verb}${fact.label}`, url: fact.url });
+
+export type StoryTone = "paid" | "refused" | "held";
+
+export interface StoryInvoice {
+  /** The invoice number, which names its file in DEMO_EVIDENCE. */
+  invoice: string;
+  title: string;
+  asks: string;
+  pill: string;
+  tone: StoryTone;
+  body: string;
+  links: readonly { label: string; url: string }[];
+}
+
+export const STORY = {
+  title: "Four invoices on the testnet demo vault",
+  caption: "Invoices we sent to our own demo vault on NEAR testnet.",
+  intro:
+    "Its mandate pays `probarion-payee.testnet`, at most 5 test USDC a payment, and holds anything above 3 for an approver. Whatever an invoice says, the money can only go to that payee. No model read these invoices: the code read each amount, and nothing was sent until the owner confirmed it in their wallet.",
+  invoices: [
+    {
+      invoice: "INV-2001",
+      title: "INV-2001",
+      asks: "2 test USDC to the mandate's payee",
+      pill: "Paid",
+      tone: "paid",
+      body: "The owner confirmed the amount. The agent's key sent spend 1, and the vault paid `probarion-payee.testnet`.",
+      links: [
+        demoInvoice("INV-2001"),
+        demoTx("Tx ", tx("HFyW61UZXfwpqhgqWq9bXnRXaYiEnpk4WPUHDAEydQp1", "HFyW61UZ…dQp1")),
+        { label: "Ledger entries 0 to 2", url: demoLedger("L1-L3") },
+      ],
+    },
+    {
+      invoice: "INV-2001",
+      title: "INV-2001, sent again",
+      asks: "The same file a second time",
+      pill: "Refused on upload",
+      tone: "refused",
+      body: 'The console answered "This invoice was already processed." Nothing was decided or sent, so the ledger has no entry for it.',
+      links: [],
+    },
+    {
+      invoice: "INV-2002",
+      title: "INV-2002",
+      asks: '"We changed banks": 2 test USDC to `new-account.testnet`',
+      pill: "Refused by code",
+      tone: "refused",
+      body: "Rule `mandate.payee_mismatch`: the mandate pays another account, so nothing was sent. The refusal is signed into the ledger as entry 3.",
+      links: [demoInvoice("INV-2002"), { label: "Ledger entry 3", url: demoLedger("L4") }],
+    },
+    {
+      invoice: "INV-2003",
+      title: "INV-2003",
+      asks: "4 test USDC, above the 3 USDC approval limit",
+      pill: "Held, then paid",
+      tone: "held",
+      body: "The owner confirmed it, and the vault held spend 2. The approver approved it from their own key, and the vault paid.",
+      links: [
+        demoInvoice("INV-2003"),
+        demoTx("Held ", tx("6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb", "6oDNZEUB…y2Tb")),
+        demoTx("Approved ", tx("47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf", "47VCARhw…NCJf")),
+        { label: "Ledger entries 4 to 6", url: demoLedger("L5-L7") },
+      ],
+    },
+  ] satisfies readonly StoryInvoice[],
+  proof: {
+    text: "Its proof page runs checks a to i on this ledger and the chain.",
+    label: "Open the proof page",
+    href: "/proof/demo.vaults.probarion.testnet",
+  },
+} as const;
+
 // --- the ink band ---------------------------------------------------------------------------------
 
 /** `interface SpendRequest` in packages/core/src/types.ts; the test reads it from the source. */
