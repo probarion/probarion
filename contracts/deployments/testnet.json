@@ -45,5 +45,11 @@
     "near_payment_tx": "3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX",
     "base_burn_tx": "3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe",
     "no_mandate_tx": "AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY"
+  },
+  "direct_refusal": {
+    "date": "2026-11-09",
+    "mandate": 1,
+    "amount": "6000000",
+    "over_per_payment_tx": "4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1"
   }
 }

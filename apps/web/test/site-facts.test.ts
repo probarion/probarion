@@ -248,12 +248,14 @@ describe("transactions", () => {
   const deployment = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
     accounts: { vault_v0: string };
     smoke: { near_payment_tx: string; base_burn_tx: string; no_mandate_tx: string };
+    direct_refusal: { over_per_payment_tx: string };
   };
 
   it("match the testnet deployment record and appear in the README", () => {
     expect(TX.nearPayment.hash).toBe(deployment.smoke.near_payment_tx);
     expect(TX.baseBurn.hash).toBe(deployment.smoke.base_burn_tx);
     expect(TX.noMandate.hash).toBe(deployment.smoke.no_mandate_tx);
+    expect(TX.overPerPayment.hash).toBe(deployment.direct_refusal.over_per_payment_tx);
     for (const t of Object.values(TX)) expect(README).toContain(t.hash);
   });
 
@@ -425,10 +427,50 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(README).toContain("**Unaudited beta.** No third party has audited this code.");
   });
 
-  it("the code the contract refused with", () => {
-    expect(HERO.refused.code.join("")).toBe("PROBARION:NoMandate");
+  it("the hero's refusal: the agent key asked mandate 1 for more than its limit, and the contract said no", () => {
+    expect(HERO.refused.tx).toBe(TX.overPerPayment);
+    expect(HERO.refused.code).toBe(CONTRACT_REFUSAL_CODE);
+    expect(HERO.refused.mandate).toBe(HERO.paid.mandate);
+    expect(HERO.refused.caller).toBe(HERO.paid.caller);
+    expect(HERO.refused.paid).toBe("Nothing");
+    // The limit is mandate 1's, as step 4 and the README show it; the amount asked is above it.
+    const limit = /at most (\d+) USDC/.exec(JSON.stringify(JOURNEY.steps[3].panel))?.[1];
+    expect(HERO.refused.limit).toBe(`${limit} USDC a payment`);
+    const asked = /^(\d+) test USDC$/.exec(HERO.refused.big)?.[1];
+    expect(Number(asked)).toBeGreaterThan(Number(limit));
+    expect(README).toContain(
+      `The agent key called \`spend\` on mandate 1 for ${asked} test USDC, above its limit of ${limit} test USDC per payment`,
+    );
+    expect(README).toContain(`Refused by the contract: \`PROBARION:${HERO.refused.code}\``);
+    // Signed by the agent key itself, so no off-chain check stood in the way.
+    expect(HERO.note).toContain("asked the contract directly");
+  });
+
+  it("the smoke run's refusal stays on the on-chain list", () => {
     expect(CHAIN.rows[2].body).toContain("`PROBARION:NoMandate`");
     expect(README).toContain("PROBARION:NoMandate");
+  });
+
+  it("the hero cards as a visitor sees them: outcome first, the code below", () => {
+    const out = visibleText(landing());
+    expect(out).toContain(
+      `${HERO.refused.mandate} ${HERO.refused.state} ${HERO.refused.big} Caller ${HERO.refused.caller} Limit ${HERO.refused.limit} Code ${HERO.refused.code} Paid ${HERO.refused.paid} Tx ${HERO.refused.tx.label}`,
+    );
+    expect(HERO.refused.state).toBe("Blocked");
+    expect(out).not.toContain("Mandate 999 Refused");
+  });
+
+  it("the README banner shows the same refusal as the hero", () => {
+    const svg = text(ROOT, "docs", "assets", "readme-banner.svg");
+    const usdc = (s: string) => s.replace(" test", "").replace(" a payment", "");
+    expect(svg).toContain(
+      `>blocked: ${usdc(HERO.refused.big)}, limit ${usdc(HERO.refused.limit)}<`,
+    );
+    expect(svg).toContain(">MANDATE 1<");
+    expect(svg).not.toContain("MANDATE 999");
+    const alt = /<img src="docs\/assets\/readme-banner\.png" alt="([^"]*)"/.exec(README)?.[1] ?? "";
+    expect(alt).toContain(`PROBARION:${HERO.refused.code}`);
+    expect(alt).not.toContain("NoMandate");
   });
 
   it("what the smoke run was, and that mainnet is still planned", () => {
