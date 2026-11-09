@@ -1,6 +1,10 @@
 import type { DecisionInput } from "@probarion/core";
 import { describe, expect, it } from "vitest";
-import { NUMBER_DUPLICATE_RULE, numberDuplicateRule } from "./number-duplicate";
+import {
+  NUMBER_DUPLICATE_RULE,
+  numberDuplicateNotice,
+  numberDuplicateRule,
+} from "./number-duplicate";
 import type { NumberMatch } from "./store";
 
 const EARLIER = "a".repeat(64);
@@ -36,5 +40,64 @@ describe("numberDuplicateRule", () => {
     [{ status: "processing", outcome_status: null }, "is being processed"],
   ] as const)("words an earlier invoice %j as %j", (state, words) => {
     expect(check(match(state)).detail).toContain(`, which ${words}. Nothing is sent.`);
+  });
+});
+
+describe("numberDuplicateNotice", () => {
+  const AGAIN = "upload this one again";
+  const NEW_NUMBER = "ask the payee for an invoice with a new number";
+
+  it.each([
+    [
+      { status: "awaiting_owner", outcome_status: "held" },
+      "If the owner rejects it, upload this one again.",
+    ],
+    [
+      { status: "processing", outcome_status: null },
+      "If it ends without a payment, upload this one again.",
+    ],
+  ] as const)(
+    "offers a re-upload for an earlier invoice %j, which can still end without a payment",
+    (state, tail) => {
+      const notice = numberDuplicateNotice(match(state));
+      expect(notice).toMatch(
+        /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
+      );
+      expect(notice.endsWith(tail)).toBe(true);
+      expect(notice).not.toContain(NEW_NUMBER);
+    },
+  );
+
+  // invoice_insert (0016) keeps these numbers blocked, and nothing in the app moves such a row on: an upload of this
+  // text again would only answer 409, so the notice must not offer one.
+  it.each([
+    [{ status: "decided", outcome_status: "paid" }, "was paid, so this one is not paid again."],
+    [{ status: "decided", outcome_status: "burned" }, "was paid, so this one is not paid again."],
+    [{ status: "decided", outcome_status: "settled" }, "was paid, so this one is not paid again."],
+    [
+      { status: "decided", outcome_status: "held" },
+      `even if the approver rejects it: then ${NEW_NUMBER}.`,
+    ],
+    [{ status: "unconfirmed", outcome_status: "unconfirmed" }, `If it did not pay, ${NEW_NUMBER}.`],
+    [
+      { status: "received", outcome_status: null },
+      "The number stays blocked while that invoice may still pay.",
+    ],
+  ] as const)(
+    "offers no re-upload for an earlier invoice %j, whose number stays blocked",
+    (state, tail) => {
+      const notice = numberDuplicateNotice(match(state));
+      expect(notice).toMatch(
+        /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
+      );
+      expect(notice.endsWith(tail)).toBe(true);
+      expect(notice).not.toContain(AGAIN);
+    },
+  );
+
+  it("names neither the number nor the earlier invoice's hash", () => {
+    for (const status of ["awaiting_owner", "processing", "unconfirmed", "decided"] as const) {
+      expect(numberDuplicateNotice(match({ status }))).not.toContain(EARLIER);
+    }
   });
 });

@@ -403,13 +403,17 @@ describe("POST /api/console/[vault]/invoices", () => {
       "custom.invoice_number_duplicate",
       "custom.owner_confirms_without_model",
     ]);
-    expect(await body(r)).toMatchObject({
+    const out = (await body(r)) as { notice?: string };
+    expect(out).toMatchObject({
       status: "decided",
       outcome: { status: "refused_by_code", code: "custom.invoice_number_duplicate" },
       notice: expect.stringMatching(
         /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
       ),
     });
+    // The earlier invoice was paid, so its number stays blocked: the notice offers no upload that would only get 409.
+    expect(out.notice).toMatch(/was paid, so this one is not paid again\.$/);
+    expect(out.notice).not.toContain("upload this one again");
   });
 
   it("shows an invoice that waits for the owner: nothing was sent, and the code's amount is kept", async () => {

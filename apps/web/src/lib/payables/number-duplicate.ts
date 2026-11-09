@@ -30,6 +30,33 @@ function earlierState(m: NumberMatch): string {
   }
 }
 
+/**
+ * What the console says after this rule refused an upload, by what happened to the earlier invoice. invoice_insert
+ * (0016) runs this text again only once no invoice that may pay has the number: the owner rejected the earlier one
+ * while it waited, or its cycle ended without a payment. A paid invoice, a spend held on chain and a payment sent but
+ * not confirmed keep the number blocked, and nothing in the app frees it, so the notice offers a re-upload only for
+ * an earlier invoice that waits for the owner or is still being processed.
+ */
+export function numberDuplicateNotice(match: NumberMatch): string {
+  const head =
+    "Duplicate number: another invoice to this payee has the same invoice number. Nothing was sent; the refusal is in the signed ledger.";
+  const newNumber = "ask the payee for an invoice with a new number";
+  switch (match.status) {
+    case "awaiting_owner":
+      return `${head} That invoice waits for the owner. If the owner rejects it, upload this one again.`;
+    case "processing":
+      return `${head} That invoice is still being processed. If it ends without a payment, upload this one again.`;
+    case "unconfirmed":
+      return `${head} That invoice's payment was sent and is not confirmed, so the number stays blocked. If it did not pay, ${newNumber}.`;
+    case "decided":
+      return match.outcome_status === "held"
+        ? `${head} That invoice's spend is held on chain for an approver. The number stays blocked even if the approver rejects it: then ${newNumber}.`
+        : `${head} That invoice was paid, so this one is not paid again.`;
+    default:
+      return `${head} The number stays blocked while that invoice may still pay.`;
+  }
+}
+
 /** The rule for one cycle whose invoice number matches `match` for `payee`. It only refuses. */
 export function numberDuplicateRule(match: NumberMatch, payee: Payee): CustomRule {
   const detail = `another invoice to ${describePayee(payee)} has the same invoice number: invoice ${match.invoice_hash}, which ${earlierState(match)}. Nothing is sent.`;
