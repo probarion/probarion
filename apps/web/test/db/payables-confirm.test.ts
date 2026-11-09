@@ -41,6 +41,7 @@ import {
 import { OWNER_CONFIRMS_RULE } from "@/lib/payables/owner-confirms";
 import { type PipelineDeps, PROCESS_LEASE_SECONDS, processInvoice } from "@/lib/payables/pipeline";
 import { getInvoice, type InvoiceRow, insertInvoice, listInvoices } from "@/lib/payables/store";
+import { CLI_ON_NPM, cli } from "@/lib/proof/cli";
 import { signNep413 } from "../fixtures/nep413";
 import { quietLogs } from "../fixtures/quiet-logs";
 import { freshDb, seedTenant } from "./harness";
@@ -1727,7 +1728,13 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
           expect(paid).toContain(`https://testnet.nearblocks.io/txns/${r.outcome.txHash}`);
         const anchor = (await getInvoice(h.db, member.tenant_id, row.id))?.anchor_tx_hash;
         if (anchor) expect(paid).toContain(`https://testnet.nearblocks.io/txns/${anchor}`);
-        expect(paid).toContain("node packages/cli/dist/bin.js verify --network testnet");
+        expect(paid).toContain(cli("verify --network testnet"));
+        // npx needs no set-up: only the repository command has one.
+        expect(paid).toContain(
+          CLI_ON_NPM
+            ? "has the ledger file to download first, then run"
+            : "has the ledger file and the one-time setup, then run",
+        );
       } finally {
         await setTenantSettings(h.db, member.tenant_id, { zeroRetention: false });
         member = (await memberRole(h.db, SCENARIO_VAULT, OWNER)) as MemberTenant;

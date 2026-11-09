@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import PrivacyPage from "@/app/privacy/page";
 import SecurityPage from "@/app/security/page";
 import TermsPage from "@/app/terms/page";
-import { CLI_SETUP_LINES } from "@/lib/proof/cli";
+import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import { LINKS } from "@/lib/site/facts";
 
@@ -34,23 +34,30 @@ describe("the operations pages", () => {
       expect(html).toContain(`href="${href}"`);
     }
     expect(html).toContain("72 hours");
-    expect(html).toContain("node packages/cli/dist/bin.js verify");
+    expect(html).toContain(cli("verify"));
   });
 
-  it("/security's check runs on a fresh clone: it shows the build first, and gives a hosted vault its ledger", () => {
+  it("/security's check runs as shown: what it needs first, and a hosted vault's ledger", () => {
     const html = render(SecurityPage);
-    // dist/ is not in the repository, so the verify command needs the set-up lines before it.
     let at = 0;
-    for (const line of CLI_SETUP_LINES) {
-      const next = html.indexOf(asMarkup(line), at);
-      expect(next, line).toBeGreaterThan(at);
-      at = next;
+    if (CLI_ON_NPM) {
+      // npx fetches the package: no clone, no build, only the note on what it needs.
+      at = html.indexOf(asMarkup(CLI_NOTE));
+      expect(at).toBeGreaterThan(-1);
+      for (const line of CLI_SETUP_LINES) expect(html, line).not.toContain(asMarkup(line));
+    } else {
+      // dist/ is not in the repository, so the verify command needs the set-up lines before it.
+      for (const line of CLI_SETUP_LINES) {
+        const next = html.indexOf(asMarkup(line), at);
+        expect(next, line).toBeGreaterThan(at);
+        at = next;
+      }
     }
-    expect(html.indexOf("node packages/cli/dist/bin.js verify", at)).toBeGreaterThan(at);
+    expect(html.indexOf(cli("verify"), at)).toBeGreaterThan(at);
     // Without --ledger the CLI checks the chain against an empty ledger, and an anchored vault fails.
     expect(html).toContain(
       asMarkup(
-        "node packages/cli/dist/bin.js verify --network testnet --vault <vault> --ledger probarion-<vault>-ledger.jsonl",
+        cli("verify --network testnet --vault <vault> --ledger probarion-<vault>-ledger.jsonl"),
       ),
     );
     expect(html).toContain("/proof/&lt;vault&gt;/ledger.jsonl");

@@ -560,7 +560,13 @@ describe("the payment journey", () => {
     const command = cli(`verify --offline ${FIXTURE_PATH}`);
     expect(README).toContain(command);
     expect(step(5).panel).toContainEqual({ command });
-    expect(step(5).tag).toContain("Build it from a clone first (README step 1).");
+    // The site shows the npm form exactly when CLI_ON_NPM is set.
+    const onNpm = cli("verify") === cli("verify", true);
+    expect(step(5).tag).toContain(
+      onNpm
+        ? "The fixture is a file in the repository: run it at the root of a clone."
+        : "Build it from a clone first (README step 1).",
+    );
     const html = renderToStaticMarkup(createElement(Home));
     expect(html).toContain(`>$ </span>${command}`);
     const css = text(WEB, "src", "components", "site", "site.module.css");

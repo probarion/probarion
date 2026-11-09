@@ -127,7 +127,7 @@ Bash on Windows). The steps use the repository's test fixture and scripts, so th
    The CLI runs the same checks over the same fixture, offline, and exits 0:
 
    ```bash
-   node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json
+   npx probarion verify --offline packages/core/test/fixtures/valid-snapshot.json
    ```
 
    ```text
