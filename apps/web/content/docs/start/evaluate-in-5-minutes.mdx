@@ -1,4 +1,10 @@
-In about five minutes, with Node.js 24, pnpm 10, git and a bash-compatible shell (Linux, macOS or Git Bash on Windows), you check Probarion's main claims yourself: the verifier catches a one-field edit, the testnet vault has no full-access key, the contract refuses what a mandate does not allow, and the CLI signs nothing. These are the steps of the [README's evaluation](https://github.com/probarion/probarion/blob/main/README.md#how-to-evaluate-probarion-in-5-minutes), with the build line the site uses. Step 5 also uses `curl`.
+In about five minutes, with Node.js 24, pnpm 10, git and a bash-compatible shell (Linux, macOS or Git Bash on Windows), you check Probarion's main claims yourself: the verifier catches a one-field edit, the testnet vault has no full-access key, the contract refuses what a mandate does not allow, and the CLI signs nothing. These are the terminal steps of the [README's evaluation](https://github.com/probarion/probarion/blob/main/README.md#how-to-evaluate-probarion-in-5-minutes), with the build line the site uses, for after the browser check below. Step 5 also uses `curl`.
+
+<Callout kind="note" title="Before you install anything">
+
+Two checks run in your browser, on the landing page. In the [live check](/#try), pick "A hijacked prompt": the vault's `check_spend` view answers `OverPerPayment`. The other scenarios answer `ok`, `NoMandate` and `NotAgent`. The [ledger test](/#verify) runs the verifier from `@probarion/core` in your browser on the signed test fixture of step 2.
+
+</Callout>
 
 <Callout kind="note" title="No wallet, no key, no account">
 
@@ -233,7 +239,15 @@ To see why the agent's request has no payee field, read [Why spend has no payee]
 
 <Callout kind="warning" title="A live verify of the testnet vault fails today">
 
-`verify --vault v0.probarion.testnet` prints `RESULT: FAIL`. The smoke run sent its spends with the agent key directly, without the SDK, a model or a ledger, so this vault has no ledger key and no anchors. Check d finds spends with no decision in the ledger, and check h finds no burn event without the burn's tx hash.
+```bash
+node packages/cli/dist/bin.js verify --vault v0.probarion.testnet
+```
+
+It exits 1 and prints `RESULT: FAIL`. On stderr it first warns that the default ledger file, `./.probarion/ledger.jsonl`, does not exist, so it verifies the chain against an empty ledger. That is expected here. The smoke run sent its spends with the agent key directly, without the SDK, a model or a ledger, so this vault has no ledger key and no anchors. Check d finds spends with no decision in the ledger, and check h finds no burn event without the burn's tx hash. Check f, which step 4 relies on, passes, and its row reads:
+
+```text
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+```
 
 </Callout>
 

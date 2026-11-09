@@ -32,6 +32,7 @@ export const HOME: DocPage = {
     "packages/sdk/package.json",
     "packages/cli/package.json",
     ".github/workflows/release.yml",
+    "apps/web/src/components/site/LiveCheck.tsx",
   ],
   reviewed: "2026-11-09",
   phase: 1,

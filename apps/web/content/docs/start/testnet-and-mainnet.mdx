@@ -69,6 +69,8 @@ From the address you opened, and from nothing else.
 
 </Flow>
 
+One exception: the landing's live check and its links to the smoke run always read NEAR testnet, whatever network the page is on.
+
 The watcher and metrics runs are not tied to an address: each run covers every served network in turn and keeps each network's records apart.
 
 What that means when you use the console:
@@ -115,7 +117,7 @@ PROBARION_VAULT_ID=v0.probarion.testnet
 
 Nothing in the packages asks an RPC which chain it serves, and the CLI checks only that a factory or vault id is a well-formed account id. So a mainnet run with these values loaded talks to testnet, `vault create` prints a call to the testnet factory, and a command without `--vault` aims at `v0.probarion.testnet`. That follows from the code, and no test shows it yet. The `_MAINNET` and `_TESTNET` forms in the same file are the web console's settings: the SDK and the CLI never read them.
 
-For a mainnet run, pass `rpcUrls` or `--rpc`, or set `NEAR_RPC_URLS` to mainnet URLs. Also set `NEAR_ARCHIVAL_RPC_URLS` to a mainnet archival URL, or leave it unset so the network's FastNEAR archival node is used. `verify` also takes `--archival-rpc`, and the SDK takes an archival client, not a URL list, in its `archivalRpc` option. Unset `PROBARION_FACTORY_ID` and `PROBARION_VAULT_ID` or set them to mainnet accounts, and pass `--vault`.
+For a mainnet run, pass `rpcUrls` or `--rpc`, or set `NEAR_RPC_URLS` to mainnet URLs. Also set `NEAR_ARCHIVAL_RPC_URLS` to a mainnet archival URL, or leave it unset so the network's FastNEAR archival node is used. `verify` also takes `--archival-rpc`. The SDK reads `NEAR_ARCHIVAL_RPC_URLS`, and a host can pass its own archival client instead, as the second constructor argument: `new Probarion(opts, { archivalRpc })`. Unset `PROBARION_FACTORY_ID` and `PROBARION_VAULT_ID` or set them to mainnet accounts, and pass `--vault`.
 
 </Callout>
 

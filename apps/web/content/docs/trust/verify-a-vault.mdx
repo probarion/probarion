@@ -84,7 +84,7 @@ The last line builds the CLI together with `@probarion/core` and `@probarion/sdk
 
    </Callout>
 
-   The repository records the burn transaction of spend 2 in [`contracts/deployments/testnet.json`](https://github.com/probarion/probarion/blob/dev/contracts/deployments/testnet.json) as `smoke.base_burn_tx`. To hand it to the verifier, name it with `--burn-tx`:
+   The repository records the burn transaction of spend 2 in [`contracts/deployments/testnet.json`](https://github.com/probarion/probarion/blob/main/contracts/deployments/testnet.json) as `smoke.base_burn_tx`. To hand it to the verifier, name it with `--burn-tx`:
 
    ```bash
    node packages/cli/dist/bin.js verify --network testnet --vault v0.probarion.testnet --burn-tx 2=3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe
@@ -94,7 +94,7 @@ The last line builds the CLI together with `@probarion/core` and `@probarion/sdk
 
    A live PASS on check d would show that each spend is bound to one decision in the ledger with the same invoice, mandate and amount, which allowed it or held it. It would not show that the decision was right: the verifier does not run the policy again.
 
-   To try a live run on a factory vault, point the same command at `smoke-embedded.vaults.probarion.testnet`, a vault the testnet factory created at version 1, recorded with no access keys in [`contracts/deployments/testnet.json`](https://github.com/probarion/probarion/blob/dev/contracts/deployments/testnet.json) on the dev branch. From the code, a factory vault with no spends and an empty ledger should pass every check, after the same warning, and end in `RESULT: PASS`. No recorded run shows it yet, and no file records whether this vault has spends. Its owner can still change it, so your result may differ. Even an empty vault that passes proves only facts about its keys, its code, its intents setting and its factory version (checks f, g and i). Checks a to e and h have nothing to look at.
+   To try a live run on a factory vault, point the same command at `smoke-embedded.vaults.probarion.testnet`, a vault the testnet factory created at version 1, recorded with no access keys in [`contracts/deployments/testnet.json`](https://github.com/probarion/probarion/blob/main/contracts/deployments/testnet.json). From the code, a factory vault with no spends and an empty ledger should pass every check, after the same warning, and end in `RESULT: PASS`. No recorded run shows it yet, and no file records whether this vault has spends. Its owner can still change it, so your result may differ. Even an empty vault that passes proves only facts about its keys, its code, its intents setting and its factory version (checks f, g and i). Checks a to e and h have nothing to look at.
 
 3. **Verify the files of a vault's proof page.** Each vault registered in the console has a proof page at `/proof/<vault>`. Signed in to the console with your wallet as a member of the vault, such as its owner, you can open it now: the page reads "Proof, visible to members only". For anyone else it answers page not found until the vault's owner makes it public: on the vault's Overview tab in the console, `/console/<vault>`, the owner ticks "Public proof page" in the Settings card and clicks "Save settings". The page then reads "Public proof" for every visitor. Either way it offers the same two files for this verifier, and you can check them in two ways.
 

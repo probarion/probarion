@@ -347,7 +347,7 @@ NEAR's intents protocol, whose contract is `intents.near` on mainnet. A vault ho
 
 ### `intents-stub`
 
-`intents-stub.probarion.testnet`, the testnet stand-in for `intents.near`, because NEAR Intents has no testnet. A payout to a Base or Solana payee burns the test token inside the stub, and nothing leaves NEAR. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+`intents-stub.probarion.testnet`, the testnet stand-in for `intents.near`, because NEAR Intents has no testnet. A payout to a Base or Solana payee lowers the vault's balance in the stub's own records and logs the burn events, `mt_burn` and then `ft_burn`. No token is burned, and nothing leaves NEAR. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
 
 ### USDC
 

@@ -69,7 +69,7 @@ export interface SpendRequest {
 | `@probarion/core` | `decide()`, the pure policy engine, plus the ledger and the verifier's checks a to i. No network, no file system. | Live |
 | `@probarion/sdk` | The `Probarion` class, which runs one payment cycle with `process()`, plus the ledger stores, `snapshot()` and `verify()`. 0.1.0 is on npm. | Live |
 | The `probarion` CLI | Prints each owner and approver transaction for `near-cli-rs` and signs none. It also makes agent keys, runs `check_spend` (the contract's free dry run of a spend) and runs the verifier. 0.1.0 is on npm. | Live |
-| The web console | Wallet sign-in, vaults, mandates, keys, top-up, alerts, and Payables, the reference agent that pays invoices. It runs on testnet, under Console in the site menu. | Preview |
+| The web console | Wallet sign-in, vaults, mandates, keys, top-up, alerts, and Payables, the reference agent that pays invoices. It runs on testnet: open it with "Open console" in the site header. | Preview |
 
 Live means it works in this deployment; where a Live part runs on a chain, it runs on NEAR testnet. On testnet a stub stands in for NEAR Intents, so a Base or Solana payout is only logged as a burn with its memo, and nothing leaves NEAR. Preview means it is built but not yet run end to end with real wallets, or not open yet.
 
