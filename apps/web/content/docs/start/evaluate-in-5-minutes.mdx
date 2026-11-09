@@ -104,13 +104,14 @@ Nothing on this page signs or sends a transaction. After the build, steps 2, 3 a
 
    The vault's code hash is the reproducible build recorded in [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json). The empty third line means the vault has no full-access key. `key-count` counts access keys of any kind, so the last line shows only that the vault has one. Its kind comes from check f of `verify --vault v0.probarion.testnet`, the run in the callout at the end of this page. Check f reads each key's permission and passes only when every key is the ledger key or a spend-only agent key on the vault. It passes on this vault, which has no ledger key, so the one key is a spend-only agent key. That run fails on checks d and h, for the reasons the callout gives.
 
-5. **Read the smoke run's transactions.** On 2026-11-01 the agent key called `spend` directly: once on mandate 1, a NEAR payee; once on mandate 2, a Base payee; and once on mandate 999, which does not exist. A payment to a Base address is a burn: the vault calls `ft_withdraw` on the intents contract with the [`WITHDRAW_TO` memo](/docs/resources/glossary#withdraw_to-memo), `WITHDRAW_TO:<address>`, and the spend becomes [burned](/docs/resources/glossary#burned). On mainnet, which is planned, the POA bridge then releases the USDC to that address on Base. Read each transaction from an archival node:
+5. **Read the smoke run's transactions.** On 2026-11-01 the agent key called `spend` directly: once on mandate 1, a NEAR payee; once on mandate 2, a Base payee; and once on mandate 999, which does not exist. A payment to a Base address is a burn: the vault calls `ft_withdraw` on the intents contract with the [`WITHDRAW_TO` memo](/docs/resources/glossary#withdraw_to-memo), `WITHDRAW_TO:<address>`, and the spend becomes [burned](/docs/resources/glossary#burned). On mainnet, which is planned, the POA bridge then releases the USDC to that address on Base. On 2026-11-09 the agent key also called `spend` on mandate 1 for 6 test USDC, above its limit of 5 per payment: the refusal the landing page shows. Read each transaction from an archival node:
 
    ```bash
    tx() { curl -s https://archival-rpc.testnet.fastnear.com -H 'Content-Type: application/json' -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tx\",\"params\":{\"tx_hash\":\"$1\",\"sender_account_id\":\"v0.probarion.testnet\",\"wait_until\":\"NONE\"}}"; }
    tx 3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX | grep -o 'spend_paid' | sort -u                  # spend_paid
    tx 3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe | grep -o 'WITHDRAW_TO:0x[0-9a-f]*' | sort -u     # the burn memo, built from the mandate
    tx AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY | grep -o 'PROBARION:[A-Za-z]*' | sort -u         # PROBARION:NoMandate
+   tx 4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1 | grep -o 'PROBARION:[A-Za-z]*' | sort -u         # PROBARION:OverPerPayment
    ```
 
    Expected output, one line for each transaction:
@@ -119,9 +120,10 @@ Nothing on this page signs or sends a transaction. After the build, steps 2, 3 a
    spend_paid
    WITHDRAW_TO:0x1111111111111111111111111111111111111111
    PROBARION:NoMandate
+   PROBARION:OverPerPayment
    ```
 
-   The first spend paid a NEAR account. For the second, the vault built the `WITHDRAW_TO:` memo itself, from mandate 2: the spend request carries no address. The third was refused by the contract with [`NoMandate`](/docs/build/errors#NoMandate). On testnet, [`intents-stub.probarion.testnet`](/docs/resources/glossary#intents-stub) stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR. These reads need the archival node to answer; NearBlocks' testnet index can lag behind the chain.
+   The first spend paid a NEAR account. For the second, the vault built the `WITHDRAW_TO:` memo itself, from mandate 2: the spend request carries no address. The third was refused by the contract with [`NoMandate`](/docs/build/errors#NoMandate), and the fourth with [`OverPerPayment`](/docs/build/errors#OverPerPayment): nothing was paid. On testnet, [`intents-stub.probarion.testnet`](/docs/resources/glossary#intents-stub) stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR. These reads need the archival node to answer; NearBlocks' testnet index can lag behind the chain.
 
 6. **Ask the vault itself.** A read-only `Probarion` instance (no keys, `model: null`) lists the mandates and runs the contract's free `check_spend` dry run. Mandate 1 allows at most 5 test USDC per payment, so the contract accepts 2 and refuses 6. Amounts are in USDC's smallest unit: `2000000` is 2 test USDC.
 

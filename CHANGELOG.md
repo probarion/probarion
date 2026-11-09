@@ -405,6 +405,11 @@ The software is an unaudited beta.
   the payee, the ledger test, the chain and the status list. The header's first link is "Try it",
   the fourth step of "How a payment works" links to the live check, and the closing says what to do
   next above its links.
+- The landing's refused card and the README banner show a real refusal from 2026-11-09 in place of
+  mandate 999: the agent key asked mandate 1 for 6 test USDC, over its limit of 5 USDC a payment,
+  and the contract answered `PROBARION:OverPerPayment` (tx `4715d4nb…Vsr1`, recorded in
+  `contracts/deployments/testnet.json`). Step 3 of the README's evaluation and step 5 of the docs'
+  evaluation read it from an archival node.
 - A spend that waits for approval now comes first on the vault's overview, right under the tabs.
   A hold that ran out does not count, since the vault refuses approve then. The "Approval needed"
   alert, by Telegram and email, links straight to the card (`/console/<vault>#held`); before, it
