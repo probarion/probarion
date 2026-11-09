@@ -30,6 +30,7 @@ import {
   HERO,
   JOURNEY,
   LINKS,
+  LIVE_CHECK,
   NUMBERS,
   OG_IMAGE,
   PROOF_INDEX,
@@ -43,6 +44,7 @@ import {
   TX,
   VERIFIER_OUTPUT,
 } from "@/lib/site/facts";
+import recordedJson from "@/lib/site/live-check-recorded.json";
 import { ledgerRows, verifyTamper } from "@/lib/site/tamper";
 import fixture from "@/lib/site/valid-snapshot.json";
 import { directives, importsOf, resolveLocal, toPosix, walk } from "./deploy-scan";
@@ -617,6 +619,51 @@ describe("the status list", () => {
     expect(visibleText(html)).toContain("No third party has audited this code. Read the");
     expect(hrefs(html)).toContain(LINKS.security);
     expect(LINKS.security.endsWith("/SECURITY.md")).toBe(true);
+  });
+});
+
+describe("the live check", () => {
+  const errors = text(ROOT, "contracts", "vault", "src", "errors.rs");
+  const all = /pub const ALL: \[ErrorCode; \d+\] = \[([\s\S]*?)\];/.exec(errors)?.[1] ?? "";
+  const codes = [...all.matchAll(/ErrorCode::(\w+)/g)].map((m) => m[1] ?? "");
+
+  it("has one plain sentence for every error code the contract has", () => {
+    expect(codes.length).toBe(24);
+    expect(Object.keys(LIVE_CHECK.codes).sort()).toEqual([...codes].sort());
+  });
+
+  it("is a section of the landing page, reached at #try, with an eyebrow, a title and a live region", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    expect(html).toContain('id="try"');
+    const out = visibleText(html);
+    expect(out).toContain(LIVE_CHECK.title);
+    expect(out).toContain("No wallet or account needed");
+    expect(html).toMatch(/aria-live="polite"[^>]*>[\s\S]*The contract&#x27;s answer/);
+  });
+
+  it("is complete with no JavaScript: each scenario with its recorded answer and the date", () => {
+    const out = visibleText(renderToStaticMarkup(createElement(Home)));
+    const recorded = recordedJson as { recordedAt: string };
+    expect(out).toContain(recorded.recordedAt.slice(0, 10));
+    for (const x of LIVE_CHECK.scenarios) expect(out).toContain(x.title);
+    for (const word of ["Would pay", "OverPerPayment", "NoMandate", "NotAgent"]) {
+      expect(out).toContain(word);
+    }
+  });
+
+  it("names the vault and the method it asks, and says nothing is signed or paid", () => {
+    expect(LIVE_CHECK.copy.method).toContain("`check_spend`");
+    expect(LIVE_CHECK.copy.method).toContain("nothing is signed and nothing is paid");
+    const views = text(ROOT, "contracts", "vault", "src", "checks.rs");
+    expect(views).toContain(
+      "pub fn check_spend(&self, request: SpendRequest, signer_pk: PublicKey)",
+    );
+  });
+
+  it("puts the address of the hijacked prompt nowhere in the request", () => {
+    const hijack = LIVE_CHECK.scenarios.find((x) => x.id === "hijack");
+    expect(hijack && "injected" in hijack ? hijack.injected : "").toContain("attacker.near");
+    expect(JSON.stringify(SPEND_REQUEST_FIELDS)).not.toContain("attacker");
   });
 });
 

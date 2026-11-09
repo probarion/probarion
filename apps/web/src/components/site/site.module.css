@@ -495,6 +495,222 @@ a.netPill:hover {
   color: var(--color-mute);
 }
 
+/* Live check: two panels and the mandate under them. The answer panel is the ink band's colours. */
+.liveGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+}
+.livePanel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 20px;
+  padding: 24px;
+  min-width: 0;
+}
+.livePanel h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.liveHint {
+  margin: 4px 0 18px;
+  font-size: 13.5px;
+  color: var(--color-mute);
+  overflow-wrap: anywhere;
+}
+.scenarios {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.scenario {
+  text-align: left;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1.35;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.scenario small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--color-mute);
+}
+.scenario[aria-pressed="true"] {
+  border-color: var(--color-ink);
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--color-ink);
+}
+.field {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--color-line);
+  font-size: 14.5px;
+}
+.field > span:first-child,
+.field > label {
+  color: var(--color-mute);
+}
+.field select,
+.field input:not([type="range"]) {
+  font: inherit;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  min-width: 0;
+  width: 100%;
+}
+.amountRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.amountRow input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--color-gold-deep);
+}
+.amountRow input:not([type="range"]) {
+  width: 104px;
+  flex: none;
+}
+.payee {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.payee code {
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+  padding: 3px 8px;
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+}
+.payeeLock {
+  font-size: 12.5px;
+  color: var(--color-wait);
+  background: var(--color-wait-bg);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.injected {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--color-bad-bg);
+  color: var(--color-bad);
+  font-size: 14px;
+}
+.liveAnswer {
+  background: var(--color-band);
+  color: var(--color-band-fg);
+  border-color: var(--color-band-line);
+}
+.liveAnswer .liveHint {
+  color: var(--color-band-mute);
+}
+.liveAnswer :focus-visible {
+  outline-color: var(--color-band-fg);
+}
+.liveVerdict {
+  margin: 6px 0 10px;
+  font-weight: 300;
+  font-size: clamp(32px, 3.4vw, 44px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+.livePay {
+  color: var(--color-band-fg);
+}
+.liveRefuse {
+  color: var(--color-band-bad);
+}
+.liveHold {
+  color: var(--color-gold-light);
+}
+.liveNone {
+  color: var(--color-band-mute);
+}
+.liveWhy {
+  font-size: 16px;
+  min-height: 50px;
+  margin-bottom: 18px;
+}
+.liveRetry {
+  margin-bottom: 14px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--color-band-fg);
+  background: none;
+  color: var(--color-band-fg);
+  font: inherit;
+  cursor: pointer;
+}
+.liveRequest {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  border: 1px solid var(--color-band-line);
+  border-radius: 12px;
+  padding: 14px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+.liveGone {
+  color: var(--color-band-bad);
+}
+.liveMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12.5px;
+  color: var(--color-band-mute);
+}
+.liveMeta a {
+  color: var(--color-band-fg);
+}
+.liveMandate {
+  grid-column: 1 / -1;
+}
+.mandateFacts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-size: 13.5px;
+}
+.mandateFacts dt {
+  color: var(--color-mute);
+}
+.mandateFacts dd {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.liveTable th,
+.liveTable td {
+  text-align: left;
+  padding: 4px 16px 4px 0;
+}
+
 /* Journey */
 .step {
   display: grid;
@@ -1148,6 +1364,9 @@ a.netPill:hover {
   }
 }
 @media (max-width: 960px) {
+  .liveGrid {
+    grid-template-columns: 1fr;
+  }
   .heroGrid,
   .bandGrid,
   .tamper {
@@ -1194,6 +1413,13 @@ a.netPill:hover {
   .wrap {
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .scenarios {
+    grid-template-columns: 1fr;
+  }
+  .field {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
   .duel {
     grid-template-columns: minmax(0, 1fr);
@@ -1271,6 +1497,9 @@ a.netPill:hover {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .scenario {
+    transition: none;
+  }
   .card {
     animation: none;
   }
