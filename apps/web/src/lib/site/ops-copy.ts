@@ -155,7 +155,7 @@ export const TERMS_PAGE = {
   rules: [
     {
       title: "What Probarion is.",
-      body: "Software that lets an AI agent pay invoices in USDC inside mandates that the vault's owner signs. A NEAR contract checks every payment, and anyone can verify the signed ledger.",
+      body: "Software that lets an AI agent pay invoices in USDC inside mandates that the vault's owner signs. A NEAR contract checks every payment, and the vault's owner can publish the signed ledger for anyone to verify.",
     },
     {
       title: "It does not hold your funds.",
