@@ -227,7 +227,7 @@ whose mandate cannot take invoices now, whose payee contradicts the chosen manda
 the contract's `check_spend` view would refuse now. It stores the rest straight in `awaiting_owner`,
 as an upload is stored (the file sealed, or in zero-retention mode no file, name or facts), with the
 checks it passed and the hold `extension.mandate_chosen`, without which `invoice_queue` stores nothing
-(`apps/web/supabase/migrations/20261108000014_extension_queue.sql`). No cycle runs for it and nothing
+(`apps/web/supabase/migrations/20261108000015_extension_queue.sql`). No cycle runs for it and nothing
 is sent: only the owner's wallet-signed Confirm pays it, and the contract checks that spend again.
 No code under `lib/ext`, `app/api/ext` or `lib/payables/queue*.ts`, nor any app module it loads, imports a
 function that pays or signs, or, from outside `lib/crypto`, one that opens a sealed key, anything from

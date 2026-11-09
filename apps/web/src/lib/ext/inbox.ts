@@ -32,7 +32,7 @@ export interface InboxInvoice {
   payee: string | null;
   created_at: string;
   url: string;
-  /** Where the invoice came from (migration 0014): the console upload, or the browser extension. */
+  /** Where the invoice came from (migration 0015): the console upload, or the browser extension. */
   source: "console" | "extension";
 }
 

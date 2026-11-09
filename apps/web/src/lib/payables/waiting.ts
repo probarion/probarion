@@ -60,7 +60,7 @@ export type InvoiceShown =
 
 export interface WaitingView {
   amount: string;
-  /** Where the invoice came from (migration 0014): the console upload, or the browser extension. */
+  /** Where the invoice came from (migration 0015): the console upload, or the browser extension. */
   source: "console" | "extension";
   /** An extension invoice no cycle has run for yet: its row has no outcome. */
   queued: boolean;

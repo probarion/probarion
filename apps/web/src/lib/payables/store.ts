@@ -73,9 +73,9 @@ export interface InvoiceRow {
   created_by: string;
   created_at: string;
   decided_at: string | null;
-  /** Where the invoice came from (migration 0014): the console upload, or the browser extension (queued, never run). */
+  /** Where the invoice came from (migration 0015): the console upload, or the browser extension (queued, never run). */
   source: "console" | "extension";
-  /** The checks an extension invoice passed when it was queued (0014), or null for a console upload. */
+  /** The checks an extension invoice passed when it was queued (0015), or null for a console upload. */
   queue_checks: QueueCheck[] | null;
 }
 
@@ -139,7 +139,7 @@ export type QueueInsertResult =
   | { id: string; duplicate: false; status: "awaiting_owner" }
   | { id: string; duplicate: true; status: InvoiceStatus };
 
-/** invoice_insert's row, stored straight in awaiting_owner in the same transaction (migration 0014). */
+/** invoice_insert's row, stored straight in awaiting_owner in the same transaction (migration 0015). */
 export function queueInvoiceRow(
   db: Db,
   tenantId: string,

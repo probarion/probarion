@@ -1,5 +1,5 @@
 // The checks an invoice queued by the browser extension passes (spec §4.4 and D3), as its row keeps them (migration
-// 0014's queue_checks) and the console shows them under "Why it waits". A check is only pass or hold: an invoice a
+// 0015's queue_checks) and the console shows them under "Why it waits". A check is only pass or hold: an invoice a
 // check refuses is never stored.
 
 /** D3: the member chose the mandate and no purpose document was matched, so only the owner's signed Confirm pays it. */

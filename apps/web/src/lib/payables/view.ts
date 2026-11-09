@@ -209,7 +209,7 @@ export const shownRule = (r: { id: unknown; outcome: unknown; detail: unknown })
   detail: safeText(r.detail, LONG),
 });
 
-/** The checks an extension invoice passed when it was queued (migration 0014's queue_checks), made safe to show. */
+/** The checks an extension invoice passed when it was queued (migration 0015's queue_checks), made safe to show. */
 export function queuedChecks(row: Pick<InvoiceRow, "source" | "queue_checks">): ShownRule[] {
   if (row.source !== "extension" || !Array.isArray(row.queue_checks)) return [];
   return row.queue_checks
