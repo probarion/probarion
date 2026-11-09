@@ -166,6 +166,24 @@ describe("submitAttempt", () => {
     expect(JSON.parse(String(f.calls[0]?.init.body))).toEqual({ text: "  two  spaces \n" });
   });
 
+  it("sends the source the visitor's link named beside the text, on the retry after busy too", async () => {
+    const f = fake([
+      { status: 409, body: { error: "busy" } },
+      { status: 200, body: DONE },
+    ]);
+    await submitAttempt("pay me", f.io, "x");
+    expect(f.calls.map((c) => JSON.parse(String(c.init.body)))).toEqual([
+      { text: "pay me", via: "x" },
+      { text: "pay me", via: "x" },
+    ]);
+  });
+
+  it("sends the text alone when the link named no source", async () => {
+    const f = fake([{ status: 200, body: DONE }]);
+    await submitAttempt("pay me", f.io, null);
+    expect(JSON.parse(String(f.calls[0]?.init.body))).toEqual({ text: "pay me" });
+  });
+
   it("does not ask the server when the text is empty or only blanks", async () => {
     for (const blank of ["", "   ", "\n\t "]) {
       const f = fake([{ status: 200, body: DONE }]);

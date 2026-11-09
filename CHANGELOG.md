@@ -14,6 +14,18 @@ The software is an unaudited beta.
 
 ### Added
 
+- A Canary attempt stores the source its link named: `/canary?via=x` stores `x` in the new column
+  `canary_attempts.via` (migration `20261108000014_canary_via.sql`). The set is closed (`home`,
+  `x`, `share`, `readme`, `proof`, `tamper`, `ext` and `usage`, in
+  `apps/web/src/lib/canary/via.ts`). Any other value is stored as no source, and the attempt runs as
+  before. Nothing is recorded for a visit alone, there is no new cookie, and the source is not in
+  the public feed or the leaderboard. The Rules link and the way back from the rules keep it. The
+  Canary pill on `/usage` links with `?via=usage`, and the README with `?via=readme`. /privacy says
+  so, and its date is now 2026-11-09. The migration and the app can be deployed in either order.
+- `docs/ops/metrics.md` has three queries for the OWNER to run by hand: Canary attempts by source;
+  outside owners stage by stage, from a vault to an agent key, a mandate, a first payment and
+  still active a week after it; and first payments by UTC week. A test runs the doc's own SQL on
+  the real schema.
 - The README names the builder's other NEAR Hackathon 2026 entry, Satchel
   (<https://github.com/duongnq2798/satchel>), as the rules ask of anyone entering two projects.
   The two share no code.
