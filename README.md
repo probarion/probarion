@@ -53,6 +53,7 @@ the vault, and anyone can re-check the record against the chain.
 - [Documentation](#documentation)
 - [Development](#development)
 - [Prior work](#prior-work)
+- [Other project by the same builder](#other-project-by-the-same-builder)
 - [License](#license)
 
 ## How to evaluate Probarion in 5 minutes
@@ -506,6 +507,13 @@ The design spec and the interfaces in [`docs/specs`](docs/specs) were written on
 the hackathon build window, and have been amended since through the interface change requests their
 git history records. The specs refer to pre-hackathon spikes (S1 to S9); they are not part of this
 repository, whose first commit was made on 2026-11-01 at 01:07 UTC.
+
+## Other project by the same builder
+
+Under the NEAR Hackathon 2026 rules, one person may enter two independent projects if each README
+names the other. The other entry is **Satchel**, an NFT that is a wallet on every EVM chain
+through NEAR Chain Signatures: <https://github.com/duongnq2798/satchel>. The two projects share no
+code.
 
 ## License
 
