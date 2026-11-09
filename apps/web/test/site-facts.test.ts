@@ -15,6 +15,7 @@ import { InkBand } from "@/components/site/InkBand";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { explorerTxUrl } from "@/lib/config";
+import { docsHref, findPage, PAGES } from "@/lib/docs/registry";
 import { cli } from "@/lib/proof/cli";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import {
@@ -24,6 +25,7 @@ import {
   CHECK_LABELS,
   CLOSING,
   CONTRACT_REFUSAL_CODE,
+  EVALUATE_ROUTE,
   FIXTURE_PATH,
   FOOTER,
   HEADER_ANCHORS,
@@ -739,14 +741,31 @@ describe("the rendered landing page", () => {
 
   it("offers the two closing links on main", () => {
     const links = hrefs(landing());
-    expect(links).toContain(
-      "https://github.com/probarion/probarion#how-to-evaluate-probarion-in-5-minutes",
-    );
+    expect(links).toContain("/docs/start/evaluate-in-5-minutes");
     expect(links).toContain(
       "https://github.com/probarion/probarion/blob/main/docs/specs/2026-10-21-probarion-design.md",
     );
     expect(links).toContain("#verify");
     expect(links).toContain("/console");
+  });
+
+  it("sends the evaluate button to the docs page that walks through it", () => {
+    expect(EVALUATE_ROUTE).toBe("/docs/start/evaluate-in-5-minutes");
+    expect(findPage(EVALUATE_ROUTE.slice("/docs/".length))?.type).toBe("tutorial");
+  });
+});
+
+describe("the footer columns", () => {
+  it("put Docs and Usage with the product pages and keep the legal ones apart", () => {
+    expect(FOOTER.product.map((i) => i.route)).toEqual([
+      "/console",
+      "/proof",
+      "/canary",
+      "/docs",
+      "/status",
+      "/usage",
+    ]);
+    expect(FOOTER.legal.map((i) => i.route)).toEqual(["/terms", "/privacy", "/security"]);
   });
 });
 
@@ -979,7 +998,14 @@ describe("robots and the sitemap", () => {
     expect(paths).toContain("/usage");
     expect(paths.filter((p) => p.startsWith("/console") || p.startsWith("/api"))).toEqual([]);
     expect(paths.filter((p) => PLANNED_ROUTES.includes(p))).toEqual([]);
-    expect(paths).toEqual(publicRoutes());
+    expect(paths).toEqual([
+      ...publicRoutes().filter((r) => r !== "/docs"),
+      ...PAGES.map((p) => docsHref(p.path)),
+    ]);
+    expect(new Set(paths).size).toBe(paths.length);
+    for (const e of sitemap().filter((x) => new URL(x.url).pathname.startsWith("/docs"))) {
+      expect(e.lastModified, e.url).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
   });
 });
 

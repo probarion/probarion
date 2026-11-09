@@ -57,6 +57,8 @@ export const HEADER_ANCHORS: readonly { href: string; label: string }[] = [
 
 export const PROOF_ROUTE = "/proof";
 export const CONSOLE_ROUTE = "/console";
+/** The landing's closing button: the docs tutorial that walks an evaluator through the product. */
+export const EVALUATE_ROUTE = "/docs/start/evaluate-in-5-minutes";
 
 /**
  * Planned pages the footer leaves out until they exist, because it already covers them some other way (for
@@ -65,13 +67,20 @@ export const CONSOLE_ROUTE = "/console";
 const COVERED_WHILE_PLANNED: readonly string[] = ["/security"];
 const listed = (items: readonly NavItem[]) =>
   items.filter(({ route }) => isBuilt(route) || !COVERED_WHILE_PLANNED.includes(route));
+/** FOOTER_NAV pages that the footer lists with the product pages, not with the legal ones. */
+const FOOTER_PRODUCT: readonly string[] = ["/usage"];
 
 export const FOOTER = {
   motto: "TEE protects the data. The contract protects the money.",
   note: "Unaudited beta. Use small amounts. Built for the NEAR Hackathon 2026. MIT license.",
   /** Internal links: SITE_NAV and FOOTER_NAV stay the source of the routes. */
-  product: listed(SITE_NAV),
-  legal: listed(FOOTER_NAV).filter(({ route }) => !SITE_NAV.some((i) => i.route === route)),
+  product: listed([
+    ...SITE_NAV,
+    ...FOOTER_NAV.filter(({ route }) => FOOTER_PRODUCT.includes(route)),
+  ]),
+  legal: listed(FOOTER_NAV).filter(
+    ({ route }) => !SITE_NAV.some((i) => i.route === route) && !FOOTER_PRODUCT.includes(route),
+  ),
   developers: [
     { href: LINKS.github, label: "GitHub" },
     { href: LINKS.interfaces, label: "Interfaces" },
