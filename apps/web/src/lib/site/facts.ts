@@ -555,6 +555,74 @@ export const BAND = {
   goneNote: "does not exist",
 } as const;
 
+// --- the console screenshots ----------------------------------------------------------------------
+
+export interface ConsoleShot {
+  id: string;
+  /** The file under apps/web/public; test/console-shots.test.ts reads its size from the header. */
+  src: string;
+  width: number;
+  height: number;
+  alt: string;
+  title: string;
+  body: string;
+  /** Where and when it was taken. */
+  meta: string;
+  link?: { label: string; url: string };
+}
+
+/** Captured on probarion.xyz on 2026-11-09, while INV-2004 went through the testnet demo vault. */
+const SHOT_META = "Testnet console, 2026-11-09, vault demo.vaults.probarion.testnet";
+
+export const CONSOLE_SHOTS = {
+  title: "The console",
+  intro:
+    "Screenshots from the testnet demo vault, taken while a fifth invoice went through it: INV-2004, 4 test USDC, above the mandate's 3 USDC approval limit.",
+  shots: [
+    {
+      id: "held",
+      src: "/shots/console-held.webp",
+      width: 856,
+      height: 430,
+      alt: "The vault overview in the console: Held for approval (1), spend 3, 4 USDC to probarion-payee.testnet under mandate 1. Only the vault's approvers can approve or reject it.",
+      title: "Held for an approver",
+      body: "The owner confirmed the amount in their wallet. Above 3 USDC, the vault holds the spend until an approver signs, and it can only pay `probarion-payee.testnet`.",
+      meta: SHOT_META,
+      link: demoTx("Held ", tx("9qUtxTguj17dp8KX61GW7YTVBQyJGZBt1ZWiQoM2699d", "9qUtxTgu…699d")),
+    },
+    {
+      id: "invoice",
+      src: "/shots/console-invoice.webp",
+      width: 856,
+      height: 430,
+      alt: "The invoice page in Payables: the owner's NEP-413 confirm, then three columns. Model wanted: rules only. Code allowed: each rule passed. Contract did: held for approval, spend 3.",
+      title: "The invoice's page",
+      body: "The owner's signed confirm, every code rule the invoice passed, and what the contract did with it, side by side.",
+      meta: SHOT_META,
+    },
+    {
+      id: "paid",
+      src: "/shots/console-paid.webp",
+      width: 856,
+      height: 430,
+      alt: "The vault overview after the approval: nothing held, and three paid spends of 4, 4 and 2 USDC, all to probarion-payee.testnet.",
+      title: "Paid after approval",
+      body: "The approver approved spend 3 from their own key, and the vault paid. Each spend went to the mandate's payee.",
+      meta: SHOT_META,
+      link: demoTx(
+        "Approved ",
+        tx("EYPyrd9hapyZthjMwysShUnkDSVkMQHtPYHitidbr972", "EYPyrd9h…r972"),
+      ),
+    },
+  ] satisfies readonly ConsoleShot[],
+  proof: {
+    text: "The proof page lists this vault's spends and runs checks a to i on its ledger and the chain.",
+    label: "Open the proof page",
+    href: "/proof/demo.vaults.probarion.testnet",
+  },
+  open: { label: "Open console", href: CONSOLE_ROUTE },
+} as const;
+
 // --- the ledger test ------------------------------------------------------------------------------
 
 /** The verifier's nine checks in plain English. The test holds the keys to the ids `runChecks` returns. */

@@ -403,13 +403,38 @@ describe("POST /api/console/[vault]/invoices", () => {
       "custom.invoice_number_duplicate",
       "custom.owner_confirms_without_model",
     ]);
-    expect(await body(r)).toMatchObject({
+    const out = (await body(r)) as { notice?: string };
+    expect(out).toMatchObject({
       status: "decided",
       outcome: { status: "refused_by_code", code: "custom.invoice_number_duplicate" },
       notice: expect.stringMatching(
         /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
       ),
     });
+    // The earlier invoice was paid, so its number stays blocked: the notice offers no upload that would only get 409.
+    expect(out.notice).toMatch(/was paid, so this one is not paid again\.$/);
+    expect(out.notice).not.toContain("upload this one again");
+  });
+
+  it("says the number stays blocked when the number rule's refusal could not be written to the invoice", async () => {
+    const text = fresh();
+    expect((await post(invoiceForm({ text }))).status).toBe(200);
+    h.process = async () => ({
+      ...PAID,
+      status: "refused_by_code",
+      spendId: null,
+      txHash: null,
+      code: "custom.invoice_number_duplicate",
+    });
+    h.failDb = "invoice_set_outcome";
+    const r = await post(invoiceForm({ text: text.replace("Total 5 USDC", "Total 6 USDC") }));
+    expect(r.status).toBe(200);
+    const out = (await body(r)) as { recorded?: boolean; notice?: string };
+    expect(out.recorded).toBe(false);
+    expect(out.notice).toMatch(
+      /^Duplicate number: .*Nothing was sent, but the refusal could not be written to this invoice: the console shows it as "Outcome unknown: do not resend", and the number stays blocked\.$/,
+    );
+    expect(out.notice).not.toContain("upload this one again");
   });
 
   it("shows an invoice that waits for the owner: nothing was sent, and the code's amount is kept", async () => {

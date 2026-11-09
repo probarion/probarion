@@ -1,6 +1,41 @@
 import type { NetworkId } from "@probarion/core";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { appOrigin, explorerAccountUrl, explorerTxUrl, type Network } from "./config";
+import { CANARY_LIMITS } from "./canary/limits";
+import {
+  appOrigin,
+  CANARY_KEY_ALLOWANCES,
+  explorerAccountUrl,
+  explorerTxUrl,
+  keyAllowances,
+  type Network,
+  VAULT_DEFAULTS,
+} from "./config";
+
+describe("keyAllowances", () => {
+  it("gives a team or external vault's keys the defaults", () => {
+    for (const kind of ["team", "external"] as const) {
+      expect(keyAllowances(kind)).toMatchObject({
+        agentAllowanceYocto: VAULT_DEFAULTS.agentAllowanceYocto,
+        ledgerAllowanceYocto: VAULT_DEFAULTS.ledgerAllowanceYocto,
+      });
+    }
+  });
+
+  // An allowance is fixed when the vault adds the key: with the defaults, the Canary would stay closed for good.
+  it("gives the Canary's keys enough gas to clear its floors, with room for many attempts", () => {
+    const canary = keyAllowances("canary");
+    expect(canary).toEqual(CANARY_KEY_ALLOWANCES);
+    expect(BigInt(VAULT_DEFAULTS.ledgerAllowanceYocto)).toBeLessThan(
+      CANARY_LIMITS.minLedgerAllowanceYocto,
+    );
+    expect(BigInt(canary.ledgerAllowanceYocto)).toBeGreaterThanOrEqual(
+      4n * CANARY_LIMITS.minLedgerAllowanceYocto,
+    );
+    expect(BigInt(canary.agentAllowanceYocto)).toBeGreaterThanOrEqual(
+      10n * CANARY_LIMITS.minAllowanceYocto,
+    );
+  });
+});
 
 describe("config", () => {
   it("builds explorer links from NETWORKS", () => {
