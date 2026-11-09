@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>menu</title>
+    <style>
+      body {
+        display: grid;
+        grid-template-columns: 440px 1fr;
+        width: 1280px;
+        height: 800px;
+        margin: 0;
+        background: #0b0b0c;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      .copy {
+        align-self: center;
+        padding: 0 40px 0 100px;
+      }
+      h1 {
+        margin: 0 0 16px;
+        color: #f7f6f3;
+        font-size: 40px;
+        font-weight: 600;
+        line-height: 1.15;
+      }
+      .copy p {
+        margin: 0;
+        color: #a9a59b;
+        font-size: 19px;
+        line-height: 1.5;
+      }
+      .browser {
+        position: relative;
+        align-self: center;
+        height: 600px;
+        margin-right: 72px;
+        overflow: hidden;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+      }
+      .bar {
+        display: flex;
+        align-items: center;
+        height: 40px;
+        padding: 0 16px;
+        background: #eceae4;
+        color: #5f5c55;
+        font-size: 13px;
+      }
+      .page {
+        padding: 32px 40px;
+        color: #0b0b0c;
+      }
+      .page h2 {
+        margin: 0 0 8px;
+        font-size: 22px;
+      }
+      table {
+        width: 100%;
+        margin-top: 16px;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      td {
+        padding: 10px 8px;
+        border-bottom: 1px solid #e2dfd6;
+      }
+      a {
+        color: #1a56c4;
+      }
+      .menu {
+        position: absolute;
+        top: 290px;
+        left: 400px;
+        width: 300px;
+        padding: 6px 0;
+        border: 1px solid #d0cdc4;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+        font-size: 14px;
+      }
+      .menu div {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 7px 16px;
+      }
+      .menu hr {
+        margin: 6px 0;
+        border: 0;
+        border-top: 1px solid #e2dfd6;
+      }
+      .menu .ours {
+        background: #f4ecd8;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="copy">
+      <h1>Right-click the invoice link.</h1>
+      <p>"Send invoice to Probarion" reads the PDF and queues it for your vault. You still confirm it with your wallet.</p>
+    </div>
+    <div class="browser">
+      <div class="bar">billing.northwind.example/invoices</div>
+      <div class="page">
+        <h2>Northwind Hosting: invoices</h2>
+        <p>Account: Acme Inc.</p>
+        <table>
+          <tr><td>INV-1042</td><td>November 2026</td><td>1,250.00 USDC</td><td><a href="https://billing.northwind.example/invoices/invoice-1042.pdf">invoice-1042.pdf</a></td></tr>
+          <tr><td>INV-1038</td><td>October 2026</td><td>1,250.00 USDC</td><td><a href="https://billing.northwind.example/invoices/invoice-1038.pdf">invoice-1038.pdf</a></td></tr>
+          <tr><td>INV-1031</td><td>September 2026</td><td>1,180.00 USDC</td><td><a href="https://billing.northwind.example/invoices/invoice-1031.pdf">invoice-1031.pdf</a></td></tr>
+        </table>
+      </div>
+      <div class="menu">
+        <div>Open link in new tab</div>
+        <div>Open link in new window</div>
+        <div>Save link as…</div>
+        <div>Copy link address</div>
+        <hr />
+        <div class="ours"><img src="../../static/icons/16.png" alt="" width="16" height="16" />Send invoice to Probarion</div>
+        <hr />
+        <div>Inspect</div>
+      </div>
+    </div>
+  </body>
+</html>

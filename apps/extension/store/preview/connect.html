@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>connect</title>
+    <style>
+      body {
+        width: 1280px;
+        height: 800px;
+        margin: 0;
+        background: #f7f6f3;
+        color: #0b0b0c;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      header {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 18px 120px;
+        border-bottom: 1px solid #e2dfd6;
+        font-weight: 600;
+      }
+      main {
+        width: 760px;
+        margin: 56px auto 0;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 30px;
+      }
+      .lead {
+        margin: 0 0 28px;
+        color: #5f5c55;
+        font-size: 17px;
+        line-height: 1.5;
+      }
+      .card {
+        margin-bottom: 20px;
+        padding: 22px 26px;
+        border: 1px solid #e2dfd6;
+        border-radius: 10px;
+        background: #ffffff;
+      }
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 17px;
+      }
+      .mono {
+        font-family: ui-monospace, Consolas, monospace;
+      }
+      button {
+        margin: 12px 10px 0 0;
+        padding: 9px 16px;
+        border: 1px solid #0b0b0c;
+        border-radius: 8px;
+        background: #0b0b0c;
+        color: #f7f6f3;
+        font: 600 15px "Segoe UI", system-ui, sans-serif;
+      }
+      button.plain {
+        background: #ffffff;
+        color: #0b0b0c;
+      }
+      .good {
+        margin-top: 16px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: #e2f1e8;
+        color: #17693f;
+      }
+    </style>
+  </head>
+  <body>
+    <header><img src="../../static/icons/32.png" alt="" width="24" height="24" />Probarion</header>
+    <main>
+      <h1>Browser extension</h1>
+      <p class="lead">
+        The extension queues invoices for your confirmation and shows what waits for you. It can't pay or approve:
+        paying still needs your wallet's signature in the console.
+      </p>
+      <div class="card">
+        <h2>Connect this browser</h2>
+        <p>Signed in as <span class="mono">acme-finance.testnet</span> on NEAR testnet.</p>
+        <button type="button">Connect extension</button><button type="button" class="plain">Show a code instead</button>
+        <div class="good">Connected. You can close this tab.</div>
+      </div>
+      <div class="card">
+        <h2>Connected browsers</h2>
+        <p>Chrome on Windows <span class="mono">pbx_…Q3xA</span></p>
+      </div>
+    </main>
+  </body>
+</html>

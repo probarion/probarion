@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>icon</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      img {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <img src="../../web/src/app/icon.svg" alt="" />
+    <script>
+      const size = Number(new URLSearchParams(location.search).get("size")) || 128;
+      const img = document.querySelector("img");
+      img.width = size;
+      img.height = size;
+    </script>
+  </body>
+</html>
