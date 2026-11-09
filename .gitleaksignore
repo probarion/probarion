@@ -6,3 +6,6 @@ dedca42d446c64ec82c127bf502f8f5cfebc23ac:apps/web/src/lib/log.test.ts:generic-ap
 c5eadc472c85543320f3089f8c66f03058566d3a:packages/sdk/test/nearai.test.ts:generic-api-key:46
 299052bbc5bcfb390df0964ae0fe945ed5ee8c52:apps/web/src/lib/payables/confirm-message.test.ts:generic-api-key:138
 c471b5c02822d82d429a22759a074ff730480966:apps/web/src/lib/sentry-scrub.test.ts:generic-api-key:154
+# Public data, not a secret: the field name "set_ledger_key_tx" matches the rule, and its value is the demo vault's
+# set_ledger_key transaction hash on NEAR testnet, recorded in 36c5bd8.
+36c5bd8b9324077d64f8ca8b59d13a0fde857915:contracts/deployments/testnet.json:generic-api-key:67
