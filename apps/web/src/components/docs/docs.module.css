@@ -1189,10 +1189,6 @@ section.source code {
   padding: 12px 12px 12px 18px;
   border-bottom: 1px solid var(--color-line);
 }
-/* The input's focus shows as a gold rule under the whole row. */
-.searchHead:focus-within {
-  box-shadow: inset 0 -2px 0 var(--color-gold-small);
-}
 .searchInput {
   flex: 1 1 auto;
   min-width: 0;
@@ -1203,9 +1199,13 @@ section.source code {
   font-size: 17px;
   color: var(--color-ink);
 }
-/* A transparent outline: it shows only in forced colours, which drop the box-shadow above. */
+/*
+ * The input's own focus, never the Close button's: a gold rule under the box. The transparent
+ * outline shows only in forced colours, which drop the box-shadow.
+ */
 .searchInput:focus-visible {
   outline: 2px solid transparent;
+  box-shadow: inset 0 -2px 0 var(--color-gold-small);
 }
 .searchInput::placeholder {
   color: var(--color-mute);
@@ -1224,7 +1224,10 @@ section.source code {
 .searchButton:hover {
   border-color: var(--color-ink);
 }
+/* Pressed: a 2px border as well as the colours, so the state does not rest on colour alone. */
 .searchButton[aria-pressed="true"] {
+  padding: 0 11px;
+  border-width: 2px;
   border-color: var(--color-ink);
   background: var(--color-ink);
   color: var(--color-paper);
@@ -1270,11 +1273,14 @@ section.source code {
   gap: 2px 12px;
   padding: 10px 12px;
   border-radius: 10px;
+  outline: 2px solid transparent;
   color: var(--color-ink);
   text-decoration: none;
 }
+/* The keyboard's only cue: a gold bar, as on the sidebar's current page, not just the tint. */
 .searchOption[aria-selected="true"] {
   background: var(--color-soft);
+  box-shadow: inset 3px 0 0 var(--color-gold-deep);
 }
 .searchTitle {
   font-weight: 600;
@@ -1333,9 +1339,10 @@ section.source code {
   font-size: 12.5px;
   color: var(--color-mute);
 }
+/* 100%, not 100vw: a classic scrollbar would hide the Close button under it. */
 @media (max-width: 767px) {
   .search {
-    width: 100vw;
+    width: 100%;
     height: 100dvh;
     margin: 0;
     border: 0;
@@ -1456,5 +1463,13 @@ section.source code {
   .gold {
     background: none;
     color: CanvasText;
+  }
+  /* Forced colours drop the tint, the bar and the inverted fill: an outline marks them instead. */
+  .searchOption[aria-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .searchButton[aria-pressed="true"] {
+    outline: 2px solid Highlight;
   }
 }

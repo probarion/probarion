@@ -40,7 +40,7 @@ export interface SearchDoc {
   kind: SearchKind;
   /** The page's H2 and H3 texts, one per line. */
   headings: string;
-  /** Error codes and CLI commands the entry names, space separated. */
+  /** Error codes and CLI commands the entry names, one per line: a command keeps its spaces. */
   codes: string;
   body: string;
   summary: string;
@@ -63,6 +63,8 @@ const FIELDS = [
  */
 export function parseIndex(value: unknown): SearchDoc[] {
   if (!Array.isArray(value)) throw new Error("search index: not a list");
+  // MiniSearch throws on a repeated id, so the index refuses one here, where the error state shows.
+  const seen = new Set<string>();
   return value.map((entry: unknown, i) => {
     if (typeof entry !== "object" || entry === null) {
       throw new Error(`search index: entry ${i} is not an object`);
@@ -74,6 +76,9 @@ export function parseIndex(value: unknown): SearchDoc[] {
     if (!(SEARCH_KINDS as readonly string[]).includes(e.kind as string)) {
       throw new Error(`search index: entry ${i} has kind "${String(e.kind)}"`);
     }
+    const id = e.id as string;
+    if (seen.has(id)) throw new Error(`search index: entry ${i} repeats id ${id}`);
+    seen.add(id);
     return Object.fromEntries(FIELDS.map((f) => [f, e[f]])) as unknown as SearchDoc;
   });
 }
@@ -83,16 +88,17 @@ const timedFetch = (url: string) => fetch(url, { signal: AbortSignal.timeout(10_
 
 /**
  * The index, or null when it does not load (an HTTP error, no network, no answer in 10 s, bad JSON,
- * a bad entry).
+ * a bad entry). The reason goes to the console.
  */
 export async function loadIndex(
   fetcher: (url: string) => Promise<Response> = timedFetch,
 ): Promise<SearchDoc[] | null> {
   try {
     const res = await fetcher(SEARCH_INDEX_URL);
-    if (!res.ok) return null;
+    if (!res.ok) throw new Error(`search index: HTTP ${res.status}`);
     return parseIndex(await res.json());
-  } catch {
+  } catch (error) {
+    console.error("Docs search: the index did not load.", error);
     return null;
   }
 }
@@ -132,9 +138,23 @@ function toHit(r: SearchResult): SearchHit {
   };
 }
 
-/** 0: the error entry whose code is the query; 1: a page that names that code; 2: the rest. */
-function exactRank(hit: SearchHit, query: string): number {
-  if (!hit.codes.toLowerCase().split(" ").includes(query)) return 2;
+/**
+ * A code or a query as the exact rank compares them: one space between words, lower case, and no
+ * `probarion:` in front, so NoMandate and PROBARION:NoMandate are the same code.
+ */
+const codeKey = (s: string) =>
+  s
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(/^probarion:/, "");
+
+/**
+ * 0: the error entry whose code is the query; 1: a page that names that code; 2: the rest. A code
+ * is a whole line of `codes`, so one word of a CLI command is not the command.
+ */
+function exactRank(hit: SearchHit, key: string): number {
+  if (!hit.codes.split("\n").some((c) => codeKey(c) === key)) return 2;
   return hit.kind === "error" ? 0 : 1;
 }
 
@@ -153,10 +173,10 @@ export function runSearch(
   const only = filter === "all" ? {} : { filter: (r: SearchResult) => r.kind === filter };
   let results = ms.search(q, { ...only, combineWith: "AND" });
   if (results.length === 0) results = ms.search(q, { ...only, combineWith: "OR" });
-  const lower = q.toLowerCase();
+  const key = codeKey(q);
   return results
     .map(toHit)
-    .map((hit, i) => ({ hit, i, rank: exactRank(hit, lower) }))
+    .map((hit, i) => ({ hit, i, rank: exactRank(hit, key) }))
     .sort((a, b) => a.rank - b.rank || a.i - b.i)
     .map(({ hit }) => hit)
     .slice(0, limit);
@@ -206,4 +226,42 @@ export function highlight(text: string, terms: readonly string[]): Segment[] {
 export function moveActive(current: number, delta: number, count: number): number {
   if (count <= 0) return -1;
   return (((current + delta) % count) + count) % count;
+}
+
+/** The active option kept on the list, whatever was stored (-1 after a move with no results). */
+export function activeIndex(active: number, count: number): number {
+  return count === 0 ? -1 : Math.min(Math.max(active, 0), count - 1);
+}
+
+/**
+ * An option's element id, from its entry's id, so aria-activedescendant changes with the top hit.
+ * encodeURIComponent leaves no space, so it is a valid HTML id.
+ */
+export function optionId(base: string, id: string): string {
+  return `${base}-opt-${encodeURIComponent(id)}`;
+}
+
+/** What the live region says, and the empty view shows, once a query has run. */
+export function resultsMessage(count: number, query: string): string {
+  if (count === 0) return `No results for "${query}".`;
+  return count === 1 ? "1 result" : `${count} results`;
+}
+
+/** The keys of a keydown that may open the search; `key` is missing on some synthetic events. */
+export interface ShortcutKeys {
+  key?: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}
+
+/**
+ * Ctrl K or ⌘K, with no other modifier (Ctrl and ⌘ together do not count). The physical K key
+ * counts too, so a layout without a Latin k still opens the search.
+ */
+export function isSearchShortcut(e: ShortcutKeys): boolean {
+  if (e.shiftKey || e.altKey || e.ctrlKey === e.metaKey) return false;
+  return e.key?.toLowerCase() === "k" || e.code === "KeyK";
 }

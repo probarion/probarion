@@ -1,19 +1,25 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { VAULT_ERROR_CODES } from "@probarion/core";
-import { describe, expect, it, vi } from "vitest";
+import type MiniSearch from "minisearch";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { docsHref, findPage, PAGES } from "@/lib/docs/registry";
 import {
+  activeIndex,
   createSearch,
   groupHits,
   highlight,
+  isSearchShortcut,
   loadIndex,
   moveActive,
+  optionId,
   parseIndex,
+  resultsMessage,
   runSearch,
   type SearchDoc,
 } from "@/lib/docs/search";
 import { buildSearchIndex, codesIn, kindOf } from "@/lib/docs/search-index";
+import type { DocPage } from "@/lib/docs/types";
 import { WEB } from "./docs-helpers";
 
 const ORIGIN = "https://probarion.xyz";
@@ -43,7 +49,7 @@ const DOCS: SearchDoc[] = [
     title: "Errors",
     kind: "reference",
     section: "Build",
-    codes: "NoMandate PROBARION:NoMandate",
+    codes: "NoMandate\nPROBARION:NoMandate",
     body: "Every vault error code, with what to do next. NoMandate",
     summary: "Every error code.",
   }),
@@ -53,7 +59,7 @@ const DOCS: SearchDoc[] = [
     title: "PROBARION:NoMandate",
     kind: "error",
     section: "Errors",
-    codes: "NoMandate PROBARION:NoMandate",
+    codes: "NoMandate\nPROBARION:NoMandate",
     body: "The vault has no mandate with this id.",
     summary: "The vault has no mandate with this id.",
   }),
@@ -77,6 +83,7 @@ describe("runSearch", () => {
     expect(ids("NoMandate")[0]).toBe("error:NoMandate");
     expect(ids("PROBARION:NoMandate")[0]).toBe("error:NoMandate");
     expect(ids("nomandate")[0]).toBe("error:NoMandate");
+    expect(ids("probarion:nomandate")[0]).toBe("error:NoMandate");
   });
 
   it("matches prefixes and needs every word, falling back to any word", () => {
@@ -88,6 +95,21 @@ describe("runSearch", () => {
   it("filters by kind and returns nothing for a blank query", () => {
     expect(ids("NoMandate", "error")).toEqual(["error:NoMandate"]);
     expect(ids("   ")).toEqual([]);
+  });
+
+  it("keeps a CLI command whole: one of its words is not the command", () => {
+    const pages = [
+      doc({
+        id: "concepts/holds-and-approvals",
+        title: "Holds and approvals",
+        codes: "spend approve\nspend reject",
+        body: "An approver runs spend approve.",
+      }),
+      doc({ id: "build/spend-outcomes", title: "Spend outcomes", body: "What a spend returns." }),
+    ];
+    const search = createSearch(pages);
+    expect(runSearch(search, "spend")[0]?.id).toBe("build/spend-outcomes");
+    expect(runSearch(search, "spend  Approve")[0]?.id).toBe("concepts/holds-and-approvals");
   });
 });
 
@@ -117,21 +139,78 @@ describe("the dialog's pure logic", () => {
     expect(moveActive(2, 1, 3)).toBe(0);
     expect(moveActive(0, 1, 0)).toBe(-1);
   });
+
+  it("keeps the active option on the list, even after a move with no results", () => {
+    expect(activeIndex(-1, 3)).toBe(0);
+    expect(activeIndex(5, 3)).toBe(2);
+    expect(activeIndex(1, 3)).toBe(1);
+    expect(activeIndex(0, 0)).toBe(-1);
+  });
+
+  it("gives each option an id from its entry, valid in HTML", () => {
+    expect(optionId("_r_1_", "error:NoMandate")).toBe("_r_1_-opt-error%3ANoMandate");
+    expect(optionId("_r_1_", "build/errors")).toBe("_r_1_-opt-build%2Ferrors");
+    expect(optionId("b", "a b")).not.toMatch(/\s/);
+  });
+
+  it("phrases the result count", () => {
+    expect(resultsMessage(0, "zzzqqq")).toBe('No results for "zzzqqq".');
+    expect(resultsMessage(1, "vault")).toBe("1 result");
+    expect(resultsMessage(20, "vault")).toBe("20 results");
+  });
+
+  it("opens on Ctrl K or ⌘K alone, on any keyboard layout", () => {
+    const key = (over: Partial<Parameters<typeof isSearchShortcut>[0]>) =>
+      isSearchShortcut({
+        key: "k",
+        code: "KeyK",
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+        ...over,
+      });
+    expect(key({ ctrlKey: true })).toBe(true);
+    expect(key({ metaKey: true })).toBe(true);
+    expect(key({ ctrlKey: true, key: "K" })).toBe(true);
+    expect(key({ ctrlKey: true, key: "л" })).toBe(true);
+    expect(key({ ctrlKey: true, key: "k", code: "KeyV" })).toBe(true);
+    expect(key({})).toBe(false);
+    expect(key({ ctrlKey: true, metaKey: true })).toBe(false);
+    expect(key({ ctrlKey: true, shiftKey: true })).toBe(false);
+    expect(key({ ctrlKey: true, altKey: true })).toBe(false);
+    expect(key({ ctrlKey: true, key: "j", code: "KeyJ" })).toBe(false);
+    expect(key({ ctrlKey: true, key: undefined, code: "" })).toBe(false);
+  });
 });
 
 describe("loadIndex", () => {
   const ok = (body: unknown) => async () => new Response(JSON.stringify(body), { status: 200 });
+  let logged: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    logged.mockRestore();
+  });
 
-  it("returns the docs, or null when the index does not load", async () => {
+  it("returns the docs, or null when the index does not load, and logs why", async () => {
     expect(await loadIndex(ok(DOCS))).toEqual(DOCS);
+    expect(logged).not.toHaveBeenCalled();
     expect(await loadIndex(async () => new Response("down", { status: 500 }))).toBeNull();
     expect(await loadIndex(async () => new Response("{not json", { status: 200 }))).toBeNull();
     expect(await loadIndex(ok([{ id: 1 }]))).toBeNull();
+    expect(await loadIndex(ok([DOCS[0], DOCS[0]]))).toBeNull();
     expect(
       await loadIndex(async () => {
         throw new TypeError("offline");
       }),
     ).toBeNull();
+    expect(logged).toHaveBeenCalledTimes(5);
+    for (const call of logged.mock.calls) {
+      expect(call[0]).toBe("Docs search: the index did not load.");
+    }
+    expect(String(logged.mock.calls[0]?.[1])).toMatch(/500/);
   });
 
   it("gives the default request a 10 s limit, and an aborted request gives null", async () => {
@@ -156,14 +235,23 @@ describe("loadIndex", () => {
     }
   });
 
-  it("refuses an entry with a missing field or an unknown kind", () => {
+  it("refuses an entry with a missing field, an unknown kind or a repeated id", () => {
     expect(() => parseIndex({})).toThrow(/not a list/);
     expect(() => parseIndex([{ ...DOCS[0], body: 1 }])).toThrow(/entry 0 has no body/);
     expect(() => parseIndex([{ ...DOCS[0], kind: "faq" }])).toThrow(/entry 0 has kind "faq"/);
+    expect(() => parseIndex([DOCS[0], DOCS[1], DOCS[0]])).toThrow(
+      /entry 2 repeats id concepts\/mandates/,
+    );
   });
 });
 
 describe("the search index", () => {
+  const pageAt = (path: string): DocPage => {
+    const page = findPage(path);
+    if (!page) throw new Error(`no page ${path}`);
+    return page;
+  };
+
   it("finds codes and CLI commands in a page", () => {
     const md =
       "Run `node packages/cli/dist/bin.js mandate create --cap 5`, then `node packages/cli/dist/bin.js verify --offline x.json`, and `node packages/cli/dist/bin.js --network testnet vault create`. It fails with PROBARION:NoMandate.";
@@ -176,22 +264,68 @@ describe("the search index", () => {
     ]);
   });
 
-  it("has one entry per page, then one per vault error code, and survives JSON", async () => {
-    const index = await buildSearchIndex(ORIGIN);
-    const pages = index.filter((d) => d.kind !== "error");
-    expect(pages.map((d) => d.href)).toEqual(PAGES.map((p) => docsHref(p.path)));
-    expect(pages.map((d) => d.kind)).toEqual(PAGES.map(kindOf));
-    expect(new Set(index.map((d) => d.id)).size).toBe(index.length);
-    for (const d of index) expect(d.body.length, d.id).toBeLessThanOrEqual(6000);
-    expect(parseIndex(JSON.parse(JSON.stringify(index)))).toEqual(index);
-    if (findPage("build/errors")) {
-      expect(index.filter((d) => d.kind === "error").map((d) => d.href)).toEqual(
-        VAULT_ERROR_CODES.map((c) => `/docs/build/errors#${c}`),
+  it("files each page type under a search kind, and leaves the docs home out", () => {
+    expect(kindOf(pageAt("start/evaluate-in-5-minutes"))).toBe("guide");
+    expect(kindOf(pageAt("build/install"))).toBe("guide");
+    expect(kindOf(pageAt("concepts/mandates"))).toBe("concept");
+    expect(kindOf(pageAt("build/errors"))).toBe("reference");
+    expect(kindOf(pageAt(""))).toBeNull();
+  });
+
+  describe("built from the real pages", () => {
+    let index: SearchDoc[] = [];
+    let ms: MiniSearch<SearchDoc>;
+    const first = (q: string) => runSearch(ms, q)[0];
+
+    // One build for every test below: it converts all the pages to Markdown.
+    beforeAll(async () => {
+      index = await buildSearchIndex(ORIGIN);
+      ms = createSearch(index);
+    }, 60_000);
+
+    it("has one entry per page but the hub, then one per vault error code, and survives JSON", () => {
+      const listed = PAGES.filter((p) => p.type !== "hub");
+      const pages = index.filter((d) => d.kind !== "error");
+      expect(pages.map((d) => d.href)).toEqual(listed.map((p) => docsHref(p.path)));
+      expect(pages.map((d) => d.kind)).toEqual(listed.map(kindOf));
+      expect(new Set(index.map((d) => d.id)).size).toBe(index.length);
+      // The whole page is indexed: the limit guards against a runaway page and cuts none.
+      for (const d of index) expect(d.body.length, d.id).toBeLessThan(100_000);
+      expect(parseIndex(JSON.parse(JSON.stringify(index)))).toEqual(index);
+      if (findPage("build/errors")) {
+        expect(index.filter((d) => d.kind === "error").map((d) => d.href)).toEqual(
+          VAULT_ERROR_CODES.map((c) => `/docs/build/errors#${c}`),
+        );
+      }
+    });
+
+    it("puts a vault code's own entry first, with or without its prefix", () => {
+      expect(first("NoMandate")?.id).toBe("error:NoMandate");
+      expect(first("PROBARION:NoMandate")?.id).toBe("error:NoMandate");
+      expect(first("NoMandate")?.href).toBe("/docs/build/errors#NoMandate");
+    });
+
+    it("ranks one word of a CLI command by its pages, and the whole command by its own", () => {
+      expect(["build/spend-outcomes", "concepts/why-spend-has-no-payee"]).toContain(
+        first("spend")?.id,
       );
-      expect(runSearch(createSearch(index), "NoMandate")[0]?.href).toBe(
-        "/docs/build/errors#NoMandate",
+      expect(["concepts/vaults-roles-and-keys", "trust/verify-a-vault"]).toContain(
+        first("vault")?.id,
       );
-    }
+      expect(first("spend approve")?.codes.split("\n")).toContain("spend approve");
+    });
+
+    it("searches the whole page, generated tables included", () => {
+      expect(first("TxOutcomeUnknown")?.id).toBe("build/errors");
+      expect(first("rate_limited")?.id).toBe("build/errors");
+      // Both words sit well past the first 6000 characters of their page.
+      const found = (q: string) => runSearch(ms, q).map((h) => h.id);
+      expect(found("rustup")).toContain("start/evaluate-in-5-minutes");
+      expect(found("invoiceHash")).toContain("build/install");
+      const body = (id: string) => index.find((d) => d.id === id)?.body ?? "";
+      expect(body("start/evaluate-in-5-minutes").indexOf("rustup")).toBeGreaterThan(6000);
+      expect(body("build/install").indexOf("invoiceHash")).toBeGreaterThan(6000);
+    });
   });
 
   it("is mounted once, in the docs layout, with the Glossary link worked out on the server", () => {

@@ -15,13 +15,17 @@ import {
 } from "react";
 import { isBackdropClick } from "@/lib/console/confirm-dialog";
 import {
+  activeIndex,
   createSearch,
   FILTER_LABELS,
   groupHits,
   highlight,
+  isSearchShortcut,
   KIND_LABELS,
   loadIndex,
   moveActive,
+  optionId,
+  resultsMessage,
   runSearch,
   SEARCH_EVENT,
   SEARCH_FILTERS,
@@ -40,6 +44,12 @@ const modified = (e: {
   shiftKey: boolean;
   altKey: boolean;
 }) => e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
+
+/** On a press, so a click on an option or a filter leaves focus in the search box. */
+const keepFocus = (e: MouseEvent) => e.preventDefault();
+
+/** How long the live region waits for typing to pause before it speaks. */
+const ANNOUNCE_MS = 300;
 
 function Marked({ segments }: { segments: Segment[] }) {
   return (
@@ -70,6 +80,7 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<SearchFilter>("all");
   const [active, setActive] = useState(0);
+  const [announced, setAnnounced] = useState("");
   const base = useId();
 
   const fetchIndex = useCallback(async () => {
@@ -82,7 +93,13 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
       setLoad("error");
       return;
     }
-    engine.current = createSearch(docs);
+    try {
+      engine.current = createSearch(docs);
+    } catch (error) {
+      console.error("Docs search: the index did not load.", error);
+      setLoad("error");
+      return;
+    }
     setLoad("ready");
   }, []);
 
@@ -95,20 +112,26 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
           document.activeElement instanceof HTMLElement ? document.activeElement : null;
         el.showModal();
       }
-      if (initial !== undefined) setQuery(initial);
+      // A popular search starts afresh, on every kind. Otherwise the last query stays, selected,
+      // so the next keystroke replaces it.
+      if (initial !== undefined) {
+        setQuery(initial);
+        setFilter("all");
+      }
       setActive(0);
       input.current?.focus();
+      if (initial === undefined) input.current?.select();
       if (engine.current === null) void fetchIndex();
     },
     [fetchIndex],
   );
 
   useEffect(() => {
+    const el = dialog.current;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        open();
-      }
+      if (!isSearchShortcut(e)) return;
+      e.preventDefault();
+      open();
     };
     const onClick = (e: globalThis.MouseEvent) => {
       if (modified(e) || !(e.target instanceof Element)) return;
@@ -123,17 +146,24 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
         open();
       }
     };
-    const onEvent = (e: Event) => open((e as CustomEvent<{ query?: string } | null>).detail?.query);
+    const onEvent = (e: Event) => {
+      const q = (e as CustomEvent<{ query?: unknown } | null>).detail?.query;
+      open(typeof q === "string" ? q : undefined);
+    };
     window.addEventListener("keydown", onKey);
     document.addEventListener("click", onClick, true);
     window.addEventListener(SEARCH_EVENT, onEvent);
+    // data-ready="true": the listeners are attached, so SEARCH_EVENT is heard (e2e waits for it).
+    el?.setAttribute("data-ready", "true");
     return () => {
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("click", onClick, true);
       window.removeEventListener(SEARCH_EVENT, onEvent);
+      el?.removeAttribute("data-ready");
     };
   }, [open]);
 
+  const q = query.trim();
   const hits = useMemo(
     () =>
       load === "ready" && engine.current !== null ? runSearch(engine.current, query, filter) : [],
@@ -142,14 +172,23 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
   const groups = useMemo(() => groupHits(hits), [hits]);
   const flat = useMemo(() => groups.flatMap((g) => g.hits), [groups]);
   const indexOf = useMemo(() => new Map(flat.map((h, i) => [h.id, i])), [flat]);
-  const current = flat.length === 0 ? -1 : Math.min(active, flat.length - 1);
-  const optionId = (i: number) => `${base}-option-${i}`;
+  const current = activeIndex(active, flat.length);
+  const activeHit = current >= 0 ? flat[current] : undefined;
+  const activeId = activeHit ? optionId(base, activeHit.id) : undefined;
   const listId = `${base}-list`;
 
+  // The one polite live region: the loading state, then the count once typing pauses.
+  let message = "";
+  if (load === "loading") message = "Loading the search index";
+  else if (load === "ready" && q !== "") message = resultsMessage(flat.length, q);
   useEffect(() => {
-    if (current >= 0)
-      document.getElementById(`${base}-option-${current}`)?.scrollIntoView({ block: "nearest" });
-  }, [base, current]);
+    const timer = window.setTimeout(() => setAnnounced(message), ANNOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  useEffect(() => {
+    if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: "nearest" });
+  }, [activeId]);
 
   const close = () => dialog.current?.close();
   const onClose = () => {
@@ -167,34 +206,47 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
     if (backdrop) close();
   };
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // An input method is composing a word (Vietnamese Telex, for one): its keys are not ours.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (flat.length === 0) return;
       e.preventDefault();
       setActive(moveActive(current, e.key === "ArrowDown" ? 1 : -1, flat.length));
     } else if (e.key === "Enter") {
-      const option = current >= 0 ? document.getElementById(optionId(current)) : null;
-      if (option) {
-        e.preventDefault();
-        // The option's own click closes the dialog, and its Link navigates in the app.
-        option.click();
+      if (!activeHit || !activeId) return;
+      e.preventDefault();
+      // With Ctrl, ⌘ or Shift the result opens in a new tab and the dialog stays, as on a click.
+      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+        window.open(activeHit.href, "_blank", "noopener");
+        return;
       }
+      // The option's own click closes the dialog, and its Link navigates in the app.
+      document.getElementById(activeId)?.click();
     }
   };
 
-  const q = query.trim();
   let body: ReactNode;
   if (load === "error") {
     body = (
       <div role="alert" className={d.searchError}>
         <p>The search index did not load.</p>
-        <button type="button" className={d.searchButton} onClick={() => void fetchIndex()}>
+        <button
+          type="button"
+          className={d.searchButton}
+          onClick={() => {
+            // This button goes as the load starts: focus moves to the box first.
+            input.current?.focus();
+            void fetchIndex();
+          }}
+        >
           Try again
         </button>
       </div>
     );
   } else if (load !== "ready") {
     body = (
-      <div className={d.searchLoading} aria-busy="true">
-        <p role="status">Loading the search index</p>
+      <div className={d.searchLoading}>
+        <p>Loading the search index</p>
         <span aria-hidden="true" />
         <span aria-hidden="true" />
         <span aria-hidden="true" />
@@ -210,7 +262,7 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
   } else if (flat.length === 0) {
     body = (
       <div className={d.searchEmpty}>
-        <p role="status">No results for "{q}".</p>
+        <p>{resultsMessage(0, q)}</p>
         <p>
           Try fewer words, or browse the{" "}
           {glossaryHref && (
@@ -242,13 +294,14 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
               return (
                 <Link
                   key={hit.id}
-                  id={optionId(i)}
+                  id={optionId(base, hit.id)}
                   role="option"
                   aria-selected={i === current}
                   tabIndex={-1}
                   href={hit.href}
                   prefetch={false}
                   className={d.searchOption}
+                  onMouseDown={keepFocus}
                   onMouseMove={() => setActive(i)}
                   onClick={(e) => {
                     // A modified click opens a new tab, as Link leaves it to the browser.
@@ -294,9 +347,9 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
             role="combobox"
             aria-label="Search the docs"
             aria-expanded={flat.length > 0}
-            aria-controls={listId}
+            aria-controls={flat.length > 0 ? listId : undefined}
             aria-autocomplete="list"
-            aria-activedescendant={current >= 0 ? optionId(current) : undefined}
+            aria-activedescendant={activeId}
             className={d.searchInput}
             placeholder="Pages, error codes, CLI commands"
             autoComplete="off"
@@ -320,9 +373,11 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
               type="button"
               aria-pressed={filter === f}
               className={d.searchButton}
+              onMouseDown={keepFocus}
               onClick={() => {
                 setFilter(f);
                 setActive(0);
+                input.current?.focus();
               }}
             >
               {FILTER_LABELS[f]}
@@ -331,7 +386,7 @@ export function SearchDialog({ glossaryHref }: { glossaryHref: string | null }) 
         </fieldset>
         <div className={d.searchBody}>{body}</div>
         <p className="sr-only" aria-live="polite">
-          {load === "ready" && q !== "" ? `${flat.length} results` : ""}
+          {announced}
         </p>
         <p className={d.searchKeys} aria-hidden="true">
           <kbd className={d.kbd}>↑</kbd> <kbd className={d.kbd}>↓</kbd> to move,{" "}
