@@ -3,6 +3,7 @@
 import { limitText, REPLY_TEXT } from "./copy";
 import { isRecord } from "./format";
 import type { AttemptResult } from "./service";
+import type { CanaryVia } from "./via";
 
 type Done = Extract<AttemptResult, { status: "done" }>;
 
@@ -85,12 +86,12 @@ function secondsOf(header: string | null): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-async function ask(text: string, io: AttemptIo): Promise<Reply> {
+async function ask(text: string, via: CanaryVia | null, io: AttemptIo): Promise<Reply> {
   try {
     const res = await io.fetch(ATTEMPT_PATH, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(via === null ? { text } : { text, via }),
     });
     let body: unknown = null;
     try {
@@ -105,14 +106,19 @@ async function ask(text: string, io: AttemptIo): Promise<Reply> {
 }
 
 /**
- * One attempt. Blank text is refused here and never sent. A busy answer waits `BUSY_RETRY_MS` and asks once more; busy
- * again is told as such. Any other answer, an error included, is final: it is never asked again.
+ * One attempt, with the source the visitor's link named (lib/canary/via.ts) when there is one. Blank text is refused
+ * here and never sent. A busy answer waits `BUSY_RETRY_MS` and asks once more, with the same body; busy again is told
+ * as such. Any other answer, an error included, is final: it is never asked again.
  */
-export async function submitAttempt(text: string, io: AttemptIo): Promise<Answer> {
+export async function submitAttempt(
+  text: string,
+  io: AttemptIo,
+  via: CanaryVia | null = null,
+): Promise<Answer> {
   if (text.trim() === "") return error(REPLY_TEXT.empty);
-  const first = await ask(text, io);
+  const first = await ask(text, via, io);
   if (first.kind !== "busy") return first;
   await io.sleep(BUSY_RETRY_MS);
-  const second = await ask(text, io);
+  const second = await ask(text, via, io);
   return second.kind === "busy" ? error(REPLY_TEXT.busyAgain) : second;
 }

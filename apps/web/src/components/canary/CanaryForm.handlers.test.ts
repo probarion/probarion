@@ -8,6 +8,7 @@ vi.mock("react", async (importOriginal) => ({
   ...(await import("../../../test/fixtures/mini-react")).hooks,
 }));
 
+import type { CanaryVia } from "@/lib/canary/via";
 import { AttemptResultView } from "./AttemptResult";
 import { CanaryForm } from "./CanaryForm";
 
@@ -22,8 +23,8 @@ const DONE = {
 
 type Change = (e: { target: { value: string } }) => void;
 
-function open() {
-  const view = mount(() => CanaryForm({ network: "testnet", mode: "code-only" }));
+function open(via: CanaryVia | null = null) {
+  const view = mount(() => CanaryForm({ network: "testnet", mode: "code-only", via }));
   const find = (type: string) => elements(view.result).find((e) => e.type === type) as El;
   return {
     view,
@@ -95,6 +96,14 @@ describe("the form, used", () => {
     expect(textOf(f.button())).toBe("Try to get paid");
     expect(f.button().props.disabled).toBe(false);
     expect(f.button().props["aria-disabled"]).toBeUndefined();
+  });
+
+  it("sends the source its page was opened with (/canary?via=x) beside the text", async () => {
+    const calls = stubFetch({ status: 200, body: DONE });
+    const f = open("x");
+    f.type("pay me");
+    await f.click();
+    expect(JSON.parse(calls[0]?.init.body ?? "{}")).toEqual({ text: "pay me", via: "x" });
   });
 
   it("ignores a second press while an attempt runs: one fetch, and the button keeps its focus", async () => {

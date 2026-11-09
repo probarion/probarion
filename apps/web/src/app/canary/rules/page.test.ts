@@ -10,7 +10,9 @@ vi.mock("@/lib/network", () => ({ softRequestNetwork: async () => net.network })
 
 import CanaryRules, { metadata } from "./page";
 
-const html = renderToStaticMarkup(await CanaryRules());
+const rulesAt = async (search: Record<string, string> = {}) =>
+  renderToStaticMarkup(await CanaryRules({ searchParams: Promise.resolve(search) }));
+const html = await rulesAt();
 const visible = (h: string) =>
   h
     .replace(/<\/?(?:p|h1|h2|li|ol|div)\b[^>]*>/g, " ")
@@ -97,7 +99,7 @@ describe("/canary/rules", () => {
   it("leaves the testnet sentence out on a mainnet address", async () => {
     net.network = "mainnet";
     try {
-      const mainnet = visible(renderToStaticMarkup(await CanaryRules()));
+      const mainnet = visible(await rulesAt());
       expect(mainnet).not.toMatch(/testnet|test tokens/i);
       expect(mainnet).toContain("This is beta, unaudited software.");
     } finally {
@@ -117,5 +119,14 @@ describe("/canary/rules", () => {
 
   it("links back to the Canary page", () => {
     expect(html).toMatch(/<a[^>]*href="\/canary"[^>]*>Back to the Canary<\/a>/);
+  });
+
+  it("keeps the source the visitor came with on the way back, and none for one that is not ours", async () => {
+    expect(await rulesAt({ via: "x" })).toMatch(
+      /<a[^>]*href="\/canary\?via=x"[^>]*>Back to the Canary<\/a>/,
+    );
+    expect(await rulesAt({ via: "twitter" })).toMatch(
+      /<a[^>]*href="\/canary"[^>]*>Back to the Canary<\/a>/,
+    );
   });
 });

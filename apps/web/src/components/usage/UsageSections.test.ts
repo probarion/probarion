@@ -77,8 +77,9 @@ describe("the header", () => {
   it("links the definitions on the page and the Canary, and no page that does not exist", () => {
     const h = head("mainnet");
     expect(h).toMatch(/<a[^>]*href="#definitions"[^>]*>Definitions<\/a>/);
-    expect(h).toMatch(/<a[^>]*href="\/canary"[^>]*>Canary<\/a>/);
-    expect(hrefs(h)).toEqual(["#definitions", "/canary"]);
+    // The link names its source, so the Canary's attempts can be counted by where they came from (site audit P1-17).
+    expect(h).toMatch(/<a[^>]*href="\/canary\?via=usage"[^>]*>Canary<\/a>/);
+    expect(hrefs(h)).toEqual(["#definitions", "/canary?via=usage"]);
   });
 
   it("shows the testnet pill on testnet only, and says testnet", () => {
