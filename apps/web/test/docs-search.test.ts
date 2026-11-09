@@ -447,6 +447,12 @@ describe("the search index", () => {
       expect(first("spend approve")?.codes.split("\n")).toContain("spend approve");
     });
 
+    it("puts the CLI reference first for a whole command, whichever guide runs it", () => {
+      for (const q of ["spend approve", "ledger export", "agent keygen", "vault create"]) {
+        expect(first(q)?.id, q).toBe("build/cli-reference");
+      }
+    });
+
     it("searches the whole page, generated tables included", () => {
       expect(first("TxOutcomeUnknown")?.id).toBe("build/errors");
       expect(first("rate_limited")?.id).toBe("build/errors");

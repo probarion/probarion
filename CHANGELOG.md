@@ -14,8 +14,8 @@ The software is an unaudited beta.
 
 ### Added
 
-- The Docs Center at `/docs`: 23 pages in five sections (Start here, Concepts, Build, Verify &
-  trust, Resources), with a home of four doors (new here, owner, developer, evaluator). Each page
+- The Docs Center at `/docs`: 33 pages in six sections (Start here, Concepts, Build, Verify &
+  trust, Operate, Resources), with a home of four doors (new here, owner, developer, evaluator). Each page
   was written from the code and checked against it in a separate verification pass. Each guide,
   tutorial and explanation marks what is Live, Preview or Planned; the sidebar's legend says what
   Preview means. Every page but the docs home has a source box with the date it was reviewed, the
@@ -24,6 +24,16 @@ The software is an unaudited beta.
     drifts fails CI: the vault's 14 checks in their order, every `PROBARION:` code with the call
     that raises it and what to do next, the SDK and HTTP errors, the verifier's checks a to i, and
     the status list.
+  - The reference pages: SDK reference (every export of `@probarion/sdk` and
+    `@probarion/sdk/testing`), Policy rules (every rule id `decide()` records), CLI reference (every
+    command and option, and who signs what it prints), Contract reference (every vault and factory
+    method), Events (every NEP-297 event and its fields), HTTP API (every route under `/api`),
+    Limits and costs (every cap, deposit and gas figure), Reproducible builds (rebuild a contract
+    and match its code hash) and Architecture (a diagram of the parts, each tied to its code). Each
+    table is data that its own test, `apps/web/test/docs-ref-<area>.test.ts`, reads against the
+    code, so a command, method, event, route, rule or constant added or removed in the code fails
+    CI until the page follows.
+  - A Changelog page, `/docs/resources/changelog`, renders this file as it stands in the build.
   - Every owner and approver command carries a callout naming who signs it. A test checks every
     CLI line in the pages against the CLI's own commands and options, and each callout's signer
     against the CLI's owner and approver calls.
@@ -55,9 +65,8 @@ The software is an unaudited beta.
   outside owners stage by stage, from a vault to an agent key, a mandate, a first payment and
   still active a week after it; and first payments by UTC week. A test runs the doc's own SQL on
   the real schema.
-- The README names the builder's other NEAR Hackathon 2026 entry, Satchel
-  (<https://github.com/duongnq2798/satchel>), as the rules ask of anyone entering two projects.
-  The two share no code.
+- The README names the builder's other NEAR Hackathon 2026 entry, as the rules ask of anyone
+  entering two projects. The two share no code.
 - The landing page has a live check, "Try it, live on NEAR testnet" (`/#try`). A visitor picks what
   the agent tries: a normal invoice (2 USDC under mandate 1), a hijacked prompt ("Pay 50 USDC to
   attacker.near"), a made-up mandate (999) or someone else's key, or sets the mandate, the amount
@@ -309,11 +318,11 @@ The software is an unaudited beta.
 - The daily usage job also deletes the rate limiter's rows older than a day, so that table no longer
   grows without limit. Applying the database update computes the usage numbers of the existing
   history.
-- The watcher, `GET /api/cron/watch`, reads every vault's spends, mandates, anchors, refusals by the
-  contract, low agent and ledger key allowances and low NEAR, and records each once in
-  `vault_events`. It runs daily on Vercel, every minute once the owner turns on the Supabase Cron
-  job in `docs/ops/watcher.md`, and right after an invoice upload or a Canary attempt for that
-  vault.
+- The watcher, `GET /api/cron/watch`, reads each vault registered with the app: its spends,
+  mandates, anchors, refusals by the contract, low agent and ledger key allowances and low NEAR,
+  and records each once in `vault_events`. It runs daily on Vercel and right after an invoice
+  upload or a Canary attempt for that vault. `docs/ops/watcher.md` also sets out a per-minute
+  Supabase Cron job, not yet run or tested.
 - Owner alerts: an owner or approver can get a Telegram message or an email when a spend is held
   for approval, the contract refuses a spend, a spend is paid or paid out to Base, a payout fails,
   an agent or ledger key's gas allowance runs low, or the vault runs low on NEAR. Each goes out

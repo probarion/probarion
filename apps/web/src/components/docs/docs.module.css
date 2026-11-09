@@ -1513,3 +1513,71 @@ section.source code {
     background: CanvasText;
   }
 }
+
+/* The architecture diagram (ArchitectureDiagram.tsx): an inline SVG that scales with the column. */
+.arch {
+  margin: 1.6em 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-paper);
+}
+.arch svg {
+  display: block;
+  width: 100%;
+  min-width: 640px;
+  height: auto;
+}
+/* Below 640px the labels would shrink past reading size, so the diagram scrolls instead. */
+.archScroll {
+  overflow-x: auto;
+}
+.archScroll:focus-visible {
+  outline: 2px solid var(--color-gold-small);
+  outline-offset: 2px;
+}
+.archNode rect {
+  fill: var(--color-surface);
+  stroke: var(--color-line);
+  stroke-width: 1.5;
+}
+.archNode[data-group="people"] rect {
+  fill: var(--color-gold-pale);
+  stroke: var(--color-gold-deep);
+}
+.archNode[data-group="chain"] rect {
+  fill: var(--color-ink);
+  stroke: var(--color-ink);
+}
+.archNode[data-group="outside"] rect {
+  fill: var(--color-soft);
+  stroke-dasharray: 5 4;
+}
+.archLabel {
+  fill: var(--color-ink);
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+.archDetail {
+  fill: var(--color-ink);
+  font-family: var(--font-mono);
+}
+.archNode[data-group="chain"] .archLabel,
+.archNode[data-group="chain"] .archDetail {
+  fill: var(--color-paper);
+}
+.archEdge {
+  stroke: var(--color-mute);
+  stroke-width: 1.5;
+}
+.archHead {
+  fill: var(--color-mute);
+}
+.archEdgeLabel {
+  fill: var(--color-ink);
+  font-family: var(--font-mono);
+  paint-order: stroke;
+  stroke: var(--color-paper);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}

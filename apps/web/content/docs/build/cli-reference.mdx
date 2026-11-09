@@ -1,0 +1,147 @@
+The `probarion` CLI dry-runs a spend, verifies a vault, exports the ledger, generates keys and prints the transactions that a vault's owner and approvers sign. It signs nothing itself: for each owner or approver call it checks your input against the contract's rules, writes the arguments to a file and prints the near-cli-rs command for that person to sign. The tables below list every command and option of the CLI, version 0.1.0, as `packages/cli/src/program.ts` builds it, and a test fails when the code gains or loses a command or an option that they do not list.
+
+## How to read the tables
+
+Each table holds one command group, and each row one command. A row's anchor is its command with `cli-` in front and hyphens for spaces: `vault create` is at [`#cli-vault-create`](#cli-vault-create).
+
+- **Command** is what follows the program name. Only `help` takes a positional argument, the command whose help it prints: every other input is an option. In your own project folder, run a command as `npx probarion vault create ...`, or as `probarion vault create ...` after `npm install -g probarion`. In a clone of the repository, run the CLI the clone builds, as `node packages/cli/dist/bin.js vault create ...`. [Install the packages](/docs/build/install) has both.
+- **Options** lists every option of the command, spelled as the CLI's help spells it. "(required)" means the command stops with an error without that option. "(default `x`)" is the value the option takes when you leave it out. Every command but `help` also takes `--help`.
+- **Who signs** names the account whose wallet signs the printed near-cli-rs command, with the prepaid gas and the deposit that command attaches. "Nothing" means the command prints no transaction.
+
+The placeholders in the options mean:
+
+- `<usdc>`: an amount in USDC with up to 6 decimals, so `--amount 25` is 25 USDC.
+- `<near>`: an amount in NEAR with up to 24 decimals.
+- `<id>`: after `--vault`, a NEAR account id. After `--mandate` or `--spend`, a whole number: ids start at 1.
+- `<pk>`: an ed25519 public key, written `ed25519:...`.
+- `<account>`: a NEAR account id. `<list>`: account ids separated by commas.
+
+Three options recur. `--vault <id>` falls back to `PROBARION_VAULT_ID`, and every command that has the option needs one of the two, except `verify --offline`, which refuses it. `--sign-as <account>` writes the signer into the printed command. Without it, the command holds a placeholder such as `<owner-account-id>`, which the shell refuses as pasted. `--out-dir <dir>` is the folder for the arguments file. [Configure](/docs/build/install#configure) lists every environment variable the CLI reads.
+
+## Program options
+
+These options belong to the program, not to one command, so each appears here and in no command row. They can come before the command words, as in `npx probarion --network testnet vault freeze --vault <vault>`, or after them. Only NEAR testnet is live today, and the mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+<RefTable id="cli-program-options" />
+
+## What a signing command prints
+
+<Callout kind="owner-signs">
+
+The command in this section prints a call for the owner to sign. Review the arguments file and its sha256 first, then sign with your own wallet, keychain or Ledger.
+
+</Callout>
+
+Run in your own project folder, this command prints the `revoke_mandate` call for mandate 1 of an illustrative testnet vault. It reads nothing from the chain, and it writes the arguments file into the folder:
+
+```bash
+npx probarion --network testnet mandate revoke --vault acme.vaults.probarion.testnet --mandate 1
+```
+
+```text
+OWNER SIGNS: probarion never signs owner or approver transactions. Review the arguments, then sign with your own wallet or near-cli-rs:
+
+near contract call-function as-transaction acme.vaults.probarion.testnet revoke_mandate file-args ./revoke_mandate.0a38f6055d2b.args.json prepaid-gas '30.0 Tgas' attached-deposit '1 yoctoNEAR' sign-as <owner-account-id> network-config testnet sign-with-keychain send
+sha256 of the args file: 0a38f6055d2b1a7cf20555fde86bb075f5aee4957da14266e1982f4ed8200069  (check: sha256sum ./revoke_mandate.0a38f6055d2b.args.json, or Get-FileHash -Algorithm SHA256 ./revoke_mandate.0a38f6055d2b.args.json in PowerShell)
+Run it in bash, zsh or PowerShell (not cmd.exe).
+
+revoke_mandate arguments (./revoke_mandate.0a38f6055d2b.args.json):
+{
+  "mandate_id": 1
+}
+
+Pending spends keep their reservation until they settle or fail; approve then refuses with MandateInactive.
+
+With a Ledger hardware wallet, replace `sign-with-keychain send` with `sign-with-ledger usb send`.
+```
+
+Every command that prints a call prints these parts:
+
+- **Who signs.** The first line starts with `OWNER SIGNS` or, for `spend approve` and `spend reject`, `APPROVER SIGNS`.
+- **The arguments file**, named `<method>.<the first 12 hex of its sha256>.args.json`. The name follows the content, so a command you printed earlier keeps pointing at the arguments you reviewed. The CLI refuses to print over a file of that name whose content differs.
+- **The sha256 of that file**, to check before you sign, with `sha256sum` or, in PowerShell, `Get-FileHash`.
+- **The near-cli-rs command.** It ends with `sign-with-keychain send`, and runs in bash, zsh or PowerShell, not in cmd.exe.
+- **A note** on what the call does once signed, from the same rules as the table's "What it does".
+
+Before it prints, the CLI checks your input against the contract's rules. An input it refuses stops it with `error:` on stderr and exit code 1, and it writes no file.
+
+## Vault commands
+
+<Callout kind="owner-signs">
+
+Every vault command prints a call the owner signs. [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) explains the owner's role.
+
+</Callout>
+
+<RefTable id="cli-commands-vault" />
+
+## Mandate commands
+
+<Callout kind="owner-signs">
+
+Both mandate commands print a call the owner signs. A mandate has no edit call: to change one, revoke it and create a new one. [Mandates](/docs/concepts/mandates) explains each limit.
+
+</Callout>
+
+<RefTable id="cli-commands-mandate" />
+
+## Agent commands
+
+<Callout kind="owner-signs">
+
+`agent add` and `agent remove` print a call the owner signs. [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) explains the agent key.
+
+</Callout>
+
+<RefTable id="cli-commands-agent" />
+
+## Ledger commands
+
+<Callout kind="owner-signs">
+
+`ledger set-key` prints a call the owner signs. [The ledger and anchors](/docs/concepts/ledger-and-anchors) explains what the ledger key signs.
+
+</Callout>
+
+<RefTable id="cli-commands-ledger" />
+
+## Spend commands
+
+<Callout kind="approver-signs">
+
+`spend approve` and `spend reject` print a call for an account in the vault's approver list to sign. The list decides, not the owner role: the owner can approve only when the list names it. One approver's call is enough. [Find the held spend](/docs/concepts/holds-and-approvals#find-the-held-spend) shows how to get the id that `--spend` takes.
+
+</Callout>
+
+<RefTable id="cli-commands-spend" />
+
+## The check command
+
+`check` is the dry run of a spend: it asks the vault whether its own spend checks would pass. [How a payment is checked](/docs/concepts/payment-checks) lists the checks, and [Errors](/docs/build/errors) explains each `PROBARION:<Code>` it can print.
+
+<RefTable id="cli-commands-check" />
+
+## The verify command
+
+`verify` runs the verifier's nine checks against the chain, or against a saved snapshot. [Verifier checks a to i](/docs/trust/verifier-checks) says what each check proves, and [Verify a vault yourself](/docs/trust/verify-a-vault) walks through a run on a live vault.
+
+<RefTable id="cli-commands-verify" />
+
+## The help command
+
+Commander, the CLI's argument parser, adds `help` to the program and to each command group on its own: no file in `packages/cli/src/commands` defines it.
+
+<RefTable id="cli-commands-help" />
+
+## Exit codes
+
+`check` and `verify` give their result as the exit code, so a usage error of theirs exits 64 rather than 1, and a script can tell a refusal or a failed check from a mistyped flag.
+
+<RefTable id="cli-exit-codes" />
+
+## What the tables do not cover
+
+- **The calls themselves.** The contract methods behind each printed call, with their arguments and the checks they run, are on [Contract reference](/docs/build/contract-reference). The vault's own limits, such as its 10 approvers and 16 agent keys, are on [Limits and costs](/docs/build/limits-and-costs).
+- **The meaning of a result.** A refusal code is on [Errors](/docs/build/errors), and a verifier row on [Verifier checks a to i](/docs/trust/verifier-checks).
+- **The CLI as a library.** The `probarion` package also exports `runCli` and `buildProgram`, which this page does not document. Code that pays from an agent uses the SDK: see [SDK reference](/docs/build/sdk-reference).
+- **Signing.** The CLI never runs near-cli-rs. You sign with your own wallet, and nothing the CLI prints is sent until you run it.
