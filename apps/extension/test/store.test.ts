@@ -22,6 +22,17 @@ describe("the store pack", () => {
     }
   });
 
+  it("ends the manual checklist by disconnecting, which ends the token", () => {
+    const items = read("TESTING.md")
+      .split(/^- \[ \] /m)
+      .slice(1);
+    expect(items.length).toBeGreaterThan(10);
+    expect(items.at(-1)).toMatch(/Disconnect/);
+    // The offline step needs a connection that is still live, so it comes before the step that expires one.
+    const at = (text: RegExp) => items.findIndex((i) => text.test(i));
+    expect(at(/Stop `next dev`/)).toBeLessThan(at(/`expires_at` in the past/));
+  });
+
   it("gives commands a shell can run: no && for Windows PowerShell 5.1", () => {
     for (const path of ["README.md", "TESTING.md", "store/README.md"]) {
       const lines = read(path)

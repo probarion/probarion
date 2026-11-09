@@ -19,15 +19,16 @@ build also trusts localhost, so do not upload it.
 
 ## Try it
 
-It needs a vault and a mandate on NEAR testnet; the console's first-run checklist makes both, with test USDC that
-has no value.
+It needs a vault and a mandate on NEAR testnet. The console's "Your first agent payment" card walks you through
+making both (the vault, its keys, test USDC and a mandate); the test USDC has no value.
 
 1. Click the Probarion icon, set **Probarion address** to `probarion.vercel.app`, then press **Connect**. Sign in on
    the page that opens with a NEAR testnet wallet, and press **Connect extension**. The page says "Connected. You
    can close this tab." (These steps use `probarion.vercel.app` because it serves NEAR testnet. `probarion.xyz` is
    the main address and will serve NEAR mainnet once mainnet opens.)
 2. Open https://probarion.vercel.app/samples/probarion-sample-invoice.txt, select its text, right-click, and choose
-   **Send selection as invoice text**. The popup opens with the text.
+   **Send selection as invoice text**. The popup opens with the text. (If Chrome does not open it, the badge on the
+   icon shows `+`: click the icon.)
 3. Choose the vault and the mandate and press **Send to Probarion**. You see "Queued. It waits for your
    confirmation." (A second send of the same text says it is already queued.)
 4. Press **Open**: the invoice waits in the console for your wallet-signed **Confirm**. The extension can't pay.
