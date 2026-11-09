@@ -184,7 +184,7 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-left text-sm [&_td]:pr-4 [&_th]:pr-4 [&_th]:pb-2 [&_th]:whitespace-nowrap">
               <thead>
                 <tr className="border-b border-line">
                   <th>#</th>

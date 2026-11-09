@@ -317,6 +317,20 @@ describe("mandates page guard (requireMember)", () => {
   });
 });
 
+describe("mandates page: layout", () => {
+  it("gives every column room, so no two headers run together", async () => {
+    chain({ mandates: [mandate()] });
+    await signInAs("acme.near");
+    const out = await html();
+    const table = out.match(/<table class="([^"]*)"/)?.[1] ?? "";
+    // Every header and cell keeps a gap on its right, and a header stays on one line.
+    expect(table).toMatch(/\[&amp;_th\]:pr-[1-9]/);
+    expect(table).toMatch(/\[&amp;_td\]:pr-[1-9]/);
+    expect(table).toContain("[&amp;_th]:whitespace-nowrap");
+    expect(out).toContain("<th>Payments</th><th>Expires</th>");
+  });
+});
+
 describe("mandates page: honest status", () => {
   it("shows expired and revoked as such, and offers Revoke only where it can still act", async () => {
     chain({
