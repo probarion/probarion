@@ -387,6 +387,13 @@ The software is an unaudited beta.
   `/#verify`, and its "NEAR technology used, and how" table adds NEP-297 events, near-workspaces
   and cargo-near and says what is not tried live yet: an intents payout with a live quote and an
   attested NEAR AI Cloud decision.
+- The site writes its CLI commands as `npx probarion …` now that 0.1.0 is on npm: the landing, the
+  proof page, /security and the console's CLI fallback, under one line saying that npx needs Node
+  24 and asks once before it downloads the package, with no set-up. A mainnet pre-ledger check on
+  the proof page also reads the repository's evidence files, so for it the page says to
+  `git clone` the repository first. The root `package.json` is renamed `probarion-monorepo`, so
+  `npx probarion` also runs at the root of a clone. The README's offline verify step and the deploy
+  runbook's smoke step 7 use `npx probarion`, and the install page says so.
 - The READMEs of `@probarion/core`, `@probarion/sdk` and the `probarion` CLI install from npm
   (`npm install @probarion/core`, `npm install @probarion/sdk @probarion/core`, `npm install -g probarion`
   or `npx probarion`) and keep the steps to build from a clone. These are the pages npm shows for

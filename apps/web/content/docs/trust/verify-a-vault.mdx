@@ -104,6 +104,8 @@ The last line builds the CLI together with `@probarion/core` and `@probarion/sdk
    node packages/cli/dist/bin.js verify --offline probarion-<vault>-snapshot.json
    ```
 
+   The proof page prints the same command as `npx probarion verify --offline <file>`, which runs release 0.1.0 from npm in any folder that holds the file, with no clone.
+
    The report prints when the snapshot was taken. If it is the time the page shows after "snapshot taken", it is the very snapshot the page's checks used.
 
    Second, live: the page's ledger link saves `probarion-<vault>-ledger.jsonl`, the vault's signed ledger. Download it into the `probarion` folder just before you run the command (replace any earlier copy, and fetch it again if the vault has acted since). This run reads the chain half again instead of trusting the file:

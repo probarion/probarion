@@ -8,7 +8,7 @@ import { MDX_COMPONENT_NAMES } from "@/lib/docs/markdown";
 import { attrOf, childrenOf, jsxNodes, parseMdx } from "@/lib/docs/mdast";
 import { findPage, PAGES, pageFile, sectionOf } from "@/lib/docs/registry";
 import { pageMarkdown } from "@/lib/docs/twins";
-import { CLI_ON_NPM, CLI_SETUP_LINES } from "@/lib/proof/cli";
+import { CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 import { appRoutes, hrefResolves, linksIn, publicPaths } from "./deploy-scan";
 import { ROOT, readMdx, WEB, walkFiles } from "./docs-helpers";
 
@@ -274,10 +274,14 @@ describe("copy rules", () => {
     expect(npmInstallProblems("npm install\n")).toHaveLength(1);
   });
 
-  it("say what the site prints: the clone setup, while CLI_ON_NPM is false", () => {
+  it("say what the site prints: npx probarion, while CLI_ON_NPM is true", () => {
     // build/install says the proof page, the security page and the console's CLI fallback print
-    // the clone setup. When CLI_ON_NPM flips, rewrite that note first, then this line.
-    expect(CLI_ON_NPM).toBe(false);
+    // `npx probarion` commands. When CLI_ON_NPM flips back, rewrite that note first, then this test.
+    expect(CLI_ON_NPM).toBe(true);
+    expect(cli("verify --offline x.json")).toBe("npx probarion verify --offline x.json");
+    expect(readMdx("build/install")).toContain(
+      "The proof page, the security page and the console's CLI fallback need none of this: they print `npx probarion` commands.",
+    );
   });
 });
 

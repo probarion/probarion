@@ -57,7 +57,7 @@ Or run it without installing, from your project's folder, as `npx probarion` fol
 npx probarion --help
 ```
 
-Run `npx probarion` outside a clone of the repository: the clone's root `package.json` is also named `probarion` and has no bin, so at the root of a clone npx cannot find the command. Inside a clone, run the CLI it builds, `node packages/cli/dist/bin.js`, as the rest of this page does.
+`npx probarion` also runs at the root of a clone, whose own `package.json` is named `probarion-monorepo`. There it runs release 0.1.0 from npm, not the code in the clone. To run the CLI a clone builds, use `node packages/cli/dist/bin.js`, as the rest of this page does.
 
 The CLI's commands are the same however you run it: `probarion verify --help` from npm is `node packages/cli/dist/bin.js verify --help` in a clone. To sign what the CLI prints, you also need `near-cli-rs`, the `near` command.
 
@@ -86,7 +86,7 @@ The CLI's commands are the same however you run it: `probarion verify --help` fr
 
    </CodeTabs>
 
-   "Packages only" is the setup the proof page, the security page and the console's CLI fallback print. It clones the repository, installs, and builds the CLI together with the packages it depends on, `@probarion/core` and `@probarion/sdk`, in build order. "Everything" is the build from the repository README. It installs exactly what the committed lockfile names, and its `pnpm build` builds every package of the workspace, the Next.js website in `apps/web` included. The README timed that route at about three and a half minutes on a first install: 2 min 42 s to install, 34 s to build.
+   "Packages only" clones the repository, installs, and builds the CLI together with the packages it depends on, `@probarion/core` and `@probarion/sdk`, in build order. The proof page, the security page and the console's CLI fallback need none of this: they print `npx probarion` commands. Only a mainnet pre-ledger check on the proof page also reads the repository's evidence files, so for it the page says to clone the repository first. "Everything" is the build from the repository README. It installs exactly what the committed lockfile names, and its `pnpm build` builds every package of the workspace, the Next.js website in `apps/web` included. The README timed that route at about three and a half minutes on a first install: 2 min 42 s to install, 34 s to build.
 
 3. **Update an older clone.** The CLI and your scripts run the built files in each `dist` folder, which change only when you build. In the `probarion` folder, pull, install and run the build line again (`pnpm build` instead, if you used the "Everything" tab):
 
@@ -242,7 +242,7 @@ Only NEAR testnet is live today, and the mainnet vault is Planned: see [Testnet 
 - **An engines or version error during the install.** The packages need Node 24 or newer, and a build from source needs pnpm 10 too. Check `node --version` and `pnpm --version`.
 - **A script cannot load the packages.** There is no CommonJS build. Load them with `import` from an ES module: an `.mjs` file, or a `.js` file under a `package.json` that sets `"type": "module"`, as the root of the clone does.
 - **TypeScript cannot find `@probarion/sdk/testing`.** Set `"moduleResolution"` to `"NodeNext"` or `"Bundler"` in your `tsconfig.json`.
-- **`npx probarion` answers "could not determine executable to run".** It ran at the root of a clone, whose own `package.json` is also named `probarion`. Run it from your project's folder, or, in the clone, run `node packages/cli/dist/bin.js`.
+- **`npx probarion` answers "could not determine executable to run".** It ran at the root of an older clone, whose own `package.json` was still named `probarion`. Run `git pull` in the clone, run it from your project's folder, or, in the clone, run `node packages/cli/dist/bin.js`.
 - **Node cannot find `packages/cli/dist/bin.js`.** Run the CLI from the root of the clone, after the build line. The `dist` folders exist only after a build.
 - **The build takes long.** `pnpm build` builds the website too. For the SDK and the CLI alone, run `pnpm --filter "{packages/cli}..." build`.
 - **An older clone acts on old code.** Pull, then run `pnpm install` and the build line again, as in step 3 of the build.
