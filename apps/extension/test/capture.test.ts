@@ -137,6 +137,36 @@ describe("a PDF behind an address", () => {
     expect(f.calls[0]?.init?.credentials).toBe("include");
   });
 
+  /** A Response as fetch hands it after a redirect: its address is the final one. */
+  const redirected = (to: string, init: ResponseInit = {}) => {
+    const res = new Response(PDF, init);
+    Object.defineProperty(res, "url", { value: to });
+    Object.defineProperty(res, "redirected", { value: true });
+    return res;
+  };
+  const asPdf = { headers: { "content-type": "application/pdf" } };
+
+  it.each([
+    ["another site", "https://probarion.xyz/console/acme.vault.testnet/payables/x.pdf"],
+    ["another address of the same site", "https://cdn.billing.example/files/7.pdf"],
+    ["the same host on another scheme", "http://billing.example/files/7.pdf"],
+    ["no address at all", ""],
+  ])("refuses a file a redirect brought from %s", async (_name, to) => {
+    const f = fetchOf(() => redirected(to, asPdf));
+    expect(await captureUrl("https://billing.example/files/7.pdf", f.fetch)).toEqual({
+      ok: false,
+      text: LINK_ELSEWHERE,
+    });
+  });
+
+  it("takes a file a redirect brought from another path of the same site", async () => {
+    const f = fetchOf(() => redirected("https://billing.example/store/7.pdf", asPdf));
+    expect(await captureUrl("https://billing.example/files/7.pdf", f.fetch)).toMatchObject({
+      ok: true,
+      item: { name: "7.pdf", type: "application/pdf" },
+    });
+  });
+
   it("is read by its bytes, whatever the server calls it", async () => {
     const f = fetchOf(
       () => new Response(PDF, { headers: { "content-type": "application/octet-stream" } }),

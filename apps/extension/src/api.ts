@@ -102,8 +102,8 @@ const VAULT_CODE_TEXT: Record<string, string> = {
   OverPerPayment: "the invoice is more than the mandate allows per payment.",
   OverMandateTotal: "the invoice is more than what is left of the mandate's total.",
   UsesExhausted: "the mandate has no payments left.",
-  DuplicateInvoice: "the vault already has a payment for this invoice.",
-  DuplicateRef: "the vault already has a payment for this invoice.",
+  DuplicateInvoice: "the vault already paid this invoice or is holding a payment for it.",
+  DuplicateRef: "the vault already paid this invoice or is holding a payment for it.",
   OverDailyBackstop: "paying it would pass the vault's daily limit.",
   MandateExpired: "the mandate has expired.",
   MandateInactive: "the mandate is no longer active.",
@@ -172,12 +172,26 @@ export function messageFor(
   }
 }
 
+const parseJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * One request. Answers with the JSON body of a 2xx, or null when that body isn't JSON (a 204 has none). The timeout
+ * covers the body too, so the body is read here: one that breaks off or outlasts the timeout is a request that did not
+ * get through ("Couldn't reach Probarion"), not a list this version can't read. An error status still says what it
+ * says, whether or not its body arrived.
+ */
 async function call(
   fetchFn: Fetch,
   url: string,
   init: RequestInit,
   timeoutMs: number,
-): Promise<Response> {
+): Promise<unknown> {
   let res: Response;
   try {
     res = await fetchFn(url, {
@@ -190,8 +204,17 @@ async function call(
   } catch {
     throw new ApiError(0, "offline", OFFLINE);
   }
-  if (res.ok) return res;
-  const body: unknown = await res.json().catch(() => null);
+  let text: string | null;
+  try {
+    text = await res.text();
+  } catch {
+    text = null;
+  }
+  if (res.ok) {
+    if (text === null) throw new ApiError(0, "offline", OFFLINE);
+    return parseJson(text);
+  }
+  const body = text === null ? null : parseJson(text);
   const code = typeof field(body, "error") === "string" ? (field(body, "error") as string) : "";
   throw new ApiError(
     res.status,
@@ -336,7 +359,7 @@ export function api(origin: string, fetchFn: Fetch) {
   return {
     /** The pairing-code fallback. No token: the code is the credential. */
     async pair(code: string, label: string): Promise<Paired> {
-      const res = await call(
+      const body = await call(
         fetchFn,
         at("/api/ext/pair"),
         {
@@ -346,11 +369,11 @@ export function api(origin: string, fetchFn: Fetch) {
         },
         15_000,
       );
-      return readPaired(await res.json().catch(() => null));
+      return readPaired(body);
     },
     async inbox(token: string): Promise<Inbox> {
-      const res = await call(fetchFn, at("/api/ext/inbox"), { headers: bearer(token) }, 30_000);
-      return readInbox(await res.json().catch(() => null), origin);
+      const body = await call(fetchFn, at("/api/ext/inbox"), { headers: bearer(token) }, 30_000);
+      return readInbox(body, origin);
     },
     /** Queues the invoice. The server's limit is 60 s; the client waits a little longer before it says "Retry". */
     async sendInvoice(
@@ -361,13 +384,13 @@ export function api(origin: string, fetchFn: Fetch) {
       form.set("vault", i.vault);
       form.set("mandate", String(i.mandate));
       form.set("file", i.file, i.name);
-      const res = await call(
+      const body = await call(
         fetchFn,
         at("/api/ext/invoices"),
         { method: "POST", headers: bearer(token), body: form },
         70_000,
       );
-      return readSent(await res.json().catch(() => null), origin);
+      return readSent(body, origin);
     },
     async revoke(token: string): Promise<void> {
       await call(

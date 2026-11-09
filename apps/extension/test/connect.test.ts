@@ -8,7 +8,7 @@ import {
   newNonce,
   readConnectMessage,
 } from "../src/connect";
-import { NOW, ORIGIN, TOKEN } from "./helpers";
+import { NOW, ORIGIN, OTHER_ORIGIN, TOKEN } from "./helpers";
 
 const good = {
   type: "probarion:connect",
@@ -82,6 +82,8 @@ describe("where the message came from", () => {
     expect(fromOwnPage({ source: {}, origin: ORIGIN }, win)).toBe(false);
     expect(fromOwnPage({ source: null, origin: ORIGIN }, win)).toBe(false);
     expect(fromOwnPage({ source: win, origin: "https://evil.example" }, win)).toBe(false);
+    // This very window, but the message names another Probarion address: not the window's own page.
+    expect(fromOwnPage({ source: win, origin: OTHER_ORIGIN }, win)).toBe(false);
     const evil = { location: { origin: "https://evil.example" } };
     expect(fromOwnPage({ source: evil, origin: "https://evil.example" }, evil)).toBe(false);
   });

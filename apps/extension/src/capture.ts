@@ -188,8 +188,9 @@ function lastPart(u: URL): string {
 
 /**
  * The file at a web address: the PDF in the tab, or the target of a right-clicked link. It is fetched with the
- * person's own cookies for that site, as their tab loaded it. A PDF is known by its first bytes, whatever the server
- * calls it; a text file by its text/plain type.
+ * person's own cookies for that site, as their tab loaded it, and only a file that came from that same origin is kept
+ * (a redirect to another address is refused). A PDF is known by its first bytes, whatever the server calls it; a text
+ * file by its text/plain type.
  */
 export async function captureUrl(url: string, fetchFn: Fetch): Promise<CaptureResult> {
   let u: URL;
@@ -205,6 +206,20 @@ export async function captureUrl(url: string, fetchFn: Fetch): Promise<CaptureRe
     res = await fetchFn(u.href, { credentials: "include", signal: AbortSignal.timeout(25_000) });
   } catch {
     return { ok: false, text: LINK_ELSEWHERE };
+  }
+  // The request carries the person's cookies for this site, and a redirect can send it elsewhere (to another Probarion
+  // address, say). The file counts only if it came from the address that was asked for: its origin is the page's.
+  if (res.redirected || res.url !== "") {
+    let landed = "";
+    try {
+      landed = new URL(res.url).origin;
+    } catch {
+      // no final address to trust
+    }
+    if (landed !== u.origin) {
+      await res.body?.cancel().catch(() => {});
+      return { ok: false, text: LINK_ELSEWHERE };
+    }
   }
   if (!res.ok) {
     await res.body?.cancel().catch(() => {});

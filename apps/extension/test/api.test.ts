@@ -30,12 +30,47 @@ describe("each request", () => {
     expect(call?.url).toBe(`${ORIGIN}/api/ext/inbox`);
     expect(call?.init?.credentials).toBe("omit");
     expect(call?.init?.redirect).toBe("error");
+    expect(call?.init?.cache).toBe("no-store");
     expect(new Headers(call?.init?.headers).get("authorization")).toBe(`Bearer ${TOKEN}`);
   });
 
   it("says Probarion can't be reached when the request doesn't get through", async () => {
     const e = await failure(api(ORIGIN, offline).inbox(TOKEN));
     expect([e.status, e.code, e.message]).toEqual([0, "offline", OFFLINE]);
+  });
+});
+
+describe("an answer whose body breaks off", () => {
+  /** A 200 whose body ends in a network error, as when the connection drops or the timeout passes mid-body. */
+  const broken = (status = 200) =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(ctl) {
+          ctl.error(new TypeError("network reset"));
+        },
+      }),
+      { status, headers: { "content-type": "application/json" } },
+    );
+  const send = (a: ReturnType<typeof api>) =>
+    a.sendInvoice(TOKEN, { vault: "v.testnet", mandate: 3, file: new Blob([PDF]), name: "a.pdf" });
+
+  it.each<[string, (a: ReturnType<typeof api>) => Promise<unknown>]>([
+    ["the inbox", (a) => a.inbox(TOKEN)],
+    ["a pairing", (a) => a.pair("K7QM-4XRA", "Chrome")],
+    ["a sent invoice", send],
+  ])("is Couldn't reach Probarion, not an unreadable answer, for %s", async (_name, call) => {
+    const e = await failure(call(api(ORIGIN, fetchOf(() => broken()).fetch)));
+    expect([e.status, e.code, e.message]).toEqual([0, "offline", OFFLINE]);
+  });
+
+  it("still says what an error status says", async () => {
+    const e = await failure(api(ORIGIN, fetchOf(() => broken(401)).fetch).inbox(TOKEN));
+    expect([e.status, e.message]).toEqual([401, RECONNECT]);
+  });
+
+  it("is an unreadable answer only when the body arrived and isn't what this version reads", async () => {
+    const f = fetchOf(() => new Response("<html>", { status: 200 }));
+    expect((await failure(api(ORIGIN, f.fetch).inbox(TOKEN))).code).toBe("bad_answer");
   });
 });
 
@@ -157,7 +192,13 @@ describe("each failure", () => {
       422,
       "refused_by_code",
       "the vault would refuse this payment now (DuplicateInvoice)",
-      "Probarion's rules refused it: the vault already has a payment for this invoice.",
+      "Probarion's rules refused it: the vault already paid this invoice or is holding a payment for it.",
+    ],
+    [
+      422,
+      "refused_by_code",
+      "the vault would refuse this payment now (DuplicateRef)",
+      "Probarion's rules refused it: the vault already paid this invoice or is holding a payment for it.",
     ],
     [
       422,
@@ -222,6 +263,18 @@ describe("each failure", () => {
     );
     expect((await failure(api(ORIGIN, f.fetch).inbox(TOKEN))).message).toBe(
       "Too many requests. Try again in 42 s",
+    );
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ["no Retry-After", {}],
+    ["a Retry-After that is a date", { "Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT" }],
+    ["a Retry-After with a sign", { "Retry-After": "-5" }],
+    ["a Retry-After of six digits", { "Retry-After": "999999" }],
+  ])("says 60 s after too many requests with %s", async (_name, headers) => {
+    const f = fetchOf(() => problem(429, "rate_limited", "Try again later", headers));
+    expect((await failure(api(ORIGIN, f.fetch).inbox(TOKEN))).message).toBe(
+      "Too many requests. Try again in 60 s",
     );
   });
 
