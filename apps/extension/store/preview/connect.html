@@ -22,71 +22,104 @@
       }
       main {
         width: 760px;
-        margin: 56px auto 0;
+        margin: 44px auto 0;
       }
       h1 {
         margin: 0 0 8px;
         font-size: 30px;
       }
       .lead {
-        margin: 0 0 28px;
+        margin: 0 0 24px;
         color: #5f5c55;
-        font-size: 17px;
+        font-size: 16px;
         line-height: 1.5;
       }
       .card {
         margin-bottom: 20px;
-        padding: 22px 26px;
+        padding: 24px 28px;
         border: 1px solid #e2dfd6;
-        border-radius: 10px;
+        border-radius: 24px;
         background: #ffffff;
       }
       .card h2 {
+        margin: 0 0 14px;
+        font-size: 22px;
+        font-weight: 300;
+      }
+      p {
         margin: 0 0 12px;
-        font-size: 17px;
+        font-size: 15px;
       }
       .mono {
         font-family: ui-monospace, Consolas, monospace;
       }
+      .small {
+        display: block;
+        color: #5f5c55;
+        font-size: 13px;
+      }
       button {
-        margin: 12px 10px 0 0;
-        padding: 9px 16px;
+        padding: 9px 18px;
         border: 1px solid #0b0b0c;
-        border-radius: 8px;
+        border-radius: 999px;
         background: #0b0b0c;
         color: #f7f6f3;
         font: 600 15px "Segoe UI", system-ui, sans-serif;
       }
-      button.plain {
+      button.revoke {
+        border-color: #cf8a80;
         background: #ffffff;
-        color: #0b0b0c;
+        color: #a32a1c;
       }
       .good {
         margin-top: 16px;
-        padding: 10px 14px;
-        border-radius: 8px;
+        padding: 12px 16px;
+        border-radius: 16px;
         background: #e2f1e8;
         color: #17693f;
+        font-size: 15px;
+      }
+      .browser {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        font-size: 15px;
       }
     </style>
   </head>
   <body>
+    <!--
+      The words are the Browser extension page's own (apps/web: app/extension/page.tsx, ConnectPanel.tsx and
+      ConnectedBrowsers.tsx), in the state it shows right after Connect extension took: the button is replaced by the
+      sentence about connecting again, the green notice is on, and the list is the one the page loaded with, so it
+      holds a browser connected earlier. The page's "not released yet" notice is left out: the change that releases
+      the extension removes it, and the store upload comes after. Render again if those words change.
+    -->
     <header><img src="../../static/icons/32.png" alt="" width="24" height="24" />Probarion</header>
     <main>
       <h1>Browser extension</h1>
       <p class="lead">
-        The extension queues invoices for your confirmation and shows what waits for you. It can't pay or approve:
-        paying still needs your wallet's signature in the console.
+        The extension will send invoices to wait for the owner's confirmation and show what waits for you, but it can't
+        pay or approve: an invoice it sends is paid only after the vault's owner confirms it in the console with their
+        wallet.
       </p>
       <div class="card">
         <h2>Connect this browser</h2>
         <p>Signed in as <span class="mono">acme-finance.testnet</span> on NEAR testnet.</p>
-        <button type="button">Connect extension</button><button type="button" class="plain">Show a code instead</button>
+        <p>To connect again, press Connect in the extension.</p>
+        <button type="button">Show a code instead</button>
         <div class="good">Connected. You can close this tab.</div>
       </div>
       <div class="card">
         <h2>Connected browsers</h2>
-        <p>Chrome on Windows <span class="mono">pbx_…Q3xA</span></p>
+        <div class="browser">
+          <span>
+            Chrome on macOS <span class="mono">pbx_…Q3xA</span>
+            <span class="small">Connected 2026-11-02 08:41 UTC · last used 2026-11-08 17:05 UTC · ends 2026-12-02 08:41 UTC</span>
+          </span>
+          <button type="button" class="revoke">Revoke</button>
+        </div>
       </div>
     </main>
   </body>

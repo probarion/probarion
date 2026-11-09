@@ -7,7 +7,8 @@ import { build, ROOT } from "./build.mjs";
 
 // Renders the icons and the Chrome Web Store images with a local headless Chrome, through the DevTools protocol
 // (Node's own WebSocket). Run it where Chrome is installed, look at what it wrote, and commit it. CI never runs it.
-//   static/icons/{16,32,48,128}.png         apps/web/src/app/icon.svg, transparent around it (render/icon.html)
+//   static/icons/{16,32,48,128}.png         apps/web/src/app/icon.svg on a light plate, transparent around it
+//                                           (render/icon.html: 96 px of artwork in a 128 px icon, as the store asks)
 //   store/screenshots/{popup,menu,connect}.jpg  1280 x 800 (store/preview/*.html)
 //   store/screenshots/tile.jpg              440 x 280
 // The store images are JPEG: the store refuses a PNG with an alpha channel.

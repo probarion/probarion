@@ -7,7 +7,9 @@
   sends back when the extension connects; it is kept in the browser and shown in the popup.
 - **Financial and payment information:** the invoices the user chooses to send (amounts, payees, invoice numbers),
   sent to Probarion when the user presses Send.
-- **Website content:** the PDF or the selected text the user sends as an invoice.
+- **Website content:** the PDF or the selected text the user sends as an invoice. A PDF or plain-text file from a tab
+  or a link is fetched from that site the way the tab loaded it, with the user's own session for that site, and is sent
+  to Probarion only when the user presses Send.
 
 It does not collect browsing history, location or health data, and it reads no email or message on its own. Text the
 user selects and sends, on any page, is sent as the invoice and is covered by Website content above.

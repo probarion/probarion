@@ -8,6 +8,7 @@ The "Browser extension" section of that page covers the words in `EXTENSION_PRIV
 - what is kept in the browser: the token, the account and network, and the captured invoice until it is sent or Chrome
   closes;
 - what is read: no page's content except the invoice being sent and Probarion's own connect page, and the active tab's
-  address when the popup opens;
+  address when the popup opens. A file from a tab or a link is fetched with the user's own session for that site, and is
+  sent only when the user presses Send;
 - that there are no analytics and no remote code;
 - how a connection ends: after 30 days, with Disconnect, or with Revoke on the Browser extension page.

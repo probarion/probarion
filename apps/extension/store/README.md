@@ -12,16 +12,25 @@ Claude prepared everything in this folder. Claude does not pay, upload or publis
    testnet before you upload.
 1. Register a Chrome Web Store developer account at https://chrome.google.com/webstore/devconsole. It is a one-time
    US$5 fee, and the Google account needs 2-step verification.
-2. Build the zip from a clean checkout of `main`:
-   `pnpm install --frozen-lockfile && pnpm --filter @probarion/extension zip`
+2. Build the zip from a clean checkout of `main`. Run the two commands one after the other (Windows PowerShell 5.1
+   has no `&&`):
+
+       pnpm install --frozen-lockfile
+       pnpm --filter @probarion/extension zip
+
    This writes `apps/extension/probarion-extension-0.1.0.zip`. It is a release build: it trusts only the three
    Probarion addresses and has no localhost in it.
 3. In the developer console choose **New item** and upload the zip.
 4. Fill in the listing from these files:
    - **Store listing:** `listing.md`. The images are in `screenshots/`: `popup.jpg`, `menu.jpg` and `connect.jpg` as
      screenshots, and `tile.jpg` as the small promo tile. The store icon is `../static/icons/128.png`.
+   - **Category:** `listing.md` says Workflow & Planning. Pick Productivity > Workflow & Planning if the dashboard
+     nests it there, otherwise the closest Productivity entry.
    - **Privacy:** `single-purpose.md`, `permissions.md`, `data-use.md`; the privacy policy URL is in `privacy.md`.
-   - **Test instructions** (for the reviewer): paste `review-notes.md`.
+   - **Test instructions** (for the reviewer): paste `review-notes.md`. A reviewer cannot be expected to fund a vault,
+     so record a 60-90 s demo video of connect, send and the console Confirm, and paste its URL into the dashboard's
+     video field. Put no password, seed phrase or key in this repo. If the reviewer ever needs credentials, they go
+     only in the dashboard's private test-instructions field.
    - **Distribution:** Public, all regions.
 5. Submit for review. It can take from a day to a few weeks.
 6. Send Claude the item ID (the 32 letters in the item's URL). Until you do, no README mentions the store. After you

@@ -8,8 +8,9 @@ There is no password: Probarion signs people in with a NEAR wallet. To try the e
    opens at `https://probarion.vercel.app/extension?nonce=...`.
 2. Sign in there with any NEAR testnet wallet, then press **Connect extension**. The page says "Connected. You can
    close this tab." The popup now shows the account and "Nothing waits for you".
-3. To queue an invoice the account needs a vault and a mandate. The console's first-run checklist makes both on
-   NEAR testnet, with test USDC that has no value. Then open
+3. To queue an invoice the account needs a vault and a mandate. The console's "Your first agent payment" card walks
+   you through making both on NEAR testnet (the vault, its keys, test USDC and a mandate), with test USDC that has no
+   value. Then open
    `https://probarion.vercel.app/samples/probarion-sample-invoice.txt`, select its text, right-click and choose
    **Send selection as invoice text**, pick the vault and the mandate, and press **Send to Probarion**. The popup
    says "Queued. It waits for your confirmation."

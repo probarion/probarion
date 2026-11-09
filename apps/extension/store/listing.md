@@ -16,9 +16,9 @@ chain. This extension brings Probarion to the place invoices arrive: the browser
 
 Send an invoice:
 - from the PDF open in a tab;
-- from a link: right-click it and choose "Send invoice to Probarion";
+- from a link to a PDF on the same site: right-click it and choose "Send invoice to Probarion";
 - from text you selected: right-click it and choose "Send selection as invoice text";
-- from a PDF or a .txt file you choose or drop on the popup.
+- from a PDF or a .txt file you choose, or drop in a tab ("Open in a tab" in the popup).
 
 You pick the vault and the mandate. Probarion reads the invoice, checks its payee against the mandate, asks the vault
 contract whether it would allow the payment, and queues it. The invoice's purpose is checked when the owner confirms.
@@ -33,7 +33,8 @@ Connecting: open the extension, press Connect, sign in on Probarion with your wa
 Or show a code on Probarion's Browser extension page and type it into the extension.
 
 Privacy: the extension sends an invoice only when you press Send, and only to the Probarion address you connected.
-It has no analytics and runs no code from elsewhere. Policy: https://probarion.xyz/privacy#browser-extension
+A file it reads from a tab or a link is fetched with your own session for that site. It has no analytics and runs no
+code from elsewhere. Policy: https://probarion.xyz/privacy#browser-extension
 
 Probarion is open source: https://github.com/probarion/probarion
 
