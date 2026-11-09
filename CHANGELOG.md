@@ -406,6 +406,22 @@ The software is an unaudited beta.
 - Migration `20261108000015_extension_queue.sql` adds `invoices.source` and
   `invoices.queue_checks`, and `invoice_queue`, which stores an extension invoice in one
   transaction and refuses one without the `extension.mandate_chosen` hold.
+- The Chrome extension, `apps/extension` (Manifest V3, Chrome 127 or newer), loaded unpacked; it is
+  not in the Chrome Web Store yet. Connect it from the console's Browser extension page, or with a
+  one-time code. Its badge counts the invoices and holds that wait for you and refreshes every 5
+  minutes; `!` on the badge means the connection has ended. Right-click selected invoice text or a
+  link to an invoice file on the same site, or open the popup on a PDF or choose a file: the popup
+  reads the invoice, lets you pick a vault and a mandate, and queues it for the vault owner's
+  wallet-signed Confirm in the console. It can't pay or approve, and says so under Send. It explains
+  a refused invoice in plain words, shows "Already queued" for a second send of the same invoice,
+  and checks in the browser what Probarion would refuse anyway (4 MiB for a file, 50,000 characters
+  of UTF-8 text).
+- `pnpm --filter @probarion/extension build` writes the release build to `apps/extension/dist`;
+  `build:dev` also trusts `http://localhost:3000`. `zip` packs the release build into the store
+  zip, the same bytes each time, and `render` redraws the icons and the four store images with a
+  local headless Chrome. `apps/extension/store` holds the listing, the permission and data-use
+  answers, the notes for the store reviewer and the upload steps; `apps/extension/TESTING.md` is the
+  manual checklist, run before each upload.
 
 ### Changed
 
@@ -716,6 +732,12 @@ The software is an unaudited beta.
   session's, loads a raw crypto package outside lib/crypto, uses the cookie session, or loads code
   dynamically. It reads imports and names: it catches a plain import, not code written to get around
   it, so review of every change to that code is the other control.
+- The extension asks for four permissions (`storage`, `contextMenus`, `activeTab`, `alarms`) and
+  Probarion's three addresses, trusts a connect message only from Probarion's own `/extension` page
+  with a nonce it made, and calls only `/api/ext/pair`, `inbox`, `invoices` and `revoke`, which a
+  test pins. A file fetched from the page's site is refused if a redirect took it to another site.
+  The popup builds its DOM without HTML strings, and the bundles hold no remote code. Disconnect
+  revokes the token, and so does a new connection that replaces one for the same address.
 - Since the queue, that test's claim is narrower: the extension's server code imports nothing that
   pays or signs and, outside `lib/crypto`, nothing that opens a sealed key. The queue's route reads
   the master key only to seal the invoice with `sealInvoice` and to key its duplicate guard, as the
