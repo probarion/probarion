@@ -218,9 +218,28 @@ export function queuedChecks(row: Pick<InvoiceRow, "source" | "queue_checks">): 
     .map(shownRule);
 }
 
-/** Next to an extension invoice's cycle: why the signed ledger's purpose rule passes for it. */
+/** On an extension invoice's page in every state: who chose the mandate, and that no purpose document was matched. */
 export const EXTENSION_SOURCE_NOTE =
-  "This invoice was sent from the browser extension, where a member of the vault chose the mandate. No purpose document was matched. The owner's Confirm pays it under that mandate, so the signed ledger's invoice.po_mismatch rule passes with the mandate's own purpose.";
+  "This invoice was sent from the browser extension, where a member of the vault chose the mandate. No purpose document was matched.";
+
+/** After EXTENSION_SOURCE_NOTE, only once a Confirm ran a cycle for the row (cycleRanFor): why the ledger's purpose rule passed. */
+export const EXTENSION_LEDGER_NOTE =
+  "The owner's Confirm decided it under that mandate, so the signed ledger's invoice.po_mismatch rule passed with the mandate's own purpose.";
+
+/**
+ * Whether a cycle ran for this row: it has an outcome (paid, refused, or held again), or the signed ledger holds a
+ * decision for its invoice hash (a Confirm that wrote its decision and then stopped, so the row went back to waiting
+ * with no outcome). An extension row that is queued, or was rejected before any Confirm, has neither. With the ledger
+ * unreadable (null), only the outcome counts.
+ */
+export function cycleRanFor(
+  row: Pick<InvoiceRow, "outcome" | "invoice_hash">,
+  entries: readonly LedgerEntry[] | null,
+): boolean {
+  return (
+    row.outcome !== null || (entries !== null && latestDecision(entries, row.invoice_hash) !== null)
+  );
+}
 
 const nullableText = (v: unknown, max = SHORT): string | null =>
   v === null || v === undefined ? null : safeText(v, max);

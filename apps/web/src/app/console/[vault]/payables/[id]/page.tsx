@@ -21,6 +21,8 @@ import { getInvoice } from "@/lib/payables/store";
 import {
   amountIssueText,
   buildCycleView,
+  cycleRanFor,
+  EXTENSION_LEDGER_NOTE,
   EXTENSION_SOURCE_NOTE,
   type PayeeRow,
   queuedChecks,
@@ -115,6 +117,14 @@ function Waiting({
         {w.queued ? (
           <>
             This invoice was sent from the browser extension, so no cycle ran and nothing was sent.
+            The code read <strong>{usdcFixed(w.amount)} USDC</strong> ({w.amount} base units).{" "}
+            <span className="mono break-all">{w.uploadedBy}</span> chose the mandate at{" "}
+            {utcMinute(w.uploadedAt)}.
+          </>
+        ) : w.stopped ? (
+          <>
+            This invoice was sent from the browser extension. The owner&apos;s Confirm started a
+            cycle, which stopped before anything was sent, so the invoice waits for a new Confirm.
             The code read <strong>{usdcFixed(w.amount)} USDC</strong> ({w.amount} base units).{" "}
             <span className="mono break-all">{w.uploadedBy}</span> chose the mandate at{" "}
             {utcMinute(w.uploadedAt)}.
@@ -381,9 +391,12 @@ export default async function InvoiceCyclePage({
         </Notice>
       ) : null}
 
-      {inv.source === "extension" && !waiting?.queued ? (
+      {inv.source === "extension" ? (
         <Card title="Sent from the browser extension">
-          <p className="mb-3 text-sm">{EXTENSION_SOURCE_NOTE}</p>
+          <p className="mb-3 text-sm">
+            {EXTENSION_SOURCE_NOTE}
+            {cycleRanFor(inv, entries) ? ` ${EXTENSION_LEDGER_NOTE}` : null}
+          </p>
           <h3 className="mt-4 mb-1 text-sm font-semibold">Checks when it was queued</h3>
           <ul className="text-xs">
             {queuedChecks(inv).map((r) => (

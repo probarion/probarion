@@ -275,6 +275,23 @@ describe("an invoice queued from the browser extension", () => {
     if (m === undefined) throw new Error("no scenario mandate 1");
     return m;
   };
+  /** The invoice's console page, as the signed-in owner sees it. */
+  async function pageOf(id: string): Promise<string> {
+    h.jar.set(
+      SESSION_COOKIE,
+      await createSessionToken(await deriveSubkey(MASTER, "session"), OWNER, "testnet"),
+    );
+    return renderToStaticMarkup(
+      (await InvoicePage({
+        params: Promise.resolve({ vault: SCENARIO_VAULT, id }),
+      })) as ReactElement,
+    );
+  }
+  /** The page's "Why it waits" list: from its heading to the mandate's. */
+  const whyItWaits = (page: string) =>
+    page.slice(page.indexOf("Why it waits"), page.indexOf("The mandate, as the chain shows it"));
+  /** EXTENSION_LEDGER_NOTE up to its first apostrophe, which the page escapes. */
+  const LEDGER_NOTE = "invoice.po_mismatch rule passed with the mandate";
 
   it("waits for the owner, sends nothing, and pays only when the owner confirms", async () => {
     const spends = server.chain.spends.length;
@@ -826,15 +843,15 @@ describe("an invoice queued from the browser extension", () => {
     expect(w).toMatchObject({
       source: "extension",
       queued: true,
+      stopped: false,
       canConfirm: true,
       whyNot: null,
       uploadedBy: OWNER,
     });
     expect(w.reasons.owner).toBeNull();
+    // Why it waits: the holds only. The passes are under "Checks when it was queued" on the page.
     expect(w.reasons.before.map((r) => [r.id, r.outcome])).toEqual([
       [EXTENSION_MANDATE_RULE, "hold"],
-      [PAYEE_RULE, "pass"],
-      [CHECK_SPEND_RULE, "pass"],
     ]);
   });
 
@@ -875,32 +892,39 @@ describe("an invoice queued from the browser extension", () => {
     const c = await confirmAsOwner(id);
     expect(c.ok).toBe(false);
     expect(server.chain.spends).toHaveLength(spends);
+    // No cycle ran for it: its page says where it came from and shows its checks, but no ledger pass.
+    const page = await pageOf(id);
+    expect(page).toContain("Sent from the browser extension");
+    expect(page).toContain("No purpose document was matched.");
+    expect(page).toContain("Checks when it was queued");
+    expect(page).toContain(PAYEE_RULE);
+    expect(page).not.toContain("invoice.po_mismatch");
   });
 
   it("shows where the invoice came from on its page, before and after the owner confirms it", async () => {
     const id = await idOf(await send());
-    h.jar.set(
-      SESSION_COOKIE,
-      await createSessionToken(await deriveSubkey(MASTER, "session"), OWNER, "testnet"),
-    );
-    const html = async () =>
-      renderToStaticMarkup(
-        (await InvoicePage({
-          params: Promise.resolve({ vault: SCENARIO_VAULT, id }),
-        })) as ReactElement,
-      );
-    const waiting = await html();
+    const waiting = await pageOf(id);
     expect(waiting).toContain("Waiting for you: sent from the browser extension");
     expect(waiting).toContain("so no cycle ran and nothing was sent.");
     expect(waiting).toContain("· sent from the browser extension");
-    expect(waiting).toContain(EXTENSION_MANDATE_RULE);
     expect(waiting).not.toContain("No attested model confirmed");
-    expect(waiting).not.toContain("Checks when it was queued");
+    // Why it waits lists the hold alone; every check it was queued with is in the card below, and no ledger pass is
+    // claimed before a Confirm.
+    const why = whyItWaits(waiting);
+    expect(why).toContain(EXTENSION_MANDATE_RULE);
+    expect(why).not.toContain(PAYEE_RULE);
+    expect(why).not.toContain(CHECK_SPEND_RULE);
+    const card = waiting.slice(waiting.indexOf("Checks when it was queued"));
+    for (const rule of [EXTENSION_MANDATE_RULE, PAYEE_RULE, CHECK_SPEND_RULE])
+      expect(card, rule).toContain(rule);
+    expect(waiting).toContain("No purpose document was matched.");
+    expect(waiting).not.toContain("invoice.po_mismatch");
     const c = await confirmAsOwner(id);
     if (!c.ok) throw new Error(`not confirmed: ${JSON.stringify(c)}`);
-    const paid = await html();
+    const paid = await pageOf(id);
     expect(paid).toContain("Checks when it was queued");
     expect(paid).toContain("No purpose document was matched.");
+    expect(paid).toContain(LEDGER_NOTE);
     expect(paid).toContain(EXTENSION_MANDATE_RULE);
     expect(paid).toContain("· sent from the browser extension");
   });
@@ -940,22 +964,62 @@ describe("an invoice queued from the browser extension", () => {
     expect(w).toMatchObject({
       source: "extension",
       queued: false,
+      stopped: false,
       lastConfirmation: { by: OWNER },
     });
     expect(w.reasons.before.map((r) => [r.id, r.outcome])).toContainEqual([HOLD, "hold"]);
-    h.jar.set(
-      SESSION_COOKIE,
-      await createSessionToken(await deriveSubkey(MASTER, "session"), OWNER, "testnet"),
-    );
-    const page = renderToStaticMarkup(
-      (await InvoicePage({
-        params: Promise.resolve({ vault: SCENARIO_VAULT, id }),
-      })) as ReactElement,
-    );
+    const page = await pageOf(id);
     expect(page).toContain("Waiting for you: sent from the browser extension");
     expect(page).toContain("Confirm ran a cycle, which the rule below held, and nothing was sent.");
     expect(page).not.toContain("no cycle ran");
     expect(page).toContain(HOLD);
+    expect(page).toContain(LEDGER_NOTE);
+  });
+
+  it("says a Confirm that stopped after its decision started a cycle, and that nothing was sent", async () => {
+    const id = await idOf(await send());
+    const hash = ((await getInvoice(h.db, member.tenant_id, id)) as InvoiceRow).invoice_hash;
+    const spends = server.chain.spends.length;
+    // The SDK writes the decision, then asks the contract's check_spend view (SDK execute), and the view fails: the
+    // Confirm is aborted, the row waits again with no outcome, and the signed ledger keeps the decision.
+    const view = server.chain.view.bind(server.chain);
+    const spy = vi.spyOn(server.chain, "view").mockImplementation((contract, method, args) => {
+      if (method === "check_spend") throw new Error("check_spend cannot be read");
+      return view(contract, method, args);
+    });
+    let c: Awaited<ReturnType<typeof confirmAsOwner>>;
+    try {
+      c = await confirmAsOwner(id);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(c).toMatchObject({ ok: false, reason: "failed" });
+    expect(server.chain.spends).toHaveLength(spends);
+    const row = (await getInvoice(h.db, member.tenant_id, id)) as InvoiceRow;
+    expect(row).toMatchObject({
+      status: "awaiting_owner",
+      source: "extension",
+      outcome: null,
+      confirmed_by: null,
+    });
+    const entries = await store.all();
+    expect(entries.some((e) => e.body.kind === "decision" && e.body.invoice_hash === hash)).toBe(
+      true,
+    );
+    const w = await loadWaitingView(
+      { db: h.db, master: MASTER, reader: createVaultReader(new RpcClient({ urls: [h.url] })) },
+      { member, account: OWNER, row, entries, now: new Date() },
+    );
+    expect(w).toMatchObject({ queued: false, stopped: true, lastConfirmation: null });
+    expect(w.reasons.before.map((r) => [r.id, r.outcome])).toEqual([
+      [EXTENSION_MANDATE_RULE, "hold"],
+    ]);
+    const page = await pageOf(id);
+    expect(page).toContain(
+      "Confirm started a cycle, which stopped before anything was sent, so the invoice waits for a new Confirm.",
+    );
+    expect(page).not.toContain("no cycle ran");
+    expect(page).toContain(LEDGER_NOTE);
   });
 
   it("lets only the service role call invoice_queue, as a definer with a fixed search path", async () => {

@@ -11,6 +11,9 @@ import {
   amountIssueText,
   amountMatch,
   buildCycleView,
+  cycleRanFor,
+  EXTENSION_LEDGER_NOTE,
+  EXTENSION_SOURCE_NOTE,
   invoiceStatusLabel,
   outcomeLabel,
   queuedChecks,
@@ -371,6 +374,32 @@ describe("an invoice from the browser extension", () => {
     expect(queuedChecks(row({ queue_checks: [null, 7, ...(checks ?? [])] as never }))).toHaveLength(
       3,
     );
+  });
+
+  it("knows whether a Confirm ran a cycle for it: an outcome, or a ledger decision for its invoice hash", () => {
+    const hash = "a".repeat(64);
+    const queued = row({ invoice_hash: hash });
+    // Queued, or rejected before any Confirm: no outcome, and the ledger holds nothing for this invoice.
+    expect(cycleRanFor(queued, [])).toBe(false);
+    expect(cycleRanFor(queued, [decision({ invoice_hash: "b".repeat(64) }), anchorEntry])).toBe(
+      false,
+    );
+    expect(cycleRanFor(row({ invoice_hash: hash, status: "rejected" }), null)).toBe(false);
+    // A Confirm that wrote its decision and then stopped: the row has no outcome, the ledger has the decision.
+    expect(cycleRanFor(queued, [decision({ invoice_hash: hash })])).toBe(true);
+    // Paid or held again: the row keeps the outcome, even when the ledger cannot be read.
+    expect(cycleRanFor(row({ invoice_hash: hash, outcome: outcome() }), null)).toBe(true);
+    expect(cycleRanFor(row({ invoice_hash: hash, outcome: outcome() }), [])).toBe(true);
+  });
+
+  it("says how the mandate was chosen in every state, and the ledger's purpose pass only after a cycle", () => {
+    expect(EXTENSION_SOURCE_NOTE).toBe(
+      "This invoice was sent from the browser extension, where a member of the vault chose the mandate. No purpose document was matched.",
+    );
+    expect(EXTENSION_LEDGER_NOTE).toBe(
+      "The owner's Confirm decided it under that mandate, so the signed ledger's invoice.po_mismatch rule passed with the mandate's own purpose.",
+    );
+    expect(EXTENSION_SOURCE_NOTE).not.toMatch(/Confirm|ledger/);
   });
 });
 
