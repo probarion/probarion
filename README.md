@@ -266,7 +266,8 @@ request that starts a server instance, reaches Sentry without a request id.
   memo itself, from the mandate.
 - **The agent key can do one thing.** The NEAR protocol limits a function-call key to its listed
   methods and to calls without a deposit. Every vault method that moves value or changes authority
-  takes exactly 1 yoctoNEAR, which only a full-access key can attach.
+  needs a deposit, 1 yoctoNEAR or the storage deposit of `create_mandate`, which only a
+  full-access key can attach.
 - **Confidential, attested, and only advice.** The model runs privately on NEAR AI Cloud. Its
   attestation report is bound to one position in one vault's ledger by a nonce, and its response is
   signed by the provider's TEE key. Whatever text an invoice carries, the model cannot widen a
@@ -282,7 +283,7 @@ request that starts a server instance, reaches Sentry without a request id.
 | NEAR technology | How Probarion uses it | Where |
 | --- | --- | --- |
 | **Smart contracts in Rust** (near-sdk 5.29.1) | The vault holds the USDC and checks every payment against its mandate before anything moves. The rule lives on the money's path, not in a prompt | [`contracts/vault`](contracts/vault) |
-| **Function-call access keys** | The vault adds the agent's key to itself, limited to `spend`, and a second key limited to `anchor`. NEAR lets a function-call key call only its listed methods and attach no deposit. So the owner and approver methods that move value or change authority need a deposit that only a full-access key on the owner's or an approver's account can attach: 1 yoctoNEAR, or the storage deposit for `create_mandate`. `freeze` takes none, so any key on the owner's account can stop the vault fast | [`contracts/vault/src`](contracts/vault/src) |
+| **Function-call access keys** | The vault adds the agent's key to itself, limited to `spend`, and a second key limited to `anchor`. NEAR lets a function-call key call only its listed methods and attach no deposit. So the owner and approver methods that move value or change authority need a deposit that only a full-access key on the owner's or an approver's account can attach: 1 yoctoNEAR, or the storage deposit for `create_mandate`. `freeze` takes none, so the owner can also stop the vault fast with a function-call key on their account that may call the vault | [`contracts/vault/src`](contracts/vault/src) |
 | **NEP-141 fungible tokens** | The vault pays a NEAR payee in USDC with `ft_transfer` | [`contracts/vault`](contracts/vault) |
 | **NEAR Intents** | A Base or Solana payee is paid with `ft_withdraw` on `intents.near` and the memo `WITHDRAW_TO:<address>`, which the vault builds from the mandate. On mainnet the POA bridge then releases the USDC on the other chain. On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR; the first mainnet payout is planned ([runbook](docs/runbooks/mainnet-v0.md)). On mainnet, the console's top-up asks the 1Click API for a quote into the vault's Intents balance; it has not been tried with a live quote yet | [`contracts/vault`](contracts/vault), [`apps/web/src/app/api/topup`](apps/web/src/app/api/topup) |
 | **Global contracts** | The factory creates keyless vaults. It can deploy them from code stored once on chain and referenced by hash (`use_global_contract`), or from an embedded copy, and it keeps a version registry. The testnet factory serves the embedded copy today, and the global version is not deployed yet | [`contracts/factory`](contracts/factory) |
@@ -518,8 +519,8 @@ pnpm verify:ts     # the TypeScript part only, no Rust needed
 
 As of 2026-11-03, `pnpm verify` ran 301 Rust tests: 227 vault unit tests, 2 error-coverage tests,
 2 property tests that take about two minutes, and 53 factory, 12 intents-stub and 5 test-ft tests.
-As of 2026-11-09 it runs 10,757 TypeScript tests: 290 Node script tests, 806 in `@probarion/core`,
-782 in `@probarion/sdk`, 341 in the CLI, 8,339 in the web console and 199 launch checks. Skipped on
+As of 2026-11-09 it runs 10,758 TypeScript tests: 290 Node script tests, 806 in `@probarion/core`,
+782 in `@probarion/sdk`, 341 in the CLI, 8,340 in the web console and 199 launch checks. Skipped on
 the Windows run of that day:
 - in the SDK, the two tests of a recorded real NEAR AI Cloud decision, which wait for that
   recording;
@@ -527,7 +528,7 @@ the Windows run of that day:
   with near-cli-rs, which need `near` on PATH. CI skips them too: its TypeScript job does not
   install near-cli-rs.
 
-The Playwright specs in [`apps/web/e2e`](apps/web/e2e), 54 tests, run locally against a build with
+The Playwright specs in [`apps/web/e2e`](apps/web/e2e), 57 tests, run locally against a build with
 test settings: `pnpm build`, then `pnpm --filter @probarion/web test:e2e`.
 
 Some checks need Linux or Docker, so they run in [CI](.github/workflows/ci.yml) (GitHub Actions,

@@ -383,10 +383,10 @@ The software is an unaudited beta.
 - The docs, the README and the landing say that release 0.1.0 of `@probarion/core`,
   `@probarion/sdk` and the `probarion` CLI is on npm: the install page, the developer quickstart,
   the status table, and the landing's "0.1.0 on npm" pill for the SDK and CLI and "Shipped, on npm"
-  for the offline verifier. The README's evaluation starts with the verifier in the browser at
-  `/#verify`, and its "NEAR technology used, and how" table adds NEP-297 events, near-workspaces
-  and cargo-near and says what is not tried live yet: an intents payout with a live quote and an
-  attested NEAR AI Cloud decision.
+  for the offline verifier. The README's browser checks add the verifier at `/#verify`, and its
+  "NEAR technology used, and how" table adds NEP-297 events, near-workspaces and cargo-near and
+  says what is not done live yet: the first mainnet payout, a 1Click top-up with a live quote and
+  an attested NEAR AI Cloud decision.
 - The site writes its CLI commands as `npx probarion …` now that 0.1.0 is on npm: the landing, the
   proof page, /security and the console's CLI fallback, under one line saying that npx needs Node
   24 and asks once before it downloads the package, with no set-up. A mainnet pre-ledger check on
@@ -542,7 +542,7 @@ The software is an unaudited beta.
   Top-up, which funds USDC only.
 - The Canary rules ask for a report the way SECURITY.md does, with a direct message to @probarionhq on
   X. They named an email address that does not exist.
-- The package READMEs build the packages from a clone, as none is on npm yet; they showed
+- The package READMEs built the packages from a clone while none was on npm; they had shown
   `npm install`. The SDK quick start no longer passes an empty `NEARAI_API_KEY`, which throws a
   `ConfigError`. The SDK README says that a code hold has no approval to give, and that an
   unconfirmed spend is found by listing the vault's spends and matching `ref`: `spends.get` takes a

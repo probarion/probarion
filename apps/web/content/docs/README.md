@@ -68,7 +68,7 @@ Name the language: `bash`, `text`, `ts`, `tsx`, `js`, `json`, `rust`, `md` or `t
 
 In a `bash` fence:
 
-- A line that runs the CLI starts with `node packages/cli/dist/bin.js`, or, only in a step that runs in the reader's own project folder, with `probarion` or `npx probarion` for the CLI from npm. At the root of a clone, `npx probarion` fails: the root package is also named `probarion`. Never an env prefix, `cd ... &&` or `./`. A line that names `bin.js` anywhere but at its start fails, unless the line is a `#` comment.
+- A line that runs the CLI starts with `node packages/cli/dist/bin.js`, or, only in a step that runs in the reader's own project folder, with `probarion` or `npx probarion` for the CLI from npm. A clone's steps use the CLI it builds, since `npx probarion` downloads release 0.1.0 from npm and a step that promises to run offline cannot. Never an env prefix, `cd ... &&` or `./`. A line that names `bin.js` anywhere but at its start fails, unless the line is a `#` comment.
 - Only `--network <name>` and `--rpc <url>` come before the command, each with a space (not `=`). After them comes a real command, `--help` or `--version`.
 - The commands are the CLI's own: vault (create, freeze, unfreeze, withdraw, withdraw-intents), mandate (create, revoke), agent (keygen, add, remove), ledger (set-key, export), spend (approve, reject), check and verify. Every `--flag` after the command words is an option the CLI defines.
 
