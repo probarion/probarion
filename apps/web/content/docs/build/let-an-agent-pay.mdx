@@ -1,4 +1,4 @@
-Your agent's invoice handling becomes a loop that pays through `process()`: each invoice is paid at most once (each decision's spend is sent once), one ledger writer keeps each vault's history, and no unknown outcome is ever paid twice. You need the SDK built from source ([Install from source](/docs/build/install)) and a testnet vault whose owner has signed the steps below. The [developer quickstart](/docs/start/developer-quickstart) runs one payment end to end; this page covers what a loop that keeps paying has to get right.
+Your agent's invoice handling becomes a loop that pays through `process()`: each invoice is paid at most once (each decision's spend is sent once), one ledger writer keeps each vault's history, and no unknown outcome is ever paid twice. You need the SDK, from npm or built from a clone ([Install](/docs/build/install)), and a testnet vault whose owner has signed the steps below. The [developer quickstart](/docs/start/developer-quickstart) runs one payment end to end; this page covers what a loop that keeps paying has to get right.
 
 Everything here runs on NEAR testnet with test tokens. The mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet). This loop is Preview: the repository records no run of `process()` against a real testnet vault yet, so the outputs below come from the code and the SDK's own tests, which run against a fake chain.
 
@@ -187,7 +187,7 @@ Calls on one instance run one at a time, in call order, so a burst of invoices q
 
 ### Wire it into your agent
 
-Illustrative, adapted from the SDK README: the imports point at the built files, the vault is a placeholder, the keys come from the two key files, and `model: null` lets the code decide alone. Save it in the `probarion` folder and run it from there. The example invoice is for 2 USDC, so the developer quickstart's mandate (at most 5 USDC per payment, held for an approver above 2) pays it at once. A larger amount needs a mandate whose limits allow it and a vault that holds enough test USDC.
+Illustrative, adapted from the SDK README: the imports point at the built files of a clone (with the packages from npm, import `@probarion/core` and `@probarion/sdk` by name), the vault is a placeholder, the keys come from the two key files, and `model: null` lets the code decide alone. Save it in the `probarion` folder and run it from there. The example invoice is for 2 USDC, so the developer quickstart's mandate (at most 5 USDC per payment, held for an approver above 2) pays it at once. A larger amount needs a mandate whose limits allow it and a vault that holds enough test USDC.
 
 <CodeBlock title="agent-pay.mjs">
 
@@ -384,7 +384,6 @@ The report starts with `Probarion verify: <vault> (testnet)`, lists each check, 
 
 - No MCP server: `@probarion/mcp` is Planned.
 - No HTTP API for agents: the hosted invoice API needs a signed-in console session of the vault's owner or approver. An agent pays from its own process, through the SDK. The CLI sends no spend: `check` only dry-runs one, and its owner and approver commands only print transactions.
-- No npm package: build the SDK from source.
 
 [What works today](/docs/start/what-works-today) lists the status of every part.
 

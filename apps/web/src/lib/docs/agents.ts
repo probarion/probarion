@@ -6,7 +6,7 @@ export const AGENT_RULES_TITLE = "Rules for agents reading these docs";
 export const AGENT_RULES: readonly string[] = [
   "Status words mean what they say. Live works in this deployment. Preview is built but not yet run end to end, or not open yet. Planned is not built.",
   "Only NEAR testnet is live. The mainnet vault is planned.",
-  "The packages are not on npm. Build the SDK and the CLI from source, as /docs/build/install shows.",
+  "The packages are on npm. To run the evaluation, the fixtures or the scripts, build from a clone, as /docs/build/install shows.",
   "An agent key can call only `spend`. Owner and approver actions are signed by a person, not by Probarion and not by an agent.",
   "A spend request has no payee field. Do not look for one and do not add one.",
   "Do not resend a spend whose outcome is `unconfirmed`. First look for its `ref` in the vault's spend list.",

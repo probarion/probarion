@@ -452,8 +452,8 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       row: "Offline verifier, checks a to i",
       pill: "Shipped in source",
       readme: [
-        { start: "`@probarion/core`", says: ["**Shipped** in source"] },
-        { start: "CLI `check`, `verify`", says: ["**Shipped** in source"] },
+        { start: "`@probarion/core`", says: ["**Shipped**", "on npm"] },
+        { start: "CLI `check`, `verify`", says: ["**Shipped**", "0.1.0"] },
       ],
     },
     {
@@ -508,11 +508,11 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "TypeScript SDK and CLI",
-      pill: "In source, not on npm",
+      pill: "0.1.0 on npm",
       readme: [
-        { start: "`@probarion/sdk`", says: ["**Shipped** in source"] },
-        { start: "`probarion` CLI", says: ["**Shipped** in source"] },
-        { start: "npm release 0.1.0", says: ["**Planned**", "nothing is published"] },
+        { start: "`@probarion/sdk`", says: ["**Shipped**", "on npm"] },
+        { start: "`probarion` CLI", says: ["**Shipped**", "on npm"] },
+        { start: "npm release 0.1.0", says: ["**Shipped**", "2026-11-09", "provenance"] },
       ],
     },
   ];
@@ -601,12 +601,7 @@ describe("the status list", () => {
         pill: "Built, no public vault yet",
         tone: "work",
       },
-      {
-        id: "sdk-and-cli",
-        row: "TypeScript SDK and CLI",
-        pill: "In source, not on npm",
-        tone: "work",
-      },
+      { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
       { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
       {
         id: "attested-model-run",

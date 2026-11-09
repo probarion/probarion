@@ -2,8 +2,8 @@ In about 15 minutes your agent runs one payment on NEAR testnet with the Probari
 
 Everything here runs on NEAR testnet with test tokens. The mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet). The repository records no testnet run of `process()` yet, so the expected output below comes from the code and the SDK's own tests.
 
-<Callout kind="note" title="Build from source">
-The packages are not on npm yet. Step 1 clones the repository and builds the CLI together with the SDK and core packages it uses. They are ESM only and need Node 24 or newer: load them with `import`, as there is no CommonJS build. [Install from source](/docs/build/install) shows the full build.
+<Callout kind="note" title="From a clone">
+Step 1 clones the repository and builds the CLI together with the SDK and core packages it uses, so the scripts below run from that folder. The same packages are also on npm at 0.1.0: [Install the packages](/docs/build/install) shows both ways. They are ESM only and need Node 24 or newer: load them with `import`, as there is no CommonJS build.
 </Callout>
 
 <Callout kind="key">
@@ -305,6 +305,6 @@ A spend's status on the vault, as `list_spends` shows it:
 - [Errors](/docs/build/errors): the vault, SDK and HTTP error codes.
 - [The ledger and anchors](/docs/concepts/ledger-and-anchors): what each entry records and how anchors tie the ledger to the chain.
 - [Verify a vault yourself](/docs/trust/verify-a-vault): run the verifier and read its report.
-- [Install from source](/docs/build/install): the build in full.
+- [Install the packages](/docs/build/install): installing from npm, and the build from source in full.
 - [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) and [Mandates](/docs/concepts/mandates): who may do what, and what a mandate allows.
 - The [SDK README](https://github.com/probarion/probarion/blob/main/packages/sdk/README.md) lists the rest of the `Probarion` class.

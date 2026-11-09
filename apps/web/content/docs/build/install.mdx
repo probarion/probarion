@@ -1,29 +1,67 @@
-This page builds the packages of the repository, all at version 0.1.0: `@probarion/core`, `@probarion/sdk` and the `probarion` CLI. At the end the CLI runs as `node packages/cli/dist/bin.js`, the offline verifier passes on a committed test file, and your scripts import the SDK from the clone.
+This page installs the three Probarion packages, all at version 0.1.0: `@probarion/core`, `@probarion/sdk` and the `probarion` CLI. Install them from npm to use them in your own project. Build them from a clone of the repository to run the repository's fixtures, scripts and tests, or the [evaluation](/docs/start/evaluate-in-5-minutes).
 
-<Callout kind="note" title="Build from source">
-The packages are not on npm yet (0.1.0 is planned), so build from source. Their npm release is Planned: the tag-driven release pipeline is in place, and nothing is published. The build from source works today. The SDK and the CLI themselves are Preview in the [status list](/docs/start/what-works-today#sdk-and-cli): in source, not on npm.
+<Callout kind="note" title="On npm since 2026-11-09">
+Release 0.1.0 of `@probarion/core`, `@probarion/sdk` and `probarion` is on npm, under the `latest` tag. It was published on 2026-11-09 from the tag `sdk-v0.1.0` on `main`, by the repository's release workflow, with npm provenance. The packages are an unaudited beta, and a 0.x minor release may change their API.
 </Callout>
 
 ## Requirements
 
 - **Node.js 24 or newer.** The `engines` field of every package says `node >=24`, and the repository's `.nvmrc` names 24, for a version manager that reads it.
+- **ES modules.** The packages are ESM only, with no CommonJS build: load them with `import`.
+- **bash, zsh or PowerShell.** Each command sits on its own line, so Windows PowerShell 5.1, which has no `&&`, runs them too.
+
+A build from source also needs:
+
 - **pnpm 10.** The root `package.json` accepts pnpm `>=10 <11` and names `pnpm@10.34.9` as its package manager.
 - **git**, for the clone.
-- **bash, zsh or PowerShell.** Each setup command sits on its own line, so Windows PowerShell 5.1, which has no `&&`, runs them too.
-- **ES modules.** The packages are ESM only, with no CommonJS build: load them with `import`.
 
-Optional: `@nearai/inference-sdk`, which only the online attestation check (`verify --online`) uses, needs Node 24.22.1 or newer. The CLI lists it as an optional dependency, so `pnpm install` in the clone installs it, unless it cannot: an optional dependency that fails to install is left out. Everything else runs on any Node 24.
+Optional: `@nearai/inference-sdk`, which only the online attestation check uses (`verify --online` in the CLI, `verify({ online: true })` in the SDK), needs Node 24.22.1 or newer. The CLI lists it as an optional dependency, so npm, and `pnpm install` in a clone, install it with the CLI, unless they cannot: an optional dependency that fails to install is left out. The SDK lists it as an optional peer dependency, which npm does not install: add it to your project to run the online check from your code. Everything else runs on any Node 24.
 
-You need no Rust, wallet, NEAR account or key to build. Rust is needed only for the contracts: the contract tests that `pnpm verify` runs, the contract build (`pnpm contracts:build`, with cargo-near) and the sandbox tests (`pnpm test:sandbox`).
+You need no Rust, wallet, NEAR account or key to install or build. Rust is needed only for the contracts: the contract tests that `pnpm verify` runs, the contract build (`pnpm contracts:build`, with cargo-near) and the sandbox tests (`pnpm test:sandbox`).
 
-Check your versions first. `node --version` prints v24 or later, and `pnpm --version` prints a 10.x version:
+Check your versions first. `node --version` prints v24 or later, and, for a build from source, `pnpm --version` prints a 10.x version:
 
 ```bash
 node --version
 pnpm --version
 ```
 
-## Build
+## Install from npm
+
+In your project's folder, install the SDK and the core library together, since the SDK's examples import from both:
+
+```bash
+npm install @probarion/sdk @probarion/core
+```
+
+For the core library alone, with the policy engine, the ledger and the verifier's checks and no network code:
+
+```bash
+npm install @probarion/core
+```
+
+For the CLI, install it globally and check its version:
+
+```bash
+npm install -g probarion
+probarion --version
+```
+
+```text
+0.1.0
+```
+
+Or run it without installing, from your project's folder, as `npx probarion` followed by the command:
+
+```bash
+npx probarion --help
+```
+
+Run `npx probarion` outside a clone of the repository: the clone's root `package.json` is also named `probarion` and has no bin, so at the root of a clone npx cannot find the command. Inside a clone, run the CLI it builds, `node packages/cli/dist/bin.js`, as the rest of this page does.
+
+The CLI's commands are the same however you run it: `probarion verify --help` from npm is `node packages/cli/dist/bin.js verify --help` in a clone. To sign what the CLI prints, you also need `near-cli-rs`, the `near` command.
+
+## Build from source
 
 <Steps>
 
@@ -127,19 +165,19 @@ RESULT: PASS
 
 ## Use the SDK from your code
 
-Until the npm release, a script imports the built files by path. From a script in the root of the clone:
+With the packages from npm, your code imports them by name, as in `import { Probarion } from "@probarion/sdk";`. A script in the root of a clone imports the built files by path instead:
 
-| Package | Entry point | Import path |
-| --- | --- | --- |
-| `@probarion/sdk` | `.` | `./packages/sdk/dist/index.js` |
-| `@probarion/sdk` | `./testing` | `./packages/sdk/dist/testing/index.js` |
-| `@probarion/core` | `.` | `./packages/core/dist/index.js` |
+| Package | Entry point | From npm | From the root of a clone |
+| --- | --- | --- | --- |
+| `@probarion/sdk` | `.` | `@probarion/sdk` | `./packages/sdk/dist/index.js` |
+| `@probarion/sdk` | `./testing` | `@probarion/sdk/testing` | `./packages/sdk/dist/testing/index.js` |
+| `@probarion/core` | `.` | `@probarion/core` | `./packages/core/dist/index.js` |
 
-Each file has its type declarations beside it. `./testing` holds test doubles: a fake chain, a fake NEAR JSON-RPC server and a fake NEAR AI Cloud. A test that passes against them does not show that a real vault behaves the same. The root `package.json` sets `"type": "module"`, so a `.js` or `.mjs` file in the root of the clone is an ES module.
+Each entry point has its type declarations beside it. To import `@probarion/sdk/testing` from TypeScript, set `"moduleResolution"` to `"NodeNext"` or `"Bundler"`. `./testing` holds test doubles: a fake chain, a fake NEAR JSON-RPC server and a fake NEAR AI Cloud. A test that passes against them does not show that a real vault behaves the same.
 
-Code in its own project folder can import the same files by a relative path to the clone, such as `../probarion/packages/sdk/dist/index.js` from a folder next to it. The file must be an ES module: an `.mjs` file, or a `.js` file under a `package.json` that sets `"type": "module"`. Node resolves the SDK's own dependencies from its folder in the clone. This follows from the code; no test shows it yet.
+The importing file must be an ES module: an `.mjs` file, or a `.js` file under a `package.json` that sets `"type": "module"`. The root `package.json` of the clone sets it, so a `.js` or `.mjs` file in the root of the clone is an ES module.
 
-**A read-only example.** This is step 4 of the README's evaluation, saved as a file in the root of the clone. An instance with no keys and `model: null` lists the mandates of the testnet vault `v0.probarion.testnet` and dry-runs a spend of 2 USDC and one of 6 USDC with the contract's free `check_spend` view. It signs nothing and sends nothing.
+**A read-only example.** This is step 4 of the README's evaluation, saved as a file in the root of the clone. With the packages from npm, save it in your project and make its first line `import { Probarion } from "@probarion/sdk";`. An instance with no keys and `model: null` lists the mandates of the testnet vault `v0.probarion.testnet` and dry-runs a spend of 2 USDC and one of 6 USDC with the contract's free `check_spend` view. It signs nothing and sends nothing.
 
 <CodeBlock title="read-vault.mjs">
 
@@ -174,7 +212,7 @@ The smoke mandates expire on 2026-12-01, 30 days after the 2026-11-01 smoke run 
 
 Run the SDK in Node, on your server: its default ledger store is a file, and the agent and ledger keys stay server-side. The SDK is an unaudited beta, and a 0.x minor release may change its API.
 
-A packaged install for your own project, with `import { Probarion } from "@probarion/sdk"`, comes with the npm release 0.1.0, which is Planned. Until then, the [SDK README](https://github.com/probarion/probarion/blob/main/packages/sdk/README.md) notes that importing by name works in a package of the clone's pnpm workspace that depends on it.
+In a clone, a package of the clone's pnpm workspace that depends on the SDK also imports it by name, as the [SDK README](https://github.com/probarion/probarion/blob/main/packages/sdk/README.md) notes.
 
 ## Configure
 
@@ -201,8 +239,10 @@ Only NEAR testnet is live today, and the mainnet vault is Planned: see [Testnet 
 
 ## Common mistakes
 
-- **An engines or version error during the install.** The repository needs Node 24 or newer and pnpm 10. Check `node --version` and `pnpm --version`.
+- **An engines or version error during the install.** The packages need Node 24 or newer, and a build from source needs pnpm 10 too. Check `node --version` and `pnpm --version`.
 - **A script cannot load the packages.** There is no CommonJS build. Load them with `import` from an ES module: an `.mjs` file, or a `.js` file under a `package.json` that sets `"type": "module"`, as the root of the clone does.
+- **TypeScript cannot find `@probarion/sdk/testing`.** Set `"moduleResolution"` to `"NodeNext"` or `"Bundler"` in your `tsconfig.json`.
+- **`npx probarion` answers "could not determine executable to run".** It ran at the root of a clone, whose own `package.json` is also named `probarion`. Run it from your project's folder, or, in the clone, run `node packages/cli/dist/bin.js`.
 - **Node cannot find `packages/cli/dist/bin.js`.** Run the CLI from the root of the clone, after the build line. The `dist` folders exist only after a build.
 - **The build takes long.** `pnpm build` builds the website too. For the SDK and the CLI alone, run `pnpm --filter "{packages/cli}..." build`.
 - **An older clone acts on old code.** Pull, then run `pnpm install` and the build line again, as in step 3 of the build.
@@ -215,6 +255,6 @@ Only NEAR testnet is live today, and the mainnet vault is Planned: see [Testnet 
 - [Let an agent pay](/docs/build/let-an-agent-pay): the choices a production payment loop makes.
 - [Verify a vault yourself](/docs/trust/verify-a-vault): run the verifier on a live vault and read its report.
 - [Errors](/docs/build/errors): the vault, SDK and HTTP error codes.
-- [What works today](/docs/start/what-works-today): the status of each part, the npm release included.
+- [What works today](/docs/start/what-works-today#npm-release-010): the status of each part, the npm release included.
 - [For AI agents](/docs/resources/for-ai-agents): the rules for an agent that builds on Probarion.
 - The [CLI README](https://github.com/probarion/probarion/blob/main/packages/cli/README.md) and the [SDK README](https://github.com/probarion/probarion/blob/main/packages/sdk/README.md) list every command and the rest of the API.

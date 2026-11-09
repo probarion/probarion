@@ -21,7 +21,7 @@ The status list leaves these parts out, among others. Each one follows one row o
 | Part | Status |
 | --- | --- |
 | [NEAR AI Cloud adapter](#near-ai-cloud-adapter) | Preview |
-| [npm release 0.1.0](#npm-release-010) | Planned |
+| [npm release 0.1.0](#npm-release-010) | Live |
 | [Test USDC on testnet](#test-usdc-on-testnet) | Preview |
 | [Browser extension, server half](#browser-extension-server-half) | Preview |
 | [Browser extension for Chrome](#browser-extension-for-chrome) | Planned |
@@ -42,7 +42,7 @@ Code: [`packages/sdk/src/nearai.ts`](https://github.com/probarion/probarion/blob
 
 ### npm release 0.1.0
 
-Planned. Nothing is published. The release pipeline is in place, and the changelog's 0.1.0 section still reads "not released yet". Until then, [build from source](/docs/build/install).
+Live. On 2026-11-09, release 0.1.0 of `@probarion/core`, `@probarion/sdk` and `probarion`, the CLI, was published to npm under the `latest` tag. It came from the tag `sdk-v0.1.0` on `main`, through the release workflow, with npm provenance (SLSA v1). [Install the packages](/docs/build/install) has the install lines, and the build from a clone that the evaluation uses.
 
 Code: [`.github/workflows/release.yml`](https://github.com/probarion/probarion/blob/main/.github/workflows/release.yml)
 
@@ -142,6 +142,6 @@ The sections under [also in the source](#also-in-the-source) and [what does not 
 
 - [What is Probarion](/docs/start/what-is-probarion): the parts, and who does what.
 - [Testnet and mainnet](/docs/start/testnet-and-mainnet): what differs between the two networks.
-- [Install](/docs/build/install): build the SDK and the CLI from source.
+- [Install](/docs/build/install): install the SDK and the CLI from npm, or build them from source.
 - [Verify a vault](/docs/trust/verify-a-vault): run the verifier on a vault yourself.
 - [Security model](/docs/trust/security-model): the security design in one page.

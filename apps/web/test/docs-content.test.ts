@@ -196,17 +196,32 @@ const BANNED: readonly [RegExp, string][] = [
   [/\bguarantee/i, "guarantee"],
   [/100\s?%/, "100%"],
   [/\bunhackable\b/i, "unhackable"],
-  [
-    /(?<![\w-])npm (?:install|i)\b|\bpnpm add\b|\byarn add\b|\bnpx probarion\b/i,
-    "an install of the unpublished packages",
-  ],
+  [/\bpnpm add\b|\byarn add\b/i, "a pnpm or yarn install of the packages"],
   [/\bsecurity@|\bsupport@/i, "a contact mailbox"],
   [/status\.probarion\.xyz/i, "the status host"],
   [/\u2014/, "an em dash"],
   [/\bplease\b/i, "please"],
 ];
 
-const bans = (text: string) => BANNED.filter(([re]) => re.test(text)).map(([, name]) => name);
+/** The packages release 0.1.0 published to npm: the only ones an install line may name. */
+const PUBLISHED = ["@probarion/core", "@probarion/sdk", "probarion"];
+const NPM_INSTALL = /(?<![\w-])npm (?:install|i)\b([^\n`]*)/gi;
+
+/** The npm installs in the text that name anything but the published packages (or `-g`). */
+function npmInstallProblems(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(NPM_INSTALL)) {
+    const names = (m[1] ?? "").trim().split(/\s+/).filter(Boolean);
+    const other = names.filter((w) => w !== "-g" && !PUBLISHED.includes(w));
+    if (names.length === 0 || other.length > 0) out.push(`an npm install of ${m[0].trim()}`);
+  }
+  return out;
+}
+
+const bans = (text: string) => [
+  ...BANNED.filter(([re]) => re.test(text)).map(([, name]) => name),
+  ...npmInstallProblems(text),
+];
 
 const DOCS_CODE = [join(WEB, "src", "lib", "docs"), join(WEB, "src", "components", "docs")]
   .flatMap((dir) => [...walkFiles(dir, ".ts"), ...walkFiles(dir, ".tsx")])
@@ -251,8 +266,17 @@ describe("copy rules", () => {
     expect(found).toEqual([]);
   });
 
-  it("say build from source while the packages are not on npm", () => {
-    // When CLI_ON_NPM flips, rewrite build/install and the quickstarts first, then this line.
+  it("name only the published packages in an npm install", () => {
+    expect(npmInstallProblems("`npm install @probarion/sdk @probarion/core`")).toEqual([]);
+    expect(npmInstallProblems("npm install -g probarion\nnpm i @probarion/core")).toEqual([]);
+    expect(npmInstallProblems("npm installs it")).toEqual([]);
+    expect(npmInstallProblems("`npm install @probarion/mcp`")).toHaveLength(1);
+    expect(npmInstallProblems("npm install\n")).toHaveLength(1);
+  });
+
+  it("say what the site prints: the clone setup, while CLI_ON_NPM is false", () => {
+    // build/install says the proof page, the security page and the console's CLI fallback print
+    // the clone setup. When CLI_ON_NPM flips, rewrite that note first, then this line.
     expect(CLI_ON_NPM).toBe(false);
   });
 });
@@ -274,6 +298,15 @@ const CLI_TREE: Readonly<Record<string, readonly string[]>> = {
 };
 
 const BIN = "node packages/cli/dist/bin.js";
+/** The ways a page runs the CLI: built in a clone, or from npm (installed, or through npx). */
+const CLI_RUNS = [BIN, "npx probarion", "probarion"];
+
+/** What follows the CLI on a line that runs it, or null when the line does not run it. */
+function cliRun(line: string): string | null {
+  const run = CLI_RUNS.find((r) => line === r || line.startsWith(`${r} `));
+  return run === undefined ? null : line.slice(run.length).trim();
+}
+
 const FENCE_LANGS = ["bash", "text", "ts", "tsx", "js", "json", "rust", "md", "toml"];
 
 /** A fence's text with every backslash line continuation joined into one line, one space wide. */
@@ -339,19 +372,19 @@ describe("CLI commands", () => {
     for (const p of PAGES) {
       for (const c of codesOf(treeOf(p.path)).filter((x) => x.lang === "bash")) {
         for (const line of commandLines(c.value)) {
-          if (/^probarion\s/.test(line)) problems.push(`${fileOf(p.path)}: write "${BIN} ..."`);
-          if (!line.startsWith(`${BIN} `)) {
+          const run = cliRun(line);
+          if (run === null) {
             // A command that runs the bin some other way (an env prefix, `cd ... &&`, `./`) is not
             // the site's form and would escape the checks below. A `#` comment may name it.
-            if (/\bbin\.js\b/.test(line) && !line.startsWith("#")) {
+            if (/\bbin\.js\b|(?:^|\s)probarion\s+[-a-z]/.test(line) && !line.startsWith("#")) {
               problems.push(
-                `${fileOf(p.path)}: write "${BIN} ..." at the start of the line: ${line}`,
+                `${fileOf(p.path)}: start the line with "${CLI_RUNS.join('" or "')}": ${line}`,
               );
             }
             continue;
           }
           // The site puts the program options first: bin.js --network testnet vault create ...
-          const words = line.slice(BIN.length).trim().split(/\s+/);
+          const words = run.split(/\s+/).filter(Boolean);
           while (words[0] === "--network" || words[0] === "--rpc") words.splice(0, 2);
           const [top = "", sub = ""] = words;
           if (top.startsWith("-")) {

@@ -10,7 +10,7 @@ Verifying signs nothing and sends nothing. The offline run reads one file. The l
 
 ## Build the CLI
 
-The packages are not on npm yet, so you build the CLI from a clone of the public repository. Run these lines one at a time, in bash, zsh or PowerShell:
+The offline run reads a test fixture of the repository, so you build the CLI from a clone of the public repository. Run these lines one at a time, in bash, zsh or PowerShell:
 
 ```bash
 git clone https://github.com/probarion/probarion
@@ -19,7 +19,7 @@ pnpm install
 pnpm --filter "{packages/cli}..." build
 ```
 
-The last line builds the CLI together with `@probarion/core` and `@probarion/sdk`, the workspace packages it needs. Run every later command from the `probarion` folder. If you cloned it before, run `git pull`, `pnpm install` and the build line again. [Install](/docs/build/install) has the requirements and the full build.
+The last line builds the CLI together with `@probarion/core` and `@probarion/sdk`, the workspace packages it needs. Run every later command from the `probarion` folder. If you cloned it before, run `git pull`, `pnpm install` and the build line again. [Install](/docs/build/install) has the requirements and the full build. The CLI is also on npm: in a folder of your own, outside the clone, `npx probarion verify` with the same options runs a live check. Every command on this page runs in the clone.
 
 ## Run the verifier
 

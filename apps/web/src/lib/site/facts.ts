@@ -545,12 +545,7 @@ export const STATUS = {
       pill: "Built, no public vault yet",
       tone: "work",
     },
-    {
-      id: "sdk-and-cli",
-      row: "TypeScript SDK and CLI",
-      pill: "In source, not on npm",
-      tone: "work",
-    },
+    { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
     { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
     { id: "attested-model-run", row: "Live attested model run", pill: "In progress", tone: "work" },
     {

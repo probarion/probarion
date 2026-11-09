@@ -10,7 +10,7 @@ Nothing on this page signs or sends a transaction. After the build, steps 2, 3 a
 
 <Steps>
 
-1. **Build from source.** The packages are not on npm yet, so you build them from a clone of the public repository. The last line builds the CLI and the two workspace packages it needs, `@probarion/core` and `@probarion/sdk`. Steps 2 and 6 import from their `dist` folders.
+1. **Build from source.** The checks use files of the repository: the signed test fixture, `scripts/testnet/chain.mjs` and `contracts/code-hashes.json`. So you build the packages from a clone of the public repository, not from npm. The last line builds the CLI and the two workspace packages it needs, `@probarion/core` and `@probarion/sdk`. Steps 2 and 6 import from their `dist` folders.
 
    ```bash
    git clone https://github.com/probarion/probarion

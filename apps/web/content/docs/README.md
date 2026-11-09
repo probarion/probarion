@@ -16,7 +16,8 @@ Each file here is one page of `/docs`. The page's metadata lives in the registry
 - Every claim traces to a file on `dev`. Where a brief and the code disagree, the code wins.
 - Status words are Live (works in this deployment), Preview (built, not yet run end to end with real wallets, or not open yet) and Planned (not built). Nothing else.
 - Only NEAR testnet is live. The mainnet vault is planned.
-- The packages are not on npm. Show the clone and build steps exactly as `CLI_SETUP_LINES` in `src/lib/proof/cli.ts` writes them, and run the CLI as `node packages/cli/dist/bin.js <command>`.
+- The packages are on npm at 0.1.0. An install line names only them: `npm install @probarion/core`, `npm install @probarion/sdk @probarion/core` or `npm install -g probarion`.
+- A page that runs the repository's fixtures, scripts or tests builds from a clone. Show the clone and build steps exactly as `CLI_SETUP_LINES` in `src/lib/proof/cli.ts` writes them, and run the CLI there as `node packages/cli/dist/bin.js <command>`.
 - Program options may come before the command, as the site writes them: `node packages/cli/dist/bin.js --network testnet vault create ...`.
 - No secrets in examples. Use placeholders such as `ed25519:...`.
 
@@ -66,9 +67,9 @@ Name the language: `bash`, `text`, `ts`, `tsx`, `js`, `json`, `rust`, `md` or `t
 
 In a `bash` fence:
 
-- A line that runs the CLI starts with `node packages/cli/dist/bin.js`. Never a bare `probarion`, an env prefix, `cd ... &&` or `./`. A line that names `bin.js` anywhere but at its start fails, unless the line is a `#` comment.
+- A line that runs the CLI starts with `node packages/cli/dist/bin.js`, or, only in a step that runs in the reader's own project folder, with `probarion` or `npx probarion` for the CLI from npm. At the root of a clone, `npx probarion` fails: the root package is also named `probarion`. Never an env prefix, `cd ... &&` or `./`. A line that names `bin.js` anywhere but at its start fails, unless the line is a `#` comment.
 - Only `--network <name>` and `--rpc <url>` come before the command, each with a space (not `=`). After them comes a real command, `--help` or `--version`.
-- The commands are the CLI's own: vault (create, freeze, unfreeze, withdraw, withdraw-intents), mandate (create, revoke), agent (keygen, add, remove), ledger (set-key, export), spend (approve, reject), check and verify.
+- The commands are the CLI's own: vault (create, freeze, unfreeze, withdraw, withdraw-intents), mandate (create, revoke), agent (keygen, add, remove), ledger (set-key, export), spend (approve, reject), check and verify. Every `--flag` after the command words is an option the CLI defines.
 
 A fence that contains `git clone` contains the lines of `CLI_SETUP_LINES` too, one after another, in order. Only that setup block clones the repository.
 
@@ -79,6 +80,6 @@ These rules hold in the raw MDX, fenced blocks included, and in the page's Markd
 - No em dash, no "please".
 - No exclamation mark in prose. This also holds in a string prop (a callout, door or card title, a door's `go`) and in the registry title, nav, description and lede. Inline code and fenced blocks may contain one.
 - Never "guarantee", "100%" or "unhackable".
-- No npm, pnpm add or yarn add install of the packages, and no `npx probarion`.
+- Install the packages with npm, and only the three published ones. No `pnpm add` or `yarn add` of them.
 - No `security@` or `support@` mailbox, and no `status.probarion.xyz`.
 - Name only Probarion and its dependencies. Never name another project of the author.

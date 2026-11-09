@@ -28,8 +28,12 @@ export const HOME: DocPage = {
     "apps/web/src/lib/docs/errors.ts",
     "apps/web/src/lib/docs/status.ts",
     "README.md",
+    "packages/core/package.json",
+    "packages/sdk/package.json",
+    "packages/cli/package.json",
+    ".github/workflows/release.yml",
   ],
-  reviewed: "2026-11-07",
+  reviewed: "2026-11-09",
   phase: 1,
   locale: "en",
 };
