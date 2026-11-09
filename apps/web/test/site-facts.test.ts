@@ -23,20 +23,24 @@ import {
   CHAIN,
   CHECK_LABELS,
   CLOSING,
+  COMPARE,
   CONTRACT_REFUSAL_CODE,
   FIXTURE_PATH,
   FOOTER,
   HEADER_ANCHORS,
   HERO,
+  INTEGRATE,
   JOURNEY,
   LINKS,
   LIVE_CHECK,
   NUMBERS,
   OG_IMAGE,
+  PROBLEM,
   PROOF_INDEX,
   publicRoutes,
   RECORDED_RESULT,
   RULES_SHOWN,
+  SDK_SNIPPET,
   SITE_DESCRIPTION,
   SPEND_REQUEST_FIELDS,
   STATUS,
@@ -677,6 +681,72 @@ describe("the live check", () => {
   });
 });
 
+describe("the problem, the comparison and the integrate section", () => {
+  const prose = README.replace(/\s+/g, " ");
+  const sdkReadme = text(ROOT, "packages", "sdk", "README.md");
+  const squash = (s: string) => s.replace(/\s+/g, "");
+
+  it("leads the hero with the benefit and sends the first button to the live check", () => {
+    expect(HERO.lede.startsWith("Give your AI agent a budget, not your wallet.")).toBe(true);
+    expect(HERO.lede).not.toMatch(/offline/i);
+    const html = renderToStaticMarkup(createElement(Home));
+    expect(html).toMatch(/href="#try"[^>]*>Try a payment, live</);
+    expect(html).toMatch(/href="#integrate"[^>]*>Plug in your agent</);
+  });
+
+  it("says in the problem's 'with' column only what the numbers band and the README say", () => {
+    expect(PROBLEM.title).toBe("Giving an AI agent a wallet means trusting a prompt with money.");
+    expect(PROBLEM.with[0]).toContain("one method, `spend`");
+    expect(NUMBERS.find((n) => n.name === "method")?.value).toBe("1");
+    expect(PROBLEM.with[1]).toContain("`spend` has no recipient field");
+    expect(SPEND_REQUEST_FIELDS).not.toContain("recipient");
+    expect(PROBLEM.with[2]).toContain("refusals included");
+    expect(prose).toContain("one function-call key that can call `spend` and nothing else");
+  });
+
+  it("takes every pill of the comparison and the integrate cards from the status list", () => {
+    const rows = STATUS.rows.map((r) => r.row);
+    for (const r of COMPARE.rows) expect(rows, r.question).toContain(r.status);
+    for (const c of INTEGRATE.cards) expect(rows, c.title).toContain(c.status);
+  });
+
+  it("names no product in the do-it-yourself column", () => {
+    for (const r of COMPARE.rows) expect(r.diy).not.toMatch(/[A-Z][a-z]+[A-Z]|\.(com|io|xyz)\b/);
+  });
+
+  it("shows SDK code that the SDK README has, line by line", () => {
+    const readme = squash(sdkReadme);
+    const SHORTENED: Record<string, string> = {
+      "model:null,": "`model: null`",
+      "facts,": "facts: {",
+    };
+    const lines = SDK_SNIPPET.split("\n")
+      .map((l) => squash(l.replace(/\s\/\/.*$/, "")))
+      .filter((l) => l !== "" && !l.startsWith("//"));
+    expect(lines.length).toBeGreaterThan(8);
+    for (const l of lines) {
+      const backing = SHORTENED[l];
+      if (backing === undefined) expect(readme, l).toContain(l);
+      else expect(sdkReadme, l).toContain(backing);
+    }
+  });
+
+  it("lists the outcome statuses the SDK README lists", () => {
+    const block = sdkReadme.slice(sdkReadme.indexOf("`outcome.status` is one of:"));
+    const listed = [...block.slice(0, block.indexOf("```")).matchAll(/^- `(\w+)`:/gm)].map(
+      (m) => m[1],
+    );
+    expect([...INTEGRATE.statuses]).toEqual(listed);
+  });
+
+  it("is reachable from the hero, and its README links exist", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    for (const id of ["compare", "integrate"]) expect(html).toContain(`id="${id}"`);
+    expect(LINKS.sdkReadme.endsWith("/packages/sdk/README.md")).toBe(true);
+    expect(LINKS.cliReadme.endsWith("/packages/cli/README.md")).toBe(true);
+  });
+});
+
 describe("the rendered landing page", () => {
   it("says it is an unaudited beta", () => {
     expect(visibleText(landing())).toContain("Unaudited beta");
@@ -777,7 +847,8 @@ describe("the rendered landing page", () => {
     expect(links).toContain(
       "https://github.com/probarion/probarion/blob/main/docs/specs/2026-10-21-probarion-design.md",
     );
-    expect(links).toContain("#verify");
+    expect(links).toContain("#try");
+    expect(links).toContain("#integrate");
     expect(links).toContain("/console");
   });
 });

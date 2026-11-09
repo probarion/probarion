@@ -412,24 +412,6 @@ a.netPill:hover {
   padding-inline: 4px;
 }
 
-/* Thesis */
-.thesis {
-  border-top: 1px solid var(--color-line);
-  padding-block: clamp(56px, 8vw, 116px);
-}
-.thesis p {
-  font-weight: 300;
-  font-size: clamp(30px, 4.7vw, 66px);
-  line-height: 1.08;
-  letter-spacing: -0.032em;
-  max-width: 19em;
-  text-wrap: balance;
-}
-.thesis em {
-  font-style: normal;
-  color: var(--color-mute);
-}
-
 /* Numbers */
 .numbers {
   display: grid;
@@ -709,6 +691,166 @@ a.netPill:hover {
 .liveTable td {
   text-align: left;
   padding: 4px 16px 4px 0;
+}
+
+/* Problem: two columns, then the numbers */
+.vs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: clamp(32px, 4vw, 56px);
+}
+.vsCol {
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  padding: 26px;
+  background: var(--color-surface);
+}
+.vsWith {
+  border-color: var(--color-ink);
+}
+.vsCol h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.vsCol ul {
+  display: grid;
+  gap: 12px;
+}
+.vsCol li {
+  position: relative;
+  padding-left: 32px;
+  font-size: 16px;
+}
+.vsNo,
+.vsYes {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 600;
+}
+.vsNo {
+  color: var(--color-bad);
+}
+.vsYes {
+  color: var(--color-ok);
+}
+
+/* Compare: a real table; under 960 px each row stacks as a card with its column names */
+.compare {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--color-surface);
+  font-size: 15px;
+}
+.compare th,
+.compare td {
+  text-align: left;
+  vertical-align: top;
+  padding: 16px 20px;
+  border-top: 1px solid var(--color-line);
+}
+.compareHead th {
+  border-top: 0;
+  background: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+.compareRow {
+  font-weight: 500;
+  width: 30%;
+}
+.compareDiy {
+  color: var(--color-mute);
+}
+
+/* Integrate */
+.ways {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.way {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  padding: 20px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+.way h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.way p {
+  flex: 1;
+  font-size: 14.5px;
+  color: var(--color-mute);
+}
+.codeBox {
+  border-radius: 16px;
+  background: var(--color-band);
+  color: var(--color-band-fg);
+  border: 1px solid var(--color-band-line);
+  overflow: hidden;
+}
+.codeBox :focus-visible {
+  outline-color: var(--color-band-fg);
+}
+.codeHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-band-line);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--color-band-mute);
+}
+.codeBody {
+  overflow-x: auto;
+}
+.codeBody pre {
+  padding: 18px 20px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+.codeNote {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.who {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 28px;
+}
+.who > div {
+  border-top: 1px solid var(--color-ink);
+  padding-top: 12px;
+  font-size: 15px;
+}
+.who b {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.who span {
+  color: var(--color-mute);
 }
 
 /* Journey */
@@ -1367,6 +1509,39 @@ a.netPill:hover {
   .liveGrid {
     grid-template-columns: 1fr;
   }
+  .vs {
+    grid-template-columns: 1fr;
+  }
+  .ways {
+    grid-template-columns: 1fr 1fr;
+  }
+  .compareHead {
+    display: none;
+  }
+  .compare tr,
+  .compare th,
+  .compare td {
+    display: block;
+    width: auto;
+  }
+  .compare .compareRow {
+    padding-bottom: 4px;
+  }
+  .compare td {
+    border-top: 0;
+    padding-block: 4px;
+  }
+  .compare td::before {
+    content: attr(data-label) ": ";
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+  .compare tr + tr th {
+    border-top: 1px solid var(--color-line);
+  }
+  .compare td:last-child {
+    padding-bottom: 16px;
+  }
   .heroGrid,
   .bandGrid,
   .tamper {
@@ -1415,6 +1590,10 @@ a.netPill:hover {
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
   .scenarios {
+    grid-template-columns: 1fr;
+  }
+  .ways,
+  .who {
     grid-template-columns: 1fr;
   }
   .field {

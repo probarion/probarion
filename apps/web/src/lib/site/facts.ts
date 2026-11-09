@@ -21,6 +21,8 @@ export const LINKS = {
   runbook: blob("docs/RUNBOOK.md"),
   changelog: blob("CHANGELOG.md"),
   fixture: blob(FIXTURE_PATH),
+  sdkReadme: blob("packages/sdk/README.md"),
+  cliReadme: blob("packages/cli/README.md"),
   x: "https://x.com/probarionhq",
 } as const;
 
@@ -50,9 +52,9 @@ export { betaStrip } from "./beta";
 
 /** The landing sections. A full path, so that each one works from every page. */
 export const HEADER_ANCHORS: readonly { href: string; label: string }[] = [
+  { href: "/#try", label: "Try it" },
   { href: "/#payment", label: "How a payment works" },
   { href: "/#verify", label: "Verify" },
-  { href: "/#chain", label: "On chain" },
 ];
 
 export const PROOF_ROUTE = "/proof";
@@ -105,9 +107,10 @@ export const TX = {
 export const HERO = {
   line1: "Spend by mandate.",
   line2: "Prove every payment.",
-  lede: "A mandate layer for AI agents on NEAR. Your agent pays people and services only inside limits you signed. A contract checks every payment, and every decision goes into a signed ledger anyone can verify.",
+  lede: "Give your AI agent a budget, not your wallet. It can pay only the payee you named, up to the limits you signed. A NEAR contract refuses everything else, and every decision goes into a ledger anyone can check.",
   openConsole: "Open console",
-  breakTheLedger: "Try to break the ledger",
+  tryLive: "Try a payment, live",
+  integrate: "Plug in your agent",
   fineprint:
     "Testnet today, mainnet planned. You need no account to read the chain or run the verifier.",
   paid: {
@@ -133,9 +136,24 @@ export const HERO = {
   note: "Two real calls by one agent key on `v0.probarion.testnet`, with test tokens. The contract decided both.",
 } as const;
 
-export const THESIS = {
-  lead: "Giving an AI agent a wallet means trusting a prompt with money.",
-  rule: "Probarion moves the rule into a NEAR contract.",
+export const PROBLEM = {
+  eyebrow: "The problem",
+  title: "Giving an AI agent a wallet means trusting a prompt with money.",
+  sub: "A model can be talked into anything by the invoice or web page it reads. Probarion takes the rule out of the prompt and puts it in a NEAR contract.",
+  withoutTitle: "An agent with its own wallet key",
+  withTitle: "An agent with a Probarion mandate",
+  without: [
+    "Can send any amount to any address the prompt names.",
+    "A hijacked invoice changes the payee and nobody notices.",
+    "Refusals leave no record. You learn of a bad payment afterwards.",
+  ],
+  with: [
+    "Its key can call one method, `spend`, and only inside your caps, uses and expiry.",
+    "`spend` has no recipient field. The payee comes from the mandate you signed.",
+    "Every decision, refusals included, is signed into a ledger the verifier checks.",
+  ],
+  noLabel: "No",
+  yesLabel: "Yes",
 } as const;
 
 export const NUMBERS = [
@@ -491,6 +509,155 @@ export const STATUS = {
   noteAfter: ", including what `verify` does not prove yet.",
   build:
     "`v0.probarion.testnet` runs a build older than the current source; the vaults the testnet factory creates run the fixed build recorded in `contracts/code-hashes.json`.",
+} as const;
+
+type StatusRow = (typeof STATUS.rows)[number];
+/** A row of the status list by its name: the comparison and the integrate cards show its pill, never a copy of it. */
+export function statusOf(row: StatusRow["row"]): StatusRow {
+  const found = STATUS.rows.find((r) => r.row === row);
+  if (found === undefined) throw new Error(`no status row ${row}`);
+  return found;
+}
+
+// --- why not just a spending limit ----------------------------------------------------------------
+
+export const COMPARE = {
+  eyebrow: "Why not just a spending limit?",
+  title: "A cap stops big payments. It does not stop the wrong ones.",
+  sub: "You can write a contract with a limit in an afternoon. These are the parts that take longer, and that Probarion already ships.",
+  head: ["Question", "A limit contract you write", "Probarion"],
+  rows: [
+    {
+      question: "Who picks the payee?",
+      diy: "Usually the caller, so the agent.",
+      probarion: "The mandate. `spend` has no recipient argument.",
+      status: "Vault contract",
+    },
+    {
+      question: "What can the agent's key do?",
+      diy: "Often a full-access key, or a key that can call anything.",
+      probarion:
+        "A function-call key for `spend` only. It cannot attach the 1 yocto a token transfer needs.",
+      status: "Vault contract",
+    },
+    {
+      question: "A cross-chain payee?",
+      diy: "The agent passes an address to a bridge.",
+      probarion: "The vault builds the Intents withdrawal memo from the mandate.",
+      status: "Vault contract",
+    },
+    {
+      question: "Big payments?",
+      diy: "Refused, or allowed.",
+      probarion: "Held above a limit you set until a person approves.",
+      status: "Vault contract",
+    },
+    {
+      question: "A record of what was refused?",
+      diy: "Failed transactions, if anyone looks.",
+      probarion:
+        "Each decision is signed into a hash-chained ledger before money moves, refusals too.",
+      status: "TypeScript SDK and CLI",
+    },
+    {
+      question: "Can someone check it without trusting you?",
+      diy: "They read your code and hope.",
+      probarion: "An open verifier runs 9 checks, on a snapshot or against the chain.",
+      status: "Offline verifier, checks a to i",
+    },
+    {
+      question: "Is the deployed code the code they read?",
+      diy: "Hard to tell.",
+      probarion: "Reproducible builds, with code hashes recorded in the repository.",
+      status: "Reproducible builds",
+    },
+    {
+      question: "Is the model's advice tied to this payment?",
+      diy: "No model, or one nobody can check.",
+      probarion: "A NEAR AI Cloud TEE attestation bound by a nonce to one ledger position.",
+      status: "Live attested model run",
+    },
+  ],
+} as const;
+// A wrong `status` name fails the typecheck where Compare.tsx calls statusOf(r.status).
+
+// --- plug in your agent ---------------------------------------------------------------------------
+
+/** The SDK README's quick start, shortened. The test holds each code line to packages/sdk/README.md. */
+export const SDK_SNIPPET = `import { Probarion, hashInvoice } from "@probarion/sdk";
+
+const probarion = new Probarion({
+  network: "testnet",
+  vault: "acme.vaults.probarion.testnet",
+  agentKey: process.env.PROBARION_AGENT_KEY, // function-call key: can only call \`spend\`
+  ledgerKey: process.env.PROBARION_LEDGER_KEY, // function-call key: can only call \`anchor\`
+  model: null, // or NEAR AI Cloud, for attested advice
+});
+
+const outcome = await probarion.process({
+  text: invoiceText, // untrusted: it is shown to the model as data and nothing else
+  ref: "INV-2026-001", // your reference; the vault accepts each ref once
+  facts, // invoice_hash, amount, po_ref, purpose_hash, payee_hint
+});
+
+console.log(outcome.status, outcome.code, outcome.spendId, outcome.txHash);`;
+
+export const INTEGRATE = {
+  eyebrow: "Plug in your agent",
+  title: "Your agent keeps its brain. Probarion holds the money.",
+  sub: "You keep your model and your prompts. The owner creates a vault and a mandate from their own wallet, gives the agent a key that can only call `spend`, and the agent pays through the SDK.",
+  cards: [
+    {
+      title: "TypeScript SDK",
+      body: "One call runs the cycle: code decides, the contract checks and pays, the ledger records it.",
+      status: "TypeScript SDK and CLI",
+      link: { href: LINKS.sdkReadme, label: "SDK README" },
+    },
+    {
+      title: "CLI",
+      body: "`verify` checks a vault or a snapshot. Other commands print owner actions for the owner's wallet to sign.",
+      status: "TypeScript SDK and CLI",
+      link: { href: LINKS.cliReadme, label: "CLI README" },
+    },
+    {
+      title: "Web console",
+      body: "Create a vault and mandates, approve held payments and read the ledger. Sign in with a NEAR wallet.",
+      status: "Web console",
+      link: { route: CONSOLE_ROUTE, label: "Open console" },
+    },
+    {
+      title: "MCP server",
+      body: "For agents that speak MCP: a small set of tools over the same SDK.",
+      status: "MCP server",
+      link: { href: "#status", label: "See the status list" },
+    },
+  ],
+  fileName: "agent.ts",
+  codeLabel: "@probarion/sdk",
+  statusesLead: "`outcome.status` is one of:",
+  statuses: [
+    "refused_by_code",
+    "refused_by_contract",
+    "held",
+    "paid",
+    "burned",
+    "failed",
+    "unconfirmed",
+  ],
+  who: [
+    {
+      title: "Teams paying invoices with an agent",
+      body: "Accounts payable in USDC, where a person signs the limits once and approves only the big ones.",
+    },
+    {
+      title: "Agent builders on NEAR",
+      body: "Give your agent a wallet you can show users is boxed in, with proof they can run.",
+    },
+    {
+      title: "Cross-chain payouts",
+      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate.",
+    },
+  ],
 } as const;
 
 // --- closing --------------------------------------------------------------------------------------
