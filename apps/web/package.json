@@ -21,7 +21,7 @@
     "@hot-labs/near-connect": "0.11.4",
     "@probarion/core": "workspace:*",
     "@probarion/sdk": "workspace:*",
-    "@sentry/nextjs": "^11.8.0",
+    "@sentry/nextjs": "^11.11.0",
     "@supabase/supabase-js": "^2.118.0",
     "libsodium-wrappers": "0.8.4",
     "near-api-js": "^7.3.1",
@@ -46,6 +46,6 @@
     "tsx": "^4.20.0",
     "tweetnacl": "^1.0.3",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.12"
   }
 }
