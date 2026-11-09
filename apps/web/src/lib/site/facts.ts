@@ -21,8 +21,6 @@ export const LINKS = {
   runbook: blob("docs/RUNBOOK.md"),
   changelog: blob("CHANGELOG.md"),
   fixture: blob(FIXTURE_PATH),
-  sdkReadme: blob("packages/sdk/README.md"),
-  cliReadme: blob("packages/cli/README.md"),
   x: "https://x.com/probarionhq",
 } as const;
 
@@ -664,13 +662,13 @@ export const INTEGRATE = {
       title: "TypeScript SDK",
       body: "One call runs the cycle: code decides, the contract checks and pays, the ledger records it.",
       status: "TypeScript SDK and CLI",
-      link: { href: LINKS.sdkReadme, label: "SDK README" },
+      link: { route: "/docs/start/developer-quickstart", label: "Developer quickstart" },
     },
     {
       title: "CLI",
       body: "`verify` checks a vault or a snapshot. Other commands print owner actions for the owner's wallet to sign.",
       status: "TypeScript SDK and CLI",
-      link: { href: LINKS.cliReadme, label: "CLI README" },
+      link: { route: "/docs/build/install", label: "Install" },
     },
     {
       title: "Web console",
@@ -688,6 +686,8 @@ export const INTEGRATE = {
   fileName: "agent.ts",
   codeLabel: "@probarion/sdk",
   statusesLead: "`outcome.status` is one of:",
+  /** After the statuses: the docs page that says what each one means and what to do next. */
+  statusesLink: { route: "/docs/build/spend-outcomes", label: "What each status means" },
   statuses: [
     "refused_by_code",
     "refused_by_contract",

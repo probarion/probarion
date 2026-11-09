@@ -25,6 +25,7 @@ import {
   CHECK_LABELS,
   CLOSING,
   COMPARE,
+  CONSOLE_ROUTE,
   CONTRACT_REFUSAL_CODE,
   EVALUATE_ROUTE,
   FIXTURE_PATH,
@@ -862,11 +863,32 @@ describe("the problem, the comparison and the integrate section", () => {
     expect([...INTEGRATE.statuses]).toEqual(listed);
   });
 
-  it("is reachable from the hero, and its README links exist", () => {
+  it("is reachable from the hero, and links the docs pages that start each part", () => {
     const html = renderToStaticMarkup(createElement(Home));
     for (const id of ["compare", "integrate"]) expect(html).toContain(`id="${id}"`);
-    expect(LINKS.sdkReadme.endsWith("/packages/sdk/README.md")).toBe(true);
-    expect(LINKS.cliReadme.endsWith("/packages/cli/README.md")).toBe(true);
+    expect(INTEGRATE.cards.map((c) => c.link)).toEqual([
+      { route: "/docs/start/developer-quickstart", label: "Developer quickstart" },
+      { route: "/docs/build/install", label: "Install" },
+      { route: CONSOLE_ROUTE, label: "Open console" },
+      { href: "#status", label: "See the status list" },
+    ]);
+    expect(INTEGRATE.statusesLink).toEqual({
+      route: "/docs/build/spend-outcomes",
+      label: "What each status means",
+    });
+    // Each is a docs page, linked in the app (RouteLink), not as an external link.
+    const integrate = html.slice(html.indexOf('id="integrate"'));
+    for (const route of [
+      "/docs/start/developer-quickstart",
+      "/docs/build/install",
+      "/docs/build/spend-outcomes",
+    ]) {
+      expect(findPage(route.slice("/docs/".length)), route).toBeDefined();
+      const link = new RegExp(`<a[^>]*href="${route}"[^>]*>`).exec(integrate)?.[0] ?? "";
+      expect(link, route).not.toBe("");
+      expect(link, route).not.toContain('target="_blank"');
+    }
+    expect(integrate).toMatch(/href="\/docs\/build\/spend-outcomes"[^>]*>What each status means</);
   });
 });
 
