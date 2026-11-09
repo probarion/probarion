@@ -1,0 +1,204 @@
+In about ten minutes, with git, Node.js 24 or later, pnpm 10 and no wallet or key, you run the Probarion verifier on your own machine: offline on a committed test fixture and live against a NEAR testnet vault. If you can sign in to the console as a member of a vault, or once an owner makes a vault's proof page public, you also run it on the files that page offers. You read its real output, and you see why a live run on `v0.probarion.testnet` fails checks d and h today.
+
+<Callout kind="key">
+
+Don't trust us. Run the verifier.
+
+</Callout>
+
+Verifying signs nothing and sends nothing. The offline run reads one file. The live runs read public NEAR testnet data through an RPC node, with no key.
+
+## Build the CLI
+
+The offline run reads a test fixture of the repository, so you build the CLI from a clone of the public repository. Run these lines one at a time, in bash, zsh or PowerShell:
+
+```bash
+git clone https://github.com/probarion/probarion
+cd probarion
+pnpm install
+pnpm --filter "{packages/cli}..." build
+```
+
+The last line builds the CLI together with `@probarion/core` and `@probarion/sdk`, the workspace packages it needs. Run every later command from the `probarion` folder. If you cloned it before, run `git pull`, `pnpm install` and the build line again. [Install](/docs/build/install) has the requirements and the full build. The CLI is also on npm: in a folder of your own, outside the clone, `npx probarion verify` with the same options runs a live check. Every command on this page runs in the clone.
+
+## Run the verifier
+
+<Steps>
+
+1. **Verify the committed fixture, offline.** `--offline` checks a saved snapshot: a signed ledger and the chain data recorded with it, in one file. The file here is [`valid-snapshot.json`](https://github.com/probarion/probarion/blob/main/packages/core/test/fixtures/valid-snapshot.json), a test fixture signed with test keys. Its vault, `x.vaults.probarion.testnet`, is a fixture name, not a deployed vault. The run needs no network.
+
+   ```bash
+   node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json
+   ```
+
+   It exits 0 and prints the report below. The `generated` time is the moment you run it, so it reads `<timestamp>` here; every other line is as the CLI prints it.
+
+   ```text
+   Probarion verify: x.vaults.probarion.testnet (testnet)
+   entries 5, anchors 3, generated <timestamp>
+   snapshot taken 2026-11-05T12:00:00.000Z: its chain data is the file's and was not read from the chain again
+
+   a  ledger-signatures      PASS      5 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+   b  hash-links             PASS      5 entries: every body_hash and link recomputes, chained from the zero link
+   c  anchors                PASS      3 anchors match the ledger; 0 entries after the last anchored count (5) are not chain-attested
+   d  spends-have-decisions  PASS      2 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount)
+   e  attestations           PASS      2 attested decisions pass A1–A7; quote not verified offline (run --online for O1; re-take the snapshot live with --online); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 4
+   f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 9xTTGSkSHPbw2DCumDxoraeR7uL8Pc2ANm5XKjhohnWL is version 1 of the canonical factory vaults.probarion.testnet; it is the code of factory version 1
+   g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+   h  burn-memos             PASS      1 burned spend has a matched burn pair: the POA ft_burn memo is WITHDRAW_TO:<destination address> and the vault's intents mt_burn is for the spend amount
+   i  factory-version        PASS      created by vaults.probarion.testnet at version 1
+
+   9 passed, 0 failed, 0 unproven
+   RESULT: PASS
+   ```
+
+   The third line says where the chain data came from. Offline, the verifier reads the vault's keys, code hash, spends, anchors and burns from the file, as recorded at 2026-11-05T12:00:00.000Z, and does not ask the chain again. Each row after it is one check, a to i, with its status and what it found.
+
+2. **Verify a vault live.** With `--vault`, the CLI reads the vault's chain state itself and checks it against your ledger file. `v0.probarion.testnet` is the testnet vault of the 2026-11-01 smoke run.
+
+   ```bash
+   node packages/cli/dist/bin.js verify --network testnet --vault v0.probarion.testnet
+   ```
+
+   It exits 1. Below are the lines recorded from a run on 2026-11-07. The first line is a warning on stderr, and `...` marks what the record leaves out: the two header lines, the other five rows that passed, and parts of some details. The chain state can change, so run it yourself.
+
+   ```text
+   warning: the ledger file ./.probarion/ledger.jsonl does not exist: verifying the chain against an empty ledger
+   ...
+   d  spends-have-decisions  FAIL      spend 1 has decision_hash 704b0f18..., which is not a decision in the ledger
+   ...
+   f  vault-locked           PASS      ... code_hash 6tbERLAX... is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+   ...
+   h  burn-memos             FAIL      spend 2: no burn event observed; ...
+   i  factory-version        SKIP      not a factory vault
+
+   6 passed, 2 failed, 0 unproven, 1 skipped
+   RESULT: FAIL
+   ```
+
+   The warning names `./.probarion/ledger.jsonl`, the default ledger path, unless `PROBARION_LEDGER_PATH` names another file.
+
+   <Callout kind="warning" title="This FAIL is expected today">
+
+   The smoke run sent its spends with the agent key directly, without the SDK, a model or a ledger. So `v0.probarion.testnet` has no ledger key and no anchors, and there is no ledger file to give the verifier. Check d fails because spend 1 names a decision hash that is not in the ledger, which here is empty. Check h fails because the run is given no transaction for the burn of spend 2, the smoke run's payout to Base: there is no ledger entry to record it, and the command names none, so the verifier finds no burn for it. The PASS on check f still shows two facts read live from the chain: the vault has no full-access key, since check f fails on one, and its code hash, `6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR`, is a recorded reproducible build, listed in [`contracts/code-hashes.json`](https://github.com/probarion/probarion/blob/main/contracts/code-hashes.json). That build is older than the current source, which gained a `set_ledger_key` fix on 2026-11-03, explained in [What works today](/docs/start/what-works-today). The vaults the testnet factory creates run the build with that fix, `3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`, recorded in the same file.
+
+   </Callout>
+
+   The repository records the burn transaction of spend 2 in [`contracts/deployments/testnet.json`](https://github.com/probarion/probarion/blob/main/contracts/deployments/testnet.json) as `smoke.base_burn_tx`. To hand it to the verifier, name it with `--burn-tx`:
+
+   ```bash
+   node packages/cli/dist/bin.js verify --network testnet --vault v0.probarion.testnet --burn-tx 2=3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe
+   ```
+
+   From the code, check h should then pass, with `1 burned spend has a matched burn pair`, while check d still fails, so the run still exits 1 and its counts line should read `7 passed, 1 failed, 0 unproven, 1 skipped`. No recorded run shows it yet.
+
+   A live PASS on check d would show that each spend is bound to one decision in the ledger with the same invoice, mandate and amount, which allowed it or held it. It would not show that the decision was right: the verifier does not run the policy again.
+
+   To try a live run on a factory vault, point the same command at `smoke-embedded.vaults.probarion.testnet`, a vault the testnet factory created at version 1, recorded with no access keys in [`contracts/deployments/testnet.json`](https://github.com/probarion/probarion/blob/main/contracts/deployments/testnet.json). From the code, a factory vault with no spends and an empty ledger should pass every check, after the same warning, and end in `RESULT: PASS`. No recorded run shows it yet, and no file records whether this vault has spends. Its owner can still change it, so your result may differ. Even an empty vault that passes proves only facts about its keys, its code, its intents setting and its factory version (checks f, g and i). Checks a to e and h have nothing to look at.
+
+3. **Verify the files of a vault's proof page.** Each vault registered in the console has a proof page at `/proof/<vault>`. Signed in to the console with your wallet as a member of the vault, such as its owner, you can open it now: the page reads "Proof, visible to members only". For anyone else it answers page not found until the vault's owner makes it public: on the vault's Overview tab in the console, `/console/<vault>`, the owner ticks "Public proof page" in the Settings card and clicks "Save settings". The page then reads "Public proof" for every visitor. Either way it offers the same two files for this verifier, and you can check them in two ways.
+
+   First, offline: **Download snapshot.json** saves `probarion-<vault>-snapshot.json`, a snapshot of the vault's ledger and chain data taken when you click or shortly before. Put it in the `probarion` folder and run:
+
+   ```bash
+   node packages/cli/dist/bin.js verify --offline probarion-<vault>-snapshot.json
+   ```
+
+   The proof page prints the same command as `npx probarion verify --offline <file>`, which runs release 0.1.0 from npm in any folder that holds the file, with no clone.
+
+   The report prints when the snapshot was taken. If it is the time the page shows after "snapshot taken", it is the very snapshot the page's checks used.
+
+   Second, live: the page's ledger link saves `probarion-<vault>-ledger.jsonl`, the vault's signed ledger. Download it into the `probarion` folder just before you run the command (replace any earlier copy, and fetch it again if the vault has acted since). This run reads the chain half again instead of trusting the file:
+
+   ```bash
+   node packages/cli/dist/bin.js verify --network testnet --vault <vault> --ledger probarion-<vault>-ledger.jsonl
+   ```
+
+   <Callout kind="note" title="No vault is public yet">
+
+   The [proof index](/proof) says "No public vault is listed here yet." If you are not a member of any vault, this step waits for an owner to make a proof page public. Until then, the proof index has a ledger test that runs the verifier in your browser on a test fixture.
+
+   </Callout>
+
+</Steps>
+
+## Read the result
+
+`verify` exits with one of these codes:
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Every check passes. |
+| 1 | A check fails (a fail always wins over unproven), or verify could not run. When it could not run, it prints `error:` on stderr and no `RESULT` line. |
+| 2 | No check fails, but at least one is unproven. |
+| 64 | Usage error: a missing, malformed or conflicting flag, or, with `--offline`, a snapshot whose `vault`, `network` or `taken_at` is malformed. |
+
+Each row has one of these statuses:
+
+| Status | Meaning |
+| --- | --- |
+| PASS | The check found what it needs, and it holds. |
+| FAIL | The check found something wrong, and its detail says what. When a ledger entry is to blame, the row ends in `[first broken seq N]`, and the result line reads `RESULT: FAIL (first broken seq M)`, where M is the lowest seq any failing row names. |
+| SKIP | The check does not apply. Today only check i skips, for a vault that names no factory (one initialized from its own account, as `v0.probarion.testnet` was). A vault that names an account other than the Probarion factory of its network fails check i. A skip does not fail the report, and the counts line adds `, N skipped`. |
+| UNPROVEN | The verifier could not look at what the check needs. It is not a pass. Today only check h can be unproven: a payout's burn is in a transaction that verify did not read. |
+
+An UNPROVEN row lists the spends, the reason and what to supply. This example is from the CLI's README:
+
+```text
+h  burn-memos             UNPROVEN  0 of 1 burned spend has a proven burn pair; not proven, so the report is not ok: ...
+   unproven: spend 2 (approver_tx): supply the burn tx with --burn-tx or --proof
+
+8 passed, 0 failed, 1 unproven
+RESULT: UNPROVEN (no check failed; what the UNPROVEN rows name is not proven)
+```
+
+| Reason | What happened | What to do |
+| --- | --- | --- |
+| `approver_tx` | An approver paid out a held spend. Its burn is in the approver's transaction, which your ledger does not record. | Pass `--burn-tx` or `--proof`. |
+| `not_recorded` | The spend is bound to its decision, but no payment entry names its transaction. | Pass `--burn-tx` or `--proof`. |
+| `pre_ledger_no_tx` | A spend of the mainnet vault `v0.probarion.near` (planned) from before its ledger, with no transaction supplied. | Pass `--burn-tx` or `--proof`. |
+| `tx_unavailable` | The transaction could not be read right now: no node gave a definite answer, for example because the archival node was unreachable. | Run it again, or add `--archival-rpc`. |
+
+In the check e row of step 1, `A8 not run` is expected from the CLI: `verify` never passes invoice texts. A8 runs only when invoice texts are supplied: through the SDK's `verify({ invoiceTexts })`, or through `runChecks` from `@probarion/core` with `invoiceTexts`.
+
+Checks a to i are the verifier's, run off-chain on your machine. They are not the 14 checks the contract runs on every spend, which [Payment checks](/docs/concepts/payment-checks) lists. For what each verifier check proves, and what it leaves to trust, see [Verifier checks](/docs/trust/verifier-checks).
+
+## Offline is not live
+
+<Callout kind="warning" title="Offline, a snapshot is checked against itself">
+
+`verify --offline` takes the chain data from the same file as the ledger. An edit that was not signed again fails. A forged snapshot, with entries signed again and chain data edited to agree with them, passes. Only a live run with `--vault` reads the chain, so take the snapshot yourself or run live.
+
+</Callout>
+
+The fixture of step 1 shows it. Its own chain data lists the code hash `9xTTGSkSHPbw2DCumDxoraeR7uL8Pc2ANm5XKjhohnWL` as version 1 of the factory, marked in the file as a test fixture version, and check f accepts it. The real testnet factory lists `3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1` for version 1. Offline, the verifier takes the file's word for the chain.
+
+To take a snapshot yourself, verify live with `--snapshot`, then check the saved file offline whenever you like:
+
+```bash
+node packages/cli/dist/bin.js verify --network testnet --vault v0.probarion.testnet --snapshot my-v0-snapshot.json
+node packages/cli/dist/bin.js verify --offline my-v0-snapshot.json
+```
+
+[SECURITY.md](https://github.com/probarion/probarion/blob/main/SECURITY.md#what-is-not-proven-yet) lists what `verify` does not prove yet.
+
+## Go further
+
+- `--snapshot <file>` saves the snapshot that was verified to a new file. It refuses a file that already exists, and the ledger file (exit 64).
+- `--json` prints the report as JSON instead of rows: the vault, the network, `ok`, the checks, the entry and anchor counts, `generated_at` and the unproven burns.
+- `--online` also runs O1 (Intel DCAP on each TDX quote) and O2 (NVIDIA NRAS on each GPU payload) for check e, and looks burns up in FastNEAR's transaction index. It needs the network and the optional dependency `@nearai/inference-sdk`, which declares Node 24.22.1 or newer. Without it, the report says `online: O1 and O2 did not run (<reason>)` and check e keeps its offline result.
+- `--burn-tx <spend_id>=<tx hash>[@<signer>]` names a transaction that holds a spend's burn, for example an approver's `approve` transaction. Repeat it for more. verify still reads each transaction, and check h fails when none of them holds the burn.
+- `--proof <file>` takes the vault's burn transactions from an evidence file in the format of `docs/mainnet-proof.json`, after the `--burn-tx` ones.
+- `--archival-rpc <urls>` sets the archival nodes for burn transactions older than about 2.5 days. It defaults to `NEAR_ARCHIVAL_RPC_URLS`, else FastNEAR's archival node.
+- `--ledger <path>` names the ledger file. It defaults to `PROBARION_LEDGER_PATH`, else `.probarion/ledger.jsonl`.
+
+`--offline` refuses `--vault`, `--ledger`, `--evidence`, `--burn-tx`, `--proof`, `--archival-rpc`, `--online`, `--rpc` and `--network` (exit 64). For every flag, run `node packages/cli/dist/bin.js verify --help` or read the [CLI README](https://github.com/probarion/probarion/blob/main/packages/cli/README.md).
+
+## Next steps
+
+- [Verifier checks](/docs/trust/verifier-checks): what each check a to i proves, and what it does not.
+- [Security model](/docs/trust/security-model): what Probarion protects, and what is not proven yet.
+- [Ledger and anchors](/docs/concepts/ledger-and-anchors): the signed ledger a live run checks, and the anchors that pin it on chain.
+- [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes): watch the verifier catch a one-field edit, and read the testnet vault on chain.
+- [Testnet and mainnet](/docs/start/testnet-and-mainnet): why every vault on this page is on NEAR testnet.
+- [Install](/docs/build/install): build the packages to use them in your own code.

@@ -1,0 +1,398 @@
+Your agent's invoice handling becomes a loop that pays through `process()`: each invoice is paid at most once (each decision's spend is sent once), one ledger writer keeps each vault's history, and no unknown outcome is ever paid twice. You need the SDK, from npm or built from a clone ([Install](/docs/build/install)), and a testnet vault whose owner has signed the steps below. The [developer quickstart](/docs/start/developer-quickstart) runs one payment end to end; this page covers what a loop that keeps paying has to get right.
+
+Everything here runs on NEAR testnet with test tokens. The mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet). This loop is Preview: the repository records no run of `process()` against a real testnet vault yet, so the outputs below come from the code and the SDK's own tests, which run against a fake chain.
+
+<Callout kind="key">
+The agent key can call only `spend`, and a spend names no payee: the vault pays the payee the mandate names. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+</Callout>
+
+## Before you start
+
+Make the agent key and the ledger key on your server with `agent keygen --out <file>`. Each run saves the pair to a new file as `{ public_key, secret_key }` and prints only the public key. Send both public keys, and the purchase order or contract the agent pays against, to the vault owner. The owner then makes sure of these:
+
+<Steps>
+
+1. **The vault holds test USDC.** On a testnet vault's Top-up tab (`/console/<vault>/topup`), the "Add test USDC" button mints 25 test USDC into the vault with no wallet. The Probarion team's mint-only key signs it, once a UTC day per vault and for up to 3 vaults per signed-in account a day. Without a faucet key the tab shows this instead: "Need test USDC? Send @probarionhq a direct message on X with your vault's name."
+2. **Your agent key is on the vault.** `agent add --pk <agent public key>` prints the `add_agent` call. The vault adds a function-call key to itself that can call only `spend` and never attach a deposit. A vault holds at most 16 agent keys, and a key cannot be both an agent key and the ledger key.
+3. **Your ledger key is the vault's ledger key.** `ledger set-key --pk <ledger public key>` prints the `set_ledger_key` call. It replaces any previous ledger key, and the key must not already be an agent key or the current ledger key. Do not run it on a vault that runs the console's hosted Payables: it would replace the ledger key Payables signs with. Give your agent a vault of its own, as [One ledger writer per vault](/docs/build/let-an-agent-pay#one-ledger-writer-per-vault) explains.
+4. **A mandate names your agent key and your purpose hash.** The owner signs it in the console, whose mandate form lists every agent key on the vault and hashes the purchase order file in the browser. Or the owner prints it with `mandate create`: its `--agent-pk` is your agent public key, its `--purpose` is the purchase order file, and it also requires `--payee`, `--max-per`, `--max-total`, `--uses`, `--expires`, `--approval-above` and `--label`. See [Mandates](/docs/concepts/mandates).
+
+</Steps>
+
+```bash
+# On your server: each file keeps its secret, and keygen never overwrites one.
+node packages/cli/dist/bin.js agent keygen --out ../agent-key.json
+node packages/cli/dist/bin.js agent keygen --out ../ledger-key.json
+# For the owner. Illustrative: replace <your-vault>, <owner> and each ed25519:... with real values.
+node packages/cli/dist/bin.js --network testnet agent add --vault <your-vault>.vaults.probarion.testnet \
+  --pk ed25519:... --sign-as <owner>.testnet --out-dir probarion-tx
+node packages/cli/dist/bin.js --network testnet ledger set-key --vault <your-vault>.vaults.probarion.testnet \
+  --pk ed25519:... --sign-as <owner>.testnet --out-dir probarion-tx
+```
+
+The CLI never signs. Each owner command writes its arguments to a file in `probarion-tx/` and prints the near-cli-rs command under this line:
+
+```text
+OWNER SIGNS: probarion never signs owner or approver transactions. Review the arguments, then sign with your own wallet or near-cli-rs:
+```
+
+<Callout kind="owner-signs">
+The owner reviews each printed command and its arguments file, then signs it. `agent add` and `ledger set-key` each use 30 Tgas and attach exactly 1 yoctoNEAR. They give the key a gas allowance of 1 NEAR and 0.25 NEAR unless `--allowance` says otherwise, and the vault refuses an allowance of 0. `mandate create` attaches a storage deposit, 0.05 NEAR unless `--deposit` says otherwise, and the vault refunds the excess.
+</Callout>
+
+The console's Keys tab makes its own keys on Probarion's server, for hosted Payables. Your agent brings its own keys, so they go on the vault through the CLI. On the "Overview" tab, the "Your first agent payment" card counts only keys made on the Keys tab, so its "Agent key and ledger key" step stays open on this vault. Skip its "Go to Keys" link: a ledger key made there would replace yours. The card goes away after the first payment. The [owner quickstart](/docs/start/owner-quickstart) covers the vault itself.
+
+## Create the instance
+
+`new Probarion(options)` makes the client for one vault.
+
+| Option | Value | What it does |
+| --- | --- | --- |
+| `network` | `"testnet"` or `"mainnet"` | Required. Only testnet has a live vault. |
+| `vault` | The vault account id | Required. |
+| `agentKey` | `"ed25519:..."` | The secret of your agent key, a function-call key on the vault account that can call only `spend`. Without it the instance is read-only. |
+| `ledgerKey` | `"ed25519:..."` | The secret of your ledger key, which can call only `anchor` and signs every ledger entry. |
+| `rpcUrls` | A list of RPC URLs | Tried in turn, with failover. Default: `NEAR_RPC_URLS` when set, for whichever network you pass, else the network's own list. |
+| `model` | `null`, or `{ provider: "near-ai-cloud", apiKey, model?, systemPrompt? }` | `null` or absent: the code decides alone. See [Choose who decides](/docs/build/let-an-agent-pay#choose-who-decides). |
+| `ledger` | A `LedgerStore` | Default: a file at `PROBARION_LEDGER_PATH`, else `.probarion/ledger.jsonl`. A blank variable counts as unset. |
+| `confidenceFloor` | A number from 0 to 1 | Default 0.7. A model proposal below it holds the spend. |
+| `requestId` | Text | Written into the `request_id` of every entry this instance writes. Without it, each cycle gets a fresh UUID. |
+
+Your code passes both keys: the example below reads each `secret_key` from the file keygen wrote. The SDK does not read `PROBARION_AGENT_KEY`, `PROBARION_LEDGER_KEY` or `NEARAI_API_KEY` by itself, even though its error messages name them. Keep both secrets on the server and out of the repository.
+
+### Errors you may see
+
+Each is a `ConfigError` ([Errors](/docs/build/errors#ConfigError)). These come from the constructor:
+
+- `invalid secret key for <vault>: ...`: a key string is not a valid secret. The message names the vault account, never the key.
+- `model.apiKey (NEARAI_API_KEY) is required for the model step; pass model: null to decide rules-only`: `model` was set with an empty or missing `apiKey`.
+- `confidenceFloor must be a number from 0 to 1`.
+
+These come from `process()`, before it writes or sends anything:
+
+- `this instance is read-only: process() and requestSpend() need agentKey (PROBARION_AGENT_KEY), the vault's function-call key for spend`: no `agentKey` was passed.
+- `process() and requestSpend() need ledgerKey (PROBARION_LEDGER_KEY): every ledger entry is signed with it`: no `ledgerKey` was passed.
+- `the vault has no ledger key yet (set_ledger_key): entries signed now could never be verified`: the owner's `ledger set-key` has not landed.
+- `ledgerKey is <key>, but the vault's ledger key is <key>: its entries would fail verify check a`: the vault holds another ledger key, such as the console's.
+- `the agent key signs as <account>, but this vault is <vault>: function-call keys live on the vault account itself`: only an injected sender (`deps.agentSender`) can sign as another account.
+
+## Turn an invoice into facts
+
+`process()` takes `{ text, facts, ref }`. The SDK extracts nothing from the text: your agent reads the invoice and supplies the facts.
+
+| Field | Rule |
+| --- | --- |
+| `text` | The extracted invoice text, exactly as you read it. It is untrusted. |
+| `facts.invoice_hash` | `hashInvoice(text)`: the sha256 of the text's UTF-8 bytes, 64 lowercase hex. A PDF's file hash is not the invoice hash. |
+| `facts.amount` | A decimal string in USDC base units. USDC has 6 decimals, so `"25000000"` is 25 USDC. `"25.00"` or `"0"` is refused by code with `invoice.amount_invalid`. |
+| `facts.po_ref` | `null`, or the purchase order reference copied verbatim from `text`, with no trimming, case change or normalisation. An empty string counts as `null`. |
+| `facts.purpose_hash` | 64 lowercase hex, or `null`: the sha256 of the file the mandate was signed with. It chooses the mandate. |
+| `facts.payee_hint` | `null`, or what the invoice claims about the payee: `near_account`, `address`, `name`, and `chain` set to `base` or `solana`. It is never the destination. A hint that contradicts the mandate's payee is refused with `mandate.payee_mismatch`. |
+| `ref` | Your reference for this payment: 1 to 64 bytes of UTF-8 text. The vault accepts each ref once. |
+
+The SDK picks the mandate by `purpose_hash`: the lowest-id mandate with that purpose that your agent key can still use (not revoked, not expired, bound to this key, a use left, room under its total). When none qualifies it takes the lowest-id match anyway, so the refusal names the precise reason. With no match at all, the cycle is refused with `mandate.none`.
+
+A malformed call throws `ProbarionError` with code `InvalidInput` ([Errors](/docs/build/errors#ProbarionError)) before anything is read, written or sent: an `invoice_hash` that is not `hashInvoice(text)`, an amount that is not a string, a `po_ref` that is not in the text, a bad `purpose_hash`, `payee_hint` or `ref`.
+
+### What the tests pass
+
+The SDK's tests build their invoices like this. For a string, `sha256Hex(text)` is the same value as `hashInvoice(text)`. The helper's default `po_ref` is `PO-1001`, so the text must contain `PO-1001` unless the test passes another `po_ref`:
+
+<CodeBlock title="packages/sdk/test/support/probarion-harness.ts">
+
+```ts
+export function nearInvoice(
+  text: string,
+  ref: string,
+  facts: Partial<InvoiceFacts> = {},
+): TestInvoice {
+  return {
+    text,
+    ref,
+    facts: {
+      invoice_hash: sha256Hex(text),
+      amount: "25000000",
+      po_ref: "PO-1001",
+      purpose_hash: SCENARIO_PURPOSE_NEAR,
+      payee_hint: { near_account: SCENARIO_NEAR_PAYEE },
+      ...facts,
+    },
+  };
+}
+```
+
+</CodeBlock>
+
+## Choose who decides
+
+- **`model: null`**: the code rules decide alone. Each decision entry records `decided_by: "rules-only"`.
+- **NEAR AI Cloud**: `model: { provider: "near-ai-cloud", apiKey }` asks a private model in a TEE for one proposal per invoice and records its attestation. `model` names a model id; without it the SDK reads `NEARAI_MODEL`, else picks an eligible private model from the catalog. When the model's proposal passes its attestation checks and is used, the decision entry records `decided_by: "model+rules"`. Otherwise, for example when the model call or its attestation fails, it records `"rules-only"`.
+
+The model only advises. It is shown the invoice text as data, the facts `invoice_hash`, `amount`, `po_ref` and `purpose_hash` (not your `payee_hint`), and the one mandate the code picked. The code rules still run on its proposal, and the contract checks the spend again:
+
+- A proposal to hold is recorded as rule `model.refused` with a hold. A proposal to refuse is `model.refused` with a refusal.
+- A confidence below `confidenceFloor` holds the spend with `model.low_confidence`.
+- An amount that differs from `facts.amount` is refused with `invoice.amount_invalid`. A payee hint that contradicts the mandate is refused with `mandate.payee_mismatch`, even when the invoice text talked the model into it.
+- A proposal that names another mandate is refused, with `invoice.po_mismatch` (or `mandate.none` when that mandate does not exist), so the model cannot move a payment to another mandate.
+- When NEAR AI Cloud fails, or its attestation fails the checks at this ledger position, the proposal is dropped and the code decides alone, with `model.unavailable` in the record.
+
+`outcome.modelUsage` gives the model id and token counts whenever the model answered. Pass the key only when you have one, so that a missing variable falls back to the code:
+
+```js
+model: process.env.NEARAI_API_KEY ? { provider: "near-ai-cloud", apiKey: process.env.NEARAI_API_KEY } : null,
+```
+
+<Callout kind="note">
+The NEAR AI Cloud adapter is built and tested against a fake NEAR AI Cloud. A real attested decision, recorded and verified in the repository, is Preview. [Payment checks](/docs/concepts/payment-checks) explains how the code rules and the contract's checks fit together.
+</Callout>
+
+### Your own rules
+
+`probarion.rules.add(rule)` adds a rule to every decision. Its `id` starts with `custom.` and its `check(input, mandate)` returns a pass, a hold or a refusal with a detail. Custom rules run after the built-in ones and can only tighten the verdict: a rule that throws refuses.
+
+## Run the loop
+
+<Flow>
+
+1. **Check** The input and both keys, before anything is read.
+2. **Read** The vault's config, mandates and spends, and your whole ledger.
+3. **Decide** Optional model advice, then the code rules.
+4. **Send once** A decision entry, the free `check_spend`, then one `spend`.
+5. **Record** A payment entry, then an anchor on chain.
+
+</Flow>
+
+### The cycle in code order
+
+1. Check the input: a malformed call throws `InvalidInput`.
+2. Require the keys: no `agentKey` or `ledgerKey` throws `ConfigError`.
+3. Read the vault: its config, every mandate and every spend.
+4. Check the ledger key: yours must be the vault's.
+5. Read the whole ledger, to find the next position.
+6. Look in the ledger for an unresolved earlier payment of the same invoice.
+7. Pick the mandate by `purpose_hash`.
+8. Ask the model, when one is set. This is skipped with `model: null`, with no matching mandate, or when an earlier payment of the invoice is unresolved.
+9. Decide with the code rules. For a Base or Solana payee, the SDK first reads the vault's balance on NEAR Intents; an unreadable or short balance holds with `intents.balance_low`.
+10. Write the decision entry at exactly the position read in step 5.
+11. Unless the code refused, dry-run the spend with the contract's free `check_spend` view. A refusal there ends the cycle as `refused_by_contract`. A code hold that the contract would pay at once ends it as `held` with nothing sent.
+12. Send `spend` once, signed by the agent key. It is never sent again.
+13. Write the payment entry. If it cannot be written, the outcome still stands and carries `ledgerComplete: false`.
+14. Anchor the ledger tail with the ledger key. A failed anchor is only logged: the next cycle anchors the whole tail.
+
+Once `spend` is sent, the cycle always returns an outcome, so when `process()` throws, no `spend` went out. That is inferred: it follows from the code, and no test shows it yet. A lost answer comes back as `unconfirmed`, as the SDK's tests show.
+
+### One call at a time
+
+Calls on one instance run one at a time, in call order, so a burst of invoices queues inside the instance. Use one instance per vault in one process. A second instance or a second process is a second writer: see [One ledger writer per vault](/docs/build/let-an-agent-pay#one-ledger-writer-per-vault).
+
+### Wire it into your agent
+
+Illustrative, adapted from the SDK README: the imports point at the built files of a clone (with the packages from npm, import `@probarion/core` and `@probarion/sdk` by name), the vault is a placeholder, the keys come from the two key files, and `model: null` lets the code decide alone. Save it in the `probarion` folder and run it from there. The example invoice is for 2 USDC, so the developer quickstart's mandate (at most 5 USDC per payment, held for an approver above 2) pays it at once. A larger amount needs a mandate whose limits allow it and a vault that holds enough test USDC.
+
+<CodeBlock title="agent-pay.mjs">
+
+```js
+import { readFile } from "node:fs/promises";
+import { sha256Hex } from "./packages/core/dist/index.js";
+import { Probarion, hashInvoice } from "./packages/sdk/dist/index.js";
+
+// The secret_key of a file that agent keygen wrote.
+const secretOf = async (file) => JSON.parse(await readFile(file, "utf8")).secret_key;
+
+// One instance per vault in this process: its process() calls run one at a time.
+const probarion = new Probarion({
+  network: "testnet",
+  vault: "<your-vault>.vaults.probarion.testnet",
+  agentKey: await secretOf("../agent-key.json"), // can call only spend
+  ledgerKey: await secretOf("../ledger-key.json"), // can call only anchor, and signs every ledger entry
+  model: null, // the code decides alone
+});
+
+// The purchase order file the owner signed the mandate with.
+const poBytes = new Uint8Array(await readFile("../po.txt"));
+
+// Your agent read the invoice and supplies the facts: the SDK extracts nothing.
+export function pay(invoiceText, { ref, amount, poRef }) {
+  return probarion.process({
+    text: invoiceText, // untrusted: shown to the model as data and nothing else
+    ref, // your reference; the vault accepts each ref once
+    facts: {
+      invoice_hash: hashInvoice(invoiceText),
+      amount, // USDC base units: "2000000" is 2 USDC
+      po_ref: poRef, // copied verbatim from invoiceText, or null
+      purpose_hash: sha256Hex(poBytes), // the hash the mandate was created with
+      payee_hint: null, // what the invoice claims; never the destination
+    },
+  });
+}
+
+const invoiceText = "Invoice INV-2026-001: 2.00 USDC for PO-1001";
+const outcome = await pay(invoiceText, { ref: "INV-2026-001", amount: "2000000", poRef: "PO-1001" });
+console.log(outcome.status, outcome.code, outcome.spendId, outcome.txHash);
+```
+
+</CodeBlock>
+
+A clean cycle writes two entries: the decision, then the payment. On an empty ledger they sit at positions 0 and 1, and on a ledger that already holds entries, such as the developer quickstart's, at the next two positions. This is what the SDK's own test expects from a first payment against its fake chain and fake NEAR AI Cloud:
+
+<CodeBlock title="packages/sdk/test/probarion.integration.test.ts">
+
+```ts
+const text = "Invoice INV-1: 25.00 USDC for PO-1001";
+const out = await pb.process(nearInvoice(text, "INV-1"));
+expect(out).toMatchObject({ status: "paid", spendId: 1, code: null, ledgerSeq: 1 });
+```
+
+</CodeBlock>
+
+## Handle the outcome
+
+`outcome.status` is one of the seven statuses `process()` returns. `SpendOutcomeStatus` also has `settled`, which `process()` never returns. Illustrative, one line per branch:
+
+<CodeBlock title="agent-pay.mjs">
+
+```js
+switch (outcome.status) {
+  case "paid": // the vault paid the mandate's NEAR payee: record spendId and txHash
+  case "burned": // paid out through NEAR Intents to a Base or Solana payee: record spendId and txHash
+    break;
+  case "held": // spendId null: a code rule held it and nothing was sent; spendId set: an approver decides
+    console.log(outcome.spendId === null ? `code hold: ${outcome.code}` : `held as spend ${outcome.spendId}`);
+    break;
+  case "refused_by_code": // a code rule said no (outcome.code is the rule id); nothing was sent
+  case "refused_by_contract": // the vault said no (outcome.code is the vault code)
+    break;
+  case "failed": // definitely not paid; spendId set means the vault took the spend and its ref is used up
+    break;
+  case "unconfirmed": // it may have paid: never send it again; find the spend by its ref
+    break;
+}
+```
+
+</CodeBlock>
+
+A contract hold waits for one of the vault's approvers, who approves or rejects it before the hold expires: see [Holds and approvals](/docs/concepts/holds-and-approvals). [Spend outcomes](/docs/build/spend-outcomes) has the full table, and [Errors](/docs/build/errors) explains each vault code.
+
+<Callout kind="warning" title="Three rules for every loop">
+
+- Never send an `unconfirmed` spend again, least of all under a new ref. Wait, or find the spend by its ref.
+- A `held` outcome with `spendId` null was never sent, and no call releases it. Change what caused the hold, then run the cycle again.
+- A `failed` outcome with `spendId` set used up its ref. The retry needs a new `ref`.
+
+</Callout>
+
+### Find a spend by its ref
+
+`probarion.spends.get(id)` takes a spend id, not a ref, and the contract has no lookup by ref. To find a spend by its ref, read the vault's spend list. Illustrative, adapted from the SDK README; save it in the `probarion` folder too:
+
+<CodeBlock title="find-spend.mjs">
+
+```js
+import { RpcClient, VaultClient, resolveRpcUrls } from "./packages/sdk/dist/index.js";
+
+// Read-only: no sender, so it cannot sign anything. listAllSpends pages the contract's list_spends.
+const vault = new VaultClient("<your-vault>.vaults.probarion.testnet", new RpcClient({ urls: resolveRpcUrls("testnet") }));
+const spend = (await vault.listAllSpends()).find((s) => s.ref === "INV-2026-001") ?? null;
+console.log(spend === null ? "no spend with this ref" : `spend ${spend.id}: ${spend.status}`);
+```
+
+</CodeBlock>
+
+## Refs and retries
+
+- **A ref is used once per vault, forever.** It is used up once the contract accepts a spend, held or paid, and it stays used even if the payout fails, the spend is rejected or the hold expires. A refused spend reverts every change, so its ref stays free, and a code refusal sends nothing at all.
+- **The SDK refuses a used ref by code.** Before anything is sent, the rule `invoice.duplicate` refuses a ref the vault has already used, and an invoice with a live spend (held, pending, paid or burned). The contract checks both again, as [DuplicateInvoice](/docs/build/errors#DuplicateInvoice) and [DuplicateRef](/docs/build/errors#DuplicateRef).
+- **A released invoice can be paid again.** When the vault releases a spend (failed, rejected or expired), the same invoice can go through under a new ref.
+- **An unconfirmed invoice waits.** After `unconfirmed`, the same invoice is refused by code with `ledger.unresolved` until the chain shows a spend with that decision's hash, a later payment entry records a known outcome, or 48 hours pass (`UNKNOWN_SETTLE_MS`). The refusal's detail names the time after which the invoice can be retried. The guard lives in your ledger: a writer with another ledger file does not see it.
+- **Dedupe by `spendId`.** On one instance, a second identical call is refused by code with `invoice.duplicate`. Two writers that make identical decisions (for example with the same `requestId`) can both report the same `spendId` as paid, for one payment. Never count two successes as two payments.
+
+The SDK's test for a failed payout shows the sequence: the first spend fails and is released, the same ref is refused by code, and the same invoice pays under a new ref.
+
+<CodeBlock title="packages/sdk/test/probarion.outcomes.test.ts">
+
+```ts
+server.chain.hooks.payoutFailure = "ft_transfer_failed";
+const { pb, ledger } = setup(server);
+const first = await pb.process(INVOICE());
+expect(first).toMatchObject({ status: "failed", spendId: 1, code: "failed", ledgerSeq: 1 });
+expect(typeof first.txHash).toBe("string");
+expect(server.chain.spends[0]?.status).toBe("failed");
+expect((await ledger.all())[1]?.body.contract).toEqual({
+  code: null,
+  tx_hash: first.txHash,
+  spend_id: 1,
+  status: "failed",
+});
+
+server.chain.hooks.payoutFailure = null;
+// The ref is consumed forever, even by a failed spend.
+const sameRef = await pb.process(INVOICE());
+expect(sameRef).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+// A released spend frees its invoice: the same invoice under a new ref is a new decision.
+const retry = await pb.process({ ...INVOICE(), ref: "INV-1-retry" });
+expect(retry).toMatchObject({ status: "paid", spendId: 2 });
+```
+
+</CodeBlock>
+
+## One ledger writer per vault
+
+The ledger is a file by default: `.probarion/ledger.jsonl` in the working folder, or the path in `PROBARION_LEDGER_PATH`. It holds one JSON entry per line. Each append takes a lock file beside it (`<path>.lock`) and is synced to disk. The lock is made with a hard link, so the folder must be on a local disk whose file system supports hard links (NTFS, ext4, APFS), not FAT, exFAT or some network shares.
+
+- **Two writers on one file.** The cycle whose decision append finds that the ledger moved throws `LedgerConflictError` ([Errors](/docs/build/errors#LedgerConflictError)) with `ledger moved since this decision was attested; retry (no entry was written and no spend was sent): ...`. Nothing is written or sent, and the SDK never retries it by itself.
+- **Two ledger files for one vault.** They fork its history. The contract accepts each writer's anchor as long as its count is not below the previous anchor's, and the anchor check of `verify` ([check c](/docs/trust/verifier-checks#check-c)) then fails. That is inferred: it follows from the code, and no test shows it yet. A cycle that finds the vault anchored past its own ledger logs a warning and does not anchor.
+- **Your own store.** A `LedgerStore` you pass in, for example over a database, must honour the expected position on append. If it does not, the SDK stops with a `LedgerError` before it sends the spend.
+
+[The ledger and anchors](/docs/concepts/ledger-and-anchors) explains what each entry records.
+
+<Callout kind="warning" title="Not on a vault that runs hosted Payables">
+Do not also run the console's hosted Payables on the same vault. Payables keeps its own ledger for its vault, in the console's database, signed with a ledger key that Probarion's server holds. A vault has one ledger key, and `process()` refuses to run when its `ledgerKey` is not the vault's, so the two cannot both write to one vault. This is inferred: it follows from the code, and no test shows it yet. Give your SDK agent a vault of its own.
+</Callout>
+
+## Check your work
+
+Run the verifier from the same folder as your loop, so it reads the same default ledger file. Pass `--ledger <path>` when your ledger lives elsewhere.
+
+```bash
+node packages/cli/dist/bin.js --network testnet verify --vault <your-vault>.vaults.probarion.testnet
+```
+
+The report starts with `Probarion verify: <vault> (testnet)`, lists each check, and ends with a `RESULT:` line that says PASS, FAIL or UNPROVEN. The exit code says the same:
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Every check passes. |
+| 1 | A check fails, or verify could not run. |
+| 2 | No check fails, but at least one is unproven. |
+| 64 | A usage error: a missing, malformed or conflicting flag. |
+
+[Verify a vault yourself](/docs/trust/verify-a-vault) walks through a run.
+
+## Common mistakes
+
+- **Sending an `unconfirmed` spend again under a new ref.** It may have paid. Find the spend by its ref, or wait for `ledger.unresolved` to clear.
+- **Retrying a `failed` spend with its old ref.** When `spendId` is set, the vault used the ref, and the SDK refuses it with `invoice.duplicate`. Give the retry a new ref.
+- **A second instance, a second process or a second ledger file on one vault.** The loser of a race throws `LedgerConflictError`, and a second file forks the history.
+- **`apiKey: process.env.NEARAI_API_KEY ?? ""`.** An empty key throws `ConfigError` when the variable is unset. Pass `model: null`, or set `model` only when the key exists.
+- **An amount in decimals, such as `"25.00"`.** It is refused with `invoice.amount_invalid`. Write `"25000000"`.
+- **A `po_ref` that was re-cased, padded or normalised (for example a no-break space turned into a space).** It throws `InvalidInput`. Copy it from the text byte for byte, or pass `null`.
+- **The hash of another file as `purpose_hash`.** No mandate matches, and the cycle is refused with `mandate.none`. Hash the file the mandate was signed with.
+- **[NotAgent](/docs/build/errors#NotAgent) from the vault.** The mandate names your agent key, but the vault does not hold it yet: the owner's `agent add` has not landed.
+- **`refused_by_code` with `mandate.agent_mismatch`.** `agentKey` is not the key the mandate names, for example because the agent key was made again after you sent its public key. Pass the secret of the public key you sent the owner.
+
+## Not available yet
+
+- No MCP server: `@probarion/mcp` is Planned.
+- No HTTP API for agents: the hosted invoice API needs a signed-in console session of the vault's owner or approver. An agent pays from its own process, through the SDK. The CLI sends no spend: `check` only dry-runs one, and its owner and approver commands only print transactions.
+
+[What works today](/docs/start/what-works-today) lists the status of every part.
+
+## Related pages
+
+- [Developer quickstart](/docs/start/developer-quickstart): one payment end to end.
+- [Spend outcomes](/docs/build/spend-outcomes): every status and code in detail.
+- [Errors](/docs/build/errors): the vault, SDK and HTTP error codes.
+- [Mandates](/docs/concepts/mandates) and [Holds and approvals](/docs/concepts/holds-and-approvals): what a mandate allows, and what happens to a held spend.
+- [The ledger and anchors](/docs/concepts/ledger-and-anchors): what each entry records.
+- [Verify a vault yourself](/docs/trust/verify-a-vault): run the verifier and read its report.
+- The [SDK README](https://github.com/probarion/probarion/blob/main/packages/sdk/README.md) lists the rest of the `Probarion` class.

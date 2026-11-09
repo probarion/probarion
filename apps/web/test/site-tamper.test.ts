@@ -11,7 +11,13 @@ import Home from "@/app/page";
 import { NextStep } from "@/components/site/NextStep";
 import { LedgerTest, TamperPanel } from "@/components/site/TamperPanel";
 import { TamperVerdict } from "@/components/site/TamperTest";
-import { CHECK_LIST, RECORDED_RESULT, TAMPER_COPY } from "@/lib/site/facts";
+import {
+  CHECK_LIST,
+  FIXTURE_PATH,
+  RECORDED_RESULT,
+  SAMPLE_SNAPSHOT,
+  TAMPER_COPY,
+} from "@/lib/site/facts";
 import { NEXT_STEP } from "@/lib/site/next-step";
 import {
   applyTamper,
@@ -46,6 +52,17 @@ describe("the fixture", () => {
     expect(copy.equals(core)).toBe(true);
   });
 
+  it("is served by the site, byte for byte, at the address the landing's download line names", () => {
+    const core = readFileSync(join(ROOT, ...FIXTURE_PATH.split("/")));
+    const served = readFileSync(join(WEB, "public", ...SAMPLE_SNAPSHOT.path.split("/")));
+    expect(served.equals(core)).toBe(true);
+    const url = new URL(SAMPLE_SNAPSHOT.url);
+    expect(url.origin).toBe("https://probarion.xyz");
+    expect(url.pathname).toBe(SAMPLE_SNAPSHOT.path);
+    // `curl -O` names the file after the URL's last segment, and the verify line reads that name.
+    expect(url.pathname.split("/").at(-1)).toBe(SAMPLE_SNAPSHOT.file);
+  });
+
   it("has the five entries the copy says it has", () => {
     expect(SNAPSHOT.ledger).toHaveLength(5);
   });
@@ -55,7 +72,7 @@ describe("the fixture", () => {
       { seq: 0, kind: "Decision", outcome: "Allow", mandate: "1", amount: "25.000000" },
       { seq: 1, kind: "Payment", outcome: "Paid", mandate: "1", amount: "25.000000" },
       { seq: 2, kind: "Decision", outcome: "Allow", mandate: "2", amount: "40.000000" },
-      { seq: 3, kind: "Payment", outcome: "Burned for Base", mandate: "2", amount: "40.000000" },
+      { seq: 3, kind: "Payment", outcome: "Withdrawal to Base", mandate: "2", amount: "40.000000" },
       {
         seq: 4,
         kind: "Decision",

@@ -1,0 +1,139 @@
+<Flow>
+
+1. **The owner signs a mandate** One payee, the limits, and the one agent key that may use them.
+2. **A private model may advise** Optional. It cannot widen the mandate.
+3. **Code decides and signs** The decision goes into a signed ledger before anything is sent.
+4. **The contract decides last** It runs 14 checks, then pays, holds or refuses.
+5. **Anyone checks the record** The verifier ties each spend on chain to exactly one decision.
+
+</Flow>
+
+## Who signs what
+
+- **The owner**, from their own wallet: the vault (`create_vault` on the factory, which makes its caller the owner), each mandate and its revocation, every change to the vault's keys, `freeze`, `unfreeze` and both withdrawals (`withdraw` and `withdraw_intents`).
+- **The agent**, with the agent key: `spend`.
+- **The SDK**, with the ledger key: each ledger entry, and `anchor`.
+- **An approver**, from their own wallet: `approve` or `reject` for a held spend.
+- **Anyone**, from any account: `expire_held`, once a hold's time has run out.
+
+The agent key may call only `spend`, and the ledger key only `anchor`.
+
+## The owner signs a mandate
+
+A mandate names one payee: a NEAR account, or a Base or Solana address paid through NEAR Intents. It sets `max_per_payment`, `max_total`, `max_uses`, `expires_at_ns` and `approval_above`, the one agent key that may spend under it, and `purpose_hash`, the hash of its purchase order. The payee never changes.
+
+The landing page's example pays only `probarion-payee.testnet`: 5 USDC a payment, 20 USDC in total, 5 uses, approval above 5 USDC. Its approval threshold equals its per-payment cap, so the contract never holds a spend under it: a payment above 5 USDC is refused with [`OverPerPayment`](/docs/build/errors#OverPerPayment) before the hold test. Every field is on [Mandates](/docs/concepts/mandates).
+
+<Callout kind="owner-signs">
+
+`create_mandate` takes a storage deposit, and the vault refunds the excess. The agent key cannot create or revoke a mandate.
+
+</Callout>
+
+## A private model may advise
+
+Optional: the model runs on NEAR AI Cloud inside a TEE, a trusted execution environment: isolated hardware that returns a signed report, an [attestation](/docs/resources/glossary#attestation), with each answer. The SDK puts a [nonce](/docs/resources/glossary#nonce) in each request, so that report fits only the next entry of this vault's ledger, for this invoice and this mandate. Without a model, or when its attestation checks fail, code decides alone and the decision entry says `rules-only`.
+
+<Callout kind="note" title="Preview">
+
+Adapter built. First live attested run in progress.
+
+</Callout>
+
+## Code decides, and signs before anything moves
+
+A payment starts when the agent gets an invoice. The agent passes `process()` the invoice text, its facts and a `ref`. The facts include the amount, the `invoice_hash` of that text and the `purpose_hash` of the purchase order the invoice cites.
+
+In the SDK, `process()` runs the whole cycle. `decide()` in `@probarion/core` makes the decision. It is pure, so the same input always gives the same decision, and its built-in rules cannot be removed. It picks the mandate by `purpose_hash`, so the destination is always that mandate's payee.
+
+The SDK signs the decision into the ledger before anything is sent, refusals included, and its body hash goes to the contract as `decision_hash`. If code refused, `process()` returns `refused_by_code` and no spend is sent.
+
+Code can also hold a payment. `decide()` holds when the payee is paid through NEAR Intents and the vault's balance there is unknown or below the amount, when a model proposal whose attestation checks passed asks to hold or has a confidence below the floor, or when a custom rule added to the SDK holds. See [Code hold](/docs/build/spend-outcomes#code-hold).
+
+## The agent asks the vault to spend
+
+The agent's request:
+
+<CodeBlock title="packages/core/src/types.ts">
+
+```ts
+export interface SpendRequest {
+  mandate_id: number;
+  amount: U128;
+  invoice_hash: string;
+  ref: string;
+  decision_hash: string;
+}
+```
+
+</CodeBlock>
+
+The caller picks `ref`, 1 to 64 bytes, and the vault accepts each ref once.
+
+<Callout kind="key" title="There is no payee field">
+
+The vault reads the destination from the mandate, so a hijacked prompt has no field to put an address in. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+</Callout>
+
+The SDK first asks the free `check_spend` view whether the contract would accept the request. If not, `process()` returns `refused_by_contract` and no spend is sent. If code held the payment but the contract would pay at once, the SDK holds it off-chain: `process()` returns `held` with `spendId` null. This is a [code hold](/docs/resources/glossary#code-hold): no spend was sent and no call releases it. The fix is to change what caused the hold, then run the cycle again. Otherwise the SDK sends `spend` with the agent key.
+
+## The contract decides last
+
+The vault runs 14 checks in a fixed order, from the agent key, the frozen flag and the mandate to the amount, the invoice, the ref and the daily backstop. The first that fails is the answer: see [Payment checks](/docs/concepts/payment-checks).
+
+Limits are inclusive, so a payment equal to a cap passes. The contract holds a spend only when its amount is above `approval_above`.
+
+A refusal panics with `PROBARION:<Code>` and undoes every change, so its ref stays free. Once the contract accepts a spend, held or paid, its ref is used for good, even if the payout fails.
+
+A held spend pays nothing until one approver from the vault's list approves it, before the hold expires (72 hours on `v0.probarion.testnet`). After that, anyone can call `expire_held` to release it. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+<Callout kind="approver-signs">
+
+`approve` and `reject` each take exactly 1 yoctoNEAR.
+
+</Callout>
+
+## The vault pays the mandate's payee
+
+- A NEAR payee is paid with `ft_transfer`. The spend becomes `paid`.
+- A Base or Solana payee is paid through NEAR Intents: the vault calls `ft_withdraw` with the memo `WITHDRAW_TO:<mandate address>`, built from the mandate. The spend becomes `burned` once the withdrawal runs on NEAR.
+
+If the payout fails, the spend becomes `failed` and its reservation is released. On testnet, `intents-stub.probarion.testnet` stands in for `intents.near` and nothing leaves NEAR.
+
+## The ledger records it, and anyone can check a published record
+
+After a `check_spend` refusal or a `spend` attempt, the SDK writes a second entry with the outcome. Each entry is signed with the ledger key (Ed25519) and [chained to the one before it](/docs/concepts/ledger-and-anchors).
+
+After every cycle, code refusals and code holds included, the SDK anchors the ledger on the vault with `anchor(seq, root, count)`: `seq` is one above the last anchor's, `root` is the `link` of the last entry, and `count` is the number of entries. A failed anchor is only logged, and the next cycle anchors the whole tail.
+
+[Spend outcomes](/docs/build/spend-outcomes) lists the seven statuses `process()` returns.
+
+The verifier runs checks a to i on the ledger and the vault. Check d ties each spend on chain to exactly one decision. See [Verifier checks](/docs/trust/verifier-checks) and [Verify a vault](/docs/trust/verify-a-vault).
+
+## See it on testnet
+
+On 2026-11-01 a smoke run sent test-token spends to `v0.probarion.testnet` with the agent key alone: no SDK, no model, no ledger.
+
+| What happened | Transaction | Result |
+| --- | --- | --- |
+| Paid a NEAR account | [`3DFV2thB…Fy9cX`](https://testnet.nearblocks.io/txns/3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX) | Spend 1 `paid`: 1 test USDC to `probarion-payee.testnet` |
+| Burned for a Base address | [`3u4ffrwp…dcvYe`](https://testnet.nearblocks.io/txns/3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe) | Spend 2 `burned`: 1 test USDC, memo `WITHDRAW_TO:0x1111…1111` |
+| Refused mandate 999, which does not exist | [`AkjyVPmb…dzgY`](https://testnet.nearblocks.io/txns/AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY) | `PROBARION:NoMandate`, nothing paid |
+
+With no ledger, the vault has no ledger key or anchors yet. So `verify --vault v0.probarion.testnet` prints `RESULT: FAIL` today: check d finds spends with no decision in the ledger, and check h cannot find the burn of spend 2, because no ledger entry records the hash of the transaction that made it. To try the free checks with no wallet, see [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes).
+
+## Where to go next
+
+- **You own the money.** The [owner quickstart](/docs/start/owner-quickstart) sets up a testnet vault in the web console, with test USDC, an agent key, a ledger key and one signed mandate.
+- **You build the agent.** The [developer quickstart](/docs/start/developer-quickstart) connects your agent to a testnet vault with the TypeScript SDK and runs one payment cycle with `process()`.
+- **You want to check the claims.** [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes) runs the verifier and reads the testnet vault with no wallet, key or account.
+
+The two quickstarts are Preview: their flows have not yet run end to end with real wallets.
+
+## What this does not do
+
+- The model cannot widen a mandate, and the agent cannot pick a payee.
+- Code cannot pay past the contract: the vault refuses any payment outside its mandate.
+- The smoke run proves the contract path, not the SDK's ledger on a live vault, which is Preview.
+- `verify --offline` checks a saved [snapshot](/docs/resources/glossary#snapshot), one file with a ledger and the vault's chain data, against itself: a snapshot you did not take proves nothing about the chain. `verify --vault` reads the chain itself.

@@ -2,7 +2,7 @@ import { NETWORKS } from "@probarion/core";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
+import { CLI_NOTE, CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
 import { CliFallback } from "./CliFallback";
 
 /** The text a visitor copies from the command box: its content, entities decoded, newlines kept. */
@@ -32,7 +32,11 @@ describe("the console's create-vault fallback", () => {
     // No bash-only syntax: no VAR=value prefix, no backslash line continuation.
     expect(text).not.toContain("PROBARION_FACTORY_ID");
     expect(lines.some((l) => l.trimEnd().endsWith("\\"))).toBe(false);
-    if (!CLI_ON_NPM) {
+    if (CLI_ON_NPM) {
+      // npx fetches the package: what it needs, as a comment, and no repository set-up.
+      expect(lines[0]).toBe(`# ${CLI_NOTE}`);
+      for (const line of CLI_SETUP_LINES) expect(text).not.toContain(line);
+    } else {
       for (const line of CLI_SETUP_LINES) expect(lines).toContain(`#   ${line}`);
     }
   });
