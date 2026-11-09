@@ -533,7 +533,7 @@ export const STATUS = {
     {
       id: "offline-verifier",
       row: "Offline verifier, checks a to i",
-      pill: "Shipped in source",
+      pill: "Shipped, on npm",
       tone: "live",
     },
     { id: "reproducible-builds", row: "Reproducible builds", pill: "Shipped", tone: "live" },

@@ -450,7 +450,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Offline verifier, checks a to i",
-      pill: "Shipped in source",
+      pill: "Shipped, on npm",
       readme: [
         { start: "`@probarion/core`", says: ["**Shipped**", "on npm"] },
         { start: "CLI `check`, `verify`", says: ["**Shipped**", "0.1.0"] },
@@ -589,7 +589,7 @@ describe("the status list", () => {
       {
         id: "offline-verifier",
         row: "Offline verifier, checks a to i",
-        pill: "Shipped in source",
+        pill: "Shipped, on npm",
         tone: "live",
       },
       { id: "reproducible-builds", row: "Reproducible builds", pill: "Shipped", tone: "live" },
