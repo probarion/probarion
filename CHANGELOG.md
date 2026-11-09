@@ -197,6 +197,10 @@ The software is an unaudited beta.
   `npx probarion verify` passed checks a to i. The invoices, the ledger, the snapshot and the
   verifier's output are in `docs/evidence/demo-vault`; the transactions are in the `demo_vault`
   block of `contracts/deployments/testnet.json`.
+- The landing page's payment journey ends with those four invoices: one card each says what the invoice
+  asked, what the vault did (paid, refused on upload, refused by code, held then paid) and links the
+  invoice file, its transactions and its lines in the signed ledger, then the demo vault's proof page.
+  A test holds each card to the evidence files and the deployment record.
 - Deploy and smoke scripts for testnet, runbooks for testnet, the factory and the planned mainnet
   vault (each signing step is the owner's), and `pnpm proof` for the mainnet evidence file.
 - Web console, in progress: wallet sign-in with near-connect and NEP-413, checked on
