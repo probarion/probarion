@@ -518,8 +518,8 @@ pnpm verify:ts     # the TypeScript part only, no Rust needed
 
 As of 2026-11-03, `pnpm verify` ran 301 Rust tests: 227 vault unit tests, 2 error-coverage tests,
 2 property tests that take about two minutes, and 53 factory, 12 intents-stub and 5 test-ft tests.
-As of 2026-11-09 it runs 10,583 TypeScript tests: 290 Node script tests, 806 in `@probarion/core`,
-782 in `@probarion/sdk`, 341 in the CLI, 8,165 in the web console and 199 launch checks. Skipped on
+As of 2026-11-09 it runs 10,757 TypeScript tests: 290 Node script tests, 806 in `@probarion/core`,
+782 in `@probarion/sdk`, 341 in the CLI, 8,339 in the web console and 199 launch checks. Skipped on
 the Windows run of that day:
 - in the SDK, the two tests of a recorded real NEAR AI Cloud decision, which wait for that
   recording;
@@ -527,7 +527,7 @@ the Windows run of that day:
   with near-cli-rs, which need `near` on PATH. CI skips them too: its TypeScript job does not
   install near-cli-rs.
 
-The Playwright specs in [`apps/web/e2e`](apps/web/e2e), 43 tests, run locally against a build with
+The Playwright specs in [`apps/web/e2e`](apps/web/e2e), 54 tests, run locally against a build with
 test settings: `pnpm build`, then `pnpm --filter @probarion/web test:e2e`.
 
 Some checks need Linux or Docker, so they run in [CI](.github/workflows/ci.yml) (GitHub Actions,
