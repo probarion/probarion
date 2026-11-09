@@ -250,6 +250,8 @@ for (const { path, article } of [
   { path: "/docs", article: false },
   { path: ARTICLE, article: true },
   { path: "/docs/build/errors", article: true },
+  { path: "/docs/start/evaluate-in-5-minutes", article: true },
+  { path: "/docs/build/install", article: true },
   { path: "/docs/zzz", article: false },
 ]) {
   test(`${path} does not scroll sideways at 390 px`, async ({ page }) => {
@@ -316,6 +318,53 @@ test("a docs section's address redirects (308) to its first page", async ({ page
   await page.goto("/docs/build");
   await expect(page).toHaveURL(/\/docs\/build\/install$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install the packages");
+});
+
+test("the install page's code tabs move with the arrow keys, remember the tab, and copy it", async ({
+  page,
+}) => {
+  // A clipboard that records what it is given, in place before the page's scripts run.
+  await page.addInitScript(() => {
+    const copied: string[] = [];
+    Object.defineProperty(window, "__copied", { value: copied });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (text: string) => {
+          copied.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  await page.goto("/docs/build/install");
+  // The tablist shows once CodeTabs has run (data-ready); before that every panel shows.
+  const tabs = page.getByRole("tablist", { name: "Code language" }).first();
+  await expect(tabs).toBeVisible();
+  const first = tabs.getByRole("tab", { name: "Packages only" });
+  const everything = tabs.getByRole("tab", { name: "Everything" });
+  await expect(first).toHaveAttribute("aria-selected", "true");
+  await first.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(everything).toHaveAttribute("aria-selected", "true");
+  await expect(everything).toBeFocused();
+  const panelOf = async () =>
+    page.locator(`[id="${await everything.getAttribute("aria-controls")}"]`);
+  await expect(await panelOf()).toBeVisible();
+  await expect(await panelOf()).toContainText("pnpm install --frozen-lockfile");
+  // The choice is remembered across a reload.
+  await page.reload();
+  await expect(tabs).toBeVisible();
+  await expect(everything).toHaveAttribute("aria-selected", "true");
+  await expect(await panelOf()).toBeVisible();
+  // Copy copies the panel that shows.
+  const frame = page
+    .locator("[data-ready]", { has: page.getByRole("tab", { name: "Everything" }) })
+    .first();
+  await frame.getByRole("button", { name: "Copy", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __copied: string[] }).__copied))
+    .toEqual(["cd probarion\npnpm install --frozen-lockfile\npnpm build"]);
 });
 
 test("an unknown Markdown twin answers 404", async ({ request }) => {

@@ -324,6 +324,77 @@ const TOP_COMMAND = /\bprogram\s*\.command\("([a-z][\w-]*)"\)/g;
 /** A row of the OWNER_CALLS table in commands/owner-calls.ts: a group and one subcommand of it. */
 const OWNER_CALL_ROW = /group: "([a-z][\w-]*)",\s*name: "([a-z][\w-]*)"/g;
 
+const CLI_SRC = join(ROOT, "packages", "cli", "src");
+const COMMANDS_DIR = join(CLI_SRC, "commands");
+const OWNER_CALLS_SRC = readFileSync(join(COMMANDS_DIR, "owner-calls.ts"), "utf8");
+/** Where registerOwnerCalls starts: the options it gives every row come after this. */
+const REGISTER_AT = OWNER_CALLS_SRC.indexOf("export function registerOwnerCalls");
+
+/** A literal option in the CLI's source: `"--flag ` or `"--flag"`. */
+const LITERAL_FLAG = /"(--[a-z][\w-]*)(?=[ "])/g;
+const literalFlags = (src: string) => [...src.matchAll(LITERAL_FLAG)].map((m) => m[1] ?? "");
+
+/** Each OWNER_CALLS row's own text, by "group name": its options are literals in it. */
+const OWNER_ROWS: ReadonlyMap<string, string> = (() => {
+  const rows = [...OWNER_CALLS_SRC.slice(0, REGISTER_AT).matchAll(OWNER_CALL_ROW)];
+  return new Map(
+    rows.map((m, i) => [
+      `${m[1]} ${m[2]}`,
+      OWNER_CALLS_SRC.slice(m.index ?? 0, rows[i + 1]?.index ?? REGISTER_AT),
+    ]),
+  );
+})();
+
+/**
+ * The options a CLI line may give after its command words: the program's (program.ts), the ones
+ * in the command's own file and, for an OWNER_CALLS row, that row's and the ones registerOwnerCalls
+ * gives every row. Commander adds --help.
+ */
+function cliFlags(top: string, sub: string): Set<string> {
+  const flags = new Set([
+    "--help",
+    ...literalFlags(readFileSync(join(CLI_SRC, "program.ts"), "utf8")),
+  ]);
+  const own = join(COMMANDS_DIR, `${top}.ts`);
+  if (existsSync(own)) for (const f of literalFlags(readFileSync(own, "utf8"))) flags.add(f);
+  const row = OWNER_ROWS.get(`${top} ${sub}`);
+  if (row !== undefined) {
+    for (const f of [...literalFlags(row), ...literalFlags(OWNER_CALLS_SRC.slice(REGISTER_AT))]) {
+      flags.add(f);
+    }
+  }
+  return flags;
+}
+
+/**
+ * What is wrong with what follows the CLI on one line: its command, then each `--flag` after the
+ * command words. The site may put the program options first: bin.js --network testnet vault
+ * create ... A `#` comment at the end is not part of the command.
+ */
+function cliLineProblems(run: string): string[] {
+  const words = run
+    .replace(/\s#.*$/, "")
+    .split(/\s+/)
+    .filter(Boolean);
+  while (words[0] === "--network" || words[0] === "--rpc") words.splice(0, 2);
+  const [top = "", sub = ""] = words;
+  if (top.startsWith("-")) {
+    return ["--help", "--version"].includes(top) ? [] : [`no command, only ${top}`];
+  }
+  const list = CLI_TREE[top];
+  if (!list) return [`no command "${top}"`];
+  if (list.length > 0 && sub === "--help") return [];
+  if (list.length > 0 && !list.includes(sub)) return [`no command "${top} ${sub}"`];
+  const command = list.length > 0 ? `${top} ${sub}` : top;
+  const flags = cliFlags(top, sub);
+  return words
+    .slice(list.length > 0 ? 2 : 1)
+    .filter((w) => w.startsWith("--"))
+    .map((w) => w.split("=")[0] ?? w)
+    .filter((f) => !flags.has(f))
+    .map((f) => `"${command}" has no option ${f}`);
+}
+
 /** A command tree with its subcommands sorted, so two trees compare by content. */
 function sortedTree(tree: Iterable<[string, Iterable<string>]>): Record<string, string[]> {
   return Object.fromEntries([...tree].map(([top, subs]) => [top, [...subs].sort()]));
@@ -383,23 +454,30 @@ describe("CLI commands", () => {
             }
             continue;
           }
-          // The site puts the program options first: bin.js --network testnet vault create ...
-          const words = run.split(/\s+/).filter(Boolean);
-          while (words[0] === "--network" || words[0] === "--rpc") words.splice(0, 2);
-          const [top = "", sub = ""] = words;
-          if (top.startsWith("-")) {
-            if (!["--help", "--version"].includes(top)) problems.push(`${fileOf(p.path)}: ${line}`);
-            continue;
-          }
-          const list = CLI_TREE[top];
-          if (!list) problems.push(`${fileOf(p.path)}: no command "${top}"`);
-          else if (list.length > 0 && sub !== "--help" && !list.includes(sub)) {
-            problems.push(`${fileOf(p.path)}: no command "${top} ${sub}"`);
+          for (const problem of cliLineProblems(run)) {
+            problems.push(`${fileOf(p.path)}: ${problem}: ${line}`);
           }
         }
       }
     }
     expect(problems).toEqual([]);
+  });
+
+  it("know each command's options from the CLI's source, so a made-up flag fails", () => {
+    expect(cliLineProblems("mandate create --vault v --max-per 5 --sign-as a.testnet")).toEqual([]);
+    expect(cliLineProblems("mandate create --vault v --max-per-payment 5")).toEqual([
+      '"mandate create" has no option --max-per-payment',
+    ]);
+    expect(cliLineProblems("--network testnet spend approve --spend 2 --out-dir tx")).toEqual([]);
+    expect(cliLineProblems("spend approve --mandate 2")).toEqual([
+      '"spend approve" has no option --mandate',
+    ]);
+    expect(cliLineProblems("verify --vault v0.probarion.testnet --burn-tx 2=abc")).toEqual([]);
+    expect(cliLineProblems("verify --offline x.json # --bogus is a comment")).toEqual([]);
+    expect(cliLineProblems("verify --bogus")).toEqual(['"verify" has no option --bogus']);
+    expect(cliLineProblems("vault frobnicate")).toEqual(['no command "vault frobnicate"']);
+    expect(cliLineProblems("--version")).toEqual([]);
+    expect(cliLineProblems("--vault v")).toEqual(["no command, only --vault"]);
   });
 
   it("set up from a clone with exactly the site's steps", () => {
@@ -513,16 +591,118 @@ describe("page shape", () => {
 
 // --- who signs -----------------------------------------------------------------------------------
 
-// A CLI line may put the program options first: bin.js --network testnet vault create ...
-// Any run of white space may sit between the words.
-const OWNER_CLI =
-  /\bbin\.js\s+(?:--(?:network|rpc)\s+\S+\s+)*(?:vault\s+(?:create|freeze|unfreeze|withdraw|withdraw-intents)|mandate\s+(?:create|revoke)|agent\s+(?:add|remove)|ledger\s+set-key)\b/;
-const APPROVER_CLI = /\bbin\.js\s+(?:--(?:network|rpc)\s+\S+\s+)*spend\s+(?:approve|reject)\b/;
+/** A row of OWNER_CALLS, with who signs it. */
+const SIGNED_ROW = /group: "([a-z][\w-]*)",\s*name: "([a-z][\w-]*)",[\s\S]*?signer: "([^"]*)"/g;
+
+/** A call's text, from its name to its closing parenthesis. */
+function callText(src: string, at: number): string {
+  let depth = 0;
+  for (let i = src.indexOf("(", at); i >= 0 && i < src.length; i++) {
+    if (src[i] === "(") depth++;
+    else if (src[i] === ")" && --depth === 0) return src.slice(at, i + 1);
+  }
+  return src.slice(at);
+}
+
+/**
+ * The CLI commands each signer signs, from the CLI's own source: every OWNER_CALLS row by its
+ * `signer`, and every command whose action calls printOwnerTx in its own commands/*.ts file, which
+ * the owner signs unless the call names another signer. A signer this test does not know, or one
+ * it cannot read, is a problem.
+ */
+function signedCommands(ownerCallsSrc: string, commandSrcs: readonly string[]) {
+  const owner: string[] = [];
+  const approver: string[] = [];
+  const problems: string[] = [];
+  const add = (signer: string, command: string) => {
+    if (signer === "owner") owner.push(command);
+    else if (signer === "approver") approver.push(command);
+    else problems.push(`${command}: unknown signer "${signer}"`);
+  };
+  for (const m of ownerCallsSrc.matchAll(SIGNED_ROW)) add(m[3] ?? "", `${m[1]} ${m[2]}`);
+  for (const src of commandSrcs) {
+    const names = [...src.matchAll(COMMAND)];
+    const top = names[0]?.[1] ?? "";
+    for (const call of src.matchAll(/\bprintOwnerTx\(/g)) {
+      const at = call.index ?? 0;
+      const sub = names.filter((n) => (n.index ?? 0) < at).at(-1)?.[1] ?? "";
+      const named = /\bsigner:\s*(?:"([^"]*)"|([\w.]+))/.exec(callText(src, at));
+      add(named === null ? "owner" : (named[1] ?? named[2] ?? ""), `${top} ${sub}`);
+    }
+  }
+  return { owner, approver, problems };
+}
+
+const SIGNED = signedCommands(
+  OWNER_CALLS_SRC,
+  walkFiles(COMMANDS_DIR, ".ts")
+    .filter((f) => !f.endsWith(".test.ts") && !f.endsWith("owner-calls.ts"))
+    .map((f) => readFileSync(f, "utf8")),
+);
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const alternation = (commands: readonly string[]) =>
+  commands.map((c) => c.split(" ").map(escapeRe).join("\\s+")).join("|");
+// A CLI line runs the built bin or the CLI from npm, and may put the program options first:
+// bin.js --network testnet vault create ... Any run of white space may sit between the words.
+const CLI_START = String.raw`(?:\bbin\.js|(?:^|\s)(?:npx\s+)?probarion)\s+(?:--(?:network|rpc)\s+\S+\s+)*`;
+const OWNER_CLI = new RegExp(`${CLI_START}(?:${alternation(SIGNED.owner)})\\b`, "m");
+const APPROVER_CLI = new RegExp(`${CLI_START}(?:${alternation(SIGNED.approver)})\\b`, "m");
 const OWNER_CALL =
   /\bcall-function\b.*\b(?:create_vault|create_mandate|revoke_mandate|add_agent|remove_agent|set_ledger_key|freeze|unfreeze|withdraw|withdraw_intents)\b/;
 const APPROVER_CALL = /\bcall-function\b.*\b(?:approve|reject)\b/;
 
 describe("signing callouts", () => {
+  it("know who signs each command, from the CLI's own source", () => {
+    expect(SIGNED.problems).toEqual([]);
+    expect([...SIGNED.owner].sort()).toEqual([
+      "agent add",
+      "agent remove",
+      "ledger set-key",
+      "mandate create",
+      "mandate revoke",
+      "vault create",
+      "vault freeze",
+      "vault unfreeze",
+      "vault withdraw",
+      "vault withdraw-intents",
+    ]);
+    expect([...SIGNED.approver].sort()).toEqual(["spend approve", "spend reject"]);
+    // A signer this test does not know fails it, from a row or from a printOwnerTx call.
+    expect(
+      signedCommands('group: "vault",\n    name: "burn",\n    signer: "agent",', []).problems,
+    ).toEqual(['vault burn: unknown signer "agent"']);
+    const byName = 'program.command("x").command("y"); await printOwnerTx(io, { signer: who });';
+    expect(signedCommands("", [byName]).problems).toEqual(['x y: unknown signer "who"']);
+  });
+
+  it("catch a signed command however the CLI is run", () => {
+    for (const line of [
+      "node packages/cli/dist/bin.js vault freeze --vault v",
+      "npx probarion mandate revoke --mandate 1",
+      "probarion --network testnet agent add --pk ed25519:...",
+      "node packages/cli/dist/bin.js --rpc https://rpc.example  ledger  set-key --pk k",
+    ]) {
+      expect(OWNER_CLI.test(line), line).toBe(true);
+      expect(APPROVER_CLI.test(line), line).toBe(false);
+    }
+    for (const line of [
+      "npx probarion spend approve --spend 1",
+      "probarion spend reject --spend 1",
+    ]) {
+      expect(APPROVER_CLI.test(line), line).toBe(true);
+      expect(OWNER_CLI.test(line), line).toBe(false);
+    }
+    for (const line of [
+      "node packages/cli/dist/bin.js verify --vault v",
+      "npx probarion agent keygen",
+      "cd probarion\npnpm install",
+    ]) {
+      expect(OWNER_CLI.test(line), line).toBe(false);
+      expect(APPROVER_CLI.test(line), line).toBe(false);
+    }
+  });
+
   it("sit on every page that shows a call the owner or an approver signs", () => {
     const problems: string[] = [];
     for (const p of PAGES) {

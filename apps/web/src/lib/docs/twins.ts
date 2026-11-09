@@ -37,8 +37,17 @@ export async function pageMarkdown(
     .concat("\n");
 }
 
-/** Minutes to read, at 220 words a minute, never less than 1. */
+/** The twin's head: everything up to and including its "Canonical page:" line. */
+const TWIN_HEAD = /^[\s\S]*?^Canonical page: .*$/m;
+/** A fenced code block, in a list or a quote too: its opening fence to the matching close. */
+const FENCED = /^[ \t>]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t>]*\1[ \t]*$/gm;
+
+/**
+ * Minutes to read a page's prose, at 220 words a minute, never less than 1. The twin's head and
+ * its fenced code blocks do not count: a reader runs or copies code rather than reads it.
+ */
 export function readingMinutes(markdown: string): number {
-  const words = markdown.split(/\s+/).filter(Boolean).length;
+  const prose = markdown.replace(TWIN_HEAD, "").replace(FENCED, "");
+  const words = prose.split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.round(words / 220));
 }

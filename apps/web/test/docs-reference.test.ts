@@ -338,7 +338,11 @@ describe("generated components", () => {
   });
 
   it("list the 14 spend checks and the verifier checks with their anchors", () => {
-    expect(html(createElement(SpendChecks)).match(/<tr/g)).toHaveLength(15);
+    const checks = html(createElement(SpendChecks));
+    expect(checks.match(/<tr/g)).toHaveLength(15);
+    // The real registry has build/errors, so each check's code links its row there.
+    expect(checks.match(/href="\/docs\/build\/errors#[A-Za-z]+"/g)).toHaveLength(14);
+    for (const c of SPEND_CHECKS) expect(checks).toContain(`href="/docs/build/errors#${c.code}"`);
     const all = html(createElement(VerifierChecks, {}));
     for (const id of Object.keys(CHECK_NAMES))
       expect(all).toContain(`id="${checkAnchor(id as never)}"`);

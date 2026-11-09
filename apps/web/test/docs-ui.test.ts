@@ -564,6 +564,12 @@ describe("the docs shell", () => {
       DOC_TYPE_LABELS[page.type],
     ];
     for (const chip of chips) expect(head).toContain(chip);
+    // A page on both networks shows both chips, Mainnet included.
+    const both = html(
+      createElement(PageHead, { page: { ...page, network: "both" }, minutes: 4, markdown: "# x" }),
+    );
+    for (const chip of NETWORK_CHIPS.both) expect(both).toMatch(new RegExp(`>${chip}</span>`));
+    expect(NETWORK_CHIPS.both).toEqual(["Testnet", "Mainnet"]);
     expect(head).toContain("4 min read");
     // The Markdown link: visible ".md", then sr-only text, no aria-label.
     const md = /<a[^>]*href="\/docs\/concepts\/payment-checks\.md"[^>]*>(.*?)<\/a>/.exec(head);
@@ -596,6 +602,12 @@ describe("the docs shell", () => {
     const out = html(createElement(Pager, { prev: PAGES[0], next: undefined }));
     expect(out).toContain('rel="prev"');
     expect(out).not.toContain('rel="next"');
+    const next = article();
+    const first = html(createElement(Pager, { prev: undefined, next }));
+    expect(first).not.toContain('rel="prev"');
+    expect(first).toMatch(
+      /<a(?=[^>]*href="\/docs\/concepts\/payment-checks")(?=[^>]*rel="next")[^>]*>/,
+    );
   });
 
   it("lets PhoneMenu take a label, and keeps Menu as the default", () => {
@@ -963,6 +975,10 @@ describe("the docs home blocks", () => {
     }
     expect(out).toContain(`>${HUB_AGENTS.eyebrow}</p>`);
     expect(out).toContain(`<p>${HUB_AGENTS.lede}</p>`);
+    // The real registry has the For AI agents page, so the block links it.
+    expect(out).toMatch(
+      /<a[^>]*href="\/docs\/resources\/for-ai-agents"[^>]*>[^<]*For AI agents[^<]*<\/a>/,
+    );
     // The For AI agents link, with and without its page: docs-twins.test.ts (a registry double).
     expect(() => html(createElement(HubAgents, { example: "no/such" }))).toThrow(/no docs page/);
   });

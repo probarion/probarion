@@ -146,11 +146,9 @@ describe("mdxToMarkdown", () => {
 
   it("links each spend check's code to build/errors exactly when that page exists", () => {
     const out = md("<SpendChecks />");
-    const linked = findPage("build/errors") !== undefined;
+    // The real registry has build/errors; the absent case runs on a registry double below.
     for (const c of SPEND_CHECKS) {
-      expect(out.includes(`[\`${c.code}\`](${ORIGIN}/docs/build/errors.md#${c.code})`)).toBe(
-        linked,
-      );
+      expect(out.includes(`[\`${c.code}\`](${ORIGIN}/docs/build/errors.md#${c.code})`)).toBe(true);
       expect(out).toContain(`\`${c.code}\``);
     }
   });
@@ -407,9 +405,22 @@ describe("page twins and llms files", () => {
     expect(local).not.toContain("Built from");
   });
 
-  it("estimate reading time at 220 words a minute, at least 1", () => {
+  it("estimate reading time from the prose alone, at 220 words a minute, at least 1", () => {
     expect(readingMinutes("word ".repeat(10))).toBe(1);
     expect(readingMinutes("word ".repeat(1100))).toBe(5);
+    const head = (description: string) =>
+      `# Title\n\n> ${description}\n\nA lede.\n\nStatus: Live · Reviewed: 2026-11-09\n\nCanonical page: ${ORIGIN}/docs/x\n\n`;
+    // 660 words of prose, then fenced code at the top level, in a list and in a quote.
+    const prose = "word ".repeat(660);
+    const code = `\`\`\`bash\n${"cmd --flag value\n".repeat(400)}\`\`\`\n`;
+    const listed = `- Run it.\n\n   \`\`\`text\n${"out ".repeat(500)}\n   \`\`\`\n`;
+    const quoted = `> \`\`\`ts\n> ${"x ".repeat(300)}\n> \`\`\`\n`;
+    const page = `${head("Short.")}${prose}\n\n${code}\n${listed}\n${quoted}`;
+    expect(readingMinutes(page)).toBe(3);
+    // The head counts nothing: a long description adds no minute.
+    expect(readingMinutes(`${head("word ".repeat(400))}${prose}`)).toBe(3);
+    // Without the cuts, the same page reads in about 13 minutes.
+    expect(Math.round(page.split(/\s+/).filter(Boolean).length / 220)).toBeGreaterThan(10);
   });
 
   it("llms.txt has the llmstxt.org shape and lists every page's twin", () => {

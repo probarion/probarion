@@ -130,6 +130,22 @@ describe("registry helpers", () => {
   it("put each page under one tab and show only tabs whose page exists", () => {
     for (const p of PAGES.slice(1)) expect(tabOf(p), p.path).not.toBeNull();
     expect(visibleTabs()).toEqual(TABS.filter((t) => findPage(t.path) !== undefined));
+    // The real registry: every tab's first page exists today.
+    expect(visibleTabs().map((t) => t.id)).toEqual(["guides", "build", "trust", "reference"]);
+  });
+
+  it("file a reference page of build under Reference, its other pages under Build", () => {
+    const tab = (path: string) => {
+      const page = findPage(path);
+      if (!page) throw new Error(`no page ${path}`);
+      return tabOf(page);
+    };
+    expect(tab("build/errors")).toBe("reference");
+    expect(tab("build/install")).toBe("build");
+    expect(tab("trust/verify-a-vault")).toBe("trust");
+    expect(tab("concepts/payment-checks")).toBe("guides");
+    expect(tab("start/what-is-probarion")).toBe("guides");
+    expect(tab("")).toBeNull();
   });
 });
 
