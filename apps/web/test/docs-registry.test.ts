@@ -26,6 +26,20 @@ import {
 } from "@/lib/docs/types";
 import { DOCS_DIR_TEST, mdxPaths, ROOT } from "./docs-helpers";
 
+/** The pages of phase 2, as the OWNER cut it on 2026-11-09. Every other page is phase 1. */
+const PHASE_2: ReadonlySet<string> = new Set([
+  "build/sdk-reference",
+  "build/policy-rules",
+  "build/cli-reference",
+  "build/contract-reference",
+  "build/events",
+  "build/http-api",
+  "build/limits-and-costs",
+  "trust/reproducible-builds",
+  "operate/architecture",
+  "resources/changelog",
+]);
+
 describe("the docs registry", () => {
   it("has one MDX file per page and one page per MDX file", () => {
     expect(PAGES.map((p) => p.path).sort()).toEqual(mdxPaths());
@@ -66,7 +80,8 @@ describe("the docs registry", () => {
       if (p.status !== undefined) expect(FEATURE_STATUSES, p.path).toContain(p.status);
       if (p.network !== undefined) expect(DOC_NETWORKS, p.path).toContain(p.network);
       expect(p.locale).toBe("en");
-      expect(p.phase, p.path).toBe(1);
+      // Phase 2 was cut by the OWNER on 2026-11-09 to these pages; a phase-3 page joins with phase 3.
+      expect(p.phase, p.path).toBe(PHASE_2.has(p.path) ? 2 : 1);
     }
   });
 
@@ -131,7 +146,13 @@ describe("registry helpers", () => {
     for (const p of PAGES.slice(1)) expect(tabOf(p), p.path).not.toBeNull();
     expect(visibleTabs()).toEqual(TABS.filter((t) => findPage(t.path) !== undefined));
     // The real registry: every tab's first page exists today.
-    expect(visibleTabs().map((t) => t.id)).toEqual(["guides", "build", "trust", "reference"]);
+    expect(visibleTabs().map((t) => t.id)).toEqual([
+      "guides",
+      "build",
+      "trust",
+      "reference",
+      "changelog",
+    ]);
   });
 
   it("file a reference page of build under Reference, its other pages under Build", () => {
@@ -143,6 +164,8 @@ describe("registry helpers", () => {
     expect(tab("build/errors")).toBe("reference");
     expect(tab("build/install")).toBe("build");
     expect(tab("trust/verify-a-vault")).toBe("trust");
+    expect(tab("resources/changelog")).toBe("changelog");
+    expect(tab("resources/glossary")).toBe("guides");
     expect(tab("concepts/payment-checks")).toBe("guides");
     expect(tab("start/what-is-probarion")).toBe("guides");
     expect(tab("")).toBeNull();
@@ -154,6 +177,7 @@ describe("the docs bar's tabs on a registry double", () => {
     vi.doUnmock("@/lib/docs/pages/start");
     vi.doUnmock("@/lib/docs/pages/build");
     vi.doUnmock("@/lib/docs/pages/trust");
+    vi.doUnmock("@/lib/docs/pages/resources");
     vi.resetModules();
   });
 
@@ -164,6 +188,7 @@ describe("the docs bar's tabs on a registry double", () => {
     // The double replaces every section that holds a tab's page, so later pages cannot change it.
     // build/errors exists but build/install does not: Reference shows and Build does not.
     vi.doMock("@/lib/docs/pages/start", () => ({ START: [] }));
+    vi.doMock("@/lib/docs/pages/resources", () => ({ RESOURCES: [] }));
     vi.doMock("@/lib/docs/pages/build", () => ({
       BUILD: [{ ...base, path: "build/errors", type: "reference" }],
     }));

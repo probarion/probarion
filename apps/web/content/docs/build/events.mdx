@@ -1,0 +1,148 @@
+The vault and factory contracts log a NEP-297 event line as they change: a mandate created, a spend held or paid, a key added. This page lists every event, the method that logs it and its fields, and shows how to read the lines from the chain. A test pins the tables to the contract source, so an event added, removed or changed in the code fails the docs tests until this page follows.
+
+## The line format
+
+Each event is one log line: the prefix `EVENT_JSON:`, then a JSON object with four keys. near-sdk writes the line from a Rust enum. The vault marks its enum with `#[near(event_json(standard = "probarion"))]` and each variant with `#[event_version("1.0.0")]`, and the variant's fields become `data`. The factory's enum works the same way, under its own standard.
+
+<RefTable id="events-line" />
+
+In TypeScript, `@probarion/core` exports the standards and the version as `EVENT_STANDARD`, `FACTORY_EVENT_STANDARD` and `EVENT_VERSION`.
+
+### A real line
+
+This line was logged by the testnet vault `v0.probarion.testnet`, in the callback receipt of transaction `3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX`. That transaction is the 1 USDC payment that `contracts/deployments/testnet.json` records as `near_payment_tx`. This first vault runs a build older than the current source (see [Testnet and mainnet](/docs/start/testnet-and-mainnet)), and its `spend_paid` line has the same fields as the source's.
+
+```text
+EVENT_JSON:{"standard":"probarion","version":"1.0.0","event":"spend_paid","data":{"spend_id":1,"mandate_id":1,"amount":"1000000","destination":{"type":"near","account_id":"probarion-payee.testnet"}}}
+```
+
+The same object, spread out:
+
+```json
+{
+  "standard": "probarion",
+  "version": "1.0.0",
+  "event": "spend_paid",
+  "data": {
+    "spend_id": 1,
+    "mandate_id": 1,
+    "amount": "1000000",
+    "destination": { "type": "near", "account_id": "probarion-payee.testnet" }
+  }
+}
+```
+
+The contract writes the keys in this order, with no spaces. Parse the JSON anyway, and never match the text.
+
+## Vault events
+
+Every vault account logs these, under the standard `probarion`. "Emitted by" names the method whose receipt logs the line and, when another function builds it, that function too. "Data fields" gives each field with its Rust type, in the order the line carries them. [Field types](#field-types) shows how each type looks in the JSON.
+
+<RefTable id="events-vault" />
+
+The signer differs by method. An agent key signs `spend` as the vault itself, the ledger key signs `anchor`, and anyone may call `expire_held`. The callbacks `on_transfer` and `on_withdraw` run as the vault, after the payout's own receipt.
+
+<Callout kind="owner-signs">
+
+The owner signs the calls behind the mandate, key, freeze and withdraw events from their own wallet: `create_mandate`, `revoke_mandate`, `add_agent`, `remove_agent`, `set_ledger_key`, `freeze`, `unfreeze`, `withdraw` and `withdraw_intents`. The owner also signs the factory's `create_vault`, with the vault's deposit.
+
+</Callout>
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` and `reject`, the calls behind `spend_approved` and `spend_rejected`, from their own wallet.
+
+</Callout>
+
+## Factory events
+
+The factory account logs these, under the standard `probarion_factory`. On testnet the factory is `vaults.probarion.testnet`, and a vault it creates is `<name>.vaults.probarion.testnet`.
+
+<RefTable id="events-factory" />
+
+## Field types
+
+<RefTable id="events-types" />
+
+## Read events from the chain
+
+The lines live in the receipts each contract executes. To read them:
+
+1. Get the receipts. An indexer that follows the vault account gives you every one, and the RPC `tx` method gives the receipts of one transaction you know.
+2. Keep only the receipts that succeeded, whose status is `SuccessValue` or `SuccessReceiptId`. A receipt that failed keeps the logs it wrote before it failed, but its changes were undone. A `withdrawn` line needs one more check, because its receipt succeeds before the transfer runs: see [its row](#events-withdrawn).
+3. Keep only the receipts whose `executor_id` is the vault, or the factory for its events. Any contract can log a line that says `"standard":"probarion"`. The factory's `vault_created` events and its `vault_version` view tell you which accounts it created.
+4. Take each log line that starts with `EVENT_JSON:`, parse the rest as JSON, and check `standard` and `version`.
+5. Look up `event` in the tables above, and read `data`.
+
+This script does that for the payment above. It uses only the `fetch` built into Node.js, and it asks FastNEAR's archival RPC, because a regular node drops old transactions.
+
+<CodeBlock title="events.mjs">
+
+```js
+const RPC = "https://archival-rpc.testnet.fastnear.com";
+const VAULT = "v0.probarion.testnet";
+const TX = "3DFV2thBU9V4b5w7kM691poLJ8SWiCqp46LKBn1Fy9cX";
+const STANDARD = "probarion";
+
+const response = await fetch(RPC, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tx",
+    params: { tx_hash: TX, sender_account_id: VAULT, wait_until: "FINAL" },
+  }),
+});
+const { result } = await response.json();
+
+for (const receipt of result.receipts_outcome) {
+  const { executor_id, status, logs } = receipt.outcome;
+  const succeeded =
+    typeof status === "object" && ("SuccessValue" in status || "SuccessReceiptId" in status);
+  if (executor_id !== VAULT || !succeeded) continue;
+  for (const line of logs) {
+    if (!line.startsWith("EVENT_JSON:")) continue;
+    const event = JSON.parse(line.slice("EVENT_JSON:".length));
+    if (event.standard !== STANDARD) continue;
+    console.log(event.event, event.data.spend_id);
+  }
+}
+```
+
+</CodeBlock>
+
+Save it as `events.mjs` and run `node events.mjs`. It prints the two vault events of that payment. The USDC contract's own `ft_transfer` line sits in another account's receipt, so the script skips it.
+
+```text
+spend_submitted 1
+spend_paid 1
+```
+
+Events tell you what changed and when. The views tell you how things stand now: `get_spend` and `list_spends`, `get_mandate` and `list_mandates`, and `list_anchors`. After a gap in your indexer, read the views to catch up. For offline tests, the SDK's test doubles in `@probarion/sdk/testing` log the spend events and `ledger_anchored` in the same shape.
+
+### The hosted watcher
+
+The hosted app does not read these lines. Its watcher polls the views `list_spends`, `list_mandates` and `list_anchors` of each vault registered with the app, reads the ledger the app keeps in its database, reads the vault's access keys and NEAR balance for the low-allowance and low-NEAR alerts, and stores what it sees for the usage counts and the owner's alerts. A vault that only the SDK or the CLI drives, and that nobody registered, is not watched. The watcher is Preview: see [What works today](/docs/start/what-works-today#watcher). The code is in [`apps/web/src/lib/watcher/watch.ts`](https://github.com/probarion/probarion/blob/main/apps/web/src/lib/watcher/watch.ts).
+
+## No webhooks
+
+Probarion has no outbound webhooks and no event subscription API. Nothing calls your server when a vault logs an event. To follow a vault, index its receipts or poll its views, as above. The only webhook route in the app is inbound: it receives the Telegram bot's updates for alerts (see [What works today](/docs/start/what-works-today#outbound-webhooks)).
+
+## What the events do not cover
+
+- **Refusals.** A refused call panics with `PROBARION:<Code>`, so its receipt fails and nothing it logged counts. The codes are on [Errors](/docs/build/errors).
+- **The clock.** No event marks a mandate that expires or is used up, or a hold whose window ends. A hold becomes `spend_expired` only when someone calls `expire_held`: see [Release an expired hold](/docs/concepts/holds-and-approvals#release-an-expired-hold).
+- **Refs and agent keys.** No spend event carries the spend's `ref` or the agent key that signed it. Read them with `get_spend`.
+- **Setup.** The `new` init of the vault and of the factory logs nothing, and neither do the factory's `store_code` and `publish_global`.
+- **The other chain.** `spend_burned` ends at NEAR Intents. The release on Base or Solana is not a Probarion event. On testnet a stub stands in for NEAR Intents, and nothing leaves NEAR.
+- **The ledger itself.** Ledger entries live off chain, and only their anchors are logged: see [Anchors: pinning the ledger on chain](/docs/concepts/ledger-and-anchors#anchors-pinning-the-ledger-on-chain).
+- **Token events.** The token contracts and NEAR Intents log their own NEP-141 and NEP-245 lines in their own receipts. The verifier reads the burn lines for [check h](/docs/trust/verifier-checks#check-h).
+
+## Related pages
+
+- [Contract reference](/docs/build/contract-reference): the methods of the vault and the factory that log these events.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): the life of a held spend, behind `spend_held`, `spend_approved`, `spend_rejected` and `spend_expired`.
+- [The ledger and anchors](/docs/concepts/ledger-and-anchors): what `ledger_anchored` pins.
+- [Testnet and mainnet](/docs/start/testnet-and-mainnet): the factory and vault accounts on each network.
+- The sources: [`contracts/vault/src/events.rs`](https://github.com/probarion/probarion/blob/main/contracts/vault/src/events.rs) and [`contracts/factory/src/lib.rs`](https://github.com/probarion/probarion/blob/main/contracts/factory/src/lib.rs).

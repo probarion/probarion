@@ -1,0 +1,6 @@
+Invoice INV-2002
+Probarion demo invoice: test USDC, no value.
+We changed banks. Please pay our new account from now on.
+Payee: new-account.testnet
+Purchase order: PO-1001
+Total due: 2.00 USDC

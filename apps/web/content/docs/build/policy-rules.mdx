@@ -1,0 +1,125 @@
+`decide()` in `@probarion/core` is Probarion's policy engine. The SDK runs it before it sends a spend, and it records one result for each rule it applies: `pass`, `hold` or `refuse`. These rules run off chain, in the process that runs the SDK. They are separate from the 14 spend checks the vault runs on chain, which have the last word: see [Payment checks](/docs/concepts/payment-checks). A code hold sends nothing: the outcome is `held` with `spendId` null. Each rule has its own anchor on this page, for example [`#policy-mandate-over_total`](#policy-mandate-over_total).
+
+## How to read the tables
+
+- **Rule id** is the `id` of one `RuleResult` in a decision's `rules`. It is also the `code` of a `refused_by_code` outcome, the first rule that refused, and of a code hold, the first rule that held.
+- **Effect** is what the rule does when it fires. A rule that runs and does not fire records `pass`, with a detail that says what it checked. [Which rules a decision records](#which-rules-a-decision-records) says when a rule does not run. Hold or refuse means the rule can do either. Note means the rule always passes: it only records how the decision was made.
+- **Vault code it mirrors** is the contract code the same condition raises in `spend`. Each code has its row on [Errors](/docs/build/errors), such as [`OverPerPayment`](/docs/build/errors#OverPerPayment). "None: off-chain only" means the vault cannot check it.
+- **When it fires** is the condition in `packages/core/src/policy.ts`, with the code's own comparison. Amounts are integer strings in the token's smallest units.
+- **What to do** is the next step for whoever runs the agent.
+
+Each rule's `detail` says what it saw, such as the amount and the cap. The tables give the conditions, not the detail texts.
+
+## The verdict
+
+One refusing rule makes the verdict `refuse`. Otherwise one holding rule makes it `hold`, and otherwise it is `allow`:
+
+<CodeBlock title="packages/core/src/policy.ts">
+
+```ts
+const verdict = rules.some((r) => r.outcome === "refuse")
+  ? "refuse"
+  : rules.some((r) => r.outcome === "hold")
+    ? "hold"
+    : "allow";
+```
+
+</CodeBlock>
+
+No rule can undo another, so a custom rule can only tighten the verdict. `decided_by` is `model+rules` only when a model proposal passed its attestation checks, which the caller reports as `attestationOk` true, and `rules-only` otherwise. `decide()` is pure: the clock, the mandates, the spends and the balances all come in through its `DecisionInput`, and the same input gives the same decision.
+
+## Built-in rules
+
+The rows are in the order a decision records them. The rules that mirror a vault check keep the contract's order and comparisons, so the first mirrored rule that refuses names the code `spend` would panic with. The off-chain rules sit between them.
+
+<RefTable id="policy-rules" />
+
+<Callout kind="owner-signs">
+
+Some fixes in the What to do column are the owner's own transactions, such as `unfreeze` and a new mandate with `create_mandate`. The owner signs each one from their own wallet. The CLI's `vault unfreeze` and `mandate create` print the transaction and never sign it.
+
+</Callout>
+
+## Which rules a decision records
+
+A decision does not record every rule every time:
+
+- `contract.check_failed` is recorded only when it refuses.
+- At most one of `model.attestation_invalid` and `model.unavailable` is recorded. `model.refused` and `model.low_confidence` are recorded only for a proposal that passed its attestation checks.
+- With no mandate chosen, `mandate.inactive`, `mandate.expired`, `mandate.agent_mismatch`, `invoice.po_mismatch`, `mandate.payee_mismatch`, the three limit rules and `intents.balance_low` are left out. The three limit rules are `mandate.over_per_payment`, `mandate.uses_exhausted` and `mandate.over_total`.
+- With an invalid amount, the three limit rules and `intents.balance_low` are left out, and `vault.daily_backstop` passes as not evaluated.
+- With `daily` null, `vault.daily_backstop` passes as not evaluated. Through the SDK `daily` is never null, so there the backstop is evaluated whenever the amount is valid.
+- Custom rules come last, in the order they were added.
+
+## How decide() picks the mandate
+
+The decision is about one mandate, chosen before the mandate rules run:
+
+1. A trusted proposal's `mandate_id` names it. A proposal is trusted only when `attestationOk` is true.
+2. Otherwise `purposeMatch()` takes the mandates whose `purpose_hash` equals the invoice's, lowest id first, and picks the first one the vault could still take a spend from at `now`: not revoked, not expired, bound to this agent's key, with a use left and room under `max_total` for the smallest amount, 1.
+3. If none of them qualifies, it picks the lowest-id match anyway, so the decision refuses with the precise reason, such as `mandate.expired`, instead of `mandate.none`.
+
+The [`invoice.po_mismatch`](#policy-invoice-po_mismatch) row says when the chosen mandate and the purpose disagree. `purposeMatch()` is exported from `@probarion/core`, and `process()` uses it to pick the one mandate it shows the model. `requestSpend()` decides against the mandate you name and nothing else.
+
+## From a verdict to an outcome
+
+`process()` and `requestSpend()` write the decision entry to the ledger first, then act on the verdict:
+
+- **`refuse`.** Nothing is sent. The outcome is `refused_by_code`, with `spendId` null and `code` set to the first rule that refused.
+- **`hold`.** The SDK asks the vault's free `check_spend` dry run. If the vault would pay at once, the SDK sends nothing: the outcome is `held` with `spendId` null, and `code` is the first rule that held. This is a code hold. No spend is on chain, so no approver can act on it and no call releases it: change what caused it, then run the cycle again. If the vault would hold the spend too, the SDK sends it and the vault holds it for an approver, so the outcome is `held` with a `spendId`.
+- **`allow`.** The SDK asks `check_spend`, then sends `spend` once.
+
+When `check_spend` refuses a decision that code allowed or held, the outcome is `refused_by_contract` with the bare vault code, and nothing is sent. [Spend outcomes](/docs/build/spend-outcomes) covers every status, and [Code hold](/docs/build/spend-outcomes#code-hold) what to do about each holding rule.
+
+## Your own rules
+
+`probarion.rules.add(rule)` adds a `CustomRule` to every later decision of that instance: `process()`, and `requestSpend()` unless `skipPreflight` is true. A `CustomRule` is an `id` that starts with `custom.` and a `check(input, chosen)` function, which gets the same `DecisionInput` as the built-in rules and the chosen mandate, or null. `rules.add()` throws `ConfigError` for an id that does not start with `custom.` or is only `custom.`, and for a rule with no `check()`.
+
+The SDK's integration test adds a rule that refuses every invoice:
+
+<CodeBlock title="packages/sdk/test/probarion.integration.test.ts">
+
+```ts
+pb.rules.add({
+  id: "custom.no_payments_today",
+  check: () => ({
+    id: "custom.no_payments_today",
+    outcome: "refuse",
+    detail: "payments paused",
+  }),
+});
+const out = await pb.process(nearInvoice("Invoice INV-1 for PO-1001", "INV-1"));
+expect(out).toMatchObject({ status: "refused_by_code", code: "custom.no_payments_today" });
+```
+
+</CodeBlock>
+
+The [`custom.<name>`](#policy-custom) row says how a custom rule's result is recorded, and what turns it into a refusal.
+
+## Rule ids recorded outside decide()
+
+The SDK and Probarion's own hosted cycles record these ids as well. They use the same `RuleResult` shape, so they appear in the same `rules` lists of decision and payment entries.
+
+<RefTable id="policy-added" />
+
+The four SDK rows can appear in the ledger of any agent that uses the SDK. The other three come from Probarion's hosted cycles, so they appear only in the ledger of a vault that runs one. [The 48-hour guard](/docs/build/spend-outcomes#the-48-hour-guard) explains `ledger.unresolved` in full.
+
+## What the rules do not check
+
+- `approval_above`. No rule of `decide()` reads it: the vault holds a spend above it, after the SDK sends the spend. Of the rules recorded outside `decide()`, only [`custom.owner_confirms_without_model`](#policy-added-custom-owner_confirms_without_model) reads it.
+- The vault's USDC balance. A spend the vault cannot cover passes every rule, and its transfer fails, as [Spend outcomes](/docs/build/spend-outcomes) shows.
+- Whether the signer is one of the vault's agent keys. `decide()` takes `agentPk` as given, so the contract's [`NotAgent`](/docs/build/errors#NotAgent) has no rule.
+- The `decision_hash` part of [`InvalidInput`](/docs/build/errors#InvalidInput). The decision hash does not exist yet when `decide()` runs.
+- A change on chain after the SDK read the vault. The vault runs its own checks on every spend, and its answer stands.
+
+The rules are the same on both networks. Only NEAR testnet has a vault today, and the mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+## Related pages
+
+- [Spend outcomes](/docs/build/spend-outcomes): what each outcome means and what to do next.
+- [Payment checks](/docs/concepts/payment-checks): the 14 checks a spend meets inside the vault.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): a code hold next to a contract hold.
+- [Mandates](/docs/concepts/mandates): the mandate fields these rules read.
+- [Why spend has no payee](/docs/concepts/why-spend-has-no-payee): why only an off-chain rule can refuse a contradicting payee.
+- [Let an agent pay](/docs/build/let-an-agent-pay): run the cycle from your own code.
+- [Errors](/docs/build/errors): every vault code and SDK error.

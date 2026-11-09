@@ -1,0 +1,113 @@
+`@probarion/sdk` lets your agent pay from a vault, only inside the mandates its owner signed. This page lists every export of its two entry points, `@probarion/sdk` and `@probarion/sdk/testing`, grouped by what each is for, with the public members of the classes most code calls. A test compares these tables with the package's code, so an export or a type that is added or removed, or a member of a class listed here, fails the docs tests until this page follows.
+
+## Install
+
+```bash
+npm install @probarion/sdk @probarion/core
+```
+
+The SDK's examples import from both packages, so install both. Release 0.1.0 is on npm. It is ESM only and needs Node 24 or newer. [Install the packages](/docs/build/install) covers a build from a clone, the import path of each entry point and the environment variables. The SDK takes `"testnet"` or `"mainnet"`, but only NEAR testnet has a vault today, and the mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+## How to read the tables
+
+- **Kind** is class, function, constant or type. A type has no runtime value: TypeScript code imports it with `import type`.
+- **Shown on** names the docs page that shows the export in use or explains it. None means no page does yet.
+- **Signed by** names the key that signs what a member sends. None means it signs nothing.
+- **Every row is an anchor.** An export's anchor is `sdk-` and its name in lowercase, such as [`#sdk-vaultclient`](#sdk-vaultclient). A test double's is `sdk-testing-` and its name, such as [`#sdk-testing-fakechain`](#sdk-testing-fakechain). A member's is `sdk-`, its class and its name, such as [`#sdk-vaultclient-listallspends`](#sdk-vaultclient-listallspends), and a constructor's ends in `new`, such as [`#sdk-vaultclient-new`](#sdk-vaultclient-new).
+
+The tables leave out what other pages already cover:
+
+- The options of `new Probarion()`, one by one: [Create the instance](/docs/build/let-an-agent-pay#create-the-instance).
+- The fields of a `SpendOutcome` and what each status means: [Spend outcomes](/docs/build/spend-outcomes).
+- Each error class's parent, `.code` and fields: [SDK errors](/docs/build/errors#sdk-errors).
+
+The members of the other classes, such as `NearAiProposer` and the test doubles, and the fields of the other option types, are in the [source](https://github.com/probarion/probarion/tree/main/packages/sdk/src).
+
+## Who signs
+
+<Callout kind="owner-signs">
+The SDK has no method for any call the owner signs: vault create, freeze, unfreeze, withdraw and withdraw-intents, mandate create and revoke, agent add and remove, and ledger set-key. The owner signs each one in their own wallet, and the [CLI](/docs/build/cli-reference) prints them for that.
+</Callout>
+
+The SDK holds two keys, both function-call keys on the vault account. The agent key can call only `spend`. The ledger key can call only `anchor`, and it also signs every ledger entry. `process()` and `requestSpend()` send `spend` with the agent key and `anchor` with the ledger key, and a `VaultClient` sends them through the senders you give it. No other member of `Probarion` or `VaultClient` signs anything. A `NearApiJsSender` signs whatever function call it is handed, with the key it was made with, and `Probarion` makes one over each of those two keys and no other. [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) explains the keys.
+
+<Callout kind="approver-signs">
+A held spend waits for one of the vault's approvers, who approves or rejects it from their own account. The SDK has no method for either. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+</Callout>
+
+## The client
+
+`Probarion` is the class most code needs: one instance per vault, in one process. With no keys and `model: null` an instance is read-only. The types in this table are what you pass to it and get back from it.
+
+<RefTable id="sdk-client" />
+
+### Probarion members
+
+`process()` and `requestSpend()` return a `SpendOutcome` for everything the vault or the node answers about the spend. [Thrown or returned](/docs/build/errors#thrown-or-returned) lists when they throw instead.
+
+<RefTable id="sdk-client-members" />
+
+### Dependencies for tests and hosts
+
+The constructor's optional second argument, a `ProbarionDeps`, replaces the parts the instance would make for itself: the RPC client, the senders, the model step, the clock, the logger and the sources of the proof. The SDK's own tests pass a proposer over the fake NEAR AI Cloud, a fixed clock and a logger here, and point `rpcUrls` at a fake RPC server. Production code passes nothing.
+
+<RefTable id="sdk-deps" />
+
+## Chain clients and transactions
+
+Each client reads one contract and is read-only, except that a `VaultClient` given senders also sends `spend` and `anchor`. An `RpcClient` carries every read, with failover across its URLs. To find a spend by its ref, list the vault's spends, as [Find a spend by its ref](/docs/build/let-an-agent-pay#find-a-spend-by-its-ref) shows: the contract has no lookup by ref.
+
+<RefTable id="sdk-chain" />
+
+### Chain client members
+
+<RefTable id="sdk-chain-members" />
+
+## Ledger stores
+
+`Probarion` writes every decision and every payment to a `LedgerStore`: a `FileLedgerStore` at `PROBARION_LEDGER_PATH`, else `.probarion/ledger.jsonl`, unless you pass another store as `ledger`. Run one writer per vault, as [One ledger writer per vault](/docs/build/let-an-agent-pay#one-ledger-writer-per-vault) explains. [The ledger and anchors](/docs/concepts/ledger-and-anchors) covers what an entry records.
+
+<RefTable id="sdk-ledger" />
+
+### Ledger store members
+
+<RefTable id="sdk-ledger-members" />
+
+## Model advice and attestation
+
+With `model: { provider: "near-ai-cloud", apiKey }`, `Probarion` makes a `NearAiProposer` and records the attestation of each proposal. The model only advises: the code rules still run on its proposal, and the contract checks the spend again. A real attested decision recorded in the repository is Preview, as [Choose who decides](/docs/build/let-an-agent-pay#choose-who-decides) says. The online checks need the optional peer dependency `@nearai/inference-sdk`.
+
+<RefTable id="sdk-model" />
+
+## Snapshot and proof
+
+`snapshot()` and `verify()` use these, so you need them directly only to build a snapshot or a check of your own. A few concern only the mainnet vault `v0.probarion.near`, which is Planned: the code names it in advance as the only vault whose spends may predate the signed ledger. [Verifier checks a to i](/docs/trust/verifier-checks) says what each check proves, and [Verify a vault yourself](/docs/trust/verify-a-vault) runs the verifier on a live vault.
+
+<RefTable id="sdk-proof" />
+
+## Errors
+
+Every error class extends `ProbarionError`, so one `instanceof ProbarionError` catches them all. [SDK errors](/docs/build/errors#sdk-errors) gives each class its parent, its `.code` and its fields, anchored by its name, such as [`ConfigError`](/docs/build/errors#ConfigError).
+
+<RefTable id="sdk-errors" />
+
+## Helpers
+
+The three spend helpers mirror what the contract counts, so the code can refuse early what `check_spend` would refuse anyway. The contract is authoritative.
+
+<RefTable id="sdk-helpers" />
+
+## Test doubles
+
+`@probarion/sdk/testing` holds a fake chain, a fake NEAR JSON-RPC server and a fake NEAR AI Cloud, with a ready scenario. Nothing in it talks to a real network. They are test doubles, not the contract: a test that passes against them does not show that a real vault behaves the same. To import the entry point from TypeScript, set `"moduleResolution"` to `"NodeNext"` or `"Bundler"`.
+
+<RefTable id="sdk-testing" />
+
+## Related pages
+
+- [Let an agent pay](/docs/build/let-an-agent-pay): the payment loop, from the instance to the outcome.
+- [Spend outcomes](/docs/build/spend-outcomes): every status `process()` returns, and what to do next.
+- [Errors](/docs/build/errors): the vault codes and the SDK error classes.
+- [Install the packages](/docs/build/install): npm, a clone and the import paths.
+- [CLI reference](/docs/build/cli-reference): the commands that print the calls an owner or an approver signs.
+- The source: [`packages/sdk/src/index.ts`](https://github.com/probarion/probarion/blob/main/packages/sdk/src/index.ts) and the [SDK README](https://github.com/probarion/probarion/blob/main/packages/sdk/README.md).

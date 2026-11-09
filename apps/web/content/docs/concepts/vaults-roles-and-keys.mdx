@@ -95,7 +95,7 @@ The ledger key is another function-call key on the vault account, limited to `an
 - **Allowance.** The console and the CLI both default to 0.25 NEAR.
 - **Old ranges stay checkable.** Each anchor stores the key that signed it, so a range anchored before a rotation stays verifiable after it.
 
-`v0.probarion.testnet` has no ledger key and no anchors yet: its smoke run sent spends with the agent key directly, without the SDK.
+`v0.probarion.testnet` has no ledger key and no anchors yet: its smoke run sent spends with the agent key directly, without the SDK. The testnet demo vault, `demo.vaults.probarion.testnet`, has both keys: an agent key that can call `spend` only, and a ledger key that can call `anchor` only, which anchored its ledger five times on 2026-11-09.
 
 ## Why most owner calls need exactly 1 yoctoNEAR
 

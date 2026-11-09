@@ -19,8 +19,8 @@ function codesOf(tree: Root): Code[] {
   return out;
 }
 
-/** The phase-1 pages of spec §4, in reading order. A later page joins with its content. */
-const PHASE_1 = [
+/** The pages of spec §4 that exist, in reading order. A later page joins with its content. */
+const IN_ORDER = [
   "",
   "start/what-is-probarion",
   "start/how-one-payment-works",
@@ -39,11 +39,22 @@ const PHASE_1 = [
   "build/let-an-agent-pay",
   "build/spend-outcomes",
   "build/errors",
+  // Phase 2, cut by the OWNER on 2026-11-09 to the reference pages.
+  "build/sdk-reference",
+  "build/policy-rules",
+  "build/cli-reference",
+  "build/contract-reference",
+  "build/events",
+  "build/http-api",
+  "build/limits-and-costs",
   "trust/verify-a-vault",
   "trust/verifier-checks",
   "trust/security-model",
+  "trust/reproducible-builds",
+  "operate/architecture",
   "resources/glossary",
   "resources/for-ai-agents",
+  "resources/changelog",
 ];
 
 /** Flows not yet run end to end with real wallets (spec §13.7). Check again after T18. */
@@ -55,9 +66,9 @@ const PREVIEW = [
   "build/let-an-agent-pay",
 ];
 
-describe("the phase-1 docs", () => {
-  it("are the 23 pages of the spec, in reading order", () => {
-    expect(PAGES.map((p) => p.path)).toEqual(PHASE_1);
+describe("the docs pages", () => {
+  it("are the pages of the spec, in reading order", () => {
+    expect(PAGES.map((p) => p.path)).toEqual(IN_ORDER);
   });
 
   it("parse as MDX, and a page that does not names its file", () => {

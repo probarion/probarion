@@ -180,15 +180,17 @@ const codeKey = (s: string) =>
     .replace(/^probarion:/, "");
 
 /**
- * 0: the error entry whose code is the query; 1: a page that names that code; 2: the rest. A code
- * is a whole line of `codes`, so one word of a CLI command is not the command. An empty key (the
- * query `PROBARION:` alone) and an empty line (a page with no codes) never match.
+ * 0: the error entry whose code is the query; 1: a reference page that names that code, such as
+ * the CLI reference for `spend approve`; 2: another page that names it; 3: the rest. A code is a
+ * whole line of `codes`, so one word of a CLI command is not the command. An empty key (the query
+ * `PROBARION:` alone) and an empty line (a page with no codes) never match.
  */
 function exactRank(hit: SearchHit, key: string): number {
-  if (key === "") return 2;
+  if (key === "") return 3;
   const codes = hit.codes.split("\n").filter((c) => c !== "");
-  if (!codes.some((c) => codeKey(c) === key)) return 2;
-  return hit.kind === "error" ? 0 : 1;
+  if (!codes.some((c) => codeKey(c) === key)) return 3;
+  if (hit.kind === "error") return 0;
+  return hit.kind === "reference" ? 1 : 2;
 }
 
 /**
