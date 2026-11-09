@@ -321,6 +321,7 @@ export const BUILD: readonly DocPage[] = [
       "apps/web/src/lib/payables/pipeline.ts",
       "apps/web/src/lib/payables/number-duplicate.ts",
       "apps/web/supabase/migrations/20261108000016_invoice_number_rule.sql",
+      "apps/web/supabase/migrations/20261110000017_invoice_guard_paid_refusals.sql",
       "apps/web/src/lib/payables/confirm.ts",
       "apps/web/src/lib/canary/rules.ts",
       "apps/web/src/lib/canary/probarion.ts",

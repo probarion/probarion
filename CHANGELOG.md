@@ -696,6 +696,18 @@ The software is an unaudited beta.
   pass every duplicate check. The migration
   `apps/web/supabase/migrations/20261108000016_invoice_number_rule.sql` changes `invoice_insert`.
 
+- A bill could be paid twice when an agent paid one text of it outside the console. The owner's
+  Confirm of that text in the console was refused as already paid (`invoice.duplicate`), and that
+  refusal freed the invoice number, so a second text of the bill with the same number could run
+  and pay. The duplicate guard now counts a refusal because the text was already paid or may still
+  pay as an invoice that may pay: `invoice.duplicate` or `ledger.unresolved` in its signed decision
+  (also when another rule refused first), or the contract's `DuplicateInvoice` or `DuplicateRef`.
+  The same holds at intake and at the owner's Confirm. The guard also names an invoice that may
+  have paid before one that waits for the owner, so the notice no longer offers a re-upload after
+  a Reject that would only get a 409. A Reject still frees the number. The migration
+  `apps/web/supabase/migrations/20261110000017_invoice_guard_paid_refusals.sql` changes
+  `invoice_insert` and `invoice_confirm_begin`.
+
 - An on-demand render of `/docs/trust/reproducible-builds` on Vercel, such as a POST, which skips
   the prerender, answered 500: the function did not carry `.github/workflows/ci.yml`. The page's
   data now reads each file by a literal path. The docs functions carry the 8 repository files they
