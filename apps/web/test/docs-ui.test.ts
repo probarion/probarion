@@ -12,7 +12,7 @@ import { Breadcrumbs } from "@/components/docs/Breadcrumbs";
 import { Callout } from "@/components/docs/Callout";
 import { CodeFrame } from "@/components/docs/CodeFrame";
 import { CodeTabs } from "@/components/docs/CodeTabs";
-import { scrollTopFor } from "@/components/docs/CurrentInView";
+import { inWindow, scrollTopFor } from "@/components/docs/CurrentInView";
 import { DocsBar } from "@/components/docs/DocsBar";
 import d from "@/components/docs/docs.module.css";
 import { Feedback } from "@/components/docs/Feedback";
@@ -523,6 +523,19 @@ describe("the docs shell", () => {
     expect(scrollTopFor(box, { top: 490, bottom: 520 }, 0)).toBe(205);
     expect(scrollTopFor(box, { top: 40, bottom: 70 }, 900)).toBe(655);
     expect(scrollTopFor(box, { top: 60, bottom: 90 }, 10)).toBe(0);
+  });
+
+  it("counts only the part of the sidebar box the window shows", () => {
+    // At 1366 x 768, scrolled to the top: the box starts under the header and the docs bar and
+    // ends below the window, and the current link sits in that hidden band.
+    const box = { top: 172, bottom: 856 };
+    const link = { top: 764, bottom: 798 };
+    expect(inWindow(box, 768)).toEqual({ top: 172, bottom: 768 });
+    expect(scrollTopFor(box, link, 0)).toBeNull();
+    // 596 px show and the link is 34 px: 281 px above it once it is in the middle.
+    expect(scrollTopFor(inWindow(box, 768), link, 0)).toBe(311);
+    expect(inWindow({ top: -40, bottom: 500 }, 768)).toEqual({ top: 0, bottom: 500 });
+    expect(inWindow({ top: 84, bottom: 684 }, 768)).toEqual({ top: 84, bottom: 684 });
   });
 
   it("takes the group ids' prefix from where it sits, not from its name", () => {

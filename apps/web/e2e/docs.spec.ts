@@ -144,6 +144,28 @@ test("the sidebar shows the current page's link inside its own box, and the wind
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
+// At the top of a page the sidebar box starts under the header and the docs bar, so its last
+// pixels lie below the window. At 1366 x 768 the Install link sits in that band on a first load,
+// and this test fails for it without CurrentInView's inWindow; the other two are its neighbours.
+for (const [width, height, path] of [
+  [1366, 768, "/docs/build/install"],
+  [1366, 768, "/docs/build/let-an-agent-pay"],
+  [1440, 900, "/docs/trust/verify-a-vault"],
+] as const) {
+  test(`at ${width} x ${height}, ${path} shows its sidebar link in the window`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await page.goto(path);
+    await searchReady(page);
+    const side = page.getByRole("navigation", { name: "Docs", exact: true });
+    const current = side.locator('[aria-current="page"]');
+    await expect(current).toHaveAttribute("href", path);
+    await expect(current).toBeInViewport({ ratio: 1 });
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+}
+
 test("Escape closes the search and gives focus back", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(ARTICLE);

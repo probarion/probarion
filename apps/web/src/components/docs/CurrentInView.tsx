@@ -18,6 +18,15 @@ export function scrollTopFor(box: Edges, link: Edges, scrollTop: number): number
   return Math.max(0, Math.round(scrollTop + link.top - box.top - room / 2));
 }
 
+/**
+ * The part of a box the window shows. At the top of a page the sticky sidebar starts below the
+ * site header and the docs bar, so its last pixels lie below the window: a link there is in the
+ * box but out of sight.
+ */
+export function inWindow(box: Edges, windowHeight: number): Edges {
+  return { top: Math.max(box.top, 0), bottom: Math.min(box.bottom, windowHeight) };
+}
+
 /** The nearest ancestor that scrolls up and down, below the page itself; null when there is none. */
 function scrollBox(el: Element): HTMLElement | null {
   for (let at = el.parentElement; at !== null; at = at.parentElement) {
@@ -43,11 +52,9 @@ export function CurrentInView({ current }: { current: string | null }) {
       const link = nav.querySelector('[aria-current="page"]');
       const box = link === null ? null : scrollBox(link);
       if (link === null || box === null) return;
-      const top = scrollTopFor(
-        box.getBoundingClientRect(),
-        link.getBoundingClientRect(),
-        box.scrollTop,
-      );
+      const seen = inWindow(box.getBoundingClientRect(), window.innerHeight);
+      if (seen.bottom <= seen.top) return;
+      const top = scrollTopFor(seen, link.getBoundingClientRect(), box.scrollTop);
       if (top !== null) box.scrollTop = top;
     };
     show();
