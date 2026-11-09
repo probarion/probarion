@@ -18,10 +18,15 @@ copies the ledger. They do not sign or send anything either.
 
 ## Install
 
-<!-- TODO(release): once probarion is on npm, replace the clone steps with its npm install line -->
+```sh
+npm install -g probarion
+probarion --help
+```
 
-The `probarion` package is not on npm yet (0.1.0 is planned), so build it from a clone of the
-repository:
+Or run it without installing: `npx probarion --help`. Node 24 or newer. You also need `near-cli-rs`
+(the `near` command) to sign what the CLI prints.
+
+To build it from source instead, from a clone of the repository (pnpm 10):
 
 ```sh
 git clone https://github.com/probarion/probarion.git
@@ -31,9 +36,8 @@ pnpm build
 node packages/cli/dist/bin.js --help
 ```
 
-Node 24 or newer and pnpm 10. In the repository folder, `node packages/cli/dist/bin.js` is the
-`probarion` command of the examples below. You also need `near-cli-rs` (the `near` command) to sign
-what the CLI prints.
+In the repository folder, `node packages/cli/dist/bin.js` is the `probarion` command of the examples
+below.
 
 ## Commands
 
