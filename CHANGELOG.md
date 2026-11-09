@@ -23,28 +23,37 @@ The software is an unaudited beta.
   creates, changes or removes a mandate, a key or the vault's settings.
   - The server holds the vault's `spend`-only agent key and `anchor`-only ledger key, and no owner
     key. Without the two keys it runs read-only and `request_spend` is off.
-  - `request_spend` runs `decide()` from `@probarion/core` and the vault's `spend`, as an SDK
-    agent does, signs the decision into the vault's ledger and anchors it. The MCP client's reasoning
-    is stored as an unattested proposal prefixed `mcp:`, so `verify` reports these decisions as
-    rules-only. Before each payment the server checks that the vault's latest anchor covers its own
-    ledger file, entry for entry, and otherwise stops with `LEDGER_FORK_RISK` and sends nothing.
+  - `request_spend` names a mandate by id and runs `decide()` from `@probarion/core` and the
+    vault's `spend`, signs the decision into the vault's ledger and anchors it. No invoice text or
+    purpose document is read, so the purpose rule passes. The MCP client's reasoning is stored as an
+    unattested proposal prefixed `mcp:`, so `verify` reports these decisions as rules-only. A second
+    request with the same ref pays nothing; it is refused and names the vault's spend under that ref
+    (`earlier_spend`). A hold with no spend on chain says no approver waits on it.
+  - Before each payment the server checks that its ledger file holds every entry the vault's latest
+    anchor covers, with the same root, and otherwise stops with `LEDGER_FORK_RISK` and sends nothing.
+    That catches another writer once it has anchored; `verify` check d finds one that has not.
   - Settings come from the environment (`PROBARION_VAULT_ID`, the two keys, `NEAR_NETWORK`,
-    `NEAR_RPC_URLS`, `PROBARION_LEDGER_PATH`); an RPC URL must be `https://`, or `http://` on
-    localhost. Errors and log lines pass through a filter that masks secret keys and URL queries.
-  - 85 tests, among them an end-to-end run over the SDK's fake chain and a stdio JSON-RPC session.
+    `NEAR_RPC_URLS`, `NEAR_ARCHIVAL_RPC_URLS`, `PROBARION_LEDGER_PATH`). A key must be a valid
+    ed25519 secret key, and an RPC URL must be `https://` (`http://` only on this machine) with no
+    user name or password; a problem is named by its variable, with no value. Errors and log lines pass
+    through a filter that masks secret keys and cuts every URL to its origin.
+  - 91 tests, among them an end-to-end run over the SDK's fake chain and a stdio JSON-RPC session.
 - The pay-per-call example in `examples/402` (a private workspace package, testnet only). An HTTP
   endpoint answers `402 Payment Required` with a quote: a price, a payee and a short text. An agent
   pays the text's sha256 through `@probarion/mcp` under a mandate, with `402:<quote id>` as the ref,
-  and sends the call again with the spend id. The endpoint serves it only if the paying vault was
-  created by the factory (its `vault_version` view), and the spend is `paid`, to the seller's
-  account, for the full price and for this quote's hash; each quote serves one call. Run its test with
+  and sends the call again with the spend id and the redeem token the 402 gave it. The endpoint
+  serves it only if the token matches, the paying vault was created by the factory (its
+  `vault_version` view), and the spend is `paid`, to the seller's account, for the full price and
+  for this quote's hash, at a block time before the quote expired; each quote serves one call. The
+  agent pays under the lowest-numbered mandate for the payee that can still take the amount, and
+  reads a held spend until it is paid before it calls again. Run its test with
   `pnpm --filter @probarion/example-402 run test`: 20 calls are paid and the 21st is refused with
   `mandate.uses_exhausted`. It is not an implementation of x402 or of any other payment protocol.
 - A testnet record of that example, in `docs/evidence/402-vault`: on 2026-11-09 the vault
   `percall.vaults.probarion.testnet` paid 20 calls at 0.01 test USDC under a mandate of 20 uses,
   and the 21st was refused by code (`mandate.uses_exhausted`, nothing sent), as the contract's
   `check_spend` view also answered (`UsesExhausted`). Its live `verify` passes checks a to i; the
-  ledger, the snapshot and every transaction are in the folder.
+  ledger, the snapshot (with the 21 anchors) and the setup and spend transactions are in the folder.
 - The Docs Center at `/docs`: 33 pages in six sections (Start here, Concepts, Build, Verify &
   trust, Operate, Resources), with a home of four doors (new here, owner, developer, evaluator). Each page
   was written from the code and checked against it in a separate verification pass. Each guide,

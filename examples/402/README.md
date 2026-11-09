@@ -14,14 +14,19 @@ implementation of x402 or any other payment protocol.
 
 ## What each side checks
 
-- **The agent** reads the payee from the quote text and looks for a mandate that pays that NEAR account. If
-  none does, it pays nothing. If one does, the vault pays the mandate's payee, whatever the 402 said
-  elsewhere: `request_spend` has no recipient field.
+- **The agent** reads the payee from the quote text and looks for a mandate that pays that NEAR account:
+  the lowest-numbered one bound to its key that is active, has uses left, has not expired and can take the
+  price. If none pays that account, it pays nothing. The vault pays the mandate's payee, whatever the
+  402 said elsewhere: `request_spend` has no recipient field. A spend held for an approver, or sent with no
+  answer yet, is read until it is paid and is not sent again.
 - **Probarion and the contract** check the mandate's cap per payment, total, uses and expiry, and pay each
   quote hash and each ref at most once.
-- **The seller** reads the spend from the buyer's vault on NEAR and serves the call only if the vault was
-  created by Probarion's factory, the spend is `paid`, to the seller's account, for the full price, and for
-  this quote's hash. Each quote serves one call.
+- **The seller** gives each 402 a redeem token, outside the quote text, so it does not reach the chain. It
+  serves the call only if the retry carries that token, the vault was created by Probarion's factory, and
+  the spend is `paid`, to the seller's account, for the full price, for this quote's hash, at a block time
+  before the quote expired. Each quote serves one call, and a quote paid in time can be redeemed up to 10
+  minutes after it expires. The quote id and the spend id are public on chain; the token is what ties the
+  call to the client that paid.
 
 ## Run it on testnet
 

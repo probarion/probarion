@@ -32,6 +32,10 @@ answered `402` with a quote; the agent called `list_mandates`, found mandate 1 f
 again with the spend id. The endpoint read that spend from the vault, checked that it paid this quote in full to
 `probarion-payee.testnet`, and served the data.
 
+The run used the example and the server as of commit `affa086`. After a review on 2026-11-10 the endpoint also
+gives each 402 a redeem token that the retry must carry, and judges a quote's expiry by the spend's block time;
+this record shows the run as it happened, without the token.
+
 | Calls | Result |
 | --- | --- |
 | 1 to 20 | Spends 1 to 20 paid 0.01 USDC each, from 18:12:52 to 18:16:20 UTC, and each call got its data |

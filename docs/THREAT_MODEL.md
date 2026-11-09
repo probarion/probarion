@@ -117,9 +117,8 @@ Two further surfaces: MCP clients, and the hosted service itself, which the next
 key, and has no tool that creates, changes or removes a mandate, a key or the vault's settings. None of
 its five tools takes an address, and each input rejects fields it does not know, so a prompt-injected
 `to` is refused before anything runs (claim `MCP-NOADDR`, `packages/mcp/test/safety.test.ts:12`). Its
-`request_spend` goes through `decide()` and the vault's `spend`, as an SDK agent's does, and stops with
-`LEDGER_FORK_RISK` when the vault's latest anchor does not cover its own ledger file
-(`packages/mcp/src/guard.ts`).
+`request_spend` names a mandate by id and goes through `decide()` and the vault's `spend`; no invoice
+text is read, so the client can pay any payee of a mandate bound to its key, within that mandate's limits.
 
 ## The hosted service
 
@@ -279,7 +278,7 @@ approve.
 | Intents balance low | The rule `intents.balance_low` holds the spend (`packages/core/src/policy.ts:315-325`) |
 | An RPC URL rate-limited (HTTP 429) or failing | The SDK's RPC client tries the next URL of its list, in order (`packages/sdk/src/rpc.ts:410-421`; [RPC failover](RUNBOOK.md#rpc-failover)). The web app takes each network's list from `NEAR_RPC_URLS_MAINNET` or `NEAR_RPC_URLS_TESTNET`, and the bare `NEAR_RPC_URLS` for its default network only (`apps/web/src/lib/env.ts:154-167`). The SDK and the CLI read only the bare `NEAR_RPC_URLS` (or `--rpc`), for whichever network they are given (`packages/sdk/src/rpc.ts:168-180`) |
 | An RPC URL that serves the other chain | Sign-in and Register answer 503 `wrong_chain`, mint no session and register nothing |
-| Two processes writing one vault's ledger | The database's compare-and-append refuses the second with `ledger_conflict` (`apps/web/src/lib/ledger/store.ts:111`), and an anchor out of order fails with `PROBARION:BadSeq`. The SDK marks the rest `LEDGER_FORK_RISK`: it sends no spend for a decision that did not land at the position it was attested for, and it warns and does not anchor when the chain's last anchor covers more entries than its ledger holds (`packages/sdk/src/probarion.ts:978-982`, `:1099-1103`). Two writers with two ledger files still fork the vault's history, which `verify` check c then reports. An MCP server is planned |
+| Two processes writing one vault's ledger | The database's compare-and-append refuses the second with `ledger_conflict` (`apps/web/src/lib/ledger/store.ts:111`), and an anchor out of order fails with `PROBARION:BadSeq`. The SDK marks the rest `LEDGER_FORK_RISK`: it sends no spend for a decision that did not land at the position it was attested for, and it warns and does not anchor when the chain's last anchor covers more entries than its ledger holds (`packages/sdk/src/probarion.ts:978-982`, `:1099-1103`). Two writers with two ledger files still fork the vault's history, which `verify` check c then reports. The MCP server refuses a spend with `LEDGER_FORK_RISK` when its ledger file does not hold the entries the vault's latest anchor covers (`packages/mcp/src/guard.ts`): that catches another writer once it has anchored, and one that has not is found later by check d |
 | The watcher runs only once a day | A change nobody drove through the app reaches the owner's alerts at the next watcher run that reaches its vault: within a day on the daily cron, or at a later per-minute run once the Supabase schedule is on, with no promised delay ([when a message arrives](ops/alerts.md#when-a-message-arrives)) |
 | Supabase or Vercel down | The console, Payables, the proof pages and the alerts stop. The funds stay in the vaults, and owners freeze and withdraw with their own keys (near-cli-rs) |
 | `KEY_ENCRYPTION_SECRET` lost | The sealed agent and ledger keys are lost: remove them from each vault and add new ones ([key rotation](ops/key-rotation.md)). The funds are not affected |
