@@ -383,13 +383,18 @@ test("config.yml turns blank issues off and links the private report and the X a
   assert.equal(security.name, "Report a vulnerability privately");
   assert.equal(security.url, "https://github.com/probarion/probarion/security/advisories/new");
   assert.equal(x.url, "https://x.com/probarionhq");
-  // The wording offers only what SECURITY.md offers: the X DM, and the GitHub form once it is on.
+  // The wording offers only what SECURITY.md offers: the X DM and the GitHub form, which is on (2026-11-09).
   const policy = read("SECURITY.md");
   assert.match(policy, /\[@probarionhq\]\(https:\/\/x\.com\/probarionhq\)/);
-  assert.match(policy, /once private vulnerability reporting is switched on/);
+  assert.ok(
+    policy.includes(`[**Security → Report a vulnerability**](${security.url})`),
+    "SECURITY.md links the private advisory form",
+  );
+  assert.doesNotMatch(policy, /switched on/);
   assert.match(security.about, /SECURITY\.md/);
   assert.match(security.about, /@probarionhq/);
-  assert.match(security.about, /once private reporting is switched on/);
+  assert.match(security.about, /use this private form/);
+  assert.doesNotMatch(security.about, /switched on/);
 });
 
 // ---------- the pull request template ----------

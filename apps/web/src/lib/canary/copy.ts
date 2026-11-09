@@ -272,8 +272,8 @@ export const RULES_HEAD = {
 /**
  * The eight rules. `links` are the addresses of SECURITY.md and of @probarionhq on X (LINKS in lib/site/facts.ts),
  * given by the page so that this file stays light. A report goes the way SECURITY.md says: a direct message on X that
- * asks for a private channel (a GitHub advisory only once private vulnerability reporting is switched on, which it is
- * not yet). There is no security mailbox.
+ * asks for a private channel, or the repository's private GitHub advisory form (on since 2026-11-09). There is no
+ * security mailbox.
  */
 export function rulesCopy(
   network: Network,

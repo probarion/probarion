@@ -313,12 +313,14 @@ mandates, and cannot pay or approve.
   so the fix ships only as a new vault version with new reproducible builds.
 - **No dependency-audit job in CI.** Dependabot alerts cover `pnpm-lock.yaml` and `contracts/Cargo.lock`,
   and the review log below records each triage. `cargo audit` has not been run.
-- **Repository security settings are off:** private vulnerability reporting, secret scanning, push
-  protection and Dependabot security updates. Turning them on is the repository owner's call. CI's
+- **GitHub's secret scanning looks for provider patterns only.** Private vulnerability reporting,
+  secret scanning, push protection and Dependabot security updates are on for the repository
+  (checked 2026-11-09); secret scanning's non-provider patterns and validity checks are off. CI's
   gitleaks job scans the full history on every pull request into `dev` or `main` and every push to
   them ([`ci.yml`](../.github/workflows/ci.yml)).
-- **Contacts and status.** The only reporting channel is a direct message on X until an email address
-  passes a delivery test. There is no third-party status page yet: `/status` on each address and
+- **Contacts and status.** A report goes by a direct message on X or the repository's private
+  advisory form ([SECURITY.md](../SECURITY.md#reporting-a-vulnerability)). There is no email address
+  until one passes a delivery test, and no third-party status page yet: `/status` on each address and
   posts on X stand in.
 - **Request ids in Sentry.** An exception with no log line, on a route other than the seven tagged
   ones (the Payables upload, the Canary attempt, the two crons and the browser extension's three

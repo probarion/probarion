@@ -22,8 +22,9 @@ every transaction that creates, funds or configures it.
 
 - **On X:** send a direct message to [@probarionhq](https://x.com/probarionhq) that says you have a
   security report, with no details. We answer with a private channel for them.
-- **On GitHub:** once private vulnerability reporting is switched on for this repository, use
-  **Security → Report a vulnerability**, which opens a private
+- **On GitHub:** use the repository's private form,
+  [**Security → Report a vulnerability**](https://github.com/probarion/probarion/security/advisories/new),
+  which opens a private
   [security advisory](https://docs.github.com/en/code-security/security-advisories/working-with-repository-security-advisories/about-repository-security-advisories)
   that only you and the maintainers can see.
 
@@ -96,6 +97,8 @@ report it as above.
   [`contracts/code-hashes.json`](contracts/code-hashes.json).
 - CI runs gitleaks over the full history and `cargo clippy` with warnings as errors on every push
   and pull request to `main` and `dev`.
+- GitHub secret scanning with push protection, Dependabot security updates and private
+  vulnerability reporting are on for this repository.
 - No owner keys on servers. Agent keys are generated server-side, encrypted at rest with a master key held outside the database, and can call only `spend`.
 - Every decision is signed into a hash-chained ledger, and anchors pin it on chain.
 - Dependabot alerts are triaged; the latest review is in the

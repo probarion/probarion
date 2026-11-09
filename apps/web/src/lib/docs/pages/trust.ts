@@ -131,7 +131,7 @@ export const TRUST: readonly DocPage[] = [
       "apps/web/supabase/migrations/20261108000013_extension_tokens.sql",
       "apps/web/src/lib/site/facts.ts",
     ],
-    reviewed: "2026-11-07",
+    reviewed: "2026-11-09",
     phase: 1,
     locale: "en",
   },

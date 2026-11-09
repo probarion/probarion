@@ -354,7 +354,7 @@ describe("the rules of the challenge", () => {
     expect(links(scope?.body ?? []).map((l) => l.href)).toEqual([
       "https://github.com/probarion/probarion/blob/main/SECURITY.md",
     ]);
-    // SECURITY.md reports through an X direct message (a GitHub advisory once private reporting is on); no mailbox
+    // SECURITY.md reports through an X direct message or the repository's private GitHub advisory form; no mailbox
     const all = rules.flatMap((r) => r.body);
     expect(strings(all).join("")).not.toMatch(/@probarion\.xyz/);
     expect(links(all).filter((l) => l.href.startsWith("mailto:"))).toEqual([]);
