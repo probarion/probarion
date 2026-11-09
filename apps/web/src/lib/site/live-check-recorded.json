@@ -1,0 +1,99 @@
+{
+  "recordedAt": "2026-11-09T00:57:49.383Z",
+  "blockHeight": 276851248,
+  "vault": "v0.probarion.testnet",
+  "accessKeys": [
+    {
+      "access_key": {
+        "nonce": 275715721000003,
+        "permission": {
+          "FunctionCall": {
+            "allowance": "998375274318891400000000",
+            "method_names": ["spend"],
+            "receiver_id": "v0.probarion.testnet"
+          }
+        }
+      },
+      "public_key": "ed25519:5errZXjDMXpk51BLypA3hBRUfBfh9v4bHeyU9vRmzYFK"
+    }
+  ],
+  "mandates": {
+    "1": {
+      "id": 1,
+      "payee": {
+        "type": "near",
+        "account_id": "probarion-payee.testnet"
+      },
+      "purpose_hash": "ad1841439df322082869070ecc8099304240166c94145e1d283ee0f4d3a7cc16",
+      "max_per_payment": "5000000",
+      "max_total": "20000000",
+      "spent": "1000000",
+      "reserved": "0",
+      "max_uses": 5,
+      "uses": 1,
+      "expires_at_ns": "1796109001000000000",
+      "approval_above": "5000000",
+      "agent_pk": "ed25519:5errZXjDMXpk51BLypA3hBRUfBfh9v4bHeyU9vRmzYFK",
+      "label": "smoke near",
+      "status": "active",
+      "created_at_ns": "1793517009951314099"
+    },
+    "2": {
+      "id": 2,
+      "payee": {
+        "type": "intents",
+        "chain": "base",
+        "address": "0x1111111111111111111111111111111111111111",
+        "asset": "base-usdc.probarion.testnet"
+      },
+      "purpose_hash": "ad1841439df322082869070ecc8099304240166c94145e1d283ee0f4d3a7cc16",
+      "max_per_payment": "5000000",
+      "max_total": "20000000",
+      "spent": "1000000",
+      "reserved": "0",
+      "max_uses": 5,
+      "uses": 1,
+      "expires_at_ns": "1796109001000000000",
+      "approval_above": "5000000",
+      "agent_pk": "ed25519:5errZXjDMXpk51BLypA3hBRUfBfh9v4bHeyU9vRmzYFK",
+      "label": "smoke base",
+      "status": "active",
+      "created_at_ns": "1793517015333274388"
+    },
+    "999": null
+  },
+  "answers": {
+    "normal": {
+      "value": {
+        "ok": true,
+        "code": null,
+        "would_hold": false
+      },
+      "blockHeight": 276851246
+    },
+    "hijack": {
+      "value": {
+        "ok": false,
+        "code": "OverPerPayment",
+        "would_hold": false
+      },
+      "blockHeight": 276851247
+    },
+    "nomandate": {
+      "value": {
+        "ok": false,
+        "code": "NoMandate",
+        "would_hold": false
+      },
+      "blockHeight": 276851246
+    },
+    "otherkey": {
+      "value": {
+        "ok": false,
+        "code": "NotAgent",
+        "would_hold": false
+      },
+      "blockHeight": 276851248
+    }
+  }
+}
