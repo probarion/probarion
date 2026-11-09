@@ -5,8 +5,10 @@ import type { RefColumn, RefTable } from "./types";
  * `buildProgram` (packages/cli/src/program.ts), and the exit codes. test/docs-ref-cli.test.ts builds
  * the program and pins these rows to it: the command paths, each option's flags as commander spells
  * them, which options are required (marked by commander, or refused at run time), each default, who
- * signs, the gas and deposit of each printed call, the `help` command that commander adds, and the exit
- * codes that `check --help` and `verify --help` list.
+ * signs, the gas and deposit of each printed call, the `help` command that commander adds, the exit
+ * codes that `check --help` and `verify --help` list, and the number ranges and caps that the "What
+ * it does" cells of `vault create`, `mandate create`, `agent add` and `check` state, read from the
+ * CLI's source and the vault's constants.
  *
  * An options cell lists every option of its command as "`<flags>`", followed by "(required)" when
  * the command cannot run without it and "(default `<value>`)" when commander gives it a default.

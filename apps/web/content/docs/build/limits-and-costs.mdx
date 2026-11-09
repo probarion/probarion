@@ -90,11 +90,11 @@ Probarion adds no fee to a payout to a Base or Solana payee: the vault sends `ft
 
 ### Top-ups through 1Click
 
-The console's top-up buys a vault's Base USDC balance inside NEAR Intents through 1Click, and works on mainnet only. It asks 1Click for the exact amount out with a 1 percent slippage tolerance, and refuses a quote that would cost more than 5 percent over that amount. The owner then pays the quote from their own wallet, with a `storage_deposit` and an `ft_transfer` on the USDC token.
+The console's top-up is meant to buy a vault's Base USDC balance inside NEAR Intents through 1Click. It is built for mainnet only and has not been tried with a live quote yet. It asks 1Click for the exact amount out with a 1 percent slippage tolerance, and refuses a quote that would cost more than 5 percent over that amount. The owner then pays the quote from their own wallet, with a `storage_deposit` and an `ft_transfer` on the USDC token.
 
 ## Hosted app limits
 
-The hosted app adds limits of its own: what the Payables upload takes and reads, the mandate form, the top-up, the Testnet faucet, alerts and the browser extension's inbox. During the beta its mandate form is stricter than the vault: the CLI accepts 1 to 4,294,967,295 for `--uses`, and the contract any expiry in the future.
+The hosted app adds limits of its own: what the Payables upload takes and reads, the mandate form, the top-up, the testnet faucet, alerts and the browser extension's inbox. During the beta its mandate form is stricter than the vault: the CLI accepts 1 to 4,294,967,295 for `--uses`, and the contract any expiry in the future.
 
 <RefTable id="limits-console" />
 

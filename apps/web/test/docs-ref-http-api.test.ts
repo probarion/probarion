@@ -1,9 +1,18 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
+import { isLinkCode } from "@/lib/alerts/links";
+import { CHALLENGE_TTL_MS } from "@/lib/auth/challenge";
+import { SESSION_TTL_MS } from "@/lib/auth/session";
+import { cronAuthorized } from "@/lib/cron";
 import { HTTP_ERRORS } from "@/lib/docs/errors";
 import { TABLES } from "@/lib/docs/ref/http-api";
 import { type RefRow, ROW_ID } from "@/lib/docs/ref/types";
+import { findPage } from "@/lib/docs/registry";
+import { newPairCode, newToken, showCode, TOKEN_RE } from "@/lib/ext/token";
+import { HEALTH_CACHE_MS, HEALTH_TIMEOUT_MS } from "@/lib/health";
+import { clientIp } from "@/lib/http";
+import { MAX_INVOICE_BYTES } from "@/lib/payables/limits";
 import { LIMITS } from "@/lib/ratelimit";
 import { readMdx, WEB, walkFiles } from "./docs-helpers";
 
@@ -963,5 +972,182 @@ describe("the HTTP API reference", () => {
     for (const m of page.matchAll(/\/docs\/build\/http-api#([a-z0-9_-]+)/g)) {
       expect(rows.has(m[1] ?? ""), m[0]).toBe(true);
     }
+  });
+});
+
+// The settings the page and its cells state as numbers (lifetimes, caps, lengths, the faucet's mint, the schedules) are
+// read from the code here: imported where the module loads in node, else parsed from its source. A change on either
+// side fails the test, so the page is re-read. The count of callers and the success status codes are not pinned here.
+
+/** 4259840 -> "4,259,840", as the cells write a byte count. */
+const grouped = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+/** The value of `const <name> = <digits>;` in a file under apps/web. */
+function constIn(path: string, name: string): number {
+  const m = new RegExp(`\\bconst ${name} = ([\\d_]+);`).exec(src(path));
+  expect(m, `${name} in ${path}`).not.toBeNull();
+  return Number((m?.[1] ?? "").replace(/_/g, ""));
+}
+
+/** The last migration's definition of a SQL function, from its `create` to the end of its body. */
+function sqlFunction(name: string): string {
+  const dir = join(WEB, "supabase", "migrations");
+  const head = new RegExp(`create or replace function public\\.${name}\\b`);
+  const last =
+    readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => read(join(dir, f)))
+      .filter((t) => head.test(t))
+      .at(-1) ?? "";
+  const from = last.search(head);
+  expect(from, `a migration that defines ${name}`).toBeGreaterThanOrEqual(0);
+  const body = last.slice(from);
+  const end = body.indexOf("$$;", body.indexOf("$$") + 2);
+  return end === -1 ? body : body.slice(0, end);
+}
+
+const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight"];
+
+describe("the numbers on the HTTP API page", () => {
+  const page = readMdx("build/http-api");
+  const cell = (key: string, column: string) => rowFor(key)?.cells[column] ?? "";
+
+  it("marks the page Preview on testnet, and says the 1Click routes are built for mainnet only", () => {
+    const entry = findPage("build/http-api");
+    expect(entry?.status).toBe("preview");
+    expect(entry?.network).toBe("testnet");
+    expect(src("src/lib/topup/gate.ts")).toMatch(
+      /if \(network !== "mainnet"\) return problem\(409, "mainnet_only"/,
+    );
+    expect(page).toContain(
+      "The 1Click top-up routes are built for mainnet only and answer `409 mainnet_only` elsewhere.",
+    );
+  });
+
+  it("states the cookie lifetimes sign-in sets", () => {
+    expect(src("src/app/api/auth/challenge/route.ts")).toMatch(/cookieOptions\(CHALLENGE_TTL_MS\)/);
+    expect(src("src/app/api/auth/verify/route.ts")).toMatch(/cookieOptions\(SESSION_TTL_MS\)/);
+    const minutes = CHALLENGE_TTL_MS / 60_000;
+    const hours = SESSION_TTL_MS / 3_600_000;
+    expect(cell("GET /api/auth/challenge", "success")).toContain(
+      `the \`pb_chal\` cookie for ${minutes} minutes`,
+    );
+    expect(cell("POST /api/auth/verify", "success")).toContain(
+      `the \`pb_session\` cookie for ${hours} hours`,
+    );
+    expect(page).toContain(`a stateless signed cookie that lasts ${hours} hours`);
+  });
+
+  it("states the body caps the routes check", () => {
+    const verify = constIn("src/app/api/auth/verify/route.ts", "MAX_BODY_BYTES");
+    expect(cell("POST /api/auth/verify", "body")).toContain(`${verify} bytes at most`);
+    const pair = constIn("src/app/api/ext/pair/route.ts", "MAX_BODY_BYTES");
+    expect(cell("POST /api/ext/pair", "body")).toContain(`${pair / 1024} KiB at most`);
+    const form = /\bconst MAX_REQUEST_BYTES = MAX_INVOICE_BYTES \+ (\d+) \* 1024;/.exec(
+      src("src/app/api/console/[vault]/invoices/route.ts"),
+    )?.[1];
+    expect(form, "MAX_REQUEST_BYTES in the invoices route").toBeDefined();
+    expect(cell("POST /api/console/:vault/invoices", "body")).toContain(
+      `${grouped(MAX_INVOICE_BYTES + Number(form) * 1024)} bytes at most in all, and ${grouped(MAX_INVOICE_BYTES)} bytes at most for each file`,
+    );
+  });
+
+  it("states the shortest CRON_SECRET the scheduled jobs take", () => {
+    const min = constIn("src/lib/cron.ts", "MIN_SECRET_LENGTH");
+    expect(page).toContain(`A secret shorter than ${min} characters refuses every call.`);
+    const call = (secret: string) =>
+      cronAuthorized(
+        new Request("https://probarion.test/api/cron/watch", {
+          headers: { authorization: `Bearer ${secret}` },
+        }),
+        secret,
+      );
+    expect(call("s".repeat(min - 1)), "a secret one character short").toBe(false);
+    expect(call("s".repeat(min)), "a secret just long enough").toBe(true);
+  });
+
+  it("states the prefix an IPv6 address counts by", () => {
+    const key = clientIp(new Headers({ "x-forwarded-for": "2001:db8:1:2:3:4:5:6" }));
+    expect(clientIp(new Headers({ "x-forwarded-for": "2001:db8:1:2:ffff:4:5:7" }))).toBe(key);
+    expect(
+      clientIp(new Headers({ "x-forwarded-for": "2001:db8:1:3:3:4:5:6" })),
+      "the 4th group",
+    ).not.toBe(key);
+    const prefix = /\/(\d+)$/.exec(key)?.[1];
+    expect(prefix, key).toBeDefined();
+    expect(page).toContain(`An IPv6 address counts by its /${prefix}.`);
+  });
+
+  it("states the extension token's shape, the pairing code's and the code's lifetime", () => {
+    const { token, hint } = newToken();
+    expect(TOKEN_RE.test(token), token).toBe(true);
+    const rest = /^\^pbx_\[[^\]]+\]\{(\d+)\}\$$/.exec(TOKEN_RE.source)?.[1];
+    expect(rest, TOKEN_RE.source).toBe(String(token.length - "pbx_".length));
+    expect(page).toContain(`A token is \`pbx_\` and ${rest} more characters.`);
+    expect(token.endsWith(hint)).toBe(true);
+    const last = `its last ${NUMBER_WORDS[hint.length]} characters`;
+    expect(page).toContain(last);
+    expect(cell("POST /api/ext/pair", "success")).toContain(last);
+    const code = newPairCode();
+    const shown = showCode(code).replace(/[0-9A-Z]/g, "X");
+    expect(page).toContain(`A code is ${code.length} letters and digits, shown as \`${shown}\``);
+    const minutes = /v_exp timestamptz := now\(\) \+ interval '(\d+) minutes'/.exec(
+      sqlFunction("ext_code_create"),
+    )?.[1];
+    expect(minutes, "the code's lifetime in ext_code_create").toBeDefined();
+    expect(page).toContain(`is good once, for ${minutes} minutes`);
+  });
+
+  it("states what the faucet mints and how often", () => {
+    const faucet = src("src/lib/topup/faucet.ts");
+    const usdc = /^export const FAUCET_USDC = "(\d+)";/m.exec(faucet)?.[1];
+    expect(usdc, "FAUCET_USDC in lib/topup/faucet.ts").toBeDefined();
+    expect(faucet).toMatch(/json\(\{ status: "minted", [^}]*amount: FAUCET_USDC \}\)/);
+    expect(page).toContain(`\`POST /api/topup/faucet\` mints ${usdc} test USDC into the vault`);
+    expect(cell("POST /api/topup/faucet", "success")).toContain(`amount: "${usdc}"`);
+    expect(LIMITS.faucetVault, "one mint per vault a day").toEqual([1, 86_400]);
+    expect(page).toContain("It works once a UTC day per vault");
+  });
+
+  it("states the health probes' timeout and cache", () => {
+    expect(src("src/lib/health-server.ts"), "a probe given its own timeout or cache").not.toMatch(
+      /\b(?:timeoutMs|ttlMs)\b/,
+    );
+    expect(page).toContain(`make one call each, of ${HEALTH_TIMEOUT_MS / 1000} seconds at most`);
+    for (const key of ["GET /api/health/rpc", "GET /api/health/nearai"]) {
+      expect(cell(key, "limit"), key).toContain(
+        `kept ${HEALTH_CACHE_MS / 1000} seconds per server instance`,
+      );
+    }
+  });
+
+  it("states when vercel.json runs the scheduled jobs", () => {
+    const crons =
+      (JSON.parse(src("vercel.json")) as { crons?: { path: string; schedule: string }[] }).crons ??
+      [];
+    expect(sorted(crons.map((c) => c.path))).toEqual(["/api/cron/metrics", "/api/cron/watch"]);
+    for (const c of crons) {
+      const m = /^(\d+) (\d+) \* \* \*$/.exec(c.schedule);
+      expect(m, `${c.path}: a daily schedule`).not.toBeNull();
+      const at = `${(m?.[2] ?? "").padStart(2, "0")}:${(m?.[1] ?? "").padStart(2, "0")} UTC`;
+      expect(page).toContain(`\`${c.path}\` at ${at}`);
+    }
+    expect(page).toMatch(/`\/api\/cron\/metrics` at \d\d:\d\d UTC each day\./);
+  });
+
+  it("states the alert confirmation code's shape and lifetime", () => {
+    const hex = Number(
+      /`code`, (\d+) hex characters/.exec(cell("POST /api/alerts/confirm", "body"))?.[1],
+    );
+    expect(isLinkCode("a".repeat(hex)), `${hex} hex characters`).toBe(true);
+    expect(isLinkCode("a".repeat(hex - 1)), "one short").toBe(false);
+    expect(isLinkCode("a".repeat(hex + 1)), "one too many").toBe(false);
+    expect(isLinkCode("g".repeat(hex)), "not hex").toBe(false);
+    const hours = /a\.link_code = v_code[^;]*interval '(\d+) hours'/.exec(
+      sqlFunction("alert_subscription_verify"),
+    )?.[1];
+    expect(hours, "the code's lifetime in alert_subscription_verify").toBeDefined();
+    expect(page).toContain(`The code is good once, for ${hours} hours.`);
   });
 });

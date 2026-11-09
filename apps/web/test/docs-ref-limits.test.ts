@@ -18,9 +18,9 @@ import { ROOT, readMdx, WEB, walkFiles } from "./docs-helpers";
 // attached to. The TypeScript half imports the modules that define the values, or parses the ones
 // that load server code, and checks the tables show them, both ways: every exported MAX_/MIN_ of
 // apps/web/src/lib (or a stated reason), every limit-like export of the SDK and core, each rate
-// limiter with the routes that read it and what its bucket counts, and each key allowance. The scans
-// read the source, never the rows, so a constant, a method or a limiter the code gains or loses fails
-// here and names itself.
+// limiter with the routes and pages that read it (or the one file that does, when none does) and
+// what its bucket counts, and each key allowance. The scans read the source, never the rows, so a
+// constant, a method or a limiter the code gains or loses fails here and names itself.
 
 const PAGE = "build/limits-and-costs";
 
@@ -57,16 +57,6 @@ function nearDecimal(yocto: bigint): string {
   const one = 10n ** 24n;
   const frac = (yocto % one).toString().padStart(24, "0").replace(/0+$/, "");
   return frac === "" ? `${yocto / one}` : `${yocto / one}.${frac}`;
-}
-
-function windowWords(seconds: number): string {
-  if (seconds === 60) return "a minute";
-  if (seconds === 3600) return "an hour";
-  if (seconds === 86_400) return "a day";
-  if (seconds % 86_400 === 0) return `${seconds / 86_400} days`;
-  if (seconds % 3600 === 0) return `${seconds / 3600} hours`;
-  if (seconds % 60 === 0) return `${seconds / 60} minutes`;
-  return `${seconds} seconds`;
 }
 
 // --- Rust source ----------------------------------------------------------------------------------
@@ -763,36 +753,53 @@ const UNSHOWN_CAPS: Record<string, string> = {
   MIN_ALLOWANCE: "The faucet key's own floor, which the operator tops up",
 };
 
+/**
+ * The rate limiters that no route.ts or page.tsx reads itself, and no module of src/lib that a route.ts imports reads:
+ * the one file under src that reads each, and the words its "Applies to" cell uses for that place. A limiter that moves, or
+ * a new one that only a server action, a component or an unrouted module reads, fails the test until this list and its
+ * row say where it is read now. An entry that a route or page reads now, or that no code reads, fails too.
+ */
+const READ_OUTSIDE_ROUTES: Record<string, { file: string; says: string }> = {
+  registerPerAccount: { file: "app/console/actions.ts", says: "in the console" },
+  alertTest: { file: "app/console/[vault]/alerts/actions.ts", says: "the console's alerts page" },
+  alertConfirmAddress: { file: "app/console/[vault]/alerts/actions.ts", says: "the alerts page" },
+  extMint: { file: "app/extension/actions.ts", says: "the extension page" },
+  confirmPerAccount: {
+    file: "lib/near/confirm-action.ts",
+    says: "chain reads for a signed transaction",
+  },
+  confirmGlobal: { file: "lib/near/confirm-action.ts", says: "The same reads" },
+};
+
 describe("limits: the hosted app's values", () => {
-  it("shows every rate limiter with its limit, and marks the ones no code reads as Planned", () => {
+  // The rows are built from the keys of LIMITS and their limits from its values (limits.ts), so the test checks what
+  // the code cannot type: whether a limiter is read at all, and where.
+  it("marks the rate limiters no code reads as Planned, and no other", () => {
     const RATE = table("limits-rate");
-    const keys = Object.keys(LIMITS) as (keyof typeof LIMITS)[];
-    for (const key of keys) {
-      const r = rowAbout(RATE, "name", key);
-      expect(r, `LIMITS.${key} has no row`).toBeDefined();
-      if (!r) continue;
-      const [max, seconds] = LIMITS[key];
-      expect(cell(r, "limit"), key).toBe(`${max} in ${windowWords(seconds)}`);
+    for (const key of Object.keys(LIMITS)) {
+      const where = cell(rowAbout(RATE, "name", key) ?? { cells: {} }, "where");
       const read = [...APP_TEXT.values()].some((t) => new RegExp(`\\bLIMITS\\.${key}\\b`).test(t));
-      if (read) expect(cell(r, "where"), `${key} is read`).not.toMatch(/Planned/);
-      else expect(cell(r, "where"), `${key} is read nowhere`).toMatch(/^Planned\b/);
+      if (read) expect(where, `${key} is read`).not.toMatch(/Planned/);
+      else expect(where, `${key} is read nowhere`).toMatch(/^Planned\b/);
     }
-    expect(RATE.rows.map((r) => subject(r, "name")).filter((n) => !(n in LIMITS))).toEqual([]);
   });
 
-  it("names the route or page each rate limiter guards", () => {
+  it("names the route or page each rate limiter guards, or pins the one file that reads it", () => {
     const RATE = table("limits-rate");
     const routes = [...APP_TEXT.keys()].filter((f) => basename(f) === "route.ts");
+    const underSrc = (file: string) => relative(APP, file).replace(/\\/g, "/");
     let checked = 0;
+    const outside: string[] = [];
     for (const key of Object.keys(LIMITS)) {
       const where = cell(rowAbout(RATE, "name", key) ?? { cells: {} }, "where");
       const readers = [...APP_TEXT].filter(([, t]) => new RegExp(`\\bLIMITS\\.${key}\\b`).test(t));
+      let mine = 0;
       for (const [file] of readers) {
         const path = sitePath(file);
         if (path !== null) {
           // A route or page that reads the limiter itself.
           expect(namesPath(where, path), `${key} is read by ${path}: "${where}"`).toBe(true);
-          checked++;
+          mine++;
           continue;
         }
         // A module of src/lib that reads it: the routes that import that module.
@@ -806,10 +813,24 @@ describe("limits: the hosted app's values", () => {
           paths.some((p) => namesPath(where, p)),
           `${key} is read by ${spec}, which ${paths.join(", ")} import: "${where}"`,
         ).toBe(true);
-        checked++;
+        mine++;
       }
+      checked += mine;
+      if (readers.length === 0 || mine > 0) continue;
+      // No route or page reads it: a server action, a component or an unrouted module does, as pinned above.
+      outside.push(key);
+      const pinned = READ_OUTSIDE_ROUTES[key];
+      expect(
+        readers.map(([f]) => underSrc(f)),
+        `${key} is read by no route or page: give it an entry in READ_OUTSIDE_ROUTES`,
+      ).toEqual(pinned ? [pinned.file] : []);
+      if (pinned) expect(where, `${key} is read in ${pinned.file}`).toContain(pinned.says);
     }
     expect(checked).toBeGreaterThan(15);
+    expect(
+      Object.keys(READ_OUTSIDE_ROUTES).filter((k) => !outside.includes(k)),
+      "READ_OUTSIDE_ROUTES entries that a route or page reads now, or that no code reads",
+    ).toEqual([]);
   });
 
   it("counts each rate limiter per what its bucket key names", () => {

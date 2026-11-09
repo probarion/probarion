@@ -674,7 +674,7 @@ const CONSOLE: RefTable = {
     row("limits-console-min_topup_units", {
       name: "`MIN_TOPUP_UNITS`",
       value: usdcUnits(MIN_TOPUP_UNITS),
-      what: "The least one 1Click top-up asks for. The top-up works on Mainnet only",
+      what: "The least one 1Click top-up asks for. The top-up is built for mainnet only and has not been tried with a live quote yet",
     }),
     row("limits-console-max_topup_units", {
       name: "`MAX_TOPUP_UNITS`",
@@ -689,7 +689,7 @@ const CONSOLE: RefTable = {
     row("limits-console-faucet_usdc", {
       name: "`FAUCET_USDC`",
       value: `${FAUCET_USDC} test USDC`,
-      what: "What one use of the Testnet faucet mints into the vault. The `faucet` limiters in the rate limits cap how often",
+      what: "What one use of the testnet faucet mints into the vault. The `faucet` limiters in the rate limits cap how often",
     }),
     row("limits-console-active_alerts", {
       name: "Active alerts, checked in `alert_subscription_create`",
@@ -720,7 +720,8 @@ const RATE_SCOPE: Readonly<Record<keyof typeof LIMITS, { per: string; where: str
   proofPage: { per: "IP address", where: "The public proof page, `/proof/<vault>`" },
   topupQuote: {
     per: "Signed-in account and network",
-    where: "`POST /api/topup/quote`. The top-up works on Mainnet only",
+    where:
+      "`POST /api/topup/quote`. The top-up is built for mainnet only and has not been tried with a live quote yet",
   },
   topupStatus: { per: "Signed-in account and network", where: "`GET /api/topup/status`" },
   topupSubmit: { per: "Signed-in account and network", where: "`POST /api/topup/submit`" },
@@ -775,7 +776,7 @@ const RATE_SCOPE: Readonly<Record<keyof typeof LIMITS, { per: string; where: str
   },
   faucetVault: {
     per: "Vault, each UTC day",
-    where: "`POST /api/topup/faucet`, the test USDC faucet on Testnet",
+    where: "`POST /api/topup/faucet`, the test USDC faucet on testnet",
   },
   faucetAccount: {
     per: "Signed-in owner account, each UTC day",

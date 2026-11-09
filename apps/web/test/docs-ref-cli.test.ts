@@ -1,10 +1,12 @@
 // The CLI reference (/docs/build/cli-reference) against the CLI itself. The test builds the program with
 // buildProgram(io), walks its commands and options, runs a few of them in-process (no network, no keys), and reads
-// packages/cli/src/commands for the calls they print. It never reads the page's data to learn what the code has, so
-// a command, an option, a default, a signer or an exit code that changes in the code fails it until the page follows.
+// packages/cli/src/commands for the calls they print and the limits they check, with the vault's own in
+// contracts/vault/src. It never reads the page's data to learn what the code has, so a command, an option, a default, a
+// signer, a limit or an exit code that changes in the code fails it until the page follows.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { isHex32 } from "@probarion/core";
 import { beforeAll, describe, expect, it } from "vitest";
 import { TABLES } from "@/lib/docs/ref/cli";
 import type { RefRow, RefTable } from "@/lib/docs/ref/types";
@@ -493,6 +495,118 @@ describe("the CLI reference", () => {
     // A missing required option: 1 for every other command, 64 for check.
     expect(await runCli(["vault", "create"], recorder(ROOT).io)).toBe(1);
     expect(await runCli(["check"], recorder(ROOT).io)).toBe(64);
+  });
+
+  it("states the limits the CLI and the vault check, as their source writes them", () => {
+    const read = (...path: string[]) => readFileSync(join(ROOT, ...path), "utf8");
+    const cliSrc = (file: string) => read("packages", "cli", "src", file);
+    const vaultSrc = (file: string) => read("contracts", "vault", "src", file);
+    /** The number the first group of `re` captures in `text`, without `_` separators. */
+    const num = (text: string, re: RegExp, what: string): number => {
+      const m = re.exec(text);
+      expect(m, `${what}: teach this test the source's new shape`).not.toBeNull();
+      return Number((m?.[1] ?? "NaN").replace(/_/g, ""));
+    };
+    const lib = vaultSrc("lib.rs");
+    /** A constant of contracts/vault/src/lib.rs: a product of integer literals and other constants of the file. */
+    const rust = (name: string): bigint => {
+      const expr = new RegExp(`\\bconst ${name}: \\w+ = ([^;]+);`).exec(lib)?.[1];
+      expect(expr, `${name} in contracts/vault/src/lib.rs`).toBeDefined();
+      return (expr ?? "0").split("*").reduce((n, factor) => {
+        const f = factor.trim();
+        return n * (/^[\d_]+$/.test(f) ? BigInt(f.replace(/_/g, "")) : rust(f));
+      }, 1n);
+    };
+    const does = (path: string) => cell(rowOf(path) ?? { cells: {} }, "does");
+
+    // vault create: the name, the account id it makes, the approvers and the hold.
+    const vault = cliSrc("commands/vault.ts");
+    const create = does("vault create");
+    const name = /const VAULT_NAME_RE = \/\^\[a-z0-9\]\[a-z0-9_-\]\{(\d+),(\d+)\}\$\/;/.exec(vault);
+    expect(name, "VAULT_NAME_RE in vault.ts: teach this test its new shape").not.toBeNull();
+    expect(create).toContain(
+      `${Number(name?.[1]) + 1} to ${Number(name?.[2]) + 1} characters of \`a-z\`, \`0-9\`, \`_\` and \`-\`, starts with a letter or digit`,
+    );
+    expect(vault).toMatch(/NEAR_ACCOUNT_RE\.test\(account\)/);
+    const account = num(
+      cliSrc("payee.ts"),
+      /NEAR_ACCOUNT_RE = \/\^\(\?=\.\{2,(\d+)\}\$\)/,
+      "NEAR_ACCOUNT_RE",
+    );
+    expect(create).toContain(`at most ${account} characters in all`);
+    const approvers = num(vault, /const MAX_APPROVERS = (\d+);/, "MAX_APPROVERS in vault.ts");
+    expect(BigInt(approvers), "the CLI's MAX_APPROVERS is the vault's").toBe(rust("MAX_APPROVERS"));
+    expect(vault).toMatch(/approvers\.length === 0\) throw/);
+    expect(vault).toMatch(/approvers\.length > MAX_APPROVERS\)/);
+    expect(vault).toContain("is listed twice in --approvers");
+    expect(create).toContain(`It takes 1 to ${approvers} distinct approvers`);
+    const hours = num(vault, /const MAX_HELD_TTL_HOURS = (\d+);/, "MAX_HELD_TTL_HOURS in vault.ts");
+    expect(vault).toMatch(/positiveInt\(o\.heldTtlHours, "--held-ttl-hours", MAX_HELD_TTL_HOURS\)/);
+    expect(
+      BigInt(hours) * 3_600_000_000_000n,
+      "the CLI's MAX_HELD_TTL_HOURS is the vault's MAX_HELD_TTL_NS",
+    ).toBe(rust("MAX_HELD_TTL_NS"));
+    // positiveInt takes 1 to its max.
+    expect(cliSrc("units.ts")).toMatch(
+      /function positiveInt\([^)]*\)[^{]*\{\s*return wholeNumber\(value, what, 1n, max\);/,
+    );
+    expect(create).toContain(`a hold lasts 1 to ${hours} hours`);
+
+    // mandate create: the uses, the purpose hash and the label.
+    const mandate = cliSrc("commands/mandate.ts");
+    const mandateDoes = does("mandate create");
+    const u32 = num(cliSrc("units.ts"), /export const U32_MAX = ([\d_]+);/, "U32_MAX in units.ts");
+    expect(mandate).toMatch(/positiveInt\(o\.uses, "--uses", U32_MAX\)/);
+    expect(mandateDoes).toContain(`\`--uses\` is 1 to ${u32}`);
+    expect(cliSrc("context.ts")).toMatch(/if \(isHex32\(trimmed\)\) return trimmed;/);
+    expect(isHex32("0".repeat(64)) && !isHex32("0".repeat(63)) && !isHex32("0".repeat(65))).toBe(
+      true,
+    );
+    expect(mandateDoes).toContain("or the 64-hex hash");
+    const label = num(
+      mandate,
+      /utf8\(o\.label\)\.length > (\d+)\)/,
+      "the --label check in mandate.ts",
+    );
+    expect(label, "the vault's mandate label cap").toBe(
+      num(vaultSrc("mandates.rs"), /m\.label\.len\(\) <= (\d+)/, "the label check in mandates.rs"),
+    );
+    expect(mandateDoes).toContain(`\`--label\` is at most ${label} bytes`);
+
+    // agent add: the label and the agent keys.
+    const keys = vaultSrc("keys.rs");
+    const add = does("agent add");
+    const agentLabel = num(
+      cliSrc("commands/agent.ts"),
+      /utf8\(label\)\.length > (\d+)\)/,
+      "the --label check in agent.ts",
+    );
+    expect(agentLabel, "the vault's agent label cap").toBe(
+      num(keys, /label\.len\(\) > (\d+)/, "the label check in keys.rs"),
+    );
+    expect(add).toContain(`the label is at most ${agentLabel} bytes`);
+    expect(keys).toMatch(/self\.agents\.len\(\) >= MAX_AGENTS/);
+    expect(add).toContain(`A vault holds at most ${rust("MAX_AGENTS")} agent keys`);
+
+    // check: the ref.
+    const ref = num(
+      cliSrc("commands/check.ts"),
+      /bytes === 0 \|\| bytes > (\d+)\)/,
+      "the --ref check in check.ts",
+    );
+    expect(ref, "the vault's is_ref").toBe(
+      num(
+        vaultSrc("validate.rs"),
+        /pub fn is_ref\(s: &str\) -> bool \{\s*!s\.is_empty\(\) && s\.len\(\) <= (\d+)/,
+        "is_ref in validate.rs",
+      ),
+    );
+    expect(does("check")).toContain(`The ref is 1 to ${ref} bytes`);
+
+    // The page's own words on the vault's limits.
+    expect(readMdx(PAGE)).toContain(
+      `its ${rust("MAX_APPROVERS")} approvers and ${rust("MAX_AGENTS")} agent keys`,
+    );
   });
 
   it("shows the output the CLI prints for the page's example, exactly", async () => {

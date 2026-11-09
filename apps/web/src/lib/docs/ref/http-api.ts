@@ -8,6 +8,8 @@ import type { RefColumn, RefTable } from "./types";
  * console; there is no public agent HTTP API. test/docs-ref-http-api.test.ts reads the route files and holds these
  * rows to them: every route and method, who may call it, its error codes, its rate limits and what each one counts,
  * and the fields of a success answer the route writes out. A row's id is `http-api-<method>-<path after /api>`.
+ * The settings a cell writes out as numbers (a cookie's lifetime, a body cap, a code's length, the faucet's mint, the
+ * probe cache) are held by the same test to the constants that set them. A success status code is not.
  */
 
 const COLUMNS: readonly RefColumn[] = [
@@ -37,7 +39,11 @@ function limit(key: keyof typeof LIMITS, scope: string): string {
 /** 4259840 -> "4,259,840". */
 const thousands = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
-/** The invoices route caps the whole request at the invoice cap plus 64 KiB for the form. */
+/**
+ * The invoices route caps the whole request at the invoice cap plus 64 KiB for the form. A route file may export only
+ * what Next.js reads, so its `MAX_REQUEST_BYTES` cannot be imported here: the test reads the route's sum and holds
+ * this one to it.
+ */
 const INVOICE_REQUEST_BYTES = MAX_INVOICE_BYTES + 64 * 1024;
 
 const SAME = "from a page at the same address";

@@ -13,6 +13,7 @@ import { Toc } from "@/components/docs/Toc";
 import { TocDrop } from "@/components/docs/TocDrop";
 import { appOrigin } from "@/lib/config";
 import { buildCommit } from "@/lib/docs/build-info";
+import { changelogToc } from "@/lib/docs/changelog";
 import { loadPage } from "@/lib/docs/content";
 import { tocOf } from "@/lib/docs/headings";
 import { docsJsonLd, docsMetadata } from "@/lib/docs/meta";
@@ -64,7 +65,9 @@ export default async function DocsPage({ params }: PageProps<"/docs/[[...slug]]"
       </>
     );
   }
-  const toc = tocOf(source);
+  // The changelog's headings come from CHANGELOG.md when the page renders, not from its MDX.
+  // The changelog's headings come from CHANGELOG.md at render time, after any the page itself writes.
+  const toc = [...tocOf(source), ...(page.path === "resources/changelog" ? changelogToc() : [])];
   const { prev, next } = neighbours(page.path);
   return (
     <>

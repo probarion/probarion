@@ -21,7 +21,7 @@ Each row is one method of one route. Its anchor is `http-api-`, the method and t
 
 A route works on the network of the address it is called at: the server matches the request's host against the origins it serves, as [Testnet and mainnet](/docs/start/testnet-and-mainnet#how-the-site-picks-a-network) explains. A session, a sign-in challenge and an extension token each belong to the network they were made on. The routes that need a session answer `409 wrong_network` for a vault registered on the other network, and the faucet answers `404 not_found` instead.
 
-The 1Click top-up routes are Mainnet only and answer `409 mainnet_only` elsewhere. The faucet is Testnet only. Only NEAR testnet is live today, and the mainnet vault is Planned: see [What works today](/docs/start/what-works-today).
+The 1Click top-up routes are built for mainnet only and answer `409 mainnet_only` elsewhere. The faucet serves testnet only. Only NEAR testnet is live today, and the mainnet vault is Planned: see [What works today](/docs/start/what-works-today).
 
 ## Sign-in
 
@@ -53,7 +53,7 @@ A token can do what these routes do and nothing more: read the inbox and end its
 
 ## Top-up
 
-On mainnet the vault's Top-up tab adds Base USDC to the vault's own NEAR Intents account through 1Click. `POST /api/topup/quote` asks 1Click for a quote and answers only with one whose signature verifies against 1Click's key and that says what was asked. It builds the deposit transaction from that quote and the network's USDC, never from what the browser sent, and only when the chain names the signed-in account as the vault's owner. `POST /api/topup/submit` tells 1Click which transaction paid the deposit address. It only speeds things up, since 1Click also finds the deposit itself. `GET /api/topup/status` passes on 1Click's status word for the deposit.
+On mainnet the vault's Top-up tab is built to add Base USDC to the vault's own NEAR Intents account through 1Click. It has not been tried with a live quote yet. `POST /api/topup/quote` asks 1Click for a quote and answers only with one whose signature verifies against 1Click's key and that says what was asked. It builds the deposit transaction from that quote and the network's USDC, never from what the browser sent, and only when the chain names the signed-in account as the vault's owner. `POST /api/topup/submit` tells 1Click which transaction paid the deposit address. It only speeds things up, since 1Click also finds the deposit itself. `GET /api/topup/status` passes on 1Click's status word for the deposit.
 
 <Callout kind="owner-signs">
 
@@ -61,7 +61,7 @@ The owner signs the deposit transaction that `POST /api/topup/quote` returns, in
 
 </Callout>
 
-On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your wallet signs nothing: the team's mint-only key signs the mint. It works once a UTC day per vault, within daily caps per account and for all vaults together. Those day counters start again at midnight UTC, and a `429` from one of them gives the seconds until then as its `Retry-After`. Each press also counts against a press limit per account, before any read of the chain, and that limit's `429` gives the end of its own window instead. A refusal from the checks that run before the day counters does not use up the vault's day.
+On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your wallet signs nothing: the team's mint-only key signs the mint. The faucet is Preview: it is built and tested, and its button has not yet been tried on the site with a real vault. It works once a UTC day per vault, within daily caps per account and for all vaults together. Those day counters start again at midnight UTC, and a `429` from one of them gives the seconds until then as its `Retry-After`. Each press also counts against a press limit per account, before any read of the chain, and that limit's `429` gives the end of its own window instead. A refusal from the checks that run before the day counters does not use up the vault's day.
 
 <RefTable id="http-api-topup" />
 
@@ -73,19 +73,19 @@ On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your
 
 ## Health
 
-The health routes are for uptime monitors. They answer `ok` and a `detail` the server writes itself, never a third party's own text, and they have no `{ error }` codes. `GET /api/health` calls no other service: it says whether this deployment can read its settings. The RPC and NEAR AI Cloud probes make one call each, of 5 seconds at most.
+The health routes are for uptime monitors. They answer `ok` and, where they give one, a `detail` the server writes itself, never a third party's own text, and they have no `{ error }` codes. `GET /api/health` calls no other service: it says whether this deployment can read its settings. The RPC and NEAR AI Cloud probes make one call each, of 5 seconds at most.
 
 <RefTable id="http-api-health" />
 
 ## Scheduled jobs
 
-The scheduler calls these routes with `Authorization: Bearer` and the `CRON_SECRET`, and any other call gets `401 unauthorized`. `vercel.json` runs `/api/cron/watch` at 00:00 UTC and `/api/cron/metrics` at 00:10 UTC each day. The watch reads every vault's new events, pings the heartbeat monitor when every network was healthy, then sends the owners' alerts. The metrics run computes the usage numbers and prunes the rate limiter's old rows. Both cover every network the deployment serves, mainnet first, and answer with counts only.
+The scheduler calls these routes with `Authorization: Bearer` and the `CRON_SECRET`, and any other call gets `401 unauthorized`. `vercel.json` runs `/api/cron/watch` at 00:00 UTC and `/api/cron/metrics` at 00:10 UTC each day. The watch reads what is new on each vault registered with the app, network by network, pings the heartbeat monitor when every network was healthy, then sends those vaults' alerts. The metrics run computes the usage numbers and prunes the rate limiter's old rows. Both cover every network the deployment serves, mainnet first, and answer with counts only.
 
 <RefTable id="http-api-cron" />
 
 ## Telegram
 
-Telegram calls `POST /api/telegram/webhook` for each update to the alerts bot. An owner opens the bot link from the vault's alerts page, Telegram sends `/start <code>`, and the chat is linked to the vault. `/stop` ends every alert of the chat. A wrong secret is a `401` before anything is read. Past that check and the rate limit, the route answers `200`, so Telegram does not resend an update the route has read. A `429`, or a `503` when the key or the limiter's database fails, comes before the update is read: a status Telegram retries, so the update is not dropped.
+Telegram calls `POST /api/telegram/webhook` for each update to the alerts bot. An owner or an approver opens the bot link from the vault's alerts page, Telegram sends `/start <code>`, and the chat is linked to the vault. `/stop` ends every alert of the chat. A wrong secret is a `401` before anything is read. Past that check and the rate limit, the route answers `200`, so Telegram does not resend an update the route has read. A `429`, or a `503` when the key or the limiter's database fails, comes before the update is read: a status Telegram retries, so the update is not dropped.
 
 <RefTable id="http-api-telegram" />
 

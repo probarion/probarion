@@ -66,7 +66,7 @@ const PREVIEW = [
   "build/let-an-agent-pay",
 ];
 
-describe("the phase-1 docs", () => {
+describe("the docs pages", () => {
   it("are the pages of the spec, in reading order", () => {
     expect(PAGES.map((p) => p.path)).toEqual(IN_ORDER);
   });

@@ -3,17 +3,17 @@ import { dirname, join } from "node:path";
 import { slug } from "github-slugger";
 import type { Code, List, Root, RootContent } from "mdast";
 import { describe, expect, it } from "vitest";
-import { anchorsOf, headingsOf } from "@/lib/docs/headings";
+import { changelogTree } from "@/lib/docs/changelog";
+import { headingsOf } from "@/lib/docs/headings";
 import { MDX_COMPONENT_NAMES } from "@/lib/docs/markdown";
 import { attrOf, childrenOf, jsxNodes, parseMdx } from "@/lib/docs/mdast";
-import { findPage, PAGES, pageFile, sectionOf } from "@/lib/docs/registry";
+import { PAGES, sectionOf } from "@/lib/docs/registry";
 import { pageMarkdown } from "@/lib/docs/twins";
 import { CLI_ON_NPM, CLI_SETUP_LINES, cli } from "@/lib/proof/cli";
-import { appRoutes, hrefResolves, linksIn, publicPaths } from "./deploy-scan";
-import { ROOT, readMdx, WEB, walkFiles } from "./docs-helpers";
+import { linksIn } from "./deploy-scan";
+import { fileOf, linkProblem, ROOT, readMdx, WEB, walkFiles } from "./docs-helpers";
 
 const ORIGIN = "https://probarion.xyz";
-const fileOf = (path: string) => `content/docs/${pageFile(path)}.mdx`;
 
 /** A page's tree. A parse error names the file: micromark's own message gives only a position. */
 function parsePage(path: string): Root {
@@ -25,20 +25,6 @@ function parsePage(path: string): Root {
 }
 
 const TREES = new Map(PAGES.map((p) => [p.path, parsePage(p.path)]));
-
-/**
- * A page's anchors, computed once: a page with many links would parse its targets again for
- * each one.
- */
-const ANCHORS = new Map<string, Set<string>>();
-function pageAnchors(path: string): Set<string> {
-  let ids = ANCHORS.get(path);
-  if (!ids) {
-    ids = anchorsOf(readMdx(path), fileOf(path));
-    ANCHORS.set(path, ids);
-  }
-  return ids;
-}
 
 function treeOf(path: string): Root {
   const tree = TREES.get(path);
@@ -60,79 +46,8 @@ function nodesOf(tree: Root): RootContent[] {
 const codesOf = (tree: Root) => nodesOf(tree).filter((n): n is Code => n.type === "code");
 
 // --- links ---------------------------------------------------------------------------------------
-
-/**
- * Pages that exist but that the phase-1 docs do not link: the Canary's page and the extension's
- * connect page.
- */
-const NOT_LINKED = ["/canary", "/extension"];
-const PATTERNS = appRoutes(WEB);
-const FILES = publicPaths(WEB);
-/** The site's own hosts: a link to a page here is written as a site path, not a full URL. */
-const OWN_HOSTS = [new URL(ORIGIN).hostname, `www.${new URL(ORIGIN).hostname}`];
-const BAD_ESCAPE = "malformed %-escape";
-
-/** `decodeURIComponent`, or null for a malformed %-escape (its URIError names no file). */
-function decoded(text: string): string | null {
-  try {
-    return decodeURIComponent(text);
-  } catch {
-    return null;
-  }
-}
-
-/** Why `url`, written on the page at `from`, is a bad link; null when it is fine. */
-function linkProblem(url: string, from: string): string | null {
-  if (url.startsWith("#")) {
-    const id = decoded(url.slice(1));
-    if (id === null) return BAD_ESCAPE;
-    return pageAnchors(from).has(id) ? null : `no ${url} on this page`;
-  }
-  if (/^mailto:/i.test(url)) return "no mailto links";
-  if (/^http:/i.test(url)) return "use https";
-  if (/^https:/i.test(url)) {
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      return "malformed URL";
-    }
-    if (OWN_HOSTS.includes(parsed.hostname)) {
-      return `use the site path ${parsed.pathname}${parsed.search}${parsed.hash}`;
-    }
-    const repoFile =
-      parsed.hostname === "github.com"
-        ? /^\/probarion\/probarion\/(?:blob|tree)\/(?:main|dev)\/(.+)$/.exec(parsed.pathname)?.[1]
-        : undefined;
-    if (repoFile) {
-      const file = decoded(repoFile);
-      if (file === null) return BAD_ESCAPE;
-      if (!existsSync(join(ROOT, file))) return `no ${repoFile} in the repository`;
-    }
-    return null;
-  }
-  if (!url.startsWith("/")) return "relative link: start it with /";
-  const [rawPath = "", hash = ""] = url.split("#");
-  const path = rawPath.replace(/\?.*$/, "");
-  if (NOT_LINKED.some((r) => path === r || path.startsWith(`${r}/`))) {
-    return "the phase-1 docs do not link this page";
-  }
-  if (path === "/docs.md") return null;
-  if (path === "/docs" || path.startsWith("/docs/")) {
-    const pagePath = (path.endsWith(".md") ? path.slice(0, -3) : path).replace(/^\/docs\/?/, "");
-    const page = findPage(pagePath);
-    if (!page) return `no docs page at ${path}`;
-    if (hash) {
-      const id = decoded(hash);
-      if (id === null) return BAD_ESCAPE;
-      if (!pageAnchors(page.path).has(id)) {
-        return `no #${hash} on ${path}`;
-      }
-    }
-    return null;
-  }
-  return hrefResolves(path, PATTERNS, FILES) ? null : `no page or file at ${path}`;
-}
+// linkProblem (docs-helpers.ts) holds the guide's link rules; docs-ref.test.ts runs the
+// changelog's rendered links through it too.
 
 /**
  * Markdown links, images and definitions, plus every JSX `href` or `...Href` attribute. An image's
@@ -218,6 +133,9 @@ function npmInstallProblems(text: string): string[] {
   return out;
 }
 
+/** What npmInstallProblems reports for a bare `npm install`, which names no package. */
+const BARE_NPM_INSTALL = "an npm install of npm install";
+
 const bans = (text: string) => [
   ...BANNED.filter(([re]) => re.test(text)).map(([, name]) => name),
   ...npmInstallProblems(text),
@@ -232,11 +150,12 @@ describe("copy rules", () => {
     const found: string[] = [];
     for (const p of PAGES) {
       for (const b of bans(readMdx(p.path))) found.push(`${fileOf(p.path)}: ${b}`);
-      // The changelog page renders CHANGELOG.md, which keeps its own rules (no "never") and quotes
-      // commands as they were, such as a bare `npm install`. Its own MDX is checked above.
-      if (p.path === "resources/changelog") continue;
-      for (const b of bans(await pageMarkdown(p, ORIGIN)))
-        found.push(`twin of /docs/${p.path}: ${b}`);
+      // The changelog page renders CHANGELOG.md, which quotes a bare `npm install` as it was run:
+      // its twin keeps every other rule.
+      const quoted = p.path === "resources/changelog" ? [BARE_NPM_INSTALL] : [];
+      for (const b of bans(await pageMarkdown(p, ORIGIN))) {
+        if (!quoted.includes(b)) found.push(`twin of /docs/${p.path}: ${b}`);
+      }
     }
     for (const f of DOCS_CODE)
       for (const b of bans(readFileSync(f, "utf8"))) found.push(`${f}: ${b}`);
@@ -266,6 +185,10 @@ describe("copy rules", () => {
         }
       }
     }
+    // The changelog page's prose is CHANGELOG.md's, which no MDX tree above holds.
+    for (const n of nodesOf(changelogTree())) {
+      if (n.type === "text" && n.value.includes("!")) found.push(`CHANGELOG.md: ${n.value}`);
+    }
     expect(found).toEqual([]);
   });
 
@@ -275,6 +198,9 @@ describe("copy rules", () => {
     expect(npmInstallProblems("npm installs it")).toEqual([]);
     expect(npmInstallProblems("`npm install @probarion/mcp`")).toHaveLength(1);
     expect(npmInstallProblems("npm install\n")).toHaveLength(1);
+    // The one problem the changelog's twin may have: anything else after the install still fails.
+    expect(npmInstallProblems("then `npm install`.")).toEqual([BARE_NPM_INSTALL]);
+    expect(npmInstallProblems("`npm install left-pad`")).not.toEqual([BARE_NPM_INSTALL]);
   });
 
   it("say what the site prints: npx probarion, while CLI_ON_NPM is true", () => {

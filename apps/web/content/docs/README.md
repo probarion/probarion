@@ -39,7 +39,7 @@ Each file here is one page of `/docs`. The page's metadata lives in the registry
 | `<StatusTable />` | The landing's status rows, each anchored by its id. |
 | `<AgentRules />` | The rules for agents (the same text as `/llms.txt`). |
 | `<RefTable id="sdk-client" />` | A reference table from `src/lib/docs/ref/`. The rows are data there, pinned to the code by `test/docs-ref-<area>.test.ts`; the page explains how to read them and never repeats them. Each row with an id is an anchor. |
-| `<Changelog />` | The repository `CHANGELOG.md`, on `resources/changelog` only. Each heading is an anchor. |
+| `<Changelog />` | The repository `CHANGELOG.md`, on `resources/changelog` only. Each heading is an anchor: a version's is the slug of its text, and a section's starts with its version's, such as `#unreleased-added`. A relative link opens the file on GitHub, and a link to `https://probarion.xyz` or its `www` host becomes a site path. Then every link meets the link rules below, and a GitHub link points at `github.com/probarion/`. The copy rules hold in its text too, except the bare `npm install` it quotes. A table, an image, a reference-style link or raw HTML in `CHANGELOG.md` fails the build. Its text names CLI commands but shows no call, so the page needs no signing callout. |
 | `<ArchitectureDiagram />` | The diagram in `src/lib/docs/architecture.ts`, on `operate/architecture` only. |
 | `<HubSearch>`, `<HubDoors>`, `<Door who title href go also? alsoHref? ink?>`, `<HubCards>`, `<Card title href tag?>`, `<HubAgents example="<page path>" />` | The docs home only. `?` marks an optional prop. Every door needs `go`, and `also` and `alsoHref` go together: one without the other fails the build. Write `ink` bare, for the ink door. `index.mdx` must contain `<HubSearch>`, which wraps the list of popular searches (`#popular`), and must not write a "Choose a path" heading: `<HubDoors>` renders it. A door's `href` and `alsoHref` and a card's `href` point at a docs page, never at a `.md` twin or an llms file: `<HubAgents>` links those. |
 
@@ -79,7 +79,7 @@ A fence that contains `git clone` contains the lines of `CLI_SETUP_LINES` too, o
 
 ## Copy
 
-These rules hold in the raw MDX, fenced blocks included, and in the page's Markdown twin.
+These rules hold in the raw MDX, fenced blocks included, and in the page's Markdown twin. The changelog's twin may quote a bare `npm install` from `CHANGELOG.md`; every other rule holds there too.
 
 - No em dash, no "please".
 - No exclamation mark in prose. This also holds in a string prop (a callout, door or card title, a door's `go`) and in the registry title, nav, description and lede. Inline code and fenced blocks may contain one.

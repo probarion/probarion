@@ -296,8 +296,9 @@ const HANDLERS: Record<string, Handler> = {
       ),
     ];
   },
-  // The changelog as written, without its H1: the twin has the page title already.
-  Changelog: () => changelogTree().children,
+  // The changelog as written, without its H1: the twin has the page title already. Its nodes are
+  // converted like the page's own, so a site path in it becomes absolute here too.
+  Changelog: (_node, ctx) => ctx.convert(changelogTree().children),
   ArchitectureDiagram: () => architectureBlocks(ARCHITECTURE),
   HubSearch: (node, ctx) => [
     para([strong("Popular searches")]),

@@ -7,6 +7,7 @@ import {
   ARCH_TEXT,
   ARCHITECTURE,
   type ArchEdge,
+  type Architecture,
   edgeLine,
   layoutProblems,
 } from "@/lib/docs/architecture";
@@ -72,6 +73,38 @@ function labelRect(e: ArchEdge): Rect {
 
 const overlap = (a: Rect, b: Rect) =>
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** The paper halo the CSS strokes round an arrow label (4px wide), on each side. */
+const HALO = 2;
+
+/**
+ * The room an arrow label takes: its text, ARCH_TEXT.detail.perChar per character and
+ * ARCH_TEXT.detail.size high, centred on the arrow's midpoint 6 above it (mx, my - 6), grown by the
+ * halo on every side and by half a character on the left and the right. Two labels whose rooms do
+ * not meet keep at least one character of space between them, so they never read as one.
+ */
+function labelRoom(arch: Architecture, e: ArchEdge): Rect {
+  const l = edgeLine(arch, e);
+  const w = e.label.length * ARCH_TEXT.detail.perChar + ARCH_TEXT.detail.perChar + 2 * HALO;
+  const h = ARCH_TEXT.detail.size + 2 * HALO;
+  return { x: l.mx - w / 2, y: l.my - 6 - h / 2, w, h };
+}
+
+/** Each arrow label whose room meets another label's room or a box. */
+function crowdedLabels(arch: Architecture): string[] {
+  const out: string[] = [];
+  for (const [i, e] of arch.edges.entries()) {
+    const r = labelRoom(arch, e);
+    for (const n of arch.nodes)
+      if (overlap(r, n)) out.push(`"${e.label}" touches the box "${n.id}"`);
+    for (const other of arch.edges.slice(i + 1)) {
+      if (overlap(r, labelRoom(arch, other))) {
+        out.push(`"${e.label}" and "${other.label}" run into each other`);
+      }
+    }
+  }
+  return out;
+}
 
 /** True when the arrow's line passes through the inside of `r`. */
 function lineThrough(e: ArchEdge, r: Rect): boolean {
@@ -142,6 +175,23 @@ describe("the architecture diagram", () => {
       }
     }
     expect(problems).toEqual([]);
+  });
+
+  it("leaves a character of space between two arrow labels, and the halo's room next to a box", () => {
+    expect(crowdedLabels(ARCHITECTURE)).toEqual([]);
+    // The layout this check was written for: USDC and NEAR Intents on the agent's row put "ft_transfer"
+    // on the line of "spend, anchor", 7 units after it, which the plain overlap test above lets pass.
+    const move: Readonly<Record<string, { x: number; y: number }>> = {
+      usdc: { x: 195, y: 392 },
+      intents: { x: 375, y: 392 },
+    };
+    const before: Architecture = {
+      ...ARCHITECTURE,
+      nodes: ARCHITECTURE.nodes.map((n) => ({ ...n, ...move[n.id] })),
+    };
+    expect(crowdedLabels(before)).toEqual([
+      '"spend, anchor" and "ft_transfer" run into each other',
+    ]);
   });
 
   it("draws no arrow through a box it does not join, and no two arrows that cross", () => {

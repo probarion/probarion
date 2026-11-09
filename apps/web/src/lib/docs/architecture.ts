@@ -43,15 +43,17 @@ export interface Architecture {
 
 /**
  * Three columns of parts: the owner, the factory, the agent and NEAR AI Cloud on the left; the
- * approver, the wallet, the vault, USDC and NEAR Intents in the middle; the hosted app and its
- * alert channels on the right. Arrows run from box border to box border, and the gaps between rows
- * and columns leave room for their labels. test/docs-ref-architecture.test.ts pins every box to a
- * repository path, every arrow to the code that makes it, and the labels to open space.
+ * approver, the wallet and the vault in the middle, with USDC and NEAR Intents on the bottom row;
+ * the hosted app and its alert channels on the right. Arrows run from box border to box border,
+ * and the gaps between rows and columns leave room for their labels: USDC and NEAR Intents sit a
+ * row below the agent, so the labels on the vault's arrows to them sit below "spend, anchor"
+ * rather than beside it. test/docs-ref-architecture.test.ts pins every box to a repository path,
+ * every arrow to the code that makes it, and the labels to open space.
  */
 export const ARCHITECTURE: Architecture = {
   title: "Probarion architecture",
   summary:
-    "The vault contract on NEAR holds the USDC. Owners and approvers sign in their own wallets, the agent's two keys can call only spend and anchor, and Probarion runs the factory and the hosted app with no owner or approver key of your vault.",
+    "The vault contract on NEAR holds its NEAR USDC, and its Base and Solana USDC sit in its own NEAR Intents account. Owners and approvers sign in their own wallets, the agent's two keys can call only spend and anchor, and Probarion runs the factory and the hosted app with no owner or approver key of your vault.",
   width: 720,
   height: 570,
   nodes: [
@@ -160,8 +162,8 @@ export const ARCHITECTURE: Architecture = {
       detail: "NEP-141",
       group: "chain",
       source: "packages/core/src/constants.ts",
-      x: 195,
-      y: 392,
+      x: 185,
+      y: 502,
       w: 150,
       h: 56,
     },
@@ -171,8 +173,8 @@ export const ARCHITECTURE: Architecture = {
       detail: "cross-chain payout",
       group: "chain",
       source: "contracts/vault/src/ext.rs",
-      x: 375,
-      y: 392,
+      x: 405,
+      y: 502,
       w: 150,
       h: 56,
     },

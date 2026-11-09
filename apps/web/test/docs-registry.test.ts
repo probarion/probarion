@@ -26,6 +26,20 @@ import {
 } from "@/lib/docs/types";
 import { DOCS_DIR_TEST, mdxPaths, ROOT } from "./docs-helpers";
 
+/** The pages of phase 2, as the OWNER cut it on 2026-11-09. Every other page is phase 1. */
+const PHASE_2: ReadonlySet<string> = new Set([
+  "build/sdk-reference",
+  "build/policy-rules",
+  "build/cli-reference",
+  "build/contract-reference",
+  "build/events",
+  "build/http-api",
+  "build/limits-and-costs",
+  "trust/reproducible-builds",
+  "operate/architecture",
+  "resources/changelog",
+]);
+
 describe("the docs registry", () => {
   it("has one MDX file per page and one page per MDX file", () => {
     expect(PAGES.map((p) => p.path).sort()).toEqual(mdxPaths());
@@ -66,8 +80,8 @@ describe("the docs registry", () => {
       if (p.status !== undefined) expect(FEATURE_STATUSES, p.path).toContain(p.status);
       if (p.network !== undefined) expect(DOC_NETWORKS, p.path).toContain(p.network);
       expect(p.locale).toBe("en");
-      // Phases 1 and 2 have shipped; a phase-3 page joins with phase 3.
-      expect([1, 2], p.path).toContain(p.phase);
+      // Phase 2 was cut by the OWNER on 2026-11-09 to these pages; a phase-3 page joins with phase 3.
+      expect(p.phase, p.path).toBe(PHASE_2.has(p.path) ? 2 : 1);
     }
   });
 
