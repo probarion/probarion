@@ -157,6 +157,12 @@ const PACKAGE_PINNED: Record<string, PinnedScripts> = {
     typecheck: "tsc -p tsconfig.json",
     lint: null,
   },
+  "apps/extension/package.json": {
+    test: "vitest run",
+    build: "node scripts/build.mjs",
+    typecheck: "tsc -p tsconfig.json",
+    lint: null,
+  },
   "apps/web/package.json": {
     test: "vitest run",
     build: "next build",

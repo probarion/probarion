@@ -1,0 +1,24 @@
+{
+  "name": "@probarion/extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Probarion for Chrome: queue invoices into a vault and see what waits for you. It can't pay or approve.",
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:dev": "node scripts/build.mjs --dev",
+    "zip": "node scripts/zip.mjs",
+    "render": "node scripts/render.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
