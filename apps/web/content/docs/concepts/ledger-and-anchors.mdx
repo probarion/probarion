@@ -1,0 +1,374 @@
+The vault records what was paid. The ledger records why: the SDK signs each decision into a hash-chained ledger before it sends the spend, refusals included, and the spend on chain carries the hash of that decision. After every cycle the SDK anchors the ledger on the vault, so a rewrite of an anchored range no longer matches the chain.
+
+<Callout kind="key">
+
+The decision is signed into the ledger before the spend is sent.
+
+</Callout>
+
+<Flow>
+
+1. **The decision is signed** The SDK appends a decision entry, signed with the vault's ledger key.
+2. **The spend carries its hash** The decision entry's `body_hash` goes to the vault as `decision_hash`, and the vault stores it with the spend.
+3. **The outcome is signed** A payment entry records the contract's answer and points back to the decision.
+4. **An anchor pins the ledger** `anchor(seq, root, count)` stores the link of the last entry and the number of entries on the vault.
+
+</Flow>
+
+The ledger code in `@probarion/core` and `@probarion/sdk` is in source, and its tests run on a committed test ledger. The full cycle with a ledger on a live vault is Preview: built, not yet run end to end with real wallets.
+
+The verifier, the CLI's `verify`, judges the ledger with [checks a to d](/docs/trust/verifier-checks): check a reads the signatures, b the links, c the anchors, and d ties each spend on chain to its own decision.
+
+<Callout kind="note">
+
+`v0.probarion.testnet` has no ledger key and no anchors. Its smoke run on 2026-11-01 sent spends with the agent key directly, without the SDK or a ledger, so `verify --vault v0.probarion.testnet` prints `RESULT: FAIL` today: [check d](/docs/trust/verifier-checks#check-d) finds spends with no decision in the ledger, and [check h](/docs/trust/verifier-checks#check-h) finds no burn event without the burn's tx hash.
+
+</Callout>
+
+## Why a ledger
+
+The vault keeps a record of each spend: the mandate, the amount, the invoice hash, the ref, the decision hash, the agent key and the status. It does not keep the reasons. The ledger does: which rules ran and what each one said, the verdict, whether code decided alone or with a model, and the model's proposal and attestation evidence when there was one.
+
+Two properties make that record worth checking:
+
+- **It comes first.** The SDK writes the decision entry before it calls `check_spend` or sends `spend`, and the spend carries the hash of that entry. A decision changed afterwards fails the verifier. Left with its old hash and signature, it fails checks a and b at that entry, and check d too if its invoice hash, mandate, amount or verdict no longer fits the spend. Hashed and signed again, it has another hash, so the spend's `decision_hash` names no decision in the ledger and check d fails.
+- **It is chained and anchored.** Each entry is linked to the one before it, and an anchor on the vault holds the link of the last entry in its range. An edit inside an anchored range, or a cut below an anchored count, fails the verifier.
+
+Refusals go in too. A cycle that code refused sends nothing to the vault, so its decision entry is the only record of it. The whole cycle, from mandate to record, is on [How one payment works](/docs/start/how-one-payment-works).
+
+## What goes in the ledger
+
+An entry's `kind` is `decision`, `payment`, `approval`, `anchor` or `note`. The SDK writes only decision and payment entries:
+
+- **decision**: one for every cycle of `process()` or `requestSpend()`, whatever the verdict, written before anything is sent.
+- **payment**: written after `check_spend` refused or after `spend` was sent. It records the contract's answer and points back to its decision. A cycle that code refused, or a [code hold](/docs/concepts/holds-and-approvals#code-holds-nothing-was-sent) (`held` with `spendId` null: nothing was sent), ends with the decision entry alone.
+
+Neither the SDK nor the web app writes `approval`, `anchor` or `note` entries today. Approvals happen on chain, and check d reads from the spend's own record whether it was held. The anchor's transaction hash comes back in the outcome as `anchorTxHash` and is never stored in an entry.
+
+### The body of an entry
+
+| Field | Meaning |
+| --- | --- |
+| `v` | The ledger format version, `1`. Check b fails an entry with a version it does not know. |
+| `vault` | The vault account id. Check b fails an entry that names another vault. |
+| `seq` | The entry's position: 0 for the first entry, then up by one with no gaps. |
+| `prev_link` | The `link` of the entry before. 64 zeros at seq 0, and only there. |
+| `kind` | `decision`, `payment`, `approval`, `anchor` or `note`. |
+| `at` | On a decision, the time the cycle started, which the policy decided with. On a payment, when it was written. ISO-8601 in UTC. |
+| `request_id` | A fresh id for each cycle, or the `requestId` option on every entry the instance writes. A payment entry repeats the id of its decision. |
+| `mandate_id` | The mandate the cycle chose, or null when none fits. |
+| `invoice_hash` | The sha256 of the invoice text, as 64 lowercase hex. The text itself is not stored. |
+| `amount` | A decimal string in the token's smallest unit, or null. |
+| `proposal` | The model's proposal, or null when code decided alone. |
+| `evidence` | The model's attestation evidence, or null. |
+| `rules` | Each rule that ran: its id, its outcome (`pass`, `hold` or `refuse`) and a detail. |
+| `verdict` | `allow`, `hold` or `refuse` on a decision. Null on other kinds. |
+| `decided_by` | `model+rules` or `rules-only` on a decision. Null on other kinds. |
+| `contract` | On a payment entry, the contract's answer: `code`, `tx_hash`, `spend_id` and `status`. Null on a decision. |
+| `settlement` | On the payment entry of a burned spend to a Base or Solana payee: `chain`, `tx_hash` and `burn_tx_hash`. Null otherwise. |
+| `refs` | On a payment entry, `decision_body_hash`: the body hash of its decision. Null on a decision. The type also allows `anchor_seq`, which neither the SDK nor the web app writes. |
+
+The body has no `ref` field and stores no copy of the invoice text. The model's proposal and evidence can still quote it: the proposal's reasoning, the PO reference in `request_inputs`, which is a verbatim part of the invoice, and the model's response body, up to 64 KiB.
+
+When a model advises, its attestation is bound by a nonce to the decision entry about to be written: the nonce covers the vault, the `prev_link`, the `seq`, the invoice hash and the mandate id. That evidence fits one position in one vault's ledger and no other.
+
+### An example decision entry
+
+Illustrative: a rules-only decision to pay 5 USDC under mandate 1, with the rules list cut short and placeholders for the hashes and keys.
+
+```json
+{
+  "body": {
+    "v": 1,
+    "vault": "acme.vaults.probarion.testnet",
+    "seq": 2,
+    "prev_link": "<the link of entry 1, 64 lowercase hex>",
+    "kind": "decision",
+    "at": "2026-11-08T10:00:00.000Z",
+    "request_id": "<an id for this cycle>",
+    "mandate_id": 1,
+    "invoice_hash": "<sha256 of the invoice text, 64 lowercase hex>",
+    "amount": "5000000",
+    "proposal": null,
+    "evidence": null,
+    "rules": [
+      { "id": "vault.frozen", "outcome": "pass", "detail": "vault is not frozen" },
+      { "id": "mandate.none", "outcome": "pass", "detail": "mandate 1 selected by purpose_hash" },
+      { "id": "mandate.over_per_payment", "outcome": "pass", "detail": "amount 5000000 vs per-payment cap 5000000" }
+    ],
+    "verdict": "allow",
+    "decided_by": "rules-only",
+    "contract": null,
+    "settlement": null,
+    "refs": null
+  },
+  "body_hash": "<sha256 of the canonical body, 64 lowercase hex>",
+  "sig": "ed25519:...",
+  "signer": "ed25519:...",
+  "link": "<64 lowercase hex>"
+}
+```
+
+## How an entry is sealed
+
+Three values seal the body, in this order:
+
+1. `body_hash`: the sha256 of the RFC 8785 canonical JSON of the whole body. Canonical JSON sorts the keys, so the hash covers every field and does not depend on the order in which a file writes them.
+2. `sig`: an ed25519 signature over the 32 raw bytes of `body_hash`, by the vault's ledger key. `signer` names that key.
+3. `link`: `sha256(prev_link ‖ body_hash ‖ sig)`, with the raw 64-byte signature. Each entry's `prev_link` is the `link` of the entry before it, so changing one entry changes every link after it.
+
+<CodeBlock title="packages/core/src/ledger.ts">
+
+```ts
+/** sha256 of the RFC 8785 canonical JSON of the whole body: every body field is covered. */
+export function computeBodyHash(body: LedgerEntryBody): Hex32 {
+  return sha256Hex(canonicalJson(body));
+}
+
+/** link = sha256(bytes(prev_link) || bytes(body_hash) || raw 64-byte signature) (interfaces §6). */
+export function computeLink(prevLink: Hex32, bodyHash: Hex32, sig: string): Hex32 {
+  if (!isHex32(prevLink)) throw new LedgerFormatError("prev_link must be 64 lowercase hex");
+  if (!isHex32(bodyHash)) throw new LedgerFormatError("body_hash must be 64 lowercase hex");
+  let rawSig: Uint8Array;
+  try {
+    rawSig = parseSignature(sig);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new LedgerFormatError(`sig is malformed: ${reason}`, { cause: error });
+  }
+  return bytesToHex(sha256Bytes(concatBytes(hexToBytes(prevLink), hexToBytes(bodyHash), rawSig)));
+}
+```
+
+</CodeBlock>
+
+An entry is the body plus those values:
+
+<CodeBlock title="packages/core/src/types.ts">
+
+```ts
+export interface LedgerEntry {
+  body: LedgerEntryBody;
+  body_hash: Hex32; // sha256(utf8(canonicalize(body)))
+  sig: string; // "ed25519:<base58 64-byte signature>" over the 32 raw bytes of body_hash
+  signer: string; // "ed25519:<base58 32-byte public key>" = vault's ledger FC key
+  link: Hex32; // sha256(bytes(prev_link) || bytes(body_hash) || raw 64-byte sig)
+}
+```
+
+</CodeBlock>
+
+`buildEntry` checks the signature before it returns an entry, so a broken signer is caught before anything reaches a store. It also refuses a `prev_link` of 64 zeros on any entry but the first.
+
+`signer` is covered by no hash and no signature. So the verifier's check a compares it with the key the chain names: for each anchored range, the ledger key stored with that anchor, and after the last anchor, the vault's current ledger key.
+
+## How a spend points to its decision
+
+The SDK appends the decision entry and sends its body hash as `decision_hash`:
+
+<CodeBlock title="packages/sdk/src/probarion.ts">
+
+```ts
+    const decisionEntry = await this.appendDecision(c);
+    const decisionHash = decisionEntry.body_hash;
+```
+
+</CodeBlock>
+
+`decision_hash` is one of the five fields of `SpendRequest`, next to the mandate id, the amount, the invoice hash and the ref. [Why spend has no payee](/docs/concepts/why-spend-has-no-payee) shows the whole request. The vault checks only the hash's form, 64 lowercase hex, stores it with the spend and returns it in `get_spend`. The `spend_held` and `spend_submitted` events carry it too. The payment entry points the other way: its `refs.decision_body_hash` holds the same hash.
+
+The vault never de-duplicates `decision_hash`. The verifier does: check d needs every spend on chain to have its own decision in the ledger, with the same invoice hash, mandate and amount.
+
+### The committed test ledger
+
+The test fixture [`valid-snapshot.json`](https://github.com/probarion/probarion/blob/main/packages/core/test/fixtures/valid-snapshot.json) holds a ledger of five entries signed with test keys, for the vault `x.vaults.probarion.testnet`. It is test data, not a real vault.
+
+| Seq | Kind | What it records | In the range of |
+| --- | --- | --- | --- |
+| 0 | decision | Allow 25 test USDC under mandate 1, decided with a model | Anchor 1 |
+| 1 | payment | Spend 1 paid. Its `refs.decision_body_hash` is the body hash of entry 0 | Anchor 1 |
+| 2 | decision | Allow 40 test USDC under mandate 2, decided with a model | Anchor 2 |
+| 3 | payment | Spend 2 burned for a Base payee | Anchor 2 |
+| 4 | decision | Refuse by code, `mandate.payee_mismatch`. No spend points to it | Anchor 3 |
+
+On the fixture's chain side, spend 1 carries the body hash of entry 0 as its `decision_hash`, and spend 2 carries the body hash of entry 2. Anchor 1 has count 2 and the link of entry 1 as its root, anchor 2 has count 4 and the link of entry 3, and anchor 3 has count 5 and the link of entry 4.
+
+## Anchors: pinning the ledger on chain
+
+`anchor(seq, root, count)` stores one record on the vault. `count` counts every entry from seq 0, and `root` is the link of entry `count - 1`. An anchor's range is the entries it adds: from the previous anchor's count up to entry `count - 1`, or from entry 0 for the first anchor.
+
+<CodeBlock title="contracts/vault/src/anchors.rs">
+
+```rust
+    pub fn anchor(&mut self, seq: u64, root: String, count: u64) {
+        let signer_pk = env::signer_account_pk();
+        let by_ledger_key = env::predecessor_account_id() == env::current_account_id()
+            && self.ledger_key.as_ref() == Some(&signer_pk);
+        if !by_ledger_key {
+            fail(ErrorCode::NotLedgerKey)
+        }
+        if seq != u64::from(self.anchors.len()) + 1 {
+            fail(ErrorCode::BadSeq)
+        }
+        let previous_count = self
+            .anchors
+            .get(self.anchors.len().wrapping_sub(1))
+            .map_or(0, |a| a.count);
+        if !is_hex64(&root) || count == 0 || count < previous_count {
+            fail(ErrorCode::InvalidInput)
+        }
+        // Store the signing key with the anchor so a later key rotation keeps this range verifiable.
+        self.anchors.push(Anchor {
+            root: root.clone(),
+            count,
+            at_ns: env::block_timestamp(),
+            ledger_key: signer_pk,
+        });
+        VaultEvent::LedgerAnchored { seq, root, count }.emit();
+    }
+```
+
+</CodeBlock>
+
+The contract checks, in this order:
+
+| What it checks | Refusal |
+| --- | --- |
+| The call comes from the vault account itself, signed with the vault's current ledger key. Before a ledger key is set, nothing can anchor, and another account with the same public key is refused. | [`NotLedgerKey`](/docs/build/errors#NotLedgerKey) |
+| `seq` is the number of anchors so far plus 1. The first anchor is 1, with no gaps and no repeats. | [`BadSeq`](/docs/build/errors#BadSeq) |
+| `root` is 64 lowercase hex, `count` is above 0, and `count` is at least the previous anchor's count. An equal count is allowed. | [`InvalidInput`](/docs/build/errors#InvalidInput) |
+
+The vault keeps the `root`, the `count`, the block time and the ledger key that signed, and emits `ledger_anchored` with the `seq`, `root` and `count`. `list_anchors` returns each anchor with its `seq`, and the SDK's `anchors.latest()` returns the last one. `anchor` takes no deposit.
+
+Two numbers are called `seq`. A ledger entry's `seq` starts at 0 and counts entries. An anchor's `seq` starts at 1 and counts anchors. In the test ledger above, anchor 3 has count 5 and the link of entry 4 as its root. Its range is entry 4 alone: entries 0 to 3 are the ranges of anchors 1 and 2.
+
+### What the SDK anchors
+
+After every cycle, refusals included, the SDK anchors the whole tail: `root` is the link of the last entry, `count` is the length of the ledger, and `seq` is one above the last anchor. The ledger key signs it, with 30 Tgas and no deposit.
+
+- It never throws. A failed anchor is logged, and the next cycle anchors every entry up to its own last one.
+- On `BadSeq` it reads the last anchor from the chain once and tries again.
+- When the chain's last count equals the length of the ledger, there is nothing to anchor.
+- When the chain's last count is above the length of the ledger, this ledger is not the one the vault anchored. The SDK warns with `LEDGER_FORK_RISK` and does not anchor.
+
+### Setting the ledger key
+
+The ledger key must be on the vault before the first anchor. The SDK also refuses to run `process()` or `requestSpend()` until the vault has a ledger key that matches the SDK's `ledgerKey`, because entries signed by any other key would fail check a. The owner sets it with `set_ledger_key`, and the CLI prints that transaction for the owner to sign:
+
+```bash
+node packages/cli/dist/bin.js --network testnet ledger set-key --vault acme.vaults.probarion.testnet --pk ed25519:...
+```
+
+<Callout kind="owner-signs">
+
+The owner signs `set_ledger_key` from their own wallet, with exactly 1 yoctoNEAR attached. The CLI writes the arguments to a file and prints the transaction: it never signs or sends. The key can call only `anchor`, and it gets a gas allowance of 0.25 NEAR unless `--allowance` says otherwise.
+
+</Callout>
+
+Each anchor keeps the ledger key that signed it, so a range anchored before a rotation stays verifiable against its own key. Entries after the last anchor must be signed by the new key, so anchor the ledger before you rotate. [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) covers the rotation.
+
+## What a rewrite looks like
+
+These are the checks that read the ledger's signatures, links and anchors, and tie it to the spends on chain:
+
+<VerifierChecks only="a, b, c, d" />
+
+What each kind of change does:
+
+| What changed | What the verifier says |
+| --- | --- |
+| One field of an entry's body, not signed again | Checks a and b fail at that entry. If it is a decision that a spend points to, check d fails too when its invoice hash, mandate or amount no longer matches the spend, or its verdict is neither `allow` nor, for a held spend, `hold`. |
+| An anchored range rewritten, signed again with the ledger key and linked again | Checks a and b pass the rewritten entries. Their links have changed, so the anchor's root no longer matches: check c fails and names the first entry of that anchor's range. |
+| Entries cut below an anchored count | Check c fails: the anchor's count is above the number of entries in the ledger. It names the first missing entry. |
+
+The landing page's ledger test makes three edits to the committed test ledger, and `apps/web/test/site-tamper.test.ts` pins what the real verifier says about each:
+
+| Edit | Checks that fail | First broken entry |
+| --- | --- | --- |
+| Entry 2's amount, 40 USDC changed to 0.000001 USDC | a, b, d | 2 |
+| Entry 4, the refusal, erased | c | 4 |
+| Entry 4's verdict, refuse changed to allow | a, b | 4 |
+
+Erasing the refusal breaks no signature and no link. Only anchor 3, whose count is 5, shows that an entry is missing.
+
+### The gap after the last anchor
+
+<Callout kind="warning">
+
+Entries after the last anchor are not pinned on chain yet.
+
+</Callout>
+
+Check a still checks them against the vault's current ledger key, and check b checks their links. But nothing on chain fixes how many there are. A copy of the ledger that drops them fails no check, unless a spend on chain points to a decision among them, which check d catches. This follows from the checks; no test shows it yet. The SDK anchors after every cycle, so between cycles the gap is empty unless an anchor failed.
+
+Check c says how many entries are in the gap. On the committed test ledger, every entry is anchored:
+
+```text
+c  anchors                PASS      3 anchors match the ledger; 0 entries after the last anchored count (5) are not chain-attested
+```
+
+### Offline and live runs
+
+`verify --offline <file>` checks a snapshot against itself: the chain data comes from the same file as the ledger. An edit that was not signed again fails. A forged snapshot, with entries signed again and chain data edited to agree, passes. Only a live run with `--vault` reads the anchors and the spends from the chain, so take the snapshot yourself or run live:
+
+```bash
+node packages/cli/dist/bin.js --network testnet verify --vault acme.vaults.probarion.testnet --ledger .probarion/ledger.jsonl
+```
+
+[Verify a vault](/docs/trust/verify-a-vault) walks through a run.
+
+## Where the ledger lives, and one writer per vault
+
+### In the SDK and the CLI
+
+`process()` and `requestSpend()` write through a `LedgerStore`. By default it is a `FileLedgerStore` at `.probarion/ledger.jsonl`, relative to the working directory, or at `PROBARION_LEDGER_PATH` when that is set. A blank value counts as unset. Pass `ledger` in the options to use another store; `InMemoryLedgerStore` is for tests.
+
+- The file has one line per entry, each line `JSON.stringify(entry)`.
+- Each append takes a lock file next to the ledger, writes the line and syncs it to disk before it returns. The lock uses a hard link, so the ledger must sit on a local file system that supports them, such as NTFS, ext4 or APFS. On FAT, exFAT and some network shares the append fails with an error: the store has no weaker lock to fall back to.
+- A torn last line from a crash is an error that names the line. Nothing is dropped or repaired: you inspect the file.
+
+The SDK reads its own ledger too. Before it decides, `process()` or `requestSpend()` reads every entry. An earlier payment of the same invoice whose outcome is unknown refuses the cycle by code, with `ledger.unresolved`, until it settles: until the chain shows that spend, or for 48 hours. The body holds no ref, so the match is by invoice hash.
+
+The CLI reads the same file. `verify` takes `--ledger <path>` and defaults to `PROBARION_LEDGER_PATH`, then `.probarion/ledger.jsonl`. `ledger export` copies the ledger to a new file and never writes over one:
+
+```bash
+node packages/cli/dist/bin.js ledger export --out ledger-copy.jsonl
+```
+
+### In the web console
+
+The console keeps each vault's ledger in its database, in the table `ledger_entries`. Hosted Payables, the console's reference agent that pays invoices, writes its entries there, signed with a ledger key that Probarion's server holds. Triggers refuse every update and delete, for every role, the table owner included. Every write goes through `ledger_append`, a compare-and-append. The SDK's own code builds and signs each entry, so a row gives the same line that `FileLedgerStore` writes. The database guards the shape of the chain; the verifier still judges the signatures and the anchors.
+
+A vault's proof page serves that ledger as `/proof/<vault>/ledger.jsonl`, to the vault's members, or to anyone once its owner makes the proof public. The public proof page is Preview: built, with no public vault yet. See [What works today](/docs/start/what-works-today#public-proof-page).
+
+### One writer per vault
+
+Run one ledger writer per vault.
+
+- **Two writers on one ledger file.** Each decision is appended at exactly the position the cycle computed, compared under the store's lock. The writer that finds the head moved gets [`LedgerConflictError`](/docs/build/errors#LedgerConflictError): it writes no entry and sends no spend, and the SDK never retries it by itself.
+- **Two writers with two ledgers.** They fork the vault's history. Apart from the ledger key and the form of `root` and `count`, the contract checks only that anchor seqs are consecutive and that counts do not go back. So it accepts both writers' anchors, interleaved, and check c fails at the first range anchored from the other ledger. This follows from the code; no test shows it yet. A cycle that finds the chain's count above its own ledger's length warns with `LEDGER_FORK_RISK` and does not anchor.
+- **A store that ignores the position.** A custom `LedgerStore` that does not compare before it appends is caught after the append: the SDK throws [`LedgerError`](/docs/build/errors#LedgerError) and sends no spend.
+
+The console's database is a ledger of its own. If hosted Payables runs on a vault, give an SDK agent a vault of its own. [Let an agent pay](/docs/build/let-an-agent-pay#one-ledger-writer-per-vault) says why.
+
+## Where to go next
+
+- [Verify a vault](/docs/trust/verify-a-vault): run the checks on a vault yourself.
+- [Verifier checks](/docs/trust/verifier-checks): what each of checks a to i proves, and what it does not.
+- [Security model](/docs/trust/security-model): who holds the ledger key, and what each key can do.
+- [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys): the ledger key, and how to rotate it.
+- [Payment checks](/docs/concepts/payment-checks): what the contract checks before it accepts a spend.
+- [Errors](/docs/build/errors#BadSeq): `BadSeq`, `NotLedgerKey` and the SDK's ledger errors.
+- [What works today](/docs/start/what-works-today): the status of each part.
+- [Glossary](/docs/resources/glossary): the terms on this page.
+
+## What this does not do
+
+- It does not show that an invoice is real. The ledger stores the invoice's hash, not its text.
+- It does not show that a decision was a good one. The verifier checks that each spend has its own decision; it does not run the policy again.
+- It does not pin the entries written after the last anchor. Until an anchor's range includes them, only their signatures and links are checked, and nothing on chain fixes how many there are.
+- It does not stop whoever holds the ledger key from signing new entries. A live verify run catches a change to an anchored range.
+- It does not record approvals. They happen on chain, and the spend's own record shows that it was held.
+- Offline, it proves nothing about the chain. `verify --offline` checks a snapshot against itself: take the snapshot yourself, or run live.
+- It does not merge two ledgers. Two writers fork the history, and the SDK only warns.
+- `v0.probarion.testnet` has no ledger, so `verify` fails checks d and h there. The mainnet vault is planned.

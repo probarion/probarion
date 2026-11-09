@@ -1,0 +1,382 @@
+The terms are grouped by topic. Each term is a heading, and its anchor is the heading in lowercase, with each space as a hyphen and every punctuation mark but `-` and `_` dropped: `/docs/resources/glossary#mandate` opens the mandate entry, and `#check_spend`, `#1-yoctonear` and `#probarioncode` open three others. Code names are written exactly as the source writes them, in `code`. The [docs home](/docs) links the main pages.
+
+## Roles and keys
+
+### Vault
+
+A NEAR contract account that holds the owner's USDC, stores the owner's mandates and checks every spend against them before it pays. It has no full-access key, so nobody, Probarion included, can sign as the vault except through `spend` and `anchor`. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+### Owner
+
+The NEAR account named as the vault's owner when the vault is created: on the factory, whoever signs `create_vault`. The owner creates and revokes mandates, adds and removes agent keys, sets the ledger key, freezes, unfreezes, and withdraws to its own account only. No method changes the owner or the approvers. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+<Callout kind="owner-signs">
+
+The owner signs `create_vault` on the factory, and `create_mandate`, `revoke_mandate`, `add_agent`, `remove_agent`, `set_ledger_key`, `freeze`, `unfreeze`, `withdraw` and `withdraw_intents` on the vault, each from their own wallet.
+
+</Callout>
+
+### Approver
+
+One of the 1 to 10 accounts named when the vault is created. Any one approver can approve or reject a held spend alone. The owner can do neither unless the owner is on the list. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` and `reject` from their own wallet, with exactly 1 yoctoNEAR attached.
+
+</Callout>
+
+### Agent key
+
+The function-call key the vault adds to its own account when the owner calls `add_agent`. It may call only `spend`, and each mandate names the one agent key that may spend under it. The agent, the program that pays, signs with it. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+### Ledger key
+
+The function-call key the vault adds to its own account with `set_ledger_key`. It may call only `anchor`, and the SDK signs every ledger entry with it. Setting a new ledger key deletes the old one. Each anchor records the key that signed it, so entries an anchor already covers still verify, but entries after the last anchor must be signed by the current key: anchor the ledger before you set a new one, or the old key's unanchored entries fail check a. See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+
+### Function-call key
+
+A NEAR access key limited to one receiver contract and to its listed methods, or to any method of that contract when the list is empty, with an allowance of NEAR for gas. The NEAR protocol does not let it attach a deposit. The agent key, the ledger key and a dapp login key are all function-call keys. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+### Full-access key
+
+A NEAR access key that can sign any action for its account, a deposit included. The owner and the approvers sign with one, through their wallet. A vault has none. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+### Dapp login key
+
+The function-call key a wallet adds to your account when you sign in to a dapp. One on the owner's account that is scoped to the vault, with an empty method list or one that names `freeze`, can call `freeze`. No login key can call a method that needs a deposit, and one scoped to another contract cannot call the vault at all. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+### Locked vault
+
+A vault that passes verifier check f, `vault-locked`. It has no full-access key, its other keys are agent keys, which may call only `spend`, or the current ledger key, which may call only `anchor`, and its code hash is a recorded reproducible build or, for a vault whose recorded factory is the network's canonical factory, a version that factory lists. A vault the canonical factory created at version N must run version N's code. See [check f](/docs/trust/verifier-checks#check-f).
+
+### Allowance
+
+The NEAR a function-call key may spend on gas. The contract takes it in yoctoNEAR when the key is added. The CLI's `--allowance` takes NEAR, 1 for an agent key and 0.25 for the ledger key by default, and the console uses the same defaults. For the agent key and the ledger key, the gas comes out of the vault's own NEAR. The vault refuses an allowance of zero, which would mean no limit, with `InvalidInput`. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+### 1 yoctoNEAR
+
+The smallest unit of NEAR: 1 NEAR is `10^24` yoctoNEAR. Most owner methods, and `approve` and `reject`, need exactly 1 yoctoNEAR attached. Only a full-access key can attach it, so a dapp login key cannot call them. `freeze` takes no deposit, and `create_mandate` takes a storage deposit and refunds the excess. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+### Freeze
+
+The owner's stop. `freeze` takes no deposit, so any key on the owner's account that may call the vault can use it. While the vault is frozen, every new spend and every `approve` is refused with `Frozen`; `reject` and `expire_held` still work. `unfreeze` needs exactly 1 yoctoNEAR, so only a full-access key can undo a freeze. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+### Factory
+
+The contract that creates vaults: `vaults.probarion.testnet` on testnet. It creates each vault as `<name>.<factory>` with no access keys, and it cannot change, upgrade or take funds from a vault it created. The mainnet factory, `vaults.probarion.near`, is not deployed. See [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys).
+
+## Mandates and limits
+
+### Mandate
+
+A standing permission the owner signs with `create_mandate`: one payee, one agent key, a purpose hash, fixed limits and an expiry, `expires_at_ns`. A mandate cannot be edited. The owner revokes it with `revoke_mandate` and creates a new one. See [Mandates](/docs/concepts/mandates).
+
+### Payee
+
+Where a mandate pays: a NEAR account (type `near`, with `account_id`), or a Base or Solana address paid through NEAR Intents (type `intents`, with `chain`, `address` and `asset`). It is fixed when the mandate is created and never changes. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+### Intents payee
+
+A payee on Base or Solana. The vault pays it by calling `ft_withdraw` on the [NEAR Intents](#near-intents) contract, `intents.near` on mainnet, with the mandate's POA asset and the memo `WITHDRAW_TO:<address>`. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+### POA asset
+
+The token inside [NEAR Intents](#near-intents) that stands for USDC on Base or Solana, such as `base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near` on mainnet or the test token `base-usdc.probarion.testnet`. An Intents payee names one. It must be in the vault's `allowed_assets` and start with `base-` or `sol-` to match the chain, or the vault refuses it with `AssetNotAllowed`. See [Mandates](/docs/concepts/mandates).
+
+### `purpose_hash`
+
+The sha256 of the purchase order or contract a mandate pays against, as 64 lowercase hex. Only the hash goes on chain. Without an attested model proposal, the SDK's code rules pick the mandate by it, and refuse with `mandate.none` when no mandate has the invoice's purpose hash or the invoice has none. When an attested model proposal names the mandate, they refuse with `invoice.po_mismatch` if the invoice's purpose hash is missing, differs from that mandate's or maps to another mandate. See [Mandates](/docs/concepts/mandates).
+
+### `max_per_payment`
+
+The most one spend under the mandate may be. An amount equal to it passes, a larger one is refused with `OverPerPayment`, and an amount of zero with `ZeroAmount`. See [Payment checks](/docs/concepts/payment-checks).
+
+### `max_total`
+
+The lifetime cap of a mandate. A spend passes only if `spent` plus `reserved` plus its own amount stays at or below it, else `OverMandateTotal`. See [Payment checks](/docs/concepts/payment-checks).
+
+### `max_uses`
+
+How many spends the mandate allows. A use counts while its spend is held, pending, paid or burned, and a released spend gives its use back. With no use left, a spend is refused with `UsesExhausted`. See [Payment checks](/docs/concepts/payment-checks).
+
+### `approval_above`
+
+The amount above which a spend is held for an approver. An amount equal to it pays at once. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+### Daily backstop
+
+`daily_backstop`: the vault-wide cap on what spends may reserve or pay in one UTC day, across every mandate. It is set when the vault is created. A spend that would go over it is refused with `OverDailyBackstop`. See [Payment checks](/docs/concepts/payment-checks).
+
+### Mandate status
+
+The `status` the chain gives a mandate:
+
+| Status | Meaning |
+| --- | --- |
+| `active` | Not revoked, and neither `max_uses` nor `max_total` is used up. |
+| `revoked` | The owner revoked it. New spends and approvals under it are refused. |
+| `exhausted` | Its uses reached `max_uses`, or `spent` reached `max_total`. |
+
+"Expired" is not a chain status. Once `expires_at_ns` has passed, the contract refuses new spends with `MandateExpired`, but the chain still reads `active`; the console shows such a mandate as expired. See [Mandates](/docs/concepts/mandates).
+
+### Reservation
+
+`reserved` on a mandate: the amount of its spends that are held or pending. The vault reserves before it sends anything, together with one use, a share of the day's backstop, the invoice hash and the ref. A paid or burned spend moves its amount from `reserved` to `spent`. See [Payment checks](/docs/concepts/payment-checks).
+
+### Release
+
+What the vault does when a held or pending spend fails, is rejected or expires. It gives back the reservation, the use and the invoice hash, and the backstop share when the release falls in the same UTC day. The ref stays used. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+## Spends and outcomes
+
+### Spend
+
+The one method an agent key may call. The vault runs the spend checks, reserves, then either holds the spend for an approver or sends the payout to the mandate's payee. A refused spend panics with `PROBARION:<Code>`, and every change of the call is reverted. See [Payment checks](/docs/concepts/payment-checks).
+
+### Spend checks
+
+The 14 checks the contract runs, in a fixed order, in every `spend` and every `check_spend`. The first check that fails is the answer. They are not the verifier checks a to i. See [Payment checks](/docs/concepts/payment-checks).
+
+### `SpendRequest`
+
+The fields an agent sends to `spend`: `mandate_id`, `amount`, `invoice_hash`, `ref` and `decision_hash`. None of them is an address: the vault reads the payee from the mandate. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+### `invoice_hash`
+
+64 lowercase hex that names one invoice. The SDK's `hashInvoice` makes it, as the sha256 of the invoice text. The vault refuses a second spend with the same hash, with `DuplicateInvoice`, while the first is held, pending, paid or burned; a released spend frees it. See [Payment checks](/docs/concepts/payment-checks).
+
+### `ref`
+
+The caller's idempotency key for one spend, 1 to 64 bytes. It is used up for this vault once the contract accepts a spend, held or paid, and it stays used even if the payout fails. A refused spend reverts every change, so its ref stays free. A used ref is refused with `DuplicateRef`. See [Payment checks](/docs/concepts/payment-checks).
+
+### `decision_hash`
+
+The `body_hash` of the signed decision entry behind a spend, as 64 lowercase hex. The vault stores it with the spend, and verifier check d matches every spend on chain to its decision by it. See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+
+### `check_spend`
+
+The free dry run of `spend`: a view that takes the request and the agent's public key, runs the same checks and returns `{ ok, code, would_hold }`. It changes nothing and uses up no ref. The SDK runs it before `spend`, unless `requestSpend()` is given `skipPreflight`. See [Payment checks](/docs/concepts/payment-checks).
+
+### `PROBARION:<Code>`
+
+The message a refused contract call panics with, such as `PROBARION:NoMandate`. The code is readable on any explorer, and the call changes nothing. The factory reuses the vault's codes `NotOwner`, `InvalidInput`, `InsufficientDeposit` and `RequiresOneYocto`. See [Errors](/docs/build/errors).
+
+### Held spend
+
+A spend the contract stored as `held` because its amount is above the mandate's `approval_above`. It stays held, with its amount reserved, until an approver approves or rejects it. An approval is possible only up to its `held_until_ns`. After that time the spend stays held and reserved until an approver rejects it or anyone calls `expire_held`. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+### `held_ttl_ns`
+
+How long a hold lasts, set per vault when the vault is created: more than zero and at most 30 days. A held spend's `held_until_ns` is its creation time plus this. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+### `expire_held`
+
+The call that ends a hold whose time has run out. Anyone may make it, with no deposit, once the block time is past `held_until_ns`, and it releases the spend with the status `expired`. Before that it fails with `HoldNotExpired`. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+### Contract hold
+
+The on-chain kind of hold: a [held spend](#held-spend), with a spend id, which an approver decides. Its counterpart is a [code hold](#code-hold), which has no spend id and puts nothing on chain. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+### Code hold
+
+A hold by the SDK's code rules, reported as `held` with `spendId` null: a rule held the payment while the contract would have paid at once. Nothing was sent and no call releases it. Change what caused the hold, then run the cycle again. See [Holds and approvals](/docs/concepts/holds-and-approvals).
+
+### `SpendStatus`
+
+The status of a spend on chain:
+
+| Status | Meaning |
+| --- | --- |
+| `held` | Waiting for an approver, who can approve it up to `held_until_ns`. It stays held, with its amount reserved, until an approver approves or rejects it or `expire_held` releases it. |
+| `pending` | The payout was sent and its callback has not resolved yet. Its amount is reserved. |
+| `paid` | The USDC transfer to a NEAR payee succeeded. |
+| `burned` | `ft_withdraw` on the intents contract answered with anything but an error or zero, so the vault counts the payout to a Base or Solana payee as gone and never releases it. |
+| `failed` | The payout failed, and the vault released the spend. |
+| `rejected` | An approver rejected it, and the vault released the spend. |
+| `expired` | `expire_held` released it after its time. |
+
+See [Spend outcomes](/docs/build/spend-outcomes).
+
+### Burned
+
+The status of a spend to a Base or Solana payee once the intents contract's `ft_withdraw` answers with anything but an error or zero. Such an answer may mean value left the vault, so the vault counts the full amount as spent and never releases it, even when the answer names a smaller amount or cannot be read. The payout is a burn with the memo `WITHDRAW_TO:<address>`, and its delivery on Base or Solana is observed later. On testnet, nothing leaves NEAR. See [Spend outcomes](/docs/build/spend-outcomes).
+
+### `SpendOutcome`
+
+What the SDK's `process()` and `requestSpend()` return for one payment cycle: a `status`, and fields such as `spendId`, `code`, `txHash`, `decisionHash` and `anchorTxHash`. The seven statuses `process()` returns:
+
+| Status | Meaning |
+| --- | --- |
+| `refused_by_code` | A code rule refused. Nothing was sent, and `code` is the first refusing `RuleId`. |
+| `refused_by_contract` | The contract refused, in the `check_spend` dry run, so nothing was sent, or as a `spend` panic. `code` is the bare vault code. |
+| `held` | With a `spendId`, the contract holds the spend for an approver. With `spendId` null, it is a code hold and nothing was sent. |
+| `paid` | Paid on NEAR. |
+| `burned` | Burned on NEAR for a Base or Solana payee. |
+| `failed` | Definitely not paid. |
+| `unconfirmed` | Sent, and it may have paid. Never send it again. |
+
+The type `SpendOutcomeStatus` also lists `settled`, which `process()` never returns: a burn's release on Base or Solana is observed later. See [Spend outcomes](/docs/build/spend-outcomes).
+
+### Unconfirmed
+
+The outcome when `spend` was sent and may have paid. Never send it again, least of all under a fresh `ref`. Find the spend by its ref in the vault's spend list with `VaultClient.listAllSpends()`, or wait. `probarion.spends.get(id)` takes a spend id, not a ref. See [Find a spend by its ref](/docs/build/spend-outcomes#find-a-spend-by-its-ref).
+
+### `WITHDRAW_TO` memo
+
+`WITHDRAW_TO:<address>`, the memo of a payout to an Intents payee. The vault builds it from the payee stored in the mandate, never from the request, and verifier check h looks for it on every burn. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+### `payee_hint`
+
+What an invoice or the model's proposal says the payee is: a NEAR account, or a chain and an address, or a name. The code compares the invoice's hint, and an attested proposal's, with the mandate's payee and never pays it. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+### `mandate.payee_mismatch`
+
+The code rule that refuses a payment when a `payee_hint` from the invoice, or from an attested model proposal, contradicts the mandate's payee. Nothing is sent, and the outcome is `refused_by_code`. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+### `RuleId`
+
+The name of one off-chain rule in the SDK's code check, such as `mandate.over_per_payment`, `invoice.duplicate` or `ledger.unresolved`; your own rules are named `custom.<name>`. Each decision entry lists every rule the code ran, with its outcome: `pass`, `hold` or `refuse`. [Spend outcomes](/docs/build/spend-outcomes#refused-by-code) lists every rule id, and [Your own rules](/docs/build/let-an-agent-pay#your-own-rules) shows how to add one.
+
+### Verdict
+
+A word with two meanings. In the ledger, `Verdict` is the code's decision, `allow`, `hold` or `refuse`, stored in each decision entry. In the contract, `Verdict` is what `check_spend` returns, `{ ok, code, would_hold }`, which the TypeScript packages call `CheckSpendVerdict`. See [The ledger and anchors](/docs/concepts/ledger-and-anchors#the-body-of-an-entry) for the ledger meaning and [Payment checks](/docs/concepts/payment-checks#try-a-spend-without-sending-it) for `check_spend`.
+
+### `decided_by`
+
+Who decided, in a decision entry: `model+rules` when an attested model proposal passed its checks and the rules used it, `rules-only` when the code rules decided alone. Other entry kinds leave it null. See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+
+### Runway
+
+A vault's free NEAR: its balance minus what its storage locks. It pays the vault's storage and the gas of its spends and its anchors, and it never comes back out, because the vault has no method to withdraw NEAR. A plain NEAR transfer tops it up. See [Owner quickstart](/docs/start/owner-quickstart).
+
+## Ledger and verification
+
+### Ledger
+
+The off-chain, append-only log of what the code decided and what the contract did. Each entry is signed by the ledger key and chained by hash to the one before, and the SDK keeps it in a file, `.probarion/ledger.jsonl` by default. Each entry has a kind, and a decision entry also has a verdict:
+
+<CodeBlock title="packages/core/src/types.ts">
+
+```ts
+export type Verdict = "allow" | "hold" | "refuse";
+export type LedgerEntryKind = "decision" | "payment" | "approval" | "anchor" | "note";
+```
+
+</CodeBlock>
+
+See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+
+### Decision entry
+
+The entry the SDK writes and signs before it sends anything: the rules, the verdict, `decided_by`, and the model's proposal and evidence when there is one. Its `body_hash` is the spend's `decision_hash`. See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+
+### Payment entry
+
+The entry that records what the contract did: the vault code or the spend's status, the transaction hash and the spend id. It points back to its decision with `refs.decision_body_hash`. See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+
+### `body_hash`
+
+The sha256 of the RFC 8785 canonical JSON of an entry's body, as 64 lowercase hex. The ledger key signs its 32 raw bytes. See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+
+### `link`
+
+The hash that chains an entry to the one before: the sha256 of the entry's `prev_link`, its `body_hash` and its raw signature, in that order. The first entry's `prev_link` is 64 zeros. See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+
+### Anchor
+
+A record on chain of how far the ledger went. Its `seq` is one above the last anchor's, its `count` is the number of ledger entries from seq 0 up to the entry it pins, and its `root` is that entry's `link`. Its range is the entries after the previous anchor's count. Only the ledger key can call `anchor`. See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+
+### Snapshot
+
+One JSON file with the ledger and the chain data the verifier needs, such as the vault's keys, code hash, config, anchors, spends, burns, mandates, intents keys and factory version. Offline, the verifier checks the file against itself, so take the snapshot yourself or run the verifier live. See [Verify a vault](/docs/trust/verify-a-vault).
+
+### Verifier checks
+
+Checks a to i, which `verify` runs on a snapshot: `ledger-signatures` (a), `hash-links` (b), `anchors` (c), `spends-have-decisions` (d), `attestations` (e), `vault-locked` (f), `intents-keys` (g), `burn-memos` (h) and `factory-version` (i). Each result is `pass`, `fail`, `skip` or `unproven`. They are not the 14 spend checks the contract runs. See [Verifier checks](/docs/trust/verifier-checks).
+
+### Unproven
+
+A result only check h gives: it could not look at what it needs to prove a burn, such as the burn's transaction. The report is then not ok, and the CLI's `verify` exits with 2 when no check failed. See [check h](/docs/trust/verifier-checks#check-h).
+
+### Nonce
+
+A word with three meanings:
+
+- **In a model request**, the nonce is a value the SDK computes for each decision, so the model's attestation fits one place in one vault's ledger. It is the sha256 of the domain `probarion/v1`, the `prev_link`, the invoice hash, the mandate id, the `seq` of the decision entry about to be written and the vault's account id. See [The ledger and anchors](/docs/concepts/ledger-and-anchors).
+- **In the console's sign-in message**, the `Nonce:` line is 32 random bytes in hex, part of the NEP-413 message the wallet signs. The server accepts each one once. See [Owner quickstart](/docs/start/owner-quickstart).
+- **In `InvalidNonce`**, it is the NEAR access-key nonce: the number each transaction a key signs carries, which must be above the key's last one. See [Transaction failures](/docs/build/errors#transaction-failures).
+
+### NEAR AI Cloud
+
+NEAR AI's private inference service. The SDK's optional model step asks a private model there, in a [TEE](#tee), for one proposal per invoice and records the attestation that comes back. The adapter is Preview: it is tested against a fake NEAR AI Cloud, and no real attested decision has been recorded and verified yet. See [Let an agent pay](/docs/build/let-an-agent-pay).
+
+### TEE
+
+A trusted execution environment: isolated hardware that signs a report, an [attestation](#attestation), of what runs inside it. NEAR AI Cloud runs its private models in one. See [Security model](/docs/trust/security-model).
+
+### Attestation
+
+The evidence NEAR AI Cloud returns with a model's answer: a signature over the answer and an attestation report for the decision's nonce. A decision entry stores it. Verifier check e runs the attestation checks on it: A1 to A7 check that the signature, the response, the recorded proposal and the report agree with each other and with the ledger position, and A8 rebuilds the request from the invoice text, so it runs only when that text is supplied. The TEE measurement is not pinned yet, so it shows that the answer was attested and signed, not which model image ran. See [check e](/docs/trust/verifier-checks#check-e) and [Security model](/docs/trust/security-model).
+
+### NEP-297
+
+NEAR's standard for contract events. The vault logs each event, such as `spend_paid` or `ledger_anchored`, as an `EVENT_JSON:` line with the standard `probarion` and the version `1.0.0`. The factory's standard is `probarion_factory`. No docs page lists the events yet: they are in [`contracts/vault/src/events.rs`](https://github.com/probarion/probarion/blob/main/contracts/vault/src/events.rs), and [What works today](/docs/start/what-works-today#outbound-webhooks) says to index them to follow a vault.
+
+### NEP-413
+
+NEAR's standard for signed messages. The console's wallet sign-in uses it: the wallet signs a message for the recipient `probarion.xyz`, with a one-time [nonce](#nonce), not a transaction. See [Owner quickstart](/docs/start/owner-quickstart).
+
+### Code hash
+
+The hash NEAR records for an account's contract code. Check f passes only when the vault's code hash is a reproducible build recorded in `contracts/code-hashes.json` or, for a vault whose recorded factory is the network's canonical factory, a version that factory lists. See [Verify a vault](/docs/trust/verify-a-vault).
+
+## Networks and status words
+
+### Testnet
+
+NEAR's test network, where tokens have no value. It is the only network Probarion runs on today: the first vault `v0.probarion.testnet`, the factory `vaults.probarion.testnet` and the console all run there. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+### Mainnet
+
+NEAR's main network, with real tokens. It is planned: the mainnet vault `v0.probarion.near` and the factory `vaults.probarion.near` are not deployed, so no mainnet vault can be created yet. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+### NEAR Intents
+
+NEAR's intents protocol, whose contract is `intents.near` on mainnet. A vault holds the POA asset for its Base and Solana payees inside it and pays them by calling `ft_withdraw` there. The owner takes that balance back with `withdraw_intents`. NEAR Intents has no testnet, so `intents-stub.probarion.testnet` stands in for it there. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
+
+### `intents-stub`
+
+`intents-stub.probarion.testnet`, the testnet stand-in for `intents.near`, because NEAR Intents has no testnet. A payout to a Base or Solana payee burns the test token inside the stub, and nothing leaves NEAR. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+### USDC
+
+The stablecoin a vault holds and pays. Amounts are in its smallest unit, with 6 decimals: `1000000` is 1 USDC. On mainnet it is native USDC, `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`, and on testnet the test token `usdc.probarion.testnet`. See [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+### Test USDC
+
+The testnet faucet gives it out. Signed in as the vault's owner, on a testnet vault's Top-up tab (`/console/<vault>/topup`), the "Add test USDC" button mints 25 test USDC into the vault, with no wallet: the Probarion team's mint-only key signs it. It works once a UTC day per vault, and for up to 3 vaults per signed-in account a day. Without a faucet key on the server, the tab shows instead: "Need test USDC? Send @probarionhq a direct message on X with your vault's name." See [Owner quickstart](/docs/start/owner-quickstart).
+
+### Live, Preview and Planned
+
+The three status words of these docs:
+
+| Word | Meaning |
+| --- | --- |
+| Live | Works in this deployment. A Live part that runs on a chain runs on NEAR testnet. |
+| Preview | Built, but not yet run end to end with real wallets, or not open yet. |
+| Planned | Not built yet. |
+
+See [What works today](/docs/start/what-works-today) for the word each part has now.
+
+### Which status is which
+
+"Status" means a different thing in each place:
+
+| Where | Values | Term |
+| --- | --- | --- |
+| A mandate on chain | `active`, `revoked`, `exhausted` | [Mandate status](#mandate-status) |
+| A spend on chain | `held`, `pending`, `paid`, `burned`, `failed`, `rejected`, `expired` | [`SpendStatus`](#spendstatus) |
+| What `process()` returns | `refused_by_code`, `refused_by_contract`, `held`, `paid`, `burned`, `failed`, `unconfirmed` | [`SpendOutcome`](#spendoutcome) |
+| A verifier check | `pass`, `fail`, `skip`, `unproven` | [Unproven](#unproven) |
+| A part of Probarion in these docs | Live, Preview, Planned | [Live, Preview and Planned](#live-preview-and-planned) |

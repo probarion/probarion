@@ -1,0 +1,331 @@
+<Callout kind="key">
+
+`unconfirmed` means the spend may have paid. Never send it again, under the same ref or a new one. Find the spend by its ref, or wait.
+
+</Callout>
+
+Every cycle of `process()` and every call of `requestSpend()` ends in one `SpendOutcome`. Branch on `status` first, then read `spendId` and `code` to see where the spend ended and why. A problem that stops the cycle before it can end, such as a malformed argument, is thrown as an error instead: see [When process() throws](#when-process-throws).
+
+This page describes the SDK's code, and its tests show each outcome against a fake chain. The cycle as a whole is Preview: no run of `process()` against a testnet vault is recorded yet (see [Let an agent pay](/docs/build/let-an-agent-pay)).
+
+## The SpendOutcome object
+
+The SDK exports the types `SpendOutcome`, `SpendOutcomeStatus` and `ModelUsage`, and the constant `UNKNOWN_SETTLE_MS`.
+
+<CodeBlock title="packages/sdk/src/spend-outcome.ts">
+
+```ts
+export type SpendOutcomeStatus =
+  | "refused_by_code"
+  | "refused_by_contract"
+  | "held"
+  | "paid"
+  | "burned"
+  | "settled"
+  | "failed"
+  | "unconfirmed";
+```
+
+</CodeBlock>
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `status` | `SpendOutcomeStatus` | What the cycle came to. See [Statuses](#statuses). |
+| `spendId` | `number`, or `null` | The vault's id for the spend, when the vault took it or the answer named it. |
+| `code` | `string`, or `null` | A rule id for an outcome decided by code, the bare vault code for a refusal by the contract, and otherwise what failed or what is unknown. Null for `paid`, `burned` and a contract hold. |
+| `txHash` | `string`, or `null` | The `spend` transaction's hash. Null when no transaction ran, when the sender does not know the hash, or when the SDK found the spend by its ref: see [Paid, burned and settled](#paid-burned-and-settled). |
+| `ledgerSeq` | `number` | The seq of the last ledger entry the cycle wrote. |
+| `decisionHash` | `Hex32` | The body hash of the cycle's decision entry. The spend carries the same value on chain as `decision_hash`. |
+| `modelUsage?` | `ModelUsage`, or `null` | The model id and its token counts (`model`, `promptTokens`, `completionTokens`) when the model answered and reported its token counts, else null. `requestSpend()` always returns null here. |
+| `anchorTxHash` | `string`, or `null` | This cycle's anchor transaction. Null when the cycle wrote no anchor: see [Ledger fields](#ledger-fields). It is returned only, never stored in an entry. |
+| `ledgerComplete?` | `false` | Present only when the cycle's payment entry could not be written. See [Ledger fields](#ledger-fields). |
+
+## Statuses
+
+| Status | `spendId` | `code` | `txHash` | Money moved | Next action |
+| --- | --- | --- | --- | --- | --- |
+| `paid` | The spend's id | `null` | The spend transaction, or null when found by ref | Yes: USDC to the mandate's NEAR payee | Record `spendId` and `txHash`. |
+| `burned` | The spend's id | `null` | The spend transaction, or null when found by ref | Yes: out of the vault through NEAR Intents, for a Base or Solana payee | Record `spendId` and `txHash`. The release on the other chain comes later. |
+| `held`, contract hold | The spend's id | `null` | The spend transaction, or null when found by ref | No. The amount is reserved. | An approver approves or rejects it. See [Contract hold](#contract-hold). |
+| `held`, code hold | `null` | The first rule that held | `null` | No. Nothing was sent. | Change what caused the hold, then run the cycle again. See [Code hold](#code-hold). |
+| `refused_by_code` | `null` | The first rule that refused | `null` | No. Nothing was sent. | Fix what `code` names, then run the cycle again. For `invoice.duplicate`, read the rule's detail first. See [Refused by code](#refused-by-code). |
+| `refused_by_contract` | `null` | The bare vault code | `null` after a `check_spend` refusal, the failed transaction after a `spend` panic | No | Look the code up in [Errors](/docs/build/errors). See [Refused by the contract](#refused-by-the-contract). |
+| `failed` | Set when the vault took the spend and released it, else `null` | The spend's status, or why the transaction did not run or why its spend receipt failed | The spend transaction, or null when the spend was found by ref or no transaction ran | No. Definitely not paid. | Fix the cause. When `spendId` is set, retry under a new ref. See [Failed](#failed). |
+| `unconfirmed` | Set when the answer named one | What is unknown | Set whenever the sender knows it | Maybe | Never send it again. Find the spend by its ref, or wait. See [Unconfirmed](#unconfirmed). |
+| `settled` | - | - | - | - | None: a type member that `process()` never returns. |
+
+These are the seven statuses `process()` returns, with `held` split into its two kinds. `settled` is in the type for the later cross-chain release: a burn is not settled yet when the cycle ends, so `process()` never returns it.
+
+## Held: two kinds
+
+A `held` outcome means one of two different things, and `spendId` tells them apart. The SDK's integration test pins both shapes, the contract hold first and then the code hold:
+
+<CodeBlock title="packages/sdk/test/probarion.integration.test.ts">
+
+```ts
+expect(out).toMatchObject({ status: "held", spendId: 1, code: null });
+expect(out).toMatchObject({
+  status: "held",
+  spendId: null,
+  code: "intents.balance_low",
+  txHash: null,
+  ledgerSeq: 0,
+});
+```
+
+</CodeBlock>
+
+[Holds and approvals](/docs/concepts/holds-and-approvals) explains both kinds in full.
+
+### Contract hold
+
+`spendId` is set and `code` is null. The vault holds every spend whose amount is above the mandate's `approval_above`. An amount equal to `approval_above` pays at once. The hold comes from the contract, not from `decide()`: the code rules never read `approval_above`, so a spend that passes them is sent, and the vault answers `held`.
+
+While the spend is held, the vault keeps the amount, one use and the invoice hash reserved for it, and its ref is used. One of the vault's approvers ends the hold with `approve` or `reject`, each with exactly 1 yoctoNEAR attached. One approver is enough: there is no quorum. The hold lasts the vault's `held_ttl_ns`, one value for the whole vault, set when the vault is created and at most 30 days. Past the spend's `held_until_ns`, `approve` is refused with [`HoldExpired`](/docs/build/errors#HoldExpired), and anyone may call `expire_held` to release it.
+
+<Callout kind="approver-signs">
+
+An approver signs `approve` or `reject` from their own wallet, with exactly 1 yoctoNEAR attached. The CLI's `spend approve` and `spend reject` print the transaction and never sign it.
+
+</Callout>
+
+The cycle that returned `held` is over. The approval runs in the approver's own transaction, so read the spend later with `probarion.spends.get(spendId)`. After an approval it reads `pending`, then `paid`, `burned` or `failed`. After a rejection or an expiry it reads `rejected` or `expired`. A rejected or expired spend frees its invoice, but its ref stays used, so a new attempt at the same invoice needs a new ref.
+
+### Code hold
+
+`spendId` is null, `txHash` is null, and `code` is the first rule that held:
+
+| `code` | Holds when |
+| --- | --- |
+| `intents.balance_low` | The payee is paid through NEAR Intents, and the vault's balance of that asset inside intents is unknown or below the amount. |
+| `model.refused` | A model proposal whose attestation checks passed asked to hold. This one id covers every model action: `pay` passes, `hold` holds and `refuse` refuses. |
+| `model.low_confidence` | That trusted proposal's confidence is below `confidenceFloor`, 0.7 by default. |
+| `custom.*` | One of your own rules returned `hold`. |
+
+The SDK holds by code when the rules hold and `check_spend` says the vault would pay at once. It then sends nothing. The cycle writes its decision entry, with the verdict `hold`, and no payment entry.
+
+Nothing was sent and no call releases a code hold. No approver can act on it, because nothing is on chain. Change what caused the hold, then run the cycle again. Nothing reached the vault, so the invoice and the ref are still free for the new cycle.
+
+For `intents.balance_low`, the owner tops up the vault's balance inside NEAR Intents. On testnet the console cannot: its Top-up tab says "NEAR Intents and 1Click exist on mainnet only, so this page cannot top up a Base balance on testnet", and only `probarion.testnet` can mint the test tokens that stand in for the Base and Solana assets. This rule never holds a payment to a NEAR payee. [Testnet and mainnet](/docs/start/testnet-and-mainnet) explains the stand-ins.
+
+When the rules hold and the vault would hold the spend too, the SDK sends it and the vault holds it: the outcome is `held` with a `spendId`, and an approver decides. This follows from the SDK's code; no test shows it yet.
+
+## Unconfirmed
+
+`spend` was sent and may have paid. The SDK makes one `spend` call per decision and never sends the spend again after an unconfirmed outcome, and it never reports an answer that might have paid as refused or failed. Inside that one call, the SDK's sender signs the spend again only when the node refuses the nonce and says it does not know the copy just sent: see [Paid, burned and settled](#paid-burned-and-settled). `txHash` is set whenever the sender knows it, and `spendId` when the answer named one. `code` says what is unknown:
+
+| `code` | What happened |
+| --- | --- |
+| `TxOutcomeUnknown` | The SDK's sender threw [`TxOutcomeUnknownError`](/docs/build/errors#TxOutcomeUnknownError), and `txHash` is that error's hash. The same code comes back with `txHash` null when a sender the SDK does not know failed, because it may have sent the transaction. |
+| `pending` | The spend ran and its payout is still pending. `spendId` is set. |
+| `callback_failed` | The spend ran and a later receipt failed, or the result does not show which receipt failed. The payout may have gone out. |
+| `unreadable_value` | The transaction succeeded, but its return value is not a spend result. |
+| `DuplicateRef`, `DuplicateInvoice` | The vault answered with a duplicate code for a ref this cycle sent for the first time, and no spend holding that ref or invoice could be found: the RPC may be a block behind, or the lookup failed. |
+
+Do two things. Never send the spend again, least of all under a new ref. Then find the spend by its ref, or wait for the guard below to end. When the outcome also carries `ledgerComplete: false`, find the spend by its ref first, for the reason the warning under [The 48-hour guard](#the-48-hour-guard) gives.
+
+### Find a spend by its ref
+
+<Callout kind="warning">
+
+`probarion.spends.get(id)` takes a spend id, not a ref, and the contract has no lookup by ref. To find a spend by its ref, read the vault's spend list.
+
+</Callout>
+
+Illustrative. Run the file below from the root of a clone built as [Install](/docs/build/install) shows.
+
+<CodeBlock title="find-spend.mjs">
+
+```js
+import { RpcClient, VaultClient, resolveRpcUrls } from "./packages/sdk/dist/index.js";
+
+const ref = "INV-1"; // the ref of the unconfirmed cycle
+// Read-only: no sender, so it cannot sign anything. listAllSpends pages the contract's list_spends.
+const vault = new VaultClient("acme.vaults.probarion.testnet", new RpcClient({ urls: resolveRpcUrls("testnet") }));
+const spend = (await vault.listAllSpends()).find((s) => s.ref === ref) ?? null;
+console.log(spend === null ? "no spend with this ref yet" : `spend ${spend.id}: ${spend.status}`);
+```
+
+</CodeBlock>
+
+`resolveRpcUrls` uses `NEAR_RPC_URLS` instead of the network's default endpoints when that variable is set, whichever network you pass. To be sure the spend you found is this cycle's own, compare its `decision_hash` with the outcome's `decisionHash`.
+
+| The spend list shows | What it means | What to do |
+| --- | --- | --- |
+| No spend with this ref | The spend has not landed, or the RPC has not seen it yet. | Wait and read again. Do not send it again. |
+| `pending` | The payout was sent and its callback has not settled the spend yet. | Read again later. |
+| `paid` or `burned` | It paid. | Record it. Never pay this invoice again. |
+| `held` | The vault holds it for an approver. | See [Contract hold](#contract-hold). |
+| `failed`, `rejected` or `expired` | The vault released it. Nothing was paid. | The invoice is free again. The ref stays used, so a retry needs a new ref. |
+
+Once the chain shows the spend, the next cycle for the same invoice decides from the chain. A paid spend gives `refused_by_code` with `invoice.duplicate`, under any ref. A released spend lets the invoice pay again under a new ref. The SDK's outcome tests run both cases.
+
+### The 48-hour guard
+
+Until the outcome is known, a cycle that writes to the same ledger refuses the same invoice by code, with `ledger.unresolved`, under any ref. Such a cycle spends no model tokens, and other invoices are not blocked. The guard ends as soon as one of these holds:
+
+- A later payment entry of the same decision records a known status.
+- A spend on chain carries the decision's hash.
+- `UNKNOWN_SETTLE_MS`, 48 hours, has passed since the payment entry's `at`, and no spend on chain carries the decision's hash.
+
+<Callout kind="warning">
+
+The guard reads the cycle's payment entry. An `unconfirmed` outcome with `ledgerComplete: false` has no such entry, so nothing guards its invoice: find the spend by its ref before you run any cycle for that invoice. This follows from the SDK's code; no test shows it yet.
+
+</Callout>
+
+A transaction expires 86,400 blocks after it is signed, which is at most 48 hours at up to 2 seconds a block. Even if it lands later, the vault lets at most one spend of an invoice pay. The guard matches by invoice hash, because the ledger holds no ref. The refusing rule in the decision entry says when the invoice can go again. The part in parentheses appears only when the transaction hash is known:
+
+```text
+an unconfirmed payment for this invoice from <at> (tx <tx hash>) may still land; this invoice can be retried after <at plus 48 hours>, and its outcome may appear on chain sooner
+```
+
+## Failed
+
+Definitely not paid. `spendId` tells the two cases apart.
+
+### Failed after the vault took the spend
+
+`spendId` is set. The vault accepted the spend, the payout failed, and the vault released the spend. `code` is the spend's status on chain, `failed` in the usual case. A release gives back the reservation, the use and the invoice hash, but never the ref. So retry the same invoice under a new ref. The SDK's outcome test runs exactly that: a failed payout, the same ref again, then the new ref `INV-1-retry`.
+
+<CodeBlock title="packages/sdk/test/probarion.outcomes.test.ts">
+
+```ts
+expect(first).toMatchObject({ status: "failed", spendId: 1, code: "failed", ledgerSeq: 1 });
+expect(sameRef).toMatchObject({ status: "refused_by_code", code: "invoice.duplicate" });
+expect(retry).toMatchObject({ status: "paid", spendId: 2 });
+```
+
+</CodeBlock>
+
+The same ref comes back as `refused_by_code` with `invoice.duplicate`, because the ref stays used. The new ref pays as spend 2.
+
+A common cause is a vault that holds less USDC than the amount. The 14 checks on [Payment checks](/docs/concepts/payment-checks) do not read the vault's USDC balance, so the vault accepts the spend and the transfer fails. A sandbox test leaves a vault with 5 USDC, sends a 10 USDC spend, and gets back `{"spend_id":1,"status":"failed"}` with the reason `ft_transfer_failed`.
+
+For a NEAR payee on a testnet vault, the vault's owner, signed in to the console, opens its Top-up tab (`/console/<vault>/topup`) and presses "Add test USDC". Any other member of the vault who opens the tab reads "Only this vault's owner can top it up." and gets no button. The button mints 25 test USDC on NEAR into the vault, with no wallet: the team's mint-only key signs. It works once a UTC day per vault, for up to 3 vaults per signed-in account a day. Without a faucet key, the tab shows this instead: "Need test USDC? Send @probarionhq a direct message on X with your vault's name."
+
+For a Base or Solana payee, a withdrawal that NEAR Intents fails or refunds ends the same way, with the reason `ft_withdraw_failed` or `ft_withdraw_refunded`. The faucet does not add to a balance inside NEAR Intents.
+
+### Failed before the vault took the spend
+
+`spendId` is null. The vault never took the spend: the node refused the signed transaction, the transaction could not be sent, or the spend receipt failed without a vault code.
+
+| `code` | What happened | `txHash` | What to do |
+| --- | --- | --- | --- |
+| `TxSendFailed` | The transaction could not be sent. | `null` | Fix the sender or the RPC, then run the cycle again. |
+| `NotEnoughAllowance` | The agent key's gas allowance is used up, so the node refused the transaction before it ran. | `null` | The owner removes the key and adds it again with a new allowance, as below. |
+| `AccessKeyNotFound`, or another [`TxRejectedError`](/docs/build/errors#TxRejectedError) kind | `AccessKeyNotFound` means the agent key is not on the vault account: removed, or never added. Another kind names its own cause. | `null` | Fix what the kind names. For a missing key, the owner adds it with `agent add`. If the vault still lists the key in `list_agents`, the owner first removes it with `agent remove` and then adds it, as below. |
+| `LackBalanceForState` | The vault would fall below the NEAR its storage needs. Each paid spend keeps about 0.0048 NEAR of storage. | `null`, or the failed transaction | Send the vault account a plain NEAR transfer, then run the cycle again. |
+| `NotEnoughBalance` | The vault holds less NEAR than a spend must prepay for gas, about 0.02 NEAR at 200 Tgas. | `null`, or the failed transaction | Send the vault account a plain NEAR transfer, then run the cycle again. |
+| `TxFailed` | The spend receipt failed without a vault code, for example "Exceeded the prepaid gas." | The failed transaction | Read the transaction to see why before you run the cycle again. |
+
+Nothing was reserved, so the invoice and the ref are still free for the next cycle. This follows from the code; no test retries one of these under the same ref yet.
+
+The vault refuses to add a key it already lists, so the owner removes the spent key first and then adds it again. The same holds when the access key is gone but `list_agents` still shows the key. A sandbox test deletes an agent's access key, sees the vault still list one agent, then removes the agent, adds it again and pays with it. Its `remove_agent` transaction shows one failed receipt, `DeleteKeyDoesNotExist`, and the vault still drops the key from its list.
+
+The vault also keeps listing a key whose own key-adding receipt failed after `add_agent`, for example with `LackBalanceForState`, because the list changes with the call and the key is added in a receipt of its own. This follows from the contract's code; no test shows it for an agent key yet.
+
+A mandate names the public key itself, so re-adding the same key keeps the mandates bound to it usable. This follows from the contract's code; no test shows it for a mandate created before the removal.
+
+```bash
+# Illustrative values: your vault, the agent's public key and your owner account.
+node packages/cli/dist/bin.js --network testnet agent remove --vault acme.vaults.probarion.testnet \
+  --pk ed25519:... --sign-as owner.testnet --out-dir probarion-tx
+node packages/cli/dist/bin.js --network testnet agent add --vault acme.vaults.probarion.testnet \
+  --pk ed25519:... --allowance 1 --sign-as owner.testnet --out-dir probarion-tx
+```
+
+<Callout kind="owner-signs">
+
+The owner signs `remove_agent` and `add_agent` from their own wallet, each with exactly 1 yoctoNEAR attached. The CLI prints each transaction and never signs it. `--allowance` is the key's gas allowance in NEAR, 1 by default.
+
+</Callout>
+
+## Refusals
+
+Nothing was paid. A refusal by code sends nothing, and a refusal by the contract reverts every change, so neither one uses up this cycle's ref.
+
+### Refused by code
+
+`code` is the first rule id that refused. `decide()` records the rules that mirror the vault's checks in the contract's own order, so the first refusing mirrored rule is the code `spend` would have panicked with. The off-chain rules sit between them. The cycle writes its decision entry, with the verdict `refuse`, and nothing reaches the vault.
+
+| Rule | Effect | When | Vault code it mirrors |
+| --- | --- | --- | --- |
+| `contract.check_failed` | Refuses | The invoice hash or the ref has the wrong shape. `process()` and `requestSpend()` throw `InvalidInput` for these first. The SDK also writes this rule in a payment entry after a `check_spend` refusal, a `spend` panic, and any failure the vault did not release (a send that did not run, or a spend receipt that failed without a vault code). | [`InvalidInput`](/docs/build/errors#InvalidInput) |
+| `vault.frozen` | Refuses | The owner has frozen the vault. | [`Frozen`](/docs/build/errors#Frozen) |
+| `mandate.none` | Refuses | No mandate matches the invoice's purpose, or the mandate the model proposed does not exist. | [`NoMandate`](/docs/build/errors#NoMandate) |
+| `mandate.inactive` | Refuses | The mandate is revoked. | [`MandateInactive`](/docs/build/errors#MandateInactive) |
+| `mandate.expired` | Refuses | The mandate has expired, or the clock or the expiry cannot be read. | [`MandateExpired`](/docs/build/errors#MandateExpired) |
+| `mandate.agent_mismatch` | Refuses | The mandate is bound to another agent key. | [`NotMandateAgent`](/docs/build/errors#NotMandateAgent) |
+| `invoice.po_mismatch` | Refuses | The invoice has no `purpose_hash`, its purpose differs from the mandate's, or its purpose maps to another mandate. | None: off-chain only |
+| `mandate.payee_mismatch` | Refuses | The invoice's `payee_hint`, or the model's, contradicts the mandate's payee. A payee name never contradicts. | None: off-chain only |
+| `invoice.amount_invalid` | Refuses | The amount is not a positive integer in the token's smallest units, or the model's amount differs from the invoice's. | [`ZeroAmount`](/docs/build/errors#ZeroAmount), in part |
+| `mandate.over_per_payment` | Refuses | The amount is above the mandate's `max_per_payment`. | [`OverPerPayment`](/docs/build/errors#OverPerPayment) |
+| `mandate.uses_exhausted` | Refuses | The mandate has no use left. | [`UsesExhausted`](/docs/build/errors#UsesExhausted) |
+| `mandate.over_total` | Refuses | Spent plus reserved plus this amount would pass `max_total`. | [`OverMandateTotal`](/docs/build/errors#OverMandateTotal) |
+| `invoice.duplicate` | Refuses | The invoice is held, pending, paid or burned on the vault, or a spend has already used the ref. | [`DuplicateInvoice`](/docs/build/errors#DuplicateInvoice), [`DuplicateRef`](/docs/build/errors#DuplicateRef) |
+| `vault.daily_backstop` | Refuses | The vault's total for the UTC day plus this amount would pass the daily backstop. | [`OverDailyBackstop`](/docs/build/errors#OverDailyBackstop) |
+| `intents.balance_low` | Holds | See [Code hold](#code-hold). | None |
+| `model.refused` | Passes, holds or refuses | The model proposed `pay`, `hold` or `refuse`. An action it does not recognise refuses. | None |
+| `model.low_confidence` | Holds | The model's confidence is below `confidenceFloor`. | None |
+| `model.attestation_invalid` | Passes, noted only | A proposal passed to `requestSpend()` had no evidence, or its evidence failed the checks. The proposal was ignored, and the decision is rules-only. `process()` never records this rule. | None |
+| `model.unavailable` | Passes, noted only | The model failed, or in `process()` its answer failed the attestation checks at this ledger position. The proposal was dropped, and the decision is rules-only. | None |
+| `ledger.unresolved` | Refuses | An earlier payment of this invoice is unconfirmed and has not settled. The SDK adds it, not `decide()`. See [The 48-hour guard](#the-48-hour-guard). | None |
+| `custom.*` | Passes, holds or refuses | One of your rules returned `pass`, `hold` or `refuse`. A custom rule can only tighten the verdict. `probarion.rules.add()` throws `ConfigError` for an id that does not start with `custom.` or is only `custom.`, and for a rule with no `check()`. Once added, a rule that returns an outcome other than the three, or that throws, refuses. | None |
+
+`invoice.duplicate` covers two cases that need different actions, and only the rule's detail in the decision entry tells them apart. When the detail says the invoice "was already paid or is pending", a spend of that invoice is held, pending, paid or burned on the vault: do not pay it again, and a held one waits for its approver. When the detail says the ref "was already used", only the ref is spent: run the cycle again under a new ref.
+
+`PayeeMismatch` is not a vault code: a spend names no payee, so only the off-chain rule `mandate.payee_mismatch` can refuse a contradicting invoice. [Why spend has no payee](/docs/concepts/why-spend-has-no-payee) explains it.
+
+### Refused by the contract
+
+`code` is the bare vault code, such as `OverPerPayment`, never `PROBARION:OverPerPayment`. It comes back in one of two ways:
+
+- **After the `check_spend` dry run.** `txHash` is null, because nothing was sent. The payment entry records the contract status `check_failed` and the rule `contract.check_failed`.
+- **After a `spend` panic.** `txHash` is the failed transaction. The vault refused the spend and reverted every change. The payment entry records the contract status `refused` and the rule `contract.check_failed`. In the SDK's tests the vault is frozen between the dry run and the send, or two writers with different decisions race for the same invoice and the loser gets `DuplicateInvoice` because the other writer's spend holds it.
+
+The code rules cannot see everything. `decide()` has no list of the vault's agent keys, so [`NotAgent`](/docs/build/errors#NotAgent) has no rule, and the chain can change between the SDK's read and the send. Every vault code has its own row in [Errors](/docs/build/errors), anchored by its name, for example [`/docs/build/errors#OverPerPayment`](/docs/build/errors#OverPerPayment).
+
+## Paid, burned and settled
+
+- **`paid`.** The vault sent USDC to the mandate's NEAR payee with `ft_transfer`, and its callback settled the spend. Final.
+- **`burned`.** The mandate pays a Base or Solana address. The vault called `ft_withdraw` on NEAR Intents with the memo `WITHDRAW_TO:` followed by the payee's address, and the release on the other chain is observed later. The vault counts any withdrawal result other than an error or "0" as burned, because value may have left the vault. The payment entry records a settlement with the chain, a `tx_hash` of null and the spend transaction as `burn_tx_hash`, which is null too when the spend was found by its ref.
+- **`settled`.** The type member for that later release. `process()` never returns it.
+
+`txHash` is null on a `paid`, `burned` or `failed` outcome with a `spendId`, or on a contract hold, in one case: the vault answered `DuplicateRef` or `DuplicateInvoice` to a re-signed copy, and the SDK found this decision's own spend by its ref. A re-signed copy comes from the SDK's sender after `InvalidNonce`: it signs the same spend again only once the node says it does not know the first copy. If that first copy landed anyway, the vault answers the new copy with a duplicate code. The transaction that landed the spend is then unknown to the SDK, and the payment entry records the answered transaction as `contract.tx_hash`. The SDK's outcome tests pin this for `paid`, `burned` and `failed`. For a contract hold, it follows from the SDK's code; no test shows it yet.
+
+On NEAR testnet, `intents-stub` stands in for `intents.near`, so a `burned` payout does not leave NEAR. The SDK takes either network. Only NEAR testnet has a vault today, and the mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+## Ledger fields
+
+- **`ledgerSeq`.** The seq of the last entry the cycle wrote. It is the payment entry's seq when one was written, and the decision entry's when none follows: a refusal by code, a code hold, or a payment entry that could not be written.
+- **`decisionHash`.** The decision entry's body hash. The spend carries it on chain, which is how the verifier ties a spend to its decision.
+- **`anchorTxHash`.** The anchor written after the cycle. Null when the anchor was not needed, when the anchor failed, or when the vault's last anchor covers more entries than this ledger holds (the SDK logs a ledger fork warning, `LEDGER_FORK_RISK`, and does not anchor). An outcome test pins that last case. A failed anchor is only logged: the next cycle anchors the whole tail.
+- **`ledgerComplete: false`.** The payment entry could not be written. The outcome still stands, and the chain keeps the spend and its `decision_hash`, but the local ledger lacks the outcome entry. A complete cycle carries no `ledgerComplete` field at all. For a burned spend, [check h](/docs/trust/verifier-checks#check-h) may then report the burn as unproven, with the reason `not_recorded`.
+
+[The ledger and anchors](/docs/concepts/ledger-and-anchors) explains the entries and the anchors.
+
+## Duplicate reports
+
+Two identical calls can both report the same `spendId` as paid for one payment. In the SDK's test, two writers with identical decisions race: both outcomes are `paid`, with the same `decisionHash` and the same `spendId`, and the chain holds one spend. Count payments by `spendId`, never by successful outcomes.
+
+The same tests cover the other two cases. In one instance, a second identical call is `refused_by_code` with `invoice.duplicate`. Across two instances with different decisions, the loser is `refused_by_contract` with `DuplicateInvoice`. Run one writer per vault.
+
+## When process() throws
+
+Some problems end the call with an error instead of an outcome. Each class has its row in the SDK table on [Errors](/docs/build/errors), and [Thrown or returned](/docs/build/errors#thrown-or-returned) lists when `process()` throws. Here is what each one means for the cycle:
+
+- [`ProbarionError`](/docs/build/errors#ProbarionError) with the code `InvalidInput`, which also covers `facts` whose `invoice_hash` is not the hash of the invoice text, or whose `po_ref` is not copied from it word for word: thrown before any write.
+- [`ConfigError`](/docs/build/errors#ConfigError): thrown before any write for an instance with no agent key or no ledger key, an agent key that does not sign as the vault account, a vault with no ledger key yet (`set_ledger_key`), or a ledger key that is not the vault's. It is also thrown at spend time when the agent's sender refuses the call as not set up. In the SDK's tests, a ledger key that is not the vault's leaves the ledger empty and sends nothing, and a `ConfigError` at spend time leaves the decision entry written, no payment entry, nothing anchored and no spend sent.
+- [`RpcError`](/docs/build/errors#RpcError) or [`ViewError`](/docs/build/errors#ViewError): a read of the vault failed, and nothing was sent. A failed read before the decision comes before any write. A failed `check_spend` dry run comes after the decision entry is written. Either way the ref is still free, so run the cycle again. This follows from the SDK's code; no test shows it yet.
+- [`LedgerConflictError`](/docs/build/errors#LedgerConflictError): another writer moved the ledger first. No entry was written and no spend was sent. Run the cycle again.
+- [`LedgerError`](/docs/build/errors#LedgerError): the ledger store failed, and no spend was sent. When a store that does not compare-and-append puts the decision at another position than the one it was attested for (`LEDGER_FORK_RISK`), that entry is written.
+- [`ProbarionError`](/docs/build/errors#ProbarionError) with the code `Internal`: a failed internal consistency check, thrown before any write.
+
+## Related pages
+
+- [Let an agent pay](/docs/build/let-an-agent-pay): run the cycle inside your agent.
+- [Holds and approvals](/docs/concepts/holds-and-approvals): both kinds of hold, and what a release gives back.
+- [Payment checks](/docs/concepts/payment-checks): the 14 checks a spend meets inside the vault.
+- [Errors](/docs/build/errors): every vault code and SDK error.
+- [Verifier checks](/docs/trust/verifier-checks): how `verify` ties spends, decisions and burns together.

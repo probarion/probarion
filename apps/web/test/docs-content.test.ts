@@ -26,6 +26,20 @@ function parsePage(path: string): Root {
 
 const TREES = new Map(PAGES.map((p) => [p.path, parsePage(p.path)]));
 
+/**
+ * A page's anchors, computed once: a page with many links would parse its targets again for
+ * each one.
+ */
+const ANCHORS = new Map<string, Set<string>>();
+function pageAnchors(path: string): Set<string> {
+  let ids = ANCHORS.get(path);
+  if (!ids) {
+    ids = anchorsOf(readMdx(path), fileOf(path));
+    ANCHORS.set(path, ids);
+  }
+  return ids;
+}
+
 function treeOf(path: string): Root {
   const tree = TREES.get(path);
   if (!tree) throw new Error(`no tree for ${path}`);
@@ -72,7 +86,7 @@ function linkProblem(url: string, from: string): string | null {
   if (url.startsWith("#")) {
     const id = decoded(url.slice(1));
     if (id === null) return BAD_ESCAPE;
-    return anchorsOf(readMdx(from), fileOf(from)).has(id) ? null : `no ${url} on this page`;
+    return pageAnchors(from).has(id) ? null : `no ${url} on this page`;
   }
   if (/^mailto:/i.test(url)) return "no mailto links";
   if (/^http:/i.test(url)) return "use https";
@@ -111,7 +125,7 @@ function linkProblem(url: string, from: string): string | null {
     if (hash) {
       const id = decoded(hash);
       if (id === null) return BAD_ESCAPE;
-      if (!anchorsOf(readMdx(page.path), fileOf(page.path)).has(id)) {
+      if (!pageAnchors(page.path).has(id)) {
         return `no #${hash} on ${path}`;
       }
     }

@@ -1,0 +1,220 @@
+This page builds the packages of the repository, all at version 0.1.0: `@probarion/core`, `@probarion/sdk` and the `probarion` CLI. At the end the CLI runs as `node packages/cli/dist/bin.js`, the offline verifier passes on a committed test file, and your scripts import the SDK from the clone.
+
+<Callout kind="note" title="Build from source">
+The packages are not on npm yet (0.1.0 is planned), so build from source. Their npm release is Planned: the tag-driven release pipeline is in place, and nothing is published. The build from source works today. The SDK and the CLI themselves are Preview in the [status list](/docs/start/what-works-today#sdk-and-cli): in source, not on npm.
+</Callout>
+
+## Requirements
+
+- **Node.js 24 or newer.** The `engines` field of every package says `node >=24`, and the repository's `.nvmrc` names 24, for a version manager that reads it.
+- **pnpm 10.** The root `package.json` accepts pnpm `>=10 <11` and names `pnpm@10.34.9` as its package manager.
+- **git**, for the clone.
+- **bash, zsh or PowerShell.** Each setup command sits on its own line, so Windows PowerShell 5.1, which has no `&&`, runs them too.
+- **ES modules.** The packages are ESM only, with no CommonJS build: load them with `import`.
+
+Optional: `@nearai/inference-sdk`, which only the online attestation check (`verify --online`) uses, needs Node 24.22.1 or newer. The CLI lists it as an optional dependency, so `pnpm install` in the clone installs it, unless it cannot: an optional dependency that fails to install is left out. Everything else runs on any Node 24.
+
+You need no Rust, wallet, NEAR account or key to build. Rust is needed only for the contracts: the contract tests that `pnpm verify` runs, the contract build (`pnpm contracts:build`, with cargo-near) and the sandbox tests (`pnpm test:sandbox`).
+
+Check your versions first. `node --version` prints v24 or later, and `pnpm --version` prints a 10.x version:
+
+```bash
+node --version
+pnpm --version
+```
+
+## Build
+
+<Steps>
+
+1. **Open a shell in the folder where you keep projects.** The clone goes into a new `probarion` folder there.
+
+2. **Run the lines of one tab, in order.** The "Everything" tab starts after the clone: for it, run the first line of "Packages only" first, then the lines of "Everything".
+
+   <CodeTabs labels="Packages only, Everything">
+
+   ```bash
+   git clone https://github.com/probarion/probarion
+   cd probarion
+   pnpm install
+   pnpm --filter "{packages/cli}..." build
+   ```
+
+   ```bash
+   cd probarion
+   pnpm install --frozen-lockfile
+   pnpm build
+   ```
+
+   </CodeTabs>
+
+   "Packages only" is the setup the proof page, the security page and the console's CLI fallback print. It clones the repository, installs, and builds the CLI together with the packages it depends on, `@probarion/core` and `@probarion/sdk`, in build order. "Everything" is the build from the repository README. It installs exactly what the committed lockfile names, and its `pnpm build` builds every package of the workspace, the Next.js website in `apps/web` included. The README timed that route at about three and a half minutes on a first install: 2 min 42 s to install, 34 s to build.
+
+3. **Update an older clone.** The CLI and your scripts run the built files in each `dist` folder, which change only when you build. In the `probarion` folder, pull, install and run the build line again (`pnpm build` instead, if you used the "Everything" tab):
+
+   ```bash
+   git pull
+   pnpm install
+   pnpm --filter "{packages/cli}..." build
+   ```
+
+</Steps>
+
+## Check the build
+
+Run these from the root of the clone. None of them needs a key or a wallet, and none sends anything.
+
+**The version.**
+
+```bash
+node packages/cli/dist/bin.js --version
+```
+
+```text
+0.1.0
+```
+
+**The commands.** The help lists the program options and the commands. This output was captured through a pipe, so its lines wrap at 80 columns; a terminal wraps them to its own width:
+
+```bash
+node packages/cli/dist/bin.js --help
+```
+
+```text
+Usage: probarion [options] [command]
+
+Spend by mandate. Prove every payment. (Unaudited beta.)
+
+Options:
+  -V, --version        output the version number
+  --network <network>  mainnet | testnet (default: NEAR_NETWORK, else testnet)
+  --rpc <urls>         comma-separated NEAR RPC URLs (default: NEAR_RPC_URLS,
+                       else the network defaults)
+  -h, --help           display help for command
+
+Commands:
+  vault                vault commands (owner transactions are printed, never
+                       signed)
+  mandate              mandate commands (owner transactions are printed, never
+                       signed)
+  agent                agent keys
+  ledger               ledger commands
+  spend                spend commands (transactions are printed, never signed)
+  check [options]      dry-run check_spend for an invoice: a free view call;
+                       nothing is signed or sent
+  verify [options]     verify a vault's ledger signatures, hash links, anchors,
+                       decisions, attestations, keys, burn memos and factory
+                       version
+  help [command]       display help for command
+```
+
+Each command has its own help, such as `node packages/cli/dist/bin.js verify --help`. Program options can come before the command, as the console writes `node packages/cli/dist/bin.js --network testnet vault create ...`, or after it, as the proof page writes `verify --network testnet --vault <vault>`. The [CLI README](https://github.com/probarion/probarion/blob/main/packages/cli/README.md) describes every command.
+
+**The offline verifier.** The fixture is a committed snapshot of a ledger and its chain state, signed with test keys. It is not a live vault, and the check reads no network:
+
+```bash
+node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json
+```
+
+The report starts with `Probarion verify: x.vaults.probarion.testnet (testnet)` and the time it ran, gives checks a to i a `PASS` each, and ends with these lines. The command exits 0.
+
+```text
+9 passed, 0 failed, 0 unproven
+RESULT: PASS
+```
+
+[Verify a vault yourself](/docs/trust/verify-a-vault) runs `verify` on a live vault.
+
+## Use the SDK from your code
+
+Until the npm release, a script imports the built files by path. From a script in the root of the clone:
+
+| Package | Entry point | Import path |
+| --- | --- | --- |
+| `@probarion/sdk` | `.` | `./packages/sdk/dist/index.js` |
+| `@probarion/sdk` | `./testing` | `./packages/sdk/dist/testing/index.js` |
+| `@probarion/core` | `.` | `./packages/core/dist/index.js` |
+
+Each file has its type declarations beside it. `./testing` holds test doubles: a fake chain, a fake NEAR JSON-RPC server and a fake NEAR AI Cloud. A test that passes against them does not show that a real vault behaves the same. The root `package.json` sets `"type": "module"`, so a `.js` or `.mjs` file in the root of the clone is an ES module.
+
+Code in its own project folder can import the same files by a relative path to the clone, such as `../probarion/packages/sdk/dist/index.js` from a folder next to it. The file must be an ES module: an `.mjs` file, or a `.js` file under a `package.json` that sets `"type": "module"`. Node resolves the SDK's own dependencies from its folder in the clone. This follows from the code; no test shows it yet.
+
+**A read-only example.** This is step 4 of the README's evaluation, saved as a file in the root of the clone. An instance with no keys and `model: null` lists the mandates of the testnet vault `v0.probarion.testnet` and dry-runs a spend of 2 USDC and one of 6 USDC with the contract's free `check_spend` view. It signs nothing and sends nothing.
+
+<CodeBlock title="read-vault.mjs">
+
+```js
+import { Probarion } from "./packages/sdk/dist/index.js";
+const vault = new Probarion({ network: "testnet", vault: "v0.probarion.testnet", model: null });
+for (const m of await vault.mandates.list())
+  console.log(`mandate ${m.id} "${m.label}": ${m.status}, pays ${m.payee.account_id ?? m.payee.address}, at most ${m.max_per_payment} per payment`);
+const invoiceHash = "ab".repeat(32);
+console.log("2 USDC:", await vault.checkSpend({ mandateId: 1, amount: "2000000", invoiceHash, ref: "README-1" }));
+console.log("6 USDC:", await vault.checkSpend({ mandateId: 1, amount: "6000000", invoiceHash, ref: "README-1" }));
+```
+
+</CodeBlock>
+
+```bash
+node read-vault.mjs
+```
+
+The repository README records this output. The script reads the live vault, so its output changes when the vault changes or when its mandates expire, as [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes) also warns:
+
+```text
+mandate 1 "smoke near": active, pays probarion-payee.testnet, at most 5000000 per payment
+mandate 2 "smoke base": active, pays 0x1111111111111111111111111111111111111111, at most 5000000 per payment
+2 USDC: { ok: true, code: null, would_hold: false }
+6 USDC: { ok: false, code: 'OverPerPayment', would_hold: false }
+```
+
+Amounts are strings in USDC base units, with 6 decimals, so `"2000000"` is 2 USDC. Mandate 1 allows at most 5 test USDC per payment, so the contract accepts 2 and refuses 6, until the mandate expires.
+
+The smoke mandates expire on 2026-12-01, 30 days after the 2026-11-01 smoke run that created them. After that both dry runs should answer [`MandateExpired`](/docs/build/errors#MandateExpired), because the contract checks expiry before the per-payment limit, and `mandates.list()` still prints `active`, since a mandate's status does not count its expiry. This follows from the contract's code; no test shows it on this vault yet.
+
+Run the SDK in Node, on your server: its default ledger store is a file, and the agent and ledger keys stay server-side. The SDK is an unaudited beta, and a 0.x minor release may change its API.
+
+A packaged install for your own project, with `import { Probarion } from "@probarion/sdk"`, comes with the npm release 0.1.0, which is Planned. Until then, the [SDK README](https://github.com/probarion/probarion/blob/main/packages/sdk/README.md) notes that importing by name works in a package of the clone's pnpm workspace that depends on it.
+
+## Configure
+
+[`.env.example`](https://github.com/probarion/probarion/blob/main/.env.example) lists these variables for the SDK and the CLI, most with a comment. The Read by column says which package reads each one from the process environment. Where the SDK does not read one, your code reads it and passes the value as an option, such as `network`, `vault`, `agentKey`, `ledgerKey` or `model.apiKey`. Neither package loads a `.env` file by itself: set the variables in the shell that runs your code, or pass the values as options. An empty value counts as unset.
+
+| Variable | Read by | What it sets |
+| --- | --- | --- |
+| `NEAR_NETWORK` | CLI | The network when `--network` is not given: `mainnet` or `testnet`. Unset: `testnet`. The SDK takes `network` as an option. |
+| `NEAR_RPC_URLS` | SDK, CLI | Comma-separated RPC URLs, in failover order. The SDK's `rpcUrls` option and the CLI's `--rpc` take precedence. Unset: the network's default RPCs. |
+| `NEAR_ARCHIVAL_RPC_URLS` | SDK, CLI `verify` | Archival RPCs for burn transactions older than about 2.5 days. The CLI's `--archival-rpc` takes precedence. Unset: FastNEAR's archival node for the network. |
+| `PROBARION_VAULT_ID` | CLI | The default for `--vault`. The SDK takes `vault` as an option. |
+| `PROBARION_FACTORY_ID` | CLI `vault create` | The factory that creates the vault. Unset: the network's factory. |
+| `PROBARION_LEDGER_PATH` | SDK, CLI `verify` and `ledger export` | The ledger file. Unset: `.probarion/ledger.jsonl` in the working directory. |
+| `PROBARION_AGENT_KEY` | CLI `check` | The SDK does not read it: your code passes it as `agentKey`. Without `--agent-pk`, `check` checks as the public key of this secret, and never prints the secret. |
+| `PROBARION_LEDGER_KEY` | Neither | Your code passes it as `ledgerKey`. |
+| `NEARAI_API_KEY` | Neither | Your code passes it as `model.apiKey`, for the optional model step. With `model: null` the code decides alone. |
+| `NEARAI_MODEL` | SDK | The NEAR AI Cloud model when `model.model` is not given. |
+
+<Callout kind="warning" title="One setting for both networks">
+`NEAR_RPC_URLS` and `NEAR_ARCHIVAL_RPC_URLS` replace the RPCs of whichever network you pass, and `.env.example` sets both to testnet URLs. With those values, a run with `--network mainnet` still talks to testnet RPCs, since nothing in the packages checks which chain an RPC serves. This follows from the code; no test shows it yet. Unset both, or set mainnet URLs, before a mainnet run. `.env.example` also sets `PROBARION_FACTORY_ID` and `PROBARION_VAULT_ID` to testnet accounts, which the CLI uses on any network: with them, `vault create` targets the testnet factory and the other commands default to the testnet vault. Unset them too, or set mainnet values. The `_MAINNET` and `_TESTNET` names in `.env.example` are for the web app only: the SDK and the CLI read the unsuffixed names.
+</Callout>
+
+Only NEAR testnet is live today, and the mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+
+## Common mistakes
+
+- **An engines or version error during the install.** The repository needs Node 24 or newer and pnpm 10. Check `node --version` and `pnpm --version`.
+- **A script cannot load the packages.** There is no CommonJS build. Load them with `import` from an ES module: an `.mjs` file, or a `.js` file under a `package.json` that sets `"type": "module"`, as the root of the clone does.
+- **Node cannot find `packages/cli/dist/bin.js`.** Run the CLI from the root of the clone, after the build line. The `dist` folders exist only after a build.
+- **The build takes long.** `pnpm build` builds the website too. For the SDK and the CLI alone, run `pnpm --filter "{packages/cli}..." build`.
+- **An older clone acts on old code.** Pull, then run `pnpm install` and the build line again, as in step 3 of the build.
+- **An owner command the CLI printed fails in cmd.exe.** The printed commands are written for bash, zsh and PowerShell, and the CLI says so under each one: "Run it in bash, zsh or PowerShell (not cmd.exe)."
+- **A mainnet run reads testnet.** `NEAR_RPC_URLS` still holds the testnet URL from `.env.example`, or `PROBARION_FACTORY_ID` and `PROBARION_VAULT_ID` still name the testnet accounts from it. See [Configure](#configure).
+
+## Next steps
+
+- [Developer quickstart](/docs/start/developer-quickstart): one payment on testnet. Its step 1 is this build: with the clone built, start at its step 2, in the `probarion` folder.
+- [Let an agent pay](/docs/build/let-an-agent-pay): the choices a production payment loop makes.
+- [Verify a vault yourself](/docs/trust/verify-a-vault): run the verifier on a live vault and read its report.
+- [Errors](/docs/build/errors): the vault, SDK and HTTP error codes.
+- [What works today](/docs/start/what-works-today): the status of each part, the npm release included.
+- [For AI agents](/docs/resources/for-ai-agents): the rules for an agent that builds on Probarion.
+- The [CLI README](https://github.com/probarion/probarion/blob/main/packages/cli/README.md) and the [SDK README](https://github.com/probarion/probarion/blob/main/packages/sdk/README.md) list every command and the rest of the API.
