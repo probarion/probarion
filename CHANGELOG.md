@@ -5,7 +5,7 @@ All notable changes to this repository: the NEAR contracts in `contracts/`, the 
 The MCP server `@probarion/mcp` is planned and does not exist yet.
 
 Versions follow semver. The npm packages share one version, released by the tag `sdk-v<version>`;
-none is published yet. A contract crate carries its own version, and each build of it is identified
+0.1.0 was published on 2026-11-09. A contract crate carries its own version, and each build of it is identified
 by the code hash of its reproducible build in `contracts/code-hashes.json`. The web console is not
 versioned yet, and it deploys from `main` to <https://probarion.xyz>. While the version is 0.x, a minor version may change the API.
 The software is an unaudited beta.
@@ -16,24 +16,33 @@ The software is an unaudited beta.
 
 - The Docs Center at `/docs`: 23 pages in five sections (Start here, Concepts, Build, Verify &
   trust, Resources), with a home of four doors (new here, owner, developer, evaluator). Each page
-  was written from the code and checked against it by separate reviewers. Each page says what is
-  Live, Preview or Planned. Its source box shows the commit the page was built from, the date it
-  was reviewed and the files it was checked against.
-  - The reference tables are generated from their sources, and tests pin them, so a table that
-    drifts fails the build: the vault's 14 checks in their order, every `PROBARION:` code with the
-    call that raises it and what to do next, the SDK and HTTP errors, the verifier's checks a to i,
-    and the status list.
+  was written from the code and checked against it in a separate verification pass. Each guide,
+  tutorial and explanation marks what is Live, Preview or Planned; the sidebar's legend says what
+  Preview means. Every page but the docs home has a source box with the date it was reviewed, the
+  commit it was built from and the files it was checked against, and a "Copy page" button.
+  - The reference tables are rendered from typed lists that tests pin to the code, so a table that
+    drifts fails CI: the vault's 14 checks in their order, every `PROBARION:` code with the call
+    that raises it and what to do next, the SDK and HTTP errors, the verifier's checks a to i, and
+    the status list.
   - Every owner and approver command carries a callout naming who signs it. A test checks every
-    CLI line in the pages against the CLI's own commands.
+    CLI line in the pages against the CLI's own commands and options, and each callout's signer
+    against the CLI's owner and approver calls.
   - Search opens with Ctrl K or ⌘K, from the docs bar or from the home's search box. It loads a
-    static index of every page's full text on first open and finds pages, error codes and CLI
-    commands. An exact error code goes to its row in the catalog. Without JavaScript, the search
-    links go to the home's list of popular searches.
-  - Every page has a Markdown twin at `/docs/<page>.md` and a "Copy page" button. `/llms.txt` lists
-    the pages, and `/llms-full.txt` holds them all, for AI agents.
-  - A Playwright spec checks the home's fold at 1440×900, the keyboard path through search, the
-    table of contents, the phone drawer, sideways overflow, the twins' headers, the 404s, the docs
-    without JavaScript and a blocked clipboard.
+    static index of every page but the home on first open and finds pages, error codes and CLI
+    commands. An exact error code, or a pasted `PROBARION:<Code>` line, ranks that code's row in
+    the catalog first, and opening a result moves focus to it. Without JavaScript, the search links
+    go to the home's list of popular searches.
+  - Every page has a Markdown twin at `/docs/<page>.md` whose first lines name the date it was
+    reviewed and the commit it was built from. `/llms.txt` lists the pages, and `/llms-full.txt`
+    holds them all for AI agents, with `X-Robots-Tag: noindex`.
+  - A section's address, such as `/docs/build`, redirects (308) to its first page.
+  - The landing's SDK and CLI cards link the developer quickstart and the install page, and its
+    outcome statuses link "What each status means".
+  - A Playwright spec, run locally and not in CI, checks the home's fold at 1440×900, the keyboard
+    path through search, the sidebar's current link, the table of contents and its scroll-spy, the
+    phone drawer, sideways overflow at 390 px, the twins' headers, the section redirects, the
+    install page's code tabs, the 404s, the docs without JavaScript and a blocked or missing
+    clipboard.
 - A Canary attempt stores the source its link named: `/canary?via=x` stores `x` in the new column
   `canary_attempts.via` (migration `20261108000014_canary_via.sql`). The set is closed (`home`,
   `x`, `share`, `readme`, `proof`, `tamper`, `ext` and `usage`, in
@@ -371,6 +380,13 @@ The software is an unaudited beta.
   column. The landing page's closing button "Evaluate in 5 minutes" opens the docs page of that
   name in the same tab, not the README section. The sitemap lists every docs page with the date it
   was reviewed.
+- The docs, the README and the landing say that release 0.1.0 of `@probarion/core`,
+  `@probarion/sdk` and the `probarion` CLI is on npm: the install page, the developer quickstart,
+  the status table, and the landing's "0.1.0 on npm" pill for the SDK and CLI and "Shipped, on npm"
+  for the offline verifier. The README's evaluation starts with the verifier in the browser at
+  `/#verify`, and its "NEAR technology used, and how" table adds NEP-297 events, near-workspaces
+  and cargo-near and says what is not tried live yet: an intents payout with a live quote and an
+  attested NEAR AI Cloud decision.
 - The READMEs of `@probarion/core`, `@probarion/sdk` and the `probarion` CLI install from npm
   (`npm install @probarion/core`, `npm install @probarion/sdk @probarion/core`, `npm install -g probarion`
   or `npx probarion`) and keep the steps to build from a clone. These are the pages npm shows for
