@@ -46,6 +46,8 @@ async function mockChain(page: Page) {
 test("each scenario shows the contract's answer", async ({ page }) => {
   await mockChain(page);
   await page.goto("/#try");
+  // The page has hydrated and the first live answer has arrived before any click: a click before that goes nowhere.
+  await expect(page.getByText(/Answer from /)).toBeVisible();
   // Scoped to #try: the ledger test has its own live region further down. The region holds the verdict, then its sentence.
   const verdict = page.locator('#try [aria-live="polite"] p').first();
   await expect(verdict).toHaveText("Would pay");
@@ -74,6 +76,8 @@ test("a typed amount that is not one sends nothing and says so", async ({ page }
   });
   await page.getByLabel("Amount", { exact: true }).fill("1,5");
   await expect(page.getByText("Not an amount", { exact: true })).toBeVisible();
+  // A grace window for a negative assertion: the typed text is debounced by 250 ms, so a request that was going to
+  // leave would have left well within 400 ms. There is nothing to wait for, which is the point.
   await page.waitForTimeout(400);
   expect(calls).toBe(0);
 });
@@ -86,16 +90,32 @@ test("with both RPC hosts down it shows the recorded answer, dated", async ({ pa
   await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
 });
 
-for (const width of [390, 1440]) {
+for (const width of [320, 390, 1440]) {
   test(`the landing page does not scroll sideways at ${width} px`, async ({ page }) => {
     await mockChain(page);
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
+    // Hydrated, with the first live answer, before any click.
+    await expect(page.getByText(/Answer from /)).toBeVisible();
+    const verdict = page.locator('#try [aria-live="polite"] p').first();
+    const noSideScroll = async () => {
+      const [sw, cw] = await page.evaluate(() => [
+        document.documentElement.scrollWidth,
+        document.documentElement.clientWidth,
+      ]);
+      expect(sw).toBe(cw);
+    };
+
     await page.getByRole("button", { name: /A hijacked prompt/ }).click();
-    const [sw, cw] = await page.evaluate(() => [
-      document.documentElement.scrollWidth,
-      document.documentElement.clientWidth,
-    ]);
-    expect(sw).toBe(cw);
+    await expect(verdict).toHaveText("OverPerPayment");
+    await noSideScroll();
+
+    // Mandate 2 pays a Base address: its payee is the long 0x... one. Wait for its own answer, then measure again.
+    await page.locator("#try select").first().selectOption("2");
+    await expect(
+      page.getByRole("heading", { name: /Mandate 2, as the chain has it/ }),
+    ).toBeVisible();
+    await expect(verdict).toHaveText("OverPerPayment");
+    await noSideScroll();
   });
 }
