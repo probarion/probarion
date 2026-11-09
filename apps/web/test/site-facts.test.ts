@@ -248,21 +248,16 @@ describe("what an offline run shows", () => {
     expect(verify).toContain('.option("--vault <id>"');
   });
 
-  it("says under the closing headline which testnet vault passes a live run, and which fails it", () => {
+  it("says under the closing headline which testnet vault passes a live run, and leaves the one that fails to the known gaps (audit P1-10)", () => {
     expect(CLOSING.live).toBe(
-      "A live run reads the chain itself: `verify --vault`. On `demo.vaults.probarion.testnet` it passes checks a to i. On `v0.probarion.testnet` it fails checks d and h, because its smoke run sent spends without a ledger.",
+      "A live run reads the chain itself: `verify --vault`. On `demo.vaults.probarion.testnet` it passes checks a to i.",
     );
-    expect(CHECK_LABELS.d).toBe("A decision for every spend");
-    expect(CHECK_LABELS.h).toBe("Burn memos");
     expect(visibleText(landing())).toContain("it passes checks a to i");
-    // The pass is the recorded live run's (test/demo-vault.test.ts ties it to the chain); the fail is the README's.
+    // The pass is the recorded live run's (test/demo-vault.test.ts ties it to the chain).
     const demo = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")).demo_vault;
     expect(demo.account).toBe("demo.vaults.probarion.testnet");
     expect(text(ROOT, "docs", "evidence", "demo-vault", "verify-2026-11-09.txt")).toContain(
       "RESULT: PASS",
-    );
-    expect(README.replace(/\s+/g, " ")).toContain(
-      "`verify --vault v0.probarion.testnet` prints `RESULT: FAIL` today: check d finds spends with no decision in the ledger, and check h",
     );
   });
 
@@ -536,13 +531,16 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
   });
 
   it("what the smoke run was, and that mainnet is still planned", () => {
-    expect(CHAIN.intro).toContain("no ledger");
+    // Its missing ledger is told once, in the known gaps (audit P1-10).
+    expect(CHAIN.intro).toBe(
+      "A smoke run of the contract alone on NEAR testnet, with test tokens, on 2026-11-01.",
+    );
     expect(HERO.note).toContain("test tokens");
     expect(HERO.fineprint).toContain("mainnet planned");
   });
 
-  it("the license", () => {
-    expect(FOOTER.note).toContain("MIT");
+  it("the license, in a footer note that does not ask for small amounts of test tokens (audit P1-10)", () => {
+    expect(FOOTER.note).toBe("Unaudited beta. Built for the NEAR Hackathon 2026. MIT license.");
     expect(text(ROOT, "LICENSE").startsWith("MIT License")).toBe(true);
   });
 
@@ -567,9 +565,29 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       readme: [{ start: "Reproducible builds", says: ["**Shipped**"] }],
     },
     {
-      row: "Web console",
-      pill: "In progress",
-      readme: [{ start: "Web console", says: ["**In progress**"] }],
+      row: "Web console: vault, keys, faucet, mandate, Payables, proof page",
+      pill: "Tried on testnet",
+      readme: [
+        {
+          start: "Web console",
+          says: [
+            "**In progress**",
+            "went further with a real wallet: Create a vault, the agent and ledger keys, the faucet, a mandate, four Payables invoices and a public proof page",
+          ],
+        },
+      ],
+    },
+    {
+      row: "Web console: Freeze, approving in the console, USDC top-up",
+      pill: "Built, not tried yet",
+      readme: [
+        {
+          start: "Web console",
+          says: [
+            "The other console actions, such as Freeze, approving from the console and the Top-up tab's USDC transfer, have not been tried yet",
+          ],
+        },
+      ],
     },
     {
       row: "Public proof page",
@@ -701,9 +719,9 @@ describe("the payment journey", () => {
   it("marks the ledger as what the SDK does, and says the demo vault's ledger holds a refusal too", () => {
     expect(prose).toContain("without the SDK, a model or a ledger");
     expect(step(3).body).toContain("The SDK signs the decision into the ledger");
-    expect(step(3).tag).toBe(
-      "On the testnet demo vault, every spend has its signed decision, and so does the refused invoice.",
-    );
+    // The four invoices just below step 5 show it, so step 3 carries no "Today" note (audit P1-10).
+    expect(step(3).tag).toBeUndefined();
+    expect(visibleText(landing())).toContain("The SDK signs the decision into the ledger");
     // Check d ties each spend to its decision; the refusal is a decision with no spend (test/demo-vault.test.ts).
     const demo = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")).demo_vault;
     expect(demo.spends).toHaveLength(2);
@@ -741,6 +759,19 @@ describe("the payment journey", () => {
     expect(css).toMatch(/\.prompt {[^}]*user-select: none/);
   });
 
+  it("sets what is true today apart as a note labelled Today, on steps 2 and 5 only (audit P1-10)", () => {
+    expect(JOURNEY.today).toBe("Today");
+    expect(JOURNEY.steps.filter((s) => s.tag !== undefined).map((s) => s.n)).toEqual([2, 5]);
+    const out = visibleText(renderToStaticMarkup(createElement(Home)));
+    for (const n of [2, 5]) expect(out, `step ${n}`).toContain(`Today ${step(n).tag}`);
+    // A left rule in the brand's gold, not the filled beige pill it replaces.
+    const css = text(WEB, "src", "components", "site", "site.module.css");
+    const today = css.slice(css.indexOf(".today {"), css.indexOf("}", css.indexOf(".today {")));
+    expect(today).toContain("border-left: 3px solid var(--color-gold-deep)");
+    expect(today).not.toContain("background");
+    expect(css).not.toMatch(/^\.tag \{/m);
+  });
+
   it("shows the example mandate with mandate 1's approval limit", () => {
     expect(step(1).panel).toContainEqual({ key: "approval_above", value: "5 USDC" });
   });
@@ -769,7 +800,18 @@ describe("the status list", () => {
       },
       { id: "reproducible-builds", row: "Reproducible builds", pill: "Shipped", tone: "live" },
       { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
-      { id: "web-console", row: "Web console", pill: "In progress", tone: "work" },
+      {
+        id: "web-console",
+        row: "Web console: vault, keys, faucet, mandate, Payables, proof page",
+        pill: "Tried on testnet",
+        tone: "live",
+      },
+      {
+        id: "web-console-not-tried",
+        row: "Web console: Freeze, approving in the console, USDC top-up",
+        pill: "Built, not tried yet",
+        tone: "work",
+      },
       {
         id: "public-proof-page",
         row: "Public proof page",
@@ -795,11 +837,22 @@ describe("the status list", () => {
     ]);
   });
 
-  it("says v0 runs an older build, and the factory's vaults run the fixed build on record", () => {
-    expect(STATUS.build).toBe(
-      "`v0.probarion.testnet` runs a build older than the current source; the vaults the testnet factory creates run the fixed build recorded in `contracts/code-hashes.json`.",
+  it("tells v0's missing ledger, its failing checks and its older build once, in the known gaps (audit P1-10)", () => {
+    expect(STATUS.gaps.v0).toBe(
+      "`v0.probarion.testnet`, the vault of the 2026-11-01 smoke run, sent its spends with the agent key alone, without a ledger, so a live `verify --vault` on it fails checks d and h. It also runs a build from before the 2026-11-03 `set_ledger_key` fix. The vaults the testnet factory creates, the demo vault among them, run the fixed build recorded in `contracts/code-hashes.json`.",
     );
     const prose = README.replace(/\s+/g, " ");
+    const smokeRun = /on (\d{4}-\d{2}-\d{2})\./.exec(CHAIN.intro)?.[1];
+    expect(STATUS.gaps.v0).toContain(`the vault of the ${smokeRun} smoke run`);
+    expect(prose).toContain(
+      "its spends were sent with the agent key directly, without the SDK, a model or a ledger",
+    );
+    expect(prose).toContain(
+      "`verify --vault v0.probarion.testnet` prints `RESULT: FAIL` today: check d finds spends with no decision in the ledger, and check h",
+    );
+    expect(CHECK_LABELS.d).toBe("A decision for every spend");
+    expect(CHECK_LABELS.h).toBe("Burn memos");
+    expect(prose).toContain("a `set_ledger_key` fix on 2026-11-03");
     expect(prose).toContain("`v0.probarion.testnet` runs the earlier build");
     const hashes = JSON.parse(text(ROOT, "contracts", "code-hashes.json")) as {
       entries: { code_hash: string }[];
@@ -808,16 +861,45 @@ describe("the status list", () => {
     expect(hashes.entries.map((e) => e.code_hash)).toContain(fixed);
     const record = JSON.parse(text(ROOT, "contracts", "deployments", "testnet.json")) as {
       factory: { code_hash: string; versions: { code_hash: string }[] };
+      demo_vault: { factory_version: number; code_hash: string };
     };
     expect(record.factory.versions.map((v) => v.code_hash)).toEqual([fixed]);
     expect(hashes.entries.map((e) => e.code_hash)).toContain(record.factory.code_hash);
     expect(prose).toContain(`Code hash \`${record.factory.code_hash}\``);
-    expect(visibleText(landing())).toContain("runs a build older than the current source");
+    // The demo vault came from the factory, with the fixed build.
+    expect(record.demo_vault.factory_version).toBe(1);
+    expect(record.demo_vault.code_hash).toBe(fixed);
+    expect(visibleText(landing())).toContain("so a live verify --vault on it fails checks d and h");
   });
 
-  it("says no third party has audited this code and links SECURITY.md", () => {
+  it("ends the status list with what tests check and a list of known gaps the beta strip links to (audit P1-10)", () => {
+    expect(STATUS.checked).toBe(
+      "The numbers, transactions and status rows on this page are checked against the repository by tests (`apps/web/test/site-facts.test.ts`).",
+    );
+    expect(STATUS.checked).not.toContain("Every fact");
+    expect(existsSync(join(WEB, "test", "site-facts.test.ts"))).toBe(true);
+    expect(STATUS.gaps.title).toBe("Known gaps");
     const html = landing();
-    expect(visibleText(html)).toContain("No third party has audited this code. Read the");
+    const section = html.slice(
+      html.indexOf('id="status"'),
+      html.indexOf("</section>", html.indexOf('id="status"')),
+    );
+    const out = visibleText(section);
+    expect(section).toContain(`id="${STATUS.gaps.id}"`);
+    expect(out).toContain("checked against the repository by tests");
+    expect(out.indexOf(STATUS.gaps.title)).toBeGreaterThan(
+      out.indexOf("checked against the repository"),
+    );
+    expect(section.match(/<li/g)).toHaveLength(2);
+    expect(betaStrip("testnet").gaps).toEqual({ label: "Known gaps", href: `/#${STATUS.gaps.id}` });
+  });
+
+  it("says no third party has audited this code, once, and links SECURITY.md", () => {
+    const html = landing();
+    expect(visibleText(html).replace(/ \(opens in a new tab\)/g, "")).toContain(
+      "No third party has audited this code. The threat model says what verify does not prove yet.",
+    );
+    expect(visibleText(html).match(/No third party has audited/g)).toHaveLength(1);
     expect(hrefs(html)).toContain(LINKS.security);
     expect(LINKS.security.endsWith("/SECURITY.md")).toBe(true);
   });
@@ -974,6 +1056,15 @@ describe("the problem, the comparison and the integrate section", () => {
     const rows = STATUS.rows.map((r) => r.row);
     for (const r of COMPARE.rows) expect(rows, r.question).toContain(r.status);
     for (const c of INTEGRATE.cards) expect(rows, c.title).toContain(c.status);
+  });
+
+  it("gives the console card the pill of what was tried on testnet, and names only that (audit P1-10)", () => {
+    const card = INTEGRATE.cards.find((c) => c.title === "Web console");
+    expect(card?.status).toBe("Web console: vault, keys, faucet, mandate, Payables, proof page");
+    expect(card?.body).toBe(
+      "Create a vault, its keys and mandates, pay invoices with Payables and publish a proof page. Sign in with a NEAR wallet.",
+    );
+    expect(card?.body).not.toMatch(/approve|freeze|top-up/i);
   });
 
   it("says of the agent's key only what the owner check says: every owner method refuses any other caller", () => {
@@ -1237,25 +1328,49 @@ describe("the footer columns", () => {
 });
 
 describe("the beta strip", () => {
-  it("says the three standing facts and the test network", () => {
-    const out = visibleText(
-      renderToStaticMarkup(createElement(BetaStripView, { network: "testnet" })),
-    );
-    expect(out).toContain("Unaudited beta.");
-    expect(out).toContain("Probarion holds no owner key");
-    expect(out).toContain("Non-custodial");
-    expect(out).toContain("Use small amounts.");
-    expect(out).toContain("Runs on NEAR testnet with test tokens.");
+  /** The strip's wide row, which a phone does not show: everything before its `<details>`. */
+  const wide = (html: string) => visibleText(html.slice(0, html.indexOf("<details")));
+
+  it("says, once, that this is an unaudited beta on testnet with test tokens, and that no owner key is held (audit P1-10)", () => {
+    const html = renderToStaticMarkup(createElement(BetaStripView, { network: "testnet" }));
+    expect(betaStrip("testnet").first).toBe("Unaudited beta on NEAR testnet, test tokens only.");
+    expect(wide(html)).toContain("Unaudited beta on NEAR testnet, test tokens only.");
+    expect(wide(html)).toContain("Non-custodial: Probarion holds no owner key.");
+    expect(wide(html).match(/[Uu]naudited|audited/g)).toHaveLength(1);
+    expect(visibleText(html)).not.toContain("Use small amounts");
   });
 
-  it("does not say testnet when the build is mainnet", () => {
+  it("asks for small amounts only on mainnet, and does not say testnet there", () => {
     const out = visibleText(
       renderToStaticMarkup(createElement(BetaStripView, { network: "mainnet" })),
     );
     expect(out).not.toMatch(/testnet|test tokens/i);
-    expect(out).toContain("Unaudited beta.");
-    expect(out).toContain("Runs on NEAR mainnet.");
-    expect(betaStrip("mainnet").where).toBe("Runs on NEAR mainnet.");
+    expect(betaStrip("mainnet").first).toBe("Unaudited beta on NEAR mainnet. Use small amounts.");
+    expect(out).toContain("Unaudited beta on NEAR mainnet. Use small amounts.");
+  });
+
+  it("links the landing's known gaps", () => {
+    const html = renderToStaticMarkup(createElement(BetaStripView, { network: "testnet" }));
+    expect(betaStrip("testnet").gaps).toEqual({ label: "Known gaps", href: "/#known-gaps" });
+    expect(hrefs(html.slice(0, html.indexOf("<details")))).toEqual(["/#known-gaps"]);
+    expect(wide(html)).toContain("Known gaps");
+  });
+
+  it("folds to its first sentence on a phone, and opens to the rest with no JavaScript", () => {
+    const html = renderToStaticMarkup(createElement(BetaStripView, { network: "testnet" }));
+    const narrow = html.slice(html.indexOf("<details"));
+    expect(narrow).toMatch(/^<details[^>]*>/);
+    const summary = /<summary[^>]*>([\s\S]*?)<\/summary>/.exec(narrow)?.[1] ?? "";
+    expect(visibleText(summary).trim()).toBe(betaStrip("testnet").first);
+    const body = visibleText(narrow.slice(narrow.indexOf("</summary>")));
+    expect(body).toContain("Non-custodial: Probarion holds no owner key.");
+    expect(hrefs(narrow)).toEqual(["/#known-gaps"]);
+    // The wide row hides below 760px and the folded one above it, so a reader sees one of them.
+    const css = text(WEB, "src", "components", "site", "site.module.css");
+    const phone = css.slice(css.indexOf("@media (max-width: 760px)"));
+    expect(css).toMatch(/\.betaNarrow \{[^}]*display: none;/);
+    expect(phone).toMatch(/\.betaWide \{[^}]*display: none;/);
+    expect(phone).toMatch(/\.betaNarrow \{[^}]*display: block;/);
   });
 });
 
@@ -1265,9 +1380,8 @@ describe("the beta strip, before the browser has told it the network", () => {
   it("says the standing facts and no network at all in the server render", () => {
     const out = visibleText(renderToStaticMarkup(createElement(BetaStrip)));
     expect(out).toContain("Unaudited beta.");
-    expect(out).toContain("No third party has audited this code.");
     expect(out).toContain("Probarion holds no owner key");
-    expect(out).toContain("Use small amounts.");
+    expect(out).not.toContain("Use small amounts");
     expect(out).not.toMatch(/testnet|mainnet|test tokens|Runs on/i);
   });
 
@@ -1277,10 +1391,10 @@ describe("the beta strip, before the browser has told it the network", () => {
     );
   });
 
-  it("adds the network sentence of the network it is told, and no other", () => {
+  it("names the network it is told, and no other", () => {
     for (const [network, says, not] of [
-      ["testnet", "Runs on NEAR testnet with test tokens.", /mainnet/i],
-      ["mainnet", "Runs on NEAR mainnet.", /testnet|test tokens/i],
+      ["testnet", "Unaudited beta on NEAR testnet, test tokens only.", /mainnet/i],
+      ["mainnet", "Unaudited beta on NEAR mainnet.", /testnet|test tokens/i],
     ] as const) {
       const out = visibleText(renderToStaticMarkup(createElement(BetaStripView, { network })));
       expect(out, network).toContain(says);
@@ -1288,8 +1402,13 @@ describe("the beta strip, before the browser has told it the network", () => {
     }
   });
 
-  it("has no network sentence in the neutral copy", () => {
-    expect(betaStrip(null).where).toBeNull();
+  it("says only what is true on both networks in the neutral copy", () => {
+    expect(betaStrip(null).first).toBe("Unaudited beta.");
+    for (const network of [null, "testnet", "mainnet"] as const) {
+      expect(betaStrip(network).first.startsWith(betaStrip(network).bold), String(network)).toBe(
+        true,
+      );
+    }
   });
 });
 

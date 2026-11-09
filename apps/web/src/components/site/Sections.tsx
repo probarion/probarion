@@ -52,12 +52,23 @@ export function StatusList() {
           ))}
         </div>
         <p className={s.statusNote}>
-          {STATUS.noteBefore}
-          <ExternalLink className={s.link} href={LINKS.security}>
-            {STATUS.noteLink}
-          </ExternalLink>
-          <Rich text={STATUS.noteAfter} /> <Rich text={STATUS.build} />
+          <Rich text={STATUS.checked} />
         </p>
+        <h3 className={s.gapsTitle} id={STATUS.gaps.id}>
+          {STATUS.gaps.title}
+        </h3>
+        <ul className={s.gaps}>
+          <li>
+            {STATUS.gaps.auditBefore}
+            <ExternalLink className={s.link} href={LINKS.security}>
+              {STATUS.gaps.auditLink}
+            </ExternalLink>
+            <Rich text={STATUS.gaps.auditAfter} />
+          </li>
+          <li>
+            <Rich text={STATUS.gaps.v0} />
+          </li>
+        </ul>
       </div>
     </section>
   );
