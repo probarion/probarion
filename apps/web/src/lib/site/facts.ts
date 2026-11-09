@@ -537,7 +537,7 @@ export const COMPARE = {
       question: "What can the agent's key do?",
       diy: "Often a full-access key, or a key that can call anything.",
       probarion:
-        "A function-call key for `spend` only. It cannot attach the 1 yocto a token transfer needs.",
+        "A function-call key that can call `spend` and nothing else. The owner's methods need 1 yoctoNEAR, which that key cannot attach.",
       status: "Vault contract",
     },
     {
@@ -584,7 +584,7 @@ export const COMPARE = {
 // --- plug in your agent ---------------------------------------------------------------------------
 
 /** The SDK README's quick start, shortened. The test holds each code line to packages/sdk/README.md. */
-export const SDK_SNIPPET = `import { Probarion, hashInvoice } from "@probarion/sdk";
+export const SDK_SNIPPET = `import { Probarion } from "@probarion/sdk";
 
 const probarion = new Probarion({
   network: "testnet",

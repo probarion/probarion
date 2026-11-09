@@ -12,6 +12,7 @@ const TONE: Readonly<Record<StatusTone, string | undefined>> = {
 };
 
 export function Integrate() {
+  const sdk = statusOf(INTEGRATE.cards[0].status);
   return (
     <section className={s.section} id="integrate">
       <div className={s.wrap}>
@@ -28,7 +29,8 @@ export function Integrate() {
             return (
               <div key={c.title} className={s.way}>
                 <h3>
-                  {c.title} <span className={`${s.pill} ${TONE[st.tone]}`}>{st.pill}</span>
+                  {c.title}{" "}
+                  <span className={`${s.pill} ${s.pillInline} ${TONE[st.tone]}`}>{st.pill}</span>
                 </h3>
                 <p>
                   <Rich text={c.body} />
@@ -53,7 +55,10 @@ export function Integrate() {
         <div className={s.codeBox}>
           <div className={s.codeHead}>
             <span>{INTEGRATE.fileName}</span>
-            <span>{INTEGRATE.codeLabel}</span>
+            <span className={s.codeMeta}>
+              {INTEGRATE.codeLabel}
+              <span className={`${s.pill} ${s.pillInline} ${TONE[sdk.tone]}`}>{sdk.pill}</span>
+            </span>
           </div>
           <ScrollRegion className={s.codeBody} label={INTEGRATE.fileName}>
             <pre>{SDK_SNIPPET}</pre>

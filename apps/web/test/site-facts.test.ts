@@ -710,6 +710,13 @@ describe("the problem, the comparison and the integrate section", () => {
     for (const c of INTEGRATE.cards) expect(rows, c.title).toContain(c.status);
   });
 
+  it("says of the agent's key only what the contract's own yocto rule says", () => {
+    const row = COMPARE.rows.find((r) => r.question === "What can the agent's key do?");
+    expect(text(ROOT, "contracts", "vault", "src", "errors.rs")).toContain("RequiresOneYocto");
+    expect(row?.probarion).toContain("`spend`");
+    expect(row?.probarion).toContain("1 yoctoNEAR");
+  });
+
   it("names no product in the do-it-yourself column", () => {
     for (const r of COMPARE.rows) expect(r.diy).not.toMatch(/[A-Z][a-z]+[A-Z]|\.(com|io|xyz)\b/);
   });
@@ -717,6 +724,8 @@ describe("the problem, the comparison and the integrate section", () => {
   it("shows SDK code that the SDK README has, line by line", () => {
     const readme = squash(sdkReadme);
     const SHORTENED: Record<string, string> = {
+      'import{Probarion}from"@probarion/sdk";':
+        'import { Probarion, hashInvoice } from "@probarion/sdk";',
       "model:null,": "`model: null`",
       "facts,": "facts: {",
     };

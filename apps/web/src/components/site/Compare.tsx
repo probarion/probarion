@@ -14,10 +14,12 @@ export function Compare() {
       <div className={s.wrap}>
         <p className={s.eyebrow}>{COMPARE.eyebrow}</p>
         <div className={s.sectionHead}>
-          <h2 className={s.h2}>{COMPARE.title}</h2>
+          <h2 className={s.h2} id="compare-title">
+            {COMPARE.title}
+          </h2>
           <p>{COMPARE.sub}</p>
         </div>
-        <table className={s.compare}>
+        <table className={s.compare} aria-labelledby="compare-title">
           <thead className={s.compareHead}>
             <tr>
               {COMPARE.head.map((h) => (
@@ -40,7 +42,7 @@ export function Compare() {
                   </td>
                   <td data-label={COMPARE.head[2]}>
                     <Rich text={r.probarion} />{" "}
-                    <span className={`${s.pill} ${TONE[st.tone]}`}>{st.pill}</span>
+                    <span className={`${s.pill} ${s.pillInline} ${TONE[st.tone]}`}>{st.pill}</span>
                   </td>
                 </tr>
               );
