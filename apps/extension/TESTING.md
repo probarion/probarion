@@ -41,7 +41,8 @@ Windows PowerShell 5.1, one per line; run `pnpm` ones from the repository root.
       sent there is refused, or connects the popup to probarion.xyz instead of localhost, so check the address
       first.) It connects. **Disconnect**, then **Probarion address** → `localhost:3000` again and type the same code
       again: "This code is wrong, used or expired. Show a new one on the Browser extension page."
-- [ ] **Connect** again from the popup, so the rest of the checklist has a connection.
+- [ ] In the popup, **Probarion address** → `localhost:3000`, then **Connect** again, so the rest of the checklist
+      has a connection.
 
 ## Capture (a release-style test: not localhost)
 
@@ -77,9 +78,10 @@ click's `activeTab` grant lets the extension read.
 - [ ] Send the copy with `Pay to: other-payee.testnet`: "Probarion's rules refused it: invoice names NEAR account
       other-payee.testnet; …", and the console's Payables list does not change.
 - [ ] Optional, with a second wallet that is an approver of the vault: press **Disconnect** in the popup (it ends the
-      owner's token), sign in at localhost:3000 with the approver's wallet, press **Connect**, and send the third copy:
+      owner's token), sign in at localhost:3000 with the approver's wallet, then in the popup **Probarion address** → `localhost:3000`
+      → **Connect**, and send the third copy:
       "Queued. It waits for the owner's confirmation." Then press **Disconnect**, sign in again with the owner's
-      wallet, and press **Connect** again. The steps below need the owner's connection.
+      wallet, and in the popup **Probarion address** → `localhost:3000` → **Connect** again. The steps below need the owner's connection.
 
 ## Confirm, the mandate and the connection
 
