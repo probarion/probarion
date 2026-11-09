@@ -197,6 +197,10 @@ The software is an unaudited beta.
   `npx probarion verify` passed checks a to i. The invoices, the ledger, the snapshot and the
   verifier's output are in `docs/evidence/demo-vault`; the transactions are in the `demo_vault`
   block of `contracts/deployments/testnet.json`.
+- The landing page's payment journey ends with those four invoices: one card each says what the invoice
+  asked, what the vault did (paid, refused on upload, refused by code, held then paid) and links the
+  invoice file, its transactions and its lines in the signed ledger, then the demo vault's proof page.
+  A test holds each card to the evidence files and the deployment record.
 - Deploy and smoke scripts for testnet, runbooks for testnet, the factory and the planned mainnet
   vault (each signing step is the owner's), and `pnpm proof` for the mainnet evidence file.
 - Web console, in progress: wallet sign-in with near-connect and NEP-413, checked on
@@ -425,6 +429,14 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing page states each caveat once. The beta strip says "Unaudited beta on NEAR testnet,
+  test tokens only." and that Probarion holds no owner key, links the known gaps, and folds to its
+  first sentence on a phone; only mainnet asks for small amounts, and the footer no longer does.
+  The status list gives the web console two rows, "Tried on testnet" and "Built, not tried yet",
+  says which tests check the page, and ends with a "Known gaps" list: no third-party audit, and
+  `v0.probarion.testnet`'s missing ledger, its failing checks d and h, and its older build, which
+  the on-chain section and the closing used to repeat. In the payment journey, what is true today
+  is a note labelled "Today" with a gold rule, on steps 2 and 5.
 - The site header has "Docs" right after the Canary, and Usage moves to the footer's Product
   column. The landing page's closing button "Evaluate in 5 minutes" opens the docs page of that
   name in the same tab, not the README section. The sitemap lists every docs page with the date it

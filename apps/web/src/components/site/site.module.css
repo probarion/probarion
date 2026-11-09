@@ -42,6 +42,21 @@
   color: var(--color-ink);
   font-weight: 500;
 }
+.betaLink {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* A phone gets the first sentence, which opens to the rest; the wide row hides below 760px (audit P1-10). */
+.betaNarrow {
+  display: none;
+}
+.betaNarrow summary {
+  cursor: pointer;
+}
+.betaNarrow p {
+  margin: 4px 0 0;
+}
 
 /* Skip link */
 .skip {
@@ -890,20 +905,95 @@ a.netPill:hover {
   max-width: 31em;
   font-size: 16px;
 }
-.tag {
-  display: inline-block;
-  margin-top: 14px;
-  font-size: 13px;
+/* What is true today, set apart by a gold rule rather than a filled pill (audit P1-10). */
+.today {
+  margin: 14px 0 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--color-gold-deep);
+  font-size: 14px;
+}
+.todayLabel {
+  display: block;
+  font-size: 12px;
   font-weight: 500;
-  padding: 3px 11px;
-  border-radius: 12px;
-  background: var(--color-wait-bg);
-  color: var(--color-wait);
+  color: var(--color-gold-small);
 }
 .tryIt {
   display: inline-block;
   margin-top: 10px;
   font-size: 15px;
+}
+
+/* The journey as it ran: the demo vault's four invoices, after the five steps. */
+.story {
+  padding-top: clamp(26px, 3vw, 40px);
+  border-top: 1px solid var(--color-line);
+}
+.story h3 {
+  font-weight: 400;
+  font-size: clamp(23px, 2.2vw, 30px);
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+}
+.storyCaption {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.storyIntro {
+  margin-top: 12px;
+  max-width: 46em;
+  font-size: 16px;
+}
+.storyGrid {
+  list-style: none;
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.storyCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 18px 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+}
+.storyTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.storyTop h4 {
+  font-weight: 500;
+  font-size: 17px;
+}
+.storyCard p {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.storyAsks {
+  color: var(--color-mute);
+}
+.storyLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: 14px;
+}
+.storyProof {
+  margin-top: 18px;
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.refusedPill {
+  background: var(--color-bad-bg);
+  color: var(--color-bad);
 }
 .panel {
   background: var(--color-surface);
@@ -1353,6 +1443,21 @@ a.netPill:hover {
   color: var(--color-mute);
   max-width: 52em;
 }
+/* Every caveat the landing used to repeat, said once (audit P1-10). The beta strip links here. */
+.gapsTitle {
+  margin: 28px 0 8px;
+  font-size: 17px;
+  font-weight: 500;
+}
+.gaps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 15px;
+  max-width: 52em;
+}
+.gaps li + li {
+  margin-top: 8px;
+}
 
 /* Closing */
 .close {
@@ -1534,6 +1639,15 @@ a.netPill:hover {
 @media (max-width: 760px) {
   .netSwitch {
     display: none;
+  }
+  .storyGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .betaWide {
+    display: none;
+  }
+  .betaNarrow {
+    display: block;
   }
 }
 @media (max-width: 960px) {
