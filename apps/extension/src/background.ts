@@ -64,7 +64,9 @@ export async function refresh(d: Deps): Promise<InboxState> {
     return { kind: "none" };
   }
   const expire = async (): Promise<InboxState> => {
-    await markExpired(d.chrome, origin);
+    // Only the connection that got the 401 ends. If a reconnect stored a new token for this address meanwhile, that
+    // one is read instead.
+    if (!(await markExpired(d.chrome, origin, connection.token))) return refresh(d);
     await d.chrome.alarms.clear(ALARM);
     await setBadge(d, "!");
     return { kind: "expired", origin, connection: { ...connection, expired: true } };
@@ -78,6 +80,7 @@ export async function refresh(d: Deps): Promise<InboxState> {
     return { kind: "ok", origin, connection, inbox };
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return expire();
+    await ensureAlarm(d); // the connection is live: a person who chose it while Probarion was down gets the alarm back
     if (pending) await setBadge(d, "+"); // a capture waits, whatever Probarion answers
     const text = error instanceof ApiError ? error.message : "Something went wrong. Try again.";
     return { kind: "error", origin, connection, text };
@@ -105,9 +108,12 @@ export async function startConnect(d: Deps, origin: string): Promise<void> {
   await d.chrome.tabs.create({ url: connectUrl(origin, nonce) });
 }
 
-/** Stores the connection and keeps the alarm. It asks Probarion nothing, so the connect page gets its answer at once. */
-async function keep(d: Deps, origin: string, p: Paired): Promise<void> {
-  await putConnection(d.chrome, origin, {
+/**
+ * Stores the connection and keeps the alarm. It asks Probarion nothing, so the connect page gets its answer at once.
+ * Answers with the token it replaced when the address already had a different one, whatever state that was in.
+ */
+async function keep(d: Deps, origin: string, p: Paired): Promise<string | null> {
+  const replaced = await putConnection(d.chrome, origin, {
     network: p.network,
     account: p.account,
     token: p.token,
@@ -116,27 +122,54 @@ async function keep(d: Deps, origin: string, p: Paired): Promise<void> {
     expired: false,
   });
   await ensureAlarm(d);
+  return replaced !== undefined && replaced.token !== p.token ? replaced.token : null;
 }
 
 /**
- * The content script's connect message. It counts only when it comes from Probarion's /extension page in a tab, by
- * this extension's own content script, with a nonce this extension made for that origin in the last 15 minutes. The
- * nonce is used up whatever the answer.
+ * Ends, on Probarion, a token this extension no longer holds because a new connection replaced it, so that no live
+ * token is left that the person can neither see nor end from the extension. Best effort: when Probarion can't be
+ * reached the new connection stands, and the old token still ends at its 30-day end or from the Browser extension page.
  */
-export async function handleConnect(
+async function endReplaced(d: Deps, origin: string, token: string | null): Promise<void> {
+  if (token === null) return;
+  try {
+    await api(origin, d.fetch).revoke(token);
+  } catch {
+    // see above
+  }
+}
+
+/**
+ * The content script's connect message, and what follows it. The message counts only when it comes from Probarion's
+ * /extension page in a tab, by this extension's own content script, with a nonce this extension made for that origin in
+ * the last 15 minutes. The nonce is used up whatever the answer.
+ *
+ * The page waits 3 s for the answer (ConnectPanel extensionTookIt(3000)), so `sendResponse` comes first and nothing
+ * that asks Probarion comes before it. After it: the token this connection replaced is ended, and the inbox is read for
+ * the badge (the 5-minute alarm is the fallback). Nothing after the answer can fail the connection.
+ */
+export async function onConnectMessage(
   d: Deps,
   message: unknown,
   sender: MessageSender,
-): Promise<{ ok: boolean }> {
-  if (sender.id !== d.chrome.runtime.id || sender.tab === undefined || !isConnectPage(sender)) {
-    return { ok: false };
+  sendResponse: (answer: { ok: boolean }) => void,
+): Promise<void> {
+  let origin: string | null = null;
+  let replaced: string | null = null;
+  try {
+    if (sender.id === d.chrome.runtime.id && sender.tab !== undefined && isConnectPage(sender)) {
+      const m = readConnectMessage(message, d.now());
+      if (m !== null && (await takeNonce(d.chrome, m.nonce, sender.origin, d.now()))) {
+        replaced = await keep(d, sender.origin, m);
+        origin = sender.origin;
+      }
+    }
+  } catch {
+    origin = null; // it could not be stored: the page is told it was not taken
   }
-  const m = readConnectMessage(message, d.now());
-  if (m === null) return { ok: false };
-  if (!(await takeNonce(d.chrome, m.nonce, sender.origin, d.now()))) return { ok: false };
-  // The page waits 3 s for this answer (ConnectPanel extensionTookIt(3000)): no inbox read before it.
-  await keep(d, sender.origin, m);
-  return { ok: true };
+  sendResponse({ ok: origin !== null });
+  if (origin === null) return;
+  await Promise.all([endReplaced(d, origin, replaced), refresh(d).catch(() => {})]);
 }
 
 /** The pairing-code fallback: the code shown on /extension, traded for a token. Throws the ApiError the popup shows. */
@@ -147,24 +180,24 @@ export async function connectWithCode(
   label: string,
 ): Promise<void> {
   if (!isKnownOrigin(origin)) throw new ApiError(400, "bad_origin", "Choose a Probarion address.");
-  await keep(d, origin, await api(origin, d.fetch).pair(code, label));
-  await refresh(d);
+  const replaced = await keep(d, origin, await api(origin, d.fetch).pair(code, label));
+  await Promise.all([endReplaced(d, origin, replaced), refresh(d)]);
 }
 
 /**
  * Disconnect: ends the token on Probarion, then forgets it here. It forgets it even when Probarion can't be reached;
- * `revoked: false` then tells the popup to say where to end it.
+ * `revoked: false` then tells the popup to say where to end it. A connection marked expired is ended too: a 401 can
+ * mean the token is dead, or only that it was made on the other network (the server answers both the same way), so the
+ * one request is always sent. A 401 for it counts as ended.
  */
 export async function disconnect(d: Deps, origin: string): Promise<{ revoked: boolean }> {
   const connection = (await loadLocal(d.chrome)).connections[origin];
   if (connection === undefined) return { revoked: true };
   let revoked = true;
-  if (!connection.expired) {
-    try {
-      await api(origin, d.fetch).revoke(connection.token);
-    } catch (error) {
-      revoked = error instanceof ApiError && error.status === 401;
-    }
+  try {
+    await api(origin, d.fetch).revoke(connection.token);
+  } catch (error) {
+    revoked = error instanceof ApiError && error.status === 401;
   }
   await dropConnection(d.chrome, origin);
   await ensureAlarm(d);

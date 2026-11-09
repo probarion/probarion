@@ -492,7 +492,7 @@ async function sendInvoice(s: Ok): Promise<void> {
       if (next.kind !== "error") ui.state = next;
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
-        await markExpired(c, s.origin);
+        await markExpired(c, s.origin, s.connection.token);
         ui.state = await refresh(d);
         ui.connectOrigin = s.origin;
       }

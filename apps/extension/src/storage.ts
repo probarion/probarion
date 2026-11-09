@@ -103,17 +103,22 @@ async function saveLocal(c: ChromeLike, s: LocalState): Promise<void> {
   });
 }
 
-/** Stores the connection for `origin` and makes it the chosen one. */
+/**
+ * Stores the connection for `origin` and makes it the chosen one. Answers with the connection it replaced, if the
+ * address had one, so the caller can end that token on Probarion.
+ */
 export async function putConnection(
   c: ChromeLike,
   origin: string,
   connection: Connection,
-): Promise<void> {
+): Promise<Connection | undefined> {
   return locked(async () => {
     const s = await loadLocal(c);
+    const replaced = s.connections[origin];
     s.connections[origin] = connection;
     s.selectedOrigin = origin;
     await saveLocal(c, s);
+    return replaced;
   });
 }
 
@@ -126,13 +131,20 @@ export async function dropConnection(c: ChromeLike, origin: string): Promise<voi
   });
 }
 
-export async function markExpired(c: ChromeLike, origin: string): Promise<void> {
+/**
+ * Marks the connection for `origin` expired, but only while it still holds `token`: a 401 for an old token must not end
+ * a connection stored since (a reconnect). Answers whether the connection holds `token`.
+ */
+export async function markExpired(c: ChromeLike, origin: string, token: string): Promise<boolean> {
   return locked(async () => {
     const s = await loadLocal(c);
     const connection = s.connections[origin];
-    if (connection === undefined || connection.expired) return;
-    s.connections[origin] = { ...connection, expired: true };
-    await saveLocal(c, s);
+    if (connection === undefined || connection.token !== token) return false;
+    if (!connection.expired) {
+      s.connections[origin] = { ...connection, expired: true };
+      await saveLocal(c, s);
+    }
+    return true;
   });
 }
 

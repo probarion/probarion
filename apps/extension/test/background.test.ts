@@ -1,15 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ALARM,
   connectWithCode,
   type Deps,
   disconnect,
   ensureAlarm,
-  handleConnect,
   handleMenu,
   installMenus,
   MENU_LINK,
   MENU_SELECTION,
+  onConnectMessage,
   PERIOD_MINUTES,
   refresh,
   startConnect,
@@ -38,6 +38,7 @@ import {
   PDF,
   problem,
   TOKEN,
+  TOKEN_B,
 } from "./helpers";
 
 const conn = (over: Partial<Connection> = {}): Connection => ({
@@ -71,6 +72,18 @@ const deps = (fetch: Fetch = offline): Deps => ({ chrome: c, fetch, now: () => N
 beforeEach(() => {
   c = fakeChrome();
 });
+
+/**
+ * What the worker does with a connect message: every answer it hands the page, each with how many requests to
+ * Probarion had been made by then. It resolves once the work after the answer is done too.
+ */
+async function connect(f: ReturnType<typeof fetchOf>, msg: unknown, sender: MessageSender) {
+  const answers: Array<{ answer: unknown; asked: number }> = [];
+  await onConnectMessage(deps(f.fetch), msg, sender, (answer) =>
+    answers.push({ answer, asked: f.calls.length }),
+  );
+  return answers;
+}
 
 describe("the badge and its alarm", () => {
   it("count what waits for the chosen connection", async () => {
@@ -158,13 +171,45 @@ describe("the badge and its alarm", () => {
     expect((await refresh(deps(offline))).kind).toBe("error");
     expect(c.badge.text).toBe("+");
   });
+
+  it("start the alarm again for a live connection chosen while Probarion can't be reached", async () => {
+    await putConnection(c, OTHER_ORIGIN, conn());
+    await putConnection(c, ORIGIN, conn());
+    await ensureAlarm(deps());
+    await refresh(deps(fetchOf(() => problem(401, "bad_token", "x")).fetch));
+    expect(c.alarmsSet.has(ALARM)).toBe(false);
+    await selectOrigin(c, OTHER_ORIGIN);
+    expect((await refresh(deps(offline))).kind).toBe("error");
+    expect(c.alarmsSet.get(ALARM)).toBe(PERIOD_MINUTES);
+  });
+
+  it("expire only the connection that got the 401, not one stored while the request was out", async () => {
+    await putConnection(c, ORIGIN, conn());
+    let asked = 0;
+    const f = fetchOf(async () => {
+      asked += 1;
+      if (asked > 1) return json(inboxBody());
+      // The person reconnected (a new token for this address) while the first request was out.
+      await putConnection(c, ORIGIN, conn({ token: TOKEN_B }));
+      return problem(401, "bad_token", "x");
+    });
+    expect((await refresh(deps(f.fetch))).kind).toBe("ok");
+    expect((await loadLocal(c)).connections[ORIGIN]).toMatchObject({
+      token: TOKEN_B,
+      expired: false,
+    });
+    expect(new Headers(f.calls[1]?.init?.headers).get("authorization")).toBe(`Bearer ${TOKEN_B}`);
+    expect(c.badge.text).toBe("3");
+    expect(c.alarmsSet.has(ALARM)).toBe(true);
+  });
 });
 
 describe("connecting from Probarion's page", () => {
   it("keeps the connection once, and the nonce is used up", async () => {
     await addNonce(c, NONCE, ORIGIN, NOW - 60_000);
     const f = fetchOf(() => json(inboxBody()));
-    expect(await handleConnect(deps(f.fetch), message, page)).toEqual({ ok: true });
+    // The page has its answer before Probarion is asked anything.
+    expect(await connect(f, message, page)).toEqual([{ answer: { ok: true }, asked: 0 }]);
     const s = await loadLocal(c);
     expect(s.selectedOrigin).toBe(ORIGIN);
     expect(s.connections[ORIGIN]).toEqual({
@@ -176,20 +221,37 @@ describe("connecting from Probarion's page", () => {
       expired: false,
     });
     expect(c.alarmsSet.has(ALARM)).toBe(true);
-    // handleConnect asks Probarion nothing: the worker reads the inbox after the page has its answer.
-    expect(f.calls).toHaveLength(0);
-    await refresh(deps(f.fetch));
+    // After the answer the worker reads the inbox, for the badge.
+    expect(f.calls.map((x) => x.url)).toEqual([`${ORIGIN}/api/ext/inbox`]);
     expect(c.badge.text).toBe("3");
-    // The same message again (a replay) is ignored.
-    expect(await handleConnect(deps(f.fetch), message, page)).toEqual({ ok: false });
+    // The same message again (a replay) is ignored, and asks nothing.
+    expect(await connect(f, message, page)).toEqual([{ answer: { ok: false }, asked: 1 }]);
+    expect(f.calls).toHaveLength(1);
   });
 
-  it("answers the connect page before it asks Probarion anything", async () => {
+  it("answers the connect page before it asks Probarion anything, however slow Probarion is", async () => {
     await addNonce(c, NONCE, ORIGIN, NOW);
-    const f = fetchOf(() => new Promise<Response>(() => {}));
-    expect(await handleConnect(deps(f.fetch), message, page)).toEqual({ ok: true });
-    expect(f.calls).toHaveLength(0);
+    const f = fetchOf(() => new Promise<Response>(() => {})); // Probarion never answers
+    const answered = new Promise<{ answer: unknown; asked: number }>((resolve) => {
+      void onConnectMessage(deps(f.fetch), message, page, (answer) =>
+        resolve({ answer, asked: f.calls.length }),
+      );
+    });
+    expect(await answered).toEqual({ answer: { ok: true }, asked: 0 });
     expect((await loadLocal(c)).connections[ORIGIN]?.token).toBe(TOKEN);
+    await vi.waitFor(() => expect(f.calls.map((x) => x.url)).toEqual([`${ORIGIN}/api/ext/inbox`]));
+  });
+
+  it("answers no when the connection can't be stored", async () => {
+    await addNonce(c, NONCE, ORIGIN, NOW);
+    c.storage.local.set = () => Promise.reject(new Error("quota"));
+    expect(
+      await connect(
+        fetchOf(() => json(inboxBody())),
+        message,
+        page,
+      ),
+    ).toEqual([{ answer: { ok: false }, asked: 0 }]);
   });
 
   it.each<[string, MessageSender, unknown]>([
@@ -205,15 +267,18 @@ describe("connecting from Probarion's page", () => {
     ["a nonce this extension didn't make", page, { ...message, nonce: "m".repeat(22) }],
   ])("ignores %s", async (_name, sender, msg) => {
     await addNonce(c, NONCE, ORIGIN, NOW);
-    expect(await handleConnect(deps(), msg, sender)).toEqual({ ok: false });
+    const f = fetchOf(() => json(inboxBody()));
+    expect(await connect(f, msg, sender)).toEqual([{ answer: { ok: false }, asked: 0 }]);
     expect((await loadLocal(c)).connections).toEqual({});
+    expect(f.calls).toHaveLength(0);
   });
 
   it("ignores a nonce made for another origin, or one 15 minutes old", async () => {
+    const f = fetchOf(() => json(inboxBody()));
     await addNonce(c, NONCE, OTHER_ORIGIN, NOW);
-    expect(await handleConnect(deps(), message, page)).toEqual({ ok: false });
+    expect(await connect(f, message, page)).toEqual([{ answer: { ok: false }, asked: 0 }]);
     await addNonce(c, NONCE, ORIGIN, NOW - 15 * 60_000);
-    expect(await handleConnect(deps(), message, page)).toEqual({ ok: false });
+    expect(await connect(f, message, page)).toEqual([{ answer: { ok: false }, asked: 0 }]);
     expect((await loadLocal(c)).connections).toEqual({});
   });
 
@@ -222,9 +287,85 @@ describe("connecting from Probarion's page", () => {
     const nonce = new URL(c.opened[0] ?? "").searchParams.get("nonce") ?? "";
     expect(c.opened).toEqual([`${ORIGIN}/extension?nonce=${nonce}`]);
     const f = fetchOf(() => json(inboxBody()));
-    expect(await handleConnect(deps(f.fetch), { ...message, nonce }, page)).toEqual({ ok: true });
+    expect(await connect(f, { ...message, nonce }, page)).toEqual([
+      { answer: { ok: true }, asked: 0 },
+    ]);
     await startConnect(deps(), "https://evil.example");
     expect(c.opened).toHaveLength(1);
+  });
+});
+
+describe("a new connection for an address that already has one", () => {
+  const answerFor = (url: string) =>
+    url.endsWith("/api/ext/revoke") ? new Response(null, { status: 204 }) : json(inboxBody());
+  const revokes = (f: ReturnType<typeof fetchOf>) =>
+    f.calls.filter((x) => x.url.endsWith("/api/ext/revoke"));
+  const bearer = (call: { init: RequestInit | undefined } | undefined) =>
+    new Headers(call?.init?.headers).get("authorization");
+
+  it("ends the token it replaces, after the page has its answer", async () => {
+    // Two /extension tabs were left open (two nonces). Tab 2 connected first; now tab 1's Connect extension arrives.
+    await putConnection(c, ORIGIN, conn({ token: TOKEN_B }));
+    await addNonce(c, NONCE, ORIGIN, NOW);
+    const f = fetchOf(answerFor);
+    expect(await connect(f, message, page)).toEqual([{ answer: { ok: true }, asked: 0 }]);
+    expect((await loadLocal(c)).connections[ORIGIN]?.token).toBe(TOKEN);
+    expect(revokes(f)).toHaveLength(1);
+    expect(bearer(revokes(f)[0])).toBe(`Bearer ${TOKEN_B}`);
+    expect(f.calls.map((x) => x.url)).toContain(`${ORIGIN}/api/ext/inbox`);
+  });
+
+  it("ends the token of a connection that was marked expired, too", async () => {
+    await putConnection(c, ORIGIN, conn({ token: TOKEN_B, expired: true }));
+    await addNonce(c, NONCE, ORIGIN, NOW);
+    const f = fetchOf(answerFor);
+    await connect(f, message, page);
+    expect(bearer(revokes(f)[0])).toBe(`Bearer ${TOKEN_B}`);
+  });
+
+  it("keeps the new connection when the old token can't be ended", async () => {
+    await putConnection(c, ORIGIN, conn({ token: TOKEN_B }));
+    await addNonce(c, NONCE, ORIGIN, NOW);
+    const f = fetchOf((url) =>
+      url.endsWith("/api/ext/revoke")
+        ? Promise.reject(new TypeError("Failed to fetch"))
+        : json(inboxBody()),
+    );
+    expect(await connect(f, message, page)).toEqual([{ answer: { ok: true }, asked: 0 }]);
+    expect((await loadLocal(c)).connections[ORIGIN]).toMatchObject({
+      token: TOKEN,
+      expired: false,
+    });
+    expect(revokes(f)).toHaveLength(1);
+    expect(c.badge.text).toBe("3");
+  });
+
+  it("asks nothing to end when the address had no connection, or the same token", async () => {
+    await addNonce(c, NONCE, ORIGIN, NOW);
+    const f = fetchOf(answerFor);
+    await connect(f, message, page);
+    expect(revokes(f)).toHaveLength(0);
+    await addNonce(c, NONCE, ORIGIN, NOW); // the same token again, as a replayed page would send it
+    await connect(f, message, page);
+    expect(revokes(f)).toHaveLength(0);
+  });
+
+  it("ends the replaced token when a pairing code makes the new connection", async () => {
+    await putConnection(c, ORIGIN, conn({ token: TOKEN_B }));
+    const f = fetchOf((url) =>
+      url.endsWith("/api/ext/pair")
+        ? json({
+            token: TOKEN,
+            account: "owner.testnet",
+            network: "testnet",
+            expires_at: message.expires_at,
+          })
+        : answerFor(url),
+    );
+    await connectWithCode(deps(f.fetch), ORIGIN, "K7QM-4XRA", "Chrome");
+    expect((await loadLocal(c)).connections[ORIGIN]?.token).toBe(TOKEN);
+    expect(revokes(f)).toHaveLength(1);
+    expect(bearer(revokes(f)[0])).toBe(`Bearer ${TOKEN_B}`);
   });
 });
 
@@ -268,6 +409,29 @@ describe("Disconnect", () => {
 
   it("forgets it even when Probarion can't be reached, and says so", async () => {
     await putConnection(c, ORIGIN, conn());
+    expect(await disconnect(deps(offline), ORIGIN)).toEqual({ revoked: false });
+    expect((await loadLocal(c)).connections).toEqual({});
+  });
+
+  it("counts a 401 as ended: the token was already dead", async () => {
+    await putConnection(c, ORIGIN, conn());
+    const f = fetchOf(() => problem(401, "bad_token", "Connect the extension again."));
+    expect(await disconnect(deps(f.fetch), ORIGIN)).toEqual({ revoked: true });
+    expect(f.calls).toHaveLength(1);
+    expect((await loadLocal(c)).connections).toEqual({});
+  });
+
+  it("ends the token of a connection marked expired too, since a 401 may only mean another network", async () => {
+    await putConnection(c, ORIGIN, conn({ expired: true }));
+    const f = fetchOf(() => new Response(null, { status: 204 }));
+    expect(await disconnect(deps(f.fetch), ORIGIN)).toEqual({ revoked: true });
+    expect(f.calls[0]?.url).toBe(`${ORIGIN}/api/ext/revoke`);
+    expect(new Headers(f.calls[0]?.init?.headers).get("authorization")).toBe(`Bearer ${TOKEN}`);
+    expect((await loadLocal(c)).connections).toEqual({});
+  });
+
+  it("says so when an expired connection's token can't be ended because Probarion can't be reached", async () => {
+    await putConnection(c, ORIGIN, conn({ expired: true }));
     expect(await disconnect(deps(offline), ORIGIN)).toEqual({ revoked: false });
     expect((await loadLocal(c)).connections).toEqual({});
   });

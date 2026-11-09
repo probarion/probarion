@@ -3,6 +3,8 @@ import type { Fetch } from "../src/chrome";
 export const ORIGIN = "https://probarion.vercel.app";
 export const OTHER_ORIGIN = "https://probarion.xyz";
 export const TOKEN = `pbx_${"A".repeat(43)}`;
+/** The token of a later connection to the same address. */
+export const TOKEN_B = `pbx_${"B".repeat(43)}`;
 export const NOW = Date.parse("2026-11-10T00:00:00.000Z");
 
 export interface Call {

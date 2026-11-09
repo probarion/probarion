@@ -3,10 +3,10 @@ import type { MessageSender } from "../src/chrome";
 import { readConnectMessage } from "../src/connect";
 import { addNonce, loadLocal } from "../src/storage";
 import { type FakeChrome, fakeChrome } from "./fake-chrome";
-import { fetchOf, inboxBody, json, NOW, ORIGIN, OTHER_ORIGIN, TOKEN } from "./helpers";
+import { type Call, fetchOf, inboxBody, json, NOW, ORIGIN, OTHER_ORIGIN, TOKEN } from "./helpers";
 
 // The /extension page's connect message goes page -> content script (src/content.ts) -> worker (src/worker.ts) ->
-// handleConnect. These tests run the two real scripts on a fake window and a fake chrome, so a shape one side
+// onConnectMessage. These tests run the two real scripts on a fake window and a fake chrome, so a shape one side
 // writes and the other doesn't read shows up here.
 
 const NONCE = "n".repeat(22);
@@ -34,6 +34,8 @@ type Listener = (
 
 interface Page {
   c: FakeChrome;
+  /** The requests the worker made to Probarion. */
+  calls: Call[];
   /** What the content script sent to the worker, as Chrome would hand it over (a JSON copy). */
   sent: unknown[];
   /** The page's window.postMessage to itself. */
@@ -41,8 +43,13 @@ interface Page {
   marked(): string | undefined;
 }
 
-/** Loads the content script and the worker on a fake window and a fake chrome, joined as Chrome joins them. */
-async function load(): Promise<Page> {
+/**
+ * Loads the content script and the worker on a fake window and a fake chrome, joined as Chrome joins them. `answer` is
+ * what Probarion answers the worker.
+ */
+async function load(
+  answer: () => Response | Promise<Response> = () => json(inboxBody()),
+): Promise<Page> {
   const c = fakeChrome();
   const listeners: Listener[] = [];
   c.runtime.onMessage = { addListener: (f) => listeners.push(f) };
@@ -66,12 +73,14 @@ async function load(): Promise<Page> {
   vi.stubGlobal("chrome", c);
   vi.stubGlobal("window", win);
   vi.stubGlobal("document", doc);
-  vi.stubGlobal("fetch", fetchOf(() => json(inboxBody())).fetch);
+  const probarion = fetchOf(answer);
+  vi.stubGlobal("fetch", probarion.fetch);
   vi.resetModules();
   await import("../src/worker");
   await import("../src/content");
   return {
     c,
+    calls: probarion.calls,
     sent,
     post: (data, from = {}) => onMessage?.({ data, source: win, origin: ORIGIN, ...from }),
     marked: () => doc.documentElement.dataset.probarionExtension,
@@ -102,6 +111,16 @@ describe("the connect message, from the page to the worker", () => {
       network: "testnet",
       expired: false,
     });
+  });
+
+  it("is marked Connected before Probarion has answered the worker's inbox read", async () => {
+    // Probarion never answers: the page still has to hear from the worker within the 3 s it waits.
+    const p = await load(() => new Promise<Response>(() => {}));
+    await addNonce(p.c, NONCE, ORIGIN, NOW);
+    p.post(posted);
+    await vi.waitFor(() => expect(p.marked()).toBe("connected"));
+    // The inbox read comes after that answer.
+    await vi.waitFor(() => expect(p.calls.map((x) => x.url)).toEqual([`${ORIGIN}/api/ext/inbox`]));
   });
 
   it("reaches the worker in the shape the worker reads", async () => {

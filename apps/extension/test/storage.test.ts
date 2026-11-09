@@ -15,7 +15,7 @@ import {
   takeNonce,
 } from "../src/storage";
 import { fakeChrome } from "./fake-chrome";
-import { NOW, ORIGIN, OTHER_ORIGIN, TOKEN } from "./helpers";
+import { NOW, ORIGIN, OTHER_ORIGIN, TOKEN, TOKEN_B } from "./helpers";
 
 const conn = (over: Partial<Connection> = {}): Connection => ({
   network: "testnet",
@@ -90,15 +90,34 @@ describe("the connections", () => {
   it("are marked expired in place", async () => {
     const c = fakeChrome();
     await putConnection(c, ORIGIN, conn());
-    await markExpired(c, ORIGIN);
+    expect(await markExpired(c, ORIGIN, TOKEN)).toBe(true);
     expect((await loadLocal(c)).connections[ORIGIN]).toEqual(conn({ expired: true }));
+  });
+
+  it("are marked expired only while they hold the token that got the 401", async () => {
+    const c = fakeChrome();
+    await putConnection(c, ORIGIN, conn());
+    // A reconnect stored a new token for this address while the old token's request was out.
+    await putConnection(c, ORIGIN, conn({ token: TOKEN_B }));
+    expect(await markExpired(c, ORIGIN, TOKEN)).toBe(false);
+    expect((await loadLocal(c)).connections[ORIGIN]).toEqual(conn({ token: TOKEN_B }));
+    expect(await markExpired(c, OTHER_ORIGIN, TOKEN)).toBe(false);
+    expect(await markExpired(c, ORIGIN, TOKEN_B)).toBe(true);
+    expect((await loadLocal(c)).connections[ORIGIN]?.expired).toBe(true);
+  });
+
+  it("hand back the connection a new one for the same address replaces", async () => {
+    const c = fakeChrome();
+    expect(await putConnection(c, ORIGIN, conn())).toBeUndefined();
+    expect(await putConnection(c, OTHER_ORIGIN, conn())).toBeUndefined();
+    expect(await putConnection(c, ORIGIN, conn({ token: TOKEN_B }))).toEqual(conn());
   });
 
   it("loses no write when two connections expire at once", async () => {
     const c = fakeChrome();
     await putConnection(c, ORIGIN, conn());
     await putConnection(c, OTHER_ORIGIN, conn());
-    await Promise.all([markExpired(c, ORIGIN), markExpired(c, OTHER_ORIGIN)]);
+    await Promise.all([markExpired(c, ORIGIN, TOKEN), markExpired(c, OTHER_ORIGIN, TOKEN)]);
     const s = await loadLocal(c);
     expect([s.connections[ORIGIN]?.expired, s.connections[OTHER_ORIGIN]?.expired]).toEqual([
       true,

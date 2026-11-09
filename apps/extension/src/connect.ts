@@ -6,7 +6,7 @@ import { isAccount, isNetwork, isTime, type Network, TOKEN_RE } from "./storage"
 // 2. The person signs in there with their wallet and presses Connect. The page posts
 //    { type: "probarion:connect", v: 1, nonce, token, … } to its own window.
 // 3. The content script (content.ts) checks where the message came from and hands it to the worker.
-// 4. The worker checks the sender and the nonce (background.ts handleConnect).
+// 4. The worker checks the sender and the nonce (background.ts onConnectMessage).
 
 export const NONCE_RE = /^[A-Za-z0-9_-]{22,64}$/;
 

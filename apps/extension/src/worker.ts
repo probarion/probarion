@@ -2,9 +2,9 @@ import {
   ALARM,
   type Deps,
   ensureAlarm,
-  handleConnect,
   handleMenu,
   installMenus,
+  onConnectMessage,
   refresh,
 } from "./background";
 import { chromeApi } from "./chrome";
@@ -40,13 +40,7 @@ c.contextMenus.onClicked.addListener((info) => {
 c.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const m = message as { type?: unknown; message?: unknown } | null;
   if (typeof m !== "object" || m === null || m.type !== "probarion:connect") return false;
-  handleConnect(deps(), m.message, sender).then(
-    (answer) => {
-      sendResponse(answer);
-      // The badge and the first inbox read, once the page has its answer. The 5-minute alarm is the fallback.
-      if (answer.ok) void refresh(deps()).catch(() => {});
-    },
-    () => sendResponse({ ok: false }),
-  );
+  // The answer to the page goes first, then the inbox read and the rest (background.ts onConnectMessage).
+  void onConnectMessage(deps(), m.message, sender, sendResponse);
   return true; // the answer comes later
 });
