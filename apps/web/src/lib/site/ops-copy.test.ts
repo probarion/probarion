@@ -94,6 +94,45 @@ describe("the operations copy", () => {
     }
   });
 
+  it("says what the server keeps of an invoice sent from the extension, and for which vaults it can send one", () => {
+    // lib/payables/queue.ts: the upload's retention; the mandate, the sender and the checks always; a check is a pass
+    // or a hold. The queue route takes an owner or an approver of the vault.
+    const text = EXTENSION_PRIVACY.paragraphs.join(" ");
+    expect(text).toContain("under the same vault settings as an upload in the console");
+    expect(text).toContain("the checks it was queued with");
+    expect(text).toContain(
+      "If your vault is set to keep no invoice files, its record keeps the invoice's hashes and amount, the mandate, the account that sent it and those checks, which name the mandate's payee: not the file, its text, its other facts or its name.",
+    );
+    expect(text).toContain("a vault where you are the owner or an approver");
+    expect(text).toContain("paid only after the vault's owner confirms it in the console");
+    expect(text).not.toMatch(/checks it passed|you own or approve|same settings,/);
+    // ops-pages.test.ts counts the paragraphs that name the setting.
+    expect(text).not.toMatch(/zero-retention/i);
+  });
+
+  it("says in the threat model and the runbook who ends a leaked extension token, and what its queued invoices block", () => {
+    // ext_token_revoke matches the session's own account (migration 0013, lib/ext/store.ts); the vault's approvers are
+    // fixed when it is created (contracts/vault/src/lib.rs); invoice_reject keeps the ref (0007), and a queued row
+    // holds both duplicate keys (0006's invoice_insert).
+    for (const doc of [
+      ["docs", "THREAT_MODEL.md"],
+      ["docs", "RUNBOOK.md"],
+    ]) {
+      const md = read(...doc).replace(/\s+/g, " ");
+      const name = doc.join("/");
+      expect(md, name).toContain("the vault's owner cannot revoke an approver's token");
+      expect(md, name).toContain("can block a later upload of the same invoice");
+      expect(md, name).toContain("after a Reject the same text cannot be queued or uploaded again");
+      expect(md, name).not.toMatch(/The owner revokes (it|a token) on `?\/extension/);
+    }
+    const row = read("docs", "RUNBOOK.md")
+      .split("\n")
+      .find((l) => l.startsWith("| An extension token leaked |"));
+    expect(row).toContain(
+      "The vault's owner rejects every waiting invoice sent from the browser extension by that account since the suspected leak that they do not recognise.",
+    );
+  });
+
   it("claims no analytics and no paid plan", () => {
     expect(ALL.join("\n")).not.toMatch(/paid plan|pricing/i);
     expect(PRIVACY_PAGE.sections.map((s) => s.id)).not.toContain("browser-extension");

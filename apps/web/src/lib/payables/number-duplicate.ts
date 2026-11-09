@@ -2,7 +2,7 @@ import { type CustomRule, describePayee, type Payee, type RuleResult } from "@pr
 import type { NumberMatch } from "./store";
 
 // A second invoice with the same number for the same payee is refused by code, in the signed ledger. The duplicate
-// guard (migrations 0006 and 0015) answers the same text and the same rendered text at intake, with no cycle. When the
+// guard (migrations 0006 and 0016) answers the same text and the same rendered text at intake, with no cycle. When the
 // only match is on the invoice-number key (pipeline.ts invoiceNumberKey: the vault, the mandate's payee and the
 // number), the invoice is another text of what may be the same bill, such as a re-sent INV-2001 with another total or
 // a PDF that renders other text. The row is inserted, and the pipeline adds this rule to the cycle, so decide()

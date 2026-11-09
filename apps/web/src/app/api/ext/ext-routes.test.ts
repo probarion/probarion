@@ -42,11 +42,16 @@ vi.mock("@/lib/near/server", () => ({
     listSpends: async (_v: string, from: number, limit: number) =>
       h.spends.slice(from, from + limit),
   }),
+  // The invoices route reads check_spend through getRpc; no request here gets that far.
+  getRpc: () => {
+    throw new Error("check_spend is not read in this test");
+  },
 }));
 
 const { POST: pair } = await import("./pair/route");
 const { GET: inbox } = await import("./inbox/route");
 const { POST: revoke } = await import("./revoke/route");
+const { POST: invoices } = await import("./invoices/route");
 
 const OWNER = "owner.testnet";
 const VAULT = "acme.vaults.probarion.testnet";
@@ -104,6 +109,12 @@ function pairRequest(code: unknown, host = TESTNET_HOST, ip = "203.0.113.7") {
 }
 const withToken = (token: string, host = TESTNET_HOST) =>
   at(host, "/api/ext/inbox", { headers: { authorization: `Bearer ${token}` } });
+/** A POST to the invoices route with no body, so no Content-Length, with the token if one is given. */
+const invoicePost = (token?: string) =>
+  at(TESTNET_HOST, "/api/ext/invoices", {
+    method: "POST",
+    ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
+  });
 
 describe("the extension's API", () => {
   const logs = quietLogs();
@@ -311,6 +322,7 @@ describe("the extension's API", () => {
       ["pair 400", await pair(pairRequest("nope"))],
       ["inbox 401", await inbox(at(TESTNET_HOST, "/api/ext/inbox"))],
       ["revoke 401", await revoke(at(TESTNET_HOST, "/api/ext/revoke", { method: "POST" }))],
+      ["invoices 401", await invoices(invoicePost())],
       ["inbox 200", await inbox(withToken(c.token))],
       [
         "revoke 204",
@@ -321,16 +333,22 @@ describe("the extension's API", () => {
           }),
         ),
       ],
+      ["invoices 411", await invoices(invoicePost(c.token))],
     ];
     // Full buckets answer 429 at once.
     await pg.query(
-      `insert into public.rate_limits (bucket, window_start, count) values ($1, now(), 60), ($2, now(), 10)
+      `insert into public.rate_limits (bucket, window_start, count) values ($1, now(), 60), ($2, now(), 10), ($3, now(), 20)
        on conflict (bucket) do update set window_start = excluded.window_start, count = excluded.count`,
-      [`ext:inbox:testnet:${OWNER}`, "ext:pair:testnet:198.51.100.20"],
+      [
+        `ext:inbox:testnet:${OWNER}`,
+        "ext:pair:testnet:198.51.100.20",
+        `ext:invoice:testnet:${OWNER}`,
+      ],
     );
     answers.push(
       ["inbox 429", await inbox(withToken(c.token))],
       ["pair 429", await pair(pairRequest("AAAA-AAAA", TESTNET_HOST, "198.51.100.20"))],
+      ["invoices 429", await invoices(invoicePost(c.token))],
     );
     for (const [name, r] of answers) {
       // Each row is the answer its name says.
@@ -370,6 +388,7 @@ describe("the extension's API", () => {
       (await pair(withId(pairRequest("AAAA-AAAA", MAINNET_HOST), "rid-pair-main"))).status,
     ).toBe(401);
     expect((await inbox(withId(withToken(c.token), "rid-inbox"))).status).toBe(200);
+    expect((await invoices(withId(invoicePost(c.token), "rid-invoices"))).status).toBe(411);
     expect(
       (
         await revoke(
@@ -387,6 +406,7 @@ describe("the extension's API", () => {
       ["rid-pair", "extension", "testnet"],
       ["rid-pair-main", "extension", "mainnet"],
       ["rid-inbox", "extension", "testnet"],
+      ["rid-invoices", "extension", "testnet"],
       ["rid-revoke", "extension", "testnet"],
     ]);
   });
@@ -439,6 +459,7 @@ describe("the extension's API", () => {
             }),
           ),
         ],
+        ["invoice", await invoices(invoicePost(c.token))],
       ];
       for (const [name, r] of answers) {
         expect(r.status, name).toBe(503);

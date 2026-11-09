@@ -1432,8 +1432,10 @@ describe("the sign-in page", () => {
     // Its intro puts what the extension does in the future tense, as /privacy does.
     const words = page.replace(/\s+/g, " ");
     expect(words).toContain(
-      "The extension will send invoices to wait for your confirmation and show what waits for you, but it can't pay or approve: an invoice it sends will be paid only after you confirm it in the console with your wallet.",
+      "The extension will send invoices to wait for the owner's confirmation and show what waits for you, but it can't pay or approve: an invoice it sends is paid only after the vault's owner confirms it in the console with their wallet.",
     );
+    // An approver's connection can send invoices too, and only the vault's owner confirms (lib/payables/confirm.ts).
+    expect(words).not.toContain("after you confirm it");
     expect(words).not.toContain("The extension sends invoices");
   });
 });

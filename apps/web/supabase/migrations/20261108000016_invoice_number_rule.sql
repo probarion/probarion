@@ -17,12 +17,13 @@
 --    on its row and ref once no invoice that may pay has the number (the owner rejected the earlier one, or it paid
 --    nothing after all), so a vendor's corrected invoice is not stuck behind its own first upload. While one still
 --    may pay, the same text is a duplicate at intake, as any same text is. Another rule's refusal stays final.
--- 2. Without p.number_rule, a number match is a duplicate at intake, as in 0006, and no refused row is run again. So the app and this file can be
---    deployed in either order: an app that does not send the flag never processes a number match, and the 0006
---    function ignores a flag it is given (the app then gets its 409, as today).
+-- 2. Without p.number_rule, a number match is a duplicate at intake, as in 0006, and no refused row is run again. So
+--    the app and this file can be deployed in either order: an app that does not send the flag never processes a
+--    number match, and the 0006 function ignores a flag it is given (the app then gets its 409, as today).
 -- 3. invoice_confirm_begin (0007) is unchanged: at the owner's Confirm, a same-number row that is processing, sent or
 --    paid still refuses as `duplicate`, before anything runs. The grants are unchanged too (create or replace keeps
---    them: service role only).
+--    them: service role only). invoice_queue (0015, the browser extension) calls this function without number_rule,
+--    so it gets 0006's answers; source and queue_checks are not touched here, so a row taken over keeps its own.
 
 create or replace function public.invoice_insert(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
