@@ -1,9 +1,12 @@
 // The options that let a caller pass "the time I have left" to the SDK (plan 04 Task 17, ruling W-T17-R2): an overall
 // `remainingMs` on the RPC client and on the NEAR AI proposer, a `sendTimeoutMs` that may be a function on the transaction
 // sender, and a `knownModel` that skips the catalog and the probe. Every default is unchanged for other callers.
+// No call starts with less than MIN_CALL_MS left: the tests of that floor answer `remainingMs` with fixed values, so they
+// never race the clock.
 import { createServer, type Server } from "node:http";
 import { generateKeyPair, sha256Hex, utf8 } from "@probarion/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { MIN_CALL_MS } from "../src/deadline.js";
 import { ConfigError, NearAiError, RpcError } from "../src/errors.js";
 import { NearAiProposer } from "../src/nearai.js";
 import { RpcClient } from "../src/rpc.js";
@@ -32,6 +35,25 @@ const proposalJson = JSON.stringify({
   payee_hint: null,
   reasoning: "ok",
   confidence: 0.9,
+});
+
+/** Time left values below the floor: each one makes no request at all. */
+const TOO_LITTLE = [1, 49, Number.NaN];
+
+/** A fetch that never answers and rejects when its signal aborts, with the number of requests it was given. */
+function stalling() {
+  const seen = { sent: 0 };
+  const fetch = ((_input: unknown, init?: RequestInit) => {
+    seen.sent += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    });
+  }) as typeof globalThis.fetch;
+  return { fetch, seen };
+}
+
+it("keeps the floor under which no call starts at 50 ms", () => {
+  expect(MIN_CALL_MS).toBe(50);
 });
 
 describe("RpcClient remainingMs", () => {
@@ -64,6 +86,68 @@ describe("RpcClient remainingMs", () => {
     expect(error).toBeInstanceOf(RpcError);
     expect(error.message).toMatch(/time left/);
     expect(sent).toBe(0);
+  });
+
+  it("starts no try with less than MIN_CALL_MS left", async () => {
+    for (const left of TOO_LITTLE) {
+      const { fetch, seen } = stalling();
+      const rpc = new RpcClient({ urls: ["https://a.test"], remainingMs: () => left, fetch });
+      const error = (await rpc.viewAccount("a.testnet").catch((e: unknown) => e)) as RpcError;
+      expect(error, String(left)).toBeInstanceOf(RpcError);
+      expect(error.message, String(left)).toMatch(
+        /the time left for this job ran out after 0 attempt/,
+      );
+      expect(seen.sent, String(left)).toBe(0);
+    }
+  });
+
+  it("starts a try with exactly MIN_CALL_MS left, and gives it that as its timeout", async () => {
+    const { fetch, seen } = stalling();
+    const rpc = new RpcClient({
+      urls: ["https://a.test"],
+      maxRounds: 1,
+      timeoutMs: 30_000,
+      remainingMs: () => 50,
+      fetch,
+    });
+    const error = (await rpc.viewAccount("a.testnet").catch((e: unknown) => e)) as RpcError;
+    expect(error).toBeInstanceOf(RpcError);
+    expect(seen.sent).toBe(1);
+    expect(error.attempts.map((a) => a.error)).toEqual(["network error: timed out after 50ms"]);
+  });
+
+  it("does not wait out a back-off that would leave less than MIN_CALL_MS for the next try", async () => {
+    // every endpoint answers 503, so the client backs off 100 ms before its second try
+    const run = async (left: number) => {
+      let sent = 0;
+      const slept: number[] = [];
+      const rpc = new RpcClient({
+        urls: ["https://a.test", "https://b.test"],
+        maxRounds: 1,
+        baseDelayMs: 100,
+        remainingMs: () => left,
+        sleep: async (ms) => {
+          slept.push(ms);
+        },
+        fetch: (async () => {
+          sent += 1;
+          return new Response("busy", { status: 503 });
+        }) as typeof fetch,
+      });
+      const error = (await rpc.viewAccount("a.testnet").catch((e: unknown) => e)) as RpcError;
+      expect(error).toBeInstanceOf(RpcError);
+      return { error, sent, slept };
+    };
+    // 149 ms: the back-off would leave 49 ms, so the client stops at once, without waiting
+    const short = await run(149);
+    expect(short.error.message).toMatch(/the time left for this job ran out after 1 attempt/);
+    expect(short.sent).toBe(1);
+    expect(short.slept).toEqual([]);
+    // 150 ms: the back-off leaves exactly MIN_CALL_MS, so it is waited out in full and the second try is made
+    const enough = await run(150);
+    expect(enough.error.message).toMatch(/all 2 RPC endpoint\(s\) failed after 2 attempts/);
+    expect(enough.sent).toBe(2);
+    expect(enough.slept).toEqual([100]);
   });
 
   it("gives every try the smaller of timeoutMs and the time left, and stops retrying when it is over", async () => {
@@ -163,6 +247,7 @@ describe("NearAiProposer remainingMs and knownModel", () => {
     new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
     })) as typeof fetch;
+  const LONG = { catalog: 30_000, report: 30_000, chat: 30_000, signature: 30_000 };
 
   function proposer(extra: Partial<ConstructorParameters<typeof NearAiProposer>[0]> = {}) {
     const fake = createFakeNearAi({ respond: () => proposalJson });
@@ -185,13 +270,36 @@ describe("NearAiProposer remainingMs and knownModel", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
+  it("starts no call with less than MIN_CALL_MS left", async () => {
+    for (const left of TOO_LITTLE) {
+      const { nearai, fake } = proposer({ remainingMs: () => left });
+      const error = (await nearai.listModelCatalog().catch((e: unknown) => e)) as NearAiError;
+      expect(error, String(left)).toBeInstanceOf(NearAiError);
+      expect(error.message, String(left)).toBe(
+        "GET /model/list: the time left for the model step ran out (not sent)",
+      );
+      expect(fake.calls, String(left)).toHaveLength(0);
+    }
+  });
+
+  it("starts a call with exactly MIN_CALL_MS left, and gives it that as its timeout", async () => {
+    const { fetch, seen } = stalling();
+    const { nearai } = proposer({ fetch, timeoutMs: LONG, remainingMs: () => 50 });
+    const error = (await nearai.listModelCatalog().catch((e: unknown) => e)) as NearAiError;
+    expect(error).toBeInstanceOf(NearAiError);
+    expect(seen.sent).toBe(1);
+    expect(error.message).toBe("GET /model/list: timed out after 50 ms (request)");
+  });
+
   it("gives every call the smaller of its phase timeout and the time left, and says what it used", async () => {
-    const deadline = Date.now() + 120;
+    // the clock starts once the proposer is built, so a slow machine does not eat the time before the call
+    let deadline = Number.POSITIVE_INFINITY;
     const { nearai } = proposer({
       fetch: stall,
-      timeoutMs: { catalog: 30_000, report: 30_000, chat: 30_000, signature: 30_000 },
+      timeoutMs: LONG,
       remainingMs: () => deadline - Date.now(),
     });
+    deadline = Date.now() + 120;
     const started = Date.now();
     const error = (await nearai.listModelCatalog().catch((e: unknown) => e)) as NearAiError;
     expect(error).toBeInstanceOf(NearAiError);
@@ -205,7 +313,7 @@ describe("NearAiProposer remainingMs and knownModel", () => {
     const deadline = Date.now() + 150;
     const { nearai } = proposer({
       fetch: stall,
-      timeoutMs: { catalog: 30_000, report: 30_000, chat: 30_000, signature: 30_000 },
+      timeoutMs: LONG,
       remainingMs: () => deadline - Date.now(),
     });
     await nearai.listModelCatalog().catch(() => undefined); // uses it all
@@ -216,29 +324,53 @@ describe("NearAiProposer remainingMs and knownModel", () => {
     expect(second.message).toMatch(/time left/);
   });
 
-  it("does not wait out a signature back-off the time left cannot cover", async () => {
+  /** A proposer whose every signature read answers 404, so it backs off 400 ms, then 800 ms, between tries. */
+  function signature404s(left: number) {
     let slept = 0;
+    let reads = 0;
     const fake = createFakeNearAi({ respond: () => proposalJson });
     const nearai = new NearAiProposer({
       apiKey: API_KEY,
       baseUrl: FAKE_NEARAI_BASE_URL,
-      // every signature read answers 404, so the proposer would back off between tries
-      fetch: (async (input, init) =>
-        String(input).includes("/signature/")
-          ? new Response("{}", { status: 404 })
-          : fake.fetch(input, init)) as typeof fetch,
+      fetch: (async (input, init) => {
+        if (!String(input).includes("/signature/")) return fake.fetch(input, init);
+        reads += 1;
+        return new Response("{}", { status: 404 });
+      }) as typeof fetch,
       sleep: async (ms) => {
         slept += ms;
       },
       signatureRetryDelayMs: 400,
-      remainingMs: () => 300, // less than the first back-off
+      remainingMs: () => left,
     });
-    const error = (await nearai
-      .fetchSignature("chatcmpl-test-double-1", FAKE_PRIVATE_MODEL)
-      .catch((e: unknown) => e)) as NearAiError;
-    expect(error).toBeInstanceOf(NearAiError);
+    const run = async () => {
+      const error = (await nearai
+        .fetchSignature("chatcmpl-test-double-1", FAKE_PRIVATE_MODEL)
+        .catch((e: unknown) => e)) as NearAiError;
+      expect(error).toBeInstanceOf(NearAiError);
+      return { error, slept, reads };
+    };
+    return run();
+  }
+
+  it("does not wait out a signature back-off the time left cannot cover", async () => {
+    const { error, slept, reads } = await signature404s(300); // less than the first back-off
     expect(error.message).toMatch(/no time left/);
     expect(slept).toBe(0);
+    expect(reads).toBe(1);
+  });
+
+  it("does not wait out a signature back-off that would leave less than MIN_CALL_MS for the try after it", async () => {
+    // 449 ms: the first back-off (400 ms) would leave 49 ms, so there is no second try
+    const short = await signature404s(449);
+    expect(short.error.message).toMatch(/no time left for another try \(last: HTTP 404\)/);
+    expect(short.slept).toBe(0);
+    expect(short.reads).toBe(1);
+    // 450 ms: it leaves exactly MIN_CALL_MS, so the second try is made; the next back-off (800 ms) is not waited out
+    const enough = await signature404s(450);
+    expect(enough.error.message).toMatch(/no time left for another try \(last: HTTP 404\)/);
+    expect(enough.slept).toBe(400);
+    expect(enough.reads).toBe(2);
   });
 
   it("keeps a model the caller already resolved: no catalog call and no probe", async () => {
