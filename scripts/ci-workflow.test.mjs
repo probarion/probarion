@@ -1353,6 +1353,18 @@ const PACKAGE_PINNED = {
     typecheck: "tsc -p tsconfig.json",
     lint: null,
   },
+  "packages/mcp/package.json": {
+    test: "vitest run",
+    build: PACKAGE_BUILD,
+    typecheck: "tsc -p tsconfig.json",
+    lint: null,
+  },
+  "examples/402/package.json": {
+    test: "vitest run",
+    build: null,
+    typecheck: "tsc -p tsconfig.json",
+    lint: null,
+  },
   "apps/web/package.json": {
     test: "vitest run",
     build: "next build",
@@ -1361,13 +1373,14 @@ const PACKAGE_PINNED = {
   },
 };
 
-/** The one script allowed to use `||`: the publish guard of the three published packages, exactly. */
+/** The one script allowed to use `||`: the publish guard of the four published packages, exactly. */
 const PREPUBLISH_GUARD =
   "node -e \"if(process.env.CI!=='true'||process.env.GITHUB_WORKFLOW!=='release'){console.error('Refusing to publish: only the GitHub release workflow publishes. Push a tag such as sdk-v0.1.0 instead.');process.exit(1)}\"";
 const GUARDED = [
   "packages/core/package.json",
   "packages/sdk/package.json",
   "packages/cli/package.json",
+  "packages/mcp/package.json",
 ];
 
 // Where a shell word starts a command: the start, after && || | & ; ( ) { !, or after then/do/else.
@@ -1389,7 +1402,7 @@ const SWALLOWS = [
 ];
 
 // pnpm-workspace.yaml chooses the packages that `pnpm -r` runs and can hold settings (scriptShell).
-const WORKSPACE_YAML = 'packages:\n  - "packages/*"\n  - "apps/*"\n  - "eval"\n';
+const WORKSPACE_YAML = 'packages:\n  - "packages/*"\n  - "apps/*"\n  - "eval"\n  - "examples/*"\n';
 // scripts/vitest.config.ts chooses which scripts/test files verify:launch runs. Update with:
 // node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync("scripts/vitest.config.ts","utf8").replace(/\r\n/g,"\n")).digest("hex"))'
 const SCRIPTS_VITEST_SHA256 = "b2c667b89f365ece33ad8b5fdb0024cd6ce82b64bd6916cb5b5696776e8f9b70";
@@ -1403,7 +1416,7 @@ const sha256 = (text) => createHash("sha256").update(lf(text)).digest("hex");
 /** The workspace manifests by path, and the config files that decide how the scripts run (null: absent). */
 function loadRepo() {
   const paths = ["package.json"];
-  for (const parent of ["packages", "apps"]) {
+  for (const parent of ["packages", "apps", "examples"]) {
     for (const dir of readdirSync(inRepo(`${parent}/`)).sort()) {
       if (existsSync(inRepo(`${parent}/${dir}/package.json`))) {
         paths.push(`${parent}/${dir}/package.json`);
@@ -1483,7 +1496,7 @@ function gateProblems(repo) {
       for (const [pattern, label] of SWALLOWS) {
         if (pattern.test(script)) {
           fail(
-            `${file}: scripts["${name}"] contains ${label}, which lets a failure pass; review the change (only the three pinned prepublishOnly guards may use "||")`,
+            `${file}: scripts["${name}"] contains ${label}, which lets a failure pass; review the change (only the four pinned prepublishOnly guards may use "||")`,
           );
         }
       }
@@ -1710,7 +1723,7 @@ const gateMutations = [
     ],
   ],
   [
-    "the guard copied into a package that is not one of the three",
+    "the guard copied into a package that is not one of the four",
     (r) => {
       scriptsIn(r, "apps/web/package.json").prepublishOnly = PREPUBLISH_GUARD;
     },
@@ -1719,9 +1732,9 @@ const gateMutations = [
   [
     "a new workspace package that nothing pins",
     (r) => {
-      r.manifests.set("packages/mcp/package.json", { scripts: { test: "echo ok" } });
+      r.manifests.set("packages/extra/package.json", { scripts: { test: "echo ok" } });
     },
-    ["packages/mcp/package.json: a workspace package whose test, build, typecheck and lint"],
+    ["packages/extra/package.json: a workspace package whose test, build, typecheck and lint"],
   ],
   // The files that decide how every script runs
   [

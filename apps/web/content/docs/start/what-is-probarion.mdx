@@ -101,7 +101,7 @@ The two quickstarts are Preview: their flows have not yet run end to end with re
 - **A vault's NEAR does not come back out.** The vault pays for its storage and its spends' gas from its own NEAR, and it has no method to withdraw NEAR. That NEAR is the vault's runway, and one plain transfer tops it up.
 - **The contract does not judge whether a payment is wise.** It holds the agent to the limits the owner signed, and a spend above `approval_above` waits for a person. Off chain, `decide()` can still hold or refuse a payment the mandate allows, through its built-in rules, your own `custom.*` rules or an attested model's proposal.
 - **It has no HTTP API that an agent pays through.** The console's invoice API answers only a signed-in owner or approver, on a same-origin request. An agent pays through the SDK, in its own process.
-- **Some parts are not done yet.** An MCP server and a mainnet vault are both Planned. The mainnet vault's runbook is ready.
+- **Some parts are not done yet.** A mainnet vault is Planned, and its runbook is ready. The MCP server is Preview: it was tried on testnet and is not on npm yet.
 
 <Callout kind="note" title="Unaudited beta.">
 
