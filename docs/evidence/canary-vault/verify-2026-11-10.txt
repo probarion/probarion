@@ -1,0 +1,15 @@
+Probarion verify: canary.vaults.probarion.testnet (testnet)
+entries 0, anchors 4, generated 2026-11-10T13:36:55.354Z
+
+a  ledger-signatures      PASS      ledger is empty
+b  hash-links             PASS      0 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                FAIL      anchor 1 covers 1 entries but the ledger has 0: entry 0 and later are missing [first broken seq 0]
+d  spends-have-decisions  PASS      no on-chain spends
+e  attestations           PASS      0 attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice)
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES); it is the code of factory version 1
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      0 burned spends: no burn to pair
+i  factory-version        PASS      created by vaults.probarion.testnet at version 1
+
+8 passed, 1 failed, 0 unproven
+RESULT: FAIL (first broken seq 0)
