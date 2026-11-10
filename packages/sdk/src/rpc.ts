@@ -1,4 +1,5 @@
 import { type AccessKeyInfo, NETWORKS } from "@probarion/core";
+import { MIN_CALL_MS } from "./deadline.js";
 import { envValue } from "./env.js";
 import { ConfigError, type RpcAttempt, RpcError, RpcMalformedError, ViewError } from "./errors.js";
 import { isRecord } from "./guards.js";
@@ -15,8 +16,8 @@ export interface RpcClientOptions {
   /**
    * Milliseconds the caller has left for its whole job (default: no overall limit). It is read before every try and
    * every back-off: a try gets the smaller of `timeoutMs` and what is left, a back-off is cut to what is left, and
-   * when nothing is left the call stops with an `RpcError` instead of trying the next endpoint. For a caller that
-   * answers inside a platform's time limit.
+   * when less than `MIN_CALL_MS` (50 ms) is left the call stops with an `RpcError` instead of trying the next
+   * endpoint. For a caller that answers inside a platform's time limit.
    */
   remainingMs?: () => number;
 }
@@ -476,21 +477,22 @@ export class RpcClient {
     // A read that failed over on INTERNAL_ERROR, UNAVAILABLE_SHARD or NOT_SYNCED_YET ends with that node error:
     // a node did answer, so it is never reported as an outage (rpcError stays null only for transport failures).
     let nodeError: unknown = null;
+    const ranOut = () =>
+      new RpcError(
+        `${method}: the time left for this job ran out after ${attempts.length} attempt(s)`,
+        attempts,
+        nodeError,
+        lastCause === undefined ? undefined : { cause: lastCause },
+      );
     const total = this.maxRounds * this.urls.length;
     for (let n = 0; n < total; n++) {
       const index = (this.preferred + n) % this.urls.length;
       const url = this.urls[index];
       if (url === undefined) continue;
-      // The time the caller has left, if it said (read before every try): no try starts without any.
+      // The time the caller has left, if it said (read before every try): no try starts with less than MIN_CALL_MS,
+      // because below it a try could only time out (a timer can fire a little before the deadline).
       const left = this.opts.remainingMs?.();
-      if (left !== undefined && !(left > 0)) {
-        throw new RpcError(
-          `${method}: the time left for this job ran out after ${attempts.length} attempt(s)`,
-          attempts,
-          nodeError,
-          lastCause === undefined ? undefined : { cause: lastCause },
-        );
-      }
+      if (left !== undefined && !(left >= MIN_CALL_MS)) throw ranOut();
       const base = this.opts.timeoutMs ?? 15_000;
       const outcome = await this.attempt(
         url,
@@ -510,6 +512,8 @@ export class RpcClient {
       lastCause = outcome.cause ?? new Error(outcome.message);
       if (n < total - 1) {
         const wait = this.delay(n, outcome.retryAfterMs);
+        // Cut to what is left, and always waited on a timer: a caller's own deadline timer can then fire first.
+        // The per-try floor above refuses the next try when less than MIN_CALL_MS is left.
         const after = this.opts.remainingMs?.();
         await this.sleep(after === undefined ? wait : Math.max(0, Math.min(wait, after)));
       }

@@ -25,6 +25,7 @@ import {
   sha256Hex,
   utf8,
 } from "@probarion/core";
+import { MIN_CALL_MS } from "./deadline.js";
 import { NearAiError } from "./errors.js";
 import { isRecord } from "./guards.js";
 
@@ -117,8 +118,8 @@ export interface NearAiProposerOptions {
   /**
    * Milliseconds the caller has left for ALL of this proposer's calls together (default: no overall limit). It is read
    * before every call and every signature back-off: a call gets the smaller of its phase timeout and what is left, a
-   * call with nothing left is not made, and a back-off the time left cannot cover is not waited out. For a caller that
-   * answers inside a platform's time limit.
+   * call with less than `MIN_CALL_MS` (50 ms) left is not made, and a back-off that would leave less than that for the
+   * try after it is not waited out. For a caller that answers inside a platform's time limit.
    */
   remainingMs?: () => number;
   /**
@@ -375,7 +376,8 @@ export class NearAiProposer {
   ): Promise<Response> {
     const cap = this.timeouts[phase];
     const left = this.opts.remainingMs?.();
-    if (left !== undefined && !(left > 0)) {
+    // Below the floor a call could only time out (a timer can fire a little before the deadline): it is not sent.
+    if (left !== undefined && !(left >= MIN_CALL_MS)) {
       throw new NearAiError(`${label}: the time left for the model step ran out (not sent)`);
     }
     const ms = left === undefined ? cap : Math.max(1, Math.min(cap, Math.ceil(left)));
@@ -516,7 +518,8 @@ export class NearAiProposer {
     for (let attempt = 0; attempt <= retries; attempt++) {
       if (attempt > 0) {
         const left = this.opts.remainingMs?.();
-        if (left !== undefined && left <= delay * attempt) {
+        // The back-off is waited out only if what it leaves can still start the try after it.
+        if (left !== undefined && !(left >= delay * attempt + MIN_CALL_MS)) {
           throw new NearAiError(`${label}: no time left for another try (last: ${last})`);
         }
         await this.sleep(delay * attempt);
