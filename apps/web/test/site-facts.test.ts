@@ -1572,19 +1572,19 @@ describe("the sign-in page", () => {
     expect(page).toContain("const safeNext = extensionNextPath(next) ?? consoleNext;");
   });
 
-  it("says on the Browser extension page that the extension is not released yet", () => {
+  it("says on the Browser extension page that the extension is pending Chrome Web Store review", () => {
     const page = text(WEB, "src", "app", "extension", "page.tsx");
     expect(page).toMatch(
-      /<Notice tone="info">\s*The Probarion extension for Chrome is not released yet\.\s*<\/Notice>/,
+      /<Notice tone="info">\s*The Probarion extension for Chrome is pending Chrome Web Store review\. Until the store\s+publishes it, load it unpacked from apps\/extension in Probarion's repository\.\s*<\/Notice>/,
     );
-    // Its intro puts what the extension does in the future tense, as /privacy does.
+    // Its intro puts what the extension does in the present tense, as /privacy does.
     const words = page.replace(/\s+/g, " ");
     expect(words).toContain(
-      "The extension will send invoices to wait for the owner's confirmation and show what waits for you, but it can't pay or approve: an invoice it sends is paid only after the vault's owner confirms it in the console with their wallet.",
+      "The extension sends invoices to wait for the owner's confirmation and shows what waits for you, but it can't pay or approve: an invoice it sends is paid only after the vault's owner confirms it in the console with their wallet.",
     );
     // An approver's connection can send invoices too, and only the vault's owner confirms (lib/payables/confirm.ts).
     expect(words).not.toContain("after you confirm it");
-    expect(words).not.toContain("The extension sends invoices");
+    expect(words).not.toContain("The extension will send");
   });
 });
 

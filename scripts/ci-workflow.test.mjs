@@ -1359,6 +1359,12 @@ const PACKAGE_PINNED = {
     typecheck: "tsc -p tsconfig.json",
     lint: null,
   },
+  "apps/extension/package.json": {
+    test: "vitest run",
+    build: "node scripts/build.mjs",
+    typecheck: "tsc -p tsconfig.json",
+    lint: null,
+  },
   "examples/402/package.json": {
     test: "vitest run",
     build: null,
