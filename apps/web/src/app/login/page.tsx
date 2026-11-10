@@ -22,7 +22,7 @@ export default async function LoginPage({
     <WalletProvider network={network}>
       <Container>
         <div className="mx-auto my-6 max-w-lg rounded-3xl border border-line bg-surface p-6 sm:my-10 sm:p-8">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-small">Console</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-ink">Console</p>
           <h1 className="mt-3 text-3xl font-light tracking-tight">Sign in with your NEAR wallet</h1>
           <SignInIntro network={network} />
           <p className="mt-3 mb-6 text-mute">

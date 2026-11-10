@@ -6,7 +6,7 @@ import { usdcFixed } from "@/lib/payables/view";
 // One Payables cycle in three columns: what the model wanted, what the code allowed, what the contract did. Every
 // string here was made safe by buildCycleView (lib/payables/view.ts); this component only lays it out.
 
-const muted = "text-ink/60";
+const muted = "text-ink/75";
 const link = "text-ink underline decoration-ink/30 hover:decoration-ink";
 
 const ruleTone = (o: string): Tone =>

@@ -22,7 +22,7 @@ import { setZeroRetentionAction } from "./actions";
 
 export const metadata: Metadata = { title: "Payables" };
 
-const muted = "text-ink/60";
+const muted = "text-ink/75";
 
 export default async function PayablesPage({ params }: { params: Promise<{ vault: string }> }) {
   const { vault: requested } = await params;

@@ -1,4 +1,4 @@
-import type { Payee, SpendView, VaultConfig } from "@probarion/core";
+import type { VaultConfig } from "@probarion/core";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { FirstPaymentChecklist } from "@/components/console/FirstPaymentChecklist";
@@ -12,12 +12,17 @@ import { AccountLink, Badge, Card, Notice } from "@/components/ui";
 import { heldAlertIsOn } from "@/lib/alerts/held";
 import { requireMember } from "@/lib/auth/guard";
 import type { Network } from "@/lib/config";
+import { approvePath } from "@/lib/console/approve";
 import { firstPaymentChecklist } from "@/lib/console/checklist";
 import {
   heldActions,
+  holdEndText,
   mandateStatusView,
+  payeeText,
   spendStatusView,
+  tokenAmount,
   UNAVAILABLE,
+  usdcText,
   whyUnavailable,
 } from "@/lib/console/display";
 import { readKeyReadiness } from "@/lib/console/key-readiness";
@@ -35,7 +40,7 @@ import {
   withdrawIntentsTx,
   withdrawTx,
 } from "@/lib/near/tx";
-import { formatNear, formatUsdc, nsToDate } from "@/lib/near/units";
+import { formatNear } from "@/lib/near/units";
 import { FAUCET_USDC, faucetConfigured } from "@/lib/topup/faucet";
 import { refreshMembersAction, updateSettingsAction } from "./actions";
 
@@ -46,35 +51,9 @@ export const maxDuration = 60;
 const muted = "text-mute";
 const textLink =
   "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink";
-const DIGITS = /^(0|[1-9][0-9]*)$/;
-
-/** A U128 of the network's USDC (6 decimals), or a plain word when it is not a decimal (never "0"). */
-function usdc(units: string): string {
-  return DIGITS.test(units) ? formatUsdc(units) : "unreadable";
-}
-
-/**
- * Amounts in the vault's own token. The console knows the decimals of the network's USDC only; any
- * other token is shown in raw base units and says so, never scaled by a guess.
- */
-function tokenAmount(token: string, networkUsdc: string): (units: string) => string {
-  if (token === networkUsdc) return (units) => `${usdc(units)} USDC`;
-  return (units) =>
-    `${DIGITS.test(units) ? units : "unreadable"} base units of ${token} (decimals unknown)`;
-}
-
 function hours(ns: string): string {
   const h = Number(BigInt(ns)) / 3_600_000_000_000;
   return `${Number.isInteger(h) ? h : h.toFixed(2)} h`;
-}
-
-function payeeText(p: Payee): string {
-  return p.type === "near" ? p.account_id : `${p.chain}:${p.address}`;
-}
-
-function expiry(s: SpendView): string {
-  if (s.held_until_ns === null || !DIGITS.test(s.held_until_ns)) return "n/a";
-  return `${nsToDate(s.held_until_ns).toISOString().replace("T", " ").slice(0, 16)} UTC`;
 }
 
 /** A figure, or "unavailable" with the reason beside it. Never a zero standing in for an error. */
@@ -275,8 +254,17 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
                     <span className="mono break-all">{payeeText(s.destination)}</span>
                   </div>
                   <div className={`text-xs ${muted}`}>
-                    ref <span className="mono">{s.ref}</span> · hold ends {expiry(s)}
+                    ref <span className="mono">{s.ref}</span> · hold ends{" "}
+                    {holdEndText(s.held_until_ns)}
                   </div>
+                  {/* The page an alert opens (roadmap G2): the same spend, on a phone-sized page of its own. */}
+                  <RouteLink
+                    route="/console/[vault]/approve/[spend]"
+                    href={approvePath(vault, s.id)}
+                    className={textLink}
+                  >
+                    Open spend #{s.id} on its own page <span aria-hidden="true">→</span>
+                  </RouteLink>
                   {act.note ? <p className="text-xs text-wait">{act.note}</p> : null}
                   {isApprover ? (
                     <div className="mt-3 flex flex-wrap gap-3">
@@ -373,7 +361,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
               </dd>
               <dt>Base USDC in Intents</dt>
               <dd>
-                <Figure read={o.intentsBase} fmt={(v) => `${usdc(v)} USDC`} />
+                <Figure read={o.intentsBase} fmt={(v) => `${usdcText(v)} USDC`} />
               </dd>
               <dt>NEAR runway</dt>
               <dd>
@@ -405,11 +393,11 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
             ) : null}
             {isOwner && o.intentsBase.ok && /^[1-9][0-9]*$/.test(o.intentsBase.value) ? (
               <VaultTxButton
-                label={`Withdraw all ${usdc(o.intentsBase.value)} Base USDC out of Intents to my account`}
+                label={`Withdraw all ${usdcText(o.intentsBase.value)} Base USDC out of Intents to my account`}
                 network={network}
                 expectedSigner={config.owner}
                 tx={withdrawIntentsTx(vault, consts.allowedAssets.base, o.intentsBase.value)}
-                confirm={`Withdraw the vault's whole Base USDC balance (${usdc(o.intentsBase.value)}) from ${config.intents} to ${config.owner}?`}
+                confirm={`Withdraw the vault's whole Base USDC balance (${usdcText(o.intentsBase.value)}) from ${config.intents} to ${config.owner}?`}
                 outOfNearCodes={OUT_OF_NEAR.codes}
                 vaultNearLow={vaultNearLow}
               />

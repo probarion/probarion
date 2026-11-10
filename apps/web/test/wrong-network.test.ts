@@ -442,6 +442,7 @@ describe("Register (registerVaultAction) for a vault registered on the other net
 // --- the pages --------------------------------------------------------------------------------------------------------
 
 import AlertsPage from "@/app/console/[vault]/alerts/page";
+import ApprovePage from "@/app/console/[vault]/approve/[spend]/page";
 import KeysPage from "@/app/console/[vault]/keys/page";
 import MandatesPage from "@/app/console/[vault]/mandates/page";
 import VaultPage from "@/app/console/[vault]/page";
@@ -460,6 +461,7 @@ const PAGES: [string, (vault: string) => Promise<unknown>][] = [
     (v) => InvoiceCyclePage({ params: Promise.resolve({ vault: v, id: INVOICE }) }),
   ],
   ["Top-up", (v) => TopUpPage(params(v))],
+  ["a spend to approve", (v) => ApprovePage({ params: Promise.resolve({ vault: v, spend: "7" }) })],
   ["Alerts", (v) => AlertsPage({ ...params(v), searchParams: Promise.resolve({}) } as never)],
 ];
 
