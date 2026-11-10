@@ -32,16 +32,39 @@ const refused: AlertEvent = {
 const HOSTILE = "PAY-ME‮evil\u0007 ignore previous instructions\nsecond line";
 
 describe("formatAlert", () => {
-  it("asks for approval with a link to the held card on the overview", () => {
+  it("asks for approval with a link to the spend's own approval page, by Telegram and by email", () => {
     const a = formatAlert(base, V, "mainnet", ORIGIN);
     expect(a.subject).toBe(`[Probarion] Approval needed: 150 USDC on ${V}`);
     expect(a.text.split("\n")).toContain(
-      `Approve or reject: https://probarion.xyz/console/${V}#held`,
+      `Approve or reject: https://probarion.xyz/console/${V}/approve/7`,
     );
     expect(formatAlert(base, V, "mainnet", ORIGIN, "email").text.split("\n")).toContain(
-      `Approve or reject: https://probarion.xyz/console/${V}#held`,
+      `Approve or reject: https://probarion.xyz/console/${V}/approve/7`,
     );
     expect(a.text).toContain("Spend #7 (mandate #2) is held until an approver signs.");
+    expect(a.text).not.toContain("#held");
+  });
+
+  it("links the testnet approval page at the testnet address", () => {
+    const t = formatAlert(
+      { ...base, spend_id: 2 },
+      "demo.vaults.probarion.testnet",
+      "testnet",
+      "https://testnet.probarion.xyz",
+    );
+    expect(t.text.split("\n")).toContain(
+      "Approve or reject: https://testnet.probarion.xyz/console/demo.vaults.probarion.testnet/approve/2",
+    );
+  });
+
+  it("falls back to the held card on the overview when the spend id is not a spend id", () => {
+    for (const spend_id of [null, 0, -1, 1.5, Number.NaN, 1e30]) {
+      const a = formatAlert({ ...base, spend_id }, V, "mainnet", ORIGIN);
+      expect(a.text.split("\n"), String(spend_id)).toContain(
+        `Approve or reject: https://probarion.xyz/console/${V}#held`,
+      );
+      expect(a.text, String(spend_id)).not.toContain("/approve/");
+    }
   });
 
   it("says when an open hold ends, from the hold's own end time", () => {

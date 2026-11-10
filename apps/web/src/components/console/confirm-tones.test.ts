@@ -148,6 +148,21 @@ describe("where the danger tone is used", () => {
     expect(el).toContain('confirmTone="danger"');
   });
 
+  it("rejecting a spend on its approval page (the page an alert links to) is a danger dialog", () => {
+    const el = elementWith(
+      read("app", "console", "[vault]", "approve", "[spend]", "page.tsx"),
+      "its reservation goes back to the mandate.",
+    );
+    expect(el).toContain("<VaultTxButton");
+    expect(el).toContain('label="Reject"');
+    expect(el).toContain('confirmTone="danger"');
+    const approve = elementWith(
+      read("app", "console", "[vault]", "approve", "[spend]", "page.tsx"),
+      "Approve paying",
+    );
+    expect(approve).not.toContain("confirmTone");
+  });
+
   it("revoking a mandate is a danger dialog", () => {
     const el = elementWith(
       read("components", "console", "RevokeMandateButton.tsx"),
@@ -157,7 +172,7 @@ describe("where the danger tone is used", () => {
     expect(el).toContain('confirmTone="danger"');
   });
 
-  it("nothing else is: the danger tone appears at exactly those three call sites", () => {
+  it("nothing else is: the danger tone appears at exactly those four call sites", () => {
     const users = walk(SRC)
       .filter(isSourceFile)
       .flatMap((f) => {
@@ -166,6 +181,7 @@ describe("where the danger tone is used", () => {
       })
       .sort();
     expect(users).toEqual([
+      "app/console/[vault]/approve/[spend]/page.tsx x1",
       "app/console/[vault]/keys/page.tsx x1",
       "app/console/[vault]/page.tsx x1",
       "components/console/RevokeMandateButton.tsx x1",

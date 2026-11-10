@@ -185,6 +185,15 @@ describe("the held card on the vault overview", () => {
     expect(page.match(/id="held"/g)).toHaveLength(1);
   });
 
+  it("links each held spend to its own approval page, the page an alert opens on a phone", async () => {
+    await signInAs("view.near");
+    chain([{ ...spend("held"), id: 6 }, spend("held")]);
+    const page = await html();
+    for (const id of [6, 7]) {
+      expect(page).toContain(`href="/console/${VAULT}/approve/${id}"`);
+    }
+  });
+
   it("stays in its place, after the balances, when nothing waits; the #held link still lands on it", async () => {
     await signInAs("acme.near");
     const page = await html();
