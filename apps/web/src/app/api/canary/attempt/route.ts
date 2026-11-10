@@ -24,8 +24,12 @@ import { LIMITS } from "@/lib/ratelimit";
 import { kickWatcher } from "@/lib/watcher/server";
 
 export const dynamic = "force-dynamic";
-// The Canary tenant's lease (CANARY_LIMITS.leaseSeconds, 90 s) outlasts this with a 30 s margin; route.test.ts checks it.
-export const maxDuration = 60;
+// One attempt is cut off at CANARY_LIMITS.attemptBudgetMs (80 s), which leaves 10 s of this to close its row and answer,
+// and the Canary tenant's lease (CANARY_LIMITS.leaseSeconds, 130 s) outlasts this with a 30 s margin. It stays at 90 s at
+// most: the public feed, the leaderboard and the metrics call a running attempt older than 90 s killed. route.test.ts
+// checks all three. Vercel allows 90 s on the Pro plan, which the project's team is on (up to 300 s, 800 s with Fluid
+// compute), and on Hobby only with Fluid compute (on by default, and pinned in vercel.json): Hobby without it stops at 60 s.
+export const maxDuration = 90;
 
 const VISITOR_COOKIE = "pb_canary";
 /** What this route mints: 16 random bytes as base64url. Anything else is replaced. */

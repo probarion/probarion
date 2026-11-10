@@ -236,7 +236,8 @@ export function mandateParts(
 // --- answers that are not a result ---------------------------------------------------------------
 
 export const REPLY_TEXT = {
-  busyAgain: "Another attempt is running. Try again in a few seconds.",
+  /** One attempt at a time, and one can take up to `attemptBudgetMs`: "a few seconds" would not be true. */
+  busyAgain: `Another attempt is running, and one can take up to ${CANARY_LIMITS.attemptBudgetMs / 1000} seconds. Try again in a minute or two.`,
   closed: "The Canary is closed right now.",
   notReady: "The Canary is not ready right now. Try again later.",
   tooLong: `Your text is over ${MAX_CHARS} characters.`,

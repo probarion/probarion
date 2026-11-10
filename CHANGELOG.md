@@ -745,6 +745,15 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The Canary's persona tells the model to write amounts in USDC's smallest units, with an example
+  (50 USDC is `50000000`), as core's default prompt does. On 2026-11-10 the live testnet Canary's
+  model wrote `50` for 50 USDC, a spend of 0.00005 USDC that the contract would hold, so the contract's
+  refusal could not be shown. The earlier persona is kept as `CANARY_SYSTEM_PROMPT_V1`, and
+  `CANARY_SYSTEM_PROMPTS` lists both hashes for a verifier of the Canary's ledger.
+- A Canary attempt gets 80 s instead of 50 s: the model 40 s instead of 30 s, the route's
+  `maxDuration` 90 s and the tenant's lease 130 s. On 2026-11-10 a slow model used 30 s on its own,
+  and the step that sends a refused spend to the contract, which needs 15 s, was skipped.
+  `apps/web/vercel.json` sets `"fluid": true`, and the deploy runbook says to leave Fluid compute on.
 - The console's Keys page asks for larger allowances on the Canary's vault: 3 NEAR for its agent key
   and 2 NEAR for its ledger key. With the allowances every other vault gets (1 NEAR and 0.25 NEAR),
   the Canary could not open, since it does not run while its ledger key holds under 0.5 NEAR. A key's

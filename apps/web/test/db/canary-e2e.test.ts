@@ -45,6 +45,7 @@ vi.mock("@/lib/db/clients", () => ({ serviceDb: () => h.db }));
 const { makeCanaryProbarion } = await import("@/lib/canary/probarion");
 const { runAttempt } = await import("@/lib/canary/service");
 const { CANARY_SYSTEM_PROMPT } = await import("@/lib/canary/prompt");
+const { CANARY_LIMITS } = await import("@/lib/canary/limits");
 
 const NOW = new Date(Number(SCENARIO_NOW / 1_000_000n));
 const H = (c: string) => c.repeat(64);
@@ -359,7 +360,7 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
     expect(closed).toEqual({ status: "rejected", reason: "closed" });
   });
   // The attempt's deadline, end to end: the chain client, the senders and the proposer share one clock. The clock is real
-  // but almost spent (the attempt "started" 49 s ago), so nothing waits long.
+  // but almost spent (the attempt "started" 1 s before its deadline), so nothing waits long.
   it("answers inside its time when the chain and the model both hang, and closes the row", async () => {
     const stall: typeof fetch = ((_input: unknown, init?: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
@@ -377,7 +378,7 @@ describe("the Canary cycle on the fake chain, with the real SDK", () => {
         ...visitor(),
         isTeam: false,
         requestId: "e2e-hang",
-        startedAt: started - 49_000,
+        startedAt: started - (CANARY_LIMITS.attemptBudgetMs - 1000),
       });
       expect(Date.now() - started).toBeLessThan(5000);
       expect(r).toEqual({ status: "rejected", reason: "failed" });

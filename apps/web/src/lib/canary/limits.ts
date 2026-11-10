@@ -46,18 +46,27 @@ export const CANARY_LIMITS = {
   /** The system prompt, the facts and the mandate view the model is shown, with room to spare (NOT the output cap). */
   promptOverheadTokens: 900,
   /**
-   * How long one attempt holds the Canary tenant's `process` lease: the same 90 s as Payables' PROCESS_LEASE_SECONDS,
-   * and it must outlast the route's `maxDuration` (60 s) with a margin. route.test.ts checks both.
+   * How long one attempt holds the Canary tenant's `process` lease. It must outlast the route's `maxDuration` (90 s) by
+   * at least 30 s, so it is the Canary's own, longer than Payables' 90 s PROCESS_LEASE_SECONDS (whose route stops at 60 s).
+   * route.test.ts checks both. The "lease (90 s)" that migrations 0008 and 0009 name is the SQL's fixed 90 s threshold
+   * between a running attempt and a killed one, which no longer equals this lease: route.test.ts keeps the route's
+   * `maxDuration`, and with it every attempt, within that threshold.
    */
-  leaseSeconds: 90,
+  leaseSeconds: 130,
   /**
-   * One attempt, from the route's start (not from the first model call): the platform stops the function at 60 s, and these
-   * 10 s are what is left to close the row and answer. Every phase gets the smaller of its own cap and the time left, and
-   * the whole attempt is cut off at this deadline.
+   * One attempt, from the route's start (not from the first model call): the platform stops the function at 90 s, and
+   * these 10 s are what is left to close the row and answer. Every phase gets the smaller of its own cap and the time left,
+   * and the whole attempt is cut off at this deadline. It holds the time before the model (about 10 s in production: the
+   * checks, the keys, the row and the ledger reads), the model's whole budget, the decision's write and anchor, the raw
+   * gate's own steps, and still `rawMinRemainingMs` where the raw spend starts (limits.test.ts adds them up).
    */
-  attemptBudgetMs: 50_000,
-  /** ALL the model calls of one attempt (the catalog, the probe, the attestation report, the chat, the signature reads) share this. */
-  modelBudgetMs: 30_000,
+  attemptBudgetMs: 80_000,
+  /**
+   * ALL the model calls of one attempt (the catalog, the probe, the attestation report, the chat, the signature reads) share
+   * this. A slow private model used 30 s on the chat alone in production (2026-11-10), so it is 40 s: what the attempt's
+   * 80 s leave once the time around the model, the raw gate and the raw step's floor are counted (limits.test.ts).
+   */
+  modelBudgetMs: 40_000,
   /** One step on the chain (a read, signing, a send, a lookup), capped by the time left. */
   chainStepTimeoutMs: 8000,
   /** A raw spend is not started with less than this left: the dry run, the send and its row need the time. */
