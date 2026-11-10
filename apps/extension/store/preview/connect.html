@@ -93,14 +93,14 @@
       The words are the Browser extension page's own (apps/web: app/extension/page.tsx, ConnectPanel.tsx and
       ConnectedBrowsers.tsx), in the state it shows right after Connect extension took: the button is replaced by the
       sentence about connecting again, the green notice is on, and the list is the one the page loaded with, so it
-      holds a browser connected earlier. The page's "not released yet" notice is left out: the change that releases
-      the extension removes it, and the store upload comes after. Render again if those words change.
+      holds a browser connected earlier. The page's notice about the store review is left out, so the image stays true
+      once the store publishes the extension. Render again if those words change.
     -->
     <header><img src="../../static/icons/32.png" alt="" width="24" height="24" />Probarion</header>
     <main>
       <h1>Browser extension</h1>
       <p class="lead">
-        The extension will send invoices to wait for the owner's confirmation and show what waits for you, but it can't
+        The extension sends invoices to wait for the owner's confirmation and shows what waits for you, but it can't
         pay or approve: an invoice it sends is paid only after the vault's owner confirms it in the console with their
         wallet.
       </p>

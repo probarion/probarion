@@ -475,6 +475,14 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The browser extension is pending Chrome Web Store review (submitted on 2026-11-10), so the site
+  says what it does in the present tense. `/privacy#browser-extension`, which the store listing
+  links, adds that a file read from a tab or a link is fetched with your own session for that site,
+  and that the extension reads the address of the tab you are on when you open it; its date moves to
+  2026-11-10. The `/extension` page says the extension is pending review and can be loaded unpacked
+  from `apps/extension`. The Docs Center's What works today lists the extension for Chrome as Preview,
+  and its HTTP API page drops "not released yet". The store's connect screenshot is rendered again
+  with the page's new lead.
 - The MCP server's row in the status list moves from Planned to "Tried on testnet, not on npm"
   (Preview in the docs), and the README's Status row, its NEAR technology rows, its testnet proof and
   its quick start say what the server and the 402 example do. The Docs Center pages that called the MCP

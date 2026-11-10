@@ -369,6 +369,7 @@ export const START: readonly DocPage[] = [
       "contracts/vault/src/events.rs",
       "apps/web/test/docs-reference.test.ts",
       "apps/web/test/docs-pages.test.ts",
+      "apps/extension",
       "apps/web/src/lib/ext/inbox.ts",
       "apps/web/src/lib/usage/copy.ts",
       "apps/web/src/lib/usage/data.ts",
