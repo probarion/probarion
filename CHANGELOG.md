@@ -14,6 +14,14 @@ The software is an unaudited beta.
 
 ### Added
 
+- A testnet record of the Canary, in `docs/evidence/canary-vault`: its accounts, its mandate, the
+  2026-11-10 rehearsal whose raw spend the contract refused with `OverPerPayment`, and a live
+  `verify` run with its snapshot. The run passes check f (no full-access key, only the ledger key and
+  a spend-only agent key) and fails check c, because the Canary's ledger is private and the run
+  checks the chain's 4 anchors against an empty ledger; the folder's README says which checks that
+  leaves meaningful. The threat model's claim C9 now says Yes for the Canary vault, with that run,
+  and the README has a section for it. Claim C8 says Yes for the demo vault, whose recorded snapshot
+  passes checks a to i from a clone, in place of "N/A today".
 - A phone-sized approval page for each held spend, `/console/<vault>/approve/<spend>`, which the
   "Approval needed" alert now links to, by Telegram and by email (roadmap G2). An approver taps the
   link, signs in with their NEAR wallet when they have no session in that browser, and approves or
@@ -544,8 +552,8 @@ The software is an unaudited beta.
   `OverPerPayment`
   ([transaction](https://testnet.nearblocks.io/txns/6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH)).
   The README, the status list on the site, the `/docs` pages and the policy reference call it Live
-  on testnet instead of not open yet. The threat model's claim C9 names the Canary vault, which has
-  no `verify` run recorded yet, and the deploy runbook says `CANARY_MODE` is `live` on
+  on testnet instead of not open yet. The threat model's claim C9 names the Canary vault (its
+  `verify` run is under Added), and the deploy runbook says `CANARY_MODE` is `live` on
   probarion.xyz. The README's beta note says the demo vault's proof page and the Canary are public.
   Mainnet has no Canary vault, so `/canary` there still shows the recorded attacks.
 - The "Approval needed" alert, by Telegram and by email, links the held spend's approval page,

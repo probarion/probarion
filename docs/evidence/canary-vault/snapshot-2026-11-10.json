@@ -1,0 +1,122 @@
+{
+  "v": 1,
+  "vault": "canary.vaults.probarion.testnet",
+  "network": "testnet",
+  "taken_at": "2026-11-10T13:36:53.701Z",
+  "ledger": [],
+  "chain": {
+    "access_keys": [
+      {
+        "public_key": "ed25519:2BB5XPYUNwWrXMq8hUmbLkpUKRHsSBkxXuqDX4EBqta7",
+        "permission": {
+          "receiver_id": "canary.vaults.probarion.testnet",
+          "method_names": [
+            "spend"
+          ],
+          "allowance": "2999826095886209300000000"
+        }
+      },
+      {
+        "public_key": "ed25519:9Qrk6icETT31tnoLwnqEMMnKUFayYxBcVTo6jzjtfMEH",
+        "permission": {
+          "receiver_id": "canary.vaults.probarion.testnet",
+          "method_names": [
+            "anchor"
+          ],
+          "allowance": "1999183719038645500000000"
+        }
+      }
+    ],
+    "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+    "config": {
+      "owner": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+      "approvers": [
+        "probarion-approver.testnet"
+      ],
+      "usdc": "usdc.probarion.testnet",
+      "intents": "intents-stub.probarion.testnet",
+      "allowed_assets": [
+        "base-usdc.probarion.testnet",
+        "sol-usdc.probarion.testnet"
+      ],
+      "daily_backstop": "1000000",
+      "held_ttl_ns": "259200000000000",
+      "frozen": false,
+      "factory": "vaults.probarion.testnet",
+      "version": "0.1.0",
+      "ledger_key": "ed25519:9Qrk6icETT31tnoLwnqEMMnKUFayYxBcVTo6jzjtfMEH"
+    },
+    "anchors": [
+      {
+        "seq": 1,
+        "root": "6e5fb928121a877ba4612aa90d7db52b1c5cc43d678dccf92dd392b142e600c5",
+        "count": 1,
+        "at_ns": "1794307715360354759",
+        "ledger_key": "ed25519:9Qrk6icETT31tnoLwnqEMMnKUFayYxBcVTo6jzjtfMEH"
+      },
+      {
+        "seq": 2,
+        "root": "b60e3c5ac29a8947a87a28b0d9000daa0e23746332a8d16388718876ea79f797",
+        "count": 2,
+        "at_ns": "1794308019502479332",
+        "ledger_key": "ed25519:9Qrk6icETT31tnoLwnqEMMnKUFayYxBcVTo6jzjtfMEH"
+      },
+      {
+        "seq": 3,
+        "root": "e8f100516ed32675f8ae3172a0b22a41725ee1646fd9c1312a112a1678c57785",
+        "count": 3,
+        "at_ns": "1794313387120491305",
+        "ledger_key": "ed25519:9Qrk6icETT31tnoLwnqEMMnKUFayYxBcVTo6jzjtfMEH"
+      },
+      {
+        "seq": 4,
+        "root": "783f8385b4a9180e38f21bfafea522251236abfcacb7e6455c51dbf3ab4198bb",
+        "count": 5,
+        "at_ns": "1794313404199137331",
+        "ledger_key": "ed25519:9Qrk6icETT31tnoLwnqEMMnKUFayYxBcVTo6jzjtfMEH"
+      }
+    ],
+    "spends": [],
+    "intents_public_keys": [],
+    "intents_predecessor_auth": true,
+    "factory_version": 1,
+    "factory_versions": [
+      {
+        "index": 1,
+        "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+        "mode": "embedded",
+        "notes": "vault 0.1.0 embedded (testnet)",
+        "at_ns": "1793895729563869289"
+      }
+    ],
+    "mandates": [
+      {
+        "id": 1,
+        "payee": {
+          "type": "near",
+          "account_id": "probarion-payee.testnet"
+        },
+        "purpose_hash": "30739be9a9186c8884c598e6f46ef54a7ebc14c401548f59b43b512b0496278d",
+        "max_per_payment": "1000000",
+        "max_total": "1000000",
+        "spent": "0",
+        "reserved": "0",
+        "max_uses": 1,
+        "uses": 0,
+        "expires_at_ns": "1801439999000000000",
+        "approval_above": "0",
+        "agent_pk": "ed25519:2BB5XPYUNwWrXMq8hUmbLkpUKRHsSBkxXuqDX4EBqta7",
+        "label": "canary",
+        "status": "active",
+        "created_at_ns": "1794307175829229236"
+      }
+    ],
+    "burns": []
+  },
+  "expected_code_hashes": [
+    "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
+    "54Ne1r9g2Smf2Qtrt9VznmPpEAAHzvK4hbQSJ9voQmuD",
+    "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1"
+  ],
+  "pre_ledger_decision_hashes": []
+}
