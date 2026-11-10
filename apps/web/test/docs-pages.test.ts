@@ -50,6 +50,7 @@ const IN_ORDER = [
   "trust/verify-a-vault",
   "trust/verifier-checks",
   "trust/security-model",
+  "trust/self-approval",
   "trust/reproducible-builds",
   "operate/architecture",
   "resources/glossary",
