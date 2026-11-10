@@ -56,7 +56,7 @@ These hold on chain, whatever the SDK, the console or the agent does.
 - **The 14 spend checks.** `spend` runs [the 14 checks, in order](/docs/concepts/payment-checks#the-14-checks-in-order): the agent key, the request's shape, the freeze, the mandate, its expiry and agent, the amount, the uses, the total, the invoice, the ref and the daily backstop. The first one that fails refuses the spend and changes nothing. [Mandates](/docs/concepts/mandates) covers each limit.
 - **No payee in a spend.** The request carries a mandate id, an amount, an invoice hash, a ref and a decision hash. The destination comes only from the mandate the owner signed. [Why spend has no payee](/docs/concepts/why-spend-has-no-payee) explains why.
 - **The one-yocto rule.** Most owner methods, and both approver methods, need exactly 1 yoctoNEAR attached. Only a full-access key can attach a deposit, through a wallet prompt, so a dapp login key cannot make these calls, and a script in a web page cannot make them without that prompt. `create_mandate` takes a storage deposit and sends back the excess. `freeze` is the exception: it takes no deposit, so the owner can stop the vault fast.
-- **Two kinds of key.** The vault adds keys to itself only on the owner's instruction: function-call keys for `spend` (`add_agent`) and one for `anchor` (`set_ledger_key`). A vault the factory creates starts with no access key. Sandbox tests show that the NEAR protocol stops the agent key from calling any other method or attaching a deposit, and stops the ledger key from calling `spend`.
+- **Two kinds of key.** The vault adds keys to itself only on the owner's instruction: function-call keys for `spend` (`add_agent`) and one for `anchor` (`set_ledger_key`). A vault the factory creates starts with no access key. Sandbox tests show that the NEAR protocol stops the agent key from calling any other method or attaching a deposit, and stops the ledger key from calling `spend`. [The agent key cannot approve itself](/docs/trust/self-approval) replays the attack of the I-HITL paper with the agent key, one refusal at a time.
 - **Fixed settings.** No method changes the owner, the approvers, the daily backstop or the hold time, and no method edits a mandate. There is no upgrade method: a fix ships as a new vault version, and owners move to a new vault.
 
 <Callout kind="key">
@@ -208,6 +208,7 @@ Say what is affected, how to reproduce it, and what an attacker could do with it
 - [Payment checks](/docs/concepts/payment-checks): the 14 checks every spend meets.
 - [Mandates](/docs/concepts/mandates): every limit a spend counts against.
 - [Holds and approvals](/docs/concepts/holds-and-approvals): what an approver decides, and when a hold expires.
+- [The agent key cannot approve itself](/docs/trust/self-approval): the I-HITL paper's attack, replayed with the agent key, and what an owner or approver key on the agent's machine still allows.
 - [Why spend has no payee](/docs/concepts/why-spend-has-no-payee): how the destination stays out of the agent's hands.
 - [Ledger and anchors](/docs/concepts/ledger-and-anchors): what the ledger key signs and anchors.
 - [Verify a vault](/docs/trust/verify-a-vault): run the verifier on a vault yourself.

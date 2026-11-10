@@ -80,7 +80,11 @@ export type Read<T> =
   | { ok: true; value: T }
   | { ok: false; kind: ChainErrorKind | "error" | "skipped" | "not_allowed" };
 
-async function read<T>(what: string, vault: string, run: () => Promise<T>): Promise<Read<T>> {
+export async function read<T>(
+  what: string,
+  vault: string,
+  run: () => Promise<T>,
+): Promise<Read<T>> {
   try {
     return { ok: true, value: await run() };
   } catch (e) {

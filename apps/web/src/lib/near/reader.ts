@@ -49,6 +49,10 @@ export interface AccessKeyState {
 
 export interface VaultReader {
   getConfig(vault: string): Promise<VaultConfig>;
+  /** `get_mandate`: null when the vault has no mandate with this id. */
+  getMandate(vault: string, mandateId: number): Promise<MandateView | null>;
+  /** `get_spend`: null when the vault has no spend with this id. */
+  getSpend(vault: string, spendId: number): Promise<SpendView | null>;
   listMandates(vault: string, from: number, limit: number): Promise<MandateView[]>;
   listSpends(vault: string, from: number, limit: number): Promise<SpendView[]>;
   listAnchors(vault: string, from: number, limit: number): Promise<AnchorView[]>;
@@ -243,6 +247,8 @@ export function createVaultReader(rpc: RpcClient): VaultReader {
   const vaultAt = (vault: string) => new VaultClient(vault, rpc);
   return {
     getConfig: (vault) => vaultAt(vault).getConfig(),
+    getMandate: (vault, mandateId) => vaultAt(vault).getMandate(mandateId),
+    getSpend: (vault, spendId) => vaultAt(vault).getSpend(spendId),
     listMandates: (vault, from, limit) => vaultAt(vault).listMandates(from, limit),
     listSpends: (vault, from, limit) => vaultAt(vault).listSpends(from, limit),
     listAnchors: (vault, from, limit) => vaultAt(vault).listAnchors(from, limit),

@@ -30,6 +30,8 @@ export function fakeReader(overrides: Partial<VaultReader> = {}): VaultReader {
   };
   return {
     getConfig: missing("getConfig"),
+    getMandate: missing("getMandate"),
+    getSpend: missing("getSpend"),
     listMandates: async () => [],
     listSpends: async () => [],
     listAnchors: async () => [],

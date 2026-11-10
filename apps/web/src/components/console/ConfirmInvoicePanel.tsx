@@ -119,7 +119,7 @@ export function ConfirmInvoicePanel({
           mandate&apos;s caps and holds a payment above its approval threshold for the approvers.
         </p>
       ) : whyNot ? (
-        <p className="mb-3 text-ink/60">{whyNot}</p>
+        <p className="mb-3 text-ink/75">{whyNot}</p>
       ) : null}
       <div className="flex flex-wrap gap-3">
         {canConfirm ? (
@@ -149,7 +149,7 @@ export function ConfirmInvoicePanel({
       </div>
       {signing ? (
         <div className="mt-3">
-          <p className="mb-1 text-xs text-ink/60">Your wallet asks you to sign exactly this:</p>
+          <p className="mb-1 text-xs text-ink/75">Your wallet asks you to sign exactly this:</p>
           <code className="block rounded-2xl bg-ink px-3 py-2 text-xs text-paper wrap-anywhere">
             {signing}
           </code>

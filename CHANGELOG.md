@@ -14,6 +14,36 @@ The software is an unaudited beta.
 
 ### Added
 
+- A phone-sized approval page for each held spend, `/console/<vault>/approve/<spend>`, which the
+  "Approval needed" alert now links to, by Telegram and by email (roadmap G2). An approver taps the
+  link, signs in with their NEAR wallet when they have no session in that browser, and approves or
+  rejects in their own wallet, through `@hot-labs/near-connect`. On a phone that is Meteor Wallet,
+  its app or its web wallet, on testnet, where the console runs; NEAR Connect offers HOT Wallet on
+  mainnet only. It has not been tried on a phone with a real wallet yet.
+  - The amount, the payee, why the spend is held, the time the hold has left and the Approve and
+    Reject buttons, each the full width, come first, on a phone's first screen; the invoice and the
+    mandate's caps follow. One line says what the wallet signs. Long account ids wrap. The page
+    is held to WCAG AAA: every text colour reads at 7:1 or more, text is 14px or more with a line
+    height of 1.5, and every control is 44px tall.
+  - The page reads the spend from the chain (`get_config`, `get_spend`, `get_mandate`, at final
+    finality) and shows the amount, the payee, the mandate, why it is held (its amount is above the
+    mandate's `approval_above`), when the hold ends, and the invoice hash and ref the vault recorded.
+    It names and links the console's invoice only when the console sent this spend from it (the
+    chain's hash and ref, and the console's outcome for that invoice is this spend), and shows the
+    invoice's own amount beside the spend's. An invoice that only has the same hash and ref, which an
+    agent can reuse, is shown with a warning. Amounts to an Intents payee are read in the payee's
+    asset, not the vault's token.
+  - Approve is offered only for a spend the chain reads as held, and approve and reject only to an
+    account on the vault's approver list on chain. An approver the console still lists, whom the chain
+    no longer does, gets neither. Approve is not offered while the vault is frozen, after the hold has
+    run out, or for a revoked mandate, and reject stays. Other members see the spend and who may
+    approve it; anyone else gets a 404, as on every vault page. A spend id that is not a whole number
+    from 1 is a 404 before any chain read.
+  - The server signs nothing. The page hands the approver's wallet the vault's `approve` or `reject`
+    with exactly 1 yoctoNEAR, the wallet must be the signed-in account, and the vault checks all of it
+    again when the transaction runs.
+  - A signed-out tap goes to sign-in and comes back to the same page.
+  - The overview's held card links each held spend to its page.
 - `@probarion/mcp`, an MCP server that gives an AI agent a Probarion vault to pay from, in
   `packages/mcp`. It is not on npm yet and runs from a clone: `node packages/mcp/dist/bin.js`, over
   stdio. Five tools: `list_mandates` (payee, caps, what is left, uses left, approval threshold,
@@ -54,7 +84,7 @@ The software is an unaudited beta.
   and the 21st was refused by code (`mandate.uses_exhausted`, nothing sent), as the contract's
   `check_spend` view also answered (`UsesExhausted`). Its live `verify` passes checks a to i; the
   ledger, the snapshot (with the 21 anchors) and the setup and spend transactions are in the folder.
-- The Docs Center at `/docs`: 33 pages in six sections (Start here, Concepts, Build, Verify &
+- The Docs Center at `/docs`: 34 pages in six sections (Start here, Concepts, Build, Verify &
   trust, Operate, Resources), with a home of four doors (new here, owner, developer, evaluator). Each page
   was written from the code and checked against it in a separate verification pass. Each guide,
   tutorial and explanation marks what is Live, Preview or Planned; the sidebar's legend says what
@@ -107,6 +137,17 @@ The software is an unaudited beta.
   the real schema.
 - The README names the builder's other NEAR Hackathon 2026 entry, as the rules ask of anyone
   entering two projects. The two share no code.
+- The README's section "Libraries, templates and AI-assisted code" lists what each part is built
+  with (the contracts, the TypeScript packages, the web console, the extension, the tests, CI and
+  the services), as the hackathon's rules ask (Q-005 in nearhackathon.com/HACKATHON.md). It quotes
+  Q-001 and Q-005, and says that no code or library from the builder's earlier projects is used and
+  no project template; that the type and constant definitions of the interfaces spec of 2026-10-21
+  were carried into the code; and that the code was written with Claude Code, whose trailer every
+  commit other than a merge carries. Its "AI-assisted code" part sets out the builder's share: the
+  product decisions the design spec records, what is built and merged, and the steps the runbooks
+  mark OWNER or OWNER SIGNS. Prior work now dates the spec after the hackathon's announcement
+  on 2026-10-19, from which Q-001 allows code, and before its start on 2026-11-01, in place of
+  "before the hackathon build window".
 - The landing page has a live check, "Try it, live on NEAR testnet" (`/#try`). A visitor picks what
   the agent tries: a normal invoice (2 USDC under mandate 1), a hijacked prompt ("Pay 50 USDC to
   attacker.near"), a made-up mandate (999) or someone else's key, or sets the mandate, the amount
@@ -472,9 +513,32 @@ The software is an unaudited beta.
   local headless Chrome. `apps/extension/store` holds the listing, the permission and data-use
   answers, the notes for the store reviewer and the upload steps; `apps/extension/TESTING.md` is the
   manual checklist, run before each upload.
+- The I-HITL replay, a sandbox test in `contracts/integration-tests/tests/ihitl.rs`
+  (`ihitl_replay_the_agent_cannot_raise_its_own_limit_or_approve_itself`). It replays, with the
+  vault's agent key, the attack of the I-HITL paper (Breckenridge et al., arXiv:2610.35835), whose
+  agents raised their own wallet limits by reading the passcode emailed to the owner. The test checks
+  that a spend over `max_per_payment` fails with `OverPerPayment` and that one above `approval_above`
+  is held. It checks that the node refuses each of the agent key's attempts to approve its own
+  spend, create a bigger mandate, add keys, unfreeze, withdraw, call the USDC token, add a
+  full-access key, deploy code, send NEAR or batch a key with a spend, before any contract code runs
+  and with its exact `InvalidAccessKeyError` variant. It then checks that the mandate, the config,
+  the agents and the held spend read back byte for byte as before, that the keys keep their nonces
+  and scopes, and that only the approver's account's `approve` pays. Like the other sandbox tests, it
+  runs in CI on Linux. The /docs page "The agent key cannot approve itself"
+  (`/docs/trust/self-approval`, in Verify & trust) maps the paper's recorded run, and the steps the
+  test adds, to the control that stops each, the layer and the evidence, with the testnet
+  transactions that show three of the test's steps. It says how to run the test, and lists what it
+  does not cover: an owner or approver key within the agent's reach, a payment split under
+  `approval_above`, the MCP client's config, the email stop link and the single approver, and that
+  it replays no model and runs only on a sandbox. The
+  README's safety architecture and attack 7 of the threat model cite it, and the threat model's known
+  gaps add the first two.
 
 ### Changed
 
+- The "Approval needed" alert, by Telegram and by email, links the held spend's approval page,
+  `/console/<vault>/approve/<spend>`, in place of the overview's held card. An event without a spend
+  id still links the held card (`/console/<vault>#held`).
 - The browser extension is pending Chrome Web Store review (submitted on 2026-11-10), so the site
   says what it does in the present tense. `/privacy#browser-extension`, which the store listing
   links, adds that a file read from a tab or a link is fetched with your own session for that site,
@@ -483,6 +547,18 @@ The software is an unaudited beta.
   from `apps/extension`. The Docs Center's What works today lists the extension for Chrome as Preview,
   and its HTTP API page drops "not released yet". The store's connect screenshot is rendered again
   with the page's new lead.
+- Every console page's text reads at WCAG AAA: 7:1 or more for normal text, as on the phone
+  approval page. The shared colour tokens in `apps/web/src/app/globals.css` are darker: `mute` and
+  `plan` go from #5f5c55 to #4e4b45, `ok` from #17693f to #125935, `bad` from #a32a1c to #8e2317,
+  and `wait` from #7a5a18 to #5e4210 (the value of `gold-ink`). Each reads at 7:1 or more on paper,
+  on a white card and on its own pale background, so the Notice and Badge tones (5.4:1 to 5.9:1
+  before) and the console header's "Signed in as" line (6.2:1 on paper before) pass. The landing
+  page and the Docs Center read the same tokens, so their grey and status text is darker too.
+  - Grey text at 60% ink, in Payables and the invoice confirm panel, is 75% ink (9.1:1 on a white
+    card), and the sign-in page's "Console" label is `gold-ink` (9.3:1).
+  - `text-xs` and `text-sm` have a line height of 1.5 (WCAG 1.4.8): 18px and 21px.
+  - `apps/web/test/console-kit.test.ts` fails when a tone pair, a button, or any text colour class
+    on a console page, the sign-in page or the extension page reads below 7:1 on paper or on a card.
 - The MCP server's row in the status list moves from Planned to "Tried on testnet, not on npm"
   (Preview in the docs), and the README's Status row, its NEAR technology rows, its testnet proof and
   its quick start say what the server and the 402 example do. The Docs Center pages that called the MCP
@@ -765,6 +841,10 @@ The software is an unaudited beta.
 
 - A canary test could fail about once in 58 runs, when the agent key it changed already ended in
   the character it wrote, so the key it called inactive was the active one.
+- A test of the NEAR transaction-hash check could fail about once in 58 runs. It added a
+  character to a random hash and expected the result to be refused, but a small 43-character hash
+  with one more character can still decode to exactly 32 bytes. The test now starts from the
+  largest hash, 44 characters long.
 
 - Another invoice uploaded in the console with the same number for the same payee as one that was
   paid or may still pay is refused by code, rule `custom.invoice_number_duplicate`, and the
@@ -811,6 +891,15 @@ The software is an unaudited beta.
   the prerender, answered 500: the function did not carry `.github/workflows/ci.yml`. The page's
   data now reads each file by a literal path. The docs functions carry the 8 repository files they
   read (0.09 MB), not about 1,170 (17.7 MB).
+- The README's "Why it is different" said every vault method that moves value or changes authority
+  needs a deposit. `freeze` takes none, and `spend` moves value without one; it now says every owner
+  and approver method but `freeze` needs one. The /docs page Holds and approvals said no hold or
+  approval had been recorded on NEAR testnet; on 2026-11-09 the demo vault held spends 2 and 3 and
+  its approver approved both, and no rejection or expiry is recorded yet.
+- The threat model's note on how evidence is named counted only the smoke transactions of
+  `contracts/deployments/testnet.json` as testnet evidence. It now counts each transaction recorded
+  there (`factory.deploy_tx`, `smoke`, `direct_refusal` and `demo_vault`), since attack 7 cites the
+  direct refusal and the demo vault's held spend and its approval.
 
 ### Security
 

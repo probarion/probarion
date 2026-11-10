@@ -570,7 +570,10 @@ Run it after the promotion that brings the crons to Production. Every step is th
    2. On the Payables tab, upload an invoice whose amount is above the mandate's `approval_above` (sign
       the Confirm message in the wallet if the tab asks for it), so that the agent's spend is held.
    3. The "Approval needed" alert arrives. Write down the real delay: it follows the watcher's schedule.
-   4. **OWNER SIGNS** the approval from the alert's console link (1 yoctoNEAR, a wallet prompt).
+   4. **OWNER SIGNS** the approval from the alert's link, on a phone: it opens the spend's approval page
+      (`/console/<demo vault>/approve/<spend>`); sign in as the approver, tap Approve and sign in the
+      mobile wallet (on testnet, Meteor Wallet's app or its web wallet; 1 yoctoNEAR, a wallet prompt). Write down the time from the tap to the confirmed
+      approval.
    5. The "Paid" alert arrives after the next watcher run (run it by hand, step 4, if the per-minute job is
       off).
    6. `/proof/<demo vault>` shows every check passing.
