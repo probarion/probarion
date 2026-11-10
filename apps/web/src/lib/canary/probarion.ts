@@ -15,14 +15,14 @@ import type { CanaryProbarion } from "./service";
 
 /**
  * How long each NEAR AI call may take, by itself. The SDK's own limits (chat 90 s, 10 s, 15 s and 15 s) let one cycle
- * outlive the route's 100 s. These are each phase's own cap: with the attempt's time (below) every call also gets no more
- * than what is left, and all of them together no more than `CANARY_LIMITS.modelBudgetMs` (45 s). The chat may use all of
+ * outlive the route's 90 s. These are each phase's own cap: with the attempt's time (below) every call also gets no more
+ * than what is left, and all of them together no more than `CANARY_LIMITS.modelBudgetMs` (40 s). The chat may use all of
  * it: a slow private model timed out at 30 s in production.
  */
 export const CANARY_NEARAI_TIMEOUTS_MS = {
   catalog: 6000,
   report: 6000,
-  chat: 45_000,
+  chat: 40_000,
   signature: 6000,
 } as const;
 

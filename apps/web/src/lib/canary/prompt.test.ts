@@ -13,6 +13,12 @@ const sha256 = (text: string) => createHash("sha256").update(text, "utf8").diges
 /** The sha256 of the persona the production Canary's ledger already holds decisions under (2026-11-10). */
 const V1_SHA256 = "eb1159a8f0778cfdbb2eb7f806e18eb2eebcb4d682f6ce1eaa0c9359efe5a99a";
 
+/**
+ * The sha256 of the persona the Canary sends now. Changing CANARY_SYSTEM_PROMPT orphans the decisions written under it:
+ * keep this text as CANARY_SYSTEM_PROMPT_V2 (pinned like V1) and list it in CANARY_SYSTEM_PROMPTS.
+ */
+const CURRENT_SHA256 = "c066588252215c7dc359ef78c4f05dda73849e8799aa32c2d29d8a9288be9b97";
+
 describe("CANARY_SYSTEM_PROMPT", () => {
   // The persona replaces core's prompt entirely, so it must say the units itself: the model wrote "50" for 50 USDC.
   it("asks for the amount in the token's smallest units, as core's own prompt does, with an example", () => {
@@ -59,9 +65,13 @@ describe("the Canary's personas for check A8", () => {
     expect(CANARY_SYSTEM_PROMPT_V1).not.toContain("smallest units");
   });
 
+  it("keeps the current persona byte for byte, so a change to it cannot drop it from the allow list unseen", () => {
+    expect(sha256(CANARY_SYSTEM_PROMPT)).toBe(CURRENT_SHA256);
+  });
+
   it("lists the current persona and V1 by their hashes, and neither is one of core's defaults", () => {
     expect(CANARY_SYSTEM_PROMPTS).toEqual([
-      { name: "CANARY_SYSTEM_PROMPT", sha256: sha256(CANARY_SYSTEM_PROMPT) },
+      { name: "CANARY_SYSTEM_PROMPT", sha256: CURRENT_SHA256 },
       { name: "CANARY_SYSTEM_PROMPT_V1", sha256: V1_SHA256 },
     ]);
     expect(sha256(CANARY_SYSTEM_PROMPT)).not.toBe(V1_SHA256);

@@ -514,9 +514,9 @@ describe("Canary SQL (migration 0008)", () => {
   });
 
   // An attempt is opened as `running` before its cycle and closed afterwards. The public surfaces say what is true: a
-  // run younger than 90 s is not shown (an attempt is cut off at CANARY_LIMITS.attemptBudgetMs, 80 s from its route's
-  // start, which limits.test.ts keeps under 90 s), an older one that was never closed was killed. Nothing is written for
-  // that: it is read from the clock.
+  // run younger than 90 s is not shown (route.test.ts keeps the route's maxDuration, and with it every attempt, within
+  // 90 s), an older one that was never closed was killed. Nothing is written for that: it is read from the clock. The 90 s
+  // is the SQL's own threshold; it no longer equals the tenant's lease (CANARY_LIMITS.leaseSeconds, 130 s).
   describe("attempts that are still running, or were killed", () => {
     const running = (ageS: number, over: Record<string, unknown> = {}) =>
       pg.query(
@@ -537,13 +537,13 @@ describe("Canary SQL (migration 0008)", () => {
         techniques: { technique: string; attempts: number; refused_by_code: number }[];
       }>("public_canary_leaderboard", { network: "mainnet" });
 
-    it("leaves a running attempt younger than the lease out of the feed", async () => {
+    it("leaves a running attempt younger than 90 s out of the feed", async () => {
       await running(0);
       await running(89);
       expect(await feed()).toEqual([]);
     });
 
-    it("shows one older than the lease as killed, and writes nothing", async () => {
+    it("shows one older than 90 s as killed, and writes nothing", async () => {
       await running(91);
       const [row] = await feed();
       expect(row).toMatchObject({ code_status: "killed", raw: false, contract_status: null });

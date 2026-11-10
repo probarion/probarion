@@ -362,12 +362,19 @@ describe("POST /api/canary/attempt", () => {
     expect(CANARY_LIMITS.leaseSeconds).toBeGreaterThan(PROCESS_LEASE_SECONDS);
   });
 
-  it("bounds one attempt at 80 s, which leaves 20 s of the route's 100 s to close the row and answer", () => {
+  it("bounds one attempt at 80 s, which leaves 10 s of the route's 90 s to close the row and answer", () => {
     expect(CANARY_LIMITS.attemptBudgetMs).toBe(80_000);
-    expect(maxDuration).toBe(100);
+    expect(maxDuration).toBe(90);
     expect(CANARY_LIMITS.attemptBudgetMs + 5000).toBeLessThanOrEqual(maxDuration * 1000);
-    // Vercel Pro stops a function at 300 s at most
+    // Vercel's Hobby plan with Fluid compute (on by default, pinned in vercel.json) stops a function at 300 s at most
     expect(maxDuration).toBeLessThanOrEqual(300);
+  });
+
+  // The public feed, the leaderboard and the daily metrics call a `running` row older than 90 s killed (the SQL of
+  // migrations 0008, 0009 and 0012, canary-sql.test.ts). The row is inserted after the route starts, so a running row
+  // older than 90 s belongs to a function the platform has stopped, and an attempt still running never looks killed.
+  it("lives no longer than the 90 s after which the public surfaces call a running attempt killed", () => {
+    expect(maxDuration * 1000).toBeLessThanOrEqual(90_000);
   });
 
   describe("who may call it", () => {
