@@ -544,8 +544,10 @@ The software is an unaudited beta.
   `OverPerPayment`
   ([transaction](https://testnet.nearblocks.io/txns/6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH)).
   The README, the status list on the site, the `/docs` pages and the policy reference call it Live
-  on testnet instead of not open yet. Mainnet has no Canary vault, so `/canary` there still shows the
-  recorded attacks.
+  on testnet instead of not open yet. The threat model's claim C9 names the Canary vault, which has
+  no `verify` run recorded yet, and the deploy runbook says `CANARY_MODE` is `live` on
+  probarion.xyz. The README's beta note says the demo vault's proof page and the Canary are public.
+  Mainnet has no Canary vault, so `/canary` there still shows the recorded attacks.
 - The "Approval needed" alert, by Telegram and by email, links the held spend's approval page,
   `/console/<vault>/approve/<spend>`, in place of the overview's held card. An event without a spend
   id still links the held card (`/console/<vault>#held`).

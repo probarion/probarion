@@ -35,8 +35,10 @@ the vault once it has a ledger key, and anyone can re-check a published record a
 > [!IMPORTANT]
 > **Unaudited beta.** No third party has audited this code. The vault runs on NEAR testnet with test
 > tokens; mainnet is planned. The site and web console run at
-> [probarion.xyz](https://probarion.xyz) on testnet. The console is in progress, and no vault
-> is public there yet. Release 0.1.0 of the SDK, core and CLI packages is on npm.
+> [probarion.xyz](https://probarion.xyz) on testnet. The console is in progress. The testnet demo
+> vault's proof page is public, and so is the [Canary](https://probarion.xyz/canary?via=readme), a
+> vault anyone may try to trick into paying them. Release 0.1.0 of the SDK, core and CLI packages
+> is on npm.
 > [What is shipped, in progress and planned](#status).
 
 ## Contents
