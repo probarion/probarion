@@ -143,7 +143,9 @@ The software is an unaudited beta.
   Q-001 and Q-005, and says that no code or library from the builder's earlier projects is used and
   no project template; that the type and constant definitions of the interfaces spec of 2026-10-21
   were carried into the code; and that the code was written with Claude Code, whose trailer every
-  commit other than a merge carries. Prior work now dates the spec after the hackathon's announcement
+  commit other than a merge carries. Its "AI-assisted code" part sets out the builder's share: the
+  product decisions the design spec records, what is built and merged, and the steps the runbooks
+  mark OWNER or OWNER SIGNS. Prior work now dates the spec after the hackathon's announcement
   on 2026-10-19, from which Q-001 allows code, and before its start on 2026-11-01, in place of
   "before the hackathon build window".
 - The landing page has a live check, "Try it, live on NEAR testnet" (`/#try`). A visitor picks what

@@ -719,14 +719,32 @@ For Probarion:
 ### AI-assisted code
 
 Probarion was built with Claude Code, Anthropic's AI coding agent, which wrote most of the code,
-tests and documentation. The builder decided what to build and when each pull request was merged.
-Every commit other than a merge carries a `Co-Authored-By: Claude` trailer; most merge commits, the
-pull-request merges among them, do not. Besides CI, changes were checked by adversarial reviews run
-with further AI agents; no third party has audited the contracts or the packages (see
-[SECURITY.md](SECURITY.md)). At run time a model only advises: the code rules and the contract
-decide each payment. When a model is configured, it is a private model on NEAR AI Cloud, as [NEAR
-technology used, and how](#near-technology-used-and-how) describes; without one, the code decides
-alone and the ledger records `rules-only`.
+tests and documentation. Every commit other than a merge carries a `Co-Authored-By: Claude` trailer;
+most merge commits, the pull-request merges among them, do not.
+
+The builder's part:
+
+- **The product.** The builder chose it, its name, its positioning as a mandate layer for any agent
+  with the accounts-payable agent as the reference app, and the goal of a real, professionally
+  operated product. The design spec records these as "Decisions confirmed by the user"
+  ([`docs/specs/2026-10-21-probarion-design.md`](docs/specs/2026-10-21-probarion-design.md)).
+- **What is built and merged.** The builder decides what each pull request builds and when it is
+  merged.
+- **The steps the runbooks mark OWNER or OWNER SIGNS.** These are the builder's to sign or start:
+  each mainnet transaction in the deploy runbooks ([`docs/runbooks`](docs/runbooks)), each
+  transaction that changes a vault Probarion runs ([`docs/RUNBOOK.md`](docs/RUNBOOK.md)), every step
+  of the web deployment ([`web-deploy.md`](docs/runbooks/web-deploy.md)), and publishing the npm
+  packages ([`release.yml`](.github/workflows/release.yml)).
+
+This is the split Probarion makes for payments: the agent does the work within limits, and a person
+keeps the keys that move value. Besides CI, changes were checked by adversarial reviews run with
+further AI agents; no third party has audited the contracts or the packages (see
+[SECURITY.md](SECURITY.md)).
+
+At run time a model only advises: the code rules and the contract decide each payment. When a model
+is configured, it is a private model on NEAR AI Cloud, as
+[NEAR technology used, and how](#near-technology-used-and-how) describes; without one, the code
+decides alone and the ledger records `rules-only`.
 
 ## Other project by the same builder
 
