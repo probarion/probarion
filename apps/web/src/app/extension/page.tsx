@@ -29,11 +29,14 @@ export default async function ExtensionPage({
       <div className="max-w-5xl">
         <h1 className="mb-2 text-2xl font-semibold">Browser extension</h1>
         <p className="mb-6 text-sm text-mute">
-          The extension will send invoices to wait for the owner's confirmation and show what waits
-          for you, but it can't pay or approve: an invoice it sends is paid only after the vault's
-          owner confirms it in the console with their wallet.
+          The extension sends invoices to wait for the owner's confirmation and shows what waits for
+          you, but it can't pay or approve: an invoice it sends is paid only after the vault's owner
+          confirms it in the console with their wallet.
         </p>
-        <Notice tone="info">The Probarion extension for Chrome is not released yet.</Notice>
+        <Notice tone="info">
+          The Probarion extension for Chrome is pending Chrome Web Store review. Until the store
+          publishes it, load it unpacked from apps/extension in Probarion's repository.
+        </Notice>
         <Card title="Connect this browser">
           <ConnectPanel nonce={nonce} account={session.accountId} network={session.network} />
         </Card>

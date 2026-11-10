@@ -17,7 +17,8 @@ describe("/privacy", () => {
     for (const fact of [
       "last four characters",
       "ten minutes",
-      "not released yet",
+      "pending Chrome Web Store review",
+      "with your own session for that site",
       "set to end and revoked",
       "its record is deleted the next time a code is made, for anyone",
       "a sixth connection on the same network ends the oldest one",

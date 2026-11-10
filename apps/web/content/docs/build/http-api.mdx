@@ -45,7 +45,7 @@ Your wallet signs nothing in this cycle. The console sends `spend` with the agen
 
 ## Browser extension
 
-These routes let the browser extension pair with an account, read what waits for it, and queue invoices for the owner's Confirm. They are Preview: built and tested, while the extension for Chrome that calls them is Planned and not released yet ([What works today](/docs/start/what-works-today#browser-extension-server-half)).
+These routes let the browser extension pair with an account, read what waits for it, and queue invoices for the owner's Confirm. They are Preview: built and tested, like the extension for Chrome that calls them, which is pending Chrome Web Store review ([What works today](/docs/start/what-works-today#browser-extension-for-chrome)).
 
 A token is `pbx_` and 43 more characters. The server keeps its hash and, as a hint, its last four characters, which the Browser extension page shows under Connected browsers. The signed-in Browser extension page (`/extension`) connects the extension or shows a pairing code, and `POST /api/ext/pair` exchanges that code for a token. A code is 8 letters and digits, shown as `XXXX-XXXX`, and is good once, for 10 minutes.
 

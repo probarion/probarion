@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>marquee</title>
+    <style>
+      body {
+        display: flex;
+        gap: 72px;
+        align-items: center;
+        box-sizing: border-box;
+        width: 1400px;
+        height: 560px;
+        margin: 0;
+        padding: 0 120px;
+        background: #0b0b0c;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      /* The icon's light plate (render/icon.html), drawn from the SVG at this size so it stays sharp. */
+      .plate {
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 280px;
+        height: 280px;
+        border-radius: 62px;
+        background: #f7f6f3;
+      }
+      h1 {
+        margin: 0 0 16px;
+        color: #f7f6f3;
+        font-size: 72px;
+      }
+      .lead {
+        margin: 0 0 28px;
+        color: #f7f6f3;
+        font-size: 30px;
+        line-height: 1.35;
+      }
+      ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      li {
+        margin: 0 0 10px;
+        color: #a9a59b;
+        font-size: 24px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="plate"><img src="../../../web/src/app/icon.svg" alt="" width="236" height="236" /></div>
+    <div>
+      <h1>Probarion</h1>
+      <p class="lead">Queue invoices from the browser.<br />Confirm them in the console.</p>
+      <ul>
+        <li>From the PDF in a tab, a link, selected text or a file</li>
+        <li>A count on the toolbar of what waits for your Confirm</li>
+        <li>It can't pay, approve or sign</li>
+      </ul>
+    </div>
+  </body>
+</html>

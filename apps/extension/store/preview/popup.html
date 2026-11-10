@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>popup</title>
+    <base href="../../dist/" />
+    <link rel="stylesheet" href="popup.css" />
+    <style>
+      body.shot {
+        display: grid;
+        grid-template-columns: 1fr 360px;
+        gap: 72px;
+        align-items: center;
+        box-sizing: border-box;
+        width: 1280px;
+        height: 800px;
+        margin: 0;
+        padding: 0 120px;
+        background: #0b0b0c;
+      }
+      .copy h1 {
+        margin: 0 0 16px;
+        color: #f7f6f3;
+        font: 600 44px/1.15 "Segoe UI", system-ui, sans-serif;
+      }
+      .copy p {
+        margin: 0;
+        color: #a9a59b;
+        font: 20px/1.5 "Segoe UI", system-ui, sans-serif;
+      }
+      .frame {
+        overflow: hidden;
+        border-radius: 12px;
+        background: #f7f6f3;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+      }
+    </style>
+  </head>
+  <body class="shot">
+    <div class="copy">
+      <h1>Queue invoices from the browser. Confirm them in the console.</h1>
+      <p>
+        Probarion queues the invoice for your vault and checks it against the mandate. Nothing is paid until you
+        confirm it in the console with your wallet.
+      </p>
+    </div>
+    <div class="frame"><main id="app"></main></div>
+    <script src="../store/preview/fake-chrome.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>icon</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      /* The artwork is a light plate, so the mark's dark bar shows on a dark toolbar too. Around it everything is transparent. */
+      .plate {
+        position: absolute;
+        display: grid;
+        place-items: center;
+        background: #f7f6f3;
+      }
+      img {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="plate"><img src="../../web/src/app/icon.svg" alt="" /></div>
+    <script>
+      const size = Number(new URLSearchParams(location.search).get("size")) || 128;
+      // The store asks for a 128 px icon with 96 px of artwork inside 16 px of transparent padding. The small sizes keep
+      // less padding (1 px at 16, 2 px at 32, 4 px at 48), so the mark stays legible in the toolbar.
+      const pad = { 16: 1, 32: 2, 48: 4 }[size] ?? Math.round(size / 8);
+      const side = size - 2 * pad;
+      const plate = document.querySelector(".plate");
+      plate.style.left = `${pad}px`;
+      plate.style.top = `${pad}px`;
+      plate.style.width = `${side}px`;
+      plate.style.height = `${side}px`;
+      plate.style.borderRadius = `${side * 0.22}px`;
+      const img = document.querySelector("img");
+      img.width = side * 0.84;
+      img.height = side * 0.84;
+    </script>
+  </body>
+</html>
