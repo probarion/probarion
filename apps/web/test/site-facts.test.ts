@@ -621,11 +621,11 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Canary public challenge",
-      pill: "Page built, not open yet",
+      pill: "Live on testnet",
       readme: [
         {
           start: "Canary, a public vault",
-          says: ["**In progress**", "does not pay from its own cycle", "It is not open yet"],
+          says: ["**Live on NEAR testnet**", "does not pay from its own cycle", "OverPerPayment"],
         },
       ],
     },
@@ -826,12 +826,7 @@ describe("the status list", () => {
         pill: "In progress",
         tone: "work",
       },
-      {
-        id: "canary",
-        row: "Canary public challenge",
-        pill: "Page built, not open yet",
-        tone: "work",
-      },
+      { id: "canary", row: "Canary public challenge", pill: "Live on testnet", tone: "live" },
       {
         id: "mcp-server",
         row: "MCP server",

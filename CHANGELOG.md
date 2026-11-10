@@ -392,7 +392,7 @@ The software is an unaudited beta.
   and what the contract did. The vault's balance and mandate are read from the chain, and the
   scoreboard and the latest attempts come from the database behind a short cache. When the live
   Canary is paused, a replay is chosen, or no vault is set, the page shows the recorded attacks
-  instead. The page is not open yet: it waits for the Canary vault and `NEARAI_API_KEY`.
+  instead. The page opened on NEAR testnet on 2026-11-10 (see Changed).
 - The Canary closes itself instead of running dry: it does not run while its ledger key holds under
   0.5 NEAR; it answers 429 with `Retry-After` over 6 attempts an hour from one address (an IPv6
   address counts by its /64), 60 an hour or 600 a day in total; it closes when its ledger holds 300
@@ -536,6 +536,18 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The Canary is open on NEAR testnet at `/canary` on probarion.xyz, in live mode, since
+  2026-11-10. Its vault is `canary.vaults.probarion.testnet`, with one mandate that pays
+  `probarion-payee.testnet` at most 1 test USDC a payment and holds every spend. In the team's
+  rehearsal that day, a fake invoice asked for 50 USDC: the model proposed paying 50 USDC, the code
+  rules refused it (`invoice.amount_invalid`), and the contract refused the same spend on chain with
+  `OverPerPayment`
+  ([transaction](https://testnet.nearblocks.io/txns/6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH)).
+  The README, the status list on the site, the `/docs` pages and the policy reference call it Live
+  on testnet instead of not open yet. The threat model's claim C9 names the Canary vault, which has
+  no `verify` run recorded yet, and the deploy runbook says `CANARY_MODE` is `live` on
+  probarion.xyz. The README's beta note says the demo vault's proof page and the Canary are public.
+  Mainnet has no Canary vault, so `/canary` there still shows the recorded attacks.
 - The "Approval needed" alert, by Telegram and by email, links the held spend's approval page,
   `/console/<vault>/approve/<spend>`, in place of the overview's held card. An event without a spend
   id still links the held card (`/console/<vault>#held`).

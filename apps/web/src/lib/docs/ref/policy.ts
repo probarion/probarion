@@ -307,7 +307,7 @@ const ADDED_RULES: RefTable = {
       cells: {
         rule: "`custom.canary_no_autopay`",
         effect: "Refuse",
-        by: "The Canary, Probarion's public-challenge vault (Preview, not open yet), on every cycle",
+        by: "The Canary, Probarion's public-challenge vault (Live on testnet), on every cycle",
         when: "Always: the Canary never pays from its own cycle. It is the outcome's `code` only when no built-in rule refused first.",
         todo: "Nothing: it is the expected refusal there.",
       },
