@@ -168,6 +168,20 @@ class DeadlineError extends Error {
   }
 }
 
+/**
+ * The SDK starts no chain call with less than this many ms of the attempt left (MIN_CALL_MS in
+ * packages/sdk/src/deadline.ts, not exported): it throws an RpcError before the deadline instead. That refusal is the
+ * deadline too.
+ */
+const SDK_MIN_CALL_MS = 50;
+
+/**
+ * Whether `e` ended a step because the attempt's time ran out: the backstop's own error, or an SDK refusal under its
+ * floor.
+ */
+const outOfTime = (e: unknown, left: () => number): boolean =>
+  e instanceof DeadlineError || left() < SDK_MIN_CALL_MS;
+
 /** Whether the attempt has given up on work that is still running (see `bounded`): the lease is then not released. */
 interface Abandoned {
   gaveUp: boolean;
@@ -422,7 +436,7 @@ async function planRaw(
     );
     if (verdict.ok) return skip("contract_would_accept");
   } catch (e) {
-    if (e instanceof DeadlineError) return skip("no_time");
+    if (outOfTime(e, c.left)) return skip("no_time");
     log.warn("canary.check_failed", { request_id: input.requestId, error: messageOf(e) });
     return skip("check_failed");
   }
@@ -637,7 +651,7 @@ async function cycle(
   } catch (e) {
     // The SDK sends a spend only after a decision, and the Canary's rule refuses every decision: nothing went out. The model
     // may have answered, so the row stays (its estimate counts against the day's budget), closed as an error.
-    const deadline = e instanceof DeadlineError || left() <= 0;
+    const deadline = outOfTime(e, left);
     log.error(deadline ? "canary.deadline" : "canary.failed", {
       ...at,
       mandate_id: mandate.id,

@@ -765,6 +765,14 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- SDK: `RpcClient` and `NearAiProposer` do not start a call with less than 50 ms of the caller's
+  `remainingMs` left, where they refused only at 0. A timer can fire about 1 ms before `Date.now()`
+  reaches the deadline, so a call sent with what was left could only time out: a test in
+  `packages/sdk/test/deadline.test.ts` failed now and then in CI for that reason (seen on #87). A NEAR
+  AI signature back-off is waited out only when it leaves 50 ms for the next try. `RpcClient` still
+  cuts its back-off to the time left. The Canary counts a refusal under that floor as running out of
+  time, as before (`no_time` for the dry run, `deadline` for the cycle). New tests pin 1, 49 and 50 ms
+  with fixed clocks.
 - The Canary's persona tells the model to write amounts in USDC's smallest units, with an example
   (50 USDC is `50000000`), as core's default prompt does. On 2026-11-10 the live testnet Canary's
   model wrote `50` for 50 USDC, a spend of 0.00005 USDC that the contract would hold, so the contract's
