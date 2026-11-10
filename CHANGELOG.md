@@ -491,7 +491,7 @@ The software is an unaudited beta.
   before) and the console header's "Signed in as" line (6.2:1 on paper before) pass. The landing
   page and the Docs Center read the same tokens, so their grey and status text is darker too.
   - Grey text at 60% ink, in Payables and the invoice confirm panel, is 75% ink (9.1:1 on a white
-    card), and the sign-in page's "Console" label is `gold-ink` (9.6:1).
+    card), and the sign-in page's "Console" label is `gold-ink` (9.3:1).
   - `text-xs` and `text-sm` have a line height of 1.5 (WCAG 1.4.8): 18px and 21px.
   - `apps/web/test/console-kit.test.ts` fails when a tone pair, a button, or any text colour class
     on a console page, the sign-in page or the extension page reads below 7:1 on paper or on a card.
