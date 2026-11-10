@@ -123,6 +123,7 @@ describe("the rendered images", () => {
     ["menu", 1280, 800],
     ["connect", 1280, 800],
     ["tile", 440, 280],
+    ["marquee", 1400, 560],
   ])("the store image %s is a %i x %i JPEG", (name, width, height) => {
     const jpeg = read(`store/screenshots/${name}.jpg`);
     expect([jpeg[0], jpeg[1]]).toEqual([0xff, 0xd8]);

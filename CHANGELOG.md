@@ -468,7 +468,7 @@ The software is an unaudited beta.
   of UTF-8 text).
 - `pnpm --filter @probarion/extension build` writes the release build to `apps/extension/dist`;
   `build:dev` also trusts `http://localhost:3000`. `zip` packs the release build into the store
-  zip, the same bytes each time, and `render` redraws the icons and the four store images with a
+  zip, the same bytes each time, and `render` redraws the icons and the five store images with a
   local headless Chrome. `apps/extension/store` holds the listing, the permission and data-use
   answers, the notes for the store reviewer and the upload steps; `apps/extension/TESTING.md` is the
   manual checklist, run before each upload.

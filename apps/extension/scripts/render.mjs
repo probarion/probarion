@@ -11,6 +11,7 @@ import { build, ROOT } from "./build.mjs";
 //                                           (render/icon.html: 96 px of artwork in a 128 px icon, as the store asks)
 //   store/screenshots/{popup,menu,connect}.jpg  1280 x 800 (store/preview/*.html)
 //   store/screenshots/tile.jpg              440 x 280
+//   store/screenshots/marquee.jpg           1400 x 560
 // The store images are JPEG: the store refuses a PNG with an alpha channel.
 
 const CHROMES = [
@@ -173,6 +174,14 @@ try {
     join(ROOT, "store/screenshots/tile.jpg"),
     440,
     280,
+    "jpeg",
+  );
+  await shoot(
+    b,
+    page("store/preview/marquee.html"),
+    join(ROOT, "store/screenshots/marquee.jpg"),
+    1400,
+    560,
     "jpeg",
   );
 } finally {

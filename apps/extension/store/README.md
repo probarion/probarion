@@ -23,7 +23,8 @@ Claude prepared everything in this folder. Claude does not pay, upload or publis
 3. In the developer console choose **New item** and upload the zip.
 4. Fill in the listing from these files:
    - **Store listing:** `listing.md`. The images are in `screenshots/`: `popup.jpg`, `menu.jpg` and `connect.jpg` as
-     screenshots, and `tile.jpg` as the small promo tile. The store icon is `../static/icons/128.png`.
+     screenshots, `tile.jpg` (440 x 280) as the small promo tile and `marquee.jpg` (1400 x 560) as the marquee promo
+     tile. The store icon is `../static/icons/128.png`.
    - **Category:** `listing.md` says Workflow & Planning. Pick Productivity > Workflow & Planning if the dashboard
      nests it there, otherwise the closest Productivity entry.
    - **Privacy:** `single-purpose.md`, `permissions.md`, `data-use.md`; the privacy policy URL is in `privacy.md`.
