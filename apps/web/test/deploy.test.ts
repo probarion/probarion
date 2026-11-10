@@ -37,6 +37,7 @@ const PACKAGE = JSON.parse(text(WEB, "package.json")) as {
 const VERCEL = JSON.parse(text(WEB, "vercel.json")) as {
   framework?: string;
   regions?: string[];
+  fluid?: boolean;
   installCommand?: string;
   buildCommand?: string;
   headers?: unknown;
@@ -201,6 +202,22 @@ describe("vercel.json", () => {
   it("builds Next.js in one region", () => {
     expect(VERCEL.framework).toBe("nextjs");
     expect(VERCEL.regions?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("pins Fluid compute on, which a function over 60 s needs on the Hobby plan, and keeps every function to its 300 s", () => {
+    // Without Fluid compute the Hobby plan stops a function at 60 s and refuses to deploy a longer maxDuration; with it
+    // the limit is 300 s. /api/canary/attempt sets 90. The runbook tells the OWNER to leave the setting on.
+    expect(VERCEL.fluid).toBe(true);
+    const durations = walk(join(WEB, "src"))
+      .filter(isSourceFile)
+      .flatMap((f) =>
+        [...readFileSync(f, "utf8").matchAll(/export const maxDuration = (\d+);/g)].map((m) =>
+          Number(m[1]),
+        ),
+      );
+    expect(durations.length).toBeGreaterThan(0);
+    expect(durations.filter((s) => s > 300)).toEqual([]);
+    expect(text(ROOT, "docs", "runbooks", "web-deploy.md")).toContain("Fluid compute");
   });
 
   it("leaves the install command alone: an override makes Vercel use the oldest pnpm", () => {

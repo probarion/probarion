@@ -357,12 +357,24 @@ const VISITOR = "AAAAAAAAAAAAAAAAAAAAAA"; // 22 base64url characters: what the r
 describe("POST /api/canary/attempt", () => {
   it("lets the tenant lease outlast the route's longest run, with a margin", () => {
     expect(maxDuration + 30).toBeLessThanOrEqual(CANARY_LIMITS.leaseSeconds);
-    expect(CANARY_LIMITS.leaseSeconds).toBe(PROCESS_LEASE_SECONDS);
+    // the Canary's own lease: this route runs longer than Payables' upload, whose lease is PROCESS_LEASE_SECONDS
+    expect(CANARY_LIMITS.leaseSeconds).toBe(130);
+    expect(CANARY_LIMITS.leaseSeconds).toBeGreaterThan(PROCESS_LEASE_SECONDS);
   });
 
-  it("bounds one attempt at 50 s, which leaves the platform's 60 s room to close the row and answer", () => {
-    expect(CANARY_LIMITS.attemptBudgetMs).toBe(50_000);
+  it("bounds one attempt at 80 s, which leaves 10 s of the route's 90 s to close the row and answer", () => {
+    expect(CANARY_LIMITS.attemptBudgetMs).toBe(80_000);
+    expect(maxDuration).toBe(90);
     expect(CANARY_LIMITS.attemptBudgetMs + 5000).toBeLessThanOrEqual(maxDuration * 1000);
+    // Vercel's Hobby plan with Fluid compute (on by default, pinned in vercel.json) stops a function at 300 s at most
+    expect(maxDuration).toBeLessThanOrEqual(300);
+  });
+
+  // The public feed, the leaderboard and the daily metrics call a `running` row older than 90 s killed (the SQL of
+  // migrations 0008, 0009 and 0012, canary-sql.test.ts). The row is inserted after the route starts, so a running row
+  // older than 90 s belongs to a function the platform has stopped, and an attempt still running never looks killed.
+  it("lives no longer than the 90 s after which the public surfaces call a running attempt killed", () => {
+    expect(maxDuration * 1000).toBeLessThanOrEqual(90_000);
   });
 
   describe("who may call it", () => {
@@ -673,7 +685,7 @@ describe("POST /api/canary/attempt", () => {
       expect((await post({ text: TEXT })).status).toBe(200);
       const rpc = at(h.deps).rpc as { opts: { remainingMs: () => number } };
       const left = rpc.opts.remainingMs();
-      // 50 s from the route's start, less the 300 ms before the attempt, the 200 ms of the mandates and what it used since
+      // 80 s from the route's start, less the 300 ms before the attempt, the 200 ms of the mandates and what it used since
       expect(left).toBeLessThanOrEqual(CANARY_LIMITS.attemptBudgetMs - 500);
       expect(left).toBeGreaterThan(CANARY_LIMITS.attemptBudgetMs - (Date.now() - before) - 100);
     });

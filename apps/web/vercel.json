@@ -2,6 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "regions": ["iad1"],
+  "fluid": true,
   "buildCommand": "pnpm --filter \"@probarion/web^...\" run build && pnpm run build",
   "crons": [
     { "path": "/api/cron/watch", "schedule": "0 0 * * *" },
