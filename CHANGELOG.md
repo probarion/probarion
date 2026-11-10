@@ -20,7 +20,8 @@ The software is an unaudited beta.
   a spend-only agent key) and fails check c, because the Canary's ledger is private and the run
   checks the chain's 4 anchors against an empty ledger; the folder's README says which checks that
   leaves meaningful. The threat model's claim C9 now says Yes for the Canary vault, with that run,
-  and the README has a section for it.
+  and the README has a section for it. Claim C8 says Yes for the demo vault, whose recorded snapshot
+  passes checks a to i from a clone, in place of "N/A today".
 - A phone-sized approval page for each held spend, `/console/<vault>/approve/<spend>`, which the
   "Approval needed" alert now links to, by Telegram and by email (roadmap G2). An approver taps the
   link, signs in with their NEAR wallet when they have no session in that browser, and approves or
