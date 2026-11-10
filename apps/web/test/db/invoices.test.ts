@@ -8,6 +8,7 @@ import {
   listInvoices,
   type NewInvoice,
   setInvoiceOutcome,
+  setInvoiceRejected,
 } from "@/lib/payables/store";
 import { asRole, freshDb, seedTenant } from "./harness";
 import { pgliteDb } from "./pglite-db";
@@ -245,6 +246,275 @@ describe("invoice functions (migration 0006)", () => {
       id: otherId,
       duplicate: true,
       status: "decided",
+    });
+  });
+
+  /** A refusal outcome with this code; `decisionHash` names the decision entry, when the test writes one. */
+  const refuse = (
+    tenant: string,
+    id: string,
+    status: string,
+    code: string,
+    decisionHash = H("d"),
+  ) =>
+    setInvoiceOutcome(db, tenant, id, {
+      status: "decided",
+      outcome: { ...OUTCOME, status, spendId: null, txHash: null, code, decisionHash } as never,
+      anchorTxHash: null,
+      promptTokens: null,
+      completionTokens: null,
+    });
+  /** The owner's Confirm of a waiting row, as invoice_confirm_begin leaves it: back in processing. */
+  const confirmed = (id: string) =>
+    pg.query("update invoices set status = 'processing' where id = $1", [id]);
+  /** A row that waits for the owner, as the console or the extension leaves it. */
+  const awaiting = async (over: Partial<NewInvoice>) => {
+    const { id } = await insertInvoice(db, a, invoice(over));
+    await setInvoiceOutcome(db, a, id, {
+      status: "awaiting_owner",
+      outcome: {
+        ...OUTCOME,
+        status: "held",
+        spendId: null,
+        txHash: null,
+        code: "custom.owner_confirms_without_model",
+      } as never,
+      suggestedAmount: "5",
+      anchorTxHash: null,
+      promptTokens: null,
+      completionTokens: null,
+    });
+    return id;
+  };
+  let keys = 0;
+  /** A fingerprint or invoice-number key no other test uses. */
+  const key = () => {
+    keys += 1;
+    return (0x50000000 + keys).toString(16).padStart(64, "0");
+  };
+  let seqs = 0;
+  /** A decision entry of tenant `a` with these rules, by hand (no signature): its body_hash. */
+  const decisionEntry = async (rules: { id: string; outcome: string }[]) => {
+    const hash = (0xd000 + seqs).toString(16).padStart(64, "e");
+    await pg.query(
+      `insert into ledger_entries (tenant_id, seq, kind, body, body_hash, sig, signer, link, request_id)
+       values ($1, $2, 'decision', $3, $4, 'ed25519:s', 'ed25519:p', $4, 'r')`,
+      [a, seqs, JSON.stringify({ kind: "decision", rules }), hash],
+    );
+    seqs += 1;
+    return hash;
+  };
+
+  // Migration 0017: an SDK agent paid text A outside the console, and the owner's Confirm of A was refused because A
+  // was already paid. Before 0017 that refusal freed A's number, and text B of the same bill (another hash, so it
+  // passes invoice.duplicate and the contract's DuplicateInvoice) ran again on its row and could pay.
+  it("keeps the number blocked when the owner's Confirm was refused because the text was already paid", async () => {
+    const num = key();
+    const first = await awaiting({ invoiceNumberKey: num });
+    const second = invoice({ invoiceNumberKey: num });
+    const { id, number_match } = (await insertInvoice(db, a, second, { numberRule: true })) as {
+      id: string;
+      number_match: unknown;
+    };
+    expect(number_match).toMatchObject({ id: first, status: "awaiting_owner" });
+    await refuse(a, id, "refused_by_code", "custom.invoice_number_duplicate");
+    await confirmed(first);
+    await refuse(a, first, "refused_by_code", "invoice.duplicate");
+    // The same text is a duplicate of its own row: it does not run again.
+    expect(await insertInvoice(db, a, second, { numberRule: true })).toEqual({
+      id,
+      duplicate: true,
+      status: "decided",
+    });
+    expect(await getInvoice(db, a, id)).toMatchObject({
+      outcome: { code: "custom.invoice_number_duplicate" },
+    });
+    // A third text with the number runs, and the number rule refuses it: the match names the refused invoice.
+    expect(
+      await insertInvoice(db, a, invoice({ invoiceNumberKey: num }), { numberRule: true }),
+    ).toMatchObject({
+      duplicate: false,
+      number_match: { id: first, status: "decided", outcome_status: "refused_by_code" },
+    });
+    // Without the rule it is a duplicate at intake, and so is another rendering of the first text.
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberKey: num }))).toEqual({
+      id: first,
+      duplicate: true,
+      status: "decided",
+    });
+    const fp = (
+      await pg.query<{ f: string }>("select fingerprint_sha256 f from invoices where id = $1", [
+        first,
+      ])
+    ).rows[0]?.f;
+    expect(await insertInvoice(db, a, invoice({ fingerprint: fp }))).toEqual({
+      id: first,
+      duplicate: true,
+      status: "decided",
+    });
+  });
+
+  it.each([
+    ["refused_by_code", "invoice.duplicate", true],
+    ["refused_by_code", "ledger.unresolved", true],
+    ["refused_by_contract", "DuplicateInvoice", true],
+    ["refused_by_contract", "DuplicateRef", true],
+    ["refused_by_code", "mandate.over_total", false],
+    ["refused_by_code", "custom.invoice_number_duplicate", false],
+    ["refused_by_contract", "OverMandateTotal", false],
+    ["failed", "TxFailed", false],
+  ])("a decided %s %s blocks the number and the text: %s", async (status, code, blocks) => {
+    const num = key();
+    const fp = key();
+    const { id } = await insertInvoice(db, a, invoice({ invoiceNumberKey: num, fingerprint: fp }));
+    await refuse(a, id, status, code);
+    expect(
+      await insertInvoice(db, a, invoice({ invoiceNumberKey: num }), { numberRule: true }),
+    ).toMatchObject({
+      duplicate: false,
+      number_match: blocks ? { id, status: "decided", outcome_status: status } : null,
+    });
+    expect((await insertInvoice(db, a, invoice({ fingerprint: fp }))).duplicate).toBe(blocks);
+  });
+
+  // The outcome's code is the first refusing rule, and decide() runs the vault, mandate and limit rules before
+  // invoice.duplicate: the decision entry lists the refusal the code hides.
+  it("blocks a refusal whose decision entry refused invoice.duplicate or ledger.unresolved under another code", async () => {
+    const cases = [
+      [
+        [
+          { id: "mandate.uses_exhausted", outcome: "refuse" },
+          { id: "invoice.duplicate", outcome: "refuse" },
+        ],
+        true,
+      ],
+      [
+        [
+          { id: "vault.frozen", outcome: "refuse" },
+          { id: "ledger.unresolved", outcome: "refuse" },
+        ],
+        true,
+      ],
+      [
+        [
+          { id: "mandate.uses_exhausted", outcome: "refuse" },
+          { id: "invoice.duplicate", outcome: "pass" },
+        ],
+        false,
+      ],
+    ] as const;
+    for (const [rules, blocks] of cases) {
+      const num = key();
+      const { id } = await insertInvoice(db, a, invoice({ invoiceNumberKey: num }));
+      await refuse(a, id, "refused_by_code", rules[0].id, await decisionEntry([...rules]));
+      expect(
+        (await insertInvoice(db, a, invoice({ invoiceNumberKey: num }))).duplicate,
+        JSON.stringify(rules),
+      ).toBe(blocks);
+    }
+    // Another tenant's entry with the same hash says nothing about this row.
+    const hash = await decisionEntry([{ id: "invoice.duplicate", outcome: "refuse" }]);
+    const num = key();
+    const { id } = await insertInvoice(db, b, invoice({ invoiceNumberKey: num }));
+    await refuse(b, id, "refused_by_code", "mandate.uses_exhausted", hash);
+    expect((await insertInvoice(db, b, invoice({ invoiceNumberKey: num }))).duplicate).toBe(false);
+  });
+
+  // The extension queues without the tenant lease (0015), so a waiting row and a paid one can share a number. The
+  // guard names the paid one: a notice that offered a re-upload after a Reject of the waiting one would answer 409.
+  it("names an invoice that may have paid before an older one that waits for the owner", async () => {
+    const num = key();
+    const fp = key();
+    const older = await awaiting({ invoiceNumberKey: num, fingerprint: fp });
+    const { id: paid } = await insertInvoice(db, a, invoice());
+    await decide(a, paid, "paid");
+    await pg.query(
+      "update invoices set invoice_number_hmac = $2, fingerprint_sha256 = $3 where id = $1",
+      [paid, num, fp],
+    );
+    await pg.query("update invoices set created_at = now() - interval '1 hour' where id = $1", [
+      older,
+    ]);
+    expect(
+      await insertInvoice(db, a, invoice({ invoiceNumberKey: num }), { numberRule: true }),
+    ).toMatchObject({ duplicate: false, number_match: { id: paid, status: "decided" } });
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberKey: num }))).toEqual({
+      id: paid,
+      duplicate: true,
+      status: "decided",
+    });
+    expect(await insertInvoice(db, a, invoice({ fingerprint: fp }))).toEqual({
+      id: paid,
+      duplicate: true,
+      status: "decided",
+    });
+    // With no row that may have paid, the oldest waiting one is named, as before.
+    const num2 = key();
+    const first = await awaiting({ invoiceNumberKey: num2 });
+    const second = await awaiting({});
+    await pg.query("update invoices set invoice_number_hmac = $2 where id = $1", [second, num2]);
+    expect(await insertInvoice(db, a, invoice({ invoiceNumberKey: num2 }))).toEqual({
+      id: first,
+      duplicate: true,
+      status: "awaiting_owner",
+    });
+  });
+
+  it("still frees the number when the owner rejects the waiting invoice: the refused text runs again", async () => {
+    const num = key();
+    const first = await awaiting({ invoiceNumberKey: num });
+    const second = invoice({ invoiceNumberKey: num });
+    const { id } = await insertInvoice(db, a, second, { numberRule: true });
+    await refuse(a, id, "refused_by_code", "custom.invoice_number_duplicate");
+    const row = await getInvoice(db, a, first);
+    expect(
+      await setInvoiceRejected(db, a, first, "alice.near", {
+        suggestedAmount: "5",
+        invoiceHash: row?.invoice_hash ?? "",
+        mandateId: null,
+      }),
+    ).toEqual({ changed: true, status: "rejected" });
+    expect(await insertInvoice(db, a, second, { numberRule: true })).toEqual({
+      id,
+      duplicate: false,
+      retry: true,
+      number_match: null,
+    });
+  });
+
+  // The extension queues without the tenant lease (0015), so two invoices with the number can both wait. The refused
+  // text runs again only once the owner rejected each of them, as the notice says.
+  it("frees the number only once the owner rejected every waiting invoice that has it", async () => {
+    const num = key();
+    const first = await awaiting({ invoiceNumberKey: num });
+    const twin = await awaiting({});
+    await pg.query("update invoices set invoice_number_hmac = $2 where id = $1", [twin, num]);
+    const text = invoice({ invoiceNumberKey: num });
+    const refused = await insertInvoice(db, a, text, { numberRule: true });
+    expect(refused).toMatchObject({ number_match: { id: first, status: "awaiting_owner" } });
+    await refuse(a, refused.id, "refused_by_code", "custom.invoice_number_duplicate");
+    const reject = async (id: string) => {
+      const row = await getInvoice(db, a, id);
+      expect(
+        await setInvoiceRejected(db, a, id, "alice.near", {
+          suggestedAmount: "5",
+          invoiceHash: row?.invoice_hash ?? "",
+          mandateId: null,
+        }),
+      ).toEqual({ changed: true, status: "rejected" });
+    };
+    await reject(first);
+    expect(await insertInvoice(db, a, text, { numberRule: true })).toEqual({
+      id: refused.id,
+      duplicate: true,
+      status: "decided",
+    });
+    await reject(twin);
+    expect(await insertInvoice(db, a, text, { numberRule: true })).toEqual({
+      id: refused.id,
+      duplicate: false,
+      retry: true,
+      number_match: null,
     });
   });
 
