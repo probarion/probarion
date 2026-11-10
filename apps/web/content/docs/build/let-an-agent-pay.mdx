@@ -382,7 +382,7 @@ The report starts with `Probarion verify: <vault> (testnet)`, lists each check, 
 
 ## Not available yet
 
-- No MCP server: `@probarion/mcp` is Planned.
+- No MCP server on npm. `@probarion/mcp` is Preview: it was tried on testnet, and you build it from a clone, as [its README](https://github.com/probarion/probarion/tree/main/packages/mcp) says. Its `request_spend` tool calls this same SDK's `requestSpend`: the client names the mandate by id, so the mandate's caps, uses, expiry and agent key, the duplicate checks and the contract's checks apply, while no invoice text is read and the purpose rule passes. None of its tools takes an address.
 - No HTTP API for agents: the hosted invoice API needs a signed-in console session of the vault's owner or approver. An agent pays from its own process, through the SDK. The CLI sends no spend: `check` only dry-runs one, and its owner and approver commands only print transactions.
 
 [What works today](/docs/start/what-works-today) lists the status of every part.

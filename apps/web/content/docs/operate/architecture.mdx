@@ -24,11 +24,12 @@ An approver signs `approve` and `reject` from their own wallet, with exactly 1 y
 
 </Callout>
 
-The code for these parts is in three packages, all on npm at 0.1.0:
+The code for these parts is in three packages, all on npm at 0.1.0, and an MCP server that is not on npm yet:
 
 - `packages/core`, `@probarion/core`: `decide()`, the ledger, the attestation checks and the verifier's checks a to i. No network, no file system.
 - `packages/sdk`, `@probarion/sdk`: the `Probarion` class, the vault, factory and intents clients, the NEAR AI Cloud adapter, the ledger stores, `snapshot()` and `verify()`.
 - `packages/cli`, the `probarion` CLI: it prints owner and approver transactions as near-cli-rs commands and signs none of them. It also makes keys with `agent keygen`, runs the `check_spend` dry run with `check`, exports a ledger and runs the verifier.
+- `packages/mcp`, `@probarion/mcp` (Preview): an MCP server over stdio with five tools, `list_mandates`, `check_spend`, `request_spend`, `get_spend_status` and `verify`, none of which takes an address. It calls `@probarion/sdk` with the vault's agent and ledger keys and holds no owner key.
 
 [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys) covers each role and key, and [SDK reference](/docs/build/sdk-reference) and [CLI reference](/docs/build/cli-reference) list the packages' parts.
 
@@ -104,6 +105,6 @@ The hosted app talks to a few more services that the diagram leaves out:
 - **The console and the CLI sign no owner or approver transaction.** The console hands each one to your wallet, and the CLI prints it for you to sign.
 - **The watcher writes nothing to the chain.** It reads, records and sends alerts, and holds no key.
 - **It does not run NEAR Intents or the bridge.** On mainnet a Base or Solana payout leaves the vault as an `ft_withdraw` on `intents.near`, and the POA bridge releases it on the other chain. Probarion trusts both to do so.
-- **It has no public agent HTTP API, no MCP server and no outbound webhook.** An agent pays from its own process through the SDK, or through Payables in the console, which needs a signed-in owner or approver. The MCP server is Planned. The one webhook route takes Telegram's updates in, and alerts go out only by Telegram and email.
+- **It has no public agent HTTP API and no outbound webhook.** An agent pays from its own process through the SDK, through the MCP server `@probarion/mcp` (Preview), which runs beside the agent over stdio and calls the same SDK, or through Payables in the console, which needs a signed-in owner or approver. The one webhook route takes Telegram's updates in, and alerts go out only by Telegram and email.
 - **The browser extension cannot pay.** `apps/extension` connects with a revocable token, shows what waits for you and queues an invoice through `/api/ext`; only the owner's wallet-signed Confirm in the console pays it. It is not in the Chrome Web Store yet.
 - **It does not serve mainnet yet.** No mainnet vault or factory exists, and only the testnet address is served.

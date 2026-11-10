@@ -1,0 +1,1 @@
+Probarion 402 example (testnet): GET /forecast at 0.01 test USDC per call, paid to probarion-payee.testnet, at most 20 calls.

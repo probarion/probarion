@@ -23,8 +23,6 @@ How evidence is named in this file:
   (`smoke`).
 - Eval case ids and mainnet transaction ids are **pending**: the repository has no eval dataset yet,
   and `docs/mainnet-proof.json` records no transaction.
-- `MCP-NOADDR` (no MCP tool takes an address) is **planned**: there is no MCP server and no marker
-  yet.
 
 ## Deployments and hosts
 
@@ -113,8 +111,14 @@ The ten attacks of the design report, plus one (11) covered by the one-yocto rul
 | 10 | Failed asynchronous callback | Payee not registered for USDC storage | Reserve before transfer, release in `on_transfer` / `on_withdraw`; storage registration at mandate creation; credit only after final execution | Contract | claim `I2` (`contracts/vault/tests/invariants.rs:459`); sandbox tests `a_failed_near_payout_releases_the_reservation`, `a_failed_intents_payout_releases_the_reservation` and `the_payout_callbacks_refuse_every_caller_but_the_vault` (`contracts/integration-tests/tests/security.rs:190,237,347`) |
 | 11 | Compromised web session or dapp login key | XSS in the console, a hijacked browser session, or the Function-Call key a wallet creates at dapp sign-in (it calls the vault as the owner account) tries to approve a held spend, withdraw, add or remove keys, revoke a mandate or unfreeze | Owner and approver methods require exactly 1 yoctoNEAR, otherwise `PROBARION:RequiresOneYocto`; Function-Call keys cannot attach deposits, so only a full-access key through an explicit wallet prompt can call them; `create_mandate` needs a storage deposit; `freeze` stays deposit-free so stopping is fast | Protocol + contract | claim `ONE-YOCTO` (`contracts/vault/src/held.rs:234`); sandbox test `a_dapp_login_key_on_the_owner_account_cannot_withdraw_but_can_freeze` (`contracts/integration-tests/tests/security.rs:156`); `METHOD_DEPOSIT` (`apps/web/src/lib/near/tx.ts:19-30`); the mainnet approval is pending. There is no Content-Security-Policy yet ([known gaps](#known-gaps)) |
 
-Two further surfaces: MCP clients (planned; `MCP-NOADDR` above), and the hosted service itself, which
-the next section and the [blast radius](#blast-radius-if-probarion-is-breached) cover.
+Two further surfaces: MCP clients, and the hosted service itself, which the next section and the
+[blast radius](#blast-radius-if-probarion-is-breached) cover. An MCP client reaches a vault through
+`@probarion/mcp`, which runs beside the agent over stdio, holds the agent and ledger keys and no owner
+key, and has no tool that creates, changes or removes a mandate, a key or the vault's settings. None of
+its five tools takes an address, and each input rejects fields it does not know, so a prompt-injected
+`to` is refused before anything runs (claim `MCP-NOADDR`, `packages/mcp/test/safety.test.ts:12`). Its
+`request_spend` names a mandate by id and goes through `decide()` and the vault's `spend`; no invoice
+text is read, so the client can pay any payee of a mandate bound to its key, within that mandate's limits.
 
 ## The hosted service
 
@@ -253,7 +257,6 @@ approve.
 **Planned surfaces.**
 
 - The browser extension itself (plan 06 Task 3, E2). This section is updated when it ships.
-- An MCP server whose tools take no address (`MCP-NOADDR`, planned).
 
 ## Blast radius if Probarion is breached
 
@@ -275,7 +278,7 @@ approve.
 | Intents balance low | The rule `intents.balance_low` holds the spend (`packages/core/src/policy.ts:315-325`) |
 | An RPC URL rate-limited (HTTP 429) or failing | The SDK's RPC client tries the next URL of its list, in order (`packages/sdk/src/rpc.ts:410-421`; [RPC failover](RUNBOOK.md#rpc-failover)). The web app takes each network's list from `NEAR_RPC_URLS_MAINNET` or `NEAR_RPC_URLS_TESTNET`, and the bare `NEAR_RPC_URLS` for its default network only (`apps/web/src/lib/env.ts:154-167`). The SDK and the CLI read only the bare `NEAR_RPC_URLS` (or `--rpc`), for whichever network they are given (`packages/sdk/src/rpc.ts:168-180`) |
 | An RPC URL that serves the other chain | Sign-in and Register answer 503 `wrong_chain`, mint no session and register nothing |
-| Two processes writing one vault's ledger | The database's compare-and-append refuses the second with `ledger_conflict` (`apps/web/src/lib/ledger/store.ts:111`), and an anchor out of order fails with `PROBARION:BadSeq`. The SDK marks the rest `LEDGER_FORK_RISK`: it sends no spend for a decision that did not land at the position it was attested for, and it warns and does not anchor when the chain's last anchor covers more entries than its ledger holds (`packages/sdk/src/probarion.ts:978-982`, `:1099-1103`). Two writers with two ledger files still fork the vault's history, which `verify` check c then reports. An MCP server is planned |
+| Two processes writing one vault's ledger | The database's compare-and-append refuses the second with `ledger_conflict` (`apps/web/src/lib/ledger/store.ts:111`), and an anchor out of order fails with `PROBARION:BadSeq`. The SDK marks the rest `LEDGER_FORK_RISK`: it sends no spend for a decision that did not land at the position it was attested for, and it warns and does not anchor when the chain's last anchor covers more entries than its ledger holds (`packages/sdk/src/probarion.ts:978-982`, `:1099-1103`). Two writers with two ledger files still fork the vault's history, which `verify` check c then reports. The MCP server refuses a spend with `LEDGER_FORK_RISK` when its ledger file does not hold the entries the vault's latest anchor covers (`packages/mcp/src/guard.ts`): that catches another writer once it has anchored, and one that has not is found later by check d |
 | The watcher runs only once a day | A change nobody drove through the app reaches the owner's alerts at the next watcher run that reaches its vault: within a day on the daily cron, or at a later per-minute run once the Supabase schedule is on, with no promised delay ([when a message arrives](ops/alerts.md#when-a-message-arrives)) |
 | Supabase or Vercel down | The console, Payables, the proof pages and the alerts stop. The funds stay in the vaults, and owners freeze and withdraw with their own keys (near-cli-rs) |
 | `KEY_ENCRYPTION_SECRET` lost | The sealed agent and ledger keys are lost: remove them from each vault and add new ones ([key rotation](ops/key-rotation.md)). The funds are not affected |
@@ -402,7 +405,7 @@ Checklist (C1 to C10 are the plan's ten items):
 | C6 | Zero-retention keeps only the invoice's hashes | Yes, and stronger: the content is never stored, rather than deleted after the decision | The `invoices_retention` constraint (`20261108000006_invoices.sql:56-59`) and `invoice_insert`'s refusal (`:158-159`) |
 | C7 | No route takes a payee or a destination when it creates a spend | Yes | `SpendRequest` has no address field (`contracts/vault/src/types.rs:84-90`); no `apps/web/src/app/api` route reads a payee or a destination; a payee enters only through a mandate the owner signs in the wallet |
 | C8 | `verify` passes for the demo vault from a clean clone | N/A today | No vault's proof page is public yet, so there is no demo vault to check |
-| C9 | The demo, Canary and MCP demo vaults have only function-call keys | N/A today for the demo and MCP demo vaults, which do not exist; the repository owner names the testnet Canary vault to check it | claim `I9` (a factory vault starts with no access key); `verify` check f; the testnet smoke vault records 0 access keys (`contracts/deployments/testnet.json`) |
+| C9 | The demo, Canary and MCP demo vaults have only function-call keys | Yes for the testnet demo vault and the testnet MCP vault `percall.vaults.probarion.testnet`, whose live `verify` runs pass check f ([demo](evidence/demo-vault/verify-2026-11-09.txt), [MCP](evidence/402-vault/verify-2026-11-09.txt)); the repository owner names the testnet Canary vault to check it | claim `I9` (a factory vault starts with no access key); `verify` check f; the testnet smoke vault records 0 access keys (`contracts/deployments/testnet.json`) |
 | C10 | `intents.near` `public_keys_of` is empty for those vaults | N/A today: mainnet only, and no mainnet vault exists | claim `I8` (the vault never calls `add_public_key`); `verify` check g |
 | C11 | A Content-Security-Policy | No: known gap | [Known gaps](#known-gaps) |
 | C12 | Dependabot triage | Done | The triage table above |
