@@ -28,7 +28,8 @@ Claude prepared everything in this folder. Claude does not pay, upload or publis
    - **Category:** `listing.md` says Workflow & Planning. Pick Productivity > Workflow & Planning if the dashboard
      nests it there, otherwise the closest Productivity entry.
    - **Privacy:** `single-purpose.md`, `permissions.md`, `data-use.md`; the privacy policy URL is in `privacy.md`.
-   - **Test instructions** (for the reviewer): paste `review-notes.md`. A reviewer cannot be expected to fund a vault,
+   - **Test instructions** (for the reviewer): the dashboard's field takes 500 characters, so paste the short version
+     at the end of `review-notes.md`; leave the user name and password empty. A reviewer cannot be expected to fund a vault,
      so record a 60-90 s demo video of connect, send and the console Confirm, and paste its URL into the dashboard's
      video field. Put no password, seed phrase or key in this repo. If the reviewer ever needs credentials, they go
      only in the dashboard's private test-instructions field.
@@ -36,3 +37,6 @@ Claude prepared everything in this folder. Claude does not pay, upload or publis
 5. Submit for review. It can take from a day to a few weeks.
 6. Send Claude the item ID (the 32 letters in the item's URL). Until you do, no README mentions the store. After you
    submit, the README says `pending Chrome Web Store review`; once the store publishes it, the README links the page.
+
+Submitted on 2026-11-10 as item `hhadnmnjdlamihjjoejphkimnbcfidmn`. Once published, its page is
+https://chromewebstore.google.com/detail/hhadnmnjdlamihjjoejphkimnbcfidmn.

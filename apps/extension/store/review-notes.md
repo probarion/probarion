@@ -1,6 +1,6 @@
 # Notes for the Chrome Web Store reviewer
 
-Paste this into the item's test instructions.
+The full notes. The dashboard's test instructions field takes 500 characters: paste the short version at the end.
 
 There is no password: Probarion signs people in with a NEAR wallet. To try the extension:
 
@@ -21,3 +21,13 @@ opens. If a page asks for a mainnet wallet, close it and choose `probarion.verce
 
 The extension cannot pay, approve or sign. A queued invoice is paid only when the vault's owner confirms it in the
 Probarion console with their wallet.
+
+## Short version
+
+The dashboard's Additional instructions field takes 500 characters, so this is the version for it:
+
+No password: sign in with any NEAR testnet wallet. 1) Click the icon, set Probarion address to probarion.vercel.app
+(NEAR testnet), press Connect. 2) Sign in on the page that opens, press Connect extension. 3) In the console, the
+"Your first agent payment" card makes a vault and a mandate with test USDC (no value). Open
+probarion.vercel.app/samples/probarion-sample-invoice.txt, select the text, right-click, Send selection as invoice
+text, Send to Probarion. The extension cannot pay.

@@ -6,6 +6,10 @@ a wallet signature.
 
 ## Load it unpacked
 
+It is pending Chrome Web Store review (item `hhadnmnjdlamihjjoejphkimnbcfidmn`, submitted on 2026-11-10). Until the store publishes it, load it
+unpacked.
+
+
 It needs Chrome 127 or newer, Node 24 or newer and pnpm 10. `pnpm install --filter @probarion/extension...` installs
 only what the extension needs.
 

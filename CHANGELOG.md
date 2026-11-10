@@ -457,7 +457,7 @@ The software is an unaudited beta.
   `invoices.queue_checks`, and `invoice_queue`, which stores an extension invoice in one
   transaction and refuses one without the `extension.mandate_chosen` hold.
 - The Chrome extension, `apps/extension` (Manifest V3, Chrome 127 or newer), loaded unpacked; it is
-  not in the Chrome Web Store yet. Connect it from the console's Browser extension page, or with a
+  pending Chrome Web Store review since 2026-11-10. Connect it from the console's Browser extension page, or with a
   one-time code. Its badge counts the invoices and holds that wait for you and refreshes every 5
   minutes; `!` on the badge means the connection has ended. Right-click selected invoice text or a
   link to an invoice file on the same site, or open the popup on a PDF or choose a file: the popup
