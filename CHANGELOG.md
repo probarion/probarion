@@ -84,7 +84,7 @@ The software is an unaudited beta.
   and the 21st was refused by code (`mandate.uses_exhausted`, nothing sent), as the contract's
   `check_spend` view also answered (`UsesExhausted`). Its live `verify` passes checks a to i; the
   ledger, the snapshot (with the 21 anchors) and the setup and spend transactions are in the folder.
-- The Docs Center at `/docs`: 33 pages in six sections (Start here, Concepts, Build, Verify &
+- The Docs Center at `/docs`: 34 pages in six sections (Start here, Concepts, Build, Verify &
   trust, Operate, Resources), with a home of four doors (new here, owner, developer, evaluator). Each page
   was written from the code and checked against it in a separate verification pass. Each guide,
   tutorial and explanation marks what is Live, Preview or Planned; the sidebar's legend says what
@@ -511,6 +511,26 @@ The software is an unaudited beta.
   local headless Chrome. `apps/extension/store` holds the listing, the permission and data-use
   answers, the notes for the store reviewer and the upload steps; `apps/extension/TESTING.md` is the
   manual checklist, run before each upload.
+- The I-HITL replay, a sandbox test in `contracts/integration-tests/tests/ihitl.rs`
+  (`ihitl_replay_the_agent_cannot_raise_its_own_limit_or_approve_itself`). It replays, with the
+  vault's agent key, the attack of the I-HITL paper (Breckenridge et al., arXiv:2610.35835), whose
+  agents raised their own wallet limits by reading the passcode emailed to the owner. The test checks
+  that a spend over `max_per_payment` fails with `OverPerPayment` and that one above `approval_above`
+  is held. It checks that the node refuses each of the agent key's attempts to approve its own
+  spend, create a bigger mandate, add keys, unfreeze, withdraw, call the USDC token, add a
+  full-access key, deploy code, send NEAR or batch a key with a spend, before any contract code runs
+  and with its exact `InvalidAccessKeyError` variant. It then checks that the mandate, the config,
+  the agents and the held spend read back byte for byte as before, that the keys keep their nonces
+  and scopes, and that only the approver's account's `approve` pays. Like the other sandbox tests, it
+  runs in CI on Linux. The /docs page "The agent key cannot approve itself"
+  (`/docs/trust/self-approval`, in Verify & trust) maps the paper's recorded run, and the steps the
+  test adds, to the control that stops each, the layer and the evidence, with the testnet
+  transactions that show three of the test's steps. It says how to run the test, and lists what it
+  does not cover: an owner or approver key within the agent's reach, a payment split under
+  `approval_above`, the MCP client's config, the email stop link and the single approver, and that
+  it replays no model and runs only on a sandbox. The
+  README's safety architecture and attack 7 of the threat model cite it, and the threat model's known
+  gaps add the first two.
 
 ### Changed
 
@@ -869,6 +889,15 @@ The software is an unaudited beta.
   the prerender, answered 500: the function did not carry `.github/workflows/ci.yml`. The page's
   data now reads each file by a literal path. The docs functions carry the 8 repository files they
   read (0.09 MB), not about 1,170 (17.7 MB).
+- The README's "Why it is different" said every vault method that moves value or changes authority
+  needs a deposit. `freeze` takes none, and `spend` moves value without one; it now says every owner
+  and approver method but `freeze` needs one. The /docs page Holds and approvals said no hold or
+  approval had been recorded on NEAR testnet; on 2026-11-09 the demo vault held spends 2 and 3 and
+  its approver approved both, and no rejection or expiry is recorded yet.
+- The threat model's note on how evidence is named counted only the smoke transactions of
+  `contracts/deployments/testnet.json` as testnet evidence. It now counts each transaction recorded
+  there (`factory.deploy_tx`, `smoke`, `direct_refusal` and `demo_vault`), since attack 7 cites the
+  direct refusal and the demo vault's held spend and its approval.
 
 ### Security
 
