@@ -114,7 +114,7 @@ An alert email's confirmation link opens a page whose button posts the code to `
 
 ## What these tables do not cover
 
-- An agent API, an MCP server or a webhook to your server. An agent pays through the SDK ([SDK reference](/docs/build/sdk-reference)). An MCP server is Planned. Probarion calls no URL of yours: alerts go out by email and Telegram.
+- An agent API or a webhook to your server. An agent pays through the SDK ([SDK reference](/docs/build/sdk-reference)), or through the MCP server `@probarion/mcp`, which is Preview: it runs beside the agent and speaks MCP over stdio, so it adds no route here. Probarion calls no URL of yours: alerts go out by email and Telegram.
 - What the console's screens and the Browser extension page do besides the routes above. That runs as Next.js server actions under `apps/web/src/app/console` and `apps/web/src/app/extension`, not as routes under `/api`.
 - The public files outside `/api`: the proof files `/proof/<vault>/snapshot.json` and `/proof/<vault>/ledger.jsonl`, which [Verify a vault yourself](/docs/trust/verify-a-vault) reads, and the docs' own `/docs/<page>.md` twins, `/llms.txt`, `/llms-full.txt` and `/docs/search-index.json`.
 

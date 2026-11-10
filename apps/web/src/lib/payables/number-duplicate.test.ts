@@ -35,6 +35,14 @@ describe("numberDuplicateRule", () => {
     [{ status: "decided", outcome_status: "burned" }, "was paid"],
     [{ status: "decided", outcome_status: "settled" }, "was paid"],
     [{ status: "decided", outcome_status: "held" }, "is held for approval"],
+    [
+      { status: "decided", outcome_status: "refused_by_code" },
+      "was refused because its text was already paid or may still pay",
+    ],
+    [
+      { status: "decided", outcome_status: "refused_by_contract" },
+      "was refused because its text was already paid or may still pay",
+    ],
     [{ status: "unconfirmed", outcome_status: "unconfirmed" }, "was sent, confirmation pending"],
     [{ status: "awaiting_owner", outcome_status: "held" }, "waits for the owner"],
     [{ status: "processing", outcome_status: null }, "has an unknown outcome"],
@@ -55,6 +63,8 @@ describe("numberDuplicateNotice", () => {
     { status: "decided", outcome_status: "burned" },
     { status: "decided", outcome_status: "settled" },
     { status: "decided", outcome_status: "held" },
+    { status: "decided", outcome_status: "refused_by_code" },
+    { status: "decided", outcome_status: "refused_by_contract" },
     { status: "received", outcome_status: null },
   ] as const;
 
@@ -68,11 +78,15 @@ describe("numberDuplicateNotice", () => {
     expect(notice).toMatch(
       /^Duplicate number: .*same invoice number.*Nothing was sent.*signed ledger/,
     );
-    expect(notice.endsWith("If the owner rejects it, upload this one again.")).toBe(true);
+    expect(
+      notice.endsWith(
+        "If the owner rejects it, and any other invoice with this number that waits for them, upload this one again.",
+      ),
+    ).toBe(true);
   });
 
   // A Confirm can end held on chain (the number stays blocked), with a failure that leaves the row waiting or in
-  // processing, or refused because that invoice's text was already paid (which frees the number of a paid bill).
+  // processing, or refused because that invoice's text was already paid (the number stays blocked too, 0017).
   it.each(STATES)("does not offer a re-upload after a Confirm, for %j", (state) => {
     expect(numberDuplicateNotice(match(state), true)).not.toMatch(/\bconfirms?\b/i);
   });
@@ -98,6 +112,15 @@ describe("numberDuplicateNotice", () => {
     [{ status: "decided", outcome_status: "burned" }, "was paid, so this one is not paid again."],
     [{ status: "decided", outcome_status: "settled" }, "was paid, so this one is not paid again."],
     [{ status: "decided", outcome_status: "held" }, `so the number stays blocked. ${NOT_FREED}`],
+    // Its own text was already paid or may still pay (0017): another text of the bill is not paid.
+    [
+      { status: "decided", outcome_status: "refused_by_code" },
+      `already paid or may still pay, so the number stays blocked. ${NOT_FREED}`,
+    ],
+    [
+      { status: "decided", outcome_status: "refused_by_contract" },
+      `already paid or may still pay, so the number stays blocked. ${NOT_FREED}`,
+    ],
     [
       { status: "unconfirmed", outcome_status: "unconfirmed" },
       `is not confirmed, so the number stays blocked. ${NOT_FREED}`,

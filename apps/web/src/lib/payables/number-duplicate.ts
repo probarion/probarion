@@ -14,6 +14,15 @@ import type { NumberMatch } from "./store";
 /** The rule id; the pipeline adds it before the owner-confirms rule, so a refusal's code is this id. */
 export const NUMBER_DUPLICATE_RULE = "custom.invoice_number_duplicate" as const;
 
+/**
+ * A decided earlier invoice that the guard names with a refusal: its own text was already paid or may still pay
+ * (migration 0017 invoice_decided_may_pay: invoice.duplicate, ledger.unresolved, the contract's DuplicateInvoice or
+ * DuplicateRef). No other refusal blocks the number.
+ */
+const refusedAsPaid = (m: NumberMatch): boolean =>
+  m.status === "decided" &&
+  (m.outcome_status === "refused_by_code" || m.outcome_status === "refused_by_contract");
+
 /** What happened to the earlier invoice, in the words of the rule's detail. */
 function earlierState(m: NumberMatch): string {
   switch (m.status) {
@@ -24,6 +33,7 @@ function earlierState(m: NumberMatch): string {
     case "awaiting_owner":
       return "waits for the owner";
     case "decided":
+      if (refusedAsPaid(m)) return "was refused because its text was already paid or may still pay";
       return m.outcome_status === "held" ? "is held for approval" : "was paid";
     default:
       return `has status ${m.status}`;
@@ -36,8 +46,12 @@ function earlierState(m: NumberMatch): string {
  * frees it is a Reject of an earlier invoice that waits for them (0007 invoice_reject clears its number). A Confirm is
  * not offered: it can end with the spend held on chain, which blocks the number; with a failure that leaves the row
  * waiting or in processing; or with a refusal because that invoice's text was already paid or may still pay
- * (invoice.duplicate, the contract's DuplicateInvoice), which frees the number of a bill that was paid. Nothing in the
- * app moves a paid invoice, a spend held on chain, a payment sent but not confirmed, or a row left in processing (its
+ * (invoice.duplicate, ledger.unresolved, the contract's DuplicateInvoice), which keeps the number blocked (0017). The
+ * guard names an invoice that may have paid before one that waits for the owner (0017), so this Reject is offered
+ * only when no invoice with the number may have paid. Two invoices with the number can both wait (the extension queues
+ * without the tenant lease, 0015), and the takeover runs only once no invoice that may pay has the number, so the
+ * notice asks for a Reject of each. Nothing in the app moves a paid invoice, a spend held on chain,
+ * a payment sent but not confirmed, a refusal because the text was already paid, or a row left in processing (its
  * cycle was cut off or could not record its outcome: the tenant lease means no cycle is still running when this one
  * inserts), even once that spend fails, is rejected or expires.
  *
@@ -59,12 +73,14 @@ export function numberDuplicateNotice(match: NumberMatch, recorded: boolean): st
     "The console does not yet free a number when that spend fails, is rejected or expires.";
   switch (match.status) {
     case "awaiting_owner":
-      return `${head} That invoice waits for the owner. If the owner rejects it, upload this one again.`;
+      return `${head} That invoice waits for the owner. If the owner rejects it, and any other invoice with this number that waits for them, upload this one again.`;
     case "processing":
       return `${head} That invoice's outcome is unknown and it may have paid, so the number stays blocked. ${notFreed}`;
     case "unconfirmed":
       return `${head} That invoice's payment was sent and is not confirmed, so the number stays blocked. ${notFreed}`;
     case "decided":
+      if (refusedAsPaid(match))
+        return `${head} That invoice was refused because its text was already paid or may still pay, so the number stays blocked. ${notFreed}`;
       return match.outcome_status === "held"
         ? `${head} That invoice's spend is held on chain for an approver, so the number stays blocked. ${notFreed}`
         : `${head} That invoice was paid, so this one is not paid again.`;

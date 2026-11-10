@@ -13,13 +13,6 @@ const ruleTone = (o: string): Tone =>
   o === "pass" ? "good" : o === "hold" ? "warn" : o === "refuse" ? "bad" : "neutral";
 const verdictTone = (v: string | null): Tone =>
   v === "allow" ? "good" : v === "hold" ? "warn" : v === "refuse" ? "bad" : "neutral";
-const contractTone = (s: string): Tone =>
-  s === "paid" || s === "settled" || s === "burned"
-    ? "good"
-    : s === "held" || s === "unconfirmed"
-      ? "warn"
-      : "bad";
-
 const ATTESTATION_TONE: Record<CycleView["attestation"]["state"], Tone> = {
   attested: "good",
   "rules-only": "warn",
@@ -94,9 +87,12 @@ export function CycleColumns({ view }: { view: CycleView; network: Network }) {
       </Card>
       <Card title="Contract did">
         <p className="text-sm">
-          <Badge tone={contractTone(view.contractDid.status)}>{view.contractDid.label}</Badge>
+          <Badge tone={view.contractDid.tone}>{view.contractDid.label}</Badge>
           {view.contractDid.spendId !== null ? ` · spend #${view.contractDid.spendId}` : ""}
         </p>
+        {view.contractDid.note ? (
+          <p className={`mt-2 text-xs ${muted}`}>{view.contractDid.note}</p>
+        ) : null}
         {view.contractDid.txUrl ? (
           <p className="mt-2 text-xs">
             <ExternalLink className={link} href={view.contractDid.txUrl}>

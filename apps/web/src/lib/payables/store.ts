@@ -104,7 +104,8 @@ export interface NewInvoice {
 
 /**
  * The earlier invoice of the same payee with the same invoice number, which may have paid or may still pay (migration
- * 0016): `outcome_status` is its SDK outcome's status, null while it has none.
+ * 0016; 0017 adds a refusal because its own text was already paid, and names one that may have paid before one that
+ * waits for the owner): `outcome_status` is its SDK outcome's status, null while it has none.
  */
 export interface NumberMatch {
   id: string;

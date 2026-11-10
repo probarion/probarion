@@ -15,6 +15,7 @@ import { serviceDb } from "@/lib/db/clients";
 import { SupabaseLedgerStore } from "@/lib/ledger/store";
 import { log } from "@/lib/log";
 import { getReader } from "@/lib/near/server";
+import { readSpendsNow } from "@/lib/payables/chain";
 import { UUID, utcMinute } from "@/lib/payables/forms";
 import { ledgerHoldsConfirmation } from "@/lib/payables/owner-confirmed";
 import { getInvoice } from "@/lib/payables/store";
@@ -24,10 +25,12 @@ import {
   cycleRanFor,
   EXTENSION_LEDGER_NOTE,
   EXTENSION_SOURCE_NOTE,
+  needsSpendsNow,
   type PayeeRow,
   queuedChecks,
   rowResult,
   type ShownRule,
+  type SpendsNow,
   shownOutcome,
   usdcFixed,
 } from "@/lib/payables/view";
@@ -292,7 +295,11 @@ export default async function InvoiceCyclePage({
           },
         )
       : null;
-  const result = rowResult(inv, owner);
+  // A spend the contract held may since have been approved, rejected or expired: only the chain knows (a view call).
+  const spends: SpendsNow | undefined = needsSpendsNow([inv])
+    ? await readSpendsNow(getReader(network), vault)
+    : undefined;
+  const result = rowResult(inv, owner, spends);
   const outcome = shownOutcome(inv);
   const ref = safeText(inv.ref, 64);
   const confirmationInLedger =
@@ -411,7 +418,7 @@ export default async function InvoiceCyclePage({
 
       {outcome && entries !== null ? (
         <CycleColumns
-          view={buildCycleView(entries, outcome, network, inv.anchor_tx_hash)}
+          view={buildCycleView(entries, outcome, network, inv.anchor_tx_hash, spends)}
           network={network}
         />
       ) : outcome ? (

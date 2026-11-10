@@ -375,6 +375,49 @@ describe("owner confirmation functions (migration 0007)", () => {
     });
   });
 
+  // Migration 0017: a row refused because its text was already paid or may still pay blocks the Confirm of another
+  // waiting text of the bill (the extension queues without the tenant lease, so both can wait with the number).
+  it("blocks a Confirm while a refusal says another text with the number was already paid", async () => {
+    const num = "5a".repeat(32);
+    const refusedAsPaid = await waiting(a, "9", { invoiceNumberKey: num });
+    await pg.query("update invoices set status = 'processing' where id = $1", [refusedAsPaid]);
+    await setInvoiceOutcome(db, a, refusedAsPaid, {
+      status: "decided",
+      outcome: { ...WAITING, status: "refused_by_code", code: "invoice.duplicate" } as never,
+      anchorTxHash: null,
+      promptTokens: null,
+      completionTokens: null,
+    });
+    const id = await waiting(a, "9", { invoiceNumberKey: "5b".repeat(32) });
+    await pg.query("update invoices set invoice_number_hmac = $2 where id = $1", [id, num]);
+    const before = await snapshot(id);
+    expect(await beginConfirmation(db, (await issued(id)).input)).toEqual({
+      ok: false,
+      reason: "duplicate",
+      status: "awaiting_owner",
+      duplicate_id: refusedAsPaid,
+      duplicate_status: "decided",
+    });
+    expect(await snapshot(id)).toEqual(before);
+    // The contract's DuplicateInvoice blocks the same way; its other refusals sent nothing.
+    for (const [code, fp, blocks] of [
+      ["DuplicateInvoice", "5c".repeat(32), true],
+      ["OverMandateTotal", "5d".repeat(32), false],
+    ] as const) {
+      const refused = (await insertInvoice(db, a, invoice({ fingerprint: fp }))).id;
+      await setInvoiceOutcome(db, a, refused, {
+        status: "decided",
+        outcome: { ...WAITING, status: "refused_by_contract", code } as never,
+        anchorTxHash: null,
+        promptTokens: null,
+        completionTokens: null,
+      });
+      const other = await waiting(a, "9");
+      await pg.query("update invoices set fingerprint_sha256 = $2 where id = $1", [other, fp]);
+      expect((await beginConfirmation(db, (await issued(other)).input)).ok, code).toBe(!blocks);
+    }
+  });
+
   it("burns a nonce on its own after a refused signature, and only a known one", async () => {
     const id = await waiting();
     const { nonce, input } = await issued(id);
