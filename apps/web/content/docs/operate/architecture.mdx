@@ -54,7 +54,7 @@ The console, its API routes and the watcher are one Next.js app, `apps/web`, dep
   - `/api/topup`: on testnet, the faucet. On mainnet, the 1Click top-up of the vault's Base USDC inside NEAR Intents, in three routes, `/api/topup/quote`, `/api/topup/submit` and `/api/topup/status`, which has not been tried with a live quote yet.
   - `/api/ext`: the server half of the browser extension. A connection reads what waits for you and queues an invoice for the owner's Confirm; it cannot pay, approve or confirm.
   - `/api/alerts` and `/api/telegram`: the email confirm and stop links, and the Telegram bot's `/start` and `/stop`.
-  - `/api/canary`: one attempt at the Canary, the public challenge, which is not open yet.
+  - `/api/canary`: one attempt at the Canary, the public challenge, which is Live on testnet.
   - `/api/cron`: the watcher and the daily usage numbers.
   - `/api/health`: the deployment's settings, one RPC provider, and NEAR AI Cloud's model list.
 

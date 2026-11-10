@@ -84,7 +84,7 @@ On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your
 
 ## Canary
 
-`POST /api/canary/attempt` is the public Canary challenge, which is Preview: built, and not open yet. A visitor's text goes to a deliberately gullible model, then through the SDK's `process()` as an invoice does: `code` is what the code rules and the vault decided. `raw` says whether a payment the code refused was also sent to the vault unfiltered, which happens only when the vault's free dry run says it would refuse it too. An attempt is stored as hashes and labels, never as the visitor's text, and a visitor is told apart by a keyed hash of the `pb_canary` cookie and of the IP address. `429 budget` carries a `Retry-After` with the seconds until that limit is over.
+`POST /api/canary/attempt` is the public Canary challenge, which is Live on testnet. Mainnet has no Canary vault, so the route answers `503 not_ready` there. A visitor's text goes to a deliberately gullible model, then through the SDK's `process()` as an invoice does: `code` is what the code rules and the vault decided. `raw` says whether a payment the code refused was also sent to the vault unfiltered, which happens only when the vault's free dry run says it would refuse it too. An attempt is stored as hashes and labels, never as the visitor's text, and a visitor is told apart by a keyed hash of the `pb_canary` cookie and of the IP address. `429 budget` carries a `Retry-After` with the seconds until that limit is over.
 
 <RefTable id="http-api-canary" />
 
