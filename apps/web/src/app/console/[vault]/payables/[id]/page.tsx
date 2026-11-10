@@ -50,7 +50,7 @@ const checkTone = (o: ShownRule["outcome"]): Tone =>
  */
 export const maxDuration = 60;
 
-const muted = "text-ink/60";
+const muted = "text-ink/75";
 
 const MATCH: Record<NonNullable<PayeeRow["match"]>, { tone: Tone; label: string }> = {
   equal: { tone: "bad", label: "same amount" },

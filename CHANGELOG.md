@@ -516,6 +516,18 @@ The software is an unaudited beta.
   from `apps/extension`. The Docs Center's What works today lists the extension for Chrome as Preview,
   and its HTTP API page drops "not released yet". The store's connect screenshot is rendered again
   with the page's new lead.
+- Every console page's text reads at WCAG AAA: 7:1 or more for normal text, as on the phone
+  approval page. The shared colour tokens in `apps/web/src/app/globals.css` are darker: `mute` and
+  `plan` go from #5f5c55 to #4e4b45, `ok` from #17693f to #125935, `bad` from #a32a1c to #8e2317,
+  and `wait` from #7a5a18 to #5e4210 (the value of `gold-ink`). Each reads at 7:1 or more on paper,
+  on a white card and on its own pale background, so the Notice and Badge tones (5.4:1 to 5.9:1
+  before) and the console header's "Signed in as" line (6.2:1 on paper before) pass. The landing
+  page and the Docs Center read the same tokens, so their grey and status text is darker too.
+  - Grey text at 60% ink, in Payables and the invoice confirm panel, is 75% ink (9.1:1 on a white
+    card), and the sign-in page's "Console" label is `gold-ink` (9.3:1).
+  - `text-xs` and `text-sm` have a line height of 1.5 (WCAG 1.4.8): 18px and 21px.
+  - `apps/web/test/console-kit.test.ts` fails when a tone pair, a button, or any text colour class
+    on a console page, the sign-in page or the extension page reads below 7:1 on paper or on a card.
 - The MCP server's row in the status list moves from Planned to "Tried on testnet, not on npm"
   (Preview in the docs), and the README's Status row, its NEAR technology rows, its testnet proof and
   its quick start say what the server and the 402 example do. The Docs Center pages that called the MCP

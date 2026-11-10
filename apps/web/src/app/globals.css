@@ -3,8 +3,11 @@
 /*
  * Brand v2 (light): paper and ink. Gold is an accent, never body text on paper. The two deep golds are for small
  * accents on paper: gold-deep (#a57a26) for marks and rules, gold-ink (#5e4210) for small text, where it has the
- * contrast; gold-small (#7a5a18) is the same job for step numbers, focus rings and the "in progress" pills. The name
- * "gold" alone is kept for the metallic gold of the coin and hero.
+ * contrast; gold-small (#7a5a18) is the same job for step numbers and focus rings. The name "gold" alone is kept for
+ * the metallic gold of the coin and hero.
+ *
+ * Text colours are held to WCAG AAA: mute and each status colour read at 7:1 or more on paper, on a white card and on
+ * their own pale background (test/console-kit.test.ts).
  *
  * `static`: every token below reaches :root, whether or not a utility class uses it, because the site's CSS module
  * reads them as plain variables. Consumers use these names, not literal colours.
@@ -14,6 +17,10 @@
   --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  /* Small and body text keep a line at 1.5 times their size (WCAG 1.4.8): 18px for text-xs, 21px for text-sm. */
+  --text-xs--line-height: 1.5;
+  --text-sm--line-height: 1.5;
+
   --color-paper: #f7f6f3;
   --color-ink: #0b0b0c;
   --color-gold-deep: #a57a26;
@@ -21,21 +28,21 @@
   --color-gold-small: #7a5a18;
 
   --color-surface: #ffffff;
-  --color-mute: #5f5c55;
+  --color-mute: #4e4b45;
   --color-line: #e2dfd6;
   /* Docs: the soft fill under inline code and hovered links. */
   --color-soft: #efede7;
   /* Docs, on ink: the active code tab, a hovered Copy button, and inline code in a key callout. */
   --color-code-active: #1f1e1b;
 
-  /* Status: green passed or live, red failed, gold in progress, grey planned. */
-  --color-ok: #17693f;
+  /* Status: green passed or live, red failed, gold in progress, grey planned. Gold text is gold-ink's value. */
+  --color-ok: #125935;
   --color-ok-bg: #e2f1e8;
-  --color-bad: #a32a1c;
+  --color-bad: #8e2317;
   --color-bad-bg: #f8e4e0;
-  --color-wait: #7a5a18;
+  --color-wait: #5e4210;
   --color-wait-bg: #f4ecd8;
-  --color-plan: #5f5c55;
+  --color-plan: #4e4b45;
   --color-plan-bg: #eceae4;
 
   /* The ink band and the refused card. */
