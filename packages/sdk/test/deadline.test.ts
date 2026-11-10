@@ -116,9 +116,10 @@ describe("RpcClient remainingMs", () => {
     expect(error.attempts.map((a) => a.error)).toEqual(["network error: timed out after 50ms"]);
   });
 
-  it("does not wait out a back-off that would leave less than MIN_CALL_MS for the next try", async () => {
-    // every endpoint answers 503, so the client backs off 100 ms before its second try
-    const run = async (left: number) => {
+  it("cuts a back-off to the time left, and starts no try after it with less than MIN_CALL_MS", async () => {
+    // every endpoint answers 503, so the client backs off 100 ms before its second try; the fake sleep moves the clock
+    const run = async (start: number) => {
+      let left = start;
       let sent = 0;
       const slept: number[] = [];
       const rpc = new RpcClient({
@@ -128,6 +129,7 @@ describe("RpcClient remainingMs", () => {
         remainingMs: () => left,
         sleep: async (ms) => {
           slept.push(ms);
+          left -= ms;
         },
         fetch: (async () => {
           sent += 1;
@@ -138,16 +140,21 @@ describe("RpcClient remainingMs", () => {
       expect(error).toBeInstanceOf(RpcError);
       return { error, sent, slept };
     };
-    // 149 ms: the back-off would leave 49 ms, so the client stops at once, without waiting
+    // 149 ms: the back-off is waited out in full and leaves 49 ms, so the second try is refused
     const short = await run(149);
     expect(short.error.message).toMatch(/the time left for this job ran out after 1 attempt/);
     expect(short.sent).toBe(1);
-    expect(short.slept).toEqual([]);
-    // 150 ms: the back-off leaves exactly MIN_CALL_MS, so it is waited out in full and the second try is made
+    expect(short.slept).toEqual([100]);
+    // 150 ms: the back-off leaves exactly MIN_CALL_MS, so the second try is made
     const enough = await run(150);
     expect(enough.error.message).toMatch(/all 2 RPC endpoint\(s\) failed after 2 attempts/);
     expect(enough.sent).toBe(2);
     expect(enough.slept).toEqual([100]);
+    // 60 ms: the back-off is cut to what is left, and nothing is left for the second try
+    const cut = await run(60);
+    expect(cut.error.message).toMatch(/the time left for this job ran out after 1 attempt/);
+    expect(cut.sent).toBe(1);
+    expect(cut.slept).toEqual([60]);
   });
 
   it("gives every try the smaller of timeoutMs and the time left, and stops retrying when it is over", async () => {

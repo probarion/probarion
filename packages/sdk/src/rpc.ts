@@ -15,9 +15,9 @@ export interface RpcClientOptions {
   sleep?: (ms: number) => Promise<void>;
   /**
    * Milliseconds the caller has left for its whole job (default: no overall limit). It is read before every try and
-   * every back-off: a try gets the smaller of `timeoutMs` and what is left, and when less than `MIN_CALL_MS` (50 ms) is
-   * left, or a back-off would leave less than that for the next try, the call stops with an `RpcError` instead of
-   * trying the next endpoint. For a caller that answers inside a platform's time limit.
+   * every back-off: a try gets the smaller of `timeoutMs` and what is left, a back-off is cut to what is left, and
+   * when less than `MIN_CALL_MS` (50 ms) is left the call stops with an `RpcError` instead of trying the next
+   * endpoint. For a caller that answers inside a platform's time limit.
    */
   remainingMs?: () => number;
 }
@@ -512,10 +512,10 @@ export class RpcClient {
       lastCause = outcome.cause ?? new Error(outcome.message);
       if (n < total - 1) {
         const wait = this.delay(n, outcome.retryAfterMs);
-        // A back-off that would leave less than MIN_CALL_MS could only end in that refusal: it stops here instead.
+        // Cut to what is left, and always waited on a timer: a caller's own deadline timer can then fire first.
+        // The per-try floor above refuses the next try when less than MIN_CALL_MS is left.
         const after = this.opts.remainingMs?.();
-        if (after !== undefined && !(after - wait >= MIN_CALL_MS)) throw ranOut();
-        await this.sleep(wait);
+        await this.sleep(after === undefined ? wait : Math.max(0, Math.min(wait, after)));
       }
     }
     const tried = [...new Set(this.urls.map(redactUrl))].join(", ");

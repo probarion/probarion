@@ -10,6 +10,7 @@ import {
 import {
   hashInvoice,
   ProbarionError,
+  RpcError,
   type SpendOutcome,
   TxOutcomeUnknownError,
 } from "@probarion/sdk";
@@ -1459,6 +1460,95 @@ describe("runAttempt", () => {
       expect(r).toEqual({ status: "rejected", reason: "not_ready" });
       expect(makeProbarion).not.toHaveBeenCalled();
       expect(await rows()).toEqual([]);
+    });
+
+    // The SDK starts no chain call with less than 50 ms of the attempt left (MIN_CALL_MS): it throws an RpcError before
+    // the deadline, and that refusal is the deadline too. The clock is injected (`now`) and moved by the fakes.
+    describe("an SDK refusal for lack of time", () => {
+      const tooLate = () =>
+        new RpcError("query: the time left for this job ran out after 0 attempt(s)", [], null);
+      /** A clock that stands still until `leave(ms)` moves it to `ms` before the attempt's deadline. */
+      const clock = () => {
+        const start = Date.now();
+        let t = start;
+        return {
+          now: () => new Date(t),
+          leave: (ms: number) => {
+            t = start + CANARY_LIMITS.attemptBudgetMs - ms;
+          },
+        };
+      };
+
+      it("closes the row as a deadline when the model step is refused with less than 50 ms left", async () => {
+        const c = clock();
+        const process = vi.fn<CanaryProbarion["process"]>(async () => {
+          c.leave(10);
+          throw tooLate();
+        });
+        const { d, pb } = deps({ now: c.now }, { process });
+        expect(await runAttempt(d, input())).toEqual({ status: "rejected", reason: "failed" });
+        expect(pb.requestSpend).not.toHaveBeenCalled();
+        expect(at(await rows())).toMatchObject({
+          code_status: "error",
+          raw_skipped_reason: "error",
+          raw_detail: "deadline",
+        });
+        expect(logs.lines.join("\n")).toContain("canary.deadline");
+        expect(logs.lines.join("\n")).not.toContain("canary.failed");
+      });
+
+      it("keeps the same refusal a failure when 50 ms are still left", async () => {
+        const c = clock();
+        const process = vi.fn<CanaryProbarion["process"]>(async () => {
+          c.leave(50);
+          throw tooLate();
+        });
+        const { d } = deps({ now: c.now }, { process });
+        expect(await runAttempt(d, input())).toEqual({ status: "rejected", reason: "failed" });
+        expect(at(await rows())).toMatchObject({
+          code_status: "error",
+          raw_skipped_reason: "error",
+          raw_detail: null,
+        });
+        expect(logs.lines.join("\n")).toContain("canary.failed");
+        expect(logs.lines.join("\n")).not.toContain("canary.deadline");
+      });
+
+      it("ends the raw step with no_time when the dry run is refused with less than 50 ms left", async () => {
+        const c = clock();
+        // past the 15 s gate, the allowance read uses up all but 10 ms of the attempt
+        const agentAllowance = vi.fn<CanaryDeps["agentAllowance"]>(async () => {
+          c.leave(10);
+          return 900_000_000_000_000_000_000_000n;
+        });
+        const checkSpend = vi.fn<CanaryProbarion["checkSpend"]>(async () => {
+          throw tooLate();
+        });
+        const { d, pb } = deps({ now: c.now, agentAllowance }, { checkSpend });
+        const r = await runAttempt(d, input());
+        expect(checkSpend).toHaveBeenCalledTimes(1);
+        expect(raw(r)).toEqual({ sent: false, skipped: "no_time" });
+        expect(pb.requestSpend).not.toHaveBeenCalled();
+        expect(at(await rows())).toMatchObject({ raw: false, raw_skipped_reason: "no_time" });
+        expect(logs.lines.join("\n")).not.toContain("canary.check_failed");
+      });
+
+      it("keeps the dry run's refusal check_failed when 50 ms are still left", async () => {
+        const c = clock();
+        const agentAllowance = vi.fn<CanaryDeps["agentAllowance"]>(async () => {
+          c.leave(50);
+          return 900_000_000_000_000_000_000_000n;
+        });
+        const checkSpend = vi.fn<CanaryProbarion["checkSpend"]>(async () => {
+          throw tooLate();
+        });
+        const { d, pb } = deps({ now: c.now, agentAllowance }, { checkSpend });
+        const r = await runAttempt(d, input());
+        expect(raw(r)).toEqual({ sent: false, skipped: "check_failed" });
+        expect(pb.requestSpend).not.toHaveBeenCalled();
+        expect(at(await rows())).toMatchObject({ raw: false, raw_skipped_reason: "check_failed" });
+        expect(logs.lines.join("\n")).toContain("canary.check_failed");
+      });
     });
 
     // The SUM, not each cap: with every step made to hang, an attempt still answers inside its 80 s (the clock is faked:
