@@ -5,7 +5,7 @@ import { KNOWN_VAULT_CODE_HASHES } from "@probarion/core";
 import { describe, expect, it } from "vitest";
 import { TABLES } from "@/lib/docs/ref/builds";
 import { type RefTable, ROW_ID } from "@/lib/docs/ref/types";
-import { ROOT, readMdx } from "./docs-helpers";
+import { ROOT, readMdx, WEB } from "./docs-helpers";
 
 // The reproducible-builds page (/docs/trust/reproducible-builds), pinned to CI and the record. This
 // test reads .github/workflows/ci.yml, the crates' manifests, contracts/code-hashes.json and the
@@ -449,5 +449,27 @@ describe("the page", () => {
     for (const f of ["scripts/build-reproducible.sh", "scripts/code-hash.mjs"]) {
       expect(existsSync(join(ROOT, f)), f).toBe(true);
     }
+  });
+});
+
+describe("the data module", () => {
+  // Next's file tracing puts a file in the docs functions only when the read names it by a literal path. A path built
+  // at run time (join(ROOT, path)) traced the whole repository into them, about 1,170 files, and still left out
+  // .github, so an on-demand render of this page could not find ci.yml. Every read in ref/builds.ts names its file.
+  const SOURCE = readFileSync(join(WEB, "src", "lib", "docs", "ref", "builds.ts"), "utf8");
+  const LITERAL =
+    /readFileSync\(\s*join\(process\.cwd\(\), "\.\.", "\.\."((?:, "[^"]+")+)\),\s*"utf8",?\s*\)/g;
+
+  it("reads every file by a literal path from the repository root, and each one exists", () => {
+    const calls = SOURCE.match(/readFileSync\(/g) ?? [];
+    const files = [...SOURCE.matchAll(LITERAL)].map((m) =>
+      [...(m[1] ?? "").matchAll(/"([^"]+)"/g)].map((p) => p[1]).join("/"),
+    );
+    expect(calls.length).toBeGreaterThan(0);
+    expect(files, "a readFileSync whose path is not a literal").toHaveLength(calls.length);
+    expect(new Set(files).size, "a file read twice").toBe(files.length);
+    for (const file of files) expect(existsSync(join(ROOT, file)), file).toBe(true);
+    expect(files).toContain(".github/workflows/ci.yml");
+    expect(SOURCE).not.toMatch(/\breadFile\(|\bROOT\b/);
   });
 });

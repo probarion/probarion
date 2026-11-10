@@ -9,7 +9,8 @@ import {
   SPEND_GAS,
   UNKNOWN_SETTLE_MS,
 } from "@probarion/sdk";
-import { VAULT_DEFAULTS } from "@/lib/config";
+import { CANARY_LIMITS } from "@/lib/canary/limits";
+import { CANARY_KEY_ALLOWANCES, VAULT_DEFAULTS } from "@/lib/config";
 import { MAX_EXPIRY_AHEAD_MS, MAX_USES_BETA, MIN_EXPIRY_AHEAD_MS } from "@/lib/console/mandates";
 import {
   ALLOWANCE_LOW_ALERT_YOCTO,
@@ -621,13 +622,13 @@ const KEYS: RefTable = {
     row("limits-keys-agent", {
       key: "An agent key, added with `add_agent`",
       calls: "`spend` on the vault",
-      allowance: `${near(BigInt(VAULT_DEFAULTS.agentAllowanceYocto))} NEAR: the console's \`VAULT_DEFAULTS.agentAllowanceYocto\` and the default of \`agent add --allowance\``,
+      allowance: `${near(BigInt(VAULT_DEFAULTS.agentAllowanceYocto))} NEAR: the console's \`VAULT_DEFAULTS.agentAllowanceYocto\` and the default of \`agent add --allowance\`. For the Canary's vault the console asks for ${near(BigInt(CANARY_KEY_ALLOWANCES.agentAllowanceYocto))} NEAR (\`CANARY_KEY_ALLOWANCES.agentAllowanceYocto\`): its raw mode stops when the agent key has under ${near(CANARY_LIMITS.minAllowanceYocto)} NEAR left`,
       rule: ALLOWANCE_RULE,
     }),
     row("limits-keys-ledger", {
       key: "The ledger key, set with `set_ledger_key`",
       calls: "`anchor` on the vault",
-      allowance: `${near(BigInt(VAULT_DEFAULTS.ledgerAllowanceYocto))} NEAR: the console's \`VAULT_DEFAULTS.ledgerAllowanceYocto\` and the default of \`ledger set-key --allowance\``,
+      allowance: `${near(BigInt(VAULT_DEFAULTS.ledgerAllowanceYocto))} NEAR: the console's \`VAULT_DEFAULTS.ledgerAllowanceYocto\` and the default of \`ledger set-key --allowance\`. For the Canary's vault the console asks for ${near(BigInt(CANARY_KEY_ALLOWANCES.ledgerAllowanceYocto))} NEAR (\`CANARY_KEY_ALLOWANCES.ledgerAllowanceYocto\`): the Canary does not open while the ledger key has under ${near(CANARY_LIMITS.minLedgerAllowanceYocto)} NEAR left`,
       rule: ALLOWANCE_RULE,
     }),
   ],

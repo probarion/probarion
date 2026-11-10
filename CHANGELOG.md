@@ -201,6 +201,12 @@ The software is an unaudited beta.
   asked, what the vault did (paid, refused on upload, refused by code, held then paid) and links the
   invoice file, its transactions and its lines in the signed ledger, then the demo vault's proof page.
   A test holds each card to the evidence files and the deployment record.
+- "The console" on the landing page, after the ink band: three screenshots of the testnet console from
+  2026-11-09, taken while a fifth invoice (INV-2004, 4 test USDC) went through the demo vault. They show
+  the spend held for an approver, the invoice's page in Payables, and the vault's spends once the
+  approver approved it with near-cli. Each caption names the network, the date and the vault, and links
+  its transaction where it has one; on a phone the row scrolls sideways. The images are WebP files in
+  `apps/web/public/shots/`, and a test reads each one's size from its header.
 - Deploy and smoke scripts for testnet, runbooks for testnet, the factory and the planned mainnet
   vault (each signing step is the owner's), and `pnpm proof` for the mainnet evidence file.
 - Web console, in progress: wallet sign-in with near-connect and NEP-413, checked on
@@ -606,6 +612,12 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The console's Keys page asks for larger allowances on the Canary's vault: 3 NEAR for its agent key
+  and 2 NEAR for its ledger key. With the allowances every other vault gets (1 NEAR and 0.25 NEAR),
+  the Canary could not open, since it does not run while its ledger key holds under 0.5 NEAR. A key's
+  allowance is fixed when the vault adds it, so these apply to keys added from now on.
+- The Canary's vault card says when the owner froze the vault: it then refuses every spend and every
+  approval until the owner unfreezes it. A config read that failed adds nothing to the card.
 - The Canary page shows its form only when the Canary vault and `NEARAI_API_KEY` are set, the
   database holds a private Canary tenant for that vault on the page's network, its ledger has room,
   its ledger key has gas for anchors, and the vault holds a mandate. It went live as soon as the vault
@@ -696,6 +708,38 @@ The software is an unaudited beta.
 
 - A canary test could fail about once in 58 runs, when the agent key it changed already ended in
   the character it wrote, so the key it called inactive was the active one.
+
+- Another invoice uploaded in the console with the same number for the same payee as one that was
+  paid or may still pay is refused by code, rule `custom.invoice_number_duplicate`, and the
+  decision entry signed by the ledger key says why. Before, the upload got a 409 before any rule
+  ran, and nothing reached the ledger. An invoice queued from the browser extension with that
+  number, and the same text uploaded again while the number stays blocked, are still duplicates at
+  intake. When this rule's refusal is the outcome's code, the console's notice says whether an
+  upload can run again: when the earlier invoice waits for the owner, after the owner rejects it.
+  Otherwise the number stays blocked: a paid invoice, a spend held on chain (even one the approver
+  rejects), a payment sent but not confirmed, a cycle cut off with an unknown outcome, and a
+  refusal that could not be written to the new invoice. A paid
+  invoice is not paid again. The notice gives no advice to reissue the bill under a new number:
+  the console cannot yet show that the earlier spend can no longer pay, and a new number would
+  pass every duplicate check. The migration
+  `apps/web/supabase/migrations/20261108000016_invoice_number_rule.sql` changes `invoice_insert`.
+
+- Web console, Payables: an invoice whose spend the vault held for an approver shows what the chain
+  says of that spend now. The list and the invoice's page read the vault's spends with the same
+  `list_spends` view the overview reads, and match the spend by its id and decision hash. An approved
+  spend reads "Approved and paid on NEAR"; a rejected one, or one whose hold expired, says nothing was
+  paid. Both pages kept "Held for approval", the outcome stored when the cycle ran: on testnet,
+  INV-2003 and INV-2004 of `demo.vaults.probarion.testnet` were paid on chain but read held. The pages
+  only read the chain: the stored outcome and the signed ledger do not change. When the spends cannot
+  be read, the page says so and shows the status the cycle recorded.
+- Web console, Payables: the banner says "1 invoice waits for you", not "1 invoice wait".
+- Web console, Mandates: the table gives each column room. At desktop width its headers ran together
+  ("PaymentsExpires").
+
+- An on-demand render of `/docs/trust/reproducible-builds` on Vercel, such as a POST, which skips
+  the prerender, answered 500: the function did not carry `.github/workflows/ci.yml`. The page's
+  data now reads each file by a literal path. The docs functions carry the 8 repository files they
+  read (0.09 MB), not about 1,170 (17.7 MB).
 
 ### Security
 

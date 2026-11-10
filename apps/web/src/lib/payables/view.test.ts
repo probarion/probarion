@@ -1,4 +1,4 @@
-import type { LedgerEntry, MandateView } from "@probarion/core";
+import type { LedgerEntry, MandateView, SpendView } from "@probarion/core";
 import type { SpendOutcome } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import { txHash } from "../../../test/fixtures/proof";
@@ -14,12 +14,16 @@ import {
   cycleRanFor,
   EXTENSION_LEDGER_NOTE,
   EXTENSION_SOURCE_NOTE,
+  heldSpendNow,
+  heldSpendResult,
   invoiceStatusLabel,
+  needsSpendsNow,
   outcomeLabel,
   queuedChecks,
   recentPayeeRows,
   rowResult,
   usdcFixed,
+  waitingNotice,
   waitReasons,
 } from "./view";
 
@@ -326,6 +330,164 @@ describe("rowResult", () => {
     expect(rowResult(row({ status: "processing" })).tone).toBe("warn");
     expect(rowResult(row({ status: "error" })).tone).toBe("bad");
     expect(rowResult(row({ status: "rejected" })).tone).toBe("neutral");
+  });
+});
+
+describe("waitingNotice", () => {
+  it("agrees the verb with the count, for the owner and for everyone else", () => {
+    expect(waitingNotice(1, true)).toBe("1 invoice waits for you to confirm or reject the amount.");
+    expect(waitingNotice(1, false)).toBe(
+      "1 invoice waits for the owner to confirm or reject the amount.",
+    );
+    expect(waitingNotice(2, true)).toBe("2 invoices wait for you to confirm or reject the amount.");
+    expect(waitingNotice(3, false)).toBe(
+      "3 invoices wait for the owner to confirm or reject the amount.",
+    );
+  });
+});
+
+describe("a spend the contract held, as the chain shows it now", () => {
+  const row = (over: Partial<InvoiceRow>) =>
+    ({ status: "decided", outcome: null, ...over }) as InvoiceRow;
+  const heldRow = row({ outcome: outcome({ status: "held", spendId: 2, txHash: PAID }) });
+  const spend = (over: Partial<SpendView> = {}): SpendView => ({
+    id: 2,
+    mandate_id: 1,
+    amount: "4000000",
+    invoice_hash: "a".repeat(64),
+    ref: "inv-1",
+    decision_hash: "d".repeat(64),
+    agent_pk: "ed25519:x",
+    destination: { type: "near", account_id: "payee.near" },
+    status: "held",
+    created_at_ns: "1",
+    held_until_ns: "2",
+    memo: null,
+    ...over,
+  });
+  const chain = (...spends: SpendView[]) => new Map(spends.map((s) => [s.id, s]));
+
+  it("words what an approver's approve, a reject or an expiry came to, and nothing while it is held", () => {
+    expect(heldSpendResult("held")).toBeNull();
+    expect(heldSpendResult("paid")).toEqual({ label: "Approved and paid on NEAR", tone: "good" });
+    expect(heldSpendResult("burned")).toEqual({
+      label: "Approved and withdrawn from NEAR to Base or Solana (release pending)",
+      tone: "good",
+    });
+    expect(heldSpendResult("pending")).toEqual({
+      label: "Approved, payout in progress: do not resend",
+      tone: "warn",
+    });
+    expect(heldSpendResult("failed")).toEqual({
+      label: "Approved, but the payout failed; the reservation was released",
+      tone: "bad",
+    });
+    expect(heldSpendResult("rejected")).toEqual({
+      label: "Rejected by an approver: nothing was paid",
+      tone: "neutral",
+    });
+    expect(heldSpendResult("expired")).toEqual({
+      label: "Hold expired: nothing was paid",
+      tone: "neutral",
+    });
+    const odd = heldSpendResult("teleported‮");
+    expect(odd?.label).toMatch(/^Unknown spend status \(.*\): check the vault before you act$/);
+    expect(odd?.tone).toBe("warn");
+    expect(hasUnsafe(odd?.label ?? "")).toBe(false);
+  });
+
+  it("reads the chain only for a decided row the contract held with a spend id", () => {
+    expect(needsSpendsNow([heldRow])).toBe(true);
+    expect(needsSpendsNow([])).toBe(false);
+    expect(
+      needsSpendsNow([
+        row({ outcome: outcome({ status: "paid", spendId: 1 }) }),
+        // Held by code: nothing was sent, so there is no spend to read.
+        row({ outcome: outcome({ status: "held", spendId: null }) }),
+        // Held again and waiting for the owner: the row's outcome is the code's hold.
+        row({ status: "awaiting_owner", outcome: outcome({ status: "held", spendId: null }) }),
+        // A Confirm is running: the column still holds the earlier cycle's outcome (ruling W-T14-R5).
+        row({ status: "processing", outcome: outcome({ status: "held", spendId: 2 }) }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("takes the spend by its id only when its decision_hash is the outcome's", () => {
+    expect(heldSpendNow(heldRow.outcome, chain(spend({ status: "paid" })))?.status).toBe("paid");
+    expect(
+      heldSpendNow(heldRow.outcome, chain(spend({ decision_hash: "e".repeat(64) }))),
+    ).toBeNull();
+    expect(heldSpendNow(heldRow.outcome, chain(spend({ id: 3 })))).toBeNull();
+    expect(heldSpendNow(heldRow.outcome, "unread")).toBeNull();
+    expect(heldSpendNow(heldRow.outcome, undefined)).toBeNull();
+    expect(heldSpendNow(outcome({ status: "paid", spendId: 2 }), chain(spend()))).toBeNull();
+    expect(heldSpendNow(null, chain(spend()))).toBeNull();
+  });
+
+  it("shows a held row by the spend's status on chain once it moved on, never as held forever", () => {
+    expect(rowResult(heldRow, true, chain(spend({ status: "paid" })))).toEqual({
+      label: "Approved and paid on NEAR",
+      tone: "good",
+    });
+    expect(rowResult(heldRow, false, chain(spend({ status: "rejected" })))).toEqual({
+      label: "Rejected by an approver: nothing was paid",
+      tone: "neutral",
+    });
+    expect(rowResult(heldRow, true, chain(spend({ status: "expired" })))).toEqual({
+      label: "Hold expired: nothing was paid",
+      tone: "neutral",
+    });
+    const asRecorded = { label: "Held for approval", tone: "warn" };
+    expect(rowResult(heldRow, true, chain(spend()))).toEqual(asRecorded);
+    expect(rowResult(heldRow, true, "unread")).toEqual(asRecorded);
+    expect(rowResult(heldRow)).toEqual(asRecorded);
+    // A spend of another decision is never read as this one.
+    expect(
+      rowResult(heldRow, true, chain(spend({ status: "paid", decision_hash: "e".repeat(64) }))),
+    ).toEqual(asRecorded);
+  });
+
+  it("says in the Contract did column what the chain shows now, and when it could not be read", () => {
+    const entries = [decision({ verdict: "allow", rules: [] })];
+    const held = heldRow.outcome as SpendOutcome;
+    const paid = buildCycleView(entries, held, "mainnet", null, chain(spend({ status: "paid" })));
+    expect(paid.contractDid).toMatchObject({
+      status: "held",
+      spendId: 2,
+      label: "Approved and paid on NEAR",
+      tone: "good",
+    });
+    expect(paid.contractDid.note).toBe(
+      "The vault held spend #2 for an approver. Its status above is the chain's now.",
+    );
+    // The link is still the cycle's own transaction, the one that held it.
+    expect(paid.contractDid.txUrl).toContain(PAID);
+    expect(
+      buildCycleView(entries, held, "mainnet", null, chain(spend({ status: "expired" })))
+        .contractDid,
+    ).toMatchObject({ label: "Hold expired: nothing was paid", tone: "neutral" });
+    expect(
+      buildCycleView(entries, held, "mainnet", null, chain(spend())).contractDid,
+    ).toMatchObject({ label: "Held for approval", tone: "warn", note: null });
+    expect(buildCycleView(entries, held, "mainnet", null, "unread").contractDid).toMatchObject({
+      label: "Held for approval",
+      tone: "warn",
+      note: "The vault's spends could not be read from the chain, so this is the status the cycle recorded. Reload to read them again.",
+    });
+    expect(buildCycleView(entries, held, "mainnet", null, chain()).contractDid).toMatchObject({
+      label: "Held for approval",
+      tone: "warn",
+      note: "The chain shows no spend #2 for this decision, so this is the status the cycle recorded: check the vault's spends before you act.",
+    });
+    // An outcome the contract did not hold reads no spend and says nothing more.
+    expect(
+      buildCycleView(entries, outcome({ status: "paid", spendId: 2 }), "mainnet", null, "unread")
+        .contractDid,
+    ).toMatchObject({ label: "Paid on NEAR", tone: "good", note: null });
+    expect(buildCycleView(entries, outcome(), "mainnet").contractDid).toMatchObject({
+      tone: "bad",
+      note: null,
+    });
   });
 });
 

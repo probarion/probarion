@@ -89,6 +89,8 @@ export const CANARY_COPY = {
     perPayment: "per payment",
     holdsEverySpend: "and holds every spend for a human",
     noMandate: "It has no active mandate right now.",
+    frozen:
+      "Frozen by its owner: the vault refuses every spend and every approval until the owner unfreezes it.",
   },
   attacker: {
     title: "Paid to an attacker: 0, by construction",

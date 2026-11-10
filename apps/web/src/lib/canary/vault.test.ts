@@ -33,16 +33,28 @@ describe("summarizeVault", () => {
         maxPerPayment: "1",
         holdsEverySpend: true,
       },
+      frozen: false,
     });
   });
 
   it("says a read that failed is unreadable, never zero", () => {
-    expect(summarizeVault({ usdc: null, base: null, mandates: null })).toEqual({
+    expect(summarizeVault({ usdc: null, base: null, mandates: null, frozen: null })).toEqual({
       balance: null,
       base: null,
       mandate: { kind: "unreadable" },
+      frozen: false,
     });
     expect(summarizeVault({ usdc: "0", base: null, mandates: [] }).balance).toBe("0");
+  });
+
+  // The owner's Freeze shows on the public card. A config read that failed shows nothing: it is not drawn as either.
+  it("says the vault is frozen only when its config was read as frozen", () => {
+    const frozen = (v: boolean | null | undefined) =>
+      summarizeVault({ usdc: "1", base: null, mandates: [], frozen: v }).frozen;
+    expect(frozen(true)).toBe(true);
+    expect(frozen(false)).toBe(false);
+    expect(frozen(null)).toBe(false);
+    expect(frozen(undefined)).toBe(false);
   });
 
   it("treats a balance that is not a whole number of base units as unreadable", () => {
