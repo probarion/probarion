@@ -757,6 +757,20 @@ The software is an unaudited beta.
   pass every duplicate check. The migration
   `apps/web/supabase/migrations/20261108000016_invoice_number_rule.sql` changes `invoice_insert`.
 
+- A bill could be paid twice when an agent paid one text of it outside the console. The owner's
+  Confirm of that text in the console was refused as already paid (`invoice.duplicate`), and that
+  refusal freed the invoice number, so a second text of the bill with the same number could run
+  and pay. The duplicate guard now counts a refusal because the text was already paid or may still
+  pay as an invoice that may pay: `invoice.duplicate` or `ledger.unresolved` in its signed decision
+  (also when another rule refused first), or the contract's `DuplicateInvoice` or `DuplicateRef`.
+  The same holds at intake and at the owner's Confirm. The guard also names an invoice that may
+  have paid before one that waits for the owner, so the notice offers a re-upload after a Reject
+  only when no invoice with the number may have paid. When two invoices with the number wait (the
+  browser extension and the console raced), the notice asks the owner to reject each. A Reject
+  still frees the number of the invoice it rejects. The migration
+  `apps/web/supabase/migrations/20261110000017_invoice_guard_paid_refusals.sql` changes
+  `invoice_insert` and `invoice_confirm_begin`.
+
 - Web console, Payables: an invoice whose spend the vault held for an approver shows what the chain
   says of that spend now. The list and the invoice's page read the vault's spends with the same
   `list_spends` view the overview reads, and match the spend by its id and decision hash. An approved
