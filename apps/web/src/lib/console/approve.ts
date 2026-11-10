@@ -195,7 +195,21 @@ export function approveState(i: {
   return { ...held, approver: true, canApprove: true, canReject: true, note: null };
 }
 
-/** The console's invoice for a spend: the row with the invoice hash and the ref the chain recorded for it, or null. */
-export function matchInvoice(rows: readonly InvoiceRow[], spend: SpendView): InvoiceRow | null {
-  return rows.find((r) => r.invoice_hash === spend.invoice_hash && r.ref === spend.ref) ?? null;
+export type InvoiceMatch =
+  /** The console sent this spend from the row: the chain's hash and ref, and the row's outcome is this spend. */
+  | { kind: "sent"; row: InvoiceRow }
+  /** A row with the chain's hash and ref that the console did not send this spend from: an agent can reuse both. */
+  | { kind: "same_text"; row: InvoiceRow }
+  | { kind: "none" };
+
+/**
+ * The console's invoice for a spend. The hash and the ref are the agent's to choose, so a row is this spend's only
+ * when the console's own outcome for it names the spend; a row with the same text alone is shown as no more than that.
+ */
+export function matchInvoice(rows: readonly InvoiceRow[], spend: SpendView): InvoiceMatch {
+  const same = rows.filter((r) => r.invoice_hash === spend.invoice_hash && r.ref === spend.ref);
+  const sent = same.find((r) => r.outcome?.spendId === spend.id);
+  if (sent) return { kind: "sent", row: sent };
+  const first = same[0];
+  return first ? { kind: "same_text", row: first } : { kind: "none" };
 }

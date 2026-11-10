@@ -75,7 +75,13 @@ describe("TxButton's confirm step", () => {
 
 describe("TxButton's look", () => {
   it("follows its confirm tone, so a held payment's Reject does not look like its Approve", () => {
-    expect(source).toContain("className={actionButtonClass(props.confirmTone)}");
+    expect(source).toContain("className={actionButtonClass(props.confirmTone, props.wide)}");
     expect(source).not.toContain("className={buttonClass}");
+  });
+});
+
+describe('TxButton\'s "You sign" line', () => {
+  it("is shown unless the page names the transaction itself (hidePreview)", () => {
+    expect(source).toMatch(/\{preview && !props\.hidePreview \? \(\s*<p/);
   });
 });

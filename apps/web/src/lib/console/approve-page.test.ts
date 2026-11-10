@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import type { MandateView, SpendView } from "@probarion/core";
+import { type MandateView, NETWORKS, type Payee, type SpendView } from "@probarion/core";
 import { NextRequest } from "next/server";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -9,7 +9,7 @@ import { deriveSubkey, parseMasterKey } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import type { VaultReader } from "@/lib/near/reader";
 import type { WalletTx } from "@/lib/near/tx";
-import { insertInvoice } from "@/lib/payables/store";
+import { insertInvoice, setInvoiceOutcome } from "@/lib/payables/store";
 import { proxy } from "@/proxy";
 import { freshDb, seedTenant } from "../../../test/db/harness";
 import { pgliteDb } from "../../../test/db/pglite-db";
@@ -25,7 +25,13 @@ const h = vi.hoisted(() => ({
   db: null as unknown as Db,
   reader: null as unknown as VaultReader,
   /** Every wallet button the page rendered, with what it would ask the wallet to sign. */
-  buttons: [] as { label: string; expectedSigner?: string; tx?: WalletTx }[],
+  buttons: [] as {
+    label: string;
+    expectedSigner?: string;
+    tx?: WalletTx;
+    wide?: boolean;
+    hidePreview?: boolean;
+  }[],
   /** Every chain view the page asked for. */
   views: [] as string[],
 }));
@@ -64,8 +70,20 @@ vi.mock("next/navigation", async (importOriginal) => ({
   useRouter: () => ({ refresh: () => {}, push: () => {} }),
 }));
 vi.mock("@/components/wallet/TxButton", () => ({
-  TxButton: (p: { label: string; expectedSigner?: string; tx?: WalletTx }) => {
-    h.buttons.push({ label: p.label, expectedSigner: p.expectedSigner, tx: p.tx });
+  TxButton: (p: {
+    label: string;
+    expectedSigner?: string;
+    tx?: WalletTx;
+    wide?: boolean;
+    hidePreview?: boolean;
+  }) => {
+    h.buttons.push({
+      label: p.label,
+      expectedSigner: p.expectedSigner,
+      tx: p.tx,
+      wide: p.wide,
+      hidePreview: p.hidePreview,
+    });
     return createElement("button", { type: "button" }, p.label);
   },
 }));
@@ -135,6 +153,55 @@ const mandate = (over: Partial<MandateView> = {}): MandateView => ({
   created_at_ns: "1",
   ...over,
 });
+
+/** A console invoice for the tenant, with the hash and the ref the chain records for it. */
+async function invoice(o: {
+  hash: string;
+  ref: string;
+  number: string;
+  amount: string;
+  fingerprint: string;
+}): Promise<string> {
+  const { id } = await insertInvoice(db, tenant, {
+    invoiceHash: o.hash,
+    ref: o.ref,
+    filename: `invoice-${o.number}.txt`,
+    mediaType: "text/plain",
+    documentSha256: H("e"),
+    sealed: { ciphertext: "Y2lwaGVy", nonce: "bm9uY2U=" },
+    facts: {
+      invoice_hash: o.hash,
+      amount: o.amount,
+      po_ref: null,
+      purpose_hash: null,
+      payee_hint: null,
+      invoice_number: o.number,
+    },
+    amountIssue: null,
+    fingerprint: o.fingerprint,
+    invoiceNumberKey: null,
+    requestId: `r-${o.number}`,
+    createdBy: "acme.near",
+  });
+  return id;
+}
+/** The console's cycle sent spend `spendId` from the invoice, and the vault held it. */
+const sentAs = (id: string, spendId: number) =>
+  setInvoiceOutcome(db, tenant, id, {
+    status: "decided",
+    outcome: {
+      status: "held",
+      spendId,
+      code: null,
+      txHash: "tx",
+      ledgerSeq: 1,
+      decisionHash: H("d"),
+      anchorTxHash: null,
+    },
+    anchorTxHash: null,
+    promptTokens: null,
+    completionTokens: null,
+  });
 
 function chain(
   s: SpendView | null | "throw" = spend(),
@@ -229,37 +296,90 @@ describe("the approval page, for an approver the chain lists", () => {
     }
   });
 
-  it("names the console's invoice for the spend, matched by the hash and the ref the chain recorded", async () => {
-    const { id } = await insertInvoice(db, tenant, {
-      invoiceHash: H("f"),
+  it("names the invoice the console sent this spend from: the chain's hash and ref, and its outcome is spend #7", async () => {
+    const id = await invoice({
+      hash: H("f"),
       ref: "inv-7",
-      filename: "invoice-3-INV-2003-4usdc.txt",
-      mediaType: "text/plain",
-      documentSha256: H("e"),
-      sealed: { ciphertext: "Y2lwaGVy", nonce: "bm9uY2U=" },
-      facts: {
-        invoice_hash: H("f"),
-        amount: "4000000",
-        po_ref: null,
-        purpose_hash: null,
-        payee_hint: null,
-        invoice_number: "INV-2003",
-      },
-      amountIssue: null,
+      number: "INV-2003",
+      amount: "4000000",
       fingerprint: H("c"),
-      invoiceNumberKey: null,
-      requestId: "r",
-      createdBy: "acme.near",
     });
+    await sentAs(id, 7);
     await signInAs("cfo.near");
     const out = await html();
     expect(out).toContain("INV-2003");
     expect(out).toContain(`href="/console/${VAULT}/payables/${id}"`);
+    expect(out).toContain("The invoice reads 4 USDC.");
+    expect(out).not.toContain("did not send this spend");
     // Another spend's invoice is not this one's.
     chain(spend({ invoice_hash: H("b"), ref: "inv-8" }));
     const other = await html();
     expect(other).not.toContain("INV-2003");
-    expect(other).toContain("No invoice in the console matches this spend");
+    expect(other).toContain("None of the console's 200 most recent invoices matches this spend");
+  });
+
+  it("does not vouch for an invoice whose hash and ref an agent reused for a larger spend", async () => {
+    // An invoice the console has not sent (it waits for the owner); an agent reuses its hash and ref with the SDK.
+    await invoice({
+      hash: H("9"),
+      ref: "inv-9",
+      number: "INV-2009",
+      amount: "4000000",
+      fingerprint: H("8"),
+    });
+    chain(spend({ invoice_hash: H("9"), ref: "inv-9", amount: "4500000" }));
+    await signInAs("cfo.near");
+    const out = await html();
+    expect(out).toContain("the console did not send this spend from it");
+    expect(out).toContain("The invoice reads 4 USDC, not the spend's 4.5 USDC.");
+    expect(labels()).toEqual(["Approve 4.5 USDC", "Reject"]);
+  });
+
+  it("puts the decision right under the amount and the payee, before the mandate and the invoice", async () => {
+    await signInAs("cfo.near");
+    const out = await html();
+    const amount = out.indexOf("4 USDC");
+    const button = out.indexOf("<button");
+    expect(amount).toBeGreaterThan(-1);
+    expect(button).toBeGreaterThan(amount);
+    expect(button).toBeLessThan(out.indexOf("Mandate #2"));
+    expect(button).toBeLessThan(out.indexOf("inv-7"));
+  });
+
+  it("reads a spend to an Intents payee in the payee's asset, not the vault's token", async () => {
+    const odd: Payee = {
+      type: "intents",
+      chain: "base",
+      address: `0x${"a".repeat(40)}`,
+      asset: "wbtc.omft.near",
+    };
+    await signInAs("cfo.near");
+    chain(spend({ destination: odd }), { mandate: mandate({ payee: odd }) });
+    const out = await html();
+    const units = (n: string) => `${n} base units of wbtc.omft.near (decimals unknown)`;
+    expect(labels()).toEqual([`Approve ${units("4000000")}`, "Reject"]);
+    expect(out).toContain(
+      `${units("4000000")} is above the mandate's approval threshold of ${units("3000000")}.`,
+    );
+    // The chain's USDC asset on Base is USDC, with its 6 decimals.
+    const usdc: Payee = { ...odd, asset: NETWORKS.mainnet.allowedAssets.base };
+    h.buttons.length = 0;
+    chain(spend({ destination: usdc }), { mandate: mandate({ payee: usdc }) });
+    await html();
+    expect(labels()).toEqual(["Approve 4 USDC", "Reject"]);
+  });
+
+  it("wraps a long account id at phone width: a 64-character implicit payee and the signer line", async () => {
+    const implicit = "a".repeat(64);
+    await signInAs("cfo.near");
+    chain(spend({ destination: { type: "near", account_id: implicit } }));
+    const out = await html();
+    expect(out).toMatch(
+      new RegExp(
+        `<span class="[^"]*\\b(break-all|wrap-anywhere)\\b[^"]*"><a [^>]*>${implicit}</a></span>`,
+      ),
+    );
+    expect(out).toMatch(/<p class="[^"]*\bwrap-anywhere\b[^"]*">Your wallet signs as/);
   });
 
   it("offers reject only, and says why, when the vault is frozen", async () => {
@@ -277,6 +397,47 @@ describe("the approval page, for an approver the chain lists", () => {
     expect(labels()).toEqual(["Reject"]);
     expect(out).toContain("MandateInactive");
   });
+});
+
+describe("the approval page's look, on a phone and for WCAG AAA", () => {
+  /** Text colours that read below 7:1 on the card or the page, and the 12px text whose line height is below 1.5. */
+  const BELOW_AAA = /\b(text-mute|text-wait|text-ok|text-plan|text-xs)\b/;
+
+  it("gives each decision the whole row, and one line that says what the wallet signs, not one per button", async () => {
+    await signInAs("cfo.near");
+    const out = await html();
+    expect(h.buttons.map((b) => [b.wide, b.hidePreview])).toEqual([
+      [true, true],
+      [true, true],
+    ]);
+    expect(out).toContain(
+      `Your wallet signs as cfo.near: the vault's approve or reject of spend #7 on ${VAULT}, with 1 yoctoNEAR attached.`,
+    );
+  });
+
+  it("says the spend's status under the title, and how long the hold has left", async () => {
+    await signInAs("cfo.near");
+    const out = await html();
+    expect(out).toMatch(
+      /<h1[^>]*>Spend #7<\/h1><p[^>]*><span[^>]*><span aria-hidden="true"[^>]*><\/span>Held for approval<\/span><\/p>/,
+    );
+    expect(out).toMatch(/>(59 min|1 h 0 min) left</);
+  });
+
+  for (const [name, setUp, account] of [
+    ["an approver's page", () => chain(), "cfo.near"],
+    ["the owner's page", () => chain(), "acme.near"],
+    ["a frozen vault", () => chain(spend(), { frozen: true }), "cfo.near"],
+    ["a paid spend", () => chain(spend({ status: "paid", held_until_ns: null })), "cfo.near"],
+    ["a missing spend", () => chain(null), "cfo.near"],
+    ["an unreadable spend", () => chain("throw"), "cfo.near"],
+  ] as const) {
+    it(`uses no text colour below 7:1 and no 12px text on ${name}`, async () => {
+      setUp();
+      await signInAs(account);
+      expect(await html()).not.toMatch(BELOW_AAA);
+    });
+  }
 });
 
 describe("the approval page refuses to offer approve", () => {
@@ -303,13 +464,25 @@ describe("the approval page refuses to offer approve", () => {
     expect(h.buttons).toEqual([]);
   });
 
-  for (const status of ["pending", "paid", "burned", "failed", "rejected", "expired"] as const) {
-    it(`for a spend the chain reads as ${status}`, async () => {
+  for (const [status, line] of [
+    ["pending", "Pending"],
+    ["paid", "Paid"],
+    ["burned", "Paid out via Intents"],
+    ["failed", "Failed, released"],
+    ["rejected", "Rejected"],
+    ["expired", "Hold expired"],
+  ] as const) {
+    it(`for a spend the chain reads as ${status}, and says so under the title`, async () => {
       await signInAs("cfo.near");
       chain(spend({ status, held_until_ns: null }));
       const out = await html();
       expect(h.buttons).toEqual([]);
       expect(out).toContain("Nothing to approve");
+      expect(out).toMatch(
+        new RegExp(
+          `</h1><p[^>]*><span[^>]*><span aria-hidden="true"[^>]*></span>${line}</span></p>`,
+        ),
+      );
     });
   }
 

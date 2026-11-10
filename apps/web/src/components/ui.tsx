@@ -32,9 +32,13 @@ export const dangerButtonClass = `${button} bg-bad text-white hover:bg-bad/90`;
 /** A button for something that cannot be taken back, beside other actions (Reject next to Approve): a red outline. */
 export const dangerLineButtonClass = `${button} border border-bad/45 bg-surface text-bad hover:bg-bad-bg`;
 
-/** A wallet button's look follows its confirm dialog: the red outline when the dialog says it cannot be undone. */
-export function actionButtonClass(confirmTone?: DangerTone): string {
-  return confirmTone === "danger" ? dangerLineButtonClass : buttonClass;
+/**
+ * A wallet button's look follows its confirm dialog: the red outline when the dialog says it cannot be undone. `wide`
+ * fills the row, for the one decision on a phone-sized page.
+ */
+export function actionButtonClass(confirmTone?: DangerTone, wide?: boolean): string {
+  const look = confirmTone === "danger" ? dangerLineButtonClass : buttonClass;
+  return wide ? `${look} w-full` : look;
 }
 
 // Brand v2 (light): ink pills, hairline cards with a large radius, and status panels whose colour carries meaning

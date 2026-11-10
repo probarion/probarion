@@ -275,21 +275,37 @@ describe("approveState: what the page offers", () => {
 
 describe("matchInvoice", () => {
   const row = (over: Partial<InvoiceRow>): InvoiceRow =>
-    ({ id: "r", invoice_hash: "f".repeat(64), ref: "inv-7", ...over }) as InvoiceRow;
+    ({ id: "r", invoice_hash: "f".repeat(64), ref: "inv-7", outcome: null, ...over }) as InvoiceRow;
+  const sent = (spendId: number | null) =>
+    ({ status: "held", spendId, code: null, txHash: null }) as InvoiceRow["outcome"];
 
-  it("finds the console's invoice by the hash and the ref the chain recorded for the spend", () => {
+  it("names the invoice the console sent this spend from: same hash and ref, and its outcome is this spend", () => {
     const rows = [
-      row({ id: "a", ref: "inv-6" }),
-      row({ id: "b" }),
-      row({ id: "c", invoice_hash: "e".repeat(64) }),
+      row({ id: "a", ref: "inv-6", outcome: sent(7) }),
+      row({ id: "b", outcome: sent(8) }),
+      row({ id: "c", outcome: sent(7) }),
+      row({ id: "d", invoice_hash: "e".repeat(64), outcome: sent(7) }),
     ];
-    expect(matchInvoice(rows, spend())?.id).toBe("b");
+    expect(matchInvoice(rows, spend())).toEqual({ kind: "sent", row: rows[2] });
   });
 
-  it("finds none when only the hash or only the ref matches", () => {
+  it("does not vouch for an invoice whose text the agent reused: same hash and ref, but another spend or none", () => {
+    for (const outcome of [null, sent(null), sent(8)]) {
+      const r = row({ id: "b", outcome });
+      expect(matchInvoice([r], spend())).toEqual({ kind: "same_text", row: r });
+    }
+  });
+
+  it("finds none when only the hash or only the ref matches, whatever the outcome says", () => {
     expect(
-      matchInvoice([row({ ref: "inv-8" }), row({ invoice_hash: "0".repeat(64) })], spend()),
-    ).toBeNull();
-    expect(matchInvoice([], spend())).toBeNull();
+      matchInvoice(
+        [
+          row({ ref: "inv-8", outcome: sent(7) }),
+          row({ invoice_hash: "0".repeat(64), outcome: sent(7) }),
+        ],
+        spend(),
+      ),
+    ).toEqual({ kind: "none" });
+    expect(matchInvoice([], spend())).toEqual({ kind: "none" });
   });
 });

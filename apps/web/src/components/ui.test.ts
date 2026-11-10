@@ -258,4 +258,10 @@ describe("actionButtonClass", () => {
     expect(actionButtonClass(undefined)).toBe(buttonClass);
     expect(actionButtonClass("danger")).toBe(dangerLineButtonClass);
   });
+
+  it("fills its row when asked, as the one decision on a phone-sized page, in either tone", () => {
+    expect(actionButtonClass(undefined, true)).toBe(`${buttonClass} w-full`);
+    expect(actionButtonClass("danger", true)).toBe(`${dangerLineButtonClass} w-full`);
+    expect(actionButtonClass("danger", false)).toBe(dangerLineButtonClass);
+  });
 });
