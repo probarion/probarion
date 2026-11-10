@@ -357,12 +357,17 @@ const VISITOR = "AAAAAAAAAAAAAAAAAAAAAA"; // 22 base64url characters: what the r
 describe("POST /api/canary/attempt", () => {
   it("lets the tenant lease outlast the route's longest run, with a margin", () => {
     expect(maxDuration + 30).toBeLessThanOrEqual(CANARY_LIMITS.leaseSeconds);
-    expect(CANARY_LIMITS.leaseSeconds).toBe(PROCESS_LEASE_SECONDS);
+    // the Canary's own lease: this route runs longer than Payables' upload, whose lease is PROCESS_LEASE_SECONDS
+    expect(CANARY_LIMITS.leaseSeconds).toBe(130);
+    expect(CANARY_LIMITS.leaseSeconds).toBeGreaterThan(PROCESS_LEASE_SECONDS);
   });
 
-  it("bounds one attempt at 50 s, which leaves the platform's 60 s room to close the row and answer", () => {
-    expect(CANARY_LIMITS.attemptBudgetMs).toBe(50_000);
+  it("bounds one attempt at 80 s, which leaves 20 s of the route's 100 s to close the row and answer", () => {
+    expect(CANARY_LIMITS.attemptBudgetMs).toBe(80_000);
+    expect(maxDuration).toBe(100);
     expect(CANARY_LIMITS.attemptBudgetMs + 5000).toBeLessThanOrEqual(maxDuration * 1000);
+    // Vercel Pro stops a function at 300 s at most
+    expect(maxDuration).toBeLessThanOrEqual(300);
   });
 
   describe("who may call it", () => {
@@ -673,7 +678,7 @@ describe("POST /api/canary/attempt", () => {
       expect((await post({ text: TEXT })).status).toBe(200);
       const rpc = at(h.deps).rpc as { opts: { remainingMs: () => number } };
       const left = rpc.opts.remainingMs();
-      // 50 s from the route's start, less the 300 ms before the attempt, the 200 ms of the mandates and what it used since
+      // 80 s from the route's start, less the 300 ms before the attempt, the 200 ms of the mandates and what it used since
       expect(left).toBeLessThanOrEqual(CANARY_LIMITS.attemptBudgetMs - 500);
       expect(left).toBeGreaterThan(CANARY_LIMITS.attemptBudgetMs - (Date.now() - before) - 100);
     });

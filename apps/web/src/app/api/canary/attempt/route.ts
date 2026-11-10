@@ -24,8 +24,10 @@ import { LIMITS } from "@/lib/ratelimit";
 import { kickWatcher } from "@/lib/watcher/server";
 
 export const dynamic = "force-dynamic";
-// The Canary tenant's lease (CANARY_LIMITS.leaseSeconds, 90 s) outlasts this with a 30 s margin; route.test.ts checks it.
-export const maxDuration = 60;
+// One attempt is cut off at CANARY_LIMITS.attemptBudgetMs (80 s), which leaves 20 s of this to close its row and answer,
+// and the Canary tenant's lease (CANARY_LIMITS.leaseSeconds, 130 s) outlasts this with a 30 s margin. route.test.ts checks
+// both. Vercel Pro allows up to 300 s.
+export const maxDuration = 100;
 
 const VISITOR_COOKIE = "pb_canary";
 /** What this route mints: 16 random bytes as base64url. Anything else is replaced. */

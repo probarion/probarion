@@ -1420,7 +1420,10 @@ describe("runAttempt", () => {
       expect(CANARY_LIMITS.rawMinRemainingMs).toBe(15_000);
       // 10 s left: the code's answer stands, and nothing is asked of the contract
       const late = deps();
-      const r = await runAttempt(late.d, input({ startedAt: Date.now() - 40_000 }));
+      const r = await runAttempt(
+        late.d,
+        input({ startedAt: Date.now() - (CANARY_LIMITS.attemptBudgetMs - 10_000) }),
+      );
       expect(raw(r)).toEqual({ sent: false, skipped: "no_time" });
       expect(late.pb.checkSpend).not.toHaveBeenCalled();
       expect(late.pb.requestSpend).not.toHaveBeenCalled();
@@ -1431,7 +1434,15 @@ describe("runAttempt", () => {
       // 20 s left: it goes on
       const ok = deps();
       expect(
-        raw(await runAttempt(ok.d, input({ ...other(5), startedAt: Date.now() - 30_000 }))),
+        raw(
+          await runAttempt(
+            ok.d,
+            input({
+              ...other(5),
+              startedAt: Date.now() - (CANARY_LIMITS.attemptBudgetMs - 20_000),
+            }),
+          ),
+        ),
       ).toMatchObject({
         sent: true,
       });
@@ -1441,13 +1452,16 @@ describe("runAttempt", () => {
       const { d, makeProbarion } = deps({
         mandates: vi.fn(async () => [mandate()]),
       });
-      const r = await runAttempt(d, input({ startedAt: Date.now() - 60_000 }));
+      const r = await runAttempt(
+        d,
+        input({ startedAt: Date.now() - (CANARY_LIMITS.attemptBudgetMs + 10_000) }),
+      );
       expect(r).toEqual({ status: "rejected", reason: "not_ready" });
       expect(makeProbarion).not.toHaveBeenCalled();
       expect(await rows()).toEqual([]);
     });
 
-    // The SUM, not each cap: with every step made to hang, an attempt still answers inside its 50 s (the clock is faked:
+    // The SUM, not each cap: with every step made to hang, an attempt still answers inside its 80 s (the clock is faked:
     // no real wait), and the row it opened is closed.
     describe("with every step hanging", () => {
       const hang = <T>() => new Promise<T>(() => {});
@@ -1473,7 +1487,9 @@ describe("runAttempt", () => {
           },
         );
         const started = Date.now();
-        for (let i = 0; i < 400 && !settled; i += 1) {
+        // turns of 250 ms for the whole attempt and 20 s more
+        const turns = Math.ceil((CANARY_LIMITS.attemptBudgetMs + 20_000) / 250);
+        for (let i = 0; i < turns && !settled; i += 1) {
           await new Promise<void>((resolve) => setImmediate(resolve));
           await vi.advanceTimersByTimeAsync(250);
         }
@@ -1576,11 +1592,12 @@ describe("runAttempt", () => {
       });
 
       it("answers inside the budget when the model step, the dry run and the send all hang in turn (the sum, not each cap)", async () => {
-        // the model step takes 49 s of the 50 and then returns; nothing after it may take the attempt past the deadline
+        // the model step takes all but 1 s of the attempt and then returns; nothing after it may take the attempt past the
+        // deadline
         const slow = vi.fn(
           () =>
             new Promise<SpendOutcome>((resolve) => {
-              setTimeout(() => resolve(refused), 49_000);
+              setTimeout(() => resolve(refused), CANARY_LIMITS.attemptBudgetMs - 1000);
             }),
         );
         const { d } = deps(
@@ -1619,12 +1636,15 @@ describe("runAttempt", () => {
           (await pg.query("select count from rate_limits where bucket = 'canary:attempts:hour'"))
             .rows,
         ).toEqual([{ count: 1 }]);
-        // the lease lasts leaseSeconds from when it was taken, more than the route's maxDuration
-        expect(CANARY_LIMITS.leaseSeconds).toBeGreaterThan(60);
+        // the lease lasts leaseSeconds from when it was taken, more than the route's maxDuration (100 s)
+        expect(CANARY_LIMITS.leaseSeconds).toBeGreaterThan(100);
         const held = await pg.query<{ secs: number }>(
           "select extract(epoch from process_lease_until - now())::float8 as secs from tenants",
         );
-        expect(held.rows[0]?.secs).toBeGreaterThan(CANARY_LIMITS.leaseSeconds - 60);
+        // the fake clock ran the attempt's whole budget since the lease was taken, and the database's clock went with it
+        expect(held.rows[0]?.secs).toBeGreaterThan(
+          CANARY_LIMITS.leaseSeconds - CANARY_LIMITS.attemptBudgetMs / 1000 - 10,
+        );
         expect(held.rows[0]?.secs).toBeLessThanOrEqual(CANARY_LIMITS.leaseSeconds);
         // once the lease has run out by itself, the next attempt runs
         await pg.exec(

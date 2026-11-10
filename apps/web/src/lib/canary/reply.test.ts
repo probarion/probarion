@@ -210,10 +210,12 @@ describe("submitAttempt", () => {
   it("gives the busy text after exactly two asks when it is busy again", async () => {
     const f = fake([{ status: 409, body: { error: "busy" } }]);
     const r = await submitAttempt("pay me", f.io);
+    // an attempt can take up to 80 s (CANARY_LIMITS.attemptBudgetMs), so the text does not promise a few seconds
     expect(r).toEqual({
       kind: "error",
-      text: "Another attempt is running. Try again in a few seconds.",
+      text: "Another attempt is running, and one can take up to 80 seconds. Try again in a minute or two.",
     });
+    expect(REPLY_TEXT.busyAgain).not.toMatch(/few seconds/);
     expect(f.calls).toHaveLength(2);
     expect(f.waits).toEqual([BUSY_RETRY_MS]);
   });

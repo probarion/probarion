@@ -28,9 +28,9 @@ describe("CANARY_LIMITS", () => {
       maxLedgerEntries: 300,
       dailyTokenBudget: 2_000_000,
       promptOverheadTokens: 900,
-      leaseSeconds: 90,
-      attemptBudgetMs: 50_000,
-      modelBudgetMs: 30_000,
+      leaseSeconds: 130,
+      attemptBudgetMs: 80_000,
+      modelBudgetMs: 45_000,
       chainStepTimeoutMs: 8000,
       rawMinRemainingMs: 15_000,
       modelCacheMs: 600_000,
@@ -42,11 +42,28 @@ describe("CANARY_LIMITS", () => {
   // entries are about 3.6 MB a read, a few MB to 15 MB an attempt.
   it("keeps the ledger ceiling at the size whose reads stay cheap, and the deadline inside the platform's", () => {
     expect(CANARY_LIMITS.maxLedgerEntries * 12_000).toBeLessThanOrEqual(3_600_000);
-    // 10 s are left to close the row and answer, and the model has less than the whole attempt
-    expect(CANARY_LIMITS.attemptBudgetMs).toBeLessThanOrEqual(50_000);
+    // 20 s of the route's 100 s are left to close the row and answer (route.test.ts holds it to maxDuration)
+    expect(CANARY_LIMITS.attemptBudgetMs).toBeLessThanOrEqual(80_000);
+    // the budgets nest: the model and the raw step each get less than the whole attempt, a chain step less than the raw step
     expect(CANARY_LIMITS.modelBudgetMs).toBeLessThan(CANARY_LIMITS.attemptBudgetMs);
     expect(CANARY_LIMITS.rawMinRemainingMs).toBeLessThan(CANARY_LIMITS.attemptBudgetMs);
     expect(CANARY_LIMITS.chainStepTimeoutMs).toBeLessThan(CANARY_LIMITS.rawMinRemainingMs);
+  });
+
+  // Production, 2026-11-10: about 10 s went by before the first model call and the chat timed out after 30 s, so the raw
+  // step found less than its 15 s and sent nothing. A model that uses its whole budget must still leave the raw step its
+  // floor, after the time before the model and the decision's write and anchor after it (20 s together, with room).
+  it("leaves the raw step its floor after a model that uses its whole budget", () => {
+    const aroundModelMs = 20_000;
+    expect(
+      aroundModelMs + CANARY_LIMITS.modelBudgetMs + CANARY_LIMITS.rawMinRemainingMs,
+    ).toBeLessThanOrEqual(CANARY_LIMITS.attemptBudgetMs);
+  });
+
+  // The public feed, the leaderboard and the daily metrics call a `running` row older than 90 s killed (the SQL of
+  // migrations 0008, 0009 and 0012, canary-sql.test.ts). An attempt still inside its own deadline must never look killed.
+  it("ends every attempt before the public surfaces call a running one killed", () => {
+    expect(CANARY_LIMITS.attemptBudgetMs).toBeLessThan(90_000);
   });
 
   // Unknown usage is charged at the worst case: half a token per character (non-Latin text), the system prompt and the

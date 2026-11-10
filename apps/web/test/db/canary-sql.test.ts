@@ -514,8 +514,9 @@ describe("Canary SQL (migration 0008)", () => {
   });
 
   // An attempt is opened as `running` before its cycle and closed afterwards. The public surfaces say what is true: a
-  // run younger than the lease (90 s, CANARY_LIMITS.leaseSeconds) is not shown, an older one that was never closed
-  // was killed. Nothing is written for that: it is read from the clock.
+  // run younger than 90 s is not shown (an attempt is cut off at CANARY_LIMITS.attemptBudgetMs, 80 s from its route's
+  // start, which limits.test.ts keeps under 90 s), an older one that was never closed was killed. Nothing is written for
+  // that: it is read from the clock.
   describe("attempts that are still running, or were killed", () => {
     const running = (ageS: number, over: Record<string, unknown> = {}) =>
       pg.query(

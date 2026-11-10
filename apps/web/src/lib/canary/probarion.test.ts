@@ -131,13 +131,13 @@ describe("makeCanaryProbarion", () => {
     expect(CANARY_NEARAI_TIMEOUTS_MS).toEqual({
       catalog: 6000,
       report: 6000,
-      chat: 30_000,
+      chat: 45_000,
       signature: 6000,
     });
-    // each phase's own cap: the attempt's deadline (below) is what bounds their sum
+    // each phase's own cap: the shared model budget and the attempt's deadline (below) are what bound their sum
     const { chat, ...others } = CANARY_NEARAI_TIMEOUTS_MS;
     for (const ms of Object.values(others)) expect(ms).toBeLessThanOrEqual(6000);
-    expect(chat).toBeLessThanOrEqual(30_000);
+    expect(chat).toBeLessThanOrEqual(CANARY_LIMITS.modelBudgetMs);
   });
 
   it("uses the configured model and the Canary persona for the proposer", async () => {
@@ -185,10 +185,10 @@ describe("makeCanaryProbarion", () => {
 
 // One deadline for the whole attempt (ruling W-T17-R2): every phase gets the smaller of its own cap and the time left.
 describe("makeCanaryProbarion with the attempt's time", () => {
-  let left = 50_000;
+  let left = 80_000;
   const budget = { remainingMs: () => left };
   beforeEach(() => {
-    left = 50_000;
+    left = 80_000;
   });
   const build = () => makeCanaryProbarion(db, MASTER, tenant, mandate, "req-1", {}, budget);
 
@@ -223,16 +223,16 @@ describe("makeCanaryProbarion with the attempt's time", () => {
 
   it("gives the proposer no more than the model budget or the time left, counted from its first call", async () => {
     expect(CANARY_LIMITS.chainStepTimeoutMs).toBe(8000);
-    expect(CANARY_LIMITS.modelBudgetMs).toBe(30_000);
+    expect(CANARY_LIMITS.modelBudgetMs).toBe(45_000);
     vi.useFakeTimers({ toFake: ["Date"] });
     await build();
     const proposer = h.made[0]?.deps.proposer as unknown as { opts: { remainingMs: () => number } };
     const remaining = proposer.opts.remainingMs;
-    // ALL model calls of one attempt share 30 s, counted from the first call
-    expect(remaining()).toBe(30_000);
+    // ALL model calls of one attempt share 45 s, counted from the first call
+    expect(remaining()).toBe(45_000);
     vi.advanceTimersByTime(12_000);
     left -= 12_000;
-    expect(remaining()).toBe(18_000);
+    expect(remaining()).toBe(33_000);
     // and never more than the attempt has left
     left = 5000;
     expect(remaining()).toBe(5000);
