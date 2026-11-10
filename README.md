@@ -54,6 +54,7 @@ the vault once it has a ledger key, and anyone can re-check a published record a
 - [Documentation](#documentation)
 - [Development](#development)
 - [Prior work](#prior-work)
+- [Libraries, templates and AI-assisted code](#libraries-templates-and-ai-assisted-code)
 - [Other project by the same builder](#other-project-by-the-same-builder)
 - [License](#license)
 
@@ -650,10 +651,67 @@ migration on an in-process Postgres (PGlite) inside `pnpm verify`.
 
 ## Prior work
 
-The design spec and the interfaces in [`docs/specs`](docs/specs) were written on 2026-10-21, before
-the hackathon build window, and have been amended since through the interface change requests their
-git history records. The specs refer to pre-hackathon spikes (S1 to S9); they are not part of this
-repository, whose first commit was made on 2026-11-01 at 01:07 UTC.
+The design spec and the interfaces in [`docs/specs`](docs/specs) were written on 2026-10-21, after
+the hackathon's announcement on 2026-10-19 and before its start on 2026-11-01, and have been amended
+since through the interface change requests their git history records. The specs refer to
+pre-hackathon spikes (S1 to S9); they are not part of this repository, whose first commit was made on
+2026-11-01 at 01:07 UTC.
+
+## Libraries, templates and AI-assisted code
+
+The hackathon's rules ([nearhackathon.com/HACKATHON.md](https://nearhackathon.com/HACKATHON.md))
+answer two questions this section covers:
+
+> **Q-001. Code before 2026-11-01?** Yes, from the announcement on 2026-10-19 (…). The window runs
+> from then to 2026-11-14. Earlier commits are baseline.
+>
+> **Q-005. Libraries, templates, boilerplate?** All allowed, including own pre-hackathon libs and AI
+> code. List in README; own old libs count as baseline.
+
+For Probarion:
+
+- **Code or libraries from the builder's earlier projects:** none.
+- **Project templates or generators:** none. The repository's first commit, on 2026-11-01 at
+  01:07 UTC, is empty; the workspace, the contracts and the web app were written in it file by file.
+- **Work done before 2026-11-01:** the design spec and the interfaces spec in
+  [`docs/specs`](docs/specs), both written on 2026-10-21, after the announcement of 2026-10-19, and
+  the throwaway spikes S1 to S9 the specs refer to, run in a separate repository that is not part of
+  this one (see [Prior work](#prior-work)). The interfaces spec sets the repository layout, the
+  pinned versions, and the names, JSON shapes, error codes and constants, and it gives the type and
+  constant definitions as TypeScript and Rust blocks. Those definitions went into the code as the
+  spec gives them, in commits of 2026-11-01, among them the network constants in
+  [`packages/core/src/constants.ts`](packages/core/src/constants.ts), the vault's ABI types in
+  [`contracts/vault/src/types.rs`](contracts/vault/src/types.rs) and the ledger and verifier types
+  in [`packages/core/src/types.ts`](packages/core/src/types.ts). Everything else was written in this
+  repository from 2026-11-01 on.
+- **AI-written code:** most of the code, tests and documentation; see
+  [AI-assisted code](#ai-assisted-code) below.
+- **Libraries and tools:** the table below, with the versions the manifests pin or allow.
+
+| Part | Built with |
+| --- | --- |
+| Contracts | near-sdk 5.29.1, alone in the vault and the factory; the test token and the Intents stub also use near-contract-standards 5.29.1. cargo-near 0.22.0 builds them with Rust 1.99.1, in the `sourcescan/cargo-near:0.22.0-rust-1.99.1` image for the reproducible build. The tests use near-sdk's `unit-testing` feature, proptest (the vault's invariants in [`invariants.rs`](contracts/vault/tests/invariants.rs)), and near-workspaces 0.23.0 with tokio, anyhow and serde_json (the sandbox tests) |
+| `@probarion/core` | `@noble/curves` (ed25519 keys and ledger signatures), `@noble/hashes` (sha256), `canonicalize` (canonical JSON before hashing), bs58, and viem 2 (recovering the address that signed a model's answer) |
+| `@probarion/sdk` | `@probarion/core`, near-api-js 7 (signing and sending the agent's transactions) and viem 2. `@nearai/inference-sdk` is an optional peer dependency |
+| CLI (`probarion`) | `@probarion/core`, `@probarion/sdk` and commander 15. `@nearai/inference-sdk` is an optional dependency, which `verify --online` loads |
+| `@probarion/mcp` and [`examples/402`](examples/402) | The MCP TypeScript SDK (`@modelcontextprotocol/sdk` 1.32), zod 4 in the server, and Probarion's own packages |
+| Web console | `@probarion/core` and `@probarion/sdk`, Next.js 16 and React 19, Tailwind CSS 4, `@hot-labs/near-connect` 0.11.4 (wallet sign-in and signing), near-api-js 7, viem 2, `@defuse-protocol/one-click-sdk-typescript` 0.1.26 (checking the signature on a 1Click quote; the console calls the 1Click API itself), `@supabase/supabase-js` 2, `libsodium-wrappers` 0.8.4 (sealing the keys and invoices it stores, authenticating the session and sign-in cookies, and the keyed hashes behind alert stop links and rate limits), `pdf-parse` 2.4.5 (reading invoice PDFs), Resend 6 (email), `@sentry/nextjs` 11 (error reports), and the Hanken Grotesk and IBM Plex Mono fonts through `next/font/google`. The Docs Center adds `@next/mdx` and `@mdx-js/loader`, unified with remark-parse, remark-gfm, remark-mdx, remark-stringify, rehype-slug and github-slugger, Shiki 4.6 with `@shikijs/rehype`, and MiniSearch 7.2 for search. The wallets' executor scripts are not bundled: browsers load them at run time from `raw.githubusercontent.com`, at pinned commits of hot-dao/near-selector, Meteor-Wallet/meteor_wallet_sdk and near/near-connect-ledger ([`manifest.ts`](apps/web/src/components/wallet/manifest.ts)) |
+| Browser extension | No runtime dependency; esbuild builds it |
+| Tests and tools | Vitest 4, TypeScript 5.9, tsx, Biome 2 (lint and format), PGlite (`@electric-sql/pglite`, which runs every migration in-process for the web tests), tweetnacl (the web tests sign 1Click quotes with a key of their own) and Playwright (the browser checks in [`apps/web/e2e`](apps/web/e2e)) |
+| CI | GitHub Actions with `actions/checkout`, `actions/setup-node`, `actions/upload-artifact`, `actions/download-artifact`, `pnpm/action-setup`, `dtolnay/rust-toolchain` and `Swatinem/rust-cache`, each pinned to a commit; gitleaks 8.21.2 for the secret scan, from the `zricethezav/gitleaks` image pinned by its sha256 digest; and cargo-near 0.22.0's release archive, checked against its sha256 |
+| Services | NEAR RPC: FastNEAR by default, with Intear's RPC (`rpc.intea.rs`) as the second mainnet RPC, and FastNEAR's archival RPCs; the landing page's live check asks `rpc.testnet.fastnear.com`, then `rpc.testnet.near.org`, from the browser. FastNEAR's transactions API, which the SDK reads when it verifies online. NEAR AI Cloud and, for `verify --online` through `@nearai/inference-sdk`, Intel's PCS (the collateral the library uses to check the TDX quote locally) and NVIDIA's NRAS (which verifies the GPU evidence). The 1Click API, Supabase, Resend, the Telegram Bot API, Sentry and a Better Stack heartbeat. Vercel hosts the web console. [`.env.example`](.env.example) lists the variables for the RPCs and for each keyed service; it also lists `BASE_RPC_URL`, which the web app validates when it first loads its settings but no code reads yet |
+
+### AI-assisted code
+
+Probarion was built with Claude Code, Anthropic's AI coding agent, which wrote most of the code,
+tests and documentation. The builder decided what to build and when each pull request was merged.
+Every commit other than a merge carries a `Co-Authored-By: Claude` trailer; most merge commits, the
+pull-request merges among them, do not. Besides CI, changes were checked by adversarial reviews run
+with further AI agents; no third party has audited the contracts or the packages (see
+[SECURITY.md](SECURITY.md)). At run time a model only advises: the code rules and the contract
+decide each payment. When a model is configured, it is a private model on NEAR AI Cloud, as [NEAR
+technology used, and how](#near-technology-used-and-how) describes; without one, the code decides
+alone and the ledger records `rules-only`.
 
 ## Other project by the same builder
 
