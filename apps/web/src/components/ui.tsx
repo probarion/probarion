@@ -4,7 +4,7 @@ import type { DangerTone } from "@/lib/console/confirm-dialog";
 
 // The console's kit is the landing page's brand: ink pills at least 44px tall, 16px fields (a phone does not zoom in
 // on them), hairline cards with a large radius, and the colour tokens of app/globals.css. test/console-kit.test.ts
-// holds every text colour it pairs to WCAG AA.
+// holds every text colour it pairs, and every text colour on a console page, to WCAG AAA (7:1).
 
 export type Tone = "neutral" | "good" | "warn" | "bad" | "info";
 /** Each tone as a pair of colour tokens: a pale background and the text that reads on it. */
