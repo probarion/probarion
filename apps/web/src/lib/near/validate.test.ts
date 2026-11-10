@@ -231,7 +231,10 @@ describe("isNearTxHash", () => {
   });
 
   it("refuses what is not base58 text of that length, and what is not text", () => {
-    const good = hash(random32());
+    // The largest 32-byte value, so 44 characters: one more is too long. About one random hash in 58 is below 2^256/58,
+    // so that hash times 58 plus a digit still fits 32 bytes, and `${good}x` was a valid hash.
+    const good = hash(new Uint8Array(32).fill(255));
+    expect(good).toHaveLength(44);
     for (const bad of [
       "",
       "abc",
