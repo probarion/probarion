@@ -765,6 +765,10 @@ The software is an unaudited beta.
 
 - A canary test could fail about once in 58 runs, when the agent key it changed already ended in
   the character it wrote, so the key it called inactive was the active one.
+- A test of the NEAR transaction-hash check could fail about once in 58 runs. It added a
+  character to a random hash and expected the result to be refused, but a small 43-character hash
+  with one more character can still decode to exactly 32 bytes. The test now starts from the
+  largest hash, 44 characters long.
 
 - Another invoice uploaded in the console with the same number for the same payee as one that was
   paid or may still pay is refused by code, rule `custom.invoice_number_duplicate`, and the
