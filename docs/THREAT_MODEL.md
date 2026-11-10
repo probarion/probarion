@@ -19,8 +19,9 @@ How evidence is named in this file:
   claim `I4`. Only an id with a `probarion-claim:` marker beside its test or check in the code is
   cited that way, and `scripts/test/security-docs.test.ts` fails on any other.
 - Code is cited as `path:line`, and a sandbox test by its function name.
-- A testnet transaction is one of the smoke transactions recorded in `contracts/deployments/testnet.json`
-  (`smoke`).
+- A testnet transaction cited as evidence is one recorded in `contracts/deployments/testnet.json`:
+  the factory's deployment (`factory.deploy_tx`), a smoke transaction (`smoke`), the direct refusal
+  (`direct_refusal`) or a step of the demo vault's run (`demo_vault`).
 - Eval case ids and mainnet transaction ids are **pending**: the repository has no eval dataset yet,
   and `docs/mainnet-proof.json` records no transaction.
 
@@ -105,7 +106,7 @@ The ten attacks of the design report, plus one (11) covered by the one-yocto rul
 | 4 | Business email compromise: "the vendor changed accounts" | Invoice shows a new Base address | Payee is immutable in the mandate; a new payee needs a new mandate signed by the owner | Contract | `create_mandate` checks the owner (`contracts/vault/src/mandates.rs:13-14`; `assert_owner` at `:105-109`); claim `P-PAYEE`; eval cases pending |
 | 5 | Malicious model provider or replayed attestation | Tampered response; an old attestation reused | The model cannot move money; nonce derived from the ledger blocks replay; `provider_tee` signature covers the exact request and response; Incognito models are never used; rules-only fallback | Code | claim `NEARAI-NONCE` (`packages/sdk/test/nearai.test.ts:207`); claim `V-ATTEST` (`packages/core/test/attestation.test.ts:70`); `verify` check e; only attested, verifiable models with structured output are used (`isAttestedStructuredModel`, `packages/sdk/src/nearai.ts:199`). Limits: the TEE measurement is not pinned, and no live attested decision is recorded yet ([what is not proven yet](../SECURITY.md#what-is-not-proven-yet)) |
 | 6 | Cross-chain route manipulation | Agent or invoice supplies another Base address; a fake deposit address | `WITHDRAW_TO:` memo is built by the contract from the mandate; asset allowlist; the vault never registers keys on `intents.near` | Contract | claim `I7` (`contracts/integration-tests/tests/flows.rs:40`); claim `I8` (`contracts/vault/tests/error_coverage.rs:40`); `verify` checks g and h; testnet `base_burn_tx` `3u4ffrwpiwLoNV6cU72NHLVBAMq729NwLs6ixDLdcvYe` (on testnet `intents-stub` stands in, and the burn does not leave NEAR); the mainnet payout is pending |
-| 7 | Forged or self-approval | The agent approves its own held spend | `approve` is not in the FC key's methods; approvers are on-chain accounts | Protocol + contract | claim `I4` (the agent key can call only `spend`); claim `I5`; the approver check (`contracts/vault/src/held.rs:72-73`) |
+| 7 | Forged or self-approval | The agent approves its own held spend, or raises its own limit, as the agents of the I-HITL paper (arXiv:2610.35835) did by reading the passcode emailed to the owner | `approve` is not in the FC key's methods; approvers are on-chain accounts; no method changes a mandate's limits, and a new mandate needs the owner's account and a storage deposit; the owner, the approvers and the backstop are written only by `new`, which runs once; no passcode approves a payment or raises a limit | Protocol + contract | claim `I4` (the agent key can call only `spend`); claim `I5`; the approver check (`contracts/vault/src/held.rs:72-73`); the I-HITL replay, sandbox test `ihitl_replay_the_agent_cannot_raise_its_own_limit_or_approve_itself` (`contracts/integration-tests/tests/ihitl.rs:151`, run by CI's sandbox job), which checks that a spend over the cap fails with `OverPerPayment` and one above `approval_above` is held; that the node refuses, each with its exact `InvalidAccessKeyError` variant, the agent key's calls to every other vault method that changes state and to `ft_transfer` on USDC, and its NEAR transfer, `AddKey`, `DeployContract` and `spend` batched with `AddKey`; that the vault's views and its keys' nonces and scopes read back unchanged; and that only the approver's `approve` pays; testnet `over_per_payment_tx` `4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1`, and the demo vault's spend 2, held in `6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb` and approved by `probarion-approver.testnet` in `47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf`. Limit: this holds while the owner's and the approvers' full-access keys are out of the agent's reach ([known gaps](#known-gaps)) |
 | 8 | Operator rewrites ledger history | Re-sign the whole chain | Roots anchored every cycle by the ledger FC key; each anchor records the key that wrote it (`AnchorView.ledger_key`), and the verifier checks every anchor range against that key and reports the first broken entry | Chain | claim `I6` (`contracts/integration-tests/tests/security.rs:278`); claim `V-TAMPER` (`packages/core/test/verify.test.ts:485`). Limit: offline, a snapshot is checked against itself ([what is not proven yet](../SECURITY.md#what-is-not-proven-yet)) |
 | 9 | Gas or storage griefing | Spam `spend` to burn the allowance; bloat state | Allowance sized per key; rate limits; storage paid at mandate creation; bounded collections | Contract + code | `VAULT_DEFAULTS` (`apps/web/src/lib/config.ts:12-18`: agent key 1 NEAR, ledger key 0.25 NEAR) and, for the Canary's vault, `CANARY_KEY_ALLOWANCES` (`apps/web/src/lib/config.ts:26-29`: agent key 3 NEAR, ledger key 2 NEAR); `LIMITS` (`apps/web/src/lib/ratelimit.ts:17`); the storage deposit of `create_mandate` (`contracts/vault/src/mandates.rs:45-47`); list views capped at `MAX_PAGE` = 100 (`contracts/vault/src/lib.rs:35`); the Canary's allowance floors (`apps/web/src/lib/canary/limits.ts:15-21`); the `allowance_low` alert under 0.2 NEAR (`apps/web/src/lib/near/runway.ts:38`); [RUNBOOK: Agent key's allowance nearly used up](RUNBOOK.md#agent-keys-allowance-nearly-used-up) |
 | 10 | Failed asynchronous callback | Payee not registered for USDC storage | Reserve before transfer, release in `on_transfer` / `on_withdraw`; storage registration at mandate creation; credit only after final execution | Contract | claim `I2` (`contracts/vault/tests/invariants.rs:459`); sandbox tests `a_failed_near_payout_releases_the_reservation`, `a_failed_intents_payout_releases_the_reservation` and `the_payout_callbacks_refuse_every_caller_but_the_vault` (`contracts/integration-tests/tests/security.rs:190,237,347`) |
@@ -304,6 +305,26 @@ approve.
 
 ## Known gaps
 
+- **An approval is only as far from the agent as the approver's key.** The vault checks which
+  account signed `approve` or `create_mandate`, not where that account's full-access key lives, and
+  NEAR checks no attestation of the device. The CLI prints every owner and approver call for
+  near-cli-rs ending in `sign-with-keychain send`, the testnet demo vault's approver signed that way,
+  and the developer quickstart lets the developer be the owner. An agent whose shell or browser can
+  reach such a keychain, or an unlocked wallet of the owner or an approver, on the machine it runs on
+  can sign a new mandate or an approval as that person, and the vault cannot tell the difference: the
+  plain topology of the I-HITL paper (arXiv:2610.35835), in which no approval gate can tell the
+  human's approval from the agent's. The agent's own key still cannot do either (row 7). Keep the
+  owner's and the approvers' keys on a device the agent cannot drive: a Ledger (in the console's
+  wallet list, and `sign-with-ledger usb send` for near-cli-rs, as the CLI's hint says) or a wallet
+  on a separate phone. Neither is an I-HITL construction in the paper's sense, since the vault cannot
+  check where the key is. The console warns when the owner is the only approver.
+- **`approval_above` applies to each spend on its own.** An agent that picks its own invoice hashes
+  and refs, as the SDK's `requestSpend` and `@probarion/mcp`'s `request_spend` let it, can split a
+  payment that would be held into spends at or under the threshold, each with a new hash and ref. No
+  code rule looks for this. The split still counts against the mandate's `max_uses` and `max_total`
+  (spent plus reserved) and the vault's daily backstop, and pays only the mandate's payee; a key that
+  several mandates name can pay under whichever one lets the payment through. A mandate with
+  `approval_above` set to 0 holds every spend, and small `max_uses` and `max_total` bound the split.
 - **No Content-Security-Policy yet.** An XSS in the console has no second wall in the browser. Row 11
   still holds, because a script cannot attach a deposit, but it could show the owner a false page,
   start a wallet prompt, or mint a 30-day extension token or a pairing code through the `/extension`

@@ -2,7 +2,7 @@ The contract holds a spend whose amount is above its mandate's `approval_above`:
 
 <Callout kind="note" title="Preview">
 
-Holds and approvals are covered by the contract's unit tests and its sandbox tests; rejections and expiries by its unit tests. None has been recorded on NEAR testnet yet.
+Holds and approvals are covered by the contract's unit tests and its sandbox tests; rejections and expiries by its unit tests. On NEAR testnet, the demo vault held spends 2 and 3 on 2026-11-09, and its approver approved both. No rejection or expiry has been recorded there yet.
 
 </Callout>
 
@@ -306,6 +306,7 @@ The owner signs `revoke_mandate`, `freeze`, `unfreeze` and `remove_agent` from t
 - [Mandates](/docs/concepts/mandates): `approval_above` and the other limits a held spend counts against.
 - [Payment checks](/docs/concepts/payment-checks): the 14 checks a spend passes before it can be held.
 - [Vaults, roles and keys](/docs/concepts/vaults-roles-and-keys): the owner, the approvers and the vault's keys.
+- [The agent key cannot approve itself](/docs/trust/self-approval): why the agent key cannot approve its own held spend, and a test that tries.
 - [Spend outcomes](/docs/build/spend-outcomes): what to do with each of the seven statuses `process()` returns, both kinds of `held` included.
 - [Errors](/docs/build/errors): every vault code, with `HoldExpired`, `HoldNotExpired`, `NotHeld` and `NotApprover` among them.
 - [What works today](/docs/start/what-works-today): what is Live, Preview and Planned.
@@ -319,4 +320,4 @@ The owner signs `revoke_mandate`, `freeze`, `unfreeze` and `remove_agent` from t
 - `approve` does not re-run the 14 checks. By the contract's code, a spend held before its mandate expired can still be paid unless the owner revokes the mandate; no test shows it yet.
 - A hold reserves the amount against the mandate, not the USDC itself. `withdraw` and `withdraw_intents` do not look at reservations, so the owner can take out USDC a held spend needs; an approved payout then fails and is released.
 - No approver can approve or release a code hold. Nothing was sent, so there is no spend on chain to act on.
-- On NEAR testnet, no hold, approve, reject or expiry has been recorded yet. Unit tests cover all four, and sandbox tests cover a hold and its approval, so this page is Preview.
+- On NEAR testnet, holds and their approvals have been recorded, on `demo.vaults.probarion.testnet` on 2026-11-09, and no rejection or expiry yet. Unit tests cover all four, and sandbox tests cover a hold and its approval, so this page is Preview.
