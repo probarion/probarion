@@ -72,6 +72,7 @@ describe("the pages of a vault", () => {
   it("find every page of a vault", () => {
     expect(pages.map(posix).sort()).toEqual([
       "src/app/console/[vault]/alerts/page.tsx",
+      "src/app/console/[vault]/approve/[spend]/page.tsx",
       "src/app/console/[vault]/keys/page.tsx",
       "src/app/console/[vault]/mandates/page.tsx",
       "src/app/console/[vault]/page.tsx",

@@ -44,6 +44,10 @@ export interface TxButtonBaseProps {
    * quote, switched off while a signature is open.
    */
   onBusyChange?: (busy: boolean) => void;
+  /** Fills its row: the one decision on a phone-sized page. */
+  wide?: boolean;
+  /** Leaves out the "You sign" line, for a page that says itself what the wallet signs. */
+  hidePreview?: boolean;
 }
 
 /**
@@ -130,19 +134,19 @@ export function TxButton<P extends TxButtonBaseProps>(props: P & RequiredWithPre
     <div className="my-2">
       <button
         type="button"
-        className={actionButtonClass(props.confirmTone)}
+        className={actionButtonClass(props.confirmTone, props.wide)}
         disabled={!ready || busy || wrongSigner || locked}
         onClick={(e) => run(e.currentTarget)}
       >
         {busy ? "Waiting for your wallet and the network…" : props.label}
       </button>
       {wrongSigner ? (
-        <p className="mt-1 text-xs text-bad">
+        <p className="mt-1 text-xs text-bad wrap-anywhere">
           Your wallet is connected as {accountId}; switch to {props.expectedSigner}.
         </p>
       ) : null}
-      {preview ? (
-        <p className="mt-1 text-xs text-mute">
+      {preview && !props.hidePreview ? (
+        <p className="mt-1 text-xs text-mute wrap-anywhere">
           You sign: {preview.summary} — {preview.receiverId}.
           {preview.actions.map(actionLabel).join(" + ")}
         </p>

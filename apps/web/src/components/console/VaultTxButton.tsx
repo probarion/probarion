@@ -28,6 +28,8 @@ export function VaultTxButton({
   tx,
   outOfNearCodes,
   vaultNearLow,
+  wide,
+  hidePreview,
 }: {
   label: string;
   network: Network;
@@ -38,6 +40,8 @@ export function VaultTxButton({
   outOfNearCodes: string[];
   /** True only when the vault's free NEAR was read and is below 0.1 NEAR (never on "unavailable"). */
   vaultNearLow: boolean;
+  wide?: boolean;
+  hidePreview?: boolean;
 }) {
   const [topUp, setTopUp] = useState(false);
   return (
@@ -49,6 +53,8 @@ export function VaultTxButton({
         confirm={confirm}
         confirmTone={confirmTone}
         tx={tx}
+        wide={wide}
+        hidePreview={hidePreview}
         // The words are set at display time, so a result read back after a reload (a locked,
         // unconfirmed send) says the same as the live one; the result object is not touched.
         describe={(r: TxResult) => {

@@ -4,7 +4,9 @@
  * The rule for every figure: a value that could not be read is shown as "unavailable", never as a
  * zero or an empty list. An owner who sees "0 USDC" may act on it.
  */
+import type { Payee } from "@probarion/core";
 import type { Tone } from "@/components/ui";
+import { formatUsdc, nsToDate } from "@/lib/near/units";
 
 export const UNAVAILABLE = "unavailable";
 
@@ -78,6 +80,65 @@ export function mandateStatusView(status: string): StatusView {
     default:
       return { tone: "neutral", label: status.slice(0, 40) || "unknown" };
   }
+}
+
+// ---- amounts, payees and hold ends, as the overview and the approval page show them -------------
+
+const DIGITS = /^(0|[1-9][0-9]*)$/;
+
+/** A U128 of the network's USDC (6 decimals), or a plain word when it is not a decimal (never "0"). */
+export function usdcText(units: string): string {
+  return DIGITS.test(units) ? formatUsdc(units) : "unreadable";
+}
+
+/**
+ * Amounts in the vault's own token. The console knows the decimals of the network's USDC only; any
+ * other token is shown in raw base units and says so, never scaled by a guess.
+ */
+export function tokenAmount(token: string, networkUsdc: string): (units: string) => string {
+  if (token === networkUsdc) return (units) => `${usdcText(units)} USDC`;
+  return (units) =>
+    `${DIGITS.test(units) ? units : "unreadable"} base units of ${token} (decimals unknown)`;
+}
+
+/**
+ * Amounts of a spend to this payee, in the token the vault moves for it: the vault's own token for a NEAR
+ * account, the payee's asset for an Intents payee (USDC only when it is the network's USDC asset for that chain).
+ */
+export function spendAmount(
+  payee: Payee,
+  vaultToken: string,
+  consts: { usdc: string; allowedAssets: Readonly<Record<"base" | "solana", string>> },
+): (units: string) => string {
+  return payee.type === "near"
+    ? tokenAmount(vaultToken, consts.usdc)
+    : tokenAmount(payee.asset, consts.allowedAssets[payee.chain]);
+}
+
+export function payeeText(p: Payee): string {
+  return p.type === "near" ? p.account_id : `${p.chain}:${p.address}`;
+}
+
+/**
+ * How long a hold has left, to the minute ("23 h 59 min left"), "ended" once its end has passed, or null for no hold.
+ * At its exact end the hold is still open: the vault approves while block_timestamp <= held_until_ns.
+ */
+export function holdLeftText(heldUntilNs: string | null, nowMs: number): string | null {
+  if (heldUntilNs === null || !DIGITS.test(heldUntilNs)) return null;
+  const ms = Number(BigInt(heldUntilNs) / 1_000_000n) - nowMs;
+  if (ms < 0) return "ended";
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return "less than a minute left";
+  if (min < 60) return `${min} min left`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h ${min % 60} min left`;
+  return `${Math.floor(h / 24)} d ${h % 24} h left`;
+}
+
+/** "2026-11-14 09:30 UTC" from a hold's end in nanoseconds, or "n/a" when it is not a time. */
+export function holdEndText(heldUntilNs: string | null): string {
+  if (heldUntilNs === null || !DIGITS.test(heldUntilNs)) return "n/a";
+  return `${nsToDate(heldUntilNs).toISOString().replace("T", " ").slice(0, 16)} UTC`;
 }
 
 /**

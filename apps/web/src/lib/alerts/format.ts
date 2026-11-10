@@ -79,8 +79,12 @@ export function formatAlert(
       lines.push(`${spendWords(e)} is held until an approver signs.`);
       const ends = holdEnds(payload);
       if (ends !== null) lines.push(`The hold ends ${ends}.`);
-      // The overview's held card (id="held"), which comes first while a spend waits.
-      lines.push(`Approve or reject: ${consoleUrl}#held`);
+      // The spend's own approval page (roadmap G2), a phone-sized page that reads the spend from the chain. Without a
+      // spend id to name it by, the overview's held card (id="held"), which comes first while a spend waits.
+      const spend = wholeNumber(e.spend_id);
+      lines.push(
+        `Approve or reject: ${spend === null || spend === 0 ? `${consoleUrl}#held` : `${consoleUrl}/approve/${spend}`}`,
+      );
       break;
     }
     case "spend_paid":

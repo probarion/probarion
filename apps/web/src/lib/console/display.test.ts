@@ -1,12 +1,15 @@
+import { NETWORKS } from "@probarion/core";
 import { isOutOfNearCode, OUT_OF_NEAR_DETAIL } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import { parseTopup } from "@/components/console/SendNearPanel";
 import {
   consoleOutOfNear,
   heldActions,
+  holdLeftText,
   rewordOutOfNear,
   SIGNER_OUT_OF_NEAR,
   shown,
+  spendAmount,
   spendStatusView,
   UNAVAILABLE,
   VAULT_LOW_SUGGESTION,
@@ -146,5 +149,55 @@ describe("consoleOutOfNear (W-T8-R1 item 2)", () => {
     const other = { status: "failed" as const, txHash: "h", code: "Frozen", error: "frozen" };
     rewordOutOfNear(other, codes, true);
     expect(other.error).toBe("frozen");
+  });
+});
+
+describe("spendAmount", () => {
+  const net = NETWORKS.mainnet;
+  const base = { type: "intents", chain: "base", address: `0x${"a".repeat(40)}` } as const;
+
+  it("reads a spend to a NEAR account in the vault's own token", () => {
+    expect(spendAmount({ type: "near", account_id: "payee.near" }, net.usdc, net)("4000000")).toBe(
+      "4 USDC",
+    );
+    expect(spendAmount({ type: "near", account_id: "payee.near" }, "x.near", net)("4000000")).toBe(
+      "4000000 base units of x.near (decimals unknown)",
+    );
+  });
+
+  it("reads a spend to an Intents payee in the payee's asset: USDC only for that chain's USDC asset", () => {
+    expect(spendAmount({ ...base, asset: net.allowedAssets.base }, net.usdc, net)("4000000")).toBe(
+      "4 USDC",
+    );
+    // The Solana USDC asset is not the Base one: a Base payee holding it is shown in base units.
+    expect(
+      spendAmount({ ...base, asset: net.allowedAssets.solana }, net.usdc, net)("4000000"),
+    ).toBe(`4000000 base units of ${net.allowedAssets.solana} (decimals unknown)`);
+    expect(spendAmount({ ...base, asset: "wbtc.omft.near" }, net.usdc, net)("4000000")).toBe(
+      "4000000 base units of wbtc.omft.near (decimals unknown)",
+    );
+  });
+});
+
+describe("holdLeftText", () => {
+  const NOW = Date.UTC(2026, 10, 10, 12, 0);
+  const at = (ms: number) => String(BigInt(NOW + ms) * 1_000_000n);
+
+  it("says how long a hold has left, to the minute", () => {
+    expect(holdLeftText(at(30_000), NOW)).toBe("less than a minute left");
+    expect(holdLeftText(at(59 * 60_000 + 59_000), NOW)).toBe("59 min left");
+    expect(holdLeftText(at(3_600_000), NOW)).toBe("1 h 0 min left");
+    expect(holdLeftText(at(23 * 3_600_000 + 59 * 60_000), NOW)).toBe("23 h 59 min left");
+    expect(holdLeftText(at(50 * 3_600_000), NOW)).toBe("2 d 2 h left");
+  });
+
+  it("says the hold ended once its end has passed, and is still open at its exact end, as the vault reads it", () => {
+    expect(holdLeftText(at(0), NOW)).toBe("less than a minute left");
+    expect(holdLeftText(at(-1), NOW)).toBe("ended");
+  });
+
+  it("is null for no hold or a value that is not a time", () => {
+    expect(holdLeftText(null, NOW)).toBeNull();
+    expect(holdLeftText("1.5", NOW)).toBeNull();
   });
 });
