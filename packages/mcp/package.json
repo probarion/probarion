@@ -3,6 +3,19 @@
   "version": "0.1.0",
   "description": "MCP server for Probarion: an agent lists its mandates, dry-runs and requests USDC payments that a NEAR vault contract enforces. No tool takes an address.",
   "license": "MIT",
+  "mcpName": "io.github.probarion/probarion",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ai-agent",
+    "agent-payments",
+    "near",
+    "near-protocol",
+    "usdc",
+    "payments",
+    "probarion"
+  ],
   "type": "module",
   "bin": {
     "probarion-mcp": "./dist/bin.js"
@@ -46,6 +59,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.1.12"
   }

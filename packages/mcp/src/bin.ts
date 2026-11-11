@@ -1,19 +1,35 @@
 #!/usr/bin/env node
 import { homedir } from "node:os";
+import { runCommand } from "./cli.js";
 import { main } from "./main.js";
 import { safeMessage } from "./server.js";
 
-main({
-  env: process.env,
-  home: homedir(),
-  stdin: process.stdin,
-  stdout: process.stdout,
-  stderr: process.stderr,
-})
-  .then((r) => {
-    if (r === 2) process.exit(2);
+const args = process.argv.slice(2);
+
+if (args.length > 0) {
+  // A command for a person (--version, --help, demo). The exit code is set, not forced, so the transcript
+  // is written out in full before the process ends.
+  runCommand(args, { env: process.env, out: process.stdout, err: process.stderr })
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((e: unknown) => {
+      process.stderr.write(`probarion-mcp: fatal: ${safeMessage(e)}\n`);
+      process.exitCode = 1;
+    });
+} else {
+  main({
+    env: process.env,
+    home: homedir(),
+    stdin: process.stdin,
+    stdout: process.stdout,
+    stderr: process.stderr,
   })
-  .catch((e: unknown) => {
-    process.stderr.write(`probarion-mcp: fatal: ${safeMessage(e)}\n`);
-    process.exit(1);
-  });
+    .then((r) => {
+      if (r === 2) process.exit(2);
+    })
+    .catch((e: unknown) => {
+      process.stderr.write(`probarion-mcp: fatal: ${safeMessage(e)}\n`);
+      process.exit(1);
+    });
+}
