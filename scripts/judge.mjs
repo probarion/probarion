@@ -261,8 +261,9 @@ const SNIPPET_OFFLINE_REFUSED =
 
 /**
  * Why the judge must not run this README snippet, or null. It runs only snippets that import nothing but
- * `imports` and hold none of the refused words, so a README edit cannot give a step a key or put the network in
- * an offline step without a reviewed change to this file.
+ * `imports` and hold none of the refused words. That catches a plain README edit that gives a step a key or puts
+ * the network in an offline step. It is a deny-list, not a sandbox: obfuscated code can get past it, so a change to
+ * a README snippet still needs review.
  */
 export function snippetProblem(script, { imports, offline }) {
   if (typeof script !== "string") return "is not text";
@@ -385,7 +386,8 @@ export function mcpDemoOutcome(r, readmeLine) {
   if (c.counts.skipped > 0) {
     const ledger = lines.find((l) => l.startsWith("ledger: could not download "));
     const why = ledger ?? said("skipped").join("; ");
-    if (ledger !== undefined && looksLikeNetworkError(ledger)) {
+    // Only the verify step skips for the network; a second skip has another reason.
+    if (ledger !== undefined && looksLikeNetworkError(ledger) && c.counts.skipped === 1) {
       return { result: "SKIPPED", detail: `the network failed: ${done} ${ledger}` };
     }
     return {

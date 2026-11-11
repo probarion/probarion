@@ -443,6 +443,18 @@ describe("a run", () => {
       ),
     );
     assert.equal(row(noMandate, "mcp-demo").result, "FAIL");
+    // A network skip of the verify does not cover a second skip for another reason.
+    const twoSkips = await judge(
+      [],
+      demo(
+        0,
+        "  result: skipped. No mandate to dry-run\n" +
+          "  ledger: could not download https://probarion.xyz/proof/demo.vaults.probarion.testnet/ledger.jsonl (fetch failed)\n" +
+          "  result: skipped. verify needs the vault's ledger; it was not run\n" +
+          "Done: 6 steps, 4 as expected, 2 skipped. Nothing was signed or sent.\n",
+      ),
+    );
+    assert.equal(row(twoSkips, "mcp-demo").result, "FAIL");
     const differs = await judge(
       [],
       demo(
