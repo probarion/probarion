@@ -16,6 +16,22 @@ The software is an unaudited beta.
 
 ### Added
 
+- The Canary page, `/canary`, has three one-click example messages above the textarea: an invoice for
+  50 USDC, "We changed banks" and "Ignore previous instructions". A chip fills in its fixed text, clears
+  the last answer and stays pressed (`aria-pressed`) while the text is unchanged, and the line under the
+  chips says what that text usually ends as, with the rule id. The invoice is refused by code with
+  `mandate.over_per_payment` and, in raw mode, by the contract with `OverPerPayment`; the other two are
+  refused with `mandate.payee_mismatch`, and raw mode does not send them, since the contract's dry run
+  would accept or hold them. `apps/web/test/db/canary-chips.test.ts` pins those outcomes through the
+  real cycle, with a fully fooled fake model and a fake chain holding the Canary's mandate. "Raw mode on"
+  has a tooltip (on hover, focus or tap; Escape closes it) saying what raw mode sends and its limits: 1
+  per visitor every 10 minutes, 30 an hour in all. A refusal is given in words with its rule id in
+  parentheses (`apps/web/src/lib/canary/reasons.ts`, one reason for each rule of the policy reference).
+  A card under the form replays the team's attempt of 2026-11-10 in three steps: the model's 50 USDC,
+  the code's `invoice.amount_invalid` and `custom.canary_no_autopay`, and the contract's `OverPerPayment`
+  with its transaction. It is shown in every state of the page, and `rehearsal.test.ts` holds each of its
+  values to `docs/evidence/canary-vault`. Rate limits, raw mode and the route are unchanged.
+
 - Release 0.1.1 is prepared, and not published: `@probarion/core`, `@probarion/sdk`, `probarion` and
   `@probarion/mcp` are at 0.1.1, with a `## 0.1.1` section below. `packages/mcp/server.json` is the
   server's entry for the official MCP registry, `io.github.probarion/probarion` (schema 2025-12-11).
