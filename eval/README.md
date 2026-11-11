@@ -149,27 +149,36 @@ The eval needs the built packages: `pnpm install`, then `pnpm --filter @probario
 
 ## Recording the model run (OWNER only)
 
-The OWNER records the model run once, from their own shell at the repo root, with the NEAR AI Cloud key read from a
-key file into the environment variable `NEARAI_API_KEY` without printing it. If the key is not in a file yet, paste
-it with an editor into a new file `.keys/nearai.txt` (git ignores `.keys/`), and delete the file after recording
-if you do not keep keys there.
+The OWNER records the model run once, from their own shell. The NEAR AI Cloud key is the one the web app already
+uses: the line `NEARAI_API_KEY=...` in `apps/web/.env.local` (the variable is listed in `.env.example`). Each
+command below reads that value into the environment variable `NEARAI_API_KEY` for the one run, without printing
+it, and stops before anything is sent to NEAR AI if the line is missing or empty.
 
-In PowerShell (the variable is removed again even if the run is interrupted):
+Run it from the repo root, after the build in "Commands" above: the path to `.env.local` is relative to the root,
+and the root `package.json` maps `pnpm eval:record` to `pnpm --filter @probarion/web eval:record`. The run spends
+NEAR AI Cloud credits on about 19 model calls, one chat completion for each case that reaches the model step.
 
-```powershell
-$env:NEARAI_API_KEY = (Get-Content .keys\nearai.txt -Raw).Trim(); try { pnpm eval:record } finally { Remove-Item Env:NEARAI_API_KEY }
-```
-
-In Git Bash (the variable is set for that one command only):
+In Git Bash (the key is set for that one command only, and the shell variable is removed after it):
 
 ```bash
-NEARAI_API_KEY="$(tr -d '\r\n' < .keys/nearai.txt)" pnpm eval:record
+KEY=$(node.exe -e 'let t="";try{t=require("fs").readFileSync("apps/web/.env.local","utf8")}catch{}const m=t.match(/^NEARAI_API_KEY=(.*)$/m);if(!m||!m[1].trim()){console.error("No NEARAI_API_KEY in apps/web/.env.local: run this from the repo root");process.exit(1)}process.stdout.write(m[1].trim().replace(/^["\x27]|["\x27]$/g,""))') && NEARAI_API_KEY="$KEY" pnpm eval:record; unset KEY
+```
+
+In PowerShell 5.1 (the key lives only inside the script block, and the environment variable is removed again even
+if the run is interrupted):
+
+```powershell
+& { $m = Select-String -LiteralPath apps\web\.env.local -Pattern '^NEARAI_API_KEY=(.*)$' -CaseSensitive -ErrorAction SilentlyContinue | Select-Object -First 1; $k = if ($m) { $m.Matches[0].Groups[1].Value.Trim() -replace '^["'']|["'']$', '' } else { '' }; if (-not $k) { Write-Warning 'No NEARAI_API_KEY in apps\web\.env.local: run this from the repo root'; return }; $env:NEARAI_API_KEY = $k; try { pnpm eval:record } finally { Remove-Item Env:NEARAI_API_KEY } }
 ```
 
 `NEARAI_MODEL` may name the model; without it the recorder picks one from the NEAR AI catalog. The recorder asks
 NEAR AI Cloud about each of the 19 cases that reach the model step (D-01 stops at intake), checks every answer with
 A1 to A8 before it writes `eval/recorded/<id>.json`, never writes or prints the key, and sends no NEAR transaction.
 An answer that fails a check gets no file. A model call that fails is written as a failed call, which the replay
-decides rules-only; if it was a network error, record that case again. The recorder exits 1 in either case, and
-`pnpm eval:record -- --only I-01,I-02` records some cases again. Then run `pnpm eval` (offline) to write the results
-with the model replay, and hand the new files back for review.
+decides rules-only; if it was a network error, record that case again. The recorder exits 1 in either case. To
+record some cases again, run the same command with `pnpm eval:record -- --only I-01,I-02` in place of
+`pnpm eval:record`.
+
+Afterwards, send Claude only the word "done": nothing secret is needed, because the recorded files are written
+under `eval/recorded/`. Claude then runs `pnpm eval` (offline) to write the results with the model replay, and
+reviews them.
