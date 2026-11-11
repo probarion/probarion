@@ -13,9 +13,11 @@ import {
   ledgerEligibility,
   looksLikeSecret,
   MAX_AGENTS,
+  MCP_ON_NPM,
   type OutsideKey,
   parsePastedKey,
   type StatusInput,
+  serverCommand,
   shortKey,
   statusCommand,
   statusRows,
@@ -357,6 +359,14 @@ describe("the transactions the two actions return", () => {
 
 describe("the lines the page shows", () => {
   const VAULT = "research-bot.vaults.probarion.testnet";
+
+  it("shows the npx forms by default, since @probarion/mcp 0.1.1 is on npm", () => {
+    expect(MCP_ON_NPM).toBe(true);
+    expect(serverCommand()).toBe("npx -y @probarion/mcp@0.1.1");
+    expect(initLines(VAULT, "testnet")).toEqual(initLines(VAULT, "testnet", true));
+    expect(statusCommand(VAULT, "testnet")).toEqual(statusCommand(VAULT, "testnet", true));
+    expect(clientConfigs(VAULT, "testnet")).toEqual(clientConfigs(VAULT, "testnet", true));
+  });
 
   it("makes the keys with one npx line once the server is on npm", () => {
     expect(initLines(VAULT, "testnet", true)).toEqual({

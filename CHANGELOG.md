@@ -1,13 +1,12 @@
 # Changelog
 
 All notable changes to this repository: the NEAR contracts in `contracts/`, the npm packages
-`@probarion/core`, `@probarion/sdk` and `probarion` (the CLI), and the web console in `apps/web`.
-The MCP server `@probarion/mcp`, in `packages/mcp`, is not on npm yet.
+`@probarion/core`, `@probarion/sdk`, `probarion` (the CLI) and `@probarion/mcp` (the MCP server, in
+`packages/mcp`), and the web console in `apps/web`.
 
 Versions follow semver. The npm packages share one version, released by the tag `sdk-v<version>`;
-0.1.0 was published on 2026-11-09. 0.1.1, the first release of `@probarion/mcp`, is prepared and not
-published yet: its heading carries the planned tag day, and the OWNER publishes it by pushing the tag
-`sdk-v0.1.1`. A contract crate carries its own version, and each build of it is identified
+0.1.0 was published on 2026-11-09, and 0.1.1, the first release of `@probarion/mcp`, on 2026-11-11.
+A contract crate carries its own version, and each build of it is identified
 by the code hash of its reproducible build in `contracts/code-hashes.json`. The web console is not
 versioned yet, and it deploys from `main` to <https://probarion.xyz>. While the version is 0.x, a minor version may change the API.
 The software is an unaudited beta.
@@ -37,7 +36,7 @@ The software is an unaudited beta.
   to check it, and the docs, the landing page's status list, SECURITY.md, the threat model and the
   runbooks say what ran and what did not. The console and the proof pages still serve testnet only.
 
-- Release 0.1.1 is prepared, and not published: `@probarion/core`, `@probarion/sdk`, `probarion` and
+- Release 0.1.1 was prepared before its publish: `@probarion/core`, `@probarion/sdk`, `probarion` and
   `@probarion/mcp` are at 0.1.1, with a `## 0.1.1` section below. `packages/mcp/server.json` is the
   server's entry for the official MCP registry, `io.github.probarion/probarion` (schema 2025-12-11).
   `pnpm release:check` checks it against the tag and the package's `mcpName`, with `--pack` also
@@ -48,8 +47,9 @@ The software is an unaudited beta.
   annotated tag on `main`, the `npm-release` approval, the npm checks, then `mcp-publisher` with a token
   that can read the organization role, since the registry's device login cannot publish to an
   organization namespace yet, and how to finish a publish that stops at `@probarion/mcp`. The
-  `@probarion/mcp` README says the server is on npm once release 0.1.1 is published and runs from a
-  clone until npm has it. The README's Status table has a row for 0.1.1, In progress.
+  `@probarion/mcp` README said the server would be on npm once release 0.1.1 was published, and the
+  README's Status table had a row for 0.1.1, In progress (both changed with the publish, under
+  Changed).
 
 - `docs/comparison-2026-11.md`: how Probarion compares with NEAR's Agent API, the x402 exact scheme on NEAR, AP2
   and plain caps, cell by cell with the sources read on 2026-11-11, and what Probarion does not have (a budget per
@@ -330,7 +330,7 @@ The software is an unaudited beta.
   - A signed-out tap goes to sign-in and comes back to the same page.
   - The overview's held card links each held spend to its page.
 - `@probarion/mcp`, an MCP server that gives an AI agent a Probarion vault to pay from, in
-  `packages/mcp`. It is not on npm yet and runs from a clone: `node packages/mcp/dist/bin.js`, over
+  `packages/mcp`. It was not on npm then and ran from a clone: `node packages/mcp/dist/bin.js`, over
   stdio. Five tools: `list_mandates` (payee, caps, what is left, uses left, approval threshold,
   expiry), `check_spend` (the vault's free `check_spend` view), `request_spend`, `get_spend_status`
   and `verify`. No tool takes an address, every input rejects fields it does not know, and amounts go
@@ -829,6 +829,24 @@ The software is an unaudited beta.
 
 ### Changed
 
+- Release 0.1.1 is on npm: `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` 0.1.1
+  were published on 2026-11-11 from the tag `sdk-v0.1.1`, and the official MCP registry lists the server
+  as `io.github.probarion/probarion`. What the repository says about npm now matches. The README says so
+  in its banner note, its Status rows for core, the SDK and the CLI (on npm as 0.1.1), the 0.1.1 row
+  (Shipped on 2026-11-11, with the install lines), the MCP server's row and the quick start, which runs
+  the server as `npx -y @probarion/mcp@0.1.1`. `SECURITY.md` supports 0.1.1 and lists `@probarion/mcp` with the other
+  packages. The `@probarion/mcp` README leads with npm and the registry name, and gives each client's npx
+  form next to the build from a clone. The docs pages that named 0.1.0 as the npm release, or said the MCP
+  server is not on npm, say 0.1.1 (Install, the CLI and SDK references, Let an agent pay, Ledger and
+  anchors, the docs home, the developer quickstart, Evaluate in 5 minutes, What is Probarion, What works
+  today, whose "npm release 0.1.1" section replaces the one for 0.1.0, Architecture, For AI agents and
+  Verify a vault); the MCP server stays Preview. The landing's pills read "0.1.1 on npm" for the SDK and
+  CLI and "Tried on testnet, 0.1.1 on npm" for the MCP server. `MCP_ON_NPM` in
+  `apps/web/src/lib/agent/connect.ts` is true, so the console's Agent (MCP) tab gives
+  `npx -y @probarion/mcp@0.1.1` for `init`, `status` and each MCP client, with no clone to build. This
+  file's opening note says both releases are published. The tests that pin these lines follow them, and
+  an install line in the docs may name `@probarion/mcp`.
+
 - `probarion verify --online`: when check e fails because NVIDIA's NRAS token is `not_yet_valid` by this computer's
   clock (a clock a few seconds behind is enough, since `@nearai/inference-sdk` allows no tolerance), the report adds an
   `online hint:` line that says to sync the clock and run again, and prints it on stderr as a warning (with
@@ -890,8 +908,8 @@ The software is an unaudited beta.
   (Preview in the docs), and the README's Status row, its NEAR technology rows, its testnet proof and
   its quick start say what the server and the 402 example do. The Docs Center pages that called the MCP
   server Planned (HTTP API, Let an agent pay, Architecture, For AI agents, What is Probarion, What works
-  today, Security model) now say it is Preview and not on npm. The threat model cites claim
-  `MCP-NOADDR` and drops the MCP server from its planned surfaces.
+  today, Security model) now say it is Preview, and said it was not on npm then. The threat model
+  cites claim `MCP-NOADDR` and drops the MCP server from its planned surfaces.
 - The workspace includes `examples/*`, and the CI pin tests cover `packages/mcp` and
   `examples/402`: their test, build, typecheck and lint scripts, and the publish guard of
   `packages/mcp`.
@@ -1354,7 +1372,7 @@ The software is an unaudited beta.
   sandbox tests and is bumped with the next contract change, since changing `contracts/Cargo.lock`
   makes the recorded code hashes stale. Every alert is in the threat model's review log.
 
-## 0.1.1 - 2026-11-12
+## 0.1.1 - 2026-11-11
 
 ### Added
 
