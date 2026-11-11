@@ -18,6 +18,7 @@ import {
   main,
   type PackageInfo,
   PUBLISHED_DIRS,
+  packedMcpNames,
   parseCliArgs,
   pnpmPackInvocation,
   REPOSITORY_URL,
@@ -527,6 +528,33 @@ describe("checkTarball", () => {
     expect(problems).toContain("0.0.9");
   });
 
+  it("needs the packed mcpName to be server.json's name, when one is asked for", () => {
+    const mcpInfo: PackageInfo = { ...sdkInfo, dir: "packages/mcp", name: "@probarion/mcp" };
+    const packed = (extra: object) =>
+      sdkTarball({
+        "package.json": JSON.stringify({ ...goodManifest(), name: "@probarion/mcp", ...extra }),
+      });
+    const mcpName = "io.github.acme/acme";
+    expect(checkTarball({ info: mcpInfo, files: packed({ mcpName }), internal, mcpName })).toEqual(
+      [],
+    );
+    expect(checkTarball({ info: mcpInfo, files: packed({}), internal, mcpName })).toEqual([
+      '@probarion/mcp: the tarball\'s package.json has no "mcpName", which the MCP registry reads from npm before it lists "io.github.acme/acme"',
+    ]);
+    expect(
+      checkTarball({
+        info: mcpInfo,
+        files: packed({ mcpName: "io.github.acme/other" }),
+        internal,
+        mcpName,
+      }),
+    ).toEqual([
+      '@probarion/mcp: the tarball\'s package.json has "mcpName" "io.github.acme/other", but packages/mcp/server.json names "io.github.acme/acme"; the MCP registry compares the two',
+    ]);
+    // Without an expected name (no server.json) the field is not asked for.
+    expect(checkTarball({ info: mcpInfo, files: packed({}), internal })).toEqual([]);
+  });
+
   it("fails when package.json is missing or not JSON", () => {
     expect(
       checkTarball({ info: sdkInfo, files: sdkTarball({ "package.json": null }), internal }).join(
@@ -705,6 +733,34 @@ describe("inspectTarballs", () => {
     expect(problems).toContain("@probarion/core: probarion-core-0.1.0.tgz was not produced");
     expect(problems).toContain("@probarion/sdk");
     expect(problems).toContain("dist/testing/index.js");
+  });
+
+  it("asks a package for the mcpName it is given, and no other package", () => {
+    writeTarballs();
+    const mcpNames = new Map([["@probarion/sdk", "io.github.acme/acme"]]);
+    expect(inspectTarballs([coreInfo, sdkInfo2], root, mcpNames).problems).toEqual([
+      '@probarion/sdk: the tarball\'s package.json has no "mcpName", which the MCP registry reads from npm before it lists "io.github.acme/acme"',
+    ]);
+  });
+});
+
+describe("packedMcpNames", () => {
+  const manifests = new Map([["packages/mcp", { name: "@probarion/mcp" }]]);
+
+  it("asks the mcp package for server.json's name", () => {
+    expect(
+      packedMcpNames({ manifests, serverJson: { parsed: { name: "io.github.acme/acme" } } }),
+    ).toEqual(new Map([["@probarion/mcp", "io.github.acme/acme"]]));
+  });
+
+  it("asks for nothing without server.json, a valid one or a string name, or without packages/mcp", () => {
+    expect(packedMcpNames({ manifests, serverJson: null }).size).toBe(0);
+    expect(packedMcpNames({ manifests, serverJson: { invalid: "x" } }).size).toBe(0);
+    expect(packedMcpNames({ manifests, serverJson: { parsed: { name: 7 } } }).size).toBe(0);
+    expect(
+      packedMcpNames({ manifests: new Map(), serverJson: { parsed: { name: "io.github.a/b" } } })
+        .size,
+    ).toBe(0);
   });
 });
 
@@ -984,6 +1040,43 @@ describe("main", () => {
       'exports "./testing" → ./dist/testing/index.js is not in the tarball',
     );
     expect(existsSync(join(out, "packages.json"))).toBe(false);
+  });
+
+  it("under --pack, refuses an mcp tarball whose package.json lost the mcpName server.json names", async () => {
+    writeCleanRepo();
+    const mcpManifestAt = (extra: object) =>
+      manifestOf("@probarion/mcp", "0.1.0", {
+        repository: { type: "git", url: REPOSITORY_URL, directory: "packages/mcp" },
+        ...extra,
+      });
+    writeRepo({
+      "packages/mcp/package.json": mcpManifestAt({ mcpName: "io.github.acme/acme" }),
+      "packages/mcp/README.md": "# mcp\n",
+      "packages/mcp/server.json": JSON.stringify({
+        ...goodServer(),
+        version: "0.1.0",
+        packages: [{ ...goodServer().packages[0], version: "0.1.0" }],
+      }),
+    });
+    const prepared = join(root, "prepared");
+    const out = join(root, "out");
+    const env = { npm_execpath: fakePnpm(), FAKE_TARBALLS: prepared };
+    // The repository's manifest has the field; the packed one does not.
+    writeFakeTarballs(prepared, {
+      "probarion-mcp-0.1.0.tgz": tarball(packedBody(mcpManifestAt({}))),
+    });
+    expect(await main(["--pack", "--out", out, "sdk-v0.1.0"], env, root)).toBe(1);
+    expect(stderr.join("")).toContain(
+      '@probarion/mcp: the tarball\'s package.json has no "mcpName", which the MCP registry reads from npm before it lists "io.github.acme/acme"',
+    );
+    expect(existsSync(join(out, "packages.json"))).toBe(false);
+    writeFakeTarballs(prepared, {
+      "probarion-mcp-0.1.0.tgz": tarball(
+        packedBody(mcpManifestAt({ mcpName: "io.github.acme/acme" })),
+      ),
+    });
+    expect(await main(["--pack", "--out", out, "sdk-v0.1.0"], env, root)).toBe(0);
+    expect(stdout.join("")).toContain("3 tarballs checked in");
   });
 
   it("reports a failing pnpm pack", async () => {

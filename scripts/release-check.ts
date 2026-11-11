@@ -432,13 +432,17 @@ function escapeRegExp(value: string): string {
  * bin script has its shebang; no `workspace:` specifier is left and a sibling package is pinned to
  * this release. server.json, the MCP registry entry, is one of the files refused: the registry reads it from the
  * repository (SERVER_JSON).
+ * When `mcpName` is given (the `name` of server.json, for the package the entry lists), the packed manifest must hold
+ * that `mcpName`: the registry reads the field from the version document npm serves, which is this package.json, not
+ * the repository's. An npm version cannot be published twice, so a tarball that lost the field would burn the version.
  */
 export function checkTarball(input: {
   info: PackageInfo;
   files: ReadonlyMap<string, Uint8Array>;
   internal: ReadonlyMap<string, string>;
+  mcpName?: string;
 }): string[] {
-  const { info, files, internal } = input;
+  const { info, files, internal, mcpName } = input;
   const problems: string[] = [];
   const fail = (message: string): void => {
     problems.push(`${info.name}: ${message}`);
@@ -458,6 +462,13 @@ export function checkTarball(input: {
   if (manifest.name !== info.name || manifest.version !== info.version) {
     fail(
       `the tarball's package.json is ${manifest.name}@${manifest.version}, expected ${info.name}@${info.version}`,
+    );
+  }
+  if (mcpName !== undefined && manifest.mcpName !== mcpName) {
+    fail(
+      typeof manifest.mcpName === "string"
+        ? `the tarball's package.json has "mcpName" ${JSON.stringify(manifest.mcpName)}, but ${SERVER_JSON} names ${JSON.stringify(mcpName)}; the MCP registry compares the two`
+        : `the tarball's package.json has no "mcpName", which the MCP registry reads from npm before it lists ${JSON.stringify(mcpName)}`,
     );
   }
 
@@ -534,10 +545,14 @@ export interface PackedEntry {
   file: string;
 }
 
-/** Reads the tarball of every package from `outDir` and checks it. `entries` is the publish list, in order. */
+/**
+ * Reads the tarball of every package from `outDir` and checks it. `entries` is the publish list, in order.
+ * `mcpNames` maps a package name to the `mcpName` its packed manifest must hold (checkTarball).
+ */
 export function inspectTarballs(
   packages: readonly PackageInfo[],
   outDir: string,
+  mcpNames: ReadonlyMap<string, string> = new Map(),
 ): { problems: string[]; entries: PackedEntry[] } {
   const problems: string[] = [];
   const entries: PackedEntry[] = [];
@@ -559,7 +574,10 @@ export function inspectTarballs(
       );
       continue;
     }
-    problems.push(...checkTarball({ info, files, internal }));
+    const mcpName = mcpNames.get(info.name);
+    problems.push(
+      ...checkTarball({ info, files, internal, ...(mcpName === undefined ? {} : { mcpName }) }),
+    );
   }
   return { problems, entries };
 }
@@ -675,6 +693,25 @@ export function entryPointState(
   return /^release-check.[cm]?[jt]s$/.test(basename(argv1)) ? "mismatch" : "imported";
 }
 
+/**
+ * The `mcpName` each packed manifest must hold: server.json's `name`, for the package in packages/mcp. Empty when
+ * there is no server.json, or it has no string `name` (checkServerJson reports that one).
+ */
+export function packedMcpNames(
+  release: Pick<Release, "manifests" | "serverJson">,
+): Map<string, string> {
+  const names = new Map<string, string>();
+  const mcp = release.manifests.get("packages/mcp");
+  const server =
+    release.serverJson !== null && "parsed" in release.serverJson
+      ? release.serverJson.parsed
+      : null;
+  if (mcp?.name !== undefined && isRecord(server) && typeof server.name === "string") {
+    names.set(mcp.name, server.name);
+  }
+  return names;
+}
+
 // ---------- main ----------
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -731,7 +768,7 @@ export async function main(
     const packProblems = packPackages(release.packages, outDir, root, env);
     problems.push(...packProblems);
     if (packProblems.length === 0) {
-      const inspected = inspectTarballs(release.packages, outDir);
+      const inspected = inspectTarballs(release.packages, outDir, packedMcpNames(release));
       problems.push(...inspected.problems);
       if (problems.length === 0) {
         writeFileSync(
