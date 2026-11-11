@@ -27,11 +27,11 @@ import { SampleOffer } from "./SampleOffer";
 const VAULT = "acme.vaults.probarion.testnet";
 const AGENT = `ed25519:${"3".repeat(44)}`;
 
-const mandateForm = (network: Network) =>
+const mandateForm = (network: Network, owner = "alice.testnet") =>
   renderToStaticMarkup(
     createElement(MandateFormPanel, {
       vault: VAULT,
-      owner: "alice.testnet",
+      owner,
       network,
       baseAsset: NETWORKS[network].allowedAssets.base,
       allowedAssets: [NETWORKS[network].allowedAssets.base],
@@ -57,6 +57,13 @@ describe("the mandate form's sample offer", () => {
     expect(link).toMatch(/>Download the sample PO<\/a>$/);
     expect(link).toMatch(/min-h-11/);
     expect(html).toMatch(/5 test USDC a payment, 20 in all, 5 payments, for 30 days, paid to you/);
+  });
+
+  it("wraps a 64-character implicit owner in its monospace span", () => {
+    const implicit = "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b";
+    expect(mandateForm("testnet", implicit)).toMatch(
+      new RegExp(`<span class="[^"]*\\bmono\\b[^"]*\\bwrap-anywhere\\b[^"]*">${implicit}</span>`),
+    );
   });
 
   it("offers nothing on mainnet", () => {

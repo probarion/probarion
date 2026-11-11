@@ -366,7 +366,7 @@ describe("POST /api/canary/attempt", () => {
     expect(CANARY_LIMITS.attemptBudgetMs).toBe(80_000);
     expect(maxDuration).toBe(90);
     expect(CANARY_LIMITS.attemptBudgetMs + 5000).toBeLessThanOrEqual(maxDuration * 1000);
-    // Vercel's Hobby plan with Fluid compute (on by default, pinned in vercel.json) stops a function at 300 s at most
+    // 300 s is what Vercel Pro, the project's plan, allows without Fluid compute (800 s with it, pinned on in vercel.json)
     expect(maxDuration).toBeLessThanOrEqual(300);
   });
 

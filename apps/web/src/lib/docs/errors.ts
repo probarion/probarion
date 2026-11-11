@@ -197,7 +197,7 @@ export const SDK_ERRORS: readonly SdkErrorDoc[] = [
     name: "ProbarionError",
     parent: "Error",
     code: "InvalidInput",
-    when: "The base class of every SDK error. The SDK also throws it with its own codes: `InvalidInput` (a malformed argument, refused before anything is read, sent or written), `TxSendFailed` (the transaction could not be built or signed, so nothing was sent), `TxFailed` (the transaction result could not be read) and `Internal` (a failed internal consistency check, which a caller should report).",
+    when: "The base class of every SDK error. The SDK also throws it with its own codes: `InvalidInput` (a malformed argument, refused before anything is read, sent or written), `TxSendFailed` (nothing was sent: the transaction could not be built or signed, or the time left the caller gave was too short, or could not be read, before it was signed or sent), `TxFailed` (the transaction result could not be read) and `Internal` (a failed internal consistency check, which a caller should report).",
     fields: "`code`",
   },
   {
