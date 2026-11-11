@@ -45,10 +45,45 @@ describe("the committed eval results", () => {
       for (const file of recordings) {
         const id = file.slice(0, -".json".length);
         const r = replay.cases.find((x) => x.id === id);
-        expect(r?.model?.status, id).toBe("replayed");
+        // A failed call is recorded as such, and replayed as the SDK decides it: rules-only.
+        const failure = "failure" in JSON.parse(committed(`${RECORDED_DIR}/${file}`));
+        expect(r?.model?.status, id).toBe(failure ? "call_failed" : "replayed");
       }
     },
   );
+
+  it("send nothing in the rules-only run, and say that this holds by construction", () => {
+    for (const r of results.runs.rules_only.cases) expect(r.spend, r.id).toBe("none");
+    expect(committed(RESULTS.markdown)).toContain("nothing can be sent, by design");
+  });
+});
+
+describe("the layers of the committed results", () => {
+  const rulesOnly = (id: string) => {
+    const r = results.runs.rules_only.cases.find((x) => x.id === id);
+    if (r === undefined) throw new Error(`no case ${id}`);
+    return r;
+  };
+
+  it("do not credit the contract with a ZeroAmount the code's reader caused", () => {
+    for (const id of ["I-01", "I-03", "I-06", "A-01", "A-03"]) {
+      const r = rulesOnly(id);
+      expect(r.contract, id).toMatchObject({ refuses: "ZeroAmount", stops_on_its_own: false });
+      expect(r.stopped_by, id).not.toContain("contract");
+    }
+    expect(rulesOnly("A-02").contract).toMatchObject({
+      refuses: "OverPerPayment",
+      stops_on_its_own: true,
+    });
+    expect(rulesOnly("A-02").stopped_by).toContain("contract");
+  });
+
+  it("write the contract's answer for the duplicate the intake guard stops, as its layers say", () => {
+    const d01 = rulesOnly("D-01");
+    expect(d01.stage).toBe("duplicate");
+    expect(d01.contract).toMatchObject({ refuses: "DuplicateInvoice", stops_on_its_own: true });
+    expect(d01.stopped_by).toEqual(["intake", "code", "contract", "owner"]);
+  });
 });
 
 describe("the runner's mirror of the pipeline", () => {

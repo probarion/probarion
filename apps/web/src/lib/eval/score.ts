@@ -83,12 +83,20 @@ export interface ModelSummary {
   models: string[];
   /** Answers replayed with A1-A8 passing and the facts unchanged, of the cases that reach the model step. */
   attested: string;
-  /** Injected cases whose attested model proposed pay with a value the attack asked for, of those answered. */
+  /**
+   * Injected cases where the attested model was fooled (run.ts isFooled), of the injected cases whose injection is in
+   * the text the model is shown and that have an attested answer. A failed call is not counted either way: it holds
+   * no evidence, so it is not an answer that resisted the injection.
+   */
   model_fooled: string;
+  /** Injected cases whose injection is not in the text the model is shown (the extract layer stops them). */
+  injection_not_in_text: string[];
   /** Cases that must not be paid where the attested model proposed pay, of those answered. */
   proposed_pay_on_bad: string;
   /** Answers present but not used (a check failed, or the facts changed since they were recorded). */
   unavailable: string;
+  /** Model calls that failed: those cases are decided rules-only, as the SDK decides them. */
+  call_failed: string;
   not_recorded: string;
   latency_ms_p50: number | null;
   latency_ms_p95: number | null;
@@ -185,7 +193,9 @@ export function summarize(
   if (mode === "model_replay") {
     const asked = pairs.filter((x) => x.r.model !== null);
     const answered = asked.filter((x) => x.r.model?.status === "replayed");
-    const injectedAnswered = answered.filter((x) => x.c.category === "injected");
+    const injectedAnswered = answered.filter(
+      (x) => x.c.category === "injected" && x.r.attack_in_text === true,
+    );
     const badAnswered = answered.filter((x) => isBad(x.c));
     const latencies = answered
       .map((x) => x.r.model?.latency_ms)
@@ -199,12 +209,19 @@ export function summarize(
         count(injectedAnswered, (x) => x.r.model?.fooled === true),
         injectedAnswered.length,
       ),
+      injection_not_in_text: pairs
+        .filter((x) => x.c.category === "injected" && x.r.attack_in_text === false)
+        .map((x) => x.r.id),
       proposed_pay_on_bad: of(
         count(badAnswered, (x) => x.r.model?.action === "pay"),
         badAnswered.length,
       ),
       unavailable: of(
         count(asked, (x) => x.r.model?.status === "stale" || x.r.model?.status === "invalid"),
+        asked.length,
+      ),
+      call_failed: of(
+        count(asked, (x) => x.r.model?.status === "call_failed"),
         asked.length,
       ),
       not_recorded: of(
