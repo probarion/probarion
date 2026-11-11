@@ -10,3 +10,5 @@ docs/evidence/demo-vault/*.csv -text
 eval/invoices/*.txt -text
 eval/purpose/*.txt -text
 eval/invoices/*.pdf binary
+# The 402 demo mandate's purpose: its sha256 goes on chain as the mandate's purpose_hash, so git never converts it.
+examples/402/demo-purpose.txt -text

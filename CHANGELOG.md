@@ -27,6 +27,25 @@ The software is an unaudited beta.
   files, and `docs/evidence/demo-vault/payments-2026-11-09.csv` is the demo vault's, made from its
   snapshot by a test. The Mandates docs page says the payee needs no NEAR: it only receives USDC, and
   there is no NEP-366 relayer.
+- `examples/402`: negotiation, receipts and a one-line demo. The paywall has a list price and a floor
+  (the least it takes, kept out of every answer), and `POST /counter` takes one counter per quote:
+  below the quote and at or above the floor it answers with a new quote at the countered price;
+  otherwise `409`. When a quote is above what a live mandate can pay (its cap per payment, or what is
+  left of its total when less), the agent counters once at that limit and pays the new quote, or
+  walks away without calling `request_spend`; under a mandate with no payment left it does not
+  counter, and Probarion's refusal names the reason. The payee still comes from the mandate, and the
+  quote parser still refuses unknown lines. After a paid `200` the agent checks the data against a
+  schema and the `data_sha256` the seller states, and appends a line to `receipts.jsonl` (quotes,
+  list and paid price, spend, what `request_spend` answered, transaction, ledger seq, check, time); a
+  failed check is recorded as failed, and the money is not refunded. The paywall builds the paid
+  answer before it marks the quote used, so data it cannot build leaves the payment redeemable.
+  `pnpm --filter @probarion/example-402 run demo` runs a walk-away, a negotiated sale with its payout
+  and a refused call on the SDK's test double chain, with no network and no keys, even when keys are
+  in the environment, and prints its elapsed time (about a second here); `run demo --testnet`, with a
+  vault and its keys in the environment, runs the same calls on testnet. On 2026-11-11 `run demo
+  --testnet` ran on `percall.vaults.probarion.testnet` (spend 21 paid 0.01 for a 0.012 list price); its
+  output, receipt, ledger, snapshot and verify report are in `docs/evidence/402-vault`.
+
 - `/proof/<vault>` lists every decision of the ledger under the checks, newest first. For a decision
   made with model output it shows what the ledger records the TEE saw and signed, and what the code
   and the contract checked, with A1 to A7 run on the page's snapshot and a fixed line on what they

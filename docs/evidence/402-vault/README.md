@@ -1,4 +1,4 @@
-# The 402 example on testnet, 2026-11-09
+# The 402 example on testnet, 2026-11-09 and 2026-11-11
 
 `percall.vaults.probarion.testnet` is a vault created through the testnet factory for the
 [pay-per-call example](../../../examples/402). An endpoint charged 0.01 test USDC per call; an agent paid each
@@ -72,3 +72,35 @@ npx probarion verify --offline docs/evidence/402-vault/snapshot-2026-11-09.json
 [`ledger-2026-11-09.jsonl`](ledger-2026-11-09.jsonl) is the vault's ledger after the run: 41 entries, 21
 decisions and 20 payment results. To read the chain again:
 `npx probarion verify --network testnet --vault percall.vaults.probarion.testnet --ledger docs/evidence/402-vault/ledger-2026-11-09.jsonl`.
+
+## The negotiation demo, 2026-11-11
+
+The same vault ran `pnpm --filter @probarion/example-402 run demo --testnet` (commit `5e9052a` of the example,
+with negotiation, the data check and receipts). Its output is
+[`demo-run-2026-11-11.txt`](demo-run-2026-11-11.txt); this machine's file paths are replaced by their names.
+
+Mandate 2, "402 demo: list 0.012, counter 0.01, 1 call": pays `probarion-payee.testnet`, at most 0.01 USDC a
+payment and 0.01 in all, 1 payment, until 2026-12-31. Its purpose hash is the sha256 of
+[`examples/402/demo-purpose.txt`](../../../examples/402/demo-purpose.txt).
+
+| Call | Result |
+| --- | --- |
+| 1, `GET /premium` at 0.05 | The agent countered once at 0.01, the mandate's limit; the seller answered `409 below_floor`. The agent walked away and asked for no payment |
+| 2, `GET /forecast` at 0.012 | The agent countered once at 0.01 and the seller sent a new quote at 0.01. Spend 21 paid it; the data's sha256 matched the seller's and its schema checked. One receipt line: [`receipts-2026-11-11.jsonl`](receipts-2026-11-11.jsonl) |
+| 3, `GET /basic` at 0.01 | Refused by code, rule `mandate.uses_exhausted`, before any transaction; the contract's own `check_spend` answered `UsesExhausted` |
+
+`request_spend` was called twice (calls 2 and 3), and the run took 18.8 s.
+
+| What | Transaction |
+| --- | --- |
+| The owner signs mandate 2 | [`5f867zmH…`](https://testnet.nearblocks.io/txns/5f867zmHbG25vT1Jm2NAjzGj9Ya6cG9nbkAbcYejuhR2) |
+| Spend 21, paid 0.01 USDC under mandate 2 | [`22y24wF4…`](https://testnet.nearblocks.io/txns/22y24wF4ZML4gokYfYJiM7NGn1Cd6XURecxfeG3m5iZE) |
+
+[`verify-2026-11-11.txt`](verify-2026-11-11.txt) read the chain after the run: checks a to i pass, `RESULT: PASS`,
+with 44 entries, 23 anchors and 21 spends, each bound to its own decision.
+[`ledger-2026-11-11.jsonl`](ledger-2026-11-11.jsonl) is the ledger after the run, and
+[`snapshot-2026-11-11.json`](snapshot-2026-11-11.json) the snapshot that run wrote:
+
+```bash
+npx probarion verify --offline docs/evidence/402-vault/snapshot-2026-11-11.json
+```
