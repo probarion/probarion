@@ -207,10 +207,11 @@ describe("ConnectAgentPanel for the owner", () => {
     expect(render({ facts: null })).toBe("");
   });
 
-  it("numbers the steps in gold-small, the brand's colour for step numbers", () => {
+  it("numbers the steps in gold-ink, the small-text gold that reads at 7:1 on a console page", () => {
     const html = render();
-    expect(html).toMatch(/<span class="[^"]*text-gold-small[^"]*">Step 1 of 6<\/span>/);
-    expect(html).not.toMatch(/text-gold-ink[^"]*">Step \d of 6/);
+    expect(html).toMatch(/<span class="[^"]*text-gold-ink[^"]*">Step 1 of 6<\/span>/);
+    // Not gold-small (5.9:1 on paper): every text colour on a console page reads at 7:1 (console-kit.test.ts).
+    expect(html).not.toMatch(/text-gold-small[^"]*">Step \d of 6/);
   });
 
   it("runs the check from a form, so Enter works, and announces each result in a status region mounted with the page", () => {

@@ -92,7 +92,7 @@ export interface ConnectAgentPanelProps {
 }
 
 const muted = "text-mute";
-const eyebrow = "mb-1 block text-xs font-semibold tracking-[.16em] text-gold-small uppercase";
+const eyebrow = "mb-1 block text-xs font-semibold tracking-[.16em] text-gold-ink uppercase";
 /** Below 480px a row of links fills the width, one pill per line, as the mockup draws it. */
 const pillRow = "max-[480px]:w-full";
 /** A wallet button that fills its column on a phone (TxButton's own button, not its small unlock link). */
