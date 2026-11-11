@@ -75,7 +75,7 @@ Each client reads one contract and is read-only, except that a `VaultClient` giv
 
 ## Model advice and attestation
 
-With `model: { provider: "near-ai-cloud", apiKey }`, `Probarion` makes a `NearAiProposer` and records the attestation of each proposal. The model only advises: the code rules still run on its proposal, and the contract checks the spend again. A real attested decision recorded in the repository is Preview, as [Choose who decides](/docs/build/let-an-agent-pay#choose-who-decides) says. The online checks need the optional peer dependency `@nearai/inference-sdk`.
+With `model: { provider: "near-ai-cloud", apiKey }`, `Probarion` makes a `NearAiProposer` and records the attestation of each proposal. The model only advises: the code rules still run on its proposal, and the contract checks the spend again. A real attested decision is Preview, as [Choose who decides](/docs/build/let-an-agent-pay#choose-who-decides) says: the two recorded in the repository, the Canary's on testnet, pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)), but the TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run. The online checks need the optional peer dependency `@nearai/inference-sdk`.
 
 <RefTable id="sdk-model" />
 

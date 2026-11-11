@@ -1,0 +1,9 @@
+INVOICE
+Invoice number: EVB-2101
+Date: 2026-11-10
+From: Eval Vendor B
+Payee: eval-vendor-b.testnet
+Purchase order: PO-4102
+
+Support, weeks 44 and 45    140.00 USDC
+Total due: 140.00 USDC

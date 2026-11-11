@@ -71,6 +71,10 @@ describe("probarion-mcp main", () => {
       clientInfo: { name: "test", version: "0" },
     });
     expect(init.result).toMatchObject({ serverInfo: { name: "probarion" } });
+    // The instructions come from the config the binary loaded: no keys set means read-only, on testnet.
+    const instructions = (init.result as { instructions?: unknown }).instructions;
+    expect(instructions).toEqual(expect.stringContaining("request_spend is off"));
+    expect(instructions).toEqual(expect.stringContaining("on testnet, intents-stub"));
     s.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
     const list = await request(s, 2, "tools/list", {});
     const names = (list.result as { tools: { name: string }[] }).tools.map((t) => t.name);

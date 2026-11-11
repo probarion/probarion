@@ -1827,8 +1827,28 @@ describe("the owner's Confirm and Reject on the fake chain", () => {
             ? "has the ledger file to download first, then run"
             : "has the ledger file and the one-time setup, then run",
         );
+        // G4: while the proof page is private there is no audit link; once it is public, the link opens this
+        // decision's card on it, by the spend the contract created.
+        expect(paid).not.toContain("Audit link:");
+        expect(paid).not.toContain(`/proof/${SCENARIO_VAULT}#`);
+        await setTenantSettings(h.db, member.tenant_id, { proofPublic: true });
+        const spendId = r.outcome.spendId;
+        expect(spendId).toEqual(expect.any(Number));
+        const audited = await html(row.id);
+        expect(audited).toMatch(
+          new RegExp(
+            `Audit link: <a [^>]*href="/proof/${SCENARIO_VAULT.replaceAll(".", "\\.")}#spend-${spendId}"`,
+          ),
+        );
+        expect(audited).toContain("Anyone with the link can open it.");
+        // The member-only parts of the page are unchanged.
+        expect(audited).toContain("Paid on NEAR");
+        expect(audited).toContain("Confirmed by the owner owner.testnet");
       } finally {
-        await setTenantSettings(h.db, member.tenant_id, { zeroRetention: false });
+        await setTenantSettings(h.db, member.tenant_id, {
+          zeroRetention: false,
+          proofPublic: false,
+        });
         member = (await memberRole(h.db, SCENARIO_VAULT, OWNER)) as MemberTenant;
       }
     });

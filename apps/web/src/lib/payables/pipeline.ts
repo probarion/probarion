@@ -25,11 +25,14 @@ export type { InvoiceUpload } from "./upload";
 // contract enforces; this file only feeds them and records what they did.
 
 /**
- * How long one cycle holds the tenant's `process` lease. It must outlast the longest cycle (the route's
- * `maxDuration`, 60 s) with a margin: the lease fence stops a late release, not an overrun that overlaps the next
- * cycle. route.test.ts checks it against the route's `maxDuration`.
+ * How long one cycle holds the tenant's `process` lease. It must outlast the longest cycle by at least 30 s, so a second
+ * worker can never take a row over while the first one can still run: the console upload's `maxDuration` is 90 s, and
+ * the owner's Confirm (confirm.ts) runs in a page whose `maxDuration` is 60 s. The lease fence stops a late release, not
+ * an overrun that overlaps the next cycle. route.test.ts and payables-confirm.test.ts check it against both. The SQL's
+ * own default (90 s, migration 0002's tenant_lease) is only for a caller that names no length: withLease always passes
+ * this one.
  */
-export const PROCESS_LEASE_SECONDS = 90;
+export const PROCESS_LEASE_SECONDS = 120;
 
 /** What the pipeline needs from the SDK's `Probarion` (and what tests fake). */
 export interface ProbarionLike {

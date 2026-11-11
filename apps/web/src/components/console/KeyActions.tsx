@@ -26,7 +26,7 @@ type Keep = (prev: KeepState, formData?: FormData) => Promise<KeepState>;
  * keys page does not read the vault's free NEAR, so it never adds the top-up suggestion. Set at
  * display time, so a result read back after a reload says the same.
  */
-function signerFirst(outOfNearCodes: string[]): DescribeResult {
+export function signerFirst(outOfNearCodes: string[]): DescribeResult {
   return (r) => {
     const v = consoleOutOfNear(r.code, outOfNearCodes, false);
     return v === null ? undefined : { detail: v.text };
@@ -112,6 +112,26 @@ export function KeyKeepButton({ keep }: { keep: Keep }) {
   );
 }
 
+export const LEDGER_HELD_ELSEWHERE =
+  "The vault's ledger key is held outside Probarion, by your own agent. A ledger key made here replaces it, and that agent then refuses every payment. Hosted Payables needs a vault of its own.";
+const LEDGER_MAYBE_ELSEWHERE =
+  "The vault's keys could not be read, so it is not known whether your own agent holds its ledger key. If it does, a ledger key made here replaces it, and that agent then refuses every payment.";
+export const REPLACE_OUTSIDE_LEDGER_CONFIRM =
+  "Replace a ledger key held outside Probarion? The agent that holds it can no longer anchor, and refuses every payment from this vault. Hosted Payables needs a vault of its own.";
+export const REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM =
+  "The vault's keys could not be read. If your own agent holds its ledger key, a new one here replaces it, and that agent then refuses every payment from this vault. Go on?";
+
+/**
+ * The danger confirm before a ledger key made in the console may replace one the user's own agent holds: when the
+ * chain says so (true), or when it could not be read (null), which the text says as unknown. Undefined when the
+ * vault's ledger key is the console's own (false).
+ */
+export function outsideLedgerConfirm(heldElsewhere: boolean | null): string | undefined {
+  if (heldElsewhere === true) return REPLACE_OUTSIDE_LEDGER_CONFIRM;
+  if (heldElsewhere === null) return REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM;
+  return undefined;
+}
+
 /** Owner only (the page renders it for the owner; the actions check again). */
 export function KeyActions(props: {
   vault: string;
@@ -122,6 +142,11 @@ export function KeyActions(props: {
   ledgerStuck: boolean;
   /** What the vault's code can do about a stuck ledger key (W-T10-R3); used only while it is stuck. */
   vaultCode: VaultCode;
+  /**
+   * The vault's ledger key is on chain but has no key row: the user's own agent holds it (the Agent (MCP) tab). Null
+   * when the chain could not be read, which is treated as a maybe.
+   */
+  ledgerHeldElsewhere: boolean | null;
   outOfNearCodes: string[];
   generate: Generate;
   sync: Sync;
@@ -180,6 +205,11 @@ export function KeyActions(props: {
                 up first.
               </Notice>
             ) : null}
+            {props.ledgerHeldElsewhere === true ? (
+              <Notice tone="bad">{LEDGER_HELD_ELSEWHERE}</Notice>
+            ) : props.ledgerHeldElsewhere === null ? (
+              <Notice tone="warn">{LEDGER_MAYBE_ELSEWHERE}</Notice>
+            ) : null}
             {props.ledgerActive ? (
               <Notice tone="warn">
                 This vault already has an active ledger key. A new one replaces it: the old key can
@@ -193,10 +223,12 @@ export function KeyActions(props: {
               lockKey={lockKeyFor(`keys:new-ledger:${props.vault}`)}
               prepare={() => props.generate("ledger", "ledger")}
               confirm={
-                props.ledgerActive
+                outsideLedgerConfirm(props.ledgerHeldElsewhere) ??
+                (props.ledgerActive
                   ? "Replace the vault's ledger key? The current one is removed from the vault."
-                  : undefined
+                  : undefined)
               }
+              confirmTone={props.ledgerHeldElsewhere !== false ? "danger" : undefined}
               describe={describe}
               onResult={onResult}
             />

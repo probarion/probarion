@@ -252,7 +252,8 @@ const EVIDENCE: Readonly<Record<string, readonly (readonly [string, RegExp])[]>>
     ["contracts/vault/src/spend.rs", /ext_intents::ext\(self\.intents\.clone\(\)\)/],
   ],
   "console>vault": [
-    ["apps/web/src/app/api/console/[vault]/invoices/route.ts", /makeTenantProbarion\(/],
+    ["apps/web/src/app/api/console/[vault]/invoices/route.ts", /makePayablesProbarion\(/],
+    ["apps/web/src/lib/payables/probarion.ts", /makeTenantProbarion\(/],
     ["apps/web/src/lib/payables/pipeline.ts", /loadActiveSecretFor\([\s\S]*?mandate\.agent_pk/],
   ],
   "console>database": [
@@ -649,7 +650,12 @@ describe("the hosted app's settings and keys", () => {
   it("sign on the server only as a vault, with its own sealed keys, or as the testnet faucet", () => {
     const { senders, probarions } = serverSigners();
     expect(senders.length).toBeGreaterThan(0);
-    expect([...new Set(senders)].sort()).toEqual(["FAUCET_SIGNER", "tenant.vault_id"]);
+    // lib/payables/probarion.ts builds the SDK's own senders for an upload (`o.tenant.vault_id`): the same tenant vault.
+    expect([...new Set(senders)].sort()).toEqual([
+      "FAUCET_SIGNER",
+      "o.tenant.vault_id",
+      "tenant.vault_id",
+    ]);
     expect(probarions.length).toBeGreaterThan(0);
     for (const v of probarions) expect(["o.tenant.vault_id", "tenant.vault_id"], v).toContain(v);
     const faucet = read("apps/web/src/lib/topup/faucet.ts");

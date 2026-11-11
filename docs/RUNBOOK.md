@@ -195,7 +195,7 @@ Then post "Resolved".
 | Agent key (a function-call key that can call `spend` only) | Hosted vault: sealed in the database. SDK or CLI: the operator's `PROBARION_AGENT_KEY` | Suspected leak, allowance nearly used up | Hosted: on the Keys page, "Generate agent key and add it in my wallet" (1 yoctoNEAR); create new mandates for the new key, because every mandate is bound to one agent key; then "Remove" the old key and revoke its mandates ([rotation runbook](ops/key-rotation.md#steps), step 7). SDK: `node packages/cli/dist/bin.js agent keygen --out <file>`; `agent add --pk <new pk>` (1 yoctoNEAR); for each mandate of the old key, a new one bound to the new key (`mandate create ... --agent-pk <new pk>`, with its storage deposit); then `mandate revoke --mandate <id>` for each old mandate and `agent remove --pk <old pk>` (1 yoctoNEAR each). Each call is printed for **OWNER SIGNS**; until the new mandates exist, the agent cannot pay. |
 | Ledger key (a function-call key that can call `anchor` only) | Hosted vault: sealed in the database. SDK or CLI: `PROBARION_LEDGER_KEY` | Suspected leak, allowance nearly used up | Anchor first: entries after the last anchor must be signed by the new key. Hosted: "Generate ledger key and set it in my wallet" on the Keys page. SDK: `node packages/cli/dist/bin.js ledger set-key --pk <new pk> --allowance <near>` (default 0.25 NEAR), **OWNER SIGNS** with 1 yoctoNEAR, then set `PROBARION_LEDGER_KEY` and restart. The vault deletes the previous ledger key. Each anchor records its ledger key, so entries signed before the rotation keep verifying. |
 | `KEY_ENCRYPTION_SECRET` (the master key that seals agent keys, the ledger key and retained invoices) | Vercel, Production (and a Preview that shares the database) | Suspected leak, or someone who knew it leaves | Follow the [rotation runbook](ops/key-rotation.md): `pnpm --filter @probarion/web rotate-keys` as a dry run, then `--apply`, then switch the variable in Vercel and redeploy. Side effects: everyone is signed out; extension connections stay (their tokens are a sha256, not sealed under the master): end them as in the Extension tokens row when the incident calls for it; the Telegram webhook secret changes, so re-run `pnpm --filter @probarion/web telegram-webhook`; the stop links in earlier alert emails stop working; Canary visitor limits start over. The invoice-number key changes (it is derived from `KEY_ENCRYPTION_SECRET`, `apps/web/src/lib/payables/number-key.ts:6-7,22`), so a re-uploaded invoice is no longer matched by its number to invoices uploaded before the rotation; the text fingerprint (an unkeyed sha256, `apps/web/src/lib/payables/pipeline.ts:239`) still catches identical text. If the master leaked, also replace every agent and ledger key (step 7 of the rotation runbook). |
-| Extension tokens (`pbx_…`, one per connected browser) | Wherever the token was handed to: the extension's storage, once the extension ships. The database keeps a sha256 of the token and its last four characters, with the account, network, browser name and times, not the token itself (`public.extension_tokens`) | Browser lost or shared, or a token suspected leaked | The owner presses Revoke on the Browser extension page (`/extension`) of that network's address. Every token at once (OWNER, SQL editor), the pairing codes first and in one transaction, so that a code being exchanged meanwhile cannot leave a live token: `begin; delete from public.extension_pair_codes; update public.extension_tokens set revoked_at = now() where revoked_at is null; commit;`. A new `KEY_ENCRYPTION_SECRET` does not end them. If a console session may be stolen, end the sessions first (a new `KEY_ENCRYPTION_SECRET` signs everyone out): until then that session can mint new tokens and pairing codes. A pairing code it already showed still turns into a token for up to 10 minutes, with no session, and Revoke ends tokens only. So then either end every token with the SQL in this row, which deletes the pairing codes first, or wait at least 10 minutes from the moment the sessions ended, so that every code the session showed has expired, then revoke its tokens on `/extension` and check Connected browsers again, at the address of the network the session was stolen on (each network's address, if unsure). |
+| Extension tokens (`pbx_…`, one per connected browser) | Wherever the token was handed to: the extension's storage (`chrome.storage.local`) in the browser it connected. The database keeps a sha256 of the token and its last four characters, with the account, network, browser name and times, not the token itself (`public.extension_tokens`) | Browser lost or shared, or a token suspected leaked | The owner presses Revoke on the Browser extension page (`/extension`) of that network's address. Every token at once (OWNER, SQL editor), the pairing codes first and in one transaction, so that a code being exchanged meanwhile cannot leave a live token: `begin; delete from public.extension_pair_codes; update public.extension_tokens set revoked_at = now() where revoked_at is null; commit;`. A new `KEY_ENCRYPTION_SECRET` does not end them. If a console session may be stolen, end the sessions first (a new `KEY_ENCRYPTION_SECRET` signs everyone out): until then that session can mint new tokens and pairing codes. A pairing code it already showed still turns into a token for up to 10 minutes, with no session, and Revoke ends tokens only. So then either end every token with the SQL in this row, which deletes the pairing codes first, or wait at least 10 minutes from the moment the sessions ended, so that every code the session showed has expired, then revoke its tokens on `/extension` and check Connected browsers again, at the address of the network the session was stolen on (each network's address, if unsure). |
 | `TELEGRAM_BOT_TOKEN` | Vercel | Leak | @BotFather `/revoke`, the new token in Vercel (Sensitive), redeploy, then re-run `pnpm --filter @probarion/web telegram-webhook` ([alerts](ops/alerts.md#telegram-owner)). |
 | `SUPABASE_SERVICE_ROLE_KEY` | Vercel, server only | Leak | The project uses Supabase's `sb_secret_...` keys, not the legacy JWT keys. Replace the secret key in the dashboard's API keys settings (check its steps on first use), set the new value in Vercel and redeploy. |
 | `CRON_SECRET` | Vercel; also the Supabase Vault entry `cron_secret` when the per-minute job is on | Leak | A new value (`openssl rand -hex 32`; at least 32 characters) in Vercel, and in `cron_secret` only if the per-minute job exists ([watcher](ops/watcher.md#turn-on-the-per-minute-schedule-once)). Redeploy. |
@@ -377,11 +377,78 @@ that kind. The OWNER fixes it by hand in the SQL editor (`vault_id` is unique ac
 update public.tenants set kind = '<team|external|canary>' where vault_id = '<vault>';
 ```
 
+### Invoice stuck in processing
+
+SEV3. The signs are the console's "Outcome unknown: do not resend" on an invoice, and an upload of the same
+invoice refused with 409 `duplicate` and `status: "processing"`. Two flows set a row to `processing` and can
+leave it there: an upload (`/api/console/<vault>/invoices`), and the owner's Confirm on an invoice that waited
+for the owner (the invoice page's server action, `apps/web/src/lib/payables/confirm.ts`, which then tells the
+owner that the outcome is unknown and not to confirm again). The flow's function stopped during the cycle (a
+timeout or a crash), or it could not write the outcome (the log line `payables.outcome_not_recorded`), or a
+Confirm whose cycle failed could not set the row back (`payables.confirm_not_reverted`). The upload gives the
+model at most 40 s and starts any transaction by 60 s of its 90 s (`apps/web/src/lib/payables/budget.ts`), so
+a slow model alone ends in a hold for the owner, not here. The Confirm's reads have no such cap inside its
+page's 60 s. No reconcile job is built yet, so the row stays in `processing` until the OWNER looks the outcome
+up by hand.
+
+1. In Vercel, find the request and its log lines; they carry the request id. For an upload:
+   `payables.decided`, `payables.failed`, `payables.outcome_not_recorded` and `sdk.warn`. For a Confirm:
+   `payables.confirmed`, `payables.confirm_failed`, `payables.confirm_not_reverted`,
+   `payables.outcome_not_recorded` and `sdk.warn`.
+2. Read the row's ref in the SQL editor:
+
+   ```sql
+   select i.id, i.ref, i.invoice_hash, i.status, i.mandate_id, i.request_id, i.created_at, i.outcome, i.error, t.id as tenant_id
+   from public.invoices i join public.tenants t on t.id = i.tenant_id
+   where t.vault_id = '<vault>' and i.status = 'processing' order by i.created_at;
+   ```
+
+3. Look the spend up on chain by that ref. `list_spends` returns at most 100 spends a page, oldest first;
+   page with `from_index` until a spend's `ref` matches, then read that spend by its id (`network-config
+   mainnet` for a mainnet vault). The MCP tool `get_spend_status` with `{ "spend_id": <id> }` reads the same.
+   `get_mandate` gives the mandate's `approval_above`, which step 5 needs.
+
+   ```bash
+   near contract call-function as-read-only <vault> list_spends json-args '{"from_index":0,"limit":100}' network-config testnet now
+   near contract call-function as-read-only <vault> get_spend json-args '{"spend_id":<id>}' network-config testnet now
+   near contract call-function as-read-only <vault> get_mandate json-args '{"mandate_id":<mandate_id>}' network-config testnet now
+   ```
+
+4. Read the invoice's ledger entries by its hash:
+
+   ```sql
+   select seq, kind, body->>'at' as at, body->>'request_id' as request_id, body->>'verdict' as verdict,
+          body->>'decided_by' as decided_by, body->>'mandate_id' as mandate_id, body->>'amount' as amount,
+          body->'contract' as contract
+   from public.ledger_entries
+   where tenant_id = '<tenant_id>' and body->>'invoice_hash' = '<invoice_hash>' order by seq;
+   ```
+
+5. What it means. The last `decision` entry (the highest `seq`) is the one that counts: an invoice that waited
+   for the owner has the upload's decision first and the Confirm's after it. The SDK sends a spend only after a
+   decision, and a `hold` sends one too when the contract would itself hold the amount (an `amount` above the
+   mandate's `approval_above`): the spend then goes to the vault for its approver.
+   - A spend with the ref: that spend's status is the outcome (`Paid`, `Held` for an approver, `Failed`,
+     and so on). Do not pay the invoice again by any other route.
+   - No spend, and the last decision is `allow`, or `hold` with an `amount` above the mandate's
+     `approval_above`: the spend may have been sent and may still land (as `Held` for an approver after a
+     hold). Look again once 48 hours have passed since the decision (`UNKNOWN_SETTLE_MS` in the SDK) before
+     you treat it as not sent.
+   - No spend, and the last decision is `refuse`, or `hold` with an `amount` at or below the mandate's
+     `approval_above`: nothing was sent.
+   - No `decision` entry: the cycle stopped before it decided, and nothing was sent.
+6. Leave the row as it is: a hand-edited status could let the same invoice be decided again. Tell the owner
+   what you found. The same text, or the same invoice number for that payee, stays refused while the row
+   is in `processing`. Only once step 5 has found that nothing was sent (for a spend that may still land:
+   the second look, after the 48 hours, found no spend with the ref) can the owner run the flow again, by
+   uploading an invoice with another number. Until then, a second invoice could pay the same bill twice.
+
 ## Watcher and owner alerts
 
 - **Schedule.** `apps/web/vercel.json` runs `/api/cron/watch` daily at 00:00 UTC and `/api/cron/metrics`
-  daily at 00:10 UTC, because the Vercel Hobby plan takes daily crons only. The watcher runs every minute
-  only once the OWNER turns on the Supabase job `probarion-watch`
+  daily at 00:10 UTC. Daily is a choice: Vercel Pro, which the project's team is on, also accepts hourly
+  or per-minute schedules ([run the usage numbers hourly](ops/metrics.md#run-it-hourly-instead)). The
+  watcher runs every minute only once the OWNER turns on the Supabase job `probarion-watch`
   ([per-minute schedule](ops/watcher.md#turn-on-the-per-minute-schedule-once)); one job serves both
   networks. A Payables upload and a Canary attempt also ask the watcher to look at their own vault right
   after they answer.
@@ -545,7 +612,8 @@ Run it after the promotion that brings the crons to Production. Every step is th
 2. Promote, wait for the Production build, and apply the migrations it carries (above). Before anyone adds
    an alert, run the watcher once by hand (step 4).
 3. Vercel, Settings, Cron Jobs lists exactly `/api/cron/watch` (`0 0 * * *`) and `/api/cron/metrics`
-   (`10 0 * * *`). How late within its hour the Hobby plan runs a daily cron: check on first use.
+   (`10 0 * * *`). Vercel Pro, which the project's team is on, schedules a cron to the minute: check on
+   first use how late it actually runs.
 4. From your own terminal, with `CRON_SECRET` from the password manager:
 
    ```bash

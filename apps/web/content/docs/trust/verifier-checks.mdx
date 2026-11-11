@@ -126,7 +126,7 @@ O1 checks each attested decision's TDX quote through Intel DCAP, and requires de
 node packages/cli/dist/bin.js --network testnet verify --vault <vault> --online
 ```
 
-O1 and O2 run only on `model+rules` decisions that carry an attestation report. No real one has been recorded yet, and a ledger written with `model: null` has none. On such a ledger the run prints `online: O1 and O2 did not run (no attested decision in this ledger)` under the rows and as a warning on stderr, and check e keeps its offline result.
+O1 and O2 run only on `model+rules` decisions that carry an attestation report. The Canary's ledger of 2026-11-10, published in the repository, holds two real ones, which passed O1 and O2 on 2026-11-11 ([online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt), [evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)), and a ledger written with `model: null` has none. On such a ledger the run prints `online: O1 and O2 did not run (no attested decision in this ledger)` under the rows and as a warning on stderr, and check e keeps its offline result.
 
 O1 and O2 are part of check e, not checks of their own. An online failure fails e, and they never turn an offline failure into a pass. When the package cannot be loaded, the report says `online: O1 and O2 did not run (<reason>)` and e keeps its offline result. `--online` also looks burns up in FastNEAR's transaction index, and it cannot be combined with `--offline`.
 
@@ -143,7 +143,7 @@ What this cannot prove: that the TEE hardware is honest, that the POA bridge ope
 - **Entries after the last anchor** are checked against the ledger key only. No anchor pins them yet. See [The gap after the last anchor](/docs/concepts/ledger-and-anchors#the-gap-after-the-last-anchor).
 - **Historical mandate state.** A mandate's remaining amount and status at decision time need archival chain state. When A8 runs (the SDK's `verify()` with `invoiceTexts`), its mandate match reports a difference there as a note in check e's detail, not a failure. The CLI does not run A8, so it never shows the note.
 - **Testnet has no real bridge.** A cross-chain burn on testnet does not leave NEAR.
-- **No recorded real decision yet.** The NEAR AI Cloud adapter is tested against a fake NEAR AI Cloud. No real attested decision has been recorded and verified yet.
+- **Real attested decisions do not show which image ran.** The NEAR AI Cloud adapter is tested against a fake NEAR AI Cloud. On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two real attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)). The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run, since the ledger holds no invoice text.
 - **No check judges a decision.** Check d ties each spend to its own decision. The verifier does not run the policy again.
 - **No third party has audited the code.** Check f shows which build runs, not that the build is free of bugs.
 

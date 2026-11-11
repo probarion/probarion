@@ -1,5 +1,6 @@
 import type { VaultErrorCode } from "@probarion/core";
 import { CANARY_LIMITS } from "@/lib/canary/limits";
+import { PAYABLES_TIME } from "@/lib/payables/budget";
 
 export interface VaultErrorDoc {
   /** What went wrong, in one sentence. */
@@ -197,7 +198,7 @@ export const SDK_ERRORS: readonly SdkErrorDoc[] = [
     name: "ProbarionError",
     parent: "Error",
     code: "InvalidInput",
-    when: "The base class of every SDK error. The SDK also throws it with its own codes: `InvalidInput` (a malformed argument, refused before anything is read, sent or written), `TxSendFailed` (the transaction could not be built or signed, so nothing was sent), `TxFailed` (the transaction result could not be read) and `Internal` (a failed internal consistency check, which a caller should report).",
+    when: "The base class of every SDK error. The SDK also throws it with its own codes: `InvalidInput` (a malformed argument, refused before anything is read, sent or written), `TxSendFailed` (nothing was sent: the transaction could not be built or signed, or the time left the caller gave was too short, or could not be read, before it was signed or sent), `TxFailed` (the transaction result could not be read) and `Internal` (a failed internal consistency check, which a caller should report).",
     fields: "`code`",
   },
   {
@@ -433,7 +434,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 404,
     code: "not_found",
-    where: "Proof files (snapshot.json, ledger.jsonl), Top-up API (faucet)",
+    where: "Proof files (snapshot.json, ledger.jsonl, payments.csv), Top-up API (faucet)",
     meaning:
       "There is no proof to give: the vault id is not a NEAR account id, nobody registered the vault, or its proof page is not public and you are not a member. The faucet answers it at any address but testnet's, and to anyone but the vault's owner, so a vault id is not confirmed.",
     next: "Check the vault id, or sign in as a member of the vault if its proof page is not public; for the faucet, sign in as the vault's owner at the testnet address.",
@@ -450,7 +451,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     code: "busy",
     where: "Console invoices API, Canary attempt API",
     meaning: "Another invoice for this vault, or another Canary attempt, is being processed.",
-    next: `Wait until the other run has finished, then send it again: an invoice upload can take up to 60 s and a Canary attempt up to ${CANARY_LIMITS.attemptBudgetMs / 1000} s.`,
+    next: `Wait until the other run has finished, then send it again: an invoice upload can take up to ${PAYABLES_TIME.routeMs / 1000} s and a Canary attempt up to ${CANARY_LIMITS.attemptBudgetMs / 1000} s.`,
   },
   {
     status: 409,

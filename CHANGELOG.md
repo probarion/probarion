@@ -14,6 +14,246 @@ The software is an unaudited beta.
 
 ### Added
 
+- `docs/comparison-2026-11.md`: how Probarion compares with NEAR's Agent API, the x402 exact scheme on NEAR, AP2
+  and plain caps, cell by cell with the sources read on 2026-11-11, and what Probarion does not have (a budget per
+  period per mandate, a USD budget, a timelock, webhooks, a gas relayer). The README has a four-row summary under
+  "Why it is different".
+- Known gaps (THREAT_MODEL, SECURITY, the MCP README): `verify` does not run the policy again, so a program that
+  holds both the agent key and the ledger key can skip `decide()` and still pass, inside the mandate. Run
+  `@probarion/mcp` as another OS user or in a container when the agent host has a shell tool, and keep
+  `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY` out of a client config the agent can read.
+
+- The Canary's signed ledger, published as evidence in `docs/evidence/canary-vault`:
+  `ledger-2026-11-10.jsonl`, the vault's whole ledger as it stood on 2026-11-11, which the owner
+  exported read-only: 5 entries from the team's own three attempts of 2026-11-10 and no visitor's.
+  Beside it are `snapshot-2026-11-11.json`, the snapshot a live `verify` with that ledger wrote, and
+  the run's output, `verify-2026-11-11.txt`, which passed checks a to i. Check e finds 2 decisions by
+  NEAR AI Cloud's `z-ai/glm-5.3-flash` that are attested and signed and pass A1 to A7 offline.
+  `verify-online-2026-11-11.txt` is a live run with `--online` the same day, at 07:43 UTC, which also
+  passed the online checks O1 and O2 on both: each TDX quote is a genuine Intel TDX quote (Intel
+  DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose report data holds the
+  signing address and the entry's nonce, and NVIDIA NRAS verified each GPU payload, which carries
+  that nonce. The TEE measurement is not pinned, so this does not show which model image ran, and A8
+  was not run, since the ledger holds no invoice text. A first online attempt failed O2 with
+  `not_yet_valid`, because the computer's clock was about 3 s behind NVIDIA's, and passed after a
+  clock sync. The folder's README lists the 5 entries, with what the model proposed and what the
+  code and the contract did, says what check e shows offline and online and what it does not, and
+  gives the offline command, the live one and the online one; the live and online ones stop passing
+  check c once the Canary anchors an entry the file does not have. The CLI's `verify --offline`
+  refuses `--online`, so O1 and O2 do not run on the snapshot from the CLI; the SDK's
+  `verify({ snapshot, online: true })` runs them on a snapshot it is given. The README, SECURITY.md,
+  the threat model and the docs pages that said no real attested decision was recorded now say this
+  with its date and its limits, and link the evidence and the online output; those docs pages list
+  both files among their sources. The privacy page and the home page's model step say it in short,
+  with the date and the limits, and the status row "Live attested model run" reads "Checked online
+  on testnet, image not pinned", and stays Preview. `apps/web/test/canary-vault.test.ts` runs the
+  checks on the committed snapshot, holds the README's table to the ledger cell by cell, pins the
+  online run's output, and pins what the README, SECURITY.md, the threat model, the privacy page, the
+  docs pages, this entry and the rehearsal's rows say about it.
+
+- `pnpm judge` (`scripts/judge.mjs`): one read-only command for a screener or a judge, run after
+  `pnpm install --frozen-lockfile`. It builds the four packages, then runs steps 0 and 2 to 6 of the
+  README's 5-minute evaluation, the eval check and the per-package tests of core, sdk, cli, mcp and
+  `examples/402`. The claims check runs offline and online; the README's step 2 and step 4 snippets and
+  its step 6 commands run as written, and their output is compared with the README's; `verify --offline`
+  runs on every committed snapshot in `docs/evidence`; the demo vault, `v0.probarion.testnet` and the
+  Canary are verified live, read-only, and the demo vault's live ledger must start with the committed
+  one; the MCP demo and the 402 demo run. Each step quotes the README line it proves, found again at
+  run time, and prints one row: PASS, EXPECTED-FAIL (the Canary verified without its ledger fails check c, and
+  `v0.probarion.testnet` fails d and h, as the README says; any other result there is a FAIL), SKIPPED
+  with the reason and the command, or FAIL. It exits 0 only when no step failed and writes
+  `judge-report.json` (gitignored): the claim, README line, command, result, expectation, time and
+  detail of each step, with the commit, Node and OS. `--offline` makes no network call, `--quick` skips
+  the tests and `--json` prints the report. SKIPPED is only for a step not run here (the flags, the
+  network down, a timeout, 429 or 5xx); a definite wrong answer, such as the proof page answering 404 or
+  the MCP demo skipping its verify for that reason, is a FAIL, and the MCP demo row passes only when its
+  6 steps answer as expected or with a note. The package rows give the README's dated test count next to
+  today's, and the `examples/402` row checks that every test of `test/pay-per-call.test.ts` passed.
+  Child processes get no `PROBARION_*` variable and no other variable named like a secret, the MCP demo
+  runs with an empty home folder so its server finds no keys file, and a README snippet that names a key
+  (or, in an offline step, reaches the network) is refused before it runs. AGENTS.md and the README's
+  5-minute section start with it, and
+  `.github/workflows/judge.yml` runs `pnpm judge --offline --quick` daily and on pushes to `main`, with
+  read-only permissions and the actions pinned at the SHAs of `ci.yml`. The web console's tests and the
+  Rust tests are listed as known skips with their commands.
+
+- The eval's adversary run: the model fully fooled. For each of the 20 invoices the proposal is what
+  the invoice asks a fooled model to do (the attack's own amount, account and mandate for the six
+  injected ones, the wrong action the invoice presents for the eight that must not be paid, the right
+  action for the six clean ones), marked attested with confidence 1, through the same `decide()`,
+  contract mirror, `execute()` and owner wait as the other runs. Offline and deterministic, with no
+  model and no key. Result: "model fully fooled: money moved wrongly 0/20 (0.00 USDC)"; 14/20
+  proposals are wrong and the code's rules refuse all 14 (the contract layer, the checks.rs
+  mirror's refusals only, stops 4 of them on its own, and the owner rule holds or refuses 8). `eval/results/adversary.md` gives every case's proposal, decision, contract answer,
+  money (count and USDC) and stopping layers, with what each result assumes: I-02's injection is
+  not shown to a model; D-01 is decided as if the intake guard missed it; P-01, P-02 and D-02 rest on
+  one code rule each; and a model fooled only into approving the visible invoice pays I-02, I-04 and
+  I-05 their own total (430.00 USDC to the mandate's payee), counted as paid rightly. A test tries
+  over 5,000 other attested proposals across the 20 cases and finds none that moves money wrongly.
+  `eval:check` holds the new file and `latest.json` to the code. The layer tables now label the
+  contract row "contract (checks.rs mirror, refusals only)" and say why the payee cases are not
+  among its stops: a spend names no destination, so the contract pays the mandate's payee. In the
+  adversary run the extract layer counts only text that does not reach the code, since the adversary
+  obeys I-02's injection although the reader drops it. The attack log gives each case's layers per
+  run: the adversary line has its own, and the last line says which run it is for.
+
+- `@probarion/mcp` gives the client server instructions for the model when it connects (the MCP
+  `instructions` field; each client decides whether its model sees them), under 1,200 characters.
+  Where a tool description or an answer note already states a rule, the instructions use the same
+  sentence from a shared constant, and a test compares them, so those rules cannot drift; a few
+  words of their own orient the model. The rules: only the payee of an active mandate bound to the
+  server's key can be paid, with no recipient parameter; `check_spend` first when unsure, since it
+  sends no transaction (its description now says so in those words); each ref and each invoice
+  hash pays at most once; poll a `held` spend until it leaves held or its `held_until` passes,
+  after which the contract approves no hold, and do not send it again (the `request_spend` note
+  for a hold now says the same); an `unconfirmed` spend may have paid, so do not resend it under a
+  new ref; a refusal is final for that request; `burned` is final for the vault and does not
+  change, worded for the server's network. A server with no keys adds that `request_spend` is off,
+  and that refusal now says no agent and ledger keys are set (a keys file counts too) in place of
+  naming the two environment variables.
+
+- `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
+  (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
+  label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision
+  and why, each spend bound to it with its status on chain, when the snapshot read the chain, the
+  spend transaction with its explorer link, the invoice's SHA-256 and the ledger seq. The header row
+  is the same in every file, and the capture time is also in the file name. The file is the route's
+  own snapshot, like snapshot.json, so it can be older or newer than the page's. RFC 4180 with a UTF-8 BOM and
+  CRLF, and an apostrophe before any `=`, `+`, `-`, `@`, tab or CR that starts a cell: at the start
+  of a field, and after a `;` or a line break in it, for Excel in locales that split on semicolons.
+  Same access and rate limit as snapshot.json. The HTTP API reference now lists the three proof
+  files, and `docs/evidence/demo-vault/payments-2026-11-09.csv` is the demo vault's, made from its
+  snapshot by a test. The Mandates docs page says the payee needs no NEAR: it only receives USDC, and
+  there is no NEP-366 relayer.
+- `examples/402`: negotiation, receipts and a one-line demo. The paywall has a list price and a floor
+  (the least it takes, kept out of every answer), and `POST /counter` takes one counter per quote:
+  below the quote and at or above the floor it answers with a new quote at the countered price;
+  otherwise `409`. When a quote is above what a live mandate can pay (its cap per payment, or what is
+  left of its total when less), the agent counters once at that limit and pays the new quote, or
+  walks away without calling `request_spend`; under a mandate with no payment left it does not
+  counter, and Probarion's refusal names the reason. The payee still comes from the mandate, and the
+  quote parser still refuses unknown lines. After a paid `200` the agent checks the data against a
+  schema and the `data_sha256` the seller states, and appends a line to `receipts.jsonl` (quotes,
+  list and paid price, spend, what `request_spend` answered, transaction, ledger seq, check, time); a
+  failed check is recorded as failed, and the money is not refunded. The paywall builds the paid
+  answer before it marks the quote used, so data it cannot build leaves the payment redeemable.
+  `pnpm --filter @probarion/example-402 run demo` runs a walk-away, a negotiated sale with its payout
+  and a refused call on the SDK's test double chain, with no network and no keys, even when keys are
+  in the environment, and prints its elapsed time (about a second here); `run demo --testnet`, with a
+  vault and its keys in the environment, runs the same calls on testnet. On 2026-11-11 `run demo
+  --testnet` ran on `percall.vaults.probarion.testnet` (spend 21 paid 0.01 for a 0.012 list price); its
+  output, receipt, ledger, snapshot and verify report are in `docs/evidence/402-vault`.
+
+- `/proof/<vault>` lists every decision of the ledger under the checks, newest first. For a decision
+  made with model output it shows what the ledger records the TEE saw and signed, and what the code
+  and the contract checked, with A1 to A7 run on the page's snapshot and a fixed line on what they
+  leave open: the TDX quote needs `verify --online`, A8 needs the invoice. Each card has the audit
+  anchor `#seq-N`, and `#spend-N` for each spend bound to it, and check (e) links to the section.
+  Past the newest 20, a decision shows its summary line and anchors; `?seq=N` opens its full card.
+- The console's Payables invoice page links its decision's card on the vault's proof page (Audit
+  link) when that page is public.
+- `scripts/check-claims.mjs` (`pnpm check:claims`), a checker of the README's claims that runs
+  straight after `git clone` with Node alone: no install, no build and, offline, no network. It
+  reads README.md and AGENTS.md (links also in SECURITY.md, CONTRIBUTING.md and the evidence) and
+  checks that each link and anchor resolves, each transaction hash and account is in
+  `contracts/deployments`, `docs/mainnet-proof.json` or `docs/evidence`, each Status row has a known
+  marker and an existing path, each path, `pnpm` script and script command exists, and the versions,
+  counts and other facts it knows match the code, with exactly one `probarion-claim:` marker for each
+  claim id of section 17 of the interfaces spec, and the summary line the README quotes has the
+  shape the checker prints (a `<n>` for each count). It checks claims, not whether the code works.
+  It exits 0 when every claim matches, 1 when one does not (printed as `file:line [check] what is
+  wrong`) and 2 when it cannot run. Without the full git history (a shallow clone) it skips the
+  claims about the git history, and its last line says so. `--online` adds read-only checks of the
+  chain (the named vaults' code hash and keys; that each cited transaction exists, was signed by an
+  account the records name, a `spend` by the vault itself, and shows the error code, event or memo
+  its row gives), the site's health route, the Chrome Web Store item and npm, and exits 2 when an
+  endpoint does not answer. CI runs it offline through the real-repository test in
+  `scripts/check-claims.test.mjs`, which fails on any claim that does not match; the ts job of
+  `.github/workflows/ci.yml` checks out the full history (`fetch-depth: 0`), so the git-history
+  claims are checked there too, and `scripts/ci-workflow.test.mjs` pins that checkout. The README's
+  evaluation starts with it as step 0. Its first run found three claims,
+  fixed where they are written: the short text of the INV-2003 approve transaction in the README
+  ended in FJf instead of NCJf; `trial.vaults.probarion.testnet`, the vault that Create a vault made
+  with Meteor on 2026-11-05, was in no record and is now under `trial_vault` in
+  `contracts/deployments/testnet.json` with its `create_vault` transaction; and `EVAL-REGRESSION` had
+  no marker, which is now on the eval:check test in `apps/web/test/eval/replay.test.ts`.
+- `@probarion/mcp`: `probarion-mcp init`, a keys file, and `probarion-mcp status`, so the agent's keys
+  stay on the user's machine and an MCP client's config needs only `PROBARION_VAULT_ID`.
+  `init --vault <id> [--keys-file <path>]` makes the agent key and the ledger key and writes them to
+  `~/.probarion/<vault>/keys.json` (format `probarion-mcp-keys/1`, mode 0600, opened with `wx` so an
+  existing file is kept: a second run checks it and prints the same public keys). The file and, outside
+  Windows, each folder it adds an entry to are synced before the public keys are printed. It prints only
+  the two public keys, the `probarion agent add` and `probarion ledger set-key` lines (the console's Agent
+  (MCP) tab gets no link until it is live, and the console does not serve mainnet yet), and that a backup of
+  the folder holds the two secret keys, with the CLI's Windows and git warnings. The server and `status` take
+  their keys from both `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY`, else the file
+  `PROBARION_KEYS_FILE` names (which must exist), else the default keys file, else run read-only. One key
+  from the environment with the other from a file is refused, and the server's first line on stderr names
+  the source. A keys file must be for this vault and its network, with each secret key matching its public
+  key and two different keys; a problem names the file and the field, with no value from the file. The
+  vault id is checked as a NEAR account id before it goes into a path. `status` only reads, and prints ok,
+  not yet or fail for the keys (a keys file other users can read fails, outside Windows), the vault (not
+  frozen), the agent key (a function-call key limited to `spend`, with allowance left), the ledger key (the
+  vault's, limited to `anchor`), an active mandate bound to the agent key, the vault's USDC, and the local
+  ledger against the latest anchor (the single-writer check, run dry), with one next step when not ready:
+  the first fail that has one, else the first not yet. Exit code 0 when ready, 1 when not, 2 for a
+  configuration error. `init` and `status` print their commands the way the binary was started (`node` and
+  the path of `bin.js` from a clone), and a usage error echoes only a flag or a word, so a secret key passed
+  as an argument by mistake is named by its position alone. The README's set-up is now init, the owner's
+  two keys, status, and the client's config; keys in the client's config stay as the fallback.
+- `@probarion/mcp`: the single-writer guard before `request_spend` also checks that the server's own ledger
+  key signed every entry after the vault's latest anchor, and refuses with `LEDGER_KEY_MISMATCH`, sending
+  nothing, when another key did (a keys file swapped while the ledger file stayed). The vault's next anchor
+  would cover those entries under the current ledger key, and `verify` check a would fail for them.
+  `status` runs the same check, says to anchor such entries with their key before the owner sets the new
+  one, and does not suggest a new ledger key for a vault that another process anchors from its own ledger.
+- The console's Agent (MCP) tab, `/console/<vault>/agent`, after Keys: the owner connects their own
+  AI agent (Claude Code, Claude Desktop, Cursor or Codex) to the vault through the MCP server. Built,
+  not tried yet.
+  - The agent makes its two keys on its own machine (`init`). The owner pastes only their public
+    keys, and the page refuses a pasted secret key in the browser, so it is not sent. The agent
+    key's label is public on the vault, so the page and the server action refuse a label that holds
+    a key (`ed25519:`, or a base58 run of 40 characters or more), and the field does not cut a long
+    paste. Two owner-only server actions read the chain again at click time and return `add_agent`
+    and `set_ledger_key` for the member's own vault, with the vault kind's gas allowances, for the
+    owner's wallet to sign. Nothing is stored: these keys have no database row.
+  - A vault has one ledger, so the ledger key is withheld from a vault whose ledger another writer
+    keeps: hosted Payables (its active ledger key, its entries, or a ledger key it made) or anchors
+    signed by another key. On testnet the page then links "Create a vault for this agent"; on
+    mainnet it says vaults cannot be created there yet. An unused ledger key is replaced only after
+    a danger confirm.
+  - Steps 5 and 6 give each client's settings, which carry only `PROBARION_VAULT_ID`, with the
+    Windows form for each client, and a status card read from the chain: both keys and their gas
+    left, an active mandate for the key, the vault's USDC, and who keeps the ledger. A vault id
+    that ends in neither `.near` nor `.testnet` also gets `NEAR_NETWORK`, in the settings and in
+    the `init` and `status` lines. Until `@probarion/mcp` 0.1.1 is on npm (`MCP_ON_NPM` in
+    `apps/web/src/lib/agent/connect.ts`), the page builds the server from a clone. Approvers and
+    viewers see the status card only.
+  - "Check these keys" runs from a form, so Enter works, moves the focus to the first field with an
+    error, and says its result in a status region. Before anything is pasted, step 3 shows the keys
+    the chain already has, as step 6 does.
+  - `probarion-mcp init` and `status` link the tab on testnet. `status` offers it for the ledger key
+    only on a vault with no anchor yet; otherwise it gives the `probarion ledger set-key` transaction.
+- The Keys tab lists the keys on the vault that Probarion did not make, under "On the vault, held
+  outside Probarion", with their allowance and Remove for an agent key. When the vault's ledger key
+  is one of them, "Generate ledger key and set it in my wallet" shows a red notice and asks in a
+  danger dialog first, as a ledger key made there would stop that agent. When the vault's keys
+  could not be read, that dialog says it is not known whether the user's own agent holds the
+  ledger key.
+- The landing's status list adds the Agent (MCP) tab to the console's "Built, not tried yet" row.
+- The overview's "Your first agent payment" card offers its keys step two ways, hosted Payables on
+  Keys or your own AI agent on Agent (MCP), and ticks it when the chain shows an agent key and a
+  ledger key that the console did not make.
+- `@probarion/mcp`: `probarion-mcp demo [--vault <id>]`, a read-only tour of the five tools against
+  the live testnet demo vault. It needs no key and signs and sends nothing. It shows the tools and
+  their fields, the live caps, the contract's `check_spend` answers (ok, held, `OverPerPayment`), an
+  injected `to` field refused by the schema, a paid spend, and verify on the public ledger. A frozen
+  vault is reported as a note (exit 0); an RPC that does not answer marks `list_mandates`,
+  `get_spend_status` and `verify` as failed, skips the dry runs, and prints the server log (exit 1).
+  Also `--version` and `--help`.
+- `@probarion/mcp`: `mcpName` `io.github.probarion/probarion` and keywords in package.json (still
+  0.1.0), and README setup for Claude Code, Codex CLI, Claude Desktop and Cursor, with the Windows
+  `cmd /c` forms.
 - A testnet record of the Canary, in `docs/evidence/canary-vault`: its accounts, its mandate, the
   2026-11-10 rehearsal whose raw spend the contract refused with `OverPerPayment`, and a live
   `verify` run with its snapshot. The run passes check f (no full-access key, only the ledger key and
@@ -75,7 +315,7 @@ The software is an unaudited beta.
     ed25519 secret key, and an RPC URL must be `https://` (`http://` only on this machine) with no
     user name or password; a problem is named by its variable, with no value. Errors and log lines pass
     through a filter that masks secret keys and cuts every URL to its origin.
-  - 91 tests, among them an end-to-end run over the SDK's fake chain and a stdio JSON-RPC session.
+  - 103 tests, among them an end-to-end run over the SDK's fake chain and a stdio JSON-RPC session.
 - The pay-per-call example in `examples/402` (a private workspace package, testnet only). An HTTP
   endpoint answers `402 Payment Required` with a quote: a price, a payee and a short text. An agent
   pays the text's sha256 through `@probarion/mcp` under a mandate, with `402:<quote id>` as the ref,
@@ -541,9 +781,39 @@ The software is an unaudited beta.
   it replays no model and runs only on a sandbox. The
   README's safety architecture and attack 7 of the threat model cite it, and the threat model's known
   gaps add the first two.
+- Eval: 20 synthetic invoices (6 prompt-injected, 4 PDFs) run offline through the production reader,
+  fact reader, mandate choice and `decide()` with the pipeline's custom rules, plus mirrors of the
+  SQL intake duplicate guard, the SDK's `execute()` and the pipeline's owner wait; no transaction is
+  built or sent. Rules-only results are committed: the code layer alone stops 8/8 of the invoices
+  that must not be paid, with 0/20 false refusals, and 9/20 are held for the owner. In rules-only
+  nothing can be sent by design, so its money moved wrongly (0/20) is not a result. The model replay
+  is not recorded yet (the OWNER runs `pnpm eval:record`; a failed model call is recorded and decided
+  rules-only, as the SDK does). See `eval/README.md`.
 
 ### Changed
 
+- `probarion verify --online`: when check e fails because NVIDIA's NRAS token is `not_yet_valid` by this computer's
+  clock (a clock a few seconds behind is enough, since `@nearai/inference-sdk` allows no tolerance), the report adds an
+  `online hint:` line that says to sync the clock and run again, and prints it on stderr as a warning (with
+  `--json`, only there). Check e still fails; the hint is not a result. Only the SDK's own failure message at the
+  start of check e's detail adds it, so text from a ledger cannot.
+- The grey text on `/proof/<vault>` (the decision cards, each check's detail, the model note and the
+  limits line under A1 to A7) uses the mute token, 7:1 or more on paper.
+- The browser extension is on the Chrome Web Store as version 0.1.0
+  (https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn). The README
+  (Status row Shipped), the extension's README, the store pack, What works today, the HTTP API and
+  architecture docs, the threat model and `/privacy` say so and link the listing. What works today
+  keeps it at Preview, with the server half it calls, because no end-to-end run with a real wallet
+  against this deployment is recorded yet. The threat model covers the extension's own permissions
+  and storage, `SECURITY.md` lists `apps/extension` in scope, `/privacy` is dated 2026-11-11 (`/terms`
+  keeps 2026-11-10), and the Browser extension page (`/extension`) gains an Add to Chrome link.
+  Loading it unpacked stays the way to run it from source.
+- Docs: the text says the team is on Vercel Pro. The crons in `apps/web/vercel.json` still run once a
+  day, by choice; Pro also accepts hourly or per-minute schedules, and the runbooks say what to change
+  for those. A 90 s Canary attempt fits Pro with or without Fluid compute, which stays pinned on.
+- The Canary evidence (`docs/evidence/canary-vault/README.md`) names the mandate's purpose document,
+  the sample PO-1001, whose SHA-256 matches the `purpose_hash` read from the chain, and lists the
+  vault's 11 transactions from `create_vault` to the rehearsal, each confirmed by RPC.
 - The Canary is open on NEAR testnet at `/canary` on probarion.xyz, in live mode, since
   2026-11-10. Its vault is `canary.vaults.probarion.testnet`, with one mandate that pays
   `probarion-payee.testnet` at most 1 test USDC a payment and holds every spend. In the team's
@@ -765,6 +1035,48 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- Console: an invoice upload keeps to one time budget counted from the request's start
+  (`apps/web/src/lib/payables/budget.ts`). The NEAR AI calls share 40 s from the first one, each
+  capped by what is left, and they end by 50 s from the start whatever the start took, so a slow
+  model decides rules-only and the invoice waits for the owner with nothing sent. The chain reads
+  before the first transaction stop at 60 s. A read refused there sends nothing: a context read or
+  the `check_spend` dry run stops the upload as an `error` that a new upload runs again, a refused
+  POA balance read holds the decision on `intents.balance_low`, and a refused anchor read leaves
+  the anchor to the next cycle. From the first transaction on, nothing changes: the send keeps the
+  SDK's own timing. Before, the SDK's defaults (90 s for the chat alone) could outlast the route's
+  60 s, and a function stopped mid-cycle left the row in `processing`, which blocks a new upload, with
+  no time left for the watcher kick. The route's `maxDuration` goes from 60 s to 90 s, planned as
+  10 s for the start, 40 s for the model, 10 s for the decision and its dry run, 10 s for the send,
+  the anchor and the row, and 20 s for the watcher kick after the answer. The kick now gets the
+  function's end (the route's start plus 90 s), so after a late answer (a slow send) it claims fewer
+  alerts instead of starting a send that the platform cuts off. The tenant lease goes from 90 s to
+  120 s, 30 s longer than the route; the route's 90 s stays under the 2 minutes after which the
+  alerts' SQL takes a sending alert back. No migration and no new setting. Tests pin the sums, the
+  lease against the route, and the route against the SQL; the budget and the kick's end counted from
+  the route's start, past a slow session and mandates read; a late answer that shortens the kick's
+  alerts, on a fake clock; and, with the real SDK on PGlite, a 70 s model held for the owner with
+  nothing sent. At the route, with a stubbed cycle, the kick is asked for before the cycle runs. The
+  RUNBOOK's "Invoice stuck in processing" covers an upload or an owner's Confirm left there: how to
+  read the row's ref, look its spend up on chain, and tell from the last decision whether a spend
+  can still land.
+
+- `@probarion/mcp`: the burned outcome no longer tells the agent to poll `get_spend_status`. A burn
+  is final for the vault: the agent must not resend it under any ref, and should tell the owner if
+  the payee reports nothing. On mainnet the bridge releases the funds and Probarion does not watch
+  that release yet; on testnet the note says intents-stub stands in for NEAR Intents and nothing
+  leaves NEAR. Spend outcomes, the developer quickstart, the glossary and the SDK README say the
+  same.
+- Console: a long account id (a 64-character implicit account, or a long named one) wraps inside the
+  confirmation dialog, such as "Create vault in my wallet", and in the mandate form, where it made the
+  dialog scroll sideways. The shared `ConfirmDialog` wraps its title, body and footnote anywhere.
+- SDK: `NearApiJsSender` with `sendTimeoutMs` as a function starts no step (signing, the send, a
+  status lookup) when the caller has less than 50 ms left or the function throws. Before, such an
+  answer became a 1 ms deadline and the transaction was still sent, so a spend could land while the
+  caller was told its outcome was unknown. A signing or send that does not start is `TxSendFailed`
+  (nothing was sent); after an `InvalidNonce` the node confirmed, it is that refusal; a lookup that
+  does not start keeps the outcome unknown, with its tx hash. The Canary counts the first case as
+  `no_time`. A deadline longer than a timer holds (about 24.8 days) is cut to that, where Node.js
+  fired it after 1 ms. New tests in `packages/sdk/test/deadline.test.ts` pin each case.
 - SDK: `RpcClient` and `NearAiProposer` do not start a call with less than 50 ms of the caller's
   `remainingMs` left, where they refused only at 0. A timer can fire about 1 ms before `Date.now()`
   reaches the deadline, so a call sent with what was left could only time out: a test in

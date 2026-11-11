@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import { ConnectedBrowsers } from "@/components/extension/ConnectedBrowsers";
 import { ConnectPanel } from "@/components/extension/ConnectPanel";
 import { Container } from "@/components/site/Container";
-import { Card, Notice } from "@/components/ui";
+import { buttonClass, Card, ExternalLink, Notice } from "@/components/ui";
 import { requireSession } from "@/lib/auth/guard";
 import { serviceDb } from "@/lib/db/clients";
 import { listTokens } from "@/lib/ext/store";
 import { readNonce } from "@/lib/ext/token";
+import { LINKS } from "@/lib/site/facts";
 
 export const metadata: Metadata = { title: "Browser extension" };
 export const dynamic = "force-dynamic";
@@ -34,8 +35,15 @@ export default async function ExtensionPage({
           confirms it in the console with their wallet.
         </p>
         <Notice tone="info">
-          The Probarion extension for Chrome is pending Chrome Web Store review. Until the store
-          publishes it, load it unpacked from apps/extension in Probarion's repository.
+          <p>
+            The Probarion extension for Chrome is on the Chrome Web Store. To build it from source
+            instead, load it unpacked from apps/extension in Probarion's repository.
+          </p>
+          <p className="mt-3">
+            <ExternalLink className={buttonClass} href={LINKS.chromeWebStore}>
+              Add to Chrome
+            </ExternalLink>
+          </p>
         </Notice>
         <Card title="Connect this browser">
           <ConnectPanel nonce={nonce} account={session.accountId} network={session.network} />

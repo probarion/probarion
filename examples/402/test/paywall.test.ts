@@ -2,6 +2,7 @@ import type { SpendView } from "@probarion/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { PAYMENT_HEADERS, type PaymentReader, startPaywall } from "../src/paywall.js";
 import { parseQuote, QuoteError, quoteHash, quoteText } from "../src/quote.js";
+import { dataSha256 } from "../src/receipts.js";
 
 const PAYEE = "seller.testnet";
 const VAULT = "buyer.vaults.probarion.testnet";
@@ -38,7 +39,7 @@ const chainNs = (ms: number) => (BigInt(T0 + ms) * 1_000_000n).toString();
 async function start(
   reader: PaymentReader,
   now = () => new Date(T0),
-  more: { maxQuotes?: number } = {},
+  more: { maxQuotes?: number; data?: (call: number) => unknown } = {},
 ) {
   const p = await startPaywall({
     network: "testnet",
@@ -212,6 +213,50 @@ describe("the paywall", () => {
     // Past expiry plus the 10-minute grace, the quote is gone.
     at = new Date(T0 + 16 * 60_000);
     expect(await reasonOf(retry(p.url, lateId))).toBe("quote_expired");
+  });
+
+  it("serves data with a Date and an undefined value, hashed as the buyer parses it", async () => {
+    let paid: SpendView | null = null;
+    const p = await start(
+      { isProbarionVault: async () => true, getSpend: async () => paid },
+      () => new Date(T0),
+      { data: (call) => ({ call, city: "Hanoi", source: undefined, at: new Date(0) }) },
+    );
+    const body = await offer(p.url);
+    paid = spend({ invoice_hash: body.quote_hash, created_at_ns: chainNs(1_000) });
+    const r = await retry(p.url, parseQuote(body.quote).id);
+    expect(r.status).toBe(200);
+    const got = (await r.json()) as { data: unknown; data_sha256: string };
+    expect(got.data).toEqual({ call: 1, city: "Hanoi", at: "1970-01-01T00:00:00.000Z" });
+    expect(got.data_sha256).toBe(dataSha256(got.data));
+    expect(p.served()).toBe(1);
+  });
+
+  it("answers 500 without spending the quote when the data cannot be built, so a retry is served", async () => {
+    let paid: SpendView | null = null;
+    let fail = true;
+    const p = await start(
+      { isProbarionVault: async () => true, getSpend: async () => paid },
+      () => new Date(T0),
+      {
+        data: (call) => {
+          if (fail) throw new Error("the data source is down");
+          return { call };
+        },
+      },
+    );
+    const body = await offer(p.url);
+    paid = spend({ invoice_hash: body.quote_hash, created_at_ns: chainNs(1_000) });
+    const id = parseQuote(body.quote).id;
+    const down = await retry(p.url, id);
+    expect(down.status).toBe(500);
+    expect(await down.json()).toEqual({ error: "data_unavailable" });
+    expect(p.served()).toBe(0);
+    fail = false;
+    const ok = await retry(p.url, id);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ paid: { quote: id }, data: { call: 1 } });
+    expect(p.served()).toBe(1);
   });
 
   it("keeps at most maxQuotes quotes, dropping the oldest", async () => {

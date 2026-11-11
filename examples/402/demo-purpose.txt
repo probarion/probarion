@@ -1,0 +1,1 @@
+Probarion 402 example, negotiation demo (testnet): GET /forecast lists at 0.012 test USDC; the agent counters once at 0.01 and pays at most 0.01 USDC a call to probarion-payee.testnet, 1 call.

@@ -96,5 +96,17 @@
       "result": "PASS",
       "passed": 9
     }
+  },
+  "trial_vault": {
+    "account": "trial.vaults.probarion.testnet",
+    "created_on": "2026-11-05",
+    "created_with": "Create a vault in the console on probarion.xyz, signed in with Meteor",
+    "factory_version": 1,
+    "owner": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+    "approvers": [
+      "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+      "probarion-approver.testnet"
+    ],
+    "create_vault_tx": "HdyCcZkUDPQZnmCLLFW6VTBTymqvRNqc1F9DtELvJ42r"
   }
 }

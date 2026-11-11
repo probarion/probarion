@@ -200,7 +200,7 @@ See [Spend outcomes](/docs/build/spend-outcomes).
 
 ### Burned
 
-The status of a spend to a Base or Solana payee once the intents contract's `ft_withdraw` answers with anything but an error or zero. Such an answer may mean value left the vault, so the vault counts the full amount as spent and never releases it, even when the answer names a smaller amount or cannot be read. The payout is a burn with the memo `WITHDRAW_TO:<address>`, and its delivery on Base or Solana is observed later. On testnet, nothing leaves NEAR. See [Spend outcomes](/docs/build/spend-outcomes).
+The status of a spend to a Base or Solana payee once the intents contract's `ft_withdraw` answers with anything but an error or zero. Such an answer may mean value left the vault, so the vault counts the full amount as spent and never releases it, even when the answer names a smaller amount or cannot be read. The payout is a burn with the memo `WITHDRAW_TO:<address>`, and the bridge releases the funds on Base or Solana. Probarion does not watch that release yet, so `burned` is final for the vault: do not poll it for a change or send it again. On testnet, nothing leaves NEAR. See [Spend outcomes](/docs/build/spend-outcomes).
 
 ### `SpendOutcome`
 
@@ -216,7 +216,7 @@ What the SDK's `process()` and `requestSpend()` return for one payment cycle: a 
 | `failed` | Definitely not paid. |
 | `unconfirmed` | Sent, and it may have paid. Never send it again. |
 
-The type `SpendOutcomeStatus` also lists `settled`, which `process()` never returns: a burn's release on Base or Solana is observed later. See [Spend outcomes](/docs/build/spend-outcomes).
+The type `SpendOutcomeStatus` also lists `settled`, which `process()` never returns: the bridge releases a burn on Base or Solana, and Probarion does not watch that release yet. See [Spend outcomes](/docs/build/spend-outcomes).
 
 ### Unconfirmed
 
@@ -309,7 +309,7 @@ A word with three meanings:
 
 ### NEAR AI Cloud
 
-NEAR AI's private inference service. The SDK's optional model step asks a private model there, in a [TEE](#tee), for one proposal per invoice and records the attestation that comes back. The adapter is Preview: it is tested against a fake NEAR AI Cloud, and no real attested decision has been recorded and verified yet. See [Let an agent pay](/docs/build/let-an-agent-pay).
+NEAR AI's private inference service. The SDK's optional model step asks a private model there, in a [TEE](#tee), for one proposal per invoice and records the attestation that comes back. The adapter is Preview: it is tested against a fake NEAR AI Cloud, and the real attested decisions recorded so far, two of the Canary's on testnet, pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)), but the TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run. See [Let an agent pay](/docs/build/let-an-agent-pay).
 
 ### TEE
 

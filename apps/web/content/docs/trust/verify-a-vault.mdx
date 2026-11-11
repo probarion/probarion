@@ -98,6 +98,8 @@ The last line builds the CLI together with `@probarion/core` and `@probarion/sdk
 
 3. **Verify the files of a vault's proof page.** Each vault registered in the console has a proof page at `/proof/<vault>`. Signed in to the console with your wallet as a member of the vault, such as its owner, you can open it now: the page reads "Proof, visible to members only". For anyone else it answers page not found until the vault's owner makes it public: on the vault's Overview tab in the console, `/console/<vault>`, the owner ticks "Public proof page" in the Settings card and clicks "Save settings". The page then reads "Public proof" for every visitor. Either way it offers the same two files for this verifier, and you can check them in two ways.
 
+   Under its checks, the page also lists each decision of the vault's ledger, newest first, with its rules and what the contract did, and, for a decision made with model output, what the ledger records the TEE saw and signed with checks A1 to A7 run on that snapshot (the TDX quote is not verified there: that needs `--online`); each card has an audit link, `#seq-<N>` or `#spend-<N>`, that opens it.
+
    First, offline: **Download snapshot.json** saves `probarion-<vault>-snapshot.json`, a snapshot of the vault's ledger and chain data taken when you click or shortly before. Put it in the `probarion` folder and run:
 
    ```bash
@@ -186,7 +188,7 @@ node packages/cli/dist/bin.js verify --offline my-v0-snapshot.json
 
 - `--snapshot <file>` saves the snapshot that was verified to a new file. It refuses a file that already exists, and the ledger file (exit 64).
 - `--json` prints the report as JSON instead of rows: the vault, the network, `ok`, the checks, the entry and anchor counts, `generated_at` and the unproven burns.
-- `--online` also runs O1 (Intel DCAP on each TDX quote) and O2 (NVIDIA NRAS on each GPU payload) for check e, and looks burns up in FastNEAR's transaction index. It needs the network and the optional dependency `@nearai/inference-sdk`, which declares Node 24.22.1 or newer. Without it, the report says `online: O1 and O2 did not run (<reason>)` and check e keeps its offline result.
+- `--online` also runs O1 (Intel DCAP on each TDX quote) and O2 (NVIDIA NRAS on each GPU payload) for check e, and looks burns up in FastNEAR's transaction index. It needs the network and the optional dependency `@nearai/inference-sdk`, which declares Node 24.22.1 or newer. Without it, the report says `online: O1 and O2 did not run (<reason>)` and check e keeps its offline result. O2 checks NVIDIA's freshly issued token with no clock tolerance, so on a computer whose clock is a few seconds behind, check e fails with `not_yet_valid` and the report adds `online hint:` with the fix: sync the clock and run `--online` again. The hint also goes to stderr as a warning, and with `--json` only there.
 - `--burn-tx <spend_id>=<tx hash>[@<signer>]` names a transaction that holds a spend's burn, for example an approver's `approve` transaction. Repeat it for more. verify still reads each transaction, and check h fails when none of them holds the burn.
 - `--proof <file>` takes the vault's burn transactions from an evidence file in the format of `docs/mainnet-proof.json`, after the `--burn-tx` ones.
 - `--archival-rpc <urls>` sets the archival nodes for burn transactions older than about 2.5 days. It defaults to `NEAR_ARCHIVAL_RPC_URLS`, else FastNEAR's archival node.

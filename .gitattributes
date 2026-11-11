@@ -4,3 +4,11 @@
 packages/core/test/fixtures/invoice-*.txt -text
 # The demo vault's invoices and PO: their sha256 is on chain, so git never converts them either.
 docs/evidence/demo-vault/*.txt -text
+# The demo vault's payments CSV: RFC 4180 CRLF line ends and a BOM, compared byte for byte by test/demo-vault.test.ts.
+docs/evidence/demo-vault/*.csv -text
+# The eval dataset: an invoice hash is the sha256 of the exact text and a purpose_hash of the exact document bytes, so git never converts them.
+eval/invoices/*.txt -text
+eval/purpose/*.txt -text
+eval/invoices/*.pdf binary
+# The 402 demo mandate's purpose: its sha256 goes on chain as the mandate's purpose_hash, so git never converts it.
+examples/402/demo-purpose.txt -text

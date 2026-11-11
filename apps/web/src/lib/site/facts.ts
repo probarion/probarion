@@ -47,6 +47,9 @@ export const LINKS = {
   changelog: blob("CHANGELOG.md"),
   fixture: blob(FIXTURE_PATH),
   x: "https://x.com/probarionhq",
+  /** The browser extension's Chrome Web Store listing, item hhadnmnjdlamihjjoejphkimnbcfidmn. */
+  chromeWebStore:
+    "https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn",
 } as const;
 
 // --- metadata -------------------------------------------------------------------------------------
@@ -403,7 +406,7 @@ export const JOURNEY = {
       n: 2,
       title: "A private model proposes, if there is one",
       body: "It runs in a TEE on NEAR AI Cloud. Its attestation is bound by a nonce to one position in one vault's ledger. It only gives advice: it cannot widen a mandate.",
-      tag: "Adapter built. First live attested run in progress.",
+      tag: "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run.",
       panelLabel: "What the proposal is bound to",
       panel: [
         { note: "What the proposal is bound to" },
@@ -742,7 +745,7 @@ export const STATUS = {
     },
     {
       id: "web-console-not-tried",
-      row: "Web console: Freeze, approving in the console, USDC top-up",
+      row: "Web console: Freeze, approving in the console, USDC top-up, Agent (MCP) tab",
       pill: "Built, not tried yet",
       tone: "work",
     },
@@ -754,7 +757,12 @@ export const STATUS = {
     },
     { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
     { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
-    { id: "attested-model-run", row: "Live attested model run", pill: "In progress", tone: "work" },
+    {
+      id: "attested-model-run",
+      row: "Live attested model run",
+      pill: "Checked online on testnet, image not pinned",
+      tone: "work",
+    },
     { id: "canary", row: "Canary public challenge", pill: "Live on testnet", tone: "live" },
     { id: "mcp-server", row: "MCP server", pill: "Tried on testnet, not on npm", tone: "work" },
     { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },

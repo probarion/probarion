@@ -742,6 +742,7 @@ const libCap = (name: string) => {
  * row or a reason here; a reason whose cap is gone fails too.
  */
 const UNSHOWN_CAPS: Record<string, string> = {
+  MAX_AGENTS: "The Agent (MCP) tab's copy of the vault's MAX_AGENTS, which the vault table shows",
   MAX_APPROVERS:
     "The create form's copy of the factory's MAX_APPROVERS, which the factory table shows",
   MAX_HELD_TTL_HOURS: "The create form's copy of MAX_HELD_TTL_NS, in hours",

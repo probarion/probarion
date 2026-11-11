@@ -92,6 +92,14 @@ describe("CreateVaultPanel (W-T8-R1 item 1)", () => {
     expect(html).toContain("acme.near");
   });
 
+  it("wraps a 64-character implicit owner at phone width, in its monospace span", () => {
+    const implicit = "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b";
+    const { html } = renderPanel(implicit);
+    expect(html).toMatch(
+      new RegExp(`<span class="[^"]*\\bmono\\b[^"]*\\bwrap-anywhere\\b[^"]*">${implicit}</span>`),
+    );
+  });
+
   it("an unknown outcome never signs again: one registration read, no second prepare", async () => {
     const { create } = renderPanel();
     h.registerAnswer = { ok: false, error: "No vault answers", code: "not_found" };

@@ -110,6 +110,8 @@ const MAINNET_VAULT = "acme.vaults.probarion.near";
 const TESTNET_VAULT = "acme.vaults.probarion.testnet";
 const OWNER = "acme.near";
 const INVOICE = "00000000-0000-4000-8000-000000000001";
+/** A well-formed public key, so the Agent (MCP) actions get past their own checks to the chain in the control. */
+const AGENT_PK = "ed25519:7BPBxA6r525pdwRKzkKs6mNXMhEHj9SDSMBqffjYC3hP";
 
 let pg: PGlite;
 
@@ -143,6 +145,10 @@ import { POST as topupQuote } from "@/app/api/topup/quote/route";
 import { GET as topupStatus } from "@/app/api/topup/status/route";
 import { POST as topupSubmit } from "@/app/api/topup/submit/route";
 import { refreshMembersAction, updateSettingsAction } from "@/app/console/[vault]/actions";
+import {
+  prepareAddAgentAction,
+  prepareSetLedgerKeyAction,
+} from "@/app/console/[vault]/agent/actions";
 import {
   addEmailAction,
   connectTelegramAction,
@@ -221,6 +227,8 @@ const ACTIONS: [string, Call][] = [
   ["discardKeyAction", (v) => discardKeyAction(v, INVOICE)],
   ["keepKeyAction", (v) => keepKeyAction(v, INVOICE)],
   ["syncKeysAction", (v) => syncKeysAction(v)],
+  ["prepareAddAgentAction", (v) => prepareAddAgentAction(v, AGENT_PK, "mcp")],
+  ["prepareSetLedgerKeyAction", (v) => prepareSetLedgerKeyAction(v, AGENT_PK, null)],
   ["prepareMandateAction", (v) => prepareMandateAction(v, {} as never)],
   ["checkPayeeAction", (v) => checkPayeeAction(v, "payee.near")],
   ["setZeroRetentionAction", (v) => setZeroRetentionAction(v, form({ zero_retention: "on" }))],
@@ -441,6 +449,7 @@ describe("Register (registerVaultAction) for a vault registered on the other net
 
 // --- the pages --------------------------------------------------------------------------------------------------------
 
+import AgentPage from "@/app/console/[vault]/agent/page";
 import AlertsPage from "@/app/console/[vault]/alerts/page";
 import ApprovePage from "@/app/console/[vault]/approve/[spend]/page";
 import KeysPage from "@/app/console/[vault]/keys/page";
@@ -454,6 +463,7 @@ const params = (vault: string) => ({ params: Promise.resolve({ vault }) });
 const PAGES: [string, (vault: string) => Promise<unknown>][] = [
   ["the overview", (v) => VaultPage(params(v))],
   ["Keys", (v) => KeysPage(params(v))],
+  ["Agent (MCP)", (v) => AgentPage(params(v))],
   ["Mandates", (v) => MandatesPage(params(v))],
   ["Payables", (v) => PayablesPage(params(v))],
   [
