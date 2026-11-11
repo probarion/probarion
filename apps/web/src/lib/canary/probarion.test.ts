@@ -140,17 +140,14 @@ describe("makeCanaryProbarion", () => {
     expect(chat).toBeLessThanOrEqual(CANARY_LIMITS.modelBudgetMs);
   });
 
-  it("uses the configured model and the Canary persona for the proposer", async () => {
+  it("uses the Canary persona and the SDK's default model, not NEARAI_MODEL, for the proposer", async () => {
     h.env.NEARAI_MODEL = "some/model";
     await makeCanaryProbarion(db, MASTER, tenant, mandate, "req-1");
     const proposer = h.made[0]?.deps.proposer as unknown as {
       opts: { model?: string; systemPrompt?: string; apiKey: string };
     };
-    expect(proposer.opts).toMatchObject({
-      model: "some/model",
-      systemPrompt: CANARY_SYSTEM_PROMPT,
-      apiKey: "test-key",
-    });
+    expect(proposer.opts).toMatchObject({ systemPrompt: CANARY_SYSTEM_PROMPT, apiKey: "test-key" });
+    expect(proposer.opts.model).toBeUndefined();
   });
 
   it("lets a caller's own deps (tests) replace the proposer and add the rest", async () => {

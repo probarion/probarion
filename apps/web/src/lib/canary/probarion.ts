@@ -48,7 +48,12 @@ function cachedModel(): string | undefined {
   return knownModel.model;
 }
 
-/** The proposer for the Canary's persona with those timeouts, or null without a NEAR AI key. */
+/**
+ * The proposer for the Canary's persona with those timeouts, or null without a NEAR AI key. It does not follow
+ * NEARAI_MODEL, which pins the model for Payables: the Canary keeps the SDK's default order (z-ai/glm-5.3-flash first),
+ * the model of its recorded attempts. With Qwen/Qwen3.8-27B pinned, an attempt timed out at 40 s in production on
+ * 2026-11-11.
+ */
 function canaryProposer(
   budget: CanaryBudget | undefined,
   known: string | undefined,
@@ -70,7 +75,6 @@ function canaryProposer(
         };
   return new NearAiProposer({
     apiKey: env.NEARAI_API_KEY,
-    ...(env.NEARAI_MODEL ? { model: env.NEARAI_MODEL } : {}),
     ...(known === undefined ? {} : { knownModel: known }),
     systemPrompt: CANARY_SYSTEM_PROMPT,
     timeoutMs: CANARY_NEARAI_TIMEOUTS_MS,
