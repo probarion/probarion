@@ -1,5 +1,5 @@
-// The seller's side of a counter: POST /counter, one per quote, a new quote at or above the floor, 409 below
-// it, and a floor that no answer carries.
+// The seller's side of a counter: POST /counter, one per quote, a new quote below the quote and at or above
+// the floor, a refusal otherwise (also for a quote redeemed or expired), and a floor that no answer carries.
 import type { SpendView } from "@probarion/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -17,11 +17,15 @@ const VAULT = "buyer.vaults.probarion.testnet";
 const LIST = "12000";
 const FLOOR = "9000";
 
+const T0 = Date.parse("2026-11-11T00:00:00Z");
 let ids = 0;
+/** The paywall's clock: tests move it. */
+let clockMs = T0;
 let close: (() => Promise<void>) | null = null;
 afterEach(async () => {
   await close?.();
   close = null;
+  clockMs = T0;
 });
 
 function spend(over: Partial<SpendView>): SpendView {
@@ -52,7 +56,7 @@ async function start(reader: PaymentReader, floorUnits: string | null = FLOOR) {
     path: "/forecast",
     data: (call) => ({ call, city: "Hanoi", forecast_c: [31] }),
     reader,
-    now: () => new Date("2026-11-11T00:00:00Z"),
+    now: () => new Date(clockMs),
     newQuoteId: () => `q_${++ids}`,
   });
   close = p.close;
@@ -211,7 +215,49 @@ describe("POST /counter", () => {
     const p = await start(noSpend, null);
     const o = await firstOffer(p.url);
     const r = await counter(p.url, counterOf(o, "11999"));
-    expect(r.status).toBe(409);
+    expect([r.status, ((await r.json()) as Offer).reason]).toEqual([409, "below_floor"]);
+  });
+
+  it("refuses a counter on a quote already redeemed", async () => {
+    let paid: SpendView | null = null;
+    const p = await start({ isProbarionVault: async () => true, getSpend: async () => paid });
+    const o = await firstOffer(p.url);
+    paid = spend({ invoice_hash: o.quote_hash, amount: LIST });
+    const served = await fetch(p.url, {
+      headers: {
+        [PAYMENT_HEADERS.quote]: o.id,
+        [PAYMENT_HEADERS.redeem]: o.redeem_token,
+        [PAYMENT_HEADERS.vault]: VAULT,
+        [PAYMENT_HEADERS.spend]: "1",
+      },
+    });
+    expect(served.status).toBe(200);
+    const r = await counter(p.url, counterOf(o, "10000"));
+    expect([r.status, ((await r.json()) as Offer).reason]).toEqual([409, "quote_already_used"]);
+    expect(p.counters()).toBe(0);
+  });
+
+  it("refuses a counter on an expired quote: 409 within the grace, 404 after it", async () => {
+    const p = await start(noSpend);
+    const o = await firstOffer(p.url);
+    const expiresAt = Date.parse(parseQuote(o.quote).expiresAt);
+    clockMs = expiresAt;
+    const atExpiry = await counter(p.url, counterOf(o, "10000"));
+    expect([atExpiry.status, ((await atExpiry.json()) as Offer).reason]).toEqual([
+      409,
+      "quote_expired",
+    ]);
+    // The default grace to redeem is 10 minutes after the expiry: until then the quote is kept.
+    clockMs = expiresAt + 10 * 60_000 - 1;
+    const inGrace = await counter(p.url, counterOf(o, "10000"));
+    expect([inGrace.status, ((await inGrace.json()) as Offer).reason]).toEqual([
+      409,
+      "quote_expired",
+    ]);
+    clockMs = expiresAt + 10 * 60_000;
+    const gone = await counter(p.url, counterOf(o, "10000"));
+    expect([gone.status, ((await gone.json()) as Offer).reason]).toEqual([404, "unknown_quote"]);
+    expect(p.counters()).toBe(0);
   });
 
   it("serves a countered quote for a spend of the countered price, with the data's sha256", async () => {

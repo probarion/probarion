@@ -16,17 +16,21 @@ The software is an unaudited beta.
 
 - `examples/402`: negotiation, receipts and a one-line demo. The paywall has a list price and a floor
   (the least it takes, kept out of every answer), and `POST /counter` takes one counter per quote:
-  at or above the floor it answers with a new quote at the countered price, below it `409`. When a
-  quote is above the mandate's cap per payment, the agent counters once at that cap and pays the new
-  quote, or walks away without calling `request_spend`. The payee still comes from the mandate, and
-  the quote parser still refuses unknown lines. After a paid `200` the agent checks the data against
-  a schema and the `data_sha256` the seller states, and appends a line to `receipts.jsonl` (quotes,
-  list and paid price, spend, transaction, ledger seq, check, time); a failed check is recorded as
-  failed, and the money is not refunded. `pnpm --filter @probarion/example-402 run demo` runs a
-  negotiated sale with its payout, a walk-away and a refused call on the SDK's test double chain, with
-  no network and no keys, and prints its elapsed time (under a second here); with a vault and its
-  keys in the environment it runs the same calls on testnet. The 2026-11-09 testnet run predates
-  negotiation; the new flow has run on the test double chain only.
+  below the quote and at or above the floor it answers with a new quote at the countered price;
+  otherwise `409`. When a quote is above what a live mandate can pay (its cap per payment, or what is
+  left of its total when less), the agent counters once at that limit and pays the new quote, or
+  walks away without calling `request_spend`; under a mandate with no payment left it does not
+  counter, and Probarion's refusal names the reason. The payee still comes from the mandate, and the
+  quote parser still refuses unknown lines. After a paid `200` the agent checks the data against a
+  schema and the `data_sha256` the seller states, and appends a line to `receipts.jsonl` (quotes,
+  list and paid price, spend, what `request_spend` answered, transaction, ledger seq, check, time); a
+  failed check is recorded as failed, and the money is not refunded. The paywall builds the paid
+  answer before it marks the quote used, so data it cannot build leaves the payment redeemable.
+  `pnpm --filter @probarion/example-402 run demo` runs a walk-away, a negotiated sale with its payout
+  and a refused call on the SDK's test double chain, with no network and no keys, even when keys are
+  in the environment, and prints its elapsed time (about a second here); `run demo --testnet`, with a
+  vault and its keys in the environment, runs the same calls on testnet. The 2026-11-09 testnet run
+  predates negotiation; the new flow has run on the test double chain only.
 
 - `/proof/<vault>` lists every decision of the ledger under the checks, newest first. For a decision
   made with model output it shows what the ledger records the TEE saw and signed, and what the code

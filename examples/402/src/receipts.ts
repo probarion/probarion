@@ -83,12 +83,20 @@ export interface Receipt {
   list_price_usdc: string;
   paid_usdc: string;
   spend_id: number;
+  /**
+   * What this call's request_spend answered: `paid`; `held` or `unconfirmed` when the spend was then read
+   * until paid; or a refusal (`refused_by_code`, `refused_by_contract`) that named an earlier spend paying
+   * this same quote. tx_hash, tx, ledger_seq and decision_hash come from that answer: they are the payment's
+   * own only when it is `paid`. Otherwise they point at that request (for a held spend, the transaction that
+   * created it, not the approval that paid it; for a refusal, its ledger entry and no transaction).
+   */
+  request_status: string;
   tx_hash: string | null;
-  /** The explorer link of the spend transaction, or null (no transaction known, or a test double chain). */
+  /** The explorer link of the request's transaction, or null (no transaction, or a test double chain). */
   tx: string | null;
-  /** The seq of the last entry the request wrote to the vault's signed ledger: the payment's result when paid. */
+  /** The seq of the last entry this call's request_spend wrote to the vault's signed ledger. */
   ledger_seq: number | null;
-  /** The body hash of the request's decision entry in that ledger. */
+  /** The body hash of that request's decision entry in the ledger. */
   decision_hash: string | null;
   data_check: DataCheck;
   /** Present when the data check failed: the payment was made before the check, and is not undone by it. */

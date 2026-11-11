@@ -4,6 +4,10 @@ import type { CallResult, Deal } from "./agent.js";
 
 /** The quote and what the agent did about its price, up to the payment. */
 function priceText(d: Deal, priceUsdc: string): string {
+  // A mandate that cannot pay gets no counter: the line names why.
+  if (d.mandateProblem !== null) {
+    return `402 for ${priceUsdc} USDC (mandate ${d.mandateId} ${d.mandateProblem})`;
+  }
   if (!d.countered) return `402 for ${priceUsdc} USDC`;
   const cap = formatUsdc(d.limitUnits);
   return `402 for ${formatUsdc(d.listUnits)} USDC, above the mandate's ${cap}: countered once at ${cap}, taken as quote ${d.counteredQuoteId}`;

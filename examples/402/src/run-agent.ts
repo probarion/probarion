@@ -1,21 +1,25 @@
 // pnpm --filter @probarion/example-402 run agent
 // Calls PAYWALL_URL (default http://127.0.0.1:4020/forecast) CALLS times (default 21), paying each 402
 // through the probarion-mcp server, which it starts over stdio with the vault's two function-call keys.
-// After each paid 200 it appends a receipt line to RECEIPTS_PATH (default receipts.jsonl).
+// After each paid 200 it appends a receipt line to RECEIPTS_PATH (default examples/402/receipts.jsonl).
+// Relative paths in RECEIPTS_PATH and PROBARION_LEDGER_PATH are read from the folder pnpm was started in.
 // Testnet only. Run `pnpm build` in the repository first: this starts packages/mcp/dist/bin.js.
 import { envValue } from "@probarion/sdk";
 import { fetchWithMandate } from "./agent.js";
 import { describeCall } from "./describe.js";
-import { connectMcp, testnetVault } from "./mcp-stdio.js";
+import { connectMcp, ledgerLine, receiptsPathOf, testnetVault } from "./mcp-stdio.js";
 
 const env = process.env;
-if (testnetVault(env) === null) {
+const vault = testnetVault(env);
+if (vault === null) {
   console.error("This example runs on testnet only: set PROBARION_VAULT_ID to a .testnet vault.");
   process.exit(2);
 }
 const url = envValue(env, "PAYWALL_URL") ?? "http://127.0.0.1:4020/forecast";
 const calls = Number(envValue(env, "CALLS") ?? "21");
-const receiptsPath = envValue(env, "RECEIPTS_PATH") ?? "receipts.jsonl";
+const receiptsPath = receiptsPathOf(env);
+console.log(ledgerLine(env, vault));
+console.log(`Receipts: ${receiptsPath}`);
 
 const client = await connectMcp(env, "probarion-402-example");
 

@@ -1,10 +1,11 @@
-// The demo: one buyer agent, two sellers, three calls. A negotiated sale with its payout, a counter below the
-// seller's floor that the agent walks away from, and a call the mandate refuses.
+// The demo: one buyer agent, three sellers, three calls, under a mandate of one payment of at most 0.01 USDC.
+// A counter below the seller's floor that the agent walks away from, a negotiated sale with its payout, and a
+// call within the cap that the mandate refuses, its one payment used.
 //
-// Offline (no vault or keys in the environment) it runs on the SDK's test double chain, served on 127.0.0.1,
-// with the MCP server in this process and the SDK's public test keys: nothing reaches a network, nothing real
-// is paid. With PROBARION_VAULT_ID, PROBARION_AGENT_KEY and PROBARION_LEDGER_KEY set it runs the same three
-// calls on NEAR testnet, through the MCP server over stdio, and pays real test USDC.
+// By default it runs offline, whatever the environment holds: on the SDK's test double chain, served on
+// 127.0.0.1, with the MCP server in this process and the SDK's public test keys. Nothing reaches a network and
+// nothing real is paid. With `--testnet` (and PROBARION_VAULT_ID, PROBARION_AGENT_KEY and PROBARION_LEDGER_KEY
+// set) it runs the same three calls on NEAR testnet, through the MCP server over stdio, and pays real test USDC.
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -14,35 +15,56 @@ import { envValue, InMemoryLedgerStore, RpcClient, resolveRpcUrls } from "@proba
 import { type CallResult, fetchWithMandate, type MandateRow } from "./agent.js";
 import { describeCall } from "./describe.js";
 import { forecastData } from "./forecast.js";
-import { connectMcp, testnetVault } from "./mcp-stdio.js";
+import { connectMcp, ledgerLine, receiptsPathOf, testnetVault } from "./mcp-stdio.js";
 import { chainReader, type RunningPaywall, startPaywall } from "./paywall.js";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-/** The two sellers, in USDC smallest units. The floors stay in the paywalls. */
+/** The three sellers, in the order the demo calls them, in USDC smallest units. The floors stay in the paywalls. */
 export const DEMO_SELLERS = {
-  forecast: { path: "/forecast", listUnits: "12000", floorUnits: "9000" },
   premium: { path: "/premium", listUnits: "50000", floorUnits: "30000" },
+  forecast: { path: "/forecast", listUnits: "12000", floorUnits: "9000" },
+  basic: { path: "/basic", listUnits: "10000", floorUnits: "10000" },
 } as const;
 
 /** The demo must finish within this, offline or on testnet. */
 export const DEMO_LIMIT_MS = 120_000;
 
+/** The keys that make a testnet run. Offline they are not read, only named when they are set. */
+const TESTNET_KEYS = ["PROBARION_VAULT_ID", "PROBARION_AGENT_KEY", "PROBARION_LEDGER_KEY"] as const;
+
+/** How the refusal of call 3 is named: by Probarion's rules, or by the contract when the rules' read lags. */
+const USES_REFUSALS: ReadonlySet<string> = new Set(["mandate.uses_exhausted", "UsesExhausted"]);
+
 export class DemoUsageError extends Error {}
+
+/** True for the arguments `--testnet` (pnpm may pass a `--` before it), false for none; else a usage error. */
+export function testnetFlag(args: readonly string[]): boolean {
+  const given = args.filter((a) => a !== "--");
+  if (given.length === 0) return false;
+  if (given.length === 1 && given[0] === "--testnet") return true;
+  throw new DemoUsageError(
+    `Usage: pnpm --filter @probarion/example-402 run demo [--testnet]. Unknown arguments: ${given.join(" ")}`,
+  );
+}
 
 export interface DemoIo {
   env: Env;
   out: (line: string) => void;
+  /** Run on NEAR testnet (`run demo --testnet`). Otherwise the demo runs offline, whatever `env` holds. */
+  testnet?: boolean;
   /** Milliseconds, for the elapsed-time line. Default performance.now. */
   clock?: () => number;
-  /** Where the receipt lines go. Default RECEIPTS_PATH, else a new temp folder offline and receipts.jsonl on testnet. */
-  receiptsPath?: string;
 }
 
 export interface DemoSummary {
   mode: "offline" | "testnet";
   results: CallResult[];
-  /** True when the three calls ended as the demo expects: paid and checked, walked away, refused. */
+  /**
+   * True when the three calls ended as the demo expects (a walk-away from a 409 below_floor, a paid and
+   * checked sale with its payout, a refusal for the mandate's uses that the contract's dry run shares) within
+   * the time limit.
+   */
   ok: boolean;
   /** How many times the agent called request_spend. */
   spendRequests: number;
@@ -59,7 +81,7 @@ interface Stage {
   rpc: RpcClient;
   vault: string;
   payee: string;
-  intro: string;
+  intro: string[];
   close(): Promise<void>;
 }
 
@@ -121,8 +143,9 @@ async function offlineStage(): Promise<Stage> {
     rpc: new RpcClient({ urls: [rpcServer.url] }),
     vault: testing.SCENARIO_VAULT,
     payee: testing.SCENARIO_NEAR_PAYEE,
-    intro:
+    intro: [
       "Probarion 402 demo, offline: the SDK's test double chain on 127.0.0.1 and its public test keys. No network, nothing real is paid.",
+    ],
     close: async () => {
       await client.close();
       await server.close();
@@ -139,23 +162,34 @@ async function testnetStage(env: Env, vault: string): Promise<Stage> {
     rpc: new RpcClient({ urls: resolveRpcUrls("testnet", undefined, env) }),
     vault,
     payee: envValue(env, "PAYWALL_PAYEE") ?? "probarion-payee.testnet",
-    intro: `Probarion 402 demo on NEAR testnet: vault ${vault}, paid in test USDC.`,
+    intro: [
+      `Probarion 402 demo on NEAR testnet: vault ${vault}, paid in test USDC.`,
+      ledgerLine(env, vault),
+    ],
     close: () => client.close(),
   };
 }
 
-/** Offline when none of the three is set, testnet when all are; anything else is a usage error. */
-function pickMode(env: Env): { mode: "offline" } | { mode: "testnet"; vault: string } {
-  const names = ["PROBARION_VAULT_ID", "PROBARION_AGENT_KEY", "PROBARION_LEDGER_KEY"] as const;
-  const set = names.filter((n) => envValue(env, n) !== undefined);
-  if (set.length === 0) return { mode: "offline" };
-  if (set.length < names.length) {
-    const missing = names.filter((n) => !set.includes(n)).join(", ");
+type Mode = { mode: "offline"; unused: string[] } | { mode: "testnet"; vault: string };
+
+/**
+ * Offline unless `--testnet` was asked for; offline, the testnet keys and RECEIPTS_PATH are not read, only
+ * named when set. On testnet all three keys must be set, with a .testnet vault.
+ */
+function pickMode(io: DemoIo): Mode {
+  if (io.testnet !== true) {
+    const unused = [...TESTNET_KEYS, "RECEIPTS_PATH"].filter(
+      (n) => envValue(io.env, n) !== undefined,
+    );
+    return { mode: "offline", unused };
+  }
+  const missing = TESTNET_KEYS.filter((n) => envValue(io.env, n) === undefined);
+  if (missing.length > 0) {
     throw new DemoUsageError(
-      `Set PROBARION_VAULT_ID, PROBARION_AGENT_KEY and PROBARION_LEDGER_KEY together to run on testnet, or none of them to run offline. Missing: ${missing}.`,
+      `--testnet needs PROBARION_VAULT_ID, PROBARION_AGENT_KEY and PROBARION_LEDGER_KEY. Missing: ${missing.join(", ")}.`,
     );
   }
-  const vault = testnetVault(env);
+  const vault = testnetVault(io.env);
   if (vault === null) {
     throw new DemoUsageError(
       "The demo runs on testnet only: set PROBARION_VAULT_ID to a .testnet vault.",
@@ -196,20 +230,18 @@ function mandateLines(listed: Record<string, unknown>, payee: string): string[] 
 export async function runDemo(io: DemoIo): Promise<DemoSummary> {
   const clock = io.clock ?? (() => performance.now());
   const started = clock();
-  const picked = pickMode(io.env);
+  const picked = pickMode(io);
   const stage =
     picked.mode === "offline" ? await offlineStage() : await testnetStage(io.env, picked.vault);
   const testDouble = stage.mode === "offline";
-  const receiptsPath =
-    io.receiptsPath ??
-    envValue(io.env, "RECEIPTS_PATH") ??
-    (testDouble
-      ? join(tmpdir(), `probarion-402-demo-${process.pid}-${Date.now()}`, "receipts.jsonl")
-      : "receipts.jsonl");
+  // Offline, the receipts always go to a new temp folder: a test double line never joins a testnet file.
+  const receiptsPath = testDouble
+    ? join(tmpdir(), `probarion-402-demo-${process.pid}-${Date.now()}`, "receipts.jsonl")
+    : receiptsPathOf(io.env);
   const paywalls: RunningPaywall[] = [];
   try {
     const reader = chainReader(stage.rpc, "testnet");
-    for (const s of [DEMO_SELLERS.forecast, DEMO_SELLERS.premium]) {
+    for (const s of [DEMO_SELLERS.premium, DEMO_SELLERS.forecast, DEMO_SELLERS.basic]) {
       paywalls.push(
         await startPaywall({
           network: "testnet",
@@ -222,10 +254,16 @@ export async function runDemo(io: DemoIo): Promise<DemoSummary> {
         }),
       );
     }
-    const [forecast, premium] = paywalls as [RunningPaywall, RunningPaywall];
+    const [premium, forecast, basic] = paywalls as [RunningPaywall, RunningPaywall, RunningPaywall];
     const { client, spendRequests } = counting(stage.client);
 
-    io.out(stage.intro);
+    for (const line of stage.intro) io.out(line);
+    if (picked.mode === "offline" && picked.unused.length > 0) {
+      io.out(
+        `${picked.unused.join(", ")} ${picked.unused.length === 1 ? "is" : "are"} set and not used: this run is offline, and its receipts go to a temp folder. Add --testnet to run on testnet.`,
+      );
+    }
+    if (!testDouble) io.out(`Receipts: ${receiptsPath}`);
     const listed = (await stage.client.callTool({ name: "list_mandates", arguments: {} })) as {
       isError?: boolean;
       content?: { text?: string }[];
@@ -234,17 +272,19 @@ export async function runDemo(io: DemoIo): Promise<DemoSummary> {
     if (listed.isError === true) throw new Error(`list_mandates: ${listedText}`);
     for (const line of mandateLines(JSON.parse(listedText), stage.payee)) io.out(line);
     io.out(
-      `Sellers (paid at near:${stage.payee}): GET /forecast lists at ${formatUsdc(DEMO_SELLERS.forecast.listUnits)} USDC, GET /premium at ${formatUsdc(DEMO_SELLERS.premium.listUnits)}. Each has a floor it does not send.`,
+      `Sellers (paid at near:${stage.payee}): GET /premium lists at ${formatUsdc(DEMO_SELLERS.premium.listUnits)} USDC, GET /forecast at ${formatUsdc(DEMO_SELLERS.forecast.listUnits)}, GET /basic at ${formatUsdc(DEMO_SELLERS.basic.listUnits)}. Each has a floor it does not send.`,
     );
 
     const payeeBefore = await usdcOf(stage.rpc, stage.payee);
     const vaultBefore = await usdcOf(stage.rpc, stage.vault);
     const opts = { receiptsPath, testDouble };
     const results: CallResult[] = [];
+    // The walk-away comes first, under the live mandate: after the sale the mandate has no payment left, and
+    // the agent does not counter under a mandate that cannot pay.
     const steps: [string, RunningPaywall][] = [
-      ["1. A negotiated sale", forecast],
-      ["2. A counter below the seller's floor", premium],
-      ["3. A call the mandate refuses", forecast],
+      ["1. A counter below the seller's floor", premium],
+      ["2. A negotiated sale", forecast],
+      ["3. A call the mandate refuses", basic],
     ];
     for (const [n, [title, paywall]] of steps.entries()) {
       io.out("");
@@ -257,7 +297,7 @@ export async function runDemo(io: DemoIo): Promise<DemoSummary> {
         io.out(`   ${JSON.stringify(r.receipt)}`);
       }
     }
-    const [sale, away, refusal] = results;
+    const [away, sale, refusal] = results;
     // On testnet an RPC node of the pool may answer from a block before the payment: read again a few times.
     const expected = sale?.kind === "paid" ? BigInt(sale.deal.priceUnits) : 0n;
     let payout = (await usdcOf(stage.rpc, stage.payee)) - payeeBefore;
@@ -267,33 +307,43 @@ export async function runDemo(io: DemoIo): Promise<DemoSummary> {
     }
     const spent = vaultBefore - (await usdcOf(stage.rpc, stage.vault));
 
-    const ok =
+    const asExpected =
+      away?.kind === "walked_away" &&
+      away.answer.status === 409 &&
+      away.answer.reason === "below_floor" &&
       sale?.kind === "paid" &&
       sale.status === 200 &&
       sale.deal.countered &&
       sale.deal.counteredQuoteId !== null &&
       sale.dataCheck?.ok === true &&
-      away?.kind === "walked_away" &&
       refusal?.kind === "refused" &&
+      (refusal.spend.status === "refused_by_code" ||
+        refusal.spend.status === "refused_by_contract") &&
+      USES_REFUSALS.has(refusal.spend.code ?? "") &&
+      refusal.contract.ok === false &&
+      refusal.contract.code === "UsesExhausted" &&
       spendRequests() === 2 &&
       payout === BigInt(sale.deal.priceUnits);
 
     io.out("");
     io.out(
-      `request_spend was called ${spendRequests()} times: for calls 1 and 3, and not for the walk-away.`,
+      `request_spend was called ${spendRequests()} times: for calls 2 and 3, and not for the walk-away.`,
     );
     io.out(
       `Payout: near:${stage.payee} got ${formatUsdc(payout.toString())} USDC; the vault paid ${formatUsdc(spent.toString())} USDC in all.`,
     );
-    io.out(ok ? "All three calls ended as expected." : "NOT as expected: read the lines above.");
-    const elapsedMs = clock() - started;
     io.out(
-      `Demo finished in ${(elapsedMs / 1000).toFixed(1)} s (limit ${DEMO_LIMIT_MS / 1000} s).`,
+      asExpected ? "All three calls ended as expected." : "NOT as expected: read the lines above.",
+    );
+    const elapsedMs = clock() - started;
+    const inTime = elapsedMs < DEMO_LIMIT_MS;
+    io.out(
+      `Demo finished in ${(elapsedMs / 1000).toFixed(1)} s (limit ${DEMO_LIMIT_MS / 1000} s)${inTime ? "" : ": over the limit, so NOT as expected"}.`,
     );
     return {
       mode: stage.mode,
       results,
-      ok: ok && elapsedMs < DEMO_LIMIT_MS,
+      ok: asExpected && inTime,
       spendRequests: spendRequests(),
       payoutUnits: payout.toString(),
       receiptsPath,

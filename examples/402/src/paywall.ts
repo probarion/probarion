@@ -2,8 +2,9 @@
 // to pay. With one, it reads the spend from the payer's Probarion vault on NEAR and serves the data only if
 // that spend paid this quote, in full, to this seller. Each quote serves one call.
 //
-// A buyer may counter a quote once (POST /counter). A counter at or above the seller's floor gets a new quote
-// at the countered price; one below it gets 409. The floor never leaves this process.
+// A buyer may counter a quote once (POST /counter). A counter below the quote and at or above the seller's
+// floor gets a new quote at the countered price; any other counter is refused. The floor never leaves this
+// process.
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -40,7 +41,11 @@ export interface PaywallOptions {
   floorUnits?: string;
   /** The one path this endpoint serves, e.g. "/forecast". Not "/counter", where counters go. */
   path: string;
-  /** The body of a paid call. */
+  /**
+   * The data of paid call number `call` (1, 2, ...). It is sent as JSON, which drops undefined values and turns a
+   * Date into its ISO text; `data_sha256` is computed over what is sent. When it throws, or its value has no
+   * JSON form, the answer is 500 and the quote stays unredeemed.
+   */
   data: (call: number) => unknown;
   reader: PaymentReader;
   /** How long a quote may be paid for. Default 5 minutes. */
@@ -104,6 +109,17 @@ function sameToken(given: string, expected: string): boolean {
   const a = Buffer.from(given);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * The data of a paid answer as the buyer parses it, and its sha256. A JSON round trip first: it drops undefined
+ * values and turns a Date into its ISO text, as the answer's JSON does, so the hash covers exactly what the
+ * buyer gets. Throws when the data has no JSON form (a cycle, a BigInt) or no canonical JSON form.
+ */
+function paidData(raw: unknown): { data: unknown; sha256: string } {
+  const text = JSON.stringify(raw);
+  const data: unknown = text === undefined ? null : JSON.parse(text);
+  return { data, sha256: dataSha256(data) };
 }
 
 class BodyTooLarge extends Error {}
@@ -345,13 +361,21 @@ export function createPaywall(opts: PaywallOptions) {
       paymentRequired(res, problem ?? "quote_already_used");
       return;
     }
+    // The answer is built before the quote is spent: if the data cannot be built or hashed, the quote stays
+    // unredeemed and a later retry with the same payment can still get the data.
+    let paid: { data: unknown; sha256: string };
+    try {
+      paid = paidData(opts.data(served + 1));
+    } catch {
+      send(res, 500, { error: "data_unavailable" });
+      return;
+    }
     entry.redeemed = true;
     served += 1;
-    const data = opts.data(served);
     send(res, 200, {
       paid: { quote: entry.quote.id },
-      data,
-      [DATA_SHA256_FIELD]: dataSha256(data),
+      data: paid.data,
+      [DATA_SHA256_FIELD]: paid.sha256,
     });
   }
 

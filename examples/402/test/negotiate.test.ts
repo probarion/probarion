@@ -1,6 +1,6 @@
 // The buyer's side of a negotiation, with a stub MCP client and a stub seller: one counter at the mandate's
-// cap, a walk-away that asks for no payment, a payee that never comes from a quote, and the receipt and data
-// check after a paid 200.
+// limit, none under a mandate that cannot pay, a walk-away that asks for no payment, a payee that never comes
+// from a quote, a redeem token required before paying, and the receipt and data check after a paid 200.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,9 +30,19 @@ const mandate: MandateRow = {
   status: "active",
   payee_detail: { type: "near", account_id: "seller.testnet" },
   max_per_payment_usdc: "0.01",
+  remaining_usdc: "0.05",
   uses_left: 5,
   expires_at: "2026-12-31T00:00:00.000Z",
   agent_key: KEY,
+};
+
+const refusedSpend = {
+  status: "refused_by_code",
+  spend_id: null,
+  code: "mandate.uses_exhausted",
+  tx_hash: null,
+  explorer: null,
+  note: "",
 };
 
 let dirs: string[] = [];
@@ -47,14 +57,14 @@ const receiptsFile = () => {
 };
 
 /** A stub MCP client: every tool call is recorded with its arguments. */
-function stubClient(spend: Record<string, unknown> = paidSpend) {
+function stubClient(spend: Record<string, unknown> = paidSpend, row: MandateRow = mandate) {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   const answers: Record<string, () => unknown> = {
     list_mandates: () => ({
       vault: "buyer.vaults.probarion.testnet",
       network: "testnet",
       agent_key: KEY,
-      mandates: [mandate],
+      mandates: [row],
     }),
     request_spend: () => spend,
     get_spend_status: () => ({ status: "paid" }),
@@ -84,6 +94,8 @@ const paidSpend = {
 
 interface SellerOptions {
   first?: string;
+  /** The first 402's redeem token; null leaves it out. */
+  firstToken?: string | null;
   counter?: { status: number; body: unknown };
   paid?: unknown;
 }
@@ -108,8 +120,12 @@ function stubSeller(o: SellerOptions = {}) {
         return Response.json(c.body, { status: c.status });
       }
       if (init?.headers === undefined) {
+        const token = o.firstToken === undefined ? "t1" : o.firstToken;
         return Response.json(
-          { quote: o.first ?? quoteText(FIRST), redeem_token: "t1" },
+          {
+            quote: o.first ?? quoteText(FIRST),
+            ...(token === null ? {} : { redeem_token: token }),
+          },
           { status: 402 },
         );
       }
@@ -192,6 +208,72 @@ describe("negotiating a quote above the mandate's cap", () => {
       expect(seller.redemptions).toHaveLength(0);
     },
   );
+
+  it("counters at what is left of the mandate's total when that is below its cap", async () => {
+    const { client, names } = stubClient(paidSpend, { ...mandate, remaining_usdc: "0.008" });
+    const seller = stubSeller();
+    const r = await run(client, seller);
+    expect(seller.counters).toEqual([
+      expect.objectContaining({
+        amount: "8000",
+        reason: "My mandate has 0.008 USDC left. I can pay 0.008.",
+      }),
+    ]);
+    // The stub seller answers with a quote of 0.01, not the counter: the agent walks away.
+    expect(r).toMatchObject({ kind: "walked_away", counterUsdc: "0.008" });
+    expect(names()).toEqual(["list_mandates"]);
+  });
+
+  it.each<[string, Partial<MandateRow>, string]>([
+    ["has no payment left", { uses_left: 0 }, "has no payment left"],
+    ["has expired", { expires_at: "2026-11-01T00:00:00.000Z" }, "has expired"],
+    ["is revoked", { status: "revoked" }, "is revoked"],
+  ])(
+    "under a mandate that %s, does not counter: it asks for the quote as it is and is refused",
+    async (_, over, problem) => {
+      const { client, calls } = stubClient(refusedSpend, { ...mandate, ...over });
+      const seller = stubSeller();
+      const r = await run(client, seller);
+      expect(seller.counters).toHaveLength(0);
+      expect(calls.find((c) => c.name === "request_spend")?.args).toMatchObject({
+        mandate_id: 3,
+        amount: "0.012",
+        invoice_hash: quoteHash(quoteText(FIRST)),
+        ref: "402:q_1",
+      });
+      expect(r).toMatchObject({
+        kind: "refused",
+        priceUsdc: "0.012",
+        deal: { countered: false, mandateProblem: problem },
+      });
+      expect(seller.redemptions).toHaveLength(0);
+    },
+  );
+});
+
+describe("the redeem token", () => {
+  it("walks away from a counter's quote that comes without its redeem token", async () => {
+    const { client, names } = stubClient();
+    const seller = stubSeller({
+      counter: { status: 200, body: { quote: quoteText(COUNTERED), countered_from: "q_1" } },
+    });
+    const r = await run(client, seller);
+    expect(r).toMatchObject({
+      kind: "walked_away",
+      answer: { status: 200, reason: "no_redeem_token" },
+    });
+    expect(names()).not.toContain("request_spend");
+  });
+
+  it.each<[string, string | null]>([
+    ["no redeem token", null],
+    ["an empty redeem token", ""],
+  ])("refuses a 402 with %s, before any tool call", async (_, token) => {
+    const { client, names } = stubClient();
+    const seller = stubSeller({ firstToken: token });
+    await expect(run(client, seller)).rejects.toThrow(QuoteError);
+    expect(names()).toEqual([]);
+  });
 });
 
 describe("the payee comes from the mandate, never from a quote", () => {
@@ -264,6 +346,7 @@ describe("receipts and the data check", () => {
       list_price_usdc: "0.012",
       paid_usdc: "0.01",
       spend_id: 7,
+      request_status: "paid",
       tx_hash: "TxHash111",
       tx: "https://testnet.nearblocks.io/txns/TxHash111",
       ledger_seq: 12,
