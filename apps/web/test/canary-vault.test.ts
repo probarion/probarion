@@ -453,8 +453,12 @@ describe("the online run of 2026-11-11: O1 and O2 on the two attested decisions"
     );
     expect(said).not.toContain("cannot be run again");
     expect(said).not.toContain("asks for Node 24.22.1");
-    // The CLI's hint for the clock is not on this branch: the README does not say there is one.
-    expect(said).not.toMatch(/\bhint\b/i);
+    // The CLI's hint for the clock (packages/cli/src/report.ts) is what the README says it is.
+    expect(said).toContain(
+      "Since then, when O2 fails this way, the CLI adds a line that starts `online hint:` and says to sync the clock.",
+    );
+    const report = readFileSync(join(ROOT, "packages/cli/src/report.ts"), "utf8");
+    expect(report).toMatch(/export const CLOCK_HINT =\s*"online hint: [^"]*sync the clock/);
   });
 });
 

@@ -280,6 +280,7 @@ Before you rely on it, or run it again:
   `[gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid`. The computer's clock was about 3 s
   behind NVIDIA's, and `@nearai/inference-sdk` 0.2.1 refuses an NRAS token whose `nbf` or `iat` is later than the
   local clock, with no tolerance. After the owner synced the clock, the same command passed: the file is that run.
+  Since then, when O2 fails this way, the CLI adds a line that starts `online hint:` and says to sync the clock.
 - **Outside services.** O1 fetches Intel's DCAP collateral (`api.trustedservices.intel.com`) and O2 sends each GPU
   payload to NRAS (`nras.attestation.nvidia.com`). The run needs the network, both services, a clock in sync and
   the CLI's optional dependency `@nearai/inference-sdk`. That package's `engines` field declares Node 24.22.1 or

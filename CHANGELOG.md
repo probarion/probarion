@@ -50,7 +50,7 @@ The software is an unaudited beta.
   runs on every committed snapshot in `docs/evidence`; the demo vault, `v0.probarion.testnet` and the
   Canary are verified live, read-only, and the demo vault's live ledger must start with the committed
   one; the MCP demo and the 402 demo run. Each step quotes the README line it proves, found again at
-  run time, and prints one row: PASS, EXPECTED-FAIL (the Canary's private ledger fails check c, and
+  run time, and prints one row: PASS, EXPECTED-FAIL (the Canary verified without its ledger fails check c, and
   `v0.probarion.testnet` fails d and h, as the README says; any other result there is a FAIL), SKIPPED
   with the reason and the command, or FAIL. It exits 0 only when no step failed and writes
   `judge-report.json` (gitignored): the claim, README line, command, result, expectation, time and
