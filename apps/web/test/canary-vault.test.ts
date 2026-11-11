@@ -11,12 +11,17 @@ import { extractReportDataFromQuote, runChecks, type Snapshot } from "@probarion
 import {
   ACCEPTED_TCB_STATUSES,
   applyOnlineChecks,
+  InMemoryLedgerStore,
+  loadDefaultOnlineVerifier,
   O1_MEASUREMENT_PINNED,
   type OnlineAttestationVerifier,
+  Probarion,
 } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import { CANARY_SYSTEM_PROMPT, CANARY_SYSTEM_PROMPT_V1 } from "@/lib/canary/prompt";
+import { findPage } from "@/lib/docs/registry";
 import { decisionRows } from "@/lib/proof/decisions";
+import { STATUS } from "@/lib/site/facts";
 import { PRIVACY_PAGE } from "@/lib/site/ops-copy";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
@@ -283,6 +288,26 @@ describe("the online run of 2026-11-11: O1 and O2 on the two attested decisions"
     "online legend: O1 checks that a TDX quote is DCAP-genuine (Intel DCAP; debug off, an accepted TCB status) and bound to this request; measurement not pinned (O1b deferred), so O1 does not show which image the TD runs";
   const O2_LEGEND =
     "online legend: O2 checks that a GPU payload carries the request nonce and that NVIDIA NRAS verifies it";
+  /**
+   * A verifier that passes whatever it is asked: the run's own answers came from Intel DCAP and NVIDIA NRAS, which a
+   * test cannot ask. It records what it was asked, and gives back the report data inside each quote.
+   */
+  const passingVerifier = (asked = { quotes: [] as string[], gpus: [] as string[] }) => {
+    const verifier: OnlineAttestationVerifier = {
+      async verifyQuote(quote) {
+        asked.quotes.push(quote);
+        return {
+          reportDataHex: extractReportDataFromQuote(quote) ?? "",
+          tcbStatus: "UpToDate",
+          debugEnabled: false,
+        };
+      },
+      async verifyGpu(payload) {
+        asked.gpus.push(payload);
+      },
+    };
+    return verifier;
+  };
 
   it("read the chain with this ledger at 07:43 UTC and ends RESULT: PASS, 9 passed", () => {
     expect(lines[0]).toBe(`Probarion verify: ${VAULT} (testnet)`);
@@ -307,23 +332,10 @@ describe("the online run of 2026-11-11: O1 and O2 on the two attested decisions"
   });
 
   it("is the offline check e of the committed snapshot plus what applyOnlineChecks adds when O1 and O2 pass", async () => {
-    // A verifier that passes whatever it is asked: the run's own answers came from Intel DCAP and NVIDIA NRAS, which
-    // a test cannot ask. What it does check: the printed line is the SDK's own, for these two entries, and each
-    // GPU payload carries its entry's nonce (applyOnlineChecks compares them before it asks NRAS).
+    // What it does check: the printed line is the SDK's own, for these two entries, and each GPU payload carries its
+    // entry's nonce (applyOnlineChecks compares them before it asks NRAS).
     const asked = { quotes: [] as string[], gpus: [] as string[] };
-    const passing: OnlineAttestationVerifier = {
-      async verifyQuote(quote) {
-        asked.quotes.push(quote);
-        return {
-          reportDataHex: extractReportDataFromQuote(quote) ?? "",
-          tcbStatus: "UpToDate",
-          debugEnabled: false,
-        };
-      },
-      async verifyGpu(payload) {
-        asked.gpus.push(payload);
-      },
-    };
+    const passing = passingVerifier(asked);
     const report = await applyOnlineChecks(await runChecks(snapshot), snapshot, passing);
     const e = report.checks.find((c) => c.id === "e");
     expect(e?.status).toBe("pass");
@@ -351,11 +363,47 @@ describe("the online run of 2026-11-11: O1 and O2 on the two attested decisions"
     expect(O1_MEASUREMENT_PINNED).toBe(false);
   });
 
+  it("runs O1 and O2 on the committed snapshot through the SDK's verify, and still reports them after check c fails", async () => {
+    // The folder README: the CLI's --offline refuses --online, but the SDK's verify({ snapshot, online: true }) runs
+    // O1 and O2 on the snapshot it is given; and a live run that check c fails still reports them in check e.
+    const pb = new Probarion(
+      { network: "testnet", vault: VAULT, model: null, ledger: new InMemoryLedgerStore() },
+      { onlineVerifier: passingVerifier() },
+    );
+    const report = await pb.verify({ snapshot, online: true });
+    expect(report.checks.find((c) => c.id === "e")?.detail).toBe(printedE);
+    expect(report.ok).toBe(true);
+    // The Canary anchors a newer entry: the chain's last anchor covers 6 entries, and this file holds 5.
+    const last = snapshot.chain.anchors.at(-1);
+    if (last === undefined) throw new Error("no anchor");
+    const newer = structuredClone(snapshot);
+    newer.chain.anchors.push({ ...last, seq: last.seq + 1, count: 6, root: "ab".repeat(32) });
+    const live = await pb.verify({ snapshot: newer, online: true });
+    expect(live.checks.find((c) => c.id === "c")?.status).toBe("fail");
+    const e = live.checks.find((c) => c.id === "e");
+    expect(e?.status).toBe("pass");
+    expect(e?.detail.endsWith(`; ${ONLINE_E}`)).toBe(true);
+    expect(live.ok).toBe(false);
+  });
+
+  it("loads @nearai/inference-sdk without a check of the Node version", async () => {
+    // The folder README: the package's engines field declares Node 24.22.1 or later, and the SDK does not check it.
+    const fake = {
+      createTdxQuoteVerifier: () => async () => ({}),
+      createGpuEvidenceVerifier: () => async () => undefined,
+    };
+    expect(await loadDefaultOnlineVerifier(async () => fake)).not.toBeNull();
+  });
+
   it("the folder README gives the command, the time and the output, and says what O1 and O2 show and do not", () => {
     const raw = subsection(section(readme, SECTION), "### The online run of 2026-11-11");
     const said = flat(raw);
     expect(said).toContain(
       "[`verify-online-2026-11-11.txt`](verify-online-2026-11-11.txt) is a live run with `--online`, on 2026-11-11 at 07:43 UTC (the file says `generated 2026-11-11T07:43:23.076Z`)",
+    );
+    // The run read a copy of the ledger at another path; the README gives its hash, which is the committed file's.
+    expect(said).toContain(
+      `The run read a byte-identical copy of this folder's ledger at another path (sha256 \`${sha256(bytes(LEDGER))}\`, the hash of \`${LEDGER}\`). With the committed file, the command is:`,
     );
     expect(raw).toContain(
       `\`\`\`bash\nnode packages/cli/dist/bin.js verify --network testnet --vault ${VAULT} --ledger docs/evidence/canary-vault/${LEDGER} --online\n\`\`\``,
@@ -395,11 +443,16 @@ describe("the online run of 2026-11-11: O1 and O2 on the two attested decisions"
     expect(said).toContain("`api.trustedservices.intel.com`");
     expect(said).toContain("`nras.attestation.nvidia.com`");
     expect(said).toContain(
-      "it stops passing check c once the Canary anchors an entry this file does not have, whatever O1 and O2 say.",
+      "That package's `engines` field declares Node 24.22.1 or later; the SDK loads it without checking the Node version, and the output does not record which one the run used.",
     );
     expect(said).toContain(
-      "`verify --offline` refuses `--online`, so O1 and O2 cannot be run again from `snapshot-2026-11-11.json`.",
+      "it stops passing check c once the Canary anchors an entry this file does not have, whatever O1 and O2 say; such a run still reports O1 and O2 in check e after check c fails.",
     );
+    expect(said).toContain(
+      "The CLI's `verify --offline` refuses `--online`, so the CLI cannot run O1 and O2 on `snapshot-2026-11-11.json`. The SDK can: `verify({ snapshot, online: true })` on a `Probarion` instance runs them on the snapshot it is given.",
+    );
+    expect(said).not.toContain("cannot be run again");
+    expect(said).not.toContain("asks for Node 24.22.1");
     // The CLI's hint for the clock is not on this branch: the README does not say there is one.
     expect(said).not.toMatch(/\bhint\b/i);
   });
@@ -440,6 +493,11 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
     expect(security).toContain(
       "On 2026-11-11 they also passed the online checks O1 and O2 ([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt))",
     );
+    // O1's policy limits: an accepted TCB status can be OutOfDate, and the output does not say which one each had.
+    expect(security).toContain(
+      "each TDX quote is a genuine Intel TDX quote (Intel DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose report data holds the signing address and the entry's nonce",
+    );
+    expect(ACCEPTED_TCB_STATUSES).toContain("OutOfDate");
     expect(security).toContain(
       "The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run",
     );
@@ -451,12 +509,13 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
     expect(security).not.toMatch(/O1 and O2 are not recorded/);
   });
 
-  it("the privacy page: two of the Canary's, checked offline and online, none the payables agent's", () => {
+  it("the privacy page: two of the Canary's, checked offline and, on 2026-11-11, online, none the payables agent's", () => {
     const invoices = PRIVACY_PAGE.sections.find((s) => s.id === "invoices");
     const said = flat((invoices?.paragraphs ?? []).join(" "));
     expect(said).toContain(
-      "The attested decisions recorded in the repository so far are two of the Canary's, on testnet, which pass A1 to A7 offline and O1 and O2 online, with the TEE measurement not pinned; none is the payables agent's.",
+      "The attested decisions recorded in the repository so far are two of the Canary's, on testnet, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, with the TEE measurement not pinned and A8 not run; none is the payables agent's.",
     );
+    expect(said).not.toContain("offline and O1 and O2 online");
     expect(said).not.toContain("checked offline only");
     expect(said).not.toMatch(/no attested decision|none recorded/i);
   });
@@ -527,13 +586,124 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
       /online quote check is not recorded/i,
       /no online run (?:is )?recorded/i,
       /checked offline only/i,
+      /attested decisions, checked offline\b/i,
       /Recorded on testnet, checked offline/,
       /The quote is not verified online/,
       /nothing here shows yet that the signing key/,
+      /offline and O1 and O2 online/,
     ];
+    expect(pages.length).toBeGreaterThan(30);
     expect(unreleased.length).toBeGreaterThan(1000);
     for (const [name, text] of texts) {
       for (const old of OLD) expect(flat(text), `${name}: ${old}`).not.toMatch(old);
+    }
+  });
+
+  it("the CHANGELOG's Unreleased entry gives the status row's pill, the limits and the clock", () => {
+    const changelog = readFileSync(join(ROOT, "CHANGELOG.md"), "utf8");
+    const unreleased = changelog.slice(
+      changelog.indexOf("## Unreleased"),
+      changelog.indexOf("\n## ", changelog.indexOf("## Unreleased") + 1),
+    );
+    const start = unreleased.indexOf("- The Canary's signed ledger, published as evidence");
+    expect(start).toBeGreaterThan(0);
+    const next = unreleased.indexOf("\n- ", start + 1);
+    const entry = flat(unreleased.slice(start, next < 0 ? undefined : next));
+    const pill = STATUS.rows.find((r) => r.id === "attested-model-run")?.pill;
+    expect(pill).toBe("Checked online on testnet, image not pinned");
+    expect(entry).toContain(
+      `the status row "Live attested model run" reads "${pill}", and stays Preview`,
+    );
+    expect(entry).toContain(
+      "each TDX quote is a genuine Intel TDX quote (Intel DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose report data holds the signing address and the entry's nonce",
+    );
+    expect(entry).toContain(
+      "The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run",
+    );
+    expect(entry).toContain(
+      "A first online attempt failed O2 with `not_yet_valid`, because the computer's clock was about 3 s behind NVIDIA's, and passed after a clock sync.",
+    );
+    expect(entry).toContain(
+      "The CLI's `verify --offline` refuses `--online`, so O1 and O2 do not run on the snapshot from the CLI; the SDK's `verify({ snapshot, online: true })` runs them on a snapshot it is given.",
+    );
+    expect(entry).not.toMatch(/\bnever\b/i);
+  });
+
+  it("the root README: the NEAR AI Cloud row and the Canary's paragraph give the date, the output and the limits", () => {
+    const root = readFileSync(join(ROOT, "README.md"), "utf8");
+    const row = root.split("\n").find((l) => l.startsWith("| **NEAR AI Cloud** |"));
+    expect(row).toContain("pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online");
+    expect(row).toContain(
+      "[online output](docs/evidence/canary-vault/verify-online-2026-11-11.txt)",
+    );
+    expect(row).toContain(
+      "the TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run",
+    );
+    const said = flat(root);
+    // The live runs are dated: a live run with this file stops passing check c once the Canary anchors more.
+    expect(said).toContain(
+      "With it, a live `verify` on 2026-11-11 passed checks a to i ([output](docs/evidence/canary-vault/verify-2026-11-11.txt)), and check e found 2 decisions by NEAR AI Cloud that are attested and signed and pass A1 to A7 offline.",
+    );
+    expect(said).toContain(
+      "The same day a live run with `--online` passed O1 and O2 on both ([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt))",
+    );
+    expect(said).toContain(
+      "each TDX quote is a genuine Intel TDX quote (Intel DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose report data holds the signing address and the entry's nonce, and NVIDIA NRAS verified each GPU payload.",
+    );
+    expect(said).toContain(
+      "The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run ([what that shows](docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)).",
+    );
+    expect(said).toContain(
+      "A live run with this file stops passing check c once the Canary anchors a newer entry, such as a visitor's attempt; the offline command below, on the snapshot that run wrote, keeps passing.",
+    );
+    // The offline command checks a to i and A1 to A7; it does not run O1 and O2 again.
+    expect(said).toContain(
+      "To run checks a to i and A1 to A7 offline, from a clone of the repository (O1 and O2 need a live run with `--online`): ```bash npx probarion verify --offline docs/evidence/canary-vault/snapshot-2026-11-11.json ```",
+    );
+    expect(said).not.toContain("To check it offline, from a clone of the repository:");
+    expect(said).not.toContain("With it, a live `verify` passes checks a to i");
+  });
+
+  it("each docs page that names the Canary's two decisions gives the date, both links and the limits", () => {
+    const docs = join(ROOT, "apps", "web", "content", "docs");
+    const GH = "https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/";
+    const EVIDENCE_LINK = `(${GH}README.md#the-signed-ledger-published-2026-11-11)`;
+    const ONLINE_LINK = `(${GH}${VERIFY_ONLINE})`;
+    const ONLINE_DATED = "pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online";
+    const PAGES: Record<string, string> = {
+      "build/let-an-agent-pay": ONLINE_DATED,
+      "build/sdk-reference": ONLINE_DATED,
+      "operate/architecture": ONLINE_DATED,
+      "resources/glossary": ONLINE_DATED,
+      "start/how-one-payment-works": ONLINE_DATED,
+      "start/what-is-probarion": ONLINE_DATED,
+      "start/what-works-today": ONLINE_DATED,
+      "trust/security-model": ONLINE_DATED,
+      "trust/verifier-checks": "which passed O1 and O2 on 2026-11-11",
+    };
+    const all = readdirSync(docs, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".mdx"))
+      .map((f) => f.replaceAll("\\", "/").replace(/\.mdx$/, ""));
+    expect(all.length).toBeGreaterThan(30);
+    // The table is every page that says what the Canary's decisions passed: a new one has to be added here.
+    const naming = all.filter((p) =>
+      /Canary's (?:ledger of 2026-11-10|on testnet)/.test(
+        flat(readFileSync(join(docs, `${p}.mdx`), "utf8")),
+      ),
+    );
+    expect(naming.sort()).toEqual(Object.keys(PAGES).sort());
+    for (const [path, claim] of Object.entries(PAGES)) {
+      const said = flat(readFileSync(join(docs, `${path}.mdx`), "utf8"));
+      expect(said, path).toContain(claim);
+      expect(said, path).toMatch(
+        /measurement is not pinned, so (?:this does|they do) not show which model image ran, and A8 was not run/,
+      );
+      expect(said, path).toContain(EVIDENCE_LINK);
+      expect(said, path).toContain(ONLINE_LINK);
+      // The page lists the evidence among the files it was checked against.
+      const sources = findPage(path)?.sources ?? [];
+      expect(sources, path).toContain("docs/evidence/canary-vault/README.md");
+      expect(sources, path).toContain(`docs/evidence/canary-vault/${VERIFY_ONLINE}`);
     }
   });
 });
@@ -661,5 +831,27 @@ describe("the folder README's account of the ledger", () => {
     expect(flat(text)).toContain(
       "The online run above reads the chain too, so its command stops passing check c at the same point.",
     );
+    // Two live runs on 2026-11-11: the snapshot is the one of 07:17 UTC, not the online run's.
+    expect(flat(text)).toContain(
+      "is the snapshot the live run of 2026-11-11 at 07:17 UTC wrote (`--snapshot`)",
+    );
+    expect(snapshot.taken_at.startsWith("2026-11-11T07:17")).toBe(true);
+    expect(flat(text)).toContain(
+      "The offline and live commands were run again on 2026-11-11 with the CLI built from this repository at commit `75a7262`, and both end `RESULT: PASS`.",
+    );
+    expect(text).not.toContain("Both commands were run again");
+  });
+
+  it("counts the three live runs it records in its Check it lead", () => {
+    const lead = flat(section(readme, "## Check it"));
+    expect(lead).toContain("Three live runs are recorded.");
+    expect(lead).toContain(
+      "The first, on 2026-11-10, had no ledger and fails check c. The second, on 2026-11-11, has the signed ledger and passes checks a to i, and the third, the same day, runs the online checks O1 and O2 as well and passes them",
+    );
+    expect(readme).not.toMatch(/\bTwo live runs are recorded/);
+    // The three files it counts.
+    for (const name of ["verify-2026-11-10.txt", VERIFY, VERIFY_ONLINE]) {
+      expect(readme).toContain(`(${name})`);
+    }
   });
 });

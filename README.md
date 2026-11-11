@@ -565,13 +565,17 @@ The live `verify` of 2026-11-10, run without the ledger, passes check f (no full
 model's answers in it can quote what visitors wrote, so that run checks the chain's 4 anchors against an empty
 ledger. On 2026-11-11 the team published the ledger as it stood, the 5 entries of its own three attempts and no
 visitor's ([`ledger-2026-11-10.jsonl`](docs/evidence/canary-vault/ledger-2026-11-10.jsonl)). With it, a live
-`verify` passes checks a to i ([output](docs/evidence/canary-vault/verify-2026-11-11.txt)), and check e finds 2
-decisions by NEAR AI Cloud that are attested and signed and pass A1 to A7 offline. The same day a live run with
-`--online` passed O1 and O2 on both ([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt)): each TDX
-quote is a genuine Intel TDX quote whose report data holds the signing address and the entry's nonce, and NVIDIA
-NRAS verified each GPU payload. The TEE measurement is not pinned, so this does not show which model image ran, and
-A8 was not run ([what that shows](docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)). To
-check it offline, from a clone of the repository:
+`verify` on 2026-11-11 passed checks a to i ([output](docs/evidence/canary-vault/verify-2026-11-11.txt)), and
+check e found 2 decisions by NEAR AI Cloud that are attested and signed and pass A1 to A7 offline. The same day a
+live run with `--online` passed O1 and O2 on both
+([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt)): each TDX quote is a genuine Intel TDX quote
+(Intel DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose report data holds the signing
+address and the entry's nonce, and NVIDIA NRAS verified each GPU payload. The TEE measurement is not pinned, so
+this does not show which model image ran, and A8 was not run
+([what that shows](docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)). A live run with
+this file stops passing check c once the Canary anchors a newer entry, such as a visitor's attempt; the offline
+command below, on the snapshot that run wrote, keeps passing. To run checks a to i and A1 to A7 offline, from a
+clone of the repository (O1 and O2 need a live run with `--online`):
 
 ```bash
 npx probarion verify --offline docs/evidence/canary-vault/snapshot-2026-11-11.json

@@ -309,7 +309,7 @@ A word with three meanings:
 
 ### NEAR AI Cloud
 
-NEAR AI's private inference service. The SDK's optional model step asks a private model there, in a [TEE](#tee), for one proposal per invoice and records the attestation that comes back. The adapter is Preview: it is tested against a fake NEAR AI Cloud, and the real attested decisions recorded so far, two of the Canary's on testnet, pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, but the TEE measurement is not pinned, so this does not show which model image ran. See [Let an agent pay](/docs/build/let-an-agent-pay).
+NEAR AI's private inference service. The SDK's optional model step asks a private model there, in a [TEE](#tee), for one proposal per invoice and records the attestation that comes back. The adapter is Preview: it is tested against a fake NEAR AI Cloud, and the real attested decisions recorded so far, two of the Canary's on testnet, pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)), but the TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run. See [Let an agent pay](/docs/build/let-an-agent-pay).
 
 ### TEE
 

@@ -235,7 +235,9 @@ they do not show yet:
 
 [`verify-online-2026-11-11.txt`](verify-online-2026-11-11.txt) is a live run with `--online`, on 2026-11-11 at
 07:43 UTC (the file says `generated 2026-11-11T07:43:23.076Z`), with the CLI built from this repository, from its
-root:
+root. The run read a byte-identical copy of this folder's ledger at another path (sha256
+`768edd1e52121ddec662176c6de1575c6fc981b78b2221ac6e01dfbfb1f79c8d`, the hash of `ledger-2026-11-10.jsonl`). With
+the committed file, the command is:
 
 ```bash
 node packages/cli/dist/bin.js verify --network testnet --vault canary.vaults.probarion.testnet --ledger docs/evidence/canary-vault/ledger-2026-11-10.jsonl --online
@@ -280,16 +282,20 @@ Before you rely on it, or run it again:
   local clock, with no tolerance. After the owner synced the clock, the same command passed: the file is that run.
 - **Outside services.** O1 fetches Intel's DCAP collateral (`api.trustedservices.intel.com`) and O2 sends each GPU
   payload to NRAS (`nras.attestation.nvidia.com`). The run needs the network, both services, a clock in sync and
-  the CLI's optional dependency `@nearai/inference-sdk`, whose `engines` field asks for Node 24.22.1 or later.
+  the CLI's optional dependency `@nearai/inference-sdk`. That package's `engines` field declares Node 24.22.1 or
+  later; the SDK loads it without checking the Node version, and the output does not record which one the run
+  used.
 - **It is a live run.** Like the live command below, it stops passing check c once the Canary anchors an entry
-  this file does not have, whatever O1 and O2 say. And `verify --offline` refuses `--online`, so O1 and O2 cannot
-  be run again from `snapshot-2026-11-11.json`.
+  this file does not have, whatever O1 and O2 say; such a run still reports O1 and O2 in check e after check c
+  fails. The CLI's `verify --offline` refuses `--online`, so the CLI cannot run O1 and O2 on
+  `snapshot-2026-11-11.json`. The SDK can: `verify({ snapshot, online: true })` on a `Probarion` instance runs
+  them on the snapshot it is given.
 
 ### Run it
 
-Offline: [`snapshot-2026-11-11.json`](snapshot-2026-11-11.json) is the snapshot the live run of 2026-11-11 wrote
-(`--snapshot`), with this ledger and the chain data it read. The verifier checks the file against itself, with no
-network, so this command keeps working as long as the file is here, and ends `RESULT: PASS`:
+Offline: [`snapshot-2026-11-11.json`](snapshot-2026-11-11.json) is the snapshot the live run of 2026-11-11 at
+07:17 UTC wrote (`--snapshot`), with this ledger and the chain data it read. The verifier checks the file against
+itself, with no network, so this command keeps working as long as the file is here, and ends `RESULT: PASS`:
 
 ```bash
 npx probarion verify --offline docs/evidence/canary-vault/snapshot-2026-11-11.json
@@ -309,5 +315,5 @@ anchored entries does not pass. The offline command above still passes, because 
 2026-11-11 from the snapshot. The online run above reads the chain too, so its command stops passing check c at the
 same point.
 
-Both commands were run again on 2026-11-11 with the CLI built from this repository at commit `75a7262`, and both
-end `RESULT: PASS`.
+The offline and live commands were run again on 2026-11-11 with the CLI built from this repository at commit
+`75a7262`, and both end `RESULT: PASS`.

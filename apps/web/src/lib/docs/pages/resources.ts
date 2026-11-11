@@ -57,6 +57,8 @@ export const RESOURCES: readonly DocPage[] = [
       "apps/web/src/lib/auth/challenge.ts",
       "apps/web/src/app/api/topup/faucet/route.ts",
       "contracts/intents-stub/src/lib.rs",
+      "docs/evidence/canary-vault/README.md",
+      "docs/evidence/canary-vault/verify-online-2026-11-11.txt",
     ],
     reviewed: "2026-11-11",
     phase: 1,

@@ -170,8 +170,9 @@ snapshot of the ledger and the chain:
   real decisions by a NEAR AI Cloud model that are attested and signed and pass A1 to A7 offline.
   On 2026-11-11 they also passed the online checks O1 and O2
   ([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt)): each TDX quote is a genuine
-  Intel TDX quote whose report data holds the signing address and the entry's nonce, and NVIDIA NRAS
-  verified each GPU payload. The TEE measurement is not pinned, so this does not show which model
+  Intel TDX quote (Intel DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose
+  report data holds the signing address and the entry's nonce, and NVIDIA NRAS verified each GPU
+  payload. The TEE measurement is not pinned, so this does not show which model
   image ran, and A8 was not run, since the ledger holds no invoice text. The Canary's model is a
   small model given a deliberately gullible prompt.
 

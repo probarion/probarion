@@ -85,6 +85,8 @@ export const OPERATE: readonly DocPage[] = [
       "apps/web/content/docs/trust/security-model.mdx",
       "apps/web/content/docs/trust/reproducible-builds.mdx",
       "packages/mcp/src/server.ts",
+      "docs/evidence/canary-vault/README.md",
+      "docs/evidence/canary-vault/verify-online-2026-11-11.txt",
     ],
     reviewed: "2026-11-11",
     phase: 2,
