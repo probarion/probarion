@@ -55,7 +55,7 @@
         },
         {
           "name": "PROBARION_LEDGER_PATH",
-          "description": "The ledger file. Default ~/.probarion/<vault>/ledger.jsonl",
+          "description": "Absolute path of the ledger file: a relative one is taken from the folder the client starts the server in. Default ~/.probarion/<vault>/ledger.jsonl",
           "format": "filepath"
         }
       ]

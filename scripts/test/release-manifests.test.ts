@@ -234,6 +234,20 @@ describe("packages/mcp/server.json, the MCP registry entry", () => {
     for (const v of vars) expect(v.description.length, v.name).toBeGreaterThan(0);
   });
 
+  it("asks for an absolute path in every file path setting: an MCP client picks the server's folder", () => {
+    const paths = (npm?.environmentVariables ?? []).filter((v) => v.format === "filepath");
+    expect(paths.map((v) => v.name).sort()).toEqual([
+      "PROBARION_KEYS_FILE",
+      "PROBARION_LEDGER_PATH",
+    ]);
+    for (const v of paths) expect(v.description, v.name).toMatch(/^Absolute path of /);
+    const readme = read("packages/mcp/README.md");
+    for (const v of paths) {
+      const row = readme.split(/\r?\n/).find((line) => line.startsWith(`| \`${v.name}\` |`));
+      expect(row, v.name).toMatch(/as an absolute path/);
+    }
+  });
+
   it("names each of them in the package README's settings table", () => {
     const readme = read("packages/mcp/README.md");
     for (const name of listed) expect(readme, name).toContain(`| \`${name}\` |`);
