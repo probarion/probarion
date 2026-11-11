@@ -703,6 +703,16 @@ versions is merged into `main`.
    once "Check, test and pack" has passed, "Publish to npm" waits for a review: Review deployments, tick
    `npm-release`, Approve and deploy. Wait for the run to finish green.
 
+   If "Publish to npm" fails after some packages are on npm, keep the tag: do not delete it or push a new
+   one. The likely case is a stop at `@probarion/mcp` with an authentication error once the first three are
+   published: they can publish through trusted publishing, while `@probarion/mcp`, never published, has no
+   trusted publisher yet and needs `NPM_TOKEN`. Store a working `NPM_TOKEN` in `npm-release` (one that has
+   not expired and may create a new package in the `@probarion` scope), then open the same run and use
+   "Re-run failed jobs" within 7 days, the time the run keeps its tarballs, and approve `npm-release` again
+   when it waits. A package npm already has with the same bytes is skipped, so only the rest is published.
+   After 7 days the tarballs are gone, and "Re-run all jobs" packs again: it publishes the rest only if the
+   new tarballs have the same bytes as the ones npm holds.
+
 4. Check npm. The first three lines print `0.1.1`; the last prints `version = '0.1.1'` and
    `mcpName = 'io.github.probarion/probarion'`:
 
@@ -738,22 +748,27 @@ versions is merged into `main`.
    publish to an organization namespace today (registry issue #1468): log in with a personal access token
    instead, a classic one with only the `read:org` scope, or a fine-grained one for the `probarion`
    organization with Organization permissions, Members, Read-only. It needs no repository access. Keep the
-   token in a file under `.keys/` (git ignores that folder), for example `.keys/mcp-registry-token.txt`,
-   and pass it from there. In Git Bash:
+   token in a file under `.keys/` at the root of the checkout you run this step from (git ignores that
+   folder; a fresh clone from step 1 has none, so make it there), for example
+   `.keys/mcp-registry-token.txt`. `mcp-publisher` reads the token from `MCP_GITHUB_TOKEN` when `--token`
+   is not given, which keeps it off the command line, and it uses the token byte for byte: the lines below
+   drop a byte order mark (PowerShell's `>` and `Out-File` write one) and line ends. In Git Bash:
 
    ```bash
    cd packages/mcp
-   mcp-publisher login github --token "$(cat ../../.keys/mcp-registry-token.txt)"
+   MCP_GITHUB_TOKEN="$(tr -d '\r\n\357\273\277' < ../../.keys/mcp-registry-token.txt)" mcp-publisher login github
    mcp-publisher validate
    mcp-publisher publish
+   mcp-publisher logout
    ```
 
    In PowerShell, the login line is
-   `mcp-publisher login github --token (Get-Content ..\..\.keys\mcp-registry-token.txt -Raw).Trim()`.
+   `$env:MCP_GITHUB_TOKEN = (Get-Content ..\..\.keys\mcp-registry-token.txt -Raw).Trim(); mcp-publisher login github; Remove-Item Env:MCP_GITHUB_TOKEN`
+   (`Get-Content` drops the byte order mark and `.Trim()` the line ends).
    `publish` reads `server.json` in that folder and ends with
    `Server io.github.probarion/probarion version 0.1.1`. A version is published to the registry once and
-   cannot be changed; the next release publishes a new one. Revoke the token afterwards if it has no other
-   use.
+   cannot be changed; the next release publishes a new one. `logout` clears the login `mcp-publisher`
+   saved. Revoke the token afterwards if it has no other use.
 
 7. Check the listing. The JSON it prints holds the name `io.github.probarion/probarion` with the version
    `0.1.1` (in PowerShell, write `curl.exe`):
@@ -762,11 +777,29 @@ versions is merged into `main`.
    curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.probarion/probarion"
    ```
 
-8. Then a pull request changes what the repository says about npm: the "not on npm yet" lines for
-   `@probarion/mcp` in the README, the docs and the header of `CHANGELOG.md`, `MCP_ON_NPM` in
-   `apps/web/src/lib/agent/connect.ts`, and the 0.1.1 lines of the README's Status table. If the tag was
-   pushed on another day than 2026-11-12, the same pull request dates the `CHANGELOG.md` heading
-   `## 0.1.1` with the day the packages were published.
+8. Then a pull request changes what the repository says about npm. Once npm's `latest` is 0.1.1, every
+   line that names 0.1.0 as the npm release is stale, and `node scripts/check-claims.mjs` does not flag it
+   (its `--online` run only asks npm whether a cited version exists, and flags a package said not to be on
+   npm that npm has). Find the lines with `git grep -n "0\.1\.0"` and `git grep -n "not on npm yet"`, and
+   leave the `## 0.1.0` section of `CHANGELOG.md` and the browser extension's own 0.1.0 as they are. The
+   pull request changes:
+
+   - `SECURITY.md`: the supported version row names 0.1.1, and `@probarion/mcp` with the other packages.
+   - `README.md`: the Status rows "on npm as ... 0.1.0" and the 0.1.1 row, the "Release 0.1.0 is on npm"
+     install note, the lines that say the CLI from npm runs release 0.1.0, and the "not on npm yet"
+     lines for `@probarion/mcp`.
+   - The docs under `apps/web/content/docs` and `apps/web/src/lib/docs`: "on npm at 0.1.0", "runs (or
+     downloads) release 0.1.0 from npm", the `probarion --version` output in `build/install.mdx` and the
+     MCP server "not on npm yet" lines.
+   - The "0.1.0 on npm" pill in `apps/web/src/lib/site/facts.ts`, and `MCP_ON_NPM` in
+     `apps/web/src/lib/agent/connect.ts`.
+   - The `@probarion/mcp` README's npm lead and its "after the 0.1.1 release" marks, and the header of
+     `CHANGELOG.md`.
+   - The tests that pin these lines, among them `apps/web/test/site-facts.test.ts` and
+     `apps/web/test/docs-content.test.ts`.
+
+   If the tag was pushed on another day than 2026-11-12, the same pull request dates the `CHANGELOG.md`
+   heading `## 0.1.1` with the day the packages were published.
 
 ## Status page posts
 
