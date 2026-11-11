@@ -6,10 +6,9 @@ signed for its key: no tool takes an address, and the vault contract pays the ma
 
 **Unaudited beta.** Testnet first; use small amounts. MIT licensed.
 
-**Not on npm yet.** Today the server runs from a clone of the repository, as Set it up below shows.
-Every `npx` line below is marked *after the 0.1.1 release*, and none of them works before that release.
-
-<!-- TODO(release): at the 0.1.1 release, drop the "Not on npm yet" paragraph and the "after the 0.1.1 release" marks, and lead each client with its npx line. -->
+**On npm once release 0.1.1 is published.** Until npm has it (`npm view @probarion/mcp version` says
+whether it does), the server runs only from a clone of the repository, as Set it up below shows; every
+`npx` line below is marked *after the 0.1.1 release* and works once npm has that release.
 
 ## The five tools
 
@@ -144,7 +143,7 @@ The server and `status` read these from their environment:
 | `PROBARION_LEDGER_KEY` | With `PROBARION_AGENT_KEY`, or neither | `ed25519:...`, the vault's anchor-only key, in place of a keys file |
 | `NEAR_RPC_URLS` | No | Comma-separated `https://` RPC URLs in failover order, with no user name or password in a URL (`http://` only for a node on this machine) |
 | `NEAR_ARCHIVAL_RPC_URLS` | No | The archival RPC URLs `verify` reads old transactions from, with the same rules |
-| `PROBARION_LEDGER_PATH` | No | The ledger file. Default `~/.probarion/<vault>/ledger.jsonl` |
+| `PROBARION_LEDGER_PATH` | No | The ledger file, as an absolute path: a relative one is taken from the folder the MCP client starts the server in. Default `~/.probarion/<vault>/ledger.jsonl` |
 
 The keys come from the first of these that is set: both `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY`;
 the file `PROBARION_KEYS_FILE` names; `~/.probarion/<vault>/keys.json`. With none, the server is read-only.
