@@ -15,8 +15,10 @@ export const MAX_PDF_PAGES = 20;
  * CPU-bound parse: the timer's callback runs only when the event loop is free, so a long synchronous step of
  * pdfjs (decoding a large stream, laying out a costly page) runs to its end first. The real bounds on a crafted
  * PDF are the input caps, MAX_INVOICE_BYTES (4 MiB) and MAX_PDF_PAGES (20; only those pages are read), and the
- * route's `maxDuration` (60 s), after which the platform ends the invocation. A worker thread that could be
- * terminated mid-parse is out of scope.
+ * route's `maxDuration` (90 s for the console upload, 60 s for the extension's), after which the platform ends the
+ * invocation. A parse runs before the invoice row exists, and the console upload's model calls end by 50 s from the
+ * route's start whatever the start took (budget.ts), so a slow parse leaves the model less time, not the steps after it.
+ * A worker thread that could be terminated mid-parse is out of scope.
  */
 export const PDF_TIMEOUT_MS = 20_000;
 

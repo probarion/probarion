@@ -366,7 +366,8 @@ describe("processInvoice", () => {
       return outcome();
     });
     await run(d, t, "Total 4 USDC");
-    expect(PROCESS_LEASE_SECONDS).toBe(90);
+    // the upload's 90 s maxDuration plus 30 s (route.test.ts pins both)
+    expect(PROCESS_LEASE_SECONDS).toBe(120);
     expect(leftSeconds).toBeGreaterThan(PROCESS_LEASE_SECONDS - 10);
     expect(leftSeconds).toBeLessThanOrEqual(PROCESS_LEASE_SECONDS);
   });

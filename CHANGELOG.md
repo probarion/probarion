@@ -972,6 +972,31 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- Console: an invoice upload keeps to one time budget counted from the request's start
+  (`apps/web/src/lib/payables/budget.ts`). The NEAR AI calls share 40 s from the first one, each
+  capped by what is left, and they end by 50 s from the start whatever the start took, so a slow
+  model decides rules-only and the invoice waits for the owner with nothing sent. The chain reads
+  before the first transaction stop at 60 s. A read refused there sends nothing: a context read or
+  the `check_spend` dry run stops the upload as an `error` that a new upload runs again, a refused
+  POA balance read holds the decision on `intents.balance_low`, and a refused anchor read leaves
+  the anchor to the next cycle. From the first transaction on, nothing changes: the send keeps the
+  SDK's own timing. Before, the SDK's defaults (90 s for the chat alone) could outlast the route's
+  60 s, and a function stopped mid-cycle left the row in `processing`, which blocks a new upload, with
+  no time left for the watcher kick. The route's `maxDuration` goes from 60 s to 90 s, planned as
+  10 s for the start, 40 s for the model, 10 s for the decision and its dry run, 10 s for the send,
+  the anchor and the row, and 20 s for the watcher kick after the answer. The kick now gets the
+  function's end (the route's start plus 90 s), so after a late answer (a slow send) it claims fewer
+  alerts instead of starting a send that the platform cuts off. The tenant lease goes from 90 s to
+  120 s, 30 s longer than the route; the route's 90 s stays under the 2 minutes after which the
+  alerts' SQL takes a sending alert back. No migration and no new setting. Tests pin the sums, the
+  lease against the route, and the route against the SQL; the budget and the kick's end counted from
+  the route's start, past a slow session and mandates read; a late answer that shortens the kick's
+  alerts, on a fake clock; and, with the real SDK on PGlite, a 70 s model held for the owner with
+  nothing sent. At the route, with a stubbed cycle, the kick is asked for before the cycle runs. The
+  RUNBOOK's "Invoice stuck in processing" covers an upload or an owner's Confirm left there: how to
+  read the row's ref, look its spend up on chain, and tell from the last decision whether a spend
+  can still land.
+
 - `@probarion/mcp`: the burned outcome no longer tells the agent to poll `get_spend_status`. A burn
   is final for the vault: the agent must not resend it under any ref, and should tell the owner if
   the payee reports nothing. On mainnet the bridge releases the funds and Probarion does not watch

@@ -47,7 +47,7 @@ export const CANARY_LIMITS = {
   promptOverheadTokens: 900,
   /**
    * How long one attempt holds the Canary tenant's `process` lease. It must outlast the route's `maxDuration` (90 s) by
-   * at least 30 s, so it is the Canary's own, longer than Payables' 90 s PROCESS_LEASE_SECONDS (whose route stops at 60 s).
+   * at least 30 s. It is the Canary's own, longer than Payables' 120 s PROCESS_LEASE_SECONDS (whose route also stops at 90 s).
    * route.test.ts checks both. The "lease (90 s)" that migrations 0008 and 0009 name is the SQL's fixed 90 s threshold
    * between a running attempt and a killed one, which no longer equals this lease: route.test.ts keeps the route's
    * `maxDuration`, and with it every attempt, within that threshold.

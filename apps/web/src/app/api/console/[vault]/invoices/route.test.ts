@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import type { MandateView } from "@probarion/core";
 import type { SpendOutcome } from "@probarion/sdk";
@@ -7,7 +9,9 @@ import { sha256Hex } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import { type MemberTenant, memberRole } from "@/lib/db/tenants";
 import { generateKey } from "@/lib/keys/service";
+import { PAYABLES_TIME, type PayablesBudget } from "@/lib/payables/budget";
 import { MAX_INVOICE_BYTES } from "@/lib/payables/extract";
+import { OWNER_CONFIRMS_RULE } from "@/lib/payables/owner-confirms";
 import { PROCESS_LEASE_SECONDS } from "@/lib/payables/pipeline";
 import { getInvoice, setInvoiceRejected } from "@/lib/payables/store";
 import { LIMITS } from "@/lib/ratelimit";
@@ -31,11 +35,18 @@ const h = vi.hoisted(() => ({
   kicks: [] as string[],
   /** The networks the route asked a reader, a Probarion and a kick for. */
   networks: [] as string[],
+  /** The time budget the route gave each Probarion it made. */
+  budgets: [] as PayablesBudget[],
+  /** What the route told each kick about its function's end. */
+  kickOptions: [] as unknown[],
+  /** Runs inside the session check, the route's first step after its start (a test moves the clock there). */
+  onAuth: null as null | (() => void),
 }));
 
 vi.mock("@/lib/auth/guard", () => ({
   memberForApi: async (_vault: string, roles: unknown) => {
     h.roles.push(roles);
+    h.onAuth?.();
     return h.auth ?? { session: { accountId: "acme.near" }, member: h.member };
   },
 }));
@@ -53,15 +64,17 @@ vi.mock("@/lib/near/server", () => ({
   },
 }));
 vi.mock("@/lib/watcher/server", () => ({
-  kickWatcher: (tenant: string, network: string) => {
+  kickWatcher: (tenant: string, network: string, o?: unknown) => {
     h.networks.push(`kick:${network}`);
+    h.kickOptions.push(o);
     return h.kicks.push(tenant);
   },
 }));
-vi.mock("@/lib/sdk/factory", () => ({
-  makeTenantProbarion: (network: string, o: Record<string, unknown>) => {
+vi.mock("@/lib/payables/probarion", () => ({
+  makePayablesProbarion: (network: string, o: Record<string, unknown>, budget: PayablesBudget) => {
     h.networks.push(`probarion:${network}`);
     h.made.push(o);
+    h.budgets.push(budget);
     return {
       process: (i: unknown) => h.process(i),
       rules: { add: (rule: { id: string }) => h.rules.push(rule.id) },
@@ -147,10 +160,13 @@ beforeEach(async () => {
   h.auth = null;
   h.roles = [];
   h.made = [];
+  h.budgets = [];
   h.networks = [];
   h.rules = [];
   h.failDb = null;
   h.kicks = [];
+  h.kickOptions = [];
+  h.onAuth = null;
   h.mandates = async (_v, from) => (from === 0 ? [mandate(1, agentPk)] : []);
   h.process = async () => PAID;
 });
@@ -204,9 +220,123 @@ function invoiceForm(o: { text?: string; file?: File; purpose?: boolean } = {}):
 
 const body = async (r: Response) => (await r.json()) as Record<string, unknown>;
 
+/** Every migration, with its comments removed, as statements (a function body is cut at its own semicolons too). */
+function migrationStatements(): { file: string; sql: string }[] {
+  const dir = join(process.cwd(), "supabase", "migrations");
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .flatMap((file) =>
+      readFileSync(join(dir, file), "utf8")
+        .replace(/--[^\n]*/g, "")
+        .split(";")
+        .map((sql) => ({ file, sql })),
+    );
+}
+
 describe("POST /api/console/[vault]/invoices", () => {
-  it("lets the tenant lease outlast the route's longest run, with a margin", () => {
-    expect(maxDuration + 30).toBeLessThanOrEqual(PROCESS_LEASE_SECONDS);
+  describe("its time", () => {
+    it("lets the tenant lease outlast the route's longest run by at least 30 s", () => {
+      expect(maxDuration).toBe(90);
+      expect(PROCESS_LEASE_SECONDS).toBe(120);
+      expect(maxDuration + 30).toBeLessThanOrEqual(PROCESS_LEASE_SECONDS);
+      // 300 s is what Vercel Pro, the project's plan, allows without Fluid compute (800 s with it, pinned on in vercel.json)
+      expect(maxDuration).toBeLessThanOrEqual(300);
+    });
+
+    it("gives the cycle's time (lib/payables/budget.ts) exactly the route's maxDuration", () => {
+      expect(PAYABLES_TIME.routeMs).toBe(maxDuration * 1000);
+    });
+
+    // The watcher kick sends the owner's alerts in this function, after the answer. The alerts' SQL takes an alert back
+    // from `sending` after 2 minutes, for a function that died mid-send (migrations 0011 and 0012). A function that could
+    // still be sending after 2 minutes would see its alert claimed and sent a second time.
+    it("ends before the 2 minutes after which the alerts' SQL takes a sending alert back", () => {
+      const reclaim = /a\.status = 'sending' and a\.updated_at < now\(\) - interval '2 minutes'/;
+      const files = new Set(
+        migrationStatements()
+          .filter((s) => reclaim.test(s.sql))
+          .map((s) => s.file),
+      );
+      expect([...files].sort()).toEqual([
+        "20261108000011_alerts.sql",
+        "20261108000012_networks.sql",
+      ]);
+      expect(maxDuration * 1000).toBeLessThan(120_000);
+    });
+
+    // A fixed age in SQL that calls an invoice in `processing` dead would have to stay above the route's maxDuration, as
+    // the Canary's 90 s threshold for a `running` attempt does (canary_attempts only, its route.test.ts). None exists:
+    // a row left in `processing` waits for the reconcile job, which is not built (docs/RUNBOOK.md). If one is added,
+    // this fails, and the route's time and the lease must be checked against it.
+    it("is not contradicted by any fixed age the SQL gives an invoice in processing", () => {
+      const statements = migrationStatements().filter((s) => /'processing'/.test(s.sql));
+      expect(statements.length).toBeGreaterThan(5);
+      const aged = statements.filter((s) => /interval|make_interval|epoch|seconds/i.test(s.sql));
+      expect(aged.map((s) => s.file)).toEqual([]);
+    });
+
+    // The budget and the kick's end are counted at the top of POST, before the session, the form, the PDF and the
+    // vault's mandates. A budget started any later (in the makeProbarion callback, say) would let a slow start push the
+    // 60 s send-by point past the route's 90 s. Here the clock moves only inside the session check (7 s) and the
+    // mandates read (18 s), both before the SDK instance is made.
+    it("counts the cycle's deadlines and the kick's end from the route's start, before the slow steps", async () => {
+      // An hour back: PGlite reads the same clock, so the row this test writes stays older than the next tests' rows.
+      const T0 = Date.now() - 3_600_000;
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(T0);
+        h.onAuth = () => vi.setSystemTime(Date.now() + 7_000);
+        const mandates = h.mandates;
+        h.mandates = async (v, from, limit) => {
+          if (from === 0) vi.setSystemTime(Date.now() + 18_000);
+          return mandates(v, from, limit);
+        };
+        let chain = Number.NaN;
+        let model = Number.NaN;
+        h.process = async () => {
+          const budget = h.budgets[0];
+          if (budget === undefined) throw new Error("no budget");
+          expect(Date.now()).toBe(T0 + 25_000);
+          chain = budget.chainMs();
+          model = budget.modelMs();
+          return PAID;
+        };
+        expect((await post(invoiceForm({ text: fresh() }))).status).toBe(200);
+        expect(h.budgets).toHaveLength(1);
+        // 60 s from T0, not from T0 + 25 s
+        expect(chain).toBe(PAYABLES_TIME.sendByMs - 25_000);
+        // the model's calls end afterModelMs before that, whatever the start took: 25 s, not 40 s
+        expect(model).toBe(PAYABLES_TIME.sendByMs - PAYABLES_TIME.afterModelMs - 25_000);
+        // and the kick sends nothing past T0 + 90 s
+        expect(h.kickOptions).toEqual([{ hardLimit: T0 + PAYABLES_TIME.routeMs }]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // The route's wiring for a cycle the SDK holds for the owner (test/db/payables-time.test.ts runs the real SDK with
+    // a 70 s model and shows that hold; here the cycle is a stub): the kick is asked for before the cycle runs, the
+    // route's budget is the one the SDK instance gets, and the hold is answered as waiting for the owner.
+    it("asks for the kick before the cycle, gives the SDK the route's budget, and answers a hold as waiting for the owner", async () => {
+      let kicksAtCycle = -1;
+      h.process = async () => {
+        kicksAtCycle = h.kicks.length;
+        return { ...PAID, status: "held", spendId: null, txHash: null, code: OWNER_CONFIRMS_RULE };
+      };
+      const r = await post(invoiceForm({ text: fresh() }));
+      expect(r.status).toBe(200);
+      const out = await body(r);
+      expect(out).toMatchObject({
+        status: "awaiting_owner",
+        notice: expect.stringMatching(/^Nothing was sent/),
+      });
+      expect(kicksAtCycle).toBe(1);
+      expect(h.kicks).toEqual([h.member.tenant_id]);
+      expect(h.budgets).toHaveLength(1);
+      expect(h.budgets[0]?.chainMs()).toBeLessThanOrEqual(PAYABLES_TIME.sendByMs);
+      const row = await getInvoice(h.db, h.member.tenant_id, String(out.invoiceId));
+      expect(row?.status).toBe("awaiting_owner");
+    });
   });
 
   it("refuses another origin before anything else", async () => {

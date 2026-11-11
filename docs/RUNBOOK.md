@@ -377,6 +377,72 @@ that kind. The OWNER fixes it by hand in the SQL editor (`vault_id` is unique ac
 update public.tenants set kind = '<team|external|canary>' where vault_id = '<vault>';
 ```
 
+### Invoice stuck in processing
+
+SEV3. The signs are the console's "Outcome unknown: do not resend" on an invoice, and an upload of the same
+invoice refused with 409 `duplicate` and `status: "processing"`. Two flows set a row to `processing` and can
+leave it there: an upload (`/api/console/<vault>/invoices`), and the owner's Confirm on an invoice that waited
+for the owner (the invoice page's server action, `apps/web/src/lib/payables/confirm.ts`, which then tells the
+owner that the outcome is unknown and not to confirm again). The flow's function stopped during the cycle (a
+timeout or a crash), or it could not write the outcome (the log line `payables.outcome_not_recorded`), or a
+Confirm whose cycle failed could not set the row back (`payables.confirm_not_reverted`). The upload gives the
+model at most 40 s and starts any transaction by 60 s of its 90 s (`apps/web/src/lib/payables/budget.ts`), so
+a slow model alone ends in a hold for the owner, not here. The Confirm's reads have no such cap inside its
+page's 60 s. No reconcile job is built yet, so the row stays in `processing` until the OWNER looks the outcome
+up by hand.
+
+1. In Vercel, find the request and its log lines; they carry the request id. For an upload:
+   `payables.decided`, `payables.failed`, `payables.outcome_not_recorded` and `sdk.warn`. For a Confirm:
+   `payables.confirmed`, `payables.confirm_failed`, `payables.confirm_not_reverted`,
+   `payables.outcome_not_recorded` and `sdk.warn`.
+2. Read the row's ref in the SQL editor:
+
+   ```sql
+   select i.id, i.ref, i.invoice_hash, i.status, i.mandate_id, i.request_id, i.created_at, i.outcome, i.error, t.id as tenant_id
+   from public.invoices i join public.tenants t on t.id = i.tenant_id
+   where t.vault_id = '<vault>' and i.status = 'processing' order by i.created_at;
+   ```
+
+3. Look the spend up on chain by that ref. `list_spends` returns at most 100 spends a page, oldest first;
+   page with `from_index` until a spend's `ref` matches, then read that spend by its id (`network-config
+   mainnet` for a mainnet vault). The MCP tool `get_spend_status` with `{ "spend_id": <id> }` reads the same.
+   `get_mandate` gives the mandate's `approval_above`, which step 5 needs.
+
+   ```bash
+   near contract call-function as-read-only <vault> list_spends json-args '{"from_index":0,"limit":100}' network-config testnet now
+   near contract call-function as-read-only <vault> get_spend json-args '{"spend_id":<id>}' network-config testnet now
+   near contract call-function as-read-only <vault> get_mandate json-args '{"mandate_id":<mandate_id>}' network-config testnet now
+   ```
+
+4. Read the invoice's ledger entries by its hash:
+
+   ```sql
+   select seq, kind, body->>'at' as at, body->>'request_id' as request_id, body->>'verdict' as verdict,
+          body->>'decided_by' as decided_by, body->>'mandate_id' as mandate_id, body->>'amount' as amount,
+          body->'contract' as contract
+   from public.ledger_entries
+   where tenant_id = '<tenant_id>' and body->>'invoice_hash' = '<invoice_hash>' order by seq;
+   ```
+
+5. What it means. The last `decision` entry (the highest `seq`) is the one that counts: an invoice that waited
+   for the owner has the upload's decision first and the Confirm's after it. The SDK sends a spend only after a
+   decision, and a `hold` sends one too when the contract would itself hold the amount (an `amount` above the
+   mandate's `approval_above`): the spend then goes to the vault for its approver.
+   - A spend with the ref: that spend's status is the outcome (`Paid`, `Held` for an approver, `Failed`,
+     and so on). Do not pay the invoice again by any other route.
+   - No spend, and the last decision is `allow`, or `hold` with an `amount` above the mandate's
+     `approval_above`: the spend may have been sent and may still land (as `Held` for an approver after a
+     hold). Look again once 48 hours have passed since the decision (`UNKNOWN_SETTLE_MS` in the SDK) before
+     you treat it as not sent.
+   - No spend, and the last decision is `refuse`, or `hold` with an `amount` at or below the mandate's
+     `approval_above`: nothing was sent.
+   - No `decision` entry: the cycle stopped before it decided, and nothing was sent.
+6. Leave the row as it is: a hand-edited status could let the same invoice be decided again. Tell the owner
+   what you found. The same text, or the same invoice number for that payee, stays refused while the row
+   is in `processing`. Only once step 5 has found that nothing was sent (for a spend that may still land:
+   the second look, after the 48 hours, found no spend with the ref) can the owner run the flow again, by
+   uploading an invoice with another number. Until then, a second invoice could pay the same bill twice.
+
 ## Watcher and owner alerts
 
 - **Schedule.** `apps/web/vercel.json` runs `/api/cron/watch` daily at 00:00 UTC and `/api/cron/metrics`

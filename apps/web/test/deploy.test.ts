@@ -207,7 +207,8 @@ describe("vercel.json", () => {
   it("pins Fluid compute on, and keeps every function to the 300 s that Vercel Pro allows with or without it", () => {
     // On Vercel Pro, which the project's team is on, a function may run 300 s without Fluid compute and 800 s with it.
     // The Hobby plan stops one at 60 s without it and 300 s with it, so with Fluid compute pinned on, 300 s deploys on
-    // either plan. /api/canary/attempt sets 90. The runbook tells the OWNER to leave the setting on.
+    // either plan. /api/canary/attempt and the console's invoice upload set 90. The runbook tells the OWNER to leave the
+    // setting on.
     expect(VERCEL.fluid).toBe(true);
     const durations = walk(join(WEB, "src"))
       .filter(isSourceFile)
