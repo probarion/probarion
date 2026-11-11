@@ -571,7 +571,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       pill: "Shipped, on npm",
       readme: [
         { start: "`@probarion/core`", says: ["**Shipped**", "on npm"] },
-        { start: "CLI `check`, `verify`", says: ["**Shipped**", "0.1.0"] },
+        { start: "CLI `check`, `verify`", says: ["**Shipped**", "0.1.1"] },
       ],
     },
     {
@@ -638,8 +638,18 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "MCP server",
-      pill: "Tried on testnet, not on npm",
-      readme: [{ start: "MCP server", says: ["**Built**", "testnet", "not on npm yet"] }],
+      pill: "Tried on testnet, 0.1.1 on npm",
+      readme: [
+        {
+          start: "MCP server",
+          says: [
+            "**Built**",
+            "testnet",
+            "on npm as `@probarion/mcp` 0.1.1",
+            "the official MCP registry lists it as `io.github.probarion/probarion`",
+          ],
+        },
+      ],
     },
     {
       row: "Vault factory",
@@ -663,11 +673,12 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "TypeScript SDK and CLI",
-      pill: "0.1.0 on npm",
+      pill: "0.1.1 on npm",
       readme: [
-        { start: "`@probarion/sdk`", says: ["**Shipped**", "on npm"] },
-        { start: "`probarion` CLI", says: ["**Shipped**", "on npm"] },
+        { start: "`@probarion/sdk`", says: ["**Shipped**", "on npm as `@probarion/sdk` 0.1.1"] },
+        { start: "`probarion` CLI", says: ["**Shipped**", "on npm as `probarion` 0.1.1"] },
         { start: "npm release 0.1.0", says: ["**Shipped**", "2026-11-09", "provenance"] },
+        { start: "npm release 0.1.1", says: ["**Shipped**", "2026-11-12", "provenance"] },
       ],
     },
   ];
@@ -845,7 +856,7 @@ describe("the status list", () => {
         pill: "Live for the testnet demo vault",
         tone: "live",
       },
-      { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
+      { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.1 on npm", tone: "live" },
       { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
       {
         id: "attested-model-run",
@@ -857,7 +868,7 @@ describe("the status list", () => {
       {
         id: "mcp-server",
         row: "MCP server",
-        pill: "Tried on testnet, not on npm",
+        pill: "Tried on testnet, 0.1.1 on npm",
         tone: "work",
       },
       { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },

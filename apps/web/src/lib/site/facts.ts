@@ -755,7 +755,7 @@ export const STATUS = {
       pill: "Live for the testnet demo vault",
       tone: "live",
     },
-    { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
+    { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.1 on npm", tone: "live" },
     { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
     {
       id: "attested-model-run",
@@ -764,7 +764,7 @@ export const STATUS = {
       tone: "work",
     },
     { id: "canary", row: "Canary public challenge", pill: "Live on testnet", tone: "live" },
-    { id: "mcp-server", row: "MCP server", pill: "Tried on testnet, not on npm", tone: "work" },
+    { id: "mcp-server", row: "MCP server", pill: "Tried on testnet, 0.1.1 on npm", tone: "work" },
     { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },
   ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
   checked:
