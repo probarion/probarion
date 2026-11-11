@@ -80,7 +80,7 @@ signs nothing and pays nothing. If no RPC host answers, the page shows the answe
   verifier from `@probarion/core` runs in your browser on the signed test fixture of step 2 below,
   fails on the edited entry and names entry 2 as the first broken one. Nothing leaves the page.
 - Open [Evaluate in 5 minutes](https://probarion.xyz/docs/start/evaluate-in-5-minutes) in the docs.
-  It walks the steps below, with each command and the output to expect.
+  It walks the steps below except step 5, the MCP demo, with each command and the output to expect.
 - On any docs page, press Ctrl K (⌘K on a Mac), type `NoMandate` and press Enter. You land on that
   code's row in the error catalog: what it means, which call raises it and what to do next.
 - Add `.md` to a docs address, for example
@@ -189,10 +189,12 @@ Bash on Windows). The steps use the repository's test fixture and scripts, so th
    ```
 
 5. **Give an AI agent the vault.** Run `node packages/mcp/dist/bin.js demo`. With no key and nothing
-   signed, it lists the five MCP tools (none takes an address), asks the contract about three amounts
-   and gets ok, held and `OverPerPayment`, shows an injected recipient refused by the schema, and runs
-   verify on the public ledger. It reads the testnet demo vault, `demo.vaults.probarion.testnet`, and
-   its last line is `Done: 6 steps, 6 as expected. Nothing was signed or sent.`
+   signed, it lists the five MCP tools (none takes an address), asks the contract about three amounts,
+   shows an injected recipient refused by the schema, and runs verify on the public ledger. It reads
+   the testnet demo vault, `demo.vaults.probarion.testnet`, live. On 2026-11-11 the contract answered
+   ok, held and `OverPerPayment`, and the last line was
+   `Done: 6 steps, 6 as expected. Nothing was signed or sent.` Once the mandate's uses run out, the
+   demo says so in a note, shows the contract refusing, and still exits 0.
 
 6. **Print an owner transaction without signing it.** The CLI checks the input against the contract's
    rules, writes the arguments to a file and prints the `near-cli-rs` command for the owner to review

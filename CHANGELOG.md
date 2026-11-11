@@ -18,8 +18,9 @@ The software is an unaudited beta.
   the live testnet demo vault. It needs no key and signs and sends nothing. It shows the tools and
   their fields, the live caps, the contract's `check_spend` answers (ok, held, `OverPerPayment`), an
   injected `to` field refused by the schema, a paid spend, and verify on the public ledger. A frozen
-  vault is reported as a note (exit 0); an RPC that does not answer marks the steps that need it as
-  failed and prints the server log (exit 1). Also `--version` and `--help`.
+  vault is reported as a note (exit 0); an RPC that does not answer marks `list_mandates`,
+  `get_spend_status` and `verify` as failed, skips the dry runs, and prints the server log (exit 1).
+  Also `--version` and `--help`.
 - `@probarion/mcp`: `mcpName` `io.github.probarion/probarion` and keywords in package.json (still
   0.1.0), and README setup for Claude Code, Codex CLI, Claude Desktop and Cursor, with the Windows
   `cmd /c` forms.
