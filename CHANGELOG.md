@@ -15,7 +15,7 @@ The software is an unaudited beta.
 
 ### Added
 
-- Release 0.1.1 is prepared, and not published: `@probarion/core`, `@probarion/sdk`, `probarion` and
+- Release 0.1.1 was prepared before its publish: `@probarion/core`, `@probarion/sdk`, `probarion` and
   `@probarion/mcp` are at 0.1.1, with a `## 0.1.1` section below. `packages/mcp/server.json` is the
   server's entry for the official MCP registry, `io.github.probarion/probarion` (schema 2025-12-11).
   `pnpm release:check` checks it against the tag and the package's `mcpName`, with `--pack` also
@@ -26,8 +26,9 @@ The software is an unaudited beta.
   annotated tag on `main`, the `npm-release` approval, the npm checks, then `mcp-publisher` with a token
   that can read the organization role, since the registry's device login cannot publish to an
   organization namespace yet, and how to finish a publish that stops at `@probarion/mcp`. The
-  `@probarion/mcp` README says the server is on npm once release 0.1.1 is published and runs from a
-  clone until npm has it. The README's Status table has a row for 0.1.1, In progress.
+  `@probarion/mcp` README said the server would be on npm once release 0.1.1 was published, and the
+  README's Status table had a row for 0.1.1, In progress (both changed with the publish, under
+  Changed).
 
 - `docs/comparison-2026-11.md`: how Probarion compares with NEAR's Agent API, the x402 exact scheme on NEAR, AP2
   and plain caps, cell by cell with the sources read on 2026-11-11, and what Probarion does not have (a budget per
@@ -308,7 +309,7 @@ The software is an unaudited beta.
   - A signed-out tap goes to sign-in and comes back to the same page.
   - The overview's held card links each held spend to its page.
 - `@probarion/mcp`, an MCP server that gives an AI agent a Probarion vault to pay from, in
-  `packages/mcp`. It is not on npm yet and runs from a clone: `node packages/mcp/dist/bin.js`, over
+  `packages/mcp`. It was not on npm then and ran from a clone: `node packages/mcp/dist/bin.js`, over
   stdio. Five tools: `list_mandates` (payee, caps, what is left, uses left, approval threshold,
   expiry), `check_spend` (the vault's free `check_spend` view), `request_spend`, `get_spend_status`
   and `verify`. No tool takes an address, every input rejects fields it does not know, and amounts go
@@ -886,8 +887,8 @@ The software is an unaudited beta.
   (Preview in the docs), and the README's Status row, its NEAR technology rows, its testnet proof and
   its quick start say what the server and the 402 example do. The Docs Center pages that called the MCP
   server Planned (HTTP API, Let an agent pay, Architecture, For AI agents, What is Probarion, What works
-  today, Security model) now say it is Preview and not on npm. The threat model cites claim
-  `MCP-NOADDR` and drops the MCP server from its planned surfaces.
+  today, Security model) now say it is Preview, and said it was not on npm then. The threat model
+  cites claim `MCP-NOADDR` and drops the MCP server from its planned surfaces.
 - The workspace includes `examples/*`, and the CI pin tests cover `packages/mcp` and
   `examples/402`: their test, build, typecheck and lint scripts, and the publish guard of
   `packages/mcp`.
