@@ -34,6 +34,21 @@ The software is an unaudited beta.
   obeys I-02's injection although the reader drops it. The attack log gives each case's layers per
   run: the adversary line has its own, and the last line says which run it is for.
 
+- `@probarion/mcp` gives the client server instructions for the model when it connects (the MCP
+  `instructions` field; each client decides whether its model sees them), under 1,200 characters.
+  Where a tool description or an answer note already states a rule, the instructions use the same
+  sentence from a shared constant, and a test compares them, so those rules cannot drift; a few
+  words of their own orient the model. The rules: only the payee of an active mandate bound to the
+  server's key can be paid, with no recipient parameter; `check_spend` first when unsure, since it
+  sends no transaction (its description now says so in those words); each ref and each invoice
+  hash pays at most once; poll a `held` spend until it leaves held or its `held_until` passes,
+  after which the contract approves no hold, and do not send it again (the `request_spend` note
+  for a hold now says the same); an `unconfirmed` spend may have paid, so do not resend it under a
+  new ref; a refusal is final for that request; `burned` is final for the vault and does not
+  change, worded for the server's network. A server with no keys adds that `request_spend` is off,
+  and that refusal now says no agent and ledger keys are set (a keys file counts too) in place of
+  naming the two environment variables.
+
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision
@@ -714,6 +729,11 @@ The software is an unaudited beta.
 
 ### Changed
 
+- `probarion verify --online`: when check e fails because NVIDIA's NRAS token is `not_yet_valid` by this computer's
+  clock (a clock a few seconds behind is enough, since `@nearai/inference-sdk` allows no tolerance), the report adds an
+  `online hint:` line that says to sync the clock and run again, and prints it on stderr as a warning (with
+  `--json`, only there). Check e still fails; the hint is not a result. Only the SDK's own failure message at the
+  start of check e's detail adds it, so text from a ledger cannot.
 - The grey text on `/proof/<vault>` (the decision cards, each check's detail, the model note and the
   limits line under A1 to A7) uses the mute token, 7:1 or more on paper.
 - The browser extension is on the Chrome Web Store as version 0.1.0
