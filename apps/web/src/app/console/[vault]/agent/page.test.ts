@@ -157,8 +157,9 @@ describe("the Agent (MCP) page", () => {
     expect(page).toContain("Step 1 of 6");
     expect(page).toContain("Check these keys");
     expect(page).toContain(`PROBARION_VAULT_ID=${VAULT}`);
-    // MCP_ON_NPM is false until the 0.1.1 release: the clone lines.
-    expect(page).toContain("git clone https://github.com/probarion/probarion");
+    // MCP_ON_NPM is true since the 0.1.1 release: the npx lines, and no clone.
+    expect(page).toContain(`npx -y @probarion/mcp@0.1.1 init --vault ${VAULT}`);
+    expect(page).not.toContain("git clone");
     // Mainnet: no test USDC link.
     expect(page).not.toContain("Add test USDC");
     expect(page).toContain("25.00 USDC");

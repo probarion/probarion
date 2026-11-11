@@ -13,7 +13,7 @@ every transaction that creates, funds or configures it.
 | Version | Supported |
 | --- | --- |
 | The `dev` branch, where work lands, and `main` | Yes. A fix lands on `dev` first |
-| The npm packages `@probarion/core`, `@probarion/sdk` and `probarion` | The latest release, 0.1.0 (published 2026-11-09). A fix ships as a new version |
+| The npm packages `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` | The latest release, 0.1.1 (published 2026-11-11). A fix ships as a new version |
 | The testnet vault `v0.probarion.testnet` | A test deployment. A vault has no upgrade method, so a fix ships as a new vault |
 
 ## Reporting a vulnerability

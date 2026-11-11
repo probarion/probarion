@@ -1,7 +1,7 @@
-This page installs the three Probarion packages, `@probarion/core`, `@probarion/sdk` and the `probarion` CLI, at version 0.1.0 from npm. Install them from npm to use them in your own project. Build them from a clone of the repository to run the repository's fixtures, scripts and tests, or the [evaluation](/docs/start/evaluate-in-5-minutes).
+This page installs three Probarion packages, `@probarion/core`, `@probarion/sdk` and the `probarion` CLI, at version 0.1.1 from npm. Install them from npm to use them in your own project. Build them from a clone of the repository to run the repository's fixtures, scripts and tests, or the [evaluation](/docs/start/evaluate-in-5-minutes).
 
-<Callout kind="note" title="On npm since 2026-11-09">
-Release 0.1.0 of `@probarion/core`, `@probarion/sdk` and `probarion` is on npm, under the `latest` tag. It was published on 2026-11-09 from the tag `sdk-v0.1.0` on `main`, by the repository's release workflow, with npm provenance. The packages are an unaudited beta, and a 0.x minor release may change their API.
+<Callout kind="note" title="On npm">
+Release 0.1.1 of `@probarion/core`, `@probarion/sdk` and `probarion` is on npm, under the `latest` tag. It was published on 2026-11-11 from the tag `sdk-v0.1.1` on `main`, by the repository's release workflow, with npm provenance. Release 0.1.0 came out on 2026-11-09. The packages are an unaudited beta, and a 0.x minor release may change their API.
 </Callout>
 
 ## Requirements
@@ -48,7 +48,7 @@ probarion --version
 ```
 
 ```text
-0.1.0
+0.1.1
 ```
 
 Or run it without installing, from your project's folder, as `npx probarion` followed by the command:
@@ -57,9 +57,11 @@ Or run it without installing, from your project's folder, as `npx probarion` fol
 npx probarion --help
 ```
 
-`npx probarion` also runs at the root of a clone, whose own `package.json` is named `probarion-monorepo`. There it runs release 0.1.0 from npm, not the code in the clone. To run the CLI a clone builds, use `node packages/cli/dist/bin.js`, as the rest of this page does.
+`npx probarion` also runs at the root of a clone, whose own `package.json` is named `probarion-monorepo`. There it runs release 0.1.1 from npm, not the code in the clone. To run the CLI a clone builds, use `node packages/cli/dist/bin.js`, as the rest of this page does.
 
 The CLI's commands are the same however you run it: `probarion verify --help` from npm is `node packages/cli/dist/bin.js verify --help` in a clone. To sign what the CLI prints, you also need `near-cli-rs`, the `near` command.
+
+The MCP server `@probarion/mcp` is on npm from 0.1.1 too, and the official MCP registry lists it as `io.github.probarion/probarion`. It runs as `npx -y @probarion/mcp@0.1.1`, with no clone and no global install, and [its README](https://github.com/probarion/probarion/tree/main/packages/mcp) sets it up for each MCP client.
 
 ## Build from source
 
@@ -255,6 +257,6 @@ Only NEAR testnet is live today, and the mainnet vault is Planned: see [Testnet 
 - [Let an agent pay](/docs/build/let-an-agent-pay): the choices a production payment loop makes.
 - [Verify a vault yourself](/docs/trust/verify-a-vault): run the verifier on a live vault and read its report.
 - [Errors](/docs/build/errors): the vault, SDK and HTTP error codes.
-- [What works today](/docs/start/what-works-today#npm-release-010): the status of each part, the npm release included.
+- [What works today](/docs/start/what-works-today#npm-release-011): the status of each part, the npm release included.
 - [For AI agents](/docs/resources/for-ai-agents): the rules for an agent that builds on Probarion.
 - The [CLI README](https://github.com/probarion/probarion/blob/main/packages/cli/README.md) and the [SDK README](https://github.com/probarion/probarion/blob/main/packages/sdk/README.md) list every command and the rest of the API.

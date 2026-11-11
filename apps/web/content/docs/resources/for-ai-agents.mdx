@@ -181,7 +181,7 @@ To check a vault's record without any key, see [Verify a vault](/docs/trust/veri
 
 | Part | Status | Use instead |
 | --- | --- | --- |
-| [MCP server](/docs/start/what-works-today#mcp-server), `@probarion/mcp` | Preview: tried on testnet, not on npm yet | Build it from a clone, as [its README](https://github.com/probarion/probarion/tree/main/packages/mcp) says, or use the SDK in your agent's own process |
+| [MCP server](/docs/start/what-works-today#mcp-server), `@probarion/mcp` | Preview: tried on testnet, on npm at 0.1.1 | Run it with `npx -y @probarion/mcp@0.1.1`, or build it from a clone, as [its README](https://github.com/probarion/probarion/tree/main/packages/mcp) says, or use the SDK in your agent's own process |
 | [Mainnet vault](/docs/start/what-works-today#mainnet-vault) | Planned | A vault on NEAR testnet, with test tokens |
 
 There is no public HTTP API for agents, and none is on the status list. The console's routes serve the console: its invoice upload, for one, takes only a same-origin request from a signed-in owner or approver of the vault. The HTTP codes on the errors page belong to the hosted app's routes, such as the console, sign-in and top-up, and none of them is an agent API: see [who calls these routes](/docs/build/errors#who-calls-these-routes).
