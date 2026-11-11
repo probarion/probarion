@@ -51,7 +51,62 @@ export function openLinkedDecision(doc: HashDocument, hash: string): boolean {
   return true;
 }
 
+/** The part of the window `watchLinkedDecision` needs. */
+export interface HashWindow {
+  location: { hash: string };
+  addEventListener(type: "hashchange", listener: () => void): void;
+  removeEventListener(type: "hashchange", listener: () => void): void;
+}
+
+/**
+ * Opens the card the address's fragment points at now, and again on each later fragment change. Returns what stops
+ * it (the effect's cleanup).
+ */
+export function watchLinkedDecision(win: HashWindow, doc: HashDocument): () => void {
+  const open = () => {
+    openLinkedDecision(doc, win.location.hash);
+  };
+  open();
+  win.addEventListener("hashchange", open);
+  return () => win.removeEventListener("hashchange", open);
+}
+
 /** The page's address with `anchor` as its fragment: what "Copy audit link" copies. */
 export function auditUrl(href: string, anchor: string): string {
   return `${href.split("#")[0]}#${anchor}`;
+}
+
+/** The parts of a click that `copyAuditClick` reads. */
+export interface AuditClick {
+  button: number;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  preventDefault(): void;
+}
+
+/** Where the copy control is: the page's address, and how to set its fragment. */
+export interface AuditPlace {
+  href: string;
+  setHash(anchor: string): void;
+}
+
+/**
+ * What "Copy audit link" does with a click. A plain primary click copies the page's address with `anchor` as its
+ * fragment instead of following the link ("copied"); when the copy fails it sets the fragment, so the address bar
+ * holds the link ("followed"). A click with a modifier or another button is left to the browser, which may open a
+ * new tab ("browser").
+ */
+export async function copyAuditClick(
+  e: AuditClick,
+  anchor: string,
+  place: AuditPlace,
+  copy: (text: string) => Promise<boolean>,
+): Promise<"copied" | "followed" | "browser"> {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return "browser";
+  e.preventDefault();
+  if (await copy(auditUrl(place.href, anchor))) return "copied";
+  place.setHash(anchor);
+  return "followed";
 }

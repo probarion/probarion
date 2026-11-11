@@ -44,7 +44,7 @@ const text = (markup: string) =>
 
 const count = (s: string, part: string) => s.split(part).length - 1;
 
-async function page(snapshot: Snapshot, decisions?: DecisionRow[]) {
+async function page(snapshot: Snapshot, decisions?: DecisionRow[], fullSeq?: number) {
   const network = snapshot.network as Network;
   const result: ProofOk = {
     status: "ok",
@@ -56,7 +56,7 @@ async function page(snapshot: Snapshot, decisions?: DecisionRow[]) {
     report: await runChecks(snapshot),
   };
   const rows = decisions ?? (await decisionRows(snapshot, network));
-  return renderToStaticMarkup(createElement(ProofView, { result, decisions: rows }));
+  return renderToStaticMarkup(createElement(ProofView, { result, decisions: rows, fullSeq }));
 }
 
 /** The Decisions section of a rendered page: from its card to the section after it. */
@@ -92,9 +92,63 @@ describe("/proof Decisions on the committed fixture (two attested decisions, one
     expect(t.indexOf("Decisions Every decision")).toBeLessThan(
       t.indexOf("Verify it yourself, offline"),
     );
-    expect(t).toContain("3 decisions · 2 made with model output");
+    expect(t).toContain("3 decisions, 2 made with model output");
     // The approved width: the page's column, and 1040 px from 1100 px up.
     expect(out).toMatch(/class="[^"]*min-\[1100px\]:w-\[1040px\][^"]*" id="decisions"/);
+  });
+
+  it("says the TEE columns are what the ledger records, not the signed request", async () => {
+    const t = text(section(await page(attested)));
+    expect(t).toContain(
+      "For a decision made with model output: what the ledger records the TEE saw and signed, and what the code and the contract checked.",
+    );
+    expect(t).not.toContain("what the TEE saw, what it signed");
+  });
+
+  it("writes its separators in ASCII", async () => {
+    const out = section(await page(attested));
+    expect(out).not.toContain("\u00b7");
+    const src = readFileSync(join(ROOT, "apps/web/src/components/proof/DecisionPanel.tsx"), "utf8");
+    expect([...src].filter((c) => (c.codePointAt(0) ?? 0) > 0x7e)).toEqual([]);
+  });
+
+  it("keeps its grey text at the site's 7:1: the mute token, not ink at 60 %", async () => {
+    const out = section(await page(attested));
+    expect(out).toContain("text-mute");
+    expect(out).not.toMatch(/text-ink\/[1-6]\d\b/);
+  });
+
+  it("draws a card's focus ring inside the card, where overflow-hidden cannot clip it", async () => {
+    const out = section(await page(attested));
+    const summaries = [...out.matchAll(/<summary class="([^"]*)"/g)]
+      .map((m) => m[1] ?? "")
+      .filter((c) => c.includes("group-open/card:rounded-b-none"));
+    expect(summaries).toHaveLength(3);
+    for (const cls of summaries) {
+      expect(cls.split(" ")).toEqual(
+        expect.arrayContaining(["focus-visible:outline-offset-[-3px]", "rounded-[19px]"]),
+      );
+    }
+    expect(out).toMatch(/<li id="seq-4" data-decision="4" class="[^"]*overflow-hidden/);
+  });
+
+  it("wraps a long unbroken value in the summary row instead of clipping it", async () => {
+    const rows = await decisionRows(attested, "testnet");
+    const base = rows.find((r) => r.seq === 4) as DecisionRow;
+    const long = "x".repeat(120);
+    const row: DecisionRow = {
+      ...base,
+      invoiceHash: long,
+      amount: { units: null, text: long },
+      checked: { ...base.checked, payments: [], spends: [] },
+      verdict: "allow",
+    };
+    const out = renderToStaticMarkup(
+      createElement(DecisionPanel, { row, vault: attested.vault, network: "testnet" }),
+    );
+    const summary = out.match(/<summary[^>]*>.*?<\/summary>/s)?.[0] ?? "";
+    expect(summary).toContain(long);
+    expect(summary).toMatch(/<span class="min-w-0 flex-1 wrap-anywhere">/);
   });
 
   it("lists every decision newest first, each with its anchor and its spends' anchors", async () => {
@@ -109,8 +163,8 @@ describe("/proof Decisions on the committed fixture (two attested decisions, one
     expect(card(out, 4)).not.toContain('id="spend-');
     // Each card links its own anchors, and its copy control is a plain link to the spend's (or else the seq's).
     expect(card(out, 2)).toContain('href="#seq-2"');
-    expect(card(out, 2)).toMatch(/<a[^>]*href="#spend-2"[^>]*>Copy audit link<\/a>/);
-    expect(card(out, 4)).toMatch(/<a[^>]*href="#seq-4"[^>]*>Copy audit link<\/a>/);
+    expect(card(out, 2)).toMatch(/<a[^>]*href="#spend-2"[^>]*>Link to this decision<\/a>/);
+    expect(card(out, 4)).toMatch(/<a[^>]*href="#seq-4"[^>]*>Link to this decision<\/a>/);
     expect(text(card(out, 2))).toContain("In snapshot.json: ledger[2]");
   });
 
@@ -270,6 +324,114 @@ describe("/proof Decisions on the committed fixture (two attested decisions, one
     expect(count(c, 'role="img" aria-label="fail"')).toBe(1);
     expect(text(c)).toContain("Not consistent offline: A7 fails");
     expect(text(c)).toContain("A1-A7: A7 fails");
+    // With A7 failing, column 2 must not pass the ledger's text off as what the TEE signed or the model wrote.
+    const signed = text(c.slice(c.indexOf("What the TEE signed"), c.indexOf("What the code and")));
+    expect(signed).toContain("Proposal, as the ledger records it pay 25 USDC");
+    expect(signed).toContain("A7 fails, so the signed response is not shown to hold it.");
+    expect(signed).toContain('Reasoning (as recorded) <script>alert("x")</script>');
+    expect(signed).not.toContain("as the model wrote it");
+    // The untouched decision keeps the plain labels: A1 to A7 pass on it.
+    const ok = text(card(out, 2));
+    expect(ok).toContain("Proposal pay");
+    expect(ok).toContain("A7: the signed response holds exactly this proposal.");
+    expect(ok).toContain("Reasoning (as the model wrote it)");
+  });
+});
+
+describe("the summary row and the contract column, on crafted rows", () => {
+  const rowsOf = async () => decisionRows(attested, "testnet");
+  const render = (row: DecisionRow) =>
+    renderToStaticMarkup(
+      createElement(DecisionPanel, { row, vault: attested.vault, network: "testnet" }),
+    );
+  const summaryOf = (out: string) => out.match(/<summary[^>]*>.*?<\/summary>/s)?.[0] ?? "";
+  const badges = (summary: string) =>
+    [...summary.matchAll(/<span class="inline-block rounded-full[^"]*">([^<]*)<\/span>/g)].map(
+      (m) => m[1],
+    );
+
+  it("shows a contract refusal as the approved mockup does: no verdict badge, the code in place of the invoice", async () => {
+    const base = (await rowsOf()).find((r) => r.seq === 4) as DecisionRow;
+    const row: DecisionRow = {
+      ...base,
+      verdict: "allow",
+      checked: {
+        ...base.checked,
+        verdict: "allow",
+        payments: [
+          {
+            seq: 5,
+            at: "2026-11-10T16:02:00.000Z",
+            status: "refused",
+            code: "OverPerPayment",
+            spendId: null,
+            txUrl: null,
+            txLabel: "no tx recorded",
+          },
+        ],
+        spends: [],
+      },
+    };
+    const summary = summaryOf(render(row));
+    expect(badges(summary)).toEqual(["refused by contract", "rules-only"]);
+    const t = text(summary);
+    expect(t).toContain("OverPerPayment , nothing paid");
+    expect(t).not.toContain("invoice");
+  });
+
+  it("names the rule that held a decision the code kept back, with no extra badge", async () => {
+    const demoRows = await decisionRows(demo, "testnet");
+    const held = demoRows.find((r) => r.seq === 0) as DecisionRow;
+    const summary = summaryOf(render(held));
+    expect(badges(summary)).toEqual(["hold", "rules-only"]);
+    const t = text(summary);
+    expect(t).toContain("held by custom.owner_confirms_without_model , nothing sent");
+    expect(t).not.toContain("invoice");
+    // The column still says it in full.
+    expect(text(render(held))).toContain("not sent The code held this decision");
+    const refused = demoRows.find((r) => r.seq === 3) as DecisionRow;
+    expect(text(summaryOf(render(refused)))).toContain(
+      "refused by mandate.payee_mismatch , nothing sent",
+    );
+  });
+
+  it("keeps the verdict and the invoice for a decision whose spend the chain holds", async () => {
+    const row = (await rowsOf()).find((r) => r.seq === 2) as DecisionRow;
+    const summary = summaryOf(render(row));
+    expect(badges(summary).slice(0, 3)).toEqual(["allow", "burned, spend #2", "model+rules"]);
+    expect(text(summary)).toMatch(/UTC, invoice [0-9a-f]{6}\.\.\.[0-9a-f]{6}/);
+  });
+
+  it("never says a held decision reached nothing when the chain holds its spend", async () => {
+    // The SDK sends a hold the contract would hold too; if the payment entry then fails to write, only the chain
+    // records the spend.
+    const held = (await decisionRows(demo, "testnet")).find((r) => r.seq === 0) as DecisionRow;
+    const row: DecisionRow = {
+      ...held,
+      spendIds: ["spend-7"],
+      checked: {
+        ...held.checked,
+        payments: [],
+        spends: [
+          {
+            id: 7,
+            anchorId: "spend-7",
+            status: "held",
+            amount: { units: "2000000", text: "2 USDC" },
+            destination: "vendor.testnet",
+            mandateId: "1",
+          },
+        ],
+      },
+    };
+    const t = text(render(row));
+    expect(t).not.toContain("nothing reached the contract");
+    expect(t).not.toContain("nothing sent");
+    expect(t).toContain(
+      "No payment entry in this snapshot records it, but the chain holds spend #7 for this decision.",
+    );
+    expect(t).toContain("Spend #7's decision_hash is this entry's body_hash: held");
+    expect(badges(summaryOf(render(row)))).toContain("held, spend #7");
   });
 });
 
@@ -280,7 +442,7 @@ describe("/proof Decisions on the testnet demo vault (rules-only)", () => {
     expect([...out.matchAll(/data-decision="(\d+)"/g)].map((m) => Number(m[1]))).toEqual([
       5, 4, 3, 1, 0,
     ]);
-    expect(t).toContain("5 decisions · 0 made with model output");
+    expect(t).toContain("5 decisions, 0 made with model output");
     expect(count(t, NO_MODEL)).toBe(5);
     for (const heading of COLUMNS) expect(t).not.toContain(heading);
     expect(out).not.toContain("data-attestation=");
@@ -313,13 +475,76 @@ describe("paging and the client parts", () => {
     const out = section(await page(demo, many));
     const t = text(out);
     expect(t).toContain(
-      `${DECISIONS_SHOWN + 3} decisions · 0 made with model output · showing the ${DECISIONS_SHOWN} newest`,
+      `${DECISIONS_SHOWN + 3} decisions, 0 made with model output, showing the ${DECISIONS_SHOWN} newest`,
     );
     const older = out.indexOf('data-older="3"');
     expect(older).toBeGreaterThan(out.indexOf(`id="seq-3"`));
     expect(t).toContain("Show 3 older decisions");
     expect(t).toContain("seq 2 to seq 0");
     for (const seq of [2, 1, 0]) expect(out.indexOf(`id="seq-${seq}"`)).toBeGreaterThan(older);
+  });
+
+  it("renders an older decision as its summary line only, with its anchors and a link to its full card", async () => {
+    const rows = await decisionRows(attested, "testnet");
+    const model = rows.find((r) => r.seq === 2) as DecisionRow;
+    // DECISIONS_SHOWN + 2 decisions made with model output, the oldest two with spends bound.
+    const many = Array.from({ length: DECISIONS_SHOWN + 2 }, (_, i) => {
+      const seq = DECISIONS_SHOWN + 1 - i;
+      return { ...model, seq, id: `seq-${seq}`, spendIds: seq < 2 ? [`spend-${seq + 10}`] : [] };
+    });
+    const out = section(await page(attested, many));
+    const old = card(out, 0);
+    const recent = card(out, 2);
+    // The summary and the audit anchors stay; the three columns, the rules and the limits line do not.
+    expect(old).toContain('id="spend-10"');
+    expect(old).toContain('href="#seq-0"');
+    expect(old).toContain('href="#spend-10"');
+    expect(text(old)).toContain("Pay 40 USDC under mandate 2");
+    expect(text(old)).toContain("A1-A7 pass offline");
+    expect(old).toMatch(/<a[^>]*href="\?seq=0#seq-0"[^>]*>Open the full card<\/a>/);
+    for (const heading of COLUMNS) expect(text(old)).not.toContain(heading);
+    expect(text(old)).not.toContain(DECISION_LIMITS);
+    expect(old).not.toContain("data-attestation=");
+    expect(old.length).toBeLessThan(recent.length / 5);
+    expect(text(out)).toContain("An older decision shows its summary line here");
+    // The newest DECISIONS_SHOWN keep their full cards.
+    expect(text(recent)).toContain(COLUMNS[0]);
+    expect(out).not.toMatch(/<details class="group\/older mt-4" data-older="2" open=""/);
+  });
+
+  it("renders the full card of an older decision when the address names it (?seq=N), with its group open", async () => {
+    const rows = await decisionRows(attested, "testnet");
+    const model = rows.find((r) => r.seq === 2) as DecisionRow;
+    const many = Array.from({ length: DECISIONS_SHOWN + 2 }, (_, i) => {
+      const seq = DECISIONS_SHOWN + 1 - i;
+      return { ...model, seq, id: `seq-${seq}`, spendIds: [] };
+    });
+    const out = section(await page(attested, many, 1));
+    expect(out).toMatch(/<details class="group\/older mt-4" data-older="2" open=""/);
+    const full = card(out, 1);
+    for (const heading of COLUMNS) expect(text(full)).toContain(heading);
+    expect(full).toMatch(/<details class="group\/card" open="">/);
+    expect(card(out, 0)).toContain('href="?seq=0#seq-0"');
+    // A seq that is not an older decision changes nothing.
+    const plain = section(await page(attested, many, 999));
+    expect(plain).not.toMatch(/data-older="2" open=""/);
+  });
+
+  it("keeps the 1040 px breakout for the cards only: one line of text stays in the page's column", async () => {
+    const result = {
+      status: "ok",
+      vault: demo.vault,
+      network: "testnet",
+      kind: "team",
+      audience: "public",
+      snapshot: demo,
+      report: await runChecks(demo),
+    } as ProofOk;
+    for (const decisions of [null, []]) {
+      const out = renderToStaticMarkup(createElement(ProofView, { result, decisions }));
+      expect(out).toMatch(/<section class="[^"]*" id="decisions"/);
+      expect(out).not.toMatch(/class="[^"]*min-\[1100px\][^"]*" id="decisions"/);
+    }
   });
 
   it("says when the decisions could not be listed, and when there are none", async () => {
@@ -347,10 +572,17 @@ describe("paging and the client parts", () => {
     const tree = Decisions({ vault: attested.vault, network: "testnet", rows });
     expect(elementsOf(tree, OpenLinkedDecision)).toHaveLength(1);
     expect(renderToStaticMarkup(createElement(OpenLinkedDecision))).toBe("");
+    // Before its click handler is attached (no JavaScript, or before hydration) it promises no copy.
     const copy = renderToStaticMarkup(createElement(CopyAuditLink, { anchor: "spend-4" }));
     expect(copy).toMatch(
-      /^<a href="#spend-4">Copy audit link<\/a><span class="sr-only" aria-live="polite"><\/span>$/,
+      /^<a href="#spend-4">Link to this decision<\/a><span class="sr-only" aria-live="polite"><\/span>$/,
     );
+    expect(copy).not.toContain("Copy");
+    // The label it switches to once mounted, and the click it then handles, are in the client file.
+    const src = readFileSync(join(ROOT, "apps/web/src/components/proof/DecisionLinks.tsx"), "utf8");
+    expect(src).toContain('"Copy audit link"');
+    expect(src).toMatch(/copyAuditClick\(/);
+    expect(src).toMatch(/watchLinkedDecision\(window, document\)/);
   });
 
   it("keeps the client file small: it imports neither core nor the decision rows", () => {

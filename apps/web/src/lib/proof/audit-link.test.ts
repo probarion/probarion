@@ -1,7 +1,7 @@
 // The console's audit link for one Payables cycle (G4): the card of its decision on the vault's proof page.
 import type { LedgerEntry } from "@probarion/core";
 import { describe, expect, it } from "vitest";
-import { proofAuditHref } from "./audit-link";
+import { fullCardHref, fullCardSeq, proofAuditHref } from "./audit-link";
 
 const VAULT = "demo.vaults.probarion.testnet";
 const HASH = "d".repeat(64);
@@ -49,5 +49,33 @@ describe("proofAuditHref", () => {
     expect(proofAuditHref("a b", null, { spendId: 1, decisionHash: HASH })).toBe(
       "/proof/a%20b#spend-1",
     );
+  });
+});
+
+describe("fullCardHref and fullCardSeq", () => {
+  it("links an older decision's full card on the same page, and reads the seq back from the address", () => {
+    expect(fullCardHref(7)).toBe("?seq=7#seq-7");
+    expect(fullCardSeq("7")).toBe(7);
+    expect(fullCardSeq("0")).toBe(0);
+    expect(fullCardSeq("999999999")).toBe(999999999);
+  });
+
+  it("reads nothing else as a seq", () => {
+    for (const bad of [
+      undefined,
+      null,
+      "",
+      "-1",
+      "01",
+      "1.5",
+      "x",
+      "1e3",
+      " 1",
+      "1234567890",
+      ["1"],
+      1,
+    ]) {
+      expect(fullCardSeq(bad), JSON.stringify(bad)).toBeNull();
+    }
   });
 });

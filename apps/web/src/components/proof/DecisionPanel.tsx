@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Badge, ExternalLink, type Tone } from "@/components/ui";
 import type { Network } from "@/lib/config";
+import { fullCardHref } from "@/lib/proof/audit-link";
 import {
   CONTRACT_CHECKS,
   DECISION_LIMITS,
@@ -37,7 +38,8 @@ export const ATTESTATION_MEANINGS: Readonly<Record<string, string>> = {
 const RULES_UP_FRONT = 5;
 
 const link = "text-ink underline decoration-ink/30 hover:decoration-ink";
-const muted = "text-ink/60";
+/** The site's grey for small text: 7:1 or more on paper and on a white card (globals.css). */
+const muted = "text-mute";
 const codeBlock =
   "mt-1.5 block rounded-2xl bg-ink px-3 py-2 font-mono text-xs text-paper wrap-anywhere";
 const moreSummary =
@@ -92,16 +94,58 @@ function titleOf(r: DecisionRow): string {
   return `Pay ${r.amount.text}${r.mandateId === null ? ", no mandate" : ` under mandate ${r.mandateId}`}`;
 }
 
-/** The contract's part in one badge: the bound spend, a refusal, the payment's status, or that nothing was sent. */
-function outcomeBadge(r: DecisionRow): { tone: Tone; label: string } | null {
+/** What the summary row says about the contract's part, as the approved mockup lays it out. */
+interface SummaryOutcome {
+  /** The bound spend, a refusal or the payment's status, as a badge; null when the meta line says it. */
+  badge: { tone: Tone; label: string } | null;
+  /** False for a contract refusal: the code's "allow" next to "refused by contract" would read as a contradiction. */
+  verdict: boolean;
+  /** What the meta line says in place of the invoice hash (the refusal, or the rule that kept it back), or null. */
+  note: ReactNode;
+}
+
+const ruleCode = (id: string) => <code className="text-ink">{id}</code>;
+
+function summaryOutcome(r: DecisionRow): SummaryOutcome {
   const spend = r.checked.spends[0];
-  if (spend)
-    return { tone: statusTone(spend.status), label: `${spend.status}, spend #${spend.id}` };
+  if (spend) {
+    return {
+      badge: { tone: statusTone(spend.status), label: `${spend.status}, spend #${spend.id}` },
+      verdict: true,
+      note: null,
+    };
+  }
   const payment = r.checked.payments[0];
-  if (payment?.status === "refused") return { tone: "bad", label: "refused by contract" };
-  if (payment) return { tone: statusTone(payment.status), label: `payment ${payment.status}` };
-  if (r.verdict === "hold" || r.verdict === "refuse") return { tone: "neutral", label: "not sent" };
-  return null;
+  if (payment?.status === "refused") {
+    return {
+      badge: { tone: "bad", label: "refused by contract" },
+      verdict: false,
+      note: payment.code === null ? "nothing paid" : <>{ruleCode(payment.code)}, nothing paid</>,
+    };
+  }
+  if (payment) {
+    return {
+      badge: { tone: statusTone(payment.status), label: `payment ${payment.status}` },
+      verdict: true,
+      note: null,
+    };
+  }
+  if (r.verdict === "hold" || r.verdict === "refuse") {
+    const did = r.verdict === "hold" ? "held" : "refused";
+    const rule = r.checked.firstBlocking;
+    return {
+      badge: null,
+      verdict: true,
+      note: rule ? (
+        <>
+          {did} by {ruleCode(rule.id)}, nothing sent
+        </>
+      ) : (
+        `${did} by the code, nothing sent`
+      ),
+    };
+  }
+  return { badge: null, verdict: true, note: null };
 }
 
 const DECIDER_BADGE: Readonly<Record<DecisionRow["decidedBy"], { tone: Tone; label: string }>> = {
@@ -268,9 +312,41 @@ function Saw({ id, saw }: { id: string; saw: TeeSaw }) {
   );
 }
 
-function Signed({ id, signed }: { id: string; signed: TeeSigned }) {
+/**
+ * What column 2 may call the recorded proposal. Only when A7 passes does the signed response hold exactly it, and only
+ * when A1 to A7 all pass is its reasoning shown as the model's own words; otherwise both are the ledger's record.
+ */
+function proposalLabels(a: DecisionAttestation | null): {
+  proposal: string;
+  why: string;
+  reasoning: string;
+} {
+  const a7 = a?.checks.find((c) => c.id === "A7");
+  const recorded = "Proposal, as the ledger records it";
+  return {
+    proposal: a7?.pass === true ? "Proposal" : recorded,
+    why:
+      a7 === undefined
+        ? "A7 did not run on it, so this is only the ledger's record."
+        : a7.pass
+          ? "A7: the signed response holds exactly this proposal."
+          : "A7 fails, so the signed response is not shown to hold it.",
+    reasoning: a?.ok === true ? "Reasoning (as the model wrote it)" : "Reasoning (as recorded)",
+  };
+}
+
+function Signed({
+  id,
+  signed,
+  a,
+}: {
+  id: string;
+  signed: TeeSigned;
+  a: DecisionAttestation | null;
+}) {
   const p = signed.proposal;
   const r = signed.report;
+  const labels = proposalLabels(a);
   const snapshot = signed.snapshotHref ? (
     <a className={link} href={signed.snapshotHref}>
       snapshot.json
@@ -285,7 +361,7 @@ function Signed({ id, signed }: { id: string; signed: TeeSigned }) {
       title="What the TEE signed"
       sub="The response, its signature, and the attestation report fetched with it."
     >
-      <Item term="Proposal">
+      <Item term={p ? labels.proposal : "Proposal"} why={p ? labels.why : undefined}>
         {p ? (
           <>
             <strong className="font-semibold">{p.action}</strong> {p.amount.text}, mandate{" "}
@@ -296,7 +372,7 @@ function Signed({ id, signed }: { id: string; signed: TeeSigned }) {
         )}
       </Item>
       {p && p.reasoning !== "" ? (
-        <Item term="Reasoning (as the model wrote it)">
+        <Item term={labels.reasoning}>
           <span className="mt-1 block rounded-r-lg border-l-2 border-gold-deep bg-surface px-2.5 py-1.5 text-ink/80">
             {p.reasoning}
           </span>
@@ -512,6 +588,10 @@ function ContractParts({ r }: { r: DecisionRow }) {
       <Item term="Contract">
         {c.payments.length > 0 ? (
           c.payments.map((p) => <PaymentLine key={p.seq} p={p} />)
+        ) : c.spends.length > 0 ? (
+          // The SDK sends a hold the contract would hold too; when its payment entry then fails to be written,
+          // only the chain records the spend.
+          `No payment entry in this snapshot records it, but the chain holds ${c.spends.length === 1 ? "spend" : "spends"} ${c.spends.map((s) => `#${s.id}`).join(", ")} for this decision.`
         ) : r.verdict === "hold" || r.verdict === "refuse" ? (
           <>
             <Badge tone="neutral">not sent</Badge> The code{" "}
@@ -625,9 +705,89 @@ function Mark({ pass }: { pass: boolean }) {
 }
 
 /**
+ * The summary line of a decision: seq, title, badges, time, and the invoice (or why nothing was paid). It wraps
+ * anywhere, since a crafted ledger can put 120 unbroken characters in a hash, an amount or a status.
+ */
+function SummaryLine({ row }: { row: DecisionRow }) {
+  const outcome = summaryOutcome(row);
+  const decider = DECIDER_BADGE[row.decidedBy];
+  const attested = row.attestation ? attestationBadge(row.attestation) : null;
+  return (
+    <span className="min-w-0 flex-1 wrap-anywhere">
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <span className="rounded-full border border-line bg-paper px-2 py-px font-mono text-xs whitespace-nowrap text-gold-ink">
+          seq {row.seq}
+        </span>
+        <span className="text-[15px] font-medium text-ink">{titleOf(row)}</span>
+      </span>
+      <span className="mt-1.5 flex flex-wrap gap-1.5">
+        {outcome.verdict ? <Badge tone={VERDICT_TONE[row.verdict]}>{row.verdict}</Badge> : null}
+        {outcome.badge ? <Badge tone={outcome.badge.tone}>{outcome.badge.label}</Badge> : null}
+        <Badge tone={decider.tone}>{decider.label}</Badge>
+        {attested ? (
+          <>
+            <Badge tone={attested.tone}>{attested.label}</Badge>
+            <Badge tone="neutral">quote not checked here</Badge>
+          </>
+        ) : null}
+      </span>
+      <span className={`mt-1 block text-xs ${muted}`}>
+        {utc(row.at)}
+        {outcome.note !== null ? (
+          <>, {outcome.note}</>
+        ) : row.invoiceHash === null ? null : (
+          <>
+            , invoice <code className="text-ink">{shortHash(row.invoiceHash)}</code>
+          </>
+        )}
+      </span>
+    </span>
+  );
+}
+
+/** The anchors of the spends bound to a decision, so that #spend-N lands on its card. */
+function SpendAnchors({ row }: { row: DecisionRow }) {
+  return row.spendIds.map((s) => <span key={s} id={s} aria-hidden="true" />);
+}
+
+/**
+ * An older decision (past the newest DECISIONS_SHOWN) as its summary line only: the audit anchors stay, so every
+ * #seq-N and #spend-N link still lands, and a link opens the page again with this decision's full card (?seq=N).
+ * The page then stays small however long the ledger grows.
+ */
+export function DecisionLine({ row }: { row: DecisionRow }) {
+  return (
+    <li
+      id={row.id}
+      data-decision={row.seq}
+      data-light=""
+      className="rounded-[20px] border border-line bg-surface"
+    >
+      <SpendAnchors row={row} />
+      <div className="flex items-start gap-3 px-4 py-3.5 max-[480px]:p-3 sm:px-5 sm:py-4">
+        <SummaryLine row={row} />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-t border-line px-4 py-2.5 text-xs max-[480px]:px-3 sm:px-5">
+        <a className={link} href={fullCardHref(row.seq)}>
+          Open the full card
+        </a>
+        {[row.id, ...row.spendIds].map((a) => (
+          <a key={a} className={link} href={`#${a}`}>
+            <code>#{a}</code>
+          </a>
+        ))}
+      </div>
+    </li>
+  );
+}
+
+/**
  * One decision as a card: an <li> that holds its audit anchors (id="seq-N" on the card, id="spend-N" for each spend
  * bound to it), so a link to either scrolls to the card even with the card closed and no JavaScript. `open` starts
- * the card open (the newest decision made with model output).
+ * the card open (the newest decision made with model output, or the one the address names).
+ *
+ * The card clips its corners (overflow-hidden), so the summary's focus ring is drawn inside it, and the summary is
+ * rounded like the card for the ring to follow its corners.
  */
 export function DecisionPanel({
   row,
@@ -641,8 +801,6 @@ export function DecisionPanel({
   open?: boolean;
 }) {
   const verdict = row.verdict;
-  const outcome = outcomeBadge(row);
-  const decider = DECIDER_BADGE[row.decidedBy];
   const anchors = [row.id, ...row.spendIds];
   const copyTarget = row.spendIds[0] ?? row.id;
   return (
@@ -651,42 +809,11 @@ export function DecisionPanel({
       data-decision={row.seq}
       className={`overflow-hidden rounded-[20px] border bg-surface ${open ? "border-gold-deep/45 shadow-[0_1px_0_rgb(165_122_38/0.10)]" : "border-line"}`}
     >
-      {row.spendIds.map((s) => (
-        <span key={s} id={s} aria-hidden="true" />
-      ))}
+      <SpendAnchors row={row} />
       <details className="group/card" open={open}>
-        <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-3.5 hover:bg-ink/[0.02] max-[480px]:p-3 sm:px-5 sm:py-4 [&::-webkit-details-marker]:hidden">
+        <summary className="flex cursor-pointer list-none items-start gap-3 rounded-[19px] px-4 py-3.5 group-open/card:rounded-b-none hover:bg-ink/[0.02] focus-visible:outline-offset-[-3px] max-[480px]:p-3 sm:px-5 sm:py-4 [&::-webkit-details-marker]:hidden">
           <Chevron />
-          <span className="min-w-0 flex-1">
-            <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-              <span className="rounded-full border border-line bg-paper px-2 py-px font-mono text-xs whitespace-nowrap text-gold-ink">
-                seq {row.seq}
-              </span>
-              <span className="text-[15px] font-medium text-ink">{titleOf(row)}</span>
-            </span>
-            <span className="mt-1.5 flex flex-wrap gap-1.5">
-              <Badge tone={VERDICT_TONE[verdict]}>{verdict}</Badge>
-              {outcome ? <Badge tone={outcome.tone}>{outcome.label}</Badge> : null}
-              <Badge tone={decider.tone}>{decider.label}</Badge>
-              {row.attestation ? (
-                <>
-                  <Badge tone={attestationBadge(row.attestation).tone}>
-                    {attestationBadge(row.attestation).label}
-                  </Badge>
-                  <Badge tone="neutral">quote not checked here</Badge>
-                </>
-              ) : null}
-            </span>
-            <span className={`mt-1 block text-xs ${muted}`}>
-              {utc(row.at)}
-              {row.invoiceHash === null ? null : (
-                <>
-                  {" · invoice "}
-                  <code className="text-ink">{shortHash(row.invoiceHash)}</code>
-                </>
-              )}
-            </span>
-          </span>
+          <SummaryLine row={row} />
         </summary>
 
         <div className="border-t border-line p-4 max-[480px]:p-3 sm:p-5">
@@ -736,7 +863,7 @@ export function DecisionPanel({
           {row.saw && row.signed ? (
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <Saw id={row.id} saw={row.saw} />
-              <Signed id={row.id} signed={row.signed} />
+              <Signed id={row.id} signed={row.signed} a={row.attestation} />
               <Column
                 id={`${row.id}-checked`}
                 step={3}
