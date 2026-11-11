@@ -35,8 +35,9 @@ Claude prepared everything in this folder. Claude does not pay, upload or publis
      only in the dashboard's private test-instructions field.
    - **Distribution:** Public, all regions.
 5. Submit for review. It can take from a day to a few weeks.
-6. Send Claude the item ID (the 32 letters in the item's URL). Until you do, no README mentions the store. After you
-   submit, the README says `pending Chrome Web Store review`; once the store publishes it, the README links the page.
+6. Send Claude the item ID (the 32 letters in the item's URL), so that the READMEs, the docs and the site link the
+   listing.
 
-Submitted on 2026-11-10 as item `hhadnmnjdlamihjjoejphkimnbcfidmn`. Once published, its page is
-https://chromewebstore.google.com/detail/hhadnmnjdlamihjjoejphkimnbcfidmn.
+Submitted on 2026-11-10 as item `hhadnmnjdlamihjjoejphkimnbcfidmn`, and published: version 0.1.0 is at
+https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn (checked on 2026-11-11). The
+READMEs, the docs, the Browser extension page (`/extension`) and `/privacy` link that page.

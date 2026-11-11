@@ -62,6 +62,9 @@ In scope:
   serves both networks, and the address decides which; a testnet address of the same deployment,
   once it is set up, is in scope too), with its database migrations, its server-side key sealing,
   and the browser extension's token API (`/api/ext/*`) and its `/extension` page;
+- the browser extension for Chrome in [`apps/extension`](apps/extension), published on the Chrome
+  Web Store as item `hhadnmnjdlamihjjoejphkimnbcfidmn`
+  ([its listing](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn));
 - the build, deploy and release scripts in [`scripts`](scripts) and the workflows in
   [`.github/workflows`](.github/workflows).
 

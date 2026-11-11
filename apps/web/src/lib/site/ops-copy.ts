@@ -31,7 +31,9 @@ export const STATUS_PAGE = {
   whatWorks: "What works today, and what does not",
 } as const;
 
-export const LAST_UPDATED = "2026-11-10";
+/** /terms and /privacy each carry their own date, so a change to one page's text does not move the other's. */
+export const TERMS_UPDATED = "2026-11-10";
+export const PRIVACY_UPDATED = "2026-11-11";
 
 /** The lede of /terms and /privacy (spec §13, Legal row). */
 export const LEGAL_STATUS =
@@ -151,7 +153,7 @@ export const TERMS_PAGE = {
   meta: { title: "Terms", description: "The plain-language terms of the Probarion beta." },
   eyebrow: "Terms",
   title: "Terms of use",
-  updated: `Last updated ${LAST_UPDATED}.`,
+  updated: `Last updated ${TERMS_UPDATED}.`,
   rules: [
     {
       title: "What Probarion is.",
@@ -218,7 +220,7 @@ export const PRIVACY_PAGE = {
   },
   eyebrow: "Privacy",
   title: "Privacy notice",
-  updated: `Last updated ${LAST_UPDATED}.`,
+  updated: `Last updated ${PRIVACY_UPDATED}.`,
   sections: [
     {
       id: "on-chain",
@@ -300,16 +302,23 @@ export interface LinkedCopySection extends CopySection {
   end: { text: string; link: string };
 }
 
+/** The extension's section: it also opens with a sentence linking its Chrome Web Store listing. */
+export interface StoreCopySection extends LinkedCopySection {
+  store: { text: string; link: string };
+}
+
 /**
  * The browser extension's section of /privacy (plan 06 Task 1), rendered last by components/site/ExtensionPrivacy.tsx,
- * which links `end.link` to /extension. The Chrome Web Store listing (item hhadnmnjdlamihjjoejphkimnbcfidmn, submitted on
- * 2026-11-10) links /privacy#browser-extension. It is not in PRIVACY_PAGE.sections, so it renders once.
+ * which links `store.link` to the Chrome Web Store listing (LINKS.chromeWebStore) and `end.link` to /extension. The
+ * listing (item hhadnmnjdlamihjjoejphkimnbcfidmn) links /privacy#browser-extension. It is not in PRIVACY_PAGE.sections,
+ * so it renders once.
  */
 export const EXTENSION_PRIVACY = {
   id: "browser-extension",
   title: "Browser extension",
+  store: { text: "Install the Probarion extension for Chrome from the", link: "Chrome Web Store" },
   paragraphs: [
-    "The Probarion extension for Chrome is pending Chrome Web Store review. Until the store publishes it, you can load it unpacked from `apps/extension` in Probarion's repository. This section says what it does, and what Probarion stores for it. You connect it to your account on the Browser extension page, `/extension`, signed in with your wallet, or with a pairing code that page shows.",
+    "You can also build it from `apps/extension` in Probarion's repository and load it unpacked. This section says what it does, and what Probarion stores for it. You connect it to your account on the Browser extension page, `/extension`, signed in with your wallet, or with a pairing code that page shows.",
     "The extension sends an invoice to Probarion only when you ask it to: the PDF or text you choose, with the vault and the mandate you pick. It sends it to the Probarion address you connected, and nowhere else. A PDF or text file it reads from a tab or a link is fetched from that site the way the tab loaded it, with your own session for that site. In your browser it keeps the connection token, your account name and network, and, until you send it or close Chrome, the invoice you captured. It reads no page except the PDF or the selection you send and Probarion's own Browser extension page when you connect, and, when you open it, the address of the tab you are on, to see whether it is a PDF. It has no analytics and runs no code from elsewhere, and its Disconnect button ends its connection.",
     "For each browser you connect, we store a hash of its connection token, not the token, with the token's last four characters, your account and network, a name for the browser such as Chrome on Windows, and when it was connected, last used, set to end and revoked. The record of a connection stays after it ends. A pairing code is stored as a hash, with your account and network and when it was made, set to end and used. It works once, for ten minutes, and once it is used or expired, its record is deleted the next time a code is made, for anyone.",
     "An invoice sent from the extension is stored under the same vault settings as an upload in the console, with the mandate that was picked, the account that sent it and the checks it was queued with. If your vault is set to keep no invoice files, its record keeps the invoice's hashes and amount, the mandate, the account that sent it and those checks, which name the mandate's payee: not the file, its text, its other facts or its name. It then waits for the vault's owner to confirm it in the console.",
@@ -319,4 +328,4 @@ export const EXTENSION_PRIVACY = {
     text: "A connection ends after 30 days, and a sixth connection on the same network ends the oldest one. You can end one sooner with Revoke on the",
     link: "Browser extension page",
   },
-} satisfies LinkedCopySection;
+} satisfies StoreCopySection;
