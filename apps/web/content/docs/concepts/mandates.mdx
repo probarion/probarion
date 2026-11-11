@@ -151,6 +151,10 @@ The deposit the vault requires is the storage the new mandate takes, at NEAR's b
 - **Too little.** The call fails with [`InsufficientDeposit`](/docs/build/errors#InsufficientDeposit), and no mandate is stored.
 - **More than needed.** The vault sends the excess back to the owner, who made the call.
 
+### The payee needs no NEAR
+
+A mandate's payee only receives USDC. It signs nothing and calls no method: the agent key sends `spend`, and the vault pays with its own `ft_transfer` of USDC, or its own NEAR Intents withdrawal for a Base or Solana payee. A NEAR payee's USDC registration comes out of the owner's `create_mandate` deposit, as above, so the payee needs no NEAR to be paid, and an Intents payee needs no NEAR account at all. The testnet demo vault shows it: the owner signed mandate 1 for `probarion-payee.testnet` in [`F8Qj4yNA...`](https://testnet.nearblocks.io/txns/F8Qj4yNAK8eTqTtjs7QbQuxMHCrm228jWNfGJHEiHpav), the `create_mandate_tx` of [`contracts/deployments/testnet.json`](https://github.com/probarion/probarion/blob/main/contracts/deployments/testnet.json), and the vault then paid that account twice. None of the transactions in its [evidence](https://github.com/probarion/probarion/tree/main/docs/evidence/demo-vault) is signed by the payee. Probarion runs no NEP-366 relayer, so nobody pays gas for anyone else: the owner and each approver pay the gas of every transaction they sign, from their own account, and the gas of the agent key and of the ledger key comes out of the vault's own NEAR.
+
 ### What the contract checks
 
 `create_mandate` runs these checks in order. The first one that fails refuses the call, and nothing is stored.

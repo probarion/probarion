@@ -569,6 +569,10 @@ export function ProofView({
           >
             Download snapshot.json
           </a>
+          {/* No file name here: the route names the file after the capture time of its own snapshot. */}
+          <a className={linePillClass} href={`/proof/${vault}/payments.csv`} download>
+            Download payments (CSV)
+          </a>
           <a className={linePillClass} href="#verify">
             Verify it yourself
           </a>
