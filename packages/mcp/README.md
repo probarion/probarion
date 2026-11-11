@@ -6,7 +6,7 @@ signed for its key: no tool takes an address, and the vault contract pays the ma
 
 **Unaudited beta.** Testnet first; use small amounts. MIT licensed.
 
-**On npm since release 0.1.1, published on 2026-11-12.** `npx -y @probarion/mcp@0.1.1` runs it with no clone,
+**On npm since release 0.1.1, published on 2026-11-11.** `npx -y @probarion/mcp@0.1.1` runs it with no clone,
 and the official MCP registry lists it as `io.github.probarion/probarion`. A clone of the repository builds
 the same server, as Set it up below shows, and the lines below give both forms: from npm and from a clone.
 

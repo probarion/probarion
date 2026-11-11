@@ -10,7 +10,7 @@ import { REPO_URL } from "@/lib/proof/cli";
 // without repeating any of it.
 
 /**
- * True since `@probarion/mcp` 0.1.1 is on npm (published 2026-11-12), so the page shows its npx form. Set it back to
+ * True since `@probarion/mcp` 0.1.1 is on npm (published 2026-11-11), so the page shows its npx form. Set it back to
  * false only if the package can no longer be run: the page then shows the server built from a clone of the public
  * repository, as CLI_ON_NPM does for the CLI (lib/proof/cli.ts). Flipping it is the whole change here.
  */

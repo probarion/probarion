@@ -678,7 +678,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
         { start: "`@probarion/sdk`", says: ["**Shipped**", "on npm as `@probarion/sdk` 0.1.1"] },
         { start: "`probarion` CLI", says: ["**Shipped**", "on npm as `probarion` 0.1.1"] },
         { start: "npm release 0.1.0", says: ["**Shipped**", "2026-11-09", "provenance"] },
-        { start: "npm release 0.1.1", says: ["**Shipped**", "2026-11-12", "provenance"] },
+        { start: "npm release 0.1.1", says: ["**Shipped**", "2026-11-11", "provenance"] },
       ],
     },
   ];

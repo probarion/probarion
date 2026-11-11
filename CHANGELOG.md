@@ -5,7 +5,7 @@ All notable changes to this repository: the NEAR contracts in `contracts/`, the 
 `packages/mcp`), and the web console in `apps/web`.
 
 Versions follow semver. The npm packages share one version, released by the tag `sdk-v<version>`;
-0.1.0 was published on 2026-11-09, and 0.1.1, the first release of `@probarion/mcp`, on 2026-11-12.
+0.1.0 was published on 2026-11-09, and 0.1.1, the first release of `@probarion/mcp`, on 2026-11-11.
 A contract crate carries its own version, and each build of it is identified
 by the code hash of its reproducible build in `contracts/code-hashes.json`. The web console is not
 versioned yet, and it deploys from `main` to <https://probarion.xyz>. While the version is 0.x, a minor version may change the API.
@@ -809,10 +809,10 @@ The software is an unaudited beta.
 ### Changed
 
 - Release 0.1.1 is on npm: `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` 0.1.1
-  were published on 2026-11-12 from the tag `sdk-v0.1.1`, and the official MCP registry lists the server
+  were published on 2026-11-11 from the tag `sdk-v0.1.1`, and the official MCP registry lists the server
   as `io.github.probarion/probarion`. What the repository says about npm now matches. The README says so
   in its banner note, its Status rows for core, the SDK and the CLI (on npm as 0.1.1), the 0.1.1 row
-  (Shipped on 2026-11-12, with the install lines), the MCP server's row and the quick start, which runs
+  (Shipped on 2026-11-11, with the install lines), the MCP server's row and the quick start, which runs
   the server as `npx -y @probarion/mcp@0.1.1`. `SECURITY.md` supports 0.1.1 and lists `@probarion/mcp` with the other
   packages. The `@probarion/mcp` README leads with npm and the registry name, and gives each client's npx
   form next to the build from a clone. The docs pages that named 0.1.0 as the npm release, or said the MCP
@@ -1351,7 +1351,7 @@ The software is an unaudited beta.
   sandbox tests and is bumped with the next contract change, since changing `contracts/Cargo.lock`
   makes the recorded code hashes stale. Every alert is in the threat model's review log.
 
-## 0.1.1 - 2026-11-12
+## 0.1.1 - 2026-11-11
 
 ### Added
 
