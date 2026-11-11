@@ -208,17 +208,17 @@ export async function statusLines(
       network,
       vault,
       AGENT_TAB,
-      "pastes the agent public key",
+      "pastes the agent and ledger public keys",
       `signs the transaction that probarion agent add --vault ${vault} --pk ${pk} prints`,
     );
-  const setLedger = (pk: string) =>
-    ownerStep(
-      network,
-      vault,
-      AGENT_TAB,
-      "pastes the ledger public key",
-      `signs the transaction that probarion ledger set-key --vault ${vault} --pk ${pk} prints`,
-    );
+  // The console's Agent (MCP) tab sets a ledger key only on a vault with no anchor yet (it keeps an anchored ledger
+  // to the key that anchored it), so the tab is offered for the ledger key only then.
+  const setLedger = (pk: string) => {
+    const cli = `signs the transaction that probarion ledger set-key --vault ${vault} --pk ${pk} prints`;
+    return noAnchorYet
+      ? ownerStep(network, vault, AGENT_TAB, "pastes the agent and ledger public keys", cli)
+      : `the vault's owner ${cli}`;
+  };
   const forkNext =
     "point PROBARION_LEDGER_PATH at the ledger file the vault's anchors cover, if it is on this machine, or give this server a vault of its own";
   /** The tail another key signed is anchored by that key first; the owner sets this server's key after. */
@@ -283,6 +283,7 @@ export async function statusLines(
     latest.ok && entries.ok ? { latest: latest.value, entries: entries.value } : null;
   // Whether the anchored entries are this file's (LEDGER_FORK_RISK when not), with no signer check yet.
   const fork = read === null ? null : singleWriterProblem(read.entries, read.latest, null);
+  const noAnchorYet = read !== null && read.latest === null;
   const unanchored =
     read === null || fork !== null ? [] : read.entries.slice(read.latest?.count ?? 0);
 

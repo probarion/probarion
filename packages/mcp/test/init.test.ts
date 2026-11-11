@@ -59,14 +59,14 @@ describe("probarion-mcp init", () => {
     expect(r.out).toContain(`agent public key:  ${keys.agentPublicKey}`);
     expect(r.out).toContain(`ledger public key: ${keys.ledgerPublicKey}`);
     expect(r.out).toContain(`Wrote the keys file ${path} (mode 0600)`);
-    // The CLI's two owner transactions come first; the console's Agent (MCP) tab is not live yet: no link to it.
+    // The CLI's two owner transactions come first, then the console's Agent (MCP) tab on testnet.
     expect(r.out).toContain(
       "1. The vault's owner adds the two public keys to the vault. The probarion CLI prints the two owner",
     );
     expect(r.out).toContain(
-      "(The console's Agent (MCP) tab, where the owner can paste the two keys instead, is not live yet.)",
+      `   Or the owner pastes the two keys on the Agent (MCP) tab of the vault's console: https://probarion.xyz/console/${VAULT}/agent`,
     );
-    expect(r.out).not.toContain("/agent");
+    expect(r.out).not.toContain("is not live yet");
     expect(r.out).toContain(`probarion agent add --vault ${VAULT} --pk '${keys.agentPublicKey}'`);
     expect(r.out).toContain(
       `probarion ledger set-key --vault ${VAULT} --pk '${keys.ledgerPublicKey}'`,

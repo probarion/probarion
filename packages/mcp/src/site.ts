@@ -14,8 +14,8 @@ export interface ConsoleTab {
   live: boolean;
 }
 
-/** Not live yet: the Agent (MCP) tab, where the owner pastes the two public keys, ships in its own change. */
-export const AGENT_TAB: ConsoleTab = { label: "Agent (MCP)", path: "/agent", live: false };
+/** The Agent (MCP) tab, where the owner pastes the two public keys and signs one transaction for each. */
+export const AGENT_TAB: ConsoleTab = { label: "Agent (MCP)", path: "/agent", live: true };
 export const OVERVIEW_TAB: ConsoleTab = { label: "Overview", path: "", live: true };
 export const MANDATES_TAB: ConsoleTab = { label: "Mandates", path: "/mandates", live: true };
 export const TOPUP_TAB: ConsoleTab = { label: "Top-up", path: "/topup", live: true };

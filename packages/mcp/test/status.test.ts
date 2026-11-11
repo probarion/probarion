@@ -241,7 +241,7 @@ describe("probarion-mcp status", () => {
     expect(r.out).toContain(`PROBARION_VAULT_ID=${VAULT} and PROBARION_KEYS_FILE=${file}.`);
   });
 
-  it("says not yet for an agent key the owner has not added, with the CLI's transaction (the Agent (MCP) tab is not live)", async () => {
+  it("says not yet for an agent key the owner has not added, with the Agent (MCP) tab and the CLI's transaction", async () => {
     const r = await status(world({ agents: [] }));
     expect(r.code).toBe(1);
     expect(r.line("agent key")).toMatch(/^ {2}not yet {2}agent key/);
@@ -249,14 +249,24 @@ describe("probarion-mcp status", () => {
       `${AGENT.publicKey} is not an agent key of the vault yet`,
     );
     expect(r.out).toContain(
-      `Next (agent key): the vault's owner signs the transaction that probarion agent add --vault ${VAULT} --pk ${AGENT.publicKey} prints (the console's Agent (MCP) tab is not live yet).`,
+      `Next (agent key): the vault's owner pastes the agent and ledger public keys on the Agent (MCP) tab of the vault's console (https://probarion.xyz/console/${VAULT}/agent), or signs the transaction that probarion agent add --vault ${VAULT} --pk ${AGENT.publicKey} prints.`,
     );
-    // No link to a console page that is not there yet.
-    expect(r.out).not.toContain("/agent");
-    const ledger = await status(world({ config: { ...CONFIG, ledger_key: null } }));
+    // A vault with no anchor yet: the tab sets its ledger key too.
+    const ledger = await status(
+      world({ config: { ...CONFIG, ledger_key: null }, anchor: null, ledger: [] }),
+    );
     expect(ledger.out).toContain(
-      `Next (ledger key): the vault's owner signs the transaction that probarion ledger set-key --vault ${VAULT} --pk ${LEDGER.publicKey} prints (the console's Agent (MCP) tab is not live yet).`,
+      `Next (ledger key): the vault's owner pastes the agent and ledger public keys on the Agent (MCP) tab of the vault's console (https://probarion.xyz/console/${VAULT}/agent), or signs the transaction that probarion ledger set-key --vault ${VAULT} --pk ${LEDGER.publicKey} prints.`,
     );
+  });
+
+  it("gives only the CLI's transaction for the ledger key of a vault that has anchors, which the tab does not change", async () => {
+    const r = await status(world({ config: { ...CONFIG, ledger_key: null } }));
+    expect(r.out).toContain(
+      `Next (ledger key): the vault's owner signs the transaction that probarion ledger set-key --vault ${VAULT} --pk ${LEDGER.publicKey} prints.`,
+    );
+    expect(r.line("ledger key")).toBeDefined();
+    expect(r.out).not.toMatch(/Next \(ledger key\):.*Agent \(MCP\) tab/);
   });
 
   it("prints its commands the way the binary was started", async () => {

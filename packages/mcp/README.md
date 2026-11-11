@@ -88,8 +88,9 @@ probarion ledger set-key --vault acme.vaults.probarion.testnet --pk <ledger publ
 ```
 
 Each command prints the transaction for the owner's wallet to sign; `init` prints both with the keys filled
-in. Once the console's Agent (MCP) tab is live, the owner can paste the two public keys there instead; until
-then `init` and `status` give no link to it. The owner also signs a mandate for the agent key (the console's
+in. On testnet the owner can paste the two public keys on the console's Agent (MCP) tab instead
+(`https://probarion.xyz/console/<vault>/agent`), which `init` and `status` link to; the console does not
+serve mainnet yet. The owner also signs a mandate for the agent key (the console's
 Mandates tab, or `probarion mandate create`) and puts USDC in the vault.
 
 ### 3. Check that the vault is ready
