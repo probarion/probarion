@@ -199,6 +199,11 @@ export interface ContractCheck {
 export interface ContractChecked {
   verdict: DecisionVerdict;
   rules: ShownRule[];
+  /**
+   * The rule that held or refused the decision: the first whose outcome is the verdict, as the SDK picks its code.
+   * A refusal wins over an earlier hold, so the first rule that did not pass may only have held. Null for any other
+   * verdict, or when no rule has the verdict's outcome.
+   */
   firstBlocking: ShownRule | null;
   payments: ShownPayment[];
   spends: ShownSpend[];
@@ -793,13 +798,14 @@ export async function decisionRows(snapshot: Snapshot, network: Network): Promis
     const mandateId = isSeq(body.mandate_id) ? body.mandate_id : null;
     const mandate = mandateId === null ? undefined : mandates.find((m) => m.id === mandateId);
     const rules = rulesOf(body.rules);
+    const verdict = verdictOf(body.verdict);
     const codes = new Set(payments.map((p) => p.code).filter((c): c is string => c !== null));
     rows.push({
       seq: i,
       id: seqAnchorId(i),
       spendIds: bound.map((sp) => sp.anchorId),
       at: safeText(body.at, SHORT),
-      verdict: verdictOf(body.verdict),
+      verdict,
       decidedBy,
       mandateId,
       amount: usdc(body.amount),
@@ -815,9 +821,12 @@ export async function decisionRows(snapshot: Snapshot, network: Network): Promis
         ? await attestationOf(evidence, body.proposal, expectedNonce(s, ledger, i, body))
         : null,
       checked: {
-        verdict: verdictOf(body.verdict),
+        verdict,
         rules,
-        firstBlocking: rules.find((r) => r.outcome !== "pass") ?? null,
+        firstBlocking:
+          verdict === "hold" || verdict === "refuse"
+            ? (rules.find((r) => r.outcome === verdict) ?? null)
+            : null,
         payments,
         spends: bound,
         mandate: mandate === undefined || mandateId === null ? null : capsOf(mandate, mandateId),

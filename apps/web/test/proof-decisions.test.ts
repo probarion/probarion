@@ -116,6 +116,10 @@ describe("/proof Decisions on the committed fixture (two attested decisions, one
     const out = section(await page(attested));
     expect(out).toContain("text-mute");
     expect(out).not.toMatch(/text-ink\/[1-6]\d\b/);
+    // The whole page's grey text, the limits line, the model note and each check's detail included.
+    const whole = await page(attested);
+    expect(whole).not.toMatch(/text-ink\/[1-7]\d\b/);
+    expect(whole).toMatch(/<p class="[^"]*text-mute[^"]*">A1 to A7 run offline/);
   });
 
   it("draws a card's focus ring inside the card, where overflow-hidden cannot clip it", async () => {
@@ -336,6 +340,26 @@ describe("/proof Decisions on the committed fixture (two attested decisions, one
     expect(ok).toContain("A7: the signed response holds exactly this proposal.");
     expect(ok).toContain("Reasoning (as the model wrote it)");
   });
+
+  it("calls the proposal the signed response's only when A1, A2 and A7 all pass", async () => {
+    const s = structuredClone(fixture) as unknown as {
+      ledger: { body: { evidence: { signature: { signature: string } } | null } }[];
+    };
+    const sig = s.ledger[0]?.body.evidence?.signature;
+    if (!sig) throw new Error("fixture changed");
+    // Another signature over the same text: A2 fails, and A7 (the stored response holds the proposal) still passes.
+    sig.signature = `0x${sig.signature.slice(2, 10).replace(/./g, (c) => (c === "a" ? "b" : "a"))}${sig.signature.slice(10)}`;
+    const c = card(section(await page(s as unknown as Snapshot)), 0);
+    expect(c).toContain('data-attestation="A2" data-result="fail"');
+    expect(c).toContain('data-attestation="A7" data-result="pass"');
+    const signed = text(c.slice(c.indexOf("What the TEE signed"), c.indexOf("What the code and")));
+    expect(signed).toContain("Proposal, as the ledger records it pay");
+    expect(signed).toContain(
+      "A7: the stored response holds exactly this proposal; A1 and A2 say whether it is the signed one.",
+    );
+    expect(signed).not.toContain("the signed response holds");
+    expect(signed).toContain("Reasoning (as recorded)");
+  });
 });
 
 describe("the summary row and the contract column, on crafted rows", () => {
@@ -392,6 +416,89 @@ describe("the summary row and the contract column, on crafted rows", () => {
     const refused = demoRows.find((r) => r.seq === 3) as DecisionRow;
     expect(text(summaryOf(render(refused)))).toContain(
       "refused by mandate.payee_mismatch , nothing sent",
+    );
+  });
+
+  it("names the rule that refused, not an earlier rule that only held", async () => {
+    // core's decide() can push a hold (intents.balance_low, a model hold) before a refusing rule; the verdict is
+    // refuse, and the summary must name the rule that refused.
+    const s = structuredClone(demo) as unknown as {
+      ledger: { body: { rules: { id: string; outcome: string }[] | null } }[];
+    };
+    const rules = s.ledger[3]?.body.rules;
+    if (!rules) throw new Error("demo changed");
+    const [held] = rules.splice(
+      rules.findIndex((r) => r.outcome === "hold"),
+      1,
+    );
+    if (!held) throw new Error("demo changed");
+    rules.unshift(held);
+    const row = (await decisionRows(s as unknown as Snapshot, "testnet")).find(
+      (r) => r.seq === 3,
+    ) as DecisionRow;
+    expect(row.checked.rules.filter((x) => x.outcome !== "pass").map((x) => x.outcome)).toEqual([
+      "hold",
+      "refuse",
+    ]);
+    const summary = summaryOf(render(row));
+    expect(badges(summary)).toEqual(["refuse", "rules-only"]);
+    const t = text(summary);
+    expect(t).toContain("refused by mandate.payee_mismatch , nothing sent");
+    expect(t).not.toContain("custom.owner_confirms_without_model");
+  });
+
+  it("shows a refusal by the contract's dry run (check_failed, the SDK's default flow) as a contract refusal", async () => {
+    const base = (await rowsOf()).find((r) => r.seq === 4) as DecisionRow;
+    const row: DecisionRow = {
+      ...base,
+      verdict: "allow",
+      checked: {
+        ...base.checked,
+        verdict: "allow",
+        payments: [
+          {
+            seq: 5,
+            at: "2026-11-10T16:02:00.000Z",
+            status: "check_failed",
+            code: "OverPerPayment",
+            spendId: null,
+            txUrl: null,
+            txLabel: "no tx recorded",
+          },
+        ],
+        spends: [],
+        contractChecks: base.checked.contractChecks.map((c) => ({
+          ...c,
+          refused: c.code === "OverPerPayment",
+        })),
+      },
+    };
+    const out = render(row);
+    const summary = summaryOf(out);
+    // No green "allow" next to the refusal, and no invoice hash in place of why nothing was paid.
+    expect(badges(summary)).toEqual(["refused by contract", "rules-only"]);
+    const t = text(summary);
+    expect(t).toContain("OverPerPayment in the contract's dry run, nothing sent");
+    expect(t).not.toContain("invoice");
+    // The contract column: a red check_failed badge, and that nothing was sent or paid.
+    expect(out).toMatch(
+      /<span class="inline-block rounded-full[^"]*bg-bad-bg[^"]*">check_failed<\/span>/,
+    );
+    expect(text(out)).toContain(
+      "The contract's dry run (check_spend) refused it, so no spend was sent and nothing was paid.",
+    );
+    expect(text(out)).not.toContain("Nothing was paid, and no spend was created.");
+    expect(out).toContain('data-contract-check="OverPerPayment"');
+    // With no code, the summary still says nothing was sent.
+    const bare: DecisionRow = {
+      ...row,
+      checked: {
+        ...row.checked,
+        payments: row.checked.payments.map((p) => ({ ...p, code: null })),
+      },
+    };
+    expect(text(summaryOf(render(bare)))).toContain(
+      "refused in the contract's dry run, nothing sent",
     );
   });
 

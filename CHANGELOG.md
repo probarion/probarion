@@ -570,7 +570,8 @@ The software is an unaudited beta.
 
 ### Changed
 
-- `/proof` grey text uses the mute token, 7:1 or more on paper.
+- The grey text on `/proof/<vault>` (the decision cards, each check's detail, the model note and the
+  limits line under A1 to A7) uses the mute token, 7:1 or more on paper.
 - The browser extension is on the Chrome Web Store as version 0.1.0
   (https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn). The README
   (Status row Shipped), the extension's README, the store pack, What works today, the HTTP API and

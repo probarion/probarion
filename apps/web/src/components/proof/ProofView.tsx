@@ -194,7 +194,7 @@ function CheckItem({
         </h3>
         <Badge tone={status.tone}>{status.label}</Badge>
       </div>
-      <p className="mt-1 text-sm text-ink/70 wrap-anywhere">{row.detail}</p>
+      <p className={`mt-1 text-sm ${muted} wrap-anywhere`}>{row.detail}</p>
       {row.firstBrokenSeq !== undefined ? (
         <p className="mt-1 text-xs font-medium text-rose-800">
           First broken ledger entry: seq {row.firstBrokenSeq}

@@ -511,6 +511,33 @@ describe("decision rows on the testnet demo vault's rules-only snapshot", () => 
       "Anchor 1 on chain counts the first entry, this one included. Check (c) compares its root with the ledger.",
     );
   });
+
+  it("names the rule that refused as the blocking one, even after a rule that only held", async () => {
+    // core's decide() pushes holds such as intents.balance_low before model.refused and the custom rules, and a
+    // refusal anywhere makes the verdict refuse: the SDK's code is the first refusing rule, so the row's is too.
+    const s = structuredClone(demo) as unknown as {
+      ledger: { body: { rules: { id: string; outcome: string }[] | null } }[];
+    };
+    const rules = s.ledger[3]?.body.rules;
+    if (!rules) throw new Error("demo changed");
+    const at = rules.findIndex((r) => r.outcome === "hold");
+    const [held] = rules.splice(at, 1);
+    if (!held) throw new Error("demo changed");
+    rules.unshift(held);
+    const r = row(await rowsOf(s), 3);
+    expect(r.verdict).toBe("refuse");
+    expect(r.checked.rules.filter((x) => x.outcome !== "pass").map((x) => x.id)).toEqual([
+      "custom.owner_confirms_without_model",
+      "mandate.payee_mismatch",
+    ]);
+    expect(r.checked.firstBlocking?.id).toBe("mandate.payee_mismatch");
+    // A verdict no rule's outcome matches names no rule.
+    const allow = structuredClone(demo) as unknown as { ledger: { body: { verdict: string } }[] };
+    const entry = allow.ledger[3];
+    if (!entry) throw new Error("demo changed");
+    entry.body.verdict = "allow";
+    expect(row(await rowsOf(allow), 3).checked.firstBlocking).toBeNull();
+  });
 });
 
 describe("what a decision row never does", () => {

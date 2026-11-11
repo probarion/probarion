@@ -63,7 +63,7 @@ const RULE_TONE: Readonly<Record<RuleOutcome, Tone>> = {
 function statusTone(status: string): Tone {
   if (["paid", "burned", "settled"].includes(status)) return "good";
   if (["held", "pending", "unconfirmed", "unknown"].includes(status)) return "warn";
-  if (["refused", "failed", "rejected", "expired"].includes(status)) return "bad";
+  if (["refused", "check_failed", "failed", "rejected", "expired"].includes(status)) return "bad";
   return "neutral";
 }
 
@@ -123,6 +123,19 @@ function summaryOutcome(r: DecisionRow): SummaryOutcome {
       note: payment.code === null ? "nothing paid" : <>{ruleCode(payment.code)}, nothing paid</>,
     };
   }
+  // The SDK's default flow: the contract's free dry run (check_spend) refused, so no spend was sent.
+  if (payment?.status === "check_failed") {
+    return {
+      badge: { tone: "bad", label: "refused by contract" },
+      verdict: false,
+      note:
+        payment.code === null ? (
+          "refused in the contract's dry run, nothing sent"
+        ) : (
+          <>{ruleCode(payment.code)} in the contract&apos;s dry run, nothing sent</>
+        ),
+    };
+  }
   if (payment) {
     return {
       badge: { tone: statusTone(payment.status), label: `payment ${payment.status}` },
@@ -167,7 +180,7 @@ function Chevron() {
   return (
     <span
       aria-hidden="true"
-      className="mt-px inline-grid h-[22px] w-[22px] flex-none place-items-center rounded-full border border-ink/15 text-ink/70"
+      className={`mt-px inline-grid h-[22px] w-[22px] flex-none place-items-center rounded-full border border-ink/15 ${muted}`}
     >
       <svg
         viewBox="0 0 12 12"
@@ -313,24 +326,30 @@ function Saw({ id, saw }: { id: string; saw: TeeSaw }) {
 }
 
 /**
- * What column 2 may call the recorded proposal. Only when A7 passes does the signed response hold exactly it, and only
- * when A1 to A7 all pass is its reasoning shown as the model's own words; otherwise both are the ledger's record.
+ * What column 2 may call the recorded proposal. A7 shows only that the stored response holds exactly it; A1 ties that
+ * response to the signed text and A2 checks the signature, so only when A1, A2 and A7 all pass is it the signed
+ * response's proposal. Only when A1 to A7 all pass is its reasoning shown as the model's own words; otherwise both are
+ * the ledger's record.
  */
 function proposalLabels(a: DecisionAttestation | null): {
   proposal: string;
   why: string;
   reasoning: string;
 } {
+  const pass = (id: string) => a?.checks.find((c) => c.id === id)?.pass === true;
   const a7 = a?.checks.find((c) => c.id === "A7");
+  const signed = pass("A1") && pass("A2") && pass("A7");
   const recorded = "Proposal, as the ledger records it";
   return {
-    proposal: a7?.pass === true ? "Proposal" : recorded,
+    proposal: signed ? "Proposal" : recorded,
     why:
       a7 === undefined
         ? "A7 did not run on it, so this is only the ledger's record."
-        : a7.pass
+        : signed
           ? "A7: the signed response holds exactly this proposal."
-          : "A7 fails, so the signed response is not shown to hold it.",
+          : a7.pass
+            ? "A7: the stored response holds exactly this proposal; A1 and A2 say whether it is the signed one."
+            : "A7 fails, so the signed response is not shown to hold it.",
     reasoning: a?.ok === true ? "Reasoning (as the model wrote it)" : "Reasoning (as recorded)",
   };
 }
@@ -527,6 +546,9 @@ function PaymentLine({ p }: { p: ShownPayment }) {
         </>
       )}
       {p.status === "refused" ? " Nothing was paid, and no spend was created." : null}
+      {p.status === "check_failed"
+        ? " The contract's dry run (check_spend) refused it, so no spend was sent and nothing was paid."
+        : null}
       <span className="block">
         {p.txUrl === null ? (
           <span className={muted}>{p.txLabel}</span>
@@ -670,8 +692,8 @@ function Attestation({
           </li>
         ))}
       </ol>
-      <p className="mt-3 border-t border-ink/10 pt-3 text-xs text-ink/70">{DECISION_LIMITS}</p>
-      <p className="mt-2 text-xs text-ink/70">
+      <p className={`mt-3 border-t border-ink/10 pt-3 text-xs ${muted}`}>{DECISION_LIMITS}</p>
+      <p className={`mt-2 text-xs ${muted}`}>
         To run O1 and O2 on this vault, download its ledger file (
         <a className={link} href="#verify">
           Verify it yourself
@@ -858,7 +880,7 @@ export function DecisionPanel({
             </div>
           </dl>
 
-          {row.modelNote ? <p className="mt-4 text-sm text-ink/70">{row.modelNote}</p> : null}
+          {row.modelNote ? <p className={`mt-4 text-sm ${muted}`}>{row.modelNote}</p> : null}
 
           {row.saw && row.signed ? (
             <div className="mt-4 grid gap-3 md:grid-cols-3">
