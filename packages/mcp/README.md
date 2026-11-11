@@ -29,12 +29,13 @@ mandate, a key or the vault's settings: those are the owner's, signed in the own
 
 The server holds two function-call keys of the vault and no owner key:
 
-- `PROBARION_AGENT_KEY` can call `spend` and nothing else, with no deposit.
-- `PROBARION_LEDGER_KEY` can call `anchor` and nothing else. It also signs each ledger entry.
+- The agent key can call `spend` and nothing else, with no deposit.
+- The ledger key can call `anchor` and nothing else. It also signs each ledger entry.
 
-Leave both out and the server runs read-only: `request_spend` is off, the other four tools work. `verify`
-then needs `PROBARION_LEDGER_PATH` set to a copy of the vault's ledger; on an empty ledger, the checks that
-read it fail, and the answer says so.
+Both stay on the machine that runs the server, in a keys file that `probarion-mcp init` writes. With no keys
+the server runs read-only: `request_spend` is off, the other four tools work. `verify` then needs
+`PROBARION_LEDGER_PATH` set to a copy of the vault's ledger; on an empty ledger, the checks that read it
+fail, and the answer says so.
 
 ## Set it up
 
@@ -44,29 +45,98 @@ Node 24 or newer. Build it from a clone of the repository:
 git clone https://github.com/probarion/probarion.git
 cd probarion
 pnpm install --frozen-lockfile
-pnpm build
+pnpm --filter "@probarion/mcp..." run build
 ```
 
-The server is then `node packages/mcp/dist/bin.js` in that folder. It speaks MCP over stdio and reads its
-settings from its environment:
+The last line builds the server and the two packages it needs, `@probarion/core` and `@probarion/sdk`. The
+server is then `node packages/mcp/dist/bin.js` in that folder; the steps below write `probarion-mcp` for
+it. After the 0.1.1 release, `npx -y @probarion/mcp@0.1.1` runs the same commands with no clone. `init` and
+`status` print their own commands the way you started them, so from a clone the commands they print begin
+with `node` and the full path of `bin.js`.
+
+Testnet first. Mainnet works the same way: the vault's name says its network (`.near` is mainnet, `.testnet`
+is testnet). The console does not serve mainnet yet, so on mainnet `init` and `status` give the `probarion`
+CLI's owner transactions and no console link.
+
+### 1. Make the keys on your machine
+
+```sh
+node packages/mcp/dist/bin.js init --vault acme.vaults.probarion.testnet
+```
+
+`init` makes the agent key and the ledger key and writes both to `~/.probarion/<vault>/keys.json`, a file
+only you can read (mode 0600; on Windows the file gets its folder's permissions, and `init` warns about that,
+and about a file inside a git repository). It prints only the two public keys, the file's path and the next
+steps. Run it again and it changes nothing: it checks the file and prints the same public keys.
+`--keys-file <path>` puts the file somewhere else.
+
+Back up that folder: `ledger.jsonl` there is the only copy of the agent's signed record once the server
+writes it. The folder also holds `keys.json`, so the backup holds the two secret keys: keep it as private as
+the file itself, and out of any shared or synced folder in the clear. A backup restored from a zip or a cloud
+folder may come back readable by others; `status` fails a keys file that other users can read (outside
+Windows) and names the `chmod 600` that fixes it. The ledger file is the part that cannot be made again: new
+keys can, and the owner then adds them.
+
+### 2. The owner adds the two public keys to the vault
+
+The vault's owner signs two transactions, `add_agent` and `set_ledger_key`, which the CLI printers of the
+[`probarion` CLI](https://github.com/probarion/probarion/tree/main/packages/cli) print:
+
+```sh
+probarion agent add --vault acme.vaults.probarion.testnet --pk <agent public key>
+probarion ledger set-key --vault acme.vaults.probarion.testnet --pk <ledger public key>
+```
+
+Each command prints the transaction for the owner's wallet to sign; `init` prints both with the keys filled
+in. Once the console's Agent (MCP) tab is live, the owner can paste the two public keys there instead; until
+then `init` and `status` give no link to it. The owner also signs a mandate for the agent key (the console's
+Mandates tab, or `probarion mandate create`) and puts USDC in the vault.
+
+### 3. Check that the vault is ready
+
+```sh
+PROBARION_VAULT_ID=acme.vaults.probarion.testnet node packages/mcp/dist/bin.js status
+```
+
+In PowerShell, set the variable first: `$env:PROBARION_VAULT_ID = "acme.vaults.probarion.testnet"`.
+`status` reads the same settings as the server and prints one line per check, each `ok`, `not yet` or
+`fail`: the keys were found, in a keys file only you can read; the agent key is one of the vault's agent
+keys, a function-call key limited to `spend` with allowance left; the vault's ledger key is this ledger key,
+limited to `anchor`; the vault is not frozen; an active mandate is bound to the agent key; the vault's USDC;
+and the local ledger file against the vault's latest anchor (the server's single-writer check, run dry: the
+anchored entries are this file's, and this server's ledger key signed every entry after them). When the
+vault is not ready it ends with one next step: the first `fail` that has one, else the first `not yet`. It
+only reads: nothing is signed or sent. Exit code 0 when ready, 1 when not, 2 for a configuration error.
+
+### 4. Give the MCP client the vault id
+
+The client's config carries only `PROBARION_VAULT_ID`, and `PROBARION_KEYS_FILE` when the keys file is not
+in its default place. The server finds the keys in the keys file. The client lines are below.
+
+### Settings
+
+The server and `status` read these from their environment:
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `PROBARION_VAULT_ID` | Yes | The vault account, e.g. `acme.vaults.probarion.testnet` |
 | `NEAR_NETWORK` | When the vault's name ends in neither `.near` nor `.testnet` | `mainnet` or `testnet` |
-| `PROBARION_AGENT_KEY` | With `PROBARION_LEDGER_KEY`, or neither | `ed25519:…`, the vault's spend-only key |
-| `PROBARION_LEDGER_KEY` | With `PROBARION_AGENT_KEY`, or neither | `ed25519:…`, the vault's anchor-only key |
+| `PROBARION_KEYS_FILE` | No | The keys file `init --keys-file` wrote, as an absolute path. It must exist. Default `~/.probarion/<vault>/keys.json`, used when it exists |
+| `PROBARION_AGENT_KEY` | With `PROBARION_LEDGER_KEY`, or neither | `ed25519:...`, the vault's spend-only key, in place of a keys file (see the fallback below) |
+| `PROBARION_LEDGER_KEY` | With `PROBARION_AGENT_KEY`, or neither | `ed25519:...`, the vault's anchor-only key, in place of a keys file |
 | `NEAR_RPC_URLS` | No | Comma-separated `https://` RPC URLs in failover order, with no user name or password in a URL (`http://` only for a node on this machine) |
 | `NEAR_ARCHIVAL_RPC_URLS` | No | The archival RPC URLs `verify` reads old transactions from, with the same rules |
 | `PROBARION_LEDGER_PATH` | No | The ledger file. Default `~/.probarion/<vault>/ledger.jsonl` |
 
+The keys come from the first of these that is set: both `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY`;
+the file `PROBARION_KEYS_FILE` names; `~/.probarion/<vault>/keys.json`. With none, the server is read-only.
+One key from the environment and the other from a file is refused. A keys file must be for this vault and
+its network, and each secret key in it must match the public key beside it; a problem is named by the file
+and the field, with no value from the file. The server's first line on stderr says where its keys came
+from, and no key.
+
 `node packages/mcp/dist/bin.js --help` lists the commands and `--version` prints the version. With no
 argument, the binary is the MCP server and writes only JSON-RPC to stdout.
-
-The owner makes the keys and the mandates with the
-[`probarion` CLI](https://github.com/probarion/probarion/tree/main/packages/cli): `agent keygen` once for each
-key, `agent add` for the agent key, `ledger set-key` for the ledger key, and `mandate create`. The CLI prints
-each owner transaction for the owner's wallet to sign.
 
 ## Try it: the read-only demo
 
@@ -100,9 +170,12 @@ does not answer as expected.
 ## Add it to an MCP client
 
 The lines below give the server the public demo vault in read-only mode, which needs no key. To let the
-agent pay, use your own vault and add `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY` beside
-`PROBARION_VAULT_ID`. Use the full path of your clone in place of `/path/to/probarion`. If a client cannot
-find `node`, give its full path (`which node`, or `where node` on Windows).
+agent pay, put your own vault's id in their place once `init` and `status` are done (Set it up, above): the
+server takes the keys from `~/.probarion/<vault>/keys.json`, so the config still holds only
+`PROBARION_VAULT_ID`. For a keys file elsewhere, add `PROBARION_KEYS_FILE` with its absolute path (with
+`claude mcp add`, a second `-e PROBARION_KEYS_FILE=/path/to/keys.json`). Use the full path of your clone in
+place of `/path/to/probarion`. If a client cannot find `node`, give its full path (`which node`, or
+`where node` on Windows).
 
 On Windows, `npx` is a batch file that most clients cannot start directly: run it through `cmd /c`, as the
 Windows lines show. `node` needs no `cmd /c`. The first `npx` run downloads the package and its
@@ -183,10 +256,12 @@ needs its backslashes doubled, or forward slashes.
 Put the same `mcpServers` block as for Claude Desktop in `.cursor/mcp.json` in your project, or in
 `~/.cursor/mcp.json` for every project. The npx and Windows forms are the same too.
 
-### Keys in a config file
+### Fallback: keys in the client's config
 
-With keys, the `env` block holds them in plain text, so keep that file private, and give the server a vault
-that holds only what the agent may spend.
+`PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY` in the `env` block work too, and win over any keys file
+(both, or neither). They are then secrets in plain text in the client's config file, which the client may
+sync, back up or show: keep that file private, and give the server a vault that holds only what the agent
+may spend. A keys file from `init` keeps them out of the client's config.
 
 ## One ledger per vault
 
@@ -196,6 +271,19 @@ process with another ledger file has anchored the vault, `request_spend` stops w
 sends nothing. A writer that has not anchored yet is not caught here: `verify` check d finds its spends
 later, since this ledger has no decision behind them. Run one writer per vault, or point
 `PROBARION_LEDGER_PATH` at the file the other process uses on the same machine.
+
+The server also checks that its own ledger key signed every entry after the vault's latest anchor. The
+vault's next anchor covers those entries under the vault's ledger key of that moment, and `verify` check a
+fails for any entry in that range that another key signed. That happens when the keys file changes while the
+ledger file stays: `init` run again after the old `keys.json` was moved away, a restored backup, or
+`PROBARION_KEYS_FILE` pointed at another file. Then `request_spend` stops with `LEDGER_KEY_MISMATCH` and sends
+nothing. Anchor those entries with the key that signed them, while it is the vault's ledger key, and only
+then have the owner set the new one (`probarion ledger set-key`, which deletes the old key).
+
+`probarion-mcp status` runs both checks without paying, so a vault that another ledger has anchored, or a
+ledger tail another key signed, shows up before the first payment. When the vault's ledger key is another key
+and the ledger it anchors is not on this machine, `status` does not suggest setting this server's key: that
+would delete the other process's key, and this server still could not pay.
 
 ## What it records
 
