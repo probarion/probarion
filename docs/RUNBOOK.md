@@ -649,6 +649,125 @@ Run it after the promotion that brings the crons to Production. Every step is th
 
    Write the times down, never a secret's value.
 
+## Releasing the npm packages
+
+Every step here is the OWNER's. Claude prepares the release pull request (the versions, the `CHANGELOG.md`
+section, `packages/mcp/server.json`) and runs `pnpm run release:check -- sdk-v<version>` and
+`pnpm run release:check -- --pack --out <folder> sdk-v<version>`, which publish nothing. It does not push a
+tag, approve the environment or publish to npm or to the MCP registry.
+
+How a release runs ([`release.yml`](../.github/workflows/release.yml)): pushing the tag `sdk-v<version>`
+starts the workflow. Its verify job refuses a tagged commit that is not on `main`, runs the release check,
+`verify:ts` and `verify:launch`, and packs the four packages. Its publish job waits in the `npm-release`
+environment for the OWNER's approval, then publishes the tarballs in dependency order, `@probarion/core`,
+`@probarion/sdk`, `probarion`, then `@probarion/mcp`, with npm provenance. A version npm already holds
+with the same bytes is skipped; one it holds with other bytes stops the run. If a run fails, "Re-run
+failed jobs" on the Actions page keeps the tarballs of the first verify job.
+
+npm credentials, as the workflow file describes them: the publish job authenticates with `NPM_TOKEN`, an
+environment secret of `npm-release` (not a repository secret), and has `id-token: write` for provenance.
+The workflow's OWNER setup, step 5, says to switch each package to npm trusted publishing (OIDC, no token)
+once 0.1.0 is on npm, and then to revoke `NPM_TOKEN`. `@probarion/mcp` is new on npm with 0.1.1, and npm's
+trusted publishing docs set it up from a package's own settings page, which a package that was never
+published does not have. So, as advice: before the 0.1.1 tag, check that `NPM_TOKEN` in `npm-release` is
+still valid and may publish a new package under the `@probarion` scope; if it was revoked, make a new one
+and store it there ([the `NPM_TOKEN` row of Key rotation](#key-rotation)). After 0.1.1, set up trusted
+publishing for `@probarion/mcp` too, as step 5 says.
+
+### Release 0.1.1
+
+0.1.1 is the first release of `@probarion/mcp`, and its first listing in the official MCP registry, as
+`io.github.probarion/probarion`. The steps start after the promote pull request that carries the 0.1.1
+versions is merged into `main`.
+
+1. Check `main` before tagging. In a clone of the repository:
+
+   ```bash
+   git fetch origin
+   git switch --detach origin/main
+   pnpm install --frozen-lockfile
+   pnpm run release:check -- sdk-v0.1.1
+   ```
+
+   It prints `release check ok:` and the four packages, each at 0.1.1:
+   `@probarion/core@0.1.1, @probarion/sdk@0.1.1, probarion@0.1.1, @probarion/mcp@0.1.1`.
+
+2. Tag that commit (annotated, on `main`) and push the tag. The push starts the release workflow:
+
+   ```bash
+   git tag -a sdk-v0.1.1 -m "SDK v0.1.1" origin/main
+   git push origin sdk-v0.1.1
+   ```
+
+3. Approve the `npm-release` environment. On the Actions page, open the `release` run for `sdk-v0.1.1`;
+   once "Check, test and pack" has passed, "Publish to npm" waits for a review: Review deployments, tick
+   `npm-release`, Approve and deploy. Wait for the run to finish green.
+
+4. Check npm. The first three lines print `0.1.1`; the last prints `version = '0.1.1'` and
+   `mcpName = 'io.github.probarion/probarion'`:
+
+   ```bash
+   npm view @probarion/core@0.1.1 version
+   npm view @probarion/sdk@0.1.1 version
+   npm view probarion@0.1.1 version
+   npm view @probarion/mcp@0.1.1 version mcpName
+   ```
+
+   The registry checks that `mcpName` before it lists the server, so it must be there before step 6.
+
+5. Install `mcp-publisher`, the official MCP registry publisher (from
+   [its quickstart](https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/quickstart.mdx)),
+   then check it with `mcp-publisher --help`. On Windows, in PowerShell, then move `mcp-publisher.exe`
+   to a folder on `PATH`:
+
+   ```powershell
+   $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq "Arm64") { "arm64" } else { "amd64" }; Invoke-WebRequest -Uri "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_windows_$arch.tar.gz" -OutFile "mcp-publisher.tar.gz"; tar xf mcp-publisher.tar.gz mcp-publisher.exe; rm mcp-publisher.tar.gz
+   ```
+
+   On macOS or Linux:
+
+   ```bash
+   curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher && sudo mv mcp-publisher /usr/local/bin/
+   ```
+
+   Or with Homebrew: `brew install mcp-publisher`.
+
+6. Log in and publish, from `packages/mcp` of the same checkout. The name `io.github.probarion/probarion`
+   is in the `probarion` GitHub organization's namespace, which the registry grants only to an Owner of
+   that organization. The registry's docs say that `mcp-publisher login github` (the device flow) cannot
+   publish to an organization namespace today (registry issue #1468): log in with a personal access token
+   instead, a classic one with only the `read:org` scope, or a fine-grained one for the `probarion`
+   organization with Organization permissions, Members, Read-only. It needs no repository access. Keep the
+   token in a file under `.keys/` (git ignores that folder), for example `.keys/mcp-registry-token.txt`,
+   and pass it from there. In Git Bash:
+
+   ```bash
+   cd packages/mcp
+   mcp-publisher login github --token "$(cat ../../.keys/mcp-registry-token.txt)"
+   mcp-publisher validate
+   mcp-publisher publish
+   ```
+
+   In PowerShell, the login line is
+   `mcp-publisher login github --token (Get-Content ..\..\.keys\mcp-registry-token.txt -Raw).Trim()`.
+   `publish` reads `server.json` in that folder and ends with
+   `Server io.github.probarion/probarion version 0.1.1`. A version is published to the registry once and
+   cannot be changed; the next release publishes a new one. Revoke the token afterwards if it has no other
+   use.
+
+7. Check the listing. The JSON it prints holds the name `io.github.probarion/probarion` with the version
+   `0.1.1` (in PowerShell, write `curl.exe`):
+
+   ```bash
+   curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.probarion/probarion"
+   ```
+
+8. Then a pull request changes what the repository says about npm: the "not on npm yet" lines for
+   `@probarion/mcp` in the README, the docs and the header of `CHANGELOG.md`, `MCP_ON_NPM` in
+   `apps/web/src/lib/agent/connect.ts`, and the 0.1.1 lines of the README's Status table. If the tag was
+   pushed on another day than 2026-11-12, the same pull request dates the `CHANGELOG.md` heading
+   `## 0.1.1` with the day the packages were published.
+
 ## Status page posts
 
 Until a third-party status page exists, the OWNER posts on X from [@probarionhq](https://x.com/probarionhq)
