@@ -1,4 +1,4 @@
-This page installs the three Probarion packages, all at version 0.1.0: `@probarion/core`, `@probarion/sdk` and the `probarion` CLI. Install them from npm to use them in your own project. Build them from a clone of the repository to run the repository's fixtures, scripts and tests, or the [evaluation](/docs/start/evaluate-in-5-minutes).
+This page installs the three Probarion packages, `@probarion/core`, `@probarion/sdk` and the `probarion` CLI, at version 0.1.0 from npm. Install them from npm to use them in your own project. Build them from a clone of the repository to run the repository's fixtures, scripts and tests, or the [evaluation](/docs/start/evaluate-in-5-minutes).
 
 <Callout kind="note" title="On npm since 2026-11-09">
 Release 0.1.0 of `@probarion/core`, `@probarion/sdk` and `probarion` is on npm, under the `latest` tag. It was published on 2026-11-09 from the tag `sdk-v0.1.0` on `main`, by the repository's release workflow, with npm provenance. The packages are an unaudited beta, and a 0.x minor release may change their API.
@@ -102,14 +102,14 @@ The CLI's commands are the same however you run it: `probarion verify --help` fr
 
 Run these from the root of the clone. None of them needs a key or a wallet, and none sends anything.
 
-**The version.**
+**The version.** A clone builds the version in `packages/cli/package.json`, which can be ahead of the release on npm:
 
 ```bash
 node packages/cli/dist/bin.js --version
 ```
 
 ```text
-0.1.0
+0.1.1
 ```
 
 **The commands.** The help lists the program options and the commands. This output was captured through a pipe, so its lines wrap at 80 columns; a terminal wraps them to its own width:

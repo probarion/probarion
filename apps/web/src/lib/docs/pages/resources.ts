@@ -135,11 +135,11 @@ export const RESOURCES: readonly DocPage[] = [
     title: "Changelog",
     description:
       "Every change to the contracts, the npm packages, the CLI and the web console, rendered from the repository CHANGELOG.md of this build.",
-    lede: "The repository CHANGELOG.md as it stands in the build this page comes from. Unreleased lists what this build has that the last npm release does not.",
+    lede: "The repository CHANGELOG.md as it stands in the build this page comes from. Unreleased lists what this build has that the last npm release does not, and a version prepared but not published yet carries its planned tag day.",
     type: "reference",
     audiences: ["beginner", "user", "developer", "builder", "partner", "evaluator", "agent"],
     sources: ["CHANGELOG.md", "apps/web/src/lib/docs/changelog.ts"],
-    reviewed: "2026-11-09",
+    reviewed: "2026-11-11",
     phase: 2,
     locale: "en",
   },

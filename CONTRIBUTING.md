@@ -38,7 +38,8 @@ Two kinds of check run only in CI (GitHub Actions, ubuntu), not in `pnpm verify`
 5. `dev` is promoted to `main` by a pull request.
 6. Releases are cut only from `main`: an `sdk-v*` tag runs
    [`.github/workflows/release.yml`](.github/workflows/release.yml), which refuses a tag whose commit
-   is not on `main`.
+   is not on `main`. The OWNER tags and publishes; the steps are in
+   [the runbook](docs/RUNBOOK.md#releasing-the-npm-packages).
 
 Commit subjects read `type(scope): one plain sentence`, for example
 `fix(vault): set_ledger_key deletes the old ledger key before adding the new one`. Task and review ids

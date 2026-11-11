@@ -1,0 +1,64 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.probarion/probarion",
+  "title": "Probarion",
+  "description": "Let an AI agent pay in USDC on NEAR only inside owner-signed mandates, with a signed ledger.",
+  "repository": {
+    "url": "https://github.com/probarion/probarion",
+    "source": "github",
+    "subfolder": "packages/mcp"
+  },
+  "websiteUrl": "https://probarion.xyz",
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@probarion/mcp",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PROBARION_VAULT_ID",
+          "description": "The vault account, for example acme.vaults.probarion.testnet. A name ending in .near is on mainnet, one ending in .testnet on testnet",
+          "isRequired": true
+        },
+        {
+          "name": "NEAR_NETWORK",
+          "description": "mainnet or testnet. Needed only when the vault id ends in neither .near nor .testnet; when set, the vault id's ending must agree with it",
+          "choices": ["mainnet", "testnet"]
+        },
+        {
+          "name": "PROBARION_KEYS_FILE",
+          "description": "Absolute path of the keys file that probarion-mcp init wrote, which must exist. Default ~/.probarion/<vault>/keys.json, used when it exists. With no keys the server is read-only",
+          "format": "filepath"
+        },
+        {
+          "name": "PROBARION_AGENT_KEY",
+          "description": "The agent key's secret (ed25519:...), the vault's key that can only call spend, in place of a keys file. Set it with PROBARION_LEDGER_KEY, or neither",
+          "isSecret": true
+        },
+        {
+          "name": "PROBARION_LEDGER_KEY",
+          "description": "The ledger key's secret (ed25519:...), the vault's key that can only call anchor, in place of a keys file. Set it with PROBARION_AGENT_KEY, or neither",
+          "isSecret": true
+        },
+        {
+          "name": "NEAR_RPC_URLS",
+          "description": "Comma-separated https:// NEAR RPC URLs in failover order, with no user name or password (http:// only for a node on this machine). Default: the public RPCs @probarion/core lists for the network"
+        },
+        {
+          "name": "NEAR_ARCHIVAL_RPC_URLS",
+          "description": "Comma-separated archival RPC URLs that verify reads old transactions from, with the same rules as NEAR_RPC_URLS. Default: FastNEAR's archival node"
+        },
+        {
+          "name": "PROBARION_LEDGER_PATH",
+          "description": "Absolute path of the ledger file: a relative one is taken from the folder the client starts the server in. Default ~/.probarion/<vault>/ledger.jsonl",
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

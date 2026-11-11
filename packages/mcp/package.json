@@ -1,6 +1,6 @@
 {
   "name": "@probarion/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for Probarion: an agent lists its mandates, dry-runs and requests USDC payments that a NEAR vault contract enforces. No tool takes an address.",
   "license": "MIT",
   "mcpName": "io.github.probarion/probarion",

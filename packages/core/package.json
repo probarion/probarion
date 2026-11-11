@@ -1,6 +1,6 @@
 {
   "name": "@probarion/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Probarion core: contract types, canonical hashing, signed ledger, policy engine, attestation and verifier checks. Pure TypeScript, no network.",
   "license": "MIT",
   "type": "module",
