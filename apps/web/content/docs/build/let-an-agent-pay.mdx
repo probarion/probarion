@@ -1,6 +1,6 @@
 Your agent's invoice handling becomes a loop that pays through `process()`: each invoice is paid at most once (each decision's spend is sent once), one ledger writer keeps each vault's history, and no unknown outcome is ever paid twice. You need the SDK, from npm or built from a clone ([Install](/docs/build/install)), and a testnet vault whose owner has signed the steps below. The [developer quickstart](/docs/start/developer-quickstart) runs one payment end to end; this page covers what a loop that keeps paying has to get right.
 
-Everything here runs on NEAR testnet with test tokens. The mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet). This loop is Preview: the repository records no run of `process()` against a real testnet vault yet, so the outputs below come from the code and the SDK's own tests, which run against a fake chain.
+Everything here runs on NEAR testnet with test tokens. On mainnet only one small vault runs, `v0.probarion.near`, and no other can be created yet: see [Testnet and mainnet](/docs/start/testnet-and-mainnet). This loop is Preview: the repository records no run of `process()` against a real testnet vault yet, so the outputs below come from the code and the SDK's own tests, which run against a fake chain.
 
 <Callout kind="key">
 The agent key can call only `spend`, and a spend names no payee: the vault pays the payee the mandate names. See [Why spend has no payee](/docs/concepts/why-spend-has-no-payee).
@@ -44,6 +44,8 @@ The console's Keys tab makes its own keys on Probarion's server, for hosted Paya
 
 The console's Agent (MCP) tab (`/console/<vault>/agent`) is the other way, built for the MCP server and not tried on testnet yet. The owner pastes the two public keys there, and the page refuses a pasted secret key before anything is sent. The owner signs `add_agent` and `set_ledger_key` in their wallet, and the tab gives the settings for Claude Code, Claude Desktop, Cursor and Codex. It withholds the ledger key from a vault whose ledger another writer keeps.
 
+The MCP server `@probarion/mcp` is Preview: it was tried on testnet, and it is on npm at 0.1.1, so `npx -y @probarion/mcp@0.1.1` runs it, as [its README](https://github.com/probarion/probarion/tree/main/packages/mcp) says. Its `request_spend` tool calls this same SDK's `requestSpend`: the client names the mandate by id, so the mandate's caps, uses, expiry and agent key, the duplicate checks and the contract's checks apply, while no invoice text is read and the purpose rule passes. None of its tools takes an address.
+
 On the "Overview" tab, the "Your first agent payment" card offers its "Agent key and ledger key" step two ways, "Go to Keys" for hosted Payables and "Connect agent" for your own agent. It ticks the step once the chain shows an agent key and a ledger key that the console did not make. Skip "Go to Keys": a ledger key made there would replace yours, and the Keys tab asks before it does. The card goes away after the first payment. The [owner quickstart](/docs/start/owner-quickstart) covers the vault itself.
 
 ## Create the instance
@@ -52,7 +54,7 @@ On the "Overview" tab, the "Your first agent payment" card offers its "Agent key
 
 | Option | Value | What it does |
 | --- | --- | --- |
-| `network` | `"testnet"` or `"mainnet"` | Required. Only testnet has a live vault. |
+| `network` | `"testnet"` or `"mainnet"` | Required. The demo vaults are on testnet. On mainnet only `v0.probarion.near` runs, and no other mainnet vault can be created yet. |
 | `vault` | The vault account id | Required. |
 | `agentKey` | `"ed25519:..."` | The secret of your agent key, a function-call key on the vault account that can call only `spend`. Without it the instance is read-only. |
 | `ledgerKey` | `"ed25519:..."` | The secret of your ledger key, which can call only `anchor` and signs every ledger entry. |
@@ -386,7 +388,6 @@ The report starts with `Probarion verify: <vault> (testnet)`, lists each check, 
 
 ## Not available yet
 
-- No MCP server on npm. `@probarion/mcp` is Preview: it was tried on testnet, and you build it from a clone, as [its README](https://github.com/probarion/probarion/tree/main/packages/mcp) says. Its `request_spend` tool calls this same SDK's `requestSpend`: the client names the mandate by id, so the mandate's caps, uses, expiry and agent key, the duplicate checks and the contract's checks apply, while no invoice text is read and the purpose rule passes. None of its tools takes an address.
 - No HTTP API for agents: the hosted invoice API needs a signed-in console session of the vault's owner or approver. An agent pays from its own process, through the SDK. The CLI sends no spend: `check` only dry-runs one, and its owner and approver commands only print transactions.
 
 [What works today](/docs/start/what-works-today) lists the status of every part.

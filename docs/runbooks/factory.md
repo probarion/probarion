@@ -6,7 +6,7 @@ To control cost (spec §7.2), the global code is published on **mainnet** only a
 
 **OWNER** runs the testnet commands. Every mainnet command that sends a transaction is **OWNER SIGNS**. Run every command from the repo root, in Git Bash (Windows) or any Linux/macOS shell. In Git Bash, put the cargo tools on the path first: `export PATH="$HOME/.cargo/bin:$PATH"`. Keys are written only to the OS keychain (`create-account ... save-to-keychain` stores each new key there) or sit on a Ledger. Signing uses `sign-with-keychain`; if the key is on a Ledger, replace `sign-with-keychain send` with `sign-with-ledger usb send`. No command here prints a private key.
 
-**Protocol versions differ.** `protocol_versions` in `contracts/deployments/testnet.json` records testnet at 88 and mainnet at 86 on 2026-11-01. A testnet pass does not prove mainnet behaviour for anything that changed between the two. Check both before each deploy, and re-run the testnet part whenever either number changes (as `docs/runbooks/testnet.md` does). Global contracts work on both networks.
+**Protocol versions.** `protocol_versions` in `contracts/deployments/testnet.json` records both networks at 88 on 2026-11-11 (on 2026-11-01 it was testnet 88 against mainnet 86). A testnet pass does not prove mainnet behaviour for anything that changes between the two. Check both before each deploy, and re-run the testnet part whenever either number changes (as `docs/runbooks/testnet.md` does). Global contracts work on both networks.
 
 ```bash
 node scripts/testnet/chain.mjs protocol-version testnet

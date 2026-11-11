@@ -4,7 +4,7 @@
 
 Run every command from the repo root, in Git Bash (Windows) or any Linux/macOS shell. In Git Bash, put the cargo tools on the path first: `export PATH="$HOME/.cargo/bin:$PATH"`. Signing uses `sign-with-keychain` (on Windows the keys sit in the Credential Manager). No script here reads, prints or writes a private key.
 
-**Protocol versions differ.** On 2026-11-01 testnet runs protocol 88 and mainnet runs protocol 86 (on 2026-10-21 it was 87 against 86). A testnet pass does not prove mainnet behaviour for anything that changed between the two. Check both before each deploy and write both numbers into `contracts/deployments/testnet.json` (`protocol_versions`). Re-run this runbook whenever either number changes.
+**Protocol versions.** On 2026-11-11 both networks run protocol 88 (on 2026-11-01 it was testnet 88 against mainnet 86, and on 2026-10-21 87 against 86). A testnet pass does not prove mainnet behaviour for anything that changes between the two. Check both before each deploy and write both numbers into `contracts/deployments/testnet.json` (`protocol_versions`). Re-run this runbook whenever either number changes.
 
 ```bash
 node scripts/testnet/chain.mjs protocol-version testnet

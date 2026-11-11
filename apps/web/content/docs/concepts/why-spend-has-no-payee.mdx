@@ -105,7 +105,7 @@ impl Payee {
 
 </CodeBlock>
 
-`create_mandate` accepts only an asset on the vault's allow list, which is set when the vault is created. Before it sends, the vault checks the mandate's asset against that list again, or refuses with `AssetNotAllowed`. When the withdrawal runs on NEAR, the spend becomes `burned`, and `get_spend` shows the same memo. On mainnet, which is planned, the POA bridge then releases the USDC on the payee's chain, Base or Solana.
+`create_mandate` accepts only an asset on the vault's allow list, which is set when the vault is created. Before it sends, the vault checks the mandate's asset against that list again, or refuses with `AssetNotAllowed`. When the withdrawal runs on NEAR, the spend becomes `burned`, and `get_spend` shows the same memo. On mainnet the POA bridge then releases the USDC on the payee's chain, Base or Solana. No such payout has run on mainnet yet: spike S1, a contract account withdrawing Base POA USDC to a Base address, is unproven.
 
 The console offers NEAR and Base payees. The CLI and the contract also accept a Solana address.
 

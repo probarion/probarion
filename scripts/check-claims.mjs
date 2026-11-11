@@ -43,9 +43,10 @@
 //             line the README quotes. Without full git history (a shallow clone, or no .git) the git
 //             facts are skipped, and the last line says so.
 //
-// --online (read-only, time-limited, one retry): the vaults and the factory the README names exist on
-// testnet with their recorded code hash and no full-access key; the README's own `chain.mjs` comments
-// still hold; each cited tx exists, was signed by an account the records name (by the signer a record
+// --online (read-only, time-limited, one retry): the testnet vaults and factory the README names, and
+// each mainnet vault it names once a record gives that vault's code hash, exist on their network with
+// the recorded code hash, no full-access key and only spend-only or anchor-only keys; the README's own
+// `chain.mjs` comments still hold; each cited tx exists, was signed by an account the records name (by the signer a record
 // or a README command gives, where one does; a spend by the vault itself) and shows the error code,
 // event or memo its row gives in code, and the README's grep lines over it hold; the
 // global vault code is published exactly as the README says; probarion.xyz/api/health answers ok on
@@ -2320,6 +2321,15 @@ async function rpcCall(ctx, urls, method, params) {
   }
 }
 
+/**
+ * The accounts whose state --online re-reads. On mainnet only a vault, and only once a record gives its
+ * code hash: before its deploy the README names it as planned, and the mainnet factory is not deployed.
+ */
+const ONLINE_ACCOUNT = {
+  testnet: /^v0\.probarion\.testnet$|\.vaults\.probarion\.testnet$|^vaults\.probarion\.testnet$/,
+  mainnet: /^v0\.probarion\.near$|\.vaults\.probarion\.near$/,
+};
+
 async function onlineAccounts(ctx) {
   const { report, records } = ctx;
   const named = new Map();
@@ -2327,13 +2337,13 @@ async function onlineAccounts(ctx) {
     for (const b of doc.model.blocks) {
       for (const m of b.text.matchAll(ACCOUNT_TOKEN)) {
         const id = m[0];
-        if (
-          /^v0\.probarion\.testnet$|\.vaults\.probarion\.testnet$|^vaults\.probarion\.testnet$/.test(
-            id,
-          ) &&
-          !named.has(id)
-        ) {
-          named.set(id, { doc: doc.name, line: lineAt(b, m.index) });
+        const net = ONLINE_ACCOUNT.testnet.test(id)
+          ? "testnet"
+          : ONLINE_ACCOUNT.mainnet.test(id) && records.accountCodeHash.has(id)
+            ? "mainnet"
+            : null;
+        if (net && !named.has(id)) {
+          named.set(id, { doc: doc.name, line: lineAt(b, m.index), net });
         }
       }
     }
@@ -2362,7 +2372,8 @@ async function onlineAccounts(ctx) {
 
 async function onlineAccount(ctx, id, at, vaultHashes) {
   const { report, records } = ctx;
-  const { reply } = await rpcCall(ctx, RPC.testnet, "query", {
+  const net = at.net ?? "testnet";
+  const { reply } = await rpcCall(ctx, RPC[net], "query", {
     request_type: "view_account",
     finality: "final",
     account_id: id,
@@ -2372,12 +2383,12 @@ async function onlineAccount(ctx, id, at, vaultHashes) {
       "online",
       at.doc,
       at.line,
-      `${id} does not exist on testnet (${reply.error?.cause?.name ?? "no result"})`,
+      `${id} does not exist on ${net} (${reply.error?.cause?.name ?? "no result"})`,
     );
     return;
   }
   const recorded = records.accountCodeHash.get(id);
-  const isVault = id !== "vaults.probarion.testnet";
+  const isVault = !/^vaults\.probarion\.(testnet|near)$/.test(id);
   if (recorded && reply.result.code_hash !== recorded) {
     report.fail(
       "online",
@@ -2394,7 +2405,7 @@ async function onlineAccount(ctx, id, at, vaultHashes) {
     );
   }
   if (!isVault) return;
-  const keys = await rpcCall(ctx, RPC.testnet, "query", {
+  const keys = await rpcCall(ctx, RPC[net], "query", {
     request_type: "view_access_key_list",
     finality: "final",
     account_id: id,

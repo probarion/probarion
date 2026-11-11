@@ -16,8 +16,8 @@ Each file here is one page of `/docs`. The page's metadata lives in the registry
 - Every claim traces to a file on `dev`. Where a brief and the code disagree, the code wins.
 - An edit that re-checks a page against the code sets the entry's `reviewed` to that day and adds every file it read to `sources`.
 - Status words are Live (works in this deployment), Preview (built, not yet run end to end with real wallets, or not open yet) and Planned (not built). Nothing else.
-- Only NEAR testnet is live. The mainnet vault is planned.
-- The packages are on npm at 0.1.0. An install line names only them: `npm install @probarion/core`, `npm install @probarion/sdk @probarion/core` or `npm install -g probarion`.
+- NEAR testnet is live. On mainnet one small vault is live, `v0.probarion.near`, since 2026-11-11: no mainnet factory is deployed, and no Base payout has run on mainnet.
+- The packages are on npm at 0.1.1: `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp`. An install line names only them: `npm install @probarion/core`, `npm install @probarion/sdk @probarion/core` or `npm install -g probarion`. The MCP server runs as `npx -y @probarion/mcp@0.1.1`.
 - A page that runs the repository's fixtures, scripts or tests builds from a clone. Show the clone and build steps exactly as `CLI_SETUP_LINES` in `src/lib/proof/cli.ts` writes them, and run the CLI there as `node packages/cli/dist/bin.js <command>`.
 - Program options may come before the command, as the site writes them: `node packages/cli/dist/bin.js --network testnet vault create ...`.
 - No secrets in examples. Use placeholders such as `ed25519:...`.
@@ -71,7 +71,7 @@ Name the language: `bash`, `text`, `ts`, `tsx`, `js`, `json`, `rust`, `md` or `t
 
 In a `bash` fence:
 
-- A line that runs the CLI starts with `node packages/cli/dist/bin.js`, or, only in a step that runs in the reader's own project folder, with `probarion` or `npx probarion` for the CLI from npm. A clone's steps use the CLI it builds, since `npx probarion` downloads release 0.1.0 from npm and a step that promises to run offline cannot. Never an env prefix, `cd ... &&` or `./`. A line that names `bin.js` anywhere but at its start fails, unless the line is a `#` comment.
+- A line that runs the CLI starts with `node packages/cli/dist/bin.js`, or, only in a step that runs in the reader's own project folder, with `probarion` or `npx probarion` for the CLI from npm. A clone's steps use the CLI it builds, since `npx probarion` downloads release 0.1.1 from npm and a step that promises to run offline cannot. Never an env prefix, `cd ... &&` or `./`. A line that names `bin.js` anywhere but at its start fails, unless the line is a `#` comment.
 - Only `--network <name>` and `--rpc <url>` come before the command, each with a space (not `=`). After them comes a real command, `--help` or `--version`.
 - The commands are the CLI's own: vault (create, freeze, unfreeze, withdraw, withdraw-intents), mandate (create, revoke), agent (keygen, add, remove), ledger (set-key, export), spend (approve, reject), check and verify. Every `--flag` after the command words is an option the CLI defines.
 

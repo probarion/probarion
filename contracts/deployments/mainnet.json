@@ -10,26 +10,26 @@
   },
   "vault_v0": {
     "account_id": "v0.probarion.near",
-    "code_hash": null,
-    "create_tx": null,
-    "deploy_tx": null,
-    "lock_tx": null
+    "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+    "create_tx": "Bi8aVRsrRhcXhoSY6ifMGPHG6rQ9QsMJnxZYu2xnG28r",
+    "deploy_tx": "HMQj8TtwqCn3dYfPDzQbFScwBi4xQadaEqPhAV7p789F",
+    "lock_tx": "Ap8e7bAiDkA6WvCWbzcezKVmweuJ1Zyei6GQK8rCrZs6"
   },
   "funding": {
-    "usdc_storage_tx": null,
-    "usdc_float_tx": null,
+    "usdc_storage_tx": "AoXATi6L84yAtjMYbcxk9nSEq7vpo3SMtrTuCDhXBR73",
+    "usdc_float_tx": "HQQe3aTrhq4gAZZ9RcCiNNfnfUcBnK7Sbm6hHHsnWMBC",
     "intents_topup": { "method": null, "near_tx": null, "base_tx": null }
   },
   "setup": {
-    "add_agent_tx": null,
-    "near_mandate_tx": null,
+    "add_agent_tx": "C1auyjtE9SbDroPenWARewRvDYMdfKmcF19FBssdzEJn",
+    "near_mandate_tx": "8TnxDYrDDsRboPAFj1Pc2SyniZvya8iigpNJLPm9FzX2",
     "base_mandate_tx": null
   },
   "proof": {
-    "first_near_payment_tx": null,
+    "first_near_payment_tx": "22oqhgruo7JqdpPg5Cb2ts25mLK2fto8y1YAxNA56ieE",
     "first_base_payout_tx": null,
     "first_base_payout_base_tx": null,
-    "first_no_mandate_refusal_tx": null
+    "first_no_mandate_refusal_tx": "2Dabq4uMh9VvttH3uj85samfYoX2wbQheADHS96AtwYh"
   },
   "factory": {
     "account_id": "vaults.probarion.near",

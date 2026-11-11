@@ -4,13 +4,18 @@ Probarion's claim: an AI agent can spend only what a human mandated, even if the
 key is stolen, or Probarion's own servers are breached. "TEE protects the data. The contract protects
 the money."
 
-Status on 2026-11-07:
+Status on 2026-11-07, and for mainnet on 2026-11-11:
 
 - **Unaudited beta.** No third party has audited the contracts or the packages.
-- Probarion runs on NEAR testnet only, with test tokens. The testnet factory is
+- Probarion runs on NEAR testnet, with test tokens. The testnet factory is
   `vaults.probarion.testnet`, deployed in transaction `8gFwxZs1Qu2CL4XKpC3rn3aQQvsN8QTVVh6fCdej7kH8`
-  (`contracts/deployments/testnet.json`). Nothing is deployed on mainnet yet: every transaction field
-  of `contracts/deployments/mainnet.json` is empty.
+  (`contracts/deployments/testnet.json`).
+- On mainnet one standalone vault runs since 2026-11-11, `v0.probarion.near`, with a small amount of
+  real USDC: locked, made by no factory, with one NEAR payment and one `NoMandate` refusal
+  (`contracts/deployments/mainnet.json`, [the evidence](evidence/mainnet-v0/README.md)). The mainnet
+  factory is not deployed. No Base payout has run on mainnet: spike S1, a contract withdrawing Base
+  POA USDC to a Base address on mainnet, is unproven. The v0 spend is pre-ledger: its decision is a
+  file in `docs/evidence`, with no signed ledger and no attestation.
 - How to report a weakness, and what is in scope: [SECURITY.md](../SECURITY.md).
 
 How evidence is named in this file:
@@ -23,8 +28,9 @@ How evidence is named in this file:
   the factory's deployment (`factory.deploy_tx`), a smoke transaction (`smoke`), the direct refusal
   (`direct_refusal`) or a step of the demo vault's run (`demo_vault`).
 - An eval case is cited by its id in `eval/cases.json`; its results are in `eval/results/latest.md`
-  (offline, rules-only so far: the model replay is not recorded yet). Mainnet transaction ids are
-  **pending**: `docs/mainnet-proof.json` records no transaction.
+  (offline, rules-only so far: the model replay is not recorded yet).
+- A mainnet transaction cited as evidence is one recorded in `docs/mainnet-proof.json` and
+  `contracts/deployments/mainnet.json`: the steps and spends of the v0 run of 2026-11-11.
 
 ## Deployments and hosts
 
@@ -296,7 +302,7 @@ token, with the reach of a stolen token above.
 | `KEY_ENCRYPTION_SECRET` lost | The sealed agent and ledger keys are lost: remove them from each vault and add new ones ([key rotation](ops/key-rotation.md)). The funds are not affected |
 | Protocol upgrade during the beta | near-sdk is pinned to `=5.29.1` (`contracts/Cargo.toml:11`); re-run the sandbox and testnet suites |
 | Contract bug | The owner freezes, withdraws both balances and moves to a new vault version: a vault has no upgrade method |
-| Not yet audited | Testnet only today, and small amounts when mainnet starts. "Unaudited beta." is on every page |
+| Not yet audited | Testnet today, and on mainnet only one vault with a small amount (since 2026-11-11). "Unaudited beta." is on every page |
 
 ## Trust assumptions
 
@@ -449,7 +455,7 @@ Checklist (C1 to C10 are the plan's ten items):
 | C7 | No route takes a payee or a destination when it creates a spend | Yes | `SpendRequest` has no address field (`contracts/vault/src/types.rs:84-90`); no `apps/web/src/app/api` route reads a payee or a destination; a payee enters only through a mandate the owner signs in the wallet |
 | C8 | `verify` passes for the demo vault from a clean clone | Yes on testnet, for `demo.vaults.probarion.testnet` | From a clone, `npx probarion verify --offline docs/evidence/demo-vault/snapshot-2026-11-09.json` passes checks a to i; the live run of 2026-11-09, with the ledger file from the vault's public proof page, passed too ([output](evidence/demo-vault/verify-2026-11-09.txt)) |
 | C9 | The demo, Canary and MCP demo vaults have only function-call keys | Yes on testnet for the demo vault, the MCP vault `percall.vaults.probarion.testnet` and the Canary vault `canary.vaults.probarion.testnet`, whose live `verify` runs pass check f ([demo](evidence/demo-vault/verify-2026-11-09.txt), [MCP](evidence/402-vault/verify-2026-11-09.txt), [Canary](evidence/canary-vault/verify-2026-11-10.txt)). The Canary's run of 2026-11-10 fails check c, because it had no ledger ([why](evidence/canary-vault/README.md#without-the-ledger-2026-11-10)); its run of 2026-11-11, with the ledger the team published, passes checks a to i ([output](evidence/canary-vault/verify-2026-11-11.txt)) | claim `I9` (a factory vault starts with no access key); `verify` check f; the testnet smoke vault records 0 access keys (`contracts/deployments/testnet.json`) |
-| C10 | `intents.near` `public_keys_of` is empty for those vaults | N/A today: mainnet only, and no mainnet vault exists | claim `I8` (the vault never calls `add_public_key`); `verify` check g |
+| C10 | `intents.near` `public_keys_of` is empty for those vaults | Yes on mainnet for `v0.probarion.near`, whose live `verify` of 2026-11-11 passes check g: no Intents public keys, predecessor auth enabled ([output](evidence/mainnet-v0/verify-2026-11-11.txt)). N/A for the testnet vaults, which use the Intents stand-in | claim `I8` (the vault never calls `add_public_key`); `verify` check g |
 | C11 | A Content-Security-Policy | No: known gap | [Known gaps](#known-gaps) |
 | C12 | Dependabot triage | Done | The triage table above |
 | C13 | `cargo audit` | Not run: the repository owner may install and run it | The Dependabot alerts on `contracts/Cargo.lock` stand in |

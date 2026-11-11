@@ -11,7 +11,7 @@
   },
   "protocol_versions": {
     "testnet": 88,
-    "mainnet": 86
+    "mainnet": 88
   },
   "vault_v0": {
     "code_hash": "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",

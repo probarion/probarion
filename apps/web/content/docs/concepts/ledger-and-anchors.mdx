@@ -15,7 +15,7 @@ The decision is signed into the ledger before the spend is sent.
 
 </Flow>
 
-The ledger code ships in `@probarion/core` and `@probarion/sdk`, on npm at 0.1.0, and its tests run on a committed test ledger. The full cycle with a ledger on a live vault is Preview: built, not yet run end to end with real wallets.
+The ledger code ships in `@probarion/core` and `@probarion/sdk`, on npm at 0.1.1, and its tests run on a committed test ledger. The full cycle with a ledger on a live vault is Preview: built, not yet run end to end with real wallets.
 
 The verifier, the CLI's `verify`, judges the ledger with [checks a to d](/docs/trust/verifier-checks): check a reads the signatures, b the links, c the anchors, and d ties each spend on chain to its own decision.
 
@@ -371,4 +371,4 @@ The console's database is a ledger of its own. If hosted Payables runs on a vaul
 - It does not record approvals. They happen on chain, and the spend's own record shows that it was held.
 - Offline, it proves nothing about the chain. `verify --offline` checks a snapshot against itself: take the snapshot yourself, or run live.
 - It does not merge two ledgers. Two writers fork the history, and the SDK only warns.
-- `v0.probarion.testnet` has no ledger, so `verify` fails checks d and h there. The testnet demo vault, `demo.vaults.probarion.testnet`, has one with five anchors, and a live `verify` of it passes checks a to i. The mainnet vault is planned.
+- `v0.probarion.testnet` has no ledger, so `verify` fails checks d and h there. The testnet demo vault, `demo.vaults.probarion.testnet`, has one with five anchors, and a live `verify` of it passes checks a to i. The mainnet vault, `v0.probarion.near`, has no ledger either. Its one spend's decision is pre-ledger, and check d exempts it, so a live `verify` of it passes checks a to h and skips check i.

@@ -118,8 +118,8 @@ const BANNED: readonly [RegExp, string][] = [
   [/\bplease\b/i, "please"],
 ];
 
-/** The packages release 0.1.0 published to npm: the only ones an install line may name. */
-const PUBLISHED = ["@probarion/core", "@probarion/sdk", "probarion"];
+/** The packages release 0.1.1 published to npm: the only ones an install line may name. */
+const PUBLISHED = ["@probarion/core", "@probarion/sdk", "probarion", "@probarion/mcp"];
 const NPM_INSTALL = /(?<![\w-])npm (?:install|i)\b([^\n`]*)/gi;
 
 /** The npm installs in the text that name anything but the published packages (or `-g`). */
@@ -196,7 +196,8 @@ describe("copy rules", () => {
     expect(npmInstallProblems("`npm install @probarion/sdk @probarion/core`")).toEqual([]);
     expect(npmInstallProblems("npm install -g probarion\nnpm i @probarion/core")).toEqual([]);
     expect(npmInstallProblems("npm installs it")).toEqual([]);
-    expect(npmInstallProblems("`npm install @probarion/mcp`")).toHaveLength(1);
+    expect(npmInstallProblems("`npm install @probarion/mcp`")).toEqual([]);
+    expect(npmInstallProblems("`npm install @probarion/web`")).toHaveLength(1);
     expect(npmInstallProblems("npm install\n")).toHaveLength(1);
     // The one problem the changelog's twin may have: anything else after the install still fails.
     expect(npmInstallProblems("then `npm install`.")).toEqual([BARE_NPM_INSTALL]);
@@ -211,6 +212,25 @@ describe("copy rules", () => {
     expect(readMdx("build/install")).toContain(
       "The proof page, the security page and the console's CLI fallback need none of this: they print `npx probarion` commands.",
     );
+  });
+
+  it("call no mainnet vault planned once contracts/deployments/mainnet.json records its deploy", () => {
+    const record = JSON.parse(
+      readFileSync(join(ROOT, "contracts", "deployments", "mainnet.json"), "utf8"),
+    ) as { vault_v0?: { deploy_tx?: string | null } };
+    // Before the deploy these words were true. The sweep of 2026-11-11 missed four of them.
+    if (!record.vault_v0?.deploy_tx) return;
+    const stale =
+      /mainnet vault is planned|mainnet, which is planned|mainnet is planned|a mainnet vault is planned|only testnet has a live vault|only NEAR testnet has a vault|the only network Probarion runs on|no mainnet vault/i;
+    const found: string[] = [];
+    for (const p of PAGES) {
+      const fields = [p.title, p.nav, p.description, p.lede, readMdx(p.path)];
+      for (const field of fields) {
+        const m = field ? stale.exec(field) : null;
+        if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
+      }
+    }
+    expect(found).toEqual([]);
   });
 });
 

@@ -10,10 +10,11 @@ import { REPO_URL } from "@/lib/proof/cli";
 // without repeating any of it.
 
 /**
- * True once `@probarion/mcp` is on npm (the 0.1.1 release). While false, the page shows the server built from a clone
- * of the public repository, as CLI_ON_NPM does for the CLI (lib/proof/cli.ts). Flipping it is the whole change here.
+ * True since `@probarion/mcp` 0.1.1 is on npm (published 2026-11-11), so the page shows its npx form. Set it back to
+ * false only if the package can no longer be run: the page then shows the server built from a clone of the public
+ * repository, as CLI_ON_NPM does for the CLI (lib/proof/cli.ts). Flipping it is the whole change here.
  */
-export const MCP_ON_NPM: boolean = false;
+export const MCP_ON_NPM: boolean = true;
 
 export const MCP_VERSION = "0.1.1";
 /** The npx form of the server, pinned to the release. */

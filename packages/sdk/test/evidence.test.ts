@@ -29,9 +29,9 @@ describe("readPreLedgerDecisionHashes", () => {
     ).toEqual([]);
   });
 
-  it("reads the repo's own three Day-4 decision files", async () => {
+  it("reads the repo's own v0 decision files: three for Day 4, one for the 2026-11 demo run", async () => {
     const dir = fileURLToPath(new URL("../../../docs/evidence/", import.meta.url));
-    expect(await readPreLedgerDecisionHashes(dir)).toHaveLength(3);
+    expect(await readPreLedgerDecisionHashes(dir)).toHaveLength(4);
   });
 });
 
@@ -109,9 +109,13 @@ describe("loadBurnTxHints (R7 source 1: docs/mainnet-proof.json)", () => {
     ).rejects.toThrow();
   });
 
-  it("reads the repo's own evidence file (no spend txs recorded yet)", async () => {
+  it("reads the repo's own evidence file: the mainnet v0 run's one paid spend, not its refusal", async () => {
     const file = fileURLToPath(new URL("../../../docs/mainnet-proof.json", import.meta.url));
     const hints = await loadBurnTxHints(file, { vault: "v0.probarion.near", network: "mainnet" });
-    expect(hints).toBeInstanceOf(Map);
+    expect([...hints]).toEqual([
+      [1, [{ hash: "22oqhgruo7JqdpPg5Cb2ts25mLK2fto8y1YAxNA56ieE", signer: "v0.probarion.near" }]],
+    ]);
+    const testnet = await loadBurnTxHints(file, { vault: "v0.probarion.near", network: "testnet" });
+    expect(testnet.size).toBe(0);
   });
 });

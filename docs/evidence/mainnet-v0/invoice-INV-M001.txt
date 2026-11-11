@@ -1,0 +1,4 @@
+Invoice INV-M001 (NEAR mainnet, real USDC)
+Payee: the NEAR account in mandate 1 of v0.probarion.near.
+Amount: 1.000000 USDC (native USDC on NEAR).
+Purchase order: PO-M001 (docs/evidence/mainnet-v0/po-PO-M001.txt)

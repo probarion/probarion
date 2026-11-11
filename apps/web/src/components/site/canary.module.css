@@ -136,6 +136,8 @@
   white-space: nowrap;
 }
 .actions {
+  /* The Raw mode tooltip hangs from this row on a phone (below). */
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -144,6 +146,135 @@
 }
 .button {
   cursor: pointer;
+}
+
+/* The one-click messages above the textarea: ink outlines that fill in while pressed, and the line under them. */
+.try {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  /* A fieldset, so a group of buttons; none of a fieldset's own frame. */
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.tryLabel {
+  margin-right: 4px;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.pick {
+  min-height: 40px;
+  padding: 6px 14px;
+  border: 1px solid var(--color-ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+/* Only pressed is filled. Hover is a soft tint, and only where there is hover, so a tap leaves no fill behind. */
+.pick[aria-pressed="true"] {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+@media (hover: hover) {
+  .pick:not([aria-pressed="true"]):not([aria-disabled="true"]):hover {
+    background: var(--color-soft);
+  }
+}
+/* While an attempt runs, a chip does nothing: it says so as the main button does, and keeps the focus. */
+.pick[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.usually {
+  margin: 10px 0 18px;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The Raw mode pill and its tooltip. On a phone the tooltip spans the row of actions, so it never runs past the screen;
+ * from 621px it hangs under the pill. It shows on hover where there is hover, and while its state is `open` (focus or a
+ * tap); `closed` (Escape) hides it even under the pointer (RawModeTip).
+ */
+.tipWrap {
+  display: inline-flex;
+}
+.tipButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 8px 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-plan-bg);
+  color: var(--color-plan);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: help;
+}
+.tipMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+}
+.tip {
+  display: none;
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-width: 34em;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+}
+/* The gap above the tooltip counts as over it, so the pointer can move onto it without it closing. */
+.tip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 8px;
+}
+.tip[data-state="open"] {
+  display: block;
+}
+@media (hover: hover) {
+  .tipWrap:hover .tip:not([data-state="closed"]) {
+    display: block;
+  }
+}
+@media (min-width: 621px) {
+  .tipWrap {
+    position: relative;
+  }
+  .tip {
+    right: auto;
+    width: 320px;
+  }
 }
 /* Empty text is `disabled`. An attempt that is running is only aria-disabled, so that the button keeps the focus. */
 .button:disabled,
@@ -361,6 +492,28 @@
   overflow-wrap: anywhere;
 }
 
+/* The replay of the team's attempt of 2026-11-10: a small label over the title, then three numbered steps. */
+.tag {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+.steps {
+  max-width: 46em;
+  padding-left: 1.4em;
+  display: grid;
+  gap: 12px;
+  font-size: 16px;
+  list-style: decimal;
+  overflow-wrap: anywhere;
+}
+.steps b {
+  font-weight: 600;
+}
+
 /* The rules */
 .rules {
   margin-top: 28px;
@@ -406,7 +559,14 @@
 @media (forced-colors: active) {
   .chip,
   .statePill,
-  .banner {
+  .banner,
+  .tipButton,
+  .tip {
     border: 1px solid CanvasText;
+  }
+  /* The ink fill of a pressed chip is gone in forced colours: the system's selection colours say it instead. */
+  .pick[aria-pressed="true"] {
+    background: Highlight;
+    color: HighlightText;
   }
 }

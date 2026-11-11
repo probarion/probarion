@@ -84,7 +84,7 @@ export const SECURITY_PAGE = {
   },
   eyebrow: "Security",
   title: "Security",
-  lede: "Unaudited beta. No third party has audited this code. Probarion runs on NEAR testnet today, with test tokens; a mainnet vault is planned.",
+  lede: "Unaudited beta. No third party has audited this code. Probarion runs on NEAR testnet today, with test tokens, and one small mainnet vault holds a little real USDC.",
   report: {
     title: "How to report a vulnerability",
     paragraphs: [
@@ -166,7 +166,7 @@ export const TERMS_PAGE = {
     { title: "Unaudited beta.", body: "No third party has audited this code. Use small amounts." },
     {
       title: "Testnet today.",
-      body: "The vault runs on NEAR testnet with test tokens. A mainnet vault is planned.",
+      body: "The vault runs on NEAR testnet with test tokens. One small mainnet vault, made by no factory, has run since 2026-11-11, and no Base payout has run on mainnet.",
     },
     {
       title: "At your own risk.",
