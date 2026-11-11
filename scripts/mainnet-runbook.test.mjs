@@ -454,7 +454,7 @@ test("the vault is funded with 3 NEAR, checked, and topped up from probarion.nea
   );
   assert.ok(runbook.includes("about 4 NEAR in `probarion.near`"));
   assert.ok(!runbook.includes("3.5 NEAR"), "a stale 3.5 NEAR figure");
-  // The measured numbers behind the 3 NEAR (testnet, identical wasm).
+  // The measured numbers behind the 3 NEAR (testnet, the earlier 248,501-byte 6tbER build).
   for (const fact of ["250,733 bytes", "2.507 NEAR", "0.4955 NEAR", "0.0016 NEAR", "cap"]) {
     assert.ok(runbook.includes(fact), `budget line lacks ${fact}`);
   }
