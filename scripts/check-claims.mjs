@@ -39,11 +39,15 @@
 //             their commits, npm and toolchain versions, the MCP tools, the extension's permissions,
 //             the docs page count, the threat model's attacks, the factory mode, the mainnet record,
 //             verify outputs, anchor counts and ledger entries in the evidence, sums of test counts, the
-//             first commit and the commit trailers, the table of contents.
+//             first commit and the commit trailers, the table of contents, the shape of the summary
+//             line the README quotes. Without full git history (a shallow clone, or no .git) the git
+//             facts are skipped, and the last line says so.
 //
 // --online (read-only, time-limited, one retry): the vaults and the factory the README names exist on
 // testnet with their recorded code hash and no full-access key; the README's own `chain.mjs` comments
-// still hold; each cited tx exists, has the expected signer and shows the outcome its row claims; the
+// still hold; each cited tx exists, was signed by an account the records name (by the signer a record
+// or a README command gives, where one does; a spend by the vault itself) and shows the error code,
+// event or memo its row gives in code, and the README's grep lines over it hold; the
 // global vault code is published exactly as the README says; probarion.xyz/api/health answers ok on
 // testnet; the Chrome Web Store item is live or not as the README says; npm has each version the
 // README says is on npm, and not the packages it says are not.
@@ -1967,6 +1971,9 @@ function factSums(ctx, doc, model) {
   }
 }
 
+/** Counted when the README makes git-history claims and the checkout has no full history. */
+const GIT_SKIPPED = "git facts skipped (no full git history)";
+
 function factGit(ctx, doc, model) {
   const { report, repo } = ctx;
   const text = model.blocks.map((b) => b.text).join("\n");
@@ -1976,7 +1983,8 @@ function factGit(ctx, doc, model) {
     ctx.commits.some((c) => c.doc === doc);
   if (!wants) return;
   if (!repo.history()) {
-    report.count("git facts skipped (no full git history)");
+    // A shallow clone or a copy without .git: summary() says so in the last line.
+    report.count(GIT_SKIPPED);
     return;
   }
   for (const b of model.blocks) {
@@ -2064,6 +2072,29 @@ function factToc(ctx, doc, model) {
       toc.n,
       `Contents does not list the ## sections in order: ${detail}`,
     );
+  }
+}
+
+/** The shape of main()'s ok line: its counts change as the README does, so each is `<n>`. */
+const summaryShape = (online) =>
+  `check-claims: ok. ${summary(new Report(), online).replace(/\d+/g, "<n>")} (${online ? "offline and online" : "offline"})`;
+
+/** A summary line the README quotes in code has the shape main() prints, with `<n>` for each count. */
+function factSummaryLine(ctx, doc, model) {
+  for (const b of model.blocks) {
+    if (b.kind !== "code") continue;
+    const line = b.text.trim();
+    if (!/^check-claims: ok\b/.test(line)) continue;
+    ctx.report.fact("summary line");
+    const want = summaryShape(/\(offline and online\)$/.test(line));
+    if (line !== want) {
+      ctx.report.fail(
+        "facts",
+        doc,
+        b.n,
+        `the quoted summary line is not the shape the checker prints (a <n> for each count, which changes with the README): ${want}`,
+      );
+    }
   }
 }
 
@@ -2213,6 +2244,7 @@ const FACTS = [
   factEvidence,
   factSums,
   factToc,
+  factSummaryLine,
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -2564,7 +2596,10 @@ async function onlineTxs(ctx) {
   }
 }
 
-/** One cited transaction: it exists, its signer is the recorded one, and the README's grep lines hold. */
+/**
+ * One cited transaction: it exists, its signer is the recorded or README-given one where there is one,
+ * a spend's is the vault itself, the records name it, and the README's grep lines hold.
+ */
 async function onlineTx(ctx, uses, { known, results, key }) {
   const { report, records } = ctx;
   const { network, hash } = uses[0];
@@ -2841,6 +2876,8 @@ function summary(report, online) {
     `${c("paths") + c("pnpm commands") + c("script commands") + c("grep lines")} paths and commands`,
     `${facts} facts`,
   ];
+  // Not a silent ok: the git-history claims went unchecked (a shallow clone, or no .git).
+  if (report.counts.has(GIT_SKIPPED)) parts.push("git history claims unchecked (no full history)");
   if (online) {
     const o = [
       "online accounts",

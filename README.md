@@ -106,19 +106,23 @@ Bash on Windows). The steps use the repository's test fixture and scripts, so th
    node scripts/check-claims.mjs
    ```
 
-   On 2026-11-11, at this commit, its last line was:
+   Its last line has this shape, with a count for each `<n>` (the counts change as the README
+   changes; the checker checks this shape too):
 
    ```text
-   check-claims: ok. 279 links (38 anchors), 11 tx hashes, 18 accounts, 28 status rows, 86 paths and commands, 149 facts (offline)
+   check-claims: ok. <n> links (<n> anchors), <n> tx hashes, <n> accounts, <n> status rows, <n> paths and commands, <n> facts (offline)
    ```
 
    It exits 0 when every claim matches, 1 when one does not (each printed as
-   `file:line [check] what is wrong`), and 2 when it cannot run. `node scripts/check-claims.mjs --online`
-   adds read-only checks of the chain, the site, the store and npm: the vaults the README names run a
-   recorded build with no full-access key, each cited testnet transaction has the signer and the
-   outcome its row says, the site's health route answers ok, the Chrome Web Store item is live, and
-   npm has each version the README says it has. It signs and sends nothing; when an endpoint does not
-   answer, it exits 2 and lists the checks that could not run.
+   `file:line [check] what is wrong`), and 2 when it cannot run. In a clone without the full history
+   (`git clone --depth 1`), it cannot check the claims about the git history, and its last line adds
+   "git history claims unchecked". `node scripts/check-claims.mjs --online` adds read-only checks of
+   the chain, the site, the store and npm: the vaults the README names run a recorded build with no
+   full-access key, each cited transaction exists, was signed by an account the records name (a
+   `spend` by the vault's own key), and shows the error code, event or memo its row gives in code, the
+   site's health route answers ok, the Chrome Web Store item is live, and npm has each version the
+   README says it has. It signs and sends nothing; when an endpoint does not answer, it exits 2 and
+   lists the checks that could not run.
 
 1. **Install and build.** About three and a half minutes on a first install here (2 min 42 s to
    install, 34 s to build). After step 0 you are in the clone already: run the last two lines.

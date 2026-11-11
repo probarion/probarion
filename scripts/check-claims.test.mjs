@@ -418,6 +418,64 @@ describe("a fake repository", () => {
       writeFileSync(join(root, "README.md"), FIXTURE_README);
     }
   });
+
+  test("a quoted summary line has the shape main() prints, with <n> for each count", async () => {
+    const SHAPE =
+      "check-claims: ok. <n> links (<n> anchors), <n> tx hashes, <n> accounts, <n> status rows, <n> paths and commands, <n> facts";
+    const quoting = (line) => `${FIXTURE_README}\nIts last line:\n\n\`\`\`text\n${line}\n\`\`\`\n`;
+    const report = await checkClaims({
+      root,
+      overrides: { "README.md": quoting(`${SHAPE} (offline)`) },
+    });
+    assert.deepEqual(problems(report), []);
+    assert.equal(report.facts.get("summary line"), 1);
+    // The online line has one more count, and an indented copy (in a list item) is read the same.
+    assert.deepEqual(await run(quoting(`   ${SHAPE}, <n> online checks (offline and online)`)), []);
+    const wrong = (line) =>
+      `README.md:30 [facts] the quoted summary line is not the shape the checker prints (a <n> for each count, which changes with the README): ${line}`;
+    // Counts go stale as the README changes, so a line with today's numbers is refused.
+    assert.deepEqual(
+      await run(quoting(SHAPE.replace("<n> links", "279 links").concat(" (offline)"))),
+      [wrong(`${SHAPE} (offline)`)],
+    );
+    assert.deepEqual(
+      await run(quoting(SHAPE.replace("tx hashes", "hashes").concat(" (offline)"))),
+      [wrong(`${SHAPE} (offline)`)],
+    );
+    assert.deepEqual(await run(quoting(`${SHAPE} (offline and online)`)), [
+      wrong(`${SHAPE}, <n> online checks (offline and online)`),
+    ]);
+  });
+
+  test("git-history claims in a copy without full history: the ok line says they went unchecked", async () => {
+    const lines = [];
+    const log = console.log;
+    console.log = (s) => lines.push(String(s));
+    try {
+      // The fixture is not a git checkout, so it has no history to check the trailer claim against.
+      writeFileSync(
+        join(root, "README.md"),
+        FIXTURE_README.replace(
+          "Run `pnpm verify`.",
+          "Run `pnpm verify`. Every commit other than a merge carries a `Co-Authored-By: Claude` trailer.",
+        ),
+      );
+      assert.equal(await main(["--root", root]), 0);
+      assert.equal(lines.length, 1);
+      assert.match(
+        lines[0],
+        /^check-claims: ok\. .*, \d+ facts, git history claims unchecked \(no full history\) \(offline\)$/,
+      );
+      // A README that makes no git-history claim has nothing to skip, and says nothing about it.
+      writeFileSync(join(root, "README.md"), FIXTURE_README);
+      lines.length = 0;
+      assert.equal(await main(["--root", root]), 0);
+      assert.doesNotMatch(lines[0], /git history/);
+    } finally {
+      console.log = log;
+      writeFileSync(join(root, "README.md"), FIXTURE_README);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -598,12 +656,19 @@ describe("the real repository", () => {
       contents: /^## Contents$/m,
       "mainnet record": /makes no\s+mainnet claim|hold no transactions/,
       "claim markers": /^/,
+      "summary line": /^\s*check-claims: ok\b/m,
     };
     for (const [f, said] of Object.entries(facts)) {
       if (!said.test(`${readme}\n${agents}`)) continue;
       assert.ok((report.facts.get(f) ?? 0) > 0, `fact check "${f}" matched nothing`);
     }
-    if (!report.counts.has("git facts skipped (no full git history)")) {
+    // A shallow local clone may skip the git-history claims; CI checks out the full history
+    // (fetch-depth: 0, pinned by scripts/ci-workflow.test.mjs), so there they are checked.
+    const skipped = report.counts.has("git facts skipped (no full git history)");
+    if (process.env.GITHUB_ACTIONS === "true") {
+      assert.ok(!skipped, "CI checked out a shallow clone: the git-history claims went unchecked");
+    }
+    if (!skipped) {
       assert.ok((report.facts.get("git history") ?? 0) > 0, "no git history fact was checked");
     }
   });
@@ -769,6 +834,12 @@ describe("the real repository", () => {
       re: /\b(global version (?:is |and a mainnet factory are )?not deployed|global version waits)/,
       to: () => "global version is live",
       expect: () => /"global version is live": contracts\/deployments\/testnet\.json records no/,
+    },
+    {
+      what: "the summary line it quotes, with a count that goes stale",
+      re: /^\s*check-claims: ok\. (<n>) links/m,
+      to: () => "279",
+      expect: () => /the quoted summary line is not the shape the checker prints/,
     },
     {
       what: "a status marker",
