@@ -32,6 +32,7 @@ import { numberDuplicateRule } from "../payables/number-duplicate";
 import { OWNER_CONFIRMS_RULE, ownerConfirms } from "../payables/owner-confirms";
 import { payeeId } from "../payables/payee";
 import type { NumberMatch } from "../payables/store";
+import { adversaryProposal } from "./adversary";
 import { CASES, type EvalCase, type Layer, type Outcome } from "./cases";
 import { baseMandates, invoicePath, purposeBytes } from "./dataset";
 import {
@@ -46,8 +47,8 @@ import { loadRecorded, type Recording, type ReplayStatus, replayAnswer } from ".
 // The eval runner: each case through the stages of processInvoice (apps/web/src/lib/payables/pipeline.ts), with the
 // production code wherever it runs offline, and nothing sent. Extraction (extractInvoice), the facts
 // (extractFacts), the mandate (signingMandate), the intake duplicate guard (a mirror of migrations 0006, 0016 and
-// 0017, which are SQL), the model step (absent, or an answer recorded from NEAR AI Cloud and checked as
-// Probarion.modelStep checks it), decide() with the production custom rules (the number rule and the owner-confirms
+// 0017, which are SQL), the model step (absent, an answer recorded from NEAR AI Cloud and checked as
+// Probarion.modelStep checks it, or in adversary mode the fooled proposal of adversary.ts), decide() with the production custom rules (the number rule and the owner-confirms
 // rule), then what the SDK's execute() and the pipeline do with the decision (mirrors: executeMirror and
 // waitsForOwnerMirror). The contract is not called: its answer is core's mirror of contracts/vault/src/checks.rs,
 // which decide() records in the contract's own order.
@@ -55,7 +56,11 @@ import { loadRecorded, type Recording, type ReplayStatus, replayAnswer } from ".
 // Each case is decided at the first ledger position of the eval vault (seq 0, ZERO_LINK), so its nonce depends on
 // the case alone. The prior state a case names (an earlier paid invoice, a mandate that expired) is built here.
 
-export type Mode = "rules_only" | "model_replay";
+/**
+ * `rules_only`: no model. `model_replay`: the answers recorded from NEAR AI Cloud. `adversary`: the model fully fooled,
+ * every proposal the one adversary.ts gives, marked attested.
+ */
+export type Mode = "rules_only" | "model_replay" | "adversary";
 
 /** Where processInvoice stops: `cycle` means it runs Probarion.process. */
 export type Stage = "extract_error" | "empty" | "no_mandate" | "duplicate" | "cycle";
@@ -247,7 +252,8 @@ export interface RuleView {
 export type Spend = "none" | "would_pay" | "would_hold_on_chain";
 
 export interface ModelView {
-  status: ReplayStatus;
+  /** How the proposal was used; `adversary` in adversary mode, where no model is asked. */
+  status: ReplayStatus | "adversary";
   problem: string | null;
   model: string | null;
   action: ModelProposal["action"] | null;
@@ -371,7 +377,7 @@ const firstRule = (rules: readonly RuleResult[], outcome: RuleResult["outcome"])
   rules.find((r) => r.outcome === outcome)?.id ?? null;
 
 /** decide() as Probarion.process calls it, with the custom rules processInvoice adds, in its order. */
-function decideCase(
+export function decideCase(
   p: Prepared,
   proposal: ModelProposal | null,
   attestationOk: boolean | null,
@@ -455,7 +461,8 @@ export function waitsForOwnerMirror(
   return outcome.status === "held" && owner === "hold";
 }
 
-const MODEL_RULES = new Set(["model.refused", "model.low_confidence"]);
+/** The rules of the model layer. */
+export const MODEL_RULES: ReadonlySet<string> = new Set(["model.refused", "model.low_confidence"]);
 
 /** Every layer that stops the case on its own. */
 function layersOf(
@@ -545,12 +552,31 @@ function modelView(
   };
 }
 
+/** The model view of an adversary proposal: no model was asked, so there is no model id, evidence or latency. */
+function adversaryView(c: EvalCase, p: ModelProposal): ModelView {
+  return {
+    status: "adversary",
+    problem: null,
+    model: null,
+    action: p.action,
+    mandate_id: p.mandate_id,
+    amount: p.amount,
+    payee_hint: p.payee_hint,
+    confidence: p.confidence,
+    reasoning: p.reasoning,
+    fooled: isFooled(c, p),
+    latency_ms: null,
+  };
+}
+
 const ruleViews = (rules: readonly RuleResult[]): RuleView[] =>
   rules.filter((r) => r.outcome !== "pass").map((r) => ({ ...r }));
 
 export interface RunOptions {
   /** Where the recordings come from (default: eval/recorded under the root). */
   recorded?: (id: string) => Recording | null;
+  /** Adversary mode: the proposal for a case (default: adversaryProposal, the model fully fooled). */
+  adversary?: (c: EvalCase) => ModelProposal;
 }
 
 /** One case, end to end. */
@@ -584,6 +610,12 @@ export async function runCase(
     proposal = replay.proposal;
     attestationOk = replay.attestationOk;
     model = modelView(c, answer, replay);
+  } else if (mode === "adversary" && (p.stage === "cycle" || p.stage === "duplicate")) {
+    // The model fully fooled, and trusted as if A1-A8 passed. A duplicate at intake never reaches the model; its
+    // proposal goes to the decision the code would make had the guard missed it.
+    proposal = (opts.adversary ?? ((x: EvalCase) => adversaryProposal(x).proposal))(c);
+    attestationOk = true;
+    model = adversaryView(c, proposal);
   }
 
   let decided: { decision: Decision; owner: RuleResult["outcome"] | null } | null = null;
