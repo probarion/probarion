@@ -1,11 +1,19 @@
 // The Canary's signed ledger in docs/evidence/canary-vault, published on 2026-11-11: the README, SECURITY.md and the
 // site say it holds two real attested decisions, so it has to hold up on its own. The verifier runs on the committed
-// snapshot, the ledger file is the snapshot's, and the folder README's table is held to the ledger, row by row.
+// snapshot, the ledger file is the snapshot's, and the folder README's table is held to the ledger, row by row. The
+// online run of 2026-11-11 (verify --online: O1 and O2) is kept as the CLI printed it, and held to what the SDK's
+// applyOnlineChecks writes when both pass on this ledger.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runChecks, type Snapshot } from "@probarion/core";
+import { extractReportDataFromQuote, runChecks, type Snapshot } from "@probarion/core";
+import {
+  ACCEPTED_TCB_STATUSES,
+  applyOnlineChecks,
+  O1_MEASUREMENT_PINNED,
+  type OnlineAttestationVerifier,
+} from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import { CANARY_SYSTEM_PROMPT, CANARY_SYSTEM_PROMPT_V1 } from "@/lib/canary/prompt";
 import { decisionRows } from "@/lib/proof/decisions";
@@ -20,6 +28,8 @@ const VAULT = "canary.vaults.probarion.testnet";
 const LEDGER = "ledger-2026-11-10.jsonl";
 const SNAPSHOT = "snapshot-2026-11-11.json";
 const VERIFY = "verify-2026-11-11.txt";
+/** The live run with --online, the same ledger, after the owner synced the computer's clock. */
+const VERIFY_ONLINE = "verify-online-2026-11-11.txt";
 const SECTION = "## The signed ledger, published 2026-11-11";
 const TX = "https://testnet.nearblocks.io/txns/";
 /** "A1 to A7" as the verifier writes it, with an en dash (kept out of this file's source, which is ASCII). */
@@ -31,8 +41,14 @@ type Evidence = {
   provider: string;
   model: string;
   request_inputs: Record<string, unknown> & { system_prompt: string };
+  nonce: string;
   signature: { signing_address: string };
-  report: { signing_address: string };
+  report: {
+    signing_address: string;
+    report_data: string;
+    intel_quote: string;
+    nvidia_payload: string | null;
+  };
 };
 type Body = {
   vault: string;
@@ -81,6 +97,14 @@ function section(text: string, heading: string): string {
   return text.slice(start, next < 0 ? undefined : next);
 }
 
+/** The text of a section under `### <heading>`, up to the next `### ` or `## ` heading. */
+function subsection(text: string, heading: string): string {
+  const start = text.indexOf(`${heading}\n`);
+  if (start < 0) throw new Error(`no subsection ${heading}`);
+  const next = text.slice(start + heading.length).search(/\n#{2,3} /);
+  return text.slice(start, next < 0 ? undefined : start + heading.length + next);
+}
+
 /** The body rows of the first Markdown table in `text`, each split into its cells. */
 function tableRows(text: string): string[][] {
   const lines = text.split("\n").filter((l) => l.startsWith("| "));
@@ -93,7 +117,7 @@ function tableRows(text: string): string[][] {
 }
 
 describe("the Canary's signed ledger, as committed", () => {
-  it("keeps the bytes of the owner's export of 2026-11-11 and of the live run", () => {
+  it("keeps the bytes of the owner's export of 2026-11-11 and of the live runs", () => {
     // The files are byte for byte what the export and the run wrote: LF only, so `* text=auto eol=lf` keeps them.
     expect(sha256(bytes(LEDGER))).toBe(
       "768edd1e52121ddec662176c6de1575c6fc981b78b2221ac6e01dfbfb1f79c8d",
@@ -104,7 +128,10 @@ describe("the Canary's signed ledger, as committed", () => {
     expect(sha256(bytes(VERIFY))).toBe(
       "686dd999ab0c22a8ea577bde10f670bdd223bb46f50725e2eb78d8bcb3345455",
     );
-    for (const name of [LEDGER, SNAPSHOT, VERIFY]) {
+    expect(sha256(bytes(VERIFY_ONLINE))).toBe(
+      "fcaa6b3fdeaea35b1012184d52ce81e886dc3aac1786d133e991965359dff336",
+    );
+    for (const name of [LEDGER, SNAPSHOT, VERIFY, VERIFY_ONLINE]) {
       expect(bytes(name).includes(0x0d), name).toBe(false);
       expect(bytes(name).at(-1), name).toBe(0x0a);
     }
@@ -244,6 +271,140 @@ describe("verify on the Canary's committed snapshot", () => {
   });
 });
 
+describe("the online run of 2026-11-11: O1 and O2 on the two attested decisions", () => {
+  const out = bytes(VERIFY_ONLINE).toString("utf8");
+  const lines = out.split("\n");
+  /** The detail the CLI printed on check e's row. */
+  const printedE = /^e {2}attestations +PASS +(.+)$/m.exec(out)?.[1] ?? "";
+  /** What applyOnlineChecks appends to check e when O1 and O2 pass on 2 decisions, each with a GPU payload. */
+  const ONLINE_E =
+    "online: 2 DCAP-genuine TDX quotes bound to this request (O1: debug off, an accepted TCB status, report_data matches; measurement not pinned, so quote_verified stays false) and 2 GPU payloads bound to the request nonce and verified by NRAS (O2)";
+  const O1_LEGEND =
+    "online legend: O1 checks that a TDX quote is DCAP-genuine (Intel DCAP; debug off, an accepted TCB status) and bound to this request; measurement not pinned (O1b deferred), so O1 does not show which image the TD runs";
+  const O2_LEGEND =
+    "online legend: O2 checks that a GPU payload carries the request nonce and that NVIDIA NRAS verifies it";
+
+  it("read the chain with this ledger at 07:43 UTC and ends RESULT: PASS, 9 passed", () => {
+    expect(lines[0]).toBe(`Probarion verify: ${VAULT} (testnet)`);
+    expect(lines[1]).toBe("entries 5, anchors 4, generated 2026-11-11T07:43:23.076Z");
+    for (const id of ["a", "b", "c", "d", "e", "f", "g", "h", "i"])
+      expect(out, `check ${id}`).toMatch(new RegExp(`^${id} {2}\\S+ +PASS {2,}\\S`, "m"));
+    expect(out).not.toMatch(/^[a-i] {2}\S+ +(?:FAIL|UNPROVEN|SKIP)\b/m);
+    expect(out.endsWith("\n9 passed, 0 failed, 0 unproven\nRESULT: PASS\n")).toBe(true);
+  });
+
+  it("says in check e that O1 and O2 passed on 2 decisions, with the measurement not pinned", () => {
+    expect(printedE.startsWith(`2 attested decisions pass ${A1_A7};`)).toBe(true);
+    expect(printedE.endsWith(`; ${ONLINE_E}`)).toBe(true);
+    expect(printedE).toContain("2 DCAP-genuine TDX quotes bound to this request");
+    expect(printedE).toContain(
+      "2 GPU payloads bound to the request nonce and verified by NRAS (O2)",
+    );
+    expect(printedE).toContain("measurement not pinned, so quote_verified stays false");
+    expect(lines).toContain(O1_LEGEND);
+    expect(lines).toContain(O2_LEGEND);
+    expect(out).not.toMatch(/did not run|online: unavailable|O1\/O2 failed|O[12] failed/);
+  });
+
+  it("is the offline check e of the committed snapshot plus what applyOnlineChecks adds when O1 and O2 pass", async () => {
+    // A verifier that passes whatever it is asked: the run's own answers came from Intel DCAP and NVIDIA NRAS, which
+    // a test cannot ask. What it does check: the printed line is the SDK's own, for these two entries, and each
+    // GPU payload carries its entry's nonce (applyOnlineChecks compares them before it asks NRAS).
+    const asked = { quotes: [] as string[], gpus: [] as string[] };
+    const passing: OnlineAttestationVerifier = {
+      async verifyQuote(quote) {
+        asked.quotes.push(quote);
+        return {
+          reportDataHex: extractReportDataFromQuote(quote) ?? "",
+          tcbStatus: "UpToDate",
+          debugEnabled: false,
+        };
+      },
+      async verifyGpu(payload) {
+        asked.gpus.push(payload);
+      },
+    };
+    const report = await applyOnlineChecks(await runChecks(snapshot), snapshot, passing);
+    const e = report.checks.find((c) => c.id === "e");
+    expect(e?.status).toBe("pass");
+    expect(e?.detail).toBe(printedE);
+    expect(report.ok).toBe(true);
+    expect(asked.quotes).toEqual([1, 2].map((s) => at(s).evidence?.report.intel_quote));
+    expect(asked.gpus).toEqual([1, 2].map((s) => at(s).evidence?.report.nvidia_payload));
+  });
+
+  it("binds what 'report_data matches' compares: the signing address and the entry's nonce, inside the quote", () => {
+    // O1 holds the DCAP-verified quote's report data to the evidence's report_data (o1PolicyProblem). Here, offline,
+    // that report data is the one inside the quote, and it holds the zero-padded signer, then the entry's nonce.
+    for (const seq of [1, 2]) {
+      const ev = at(seq).evidence;
+      const data = ev?.report.report_data ?? "";
+      expect(extractReportDataFromQuote(ev?.report.intel_quote ?? ""), `seq ${seq}`).toBe(data);
+      expect(data.slice(0, 64)).toBe(
+        `${(ev?.signature.signing_address ?? "").toLowerCase().slice(2)}${"0".repeat(24)}`,
+      );
+      expect(data.slice(64)).toBe(ev?.nonce);
+      expect(JSON.parse(ev?.report.nvidia_payload ?? "{}").nonce).toBe(ev?.nonce);
+    }
+    // O1's policy as the README states it: these TCB statuses, and no measurement pin.
+    expect([...ACCEPTED_TCB_STATUSES]).toEqual(["UpToDate", "OutOfDate", "TDRelaunchAdvised"]);
+    expect(O1_MEASUREMENT_PINNED).toBe(false);
+  });
+
+  it("the folder README gives the command, the time and the output, and says what O1 and O2 show and do not", () => {
+    const raw = subsection(section(readme, SECTION), "### The online run of 2026-11-11");
+    const said = flat(raw);
+    expect(said).toContain(
+      "[`verify-online-2026-11-11.txt`](verify-online-2026-11-11.txt) is a live run with `--online`, on 2026-11-11 at 07:43 UTC (the file says `generated 2026-11-11T07:43:23.076Z`)",
+    );
+    expect(raw).toContain(
+      `\`\`\`bash\nnode packages/cli/dist/bin.js verify --network testnet --vault ${VAULT} --ledger docs/evidence/canary-vault/${LEDGER} --online\n\`\`\``,
+    );
+    expect(said).toContain("`9 passed, 0 failed, 0 unproven` and `RESULT: PASS`");
+    expect(raw).toContain(`\`\`\`text\n${ONLINE_E}\n\`\`\``);
+    // What O1 binds, as the code checks it.
+    expect(said).toContain(
+      "its TCB status is one O1 accepts (`UpToDate`, `OutOfDate` or `TDRelaunchAdvised`)",
+    );
+    expect(said).toContain(
+      '"report_data matches" means that the report data inside the verified quote is the evidence\'s `report_data`, all 64 bytes.',
+    );
+    expect(said).toContain(
+      "the first 32 are the signing address of A2, zero-padded, and the last 32 are the entry's nonce, which A6 recomputes from its ledger position.",
+    );
+    expect(said).toContain(
+      "So software in a genuine TDX TD, not in debug mode, asked for a quote that names that signing address and that nonce.",
+    );
+    expect(said).toContain(
+      "Its nonce is the entry's nonce, and NVIDIA's attestation service NRAS verified the payload",
+    );
+    // What it does not show.
+    expect(said).toContain(
+      "so `quote_verified` stays false. The run does not show that the TD runs NEAR AI's published image, which model image answered, or what the code in the TD does with the signing key.",
+    );
+    expect(said).toContain(
+      "A8 was not run, so the online run does not show either that the model was sent the standard request for this invoice.",
+    );
+    // The caveats: the clock, the outside services, and that it is a live run.
+    expect(said).toContain(
+      "`[gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid`. The computer's clock was about 3 s behind NVIDIA's",
+    );
+    expect(said).toContain(
+      "After the owner synced the clock, the same command passed: the file is that run.",
+    );
+    expect(said).toContain("`api.trustedservices.intel.com`");
+    expect(said).toContain("`nras.attestation.nvidia.com`");
+    expect(said).toContain(
+      "it stops passing check c once the Canary anchors an entry this file does not have, whatever O1 and O2 say.",
+    );
+    expect(said).toContain(
+      "`verify --offline` refuses `--online`, so O1 and O2 cannot be run again from `snapshot-2026-11-11.json`.",
+    );
+    // The CLI's hint for the clock is not on this branch: the README does not say there is one.
+    expect(said).not.toMatch(/\bhint\b/i);
+  });
+});
+
 describe("the rehearsal, as the ledger has it", () => {
   // Seq 2 is the rehearsal's refused decision. Both rules that refused it ran, so no sentence says one "would have".
   const refused = at(2)
@@ -272,28 +433,42 @@ describe("the rehearsal, as the ledger has it", () => {
 });
 
 describe("what SECURITY.md, the privacy page and the threat model say about the Canary's ledger", () => {
-  it("SECURITY.md: real attested decisions are checked offline only, O1 and O2 not recorded", () => {
+  it("SECURITY.md: real attested decisions pass O1 and O2 online too, and do not show which image ran", () => {
     const security = flat(readFileSync(join(ROOT, "SECURITY.md"), "utf8"));
-    expect(security).toContain("- **Real attested decisions are checked offline only.**");
+    expect(security).toContain("- **Real attested decisions do not show which image ran.**");
     expect(security).toContain("pass A1 to A7 offline.");
-    expect(security).toContain("The online checks O1 and O2 are not recorded for them yet");
+    expect(security).toContain(
+      "On 2026-11-11 they also passed the online checks O1 and O2 ([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt))",
+    );
+    expect(security).toContain(
+      "The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run",
+    );
     expect(security).toContain(
       "(docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)",
     );
     expect(security).not.toContain("No recorded real decision yet");
+    expect(security).not.toContain("Real attested decisions are checked offline only");
+    expect(security).not.toMatch(/O1 and O2 are not recorded/);
   });
 
-  it("the privacy page: two of the Canary's, checked offline only, none the payables agent's", () => {
+  it("the privacy page: two of the Canary's, checked offline and online, none the payables agent's", () => {
     const invoices = PRIVACY_PAGE.sections.find((s) => s.id === "invoices");
     const said = flat((invoices?.paragraphs ?? []).join(" "));
     expect(said).toContain(
-      "The attested decisions recorded in the repository so far are two of the Canary's, on testnet, checked offline only; none is the payables agent's.",
+      "The attested decisions recorded in the repository so far are two of the Canary's, on testnet, which pass A1 to A7 offline and O1 and O2 online, with the TEE measurement not pinned; none is the payables agent's.",
     );
+    expect(said).not.toContain("checked offline only");
     expect(said).not.toMatch(/no attested decision|none recorded/i);
   });
 
   it("the threat model: the app keeps the Canary's ledger private, and the team published its own entries", () => {
     const threat = flat(readFileSync(join(ROOT, "docs", "THREAT_MODEL.md"), "utf8"));
+    expect(threat).toContain(
+      "the Canary's 2 of 2026-11-10, pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](evidence/canary-vault/verify-online-2026-11-11.txt),",
+    );
+    expect(threat).toContain(
+      "but the TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run",
+    );
     expect(threat).toContain(
       "The app cannot make the Canary's ledger public: a database constraint forbids it",
     );
@@ -318,6 +493,47 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
     expect(pages.length).toBeGreaterThan(30);
     for (const f of files) {
       expect(flat(readFileSync(f, "utf8")), f).not.toMatch(/Canary's published ledger/i);
+    }
+  });
+
+  it("no page says any more that the Canary's two decisions are checked offline only, or that O1 and O2 are not recorded", () => {
+    // The online run of 2026-11-11 passed O1 and O2 on both. Older CHANGELOG releases keep their words; the
+    // Unreleased section is held here.
+    const docs = join(ROOT, "apps", "web", "content", "docs");
+    const pages = readdirSync(docs, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".mdx"))
+      .map((f) => join(docs, f));
+    const read = (f: string) => readFileSync(f, "utf8");
+    const changelog = read(join(ROOT, "CHANGELOG.md"));
+    const unreleased = changelog.slice(
+      changelog.indexOf("## Unreleased"),
+      changelog.indexOf("\n## ", changelog.indexOf("## Unreleased") + 1),
+    );
+    const texts: [string, string][] = [
+      ...[
+        "README.md",
+        "SECURITY.md",
+        join("docs", "THREAT_MODEL.md"),
+        join("docs", "evidence", "canary-vault", "README.md"),
+        join("apps", "web", "src", "lib", "site", "facts.ts"),
+        join("apps", "web", "src", "lib", "site", "ops-copy.ts"),
+      ].map((f): [string, string] => [f, read(join(ROOT, f))]),
+      ...pages.map((f): [string, string] => [f, read(f)]),
+      ["CHANGELOG.md, Unreleased", unreleased],
+    ];
+    const OLD = [
+      /O1 and O2 (?:are )?not recorded/i,
+      /online checks? (?:O1 and O2 )?(?:is |are )?not recorded/i,
+      /online quote check is not recorded/i,
+      /no online run (?:is )?recorded/i,
+      /checked offline only/i,
+      /Recorded on testnet, checked offline/,
+      /The quote is not verified online/,
+      /nothing here shows yet that the signing key/,
+    ];
+    expect(unreleased.length).toBeGreaterThan(1000);
+    for (const [name, text] of texts) {
+      for (const old of OLD) expect(flat(text), `${name}: ${old}`).not.toMatch(old);
     }
   });
 });
@@ -388,7 +604,8 @@ describe("the folder README's account of the ledger", () => {
     // SECURITY.md's own words and limits.
     expect(text).toContain('"attested and signed", not "proven to run a given model image"');
     expect(text).toContain("The TEE measurement is not pinned (O1b, deferred)");
-    expect(text).toContain("The online checks are not recorded for this ledger yet");
+    expect(text).toContain("- **Offline, the quote is not verified.**");
+    expect(text).not.toContain("The online checks are not recorded for this ledger yet");
     expect(text).toContain("check e says `A8 not run`");
     expect(text).toContain("deliberately gullible prompt");
     expect(flat(readFileSync(join(ROOT, "SECURITY.md"), "utf8"))).toContain(
@@ -396,14 +613,24 @@ describe("the folder README's account of the ledger", () => {
     );
   });
 
-  it("claims no more for the two answers than A1 to A7 show offline", () => {
+  it("claims no more for the two answers than A1 to A7 show offline, and O1 and O2 online", () => {
     const said = flat(text);
-    // Offline, nothing shows that the signing key is a TEE's: that is O1, online, not recorded here.
+    // Offline, nothing shows that the signing key is a TEE's. Online, O1 shows a genuine TDX quote that names the
+    // signer and the nonce, not which image the TD runs, so not that the key stays inside it.
     expect(said).not.toMatch(/TEE key|TEE's key/);
     expect(said).toContain(
       "- A1: the text the signature covers is the one core's `formatProviderTeeText` builds",
     );
-    expect(said).toContain("nothing here shows yet that the signing key is held in a genuine TEE");
+    expect(said).toContain(
+      "so the offline checks alone do not show that the signing key is held in a genuine TEE.",
+    );
+    expect(said).toContain(
+      "O1 shows that each quote is a genuine Intel TDX quote (Intel DCAP, debug off, an accepted TCB status) whose report data holds the signing address of A2 and the entry's nonce, and O2 that each GPU payload carries that nonce and that NVIDIA NRAS verifies it.",
+    );
+    expect(said).toContain(
+      "They do not show which image the TD runs, and so not that the key stays inside it: the measurement is not pinned, so `quote_verified` stays false. A8 was not run.",
+    );
+    expect(said).not.toContain("nothing here shows yet that the signing key");
     expect(said).toContain("The attestation ties each answer to the key that signed it");
     // A5 compares the report with the evidence's nonce; whether the chat carried it is A8's question.
     expect(said).toContain(
@@ -412,15 +639,18 @@ describe("the folder README's account of the ledger", () => {
     expect(said).toContain(
       "the standard request for this invoice at this ledger position: A5 and A6 bind the attestation report, not the chat",
     );
-    // Seq 1 wrote "50", which is not 50 USDC, and only the second attempt's raw spend reached the contract.
+    // Seq 1 wrote "50", which is not 50 USDC, and only the rehearsal's raw spend reached the contract. The section
+    // counts three attempts (10:48, 10:53, 12:22), so it does not call the rehearsal's the second.
     expect(said).toContain('seq 1 wrote the amount as `"50"`');
+    expect(said).toContain("These 5 entries come from the team's own three attempts on 2026-11-10");
     expect(said).toContain(
-      "the contract refused the raw spend of the second attempt (seq 3 and 4)",
+      "the contract refused the raw spend of the rehearsal's attempt (seq 3 and 4)",
     );
+    expect(said).not.toContain("raw spend of the second attempt");
     expect(said).not.toContain("and code and the contract refused");
   });
 
-  it("gives the offline command, which keeps working, and the live one, which check c ends by design", () => {
+  it("gives the offline command, which keeps working, and the live ones, which check c ends by design", () => {
     expect(text).toContain(
       "npx probarion verify --offline docs/evidence/canary-vault/snapshot-2026-11-11.json",
     );
@@ -428,5 +658,8 @@ describe("the folder README's account of the ledger", () => {
       `npx probarion verify --network testnet --vault ${VAULT} --ledger docs/evidence/canary-vault/${LEDGER}`,
     );
     expect(text).toContain("check c fails on this file, by design");
+    expect(flat(text)).toContain(
+      "The online run above reads the chain too, so its command stops passing check c at the same point.",
+    );
   });
 });

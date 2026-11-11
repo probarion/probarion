@@ -19,17 +19,24 @@ The software is an unaudited beta.
   exported read-only: 5 entries from the team's own three attempts of 2026-11-10 and no visitor's.
   Beside it are `snapshot-2026-11-11.json`, the snapshot a live `verify` with that ledger wrote, and
   the run's output, `verify-2026-11-11.txt`, which passes checks a to i. Check e finds 2 decisions by
-  NEAR AI Cloud's `z-ai/glm-5.3-flash` that are attested and signed and pass A1 to A7 offline. The
-  online checks O1 and O2 are not recorded for them yet, the TEE measurement is not pinned, and A8
-  was not run, since the ledger holds no invoice text. The folder's README lists the 5 entries, with
-  what the model proposed and what the code and the contract did, says what check e shows and what
-  it does not, and gives the offline command and the live one, which check c stops passing once the
-  Canary anchors an entry the file does not have. The README, SECURITY.md, the threat model, the
-  privacy page, the home page's status row and model step, and the docs pages that said no real
-  attested decision was recorded now say this and link the evidence; the status row "Live attested
-  model run" reads "Recorded on testnet, checked offline". `apps/web/test/canary-vault.test.ts` runs
-  the checks on the committed snapshot, holds the README's table to the ledger cell by cell, and pins
-  what SECURITY.md, the threat model, the privacy page and the rehearsal's rows say about it.
+  NEAR AI Cloud's `z-ai/glm-5.3-flash` that are attested and signed and pass A1 to A7 offline.
+  `verify-online-2026-11-11.txt` is a live run with `--online` the same day, at 07:43 UTC, which also
+  passes the online checks O1 and O2 on both: each TDX quote is a genuine Intel TDX quote (Intel
+  DCAP, debug off, an accepted TCB status) whose report data holds the signing address and the
+  entry's nonce, and NVIDIA NRAS verified each GPU payload, which carries that nonce. The TEE
+  measurement is not pinned, so this does not show which model image ran, and A8 was not run, since
+  the ledger holds no invoice text. A first online attempt failed O2 with `not_yet_valid`, because
+  the computer's clock was about 3 s behind NVIDIA's, and passed after a clock sync. The folder's
+  README lists the 5 entries, with what the model proposed and what the code and the contract did,
+  says what check e shows offline and online and what it does not, and gives the offline command,
+  the live one and the online one; the live and online ones stop passing check c once the Canary
+  anchors an entry the file does not have, and `--offline` refuses `--online`. The README,
+  SECURITY.md, the threat model, the privacy page, the home page's status row and model step, and
+  the docs pages that said no real attested decision was recorded now say this and link the
+  evidence; the status row "Live attested model run" reads "Checked online on testnet, image not
+  pinned", and stays Preview. `apps/web/test/canary-vault.test.ts` runs the checks on the committed
+  snapshot, holds the README's table to the ledger cell by cell, pins the online run's output, and
+  pins what SECURITY.md, the threat model, the privacy page and the rehearsal's rows say about it.
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision

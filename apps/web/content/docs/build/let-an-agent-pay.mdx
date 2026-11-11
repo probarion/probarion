@@ -147,7 +147,7 @@ model: process.env.NEARAI_API_KEY ? { provider: "near-ai-cloud", apiKey: process
 ```
 
 <Callout kind="note">
-The NEAR AI Cloud adapter is built and tested against a fake NEAR AI Cloud, and is Preview. On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two real attested decisions that pass A1 to A7 offline ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)); their online checks O1 and O2 are not recorded yet. [Payment checks](/docs/concepts/payment-checks) explains how the code rules and the contract's checks fit together.
+The NEAR AI Cloud adapter is built and tested against a fake NEAR AI Cloud, and is Preview. On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two real attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)). The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run. [Payment checks](/docs/concepts/payment-checks) explains how the code rules and the contract's checks fit together.
 </Callout>
 
 ### Your own rules

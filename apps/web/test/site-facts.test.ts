@@ -470,15 +470,21 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(fields).toEqual([...SPEND_REQUEST_FIELDS]);
   });
 
-  it("that the model run is recorded on testnet and checked offline only", () => {
+  it("that the model run is recorded on testnet, checked offline and online, with the measurement not pinned", () => {
     expect(JOURNEY.steps[1].tag).toBe(
-      "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline. The online quote check is not recorded yet.",
+      "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The TEE measurement is not pinned, so this does not show which model image ran.",
     );
+    expect(JOURNEY.steps[1].tag).not.toMatch(/not recorded/);
     const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
     expect(row).toContain("**Built**");
     expect(row).toContain("**Recorded on NEAR testnet**");
     expect(row).toContain("pass A1 to A7 offline");
-    expect(row).toContain("The online checks O1 and O2 are not recorded for them yet");
+    expect(row).toContain("pass A1 to A7 offline and, on 2026-11-11, the online checks O1 and O2");
+    expect(row).toContain("(docs/evidence/canary-vault/verify-online-2026-11-11.txt)");
+    expect(row).toContain(
+      "The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run",
+    );
+    expect(row).not.toContain("not recorded for them yet");
     expect(row).not.toContain("there is none yet");
     // The two decisions are the Canary's, in the ledger the team published (test/canary-vault.test.ts).
     expect(row).toContain(
@@ -617,14 +623,15 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Live attested model run",
-      pill: "Recorded on testnet, checked offline",
+      pill: "Checked online on testnet, image not pinned",
       readme: [
         {
           start: "NEAR AI Cloud adapter",
           says: [
             "**Recorded on NEAR testnet**",
             "pass A1 to A7 offline",
-            "not recorded for them yet",
+            "the online checks O1 and O2",
+            "The TEE measurement is not pinned",
           ],
         },
       ],
@@ -843,7 +850,7 @@ describe("the status list", () => {
       {
         id: "attested-model-run",
         row: "Live attested model run",
-        pill: "Recorded on testnet, checked offline",
+        pill: "Checked online on testnet, image not pinned",
         tone: "work",
       },
       { id: "canary", row: "Canary public challenge", pill: "Live on testnet", tone: "live" },

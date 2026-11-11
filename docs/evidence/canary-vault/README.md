@@ -105,8 +105,9 @@ that check c reads below.
 
 ## Check it
 
-Two live runs are recorded. The first, on 2026-11-10, had no ledger and fails check c. The second, on 2026-11-11,
-has the signed ledger and passes checks a to i: it is in
+Three live runs are recorded. The first, on 2026-11-10, had no ledger and fails check c. The second, on 2026-11-11,
+has the signed ledger and passes checks a to i, and the third, the same day, runs the online checks O1 and O2 as
+well and passes them: both are in
 [The signed ledger, published 2026-11-11](#the-signed-ledger-published-2026-11-11) below.
 
 ### Without the ledger, 2026-11-10
@@ -209,9 +210,13 @@ one, as the [interfaces spec](../../specs/2026-10-21-probarion-interfaces.md) de
 So Probarion says these two decisions are "attested and signed", not "proven to run a given model image". What
 they do not show yet:
 
-- **The quote is not verified online.** The online checks are not recorded for this ledger yet: O1 verifies the TDX
-  quote through Intel DCAP, and O2 checks the NVIDIA GPU evidence through NRAS. Offline, check e says
-  `quote not verified offline`, so nothing here shows yet that the signing key is held in a genuine TEE.
+- **Offline, the quote is not verified.** A1 to A7 do not check the TDX quote itself: offline, check e says
+  `quote not verified offline`, so the offline checks alone do not show that the signing key is held in a genuine
+  TEE. The [online run of 2026-11-11](#the-online-run-of-2026-11-11) shows more for both decisions. O1 shows that
+  each quote is a genuine Intel TDX quote (Intel DCAP, debug off, an accepted TCB status) whose report data holds
+  the signing address of A2 and the entry's nonce, and O2 that each GPU payload carries that nonce and that NVIDIA
+  NRAS verifies it. They do not show which image the TD runs, and so not that the key stays inside it: the
+  measurement is not pinned, so `quote_verified` stays false. A8 was not run.
 - **The TEE measurement is not pinned (O1b, deferred).** Even online, neither check pins the measurements of NEAR
   AI's published image, so `quote_verified` stays false and nothing here shows which image the TEE runs.
 - **A8 was not run.** A8 rebuilds the request from the invoice text and checks that it is the one the signature covers.
@@ -223,8 +228,62 @@ they do not show yet:
   `CANARY_SYSTEM_PROMPT_V1` at seq 1 and `CANARY_SYSTEM_PROMPT` at seq 2 (`apps/web/src/lib/canary/prompt.ts`, the
   two prompts byte for byte). The attestation ties each answer to the key that signed it, the signing address of A2,
   not to a good judgement: both answers proposed paying the invoice's 50 USDC (seq 1 wrote the amount as `"50"`,
-  which in smallest units is 0.00005 USDC). Code refused both, and the contract refused the raw spend of the second
-  attempt (seq 3 and 4).
+  which in smallest units is 0.00005 USDC). Code refused both, and the contract refused the raw spend of the
+  rehearsal's attempt (seq 3 and 4).
+
+### The online run of 2026-11-11
+
+[`verify-online-2026-11-11.txt`](verify-online-2026-11-11.txt) is a live run with `--online`, on 2026-11-11 at
+07:43 UTC (the file says `generated 2026-11-11T07:43:23.076Z`), with the CLI built from this repository, from its
+root:
+
+```bash
+node packages/cli/dist/bin.js verify --network testnet --vault canary.vaults.probarion.testnet --ledger docs/evidence/canary-vault/ledger-2026-11-10.jsonl --online
+```
+
+It read the chain with this ledger, as the live run below does, and checks a to i pass: it ends
+`9 passed, 0 failed, 0 unproven` and `RESULT: PASS`. `--online` adds O1 and O2 to check e, on the two decisions
+with an attestation report, seq 1 and 2, and check e's detail ends:
+
+```text
+online: 2 DCAP-genuine TDX quotes bound to this request (O1: debug off, an accepted TCB status, report_data matches; measurement not pinned, so quote_verified stays false) and 2 GPU payloads bound to the request nonce and verified by NRAS (O2)
+```
+
+What O1 and O2 showed for each of the two decisions, as `applyOnlineChecks` and `o1PolicyProblem` in
+[`packages/sdk/src/online.ts`](../../../packages/sdk/src/online.ts) check it:
+
+- **O1.** Intel DCAP, through `@nearai/inference-sdk`, verified the decision's TDX quote with collateral from
+  Intel: it is a genuine Intel TDX quote, the TD runs with debug off, and its TCB status is one O1 accepts
+  (`UpToDate`, `OutOfDate` or `TDRelaunchAdvised`). "report_data matches" means that the report data inside the
+  verified quote is the evidence's `report_data`, all 64 bytes. Offline, A4 and A5 read those bytes: the first 32
+  are the signing address of A2, zero-padded, and the last 32 are the entry's nonce, which A6 recomputes from its
+  ledger position. So software in a genuine TDX TD, not in debug mode, asked for a quote that names that signing
+  address and that nonce.
+- **O2.** The decision's evidence carries an NVIDIA GPU payload. Its nonce is the entry's nonce, and NVIDIA's
+  attestation service NRAS verified the payload: it returned a token signed by NVIDIA, checked against NVIDIA's
+  published keys, that carries the same nonce and a passing overall result.
+
+What they do not show:
+
+- **Which image the TD runs.** O1 does not pin the TD's measurements (O1b, deferred: the quote's `mrConfigId`,
+  `rtMr3` and the deployment), so `quote_verified` stays false. The run does not show that the TD runs NEAR AI's
+  published image, which model image answered, or what the code in the TD does with the signing key.
+- **The chat.** In check e's words the quotes are "bound to this request": their report data holds the nonce of
+  this ledger position. A8 was not run, so the online run does not show either that the model was sent the
+  standard request for this invoice.
+
+Before you rely on it, or run it again:
+
+- **The clock.** The first online attempt that day, on the same computer, did not pass: O2 failed check e with
+  `[gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid`. The computer's clock was about 3 s
+  behind NVIDIA's, and `@nearai/inference-sdk` 0.2.1 refuses an NRAS token whose `nbf` or `iat` is later than the
+  local clock, with no tolerance. After the owner synced the clock, the same command passed: the file is that run.
+- **Outside services.** O1 fetches Intel's DCAP collateral (`api.trustedservices.intel.com`) and O2 sends each GPU
+  payload to NRAS (`nras.attestation.nvidia.com`). The run needs the network, both services, a clock in sync and
+  the CLI's optional dependency `@nearai/inference-sdk`, whose `engines` field asks for Node 24.22.1 or later.
+- **It is a live run.** Like the live command below, it stops passing check c once the Canary anchors an entry
+  this file does not have, whatever O1 and O2 say. And `verify --offline` refuses `--online`, so O1 and O2 cannot
+  be run again from `snapshot-2026-11-11.json`.
 
 ### Run it
 
@@ -247,7 +306,8 @@ That works only until the Canary anchors an entry this file does not have. The n
 example, writes entries to the Canary's ledger, and the ledger key anchors them. From then on the chain's last
 anchor covers more entries than this file holds, and check c fails on this file, by design: a ledger that misses
 anchored entries does not pass. The offline command above still passes, because it reads the chain data of
-2026-11-11 from the snapshot.
+2026-11-11 from the snapshot. The online run above reads the chain too, so its command stops passing check c at the
+same point.
 
 Both commands were run again on 2026-11-11 with the CLI built from this repository at commit `75a7262`, and both
 end `RESULT: PASS`.
