@@ -118,7 +118,7 @@ These bound what `@probarion/sdk` and `@probarion/core` send, keep and wait for.
 - The Canary's own caps on `POST /api/canary/attempt`, in `CANARY_LIMITS` (`apps/web/src/lib/canary/limits.ts`): attempts from one address and from everyone in an hour and a day, a daily budget of model tokens, the length of a message, and how often an attempt may go on chain. An attempt past an attempt cap or the token budget gets [`429 budget`](/docs/build/errors#http-429-budget), not `rate_limited`.
 - Caps the hosted app keeps on its own work and display, such as how far behind a node the health check accepts and how much of a ledger string the proof page shows.
 - The NEAR protocol's own limits, such as the most gas one transaction may carry, and the price of gas.
-- Mainnet values. The code is the same on both networks, but the mainnet vault and factory are Planned, and no mainnet `min_deposit` is recorded. [Testnet and mainnet](/docs/start/testnet-and-mainnet) explains the difference.
+- Mainnet values. The code is the same on both networks, but the mainnet factory is not deployed, and no mainnet `min_deposit` is recorded. The one mainnet vault, `v0.probarion.near`, was deployed without a factory. [Testnet and mainnet](/docs/start/testnet-and-mainnet) explains the difference.
 
 ## Related pages
 

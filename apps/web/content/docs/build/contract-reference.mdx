@@ -66,7 +66,7 @@ near contract call-function as-read-only v0.probarion.testnet list_mandates json
 
 No method returns the code hash of its own account: NEAR reports that with the account. To see which code a factory vault was made from, read its version with `vault_version`, then that version's `code_hash` in `versions`. [Reproducible builds](/docs/trust/reproducible-builds) lists the commit and the code hash of each recorded build of the vault and the factory, from `contracts/code-hashes.json`, and [check f](/docs/trust/verifier-checks#check-f) of the verifier compares a vault's code hash with the recorded vault builds and, for a vault whose `factory` is its network's factory, with that factory's versions. `v0.probarion.testnet` and the vaults made from the factory's version 1 run two different recorded builds, while the tables on this page describe the source in the repository.
 
-Mainnet is Planned. `contracts/deployments/mainnet.json` names `v0.probarion.near` and `vaults.probarion.near` and records no deploy yet.
+On mainnet, `contracts/deployments/mainnet.json` records `v0.probarion.near`, deployed and locked on 2026-11-11, with code hash `3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`. Its owner is `probarion.near`. Its deploy ran `new` as the vault account itself, so its `get_config` shows `factory` as null. The record also names `vaults.probarion.near`, the mainnet factory, and records no deploy of it: the factory is not deployed.
 
 ## What the tables leave out
 

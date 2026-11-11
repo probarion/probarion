@@ -264,7 +264,7 @@ const DEPS: readonly (readonly [field: string, what: string, dflt: string])[] = 
   ],
   [
     "preLedgerDecisionHashes",
-    "The documented pre-ledger decision hashes for check d. The code applies them only to `v0.probarion.near` on mainnet, which is Planned.",
+    "The documented pre-ledger decision hashes for check d. The code applies them only to `v0.probarion.near` on mainnet, which has run there since 2026-11-11.",
     "The sha256 of each `v0-decision-*.json` file in `evidenceDir`.",
   ],
   [
@@ -976,7 +976,7 @@ const PROOF: readonly Export[] = [
   [
     "PRE_LEDGER_VAULTS",
     "constant",
-    "The only vault the code exempts as pre-ledger: `v0.probarion.near` on mainnet, which is Planned and does not exist yet. Testnet has none.",
+    "The only vault the code exempts as pre-ledger: `v0.probarion.near` on mainnet, which has run there since 2026-11-11 with no ledger. Testnet has none.",
     "None",
   ],
   ["isPreLedgerVault", "function", "True for a vault in `PRE_LEDGER_VAULTS`.", "None"],

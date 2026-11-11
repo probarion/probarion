@@ -275,7 +275,7 @@ describe("what an offline run shows", () => {
 
   it("promises only what needs no account today", () => {
     expect(HERO.fineprint).toBe(
-      "Testnet today, mainnet planned. You need no account to read the chain or run the verifier.",
+      "Testnet today, and one small vault on mainnet. You need no account to read the chain or run the verifier.",
     );
   });
 
@@ -545,13 +545,13 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(alt).not.toContain("NoMandate");
   });
 
-  it("what the smoke run was, and that mainnet is still planned", () => {
+  it("what the smoke run was, and that mainnet has only one small vault", () => {
     // Its missing ledger is told once, in the known gaps (audit P1-10).
     expect(CHAIN.intro).toBe(
       "A smoke run of the contract alone on NEAR testnet, with test tokens, on 2026-11-01.",
     );
     expect(HERO.note).toContain("test tokens");
-    expect(HERO.fineprint).toContain("mainnet planned");
+    expect(HERO.fineprint).toContain("one small vault on mainnet");
   });
 
   it("the license, in a footer note that does not ask for small amounts of test tokens (audit P1-10)", () => {
@@ -658,8 +658,18 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Mainnet vault",
-      pill: "Planned",
-      readme: [{ start: "Mainnet vault", says: ["**Planned**"] }],
+      pill: "On mainnet: 1 payment, 1 refusal, no Base payout yet",
+      readme: [
+        {
+          start: "Mainnet vault",
+          says: [
+            "**Live on NEAR mainnet**",
+            "2026-11-11",
+            "`PROBARION:NoMandate`",
+            "no Base payout has run on mainnet",
+          ],
+        },
+      ],
     },
     {
       row: "TypeScript SDK and CLI",
@@ -860,7 +870,12 @@ describe("the status list", () => {
         pill: "Tried on testnet, not on npm",
         tone: "work",
       },
-      { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },
+      {
+        id: "mainnet-vault",
+        row: "Mainnet vault",
+        pill: "On mainnet: 1 payment, 1 refusal, no Base payout yet",
+        tone: "live",
+      },
     ]);
   });
 

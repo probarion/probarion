@@ -4,7 +4,7 @@ The money sits in the vault, a NEAR contract each owner has of their own: it hol
 
 Each arrow points from the part that acts to the part it acts on, and its label says what passes between them. The dark boxes are contracts on NEAR, and the dashed boxes are services Probarion does not run. The CLI has no box of its own: it prints each owner and approver transaction, which then reaches the vault through the signer's wallet or near-cli-rs, along the "owner calls" and "approve, reject" arrows. A few calls the hosted app makes have no arrow. The server asks NEAR AI Cloud for a proposal for Payables and the Canary, and for its model list in the health check. The console sends the confirmation email of a new email alert, and the Telegram bot's route answers `/start` and `/stop`. On testnet the faucet signs `mint` on the USDC token.
 
-Today the contracts run on NEAR testnet. The mainnet vault and the mainnet factory are Planned, and [Testnet and mainnet](/docs/start/testnet-and-mainnet) says what differs between the two. The status of each part is on [What works today](/docs/start/what-works-today).
+Today the contracts run on NEAR testnet. On mainnet one small vault, `v0.probarion.near`, runs with no factory, and the mainnet factory is not deployed. [Testnet and mainnet](/docs/start/testnet-and-mainnet) says what differs between the two. The status of each part is on [What works today](/docs/start/what-works-today).
 
 ## People and agents
 
@@ -107,4 +107,4 @@ The hosted app talks to a few more services that the diagram leaves out:
 - **It does not run NEAR Intents or the bridge.** On mainnet a Base or Solana payout leaves the vault as an `ft_withdraw` on `intents.near`, and the POA bridge releases it on the other chain. Probarion trusts both to do so.
 - **It has no public agent HTTP API and no outbound webhook.** An agent pays from its own process through the SDK, through the MCP server `@probarion/mcp` (Preview), which runs beside the agent over stdio and calls the same SDK, or through Payables in the console, which needs a signed-in owner or approver. The one webhook route takes Telegram's updates in, and alerts go out only by Telegram and email.
 - **The browser extension cannot pay.** `apps/extension` connects with a revocable token, shows what waits for you and queues an invoice through `/api/ext`; only the owner's wallet-signed Confirm in the console pays it. Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn).
-- **It does not serve mainnet yet.** No mainnet vault or factory exists, and only the testnet address is served.
+- **It does not serve mainnet yet.** Only the testnet address is served. The one mainnet vault, `v0.probarion.near`, was set up from the owner's own terminal, and no mainnet factory is deployed.

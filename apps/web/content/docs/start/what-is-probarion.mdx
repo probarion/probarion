@@ -1,6 +1,6 @@
 An owner puts USDC in a vault, a NEAR contract of their own, and signs mandates from their own wallet: who gets paid, how much per payment and in total, how many times, until when, and above what amount a person must approve. The agent gets one key that can call `spend` and nothing else.
 
-Testnet today, mainnet planned. [Testnet and mainnet](/docs/start/testnet-and-mainnet) says what differs between the two.
+Testnet today, and one small vault on mainnet. [Testnet and mainnet](/docs/start/testnet-and-mainnet) says what differs between the two.
 
 ## The problem it solves
 
@@ -101,7 +101,7 @@ The two quickstarts are Preview: their flows have not yet run end to end with re
 - **A vault's NEAR does not come back out.** The vault pays for its storage and its spends' gas from its own NEAR, and it has no method to withdraw NEAR. That NEAR is the vault's runway, and one plain transfer tops it up.
 - **The contract does not judge whether a payment is wise.** It holds the agent to the limits the owner signed, and a spend above `approval_above` waits for a person. Off chain, `decide()` can still hold or refuse a payment the mandate allows, through its built-in rules, your own `custom.*` rules or an attested model's proposal.
 - **It has no HTTP API that an agent pays through.** The console's invoice API answers only a signed-in owner or approver, on a same-origin request. An agent pays through the SDK, in its own process.
-- **Some parts are not done yet.** A mainnet vault is Planned, and its runbook is ready. The MCP server is Preview: it was tried on testnet and is not on npm yet.
+- **Some parts are not done yet.** On mainnet one small vault runs, but no Base payout has run there and the mainnet factory is not deployed. The MCP server is Preview: it was tried on testnet and is not on npm yet.
 
 <Callout kind="note" title="Unaudited beta.">
 

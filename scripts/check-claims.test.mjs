@@ -988,14 +988,15 @@ describe("the real repository", () => {
     );
   });
 
-  test("fails when a mainnet transaction is recorded and the README says there is none", async (t) => {
-    if (!/hold no transactions|makes no\s+mainnet claim/.test(readme)) {
-      t.skip("README.md no longer says mainnet has no transactions");
-      return;
-    }
+  test("fails when a mainnet transaction is recorded and the README says there is none", async () => {
     const mainnet = json("contracts/deployments/mainnet.json");
     mainnet.check_claims_test_tx = UNRECORDED;
-    const got = await withChange({ "contracts/deployments/mainnet.json": JSON.stringify(mainnet) });
+    const change = { "contracts/deployments/mainnet.json": JSON.stringify(mainnet) };
+    // Since the mainnet v0 run of 2026-11-11 the README makes no such claim, so the case adds one.
+    if (!/hold no transactions|makes no\s+mainnet claim/.test(readme)) {
+      change["README.md"] = `${readme}\nThe mainnet records hold no transactions yet.\n`;
+    }
+    const got = await withChange(change);
     assert.ok(
       got.some((p) => /says mainnet has no transactions, and \d+ are recorded/.test(p)),
       got.join("\n"),

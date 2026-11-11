@@ -21,7 +21,7 @@ Each row is one method of one route. Its anchor is `http-api-`, the method and t
 
 A route works on the network of the address it is called at: the server matches the request's host against the origins it serves, as [Testnet and mainnet](/docs/start/testnet-and-mainnet#how-the-site-picks-a-network) explains. A session, a sign-in challenge and an extension token each belong to the network they were made on. The routes that need a session answer `409 wrong_network` for a vault registered on the other network, and the faucet answers `404 not_found` instead.
 
-The 1Click top-up routes are built for mainnet only and answer `409 mainnet_only` elsewhere. The faucet serves testnet only. Only NEAR testnet is live today, and the mainnet vault is Planned: see [What works today](/docs/start/what-works-today).
+The 1Click top-up routes are built for mainnet only and answer `409 mainnet_only` elsewhere. The faucet serves testnet only. NEAR testnet is live today. On mainnet one small vault runs, `v0.probarion.near`, and no mainnet address is served: see [What works today](/docs/start/what-works-today).
 
 ## Sign-in
 

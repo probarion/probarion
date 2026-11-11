@@ -93,6 +93,8 @@ This adds `cargo near build` for every contract and the near-workspaces sandbox 
 | testnet | `base-usdc.probarion.testnet`, `sol-usdc.probarion.testnet` | test-ft acting as the Base and Solana POA tokens |
 | testnet | `intents-stub.probarion.testnet` | intents-stub (Intents has no testnet) |
 | testnet | `v0.probarion.testnet` | vault v0, locked (no full-access key) |
+| mainnet | `probarion.near` | owner of vault v0, which it created |
+| mainnet | `v0.probarion.near` | vault v0 (2026-11-11), standalone (no factory), locked (no full-access key) |
 
 Deployments and transaction hashes: `contracts/deployments/`. Code hashes: `contracts/code-hashes.json`.
 

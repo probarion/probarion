@@ -153,7 +153,7 @@ export const HERO = {
   tryLive: "Try a payment, live",
   integrate: "Plug in your agent",
   fineprint:
-    "Testnet today, mainnet planned. You need no account to read the chain or run the verifier.",
+    "Testnet today, and one small vault on mainnet. You need no account to read the chain or run the verifier.",
   audience:
     "For teams whose AI agent pays supplier invoices (Payables, in progress), and for developers who want to give an agent money without the keys.",
   paid: {
@@ -765,7 +765,12 @@ export const STATUS = {
     },
     { id: "canary", row: "Canary public challenge", pill: "Live on testnet", tone: "live" },
     { id: "mcp-server", row: "MCP server", pill: "Tried on testnet, not on npm", tone: "work" },
-    { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },
+    {
+      id: "mainnet-vault",
+      row: "Mainnet vault",
+      pill: "On mainnet: 1 payment, 1 refusal, no Base payout yet",
+      tone: "live",
+    },
   ] as const satisfies readonly { id: string; row: string; pill: string; tone: StatusTone }[],
   checked:
     "The numbers, transactions and status rows on this page are checked against the repository by tests (`apps/web/test/site-facts.test.ts`).",

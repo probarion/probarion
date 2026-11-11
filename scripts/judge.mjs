@@ -529,6 +529,17 @@ export const SNAPSHOTS = [
     },
     expect: { exit: 0, checks: ALL_PASS },
   },
+  {
+    id: "verify-mainnet-v0-snapshot",
+    file: "docs/evidence/mainnet-v0/snapshot-2026-11-11.json",
+    committed: "docs/evidence/mainnet-v0/verify-2026-11-11.txt",
+    title: "verify --offline: mainnet v0 snapshot passes a to h, i skips (no factory)",
+    ref: {
+      file: "docs/evidence/mainnet-v0/README.md",
+      quote: "checks a to h pass, and check i skips, because this vault has no factory",
+    },
+    expect: { exit: 0, checks: { ...ALL_PASS, i: "skip" } },
+  },
 ];
 
 /** The vaults read live, read-only, each with its verdict. */

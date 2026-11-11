@@ -16,6 +16,27 @@ The software is an unaudited beta.
 
 ### Added
 
+- The first mainnet vault, `v0.probarion.near`, ran on 2026-11-11 between 12:52 and 13:00 UTC: the
+  2026-11 demo path of `docs/runbooks/mainnet-v0.md`, with real USDC and small amounts. The owner
+  signed every transaction in their own terminal and in Meteor, and Claude signed nothing. The owner
+  created `probarion.near`, then the vault, deployed the CI wasm of commit `64ac3c0` (code hash
+  `3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`), initialized it with the mainnet constants and
+  locked it by deleting its only full-access key. The owner registered it on native USDC, sent it 3
+  USDC, added a `spend`-only agent key and signed mandate 1, whose payee and approver is the owner's
+  own Meteor wallet. Spend 1 paid 1 USDC under mandate 1 (`INV-M001`), and a spend against mandate
+  999 was refused on chain with `PROBARION:NoMandate`, with no USDC moved. The vault is standalone:
+  no mainnet factory is deployed. Step 6 (the Intents top-up), the Base mandate and step 10 (the
+  first Base payout) did not run: spike S1 is unproven, so no Base payout has run on mainnet. The
+  spend's decision is pre-ledger, the sha256 of `docs/evidence/v0-decision-m001.json`, with no signed
+  ledger and no attestation. `contracts/deployments/mainnet.json` and `docs/mainnet-proof.json`
+  record the transactions, `AGENTS.md` lists the two mainnet accounts, and
+  `docs/evidence/mainnet-v0` holds the run's README, the output of a read-only `verify` of the vault
+  on mainnet (`8 passed, 0 failed, 0 unproven, 1 skipped`, `RESULT: PASS`: checks a to h pass, and
+  check i skips because there is no factory) and the snapshot it wrote, which `pnpm judge` verifies
+  offline. The README's Status row is Live on NEAR mainnet, its mainnet section gives the run and how
+  to check it, and the docs, the landing page's status list, SECURITY.md, the threat model and the
+  runbooks say what ran and what did not. The console and the proof pages still serve testnet only.
+
 - Release 0.1.1 is prepared, and not published: `@probarion/core`, `@probarion/sdk`, `probarion` and
   `@probarion/mcp` are at 0.1.1, with a `## 0.1.1` section below. `packages/mcp/server.json` is the
   server's entry for the official MCP registry, `io.github.probarion/probarion` (schema 2025-12-11).

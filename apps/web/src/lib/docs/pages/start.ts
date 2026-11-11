@@ -278,8 +278,8 @@ export const START: readonly DocPage[] = [
     path: "start/testnet-and-mainnet",
     title: "Testnet and mainnet",
     description:
-      "Probarion runs on NEAR testnet with test tokens today, and mainnet is planned. What differs between the two networks and how the site picks one.",
-    lede: "Probarion runs on NEAR testnet today, with test tokens. Mainnet is planned: no mainnet vault or factory is deployed yet.",
+      "Probarion runs on NEAR testnet with test tokens today, and one small vault on mainnet. What differs between the two networks and how the site picks one.",
+    lede: "Probarion runs on NEAR testnet today, with test tokens. On mainnet one small vault runs since 2026-11-11, with real USDC, and no mainnet factory is deployed.",
     type: "explanation",
     audiences: ["beginner", "user", "developer", "partner"],
     status: "live",
