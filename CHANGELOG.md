@@ -18,23 +18,34 @@ The software is an unaudited beta.
   AI agent (Claude Code, Claude Desktop, Cursor or Codex) to the vault through the MCP server. Built,
   not tried yet.
   - The agent makes its two keys on its own machine (`init`). The owner pastes only their public
-    keys, and the page refuses a pasted secret key in the browser, so it is not sent. Two owner-only
-    server actions read the chain again at click time and return `add_agent` and `set_ledger_key`
-    for the member's own vault, with the vault kind's gas allowances, for the owner's wallet to sign.
-    Nothing is stored: these keys have no database row.
+    keys, and the page refuses a pasted secret key in the browser, so it is not sent. The agent
+    key's label is public on the vault, so the page and the server action refuse a label that holds
+    a key (`ed25519:`, or a base58 run of 40 characters or more), and the field does not cut a long
+    paste. Two owner-only server actions read the chain again at click time and return `add_agent`
+    and `set_ledger_key` for the member's own vault, with the vault kind's gas allowances, for the
+    owner's wallet to sign. Nothing is stored: these keys have no database row.
   - A vault has one ledger, so the ledger key is withheld from a vault whose ledger another writer
     keeps: hosted Payables (its active ledger key, its entries, or a ledger key it made) or anchors
-    signed by another key. The page then links "Create a vault for this agent". An unused ledger key
-    is replaced only after a danger confirm.
-  - Steps 5 and 6 give each client's settings, which carry only `PROBARION_VAULT_ID`, and a status
-    card read from the chain: both keys and their gas left, an active mandate for the key, the
-    vault's USDC, and who keeps the ledger. Until `@probarion/mcp` 0.1.1 is on npm (`MCP_ON_NPM`
-    in `apps/web/src/lib/agent/connect.ts`), the page builds the server from a clone. Approvers and
+    signed by another key. On testnet the page then links "Create a vault for this agent"; on
+    mainnet it says vaults cannot be created there yet. An unused ledger key is replaced only after
+    a danger confirm.
+  - Steps 5 and 6 give each client's settings, which carry only `PROBARION_VAULT_ID`, with the
+    Windows form for each client, and a status card read from the chain: both keys and their gas
+    left, an active mandate for the key, the vault's USDC, and who keeps the ledger. A vault id
+    that ends in neither `.near` nor `.testnet` also gets `NEAR_NETWORK`, in the settings and in
+    the `init` and `status` lines. Until `@probarion/mcp` 0.1.1 is on npm (`MCP_ON_NPM` in
+    `apps/web/src/lib/agent/connect.ts`), the page builds the server from a clone. Approvers and
     viewers see the status card only.
+  - "Check these keys" runs from a form, so Enter works, moves the focus to the first field with an
+    error, and says its result in a status region. Before anything is pasted, step 3 shows the keys
+    the chain already has, as step 6 does.
 - The Keys tab lists the keys on the vault that Probarion did not make, under "On the vault, held
   outside Probarion", with their allowance and Remove for an agent key. When the vault's ledger key
   is one of them, "Generate ledger key and set it in my wallet" shows a red notice and asks in a
-  danger dialog first, as a ledger key made there would stop that agent.
+  danger dialog first, as a ledger key made there would stop that agent. When the vault's keys
+  could not be read, that dialog says it is not known whether the user's own agent holds the
+  ledger key.
+- The landing's status list adds the Agent (MCP) tab to the console's "Built, not tried yet" row.
 - The overview's "Your first agent payment" card offers its keys step two ways, hosted Payables on
   Keys or your own AI agent on Agent (MCP), and ticks it when the chain shows an agent key and a
   ledger key that the console did not make.

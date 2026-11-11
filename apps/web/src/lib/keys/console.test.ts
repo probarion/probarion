@@ -104,6 +104,7 @@ import {
 import KeysPage, { maxDuration } from "@/app/console/[vault]/keys/page";
 import {
   LEDGER_HELD_ELSEWHERE,
+  REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM,
   REPLACE_OUTSIDE_LEDGER_CONFIRM,
 } from "@/components/console/KeyActions";
 import { SIGNER_OUT_OF_NEAR } from "@/lib/console/display";
@@ -807,7 +808,8 @@ describe("keys held outside Probarion (the user's own agent, Agent (MCP) tab)", 
       {
         purpose: "ledger",
         public_key: OWN_LEDGER,
-        label: "",
+        // The vault stores no label for its ledger key: the table names it, as the mockup does.
+        label: "the vault's ledger key",
         allowance: { state: "limited", yocto: "1000000000000000000000000" },
       },
     ]);
@@ -850,6 +852,7 @@ describe("keys held outside Probarion (the user's own agent, Agent (MCP) tab)", 
       "These keys are on the vault but Probarion did not make them: your own agent holds their secrets. Probarion's hosted Payables never signs with them.",
     );
     expect(out).toContain(OWN_AGENT);
+    expect(out).toContain("<td>the vault's ledger key</td>");
     expect(out).toContain(`href="/console/${VAULT}/agent"`);
     expect(out).toContain("See Agent (MCP)");
     const remove = h.buttons.find(
@@ -876,6 +879,25 @@ describe("keys held outside Probarion (the user's own agent, Agent (MCP) tab)", 
     expect(generate?.confirm).toBe(REPLACE_OUTSIDE_LEDGER_CONFIRM);
     expect(generate?.confirmTone).toBe("danger");
     expect(REPLACE_OUTSIDE_LEDGER_CONFIRM).toMatch(/refuses every payment/);
+  });
+
+  it("asks with a danger confirm that says it is unknown when the vault's keys could not be read", async () => {
+    await signInAs("acme.near");
+    h.reader = withOwnAgent({
+      getConfig: async () => {
+        throw transportError();
+      },
+    });
+    await html(VAULT);
+    const generate = h.buttons.find(
+      (b) => b.label === "Generate ledger key and set it in my wallet",
+    );
+    expect(generate?.confirm).toBe(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM);
+    expect(generate?.confirmTone).toBe("danger");
+    expect(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM).toMatch(
+      /^The vault's keys could not be read\. If/,
+    );
+    expect(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM).not.toMatch(/held outside Probarion\?/);
   });
 
   it("keeps the plain confirm when the vault's ledger key is the console's own", async () => {

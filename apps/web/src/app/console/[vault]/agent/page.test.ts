@@ -150,7 +150,8 @@ describe("the Agent (MCP) page", () => {
   it("gives the owner the six steps, under the Agent (MCP) tab", async () => {
     await signInAs("acme.near");
     const page = await html();
-    expect(page).toContain("Connect an AI agent (MCP), you are owner");
+    // A middle dot, as the other vault tabs write it.
+    expect(page).toContain("Connect an AI agent (MCP) \u00b7 you are owner");
     expect(page).toContain(`href="/console/${VAULT}/agent"`);
     expect(page).toContain("Probarion never sees their secrets.");
     expect(page).toContain("Step 1 of 6");

@@ -206,6 +206,18 @@ describe("prepareAddAgentAction", () => {
     expect(everything).not.toContain(SECRET_BODY.slice(20, 50));
   });
 
+  it("refuses a key as the label, before any read: a label is public on the vault", async () => {
+    // What a field cut at 64 characters keeps of a pasted secret: enough to narrow its seed to a couple of candidates.
+    for (const label of [SECRET.slice(0, 64), SECRET, AGENT]) {
+      const r = await prepareAddAgentAction(VAULT, AGENT, label);
+      expect(r).toEqual({ error: KEY_ERRORS.labelIsKey });
+    }
+    expect(h.asked).toEqual([]);
+    const everything = logs.lines.join("\n");
+    expect(everything).not.toContain(SECRET_BODY.slice(0, 40));
+    expect(everything).not.toContain(SECRET_BODY.slice(20, 50));
+  });
+
   it("refuses what is not a public key, and a label over 64 bytes", async () => {
     expect(await prepareAddAgentAction(VAULT, "hello", "mcp")).toEqual({
       error: KEY_ERRORS.notPublic,

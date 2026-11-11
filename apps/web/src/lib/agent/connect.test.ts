@@ -5,6 +5,7 @@ import {
   agentEligibility,
   agentList,
   checkPastedPair,
+  cleanAgentLabel,
   clientConfigs,
   focusAgent,
   initLines,
@@ -241,6 +242,40 @@ describe("checkPastedPair", () => {
     });
   });
 
+  it("refuses a key as the label: the label is public on the vault (list_agents)", () => {
+    // A secret pasted into a field cut at 64 characters: ed25519: and 56 base58 characters, which narrow its seed
+    // to a couple of candidates.
+    const cut = SECRET.slice(0, 64);
+    for (const raw of [
+      cut,
+      SECRET,
+      SECRET_BODY,
+      cut.slice("ed25519:".length),
+      AGENT,
+      `my ${AGENT}`,
+    ]) {
+      const r = checkPastedPair(EMPTY, form(AGENT, LEDGER, raw));
+      expect(r).toMatchObject({ ok: false, labelError: KEY_ERRORS.labelIsKey });
+      expect(JSON.stringify(r)).not.toContain(SECRET_BODY.slice(10, 40));
+      expect(cleanAgentLabel(raw)).toEqual({ ok: false, error: KEY_ERRORS.labelIsKey });
+    }
+    // A whole secret in the label is flagged as one, like a secret in a key field.
+    expect(checkPastedPair(EMPTY, form(AGENT, LEDGER, SECRET))).toMatchObject({ secret: true });
+    // Names stay names, a long one included.
+    for (const name of [
+      "mcp-claude",
+      "Claude Code on my laptop",
+      "research-bot.vaults.probarion.testnet",
+    ]) {
+      expect(cleanAgentLabel(name)).toEqual({ ok: true, value: name });
+    }
+    // Too long, and no key in it: the byte limit says so.
+    expect(cleanAgentLabel("a-".repeat(40))).toEqual({
+      ok: false,
+      error: "The label is at most 64 bytes.",
+    });
+  });
+
   it("names a blank label mcp", () => {
     expect(checkPastedPair(EMPTY, form(AGENT, LEDGER, "  "))).toMatchObject({
       ok: true,
@@ -324,27 +359,79 @@ describe("the lines the page shows", () => {
   const VAULT = "research-bot.vaults.probarion.testnet";
 
   it("makes the keys with one npx line once the server is on npm", () => {
-    expect(initLines(VAULT, true)).toEqual([`npx -y @probarion/mcp@0.1.1 init --vault ${VAULT}`]);
+    expect(initLines(VAULT, "testnet", true)).toEqual({
+      lines: [`npx -y @probarion/mcp@0.1.1 init --vault ${VAULT}`],
+      powershell: null,
+    });
   });
 
   it("builds the server from a clone, one command per line, until then", () => {
-    expect(initLines(VAULT, false)).toEqual([
-      "git clone https://github.com/probarion/probarion",
-      "cd probarion",
-      "pnpm install --frozen-lockfile",
-      'pnpm --filter "@probarion/mcp..." run build',
-      `node packages/mcp/dist/bin.js init --vault ${VAULT}`,
-    ]);
+    expect(initLines(VAULT, "testnet", false)).toEqual({
+      lines: [
+        "git clone https://github.com/probarion/probarion",
+        "cd probarion",
+        "pnpm install --frozen-lockfile",
+        'pnpm --filter "@probarion/mcp..." run build',
+        `node packages/mcp/dist/bin.js init --vault ${VAULT}`,
+      ],
+      powershell: null,
+    });
   });
 
   it("runs status with the vault in its environment, in a POSIX shell and in PowerShell", () => {
-    expect(statusCommand(VAULT, true)).toEqual({
+    expect(statusCommand(VAULT, "testnet", true)).toEqual({
       posix: `PROBARION_VAULT_ID=${VAULT} npx -y @probarion/mcp@0.1.1 status`,
       powershell: `$env:PROBARION_VAULT_ID = "${VAULT}"; npx -y @probarion/mcp@0.1.1 status`,
     });
-    expect(statusCommand(VAULT, false).posix).toBe(
+    expect(statusCommand(VAULT, "testnet", false).posix).toBe(
       `PROBARION_VAULT_ID=${VAULT} node packages/mcp/dist/bin.js status`,
     );
+  });
+
+  it("sets NEAR_NETWORK for init and status too, under the client settings' rule", () => {
+    // init and status refuse a vault id that does not say its network unless NEAR_NETWORK is set.
+    for (const onNpm of [true, false]) {
+      const run = onNpm ? "npx -y @probarion/mcp@0.1.1" : "node packages/mcp/dist/bin.js";
+      const init = initLines("vault.example", "mainnet", onNpm);
+      expect(init.lines.at(-1)).toBe(`NEAR_NETWORK=mainnet ${run} init --vault vault.example`);
+      expect(init.powershell).toBe(
+        `$env:NEAR_NETWORK = "mainnet"; ${run} init --vault vault.example`,
+      );
+      expect(statusCommand("vault.example", "mainnet", onNpm)).toEqual({
+        posix: `PROBARION_VAULT_ID=vault.example NEAR_NETWORK=mainnet ${run} status`,
+        powershell: `$env:PROBARION_VAULT_ID = "vault.example"; $env:NEAR_NETWORK = "mainnet"; ${run} status`,
+      });
+      // A .near or .testnet vault says its network itself.
+      for (const [vault, network] of [
+        [VAULT, "testnet"],
+        ["acme.vaults.probarion.near", "mainnet"],
+      ] as const) {
+        expect(initLines(vault, network, onNpm).lines.join("\n")).not.toContain("NEAR_NETWORK");
+        expect(initLines(vault, network, onNpm).powershell).toBeNull();
+        expect(JSON.stringify(statusCommand(vault, network, onNpm))).not.toContain("NEAR_NETWORK");
+      }
+    }
+  });
+
+  it("gives every client a Windows form, in both states of MCP_ON_NPM", () => {
+    for (const onNpm of [true, false]) {
+      for (const c of clientConfigs(VAULT, "testnet", onNpm)) {
+        expect(c.windows, `${c.label} onNpm=${onNpm}`).not.toBeNull();
+      }
+    }
+    // npx is a batch file on Windows: Cursor and Codex start it through cmd /c too (packages/mcp/README.md).
+    const npx = clientConfigs(VAULT, "testnet", true);
+    expect(npx[2]?.windows).toBe(npx[1]?.windows);
+    expect(npx[2]?.windows).toBe(
+      'On Windows: `"command": "cmd"` and `"args": ["/c", "npx", "-y", "@probarion/mcp@0.1.1"]`.',
+    );
+    expect(npx[3]?.windows).toBe(
+      'On Windows: `command = "cmd"` and `args = ["/c", "npx", "-y", "@probarion/mcp@0.1.1"]`.',
+    );
+    // From a clone, node starts as it is: only the path's slashes change.
+    const clone = clientConfigs(VAULT, "testnet", false);
+    expect(clone[2]?.windows).toBe(clone[1]?.windows);
+    expect(clone[3]?.windows).toContain("C:/path/to/probarion/packages/mcp/dist/bin.js");
   });
 
   it("gives the four clients, with the mockup's npx forms", () => {

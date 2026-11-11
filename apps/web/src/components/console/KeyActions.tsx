@@ -118,6 +118,19 @@ const LEDGER_MAYBE_ELSEWHERE =
   "The vault's keys could not be read, so it is not known whether your own agent holds its ledger key. If it does, a ledger key made here replaces it, and that agent then refuses every payment.";
 export const REPLACE_OUTSIDE_LEDGER_CONFIRM =
   "Replace a ledger key held outside Probarion? The agent that holds it can no longer anchor, and refuses every payment from this vault. Hosted Payables needs a vault of its own.";
+export const REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM =
+  "The vault's keys could not be read. If your own agent holds its ledger key, a new one here replaces it, and that agent then refuses every payment from this vault. Go on?";
+
+/**
+ * The danger confirm before a ledger key made in the console may replace one the user's own agent holds: when the
+ * chain says so (true), or when it could not be read (null), which the text says as unknown. Undefined when the
+ * vault's ledger key is the console's own (false).
+ */
+export function outsideLedgerConfirm(heldElsewhere: boolean | null): string | undefined {
+  if (heldElsewhere === true) return REPLACE_OUTSIDE_LEDGER_CONFIRM;
+  if (heldElsewhere === null) return REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM;
+  return undefined;
+}
 
 /** Owner only (the page renders it for the owner; the actions check again). */
 export function KeyActions(props: {
@@ -210,11 +223,10 @@ export function KeyActions(props: {
               lockKey={lockKeyFor(`keys:new-ledger:${props.vault}`)}
               prepare={() => props.generate("ledger", "ledger")}
               confirm={
-                props.ledgerHeldElsewhere !== false
-                  ? REPLACE_OUTSIDE_LEDGER_CONFIRM
-                  : props.ledgerActive
-                    ? "Replace the vault's ledger key? The current one is removed from the vault."
-                    : undefined
+                outsideLedgerConfirm(props.ledgerHeldElsewhere) ??
+                (props.ledgerActive
+                  ? "Replace the vault's ledger key? The current one is removed from the vault."
+                  : undefined)
               }
               confirmTone={props.ledgerHeldElsewhere !== false ? "danger" : undefined}
               describe={describe}

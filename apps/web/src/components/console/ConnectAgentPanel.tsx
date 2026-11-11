@@ -2,8 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import {
+  type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  useEffect,
   useId,
   useMemo,
   useRef,
@@ -37,6 +39,7 @@ import {
   type LedgerBlock,
   type LedgerEligibility,
   type OutsideKey,
+  type PairCheck,
   type StatusTone,
   shortKey,
   statusCommand,
@@ -89,7 +92,13 @@ export interface ConnectAgentPanelProps {
 }
 
 const muted = "text-mute";
-const eyebrow = "mb-1 block text-xs font-semibold tracking-[.16em] text-gold-ink uppercase";
+const eyebrow = "mb-1 block text-xs font-semibold tracking-[.16em] text-gold-small uppercase";
+/** Below 480px a row of links fills the width, one pill per line, as the mockup draws it. */
+const pillRow = "max-[480px]:w-full";
+/** A wallet button that fills its column on a phone (TxButton's own button, not its small unlock link). */
+const wideButtonBelow560 = "max-[560px]:[&>div>button:first-child]:w-full";
+/** The same for a wallet button alone in a row of buttons, below 480px. */
+const wideButtonBelow480 = "max-[480px]:[&>div>button:first-child]:w-full";
 const copyClass =
   "absolute top-2.5 right-2.5 rounded-full border border-paper/25 px-2.5 py-0.5 text-xs font-medium text-paper hover:bg-paper/10";
 
@@ -149,15 +158,44 @@ function StepCard({
   );
 }
 
-/** An ink code block with a Copy button, as the docs draw one. */
-function CodeBlock({ code }: { code: string }) {
+/**
+ * An ink code block with a Copy button, as the docs draw one. `copyLabel` is the button's name for a screen reader, as
+ * the page has several: "Copy the status command".
+ */
+function CodeBlock({ code, copyLabel }: { code: string; copyLabel: string }) {
   return (
     <div className="relative mt-2">
       <pre className="mono overflow-x-auto rounded-2xl bg-ink px-4 pt-11 pb-4 text-xs text-paper">
         {code}
       </pre>
-      <CopyButton text={code} className={copyClass} />
+      <CopyButton text={code} ariaLabel={copyLabel} className={copyClass} />
     </div>
+  );
+}
+
+type Verdict = "ok" | "not yet";
+
+/**
+ * A `status` line as the MCP server prints it: two spaces, the verdict and the check in columns, then the detail. The
+ * verdict is coloured as the terminal would show it.
+ */
+function StatusLine({
+  verdict,
+  check,
+  detail,
+}: {
+  verdict: Verdict;
+  check: string;
+  detail: string;
+}) {
+  return (
+    <>
+      {"  "}
+      <span className={`font-semibold ${verdict === "ok" ? "text-ok" : "text-gold-ink"}`}>
+        {verdict}
+      </span>
+      {`${" ".repeat(9 - verdict.length)}${check.padEnd(11)} ${detail}\n`}
+    </>
   );
 }
 
@@ -170,10 +208,11 @@ function Output({ children }: { children: ReactNode }) {
   );
 }
 
+/** A result panel. It is not a live region: step 2's status region, mounted with the page, says its title. */
 function Panel({ tone, title, children }: { tone: PanelTone; title: string; children: ReactNode }) {
   const t = PANEL_TONES[tone];
   return (
-    <section aria-live="polite" className={`mb-4 rounded-3xl border px-5 py-4 ${t.box}`}>
+    <section className={`mb-4 rounded-3xl border px-5 py-4 ${t.box}`}>
       <div className="flex items-center gap-2.5">
         <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-full ${t.dot}`} />
         <h3 className="text-lg font-normal tracking-tight">{title}</h3>
@@ -184,7 +223,13 @@ function Panel({ tone, title, children }: { tone: PanelTone; title: string; chil
 }
 
 const ONE_LEDGER =
-  "A vault has one ledger, so a second one here would fork its history, and the agent would refuse to pay (`LEDGER_FORK_RISK`). Give the agent a vault of its own: it takes one wallet prompt.";
+  "A vault has one ledger, so a second one here would fork its history, and the agent would refuse to pay (`LEDGER_FORK_RISK`).";
+/** What to do instead, by network: the console creates vaults on testnet only (on mainnet its factory is not deployed). */
+const OWN_VAULT: Readonly<Record<Network, string>> = {
+  testnet: "Give the agent a vault of its own: it takes one wallet prompt.",
+  mainnet:
+    "The agent needs a vault of its own. Vaults cannot be created on mainnet yet: its factory is not deployed.",
+};
 
 function blockedFirst(reason: LedgerBlock, entries: number): string {
   switch (reason) {
@@ -312,13 +357,20 @@ function ClientTabs({
               <Ticks text={c.where} />
             </p>
           ) : null}
-          <CodeBlock code={c.code} />
+          <CodeBlock
+            code={c.code}
+            copyLabel={
+              c.where === null ? `Copy the ${c.label} command` : `Copy the ${c.label} settings`
+            }
+          />
           {c.windows ? (
             <p className={`mt-3 text-sm ${muted}`}>
               <Ticks text={c.windows} />
             </p>
           ) : null}
-          {c.windowsCode ? <CodeBlock code={c.windowsCode} /> : null}
+          {c.windowsCode ? (
+            <CodeBlock code={c.windowsCode} copyLabel={`Copy the ${c.label} Windows command`} />
+          ) : null}
         </div>
       ))}
     </>
@@ -351,7 +403,8 @@ function StatusCard(
     pasted: props.pasted,
   });
   const left = stepsLeft(rows);
-  const status = statusCommand(props.vault, props.onNpm);
+  const status = statusCommand(props.vault, props.network, props.onNpm);
+  const keysDir = `~/.probarion/${props.vault}`;
   const focus = focusAgent({ outsideAgents: props.outsideAgents, pasted: props.pasted });
   const remove = focus !== null && props.canAct ? props.removeTxs[focus] : undefined;
   return (
@@ -377,28 +430,36 @@ function StatusCard(
         agent&apos;s machine, <code className="mono text-[13px]">status</code> runs the same checks
         plus the local ledger:
       </p>
-      <CodeBlock code={status.posix} />
+      <CodeBlock code={status.posix} copyLabel="Copy the status command" />
       <p className={`mt-2 text-xs ${muted}`}>
         In Windows PowerShell, set the vault first:{" "}
         <code className="mono wrap-anywhere">{status.powershell}</code>
       </p>
       <p className={`mt-3 text-xs font-semibold tracking-[.08em] uppercase ${muted}`}>
-        What it prints, for example
+        What it prints, roughly
       </p>
       <Output>
-        <span className="font-semibold text-ok">ok</span>
-        {`       keys file ~/.probarion/${props.vault}/keys.json\n`}
-        <span className="font-semibold text-ok">ok</span>
-        {"       agent key is on the vault, spend() only, 1.000 NEAR gas left\n"}
-        <span className="font-semibold text-gold-ink">not yet</span>
-        {"  the vault has no ledger key: sign set_ledger_key on the Agent (MCP) tab\n"}
-        <span className="font-semibold text-gold-ink">not yet</span>
-        {"  no active mandate for this agent key: create one on the Mandates tab\n"}
-        <span className="font-semibold text-ok">ok</span>
-        {`       the vault holds 25.00 ${props.testUsdc ? "test USDC" : "USDC"}\n`}
-        <span className="font-semibold text-ok">ok</span>
-        {"       ledger: 0 local entries, no anchor on chain, nothing else writes it\n"}
-        {"Not ready: 2 steps left."}
+        {`probarion-mcp status: vault ${props.vault} on ${props.network}. Read-only: nothing is signed or sent.\n`}
+        <StatusLine verdict="ok" check="keys" detail={`from the keys file ${keysDir}/keys.json`} />
+        <StatusLine verdict="ok" check="vault" detail="not frozen" />
+        <StatusLine
+          verdict="ok"
+          check="agent key"
+          detail="ed25519:... is an agent key of the vault: for spend only, 1 NEAR of allowance left"
+        />
+        <StatusLine verdict="not yet" check="ledger key" detail="the vault has no ledger key yet" />
+        <StatusLine
+          verdict="not yet"
+          check="mandates"
+          detail="no active mandate is bound to the agent key"
+        />
+        <StatusLine verdict="ok" check="USDC" detail="25 USDC in the vault" />
+        <StatusLine
+          verdict="ok"
+          check="ledger"
+          detail={`${keysDir}/ledger.jsonl holds 0 entries, and the vault has no anchor yet`}
+        />
+        {"\nNot ready: 2 not yet.\nNext (ledger key): ..."}
       </Output>
       <p className="mt-4 text-sm">
         When every line says ok, ask your agent:{" "}
@@ -410,16 +471,18 @@ function StatusCard(
       </p>
       {remove ? (
         <>
-          <TxButton
-            label="Remove this agent key"
-            network={props.network}
-            expectedSigner={props.signer}
-            tx={remove}
-            lockKey={lockKeyFor(`agent:remove:${props.vault}:${focus}`)}
-            confirm="Remove this agent key from the vault? The agent that holds it stops at once."
-            confirmTone="danger"
-            describe={signerFirst(props.outOfNearCodes)}
-          />
+          <div className={wideButtonBelow480}>
+            <TxButton
+              label="Remove this agent key"
+              network={props.network}
+              expectedSigner={props.signer}
+              tx={remove}
+              lockKey={lockKeyFor(`agent:remove:${props.vault}:${focus}`)}
+              confirm="Remove this agent key from the vault? The agent that holds it stops at once."
+              confirmTone="danger"
+              describe={signerFirst(props.outOfNearCodes)}
+            />
+          </div>
           <p className={`text-xs ${muted}`}>
             Removing the agent key stops the agent at once. Its ledger stays valid; anchors already
             on chain keep the key that signed them.
@@ -449,6 +512,16 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
     [facts, submitted],
   );
   const ok = check?.ok ? check : null;
+  const agentInput = useRef<HTMLInputElement>(null);
+  const ledgerInput = useRef<HTMLInputElement>(null);
+  const labelInput = useRef<HTMLInputElement>(null);
+  /** The field a failed check sends the focus to, once its error is on the page (`at` tells two checks apart). */
+  const [focusTo, setFocusTo] = useState<{ field: FieldName; at: number } | null>(null);
+  useEffect(() => {
+    if (focusTo === null) return;
+    const to = { agent: agentInput, ledger: ledgerInput, label: labelInput }[focusTo.field];
+    to.current?.focus();
+  }, [focusTo]);
 
   if (facts === null) return null;
   if (!props.isOwner) {
@@ -466,9 +539,15 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
     set(e.target.value);
     setSubmitted(null);
   };
-  const lines = initLines(props.vault, props.onNpm);
-  const agentLine = ok ? shortKey(ok.agentKey) : "the agent key from step 2";
-  const ledgerLine = ok ? shortKey(ok.ledgerKey) : "the ledger key from step 2";
+  const onCheck = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = { agent: agentRaw, ledger: ledgerRaw, label };
+    setSubmitted(form);
+    const field = firstErrorField(checkPastedPair(facts, form));
+    if (field !== null) setFocusTo({ field, at: Date.now() });
+  };
+  const init = initLines(props.vault, props.network, props.onNpm);
+  const keysDir = `~/.probarion/${props.vault}`;
   const agentNear = formatNear(props.allowances.agentYocto, 3);
   const ledgerNear = formatNear(props.allowances.ledgerYocto, 3);
   const describe = signerFirst(props.outOfNearCodes);
@@ -480,6 +559,32 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
     ok?.agent.kind === "on_vault"
       ? ok.agent.label
       : (props.outsideAgents.find((a) => a.public_key === focus)?.label ?? null);
+  // Before anything is pasted, step 3 says what the chain shows, as step 6 does: the vault's one agent key held
+  // outside Probarion, and its ledger key when the user's own agent holds it, scoped to anchor().
+  const chainAgent = ok === null ? focus : null;
+  const chainLedger =
+    ok === null && props.outsideLedger?.access.state === "scoped"
+      ? props.outsideLedger.public_key
+      : null;
+  const agentLine = ok
+    ? shortKey(ok.agentKey)
+    : chainAgent !== null
+      ? shortKey(chainAgent)
+      : "the agent key from step 2";
+  const ledgerLine = ok
+    ? shortKey(ok.ledgerKey)
+    : chainLedger !== null
+      ? shortKey(chainLedger)
+      : "the ledger key from step 2";
+  const agentLabelLine = ok
+    ? ok.agent.kind === "on_vault"
+      ? ok.agent.label
+      : ok.label
+    : chainAgent !== null
+      ? (focusLabel ?? "")
+      : label;
+  const agentOnVault = ok ? ok.agent.kind === "on_vault" : chainAgent !== null;
+  const ledgerOnVault = ok ? ok.ledger.kind === "same" : chainLedger !== null;
   const bound =
     focus === null || props.activeMandateKeys === null
       ? null
@@ -494,83 +599,114 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
           {props.onNpm
             ? "It needs Node 24 or later."
             : "It builds the MCP server from a clone of the public repository, and needs git, Node 24 or later and pnpm 10."}{" "}
-          It saves both keys to a file only you can read, and prints only their public halves.
+          It saves both keys to a keys file and prints only their public halves. On macOS and Linux
+          only you can read that file (mode 0600). On Windows its folder&apos;s permissions apply,
+          so keep that folder private.
         </p>
-        <CodeBlock code={lines.join("\n")} />
+        <CodeBlock code={init.lines.join("\n")} copyLabel="Copy the commands that make the keys" />
         <p className={`mt-2 text-xs ${muted}`}>
-          {lines.length === 1
-            ? "On Windows the same line works in PowerShell. Run it again any time: it never overwrites the keys, it prints the public keys again."
-            : "On Windows the same lines work in PowerShell. Run the last line again any time: it never overwrites the keys, it prints the public keys again."}
+          {init.powershell !== null ? (
+            <>
+              In Windows PowerShell, the last line is{" "}
+              <code className="mono wrap-anywhere">{init.powershell}</code>.{" "}
+            </>
+          ) : init.lines.length === 1 ? (
+            "On Windows the same line works in PowerShell. "
+          ) : (
+            "On Windows the same lines work in PowerShell. "
+          )}
+          {init.lines.length === 1
+            ? "Run it again any time: it never overwrites the keys, it prints the public keys again."
+            : "Run the last line again any time: it never overwrites the keys, it prints the public keys again."}
         </p>
         <p className={`mt-4 text-xs font-semibold tracking-[.08em] uppercase ${muted}`}>
-          What it prints
+          What it prints, roughly
         </p>
         <Output>
-          {`Saved both keys to ~/.probarion/${props.vault}/keys.json\n(only you can read it). The secret keys are not printed.\n\nPaste these two PUBLIC keys in the console:\n  agent public key   `}
+          {`probarion-mcp init: vault ${props.vault} on ${props.network}\nWrote the keys file ${keysDir}/keys.json (mode 0600). It holds the two secret keys, which are not printed.\n\nagent public key:  `}
           <span className="font-semibold text-gold-ink">ed25519:...</span>
-          {"\n  ledger public key  "}
+          {"\nledger public key: "}
           <span className="font-semibold text-gold-ink">ed25519:...</span>
-          {`\n\nBack up the folder ~/.probarion/${props.vault}/:\nits ledger.jsonl is the only copy of this agent's signed record.`}
+          {"\n\nNext: ..."}
         </Output>
+        <p className={`mt-2 text-xs ${muted}`}>
+          Back up the folder <code className="mono wrap-anywhere">{keysDir}/</code>, and keep the
+          backup as private as the keys file: its <code className="mono">ledger.jsonl</code> is the
+          only copy of this agent&apos;s signed record.
+        </p>
       </StepCard>
 
       <StepCard id="agent-paste" step={2} title="Paste the two public keys">
-        <div className="grid gap-x-6 md:grid-cols-2">
-          <Field
-            label="Agent public key"
-            hint={
-              ok?.agent.kind === "on_vault"
-                ? KEY_ERRORS.onVault
-                : "It can call spend() only. A vault holds at most 16 agent keys."
-            }
-            error={check && !check.ok ? (check.agentError ?? undefined) : undefined}
-          >
-            <input
-              className={`${inputClass} mono`}
-              value={agentRaw}
-              onChange={edit(setAgentRaw)}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="ed25519:..."
-            />
-          </Field>
-          <Field
-            label="Ledger public key"
-            hint="It can call anchor() only, and signs each ledger entry."
-            error={check && !check.ok ? (check.ledgerError ?? undefined) : undefined}
-          >
-            <input
-              className={`${inputClass} mono`}
-              value={ledgerRaw}
-              onChange={edit(setLedgerRaw)}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="ed25519:..."
-            />
-          </Field>
-        </div>
-        <div className="max-w-[420px]">
-          <Field
-            label="Agent key label"
-            hint="At most 64 bytes. It is stored on the vault with the key."
-            error={check && !check.ok ? (check.labelError ?? undefined) : undefined}
-          >
-            <input className={inputClass} value={label} maxLength={64} onChange={edit(setLabel)} />
-          </Field>
-        </div>
-        <div className="mb-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={buttonClass}
-            onClick={() => setSubmitted({ agent: agentRaw, ledger: ledgerRaw, label })}
-          >
-            Check these keys
-          </button>
-        </div>
+        {/* A form, so Enter in a field runs the check. Nothing is submitted: the check runs here, in the browser. */}
+        <form onSubmit={onCheck} noValidate>
+          <div className="grid gap-x-6 md:grid-cols-2">
+            <Field
+              label="Agent public key"
+              hint={
+                ok?.agent.kind === "on_vault"
+                  ? KEY_ERRORS.onVault
+                  : "It can call spend() only. A vault holds at most 16 agent keys."
+              }
+              error={check && !check.ok ? (check.agentError ?? undefined) : undefined}
+            >
+              <input
+                ref={agentInput}
+                className={`${inputClass} mono`}
+                value={agentRaw}
+                onChange={edit(setAgentRaw)}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="ed25519:..."
+              />
+            </Field>
+            <Field
+              label="Ledger public key"
+              hint="It can call anchor() only, and signs each ledger entry."
+              error={check && !check.ok ? (check.ledgerError ?? undefined) : undefined}
+            >
+              <input
+                ref={ledgerInput}
+                className={`${inputClass} mono`}
+                value={ledgerRaw}
+                onChange={edit(setLedgerRaw)}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="ed25519:..."
+              />
+            </Field>
+          </div>
+          <div className="max-w-[420px]">
+            <Field
+              label="Agent key label"
+              hint="At most 64 bytes. It is stored on the vault with the key, where anyone can read it."
+              error={check && !check.ok ? (check.labelError ?? undefined) : undefined}
+            >
+              {/* No maxLength: a long paste reaches the check whole, so a key pasted here is caught, not cut. */}
+              <input
+                ref={labelInput}
+                className={inputClass}
+                value={label}
+                onChange={edit(setLabel)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </Field>
+          </div>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button type="submit" className={`${buttonClass} ${pillRow}`}>
+              Check these keys
+            </button>
+          </div>
+        </form>
+        {/* Mounted with the page, so the result of each check is announced. */}
+        <p role="status" className="sr-only">
+          {checkStatus(check)}
+        </p>
         {ok ? (
           <CheckedPanel
             ok={ok}
             facts={facts}
+            network={props.network}
             replaceButton={
               ok.ledger.kind === "replace" && props.canAct && props.setLedgerKey ? (
                 <TxButton
@@ -598,7 +734,7 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
             <div className="min-w-0 flex-[1_1_320px]">
               <h3 className="flex flex-wrap items-center gap-2 text-base font-medium">
                 Add the agent key{" "}
-                {ok?.agent.kind === "on_vault" ? (
+                {agentOnVault ? (
                   <Badge tone="good">on the vault</Badge>
                 ) : (
                   <Badge tone="warn">not yet</Badge>
@@ -606,15 +742,20 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
               </h3>
               <p className={`mt-0.5 text-sm wrap-anywhere ${muted}`}>
                 <code className="mono text-[13px]">add_agent</code> on {props.vault}: key{" "}
-                {agentLine}, label &quot;
-                {ok ? (ok.agent.kind === "on_vault" ? ok.agent.label : ok.label) : label}&quot;,{" "}
+                {agentLine}, label &quot;{agentLabelLine}&quot;,{" "}
                 <code className="mono text-[13px]">spend()</code> only, {agentNear} NEAR gas
                 allowance, 1 yoctoNEAR deposit.
               </p>
             </div>
-            <div className="flex flex-none flex-col items-end gap-1 max-[560px]:w-full max-[560px]:items-stretch">
+            <div
+              className={`flex flex-none flex-col items-end gap-1 max-[560px]:w-full max-[560px]:items-stretch ${wideButtonBelow560}`}
+            >
               {ok === null ? (
-                <span className={`text-xs ${muted}`}>Check the keys in step 2 first.</span>
+                chainAgent !== null ? (
+                  <Done network={props.network} result={results.agent} />
+                ) : (
+                  <span className={`text-xs ${muted}`}>Check the keys in step 2 first.</span>
+                )
               ) : ok.agent.kind === "on_vault" ? (
                 <Done network={props.network} result={results.agent} />
               ) : props.canAct && props.addAgent ? (
@@ -636,7 +777,7 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
             <div className="min-w-0 flex-[1_1_320px]">
               <h3 className="flex flex-wrap items-center gap-2 text-base font-medium">
                 Set the ledger key{" "}
-                {ok?.ledger.kind === "same" ? (
+                {ledgerOnVault ? (
                   <Badge tone="good">on the vault</Badge>
                 ) : ok?.ledger.kind === "blocked" ? (
                   <Badge tone="neutral">not offered</Badge>
@@ -650,9 +791,15 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
                 allowance, 1 yoctoNEAR deposit.
               </p>
             </div>
-            <div className="flex flex-none flex-col items-end gap-1 max-[560px]:w-full max-[560px]:items-stretch">
+            <div
+              className={`flex flex-none flex-col items-end gap-1 max-[560px]:w-full max-[560px]:items-stretch ${wideButtonBelow560}`}
+            >
               {ok === null ? (
-                <span className={`text-xs ${muted}`}>Check the keys in step 2 first.</span>
+                chainLedger !== null ? (
+                  <Done network={props.network} result={results.ledger} />
+                ) : (
+                  <span className={`text-xs ${muted}`}>Check the keys in step 2 first.</span>
+                )
               ) : ok.ledger.kind === "same" ? (
                 <Done network={props.network} result={results.ledger} />
               ) : ok.ledger.kind === "blocked" ? (
@@ -714,7 +861,7 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
           <RouteLink
             route="/console/[vault]/mandates"
             href={`${base}/mandates`}
-            className={buttonClass}
+            className={`${buttonClass} ${pillRow}`}
           >
             Create a mandate for this key
           </RouteLink>
@@ -722,7 +869,7 @@ export function ConnectAgentPanel(props: ConnectAgentPanelProps) {
             <RouteLink
               route="/console/[vault]/topup"
               href={`${base}/topup`}
-              className={lineButtonClass}
+              className={`${lineButtonClass} ${pillRow}`}
             >
               Add test USDC
             </RouteLink>
@@ -778,31 +925,72 @@ async function noAction(): Promise<Prepared> {
   return { error: "Only the vault's owner can sign this." };
 }
 
-function CheckedPanel({
+type FieldName = "agent" | "ledger" | "label";
+type Checked = PairCheck & { ok: true };
+
+/** The first field, in the page's order, whose check failed; null when the check passed. */
+export function firstErrorField(check: PairCheck): FieldName | null {
+  if (check.ok) return null;
+  if (check.agentError !== null) return "agent";
+  if (check.ledgerError !== null) return "ledger";
+  if (check.labelError !== null) return "label";
+  return null;
+}
+
+const CHECKED_TITLE = {
+  blocked: "This vault already keeps its ledger elsewhere",
+  replace: "The vault has another ledger key, never used",
+  good: "This agent can own this vault's ledger",
+} as const;
+
+function checkedTitle(ok: Checked): string {
+  return ok.ledger.kind === "blocked"
+    ? CHECKED_TITLE.blocked
+    : ok.ledger.kind === "replace"
+      ? CHECKED_TITLE.replace
+      : CHECKED_TITLE.good;
+}
+
+/**
+ * What step 2's status region says after "Check these keys": the result panel's title, or the first field's error.
+ * Both are fixed sentences, so nothing that was pasted is ever read out.
+ */
+export function checkStatus(check: PairCheck | null): string {
+  if (check === null) return "";
+  if (check.ok) return checkedTitle(check);
+  return check.agentError ?? check.ledgerError ?? check.labelError ?? "";
+}
+
+/** The result of a check that passed, under step 2. Exported for its tests. */
+export function CheckedPanel({
   ok,
   facts,
+  network,
   replaceButton,
 }: {
-  ok: { agentKey: string; ledgerKey: string; agent: AgentEligibility; ledger: LedgerEligibility };
+  ok: Checked;
   facts: VaultKeyFacts;
+  network: Network;
   replaceButton: ReactNode;
 }) {
   if (ok.ledger.kind === "blocked") {
     return (
-      <Panel tone="warn" title="This vault already keeps its ledger elsewhere">
+      <Panel tone="warn" title={CHECKED_TITLE.blocked}>
         <p className="mt-1.5 text-sm">
           <Ticks
-            text={`${blockedFirst(ok.ledger.reason, facts.hostedLedgerEntries)} ${ONE_LEDGER}`}
+            text={`${blockedFirst(ok.ledger.reason, facts.hostedLedgerEntries)} ${ONE_LEDGER} ${OWN_VAULT[network]}`}
           />
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <RouteLink route="/console" className={buttonClass}>
-            Create a vault for this agent
-          </RouteLink>
+          {network === "testnet" ? (
+            <RouteLink route="/console" className={`${buttonClass} ${pillRow}`}>
+              Create a vault for this agent
+            </RouteLink>
+          ) : null}
           <RouteLink
             route="/docs/build/let-an-agent-pay"
             href="/docs/build/let-an-agent-pay#one-ledger-writer-per-vault"
-            className={lineButtonClass}
+            className={`${lineButtonClass} ${pillRow}`}
           >
             Why one ledger per vault
           </RouteLink>
@@ -812,18 +1000,18 @@ function CheckedPanel({
   }
   if (ok.ledger.kind === "replace") {
     return (
-      <Panel tone="warn" title="The vault has another ledger key, never used">
+      <Panel tone="warn" title={CHECKED_TITLE.replace}>
         <p className="mt-1.5 text-sm wrap-anywhere">
           The vault&apos;s ledger key is {shortKey(ok.ledger.current)}, and nothing was ever
           anchored with it. Setting this agent&apos;s key replaces it: whoever holds the old key can
           no longer anchor.
         </p>
-        {replaceButton ? <div className="mt-3">{replaceButton}</div> : null}
+        {replaceButton ? <div className={`mt-3 ${wideButtonBelow480}`}>{replaceButton}</div> : null}
       </Panel>
     );
   }
   return (
-    <Panel tone="good" title="This agent can own this vault's ledger">
+    <Panel tone="good" title={CHECKED_TITLE.good}>
       <p className="mt-1.5 text-sm">{goodText(ok.agent, ok.ledger, facts)}</p>
       <dl className="mt-2.5 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-[13px]">
         <dt className="opacity-80">Agent</dt>

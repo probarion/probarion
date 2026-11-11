@@ -22,7 +22,12 @@ vi.mock("@/components/wallet/TxButton", () => ({
   },
 }));
 
-import { KeyTxButton } from "./KeyActions";
+import {
+  KeyTxButton,
+  outsideLedgerConfirm,
+  REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM,
+  REPLACE_OUTSIDE_LEDGER_CONFIRM,
+} from "./KeyActions";
 import { RevokeMandateButton } from "./RevokeMandateButton";
 import { VaultTxButton } from "./VaultTxButton";
 
@@ -71,6 +76,15 @@ describe("the buttons that wrap TxButton pass the tone through", () => {
     expect(last().confirmTone).toBe("danger");
     renderToStaticMarkup(createElement(KeyTxButton, props));
     expect(last().confirmTone).toBeUndefined();
+  });
+
+  it("a new ledger key asks about a ledger key held outside Probarion as a fact only when the chain says so", () => {
+    expect(outsideLedgerConfirm(true)).toBe(REPLACE_OUTSIDE_LEDGER_CONFIRM);
+    // The chain could not be read: the dialog says it is not known.
+    expect(outsideLedgerConfirm(null)).toBe(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM);
+    expect(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM).toContain("could not be read");
+    expect(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM).toContain("If your own agent holds");
+    expect(outsideLedgerConfirm(false)).toBeUndefined();
   });
 
   it("RevokeMandateButton asks with the danger dialog, and keeps its text", () => {

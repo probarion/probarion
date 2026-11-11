@@ -56,7 +56,9 @@ export default async function AgentPage({ params }: { params: Promise<{ vault: s
   return (
     <div>
       <h1 className="mono mb-1 text-2xl font-semibold break-all">{vault}</h1>
-      <p className={`mb-4 text-sm ${muted}`}>Connect an AI agent (MCP), you are {member.role}</p>
+      <p className={`mb-4 text-sm ${muted}`}>
+        Connect an AI agent (MCP) &middot; you are {member.role}
+      </p>
       <VaultNav vault={vault} />
       <Notice>
         Your agent&apos;s two keys are made on your own machine and stay there: Probarion never sees

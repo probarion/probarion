@@ -4,7 +4,7 @@ import {
   KeyKeepButton,
   KeySyncButton,
   KeyTxButton,
-  REPLACE_OUTSIDE_LEDGER_CONFIRM,
+  outsideLedgerConfirm,
 } from "@/components/console/KeyActions";
 import { VaultNav } from "@/components/console/VaultNav";
 import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
@@ -107,11 +107,10 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             tx={setLedgerKeyTx(vault, k.public_key, allowance.ledgerAllowanceYocto)}
             lockKey={lockKeyFor(`keys:set-ledger:${vault}:${k.public_key}`)}
             confirm={
-              view.ledgerHeldElsewhere !== false
-                ? REPLACE_OUTSIDE_LEDGER_CONFIRM
-                : view.ledgerActive
-                  ? "Replace the vault's ledger key with this one? The current one is removed from the vault."
-                  : undefined
+              outsideLedgerConfirm(view.ledgerHeldElsewhere) ??
+              (view.ledgerActive
+                ? "Replace the vault's ledger key with this one? The current one is removed from the vault."
+                : undefined)
             }
             confirmTone={view.ledgerHeldElsewhere !== false ? "danger" : undefined}
           />

@@ -53,6 +53,9 @@ export interface OutsideKeyView {
   allowance: AllowanceView;
 }
 
+/** The Label cell of the ledger key held outside Probarion: the vault stores no label for a ledger key. */
+export const OUTSIDE_LEDGER_LABEL = "the vault's ledger key";
+
 export interface KeysView {
   keys: KeyView[];
   /** The vault's keys held outside Probarion, agent keys first. Null when the chain could not be read. */
@@ -124,7 +127,8 @@ async function keysHeldOutside(
     .filter((a) => !known.has(a.public_key))
     .map((a) => ({ purpose: "agent", public_key: a.public_key, label: a.label }));
   if (ledgerHeldElsewhere && ledgerKey) {
-    found.push({ purpose: "ledger", public_key: ledgerKey, label: "" });
+    // The vault keeps no label for its ledger key: the table names it.
+    found.push({ purpose: "ledger", public_key: ledgerKey, label: OUTSIDE_LEDGER_LABEL });
   }
   const outside = await Promise.all(
     found.map(

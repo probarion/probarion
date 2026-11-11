@@ -42,6 +42,8 @@ export const KEY_ERRORS = {
   full: `The vault already holds ${MAX_AGENTS} agent keys, the most it can. Remove one on the Keys tab first.`,
   hosted:
     "Probarion made this key for hosted Payables, so its secret is on Probarion's server, not on your machine. Paste the key init printed.",
+  labelIsKey:
+    "This looks like a key. The label is a name for the key, such as mcp-claude. It was not sent anywhere.",
 } as const;
 
 /** A base58 run this long is no public key (at most 44 characters): 64 bytes, a secret key, take 86 to 88. */
@@ -80,11 +82,24 @@ export function parsePastedKey(raw: unknown): PastedKey {
   return { ok: true, key: text };
 }
 
-/** The agent key's label on the vault: the same rules as the Keys tab (`cleanLabel`), "mcp" when left blank. */
+/**
+ * A label that holds a key: a key's curve prefix, or a base58 run of 40 characters or more (a public key is 43 or 44,
+ * and the first 64 characters of a secret key, cut by a field's length, hold 56). A label is stored on the vault and
+ * `list_agents` shows it to anyone, so a pasted key must never become one.
+ */
+const KEY_IN_LABEL = /ed25519:|secp256k1:|[1-9A-HJ-NP-Za-km-z]{40,}/i;
+
+/**
+ * The agent key's label on the vault: the same rules as the Keys tab (`cleanLabel`), "mcp" when left blank, and no
+ * key in it. The browser and the server action both run it, and the error repeats nothing of what was typed.
+ */
 export function cleanAgentLabel(
   raw: unknown,
 ): { ok: true; value: string } | { ok: false; error: string } {
   if (typeof raw === "string" && raw.trim() === "") return { ok: true, value: "mcp" };
+  if (typeof raw === "string" && KEY_IN_LABEL.test(raw)) {
+    return { ok: false, error: KEY_ERRORS.labelIsKey };
+  }
   return cleanLabel(raw, "agent");
 }
 
@@ -248,7 +263,10 @@ export function checkPastedPair(
       agentError,
       ledgerError,
       labelError,
-      secret: (!agent.ok && agent.secret) || (!ledger.ok && ledger.secret),
+      secret:
+        (!agent.ok && agent.secret) ||
+        (!ledger.ok && ledger.secret) ||
+        (typeof form.label === "string" && looksLikeSecret(form.label)),
     };
   }
   return {
@@ -263,16 +281,43 @@ export function checkPastedPair(
 
 // --- the lines the page shows ------------------------------------------------------------------------------------
 
-/** Step 1: make the keys. One command per line, so that every shell runs them (PowerShell 5.1 has no `&&`). */
-export function initLines(vault: string, onNpm: boolean = MCP_ON_NPM): string[] {
-  if (onNpm) return [`${MCP_NPX} init --vault ${vault}`];
-  return [
-    `git clone ${REPO_URL}`,
-    "cd probarion",
-    "pnpm install --frozen-lockfile",
-    'pnpm --filter "@probarion/mcp..." run build',
-    `${MCP_FROM_CLONE} init --vault ${vault}`,
-  ];
+/**
+ * `NEAR_NETWORK` for a vault whose name ends in neither `.near` nor `.testnet`: the server, `init` and `status` read
+ * the network from the vault's name, and refuse another name without it.
+ */
+function networkEnv(vault: string, network: Network): [string, string][] {
+  return suffixNetwork(vault) === null ? [["NEAR_NETWORK", network]] : [];
+}
+
+/** `A=1 B=2 `, a POSIX shell's prefix to one command. */
+const posixEnv = (env: readonly [string, string][]) => env.map(([k, v]) => `${k}=${v} `).join("");
+/** `$env:A = "1"; `, PowerShell's form, which has no `VAR=value` prefix. */
+const powershellEnv = (env: readonly [string, string][]) =>
+  env.map(([k, v]) => `$env:${k} = "${v}"; `).join("");
+
+/**
+ * Step 1: make the keys. One command per line, so that every shell runs them (PowerShell 5.1 has no `&&`). A vault
+ * whose name does not say its network sets `NEAR_NETWORK` on the init line; PowerShell sets it its own way, so
+ * `powershell` is then that line's PowerShell form. Null: the same lines work in PowerShell.
+ */
+export function initLines(
+  vault: string,
+  network: Network,
+  onNpm: boolean = MCP_ON_NPM,
+): { lines: string[]; powershell: string | null } {
+  const env = networkEnv(vault, network);
+  const init = `${serverCommand(onNpm)} init --vault ${vault}`;
+  const last = `${posixEnv(env)}${init}`;
+  const lines = onNpm
+    ? [last]
+    : [
+        `git clone ${REPO_URL}`,
+        "cd probarion",
+        "pnpm install --frozen-lockfile",
+        'pnpm --filter "@probarion/mcp..." run build',
+        last,
+      ];
+  return { lines, powershell: env.length === 0 ? null : `${powershellEnv(env)}${init}` };
 }
 
 /** The server command as a terminal runs it: the npx form, or the built bin from the clone's folder. */
@@ -281,18 +326,17 @@ export function serverCommand(onNpm: boolean = MCP_ON_NPM): string {
 }
 
 /**
- * Step 6: `status` reads the same settings as the server, so the vault goes in its environment. One line for a POSIX
- * shell, and the PowerShell form, which has no `VAR=value` prefix.
+ * Step 6: `status` reads the same settings as the server, so the vault (and `NEAR_NETWORK`, under the same rule as
+ * the client settings) goes in its environment. One line for a POSIX shell, and the PowerShell form.
  */
 export function statusCommand(
   vault: string,
+  network: Network,
   onNpm: boolean = MCP_ON_NPM,
 ): { posix: string; powershell: string } {
+  const env: [string, string][] = [["PROBARION_VAULT_ID", vault], ...networkEnv(vault, network)];
   const run = `${serverCommand(onNpm)} status`;
-  return {
-    posix: `PROBARION_VAULT_ID=${vault} ${run}`,
-    powershell: `$env:PROBARION_VAULT_ID = "${vault}"; ${run}`,
-  };
+  return { posix: `${posixEnv(env)}${run}`, powershell: `${powershellEnv(env)}${run}` };
 }
 
 export type ClientId = "claude-code" | "claude-desktop" | "cursor" | "codex";
@@ -333,8 +377,7 @@ export function clientConfigs(
   network: Network,
   onNpm: boolean = MCP_ON_NPM,
 ): ClientConfig[] {
-  const env: [string, string][] = [["PROBARION_VAULT_ID", vault]];
-  if (suffixNetwork(vault) === null) env.push(["NEAR_NETWORK", network]);
+  const env: [string, string][] = [["PROBARION_VAULT_ID", vault], ...networkEnv(vault, network)];
   const command = onNpm ? "npx" : "node";
   const args = onNpm ? ["-y", `@probarion/mcp@${MCP_VERSION}`] : [CLONE_BIN];
   const winArgs = ["/c", "npx", "-y", `@probarion/mcp@${MCP_VERSION}`];
@@ -367,9 +410,14 @@ export function clientConfigs(
   ].join("\n");
   const winRun = onNpm ? `cmd /c ${MCP_NPX}` : `node C:${CLONE_BIN}`;
   const pathWindows = `On Windows, write the path with forward slashes, such as \`C:${CLONE_BIN}\`.`;
+  // On Windows, npx is a batch file that most clients cannot start directly: it runs through `cmd /c`
+  // (packages/mcp/README.md). `node` starts as it is.
   const jsonWindows = onNpm
     ? `On Windows: \`"command": "cmd"\` and \`"args": ${list(winArgs)}\`.`
     : `On Windows, write the path with forward slashes, such as \`C:${CLONE_BIN}\`: in JSON a backslash must be doubled.`;
+  const tomlWindows = onNpm
+    ? `On Windows: \`command = "cmd"\` and \`args = ${list(winArgs)}\`.`
+    : pathWindows;
 
   return [
     {
@@ -394,7 +442,7 @@ export function clientConfigs(
       label: "Cursor",
       where: "In `.cursor/mcp.json` in your project, or `~/.cursor/mcp.json` for every project:",
       code: json,
-      windows: onNpm ? null : pathWindows,
+      windows: jsonWindows,
       windowsCode: null,
     },
     {
@@ -402,7 +450,7 @@ export function clientConfigs(
       label: "Codex",
       where: "In `~/.codex/config.toml`:",
       code: toml,
-      windows: onNpm ? null : pathWindows,
+      windows: tomlWindows,
       windowsCode: null,
     },
   ];
