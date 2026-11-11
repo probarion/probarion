@@ -285,7 +285,7 @@ Check: `near contract call-function as-read-only "$USDC" storage_balance_of json
 
 The USDC is in the owner's Meteor wallet, and Meteor cannot sign near-cli transactions, so this step has no near-cli command.
 
-**OWNER SIGNS** in Meteor (moves 3 USDC): send 3 USDC to `v0.probarion.near`. Check before sending that the token is native USDC, contract `$USDC` (`17208628...36133a1`), not a bridged USDC. Meteor signs one `ft_transfer` on the USDC contract; the vault is already registered (step 4), so no storage deposit is needed.
+**OWNER SIGNS** in Meteor (moves 3 USDC): send 3 USDC to `v0.probarion.near`. Check before sending that the token is native USDC, contract `$USDC` (`17208628...36133a1`), not a bridged USDC. Meteor should sign an `ft_transfer` on the USDC contract (the vault is already registered in step 4, so no storage deposit is needed). This is not verified yet: no Meteor USDC send has been recorded. The check below reads the vault's balance, not the method; after the run, confirm the method from the real hash.
 
 Check: `near contract call-function as-read-only "$USDC" ft_balance_of json-args "{\"account_id\":\"$VAULT\"}" network-config mainnet now` prints `"3000000"`. Record the hash from Meteor's activity screen (or from https://nearblocks.io/address/v0.probarion.near) at `funding.usdc_float_tx`.
 
@@ -344,7 +344,7 @@ echo "$AGENT_PK"
 
 The key file holds `public_key`, `private_key` and a seed phrase. `.keys/` is git-ignored. Never commit the file and never paste it anywhere, chat included. Only the public key is ever printed.
 
-**OWNER SIGNS** (owner call; the key may only call `spend` on the vault, and its 0.25 NEAR allowance caps the gas it can spend from the vault's own balance: a spend reserves at most 200 Tgas, about 0.02 NEAR, so 0.25 NEAR covers about a dozen calls, and a leaked key can burn at most about half of the vault's free NEAR)
+**OWNER SIGNS** (owner call; the key may only call `spend` on the vault, and its 0.25 NEAR allowance caps the gas it can spend from the vault's own balance. Each spend must have about 0.02 NEAR of allowance left when it is sent (its 200 Tgas), but the allowance only goes down by the gas the call really burns: measured on testnet `v0.probarion.testnet`, a paid spend took 0.000718 NEAR and a refused one 0.000165 NEAR, exactly the vault's balance change. So 0.25 NEAR is a total cap of 0.25 NEAR of gas, hundreds of calls, not a dozen, and a leaked key can burn at most about half of the vault's free NEAR)
 ```bash
 near contract call-function as-transaction "$VAULT" add_agent \
   json-args "{\"public_key\":\"$AGENT_PK\",\"allowance\":\"250000000000000000000000\",\"label\":\"v0 agent\"}" \
