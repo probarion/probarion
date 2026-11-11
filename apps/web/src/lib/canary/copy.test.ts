@@ -450,7 +450,7 @@ describe("the line under a pressed chip", () => {
       `${ruleReason("mandate.over_per_payment")} (`,
       { code: "mandate.over_per_payment" },
       "). ",
-      "Raw mode then sends it to the contract, which refuses it on chain: ",
+      "If the raw-mode limits allow, it then goes to the contract, which refuses it on chain: ",
       { code: "OverPerPayment" },
       ".",
     ]);

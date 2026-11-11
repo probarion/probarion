@@ -236,7 +236,7 @@ export function chipUsually(o: ChipOutcome, mode: "live" | "code-only"): readonl
   return o.raw.sent
     ? [
         ...refusal,
-        "Raw mode then sends it to the contract, which refuses it on chain: ",
+        "If the raw-mode limits allow, it then goes to the contract, which refuses it on chain: ",
         { code: o.raw.contractCode },
         ".",
       ]
