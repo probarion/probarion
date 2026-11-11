@@ -67,13 +67,13 @@ export interface SpendRequest {
 | The agent key | A function-call key the vault adds to itself on the owner's instruction, limited to `spend`. | Live |
 | The ledger key | A second function-call key, limited to `anchor`. The SDK signs every ledger entry with it and anchors the ledger root on the vault. | Preview |
 | `@probarion/core` | `decide()`, the pure policy engine, plus the ledger and the verifier's checks a to i. No network, no file system. | Live |
-| `@probarion/sdk` | The `Probarion` class, which runs one payment cycle with `process()`, plus the ledger stores, `snapshot()` and `verify()`. 0.1.0 is on npm. | Live |
-| The `probarion` CLI | Prints each owner and approver transaction for `near-cli-rs` and signs none. It also makes agent keys, runs `check_spend` (the contract's free dry run of a spend) and runs the verifier. 0.1.0 is on npm. | Live |
+| `@probarion/sdk` | The `Probarion` class, which runs one payment cycle with `process()`, plus the ledger stores, `snapshot()` and `verify()`. 0.1.1 is on npm. | Live |
+| The `probarion` CLI | Prints each owner and approver transaction for `near-cli-rs` and signs none. It also makes agent keys, runs `check_spend` (the contract's free dry run of a spend) and runs the verifier. 0.1.1 is on npm. | Live |
 | The web console | Wallet sign-in, vaults, mandates, keys, top-up, alerts, and Payables, the reference agent that pays invoices. It runs on testnet: open it with "Open console" in the site header. | Preview |
 
 Live means it works in this deployment; where a Live part runs on a chain, it runs on NEAR testnet. On testnet a stub stands in for NEAR Intents, so a Base or Solana payout is only logged as a burn with its memo, and nothing leaves NEAR. Preview means it is built but not yet run end to end with real wallets, or not open yet.
 
-`@probarion/core` counts as Live because its verifier already runs on this site. The "Change one field. Watch it break." test on the landing page runs checks a to i in your browser, and so does "Try the verifier here" on [/proof](/proof) while no public vault is listed there. In the status list it is the [offline verifier](/docs/start/what-works-today#offline-verifier) row. The three packages, `@probarion/core`, `@probarion/sdk` and the `probarion` CLI, are on npm at 0.1.0: see [Install the packages](/docs/build/install). In the status list the SDK and the CLI are the [TypeScript SDK and CLI](/docs/start/what-works-today#sdk-and-cli) row, Live since that release. Their read-only calls run against the testnet vault, as [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes) shows. The payment loop through `process()` has not yet run end to end against a real vault, so the pages that walk it are Preview. [What works today](/docs/start/what-works-today) has the full status list.
+`@probarion/core` counts as Live because its verifier already runs on this site. The "Change one field. Watch it break." test on the landing page runs checks a to i in your browser, and so does "Try the verifier here" on [/proof](/proof) while no public vault is listed there. In the status list it is the [offline verifier](/docs/start/what-works-today#offline-verifier) row. The three packages, `@probarion/core`, `@probarion/sdk` and the `probarion` CLI, are on npm at 0.1.1: see [Install the packages](/docs/build/install). In the status list the SDK and the CLI are the [TypeScript SDK and CLI](/docs/start/what-works-today#sdk-and-cli) row, Live since release 0.1.0. Their read-only calls run against the testnet vault, as [Evaluate in 5 minutes](/docs/start/evaluate-in-5-minutes) shows. The payment loop through `process()` has not yet run end to end against a real vault, so the pages that walk it are Preview. [What works today](/docs/start/what-works-today) has the full status list.
 
 ## Who does what
 
@@ -101,7 +101,7 @@ The two quickstarts are Preview: their flows have not yet run end to end with re
 - **A vault's NEAR does not come back out.** The vault pays for its storage and its spends' gas from its own NEAR, and it has no method to withdraw NEAR. That NEAR is the vault's runway, and one plain transfer tops it up.
 - **The contract does not judge whether a payment is wise.** It holds the agent to the limits the owner signed, and a spend above `approval_above` waits for a person. Off chain, `decide()` can still hold or refuse a payment the mandate allows, through its built-in rules, your own `custom.*` rules or an attested model's proposal.
 - **It has no HTTP API that an agent pays through.** The console's invoice API answers only a signed-in owner or approver, on a same-origin request. An agent pays through the SDK, in its own process.
-- **Some parts are not done yet.** A mainnet vault is Planned, and its runbook is ready. The MCP server is Preview: it was tried on testnet and is not on npm yet.
+- **Some parts are not done yet.** A mainnet vault is Planned, and its runbook is ready. The MCP server is Preview: it was tried on testnet, and it is on npm at 0.1.1.
 
 <Callout kind="note" title="Unaudited beta.">
 

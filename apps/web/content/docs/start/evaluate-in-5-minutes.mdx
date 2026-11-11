@@ -55,7 +55,7 @@ Nothing on this page signs or sends a transaction. After the build, steps 2, 3 a
 
    One changed field no longer matches the entry's signed `body_hash`, so checks a and b fail on entry 2, and its amount no longer matches the spend in the snapshot's chain state, so check d fails. The verifier names entry 2 as the first broken one.
 
-3. **Run the same checks with the CLI.** The CLI you just built runs the same checks over the same fixture, offline. The README's step runs it as `npx probarion verify --offline …` instead, which downloads release 0.1.0 from npm once and prints the same report.
+3. **Run the same checks with the CLI.** The CLI you just built runs the same checks over the same fixture, offline. The README's step runs it as `npx probarion verify --offline …` instead, which downloads release 0.1.1 from npm once and prints the same report.
 
    ```bash
    node packages/cli/dist/bin.js verify --offline packages/core/test/fixtures/valid-snapshot.json

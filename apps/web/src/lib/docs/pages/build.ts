@@ -6,7 +6,7 @@ export const BUILD: readonly DocPage[] = [
     title: "Install the packages",
     nav: "Install",
     description:
-      "Install the Probarion SDK, core and CLI 0.1.0 from npm on Node 24, or build them from source with pnpm 10, then check the build and import it.",
+      "Install the Probarion SDK, core and CLI 0.1.1 from npm on Node 24, or build them from source with pnpm 10, then check the build and import it.",
     lede: "Install the SDK, core and CLI packages from npm for your own project, or build them from a clone for the repository's fixtures, scripts and evaluation. Then check that they work and import the SDK.",
     type: "how-to",
     audiences: ["developer"],
@@ -53,6 +53,9 @@ export const BUILD: readonly DocPage[] = [
       "contracts/vault/src/types.rs",
       "scripts/testnet/smoke.sh",
       "packages/core/README.md",
+      "packages/mcp/package.json",
+      "packages/mcp/server.json",
+      "packages/mcp/README.md",
     ],
     reviewed: "2026-11-09",
     phase: 1,

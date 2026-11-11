@@ -118,8 +118,8 @@ const BANNED: readonly [RegExp, string][] = [
   [/\bplease\b/i, "please"],
 ];
 
-/** The packages release 0.1.0 published to npm: the only ones an install line may name. */
-const PUBLISHED = ["@probarion/core", "@probarion/sdk", "probarion"];
+/** The packages release 0.1.1 published to npm: the only ones an install line may name. */
+const PUBLISHED = ["@probarion/core", "@probarion/sdk", "probarion", "@probarion/mcp"];
 const NPM_INSTALL = /(?<![\w-])npm (?:install|i)\b([^\n`]*)/gi;
 
 /** The npm installs in the text that name anything but the published packages (or `-g`). */
@@ -196,7 +196,8 @@ describe("copy rules", () => {
     expect(npmInstallProblems("`npm install @probarion/sdk @probarion/core`")).toEqual([]);
     expect(npmInstallProblems("npm install -g probarion\nnpm i @probarion/core")).toEqual([]);
     expect(npmInstallProblems("npm installs it")).toEqual([]);
-    expect(npmInstallProblems("`npm install @probarion/mcp`")).toHaveLength(1);
+    expect(npmInstallProblems("`npm install @probarion/mcp`")).toEqual([]);
+    expect(npmInstallProblems("`npm install @probarion/web`")).toHaveLength(1);
     expect(npmInstallProblems("npm install\n")).toHaveLength(1);
     // The one problem the changelog's twin may have: anything else after the install still fails.
     expect(npmInstallProblems("then `npm install`.")).toEqual([BARE_NPM_INSTALL]);
