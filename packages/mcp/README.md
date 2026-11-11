@@ -6,9 +6,9 @@ signed for its key: no tool takes an address, and the vault contract pays the ma
 
 **Unaudited beta.** Testnet first; use small amounts. MIT licensed.
 
-**On npm once release 0.1.1 is published.** Until npm has it (`npm view @probarion/mcp version` says
-whether it does), the server runs only from a clone of the repository, as Set it up below shows; every
-`npx` line below is marked *after the 0.1.1 release* and works once npm has that release.
+**On npm since release 0.1.1, published on 2026-11-11.** `npx -y @probarion/mcp@0.1.1` runs it with no clone,
+and the official MCP registry lists it as `io.github.probarion/probarion`. A clone of the repository builds
+the same server, as Set it up below shows, and the lines below give both forms: from npm and from a clone.
 
 ## The five tools
 
@@ -48,7 +48,8 @@ fail, and the answer says so.
 
 ## Set it up
 
-Node 24 or newer. Build it from a clone of the repository:
+Node 24 or newer. Run it from npm with `npx -y @probarion/mcp@0.1.1`, or build it from a clone of the
+repository:
 
 ```sh
 git clone https://github.com/probarion/probarion.git
@@ -59,7 +60,7 @@ pnpm --filter "@probarion/mcp..." run build
 
 The last line builds the server and the two packages it needs, `@probarion/core` and `@probarion/sdk`. The
 server is then `node packages/mcp/dist/bin.js` in that folder; the steps below write `probarion-mcp` for
-it. After the 0.1.1 release, `npx -y @probarion/mcp@0.1.1` runs the same commands with no clone. `init` and
+it. From npm, `npx -y @probarion/mcp@0.1.1` runs the same commands with no clone. `init` and
 `status` print their own commands the way you started them, so from a clone the commands they print begin
 with `node` and the full path of `bin.js`.
 
@@ -163,7 +164,7 @@ One command, with no key and no wallet, run in the clone's folder once it is bui
 node packages/mcp/dist/bin.js demo
 ```
 
-After the 0.1.1 release: `npx -y @probarion/mcp@0.1.1 demo`.
+From npm, with no clone: `npx -y @probarion/mcp@0.1.1 demo`.
 
 The demo starts the MCP server over stdio with no key in its environment, against the public testnet vault
 `demo.vaults.probarion.testnet` (`--vault <id>` picks another testnet vault). Each step prints what it
@@ -196,9 +197,9 @@ place of `/path/to/probarion`. If a client cannot find `node`, give its full pat
 
 On Windows, `npx` is a batch file that most clients cannot start directly: run it through `cmd /c`, as the
 Windows lines show. `node` needs no `cmd /c`. The first `npx` run downloads the package and its
-dependencies, which can outlast a client's start-up timeout; after the 0.1.1 release,
-`npm install -g @probarion/mcp@0.1.1` once and then the command `probarion-mcp` avoids that. On Windows the
-global `probarion-mcp` is a batch file too, so the command there is `cmd /c probarion-mcp`.
+dependencies, which can outlast a client's start-up timeout; `npm install -g @probarion/mcp@0.1.1` once
+and then the command `probarion-mcp` avoids that. On Windows the global `probarion-mcp` is a batch file too,
+so the command there is `cmd /c probarion-mcp`.
 
 ### Claude Code
 
@@ -210,13 +211,13 @@ claude mcp add probarion \
   -- node /path/to/probarion/packages/mcp/dist/bin.js
 ```
 
-After the 0.1.1 release:
+From npm:
 
 ```sh
 claude mcp add probarion -e PROBARION_VAULT_ID=demo.vaults.probarion.testnet -- npx -y @probarion/mcp@0.1.1
 ```
 
-On Windows, after the 0.1.1 release:
+From npm, on Windows:
 
 ```sh
 claude mcp add probarion -e PROBARION_VAULT_ID=demo.vaults.probarion.testnet -- cmd /c npx -y @probarion/mcp@0.1.1
@@ -242,7 +243,7 @@ args = ["/path/to/probarion/packages/mcp/dist/bin.js"]
 env = { PROBARION_VAULT_ID = "demo.vaults.probarion.testnet" }
 ```
 
-After the 0.1.1 release, `command = "npx"` and `args = ["-y", "@probarion/mcp@0.1.1"]`; on Windows,
+From npm, `command = "npx"` and `args = ["-y", "@probarion/mcp@0.1.1"]`; on Windows,
 `command = "cmd"` and `args = ["/c", "npx", "-y", "@probarion/mcp@0.1.1"]`.
 
 ### Claude Desktop
@@ -264,7 +265,7 @@ in `%APPDATA%\Claude\`), then restart Claude Desktop. From a clone:
 }
 ```
 
-After the 0.1.1 release, `"command": "npx"` and `"args": ["-y", "@probarion/mcp@0.1.1"]`; on Windows,
+From npm, `"command": "npx"` and `"args": ["-y", "@probarion/mcp@0.1.1"]`; on Windows,
 `"command": "cmd"` and `"args": ["/c", "npx", "-y", "@probarion/mcp@0.1.1"]`. In JSON, a Windows path
 needs its backslashes doubled, or forward slashes.
 
