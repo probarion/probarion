@@ -1,0 +1,46 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Length 931 >>
+stream
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 40 750 Tm (INVOICE) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 40 736 Tm (Invoice number: EVB-2001) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 40 722 Tm (Date: 2026-11-05) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 40 708 Tm (From: Eval Vendor B) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 40 694 Tm (Payee: eval-vendor-b.testnet) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 40 680 Tm (Purchase order: PO-4102) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 40 666 Tm (Description) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 300 666 Tm (Hours) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 380 666 Tm (Rate) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 460 666 Tm (Amount) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 40 652 Tm (Support, week 44) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 300 652 Tm (4) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 380 652 Tm (20.00) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 460 652 Tm (80.00) Tj ET
+BT /F1 10 Tf 0 0 0 rg 1 0 0 1 40 638 Tm (Total due: 80.00 USDC) Tj ET
+endstream
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 3 0 R /Resources << /Font << /F1 4 0 R >> >> >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000001097 00000 n 
+0000001194 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1320
+%%EOF
