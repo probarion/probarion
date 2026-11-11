@@ -18,7 +18,7 @@ export const RULE_REASONS: Readonly<Record<string, string>> = {
   "invoice.amount_invalid":
     "Code found no amount it could read with certainty, or the model's amount is not the one code read",
   "mandate.over_per_payment": "The amount is above what this mandate allows per payment",
-  "mandate.uses_exhausted": "The mandate has no payments left",
+  "mandate.uses_exhausted": "The mandate has no uses left",
   "mandate.over_total": "The amount would take the mandate past its total cap",
   "invoice.duplicate": "This invoice, or its reference, was already used",
   "vault.daily_backstop": "The amount would take the vault past its daily limit",
@@ -29,7 +29,7 @@ export const RULE_REASONS: Readonly<Record<string, string>> = {
   "custom.invoice_number_duplicate":
     "Another invoice to the same payee has this invoice number, and it may have paid",
   "custom.owner_confirms_without_model":
-    "No attested model stated the amount code read, so the vault's owner confirms it",
+    "No attested model stated the amount code read, so it waits for the owner or is refused",
   "custom.owner_confirmed": "The decision does not pay exactly what the owner confirmed",
   "custom.canary_no_autopay": "The Canary's own rule: it never pays from its own cycle",
 };

@@ -153,7 +153,7 @@ describe("the words the Canary pages must not use", () => {
       ...strings(CANARY_COPY.rehearsal),
       ...rehearsalSteps().flatMap((s) => [s.title, ...words(s.body)]),
     ];
-    expect(added.filter((t) => /[–—]/.test(t))).toEqual([]);
+    expect(added.filter((t) => /[\u2013\u2014]/.test(t))).toEqual([]);
   });
 
   it("leaves those words out of the page's own source too", () => {
@@ -484,13 +484,17 @@ describe("the line under a pressed chip", () => {
 });
 
 describe("the replay card's words", () => {
-  it("say the amounts from its facts, 50 USDC asked and 1 USDC a payment allowed, and name the transaction", () => {
+  it("say the amounts from its facts, 50 USDC asked and 1 test USDC a payment allowed, and name the transaction", () => {
     const [model, code, contract] = rehearsalSteps();
     expect(model?.title).toBe("The model wanted to pay 50 USDC.");
     expect(code?.body).toContainEqual({ code: "invoice.amount_invalid" });
     expect(code?.body).toContainEqual({ code: "custom.canary_no_autopay" });
     expect(words(contract?.body ?? []).join("")).toContain(
-      "50 USDC is above the mandate's 1 USDC per payment",
+      "50 USDC is above the mandate's 1 test USDC per payment",
+    );
+    // The vault contract's own check refused it (PROBARION:OverPerPayment), not the network.
+    expect(contract?.title).toBe(
+      "Raw mode sent it to the contract anyway, and the contract refused it on chain.",
     );
     expect(contract?.body).toContainEqual({
       tx: "6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH",

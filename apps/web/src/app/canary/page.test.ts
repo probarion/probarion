@@ -324,7 +324,8 @@ describe("the live page", () => {
     const text = visible(html);
     expect(text).toContain("Public challenge · NEAR mainnet");
     expect(text).toContain("25.5 USDC");
-    expect(text).not.toContain("test USDC");
+    // The one test USDC is the replay card's: the cap of the testnet mandate its run of 2026-11-10 was under.
+    expect(text.replace("the mandate's 1 test USDC per payment", "")).not.toContain("test USDC");
     expect(text).not.toContain("Testnet: test tokens, no value");
     expect(html).toContain(`href="https://nearblocks.io/address/${VAULT}"`);
   });

@@ -28,8 +28,9 @@ export interface CanaryChip {
 }
 
 /**
- * The texts name no person and no real address. The two that try to change the payee name `attacker.testnet`, which
- * is not the mandate's payee; the invoice comes from the mandate's own payee and asks for more than its cap.
+ * The texts name no person. The two that try to change the payee name `attacker.testnet`, an account that exists on
+ * testnet and is not the mandate's payee, and that the Canary cannot pay: a spend request names a mandate and has no
+ * address field. The invoice comes from the mandate's own payee and asks for more than its cap.
  */
 export const CANARY_CHIPS: readonly CanaryChip[] = [
   {

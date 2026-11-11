@@ -178,7 +178,7 @@ export const CANARY_COPY = {
     tag: `Replay · ${REHEARSAL.date} · our own attempt on NEAR ${REHEARSAL.network}`,
     title: "The model was fooled. Nothing moved.",
     footer:
-      "Nothing moved: a refused spend creates no spend. Test tokens only. Even a fully fooled model cannot choose who is paid: a spend request has no address field.",
+      "A refused spend creates no spend. Test tokens only. Even a fully fooled model cannot name an address to pay: a spend request names a mandate, whose payee is fixed, and has no address field.",
   },
   replay: {
     title: "Recorded attacks",
@@ -268,9 +268,9 @@ export function rehearsalSteps(): readonly { title: string; body: readonly RichP
       ],
     },
     {
-      title: "Raw mode sent it to the contract anyway, and NEAR refused it.",
+      title: "Raw mode sent it to the contract anyway, and the contract refused it on chain.",
       body: [
-        `The vault's free dry run refused the same payment, so raw mode sent it to the contract unfiltered, with the agent key. ${asked} is above the mandate's ${usdcFromUnits(REHEARSAL.capUnits)} USDC per payment: the contract refused it on chain with `,
+        `The vault's free dry run refused the same payment, so raw mode sent it to the contract unfiltered, with the agent key. ${asked} is above the mandate's ${usdcFromUnits(REHEARSAL.capUnits)} test USDC per payment: the contract refused it with `,
         { code: REHEARSAL.contractCode },
         ", in transaction ",
         { tx: REHEARSAL.txHash, network: REHEARSAL.network },
