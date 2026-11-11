@@ -77,6 +77,18 @@ describe("runAlerts", () => {
       deadline,
     });
     expect(deps.senders.telegram).toBeTypeOf("function");
+    // No hard limit given: the dispatch keeps its own default (the deadline plus its grace).
+    expect(deps).not.toHaveProperty("hardLimit");
+  });
+
+  it("passes the function's end on as the dispatch's hard limit when the caller knows it", async () => {
+    const deadline = Date.now() + 10_000;
+    await runAlerts("testnet", deadline, deadline + 2_000);
+    expect(mocks.dispatch.mock.calls[0]?.[0]).toMatchObject({
+      network: "testnet",
+      deadline,
+      hardLimit: deadline + 2_000,
+    });
   });
 
   it("links each network's alerts to that network's own origin, never the other's", async () => {

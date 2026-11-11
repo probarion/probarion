@@ -36,10 +36,32 @@ function Marker({ step, n, next }: { step: ChecklistStep; n: number; next: boole
   );
 }
 
+/** A step's two ways, side by side from 640px: who pays from the vault decides which tab comes next. */
+function Choices({ base, step }: { base: string; step: ChecklistStep }) {
+  return (
+    <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+      {(step.choices ?? []).map((c) => (
+        <div key={c.tab} className="rounded-2xl border border-line bg-paper px-3.5 py-3">
+          <h3 className="text-sm font-semibold text-ink">{c.title}</h3>
+          <p className="text-[13px] text-mute">{c.text}</p>
+          <RouteLink
+            route={`/console/[vault]${c.tab}`}
+            href={`${base}${c.tab}`}
+            className={textLink}
+          >
+            {c.action}
+          </RouteLink>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The "Your first agent payment" card on a vault's overview (site audit P1-8). The page shows it to the owner until
  * the first payment; `firstPaymentChecklist` decides each step. The next step's link is the ink pill, the others are
- * plain links, and a step that is done has none.
+ * plain links, and a step that is done has none. A step with two ways to do it shows both, as plain links, in place
+ * of its one link.
  */
 export function FirstPaymentChecklist({
   vault,
@@ -65,6 +87,7 @@ export function FirstPaymentChecklist({
       <ol>
         {checklist.steps.map((step, i) => {
           const next = checklist.next === step.id;
+          const choices = step.state !== "done" && (step.choices?.length ?? 0) > 0;
           return (
             <li
               key={step.id}
@@ -79,8 +102,9 @@ export function FirstPaymentChecklist({
                 {step.state === "unknown" ? (
                   <p className="text-xs text-wait">Reload the page to check this step again.</p>
                 ) : null}
+                {choices ? <Choices base={base} step={step} /> : null}
               </div>
-              {step.state !== "done" && step.tab !== null && step.action !== null ? (
+              {!choices && step.state !== "done" && step.tab !== null && step.action !== null ? (
                 <div className="col-start-2 sm:col-start-3">
                   <RouteLink
                     route={`/console/[vault]${step.tab}`}

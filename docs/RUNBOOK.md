@@ -195,7 +195,7 @@ Then post "Resolved".
 | Agent key (a function-call key that can call `spend` only) | Hosted vault: sealed in the database. SDK or CLI: the operator's `PROBARION_AGENT_KEY` | Suspected leak, allowance nearly used up | Hosted: on the Keys page, "Generate agent key and add it in my wallet" (1 yoctoNEAR); create new mandates for the new key, because every mandate is bound to one agent key; then "Remove" the old key and revoke its mandates ([rotation runbook](ops/key-rotation.md#steps), step 7). SDK: `node packages/cli/dist/bin.js agent keygen --out <file>`; `agent add --pk <new pk>` (1 yoctoNEAR); for each mandate of the old key, a new one bound to the new key (`mandate create ... --agent-pk <new pk>`, with its storage deposit); then `mandate revoke --mandate <id>` for each old mandate and `agent remove --pk <old pk>` (1 yoctoNEAR each). Each call is printed for **OWNER SIGNS**; until the new mandates exist, the agent cannot pay. |
 | Ledger key (a function-call key that can call `anchor` only) | Hosted vault: sealed in the database. SDK or CLI: `PROBARION_LEDGER_KEY` | Suspected leak, allowance nearly used up | Anchor first: entries after the last anchor must be signed by the new key. Hosted: "Generate ledger key and set it in my wallet" on the Keys page. SDK: `node packages/cli/dist/bin.js ledger set-key --pk <new pk> --allowance <near>` (default 0.25 NEAR), **OWNER SIGNS** with 1 yoctoNEAR, then set `PROBARION_LEDGER_KEY` and restart. The vault deletes the previous ledger key. Each anchor records its ledger key, so entries signed before the rotation keep verifying. |
 | `KEY_ENCRYPTION_SECRET` (the master key that seals agent keys, the ledger key and retained invoices) | Vercel, Production (and a Preview that shares the database) | Suspected leak, or someone who knew it leaves | Follow the [rotation runbook](ops/key-rotation.md): `pnpm --filter @probarion/web rotate-keys` as a dry run, then `--apply`, then switch the variable in Vercel and redeploy. Side effects: everyone is signed out; extension connections stay (their tokens are a sha256, not sealed under the master): end them as in the Extension tokens row when the incident calls for it; the Telegram webhook secret changes, so re-run `pnpm --filter @probarion/web telegram-webhook`; the stop links in earlier alert emails stop working; Canary visitor limits start over. The invoice-number key changes (it is derived from `KEY_ENCRYPTION_SECRET`, `apps/web/src/lib/payables/number-key.ts:6-7,22`), so a re-uploaded invoice is no longer matched by its number to invoices uploaded before the rotation; the text fingerprint (an unkeyed sha256, `apps/web/src/lib/payables/pipeline.ts:239`) still catches identical text. If the master leaked, also replace every agent and ledger key (step 7 of the rotation runbook). |
-| Extension tokens (`pbx_…`, one per connected browser) | Wherever the token was handed to: the extension's storage, once the extension ships. The database keeps a sha256 of the token and its last four characters, with the account, network, browser name and times, not the token itself (`public.extension_tokens`) | Browser lost or shared, or a token suspected leaked | The owner presses Revoke on the Browser extension page (`/extension`) of that network's address. Every token at once (OWNER, SQL editor), the pairing codes first and in one transaction, so that a code being exchanged meanwhile cannot leave a live token: `begin; delete from public.extension_pair_codes; update public.extension_tokens set revoked_at = now() where revoked_at is null; commit;`. A new `KEY_ENCRYPTION_SECRET` does not end them. If a console session may be stolen, end the sessions first (a new `KEY_ENCRYPTION_SECRET` signs everyone out): until then that session can mint new tokens and pairing codes. A pairing code it already showed still turns into a token for up to 10 minutes, with no session, and Revoke ends tokens only. So then either end every token with the SQL in this row, which deletes the pairing codes first, or wait at least 10 minutes from the moment the sessions ended, so that every code the session showed has expired, then revoke its tokens on `/extension` and check Connected browsers again, at the address of the network the session was stolen on (each network's address, if unsure). |
+| Extension tokens (`pbx_…`, one per connected browser) | Wherever the token was handed to: the extension's storage (`chrome.storage.local`) in the browser it connected. The database keeps a sha256 of the token and its last four characters, with the account, network, browser name and times, not the token itself (`public.extension_tokens`) | Browser lost or shared, or a token suspected leaked | The owner presses Revoke on the Browser extension page (`/extension`) of that network's address. Every token at once (OWNER, SQL editor), the pairing codes first and in one transaction, so that a code being exchanged meanwhile cannot leave a live token: `begin; delete from public.extension_pair_codes; update public.extension_tokens set revoked_at = now() where revoked_at is null; commit;`. A new `KEY_ENCRYPTION_SECRET` does not end them. If a console session may be stolen, end the sessions first (a new `KEY_ENCRYPTION_SECRET` signs everyone out): until then that session can mint new tokens and pairing codes. A pairing code it already showed still turns into a token for up to 10 minutes, with no session, and Revoke ends tokens only. So then either end every token with the SQL in this row, which deletes the pairing codes first, or wait at least 10 minutes from the moment the sessions ended, so that every code the session showed has expired, then revoke its tokens on `/extension` and check Connected browsers again, at the address of the network the session was stolen on (each network's address, if unsure). |
 | `TELEGRAM_BOT_TOKEN` | Vercel | Leak | @BotFather `/revoke`, the new token in Vercel (Sensitive), redeploy, then re-run `pnpm --filter @probarion/web telegram-webhook` ([alerts](ops/alerts.md#telegram-owner)). |
 | `SUPABASE_SERVICE_ROLE_KEY` | Vercel, server only | Leak | The project uses Supabase's `sb_secret_...` keys, not the legacy JWT keys. Replace the secret key in the dashboard's API keys settings (check its steps on first use), set the new value in Vercel and redeploy. |
 | `CRON_SECRET` | Vercel; also the Supabase Vault entry `cron_secret` when the per-minute job is on | Leak | A new value (`openssl rand -hex 32`; at least 32 characters) in Vercel, and in `cron_secret` only if the per-minute job exists ([watcher](ops/watcher.md#turn-on-the-per-minute-schedule-once)). Redeploy. |
@@ -377,11 +377,78 @@ that kind. The OWNER fixes it by hand in the SQL editor (`vault_id` is unique ac
 update public.tenants set kind = '<team|external|canary>' where vault_id = '<vault>';
 ```
 
+### Invoice stuck in processing
+
+SEV3. The signs are the console's "Outcome unknown: do not resend" on an invoice, and an upload of the same
+invoice refused with 409 `duplicate` and `status: "processing"`. Two flows set a row to `processing` and can
+leave it there: an upload (`/api/console/<vault>/invoices`), and the owner's Confirm on an invoice that waited
+for the owner (the invoice page's server action, `apps/web/src/lib/payables/confirm.ts`, which then tells the
+owner that the outcome is unknown and not to confirm again). The flow's function stopped during the cycle (a
+timeout or a crash), or it could not write the outcome (the log line `payables.outcome_not_recorded`), or a
+Confirm whose cycle failed could not set the row back (`payables.confirm_not_reverted`). The upload gives the
+model at most 40 s and starts any transaction by 60 s of its 90 s (`apps/web/src/lib/payables/budget.ts`), so
+a slow model alone ends in a hold for the owner, not here. The Confirm's reads have no such cap inside its
+page's 60 s. No reconcile job is built yet, so the row stays in `processing` until the OWNER looks the outcome
+up by hand.
+
+1. In Vercel, find the request and its log lines; they carry the request id. For an upload:
+   `payables.decided`, `payables.failed`, `payables.outcome_not_recorded` and `sdk.warn`. For a Confirm:
+   `payables.confirmed`, `payables.confirm_failed`, `payables.confirm_not_reverted`,
+   `payables.outcome_not_recorded` and `sdk.warn`.
+2. Read the row's ref in the SQL editor:
+
+   ```sql
+   select i.id, i.ref, i.invoice_hash, i.status, i.mandate_id, i.request_id, i.created_at, i.outcome, i.error, t.id as tenant_id
+   from public.invoices i join public.tenants t on t.id = i.tenant_id
+   where t.vault_id = '<vault>' and i.status = 'processing' order by i.created_at;
+   ```
+
+3. Look the spend up on chain by that ref. `list_spends` returns at most 100 spends a page, oldest first;
+   page with `from_index` until a spend's `ref` matches, then read that spend by its id (`network-config
+   mainnet` for a mainnet vault). The MCP tool `get_spend_status` with `{ "spend_id": <id> }` reads the same.
+   `get_mandate` gives the mandate's `approval_above`, which step 5 needs.
+
+   ```bash
+   near contract call-function as-read-only <vault> list_spends json-args '{"from_index":0,"limit":100}' network-config testnet now
+   near contract call-function as-read-only <vault> get_spend json-args '{"spend_id":<id>}' network-config testnet now
+   near contract call-function as-read-only <vault> get_mandate json-args '{"mandate_id":<mandate_id>}' network-config testnet now
+   ```
+
+4. Read the invoice's ledger entries by its hash:
+
+   ```sql
+   select seq, kind, body->>'at' as at, body->>'request_id' as request_id, body->>'verdict' as verdict,
+          body->>'decided_by' as decided_by, body->>'mandate_id' as mandate_id, body->>'amount' as amount,
+          body->'contract' as contract
+   from public.ledger_entries
+   where tenant_id = '<tenant_id>' and body->>'invoice_hash' = '<invoice_hash>' order by seq;
+   ```
+
+5. What it means. The last `decision` entry (the highest `seq`) is the one that counts: an invoice that waited
+   for the owner has the upload's decision first and the Confirm's after it. The SDK sends a spend only after a
+   decision, and a `hold` sends one too when the contract would itself hold the amount (an `amount` above the
+   mandate's `approval_above`): the spend then goes to the vault for its approver.
+   - A spend with the ref: that spend's status is the outcome (`Paid`, `Held` for an approver, `Failed`,
+     and so on). Do not pay the invoice again by any other route.
+   - No spend, and the last decision is `allow`, or `hold` with an `amount` above the mandate's
+     `approval_above`: the spend may have been sent and may still land (as `Held` for an approver after a
+     hold). Look again once 48 hours have passed since the decision (`UNKNOWN_SETTLE_MS` in the SDK) before
+     you treat it as not sent.
+   - No spend, and the last decision is `refuse`, or `hold` with an `amount` at or below the mandate's
+     `approval_above`: nothing was sent.
+   - No `decision` entry: the cycle stopped before it decided, and nothing was sent.
+6. Leave the row as it is: a hand-edited status could let the same invoice be decided again. Tell the owner
+   what you found. The same text, or the same invoice number for that payee, stays refused while the row
+   is in `processing`. Only once step 5 has found that nothing was sent (for a spend that may still land:
+   the second look, after the 48 hours, found no spend with the ref) can the owner run the flow again, by
+   uploading an invoice with another number. Until then, a second invoice could pay the same bill twice.
+
 ## Watcher and owner alerts
 
 - **Schedule.** `apps/web/vercel.json` runs `/api/cron/watch` daily at 00:00 UTC and `/api/cron/metrics`
-  daily at 00:10 UTC, because the Vercel Hobby plan takes daily crons only. The watcher runs every minute
-  only once the OWNER turns on the Supabase job `probarion-watch`
+  daily at 00:10 UTC. Daily is a choice: Vercel Pro, which the project's team is on, also accepts hourly
+  or per-minute schedules ([run the usage numbers hourly](ops/metrics.md#run-it-hourly-instead)). The
+  watcher runs every minute only once the OWNER turns on the Supabase job `probarion-watch`
   ([per-minute schedule](ops/watcher.md#turn-on-the-per-minute-schedule-once)); one job serves both
   networks. A Payables upload and a Canary attempt also ask the watcher to look at their own vault right
   after they answer.
@@ -545,7 +612,8 @@ Run it after the promotion that brings the crons to Production. Every step is th
 2. Promote, wait for the Production build, and apply the migrations it carries (above). Before anyone adds
    an alert, run the watcher once by hand (step 4).
 3. Vercel, Settings, Cron Jobs lists exactly `/api/cron/watch` (`0 0 * * *`) and `/api/cron/metrics`
-   (`10 0 * * *`). How late within its hour the Hobby plan runs a daily cron: check on first use.
+   (`10 0 * * *`). Vercel Pro, which the project's team is on, schedules a cron to the minute: check on
+   first use how late it actually runs.
 4. From your own terminal, with `CRON_SECRET` from the password manager:
 
    ```bash
@@ -580,6 +648,160 @@ Run it after the promotion that brings the crons to Production. Every step is th
    7. `/usage` shows the payment under Team after the next metrics run.
 
    Write the times down, never a secret's value.
+
+## Releasing the npm packages
+
+Every step here is the OWNER's. Claude prepares the release pull request (the versions, the `CHANGELOG.md`
+section, `packages/mcp/server.json`) and runs `pnpm run release:check -- sdk-v<version>` and
+`pnpm run release:check -- --pack --out <folder> sdk-v<version>`, which publish nothing. It does not push a
+tag, approve the environment or publish to npm or to the MCP registry.
+
+How a release runs ([`release.yml`](../.github/workflows/release.yml)): pushing the tag `sdk-v<version>`
+starts the workflow. Its verify job refuses a tagged commit that is not on `main`, runs the release check,
+`verify:ts` and `verify:launch`, and packs the four packages. Its publish job waits in the `npm-release`
+environment for the OWNER's approval, then publishes the tarballs in dependency order, `@probarion/core`,
+`@probarion/sdk`, `probarion`, then `@probarion/mcp`, with npm provenance. A version npm already holds
+with the same bytes is skipped; one it holds with other bytes stops the run. If a run fails, "Re-run
+failed jobs" on the Actions page keeps the tarballs of the first verify job.
+
+npm credentials, as the workflow file describes them: the publish job authenticates with `NPM_TOKEN`, an
+environment secret of `npm-release` (not a repository secret), and has `id-token: write` for provenance.
+The workflow's OWNER setup, step 5, says to switch each package to npm trusted publishing (OIDC, no token)
+once 0.1.0 is on npm, and then to revoke `NPM_TOKEN`. `@probarion/mcp` is new on npm with 0.1.1, and npm's
+trusted publishing docs set it up from a package's own settings page, which a package that was never
+published does not have. So, as advice: before the 0.1.1 tag, check that `NPM_TOKEN` in `npm-release` is
+still valid and may publish a new package under the `@probarion` scope; if it was revoked, make a new one
+and store it there ([the `NPM_TOKEN` row of Key rotation](#key-rotation)). After 0.1.1, set up trusted
+publishing for `@probarion/mcp` too, as step 5 says.
+
+### Release 0.1.1
+
+0.1.1 is the first release of `@probarion/mcp`, and its first listing in the official MCP registry, as
+`io.github.probarion/probarion`. The steps start after the promote pull request that carries the 0.1.1
+versions is merged into `main`.
+
+1. Check `main` before tagging. In a clone of the repository:
+
+   ```bash
+   git fetch origin
+   git switch --detach origin/main
+   pnpm install --frozen-lockfile
+   pnpm run release:check -- sdk-v0.1.1
+   ```
+
+   It prints `release check ok:` and the four packages, each at 0.1.1:
+   `@probarion/core@0.1.1, @probarion/sdk@0.1.1, probarion@0.1.1, @probarion/mcp@0.1.1`.
+
+2. Tag that commit (annotated, on `main`) and push the tag. The push starts the release workflow:
+
+   ```bash
+   git tag -a sdk-v0.1.1 -m "SDK v0.1.1" origin/main
+   git push origin sdk-v0.1.1
+   ```
+
+3. Approve the `npm-release` environment. On the Actions page, open the `release` run for `sdk-v0.1.1`;
+   once "Check, test and pack" has passed, "Publish to npm" waits for a review: Review deployments, tick
+   `npm-release`, Approve and deploy. Wait for the run to finish green.
+
+   If "Publish to npm" fails after some packages are on npm, keep the tag: do not delete it or push a new
+   one. The likely case is a stop at `@probarion/mcp` with an authentication error once the first three are
+   published: they can publish through trusted publishing, while `@probarion/mcp`, never published, has no
+   trusted publisher yet and needs `NPM_TOKEN`. Store a working `NPM_TOKEN` in `npm-release` (one that has
+   not expired and may create a new package in the `@probarion` scope), then open the same run and use
+   "Re-run failed jobs" within 7 days, the time the run keeps its tarballs, and approve `npm-release` again
+   when it waits. A package npm already has with the same bytes is skipped, so only the rest is published.
+   After 7 days the tarballs are gone, and "Re-run all jobs" packs again: it publishes the rest only if the
+   new tarballs have the same bytes as the ones npm holds.
+
+4. Check npm. The first three lines print `0.1.1`; the last prints `version = '0.1.1'` and
+   `mcpName = 'io.github.probarion/probarion'`:
+
+   ```bash
+   npm view @probarion/core@0.1.1 version
+   npm view @probarion/sdk@0.1.1 version
+   npm view probarion@0.1.1 version
+   npm view @probarion/mcp@0.1.1 version mcpName
+   ```
+
+   The registry checks that `mcpName` before it lists the server, so it must be there before step 6.
+
+5. Install `mcp-publisher`, the official MCP registry publisher (from
+   [its quickstart](https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/quickstart.mdx)),
+   then check it with `mcp-publisher --help`. On Windows, in PowerShell, then move `mcp-publisher.exe`
+   to a folder on `PATH`:
+
+   ```powershell
+   $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq "Arm64") { "arm64" } else { "amd64" }; Invoke-WebRequest -Uri "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_windows_$arch.tar.gz" -OutFile "mcp-publisher.tar.gz"; tar xf mcp-publisher.tar.gz mcp-publisher.exe; rm mcp-publisher.tar.gz
+   ```
+
+   On macOS or Linux:
+
+   ```bash
+   curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher && sudo mv mcp-publisher /usr/local/bin/
+   ```
+
+   Or with Homebrew: `brew install mcp-publisher`.
+
+6. Log in and publish, from `packages/mcp` of the same checkout. The name `io.github.probarion/probarion`
+   is in the `probarion` GitHub organization's namespace, which the registry grants only to an Owner of
+   that organization. The registry's docs say that `mcp-publisher login github` (the device flow) cannot
+   publish to an organization namespace today (registry issue #1468): log in with a personal access token
+   instead, a classic one with only the `read:org` scope, or a fine-grained one for the `probarion`
+   organization with Organization permissions, Members, Read-only. It needs no repository access. Keep the
+   token in a file under `.keys/` at the root of the checkout you run this step from (git ignores that
+   folder; a fresh clone from step 1 has none, so make it there), for example
+   `.keys/mcp-registry-token.txt`. `mcp-publisher` reads the token from `MCP_GITHUB_TOKEN` when `--token`
+   is not given, which keeps it off the command line, and it uses the token byte for byte. Windows
+   PowerShell's `>` and `Out-File` write the file as UTF-16 with a byte order mark, and other editors may
+   add a UTF-8 one, so the Git Bash line keeps only the token's own characters (a classic `ghp_` or a
+   fine-grained `github_pat_` token uses only letters, digits and `_`). In Git Bash:
+
+   ```bash
+   cd packages/mcp
+   MCP_GITHUB_TOKEN="$(tr -cd 'A-Za-z0-9_' < ../../.keys/mcp-registry-token.txt)" mcp-publisher login github
+   mcp-publisher validate
+   mcp-publisher publish
+   mcp-publisher logout
+   ```
+
+   In PowerShell, the login line is
+   `$env:MCP_GITHUB_TOKEN = (Get-Content ..\..\.keys\mcp-registry-token.txt -Raw).Trim(); mcp-publisher login github; Remove-Item Env:MCP_GITHUB_TOKEN`
+   (`Get-Content` reads either byte order mark and drops it, and `.Trim()` drops the line ends).
+   `publish` reads `server.json` in that folder and ends with
+   `Server io.github.probarion/probarion version 0.1.1`. A version is published to the registry once and
+   cannot be changed; the next release publishes a new one. `logout` clears the login `mcp-publisher`
+   saved. Revoke the token afterwards if it has no other use.
+
+7. Check the listing. The JSON it prints holds the name `io.github.probarion/probarion` with the version
+   `0.1.1` (in PowerShell, write `curl.exe`):
+
+   ```bash
+   curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.probarion/probarion"
+   ```
+
+8. Then a pull request changes what the repository says about npm. Once npm's `latest` is 0.1.1, every
+   line that names 0.1.0 as the npm release is stale, and `node scripts/check-claims.mjs` does not flag it
+   (its `--online` run only asks npm whether a cited version exists, and flags a package said not to be on
+   npm that npm has). Find the lines with `git grep -n "0\.1\.0"` and `git grep -n "not on npm yet"`, and
+   leave the `## 0.1.0` section of `CHANGELOG.md` and the browser extension's own 0.1.0 as they are. The
+   pull request changes:
+
+   - `SECURITY.md`: the supported version row names 0.1.1, and `@probarion/mcp` with the other packages.
+   - `README.md`: the Status rows "on npm as ... 0.1.0" and the 0.1.1 row, the "Release 0.1.0 is on npm"
+     install note, the lines that say the CLI from npm runs release 0.1.0, and the "not on npm yet"
+     lines for `@probarion/mcp`.
+   - The docs under `apps/web/content/docs` and `apps/web/src/lib/docs`: "on npm at 0.1.0", "runs (or
+     downloads) release 0.1.0 from npm", the `probarion --version` output in `build/install.mdx` and the
+     MCP server "not on npm yet" lines.
+   - The "0.1.0 on npm" pill in `apps/web/src/lib/site/facts.ts`, and `MCP_ON_NPM` in
+     `apps/web/src/lib/agent/connect.ts`.
+   - The `@probarion/mcp` README's npm lead and its "after the 0.1.1 release" marks, and the header of
+     `CHANGELOG.md`.
+   - The tests that pin these lines, among them `apps/web/test/site-facts.test.ts` and
+     `apps/web/test/docs-content.test.ts`.
+
+   If the tag was pushed on another day than 2026-11-12, the same pull request dates the `CHANGELOG.md`
+   heading `## 0.1.1` with the day the packages were published.
 
 ## Status page posts
 

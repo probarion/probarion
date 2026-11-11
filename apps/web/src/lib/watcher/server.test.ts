@@ -34,7 +34,9 @@ vi.mock("@/lib/near/server", () => ({
 vi.mock("./watch", () => ({ watchTenantById: mocks.watchTenantById }));
 vi.mock("@/lib/alerts/server", () => ({ runAlerts: mocks.runAlerts }));
 
-import { kickWatcher, watcherDeps } from "./server";
+import { GRACE_AFTER_DEADLINE_MS } from "@/lib/alerts/dispatch";
+import { PAYABLES_TIME } from "@/lib/payables/budget";
+import { KICK_ALERTS_MS, kickAlertsDeadline, kickWatcher, watcherDeps } from "./server";
 
 const logs = quietLogs();
 
@@ -80,6 +82,79 @@ describe("watcherDeps", () => {
 });
 
 describe("kickWatcher", () => {
+  // The plan, not a limit: a console upload that answers on time (by PAYABLES_TIME.sendByMs plus sendAndCloseMs) leaves
+  // the kick afterResponseMs, for one tenant's watch, alerts claimed until KICK_ALERTS_MS after it, and a send started
+  // before that deadline that runs on for the dispatcher's grace (lib/alerts/dispatch.ts). Nothing enforces these
+  // figures; what keeps a late kick inside the function is the hard limit the route passes ("against the function's
+  // end" below).
+  it("plans a kick that fits in what a console upload leaves it when it answers on time", () => {
+    expect(
+      PAYABLES_TIME.kickWatchMs + KICK_ALERTS_MS + GRACE_AFTER_DEADLINE_MS,
+    ).toBeLessThanOrEqual(PAYABLES_TIME.afterResponseMs);
+    expect(KICK_ALERTS_MS).toBe(10_000);
+    expect(GRACE_AFTER_DEADLINE_MS).toBe(5_000);
+  });
+
+  describe("against the function's end", () => {
+    // The console upload's route started at T0 and is stopped at T0 + 90 s.
+    const T0 = Date.parse("2026-11-11T10:00:00Z");
+    const END = T0 + PAYABLES_TIME.routeMs;
+
+    /** Runs a kick whose job starts at `answeredAt` and whose watch takes `watchMs`, on a fake clock. */
+    async function kickAt(answeredAt: number, watchMs: number, o?: { hardLimit?: number }) {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(answeredAt);
+        mocks.watchTenantById.mockImplementation(async () => {
+          vi.setSystemTime(answeredAt + watchMs);
+          return { inserted: 1 };
+        });
+        kickWatcher(TENANT, "testnet", o);
+        await registered()();
+        expect(mocks.runAlerts).toHaveBeenCalledTimes(1);
+        return mocks.runAlerts.mock.calls[0] as [string, number, number | undefined];
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    it("keeps the 10 s of claims after the watch when the answer came on time, and sends nothing past the end", async () => {
+      const answered = T0 + PAYABLES_TIME.sendByMs + PAYABLES_TIME.sendAndCloseMs; // 70 s
+      const [network, deadline, hardLimit] = await kickAt(answered, 3_000, { hardLimit: END });
+      expect(network).toBe("testnet");
+      expect(deadline).toBe(answered + 3_000 + KICK_ALERTS_MS); // 83 s
+      expect(hardLimit).toBe(END);
+    });
+
+    // The model ended at about 50 s and the spend's send took 25 s (inside the SDK's own step timeout, which this code
+    // does not touch): the answer goes out at 80 s and the watch ends at 84 s. Counted from the watch, the dispatch would
+    // believe it lives until 99 s and could start a send at 88 s that the platform cuts off at 90 s, leaving the alert
+    // `sending` until a later dispatch takes it back.
+    it("stops claiming the dispatcher's grace before the end when the answer came late", async () => {
+      const answered = T0 + 80_000;
+      const [, deadline, hardLimit] = await kickAt(answered, 4_000, { hardLimit: END });
+      expect(deadline).toBe(END - GRACE_AFTER_DEADLINE_MS); // 85 s, not 94 s
+      expect(deadline).toBeLessThan(answered + 4_000 + KICK_ALERTS_MS);
+      expect(hardLimit).toBe(END); // 90 s, not 99 s
+    });
+
+    it("claims nothing at all when the watch itself ran past that point", async () => {
+      const answered = T0 + 84_000;
+      const [, deadline] = await kickAt(answered, 3_000, { hardLimit: END });
+      // the dispatch defers every alert whose claim would come at or after its deadline (lib/alerts/dispatch.ts)
+      expect(deadline).toBeLessThan(answered + 3_000);
+    });
+
+    it("keeps the dispatch's own default for a caller that does not know its end", async () => {
+      const [, deadline, hardLimit] = await kickAt(T0, 3_000);
+      expect(deadline).toBe(T0 + 3_000 + KICK_ALERTS_MS);
+      expect(hardLimit).toBeUndefined();
+      expect(kickAlertsDeadline(T0)).toBe(T0 + KICK_ALERTS_MS);
+      expect(kickAlertsDeadline(T0, END)).toBe(T0 + KICK_ALERTS_MS);
+      expect(kickAlertsDeadline(T0 + 80_000, END)).toBe(END - GRACE_AFTER_DEADLINE_MS);
+    });
+  });
+
   it("hands one job to after() and does no work until the response is sent", () => {
     kickWatcher(TENANT, "mainnet");
     registered();
@@ -133,7 +208,11 @@ describe("kickWatcher", () => {
         kickWatcher(TENANT, "mainnet");
         await registered()();
         expect(order).toEqual(["watch", "alerts"]);
-        expect(mocks.runAlerts).toHaveBeenCalledWith("mainnet", Date.parse("2026-11-11T10:00:13Z"));
+        expect(mocks.runAlerts).toHaveBeenCalledWith(
+          "mainnet",
+          Date.parse("2026-11-11T10:00:13Z"),
+          undefined,
+        );
       } finally {
         vi.useRealTimers();
       }

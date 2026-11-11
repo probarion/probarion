@@ -357,7 +357,8 @@ const VISITOR = "AAAAAAAAAAAAAAAAAAAAAA"; // 22 base64url characters: what the r
 describe("POST /api/canary/attempt", () => {
   it("lets the tenant lease outlast the route's longest run, with a margin", () => {
     expect(maxDuration + 30).toBeLessThanOrEqual(CANARY_LIMITS.leaseSeconds);
-    // the Canary's own lease: this route runs longer than Payables' upload, whose lease is PROCESS_LEASE_SECONDS
+    // the Canary's own lease, still longer than PROCESS_LEASE_SECONDS (120 s), the lease of Payables' upload, whose
+    // route also stops at 90 s
     expect(CANARY_LIMITS.leaseSeconds).toBe(130);
     expect(CANARY_LIMITS.leaseSeconds).toBeGreaterThan(PROCESS_LEASE_SECONDS);
   });
@@ -366,7 +367,7 @@ describe("POST /api/canary/attempt", () => {
     expect(CANARY_LIMITS.attemptBudgetMs).toBe(80_000);
     expect(maxDuration).toBe(90);
     expect(CANARY_LIMITS.attemptBudgetMs + 5000).toBeLessThanOrEqual(maxDuration * 1000);
-    // Vercel's Hobby plan with Fluid compute (on by default, pinned in vercel.json) stops a function at 300 s at most
+    // 300 s is what Vercel Pro, the project's plan, allows without Fluid compute (800 s with it, pinned on in vercel.json)
     expect(maxDuration).toBeLessThanOrEqual(300);
   });
 

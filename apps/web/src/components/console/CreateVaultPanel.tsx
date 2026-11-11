@@ -138,8 +138,8 @@ export function CreateVaultPanel({
     <div>
       <p className="mb-3 text-xs text-mute">
         Factory version {version} ({mode === "global" ? "global code" : "embedded code"}). You sign
-        with your own wallet as <span className="mono">{owner}</span>, and that account becomes the
-        vault&apos;s owner for good.
+        with your own wallet as <span className="mono wrap-anywhere">{owner}</span>, and that
+        account becomes the vault&apos;s owner for good.
       </p>
       <Field
         label="Vault name"

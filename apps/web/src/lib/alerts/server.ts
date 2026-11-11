@@ -23,15 +23,20 @@ export function alertSenders(): Senders {
 export type AlertsRun = DispatchResult & { error: boolean };
 
 /**
- * One dispatch for one network, until `deadline` (epoch ms). It never throws and never reports more than counts: the
- * watcher's route and kicks call it after the watch, and a failure here must not change the watch's health or its
- * heartbeat. A failure is logged (`alerts.dispatch_failed`) and answered as `error: true` with zero counts.
+ * One dispatch for one network, until `deadline` (epoch ms), with no send past `hardLimit` (epoch ms, the function's end;
+ * dispatchAlerts' default when it is left out). It never throws and never reports more than counts: the watcher's route
+ * and kicks call it after the watch, and a failure here must not change the watch's health or its heartbeat. A failure
+ * is logged (`alerts.dispatch_failed`) and answered as `error: true` with zero counts.
  *
  * Every link in a message (the console's and the stop link) is on `originFor(network)`, the address that network is
  * served at. A network this site does not serve has no address to link to, so nothing is sent for it: its alerts wait
  * until it is served (the routes only ever call this for a network they serve).
  */
-export async function runAlerts(network: Network, deadline: number): Promise<AlertsRun> {
+export async function runAlerts(
+  network: Network,
+  deadline: number,
+  hardLimit?: number,
+): Promise<AlertsRun> {
   try {
     const origin = originFor(network, getEnv());
     if (origin === null) {
@@ -45,6 +50,7 @@ export async function runAlerts(network: Network, deadline: number): Promise<Ale
       origin,
       stopLinks: async (id) => stopLinks(origin, await subkey("alerts"), id),
       deadline,
+      ...(hardLimit === undefined ? {} : { hardLimit }),
     });
     return { ...result, error: false };
   } catch (error) {

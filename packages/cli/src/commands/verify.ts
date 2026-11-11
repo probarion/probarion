@@ -387,8 +387,9 @@ async function saveSnapshot(path: string, given: string, snapshot: Snapshot): Pr
 
 function print(io: CliIo, o: VerifyOpts, report: VerifyReport, opts: RenderOptions): void {
   io.out(o.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderReport(report, opts));
-  // Every "did not run" line of --online also goes to stderr (no verifier, nothing to check, no GPU payload),
-  // with --json too; the legend stays in the report.
+  // Every "did not run" line of --online (no verifier, nothing to check, no GPU payload) and the clock hint
+  // ("online hint: ...", O2's token not yet valid by this computer's clock) also go to stderr, with --json too,
+  // where stderr is the only place they appear; the legend stays in the report.
   for (const line of onlineLines(report, opts)) {
     if (!line.startsWith("online legend")) io.err(`warning: ${printable(line)}\n`);
   }

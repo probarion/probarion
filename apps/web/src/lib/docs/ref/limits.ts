@@ -719,7 +719,8 @@ const RATE_SCOPE: Readonly<Record<keyof typeof LIMITS, { per: string; where: str
   authVerify: { per: "IP address", where: "`POST /api/auth/verify`, the signed sign-in" },
   snapshot: {
     per: "IP address, for each file",
-    where: "`GET /proof/<vault>/snapshot.json` and `GET /proof/<vault>/ledger.jsonl`",
+    where:
+      "`GET /proof/<vault>/snapshot.json`, `GET /proof/<vault>/ledger.jsonl` and `GET /proof/<vault>/payments.csv`",
   },
   proofPage: { per: "IP address", where: "The public proof page, `/proof/<vault>`" },
   topupQuote: {

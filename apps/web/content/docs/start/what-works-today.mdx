@@ -36,7 +36,7 @@ The README Status table also has rows that this page does not cover: the inciden
 
 ### NEAR AI Cloud adapter
 
-Preview. Built and tested against a fake NEAR AI Cloud. No real attested decision has been recorded and verified yet: that first run is the [attested model run](#attested-model-run) row above, and its status is Preview too.
+Preview. Built and tested against a fake NEAR AI Cloud. On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two real attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)). The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run. The [attested model run](#attested-model-run) row above is Preview too.
 
 Code: [`packages/sdk/src/nearai.ts`](https://github.com/probarion/probarion/blob/main/packages/sdk/src/nearai.ts)
 
@@ -66,7 +66,7 @@ Code: [`apps/web/src/lib/ext`](https://github.com/probarion/probarion/tree/main/
 
 ### Browser extension for Chrome
 
-Preview. Built and tested, and pending Chrome Web Store review since 2026-11-10. Until the store publishes it, load it unpacked from `apps/extension`. It connects from the `/extension` page or with a one-time code, shows on its toolbar badge and in its popup what waits for you, and queues an invoice from selected text, the PDF in the tab, a linked PDF on the same site, or a file, through the server half above. It cannot pay, approve or sign: a queued invoice waits for the owner's wallet-signed Confirm in the console.
+Preview. Version 0.1.0 is published: install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn). No end-to-end run of it with a real wallet against this deployment is recorded yet, so it stays Preview, like the server half it calls. To build it from source instead, load it unpacked from `apps/extension`, as [its README](https://github.com/probarion/probarion/blob/main/apps/extension/README.md) says. It connects from the `/extension` page or with a one-time code, shows on its toolbar badge and in its popup what waits for you, and queues an invoice from selected text, the PDF in the tab, a linked PDF on the same site, or a file, through the server half above. It cannot pay, approve or sign: a queued invoice waits for the owner's wallet-signed Confirm in the console.
 
 Code: [`apps/extension`](https://github.com/probarion/probarion/tree/main/apps/extension)
 

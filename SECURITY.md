@@ -62,6 +62,9 @@ In scope:
   serves both networks, and the address decides which; a testnet address of the same deployment,
   once it is set up, is in scope too), with its database migrations, its server-side key sealing,
   and the browser extension's token API (`/api/ext/*`) and its `/extension` page;
+- the browser extension for Chrome in [`apps/extension`](apps/extension), published on the Chrome
+  Web Store as item `hhadnmnjdlamihjjoejphkimnbcfidmn`
+  ([its listing](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn));
 - the build, deploy and release scripts in [`scripts`](scripts) and the workflows in
   [`.github/workflows`](.github/workflows).
 
@@ -147,6 +150,11 @@ snapshot of the ledger and the chain:
   same file as the ledger. An edit that was not re-signed fails. A forged snapshot, with re-signed
   entries and chain data edited to agree, passes. Only a live run with `--vault` reads the chain, so
   take the snapshot yourself or run live.
+- **That `decide()` ran.** `verify` shows that the ledger key signed each decision and that each spend
+  is bound to one that allowed it; it does not run the policy again. Whoever holds both the agent key and
+  the ledger key can skip `decide()` and still pass, within the mandate's payee and caps. Keep the ledger
+  key out of the agent's reach: run `@probarion/mcp` as another OS user or in a container
+  ([threat model](docs/THREAT_MODEL.md#known-gaps)).
 - **The TEE measurement is not pinned (O1b, deferred).** Offline, A1 to A7 show that the signature,
   the response and the recorded proposal agree, and that the attestation report is bound to the
   ledger position. The online check O1 verifies the TDX quote through Intel DCAP, and O2 checks the
@@ -161,8 +169,17 @@ snapshot of the ledger and the chain:
   chain state, so `verify` reports a difference there as a note.
 - **Testnet has no real bridge.** On testnet `intents-stub` stands in for `intents.near`, and a
   cross-chain burn does not leave NEAR.
-- **No recorded real decision yet.** The NEAR AI Cloud adapter is tested against a fake NEAR AI
-  Cloud. A real attested decision, recorded and verified, is in progress.
+- **Real attested decisions do not show which image ran.** The NEAR AI Cloud adapter is tested
+  against a fake NEAR AI Cloud. On testnet, the Canary's ledger of 2026-11-10, published on 2026-11-11
+  ([evidence](docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)), holds 2
+  real decisions by a NEAR AI Cloud model that are attested and signed and pass A1 to A7 offline.
+  On 2026-11-11 they also passed the online checks O1 and O2
+  ([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt)): each TDX quote is a genuine
+  Intel TDX quote (Intel DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose
+  report data holds the signing address and the entry's nonce, and NVIDIA NRAS verified each GPU
+  payload. The TEE measurement is not pinned, so this does not show which model
+  image ran, and A8 was not run, since the ledger holds no invoice text. The Canary's model is a
+  small model given a deliberately gullible prompt.
 
 The full design is in [`docs/specs/2026-10-21-probarion-design.md`](docs/specs/2026-10-21-probarion-design.md)
 (§7, §10, §11 and §12), and the exact checks are in

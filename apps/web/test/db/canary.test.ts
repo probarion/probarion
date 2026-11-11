@@ -1549,6 +1549,58 @@ describe("runAttempt", () => {
         expect(at(await rows())).toMatchObject({ raw: false, raw_skipped_reason: "check_failed" });
         expect(logs.lines.join("\n")).toContain("canary.check_failed");
       });
+
+      // The SDK's senders sign and send nothing with less than 50 ms left: requestSpend then returns a failed spend with
+      // TxSendFailed and no tx hash. Nothing was sent, and it was the time.
+      const notStarted = (code: string): SpendOutcome => ({
+        ...byContract,
+        status: "failed",
+        code,
+        txHash: null,
+        spendId: null,
+      });
+
+      it("ends the raw step with no_time when the spend's sender started nothing with less than 50 ms left", async () => {
+        const c = clock();
+        const requestSpend = vi.fn<CanaryProbarion["requestSpend"]>(async () => {
+          c.leave(10);
+          return notStarted("TxSendFailed");
+        });
+        const { d } = deps({ now: c.now }, { requestSpend });
+        const r = await runAttempt(d, input());
+        expect(requestSpend).toHaveBeenCalledTimes(1);
+        expect(raw(r)).toEqual({ sent: false, skipped: "no_time" });
+        expect(at(await rows())).toMatchObject({
+          raw: false,
+          raw_skipped_reason: "no_time",
+          raw_detail: null,
+          contract_status: null,
+          tx_hash: null,
+        });
+      });
+
+      it.each([
+        [50, "TxSendFailed"],
+        [10, "InvalidNonce"],
+      ] as const)(
+        "keeps a failed spend with %i ms left and %s as the error it is (not sent)",
+        async (left, code) => {
+          const c = clock();
+          const requestSpend = vi.fn<CanaryProbarion["requestSpend"]>(async () => {
+            c.leave(left);
+            return notStarted(code);
+          });
+          const { d } = deps({ now: c.now }, { requestSpend });
+          const r = await runAttempt(d, input());
+          expect(raw(r)).toEqual({ sent: false, skipped: "error" });
+          expect(at(await rows())).toMatchObject({
+            raw: false,
+            raw_skipped_reason: "error",
+            raw_detail: code,
+            tx_hash: null,
+          });
+        },
+      );
     });
 
     // The SUM, not each cap: with every step made to hang, an attempt still answers inside its 80 s (the clock is faked:

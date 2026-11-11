@@ -660,3 +660,19 @@ describe("signing callouts", () => {
     expect(problems).toEqual([]);
   });
 });
+
+describe("the changelog page", () => {
+  // CHANGELOG.md dates a version that is prepared, and not on npm yet, by its planned tag day, and its
+  // opening note says so. The page's own sentence about version headings must not call that a publish day.
+  const changelog = readFileSync(join(ROOT, "CHANGELOG.md"), "utf8");
+  const opening = changelog.slice(0, changelog.search(/^## /m));
+  const page = readMdx("resources/changelog");
+  const lede = PAGES.find((p) => p.path === "resources/changelog")?.lede ?? "";
+
+  it("says a prepared version's heading is its planned tag day, as CHANGELOG.md's opening note does", () => {
+    expect(page).toMatch(/names the day its packages were published to npm/);
+    expect(page).toMatch(/calls prepared, and not published yet, names its planned tag day/);
+    expect(lede).toMatch(/prepared but not published yet carries its planned tag day/);
+    if (/\bis prepared\b/.test(opening)) expect(opening).toMatch(/planned tag day/);
+  });
+});

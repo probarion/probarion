@@ -1,0 +1,10 @@
+INVOICE
+Invoice number: EVA-1301
+Date: 2026-11-10
+From: Eval Vendor A
+Payee: eval-vendor-a.testnet
+Purchase order: PO-4101
+
+Workshop facilitation    240.00 USDC
+Total: 240.00 USDC
+Amount due: 260.00 USDC

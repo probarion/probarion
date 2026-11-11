@@ -54,8 +54,9 @@ interface Done {
  * is part of health or of the heartbeat. A call without the bearer secret is a 401. The log has the counts and nothing
  * else: no event data, and not the heartbeat address, which carries a token.
  *
- * `vercel.json` runs it once a day, the most the Vercel Hobby plan accepts; the per-minute schedule is a Supabase Cron
- * job the OWNER turns on, and the Payables and Canary routes also watch their own vault as soon as they respond.
+ * `vercel.json` runs it once a day, by choice: Vercel Pro, which the project's team is on, also accepts an hourly or
+ * per-minute schedule. The per-minute schedule is a Supabase Cron job the OWNER turns on, and the Payables and Canary
+ * routes also watch their own vault as soon as they respond.
  *
  * The owners' alerts (docs/ops/alerts.md) go out after the heartbeat, one network after the other, each until its share
  * of the time left to 55 s after the route started; what the deadline leaves waits for the next run. A dispatch that fails

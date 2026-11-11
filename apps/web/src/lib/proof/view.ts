@@ -99,7 +99,11 @@ export function proofRows(report: VerifyReport, s: Snapshot, network: Network): 
       accountLink(network, s.vault, "Anchor calls on the vault"),
     ],
     d: lastTxs(s, "payment", network),
-    e: [{ label: "How NEAR AI Cloud attestation works", href: ATTESTATION_DOCS }],
+    // Each decision, with A1 to A7 on its own, is in the page's Decisions section (G7).
+    e: [
+      { label: "Each decision, below", href: "#decisions" },
+      { label: "How NEAR AI Cloud attestation works", href: ATTESTATION_DOCS },
+    ],
     f: [vault],
     g: [accountLink(network, config.intents)],
     h: burnsOf(s)

@@ -41,9 +41,11 @@ export const FOOTER_NAV: readonly NavItem[] = [
  * The tabs of a vault's console, as the path after `/console/<vault>`, in the order a first payment needs them: the
  * agent's key before a mandate, money in the vault before an invoice.
  */
-export const VAULT_TABS: readonly { path: string; label: string }[] = [
+export const VAULT_TABS: readonly { path: string; label: string; isNew?: boolean }[] = [
   { path: "", label: "Overview" },
   { path: "/keys", label: "Keys" },
+  // The user's own AI agent, keys made on its machine: the other way to the same first payment as Keys.
+  { path: "/agent", label: "Agent (MCP)", isNew: true },
   { path: "/mandates", label: "Mandates" },
   { path: "/topup", label: "Top-up" },
   { path: "/payables", label: "Payables" },

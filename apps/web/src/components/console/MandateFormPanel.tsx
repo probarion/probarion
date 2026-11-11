@@ -208,7 +208,8 @@ export function MandateFormPanel(props: {
       <p className={`mb-3 text-xs ${muted}`}>
         A mandate is your signed rule for one agent key: who it may pay, for what, how much per
         payment and in all, and until when. The payee never changes: to pay someone else, create a
-        new mandate. You sign with your own wallet as <span className="mono">{props.owner}</span>.
+        new mandate. You sign with your own wallet as{" "}
+        <span className="mono wrap-anywhere">{props.owner}</span>.
       </p>
       {props.network === "testnet" ? (
         <SampleOffer

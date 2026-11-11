@@ -170,8 +170,9 @@ class DeadlineError extends Error {
 
 /**
  * The SDK starts no chain call with less than this many ms of the attempt left (MIN_CALL_MS in
- * packages/sdk/src/deadline.ts, not exported): it throws an RpcError before the deadline instead. That refusal is the
- * deadline too.
+ * packages/sdk/src/deadline.ts, not exported): it throws an RpcError before the deadline instead, and its senders sign
+ * and send nothing. Before any send that refusal is TxSendFailed, and it is the deadline too. After the node refused a
+ * send with InvalidNonce it is that InvalidNonce refusal, and a lookup it does not start leaves the outcome unknown.
  */
 const SDK_MIN_CALL_MS = 50;
 
@@ -521,7 +522,13 @@ async function sendRaw(
     return { ...refusal, fields: { ...refusal.fields, raw_decision_hash: out.decisionHash } };
   }
   // The node refused the signed transaction, or it could not be built and signed: nothing ran, and there is no tx hash.
-  if (out.status === "failed" && out.txHash === null) return skip("error", code);
+  // A TxSendFailed with less than SDK_MIN_CALL_MS left is the sender's refusal to start for lack of time: no_time. An
+  // InvalidNonce stays an error even then: the node did refuse a nonce, and the time may have run out only after that.
+  if (out.status === "failed" && out.txHash === null) {
+    return code === "TxSendFailed" && outOfTime(null, c.left)
+      ? skip("no_time")
+      : skip("error", code);
+  }
   const byContract = out.status === "refused_by_contract";
   return {
     raw: { sent: true, status: out.status, code, txHash: out.txHash },
