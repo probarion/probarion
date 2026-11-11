@@ -8,8 +8,9 @@ import { approveTx, rejectTx, revokeMandateTx } from "@/lib/near/tx";
 import { isSourceFile, toPosix, walk } from "../../../test/deploy-scan";
 
 // Which confirm dialogs are the red, "Cannot be undone" kind: revoking a mandate, removing an agent key, rejecting a
-// spend, rejecting an invoice. Everything else (freeze, approve, withdraw, create a vault, send NEAR, replace the
-// ledger key) is the normal dialog. The wallet button is replaced by a stub that records its props.
+// spend, rejecting an invoice, and replacing a ledger key that the user's own agent holds or that the Agent (MCP) tab
+// replaces. Everything else (freeze, approve, withdraw, create a vault, send NEAR, replace the console's own ledger
+// key) is the normal dialog. The wallet button is replaced by a stub that records its props.
 
 type Captured = { label: string; confirm?: string; confirmTone?: string };
 const h = vi.hoisted(() => ({ buttons: [] as Captured[] }));
@@ -21,7 +22,12 @@ vi.mock("@/components/wallet/TxButton", () => ({
   },
 }));
 
-import { KeyTxButton } from "./KeyActions";
+import {
+  KeyTxButton,
+  outsideLedgerConfirm,
+  REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM,
+  REPLACE_OUTSIDE_LEDGER_CONFIRM,
+} from "./KeyActions";
 import { RevokeMandateButton } from "./RevokeMandateButton";
 import { VaultTxButton } from "./VaultTxButton";
 
@@ -72,6 +78,15 @@ describe("the buttons that wrap TxButton pass the tone through", () => {
     expect(last().confirmTone).toBeUndefined();
   });
 
+  it("a new ledger key asks about a ledger key held outside Probarion as a fact only when the chain says so", () => {
+    expect(outsideLedgerConfirm(true)).toBe(REPLACE_OUTSIDE_LEDGER_CONFIRM);
+    // The chain could not be read: the dialog says it is not known.
+    expect(outsideLedgerConfirm(null)).toBe(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM);
+    expect(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM).toContain("could not be read");
+    expect(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM).toContain("If your own agent holds");
+    expect(outsideLedgerConfirm(false)).toBeUndefined();
+  });
+
   it("RevokeMandateButton asks with the danger dialog, and keeps its text", () => {
     renderToStaticMarkup(
       createElement(RevokeMandateButton, {
@@ -98,6 +113,11 @@ function countDangerProps(source: string): number {
   return (source.match(/confirmTone=(?:"danger"|\{\s*["']danger["']\s*\})/g) ?? []).length;
 }
 
+/** A tone chosen by a condition, such as `confirmTone={held ? "danger" : undefined}`. */
+function countConditionalDanger(source: string): number {
+  return (source.match(/confirmTone=\{[^{}]*\?\s*["']danger["'][^{}]*\}/g) ?? []).length;
+}
+
 describe("countDangerProps (so the count below cannot be dodged by how the prop is written)", () => {
   it("counts the string form and the expression forms alike", () => {
     expect(countDangerProps('<B confirmTone="danger" />')).toBe(1);
@@ -110,6 +130,12 @@ describe("countDangerProps (so the count below cannot be dodged by how the prop 
   it("does not count another tone, or no tone", () => {
     expect(countDangerProps("<B confirmTone={undefined} />")).toBe(0);
     expect(countDangerProps('<B confirm="danger" />')).toBe(0);
+  });
+
+  it("counts a tone chosen by a condition apart", () => {
+    expect(countConditionalDanger('<B confirmTone={x ? "danger" : undefined} />')).toBe(1);
+    expect(countConditionalDanger('<B confirmTone="danger" />')).toBe(0);
+    expect(countDangerProps('<B confirmTone={x ? "danger" : undefined} />')).toBe(0);
   });
 });
 
@@ -182,17 +208,48 @@ describe("where the danger tone is used", () => {
       .sort();
     expect(users).toEqual([
       "app/console/[vault]/approve/[spend]/page.tsx x1",
-      "app/console/[vault]/keys/page.tsx x1",
+      // Remove for a key the console made, and for one held outside Probarion.
+      "app/console/[vault]/keys/page.tsx x2",
       "app/console/[vault]/page.tsx x1",
+      // Replace an unused ledger key, and remove the agent's key (Agent (MCP) tab).
+      "components/console/ConnectAgentPanel.tsx x2",
       "components/console/RevokeMandateButton.tsx x1",
     ]);
+  });
+
+  it("a tone chosen by a condition appears only where a ledger key held outside Probarion may be replaced", () => {
+    const users = walk(SRC)
+      .filter(isSourceFile)
+      .flatMap((f) => {
+        const n = countConditionalDanger(readFileSync(f, "utf8"));
+        return n === 0 ? [] : [`${toPosix(relative(SRC, f))} x${n}`];
+      })
+      .sort();
+    expect(users).toEqual([
+      "app/console/[vault]/keys/page.tsx x1",
+      "components/console/KeyActions.tsx x1",
+    ]);
+  });
+
+  it("replacing the ledger key from the Agent (MCP) tab, and removing the agent's key there, are danger dialogs", () => {
+    const panel = read("components", "console", "ConnectAgentPanel.tsx");
+    const replace = elementWith(panel, 'label="Replace the ledger key in my wallet"');
+    expect(replace).toContain("confirm={REPLACE_CONFIRM}");
+    expect(replace).toContain('confirmTone="danger"');
+    const remove = elementWith(panel, 'label="Remove this agent key"');
+    expect(remove).toContain('confirmTone="danger"');
+    // The plain set (no ledger key yet) has no dialog at all.
+    expect(elementWith(panel, 'label="Set ledger key in my wallet"')).not.toContain("confirm");
   });
 
   it("the other keys-page and vault-page confirms keep the normal dialog", () => {
     const keys = read("app", "console", "[vault]", "keys", "page.tsx");
     const ledger = elementWith(keys, "Replace the vault's ledger key with this one?");
     expect(ledger).toContain('label="Set as ledger key"');
-    expect(ledger).not.toContain("confirmTone");
+    // Red only when the ledger key it replaces is held outside Probarion (or that could not be read).
+    expect(ledger).toContain(
+      'confirmTone={view.ledgerHeldElsewhere !== false ? "danger" : undefined}',
+    );
     const page = read("app", "console", "[vault]", "page.tsx");
     for (const needle of [
       "Unfreeze the vault? Agents can spend again",

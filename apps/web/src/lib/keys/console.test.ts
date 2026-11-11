@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PGlite } from "@electric-sql/pglite";
+import { formatPublicKey } from "@probarion/core";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,6 +28,7 @@ type Captured = {
   prepare?: () => Promise<WalletTx | { error: string }>;
   expectedSigner?: string;
   confirm?: string;
+  confirmTone?: string;
   lockKey?: string;
   onResult?: (r: unknown) => void | Promise<void>;
   describe?: (r: TxResult) => { detail?: string } | null | undefined;
@@ -100,6 +102,11 @@ import {
   syncKeysAction,
 } from "@/app/console/[vault]/keys/actions";
 import KeysPage, { maxDuration } from "@/app/console/[vault]/keys/page";
+import {
+  LEDGER_HELD_ELSEWHERE,
+  REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM,
+  REPLACE_OUTSIDE_LEDGER_CONFIRM,
+} from "@/components/console/KeyActions";
 import { SIGNER_OUT_OF_NEAR } from "@/lib/console/display";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { VAULT_CODE_HASHES_WITHOUT_LEDGER_RECOVERY } from "@/lib/keys/rules";
@@ -761,5 +768,157 @@ describe("static guards: only server code can reach a secret", () => {
       )
       .map((f) => relative(SRC, f));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("keys held outside Probarion (the user's own agent, Agent (MCP) tab)", () => {
+  const OWN_AGENT = formatPublicKey(new Uint8Array(32).fill(77));
+  const OWN_LEDGER = formatPublicKey(new Uint8Array(32).fill(78));
+  /** This vault's agent keys from its own key rows, as the chain would list them once added. */
+  const consoleAgents = async () =>
+    (
+      await pg.query<{ public_key: string }>(
+        "select public_key from agent_keys where purpose = 'agent' and tenant_id = $1",
+        [tenant],
+      )
+    ).rows.map((r) => ({ public_key: r.public_key, label: "x", added_at_ns: "1" }));
+  /** The chain with every key this vault's rows name, plus the user's own agent key and ledger key. */
+  const withOwnAgent = (over: Partial<VaultReader> = {}) =>
+    chainWithAllKeys({
+      getConfig: async () => vaultConfig({ owner: "acme.near", ledger_key: OWN_LEDGER }),
+      listAgents: async () => [
+        ...(await consoleAgents()),
+        { public_key: OWN_AGENT, label: "mcp-claude", added_at_ns: "2" },
+      ],
+      accessKey: async (_v, key) => fc([key === OWN_LEDGER ? "anchor" : "spend"]),
+      ...over,
+    });
+  const view = (reader: VaultReader) =>
+    loadKeysView(h.db, reader, { tenant_id: tenant, vault_id: VAULT });
+
+  it("lists the vault's keys that have no key row, with their allowance, and says the ledger key is held elsewhere", async () => {
+    const v = await view(withOwnAgent());
+    expect(v.outside).toEqual([
+      {
+        purpose: "agent",
+        public_key: OWN_AGENT,
+        label: "mcp-claude",
+        allowance: { state: "limited", yocto: "1000000000000000000000000" },
+      },
+      {
+        purpose: "ledger",
+        public_key: OWN_LEDGER,
+        // The vault stores no label for its ledger key: the table names it, as the mockup does.
+        label: "the vault's ledger key",
+        allowance: { state: "limited", yocto: "1000000000000000000000000" },
+      },
+    ]);
+    expect(v.ledgerHeldElsewhere).toBe(true);
+  });
+
+  it("lists nothing when every key on the vault is one the console made", async () => {
+    const v = await view(chainWithAllKeys({ listAgents: consoleAgents }));
+    expect(v.outside).toEqual([]);
+    expect(v.ledgerHeldElsewhere).toBe(false);
+  });
+
+  it("says unknown, never none, when the chain's key list or config cannot be read", async () => {
+    const noConfig = await view(
+      withOwnAgent({
+        getConfig: async () => {
+          throw transportError();
+        },
+      }),
+    );
+    expect(noConfig.outside).toBeNull();
+    expect(noConfig.ledgerHeldElsewhere).toBeNull();
+    const noAgents = await view(
+      withOwnAgent({
+        listAgents: async () => {
+          throw transportError();
+        },
+      }),
+    );
+    expect(noAgents.outside).toBeNull();
+    expect(noAgents.ledgerHeldElsewhere).toBe(true);
+  });
+
+  it("shows the owner the card, Remove for the agent key, and the ledger key's way to Agent (MCP)", async () => {
+    await signInAs("acme.near");
+    h.reader = withOwnAgent();
+    const out = (await html(VAULT)).replaceAll("&#x27;", "'");
+    expect(out).toContain("On the vault, held outside Probarion");
+    expect(out).toContain(
+      "These keys are on the vault but Probarion did not make them: your own agent holds their secrets. Probarion's hosted Payables never signs with them.",
+    );
+    expect(out).toContain(OWN_AGENT);
+    expect(out).toContain("<td>the vault's ledger key</td>");
+    expect(out).toContain(`href="/console/${VAULT}/agent"`);
+    expect(out).toContain("See Agent (MCP)");
+    const remove = h.buttons.find(
+      (b) => b.label === "Remove" && JSON.stringify(b.tx).includes(OWN_AGENT),
+    );
+    expect(remove?.tx?.receiverId).toBe(VAULT);
+    expect(JSON.stringify(remove?.tx)).toContain('"remove_agent"');
+    expect(remove?.confirmTone).toBe("danger");
+    // No button removes or replaces the ledger key from this card.
+    expect(h.buttons.some((b) => JSON.stringify(b.tx ?? {}).includes(OWN_LEDGER))).toBe(false);
+  });
+
+  it("warns in red before a ledger key made here replaces the agent's, and asks with a danger confirm", async () => {
+    await signInAs("acme.near");
+    h.reader = withOwnAgent();
+    const out = (await html(VAULT)).replaceAll("&#x27;", "'");
+    expect(out).toContain(LEDGER_HELD_ELSEWHERE);
+    expect(LEDGER_HELD_ELSEWHERE).toBe(
+      "The vault's ledger key is held outside Probarion, by your own agent. A ledger key made here replaces it, and that agent then refuses every payment. Hosted Payables needs a vault of its own.",
+    );
+    const generate = h.buttons.find(
+      (b) => b.label === "Generate ledger key and set it in my wallet",
+    );
+    expect(generate?.confirm).toBe(REPLACE_OUTSIDE_LEDGER_CONFIRM);
+    expect(generate?.confirmTone).toBe("danger");
+    expect(REPLACE_OUTSIDE_LEDGER_CONFIRM).toMatch(/refuses every payment/);
+  });
+
+  it("asks with a danger confirm that says it is unknown when the vault's keys could not be read", async () => {
+    await signInAs("acme.near");
+    h.reader = withOwnAgent({
+      getConfig: async () => {
+        throw transportError();
+      },
+    });
+    await html(VAULT);
+    const generate = h.buttons.find(
+      (b) => b.label === "Generate ledger key and set it in my wallet",
+    );
+    expect(generate?.confirm).toBe(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM);
+    expect(generate?.confirmTone).toBe("danger");
+    expect(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM).toMatch(
+      /^The vault's keys could not be read\. If/,
+    );
+    expect(REPLACE_MAYBE_OUTSIDE_LEDGER_CONFIRM).not.toMatch(/held outside Probarion\?/);
+  });
+
+  it("keeps the plain confirm when the vault's ledger key is the console's own", async () => {
+    await signInAs("acme.near");
+    h.reader = chainWithAllKeys({ listAgents: consoleAgents });
+    const out = (await html(VAULT)).replaceAll("&#x27;", "'");
+    expect(out).not.toContain(LEDGER_HELD_ELSEWHERE);
+    expect(out).not.toContain("On the vault, held outside Probarion");
+    const generate = h.buttons.find(
+      (b) => b.label === "Generate ledger key and set it in my wallet",
+    );
+    expect(generate?.confirmTone).toBeUndefined();
+    expect(generate?.confirm).not.toBe(REPLACE_OUTSIDE_LEDGER_CONFIRM);
+  });
+
+  it("shows an approver the card, with no Remove", async () => {
+    await signInAs("cfo.near");
+    h.reader = withOwnAgent();
+    const out = await html(VAULT);
+    expect(out).toContain("On the vault, held outside Probarion");
+    expect(out).toContain(OWN_AGENT);
+    expect(h.buttons).toEqual([]);
   });
 });

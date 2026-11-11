@@ -40,6 +40,98 @@ The software is an unaudited beta.
   Past the newest 20, a decision shows its summary line and anchors; `?seq=N` opens its full card.
 - The console's Payables invoice page links its decision's card on the vault's proof page (Audit
   link) when that page is public.
+- `scripts/check-claims.mjs` (`pnpm check:claims`), a checker of the README's claims that runs
+  straight after `git clone` with Node alone: no install, no build and, offline, no network. It
+  reads README.md and AGENTS.md (links also in SECURITY.md, CONTRIBUTING.md and the evidence) and
+  checks that each link and anchor resolves, each transaction hash and account is in
+  `contracts/deployments`, `docs/mainnet-proof.json` or `docs/evidence`, each Status row has a known
+  marker and an existing path, each path, `pnpm` script and script command exists, and the versions,
+  counts and other facts it knows match the code, with exactly one `probarion-claim:` marker for each
+  claim id of section 17 of the interfaces spec, and the summary line the README quotes has the
+  shape the checker prints (a `<n>` for each count). It checks claims, not whether the code works.
+  It exits 0 when every claim matches, 1 when one does not (printed as `file:line [check] what is
+  wrong`) and 2 when it cannot run. Without the full git history (a shallow clone) it skips the
+  claims about the git history, and its last line says so. `--online` adds read-only checks of the
+  chain (the named vaults' code hash and keys; that each cited transaction exists, was signed by an
+  account the records name, a `spend` by the vault itself, and shows the error code, event or memo
+  its row gives), the site's health route, the Chrome Web Store item and npm, and exits 2 when an
+  endpoint does not answer. CI runs it offline through the real-repository test in
+  `scripts/check-claims.test.mjs`, which fails on any claim that does not match; the ts job of
+  `.github/workflows/ci.yml` checks out the full history (`fetch-depth: 0`), so the git-history
+  claims are checked there too, and `scripts/ci-workflow.test.mjs` pins that checkout. The README's
+  evaluation starts with it as step 0. Its first run found three claims,
+  fixed where they are written: the short text of the INV-2003 approve transaction in the README
+  ended in FJf instead of NCJf; `trial.vaults.probarion.testnet`, the vault that Create a vault made
+  with Meteor on 2026-11-05, was in no record and is now under `trial_vault` in
+  `contracts/deployments/testnet.json` with its `create_vault` transaction; and `EVAL-REGRESSION` had
+  no marker, which is now on the eval:check test in `apps/web/test/eval/replay.test.ts`.
+- `@probarion/mcp`: `probarion-mcp init`, a keys file, and `probarion-mcp status`, so the agent's keys
+  stay on the user's machine and an MCP client's config needs only `PROBARION_VAULT_ID`.
+  `init --vault <id> [--keys-file <path>]` makes the agent key and the ledger key and writes them to
+  `~/.probarion/<vault>/keys.json` (format `probarion-mcp-keys/1`, mode 0600, opened with `wx` so an
+  existing file is kept: a second run checks it and prints the same public keys). The file and, outside
+  Windows, each folder it adds an entry to are synced before the public keys are printed. It prints only
+  the two public keys, the `probarion agent add` and `probarion ledger set-key` lines (the console's Agent
+  (MCP) tab gets no link until it is live, and the console does not serve mainnet yet), and that a backup of
+  the folder holds the two secret keys, with the CLI's Windows and git warnings. The server and `status` take
+  their keys from both `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY`, else the file
+  `PROBARION_KEYS_FILE` names (which must exist), else the default keys file, else run read-only. One key
+  from the environment with the other from a file is refused, and the server's first line on stderr names
+  the source. A keys file must be for this vault and its network, with each secret key matching its public
+  key and two different keys; a problem names the file and the field, with no value from the file. The
+  vault id is checked as a NEAR account id before it goes into a path. `status` only reads, and prints ok,
+  not yet or fail for the keys (a keys file other users can read fails, outside Windows), the vault (not
+  frozen), the agent key (a function-call key limited to `spend`, with allowance left), the ledger key (the
+  vault's, limited to `anchor`), an active mandate bound to the agent key, the vault's USDC, and the local
+  ledger against the latest anchor (the single-writer check, run dry), with one next step when not ready:
+  the first fail that has one, else the first not yet. Exit code 0 when ready, 1 when not, 2 for a
+  configuration error. `init` and `status` print their commands the way the binary was started (`node` and
+  the path of `bin.js` from a clone), and a usage error echoes only a flag or a word, so a secret key passed
+  as an argument by mistake is named by its position alone. The README's set-up is now init, the owner's
+  two keys, status, and the client's config; keys in the client's config stay as the fallback.
+- `@probarion/mcp`: the single-writer guard before `request_spend` also checks that the server's own ledger
+  key signed every entry after the vault's latest anchor, and refuses with `LEDGER_KEY_MISMATCH`, sending
+  nothing, when another key did (a keys file swapped while the ledger file stayed). The vault's next anchor
+  would cover those entries under the current ledger key, and `verify` check a would fail for them.
+  `status` runs the same check, says to anchor such entries with their key before the owner sets the new
+  one, and does not suggest a new ledger key for a vault that another process anchors from its own ledger.
+- The console's Agent (MCP) tab, `/console/<vault>/agent`, after Keys: the owner connects their own
+  AI agent (Claude Code, Claude Desktop, Cursor or Codex) to the vault through the MCP server. Built,
+  not tried yet.
+  - The agent makes its two keys on its own machine (`init`). The owner pastes only their public
+    keys, and the page refuses a pasted secret key in the browser, so it is not sent. The agent
+    key's label is public on the vault, so the page and the server action refuse a label that holds
+    a key (`ed25519:`, or a base58 run of 40 characters or more), and the field does not cut a long
+    paste. Two owner-only server actions read the chain again at click time and return `add_agent`
+    and `set_ledger_key` for the member's own vault, with the vault kind's gas allowances, for the
+    owner's wallet to sign. Nothing is stored: these keys have no database row.
+  - A vault has one ledger, so the ledger key is withheld from a vault whose ledger another writer
+    keeps: hosted Payables (its active ledger key, its entries, or a ledger key it made) or anchors
+    signed by another key. On testnet the page then links "Create a vault for this agent"; on
+    mainnet it says vaults cannot be created there yet. An unused ledger key is replaced only after
+    a danger confirm.
+  - Steps 5 and 6 give each client's settings, which carry only `PROBARION_VAULT_ID`, with the
+    Windows form for each client, and a status card read from the chain: both keys and their gas
+    left, an active mandate for the key, the vault's USDC, and who keeps the ledger. A vault id
+    that ends in neither `.near` nor `.testnet` also gets `NEAR_NETWORK`, in the settings and in
+    the `init` and `status` lines. Until `@probarion/mcp` 0.1.1 is on npm (`MCP_ON_NPM` in
+    `apps/web/src/lib/agent/connect.ts`), the page builds the server from a clone. Approvers and
+    viewers see the status card only.
+  - "Check these keys" runs from a form, so Enter works, moves the focus to the first field with an
+    error, and says its result in a status region. Before anything is pasted, step 3 shows the keys
+    the chain already has, as step 6 does.
+  - `probarion-mcp init` and `status` link the tab on testnet. `status` offers it for the ledger key
+    only on a vault with no anchor yet; otherwise it gives the `probarion ledger set-key` transaction.
+- The Keys tab lists the keys on the vault that Probarion did not make, under "On the vault, held
+  outside Probarion", with their allowance and Remove for an agent key. When the vault's ledger key
+  is one of them, "Generate ledger key and set it in my wallet" shows a red notice and asks in a
+  danger dialog first, as a ledger key made there would stop that agent. When the vault's keys
+  could not be read, that dialog says it is not known whether the user's own agent holds the
+  ledger key.
+- The landing's status list adds the Agent (MCP) tab to the console's "Built, not tried yet" row.
+- The overview's "Your first agent payment" card offers its keys step two ways, hosted Payables on
+  Keys or your own AI agent on Agent (MCP), and ticks it when the chain shows an agent key and a
+  ledger key that the console did not make.
 - `@probarion/mcp`: `probarion-mcp demo [--vault <id>]`, a read-only tour of the five tools against
   the live testnet demo vault. It needs no key and signs and sends nothing. It shows the tools and
   their fields, the live caps, the contract's `check_spend` answers (ok, held, `OverPerPayment`), an

@@ -1,3 +1,4 @@
+import { publicKeyFromSecret } from "@probarion/core";
 import {
   FileLedgerStore,
   type LedgerStore,
@@ -10,14 +11,17 @@ import type { McpConfig } from "./config.js";
 import { withSingleWriterGuard } from "./guard.js";
 import type { ProbarionPort } from "./port.js";
 
+/** What `buildPort` reads of the config: all of it but where the keys came from and the ledger key's public half. */
+export type PortConfig = Omit<McpConfig, "keysSource" | "ledgerPublicKey">;
+
 /**
- * The port over a `Probarion` instance, guarded so that a spend from a second ledger file is refused. The
- * MCP client decides; this server makes no model call of its own (`model: null`), so its spends are
- * recorded as unattested proposals and decided by Probarion's rules. The SDK reads no environment of its own
- * here: every RPC URL it uses is one `loadConfig` checked.
+ * The port over a `Probarion` instance, guarded so that a spend from a second ledger file, or onto a ledger tail
+ * that another ledger key signed, is refused. The MCP client decides; this server makes no model call of its own
+ * (`model: null`), so its spends are recorded as unattested proposals and decided by Probarion's rules. The SDK
+ * reads no environment of its own here: every RPC URL it uses is one `loadConfig` checked.
  */
 export function buildPort(
-  cfg: McpConfig,
+  cfg: PortConfig,
   deps: ProbarionDeps = {},
   ledger: LedgerStore = new FileLedgerStore(cfg.ledgerPath),
 ): ProbarionPort {
@@ -44,5 +48,6 @@ export function buildPort(
     findSpendByRef: async (ref) => (await vault.listAllSpends()).find((s) => s.ref === ref) ?? null,
     verify: () => pb.verify(),
   };
-  return withSingleWriterGuard(port, ledger, () => pb.anchors.latest());
+  const ledgerPublicKey = cfg.ledgerKey === null ? null : publicKeyFromSecret(cfg.ledgerKey);
+  return withSingleWriterGuard(port, ledger, () => pb.anchors.latest(), ledgerPublicKey);
 }

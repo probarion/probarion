@@ -745,7 +745,7 @@ export const STATUS = {
     },
     {
       id: "web-console-not-tried",
-      row: "Web console: Freeze, approving in the console, USDC top-up",
+      row: "Web console: Freeze, approving in the console, USDC top-up, Agent (MCP) tab",
       pill: "Built, not tried yet",
       tone: "work",
     },

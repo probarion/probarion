@@ -25,9 +25,9 @@ import {
   usdcText,
   whyUnavailable,
 } from "@/lib/console/display";
-import { readKeyReadiness } from "@/lib/console/key-readiness";
+import { readKeySteps, selfHeldKeys } from "@/lib/console/key-readiness";
 import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
-import { loadOverview, type Read, rpcChainReads } from "@/lib/console/vaults";
+import { loadOverview, type Read, read, rpcChainReads } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
 import { NEAR_LOW_ALERT_YOCTO } from "@/lib/near/runway";
@@ -174,11 +174,14 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
   // The vault's own network, which is the request's: nothing below reads the other one.
   const network = member.network;
   const consts = chainConsts(network);
-  // "Your first agent payment" (site audit P1-8) is for the owner of an external vault. Its one extra read, the
-  // console's own key rows, starts beside the chain reads and only for them; it never rejects.
+  // "Your first agent payment" (site audit P1-8) is for the owner of an external vault. Its two extra reads, the
+  // console's own key rows and the vault's agent keys (for keys the user's own agent holds), start beside the chain
+  // reads and only for them; neither rejects.
   const firstRun = member.role === "owner" && member.kind === "external";
-  const keys = firstRun ? readKeyReadiness(serviceDb(), member.tenant_id) : null;
-  const o = await loadOverview(getReader(network), rpcChainReads(getRpc(network)), vault, {
+  const reader = getReader(network);
+  const keys = firstRun ? readKeySteps(serviceDb(), member.tenant_id) : null;
+  const agents = firstRun ? read("list_agents", vault, () => reader.listAgents(vault)) : null;
+  const o = await loadOverview(reader, rpcChainReads(getRpc(network)), vault, {
     base: consts.allowedAssets.base,
   });
   const config = o.config.ok ? o.config.value : null;
@@ -191,10 +194,11 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
   // Shown until the first payment, when the chain agrees this account is the owner, and only for a vault in this
   // network's USDC: Mandates cannot serve any other token.
   const checklist =
-    keys !== null && config !== null && isOwner && config.usdc === consts.usdc
+    keys !== null && agents !== null && config !== null && isOwner && config.usdc === consts.usdc
       ? firstPaymentChecklist({
           network,
-          keys: await keys,
+          keys: (await keys).readiness,
+          selfHeld: selfHeldKeys((await keys).known, config.ledger_key, await agents),
           usdc: o.usdc,
           intentsBase: o.intentsBase,
           mandates: o.mandates,
