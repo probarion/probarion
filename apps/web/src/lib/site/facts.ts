@@ -47,6 +47,9 @@ export const LINKS = {
   changelog: blob("CHANGELOG.md"),
   fixture: blob(FIXTURE_PATH),
   x: "https://x.com/probarionhq",
+  /** The browser extension's Chrome Web Store listing, item hhadnmnjdlamihjjoejphkimnbcfidmn. */
+  chromeWebStore:
+    "https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn",
 } as const;
 
 // --- metadata -------------------------------------------------------------------------------------

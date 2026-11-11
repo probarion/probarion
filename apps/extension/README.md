@@ -4,14 +4,15 @@ A Manifest V3 extension that queues invoices from the browser into a Probarion v
 confirmation. It can't pay or approve: a queued invoice waits until the vault's owner confirms it in the console with
 a wallet signature.
 
+## Install it
+
+Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn)
+(item `hhadnmnjdlamihjjoejphkimnbcfidmn`, version 0.1.0). It needs Chrome 127 or newer.
+
 ## Load it unpacked
 
-It is pending Chrome Web Store review (item `hhadnmnjdlamihjjoejphkimnbcfidmn`, submitted on 2026-11-10). Until the store publishes it, load it
-unpacked.
-
-
-It needs Chrome 127 or newer, Node 24 or newer and pnpm 10. `pnpm install --filter @probarion/extension...` installs
-only what the extension needs.
+To build it from source instead, you need Chrome 127 or newer, Node 24 or newer and pnpm 10.
+`pnpm install --filter @probarion/extension...` installs only what the extension needs.
 
     pnpm install --filter @probarion/extension...
     pnpm --filter @probarion/extension build

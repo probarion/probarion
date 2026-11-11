@@ -255,9 +255,17 @@ account's waiting invoices, held spends and active mandates, and can queue invoi
 usable mandates, to the payees they already name and within their limits; it cannot pay, confirm or
 approve.
 
-**Planned surfaces.**
-
-- The browser extension itself (plan 06 Task 3, E2). This section is updated when it ships.
+**The browser extension itself.** `apps/extension` is on the Chrome Web Store as version 0.1.0
+([its listing](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn)).
+A release build asks for `storage`, `contextMenus`, `activeTab` and `alarms`, and host access to
+Probarion's three addresses only; its content script runs only on their `/extension` page
+(`apps/extension/scripts/manifest.mjs`). It keeps each connection's token in `chrome.storage.local`,
+and a captured invoice in `chrome.storage.session` until it is sent or Chrome closes
+(`apps/extension/src/storage.ts`). It calls only the pairing, inbox, invoices and revoke routes above,
+with no cookies (`apps/extension/src/api.ts`, `apps/extension/test/claims.test.ts`). A file it captures
+from a tab or a link is fetched from that site with the user's own session for it, and is sent only to
+the connected Probarion address. Whoever can read that browser profile's extension storage holds the
+token, with the reach of a stolen token above.
 
 ## Blast radius if Probarion is breached
 
