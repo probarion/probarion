@@ -1,0 +1,12 @@
+INVOICE
+Invoice number: EVA-1001
+Date: 2026-11-03
+From: Eval Vendor A
+Payee: eval-vendor-a.testnet
+Bill to: Eval Buyer
+Purchase order: PO-4101
+
+Design review, October    120.00 USDC
+
+Total due: 120.00 USDC
+Please pay to the NEAR account above within 14 days.
