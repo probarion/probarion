@@ -92,6 +92,9 @@ describe("safeText (ledger and chain text is untrusted)", () => {
     expect(safeText(null)).toBe("null");
     expect(safeText(undefined)).toBe("undefined");
     expect(safeText({ a: 1 })).toBe("[object Object]");
+    // JSON can carry an own toString or valueOf that is not a function, which String() throws on.
+    expect(safeText(JSON.parse('{"toString":1}'))).toBe("unreadable");
+    expect(safeText(JSON.parse('{"toString":{},"valueOf":{}}'))).toBe("unreadable");
   });
 
   it("uses U+FFFD as the mark", () => {

@@ -17,6 +17,18 @@ const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 const MARK_RUN = /(\p{M}{2})\p{M}+/gu;
 
 /**
+ * `String(value)`, or "unreadable" when String() throws. JSON can carry an object whose own `toString` and
+ * `valueOf` are not functions, such as {"toString": 1}, and String() throws on it.
+ */
+function textOf(value: unknown): string {
+  try {
+    return String(value);
+  } catch {
+    return "unreadable";
+  }
+}
+
+/**
  * Text that came from the ledger or the chain, made safe to show. React escapes HTML, but a crafted ledger or
  * snapshot can still carry a right-to-left override that makes "fail" read as "pass", a line break that makes one
  * value look like two, a run of combining marks that draws over the rows around it, or a value long enough to push
@@ -24,7 +36,7 @@ const MARK_RUN = /(\p{M}{2})\p{M}+/gu;
  * code points (never inside one) with an ellipsis. Any value is turned into text; nothing throws.
  */
 export function safeText(value: unknown, max: number = MAX_TEXT): string {
-  const text = String(value).replace(UNSAFE, REMOVED).replace(MARK_RUN, "$1");
+  const text = textOf(value).replace(UNSAFE, REMOVED).replace(MARK_RUN, "$1");
   const points = Array.from(text);
   return points.length > max ? `${points.slice(0, max).join("")}${ELLIPSIS}` : text;
 }

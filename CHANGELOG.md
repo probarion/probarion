@@ -14,6 +14,14 @@ The software is an unaudited beta.
 
 ### Added
 
+- `/proof/<vault>` lists every decision of the ledger under the checks, newest first. For a decision
+  made with model output it shows what the ledger records the TEE saw and signed, and what the code
+  and the contract checked, with A1 to A7 run on the page's snapshot and a fixed line on what they
+  leave open: the TDX quote needs `verify --online`, A8 needs the invoice. Each card has the audit
+  anchor `#seq-N`, and `#spend-N` for each spend bound to it, and check (e) links to the section.
+  Past the newest 20, a decision shows its summary line and anchors; `?seq=N` opens its full card.
+- The console's Payables invoice page links its decision's card on the vault's proof page (Audit
+  link) when that page is public.
 - `scripts/check-claims.mjs` (`pnpm check:claims`), a checker of the README's claims that runs
   straight after `git clone` with Node alone: no install, no build and, offline, no network. It
   reads README.md and AGENTS.md (links also in SECURITY.md, CONTRIBUTING.md and the evidence) and
@@ -587,6 +595,8 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The grey text on `/proof/<vault>` (the decision cards, each check's detail, the model note and the
+  limits line under A1 to A7) uses the mute token, 7:1 or more on paper.
 - The browser extension is on the Chrome Web Store as version 0.1.0
   (https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn). The README
   (Status row Shipped), the extension's README, the store pack, What works today, the HTTP API and
