@@ -76,9 +76,7 @@ for (const path of ["/security", "/status", "/terms", "/privacy"]) {
   });
 }
 
-test("/privacy has the browser-extension section the store listing will link to", async ({
-  page,
-}) => {
+test("/privacy has the browser-extension section the store listing links to", async ({ page }) => {
   await page.goto("/privacy");
   await expect(page.locator("#browser-extension h2")).toHaveText("Browser extension");
 });
