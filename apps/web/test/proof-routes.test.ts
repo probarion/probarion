@@ -39,6 +39,9 @@ const h = vi.hoisted(() => ({
   envDown: false,
   /** Structured warn lines (proof.unavailable), kept off the test output. */
   warned: [] as string[],
+  /** Building the decision rows fails, and how many times they were built. */
+  rowsDown: false,
+  rowsBuilt: 0,
 }));
 
 vi.mock("next/headers", () => ({
@@ -75,6 +78,18 @@ vi.mock("@/lib/db/clients", () => ({
     };
   },
 }));
+// The real decision rows, counted, or a failure when the test asks for one.
+vi.mock("@/lib/proof/decisions", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/proof/decisions")>();
+  return {
+    ...real,
+    decisionRows: async (...args: Parameters<typeof real.decisionRows>) => {
+      h.rowsBuilt++;
+      if (h.rowsDown) throw new Error("the rows broke");
+      return real.decisionRows(...args);
+    },
+  };
+});
 vi.mock("@/lib/proof/deps", () => ({
   proofDeps: async () => {
     h.depsCalls++;
@@ -102,7 +117,7 @@ import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
 import ProofPage, { generateMetadata } from "@/app/proof/[vault]/page";
 import { GET } from "@/app/proof/[vault]/snapshot.json/route";
 import ProofIndex from "@/app/proof/page";
-import { ProofLimited } from "@/components/proof/ProofView";
+import { ProofLimited, ProofView } from "@/components/proof/ProofView";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { TamperPanel } from "@/components/site/TamperPanel";
 import { SITE_NAV } from "@/lib/routes";
@@ -176,6 +191,8 @@ beforeEach(() => {
   h.depsDown = false;
   h.envDown = false;
   h.warned = [];
+  h.rowsDown = false;
+  h.rowsBuilt = 0;
   vi.spyOn(console, "warn").mockImplementation((line: unknown) => {
     h.warned.push(String(line));
   });
@@ -388,6 +405,79 @@ describe("/proof/[vault]", () => {
     );
     expect(out).toContain(`href="/proof/${snapshot.vault}/ledger.jsonl"`);
     if (!CLI_ON_NPM) expect(t).not.toContain("npx probarion");
+  });
+
+  it("lists each decision of the checked snapshot under the checks, with its audit anchors (G7, G4)", async () => {
+    const { snapshot, out } = await served("ok", "testnet");
+    const t = text(out);
+    expect(out).toContain('id="decisions"');
+    // The one decision, by its seq, and the spend the chain binds to it.
+    expect(out).toContain('id="seq-0"');
+    expect(out).toContain('id="spend-1"');
+    expect(out).toMatch(/<a[^>]*href="#spend-1"[^>]*>Link to this decision<\/a>/);
+    expect(out).toMatch(/<a[^>]*href="#decisions"[^>]*>Each decision, below<\/a>/);
+    expect(t).toContain("1 decision, 0 made with model output");
+    expect(t).toContain("No model was used.");
+    expect(t.indexOf("Decisions Every decision")).toBeGreaterThan(t.indexOf("Checks These are"));
+    // The page hands ProofView the rows of the very snapshot the checks ran on.
+    clearProofCache();
+    const [view] = elementsOf(await page(snapshot.vault), ProofView);
+    if (!view) throw new Error("the page did not render ProofView");
+    expect((view.props as { decisions: unknown }).decisions).toMatchObject([
+      { id: "seq-0", spendIds: ["spend-1"] },
+    ]);
+  });
+
+  it("builds the decision rows once per cached snapshot, not once per view", async () => {
+    const { snapshot } = await served("ok", "testnet");
+    expect(h.rowsBuilt).toBe(1);
+    // The next views within the 60 s get the cached result, and with it the same rows.
+    for (let i = 0; i < 3; i++) await html(snapshot.vault);
+    expect(h.rowsBuilt).toBe(1);
+    // A new gather is a new snapshot, so its rows are built again.
+    clearProofCache();
+    await html(snapshot.vault);
+    expect(h.rowsBuilt).toBe(2);
+  });
+
+  it("still shows the checks when the decision rows cannot be built, says so, and logs why", async () => {
+    h.rowsDown = true;
+    const { snapshot, out } = await served("ok", "testnet");
+    const t = text(out);
+    expect(t).toContain("Checks These are");
+    expect(out).toContain('id="check-e"');
+    expect(t).toContain(
+      "The decisions could not be listed from this snapshot. The checks above still ran on it.",
+    );
+    expect(out).not.toContain('id="seq-0"');
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.decisions_unavailable" }]);
+    expect(h.warned.join("\n")).toContain("the rows broke");
+    // A failed build is not kept: the next view of the same cached snapshot tries again.
+    h.rowsDown = false;
+    const again = await html(snapshot.vault);
+    expect(again).toContain('id="seq-0"');
+  });
+
+  it("renders an older decision's full card when the address names its seq (?seq=N)", async () => {
+    const snapshot = await proofSnapshot("ok", { network: "testnet" });
+    serve(snapshot);
+    const seqOf = async (search: Record<string, string | string[] | undefined>) => {
+      const tree = await ProofPage({
+        ...params(snapshot.vault),
+        searchParams: Promise.resolve(search),
+      });
+      const [view] = elementsOf(tree, ProofView);
+      if (!view) throw new Error("the page did not render ProofView");
+      return (view.props as { fullSeq: unknown }).fullSeq;
+    };
+    expect(await seqOf({ seq: "0" })).toBe(0);
+    expect(await seqOf({ seq: "21" })).toBe(21);
+    for (const bad of ["", "-1", "01", "1.5", "x", "1e3", "12345678901"]) {
+      expect(await seqOf({ seq: bad }), bad).toBeNull();
+    }
+    expect(await seqOf({ seq: ["3", "4"] })).toBeNull();
+    expect(await seqOf({})).toBeNull();
+    expect(await seqOf({ other: "1" })).toBeNull();
   });
 
   it("promises no identity between the page and the download: it gives the full time to compare", async () => {

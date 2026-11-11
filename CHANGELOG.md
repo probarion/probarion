@@ -14,6 +14,39 @@ The software is an unaudited beta.
 
 ### Added
 
+- `/proof/<vault>` lists every decision of the ledger under the checks, newest first. For a decision
+  made with model output it shows what the ledger records the TEE saw and signed, and what the code
+  and the contract checked, with A1 to A7 run on the page's snapshot and a fixed line on what they
+  leave open: the TDX quote needs `verify --online`, A8 needs the invoice. Each card has the audit
+  anchor `#seq-N`, and `#spend-N` for each spend bound to it, and check (e) links to the section.
+  Past the newest 20, a decision shows its summary line and anchors; `?seq=N` opens its full card.
+- The console's Payables invoice page links its decision's card on the vault's proof page (Audit
+  link) when that page is public.
+- `scripts/check-claims.mjs` (`pnpm check:claims`), a checker of the README's claims that runs
+  straight after `git clone` with Node alone: no install, no build and, offline, no network. It
+  reads README.md and AGENTS.md (links also in SECURITY.md, CONTRIBUTING.md and the evidence) and
+  checks that each link and anchor resolves, each transaction hash and account is in
+  `contracts/deployments`, `docs/mainnet-proof.json` or `docs/evidence`, each Status row has a known
+  marker and an existing path, each path, `pnpm` script and script command exists, and the versions,
+  counts and other facts it knows match the code, with exactly one `probarion-claim:` marker for each
+  claim id of section 17 of the interfaces spec, and the summary line the README quotes has the
+  shape the checker prints (a `<n>` for each count). It checks claims, not whether the code works.
+  It exits 0 when every claim matches, 1 when one does not (printed as `file:line [check] what is
+  wrong`) and 2 when it cannot run. Without the full git history (a shallow clone) it skips the
+  claims about the git history, and its last line says so. `--online` adds read-only checks of the
+  chain (the named vaults' code hash and keys; that each cited transaction exists, was signed by an
+  account the records name, a `spend` by the vault itself, and shows the error code, event or memo
+  its row gives), the site's health route, the Chrome Web Store item and npm, and exits 2 when an
+  endpoint does not answer. CI runs it offline through the real-repository test in
+  `scripts/check-claims.test.mjs`, which fails on any claim that does not match; the ts job of
+  `.github/workflows/ci.yml` checks out the full history (`fetch-depth: 0`), so the git-history
+  claims are checked there too, and `scripts/ci-workflow.test.mjs` pins that checkout. The README's
+  evaluation starts with it as step 0. Its first run found three claims,
+  fixed where they are written: the short text of the INV-2003 approve transaction in the README
+  ended in FJf instead of NCJf; `trial.vaults.probarion.testnet`, the vault that Create a vault made
+  with Meteor on 2026-11-05, was in no record and is now under `trial_vault` in
+  `contracts/deployments/testnet.json` with its `create_vault` transaction; and `EVAL-REGRESSION` had
+  no marker, which is now on the eval:check test in `apps/web/test/eval/replay.test.ts`.
 - `@probarion/mcp`: `probarion-mcp init`, a keys file, and `probarion-mcp status`, so the agent's keys
   stay on the user's machine and an MCP client's config needs only `PROBARION_VAULT_ID`.
   `init --vault <id> [--keys-file <path>]` makes the agent key and the ledger key and writes them to
@@ -592,6 +625,8 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The grey text on `/proof/<vault>` (the decision cards, each check's detail, the model note and the
+  limits line under A1 to A7) uses the mute token, 7:1 or more on paper.
 - The browser extension is on the Chrome Web Store as version 0.1.0
   (https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn). The README
   (Status row Shipped), the extension's README, the store pack, What works today, the HTTP API and
