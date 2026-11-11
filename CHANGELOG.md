@@ -27,8 +27,15 @@ The software is an unaudited beta.
   with the reason and the command, or FAIL. It exits 0 only when no step failed and writes
   `judge-report.json` (gitignored): the claim, README line, command, result, expectation, time and
   detail of each step, with the commit, Node and OS. `--offline` makes no network call, `--quick` skips
-  the tests and `--json` prints the report. Child processes get no `PROBARION_*` variable and no other
-  variable named like a secret. AGENTS.md and the README's 5-minute section start with it, and
+  the tests and `--json` prints the report. SKIPPED is only for a step not run here (the flags, the
+  network down, a timeout, 429 or 5xx); a definite wrong answer, such as the proof page answering 404 or
+  the MCP demo skipping its verify for that reason, is a FAIL, and the MCP demo row passes only when its
+  6 steps answer as expected or with a note. The package rows give the README's dated test count next to
+  today's, and the `examples/402` row checks that every test of `test/pay-per-call.test.ts` passed.
+  Child processes get no `PROBARION_*` variable and no other variable named like a secret, the MCP demo
+  runs with an empty home folder so its server finds no keys file, and a README snippet that names a key
+  (or, in an offline step, reaches the network) is refused before it runs. AGENTS.md and the README's
+  5-minute section start with it, and
   `.github/workflows/judge.yml` runs `pnpm judge --offline --quick` daily and on pushes to `main`, with
   read-only permissions and the actions pinned at the SHAs of `ci.yml`. The web console's tests and the
   Rust tests are listed as known skips with their commands.

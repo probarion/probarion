@@ -18,13 +18,16 @@
 //   pnpm judge --json       the report as JSON on stdout, the table on stderr
 //
 // Read-only. It signs and sends nothing and needs no key: its child processes get no PROBARION_* variable and
-// no other variable whose name looks like a secret. It writes judge-report.json, the packages' dist folders
-// (the build step) and a temp folder that holds each step's log and the downloaded ledger. It does not run
-// `pnpm verify`, `verify:ts` or the root `pnpm test`.
+// no other variable whose name looks like a secret, the MCP demo runs with an empty home folder (so its
+// server finds no keys file there), and a README snippet that names a key, or an offline one that reaches the
+// network, is refused before it runs. It writes judge-report.json, the packages' dist folders (the build step)
+// and a temp folder that holds each step's log and the downloaded ledger. It does not run `pnpm verify`,
+// `verify:ts` or the root `pnpm test`.
 import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -110,18 +113,23 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Words that say a live step met the network rather than a wrong answer. */
 const NETWORK_ERROR =
-  /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ENETUNREACH|socket hang up|UND_ERR|AbortError|TimeoutError|timed out|Too Many Requests|HTTP (429|5\d\d)|Service Unavailable|Bad Gateway|Gateway Timeout/i;
+  /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ENETUNREACH|socket hang up|UND_ERR|AbortError|TimeoutError|timed out|aborted due to timeout|Too Many Requests|HTTP (429|5\d\d)|Service Unavailable|Bad Gateway|Gateway Timeout/i;
 export const looksLikeNetworkError = (text) => NETWORK_ERROR.test(plain(text));
 
 // ---------------------------------------------------------------------------------------------
 // README references: each step quotes the line whose claim it proves, and finds its line number at run time
 
+/** Where `quote` starts in `text` (any run of whitespace matches any other), or -1. */
+function quoteIndex(text, quote) {
+  if (typeof text !== "string") return -1;
+  const words = quote.trim().split(/\s+/).map(escapeRe);
+  return new RegExp(words.join("\\s+")).exec(text)?.index ?? -1;
+}
+
 /** The 1-based line where `quote` starts in `text` (any run of whitespace matches any other), or null. */
 export function locate(text, quote) {
-  if (typeof text !== "string") return null;
-  const words = quote.trim().split(/\s+/).map(escapeRe);
-  const m = new RegExp(words.join("\\s+")).exec(text);
-  return m ? text.slice(0, m.index).split("\n").length : null;
+  const at = quoteIndex(text, quote);
+  return at < 0 ? null : text.slice(0, at).split("\n").length;
 }
 
 /** The bash snippet and the text block README.md shows after the bold step title `marker`. */
@@ -158,6 +166,12 @@ export function readmeExample(readme, marker) {
 }
 
 const OWNER_TX_MARKER = "Print an owner transaction without signing it.";
+
+/** What each README snippet the judge runs may import: Node's fs and the built packages, nothing else. */
+export const SNIPPET_IMPORTS = {
+  "readme-step-2-tamper": ["node:fs", "./packages/core/dist/index.js"],
+  "readme-step-4-check-spend": ["./packages/sdk/dist/index.js", "./packages/core/dist/index.js"],
+};
 
 /** Splits a shell command line into words, keeping quoted words whole. */
 const shellWords = (s) =>
@@ -234,6 +248,201 @@ export function compareLines(actual, expected) {
     }
   }
   return { same: true };
+}
+
+/**
+ * Words a README snippet the judge runs may not hold: a key or the environment that could carry one, a child
+ * process, another way to load code, or a file write. An offline snippet may also not reach the network.
+ */
+const SNIPPET_REFUSED =
+  /agentKey|ledgerKey|ed25519:|secp256k1:|PROBARION_|process\.env|child_process|\bimport\s*\(|\brequire\s*\(|\beval\s*\(|\bFunction\s*\(|\bspawn|\bexec(?:Sync|File)?\s*\(|writeFile|appendFile|\bunlink|\brmSync\b|\brm\s*\(|\bmkdir/;
+const SNIPPET_OFFLINE_REFUSED =
+  /\bfetch\b|https?:\/\/|\bnetwork\s*:|\bnew Probarion\b|node:(?:net|http|https|http2|tls|dgram|dns)\b/;
+
+/**
+ * Why the judge must not run this README snippet, or null. It runs only snippets that import nothing but
+ * `imports` and hold none of the refused words, so a README edit cannot give a step a key or put the network in
+ * an offline step without a reviewed change to this file.
+ */
+export function snippetProblem(script, { imports, offline }) {
+  if (typeof script !== "string") return "is not text";
+  for (const m of script.matchAll(/\b(?:from|import)\s*["']([^"']+)["']/g)) {
+    if (!imports.includes(m[1]))
+      return `imports "${m[1]}", which is not one of ${imports.join(", ")}`;
+  }
+  const bad =
+    SNIPPET_REFUSED.exec(script) ?? (offline ? SNIPPET_OFFLINE_REFUSED.exec(script) : null);
+  return bad ? `holds "${bad[0]}"${offline ? ", and this step runs offline" : ""}` : null;
+}
+
+/**
+ * Whether every test of `file` passed in a vitest run with the verbose reporter, which prints one line per test:
+ * a mark (a check for a pass), then `<file> > <suite> > <test>`. A file that printed no test did not run.
+ */
+/** The mark vitest prints before a test that passed (U+2713, a check mark). */
+const VITEST_PASS = String.fromCharCode(0x2713);
+
+export function testFileResult(output, file) {
+  const prefix = `${file} > `;
+  const lines = linesOf(output)
+    .map((l) => l.trim())
+    .filter((l) => l.slice(l.indexOf(" ") + 1).startsWith(prefix));
+  if (lines.length === 0) return { ok: false, detail: `the run lists no test of ${file}` };
+  const notPassed = lines.filter((l) => !l.startsWith(`${VITEST_PASS} `));
+  if (notPassed.length > 0) {
+    return {
+      ok: false,
+      detail: `${notPassed.length} of the ${lines.length} tests of ${file} did not pass: ${oneLine(notPassed[0], 160)}`,
+    };
+  }
+  return { ok: true, detail: `${file}: all ${lines.length} of its tests passed, none skipped` };
+}
+
+/**
+ * The README's test count next to the count that passed now. The README dates its counts ("As of <date>"), so a
+ * count that has grown since is said, not failed. Null when the quote gives no count.
+ */
+export function readmeCountNote(readme, quote, passed) {
+  const want = /^(\d[\d,]*) /.exec(quote);
+  if (!want || typeof readme !== "string" || passed === null) return null;
+  const n = Number(want[1].replace(/,/g, ""));
+  const at = quoteIndex(readme, quote);
+  const before = at < 0 ? "" : readme.slice(0, at);
+  const date = [...before.matchAll(/As of (\d{4}-\d{2}-\d{2})/g)].pop()?.[1];
+  const where = `README.md:${at < 0 ? "?" : before.split("\n").length}${date ? ` (as of ${date})` : ""}`;
+  return passed === n
+    ? `${passed} passed, the count ${where} gives`
+    : `${where} gives ${n}; ${passed} pass now, so that dated count has drifted`;
+}
+
+/** The number of passed tests in a vitest summary line ("Tests  801 passed | 2 skipped (803)"), or null. */
+export const passedOf = (testsLine) => {
+  const m = /(\d+) passed/.exec(testsLine ?? "");
+  return m ? Number(m[1]) : null;
+};
+
+/** The MCP demo's outcome words, as its last line counts them ("2 notes", "2 differ" in the plural). */
+const DEMO_OUTCOME = {
+  "as expected": "as expected",
+  note: "note",
+  notes: "note",
+  skipped: "skipped",
+  differs: "differs",
+  differ: "differs",
+  failed: "failed",
+};
+
+/** The counts in the MCP demo's `Done:` line, or null when the line is not one. */
+export function demoCounts(done) {
+  const m = /^Done: (\d+) steps, (.+)\. Nothing was signed or sent\.$/.exec(done ?? "");
+  if (!m) return null;
+  const counts = { "as expected": 0, note: 0, skipped: 0, differs: 0, failed: 0 };
+  for (const part of m[2].split(", ")) {
+    const p = /^(\d+) (as expected|notes?|skipped|differs?|failed)$/.exec(part);
+    if (!p) return null;
+    counts[DEMO_OUTCOME[p[2]]] += Number(p[1]);
+  }
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  return { steps: Number(m[1]), total, counts };
+}
+
+/**
+ * What a run of the MCP demo means. PASS only when each of its 6 steps answered as expected or with a note
+ * (README step 5 allows a note once the mandate's uses run out; the notes are in the detail). A step skipped
+ * because the public ledger could not be downloaded over the network is SKIPPED; a step skipped for another
+ * reason (the proof page answered 404, the vault has no mandate), or one that differs, is a FAIL, since then
+ * the README's tour did not happen. A failed step is SKIPPED when it failed on the network, else FAIL.
+ */
+export function mcpDemoOutcome(r, readmeLine) {
+  const lines = linesOf(r.stdout).map((l) => l.trim());
+  const done = lines.filter((l) => l.startsWith("Done: ")).pop();
+  const said = (outcome) =>
+    lines.filter((l) => l.startsWith(`result: ${outcome}`)).map((l) => l.slice("result: ".length));
+  const c = demoCounts(done);
+  if (c === null || c.steps !== 6 || c.total !== 6) {
+    if (r.timedOut || (r.code !== 0 && looksLikeNetworkError(r.all))) {
+      return {
+        result: "SKIPPED",
+        detail: `the network failed: ${oneLine(done ?? lastLine(r.all), 200)}`,
+      };
+    }
+    return {
+      result: "FAIL",
+      detail: `exit ${r.code}; ${done ? `${done} is not 6 steps, each counted once` : oneLine(lastLine(r.all), 200)}`,
+    };
+  }
+  const claim = `README.md:${readmeLine ?? "?"}`;
+  if (c.counts.differs > 0) {
+    return { result: "FAIL", detail: `exit ${r.code}; ${done} ${said("differs").join("; ")}` };
+  }
+  if (c.counts.failed > 0) {
+    const why = said("failed");
+    if (looksLikeNetworkError(why.join("\n"))) {
+      return { result: "SKIPPED", detail: `the network failed: ${done} ${why.join("; ")}` };
+    }
+    return { result: "FAIL", detail: `exit ${r.code}; ${done} ${why.join("; ")}` };
+  }
+  if (c.counts.skipped > 0) {
+    const ledger = lines.find((l) => l.startsWith("ledger: could not download "));
+    const why = ledger ?? said("skipped").join("; ");
+    if (ledger !== undefined && looksLikeNetworkError(ledger)) {
+      return { result: "SKIPPED", detail: `the network failed: ${done} ${ledger}` };
+    }
+    return {
+      result: "FAIL",
+      detail: `${done} ${why}; ${claim} says the demo runs every step, verify on the public ledger among them`,
+    };
+  }
+  if (r.code !== 0) return { result: "FAIL", detail: `exit ${r.code}; ${done}` };
+  const notes = said("note");
+  return { result: "PASS", detail: notes.length > 0 ? `${done} ${notes.join("; ")}` : done };
+}
+
+/**
+ * What `check-claims --online` means. Exit 2 is SKIPPED only when it is the "could not run" exit: at least one
+ * `unchecked [online]` line and the summary that counts them. Any other exit 2 (a crash in a check) is a FAIL.
+ */
+export function checkClaimsOnlineOutcome(r) {
+  const last = lastLine(r.stdout);
+  if (r.code === 0 && last.startsWith("check-claims: ok.")) return { result: "PASS", detail: last };
+  const lines = linesOf(r.stdout);
+  const unchecked = lines.filter((l) => l.startsWith("unchecked [online]"));
+  const couldNot = lines.find((l) => /^check-claims: \d+ online check\(s\) could not run/.test(l));
+  if (r.code === 2 && unchecked.length > 0 && couldNot !== undefined) {
+    return {
+      result: "SKIPPED",
+      detail: `an endpoint did not answer, so ${unchecked.length} online check(s) could not run: ${unchecked.slice(0, 3).join("; ")}`,
+    };
+  }
+  if (r.code === 2) {
+    const err = linesOf(r.stderr).filter((l) => l.trim() !== "");
+    const why = err.find((l) => l.startsWith("check-claims:")) ?? err.pop() ?? last;
+    return {
+      result: "FAIL",
+      detail: `exit 2 with no list of the checks that could not run, so it is not a network skip: ${oneLine(why, 200)}`,
+    };
+  }
+  const problems = lines.filter((l) => /^\S+:\d+ \[/.test(l));
+  return {
+    result: "FAIL",
+    detail: `exit ${r.code}; ${[...problems.slice(0, 3), last].join("; ")}`,
+  };
+}
+
+/**
+ * What a download of the public ledger means. A network error, a timeout, 429 or 5xx is SKIPPED: the network or
+ * the site is having trouble. Any other answer than 200 (404, 403, 410) is a FAIL: the README says the proof
+ * page is public and serves the ledger.
+ */
+export function downloadOutcome(url, got, readmeLine) {
+  if (!("problem" in got)) return null;
+  if (got.status === undefined || got.status === 429 || got.status >= 500) {
+    return { result: "SKIPPED", detail: `could not download ${url}: ${got.problem}` };
+  }
+  return {
+    result: "FAIL",
+    detail: `README.md:${readmeLine ?? "?"} says to download the ledger from the proof page, but ${url} answered ${got.problem}`,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -486,8 +695,11 @@ function snapshotStep(s) {
   };
 }
 
-/** The README's own snippet, run as written, and its output compared with the README's line for line. */
-function readmeSnippetStep({ id, kind, marker, title, expectedNote }) {
+/**
+ * The README's own snippet, run as written, and its output compared with the README's line for line. A snippet
+ * that imports anything but `imports`, or holds a refused word (see snippetProblem), is a FAIL and does not run.
+ */
+function readmeSnippetStep({ id, kind, marker, title, expectedNote, imports }) {
   return {
     id,
     kind,
@@ -499,6 +711,13 @@ function readmeSnippetStep({ id, kind, marker, title, expectedNote }) {
     run: async (ctx) => {
       const ex = readmeExample(ctx.readFile("README.md"), marker);
       if ("problem" in ex) return { result: "FAIL", detail: ex.problem };
+      const refused = snippetProblem(ex.script, { imports, offline: kind === "offline" });
+      if (refused !== null) {
+        return {
+          result: "FAIL",
+          detail: `not run: the snippet at README.md:${ex.scriptLine} ${refused}. The judge runs a README snippet only when it imports ${imports.join(" or ")} and holds no key${kind === "offline" ? " and no network call" : ""}; review the snippet, then scripts/judge.mjs`,
+        };
+      }
       const r = await ctx.node(["--input-type=module", "-e", ex.script]);
       const cmp = compareLines(r.stdout, ex.output);
       if (r.code === 0 && cmp.same) {
@@ -579,32 +798,48 @@ export function ledgerPrefix(committedText, liveText) {
 
 /** Every step, in order. */
 export function planSteps(root = ROOT) {
-  const vitest = (pkg, dir, title, quote) => ({
-    id: `test-${dir.replace(/\//g, "-")}`,
-    kind: "test",
-    needs: "build",
-    title,
-    ref: { file: "README.md", quote },
-    expected: "PASS",
-    command: `pnpm --filter ${pkg} run test`,
-    run: async (ctx) => {
-      const r = await ctx.pnpm(["--filter", pkg, "run", "test"], { timeoutMs: TEST_TIMEOUT_MS });
-      const lines = linesOf(r.stdout);
-      const files = lines.find((l) => /^\s*Test Files\s/.test(l))?.trim();
-      const tests = lines.find((l) => /^\s*Tests\s/.test(l))?.trim();
-      const summary = [tests, files]
-        .filter(Boolean)
-        .join("; ")
-        .replace(/\s{2,}/g, " ");
-      if (r.code === 0 && tests) return { result: "PASS", detail: summary };
-      return {
-        result: "FAIL",
-        detail: r.timedOut
-          ? `timed out after ${TEST_TIMEOUT_MS / 60_000} min; ${summary}`
-          : `exit ${r.code}; ${summary || oneLine(lastLine(r.all), 200)}`,
-      };
-    },
-  });
+  // A package's vitest run. A quote that starts with a count is the README's dated count, said next to today's.
+  // `mustPass` is a test file whose every test must pass: the run then uses the verbose reporter, which lists
+  // each test with its file.
+  const vitest = (pkg, dir, title, quote, { mustPass } = {}) => {
+    const args = ["--filter", pkg, "run", "test", ...(mustPass ? ["--reporter=verbose"] : [])];
+    return {
+      id: `test-${dir.replace(/\//g, "-")}`,
+      kind: "test",
+      needs: "build",
+      title,
+      ref: { file: "README.md", quote },
+      expected: "PASS",
+      command: `pnpm ${args.join(" ")}`,
+      run: async (ctx) => {
+        const r = await ctx.pnpm(args, { timeoutMs: TEST_TIMEOUT_MS });
+        const lines = linesOf(r.stdout);
+        const files = lines.find((l) => /^\s*Test Files\s/.test(l))?.trim();
+        const tests = lines.find((l) => /^\s*Tests\s/.test(l))?.trim();
+        const summary = [tests, files]
+          .filter(Boolean)
+          .join("; ")
+          .replace(/\s{2,}/g, " ");
+        if (r.code === 0 && tests) {
+          const file = mustPass ? testFileResult(r.stdout, mustPass) : null;
+          if (file !== null && !file.ok) {
+            return { result: "FAIL", detail: `${file.detail}; ${summary}` };
+          }
+          const count = readmeCountNote(ctx.readFile("README.md"), quote, passedOf(tests));
+          return {
+            result: "PASS",
+            detail: [summary, file?.detail, count].filter(Boolean).join("; "),
+          };
+        }
+        return {
+          result: "FAIL",
+          detail: r.timedOut
+            ? `timed out after ${TEST_TIMEOUT_MS / 60_000} min; ${summary}`
+            : `exit ${r.code}; ${summary || oneLine(lastLine(r.all), 200)}`,
+        };
+      },
+    };
+  };
 
   return [
     {
@@ -620,7 +855,11 @@ export function planSteps(root = ROOT) {
           ctx.exists(join(ctx.root, "packages", p, "dist", "index.js")),
         );
         if (r.code === 0 && built.length === 4) {
-          return { result: "PASS", detail: "core, sdk, cli and mcp built into packages/*/dist" };
+          return {
+            result: "PASS",
+            detail:
+              "core, sdk, cli and mcp built into packages/*/dist; README step 1's `pnpm build` also builds apps/web and apps/extension, not built here (run `pnpm build`)",
+          };
         }
         return {
           result: "FAIL",
@@ -653,6 +892,7 @@ export function planSteps(root = ROOT) {
       marker: "Watch the verifier catch a one-field edit.",
       title: "a one-field edit is caught: first broken entry 2",
       expectedNote: "checks a to i pass as recorded, and after one edit a, b and d fail at entry 2",
+      imports: SNIPPET_IMPORTS["readme-step-2-tamper"],
     }),
     ...snapshotPlan(root).map(snapshotStep),
     {
@@ -743,31 +983,15 @@ export function planSteps(root = ROOT) {
       },
       expected: "PASS",
       command: "node scripts/check-claims.mjs --online",
-      run: async (ctx) => {
-        const r = await ctx.node(["scripts/check-claims.mjs", "--online"]);
-        const last = lastLine(r.stdout);
-        if (r.code === 0 && last.startsWith("check-claims: ok."))
-          return { result: "PASS", detail: last };
-        const lines = linesOf(r.stdout);
-        if (r.code === 2) {
-          const unchecked = lines.filter((l) => l.startsWith("unchecked [online]"));
-          return {
-            result: "SKIPPED",
-            detail: `an endpoint did not answer, so ${unchecked.length} online check(s) could not run: ${unchecked.slice(0, 3).join("; ")}`,
-          };
-        }
-        const problems = lines.filter((l) => /^\S+:\d+ \[/.test(l));
-        return {
-          result: "FAIL",
-          detail: `exit ${r.code}; ${[...problems.slice(0, 3), last].join("; ")}`,
-        };
-      },
+      run: async (ctx) =>
+        checkClaimsOnlineOutcome(await ctx.node(["scripts/check-claims.mjs", "--online"])),
     },
     readmeSnippetStep({
       id: "readme-step-4-check-spend",
       kind: "live",
       marker: "Ask the vault itself.",
       title: "v0 vault, keyless: check_spend 2 USDC ok, 6 OverPerPayment",
+      imports: SNIPPET_IMPORTS["readme-step-4-check-spend"],
     }),
     {
       id: "live-verify-demo-vault",
@@ -779,9 +1003,8 @@ export function planSteps(root = ROOT) {
       command: `curl -o <tmp>/ledger.jsonl ${LEDGER_URL}; node ${CLI} verify --network testnet --vault ${DEMO_VAULT} --ledger <tmp>/ledger.jsonl --json`,
       run: async (ctx) => {
         const got = await ctx.download(LEDGER_URL);
-        if ("problem" in got) {
-          return { result: "SKIPPED", detail: `could not download ${LEDGER_URL}: ${got.problem}` };
-        }
+        const failed = downloadOutcome(LEDGER_URL, got, ctx.ref.line);
+        if (failed !== null) return failed;
         const path = join(ctx.tmp, "demo-ledger.jsonl");
         writeFileSync(path, got.text);
         const v = await liveVerify(ctx, DEMO_VAULT, path, LIVE_VAULTS.demo);
@@ -838,27 +1061,15 @@ export function planSteps(root = ROOT) {
       expected: "PASS",
       command: `node ${MCP} demo`,
       run: async (ctx) => {
-        const r = await ctx.node([MCP, "demo"], { timeoutMs: 8 * 60_000 });
-        const done = linesOf(r.stdout)
-          .filter((l) => l.startsWith("Done: "))
-          .pop();
-        if (
-          r.code === 0 &&
-          done &&
-          /^Done: 6 steps, .*\. Nothing was signed or sent\.$/.test(done)
-        ) {
-          return { result: "PASS", detail: done };
-        }
-        if (r.timedOut || (r.code !== 0 && looksLikeNetworkError(r.all))) {
-          return {
-            result: "SKIPPED",
-            detail: `the network failed: ${oneLine(done ?? lastLine(r.all), 200)}`,
-          };
-        }
-        return {
-          result: "FAIL",
-          detail: `exit ${r.code}; ${done ?? oneLine(lastLine(r.all), 200)}`,
-        };
+        // The demo's MCP server would load ~/.probarion/<vault>/keys.json when it exists: give it an empty home.
+        const home = join(ctx.tmp, "empty-home");
+        mkdirSync(home, { recursive: true });
+        const { HOMEDRIVE: _drive, HOMEPATH: _path, ...env } = ctx.env;
+        const r = await ctx.node([MCP, "demo"], {
+          timeoutMs: 8 * 60_000,
+          env: { ...env, HOME: home, USERPROFILE: home },
+        });
+        return mcpDemoOutcome(r, ctx.ref.line);
       },
     },
     vitest(
@@ -885,6 +1096,7 @@ export function planSteps(root = ROOT) {
       "examples/402",
       "examples/402 tests pass, the 21-call run among them",
       "You see `test/pay-per-call.test.ts` pass",
+      { mustPass: "test/pay-per-call.test.ts" },
     ),
     {
       id: "test-apps-web",
@@ -1025,10 +1237,11 @@ async function probeNetwork(fetchImpl) {
   return { ok: false, reason };
 }
 
+/** The file at `url`, or why not: with the HTTP status when the site answered, without it on a network error. */
 async function download(fetchImpl, url) {
   try {
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(30_000) });
-    if (res.status !== 200) return { problem: `HTTP ${res.status}` };
+    if (res.status !== 200) return { problem: `HTTP ${res.status}`, status: res.status };
     return { text: await res.text() };
   } catch (e) {
     return { problem: e instanceof Error ? e.message : String(e) };
@@ -1070,13 +1283,22 @@ export function countResults(rows) {
   return Object.fromEntries(RESULTS.map((r) => [r, rows.filter((x) => x.result === r).length]));
 }
 
+/** A SKIPPED row's detail with the command that runs the step, when the reason does not give it already. */
+export function withCommand(detail, command) {
+  if (typeof command !== "string" || detail.includes(command)) return detail;
+  return `${detail}; run \`${command}\``;
+}
+
 const refText = (ref) => `${ref.file}${ref.line === null ? " (quote not found)" : `:${ref.line}`}`;
 
 const columns = (n, result, ms, claim) =>
   `${String(n).padStart(3)}  ${result.padEnd(13)}  ${ms.padStart(10)}  ${claim}`;
 const TABLE_HEAD = `${columns("#", "RESULT", "TIME", "CLAIM  [the README line it proves]")}\n`;
 
-/** One row of the table: number, result, time and claim with its README line; the detail on the next line. */
+/**
+ * One row of the table: number, result, time and claim with its README line; the detail on the next line, cut
+ * at 200 characters, or at 400 for a SKIPPED row so that its command prints whole.
+ */
 export function renderRow(row) {
   const head = columns(
     row.n,
@@ -1084,7 +1306,7 @@ export function renderRow(row) {
     `${row.ms} ms`,
     `${row.claim}  [${refText(row.readme_ref)}]`,
   );
-  return `${head}\n${" ".repeat(7)}${oneLine(row.detail, 200)}\n`;
+  return `${head}\n${" ".repeat(7)}${oneLine(row.detail, row.result === "SKIPPED" ? 400 : 200)}\n`;
 }
 
 export function renderMarkdown(report) {
@@ -1173,6 +1395,8 @@ export async function runJudge(argv, io) {
       root,
       tmp,
       flags,
+      env,
+      ref,
       readFile,
       node: (args, opts) => record(process.execPath, args, opts),
       pnpm: (args, opts) =>
@@ -1191,6 +1415,9 @@ export async function runJudge(argv, io) {
           detail: `the judge could not run this step: ${e instanceof Error ? e.message : e}`,
         };
       }
+    }
+    if (outcome.result === "SKIPPED") {
+      outcome = { ...outcome, detail: withCommand(outcome.detail, step.command) };
     }
     if (ref.line === null) {
       outcome = {
