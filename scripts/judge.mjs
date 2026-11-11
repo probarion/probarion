@@ -506,14 +506,28 @@ export const SNAPSHOTS = [
     file: "docs/evidence/canary-vault/snapshot-2026-11-10.json",
     committed: "docs/evidence/canary-vault/verify-2026-11-10.txt",
     title: "verify --offline: Canary snapshot fails c only, by design",
-    ref: { file: "README.md", quote: "It fails check c, because the Canary's ledger is private" },
+    ref: {
+      file: "README.md",
+      quote: "so that run checks the chain's 4 anchors against an empty ledger",
+    },
     expect: {
       exit: 1,
       checks: { ...ALL_PASS, c: "fail" },
       why: { c: "the ledger has 0" },
       reason:
-        "the Canary's ledger is private, so the chain's anchors are checked against an empty ledger",
+        "the run of 2026-11-10 had no ledger (the app keeps the Canary's ledger private), so the chain's anchors are checked against an empty ledger",
     },
+  },
+  {
+    id: "verify-canary-snapshot-1111",
+    file: "docs/evidence/canary-vault/snapshot-2026-11-11.json",
+    committed: "docs/evidence/canary-vault/verify-2026-11-11.txt",
+    title: "verify --offline: Canary snapshot with its published ledger passes a to i",
+    ref: {
+      file: "README.md",
+      quote: "With it, a live `verify` on 2026-11-11 passed checks a to i",
+    },
+    expect: { exit: 0, checks: ALL_PASS },
   },
 ];
 
@@ -531,7 +545,7 @@ export const LIVE_VAULTS = {
     checks: { ...ALL_PASS, c: "fail" },
     why: { c: "the ledger has 0" },
     reason:
-      "the Canary's ledger is private: c fails on an empty ledger, and d passing shows no spend was ever created",
+      "run without the ledger: c fails on an empty ledger, and d passing shows no spend was ever created",
   },
   demo: { exit: 0, checks: ALL_PASS },
 };
@@ -1042,7 +1056,8 @@ export function planSteps(root = ROOT) {
       title: "live verify of the Canary: c fails by design, d shows no spend",
       ref: {
         file: "README.md",
-        quote: "A live `verify` passes check f: the vault has no full-access key",
+        quote:
+          "The live `verify` of 2026-11-10, run without the ledger, passes check f (no full-access key) and fails check c",
       },
       expected: "EXPECTED-FAIL",
       command: `node ${CLI} verify --network testnet --vault canary.vaults.probarion.testnet --ledger <tmp>/no-ledger.jsonl --json`,

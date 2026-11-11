@@ -10,7 +10,7 @@ The limit sits on the money's path, not in a prompt or in the agent's own proces
 
 <Flow>
 
-1. **Model proposes** A private model on NEAR AI Cloud may advise. It is optional and cannot widen a mandate. Its first live attested run is in progress.
+1. **Model proposes** A private model on NEAR AI Cloud may advise. It is optional and cannot widen a mandate. On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two of its attested decisions, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online ([evidence](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11), [online output](https://github.com/probarion/probarion/blob/main/docs/evidence/canary-vault/verify-online-2026-11-11.txt)); the TEE measurement is not pinned, so they do not show which model image ran, and A8 was not run.
 2. **Code decides** `decide()` runs built-in rules that cannot be removed. The SDK signs the decision into the ledger before anything moves.
 3. **Contract enforces** The vault checks the spend against its mandate, then pays, holds it for an approver, or refuses.
 4. **Ledger records** The SDK signs every decision, refusals included, and the result of each spend it sends, each chained to the entry before it.

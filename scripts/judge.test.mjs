@@ -275,7 +275,7 @@ describe("a run", () => {
   test("an expected failure that starts to pass is a FAIL, and the run exits 1", async () => {
     const r = await judge(["--offline"], {
       overrides: {
-        "canary-vault/snapshot": () =>
+        "canary-vault/snapshot-2026-11-10": () =>
           answer(0, JSON.stringify(report({ exit: 0, checks: ALL_PASS }))),
       },
     });

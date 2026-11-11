@@ -14,6 +14,34 @@ The software is an unaudited beta.
 
 ### Added
 
+- The Canary's signed ledger, published as evidence in `docs/evidence/canary-vault`:
+  `ledger-2026-11-10.jsonl`, the vault's whole ledger as it stood on 2026-11-11, which the owner
+  exported read-only: 5 entries from the team's own three attempts of 2026-11-10 and no visitor's.
+  Beside it are `snapshot-2026-11-11.json`, the snapshot a live `verify` with that ledger wrote, and
+  the run's output, `verify-2026-11-11.txt`, which passed checks a to i. Check e finds 2 decisions by
+  NEAR AI Cloud's `z-ai/glm-5.3-flash` that are attested and signed and pass A1 to A7 offline.
+  `verify-online-2026-11-11.txt` is a live run with `--online` the same day, at 07:43 UTC, which also
+  passed the online checks O1 and O2 on both: each TDX quote is a genuine Intel TDX quote (Intel
+  DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose report data holds the
+  signing address and the entry's nonce, and NVIDIA NRAS verified each GPU payload, which carries
+  that nonce. The TEE measurement is not pinned, so this does not show which model image ran, and A8
+  was not run, since the ledger holds no invoice text. A first online attempt failed O2 with
+  `not_yet_valid`, because the computer's clock was about 3 s behind NVIDIA's, and passed after a
+  clock sync. The folder's README lists the 5 entries, with what the model proposed and what the
+  code and the contract did, says what check e shows offline and online and what it does not, and
+  gives the offline command, the live one and the online one; the live and online ones stop passing
+  check c once the Canary anchors an entry the file does not have. The CLI's `verify --offline`
+  refuses `--online`, so O1 and O2 do not run on the snapshot from the CLI; the SDK's
+  `verify({ snapshot, online: true })` runs them on a snapshot it is given. The README, SECURITY.md,
+  the threat model and the docs pages that said no real attested decision was recorded now say this
+  with its date and its limits, and link the evidence and the online output; those docs pages list
+  both files among their sources. The privacy page and the home page's model step say it in short,
+  with the date and the limits, and the status row "Live attested model run" reads "Checked online
+  on testnet, image not pinned", and stays Preview. `apps/web/test/canary-vault.test.ts` runs the
+  checks on the committed snapshot, holds the README's table to the ledger cell by cell, pins the
+  online run's output, and pins what the README, SECURITY.md, the threat model, the privacy page, the
+  docs pages, this entry and the rehearsal's rows say about it.
+
 - `pnpm judge` (`scripts/judge.mjs`): one read-only command for a screener or a judge, run after
   `pnpm install --frozen-lockfile`. It builds the four packages, then runs steps 0 and 2 to 6 of the
   README's 5-minute evaluation, the eval check and the per-package tests of core, sdk, cli, mcp and
@@ -22,7 +50,7 @@ The software is an unaudited beta.
   runs on every committed snapshot in `docs/evidence`; the demo vault, `v0.probarion.testnet` and the
   Canary are verified live, read-only, and the demo vault's live ledger must start with the committed
   one; the MCP demo and the 402 demo run. Each step quotes the README line it proves, found again at
-  run time, and prints one row: PASS, EXPECTED-FAIL (the Canary's private ledger fails check c, and
+  run time, and prints one row: PASS, EXPECTED-FAIL (the Canary verified without its ledger fails check c, and
   `v0.probarion.testnet` fails d and h, as the README says; any other result there is a FAIL), SKIPPED
   with the reason and the command, or FAIL. It exits 0 only when no step failed and writes
   `judge-report.json` (gitignored): the claim, README line, command, result, expectation, time and
