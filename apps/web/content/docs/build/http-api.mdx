@@ -1,8 +1,8 @@
-There is no public agent HTTP API. The routes under `/api` serve the hosted site and its console: sign-in, Payables, the browser extension, top-up, the Canary, health checks, scheduled jobs, Telegram and the alert links. An agent pays from its own process through the SDK, which sends `spend` to the vault on NEAR with the agent's own key. See [Let an agent pay](/docs/build/let-an-agent-pay).
+There is no public agent HTTP API. The routes under `/api` serve the hosted site and its console: sign-in, Payables, the browser extension, top-up, the Canary, health checks, scheduled jobs, Telegram and the alert links. The last table covers the three files a vault's proof page offers, under `/proof` instead. An agent pays from its own process through the SDK, which sends `spend` to the vault on NEAR with the agent's own key. See [Let an agent pay](/docs/build/let-an-agent-pay).
 
 ## How to read the tables
 
-Each row is one method of one route. Its anchor is `http-api-`, the method and the path after `/api`, such as [`POST /api/auth/verify`](/docs/build/http-api#http-api-post-auth-verify).
+Each row is one method of one route. Its anchor is `http-api-`, the method and the path after `/api`, such as [`POST /api/auth/verify`](/docs/build/http-api#http-api-post-auth-verify). A proof file's anchor keeps `proof` and writes its dot as a dash, such as [`GET /proof/:vault/payments.csv`](/docs/build/http-api#http-api-get-proof-vault-payments-csv).
 
 - **Route**: the method and the path. `:vault` stands for a vault's account id.
 - **Who may call**: one of five callers.
@@ -13,7 +13,7 @@ Each row is one method of one route. Its anchor is `http-api-`, the method and t
   - The Telegram secret: the header Telegram sends with each update.
 - "From a page at the same address" means the route compares the request's `Origin` with its own host and answers `403 bad_origin` when they differ.
 - **Body**: JSON, unless the row says form data or a query.
-- **Success**: the status and the answer's fields. Every JSON answer is sent with `cache-control: no-store`.
+- **Success**: the status and the answer's fields. Every JSON answer under `/api` is sent with `cache-control: no-store`. The proof files say their own caching below.
 - **Errors**: every `{ error }` code the route can answer, as its status and code. Each one is a row on Errors, with what it means and what to do next, anchored as `http-<status>-<code>`, for example [`429 rate_limited`](/docs/build/errors#http-429-rate_limited).
 - **Rate limit**: the most calls in a window, what the window counts, and the key of the limit in `LIMITS` (`apps/web/src/lib/ratelimit.ts`). The limiter's `429 rate_limited` carries a `Retry-After` header. An IPv6 address counts by its /64. When the limiter's database cannot be reached, the route answers `503` and does nothing.
 
@@ -112,11 +112,19 @@ An alert email's confirmation link opens a page whose button posts the code to `
 
 <RefTable id="http-api-alerts" />
 
+## Proof files
+
+A vault's proof page offers three downloads, served under `/proof/<vault>/` rather than `/api`. Each one answers for a vault whose owner made its proof page public, or for a signed-in member of the vault, on the network of the address it is called at. Anyone else gets `404 not_found`, the same answer as for a vault nobody registered, so a file says nothing about who is a customer. A browser does not reuse an answer: a public vault's answer is sent with `cache-control: private, max-age=0, must-revalidate`, a member's with `private, no-store`. The three share the `snapshot` limit, and each counts its own calls.
+
+`snapshot.json` and `ledger.jsonl` are the files [Verify a vault yourself](/docs/trust/verify-a-vault) runs the verifier on. `payments.csv` is the same vault for a spreadsheet: one row per decision of the ledger, newest first as on the page, with its date, mandate, payee, amount in USDC, the decision and why, each spend the chain binds to it with its status when the snapshot read the chain, the transaction, the invoice's SHA-256 and the ledger seq. The Status now column's header names that time, and the file name carries it too. A field a spreadsheet could read as a formula, one that starts with `=`, `+`, `-`, `@`, a tab or a carriage return, gets a leading apostrophe. The testnet demo vault's [`payments-2026-11-09.csv`](https://github.com/probarion/probarion/blob/main/docs/evidence/demo-vault/payments-2026-11-09.csv) is the file for its committed snapshot.
+
+<RefTable id="http-api-proof" />
+
 ## What these tables do not cover
 
 - An agent API or a webhook to your server. An agent pays through the SDK ([SDK reference](/docs/build/sdk-reference)), or through the MCP server `@probarion/mcp`, which is Preview: it runs beside the agent and speaks MCP over stdio, so it adds no route here. Probarion calls no URL of yours: alerts go out by email and Telegram.
 - What the console's screens and the Browser extension page do besides the routes above. That runs as Next.js server actions under `apps/web/src/app/console` and `apps/web/src/app/extension`, not as routes under `/api`.
-- The public files outside `/api`: the proof files `/proof/<vault>/snapshot.json` and `/proof/<vault>/ledger.jsonl`, which [Verify a vault yourself](/docs/trust/verify-a-vault) reads, and the docs' own `/docs/<page>.md` twins, `/llms.txt`, `/llms-full.txt` and `/docs/search-index.json`.
+- The other public files outside `/api`: the docs' own `/docs/<page>.md` twins, `/llms.txt`, `/llms-full.txt` and `/docs/search-index.json`.
 
 ## Related pages
 

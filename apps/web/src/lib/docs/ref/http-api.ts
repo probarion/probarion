@@ -4,10 +4,12 @@ import { LIMITS } from "@/lib/ratelimit";
 import type { RefColumn, RefTable } from "./types";
 
 /**
- * The HTTP routes of the hosted app (`apps/web/src/app/api`), one table per group. They serve the site and its
- * console; there is no public agent HTTP API. test/docs-ref-http-api.test.ts reads the route files and holds these
- * rows to them: every route and method, who may call it, its error codes, its rate limits and what each one counts,
- * and the fields of a success answer the route writes out. A row's id is `http-api-<method>-<path after /api>`.
+ * The HTTP routes of the hosted app (`apps/web/src/app/api`), one table per group, and the proof page's files
+ * (`apps/web/src/app/proof/[vault]/*`). They serve the site and its console; there is no public agent HTTP API.
+ * test/docs-ref-http-api.test.ts reads the route files and holds these rows to them: every route and method, who may
+ * call it, its error codes, its rate limits and what each one counts, and the fields of a success answer the route
+ * writes out. A row's id is `http-api-<method>-<path after /api>`; a proof file's keeps `proof` and writes its dot
+ * as a dash, as in `http-api-get-proof-vault-payments-csv`.
  * The settings a cell writes out as numbers (a cookie's lifetime, a body cap, a code's length, the faucet's mint, the
  * probe cache) are held by the same test to the constants that set them. A success status code is not.
  */
@@ -57,6 +59,9 @@ const SAME = "from a page at the same address";
 const BEARER = "`Authorization: Bearer pbx_...`";
 const CRON = "`CRON_SECRET`, sent as `Authorization: Bearer` and the secret";
 const CACHED = "None. Each probe's answer is kept 30 seconds per server instance";
+const PROOF_WHO =
+  "Public, for a vault whose owner made its proof page public. Otherwise a signed-in member of the vault, read from the `pb_session` cookie; for anyone else the answer is `404 not_found`, as for a vault nobody registered";
+const PROOF_ERRORS = "`404 not_found`, `429 rate_limited`, `503 unavailable`";
 
 function table(
   id: string,
@@ -350,6 +355,45 @@ export const TABLES: readonly RefTable[] = [
         errors:
           "`400 invalid_link`, `503 unavailable`. With `from=page`, a failure is a `303` with `failed=1` instead of the `503`.",
         limit: "None: a valid token is all it needs",
+      },
+    },
+  ]),
+
+  table("http-api-proof", "Proof file routes", [
+    {
+      id: "http-api-get-proof-vault-snapshot-json",
+      cells: {
+        route: "`GET /proof/:vault/snapshot.json`",
+        who: PROOF_WHO,
+        body: "None",
+        success:
+          "`200` with a snapshot of the vault, its ledger and the chain data read for it, as `application/json; charset=utf-8`, saved as `probarion-<vault>-snapshot.json`: the file `probarion verify --offline` reads",
+        errors: PROOF_ERRORS,
+        limit: limit("snapshot", "per IP address"),
+      },
+    },
+    {
+      id: "http-api-get-proof-vault-ledger-jsonl",
+      cells: {
+        route: "`GET /proof/:vault/ledger.jsonl`",
+        who: PROOF_WHO,
+        body: "None",
+        success:
+          "`200` with the vault's signed ledger, one entry per line, as `application/x-ndjson; charset=utf-8`, saved as `probarion-<vault>-ledger.jsonl`: the file `--ledger` reads. It reads the database only, never the chain.",
+        errors: PROOF_ERRORS,
+        limit: limit("snapshot", "per IP address"),
+      },
+    },
+    {
+      id: "http-api-get-proof-vault-payments-csv",
+      cells: {
+        route: "`GET /proof/:vault/payments.csv`",
+        who: PROOF_WHO,
+        body: "None",
+        success:
+          "`200` with one row per decision of the ledger, newest first, joined to its payment entry and to its spend's status on chain when the snapshot was taken, as `text/csv; charset=utf-8` with a BOM and CRLF line ends, saved as `<vault>-payments-<capture time>.csv`",
+        errors: PROOF_ERRORS,
+        limit: limit("snapshot", "per IP address"),
       },
     },
   ]),
