@@ -16,10 +16,12 @@ import { formatUsdc } from "@/lib/near/units";
 import { safeText } from "./sanitize";
 import { chainCommand } from "./view";
 
-// One row per decision entry of a snapshot, as /proof shows it (G7): what the TEE saw, what it signed, and what the
-// code and the contract checked, with checks A1 to A7 run on the entry here. Pure data, newest first. Every string
-// that came from the ledger or the chain goes through `safeText`. The raw TDX quote, the GPU payload and the response
-// body are never copied into a row: a row gives their sizes and points to the vault's snapshot.json, which holds them.
+// One row per decision entry of a snapshot, as /proof shows it (G7): what the ledger records the TEE was shown, what
+// it signed, and what the code and the contract checked, with checks A1 to A7 run on the entry here. A1 to A7 do not
+// tie the recorded request inputs to the signed request (A8 does, with the invoice text), so a row says so. Pure data,
+// newest first. Every string that came from the ledger or the chain goes through `safeText`. The raw TDX quote, the
+// GPU payload and the response body are never copied into a row: a row gives their sizes and points to the vault's
+// snapshot.json, which holds them.
 
 /** A ledger verdict as a row shows it. Anything core does not define is "unknown". */
 export type DecisionVerdict = "allow" | "hold" | "refuse" | "unknown";
@@ -45,17 +47,25 @@ export interface ShownMandate {
   status: string;
 }
 
-/** The system prompt of the request, named when its sha256 is in core's allow-list (the one check A8 uses). */
+/**
+ * The system prompt the ledger records for the request (`request_inputs.system_prompt`), named when its sha256 is in
+ * core's allow-list (the one check A8 uses). A1 to A7 do not show that the TEE was given this prompt: only A8 does.
+ */
 export interface ShownSystemPrompt {
   /** The allow-list name, or NOT_IN_ALLOW_LIST. */
   name: string;
+  /** True when the recorded prompt matches the allow-listed prompt `name`. */
   known: boolean;
   sha256: string;
   /** The prompt, one safe line per line of it (a newline would otherwise show as a replacement character). */
   lines: string[];
 }
 
-/** What the TEE saw: the request side of the evidence. The invoice text itself is never stored. */
+/**
+ * What the ledger records the TEE was shown: the request side of the evidence. The model, the nonce and
+ * request_sha256 are covered by A1, A5 and A6. The system prompt, facts and mandates are `request_inputs` as the
+ * ledger records them, which only A8 ties to the signed request. The invoice text itself is not in the ledger.
+ */
 export interface TeeSaw {
   model: string;
   /** Null when the evidence has no `request_inputs` (evidence recorded before they were stored). */
@@ -71,6 +81,11 @@ export interface TeeSaw {
   invoiceTextNote: string;
   nonce: string;
   requestSha256: string;
+  /**
+   * INPUTS_BINDING_NOTE whenever `request_inputs` are shown: they are the ledger's record, which A1 to A7 do not tie
+   * to the signed request. Null when there are none to show (`inputsNote` says why).
+   */
+  inputsBinding: string | null;
   /** Set when `request_inputs` is missing or unreadable: says what cannot be shown. */
   inputsNote: string | null;
 }
@@ -233,14 +248,18 @@ export const NO_MODEL =
 export const NOT_IN_ALLOW_LIST = "not in allow-list";
 
 export const INVOICE_TEXT_NOTE =
-  "The invoice text is never stored: the ledger keeps only its sha256, so A8 needs the text from whoever holds it.";
+  "The invoice text is not in the ledger: the ledger keeps only its sha256, so A8 needs the text from whoever holds it.";
+
+/** What goes with the request inputs a row shows: they are the ledger's record, not something A1 to A7 checked. */
+export const INPUTS_BINDING_NOTE =
+  "These are the request inputs as the ledger records them. A1 to A7 do not tie them to the signed request: A8 does, and it needs the invoice text.";
 
 /**
  * The fixed limits line that goes with every A1 to A7 result. It says what the page did not check; it never says the
  * TEE or the quote was verified.
  */
 export const DECISION_LIMITS =
-  "A1 to A7 run offline on this snapshot: they show that the signature, the signed response, the recorded proposal and the attestation report agree with each other and with this ledger position. The TDX quote is not verified here: O1 (Intel DCAP) and O2 (NVIDIA NRAS) run only with verify --online, which needs the optional package @nearai/inference-sdk on Node 24.22.1 or later. The measurement is not pinned, so even O1 does not show which image the TEE runs. A8 needs the invoice text, which the ledger never stores.";
+  "A1 to A7 run offline on this snapshot: they show that the signature, the signed response, the recorded proposal and the attestation report agree with each other and with this ledger position. The TDX quote is not verified here: O1 (Intel DCAP) and O2 (NVIDIA NRAS) run only with verify --online, which needs the optional package @nearai/inference-sdk on Node 24.22.1 or later. The measurement is not pinned, so even O1 does not show which image the TEE runs. A8 needs the invoice text, which the ledger never stores. Without A8, the request inputs a row shows (the system prompt, the facts and the mandates) are only the ledger's record: A1 to A7 do not tie them to the signed request.";
 
 /** The command that runs O1 and O2 on a vault: the page's chain command with `--online`. */
 export function onlineCommand(network: Network, vault: string): string {
@@ -266,7 +285,11 @@ export const CONTRACT_CHECKS: readonly { readonly code: string; readonly text: s
     code: "OverMandateTotal",
     text: "Spent, reserved and this amount stay within the mandate's total",
   },
-  { code: "DuplicateInvoice", text: "No earlier spend used this invoice hash" },
+  // A released spend (rejected, expired or failed) frees its invoice hash, but its ref stays consumed forever.
+  {
+    code: "DuplicateInvoice",
+    text: "No other spend that is held, pending, paid or burned holds this invoice hash",
+  },
   { code: "DuplicateRef", text: "No earlier spend used this ref" },
   { code: "OverDailyBackstop", text: "The day's total stays within the vault's daily backstop" },
 ];
@@ -428,6 +451,7 @@ function sawOf(ev: Record<string, unknown>): TeeSaw {
       facts: null,
       mandates: [],
       invoiceTextSha256: null,
+      inputsBinding: null,
       inputsNote:
         inputs === undefined
           ? "This evidence carries no request inputs, so what the model was shown is not recorded and A8 cannot run."
@@ -449,6 +473,7 @@ function sawOf(ev: Record<string, unknown>): TeeSaw {
       : null,
     mandates: mandates.slice(0, MANDATES_SHOWN).map(shownMandate),
     invoiceTextSha256: hashText(inputs.invoice_text_sha256),
+    inputsBinding: INPUTS_BINDING_NOTE,
     inputsNote:
       mandates.length > MANDATES_SHOWN
         ? `The model was shown ${mandates.length} mandates; the first ${MANDATES_SHOWN} are listed here.`
@@ -554,38 +579,55 @@ function signedOf(
   };
 }
 
-/** The nonce A6 expects: computeNonce over the entry's own position (vault, previous link, seq) and its body. */
+/**
+ * The nonce A6 expects, as core's check (e) computes it: the entry must name the snapshot's vault, its seq must be
+ * its position and its prev_link the link of the entry before it, and then the nonce is computeNonce over the body's
+ * own fields. When any of these does not hold, or the nonce cannot be computed, `detail` says why A6 fails.
+ */
 function expectedNonce(
   s: Record<string, unknown>,
   ledger: unknown[],
   i: number,
   body: Record<string, unknown>,
-): { nonce: string } | { error: string } {
-  const prev =
+): { nonce: string } | { detail: string } {
+  if (body.vault !== s.vault) {
+    return {
+      detail: `this entry names vault ${safeText(body.vault, SHORT)}, not ${safeText(s.vault, SHORT)}: its attestation nonce would bind the wrong vault`,
+    };
+  }
+  const position = "this entry is not at the chain position its attestation nonce is computed from";
+  if (body.seq !== i) {
+    return { detail: `${position}: it says seq ${safeText(body.seq, SHORT)}, and it sits at ${i}` };
+  }
+  const previous =
     i === 0
       ? ZERO_LINK
       : isObject(ledger[i - 1])
         ? (ledger[i - 1] as { link?: unknown }).link
         : undefined;
+  if (body.prev_link !== previous) {
+    return { detail: `${position}: its prev_link is not the link of the entry before it` };
+  }
   try {
     return {
       nonce: computeNonce({
-        vault: s.vault as string,
-        prev_link: prev as string,
+        vault: body.vault as string,
+        prev_link: body.prev_link as string,
         invoice_hash: body.invoice_hash as string | null,
         mandate_id: body.mandate_id as number | null,
-        seq: i,
+        seq: body.seq as number,
       }),
     };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "unknown error" };
+    const reason = error instanceof Error ? error.message : "unknown error";
+    return { detail: `the nonce cannot be recomputed from this entry's position: ${reason}` };
   }
 }
 
 async function attestationOf(
   evidence: unknown,
   proposal: unknown,
-  nonce: { nonce: string } | { error: string },
+  nonce: { nonce: string } | { detail: string },
 ): Promise<DecisionAttestation> {
   let checks: AttestationRow[];
   let binding: DecisionAttestation["binding"] = "none";
@@ -600,11 +642,8 @@ async function attestationOf(
       id: safeText(c.id, 8),
       pass: c.pass === true,
       detail:
-        c.id === "A6" && "error" in nonce
-          ? safeText(
-              `the nonce cannot be recomputed from this entry's position: ${nonce.error}`,
-              DETAIL_MAX,
-            )
+        c.id === "A6" && "detail" in nonce
+          ? safeText(nonce.detail, DETAIL_MAX)
           : safeText(c.detail, DETAIL_MAX),
     }));
   } catch (error) {
@@ -712,10 +751,11 @@ function anchorOf(anchors: Record<string, unknown>[], i: number): AnchorCoverage
 }
 
 /**
- * Every decision entry of `snapshot`, newest first, with what the TEE saw and signed, checks A1 to A7, and what the
- * code and the contract checked. A1 to A7 come from core's `checkAttestation`, with the nonce recomputed over the
- * entry's own position and the entry's own proposal, so evidence moved to another vault or another place in the
- * chain fails A6. Never throws: an unreadable value is shown as such.
+ * Every decision entry of `snapshot`, newest first, with what the ledger records the TEE was shown, what it signed,
+ * checks A1 to A7, and what the code and the contract checked. A1 to A7 come from core's `checkAttestation`, with the
+ * nonce recomputed as core's check (e) does and the entry's own proposal, so evidence moved to another vault or
+ * another place in the chain, or an entry whose vault, seq or prev_link is not where it sits, fails A6. Never throws:
+ * an unreadable value is shown as such.
  */
 export async function decisionRows(snapshot: Snapshot, network: Network): Promise<DecisionRow[]> {
   const s: Record<string, unknown> = isObject(snapshot) ? snapshot : {};
