@@ -34,7 +34,9 @@ vi.mock("@/lib/near/server", () => ({
 vi.mock("./watch", () => ({ watchTenantById: mocks.watchTenantById }));
 vi.mock("@/lib/alerts/server", () => ({ runAlerts: mocks.runAlerts }));
 
-import { kickWatcher, watcherDeps } from "./server";
+import { GRACE_AFTER_DEADLINE_MS } from "@/lib/alerts/dispatch";
+import { PAYABLES_TIME } from "@/lib/payables/budget";
+import { KICK_ALERTS_MS, kickWatcher, watcherDeps } from "./server";
 
 const logs = quietLogs();
 
@@ -80,6 +82,17 @@ describe("watcherDeps", () => {
 });
 
 describe("kickWatcher", () => {
+  // The console upload answers by PAYABLES_TIME.sendByMs plus its send window, and the kick then runs in what is left of
+  // the route's 90 s: one tenant's watch, alerts claimed until KICK_ALERTS_MS after it, and a send started before
+  // that deadline may run on until the dispatcher's grace after it (lib/alerts/dispatch.ts).
+  it("fits in what a console upload leaves it once it has answered", () => {
+    expect(
+      PAYABLES_TIME.kickWatchMs + KICK_ALERTS_MS + GRACE_AFTER_DEADLINE_MS,
+    ).toBeLessThanOrEqual(PAYABLES_TIME.afterResponseMs);
+    expect(KICK_ALERTS_MS).toBe(10_000);
+    expect(GRACE_AFTER_DEADLINE_MS).toBe(5_000);
+  });
+
   it("hands one job to after() and does no work until the response is sent", () => {
     kickWatcher(TENANT, "mainnet");
     registered();

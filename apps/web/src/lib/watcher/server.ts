@@ -18,8 +18,11 @@ export function watcherDeps(network: Network): WatchDeps {
   };
 }
 
-/** How long a kick may keep claiming alerts once its watch is over: it shares the function's time with the request. */
-const KICK_ALERTS_MS = 10_000;
+/**
+ * How long a kick may keep claiming alerts once its watch is over: it shares the function's time with the request. The
+ * console upload leaves the kick PAYABLES_TIME.afterResponseMs (lib/payables/budget.ts); server.test.ts checks it fits.
+ */
+export const KICK_ALERTS_MS = 10_000;
 
 /**
  * Watches one tenant as soon as the response in flight has been sent, so an app-driven change (a Payables cycle, a

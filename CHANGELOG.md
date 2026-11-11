@@ -932,6 +932,22 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- Console: an invoice upload keeps to one time budget counted from the request's start
+  (`apps/web/src/lib/payables/budget.ts`). The NEAR AI calls share 40 s, each capped by what is left,
+  so a slow model decides rules-only and the invoice waits for the owner with nothing sent. The chain
+  reads before the first transaction stop at 60 s, and an upload that runs out there is an `error`
+  that a new upload runs again. From the first transaction on, nothing changes: the send keeps the
+  SDK's own timing. Before, the SDK's defaults (90 s for the chat alone) could outlast the route's
+  60 s, and a function stopped mid-cycle left the row in `processing`, which blocks a new upload, with
+  no time left for the watcher kick. The route's `maxDuration` goes from 60 s to 90 s: 10 s for the
+  start, 40 s for the model, 10 s for the decision and its dry run, 10 s for the send, the anchor and
+  the row, and 20 s for the watcher kick after the answer. The tenant lease goes from 90 s to 120 s,
+  30 s longer than the route, and under the 2 minutes after which the alerts' SQL takes a sending
+  alert back. No migration and no new setting. Tests pin the sums, the lease against the route and
+  the SQL, and a 70 s model on a fake clock (held, nothing sent, the kick still asked for). The
+  RUNBOOK's "Invoice stuck in processing" says how to read such a row's ref and look its spend up on
+  chain.
+
 - `@probarion/mcp`: the burned outcome no longer tells the agent to poll `get_spend_status`. A burn
   is final for the vault: the agent must not resend it under any ref, and should tell the owner if
   the payee reports nothing. On mainnet the bridge releases the funds and Probarion does not watch

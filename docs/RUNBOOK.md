@@ -377,6 +377,54 @@ that kind. The OWNER fixes it by hand in the SQL editor (`vault_id` is unique ac
 update public.tenants set kind = '<team|external|canary>' where vault_id = '<vault>';
 ```
 
+### Invoice stuck in processing
+
+SEV3. The signs are the console's "Outcome unknown: do not resend" on an invoice, and an upload of the same
+invoice refused with 409 `duplicate` and `status: "processing"`. The upload's function stopped during the
+cycle (a timeout or a crash), or it could not write the outcome (the log line `payables.outcome_not_recorded`).
+The upload gives the model at most 40 s and starts any transaction by 60 s of its 90 s
+(`apps/web/src/lib/payables/budget.ts`), so a slow model alone ends in a hold for the owner, not here. No
+reconcile job is built yet, so the row stays in `processing` until the OWNER looks the outcome up by hand.
+
+1. In Vercel, find the upload's request and its log lines: `payables.decided`, `payables.failed`,
+   `payables.outcome_not_recorded` and `sdk.warn` carry the request id.
+2. Read the row's ref in the SQL editor:
+
+   ```sql
+   select i.id, i.ref, i.invoice_hash, i.status, i.mandate_id, i.request_id, i.created_at, i.outcome, i.error, t.id as tenant_id
+   from public.invoices i join public.tenants t on t.id = i.tenant_id
+   where t.vault_id = '<vault>' and i.status = 'processing' order by i.created_at;
+   ```
+
+3. Look the spend up on chain by that ref. `list_spends` returns at most 100 spends a page, oldest first;
+   page with `from_index` until a spend's `ref` matches, then read that spend by its id (`network-config
+   mainnet` for a mainnet vault). The MCP tool `get_spend_status` with `{ "spend_id": <id> }` reads the same.
+
+   ```bash
+   near contract call-function as-read-only <vault> list_spends json-args '{"from_index":0,"limit":100}' network-config testnet now
+   near contract call-function as-read-only <vault> get_spend json-args '{"spend_id":<id>}' network-config testnet now
+   ```
+
+4. Read the cycle's ledger entries by the invoice's hash:
+
+   ```sql
+   select seq, kind, body->>'verdict' as verdict, body->>'decided_by' as decided_by, body->'contract' as contract
+   from public.ledger_entries
+   where tenant_id = '<tenant_id>' and body->>'invoice_hash' = '<invoice_hash>' order by seq;
+   ```
+
+5. What it means:
+   - A spend with the ref: that spend's status is the outcome (`Paid`, `Held` for an approver, `Failed`,
+     and so on). Do not pay the invoice again by any other route.
+   - No spend, and a `decision` entry with the verdict `allow`: the spend may have been sent and may still
+     land. Look again once 48 hours have passed since the decision (`UNKNOWN_SETTLE_MS` in the SDK) before
+     you treat it as not sent.
+   - No spend, and a `decision` entry with the verdict `hold` or `refuse`: nothing was sent.
+   - No `decision` entry: the cycle stopped before it decided, and nothing was sent.
+6. Leave the row as it is: a hand-edited status could let the same invoice be decided again. Tell the owner
+   what you found. The same text, or the same invoice number for that payee, stays refused while the row
+   is in `processing`, so to run the flow again, upload an invoice with another number.
+
 ## Watcher and owner alerts
 
 - **Schedule.** `apps/web/vercel.json` runs `/api/cron/watch` daily at 00:00 UTC and `/api/cron/metrics`

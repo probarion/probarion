@@ -9,9 +9,11 @@ import { log, newRequestId } from "@/lib/log";
 import { listAll } from "@/lib/near/reader";
 import { getReader } from "@/lib/near/server";
 import { tagRequest } from "@/lib/observe";
+import { payablesBudget } from "@/lib/payables/budget";
 import { ExtractError, MAX_INVOICE_BYTES } from "@/lib/payables/extract";
 import { NUMBER_DUPLICATE_RULE, numberDuplicateNotice } from "@/lib/payables/number-duplicate";
 import { type PipelineResult, processInvoice } from "@/lib/payables/pipeline";
+import { makePayablesProbarion } from "@/lib/payables/probarion";
 import {
   byteCount,
   cleanName,
@@ -21,12 +23,16 @@ import {
   mediaTypeOf,
 } from "@/lib/payables/upload";
 import { LIMITS } from "@/lib/ratelimit";
-import { makeTenantProbarion } from "@/lib/sdk/factory";
 import { kickWatcher } from "@/lib/watcher/server";
 
 export const dynamic = "force-dynamic";
-// The tenant lease (PROCESS_LEASE_SECONDS, 90 s) outlasts this with a 30 s margin; route.test.ts checks it.
-export const maxDuration = 60;
+// The cycle's time (lib/payables/budget.ts, PAYABLES_TIME) counts from the route's start: the model calls stop by 50 s and
+// the chain reads before the first transaction by 60 s, which leaves 10 s for the send, the anchor and the row, and 20 s
+// for the watcher kick once the answer is sent. The tenant lease (PROCESS_LEASE_SECONDS, 120 s) outlasts this with a 30 s
+// margin, and it stays under the 2 minutes after which the alerts' SQL takes a `sending` alert back (migrations 0011 and
+// 0012): the kick sends in this function. No migration ages an invoice in `processing`. route.test.ts checks all of it.
+// Vercel allows 90 s on the Pro plan, which the project's team is on, with or without Fluid compute.
+export const maxDuration = 90;
 
 /** Shown for an unconfirmed outcome: the spend was sent and is never sent again. */
 const PAYMENT_PENDING =
@@ -188,6 +194,8 @@ function respond(r: PipelineResult, requestId: string): Response {
 
 /** Runs one Payables cycle for an invoice (multipart: `file` or `text`, optional `purpose`). Owner or approver. */
 export async function POST(req: Request, { params }: { params: Promise<{ vault: string }> }) {
+  // The cycle's deadlines (lib/payables/budget.ts) count from here.
+  const budget = payablesBudget(Date.now());
   const bad = assertSameOrigin(req);
   if (bad) return bad;
   const { vault } = await params;
@@ -239,7 +247,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ vault: 
         db,
         master: masterKey(),
         mandates: (t) => vaultMandates(auth.member.network, t.vault_id),
-        makeProbarion: (o) => makeTenantProbarion(auth.member.network, o),
+        makeProbarion: (o) => makePayablesProbarion(auth.member.network, o, budget),
       },
       {
         tenant: auth.member,
