@@ -150,6 +150,11 @@ snapshot of the ledger and the chain:
   same file as the ledger. An edit that was not re-signed fails. A forged snapshot, with re-signed
   entries and chain data edited to agree, passes. Only a live run with `--vault` reads the chain, so
   take the snapshot yourself or run live.
+- **That `decide()` ran.** `verify` shows that the ledger key signed each decision and that each spend
+  is bound to one that allowed it; it does not run the policy again. Whoever holds both the agent key and
+  the ledger key can skip `decide()` and still pass, within the mandate's payee and caps. Keep the ledger
+  key out of the agent's reach: run `@probarion/mcp` as another OS user or in a container
+  ([threat model](docs/THREAT_MODEL.md#known-gaps)).
 - **The TEE measurement is not pinned (O1b, deferred).** Offline, A1 to A7 show that the signature,
   the response and the recorded proposal agree, and that the attestation report is bound to the
   ledger position. The online check O1 verifies the TDX quote through Intel DCAP, and O2 checks the

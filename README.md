@@ -17,7 +17,7 @@
 
 **[Live site](https://probarion.xyz)** · **[Docs](https://probarion.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[NEAR tech](#near-technology-used-and-how)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
 
-<sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts · NEAR AI Cloud private models · TypeScript SDK and CLI on npm</sub>
+<sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts (a testnet stand-in so far) · NEAR AI Cloud private models · TypeScript SDK and CLI on npm</sub>
 
 </div>
 
@@ -461,7 +461,9 @@ cross-chain burn does not leave NEAR. The smoke run exercised the contract alone
 with the agent key directly, without the SDK, a model or a ledger, so this vault has no ledger key
 and no anchors yet. For the same reason, `verify --vault v0.probarion.testnet` prints `RESULT: FAIL`
 today: check d finds spends with no decision in the ledger, and check h finds no burn event without
-the burn's tx hash. The [demo vault](#near-testnet-demo-vault-2026-11-09) below passes all nine checks.
+the burn's tx hash. That FAIL is what `verify` is for: an agent key used without Probarion moved money, and
+check d names every such spend. This vault also runs the build from before the `set_ledger_key` fix (see
+Status). The [demo vault](#near-testnet-demo-vault-2026-11-09) below passes all nine checks.
 
 | Account | Role |
 | --- | --- |
