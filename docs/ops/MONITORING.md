@@ -89,9 +89,9 @@ its own address: mainnet on `https://probarion.xyz` and testnet on `https://test
 healthy ([what one run does](watcher.md#what-one-run-does)). The URL holds a token, so it is a secret and never logged.
 
 - **Period.** Set the heartbeat's expected period to the schedule in use. With the daily Vercel cron (00:00 UTC), that
-  is a day plus a grace: the Hobby plan does not promise the minute a daily cron runs, so check how late it runs on
-  first use and set the grace above it. With the OWNER's per-minute Supabase job
-  ([per-minute schedule](watcher.md#turn-on-the-per-minute-schedule-once)), about 3 minutes.
+  is a day plus a grace: Vercel Pro, which the project's team is on, schedules a cron to the minute (the Hobby plan
+  only to the hour), but check how late it runs on first use and set the grace above it. With the OWNER's per-minute
+  Supabase job ([per-minute schedule](watcher.md#turn-on-the-per-minute-schedule-once)), about 3 minutes.
 - **A missed heartbeat means** that a network's watch was not healthy, or that nothing ran the watcher: the database
   is down, a network's chain could not be read, every tenant tried on a network failed, a network was starved, or the
   cron did not call the route.

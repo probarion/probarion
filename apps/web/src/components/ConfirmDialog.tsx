@@ -91,13 +91,17 @@ export function ConfirmDialog({
             Cannot be undone
           </p>
         ) : null}
-        <h2 id={`${id}-title`} className="text-[22px] font-light tracking-tight">
+        {/* An account id has no spaces to break at: a 64-character implicit one, or a long name, wraps anywhere
+            in the title, the body and the footnote instead of pushing the dialog sideways. */}
+        <h2 id={`${id}-title`} className="text-[22px] font-light tracking-tight wrap-anywhere">
           {options.title}
         </h2>
-        <p id={`${id}-body`} className="mt-2 whitespace-pre-line text-sm text-ink/80">
+        <p id={`${id}-body`} className="mt-2 whitespace-pre-line text-sm text-ink/80 wrap-anywhere">
           {options.body}
         </p>
-        {options.footnote ? <p className="mt-3 text-xs text-mute">{options.footnote}</p> : null}
+        {options.footnote ? (
+          <p className="mt-3 text-xs text-mute wrap-anywhere">{options.footnote}</p>
+        ) : null}
         <div className="mt-6 flex flex-wrap justify-end gap-3">
           <button
             ref={cancel}
