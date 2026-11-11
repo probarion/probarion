@@ -385,7 +385,7 @@ describe("owner-only commands print transactions and never sign", () => {
   it("reports the version", async () => {
     const { io, state } = testIo(dir);
     expect(await runCli(["--version"], io)).toBe(0);
-    expect(state.out.trim()).toBe("0.1.0");
+    expect(state.out.trim()).toBe("0.1.1");
   });
 });
 

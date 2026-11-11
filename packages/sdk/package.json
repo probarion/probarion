@@ -1,6 +1,6 @@
 {
   "name": "@probarion/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Probarion SDK: let any agent pay on NEAR only inside owner-signed mandates, with attested decisions and a verifiable ledger.",
   "license": "MIT",
   "type": "module",

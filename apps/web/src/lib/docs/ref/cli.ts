@@ -59,7 +59,7 @@ export const TABLES: readonly RefTable[] = [
         cells: {
           option: "`-V`, `--version`",
           fallback: "None",
-          does: "Prints the CLI's version, `0.1.0`, and exits 0.",
+          does: "Prints the CLI's version, `0.1.1`, and exits 0.",
         },
       },
       {
