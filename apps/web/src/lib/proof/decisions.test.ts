@@ -213,6 +213,7 @@ describe("decision rows on the committed fixture", () => {
         status: "burned",
         code: null,
         spendId: "2",
+        txHash: "4UViDBu8eHvNMe7WB24hDfDA5un4R5Wmy7ENLWGeRecF",
         txUrl: `${TX}4UViDBu8eHvNMe7WB24hDfDA5un4R5Wmy7ENLWGeRecF`,
         txLabel: "contract tx, seq 3",
       },
@@ -225,6 +226,7 @@ describe("decision rows on the committed fixture", () => {
         amount: { units: "40000000", text: "40 USDC" },
         destination: "base:0x1111111111111111111111111111111111111111",
         mandateId: "2",
+        heldByContract: false,
       },
     ]);
     expect(checked.mandate).toEqual({
@@ -258,6 +260,7 @@ describe("decision rows on the committed fixture", () => {
         status: "refused",
         code: "OverPerPayment",
         spendId: null,
+        txHash: null,
         txUrl: null,
         txLabel: "no tx recorded",
       },
@@ -481,6 +484,7 @@ describe("decision rows on the testnet demo vault's rules-only snapshot", () => 
         status: "held",
         code: null,
         spendId: "2",
+        txHash: "6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb",
         txUrl: `${TX}6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb`,
         txLabel: "contract tx, seq 6",
       },
@@ -493,6 +497,8 @@ describe("decision rows on the testnet demo vault's rules-only snapshot", () => 
         amount: { units: "4000000", text: "4 USDC" },
         destination: "probarion-payee.testnet",
         mandateId: "1",
+        // INV-2003: above the approval limit, so its held_until_ns stays set after the approve.
+        heldByContract: true,
       },
     ]);
     expect(r.checked.mandate).toEqual({

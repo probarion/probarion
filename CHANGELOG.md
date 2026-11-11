@@ -14,6 +14,19 @@ The software is an unaudited beta.
 
 ### Added
 
+- `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
+  (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
+  label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision
+  and why, each spend bound to it with its status on chain, when the snapshot read the chain, the
+  spend transaction with its explorer link, the invoice's SHA-256 and the ledger seq. The header row
+  is the same in every file, and the capture time is also in the file name. The file is the route's
+  own snapshot, like snapshot.json, so it can be older or newer than the page's. RFC 4180 with a UTF-8 BOM and
+  CRLF, and an apostrophe before any `=`, `+`, `-`, `@`, tab or CR that starts a cell: at the start
+  of a field, and after a `;` or a line break in it, for Excel in locales that split on semicolons.
+  Same access and rate limit as snapshot.json. The HTTP API reference now lists the three proof
+  files, and `docs/evidence/demo-vault/payments-2026-11-09.csv` is the demo vault's, made from its
+  snapshot by a test. The Mandates docs page says the payee needs no NEAR: it only receives USDC, and
+  there is no NEP-366 relayer.
 - `/proof/<vault>` lists every decision of the ledger under the checks, newest first. For a decision
   made with model output it shows what the ledger records the TEE saw and signed, and what the code
   and the contract checked, with A1 to A7 run on the page's snapshot and a fixed line on what they

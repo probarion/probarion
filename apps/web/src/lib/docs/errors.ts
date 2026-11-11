@@ -433,7 +433,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 404,
     code: "not_found",
-    where: "Proof files (snapshot.json, ledger.jsonl), Top-up API (faucet)",
+    where: "Proof files (snapshot.json, ledger.jsonl, payments.csv), Top-up API (faucet)",
     meaning:
       "There is no proof to give: the vault id is not a NEAR account id, nobody registered the vault, or its proof page is not public and you are not a member. The faucet answers it at any address but testnet's, and to anyone but the vault's owner, so a vault id is not confirmed.",
     next: "Check the vault id, or sign in as a member of the vault if its proof page is not public; for the faucet, sign in as the vault's owner at the testnet address.",

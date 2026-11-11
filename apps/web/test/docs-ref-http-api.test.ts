@@ -13,16 +13,22 @@ import { newPairCode, newToken, showCode, TOKEN_RE } from "@/lib/ext/token";
 import { HEALTH_CACHE_MS, HEALTH_TIMEOUT_MS } from "@/lib/health";
 import { clientIp } from "@/lib/http";
 import { MAX_INVOICE_BYTES } from "@/lib/payables/limits";
+import { ledgerFileName } from "@/lib/proof/ledger-file";
+import { PAYMENTS_COLUMNS, paymentsCsv, paymentsCsvFileName } from "@/lib/proof/payments-csv";
+import { snapshotFileName } from "@/lib/proof/snapshot-file";
 import { LIMITS } from "@/lib/ratelimit";
 import { readMdx, WEB, walkFiles } from "./docs-helpers";
 
 // The HTTP API page is pinned to the route files: every exported method of every
-// src/app/api/**/route.ts is a row and every row is one, and each row's caller, error codes, rate
+// src/app/api/**/route.ts, and of the proof page's files in src/app/proof/**/route.ts, is a row and
+// every row is one, and each row's caller, error codes, rate
 // limits, what each limit counts and the fields of a success answer the route writes out are what
 // the code reads. The scan reads the source text, never the rows, so a route, a method, a code or a
 // limit added to the code fails here and names itself.
 
 const API = join(WEB, "src", "app", "api");
+/** The proof page's files (snapshot.json, ledger.jsonl, payments.csv): served under /proof, not /api. */
+const PROOF = join(WEB, "src", "app", "proof");
 /** Every method a Next.js route handler may export. */
 const METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
 
@@ -65,32 +71,51 @@ function methodsOf(text: string): string[] {
 }
 
 /** The URL path of a route file: `[vault]` is `:vault`, a catch-all is `:slug*`, a `(group)` is left out. */
-function urlOf(dir: string): string {
+function urlOf(dir: string, base = "/api"): string {
   const segments = dir
     .split(/[\\/]/)
     .filter((s) => s !== "" && !/^\(.*\)$/.test(s))
     .map((s) => s.replace(/^\[\[?\.\.\.(\w+)\]\]?$/, ":$1*").replace(/^\[(\w+)\]$/, ":$1"));
-  return `/api/${segments.join("/")}`;
+  return `${base}/${segments.join("/")}`;
 }
 
-/** A row's anchor: the area, the method and the path after /api, as in `http-api-post-auth-verify`. */
+/**
+ * A row's anchor: the area, the method and the path after /api, as in `http-api-post-auth-verify`. A proof file's
+ * keeps `proof` and writes its dot as a dash: `http-api-get-proof-vault-payments-csv`.
+ */
 function rowIdOf(method: string, url: string): string {
-  const path = url
-    .split("/")
-    .filter(Boolean)
-    .slice(1)
-    .map((s) => s.replace(/^:/, "").replace(/\*$/, ""));
+  const parts = url.split("/").filter(Boolean);
+  const path = (parts[0] === "api" ? parts.slice(1) : parts).map((s) =>
+    s.replace(/^:/, "").replace(/\*$/, "").replace(/\./g, "-"),
+  );
   return ["http-api", method.toLowerCase(), ...path].join("-");
 }
 
-/** Every route file, with its "METHOD /api/..." keys. */
-const ROUTES = walkFiles(API, ".ts")
-  .filter((f) => basename(f) === "route.ts")
-  .flatMap((file) => {
-    const text = read(file);
-    const url = urlOf(relative(API, dirname(file)));
-    return methodsOf(text).map((method) => ({ key: `${method} ${url}`, method, url, file, text }));
-  });
+/** The group of a route: the first segment after /api, or "proof" for a proof file. */
+const groupOf = (url: string): string =>
+  (url.startsWith("/api/") ? url.split("/")[2] : url.split("/")[1]) ?? "";
+
+/** Every route file, with its "METHOD /api/..." or "METHOD /proof/..." keys. */
+const ROUTES = (
+  [
+    [API, "/api"],
+    [PROOF, "/proof"],
+  ] as const
+).flatMap(([root, base]) =>
+  walkFiles(root, ".ts")
+    .filter((f) => basename(f) === "route.ts")
+    .flatMap((file) => {
+      const text = read(file);
+      const url = urlOf(relative(root, dirname(file)), base);
+      return methodsOf(text).map((method) => ({
+        key: `${method} ${url}`,
+        method,
+        url,
+        file,
+        text,
+      }));
+    }),
+);
 
 // Source text, read with strings, templates and comments skipped, so a bracket in a message or a
 // quote in a comment does not move a boundary.
@@ -727,7 +752,7 @@ const namesIn = (cell: string) =>
   );
 const sorted = (s: Iterable<string>) => [...s].sort();
 
-/** The table of each group of routes, by the path's first segment after /api. */
+/** The table of each group of routes, by the path's first segment after /api, or "proof" for a proof file. */
 const GROUPS: Record<string, string> = {
   auth: "http-api-auth",
   console: "http-api-console",
@@ -738,11 +763,20 @@ const GROUPS: Record<string, string> = {
   cron: "http-api-cron",
   telegram: "http-api-telegram",
   alerts: "http-api-alerts",
+  proof: "http-api-proof",
 };
 
 describe("the HTTP API reference", () => {
-  it("documents every method of every route under src/app/api, and nothing else", () => {
+  it("documents every method of every route under src/app/api and of the proof files, and nothing else", () => {
     expect(ROUTES.length, "no route files found").toBeGreaterThan(0);
+    expect(
+      sorted(ROUTES.filter((r) => r.url.startsWith("/proof/")).map((r) => r.key)),
+      "the proof files",
+    ).toEqual([
+      "GET /proof/:vault/ledger.jsonl",
+      "GET /proof/:vault/payments.csv",
+      "GET /proof/:vault/snapshot.json",
+    ]);
     const code = new Set(ROUTES.map((r) => r.key));
     const docs = new Set(ROWS.map((r) => routeOf(r.row)));
     expect(
@@ -774,6 +808,12 @@ describe("the HTTP API reference", () => {
     expect(rowIdOf("POST", "/api/console/:vault/invoices")).toBe(
       "http-api-post-console-vault-invoices",
     );
+    expect(urlOf(join("[vault]", "payments.csv"), "/proof")).toBe("/proof/:vault/payments.csv");
+    expect(rowIdOf("GET", "/proof/:vault/payments.csv")).toBe(
+      "http-api-get-proof-vault-payments-csv",
+    );
+    expect(groupOf("/proof/:vault/payments.csv")).toBe("proof");
+    expect(groupOf("/api/console/:vault/invoices")).toBe("console");
     expect(
       successKeys(
         'return json({ ok: true, ...base, n: f(a, b) });\nreturn json({ error: "x" }, 400);\nreturn json({ a }, 503);\nreturn json({ m }, ok ? 200 : 503);',
@@ -831,13 +871,13 @@ describe("the HTTP API reference", () => {
     for (const r of ROUTES) {
       const id = rowIdOf(r.method, r.url);
       expect(rowFor(r.key)?.id, r.key).toBe(id);
-      const group = r.url.split("/")[2] ?? "";
+      const group = groupOf(r.url);
       const table = GROUPS[group];
-      expect(table, `no table for the /api/${group} routes`).toBeDefined();
+      expect(table, `no table for the ${group} routes`).toBeDefined();
       expect(ROWS.find((x) => x.row.id === id)?.table, r.key).toBe(table);
     }
     expect(sorted(TABLES.map((t) => t.id)), "a table with no routes").toEqual(
-      sorted(new Set(ROUTES.map((r) => GROUPS[r.url.split("/")[2] ?? ""] ?? ""))),
+      sorted(new Set(ROUTES.map((r) => GROUPS[groupOf(r.url)] ?? ""))),
     );
   });
 
@@ -1164,5 +1204,60 @@ describe("the numbers on the HTTP API page", () => {
     )?.[1];
     expect(hours, "the code's lifetime in alert_subscription_verify").toBeDefined();
     expect(page).toContain(`The code is good once, for ${hours} hours.`);
+  });
+
+  it("states each proof file's type, name and caching as its module writes them", () => {
+    const files = [
+      {
+        route: "GET /proof/:vault/snapshot.json",
+        lib: "src/lib/proof/snapshot-file.ts",
+        name: snapshotFileName("<vault>"),
+      },
+      {
+        route: "GET /proof/:vault/ledger.jsonl",
+        lib: "src/lib/proof/ledger-file.ts",
+        name: ledgerFileName("<vault>"),
+      },
+      {
+        route: "GET /proof/:vault/payments.csv",
+        lib: "src/lib/proof/payments-csv.ts",
+        name: paymentsCsvFileName("<vault>", "2026-11-09T11:58:06Z").replace(
+          "20261109T115806Z",
+          "<capture time>",
+        ),
+      },
+    ];
+    const tick = "`";
+    for (const f of files) {
+      const type = /"content-type": "([^"]+)"/.exec(src(f.lib))?.[1];
+      expect(type, `${f.lib}: its content-type`).toBeDefined();
+      expect(cell(f.route, "success"), f.route).toContain(`${tick}${type}${tick}`);
+      expect(cell(f.route, "success"), f.route).toContain(`saved as ${tick}${f.name}${tick}`);
+      expect(src(f.lib), f.lib).toContain(
+        '"private, max-age=0, must-revalidate" : "private, no-store"',
+      );
+    }
+    expect(page).toContain(
+      "a public vault's answer is sent with `cache-control: private, max-age=0, must-revalidate`, a member's with `private, no-store`",
+    );
+    // The payments file is what the cell says: a BOM, then RFC 4180 records ended by CRLF.
+    const empty = paymentsCsv([], "2026-11-09T11:58:06Z");
+    expect(empty.startsWith(`${String.fromCharCode(0xfeff)}Date (UTC),`)).toBe(true);
+    expect(empty.endsWith("\r\n")).toBe(true);
+    // The page lists the file's columns as the module writes them, in order.
+    const columns = [...PAYMENTS_COLUMNS];
+    const last = columns.pop();
+    expect(page).toContain(`Its columns are ${columns.join(", ")} and ${last}.`);
+    expect(empty).toBe(`${String.fromCharCode(0xfeff)}${PAYMENTS_COLUMNS.join(",")}\r\n`);
+  });
+
+  it("names each proof file on the Errors row of the 404 the three answer", () => {
+    const row = HTTP_ERRORS.find((e) => e.status === 404 && e.code === "not_found");
+    expect(row?.where).toContain("Proof files (snapshot.json, ledger.jsonl, payments.csv)");
+    const files = readdirSync(join(PROOF, "[vault]"), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+    expect(files).toContain("payments.csv");
+    for (const name of files) expect(row?.where, name).toContain(name);
   });
 });
