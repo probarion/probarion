@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { RAW_SKIP_TEXT } from "@/lib/canary/copy";
+import { RULE_REASONS } from "@/lib/canary/reasons";
 import type { AttemptResult } from "@/lib/canary/service";
 import type { Network } from "@/lib/config";
 import { AttemptResultView } from "./AttemptResult";
@@ -85,6 +86,39 @@ describe("the three columns of an answer", () => {
     const html = render(done());
     expect(html).toMatch(/data-tone="good"[^>]*>Refused</);
     expect(html).toMatch(/<code[^>]*>custom\.canary_no_autopay<\/code>/);
+  });
+
+  it("says why code refused in words, the rule's plain reason, with the rule's id after it in parentheses", () => {
+    for (const rule of [
+      "custom.canary_no_autopay",
+      "mandate.payee_mismatch",
+      "mandate.over_per_payment",
+      "invoice.amount_invalid",
+    ]) {
+      const html = render(done({ code: { status: "refused_by_code", rule, txHash: null } }));
+      const reason = RULE_REASONS[rule] ?? "";
+      expect(reason.length, rule).toBeGreaterThan(10);
+      expect(html, rule).toContain(
+        `<p>${reason.replace(/'/g, "&#x27;")} (<code>${rule}</code>).</p>`,
+      );
+    }
+    const text = visible(render(done()));
+    const at = [
+      "Code decided",
+      "Refused",
+      "The Canary's own rule: it never pays from its own cycle (",
+    ].map((t) => text.indexOf(t));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
+  it("shows a rule it has no words for as its id alone, and a refusal with no rule as Refused alone", () => {
+    const unknown = render(
+      done({ code: { status: "refused_by_code", rule: "custom.other", txHash: null } }),
+    );
+    expect(unknown).toMatch(/<p><code>custom\.other<\/code><\/p>/);
+    const none = render(done({ code: { status: "refused_by_code", rule: null, txHash: null } }));
+    expect(visible(none)).toContain("Code decided Refused The contract did");
   });
 
   it("shows a spend that was held as Held for a human, in the waiting colour", () => {
