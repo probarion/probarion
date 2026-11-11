@@ -1,0 +1,6 @@
+Probarion purchase order PO-M001 (NEAR mainnet, real USDC)
+Vault: v0.probarion.near, owned by probarion.near.
+Payee: the owner's own NEAR mainnet wallet, named in mandate 1 of the vault.
+Token: native USDC on NEAR mainnet (17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1), real money.
+Cap: at most 1 USDC per payment, 2 USDC in total, 2 payments, until 2027-01-31 00:00 UTC.
+Purpose: a small mainnet demo of an AI agent paying inside a mandate, and of the vault refusing a spend that names no mandate.

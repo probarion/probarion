@@ -4,3 +4,5 @@
 packages/core/test/fixtures/invoice-*.txt -text
 # The demo vault's invoices and PO: their sha256 is on chain, so git never converts them either.
 docs/evidence/demo-vault/*.txt -text
+# The 2026-11 mainnet demo: the PO and invoice hashes go on chain (purpose_hash, invoice_hash), so git never converts them.
+docs/evidence/mainnet-v0/*.txt -text

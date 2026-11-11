@@ -29,9 +29,9 @@ describe("readPreLedgerDecisionHashes", () => {
     ).toEqual([]);
   });
 
-  it("reads the repo's own three Day-4 decision files", async () => {
+  it("reads the repo's own v0 decision files: three for Day 4, one for the 2026-11 demo run", async () => {
     const dir = fileURLToPath(new URL("../../../docs/evidence/", import.meta.url));
-    expect(await readPreLedgerDecisionHashes(dir)).toHaveLength(3);
+    expect(await readPreLedgerDecisionHashes(dir)).toHaveLength(4);
   });
 });
 

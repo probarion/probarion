@@ -108,10 +108,12 @@ test("the vault wasm comes only from the CI artifact of the recorded commit", ()
   const blocks = codeBlocks(runbook).join("\n");
   for (const command of [
     "git fetch origin",
-    'RECORDED="$(node scripts/code-hash.mjs recorded-commit probarion-vault vault)"',
-    "gh run list --repo probarion/probarion --workflow ci --branch dev --limit 30 --json databaseId,headSha,event,conclusion",
+    'RECORDED="$(node.exe scripts/code-hash.mjs recorded-commit probarion-vault vault)"',
+    // Filtered by the recorded commit: on 2026-11-11 its run was older than the last 30 dev runs.
+    'gh run list --repo probarion/probarion --workflow ci --commit "$RECORDED" --json databaseId,headSha,event,conclusion',
+    "rm -rf contracts/target/ci-artifact-mainnet",
     "-n probarion-vault-wasm -D contracts/target/ci-artifact-mainnet",
-    "REQUIRE_RECORDED=1 node scripts/code-hash.mjs check probarion-vault vault contracts/target/ci-artifact-mainnet/probarion_vault.wasm",
+    "REQUIRE_RECORDED=1 node.exe scripts/code-hash.mjs check probarion-vault vault contracts/target/ci-artifact-mainnet/probarion_vault.wasm",
     "export WASM=contracts/target/ci-artifact-mainnet/probarion_vault.wasm",
   ]) {
     assert.ok(blocks.includes(command), `missing command: ${command}`);
@@ -124,7 +126,13 @@ test("the vault wasm comes only from the CI artifact of the recorded commit", ()
   assert.ok(runbook.includes("matches the recorded build (commit $RECORDED)"));
   // The output is captured, not piped through `tee /dev/stderr`: that truncates when stderr is a file.
   assert.ok(!blocks.includes("tee /dev/stderr"), "the guard still pipes through tee /dev/stderr");
-  assert.ok(blocks.includes('CHECK_OUT="$(REQUIRE_RECORDED=1 node scripts/code-hash.mjs check'));
+  assert.ok(
+    blocks.includes('CHECK_OUT="$(REQUIRE_RECORDED=1 node.exe scripts/code-hash.mjs check'),
+  );
+  assert.ok(
+    !blocks.includes("--branch dev --limit 30"),
+    "the run list cannot find the recorded run",
+  );
   assert.ok(blocks.includes('probarion_vault.wasm 2>&1)"\necho "$CHECK_OUT"'), "output not shown");
   assert.ok(blocks.includes("printf '%s\\n' \"$CHECK_OUT\" | grep -qF"));
   assert.ok(blocks.includes('echo "OK: artifact is the recorded build"'));
@@ -146,10 +154,10 @@ test("the runbook needs no jq: Node reads the JSON (scripts/testnet/chain.mjs)",
   const runbook = read("docs/runbooks/mainnet-v0.md");
   assert.ok(!/\bjq\b/.test(runbook), "the runbook mentions jq");
   for (const use of [
-    'node scripts/testnet/chain.mjs full-access-keys "$VAULT"',
-    'node scripts/testnet/chain.mjs key-count "$VAULT"',
-    'node scripts/testnet/chain.mjs code-hash "$VAULT"',
-    'node scripts/testnet/chain.mjs public-key "$AGENT_KEY_FILE"',
+    'node.exe scripts/testnet/chain.mjs full-access-keys "$VAULT"',
+    'node.exe scripts/testnet/chain.mjs key-count "$VAULT"',
+    'node.exe scripts/testnet/chain.mjs code-hash "$VAULT"',
+    'node.exe scripts/testnet/chain.mjs public-key "$AGENT_KEY_FILE"',
     "export RPC=https://rpc.mainnet.fastnear.com",
   ]) {
     assert.ok(runbook.includes(use), `missing: ${use}`);
@@ -158,14 +166,29 @@ test("the runbook needs no jq: Node reads the JSON (scripts/testnet/chain.mjs)",
 
 test("commands use the shapes the testnet run proved (create-account, agent key, signing)", () => {
   const all = commands(read("docs/runbooks/mainnet-v0.md"));
+  // Two accounts are created: probarion.near by the CLI funder (section 0.4), then the vault by it.
   const create = all.filter((c) => c.includes("create-account fund-myself"));
-  assert.equal(create.length, 1);
+  assert.equal(create.length, 2);
+  for (const c of create) {
+    assert.ok(c.includes("autogenerate-new-keypair --signature-scheme ed25519 save-to-keychain"));
+  }
+  assert.ok(create[0].includes('fund-myself "$ROOT"'), "probarion.near is not created first");
   assert.ok(
-    create[0].includes("autogenerate-new-keypair --signature-scheme ed25519 save-to-keychain"),
+    create[0].includes(
+      'sign-as "$FUNDER_ID" network-config mainnet sign-with-access-key-file "$FUNDER_FILE" send',
+    ),
+    "probarion.near is not created by the funder's key file",
   );
-  assert.ok(
-    all.some((c) => c.includes("create-account fund-later use-auto-generation save-to-folder")),
+  assert.ok(create[1].includes('fund-myself "$VAULT"') && create[1].includes('sign-as "$ROOT"'));
+  // The funder and the agent key are near-cli key files in the git-ignored .keys/ folder.
+  const keyFiles = all.filter((c) =>
+    c.includes("create-account fund-later use-auto-generation save-to-folder"),
   );
+  assert.deepEqual(
+    keyFiles.map((c) => c.split(" ").pop()),
+    ["./.keys/mainnet-funder", "./.keys/mainnet-agent"],
+  );
+  assert.ok(all.some((c) => c.includes("git check-ignore -q .keys/mainnet-funder/x.json")));
   // The agent key signs as the vault itself, from its key file.
   const spends = all.filter((c) => c.includes('as-transaction "$VAULT" spend'));
   assert.equal(spends.length, 3);
@@ -235,11 +258,20 @@ test("the refused spend's hash comes from FastNEAR, with NearBlocks as the fallb
 });
 
 test("the evidence files exist, use LF, and the decisions point at their invoices", () => {
-  const texts = ["v0-po", "v0-invoice-1", "v0-invoice-2", "v0-invoice-refusal"];
+  const texts = [
+    "v0-po",
+    "v0-invoice-1",
+    "v0-invoice-2",
+    "v0-invoice-refusal",
+    "mainnet-v0/po-PO-M001",
+    "mainnet-v0/invoice-INV-M001",
+  ];
   const decisions = [
     ["v0-decision-1", "v0-invoice-1", 1, "2000000"],
     ["v0-decision-2", "v0-invoice-2", 2, "2000000"],
     ["v0-decision-refusal", "v0-invoice-refusal", 999, "1000000"],
+    // The 2026-11 demo run's one payment: 1 USDC under mandate 1.
+    ["v0-decision-m001", "mainnet-v0/invoice-INV-M001", 1, "1000000"],
   ];
   const files = [
     ...texts.map((name) => `docs/evidence/${name}.txt`),
@@ -275,10 +307,36 @@ test("the evidence files have the exact bytes whose sha256 becomes an on-chain h
     "v0-decision-1.json": "64eaf4203ca06a1bf20c76bd235df60be3640c3a15b85e632f8c8c86ef4a1672",
     "v0-decision-2.json": "5cadc59418b90e510ab73e0d73614aee5391d7122bd7c8d58e0cd99b82b3fd11",
     "v0-decision-refusal.json": "aa8a907f0666ab97fe78e8d9e6b77ed4572db5ed7132a6a6776325d4c0bc6dd0",
+    // The 2026-11 demo run: mandate 1's purpose document, and spend 1's invoice and decision.
+    "mainnet-v0/po-PO-M001.txt": "3bc57742e1153e0cf14254077ee4fe96569836fa0f49dbdc8bb74ba7cea7c4db",
+    "mainnet-v0/invoice-INV-M001.txt":
+      "292f7c324bca6da815e237596e678efd82cb9ddf9b40024b42e39a402762d459",
+    "v0-decision-m001.json": "d00e8ccc7a99a23a7f56d22d68aa69c7050330ac61e5c88c74bf013d188fb4f1",
   };
   for (const [name, digest] of Object.entries(pinned)) {
     const bytes = readFileSync(new URL(`../docs/evidence/${name}`, import.meta.url));
     assert.equal(createHash("sha256").update(bytes).digest("hex"), digest, `${name} changed`);
+  }
+  // The runbook names the purpose hash it expects, and git never converts the demo's text files.
+  assert.ok(
+    read("docs/runbooks/mainnet-v0.md").includes(
+      `Expected: \`${pinned["mainnet-v0/po-PO-M001.txt"]}\``,
+    ),
+  );
+  assert.match(read(".gitattributes"), /^docs\/evidence\/mainnet-v0\/\*\.txt -text$/m);
+  // The purpose document is plain ASCII and says what it covers: mainnet, real USDC, the caps.
+  const po = readFileSync(new URL("../docs/evidence/mainnet-v0/po-PO-M001.txt", import.meta.url));
+  assert.ok(
+    [...po].every((b) => b === 10 || (b >= 32 && b < 127)),
+    "po-PO-M001.txt is not plain ASCII",
+  );
+  for (const words of [
+    "mainnet",
+    "real USDC",
+    "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+    "at most 1 USDC per payment, 2 USDC in total, 2 payments, until 2027-01-31",
+  ]) {
+    assert.ok(po.toString().includes(words), `po-PO-M001.txt lacks: ${words}`);
   }
   // A formatter must never touch them: biome ignores the folder.
   const biome = JSON.parse(read("biome.json"));
@@ -300,11 +358,11 @@ test("the money-safety order: guards before the deploy, checks before the irreve
     // Everything about the deployed vault is verified while the account can still be fixed.
     'as-read-only "$VAULT" get_config',
     "OK: get_config is exactly what was meant",
-    'node scripts/testnet/chain.mjs code-hash "$VAULT"',
+    'node.exe scripts/testnet/chain.mjs code-hash "$VAULT"',
     "OK: the deployed code is the CI wasm",
     "## 3. Lock",
     "Run this step only if every check of step 2 passed",
-    'node scripts/testnet/chain.mjs full-access-keys "$VAULT"',
+    'node.exe scripts/testnet/chain.mjs full-access-keys "$VAULT"',
     'echo "STOP: expected exactly one full-access key"',
     'delete-keys "$VAULT"',
   ];
@@ -329,7 +387,7 @@ test("the money-safety order: guards before the deploy, checks before the irreve
     runbook.includes('[ -n "$DEPLOYED" ] && [ -n "$BUILT" ] && [ "$DEPLOYED" = "$BUILT" ]'),
     "the code-hash guard does not require both hashes to be non-empty",
   );
-  assert.ok(!runbook.includes('"$(node scripts/testnet/chain.mjs code-hash "$VAULT")" ='));
+  assert.ok(!runbook.includes('"$(node.exe scripts/testnet/chain.mjs code-hash "$VAULT")" ='));
   // The owner and approver confirmation is a condition of the lock, and of the deploy.
   assert.match(runbook, /the owner and approver were confirmed against the wallet apps/);
   assert.match(runbook, /If either differs, do not deploy: stop and tell Claude/);
@@ -382,11 +440,18 @@ test("the vault is funded with 3 NEAR, checked, and topped up from probarion.nea
   const runbook = read("docs/runbooks/mainnet-v0.md");
   const all = commands(runbook);
   assert.ok(!runbook.includes("'6 NEAR'") && !runbook.includes("(6 NEAR)"));
-  const create = all.filter((c) => c.includes("create-account fund-myself"));
+  const create = all.filter((c) => c.includes('create-account fund-myself "$VAULT"'));
   assert.equal(create.length, 1);
   assert.ok(create[0].includes("\"$VAULT\" '3 NEAR' autogenerate-new-keypair"));
+  // probarion.near gets 3.85 NEAR from the funder: 3 + 0.5 + the 0.3 margin of the enough check.
+  const root = all.filter((c) => c.includes('create-account fund-myself "$ROOT"'));
+  assert.equal(root.length, 1);
+  assert.ok(root[0].includes("\"$ROOT\" '3.85 NEAR' autogenerate-new-keypair"));
+  assert.ok(runbook.includes("send 3.95 NEAR to `$FUNDER_ID`"));
   // One story for the reserve: 3 NEAR for the vault + one 0.5 NEAR top-up (+ gas) = about 4 NEAR.
-  assert.ok(all.includes('node scripts/testnet/chain.mjs enough "$ROOT" 3 0.5   # exit code 0'));
+  assert.ok(
+    all.includes('node.exe scripts/testnet/chain.mjs enough "$ROOT" 3 0.5   # exit code 0'),
+  );
   assert.ok(runbook.includes("about 4 NEAR in `probarion.near`"));
   assert.ok(!runbook.includes("3.5 NEAR"), "a stale 3.5 NEAR figure");
   // The measured numbers behind the 3 NEAR (testnet, identical wasm).
@@ -406,14 +471,14 @@ test("probarion.near is checked on mainnet, not on testnet's default RPC", () =>
   const all = commands(read("docs/runbooks/mainnet-v0.md"));
   assert.ok(
     all.includes(
-      "RPC=https://rpc.mainnet.fastnear.com node scripts/testnet/chain.mjs exists probarion.near   # must print yes",
+      "RPC=https://rpc.mainnet.fastnear.com node.exe scripts/testnet/chain.mjs exists probarion.near   # must print yes",
     ),
   );
   // Any other chain.mjs account query comes after `export RPC=` (section 0.2).
   const runbook = read("docs/runbooks/mainnet-v0.md");
   const exported = runbook.indexOf("export RPC=https://rpc.mainnet.fastnear.com");
   for (const m of runbook.matchAll(
-    /^(?:\s*)(?:for .*; do )?node scripts\/testnet\/chain\.mjs (exists|balance|enough|full-access-keys|key-count|code-hash|public-key) /gm,
+    /^(?:\s*)(?:for .*; do )?node(?:\.exe)? scripts\/testnet\/chain\.mjs (exists|balance|enough|full-access-keys|key-count|code-hash|public-key) /gm,
   )) {
     assert.ok(m.index > exported, `chain.mjs ${m[1]} runs before RPC is exported: ${m[0]}`);
   }
@@ -444,7 +509,7 @@ test("the recorded-commit guard runs only on a checkout that is origin/dev", () 
   }
   assert.ok(
     blocks.indexOf('echo "STOP: HEAD is not origin/dev') <
-      blocks.indexOf('RECORDED="$(node scripts/code-hash.mjs recorded-commit'),
+      blocks.indexOf('RECORDED="$(node.exe scripts/code-hash.mjs recorded-commit'),
     "the checkout guard must come before recorded-commit",
   );
   assert.match(runbook, /`recorded-commit` answers for the local `HEAD`/);
@@ -509,4 +574,120 @@ test("the Day 4 gate lets only the Base transaction hash stay pending", () => {
     runbook,
     /the Day 4 gate \(step 12\) allows `proof\.first_base_payout_base_tx` to stay pending/,
   );
+});
+
+test("the 2026-11 demo run: protocol 88, node.exe, and the Base steps marked as not run", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const blocks = codeBlocks(runbook);
+  // Mainnet moved to protocol 88 (testnet's) by 2026-11-11; 86 would stop the run at its first gate.
+  const gate = runbook.indexOf("node.exe scripts/testnet/chain.mjs protocol-version mainnet");
+  assert.ok(gate > 0 && runbook.indexOf("Expected: `88`.", gate) > gate);
+  assert.ok(!runbook.includes("Expected: `86`"), "the protocol gate still expects 86");
+  const record = JSON.parse(read("contracts/deployments/testnet.json"));
+  assert.deepEqual(record.protocol_versions, { testnet: 88, mainnet: 88 });
+  // In an interactive Git Bash `node` is `winpty node.exe`, which breaks pipes and $(...): no bare node.
+  for (const line of blocks.join("\n").split("\n")) {
+    assert.ok(!/(?:^|[^\w.-])node(?= )/.test(line), `a command calls bare node: ${line}`);
+  }
+  // Steps 6 and 10 and mandate 2 stay in the runbook for a later run, each marked as not run now.
+  const marker = "**Not in the 2026-11 demo run; S1 unproven.**";
+  assert.equal(runbook.split(marker).length - 1, 2, "steps 6 and 10 both need the marker");
+  const step6 = runbook.indexOf("## 6. Top up Base POA USDC");
+  const step7 = runbook.indexOf("## 7. Agent key");
+  const step10 = runbook.indexOf("## 10. First Base payout");
+  const step11 = runbook.indexOf("## 11. First `NoMandate` refusal");
+  assert.ok(step6 > 0 && runbook.indexOf(marker, step6) < runbook.indexOf("mt_transfer", step6));
+  assert.ok(runbook.indexOf(marker, step6) < step7);
+  assert.ok(step10 > 0 && runbook.indexOf(marker, step10) < runbook.indexOf("check_spend", step10));
+  assert.ok(runbook.indexOf(marker, step10) < step11);
+  const mandateTwo = runbook.indexOf("**Mandate 2 is not in the 2026-11 demo run; S1 unproven.**");
+  assert.ok(mandateTwo > 0 && mandateTwo < runbook.indexOf('\\"type\\":\\"intents\\"'));
+  assert.ok(mandateTwo > runbook.indexOf("get_mandate json-args '{\"mandate_id\":1}'"));
+  // S1 is called unproven, never proved or a precondition of this run.
+  assert.match(runbook, /S1 is unproven on 2026-11-11/);
+  assert.ok(!runbook.includes("Spike S1 proved"), "the runbook still says S1 proved something");
+  const demoGate = runbook.split("\n").find((line) => line.startsWith("- 2026-11 demo gate:"));
+  assert.ok(demoGate, "no 2026-11 demo gate line");
+  for (const part of [
+    "first_near_payment_tx",
+    "first_no_mandate_refusal_tx",
+    "first_base_payout_tx",
+    "first_base_payout_base_tx",
+    "stay `null`",
+    "S1 unproven",
+  ]) {
+    assert.ok(demoGate.includes(part), `the demo gate lacks: ${part}`);
+  }
+  // The web app is not part of this run.
+  assert.match(runbook, /probarion\.xyz keeps serving testnet/);
+});
+
+test("the 2026-11 demo run: owner probarion.near, Meteor as approver and payee, mandate 1 never held", () => {
+  const runbook = read("docs/runbooks/mainnet-v0.md");
+  const all = commands(runbook);
+  for (const line of [
+    "export OWNER_ID=probarion.near",
+    'export APPROVER_ID="$METEOR_ID"',
+    'export PAYEE_ID="$METEOR_ID"',
+  ]) {
+    assert.ok(all.includes(line), `missing: ${line}`);
+  }
+  // The checkout guard fast-forwards dev only when no tracked file is changed, then compares.
+  const blocks = codeBlocks(runbook).join("\n");
+  const clean = blocks.indexOf("git status --porcelain --untracked-files=no");
+  const ff = blocks.indexOf("git merge --ff-only origin/dev");
+  const compare = blocks.indexOf('[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/dev)" ]');
+  assert.ok(clean > 0 && clean < ff && ff < compare, "fetch, clean check, fast-forward, compare");
+  // Mandate 1: 1 USDC per payment, 2 in total, 2 uses, until 2027-01-31, purpose PO-M001.
+  const near = all.filter(
+    (c) =>
+      c.includes('as-transaction "$VAULT" create_mandate') && c.includes('\\"type\\":\\"near\\"'),
+  );
+  assert.equal(near.length, 1);
+  for (const part of [
+    '\\"max_per_payment\\":\\"1000000\\"',
+    '\\"max_total\\":\\"2000000\\"',
+    '\\"max_uses\\":2,',
+    '\\"approval_above\\":\\"1000000\\"',
+    '\\"purpose_hash\\":\\"$PURPOSE\\"',
+    '\\"expires_at_ns\\":\\"$EXPIRES\\"',
+  ]) {
+    assert.ok(near[0].includes(part), `mandate 1 lacks ${part}`);
+  }
+  assert.ok(
+    all.includes(
+      "export PURPOSE=\"$(sha256sum docs/evidence/mainnet-v0/po-PO-M001.txt | cut -d' ' -f1)\"",
+    ),
+  );
+  const expires = /export EXPIRES=(\d+)/.exec(runbook)?.[1];
+  assert.equal(BigInt(expires ?? "0"), BigInt(Date.UTC(2027, 0, 31)) * 1_000_000n);
+  // A spend is held only when amount > approval_above, so the 1 USDC spend is paid at once.
+  const spend = all.find(
+    (c) => c.includes('as-transaction "$VAULT" spend') && c.includes('mandate_id\\":1,'),
+  );
+  assert.ok(spend?.includes('\\"amount\\":\\"1000000\\"'), "step 9 does not spend 1 USDC");
+  assert.ok(spend?.includes('\\"ref\\":\\"INV-M001\\"'));
+  assert.ok(runbook.includes("--spend-id 1 --amount 1.00"));
+  assert.ok(
+    all.includes(
+      "export INVOICE1=\"$(sha256sum docs/evidence/mainnet-v0/invoice-INV-M001.txt | cut -d' ' -f1)\"",
+    ),
+  );
+  assert.ok(
+    all.includes(
+      "export DECISION1=\"$(sha256sum docs/evidence/v0-decision-m001.json | cut -d' ' -f1)\"",
+    ),
+  );
+  // A small agent allowance: 0.25 NEAR, under the vault's estimated 0.488 NEAR of free storage runway.
+  const addAgent = all.find((c) => c.includes('as-transaction "$VAULT" add_agent'));
+  assert.ok(addAgent?.includes('\\"allowance\\":\\"250000000000000000000000\\"'));
+  assert.ok(runbook.includes("The agent key's 0.25 NEAR allowance (step 7) is a cap on its gas"));
+  // USDC comes from Meteor, and withdraw needs probarion.near registered on USDC first.
+  assert.match(runbook, /## 5\. Fund 3 native USDC from Meteor/);
+  assert.ok(runbook.includes('prints `"3000000"`'));
+  const recovery = runbook.slice(runbook.indexOf("## If anything looks wrong"));
+  const register = recovery.indexOf(
+    '\\"account_id\\":\\"$OWNER_ID\\",\\"registration_only\\":true',
+  );
+  assert.ok(register > 0 && register < recovery.indexOf('as-transaction "$VAULT" withdraw '));
 });
