@@ -774,6 +774,14 @@ The software is an unaudited beta.
 - Console: a long account id (a 64-character implicit account, or a long named one) wraps inside the
   confirmation dialog, such as "Create vault in my wallet", and in the mandate form, where it made the
   dialog scroll sideways. The shared `ConfirmDialog` wraps its title, body and footnote anywhere.
+- SDK: `NearApiJsSender` with `sendTimeoutMs` as a function starts no step (signing, the send, a
+  status lookup) when the caller has less than 50 ms left or the function throws. Before, such an
+  answer became a 1 ms deadline and the transaction was still sent, so a spend could land while the
+  caller was told its outcome was unknown. A signing or send that does not start is `TxSendFailed`
+  (nothing was sent); after an `InvalidNonce` the node confirmed, it is that refusal; a lookup that
+  does not start keeps the outcome unknown, with its tx hash. The Canary counts the first case as
+  `no_time`. A deadline longer than a timer holds (about 24.8 days) is cut to that, where Node.js
+  fired it after 1 ms. New tests in `packages/sdk/test/deadline.test.ts` pin each case.
 - SDK: `RpcClient` and `NearAiProposer` do not start a call with less than 50 ms of the caller's
   `remainingMs` left, where they refused only at 0. A timer can fire about 1 ms before `Date.now()`
   reaches the deadline, so a call sent with what was left could only time out: a test in

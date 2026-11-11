@@ -14,14 +14,17 @@ export interface FakeProviderOptions {
 
 /**
  * Just the provider methods the sender uses. No network. `viewAccessKey` hands out a higher nonce
- * on every call, so a re-signed transaction is told apart from a repeated one.
+ * on every call, so a re-signed transaction is told apart from a repeated one. `calls` names every
+ * provider method called, in order, so a test can show that a step asked the node nothing.
  */
 export function fakeProvider(options: FakeProviderOptions = {}) {
   const sent: { signed: SignedTransaction; waitUntil: unknown }[] = [];
   const statusCalls: unknown[] = [];
+  const calls: string[] = [];
   let accessKeyCalls = 0;
   const provider = {
     viewAccessKey: async () => {
+      calls.push("viewAccessKey");
       if (options.accessKeyFails !== undefined) throw options.accessKeyFails;
       accessKeyCalls += 1;
       return {
@@ -32,20 +35,23 @@ export function fakeProvider(options: FakeProviderOptions = {}) {
       };
     },
     viewBlock: async () => {
+      calls.push("viewBlock");
       if (options.blockHangs === true) return new Promise<never>(() => {});
       return { header: { hash: baseEncode(new Uint8Array(32).fill(3)), height: 100 } };
     },
     sendTransactionUntil: async (signed: SignedTransaction, waitUntil: unknown) => {
+      calls.push("sendTransactionUntil");
       sent.push({ signed, waitUntil });
       if (options.send === undefined) return { status: { SuccessValue: "" } };
       return options.send(signed, sent.length);
     },
     viewTransactionStatus: async (args: unknown) => {
+      calls.push("viewTransactionStatus");
       statusCalls.push(args);
       return options.status?.(args);
     },
   } as unknown as Provider;
-  return { provider, sent, statusCalls };
+  return { provider, sent, statusCalls, calls };
 }
 
 /** sha256 of the borsh-encoded transaction: the digest that is signed and, in base58, the tx hash. */
