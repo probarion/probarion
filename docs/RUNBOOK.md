@@ -380,8 +380,9 @@ update public.tenants set kind = '<team|external|canary>' where vault_id = '<vau
 ## Watcher and owner alerts
 
 - **Schedule.** `apps/web/vercel.json` runs `/api/cron/watch` daily at 00:00 UTC and `/api/cron/metrics`
-  daily at 00:10 UTC, because the Vercel Hobby plan takes daily crons only. The watcher runs every minute
-  only once the OWNER turns on the Supabase job `probarion-watch`
+  daily at 00:10 UTC. Daily is a choice: Vercel Pro, which the project's team is on, also accepts hourly
+  or per-minute schedules ([run the usage numbers hourly](ops/metrics.md#run-it-hourly-instead)). The
+  watcher runs every minute only once the OWNER turns on the Supabase job `probarion-watch`
   ([per-minute schedule](ops/watcher.md#turn-on-the-per-minute-schedule-once)); one job serves both
   networks. A Payables upload and a Canary attempt also ask the watcher to look at their own vault right
   after they answer.
@@ -545,7 +546,8 @@ Run it after the promotion that brings the crons to Production. Every step is th
 2. Promote, wait for the Production build, and apply the migrations it carries (above). Before anyone adds
    an alert, run the watcher once by hand (step 4).
 3. Vercel, Settings, Cron Jobs lists exactly `/api/cron/watch` (`0 0 * * *`) and `/api/cron/metrics`
-   (`10 0 * * *`). How late within its hour the Hobby plan runs a daily cron: check on first use.
+   (`10 0 * * *`). Vercel Pro, which the project's team is on, schedules a cron to the minute: check on
+   first use how late it actually runs.
 4. From your own terminal, with `CRON_SECRET` from the password manager:
 
    ```bash

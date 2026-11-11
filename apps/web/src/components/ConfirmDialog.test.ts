@@ -177,6 +177,24 @@ describe("ConfirmDialog markup", () => {
       // Tailwind's reset zeroes the margin the browser centres a modal with.
       expect(cls).toContain("m-auto");
     });
+
+    it("wraps a long account id anywhere, so a 64-character implicit owner does not scroll the dialog sideways", () => {
+      const implicit = "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b";
+      const html = render({
+        title: "Create vault in my wallet",
+        actionLabel: "Create vault in my wallet",
+        body: `Create acme.vaults.probarion.testnet with ${implicit} as its owner and a 0.5 NEAR deposit?`,
+        footnote: `Signed in as ${implicit}.`,
+      });
+      const body = openTag(html, /<p\b[^>]*>(?=Create acme)/);
+      expect(body).toMatch(/class="[^"]*\bwrap-anywhere\b[^"]*"/);
+      expect(body).toContain("whitespace-pre-line"); // the paragraph breaks are kept too
+      expect(openTag(html, /<h2\b[^>]*>/)).toMatch(/class="[^"]*\bwrap-anywhere\b[^"]*"/);
+      expect(openTag(html, /<p\b[^>]*>(?=Signed in as)/)).toMatch(
+        /class="[^"]*\bwrap-anywhere\b[^"]*"/,
+      );
+      expect(html).toContain(implicit); // whole, so it can still be copied
+    });
   });
 });
 
