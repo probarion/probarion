@@ -18,7 +18,7 @@ Every `npx` line below is marked *after the 0.1.1 release*, and none of them wor
 | `list_mandates` | The vault's mandates: payee, cap per payment, total cap and what is left, uses left, approval threshold, expiry and the agent key each is bound to, beside this server's own | No |
 | `check_spend` | Asks the vault contract (`check_spend`, a free view) whether it would pay this amount under this mandate | No |
 | `request_spend` | Pays under a mandate: Probarion's rules (`decide()` in `@probarion/core`) decide, the contract's `spend` checks again and pays the mandate's payee, and the decision goes into the vault's signed ledger. A second request with the same ref pays nothing: it is refused, and names the vault's spend under that ref as `earlier_spend` | Yes, `spend` with the agent key |
-| `get_spend_status` | Reads a spend by id: held, pending, paid, burned, failed, rejected or expired. `burned` is final for the vault: Probarion does not watch the release on the other chain yet, so do not poll a burned spend or send it again | No |
+| `get_spend_status` | Reads a spend by id: held, pending, paid, burned, failed, rejected or expired. `burned` is final for the vault: Probarion does not watch the release on the other chain yet (on testnet nothing leaves NEAR), so do not poll a burned spend or send it again | No |
 | `verify` | Runs Probarion's verifier on the vault and the ledger file at `PROBARION_LEDGER_PATH`: ledger signatures, hash links, anchors, a decision behind every spend, keys, code | No |
 
 Amounts go in as USDC decimal strings (`"0.01"`, `"25.50"`). Every input rejects fields it does not know, so
@@ -107,7 +107,8 @@ find `node`, give its full path (`which node`, or `where node` on Windows).
 On Windows, `npx` is a batch file that most clients cannot start directly: run it through `cmd /c`, as the
 Windows lines show. `node` needs no `cmd /c`. The first `npx` run downloads the package and its
 dependencies, which can outlast a client's start-up timeout; after the 0.1.1 release,
-`npm install -g @probarion/mcp@0.1.1` once and then the command `probarion-mcp` avoids that.
+`npm install -g @probarion/mcp@0.1.1` once and then the command `probarion-mcp` avoids that. On Windows the
+global `probarion-mcp` is a batch file too, so the command there is `cmd /c probarion-mcp`.
 
 ### Claude Code
 

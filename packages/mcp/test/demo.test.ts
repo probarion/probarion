@@ -4,6 +4,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { type AddressInfo, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
@@ -101,14 +102,20 @@ function sink() {
  * Runs the demo on the scenario's vault (the default is the live demo vault) with both keys in its
  * environment, to show they never reach the server.
  */
-async function demo(opts: { ledger: string | number; now?: Date; args?: string[] }) {
+async function demo(opts: {
+  ledger: string | number;
+  now?: Date;
+  args?: string[];
+  /** The RPC the server is given. Default: the fake chain. */
+  rpcUrl?: string;
+}) {
   const out = sink();
   const err = sink();
   const fetched: string[] = [];
   const code = await runDemo(opts.args ?? ["--vault", SCENARIO_VAULT], {
     env: {
-      NEAR_RPC_URLS: rpc.url,
-      NEAR_ARCHIVAL_RPC_URLS: rpc.url,
+      NEAR_RPC_URLS: opts.rpcUrl ?? rpc.url,
+      NEAR_ARCHIVAL_RPC_URLS: opts.rpcUrl ?? rpc.url,
       PROBARION_AGENT_KEY: TEST_KEYS.agent.secretKey,
       PROBARION_LEDGER_KEY: TEST_KEYS.ledger.secretKey,
     },
@@ -124,6 +131,15 @@ async function demo(opts: { ledger: string | number; now?: Date; args?: string[]
     }) as typeof fetch,
   });
   return { code, out: out.text(), err: err.text(), fetched };
+}
+
+/** A loopback URL where nothing listens: a port the OS handed out, closed again before it is used. */
+async function deadRpcUrl(): Promise<string> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return `http://127.0.0.1:${port}`;
 }
 
 /** The step headers and their results, the transcript's fixed frame. */
@@ -209,8 +225,10 @@ describe("probarion-mcp demo", () => {
       "  result: note. No mandate can pay now (mandate 1: exhausted, 10 of 10 uses used). The dry runs below show the contract refusing, which is what a mandate is for\n",
     );
     expect(r.out).toContain(
-      "  100.00 USDC (the most this mandate pays now): expect UsesExhausted\n    -> ok: false, code: UsesExhausted. As expected.\n",
+      "  100.00 USDC (the per-payment cap): expect UsesExhausted\n    -> ok: false, code: UsesExhausted. As expected.\n",
     );
+    // A mandate that can pay nothing has no "most it pays now": the amount is named by the cap it comes from.
+    expect(r.out).not.toContain("the most this mandate pays now");
     expect(r.out).toContain(
       "  (one dry run skipped: no amount the mandate allows is above its approval threshold)\n",
     );
@@ -245,6 +263,47 @@ describe("probarion-mcp demo", () => {
     expect(r.out).toContain("  result: skipped. verify needs the vault's ledger; it was not run\n");
     expect(r.out).toContain("Done: 6 steps, 5 as expected, 1 skipped. Nothing was signed or sent.");
     expect(r.code).toBe(0);
+  });
+
+  it("names a refusal for the whole vault and exits 0 when the owner has frozen it", async () => {
+    const ledger = await payOnce();
+    rpc.chain.config.frozen = true;
+    const r = await demo({ ledger });
+    // list_mandates shows no vault-wide state, so the mandate looks able to pay; the contract refuses all three.
+    expect(r.out).toContain("  result: as expected. read_only true, 2 mandates\n");
+    expect(
+      r.out.match(
+        /-> ok: false, code: Frozen: the vault's owner has frozen it, so the contract refuses every spend\./g,
+      ),
+    ).toHaveLength(3);
+    expect(r.out).toContain(
+      "  result: note. The contract answered Frozen, a refusal for the whole vault\n",
+    );
+    expect(r.out).toContain("Done: 6 steps, 5 as expected, 1 note. Nothing was signed or sent.");
+    expect(r.out).not.toContain("server log:");
+    expect(r.code).toBe(0);
+  });
+
+  it("marks the steps that need the chain as failed, shows the server log and exits 1 when the RPC does not answer", async () => {
+    const ledger = await payOnce();
+    const r = await demo({ ledger, rpcUrl: await deadRpcUrl() });
+    expect(frame(r.out)).toEqual([
+      "Step 1 of 6. tools/list: the five tools and the fields each one takes",
+      "  result: as expected. No tool takes an address",
+      "Step 2 of 6. list_mandates: the caps the owner signed, read live from the vault contract",
+      expect.stringMatching(/^ {2}result: failed\. list_mandates answered: \S/),
+      "Step 3 of 6. check_spend: the contract's dry run of spend, a view call with no transaction",
+      "  result: skipped. No mandate to dry-run",
+      'Step 4 of 6. request_spend with an injected "to" field, as a prompt injection would add it',
+      "  result: as expected. The schema refused the field. This server is read-only as well, so request_spend could not pay anyway",
+      "Step 5 of 6. get_spend_status: a paid spend, read from the vault contract",
+      "  result: failed. get_spend_status did not answer",
+      "Step 6 of 6. verify: Probarion's verifier on the vault's public ledger and the chain",
+      expect.stringMatching(/^ {2}result: failed\. verify answered: \S/),
+      "Done: 6 steps, 2 as expected, 1 skipped, 3 failed. Nothing was signed or sent.",
+    ]);
+    expect(r.out).toMatch(/\nserver log:\n\S/);
+    expect(r.code).toBe(1);
   });
 
   it("refuses a mainnet vault or an unknown argument before it starts anything", async () => {

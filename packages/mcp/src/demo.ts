@@ -380,15 +380,22 @@ export async function runDemo(args: readonly string[], io: DemoIo): Promise<numb
       const room = remaining > 0n && remaining < perPayment ? remaining : perPayment;
       // Math.min takes no bigint, so the smaller of the two is picked by hand.
       const belowRoom = threshold < room;
+      const roomFrom = room === perPayment ? "the per-payment cap" : "what is left of the total";
+      // A mandate that can pay nothing has no "most it pays now": the amount is named by the cap it comes from.
+      const canPay = blocked(m, now()) === null;
       const cases: { amount: bigint | null; why: string; skip: string }[] = [
         {
           amount: belowRoom ? threshold : room,
-          why: belowRoom ? "at the approval threshold" : "the most this mandate pays now",
+          why: belowRoom
+            ? "at the approval threshold"
+            : canPay
+              ? "the most this mandate pays now"
+              : roomFrom,
           skip: "the mandate holds every payment for an approver",
         },
         {
           amount: room > threshold ? room : null,
-          why: room === perPayment ? "the per-payment cap" : "what is left of the total",
+          why: roomFrom,
           skip: "no amount the mandate allows is above its approval threshold",
         },
         {
