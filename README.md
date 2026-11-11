@@ -337,6 +337,18 @@ request that starts a server instance, reaches Sentry without a request id.
   reproducible, their code hashes are recorded, and two public RPC calls show that a vault has no
   full-access key and which code it runs.
 
+Next to other ways of bounding an agent's payments (sources read on 2026-11-11; the
+[full comparison](docs/comparison-2026-11.md) has every cell, its source and what Probarion lacks):
+
+| | Probarion | NEAR Agent API | x402 exact on NEAR | AP2 |
+| --- | --- | --- | --- | --- |
+| Who picks the payee | The owner, in the mandate; `spend` has no address | The agent, from the policy's destination list | The seller, per request (`payTo`) | The agent, among the mandate's allowed merchants |
+| Where limits hold | The vault contract, on chain, after code rules | The API service and the agent's wallet | No limits in the spec | The merchant, credential provider and network |
+| Budget per period | A vault-wide daily backstop only | Per asset, hourly to monthly, plus a USD budget | Out of scope | A budget and a recurrence |
+| Refusals on record | Signed, hash-linked, anchored on chain | A budget or limit refusal leaves no operation | Out of scope | Signed receipts, rejections included |
+
+Probarion has no per-mandate budget per period, no USD budget, no timelock, no webhooks and no gas relayer.
+
 ## NEAR technology used, and how
 
 | NEAR technology | How Probarion uses it | Where |

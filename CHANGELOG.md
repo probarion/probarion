@@ -14,6 +14,13 @@ The software is an unaudited beta.
 
 ### Added
 
+- `docs/comparison-2026-11.md`: how Probarion compares with NEAR's Agent API, the x402 exact scheme on NEAR, AP2
+  and plain caps, cell by cell with the sources read on 2026-11-11, and what Probarion does not have (a budget per
+  period per mandate, a USD budget, a timelock, webhooks, a gas relayer). The README has a four-row summary under
+  "Why it is different".
+- Known gaps (THREAT_MODEL, SECURITY, the MCP README): `verify` does not run the policy again, so a program that
+  holds both the agent key and the ledger key can skip `decide()` and still pass, inside the mandate. Run
+  `@probarion/mcp` as another OS user or in a container when the agent host has a shell tool.
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision
