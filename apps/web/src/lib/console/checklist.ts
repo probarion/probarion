@@ -13,14 +13,26 @@ import type { MandateSummary, Read, SpendSummary } from "@/lib/console/vaults";
 export type StepId = "vault" | "keys" | "usdc" | "mandate" | "payment";
 export type StepState = "done" | "open" | "unknown";
 
+export type StepTab = "/keys" | "/agent" | "/topup" | "/mandates" | "/payables";
+
+/** One of two ways to do a step, each on its own tab. */
+export interface StepChoice {
+  title: string;
+  text: string;
+  tab: StepTab;
+  action: string;
+}
+
 export interface ChecklistStep {
   id: StepId;
   state: StepState;
   title: string;
   text: string;
   /** The vault tab where the step is done (a path under /console/<vault>), or null for the vault itself. */
-  tab: "/keys" | "/topup" | "/mandates" | "/payables" | null;
+  tab: StepTab | null;
   action: string | null;
+  /** Two ways to do the step, shown in place of its one link while it is not done. */
+  choices?: StepChoice[];
 }
 
 export interface Checklist {
@@ -37,6 +49,11 @@ export interface ChecklistInput {
    * an invoice, which a key added on chain alone does not give.
    */
   keys: Read<{ agent: boolean; ledger: boolean }>;
+  /**
+   * Whether the chain shows an agent key and a ledger key on the vault that the console did not make: the user's own
+   * agent (MCP) holds them, and pays by itself.
+   */
+  selfHeld: Read<boolean>;
   /** The vault's balance of its USDC, base units. */
   usdc: Read<string>;
   /** The vault's Base USDC in Intents, base units; `not_allowed` when the vault does not allow it. */
@@ -73,6 +90,16 @@ function state<T>(read: Read<T>, done: (v: T) => boolean | null): StepState {
   return d === null ? "unknown" : d ? "done" : "open";
 }
 
+/**
+ * The keys are there when the console holds both hosted keys, or when the user's own agent holds both on the vault.
+ * Otherwise a failed read on either side leaves the step unchecked.
+ */
+function keysState(keys: ChecklistInput["keys"], selfHeld: Read<boolean>): StepState {
+  if (keys.ok && keys.value.agent && keys.value.ledger) return "done";
+  if (selfHeld.ok && selfHeld.value) return "done";
+  return keys.ok && selfHeld.ok ? "open" : "unknown";
+}
+
 const paidCount = (counts: Record<string, number>) => (counts.paid ?? 0) + (counts.burned ?? 0);
 
 export function firstPaymentChecklist(i: ChecklistInput): Checklist | null {
@@ -90,11 +117,25 @@ export function firstPaymentChecklist(i: ChecklistInput): Checklist | null {
     },
     {
       id: "keys",
-      state: state(i.keys, (k) => k.agent && k.ledger),
+      state: keysState(i.keys, i.selfHeld),
       title: "Agent key and ledger key",
-      text: "Generate both, then add each to the vault from your wallet. The agent key can only call spend, and the ledger key can only anchor the record.",
+      text: "Pick who pays from this vault. A vault has one ledger, so it is one or the other.",
       tab: "/keys",
       action: "Go to Keys",
+      choices: [
+        {
+          title: "Probarion's hosted Payables",
+          text: "Upload invoices; Probarion's agent pays them. Probarion makes and holds the keys.",
+          tab: "/keys",
+          action: "Go to Keys",
+        },
+        {
+          title: "Your own AI agent (MCP)",
+          text: "Claude, Cursor or Codex pays through MCP. The keys stay on your machine.",
+          tab: "/agent",
+          action: "Connect agent",
+        },
+      ],
     },
     {
       id: "usdc",

@@ -118,9 +118,14 @@ function chain(
     spends?: SpendView[];
     config?: Parameters<typeof vaultConfig>[0] | "throw";
     usdc?: string | "throw";
+    agents?: { public_key: string; label: string; added_at_ns: string }[] | "throw";
   } = {},
 ) {
   h.reader = fakeReader({
+    listAgents: async () => {
+      if (over.agents === "throw") throw transportError();
+      return over.agents ?? [];
+    },
     getConfig: async () => {
       if (over.config === "throw") throw transportError();
       return vaultConfig(over.config);
@@ -159,6 +164,29 @@ describe("the vault overview's first-payment card", () => {
   it("ticks the keys from the console's own key rows: an active agent key and an active ledger key", async () => {
     await signInAs("acme.near");
     expect(await html(KEYED)).toContain("2 of 5 done");
+  });
+
+  it("ticks the keys when the chain shows an agent key and a ledger key the console did not make (own agent, MCP)", async () => {
+    await signInAs("acme.near");
+    const own = { public_key: `ed25519:${"4".repeat(44)}`, label: "mcp-claude", added_at_ns: "1" };
+    chain({ config: { ledger_key: `ed25519:${"5".repeat(44)}` }, agents: [own] });
+    expect(await html()).toContain("2 of 5 done");
+    // The ledger key alone, with no agent key outside the console, is not both keys.
+    chain({ config: { ledger_key: `ed25519:${"5".repeat(44)}` }, agents: [] });
+    expect(await html()).toContain("1 of 5 done");
+    // And when the agent keys cannot be read, the step says so rather than "to do".
+    chain({ config: { ledger_key: `ed25519:${"5".repeat(44)}` }, agents: "throw" });
+    const page = await html();
+    expect(page).toContain("1 of 5 done");
+    expect(page).toContain("Could not check.");
+  });
+
+  it("offers both ways to do the keys step: Keys for hosted Payables, Agent (MCP) for your own agent", async () => {
+    await signInAs("acme.near");
+    const page = await html();
+    expect(page).toContain(`href="/console/${VAULT}/keys"`);
+    expect(page).toContain(`href="/console/${VAULT}/agent"`);
+    expect(page).toContain("Connect agent");
   });
 
   it("says a step could not be checked when its read fails, and the page still renders", async () => {

@@ -19,6 +19,7 @@ const mandates = (counts: Record<string, number>): Read<MandateSummary> =>
 const NEW: ChecklistInput = {
   network: "testnet",
   keys: ok({ agent: false, ledger: false }),
+  selfHeld: ok(false),
   usdc: ok("0"),
   intentsBase: notAllowed,
   mandates: mandates({}),
@@ -61,6 +62,39 @@ describe("firstPaymentChecklist", () => {
     expect(states({ ...NEW, keys: ok({ agent: true, ledger: false }) }).keys).toBe("open");
     expect(states({ ...NEW, keys: ok({ agent: false, ledger: true }) }).keys).toBe("open");
     expect(states({ ...NEW, keys: ok({ agent: true, ledger: true }) }).keys).toBe("done");
+  });
+
+  it("also ticks the keys when the user's own agent holds both on the vault (the Agent (MCP) tab)", () => {
+    expect(states({ ...NEW, selfHeld: ok(true) }).keys).toBe("done");
+    // Either way is enough, so a failed read on the other side does not hold the tick back.
+    expect(states({ ...NEW, selfHeld: ok(true), keys: failed }).keys).toBe("done");
+    expect(states({ ...NEW, selfHeld: failed, keys: ok({ agent: true, ledger: true }) }).keys).toBe(
+      "done",
+    );
+    // Not done, and one side could not be read: unchecked, never "to do".
+    expect(states({ ...NEW, selfHeld: failed }).keys).toBe("unknown");
+    expect(states({ ...NEW, keys: failed }).keys).toBe("unknown");
+  });
+
+  it("offers the keys step two ways, hosted Payables on Keys or the user's own agent on Agent (MCP)", () => {
+    const step = firstPaymentChecklist(NEW)?.steps.find((s) => s.id === "keys");
+    expect(step?.text).toBe(
+      "Pick who pays from this vault. A vault has one ledger, so it is one or the other.",
+    );
+    expect(step?.choices).toEqual([
+      {
+        title: "Probarion's hosted Payables",
+        text: "Upload invoices; Probarion's agent pays them. Probarion makes and holds the keys.",
+        tab: "/keys",
+        action: "Go to Keys",
+      },
+      {
+        title: "Your own AI agent (MCP)",
+        text: "Claude, Cursor or Codex pays through MCP. The keys stay on your machine.",
+        tab: "/agent",
+        action: "Connect agent",
+      },
+    ]);
   });
 
   it("ticks the USDC once the vault holds some on NEAR or as Base USDC in Intents", () => {
@@ -172,9 +206,10 @@ describe("firstPaymentChecklist", () => {
     expect(steps[2]?.title).toBe("USDC in the vault");
   });
 
-  it("says what each key can do, and that the owner adds it from their wallet", () => {
+  it("says the keys are one way or the other, and where each way keeps them", () => {
     const keys = firstPaymentChecklist(NEW)?.steps[1];
-    expect(keys?.text).toMatch(/wallet/);
-    expect(keys?.text).toMatch(/only call spend/);
+    expect(keys?.text).toMatch(/one ledger, so it is one or the other/);
+    expect(keys?.choices?.[0]?.text).toMatch(/Probarion makes and holds the keys/);
+    expect(keys?.choices?.[1]?.text).toMatch(/The keys stay on your machine/);
   });
 });

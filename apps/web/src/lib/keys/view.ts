@@ -1,5 +1,6 @@
 import "server-only";
-import { type ChainReads, codeIdentity } from "@/lib/console/vaults";
+import { agentList } from "@/lib/agent/connect";
+import { type ChainReads, codeIdentity, isVaultConfig } from "@/lib/console/vaults";
 import type { Db } from "@/lib/db/port";
 import { log } from "@/lib/log";
 import { type ChainErrorKind, chainErrorKind, type VaultReader } from "@/lib/near/reader";
@@ -41,8 +42,29 @@ export interface KeyView {
   discardedOnChain: boolean;
 }
 
+/**
+ * A key on the vault with no key row here: Probarion did not make it, the user's own agent holds its secret (the
+ * Agent (MCP) tab adds such keys). Public data only.
+ */
+export interface OutsideKeyView {
+  purpose: KeyPurpose;
+  public_key: string;
+  label: string;
+  allowance: AllowanceView;
+}
+
+/** The Label cell of the ledger key held outside Probarion: the vault stores no label for a ledger key. */
+export const OUTSIDE_LEDGER_LABEL = "the vault's ledger key";
+
 export interface KeysView {
   keys: KeyView[];
+  /** The vault's keys held outside Probarion, agent keys first. Null when the chain could not be read. */
+  outside: OutsideKeyView[] | null;
+  /**
+   * The vault's ledger key is held outside Probarion: a ledger key made here would replace it and stop that agent.
+   * Null when the vault's config could not be read.
+   */
+  ledgerHeldElsewhere: boolean | null;
   /** The tenant has an active ledger key (a new one replaces it). */
   ledgerActive: boolean;
   /** The vault's ledger key is stuck: registered, its access key never added (W-T10-R1). */
@@ -70,6 +92,57 @@ async function allowanceOf(
   }
 }
 
+async function chainRead<T>(part: string, vault: string, run: () => Promise<T>): Promise<T | null> {
+  try {
+    return await run();
+  } catch (error) {
+    log.warn("keys.chain_keys_unreadable", {
+      part,
+      vault,
+      kind: chainErrorKind(error) ?? "unknown",
+    });
+    return null;
+  }
+}
+
+/**
+ * The vault's keys as the chain lists them, minus the tenant's key rows (of any status): what the user's own agent
+ * holds. Each read that fails leaves its part unknown (null), never empty.
+ */
+async function keysHeldOutside(
+  reader: VaultReader,
+  vault: string,
+  known: ReadonlySet<string>,
+): Promise<Pick<KeysView, "outside" | "ledgerHeldElsewhere">> {
+  const [config, agents] = await Promise.all([
+    chainRead("config", vault, () => reader.getConfig(vault)),
+    chainRead("agents", vault, () => reader.listAgents(vault)),
+  ]);
+  const ledgerKey = isVaultConfig(config) ? config.ledger_key : undefined;
+  const ledgerHeldElsewhere =
+    ledgerKey === undefined ? null : ledgerKey !== null && !known.has(ledgerKey);
+  const list = agentList(agents);
+  if (list === null || ledgerHeldElsewhere === null) return { outside: null, ledgerHeldElsewhere };
+  const found: { purpose: KeyPurpose; public_key: string; label: string }[] = list
+    .filter((a) => !known.has(a.public_key))
+    .map((a) => ({ purpose: "agent", public_key: a.public_key, label: a.label }));
+  if (ledgerHeldElsewhere && ledgerKey) {
+    // The vault keeps no label for its ledger key: the table names it.
+    found.push({ purpose: "ledger", public_key: ledgerKey, label: OUTSIDE_LEDGER_LABEL });
+  }
+  const outside = await Promise.all(
+    found.map(
+      async (k): Promise<OutsideKeyView> => ({
+        purpose: k.purpose,
+        public_key: k.public_key,
+        label: k.label,
+        allowance: await allowanceOf(reader, vault, k.public_key),
+      }),
+    ),
+  );
+  return { outside, ledgerHeldElsewhere };
+}
+
 /** The vault's code, from its account's code identity; `unknown` when it cannot be read. */
 export async function readVaultCode(
   chain: Pick<ChainReads, "viewAccount"> | undefined,
@@ -85,8 +158,9 @@ export async function readVaultCode(
 }
 
 /**
- * The keys page's data: the tenant's keys, the allowance of each active one, and, while the ledger key
- * is stuck, what the vault's code can do about it (`chain` reads the vault account).
+ * The keys page's data: the tenant's keys, the allowance of each active one, the vault's keys held outside
+ * Probarion, and, while the ledger key is stuck, what the vault's code can do about it (`chain` reads the vault
+ * account).
  */
 export async function loadKeysView(
   db: Db,
@@ -116,8 +190,14 @@ export async function loadKeysView(
     ),
   );
   const ledgerStuck = keys.some((k) => k.purpose === "ledger" && k.stuck);
+  const held = await keysHeldOutside(
+    reader,
+    member.vault_id,
+    new Set(rows.map((r) => r.public_key)),
+  );
   return {
     keys,
+    ...held,
     ledgerActive: keys.some((k) => k.purpose === "ledger" && k.status === "active"),
     ledgerStuck,
     vaultCode: ledgerStuck ? await readVaultCode(chain, member.vault_id) : "unknown",
