@@ -154,10 +154,10 @@ export interface PayeeHint {
 
 | The mandate pays | A hint refuses when it names |
 | --- | --- |
-| A NEAR account | Another NEAR account, or any chain or address |
+| A NEAR account | Another NEAR account, any address, or a chain with no NEAR account |
 | A Base or Solana address | Any NEAR account, another chain, or another address |
 
-Base addresses match in any letter case. Solana addresses must match exactly, which is inferred: it follows from the code (`sameAddress` in `policy.ts`), and no test shows it yet. A `name` alone never refuses. A refusal ends the cycle: `process()` returns `refused_by_code`, the decision goes into the ledger, and nothing is sent.
+Base addresses match in any letter case. Solana addresses must match exactly, which is inferred: it follows from the code (`sameAddress` in `policy.ts`), and no test shows it yet. A `name` alone never refuses. For a NEAR payee, a `chain` next to the mandate's own NEAR account, with no address, does not refuse either: it names no other destination. A refusal ends the cycle: `process()` returns `refused_by_code`, the decision goes into the ledger, and nothing is sent.
 
 The hint is compared, never passed to the contract. When the rule refuses, its detail in the decision entry quotes the account, chain or address the hint names. `decide()` returns a verdict, a mandate id, an amount, the rules and who decided, with no destination. The SDK builds `SpendRequest` from the decision's mandate id and amount, the invoice hash, the ref and the decision hash, so no hint reaches the contract.
 

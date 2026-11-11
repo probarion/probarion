@@ -113,7 +113,7 @@ const DECIDE_RULES: RefTable = {
         rule: "`mandate.payee_mismatch`",
         effect: "Refuse",
         mirrors: "None: off-chain only",
-        when: "The invoice's `payee_hint`, or the trusted proposal's, contradicts the mandate's payee. For a NEAR payee: another `near_account`, or any `address` or `chain`. For a Base or Solana payee: any `near_account`, another `chain`, or another `address`, compared without case on Base. A `name` never contradicts.",
+        when: "The invoice's `payee_hint`, or the trusted proposal's, contradicts the mandate's payee. For a NEAR payee: another `near_account`, any `address`, or a `chain` with no `near_account`; a `chain` next to the mandate's own account, with no `address`, names no other destination. For a Base or Solana payee: any `near_account`, another `chain`, or another `address`, compared without case on Base. A `name` never contradicts.",
         todo: "Do not pay. The invoice names a destination the mandate does not pay, and a mandate's payee never changes. If the payee really changed, the owner creates a new mandate.",
       },
     },

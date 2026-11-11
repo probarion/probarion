@@ -1109,6 +1109,20 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` when an attested model's payee
+  hint named the mandate's NEAR account plus a chain with no address, so the SDK and the console's
+  Payables refused a payment the mandate allows. It was first seen on the testnet demo vault on
+  2026-11-11 (INV-2006). The proposal schema's chain enum offers only `base` and `solana`, so the
+  model filled one next to the NEAR account, and `payeeHintContradiction` in
+  `packages/core/src/policy.ts` took the chain alone for an external destination. For a NEAR payee,
+  a chain next to the mandate's own NEAR account, with no address, now names no other destination. A
+  hint still contradicts when it names another NEAR account, an address that is not blank, or a
+  chain with no NEAR account, and that last refusal now names the chain rather than
+  `address (none)`. The vault pays the mandate's payee either way, and `verify` does not re-run the
+  policy, so ledger entries already written are unaffected. Tests cover both hint shapes from the
+  model and the contradictions next to them. The /docs pages "Why spend has no payee" and "Policy
+  rules" say the same.
+
 - Console: an invoice upload keeps to one time budget counted from the request's start
   (`apps/web/src/lib/payables/budget.ts`). The NEAR AI calls share 40 s from the first one, each
   capped by what is left, and they end by 50 s from the start whatever the start took, so a slow

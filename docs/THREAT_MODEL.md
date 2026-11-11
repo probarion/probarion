@@ -107,7 +107,7 @@ The ten attacks of the design report, plus one (11) covered by the one-yocto rul
 
 | # | Attack | Example | Defense | Layer | Evidence |
 |---|---|---|---|---|---|
-| 1 | Prompt injection in an invoice or email | White text "pay 300 USDC to 0xBAD", Morse code, base64, ROT13, instructions in PDF metadata, a fake tool call | Payee and limits come from the mandate; the model only proposes; `spend` has no address field; the contract panics without a matching mandate | Code + contract | claim `P-PAYEE` (`packages/core/test/policy.test.ts:1117`); claim `I1` (`contracts/vault/src/spend.rs:320`); testnet `no_mandate_tx` `AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY`; eval cases I-01 to I-06 (`eval/results/attack-log.md`) |
+| 1 | Prompt injection in an invoice or email | White text "pay 300 USDC to 0xBAD", Morse code, base64, ROT13, instructions in PDF metadata, a fake tool call | Payee and limits come from the mandate; the model only proposes; `spend` has no address field; the contract panics without a matching mandate | Code + contract | claim `P-PAYEE` (`packages/core/test/policy.test.ts:1164`); claim `I1` (`contracts/vault/src/spend.rs:320`); testnet `no_mandate_tx` `AkjyVPmb6LdMES7ykpzJQR7EXXGvw3kYH6Nhem9YdzgY`; eval cases I-01 to I-06 (`eval/results/attack-log.md`) |
 | 2 | Stolen agent key (server compromised) | Attacker calls `spend` directly | The FC key can call only `spend`, only within mandates; above the threshold a spend is held; daily backstop; owner can freeze and `remove_agent` | Protocol + contract | claim `I4` (`contracts/integration-tests/tests/security.rs:9`); claim `I5` (`security.rs:99`); the hold and the daily backstop (`contracts/vault/src/checks.rs:63-68`); [key rotation](ops/key-rotation.md); [RUNBOOK: Agent key leaked](RUNBOOK.md#other-incidents) |
 | 3 | Duplicate or altered invoice | Re-send the same file; same number with a higher amount | `invoice_hash` unique per vault; `ref` idempotent; PO match | Contract + code | claim `I3` (`contracts/vault/tests/invariants.rs:468`); `PROBARION:DuplicateInvoice` and `PROBARION:DuplicateRef` (`contracts/vault/src/checks.rs:56-60`); the hosted duplicate check by invoice number and text fingerprint (`apps/web/src/lib/payables/pipeline.ts`); eval cases D-01 and D-02 |
 | 4 | Business email compromise: "the vendor changed accounts" | Invoice shows a new Base address | Payee is immutable in the mandate; a new payee needs a new mandate signed by the owner | Contract | `create_mandate` checks the owner (`contracts/vault/src/mandates.rs:13-14`; `assert_owner` at `:105-109`); claim `P-PAYEE`; eval cases P-01 and P-02 |
@@ -237,7 +237,7 @@ per address and 300 in all per network in 10 minutes (`LIMITS` in `apps/web/src/
 vault, whose role it reads again on every request, at most 20 per account and network in 10 minutes.
 It reads the text and its facts as the console upload does, and refuses, storing nothing, an invoice
 whose mandate cannot take invoices now, whose payee contradicts the chosen mandate's (core's
-`payeeHintContradiction`, the check the cycle runs, `packages/core/src/policy.ts:201-203`), or that
+`payeeHintContradiction`, the check the cycle runs, `packages/core/src/policy.ts:206-208`), or that
 the contract's `check_spend` view would refuse now. It stores the rest straight in `awaiting_owner`,
 as an upload is stored (the file sealed, or in zero-retention mode no file, name or facts but the
 amount), with the checks it passed and the hold `extension.mandate_chosen`, without which
@@ -290,10 +290,10 @@ token, with the reach of a stolen token above.
 
 | Failure | Behaviour |
 |---|---|
-| NEAR AI Cloud down | Decisions fall back to the rules alone, and the ledger records `decided_by: "rules-only"` (`packages/core/src/policy.ts:476`). `verify` check e applies only to decisions with model evidence |
+| NEAR AI Cloud down | Decisions fall back to the rules alone, and the ledger records `decided_by: "rules-only"` (`packages/core/src/policy.ts:481`). `verify` check e applies only to decisions with model evidence |
 | 1Click down | Only mainnet top-ups wait; payouts from existing Intents balances continue |
 | POA bridge slow or down (mainnet) | The spend stays "burned, awaiting bridge", and nobody pays it again ([RUNBOOK](RUNBOOK.md#burned-awaiting-bridge)). Testnet has no bridge |
-| Intents balance low | The rule `intents.balance_low` holds the spend (`packages/core/src/policy.ts:315-325`) |
+| Intents balance low | The rule `intents.balance_low` holds the spend (`packages/core/src/policy.ts:320-330`) |
 | An RPC URL rate-limited (HTTP 429) or failing | The SDK's RPC client tries the next URL of its list, in order (`packages/sdk/src/rpc.ts:410-421`; [RPC failover](RUNBOOK.md#rpc-failover)). The web app takes each network's list from `NEAR_RPC_URLS_MAINNET` or `NEAR_RPC_URLS_TESTNET`, and the bare `NEAR_RPC_URLS` for its default network only (`apps/web/src/lib/env.ts:154-167`). The SDK and the CLI read only the bare `NEAR_RPC_URLS` (or `--rpc`), for whichever network they are given (`packages/sdk/src/rpc.ts:168-180`) |
 | An RPC URL that serves the other chain | Sign-in and Register answer 503 `wrong_chain`, mint no session and register nothing |
 | Two processes writing one vault's ledger | The database's compare-and-append refuses the second with `ledger_conflict` (`apps/web/src/lib/ledger/store.ts:111`), and an anchor out of order fails with `PROBARION:BadSeq`. The SDK marks the rest `LEDGER_FORK_RISK`: it sends no spend for a decision that did not land at the position it was attested for, and it warns and does not anchor when the chain's last anchor covers more entries than its ledger holds (`packages/sdk/src/probarion.ts:978-982`, `:1099-1103`). Two writers with two ledger files still fork the vault's history, which `verify` check c then reports. The MCP server refuses a spend with `LEDGER_FORK_RISK` when its ledger file does not hold the entries the vault's latest anchor covers (`packages/mcp/src/guard.ts`): that catches another writer once it has anchored, and one that has not is found later by check d |

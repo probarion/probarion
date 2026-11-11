@@ -110,8 +110,13 @@ export function payeeHintContradiction(hint: PayeeHint | null, payee: Payee): st
     if (near !== "" && near !== payee.account_id) {
       return `invoice names NEAR account ${near}; the mandate pays ${payee.account_id}`;
     }
-    if (address !== "" || chain !== undefined) {
-      return `invoice names ${chain ?? "an external"} address ${address || "(none)"}; the mandate pays NEAR account ${payee.account_id}`;
+    if (address !== "") {
+      return `invoice names ${chain ?? "an external"} address ${address}; the mandate pays NEAR account ${payee.account_id}`;
+    }
+    // The proposal schema's chain enum has no NEAR value, so a model may fill one next to the
+    // mandate's own NEAR account, which names no other destination. A chain alone still contradicts.
+    if (chain !== undefined && near === "") {
+      return `invoice names chain ${chain}; the mandate pays NEAR account ${payee.account_id}`;
     }
     return null;
   }
