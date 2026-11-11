@@ -694,6 +694,11 @@ The software is an unaudited beta.
 
 ### Changed
 
+- `probarion verify --online`: when check e fails because NVIDIA's NRAS token is `not_yet_valid` by this computer's
+  clock (a clock a few seconds behind is enough, since `@nearai/inference-sdk` allows no tolerance), the report adds an
+  `online hint:` line that says to sync the clock and run again, and prints it on stderr as a warning (with
+  `--json`, only there). Check e still fails; the hint is not a result. Only the SDK's own failure message at the
+  start of check e's detail adds it, so text from a ledger cannot.
 - The grey text on `/proof/<vault>` (the decision cards, each check's detail, the model note and the
   limits line under A1 to A7) uses the mute token, 7:1 or more on paper.
 - The browser extension is on the Chrome Web Store as version 0.1.0
