@@ -23,7 +23,7 @@ This page compares Probarion with three things an agent builder on NEAR may also
 | Freeze | yes, owner signs, on chain | yes, API, and wallet on chain per the docs | not in scope | not in the spec | if coded |
 | Where limits are enforced | vault contract, on chain; code rules first | API service, and agent wallet on chain per the docs [1] | no limits; the facilitator checks the transfer matches the request [7] | verifiers: merchant, credential provider, network | on chain |
 | Audit trail of decisions, refusals included | yes, signed, anchored on chain | executions, FAILED ones included; signed log [4] | settlement tx hash only | receipts, rejections included | chain txs only |
-| Model attestation | yes: recorded decisions pass A1 to A7 [6] | not in scope (the API runs in a TEE) | not in scope | not in scope | no |
+| Model attestation | yes: recorded decisions pass A1 to A7, O1 and O2 [6] | not in scope (the API runs in a TEE) | not in scope | not in scope | no |
 
 Notes:
 
@@ -32,7 +32,7 @@ Notes:
 3. The x402 v2 spec lists "Client-side budget management" as out of scope. Each request names one exact amount.
 4. Each Agent API execution has a proof in an append-only log whose checkpoints a notary inside the TEE signs. The docs say a budget or limit refusal on an execution that runs now "leaves no operation and charges nothing". An admitted action that is refused, such as a timelocked one released over budget or a limit, is recorded as FAILED, and its execution has a proof. The docs do not describe anchoring the log on a chain.
 5. Plain caps means a function-call key allowance or a spending-limit contract. NEAR's docs say the allowance is "The amount of NEAR allowed to be spent on gas", not tokens. A function-call key cannot attach a deposit, so it cannot call `ft_transfer`, which needs 1 yoctoNEAR. A cap contract enforces what its code checks and nothing else.
-6. The Canary's ledger records two decisions a NEAR AI Cloud model made in a TEE on 2026-11-10, and `probarion verify` passes A1 to A7 on both ([evidence](evidence/canary-vault)). Offline, that shows the signature, the response and the recorded proposal agree and the attestation report is bound to that ledger position; it does not show the key is a genuine TEE key until O1 verifies the quote. The measurement is not pinned, so it does not show which model image ran, and the committed record has no online O1 or O2 run yet.
+6. The Canary's ledger records two decisions a NEAR AI Cloud model made in a TEE on 2026-11-10, and `probarion verify` passes A1 to A7 on both ([evidence](evidence/canary-vault)). Offline, that shows the signature, the response and the recorded proposal agree and the attestation report is bound to that ledger position; it does not show the key is a genuine TEE key until O1 verifies the quote. `verify --online` on 2026-11-11 also passed O1 and O2 on both: each TDX quote is DCAP-genuine with debug off and bound to its request, and NVIDIA NRAS verified each GPU payload with the request nonce ([output](evidence/canary-vault/verify-online-2026-11-11.txt)). The measurement is not pinned, so it does not show which model image ran.
 7. In x402 exact on NEAR, the payer signs a NEP-366 delegate action for one exact `ft_transfer`, and a relayer submits it. The spec says standard NEAR FunctionCall access keys "MUST be rejected" for this flow. So the paying key is a full-access key.
 
 AP2 terms: AP2 v0.2 (2026-04-28) has a Checkout Mandate and a Payment Mandate, each open or closed. The user, or a trusted agent provider, signs the open mandates. The agent signs the closed ones in the human-not-present mode. AP2 v0.1 called them Cart, Intent and Payment Mandates. The AP2 spec says nothing about blockchains. Its first version supports card payments, and its repo has an x402 sample.
@@ -46,7 +46,7 @@ AP2 terms: AP2 v0.2 (2026-04-28) has a Checkout Mandate and a Payment Mandate, e
 - No outgoing webhooks. Owner alerts by Telegram and email are built but in preview. To follow a vault, index the NEP-297 events its contract logs.
 - No relayer for gas. The owner and each approver pay the gas of what they sign. The agent key and the ledger key spend the vault's own NEAR on gas.
 - No x402 or AP2 support. The pay-per-call example in the repo uses its own 402 format, not x402.
-- No pinned TEE measurement, and no online O1 or O2 run in the committed record (note 6).
+- No pinned TEE measurement, so no proof of which model image ran (note 6).
 - Testnet only. The mainnet vault and the mainnet factory are not deployed.
 - No third-party audit. The code is an unaudited beta.
 
