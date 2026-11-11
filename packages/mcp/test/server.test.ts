@@ -270,30 +270,53 @@ describe("probarion-mcp tools", () => {
     await close();
   });
 
-  it("tells the agent not to poll a burned spend, since nothing changes it, and whom to tell", async () => {
-    // On testnet the release on the other chain never comes, and Probarion does not watch it on mainnet
-    // either: an agent told to poll would poll forever.
-    const port = fakePort({
-      requestSpend: vi.fn(async () => ({ ...OUTCOME, status: "burned" as const })),
-    });
-    const { client, close } = await connect(port);
-    const { tools } = await client.listTools();
-    const status = tools.find((t) => t.name === "get_spend_status")?.description ?? "";
-    expect(status).toContain("burned is final for the vault and does not change");
-    expect(status).toContain("do not poll a burned spend");
-    expect(status).not.toMatch(/waiting for the bridge/);
-    const body = jsonOf(
-      await client.callTool({ name: "request_spend", arguments: { ...spendArgs, reasoning: "x" } }),
-    );
-    expect(body.status).toBe("burned");
-    expect(body.note).toContain("Probarion does not watch that release yet");
-    expect(body.note).toContain("do not poll it");
-    expect(body.note).toContain(
-      "tell the vault owner, with the spend_id, the destination and the tx_hash",
-    );
-    expect(body.note).not.toMatch(/Poll get_spend_status/);
-    await close();
-  });
+  it.each([
+    {
+      network: "testnet" as const,
+      says: "intents-stub, which stands in for NEAR Intents on testnet: nothing leaves NEAR",
+      statusSays: "on testnet, intents-stub stands in for NEAR Intents and nothing leaves NEAR",
+      never: /bridge releases|across chains|watch th(at|e) release/,
+    },
+    {
+      network: "mainnet" as const,
+      says: "The bridge releases the funds on the destination chain, and Probarion does not watch that release yet",
+      statusSays: "Probarion does not watch the release on the destination chain yet",
+      never: /intents-stub|nothing leaves NEAR/,
+    },
+  ])(
+    "tells the agent on $network not to poll a burned spend, since nothing changes it, and whom to tell",
+    async ({ network, says, statusSays, never }) => {
+      // On testnet the release on the other chain never comes, and Probarion does not watch it on mainnet
+      // either: an agent told to poll would poll forever. Only what a burn is differs between the two.
+      const port = fakePort({
+        requestSpend: vi.fn(async () => ({ ...OUTCOME, status: "burned" as const })),
+      });
+      const { client, close } = await connect(port, { network });
+      const { tools } = await client.listTools();
+      const status = tools.find((t) => t.name === "get_spend_status")?.description ?? "";
+      expect(status).toContain("burned is final for the vault and does not change");
+      expect(status).toContain(statusSays);
+      expect(status).toContain("do not poll a burned spend");
+      expect(status).not.toMatch(/waiting for the bridge/);
+      expect(status).not.toMatch(never);
+      const body = jsonOf(
+        await client.callTool({
+          name: "request_spend",
+          arguments: { ...spendArgs, reasoning: "x" },
+        }),
+      );
+      expect(body.status).toBe("burned");
+      expect(body.note).toContain(says);
+      expect(body.note).toContain("The burn is final for the vault: never send this payment again");
+      expect(body.note).toContain("do not poll it");
+      expect(body.note).toContain(
+        "tell the vault owner, with the spend_id, the destination and the tx_hash",
+      );
+      expect(body.note).not.toMatch(/Poll get_spend_status/);
+      expect(body.note).not.toMatch(never);
+      await close();
+    },
+  );
 
   it("verify returns every check", async () => {
     const { client, close } = await connect(fakePort());

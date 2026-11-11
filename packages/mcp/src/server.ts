@@ -61,10 +61,27 @@ async function guarded(fn: () => Promise<ToolResult>): Promise<ToolResult> {
   }
 }
 
-const NOTES: Readonly<Record<SpendOutcomeStatus, string>> = {
+type Network = ServerInfo["network"];
+
+/**
+ * What a burn is depends on the network: on mainnet the bridge releases the funds on the destination chain, and
+ * on testnet intents-stub stands in for intents.near, so nothing leaves NEAR. On both the burn is final for the
+ * vault and its status never changes, so the agent must neither poll it nor send it again.
+ */
+const BURNED: Readonly<Record<Network, { note: string; status: string }>> = {
+  mainnet: {
+    note: "Sent across chains through NEAR Intents. The burn is final for the vault: never send this payment again, under this ref or a new one. The bridge releases the funds on the destination chain, and Probarion does not watch that release yet, so get_spend_status keeps saying burned: do not poll it. If the payee reports nothing after a while, tell the vault owner, with the spend_id, the destination and the tx_hash.",
+    status:
+      "it was sent across chains through NEAR Intents, and Probarion does not watch the release on the destination chain yet",
+  },
+  testnet: {
+    note: "Burned through intents-stub, which stands in for NEAR Intents on testnet: nothing leaves NEAR, so no funds arrive on the destination chain. The burn is final for the vault: never send this payment again, under this ref or a new one. get_spend_status keeps saying burned: do not poll it. If the payee asks about it, tell the vault owner, with the spend_id, the destination and the tx_hash.",
+    status: "on testnet, intents-stub stands in for NEAR Intents and nothing leaves NEAR",
+  },
+};
+
+const NOTES: Readonly<Record<Exclude<SpendOutcomeStatus, "burned">, string>> = {
   paid: "Paid on NEAR to the mandate's payee.",
-  burned:
-    "Sent across chains through NEAR Intents. The burn is final for the vault: never send this payment again, under this ref or a new one. The bridge releases the funds on the destination chain, and Probarion does not watch that release yet, so get_spend_status keeps saying burned: do not poll it. If the payee reports nothing after a while, tell the vault owner, with the spend_id, the destination and the tx_hash.",
   settled: "Settled on the destination chain.",
   held: "Held for a human approver: the amount is above the mandate's approval threshold. Poll get_spend_status with the spend_id; do not send it again.",
   refused_by_code:
@@ -81,7 +98,8 @@ const HELD_OFF_CHAIN =
   "Held by Probarion's rules (see code; intents.balance_low means the vault's NEAR Intents balance is too low for this payee). Nothing was sent and nothing waits for an approver; the same ref can be retried once the cause is fixed.";
 
 /** The note for an outcome: a hold with no spend_id is not the approval-threshold hold. */
-function noteFor(out: SpendOutcome): string {
+function noteFor(out: SpendOutcome, network: Network): string {
+  if (out.status === "burned") return BURNED[network].note;
   return out.status === "held" && out.spendId === null ? HELD_OFF_CHAIN : NOTES[out.status];
 }
 
@@ -209,7 +227,7 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
           ...(earlier === null ? {} : { earlier_spend: spendSummary(earlier) }),
           note:
             earlier === null
-              ? noteFor(out)
+              ? noteFor(out, info.network)
               : `The vault already has spend ${earlier.id} under this ref, status ${earlier.status}: this request did not pay it again. Read it with get_spend_status; do not pay it under another ref.`,
         });
       }),
@@ -219,8 +237,7 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
     "get_spend_status",
     {
       title: "Get a spend's status",
-      description:
-        "Read a spend from the vault by id: held, pending, paid, burned, failed, rejected or expired. burned is final for the vault and does not change: it was sent across chains through NEAR Intents, and Probarion does not watch the release on the destination chain yet, so do not poll a burned spend or send it again.",
+      description: `Read a spend from the vault by id: held, pending, paid, burned, failed, rejected or expired. burned is final for the vault and does not change: ${BURNED[info.network].status}, so do not poll a burned spend or send it again.`,
       inputSchema: getSpendStatusInput,
       annotations: READ_ONLY,
     },
