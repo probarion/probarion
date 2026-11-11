@@ -422,6 +422,53 @@ const cases: Case[] = [
     verdict: "refuse",
     rule: ["mandate.payee_mismatch", "refuse"],
   },
+  // Testnet demo vault, INV-2006: the model filled the chain enum next to the mandate's NEAR account.
+  {
+    name: "model hint names the mandate's NEAR account plus a chain with an empty address",
+    input: () =>
+      input({
+        proposal: proposal({
+          payee_hint: { near_account: "vendor.testnet", chain: "base", address: "" },
+        }),
+      }),
+    verdict: "allow",
+    rule: ["mandate.payee_mismatch", "pass"],
+  },
+  {
+    name: "model hint names the mandate's NEAR account plus a chain and no address",
+    input: () =>
+      input({
+        proposal: proposal({ payee_hint: { near_account: "vendor.testnet", chain: "base" } }),
+      }),
+    verdict: "allow",
+    rule: ["mandate.payee_mismatch", "pass"],
+  },
+  {
+    name: "invoice hint names a chain and no NEAR account",
+    input: () => input({ invoice: baseInvoice({ payee_hint: { chain: "base" } }) }),
+    verdict: "refuse",
+    rule: ["mandate.payee_mismatch", "refuse"],
+  },
+  {
+    name: "model hint names the mandate's NEAR account plus a Base address",
+    input: () =>
+      input({
+        proposal: proposal({
+          payee_hint: { near_account: "vendor.testnet", chain: "base", address: BASE_ADDRESS },
+        }),
+      }),
+    verdict: "refuse",
+    rule: ["mandate.payee_mismatch", "refuse"],
+  },
+  {
+    name: "model hint names another NEAR account plus a chain",
+    input: () =>
+      input({
+        proposal: proposal({ payee_hint: { near_account: "attacker.testnet", chain: "base" } }),
+      }),
+    verdict: "refuse",
+    rule: ["mandate.payee_mismatch", "refuse"],
+  },
   {
     name: "payee name alone never contradicts",
     input: () => input({ invoice: baseInvoice({ payee_hint: { name: "Totally Different Ltd" } }) }),
@@ -1282,6 +1329,27 @@ describe("helpers", () => {
     ).toBeNull();
     expect(payeeHintContradiction({ near_account: "x.testnet" }, mandate().payee)).toContain(
       "x.testnet",
+    );
+    expect(
+      payeeHintContradiction(
+        { near_account: "vendor.testnet", chain: "solana", address: " " },
+        mandate().payee,
+      ),
+    ).toBeNull();
+    expect(payeeHintContradiction({ chain: "base" }, mandate().payee)).toBe(
+      "invoice names chain base; the mandate pays NEAR account vendor.testnet",
+    );
+    expect(
+      payeeHintContradiction(
+        { name: "Vendor Ltd", chain: "solana", address: " " },
+        mandate().payee,
+      ),
+    ).toContain("chain solana");
+    expect(payeeHintContradiction({ chain: "base", address: BASE_ADDRESS }, mandate().payee)).toBe(
+      `invoice names base address ${BASE_ADDRESS}; the mandate pays NEAR account vendor.testnet`,
+    );
+    expect(payeeHintContradiction({ address: BASE_ADDRESS }, mandate().payee)).toContain(
+      "an external address",
     );
     expect(
       payeeHintContradiction({ near_account: "vendor.testnet" }, BASE_MANDATE.payee),
