@@ -14,6 +14,30 @@ The software is an unaudited beta.
 
 ### Added
 
+- The console's Agent (MCP) tab, `/console/<vault>/agent`, after Keys: the owner connects their own
+  AI agent (Claude Code, Claude Desktop, Cursor or Codex) to the vault through the MCP server. Built,
+  not tried yet.
+  - The agent makes its two keys on its own machine (`init`). The owner pastes only their public
+    keys, and the page refuses a pasted secret key in the browser, so it is not sent. Two owner-only
+    server actions read the chain again at click time and return `add_agent` and `set_ledger_key`
+    for the member's own vault, with the vault kind's gas allowances, for the owner's wallet to sign.
+    Nothing is stored: these keys have no database row.
+  - A vault has one ledger, so the ledger key is withheld from a vault whose ledger another writer
+    keeps: hosted Payables (its active ledger key, its entries, or a ledger key it made) or anchors
+    signed by another key. The page then links "Create a vault for this agent". An unused ledger key
+    is replaced only after a danger confirm.
+  - Steps 5 and 6 give each client's settings, which carry only `PROBARION_VAULT_ID`, and a status
+    card read from the chain: both keys and their gas left, an active mandate for the key, the
+    vault's USDC, and who keeps the ledger. Until `@probarion/mcp` 0.1.1 is on npm (`MCP_ON_NPM`
+    in `apps/web/src/lib/agent/connect.ts`), the page builds the server from a clone. Approvers and
+    viewers see the status card only.
+- The Keys tab lists the keys on the vault that Probarion did not make, under "On the vault, held
+  outside Probarion", with their allowance and Remove for an agent key. When the vault's ledger key
+  is one of them, "Generate ledger key and set it in my wallet" shows a red notice and asks in a
+  danger dialog first, as a ledger key made there would stop that agent.
+- The overview's "Your first agent payment" card offers its keys step two ways, hosted Payables on
+  Keys or your own AI agent on Agent (MCP), and ticks it when the chain shows an agent key and a
+  ledger key that the console did not make.
 - A testnet record of the Canary, in `docs/evidence/canary-vault`: its accounts, its mandate, the
   2026-11-10 rehearsal whose raw spend the contract refused with `OverPerPayment`, and a live
   `verify` run with its snapshot. The run passes check f (no full-access key, only the ledger key and
