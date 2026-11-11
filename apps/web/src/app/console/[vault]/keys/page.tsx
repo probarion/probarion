@@ -4,9 +4,11 @@ import {
   KeyKeepButton,
   KeySyncButton,
   KeyTxButton,
+  REPLACE_OUTSIDE_LEDGER_CONFIRM,
 } from "@/components/console/KeyActions";
 import { VaultNav } from "@/components/console/VaultNav";
 import { VaultOnOtherNetwork } from "@/components/console/VaultOnOtherNetwork";
+import { RouteLink } from "@/components/RouteLink";
 import { Badge, Card, Notice, type Tone } from "@/components/ui";
 import { requireMember } from "@/lib/auth/guard";
 import { keyAllowances } from "@/lib/config";
@@ -14,7 +16,12 @@ import { OUT_OF_NEAR } from "@/lib/console/out-of-near";
 import { rpcChainReads } from "@/lib/console/vaults";
 import { serviceDb } from "@/lib/db/clients";
 import { DISCARDED_ON_CHAIN_TEXT, type KeyStatus, stuckText } from "@/lib/keys/rules";
-import { type AllowanceView, type KeyView, loadKeysView } from "@/lib/keys/view";
+import {
+  type AllowanceView,
+  type KeyView,
+  loadKeysView,
+  type OutsideKeyView,
+} from "@/lib/keys/view";
 import { lockKeyFor } from "@/lib/near/lock";
 import { getReader, getRpc } from "@/lib/near/server";
 import { addAgentTx, removeAgentTx, setLedgerKeyTx } from "@/lib/near/tx";
@@ -100,10 +107,13 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             tx={setLedgerKeyTx(vault, k.public_key, allowance.ledgerAllowanceYocto)}
             lockKey={lockKeyFor(`keys:set-ledger:${vault}:${k.public_key}`)}
             confirm={
-              view.ledgerActive
-                ? "Replace the vault's ledger key with this one? The current one is removed from the vault."
-                : undefined
+              view.ledgerHeldElsewhere !== false
+                ? REPLACE_OUTSIDE_LEDGER_CONFIRM
+                : view.ledgerActive
+                  ? "Replace the vault's ledger key with this one? The current one is removed from the vault."
+                  : undefined
             }
+            confirmTone={view.ledgerHeldElsewhere !== false ? "danger" : undefined}
           />
         ) : null}
         {canRemove ? (
@@ -125,6 +135,36 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
           </form>
         ) : null}
       </>
+    );
+  };
+
+  // Keys the user's own agent holds: Remove for an agent key, and the Agent (MCP) tab for the ledger key, whose
+  // replacement would stop that agent (the "Add keys" card asks first).
+  const outsideButtons = (k: OutsideKeyView) => {
+    if (k.purpose === "ledger") {
+      return (
+        <RouteLink
+          route="/console/[vault]/agent"
+          href={`/console/${encodeURIComponent(vault)}/agent`}
+          className="text-sm text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink"
+        >
+          See Agent (MCP)
+        </RouteLink>
+      );
+    }
+    if (!isOwner) return null;
+    return (
+      <KeyTxButton
+        network={network}
+        signer={session.accountId}
+        outOfNearCodes={codes}
+        sync={sync}
+        label="Remove"
+        tx={removeAgentTx(vault, k.public_key)}
+        lockKey={lockKeyFor(`keys:remove:${vault}:${k.public_key}`)}
+        confirm="Remove this agent key from the vault? The agent that holds it stops at once."
+        confirmTone="danger"
+      />
     );
   };
 
@@ -188,6 +228,44 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
           the vault, limited to its one method.
         </p>
       </Card>
+      {view.outside !== null && view.outside.length > 0 ? (
+        <Card title="On the vault, held outside Probarion">
+          <p className={`mb-3 text-sm ${muted}`}>
+            These keys are on the vault but Probarion did not make them: your own agent holds their
+            secrets. Probarion&apos;s hosted Payables never signs with them.
+          </p>
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-line">
+                <th>Purpose</th>
+                <th>Public key</th>
+                <th>Label</th>
+                <th>Allowance left</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {view.outside.map((k) => (
+                <tr
+                  key={`${k.purpose}:${k.public_key}`}
+                  className="border-b border-line align-top last:border-0"
+                >
+                  <td>{k.purpose}</td>
+                  <td className="mono text-xs break-all">{k.public_key}</td>
+                  <td>{k.label}</td>
+                  <td>{allowanceText(k.allowance)}</td>
+                  <td>{outsideButtons(k)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      ) : view.outside === null ? (
+        <Notice tone="warn">
+          The vault&apos;s own key list could not be read, so keys held outside Probarion are not
+          shown. Reload to try again.
+        </Notice>
+      ) : null}
       {isOwner ? (
         <Card title="Add keys">
           <KeyActions
@@ -197,6 +275,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             ledgerActive={view.ledgerActive}
             ledgerStuck={view.ledgerStuck}
             vaultCode={view.vaultCode}
+            ledgerHeldElsewhere={view.ledgerHeldElsewhere}
             outOfNearCodes={codes}
             generate={generateKeyAction.bind(null, vault)}
             sync={sync}

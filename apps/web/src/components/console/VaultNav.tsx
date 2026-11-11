@@ -30,7 +30,7 @@ export function VaultNav({ vault }: { vault: string }) {
       aria-label="Vault"
       className="mb-6 flex gap-x-2 overflow-x-auto text-sm shadow-[inset_0_-1px_0_var(--color-line)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      {VAULT_TABS.map(({ path, label }) => {
+      {VAULT_TABS.map(({ path, label, isNew }) => {
         const open = isCurrentTab(pathname, base, path);
         return (
           <RouteLink
@@ -42,6 +42,14 @@ export function VaultNav({ vault }: { vault: string }) {
             aria-current={open ? "page" : undefined}
           >
             {label}
+            {isNew ? (
+              <span
+                aria-hidden="true"
+                className="ml-1 text-[10px] font-semibold tracking-[.08em] text-gold-ink uppercase"
+              >
+                new
+              </span>
+            ) : null}
           </RouteLink>
         );
       })}

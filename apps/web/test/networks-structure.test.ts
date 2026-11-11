@@ -71,6 +71,7 @@ describe("the pages of a vault", () => {
 
   it("find every page of a vault", () => {
     expect(pages.map(posix).sort()).toEqual([
+      "src/app/console/[vault]/agent/page.tsx",
       "src/app/console/[vault]/alerts/page.tsx",
       "src/app/console/[vault]/approve/[spend]/page.tsx",
       "src/app/console/[vault]/keys/page.tsx",
@@ -209,6 +210,8 @@ describe("the routes and the actions of a vault", () => {
       "src/app/api/topup/submit/route.ts: POST",
       "src/app/console/[vault]/actions.ts: refreshMembersAction",
       "src/app/console/[vault]/actions.ts: updateSettingsAction",
+      "src/app/console/[vault]/agent/actions.ts: prepareAddAgentAction",
+      "src/app/console/[vault]/agent/actions.ts: prepareSetLedgerKeyAction",
       "src/app/console/[vault]/alerts/actions.ts: addEmailAction",
       "src/app/console/[vault]/alerts/actions.ts: connectTelegramAction",
       "src/app/console/[vault]/alerts/actions.ts: removeSubscriptionAction",
