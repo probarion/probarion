@@ -14,15 +14,20 @@ The software is an unaudited beta.
 
 ### Added
 
-- `@probarion/mcp` gives the model server instructions when a client connects (the MCP `instructions`
-  field), under 1,200 characters and built from the same sentences as its tool descriptions and
-  answer notes, so the two cannot drift: only the payee of an active mandate bound to the server's
-  key can be paid, with no recipient parameter; `check_spend` first when unsure; each ref and each
-  invoice hash pays at most once; poll a `held` spend and do not send it again; an `unconfirmed`
-  spend may have paid, so do not resend it under a new ref; a refusal is final for that request;
-  `burned` is final for the vault and does not change, worded for the server's network. A server
-  with no keys adds that `request_spend` is off, and that refusal now says no agent and ledger keys
-  are set (a keys file counts too) in place of naming the two environment variables.
+- `@probarion/mcp` gives the client server instructions for the model when it connects (the MCP
+  `instructions` field; each client decides whether its model sees them), under 1,200 characters.
+  Where a tool description or an answer note already states a rule, the instructions use the same
+  sentence from a shared constant, and a test compares them, so those rules cannot drift; a few
+  words of their own orient the model. The rules: only the payee of an active mandate bound to the
+  server's key can be paid, with no recipient parameter; `check_spend` first when unsure, since it
+  sends no transaction (its description now says so in those words); each ref and each invoice
+  hash pays at most once; poll a `held` spend until it leaves held or its `held_until` passes,
+  after which the contract approves no hold, and do not send it again (the `request_spend` note
+  for a hold now says the same); an `unconfirmed` spend may have paid, so do not resend it under a
+  new ref; a refusal is final for that request; `burned` is final for the vault and does not
+  change, worded for the server's network. A server with no keys adds that `request_spend` is off,
+  and that refusal now says no agent and ledger keys are set (a keys file counts too) in place of
+  naming the two environment variables.
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision

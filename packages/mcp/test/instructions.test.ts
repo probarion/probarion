@@ -1,9 +1,9 @@
-// The server's instructions: what an MCP client shows the model when it connects. Each rule must reach the
-// client, stay short, and say what the tool text and the answers' notes say.
+// The server's instructions: what an MCP client can show the model when it connects. Each rule must reach the
+// client, stay short, and say what the tool text and the answers' notes say where they state it.
 import type { SpendOutcome } from "@probarion/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { serverInstructions } from "../src/server.js";
-import { connect, fakePort, jsonOf, OUTCOME, textOf } from "./helpers.js";
+import { connect, fakePort, jsonOf, OUTCOME, SPEND, textOf } from "./helpers.js";
 
 const BUDGET = 1200;
 const MODES = [
@@ -56,7 +56,7 @@ describe("probarion-mcp server instructions", () => {
         "When unsure, call check_spend first: it sends no transaction.",
         "Each ref and each invoice_hash pays at most once.",
         "Follow the note in each request_spend answer.",
-        "held with a spend_id: Held for a human approver: the amount is above the mandate's approval threshold. Poll get_spend_status with the spend_id; do not send it again.",
+        "held with a spend_id: Held for a human approver: the amount is above the mandate's approval threshold. Poll get_spend_status with the spend_id until it leaves held or its held_until passes; do not send it again.",
         "unconfirmed: The spend was sent and may have paid. Do not send it again, least of all under a new ref: check get_spend_status (with a spend_id) or ask the vault owner.",
         "refused_by_code or refused_by_contract: the refusal is final for that request. Do not retry with another amount or ref to get around it.",
         "burned is final for the vault and does not change:",
@@ -82,6 +82,22 @@ describe("probarion-mcp server instructions", () => {
     const text = serverInstructions({ network, readOnly: false });
     expect(text).toContain(`burned is final for the vault and does not change: ${says}, so`);
     expect(text).not.toMatch(never);
+  });
+
+  it("end the poll of a held spend at the held_until that get_spend_status answers with", async () => {
+    // After held_until the contract's approve fails with HoldExpired, so the hold can no longer pay, and its status
+    // stays held until someone calls expire_held: a poll with no end would run for ever.
+    const bound =
+      "Poll get_spend_status with the spend_id until it leaves held or its held_until passes;";
+    expect(serverInstructions({ network: "testnet", readOnly: false })).toContain(bound);
+    expect(await noteOf({ status: "held", spendId: 9 })).toContain(bound);
+    const held = { ...SPEND, status: "held" as const, held_until_ns: "1794614400000000000" };
+    const { client, close } = await connect(fakePort({ getSpend: vi.fn(async () => held) }));
+    const body = jsonOf(
+      await client.callTool({ name: "get_spend_status", arguments: { spend_id: 7 } }),
+    );
+    await close();
+    expect(body).toMatchObject({ status: "held", held_until: "2026-11-14T00:00:00.000Z" });
   });
 
   it("say read-only only on a server with no keys, in the words request_spend refuses with", async () => {
@@ -117,6 +133,9 @@ describe("probarion-mcp server instructions", () => {
       );
       expect(description("request_spend")).toContain(
         "Each ref and each invoice_hash pays at most once:",
+      );
+      expect(description("check_spend")).toContain(
+        "whether it would pay this amount under this mandate; it sends no transaction.",
       );
 
       expect(text).toContain(

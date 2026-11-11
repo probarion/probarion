@@ -90,6 +90,7 @@ const ONLY_PAYEES =
 const NO_RECIPIENT =
   "There is no recipient parameter: the vault pays the mandate's payee and nobody else.";
 const PAYS_ONCE = "Each ref and each invoice_hash pays at most once";
+const NO_TX = "it sends no transaction";
 const NO_WORKAROUND = "Do not retry with another amount or ref to get around it.";
 const READ_ONLY_OFF =
   "request_spend is off: this server runs read-only because no agent and ledger keys are set.";
@@ -97,7 +98,8 @@ const READ_ONLY_OFF =
 const NOTES: Readonly<Record<Exclude<SpendOutcomeStatus, "burned">, string>> = {
   paid: "Paid on NEAR to the mandate's payee.",
   settled: "Settled on the destination chain.",
-  held: "Held for a human approver: the amount is above the mandate's approval threshold. Poll get_spend_status with the spend_id; do not send it again.",
+  // After held_until the contract's approve fails (HoldExpired) and the status stays held, so the poll ends there.
+  held: "Held for a human approver: the amount is above the mandate's approval threshold. Poll get_spend_status with the spend_id until it leaves held or its held_until passes; do not send it again.",
   refused_by_code: `Refused by Probarion's rules before any transaction; the refusal is in the vault's signed ledger. ${NO_WORKAROUND}`,
   refused_by_contract: `Refused by the vault contract. ${NO_WORKAROUND}`,
   failed: "Not paid. Tell the vault owner.",
@@ -110,13 +112,15 @@ const HELD_OFF_CHAIN =
   "Held by Probarion's rules (see code; intents.balance_low means the vault's NEAR Intents balance is too low for this payee). Nothing was sent and nothing waits for an approver; the same ref can be retried once the cause is fixed.";
 
 /**
- * The server's instructions, which an MCP client gives the model when it connects. Each rule is the sentence a
- * tool description or an answer's note already uses; the burn rule depends on the network, and the read-only
- * line shows only on a server with no keys. A hold with no spend_id is left to its note.
+ * The server's instructions, which an MCP client can give the model when it connects. Where a tool description or
+ * an answer's note states a rule, the instructions reuse its sentence from the constants above; the few words that
+ * only orient the model (start with list_mandates, follow each note, a refusal is final for that request) are the
+ * instructions' own. The burn rule depends on the network, and the read-only line shows only on a server with no
+ * keys. A hold with no spend_id is left to its note.
  */
 export function serverInstructions(info: Pick<ServerInfo, "network" | "readOnly">): string {
   return [
-    `Start with list_mandates: ${ONLY_PAYEES}. ${NO_RECIPIENT} When unsure, call check_spend first: it sends no transaction. ${PAYS_ONCE}. Follow the note in each request_spend answer.`,
+    `Start with list_mandates: ${ONLY_PAYEES}. ${NO_RECIPIENT} When unsure, call check_spend first: ${NO_TX}. ${PAYS_ONCE}. Follow the note in each request_spend answer.`,
     `held with a spend_id: ${NOTES.held}`,
     `unconfirmed: ${NOTES.unconfirmed}`,
     `refused_by_code or refused_by_contract: the refusal is final for that request. ${NO_WORKAROUND}`,
@@ -176,8 +180,7 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
     "check_spend",
     {
       title: "Dry-run a payment",
-      description:
-        "Ask the vault contract whether it would pay this amount under this mandate, without sending a transaction. Returns ok, the contract's refusal code if any, and whether the payment would be held for a human approver.",
+      description: `Ask the vault contract whether it would pay this amount under this mandate; ${NO_TX}. Returns ok, the contract's refusal code if any, and whether the payment would be held for a human approver.`,
       inputSchema: checkSpendInput,
       annotations: READ_ONLY,
     },
