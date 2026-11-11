@@ -7,6 +7,7 @@ import { DEMO_VAULT, runDemo } from "./demo.js";
 import { runInit } from "./init.js";
 import { VERSION } from "./main.js";
 import { runStatus } from "./status.js";
+import { argumentShown } from "./words.js";
 
 export const HELP = `probarion-mcp ${VERSION}: the Probarion MCP server. Unaudited beta.
 
@@ -41,6 +42,8 @@ export interface CliIo {
   home?: string;
   /** The folder a relative path is read from. Default: the process's working folder. */
   cwd?: string;
+  /** The command this binary was started as, for the commands init and status print. Default `probarion-mcp`. */
+  self?: string;
 }
 
 /** Runs the command named by the arguments (there is at least one); returns the exit code. */
@@ -64,9 +67,7 @@ export async function runCommand(args: readonly string[], io: CliIo): Promise<nu
     case "demo":
       return runDemo(rest, io);
     default:
-      io.err.write(
-        `probarion-mcp: unknown argument ${JSON.stringify(command ?? "").slice(0, 60)}\n\n${HELP}`,
-      );
+      io.err.write(`probarion-mcp: unknown argument ${argumentShown(command ?? "", 1)}\n\n${HELP}`);
       return 2;
   }
 }

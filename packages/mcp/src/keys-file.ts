@@ -161,14 +161,59 @@ export type WriteKeysFileResult =
   | { status: "exists" };
 
 /**
+ * The folders whose entries a new file at `file` adds: its own folder, and when `mkdirSync` made folders for it
+ * (`firstMade`, the top one it made), each folder up to the one that holds `firstMade`.
+ */
+export function foldersToSync(file: string, firstMade: string | undefined): string[] {
+  const folders = [dirname(file)];
+  if (firstMade === undefined) return folders;
+  // Node on Windows hands back the folder it made as a \\?\ path; the path it was given has no such prefix.
+  const top = dirname(firstMade.startsWith("\\\\?\\") ? firstMade.slice(4) : firstMade);
+  for (let at = dirname(file); at !== top; ) {
+    const up = dirname(at);
+    if (up === at) break; // the root: `firstMade` was not above the file after all
+    at = up;
+    folders.push(at);
+  }
+  return folders;
+}
+
+/** Syncs a folder, so that a new entry in it survives a crash. A file system that cannot sync a folder is let be. */
+function syncFolderOnDisk(folder: string): void {
+  let fd: number | undefined;
+  try {
+    fd = openSync(folder, "r");
+    fsyncSync(fd);
+  } catch {
+    // EISDIR, EPERM or EINVAL where a folder cannot be opened or synced: the file itself is synced already.
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Nothing was written through it.
+      }
+    }
+  }
+}
+
+/**
  * Makes two new key pairs and writes them to `path`, which must not exist yet: "wx" opens it only when it is new,
  * so an existing file is left as it is (status "exists"). The file gets mode 0600 and a folder it creates 0700,
- * where the OS enforces mode bits. The file is synced before this returns, so the public keys handed back are in
- * a file that survives a crash. Only the public keys come back.
+ * where the OS enforces mode bits. The file is synced before this returns, and outside Windows so is each folder
+ * it adds an entry to (its own, and any folder made for it), where the file system allows it: the public keys
+ * handed back are then in a file that survives a crash. Only the public keys come back.
  */
 export function writeNewKeysFile(
   path: string,
-  opts: { vault: string; network: Network; now: Date },
+  opts: {
+    vault: string;
+    network: Network;
+    now: Date;
+    /** Test seams. */
+    platform?: NodeJS.Platform;
+    syncFolder?: (folder: string) => void;
+  },
 ): WriteKeysFileResult {
   const agent = generateKeyPair();
   const ledger = generateKeyPair();
@@ -191,8 +236,9 @@ export function writeNewKeysFile(
     new KeysFileWriteError(
       `could not create the keys file ${path} (${errorCode(error) ?? "unknown error"})`,
     );
+  let firstMade: string | undefined;
   try {
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    firstMade = mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   } catch (error) {
     // Its own EEXIST (Windows) or ENOTDIR (POSIX) means a file is in the way of a folder: not the keys file.
     throw failed(error);
@@ -229,6 +275,12 @@ export function writeNewKeysFile(
         // Gone already, or not removable: the error above still says the file could not be written.
       }
     }
+  }
+  // On POSIX file systems (ext4, xfs) a new file's entry in its folder is durable only once the folder is synced.
+  // Node on Windows cannot sync a folder, so there only the file is synced.
+  if ((opts.platform ?? process.platform) !== "win32") {
+    for (const folder of foldersToSync(path, firstMade))
+      (opts.syncFolder ?? syncFolderOnDisk)(folder);
   }
   return { status: "created", agentPublicKey: agent.publicKey, ledgerPublicKey: ledger.publicKey };
 }

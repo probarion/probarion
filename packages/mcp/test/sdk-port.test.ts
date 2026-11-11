@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { McpConfig } from "../src/config.js";
 import { buildPort } from "../src/probarion-port.js";
 import { connect, isError, jsonOf, textOf } from "./helpers.js";
+import { OTHER } from "./keys-helpers.js";
 
 const NOW = new Date(Number(SCENARIO_NOW / 1_000_000n));
 const INVOICE = "c".repeat(64);
@@ -232,5 +233,22 @@ describe("probarion-mcp over the SDK", () => {
     );
     expect(spendTxCount()).toBe(1);
     await second.close();
+  });
+
+  it("a ledger whose unanchored tail another ledger key signed is refused before it spends (LEDGER_KEY_MISMATCH)", async () => {
+    // The ledger file stayed while the keys file was swapped: its entries are the old key's, and none is anchored.
+    const swapped = new InMemoryLedgerStore();
+    swapped.all = async () => [
+      { link: "a".repeat(64), signer: OTHER.publicKey } as unknown as LedgerEntry,
+    ];
+    const { client, close } = await open(swapped);
+    const r = await client.callTool(pay());
+    expect(isError(r)).toBe(true);
+    expect(textOf(r)).toMatch(
+      /LEDGER_KEY_MISMATCH: 1 of the 1 unanchored entries in the local ledger \(the vault has no anchor yet\)/,
+    );
+    expect(textOf(r)).toContain(`entry 0 by ${OTHER.publicKey}`);
+    expect(spendTxCount()).toBe(0);
+    await close();
   });
 });

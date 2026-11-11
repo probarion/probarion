@@ -50,10 +50,13 @@ pnpm --filter "@probarion/mcp..." run build
 
 The last line builds the server and the two packages it needs, `@probarion/core` and `@probarion/sdk`. The
 server is then `node packages/mcp/dist/bin.js` in that folder; the steps below write `probarion-mcp` for
-it. After the 0.1.1 release, `npx -y @probarion/mcp@0.1.1` runs the same commands with no clone.
+it. After the 0.1.1 release, `npx -y @probarion/mcp@0.1.1` runs the same commands with no clone. `init` and
+`status` print their own commands the way you started them, so from a clone the commands they print begin
+with `node` and the full path of `bin.js`.
 
 Testnet first. Mainnet works the same way: the vault's name says its network (`.near` is mainnet, `.testnet`
-is testnet).
+is testnet). The console does not serve mainnet yet, so on mainnet `init` and `status` give the `probarion`
+CLI's owner transactions and no console link.
 
 ### 1. Make the keys on your machine
 
@@ -68,13 +71,16 @@ steps. Run it again and it changes nothing: it checks the file and prints the sa
 `--keys-file <path>` puts the file somewhere else.
 
 Back up that folder: `ledger.jsonl` there is the only copy of the agent's signed record once the server
-writes it.
+writes it. The folder also holds `keys.json`, so the backup holds the two secret keys: keep it as private as
+the file itself, and out of any shared or synced folder in the clear. A backup restored from a zip or a cloud
+folder may come back readable by others; `status` fails a keys file that other users can read (outside
+Windows) and names the `chmod 600` that fixes it. The ledger file is the part that cannot be made again: new
+keys can, and the owner then adds them.
 
 ### 2. The owner adds the two public keys to the vault
 
-The vault's owner pastes the two public keys on the console's Agent (MCP) tab, or signs `add_agent` and
-`set_ledger_key` with the CLI printers of the
-[`probarion` CLI](https://github.com/probarion/probarion/tree/main/packages/cli):
+The vault's owner signs two transactions, `add_agent` and `set_ledger_key`, which the CLI printers of the
+[`probarion` CLI](https://github.com/probarion/probarion/tree/main/packages/cli) print:
 
 ```sh
 probarion agent add --vault acme.vaults.probarion.testnet --pk <agent public key>
@@ -82,9 +88,9 @@ probarion ledger set-key --vault acme.vaults.probarion.testnet --pk <ledger publ
 ```
 
 Each command prints the transaction for the owner's wallet to sign; `init` prints both with the keys filled
-in. The console's Agent (MCP) tab is not live yet: it comes in the next pull request, and until then the
-CLI printers are the way. The owner also signs a mandate for the agent key (the console's Mandates tab, or
-`probarion mandate create`) and puts USDC in the vault.
+in. Once the console's Agent (MCP) tab is live, the owner can paste the two public keys there instead; until
+then `init` and `status` give no link to it. The owner also signs a mandate for the agent key (the console's
+Mandates tab, or `probarion mandate create`) and puts USDC in the vault.
 
 ### 3. Check that the vault is ready
 
@@ -94,12 +100,13 @@ PROBARION_VAULT_ID=acme.vaults.probarion.testnet node packages/mcp/dist/bin.js s
 
 In PowerShell, set the variable first: `$env:PROBARION_VAULT_ID = "acme.vaults.probarion.testnet"`.
 `status` reads the same settings as the server and prints one line per check, each `ok`, `not yet` or
-`fail`: the keys were found; the agent key is one of the vault's agent keys, a function-call key limited to
-`spend` with allowance left; the vault's ledger key is this ledger key, limited to `anchor`; the vault is not
-frozen; an active mandate is bound to the agent key; the vault's USDC; and the local ledger file against the
-vault's latest anchor (the server's single-writer check, run dry). When something is not ready it names the
-next step. It only reads: nothing is signed or sent. Exit code 0 when ready, 1 when not, 2 for a
-configuration error.
+`fail`: the keys were found, in a keys file only you can read; the agent key is one of the vault's agent
+keys, a function-call key limited to `spend` with allowance left; the vault's ledger key is this ledger key,
+limited to `anchor`; the vault is not frozen; an active mandate is bound to the agent key; the vault's USDC;
+and the local ledger file against the vault's latest anchor (the server's single-writer check, run dry: the
+anchored entries are this file's, and this server's ledger key signed every entry after them). When the
+vault is not ready it ends with one next step: the first `fail` that has one, else the first `not yet`. It
+only reads: nothing is signed or sent. Exit code 0 when ready, 1 when not, 2 for a configuration error.
 
 ### 4. Give the MCP client the vault id
 
@@ -263,9 +270,20 @@ ledger file holds every entry the vault's latest anchor covers, with the same ro
 process with another ledger file has anchored the vault, `request_spend` stops with `LEDGER_FORK_RISK` and
 sends nothing. A writer that has not anchored yet is not caught here: `verify` check d finds its spends
 later, since this ledger has no decision behind them. Run one writer per vault, or point
-`PROBARION_LEDGER_PATH` at the file the other process uses on the same machine. `probarion-mcp status`
-runs the same check, without paying, so a vault that another ledger has anchored shows up before the
-first payment.
+`PROBARION_LEDGER_PATH` at the file the other process uses on the same machine.
+
+The server also checks that its own ledger key signed every entry after the vault's latest anchor. The
+vault's next anchor covers those entries under the vault's ledger key of that moment, and `verify` check a
+fails for any entry in that range that another key signed. That happens when the keys file changes while the
+ledger file stays: `init` run again after the old `keys.json` was moved away, a restored backup, or
+`PROBARION_KEYS_FILE` pointed at another file. Then `request_spend` stops with `LEDGER_KEY_MISMATCH` and sends
+nothing. Anchor those entries with the key that signed them, while it is the vault's ledger key, and only
+then have the owner set the new one (`probarion ledger set-key`, which deletes the old key).
+
+`probarion-mcp status` runs both checks without paying, so a vault that another ledger has anchored, or a
+ledger tail another key signed, shows up before the first payment. When the vault's ledger key is another key
+and the ledger it anchors is not on this machine, `status` does not suggest setting this server's key: that
+would delete the other process's key, and this server still could not pay.
 
 ## What it records
 

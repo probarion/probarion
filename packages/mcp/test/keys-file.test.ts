@@ -6,6 +6,7 @@ import { publicKeyFromSecret } from "@probarion/core";
 import { describe, expect, it } from "vitest";
 import {
   defaultKeysPath,
+  foldersToSync,
   KEYS_FILE_FORMAT,
   KeysFileWriteError,
   parseKeysFile,
@@ -89,6 +90,41 @@ describe("the keys file", () => {
       expect(statSync(dir).mode & 0o777).toBe(0o700);
     },
   );
+
+  it("syncs the folder of a new file, and each folder made for it, outside Windows", () => {
+    const base = tempDir("probarion-keys-");
+    const path = join(base, ".probarion", VAULT, "keys.json");
+    const synced: string[] = [];
+    const opts = { vault: VAULT, network: "testnet" as const, now: NOW };
+    writeNewKeysFile(path, { ...opts, platform: "linux", syncFolder: (f) => synced.push(f) });
+    // Both folders were made for it: the vault's, .probarion, and the folder that now holds .probarion.
+    expect(synced).toEqual([join(base, ".probarion", VAULT), join(base, ".probarion"), base]);
+    // A second file in a folder that exists: only that folder.
+    const second = join(base, ".probarion", VAULT, "other.json");
+    synced.length = 0;
+    writeNewKeysFile(second, { ...opts, platform: "linux", syncFolder: (f) => synced.push(f) });
+    expect(synced).toEqual([join(base, ".probarion", VAULT)]);
+    // Windows: none, as Node cannot sync a folder there. A file already there: none, nothing was written.
+    synced.length = 0;
+    writeNewKeysFile(join(base, "win.json"), {
+      ...opts,
+      platform: "win32",
+      syncFolder: (f) => synced.push(f),
+    });
+    writeNewKeysFile(second, { ...opts, platform: "linux", syncFolder: (f) => synced.push(f) });
+    expect(synced).toEqual([]);
+    // The real folder sync runs on this machine without failing the write, whatever its file system allows.
+    expect(writeNewKeysFile(join(base, "a", "b", "keys.json"), opts).status).toBe("created");
+  });
+
+  it("lists the folders a new file adds an entry to", () => {
+    expect(foldersToSync(join("/h", "v", "k.json"), undefined)).toEqual([join("/h", "v")]);
+    expect(foldersToSync(join("/h", "p", "v", "k.json"), join("/h", "p"))).toEqual([
+      join("/h", "p", "v"),
+      join("/h", "p"),
+      join("/h"),
+    ]);
+  });
 
   it("names the path when it cannot be written, and nothing else", () => {
     const dir = tempDir("probarion-keys-");

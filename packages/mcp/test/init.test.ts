@@ -23,6 +23,7 @@ async function init(
     cwd?: string;
     platform?: NodeJS.Platform;
     env?: Record<string, string>;
+    self?: string;
   } = {},
 ): Promise<Run> {
   const out = capture();
@@ -35,6 +36,7 @@ async function init(
     err: err.stream,
     platform: opts.platform ?? "linux",
     now: () => new Date("2026-11-11T08:00:00.000Z"),
+    ...(opts.self === undefined ? {} : { self: opts.self }),
   });
   return { code, out: out.text(), err: err.text() };
 }
@@ -57,9 +59,14 @@ describe("probarion-mcp init", () => {
     expect(r.out).toContain(`agent public key:  ${keys.agentPublicKey}`);
     expect(r.out).toContain(`ledger public key: ${keys.ledgerPublicKey}`);
     expect(r.out).toContain(`Wrote the keys file ${path} (mode 0600)`);
+    // The CLI's two owner transactions come first; the console's Agent (MCP) tab is not live yet: no link to it.
     expect(r.out).toContain(
-      `the Agent (MCP) tab of the vault's console: https://probarion.xyz/console/${VAULT}/agent`,
+      "1. The vault's owner adds the two public keys to the vault. The probarion CLI prints the two owner",
     );
+    expect(r.out).toContain(
+      "(The console's Agent (MCP) tab, where the owner can paste the two keys instead, is not live yet.)",
+    );
+    expect(r.out).not.toContain("/agent");
     expect(r.out).toContain(`probarion agent add --vault ${VAULT} --pk '${keys.agentPublicKey}'`);
     expect(r.out).toContain(
       `probarion ledger set-key --vault ${VAULT} --pk '${keys.ledgerPublicKey}'`,
@@ -68,6 +75,11 @@ describe("probarion-mcp init", () => {
     expect(r.out).toContain(`Give the MCP client only PROBARION_VAULT_ID=${VAULT}:`);
     expect(r.out).toContain(`Back up the folder ${join(home, ".probarion", VAULT)}`);
     expect(r.out).toContain("ledger.jsonl, the only copy of the agent's signed record");
+    // The backup holds the two secret keys too.
+    expect(r.out).toContain(
+      "Keep that backup as private as the keys file itself, out of any shared or synced folder in the clear: it holds the two secret keys.",
+    );
+    expect(r.out).toContain("The ledger file is the part that cannot be made again");
     expect(r.err).toBe(""); // linux, and the temp home is in no git work tree
   });
 
@@ -112,14 +124,15 @@ describe("probarion-mcp init", () => {
     expectNoSecret(r.err, [secrets.agent.secret_key, secrets.ledger.secret_key]);
   });
 
-  it("on mainnet names the console's Agent (MCP) tab without a URL, and writes a mainnet file", async () => {
+  it("on mainnet says the console does not serve mainnet yet, and writes a mainnet file", async () => {
     const home = tempDir("probarion-init-home-");
     const r = await init(["--vault", MAINNET_VAULT], { home });
     expect(r.code).toBe(0);
     expect(r.out).toContain(`vault ${MAINNET_VAULT} on mainnet`);
     expect(r.out).toContain(
-      "the Agent (MCP) tab of the vault's console, on the Probarion site that serves mainnet",
+      "(The console, where the owner could paste the two keys instead, does not serve mainnet yet.)",
     );
+    expect(r.out).toContain(`probarion agent add --vault ${MAINNET_VAULT} --pk`);
     expect(r.out).not.toMatch(/https?:\/\//);
     const keys = keysOf(
       join(home, ".probarion", MAINNET_VAULT, "keys.json"),
@@ -142,6 +155,7 @@ describe("probarion-mcp init", () => {
     expect(r.out).toContain(
       `Back up the keys file and the folder ${join(home, ".probarion", VAULT)}`,
     );
+    expect(r.out).toContain("Keep the keys file's backup as private as the keys file itself");
     expectNoSecret(r.out, [keys.agentKey, keys.ledgerKey]);
   });
 
@@ -201,6 +215,37 @@ describe("probarion-mcp init", () => {
     });
     expect(bad.code).toBe(2);
     expect(bad.err).toContain("--vault looks like a testnet account but NEAR_NETWORK is mainnet");
+  });
+
+  it("prints the status command the way the binary was started", async () => {
+    const r = await init(["--vault", VAULT], {
+      self: "node /src/probarion/packages/mcp/dist/bin.js",
+    });
+    expect(r.out).toContain(
+      "2. Check that the vault is ready: node /src/probarion/packages/mcp/dist/bin.js status, with",
+    );
+    expect(r.out).not.toContain("probarion-mcp status");
+  });
+
+  it("names an unknown flag, but only the position of an argument that could be a key", async () => {
+    const flag = await init(["--vault", VAULT, "--keyfile=/x"]);
+    expect(flag.code).toBe(2);
+    expect(flag.err).toContain('unknown argument "--keyfile=..."');
+    const pasted = `ed25519:${"5".repeat(87)}`;
+    for (const args of [
+      ["--vault", VAULT, pasted],
+      ["--vault", VAULT, `PROBARION_AGENT_KEY=${pasted}`],
+    ]) {
+      const r = await init(args);
+      expect(r.code).toBe(2);
+      expect(r.err).not.toContain("5555");
+    }
+    expect((await init(["--vault", VAULT, pasted])).err).toContain(
+      "unknown argument 3 (not shown: it is not a flag or a word, and could be a key)",
+    );
+    expect((await init(["--vault", VAULT, `PROBARION_AGENT_KEY=${pasted}`])).err).toContain(
+      'unknown argument "PROBARION_AGENT_KEY=..."',
+    );
   });
 
   it("prints its help, and is reached through the binary's arguments", async () => {

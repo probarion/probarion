@@ -4,8 +4,11 @@ export {
   type AnchorLite,
   assertSingleWriter,
   type LatestAnchor,
+  type LedgerEntryLite,
+  type LedgerForkCode,
   LedgerForkError,
   type LedgerReader,
+  singleWriterProblem,
   withSingleWriterGuard,
 } from "./guard.js";
 export { INIT_HELP, type InitIo, runInit } from "./init.js";
@@ -27,6 +30,7 @@ export {
   runStatus,
   STATUS_HELP,
   type StatusChain,
+  type StatusContext,
   type StatusIo,
   type StatusLine,
   sdkStatusChain,

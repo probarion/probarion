@@ -23,6 +23,8 @@ export interface MainIo {
   stdin: Readable;
   stdout: Writable;
   stderr: Writable;
+  /** The command this binary was started as, for the init command a configuration problem names. */
+  self?: string;
   /** Test seam: the SDK's clock and friends. The logger is always the one writing to `stderr`. */
   deps?: Omit<ProbarionDeps, "logger">;
 }
@@ -38,7 +40,7 @@ export function keysLine(source: KeysSource): string {
 export async function main(io: MainIo): Promise<McpServer | 2> {
   let cfg: McpConfig;
   try {
-    cfg = loadConfig(io.env, io.home, readKeysFileFromDisk);
+    cfg = loadConfig(io.env, io.home, readKeysFileFromDisk, io.self);
   } catch (e) {
     if (e instanceof ConfigError) {
       io.stderr.write(`probarion-mcp: ${e.message}\n`);

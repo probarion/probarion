@@ -14,6 +14,7 @@ import {
   TEST_KEYS,
 } from "@probarion/sdk/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runCommand } from "../src/cli.js";
 import { runInit } from "../src/init.js";
 import { parseKeysFile } from "../src/keys-file.js";
 import { main } from "../src/main.js";
@@ -43,6 +44,7 @@ function scenarioHome(): string {
   writeFileSync(
     join(home, ".probarion", SCENARIO_VAULT, "keys.json"),
     keysFileText(SCENARIO_VAULT, "testnet", {}, TEST_KEYS.agent, TEST_KEYS.ledger),
+    { mode: 0o600 },
   );
   return home;
 }
@@ -162,6 +164,41 @@ describe("no secret key in what init, status or the server prints", () => {
     });
     for (const text of outputs) expectNoSecret(text, SCENARIO_SECRETS);
     expect(outputs.join("\n")).toContain("ed25519:[redacted]");
+  });
+
+  it("a secret key passed as an argument, alone or as NAME=secret, is not echoed by any command", async () => {
+    const home = scenarioHome();
+    const outputs: string[] = [];
+    for (const secret of SCENARIO_SECRETS) {
+      for (const word of [
+        secret,
+        secret.slice("ed25519:".length),
+        `PROBARION_AGENT_KEY=${secret}`,
+        `--pk=${secret}`,
+      ]) {
+        for (const args of [
+          ["init", "--vault", SCENARIO_VAULT, word],
+          ["init", word],
+          ["status", word],
+          ["demo", word],
+          [word],
+        ]) {
+          const out = capture();
+          const err = capture();
+          const code = await runCommand(args, {
+            env: { PROBARION_VAULT_ID: SCENARIO_VAULT, NEAR_RPC_URLS: rpc.url },
+            home,
+            cwd: home,
+            out: out.stream,
+            err: err.stream,
+          });
+          expect(code, args[0]).toBe(2);
+          expect(err.text(), args[0]).toContain("unknown argument");
+          outputs.push(out.text(), err.text());
+        }
+      }
+    }
+    for (const text of outputs) expectNoSecret(text, SCENARIO_SECRETS);
   });
 
   it("the server's start line names the keys source, never a key", async () => {

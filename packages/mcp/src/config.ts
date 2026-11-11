@@ -133,9 +133,15 @@ function peek(read: ReadKeysFile, path: string): { text: string | null } | { pro
  * keys. The keys come from, in this order: PROBARION_AGENT_KEY and PROBARION_LEDGER_KEY (both, or neither);
  * the keys file PROBARION_KEYS_FILE names, which must exist; `~/.probarion/<vault>/keys.json` when it exists;
  * otherwise none, and the server is read-only. One key from the environment and the other from a file is
- * refused. Pure: every file it looks at is read through `readKeysFile`.
+ * refused. Pure: every file it looks at is read through `readKeysFile`. `self` is the command this binary was
+ * started as, for the init command a problem names.
  */
-export function loadConfig(env: Env, home: string, readKeysFile: ReadKeysFile): McpConfig {
+export function loadConfig(
+  env: Env,
+  home: string,
+  readKeysFile: ReadKeysFile,
+  self = "probarion-mcp",
+): McpConfig {
   const vault = envValue(env, "PROBARION_VAULT_ID") ?? "";
   const checked = checkVault(vault, envValue(env, "NEAR_NETWORK"), "PROBARION_VAULT_ID");
   const problems = [...checked.problems];
@@ -208,7 +214,7 @@ export function loadConfig(env: Env, home: string, readKeysFile: ReadKeysFile): 
       if ("problem" in found) problems.push(found.problem);
       else if (found.text === null) {
         problems.push(
-          `PROBARION_KEYS_FILE names ${keysFileVar}, which does not exist: make it with probarion-mcp init --vault <id> --keys-file <path>`,
+          `PROBARION_KEYS_FILE names ${keysFileVar}, which does not exist: make it with ${self} init --vault <id> --keys-file <path>`,
         );
       } else fromFile(keysFileVar, found.text);
     }

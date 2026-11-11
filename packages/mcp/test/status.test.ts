@@ -19,8 +19,9 @@ import {
 } from "@probarion/sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../src/cli.js";
-import type { LedgerReader } from "../src/guard.js";
-import { runStatus, STATUS_HELP, type StatusChain } from "../src/status.js";
+import type { LedgerEntryLite, LedgerReader } from "../src/guard.js";
+import { keysFileModeOnDisk, runStatus, STATUS_HELP, type StatusChain } from "../src/status.js";
+import { shellWord } from "../src/words.js";
 import {
   AGENT,
   capture,
@@ -80,8 +81,12 @@ interface World {
   mandates: MandateView[] | Error;
   balance: string | Error;
   anchor: AnchorView | null | Error;
-  ledger: { link: string }[] | Error;
+  ledger: LedgerEntryLite[] | Error;
 }
+
+/** Ledger entries with these links, signed by `signer` (by default the keys file's ledger key). */
+const signed = (links: string[], signer = LEDGER.publicKey): LedgerEntryLite[] =>
+  links.map((link) => ({ link, signer }));
 
 /** A vault where every check passes; `over` changes one part of it. */
 function world(over: Partial<World> = {}): World {
@@ -92,7 +97,7 @@ function world(over: Partial<World> = {}): World {
     mandates: [MANDATE],
     balance: "12500000",
     anchor: { seq: 2, root: "l1", count: 2, at_ns: "1", ledger_key: LEDGER.publicKey },
-    ledger: [{ link: "l0" }, { link: "l1" }, { link: "l2" }],
+    ledger: signed(["l0", "l1", "l2"]),
     ...over,
   };
 }
@@ -120,7 +125,10 @@ function fakeChain(w: World): StatusChain {
 function homeWithKeys(vault = VAULT, network: "mainnet" | "testnet" = "testnet"): string {
   const home = tempDir("probarion-status-home-");
   mkdirSync(join(home, ".probarion", vault), { recursive: true });
-  writeFileSync(join(home, ".probarion", vault, "keys.json"), keysFileText(vault, network));
+  // Mode 0600, as init writes it: where the OS has mode bits, status fails a keys file others can read.
+  writeFileSync(join(home, ".probarion", vault, "keys.json"), keysFileText(vault, network), {
+    mode: 0o600,
+  });
   return home;
 }
 
@@ -133,7 +141,13 @@ interface Run {
 
 async function status(
   w: World,
-  opts: { env?: Record<string, string | undefined>; home?: string; args?: string[] } = {},
+  opts: {
+    env?: Record<string, string | undefined>;
+    home?: string;
+    args?: string[];
+    self?: string;
+    keysFileMode?: (path: string) => number | null;
+  } = {},
 ): Promise<Run> {
   const out = capture();
   const err = capture();
@@ -146,6 +160,8 @@ async function status(
     chain: () => fakeChain(w),
     ledger: () => ledger,
     now: () => NOW,
+    ...(opts.self === undefined ? {} : { self: opts.self }),
+    ...(opts.keysFileMode === undefined ? {} : { keysFileMode: opts.keysFileMode }),
   });
   const text = out.text();
   for (const t of [text, err.text()]) expectNoSecret(t, [AGENT.secretKey, LEDGER.secretKey]);
@@ -216,7 +232,7 @@ describe("probarion-mcp status", () => {
   it("names a keys file elsewhere in the ready line", async () => {
     const dir = tempDir("probarion-status-keys-");
     const file = join(dir, "acme.json");
-    writeFileSync(file, keysFileText(VAULT, "testnet"));
+    writeFileSync(file, keysFileText(VAULT, "testnet"), { mode: 0o600 });
     const r = await status(world(), {
       home: tempDir("probarion-status-empty-"),
       env: { PROBARION_VAULT_ID: VAULT, PROBARION_KEYS_FILE: file },
@@ -225,7 +241,7 @@ describe("probarion-mcp status", () => {
     expect(r.out).toContain(`PROBARION_VAULT_ID=${VAULT} and PROBARION_KEYS_FILE=${file}.`);
   });
 
-  it("says not yet for an agent key the owner has not added, with the console's Agent (MCP) tab", async () => {
+  it("says not yet for an agent key the owner has not added, with the CLI's transaction (the Agent (MCP) tab is not live)", async () => {
     const r = await status(world({ agents: [] }));
     expect(r.code).toBe(1);
     expect(r.line("agent key")).toMatch(/^ {2}not yet {2}agent key/);
@@ -233,8 +249,40 @@ describe("probarion-mcp status", () => {
       `${AGENT.publicKey} is not an agent key of the vault yet`,
     );
     expect(r.out).toContain(
-      `Next (agent key): the vault's owner pastes the two public keys on the Agent (MCP) tab of the vault's console: https://probarion.xyz/console/${VAULT}/agent, or prints the owner transactions with probarion agent add and probarion ledger set-key.`,
+      `Next (agent key): the vault's owner signs the transaction that probarion agent add --vault ${VAULT} --pk ${AGENT.publicKey} prints (the console's Agent (MCP) tab is not live yet).`,
     );
+    // No link to a console page that is not there yet.
+    expect(r.out).not.toContain("/agent");
+    const ledger = await status(world({ config: { ...CONFIG, ledger_key: null } }));
+    expect(ledger.out).toContain(
+      `Next (ledger key): the vault's owner signs the transaction that probarion ledger set-key --vault ${VAULT} --pk ${LEDGER.publicKey} prints (the console's Agent (MCP) tab is not live yet).`,
+    );
+  });
+
+  it("prints its commands the way the binary was started", async () => {
+    const r = await status(world(), {
+      home: tempDir("probarion-status-empty-"),
+      self: "node /src/probarion/packages/mcp/dist/bin.js",
+    });
+    expect(r.out).toContain(
+      `Next (keys): run node /src/probarion/packages/mcp/dist/bin.js init --vault ${VAULT}.`,
+    );
+  });
+
+  it("fails a keys file that other users can read, and names chmod 600", async () => {
+    const home = homeWithKeys();
+    const file = join(home, ".probarion", VAULT, "keys.json");
+    const loose = await status(world(), { home, keysFileMode: () => 0o644 });
+    expect(loose.code).toBe(1);
+    expect(loose.line("keys")).toMatch(/^ {2}fail {5}keys/);
+    expect(loose.line("keys")).toContain(
+      "holds the two secret keys, and other users of this machine can read it (mode 0644)",
+    );
+    expect(loose.out).toContain(`Next (keys): chmod 600 ${shellWord(file) ?? file}.`);
+    const tight = await status(world(), { home, keysFileMode: () => 0o600 });
+    expect(tight.code).toBe(0);
+    // Windows has no mode bits to read: the keys line is ok there.
+    expect(keysFileModeOnDisk(file, "win32")).toBeNull();
   });
 
   it("fails an agent key that is full-access, scoped to another method or receiver, used up, or missing", async () => {
@@ -292,7 +340,9 @@ describe("probarion-mcp status", () => {
     const r = await status(world({ config: { ...CONFIG, frozen: true } }));
     expect(r.code).toBe(1);
     expect(r.line("vault")).toMatch(/not yet +vault +the vault is frozen/);
-    expect(r.out).toContain(`https://probarion.xyz/console/${VAULT}.`);
+    expect(r.out).toContain(
+      `Next (vault): the vault's owner unfreezes it on the Overview tab of the vault's console (https://probarion.xyz/console/${VAULT}), or signs the transaction that probarion vault unfreeze --vault ${VAULT} prints.`,
+    );
   });
 
   it("fails every chain check when the vault's config cannot be read, and asks nothing more", async () => {
@@ -364,13 +414,13 @@ describe("probarion-mcp status", () => {
   });
 
   it("fails the ledger when the latest anchor is not in the local file (the guard, run dry)", async () => {
-    const short = await status(world({ ledger: [{ link: "l0" }] }));
+    const short = await status(world({ ledger: signed(["l0"]) }));
     expect(short.code).toBe(1);
     expect(short.line("ledger")).toMatch(
       /fail +ledger +.*holds 1 entry\. LEDGER_FORK_RISK: anchor 2 covers 2 entries but the local ledger has 1/,
     );
     expect(short.out).toContain("Nothing was sent.");
-    const forked = await status(world({ ledger: [{ link: "l0" }, { link: "x1" }] }));
+    const forked = await status(world({ ledger: signed(["l0", "x1"]) }));
     expect(forked.line("ledger")).toContain(
       "LEDGER_FORK_RISK: anchor 2 does not match local entry 1",
     );
@@ -385,18 +435,150 @@ describe("probarion-mcp status", () => {
     expect(anchors.line("ledger")).toMatch(/fail +ledger +list_anchors could not be read/);
   });
 
-  it("on mainnet names the console's tabs without a URL", async () => {
-    const vault = "acme.vaults.probarion.near";
-    const r = await status(world({ agents: [] }), {
-      env: { PROBARION_VAULT_ID: vault },
-      home: homeWithKeys(vault, "mainnet"),
-    });
-    expect(r.code).toBe(1);
-    expect(r.out).toContain(`vault ${vault} on mainnet`);
-    expect(r.out).toContain(
-      "the Agent (MCP) tab of the vault's console, on the Probarion site that serves mainnet",
+  it("names a next step for a ledger fork and for a ledger or anchors it cannot read", async () => {
+    const short = await status(world({ ledger: signed(["l0"]) }));
+    expect(short.out).toContain(
+      "Next (ledger): point PROBARION_LEDGER_PATH at the ledger file the vault's anchors cover, if it is on this machine, or give this server a vault of its own.",
     );
-    expect(r.out).not.toMatch(/https?:\/\//);
+    const torn = await status(world({ ledger: new Error("line 3 is a torn write") }));
+    expect(torn.out).toMatch(
+      /Next \(ledger\): restore .* from a backup, or point PROBARION_LEDGER_PATH/,
+    );
+    const anchors = await status(world({ anchor: new Error("down") }));
+    expect(anchors.out).toContain(
+      "Next (ledger): run probarion-mcp status again; if it fails again, check NEAR_RPC_URLS.",
+    );
+  });
+
+  it("fails a ledger whose entries after the last anchor another ledger key signed (a keys file swapped)", async () => {
+    // The vault's ledger key is this keys file's; the old key signed every entry, two of them anchored.
+    const r = await status(
+      world({
+        anchor: { seq: 1, root: "l1", count: 2, at_ns: "1", ledger_key: OTHER.publicKey },
+        ledger: signed(["l0", "l1", "l2", "l3", "l4"], OTHER.publicKey),
+      }),
+    );
+    expect(r.code).toBe(1);
+    expect(r.line("ledger key")).toMatch(/^ {2}ok/);
+    expect(r.line("ledger")).toMatch(
+      /^ {2}fail {5}ledger +.*holds 5 entries\. LEDGER_KEY_MISMATCH: /,
+    );
+    expect(r.line("ledger")).toContain(
+      "3 of the 3 unanchored entries in the local ledger (after anchor 1) are signed by another ledger key",
+    );
+    expect(r.out).not.toContain("Ready");
+    expect(r.out).toContain(
+      `Next (ledger): the vault's owner sets the key that signed them back as the vault's ledger key (probarion ledger set-key --vault ${VAULT} --pk ${OTHER.publicKey})`,
+    );
+    // Entries the anchors cover may be another key's: only the tail must be this server's.
+    const rotated = await status(
+      world({
+        anchor: { seq: 1, root: "l1", count: 2, at_ns: "1", ledger_key: OTHER.publicKey },
+        ledger: [...signed(["l0", "l1"], OTHER.publicKey), ...signed(["l2"])],
+      }),
+    );
+    expect(rotated.code).toBe(0);
+    // With no anchor at all, every entry must be this server's.
+    const fresh = await status(world({ anchor: null, ledger: signed(["l0"], OTHER.publicKey) }));
+    expect(fresh.line("ledger")).toContain("(the vault has no anchor yet)");
+    expect(fresh.code).toBe(1);
+  });
+
+  it("before a ledger key rotation, says to anchor the entries the vault's current key signed", async () => {
+    const r = await status(
+      world({
+        config: { ...CONFIG, ledger_key: OTHER.publicKey },
+        keys: { [AGENT.publicKey]: scoped("spend"), [OTHER.publicKey]: scoped("anchor") },
+        anchor: { seq: 2, root: "l1", count: 2, at_ns: "1", ledger_key: OTHER.publicKey },
+        ledger: signed(["l0", "l1", "l2"], OTHER.publicKey),
+      }),
+    );
+    expect(r.code).toBe(1);
+    expect(r.line("ledger key")).toMatch(/^ {2}not yet/);
+    expect(r.line("ledger key")).toContain(
+      `the vault's ledger key is another key, ${OTHER.publicKey}, which signed 1 entry of this ledger after the vault's last anchor`,
+    );
+    expect(r.line("ledger")).toMatch(/^ {2}not yet {2}ledger +.*LEDGER_KEY_MISMATCH/);
+    expect(r.out).toContain(
+      `Next (ledger key): anchor those entries with ${OTHER.publicKey} first (the server that holds it anchors its ledger at the end of its next request_spend), then the vault's owner signs the transaction that probarion ledger set-key --vault ${VAULT} --pk ${LEDGER.publicKey} prints`,
+    );
+  });
+
+  it("does not advise a new ledger key for a vault another process anchors from its own ledger", async () => {
+    const r = await status(
+      world({
+        config: { ...CONFIG, ledger_key: OTHER.publicKey },
+        anchor: { seq: 7, root: "x9", count: 10, at_ns: "1", ledger_key: OTHER.publicKey },
+        ledger: [],
+      }),
+    );
+    expect(r.code).toBe(1);
+    expect(r.line("ledger key")).toMatch(/^ {2}fail {5}ledger key/);
+    expect(r.line("ledger key")).toContain(
+      "the ledger its anchors cover is not this machine's ledger file",
+    );
+    expect(r.line("ledger")).toContain(
+      "LEDGER_FORK_RISK: anchor 7 covers 10 entries but the local ledger has 0",
+    );
+    expect(r.out).not.toContain("probarion ledger set-key");
+    expect(r.out).toContain(
+      "Next (ledger key): point PROBARION_LEDGER_PATH at the ledger file the vault's anchors cover",
+    );
+  });
+
+  it("names a vault it cannot read as the next step, before the keys", async () => {
+    const r = await status(world({ config: new Error("UNKNOWN_ACCOUNT") }), {
+      home: tempDir("probarion-status-empty-"),
+    });
+    expect(r.line("keys")).toMatch(/not yet +keys/);
+    expect(r.out).toContain(
+      "Next (vault): check PROBARION_VAULT_ID (a vault on testnet) and NEAR_RPC_URLS.",
+    );
+    expect(r.out).not.toContain("Next (keys)");
+  });
+
+  it("names a next step for an agent key that is not limited to spend", async () => {
+    const r = await status(
+      world({ keys: { [AGENT.publicKey]: "FullAccess", [LEDGER.publicKey]: scoped("anchor") } }),
+    );
+    expect(r.out).toContain(
+      `Next (agent key): the vault's owner signs the transactions that probarion agent remove --vault ${VAULT} --pk ${AGENT.publicKey} and then probarion agent add --vault ${VAULT} --pk ${AGENT.publicKey} print`,
+    );
+  });
+
+  it("on mainnet gives the CLI's transactions and says the console does not serve mainnet yet", async () => {
+    const vault = "acme.vaults.probarion.near";
+    const opts = { env: { PROBARION_VAULT_ID: vault }, home: homeWithKeys(vault, "mainnet") };
+    const mainnetConfig = { ...CONFIG, usdc: "usdc.example.near" };
+    const mainnetKeys = {
+      [AGENT.publicKey]: { ...scoped("spend"), receiver_id: vault },
+      [LEDGER.publicKey]: { ...scoped("anchor"), receiver_id: vault },
+    };
+    const world_ = (over: Partial<World>) =>
+      world({ config: mainnetConfig, keys: mainnetKeys, ...over });
+    expect((await status(world_({}), opts)).code).toBe(0);
+    const keys = await status(world_({ agents: [] }), opts);
+    expect(keys.code).toBe(1);
+    expect(keys.out).toContain(`vault ${vault} on mainnet`);
+    expect(keys.out).toContain(
+      `Next (agent key): the vault's owner signs the transaction that probarion agent add --vault ${vault} --pk ${AGENT.publicKey} prints (the console does not serve mainnet yet).`,
+    );
+    const frozen = await status(world_({ config: { ...mainnetConfig, frozen: true } }), opts);
+    expect(frozen.out).toContain(
+      `Next (vault): the vault's owner signs the transaction that probarion vault unfreeze --vault ${vault} prints (the console does not serve mainnet yet).`,
+    );
+    const mandates = await status(world_({ mandates: [] }), opts);
+    expect(mandates.out).toContain(
+      `Next (mandates): the vault's owner signs the transaction that probarion mandate create --vault ${vault} --agent-pk ${AGENT.publicKey}`,
+    );
+    const empty = await status(world_({ balance: "0" }), opts);
+    expect(empty.out).toContain(
+      `Next (USDC): the vault's owner sends USDC to ${vault} from their wallet: a storage_deposit for the vault (registration only) and an ft_transfer to it, both on usdc.example.near (the console does not serve mainnet yet).`,
+    );
+    for (const r of [keys, frozen, mandates, empty]) {
+      expect(r.out).not.toMatch(/https?:\/\//);
+      expect(r.out).not.toContain("site that serves mainnet");
+    }
   });
 
   it("exits 2 on a configuration error, naming it on stderr with nothing on stdout", async () => {
@@ -445,6 +627,7 @@ describe("probarion-mcp status over the SDK's readers", () => {
     writeFileSync(
       join(home, ".probarion", SCENARIO_VAULT, "keys.json"),
       keysFileText(SCENARIO_VAULT, "testnet", {}, TEST_KEYS.agent, TEST_KEYS.ledger),
+      { mode: 0o600 },
     );
     const out = capture();
     const err = capture();

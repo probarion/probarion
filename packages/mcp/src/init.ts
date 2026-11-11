@@ -17,7 +17,8 @@ import {
   readKeysFileFromDisk,
   writeNewKeysFile,
 } from "./keys-file.js";
-import { AGENT_TAB, consoleWhere } from "./site.js";
+import { AGENT_TAB, consoleUrl } from "./site.js";
+import { argumentShown, shellWord, shown } from "./words.js";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -28,6 +29,8 @@ export interface InitIo {
   cwd: string;
   out: Writable;
   err: Writable;
+  /** The command this binary was started as, for the commands it prints. Default `probarion-mcp`. */
+  self?: string;
   /** Test seams. */
   platform?: NodeJS.Platform;
   now?: () => Date;
@@ -45,26 +48,6 @@ A keys file that exists already is not replaced: init checks it and prints its p
 The network comes from the vault id (.near is mainnet, .testnet is testnet), or NEAR_NETWORK for another name.
 Exit code 0 when the keys file is ready, 1 when it could not be written, 2 for a usage or keys file error.
 `;
-
-/** A single quote: ASCII ', or U+2018 to U+201B, which PowerShell also reads as one. */
-const isQuote = (c: string): boolean => {
-  const code = c.charCodeAt(0);
-  return c === "'" || (code >= 0x2018 && code <= 0x201b);
-};
-
-/**
- * A word for a printed command: bare when plain, else in single quotes. Null when it holds a single quote, which
- * bash and PowerShell quote differently (the probarion CLI's shellQuote refuses such a value the same way).
- */
-function shellWord(value: string): string | null {
-  if ([...value].some(isQuote)) return null;
-  return /^[A-Za-z0-9_./-]+$/.test(value) ? value : `'${value}'`;
-}
-
-/** Backslashes to slashes on Windows, where Node and near-cli-rs read both and a JSON config needs no escape. */
-function shown(file: string, platform: NodeJS.Platform): string {
-  return platform === "win32" ? file.replaceAll("\\", "/") : file;
-}
 
 interface Arguments {
   vault: string;
@@ -90,7 +73,7 @@ function parseArgs(args: readonly string[]): Arguments | { problem: string } | "
     } else if (flag !== null && a.startsWith(`${flag}=`)) {
       value = a.slice(flag.length + 1);
     } else {
-      return { problem: `unknown argument ${JSON.stringify(a).slice(0, 60)}` };
+      return { problem: `unknown argument ${argumentShown(a, i + 1)}` };
     }
     if (flag === "--vault") vault = value;
     else keysFile = value;
@@ -194,6 +177,11 @@ export async function runInit(args: readonly string[], io: InitIo): Promise<numb
     : `PROBARION_VAULT_ID=${vault}`;
   const agentPk = shellWord(agentPublicKey) ?? agentPublicKey;
   const ledgerPk = shellWord(ledgerPublicKey) ?? ledgerPublicKey;
+  const self = io.self ?? "probarion-mcp";
+  // The CLI's two owner transactions come first: the console's tab has no URL on mainnet, or before it is live.
+  const tabUrl = consoleUrl(network, vault, AGENT_TAB);
+  const keepPrivate = (backup: string) =>
+    `Keep ${backup} as private as the keys file itself, out of any shared or synced folder in the clear: it holds the two secret keys.`;
   const lines = [
     `probarion-mcp init: vault ${vault} on ${network}`,
     created
@@ -204,17 +192,21 @@ export async function runInit(args: readonly string[], io: InitIo): Promise<numb
     `ledger public key: ${ledgerPublicKey}`,
     "",
     "Next:",
-    "1. The vault's owner adds the two public keys to the vault. Paste them on",
-    `   ${consoleWhere(network, vault, AGENT_TAB)}`,
-    "   or print the two owner transactions with the probarion CLI, and sign them in the owner's wallet:",
+    "1. The vault's owner adds the two public keys to the vault. The probarion CLI prints the two owner",
+    "   transactions, which the owner signs in their wallet:",
     `   probarion agent add --vault ${vault} --pk ${agentPk}`,
     `   probarion ledger set-key --vault ${vault} --pk ${ledgerPk}`,
-    `2. Check that the vault is ready: probarion-mcp status, with ${settings}.`,
+    tabUrl !== null
+      ? `   Or the owner pastes the two keys on the ${AGENT_TAB.label} tab of the vault's console: ${tabUrl}`
+      : network === "mainnet"
+        ? "   (The console, where the owner could paste the two keys instead, does not serve mainnet yet.)"
+        : `   (The console's ${AGENT_TAB.label} tab, where the owner can paste the two keys instead, is not live yet.)`,
+    `2. Check that the vault is ready: ${self} status, with ${settings}.`,
     `3. Give the MCP client only ${settings}: the server reads its keys from the keys file.`,
     "",
     path.dirname(ledgerPath) === path.dirname(file)
-      ? `Back up the folder ${shown(path.dirname(file), platform)}: the keys file is there, and so is ${path.basename(ledgerPath)}, the only copy of the agent's signed record once the server writes it.`
-      : `Back up the keys file and the folder ${shown(path.dirname(ledgerPath), platform)}: ${ledgerShown} is the only copy of the agent's signed record once the server writes it.`,
+      ? `Back up the folder ${shown(path.dirname(file), platform)}: the keys file is there, and so is ${path.basename(ledgerPath)}, the only copy of the agent's signed record once the server writes it. ${keepPrivate("that backup")} The ledger file is the part that cannot be made again: new keys can, which the owner then adds.`
+      : `Back up the keys file and the folder ${shown(path.dirname(ledgerPath), platform)}: ${ledgerShown} is the only copy of the agent's signed record once the server writes it. ${keepPrivate("the keys file's backup")}`,
   ];
   if (created && existsSync(ledgerPath)) {
     lines.push(
