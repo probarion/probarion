@@ -8,6 +8,7 @@ import {
   type DecisionAttestation,
   type DecisionRow,
   type DecisionVerdict,
+  decisionOutcome,
   onlineCommand,
   type RuleOutcome,
   type ShownPayment,
@@ -106,59 +107,61 @@ interface SummaryOutcome {
 
 const ruleCode = (id: string) => <code className="text-ink">{id}</code>;
 
+/** The summary of `decisionOutcome`: the same reading the payments CSV writes. */
 function summaryOutcome(r: DecisionRow): SummaryOutcome {
-  const spend = r.checked.spends[0];
-  if (spend) {
-    return {
-      badge: { tone: statusTone(spend.status), label: `${spend.status}, spend #${spend.id}` },
-      verdict: true,
-      note: null,
-    };
-  }
-  const payment = r.checked.payments[0];
-  if (payment?.status === "refused") {
-    return {
-      badge: { tone: "bad", label: "refused by contract" },
-      verdict: false,
-      note: payment.code === null ? "nothing paid" : <>{ruleCode(payment.code)}, nothing paid</>,
-    };
-  }
-  // The SDK's default flow: the contract's free dry run (check_spend) refused, so no spend was sent.
-  if (payment?.status === "check_failed") {
-    return {
-      badge: { tone: "bad", label: "refused by contract" },
-      verdict: false,
-      note:
-        payment.code === null ? (
-          "refused in the contract's dry run, nothing sent"
+  const o = decisionOutcome(r);
+  switch (o.kind) {
+    case "spend":
+      return {
+        badge: {
+          tone: statusTone(o.spend.status),
+          label: `${o.spend.status}, spend #${o.spend.id}`,
+        },
+        verdict: true,
+        note: null,
+      };
+    case "contract_refused": {
+      const code = o.payment.code;
+      if (!o.dryRun) {
+        return {
+          badge: { tone: "bad", label: "refused by contract" },
+          verdict: false,
+          note: code === null ? "nothing paid" : <>{ruleCode(code)}, nothing paid</>,
+        };
+      }
+      // The SDK's default flow: the contract's free dry run (check_spend) refused, so no spend was sent.
+      return {
+        badge: { tone: "bad", label: "refused by contract" },
+        verdict: false,
+        note:
+          code === null ? (
+            "refused in the contract's dry run, nothing sent"
+          ) : (
+            <>{ruleCode(code)} in the contract&apos;s dry run, nothing sent</>
+          ),
+      };
+    }
+    case "payment":
+      return {
+        badge: { tone: statusTone(o.payment.status), label: `payment ${o.payment.status}` },
+        verdict: true,
+        note: null,
+      };
+    case "code":
+      return {
+        badge: null,
+        verdict: true,
+        note: o.rule ? (
+          <>
+            {o.did} by {ruleCode(o.rule.id)}, nothing sent
+          </>
         ) : (
-          <>{ruleCode(payment.code)} in the contract&apos;s dry run, nothing sent</>
+          `${o.did} by the code, nothing sent`
         ),
-    };
+      };
+    case "none":
+      return { badge: null, verdict: true, note: null };
   }
-  if (payment) {
-    return {
-      badge: { tone: statusTone(payment.status), label: `payment ${payment.status}` },
-      verdict: true,
-      note: null,
-    };
-  }
-  if (r.verdict === "hold" || r.verdict === "refuse") {
-    const did = r.verdict === "hold" ? "held" : "refused";
-    const rule = r.checked.firstBlocking;
-    return {
-      badge: null,
-      verdict: true,
-      note: rule ? (
-        <>
-          {did} by {ruleCode(rule.id)}, nothing sent
-        </>
-      ) : (
-        `${did} by the code, nothing sent`
-      ),
-    };
-  }
-  return { badge: null, verdict: true, note: null };
 }
 
 const DECIDER_BADGE: Readonly<Record<DecisionRow["decidedBy"], { tone: Tone; label: string }>> = {

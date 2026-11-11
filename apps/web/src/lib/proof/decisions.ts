@@ -160,6 +160,8 @@ export interface ShownPayment {
   /** The contract's code, such as a panic code (OverPerPayment), or null. */
   code: string | null;
   spendId: string | null;
+  /** The contract tx hash, when the entry names a well-formed one; else null. */
+  txHash: string | null;
   /** The contract tx on the explorer; `txUrl` is null when the entry names none or a malformed one. */
   txUrl: string | null;
   txLabel: string;
@@ -700,6 +702,7 @@ function paymentOf(e: Record<string, unknown>, i: number, network: Network): Sho
     status: c.status === null || c.status === undefined ? "none" : safeText(c.status, SHORT),
     code: maybeText(c.code),
     spendId: c.spend_id === null || c.spend_id === undefined ? null : idText(c.spend_id),
+    txHash: tx ? hash : null,
     txUrl: tx ? explorerTxUrl(network, hash) : null,
     txLabel: tx ? `contract tx, seq ${i}` : named ? "malformed tx hash" : "no tx recorded",
   };
@@ -841,4 +844,37 @@ export async function decisionRows(snapshot: Snapshot, network: Network): Promis
     });
   }
   return rows;
+}
+
+/**
+ * What became of a decision, in the order its card's summary line reads it: the first spend the chain binds to it;
+ * else a refusal by the contract that its first payment entry records (`refused`, or `check_failed` when the
+ * contract's free dry run, check_spend, refused it and no spend was sent); else that payment entry's status; else, for
+ * a decision the code held or refused, the rule that did it (`firstBlocking`). The card (components/proof) and the
+ * payments CSV (./payments-csv.ts) both read it from here, so the two cannot disagree.
+ */
+export type DecisionOutcome =
+  | { kind: "spend"; spend: ShownSpend }
+  | { kind: "contract_refused"; payment: ShownPayment; dryRun: boolean }
+  | { kind: "payment"; payment: ShownPayment }
+  | { kind: "code"; did: "held" | "refused"; rule: ShownRule | null }
+  | { kind: "none" };
+
+export function decisionOutcome(r: DecisionRow): DecisionOutcome {
+  const spend = r.checked.spends[0];
+  if (spend) return { kind: "spend", spend };
+  const payment = r.checked.payments[0];
+  if (payment?.status === "refused") return { kind: "contract_refused", payment, dryRun: false };
+  if (payment?.status === "check_failed") {
+    return { kind: "contract_refused", payment, dryRun: true };
+  }
+  if (payment) return { kind: "payment", payment };
+  if (r.verdict === "hold" || r.verdict === "refuse") {
+    return {
+      kind: "code",
+      did: r.verdict === "hold" ? "held" : "refused",
+      rule: r.checked.firstBlocking,
+    };
+  }
+  return { kind: "none" };
 }

@@ -1,11 +1,13 @@
 // The testnet demo vault's evidence in docs/evidence/demo-vault: the site and the README point to it, so it has to hold
 // up on its own. The verifier runs on the committed snapshot, and every file is tied to the chain data in it.
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runChecks, type Snapshot } from "@probarion/core";
 import { describe, expect, it } from "vitest";
+import { decisionRows } from "@/lib/proof/decisions";
+import { paymentsCsv } from "@/lib/proof/payments-csv";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 const EVIDENCE = join(ROOT, "docs", "evidence", "demo-vault");
@@ -47,7 +49,7 @@ const deployment = JSON.parse(
     ledger_key: string;
     anchors: number;
     evidence: string;
-    spends: { id: number; invoice: string; amount: string }[];
+    spends: { id: number; invoice: string; amount: string; spend_tx: string }[];
     refusals: { invoice: string; rule: string; ledger_seq: number }[];
     verify: { result: string; passed: number };
   };
@@ -140,5 +142,52 @@ describe("the testnet demo vault's evidence", () => {
       "decision",
       "payment",
     ]);
+  });
+});
+
+describe("the testnet demo vault's payments CSV", () => {
+  const FILE = "payments-2026-11-09.csv";
+
+  it("is the payments CSV of the committed snapshot, byte for byte", async () => {
+    const csv = paymentsCsv(await decisionRows(snapshot, "testnet"), snapshot.taken_at);
+    const path = join(EVIDENCE, FILE);
+    // This test wrote the file. After a deliberate change to the CSV, delete it and run the test again (not on CI,
+    // where a missing file fails).
+    if (!existsSync(path) && !process.env.CI) writeFileSync(path, csv, "utf8");
+    const committed = bytes(FILE);
+    expect(committed.toString("utf8"), `${FILE} drifted from paymentsCsv`).toBe(csv);
+    // .gitattributes keeps the CRLF line ends and the BOM as written: git does not convert the file.
+    expect([...committed.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(committed.toString("utf8").split("\r\n")).toHaveLength(7);
+    expect(committed.toString("utf8").replaceAll("\r\n", "")).not.toContain("\n");
+    expect(readFileSync(join(ROOT, ".gitattributes"), "utf8")).toMatch(
+      /^docs\/evidence\/demo-vault\/\*\.csv -text$/m,
+    );
+  });
+
+  it("lists the five decisions newest first, joined to their payment entries and to the chain", async () => {
+    const lines = paymentsCsv(await decisionRows(snapshot, "testnet"), snapshot.taken_at)
+      .slice(1)
+      .split("\r\n")
+      .filter((l) => l !== "");
+    const [header, ...rows] = lines;
+    expect(header).toBe(
+      "Date (UTC),Mandate,Label,Payee,Amount (USDC),Decision,Reason,Spend id,Status now (chain read 2026-11-09 11:58:06 UTC),Transaction,Explorer link,Invoice SHA-256,Ledger seq",
+    );
+    expect(rows.map((r) => r.split(",").at(-1))).toEqual(["5", "4", "3", "1", "0"]);
+    const tx = (hash: string) => `${hash},https://testnet.nearblocks.io/txns/${hash}`;
+    // INV-2003: the payment entry says held; the chain says paid, after the approver's approve.
+    expect(rows[0]).toBe(
+      `2026-11-09 11:53:32,1,Sample PO-1001,probarion-payee.testnet,4,allow,"above the mandate's approval limit, the contract held it for an approver (payment entry at seq 6)",2,paid,${tx(demo.spends[1]?.spend_tx ?? "")},${sha256("invoice-INV-2003.txt")},5`,
+    );
+    // INV-2002, the changed bank: refused by code, nothing sent.
+    // The reason holds a comma, so it is quoted.
+    expect(rows[2]).toBe(
+      `2026-11-09 11:49:20,1,Sample PO-1001,probarion-payee.testnet,2,refuse,"refused by mandate.payee_mismatch, nothing sent: invoice names NEAR account new-account.testnet; the mandate pays probarion-payee.testnet",,no spend,,,${sha256("invoice-INV-2002.txt")},3`,
+    );
+    // INV-2001: paid by spend 1.
+    expect(rows[3]).toBe(
+      `2026-11-09 11:47:27,1,Sample PO-1001,probarion-payee.testnet,2,allow,,1,paid,${tx(demo.spends[0]?.spend_tx ?? "")},${sha256("invoice-INV-2001.txt")},1`,
+    );
   });
 });

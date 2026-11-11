@@ -115,11 +115,14 @@ vi.mock("@/lib/env", async () => {
 import Home from "@/app/page";
 import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
 import ProofPage, { generateMetadata } from "@/app/proof/[vault]/page";
+import { GET as GET_PAYMENTS } from "@/app/proof/[vault]/payments.csv/route";
 import { GET } from "@/app/proof/[vault]/snapshot.json/route";
 import ProofIndex from "@/app/proof/page";
 import { ProofLimited, ProofView } from "@/components/proof/ProofView";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { TamperPanel } from "@/components/site/TamperPanel";
+import { decisionRows } from "@/lib/proof/decisions";
+import { paymentsCsv } from "@/lib/proof/payments-csv";
 import { SITE_NAV } from "@/lib/routes";
 
 /** True when the text still holds a right-to-left override, a line separator or a BEL. */
@@ -405,6 +408,27 @@ describe("/proof/[vault]", () => {
     );
     expect(out).toContain(`href="/proof/${snapshot.vault}/ledger.jsonl"`);
     if (!CLI_ON_NPM) expect(t).not.toContain("npx probarion");
+  });
+
+  it("offers the payments CSV next to snapshot.json, named by the route, in the same pill row", async () => {
+    const { snapshot, out } = await served("ok", "testnet");
+    const snap = out.indexOf(`href="/proof/${snapshot.vault}/snapshot.json"`);
+    const csv = out.indexOf(`href="/proof/${snapshot.vault}/payments.csv"`);
+    const verify = out.indexOf(`href="#verify"`);
+    expect(snap).toBeGreaterThan(-1);
+    expect(csv).toBeGreaterThan(snap);
+    expect(verify).toBeGreaterThan(csv);
+    // One link: a pill like "Verify it yourself", with a bare download attribute, so the file keeps the route's name.
+    expect(out.split("/payments.csv").length - 1).toBe(1);
+    const classOf = (href: string) => {
+      const end = out.indexOf(`" href="${href}"`);
+      return out.slice(out.lastIndexOf('<a class="', end) + '<a class="'.length, end);
+    };
+    expect(classOf("#verify")).not.toBe("");
+    expect(classOf(`/proof/${snapshot.vault}/payments.csv`)).toBe(classOf("#verify"));
+    expect(out).toContain(
+      `href="/proof/${snapshot.vault}/payments.csv" download="">Download payments (CSV)</a>`,
+    );
   });
 
   it("lists each decision of the checked snapshot under the checks, with its audit anchors (G7, G4)", async () => {
@@ -1017,6 +1041,130 @@ describe("/proof/[vault]/ledger.jsonl", () => {
   });
 });
 
+describe("/proof/[vault]/payments.csv", () => {
+  const getPayments = (vault: string) =>
+    GET_PAYMENTS(
+      new Request(`https://probarion.xyz/proof/${vault}/payments.csv`, {
+        headers: { "x-forwarded-for": "203.0.113.7" },
+      }),
+      params(vault),
+    );
+  const member = (
+    vault: string,
+    network: "mainnet" | "testnet" = "mainnet",
+  ): Partial<ProofDeps> => ({
+    publicDb: { rpc: async <T>() => null as T },
+    serviceDb: {
+      rpc: async <T>(fn: string) =>
+        (fn === "member_role"
+          ? {
+              tenant_id: "00000000-0000-0000-0000-000000000001",
+              vault_id: vault,
+              network,
+              kind: "external",
+              role: "owner",
+            }
+          : null) as T,
+    },
+    sessionAccount: "owner.near",
+  });
+
+  it("answers 404 for an invalid vault id, before any database or RPC call", async () => {
+    for (const bad of ["..", "Not A Vault", "a", 'x"; filename="evil']) {
+      const res = await getPayments(bad);
+      expect(res.status, bad).toBe(404);
+      expect(await res.json()).toEqual({ error: "not_found" });
+    }
+    expect(h.limitCalls).toEqual([]);
+    expect(h.depsCalls).toBe(0);
+  });
+
+  it("downloads a public vault's payments as CSV, named after the vault and the snapshot's capture time", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    const res = await getPayments(snapshot.vault);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
+    expect(res.headers.get("content-disposition")).toBe(
+      `attachment; filename="${snapshot.vault}-payments-20261108T120000Z.csv"`,
+    );
+    expect(res.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
+    const body = new TextDecoder("utf-8", { ignoreBOM: true }).decode(await res.arrayBuffer());
+    expect(body).toBe(
+      paymentsCsv(await decisionRows(snapshot, snapshot.network), snapshot.taken_at),
+    );
+    const lines = body.split("\r\n");
+    expect(lines[0]).toContain("Status now (chain read 2026-11-08 12:00:00 UTC)");
+    expect(lines[1]).toContain(",paid,");
+    expect(lines).toHaveLength(3);
+    // Its own bucket key, under snapshot.json's limit.
+    expect(h.limitCalls).toEqual(["payments:203.0.113.7"]);
+  });
+
+  it("is never cached for a member's view of a private vault", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot, member(snapshot.vault));
+    const res = await getPayments(snapshot.vault);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("answers 404 for a vault whose proof page is not public, to anyone who is not a member", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot, { publicDb: { rpc: async <T>() => null as T } });
+    const res = await getPayments(snapshot.vault);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    expect((await getPayments("nobody.vaults.probarion.near")).status).toBe(404);
+  });
+
+  it("answers 404 for a vault registered on the other network", async () => {
+    // A testnet vault, asked for at the mainnet address: public there, and a member's alike.
+    const snapshot = await proofSnapshot("ok", { network: "testnet" });
+    serve(snapshot, { network: "mainnet" });
+    const res = await getPayments(snapshot.vault);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    clearProofCache();
+    serve(snapshot, { network: "mainnet", ...member(snapshot.vault, "testnet") });
+    expect((await getPayments(snapshot.vault)).status).toBe(404);
+  });
+
+  it("answers 429 with Retry-After when rate-limited, and reads nothing", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot);
+    h.allowed = false;
+    const limited = await getPayments(snapshot.vault);
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toMatch(/^\d+$/);
+    expect(h.depsCalls).toBe(0);
+  });
+
+  it("answers 503 when the chain cannot be read, or the decision rows cannot be built", async () => {
+    const snapshot = await proofSnapshot("ok");
+    serve(snapshot, {
+      makeReader: () => ({
+        snapshot: async () => {
+          throw new Error("RPC down");
+        },
+      }),
+    });
+    const down = await getPayments(snapshot.vault);
+    expect(down.status).toBe(503);
+    expect(await down.json()).toEqual({ error: "unavailable" });
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.unavailable", reason: "chain" }]);
+
+    clearProofCache();
+    h.warned = [];
+    serve(snapshot);
+    h.rowsDown = true;
+    const rows = await getPayments(snapshot.vault);
+    expect(rows.status).toBe(503);
+    expect(await rows.json()).toEqual({ error: "unavailable" });
+    expect(warnedReasons()).toMatchObject([{ msg: "proof.decisions_unavailable" }]);
+  });
+});
+
 describe("a database error before the access check", () => {
   it("shows the page's no-result state, and both downloads answer 503", async () => {
     const snapshot = await proofSnapshot("ok");
@@ -1058,6 +1206,7 @@ describe("a database error before the access check", () => {
 describe.each([
   { name: "snapshot.json", route: GET },
   { name: "ledger.jsonl", route: GET_LEDGER },
+  { name: "payments.csv", route: GET_PAYMENTS },
 ])("/proof/[vault]/$name when the database fails", ({ name, route }) => {
   const answer = (vault: string) =>
     route(

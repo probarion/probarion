@@ -66,3 +66,9 @@ To read the chain again instead, download the vault's current ledger from its pr
 `npx probarion verify --network testnet --vault demo.vaults.probarion.testnet --ledger <file>`. The vault may have
 acted since, so the counts can be higher than here. [`ledger-2026-11-09.jsonl`](ledger-2026-11-09.jsonl) is the
 ledger as the proof page served it after the run: seven entries, five decisions and two payment results.
+
+[`payments-2026-11-09.csv`](payments-2026-11-09.csv) is that snapshot as the proof page's payments download
+(`/proof/<vault>/payments.csv`) writes it, for a spreadsheet: one row per decision, newest first, with its payment
+entry and its spend's status on chain when the snapshot read it. Spend 2 reads `paid` there, though its payment entry
+says `held`: the approver paid it on chain before the snapshot. `apps/web/test/demo-vault.test.ts` makes the file from
+the snapshot and fails when the committed copy differs by a byte.
