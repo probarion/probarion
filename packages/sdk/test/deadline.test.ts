@@ -364,6 +364,79 @@ describe("NearApiJsSender sendTimeoutMs as a function", () => {
     });
   });
 
+  // A function that throws is no time either: each step refuses as it does under the floor, and says what was thrown.
+  // Thrown on raw, the error would lose the hash of a transaction already sent, or pass for one that may have run.
+  describe("when the function throws", () => {
+    const refusing = { send: () => Promise.reject(invalidNonce()), status: unknownToNode };
+    /** 2000 ms at every read but read `n` (counted from 1), which throws. */
+    const throwsAt = (n: number) => {
+      let read = 0;
+      return () => {
+        read += 1;
+        if (read === n) throw new Error("clock unavailable");
+        return 2000;
+      };
+    };
+    const threw = "the time left could not be read";
+    const why = "sendTimeoutMs threw: clock unavailable";
+
+    it("signs and sends nothing when it throws before signing or before the send: TxSendFailed", async () => {
+      for (const [n, step] of [
+        [1, "signing"],
+        [2, "sending"],
+      ] as const) {
+        const { s, sent, calls } = sender(throwsAt(n), {});
+        const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as ProbarionError;
+        expect(error, step).toBeInstanceOf(ProbarionError);
+        expect(error, step).not.toBeInstanceOf(TxOutcomeUnknownError);
+        expect(error.code, step).toBe("TxSendFailed");
+        expect(error.message, step).toBe(
+          `spend transaction could not be sent (nothing was sent): ${threw} before ${step} it (${why})`,
+        );
+        expect((error.cause as Error | undefined)?.message, step).toBe("clock unavailable");
+        expect(sent, step).toHaveLength(0);
+        if (n === 1) expect(calls).toEqual([]);
+      }
+    });
+
+    it("keeps the outcome unknown, with the hash that was sent, when it throws at the lookup after an InvalidNonce", async () => {
+      // signing, the send (refused), then the read for the lookup of the transaction just sent throws
+      const { s, sent, statusCalls } = sender(throwsAt(3), refusing);
+      const error = (await s
+        .functionCall(spendTx)
+        .catch((e: unknown) => e)) as TxOutcomeUnknownError;
+      expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+      expect(sent).toHaveLength(1);
+      const signed = sent[0]?.signed;
+      if (signed === undefined) throw new Error("nothing sent");
+      expect(error.txHash).toBe(txHashOf(signed));
+      expect(error.message).toContain(`${threw} before the node could be asked (${why})`);
+      expect(statusCalls).toHaveLength(0);
+    });
+
+    it("ends as the node's InvalidNonce refusal when it throws before a fresh signature or its send", async () => {
+      for (const n of [4, 5]) {
+        const { s, sent } = sender(throwsAt(n), refusing);
+        const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as TxRejectedError;
+        expect(error, String(n)).toBeInstanceOf(TxRejectedError);
+        expect(error.kind, String(n)).toBe("InvalidNonce");
+        expect(error.message, String(n)).toContain(
+          `the node refused the key's nonce, and ${threw} before a fresh signature could be sent (${why})`,
+        );
+        expect(sent, String(n)).toHaveLength(1);
+      }
+    });
+
+    it("keeps the hash in a TxOutcomeUnknownError when it throws at a caller's lookup", async () => {
+      const { s, statusCalls } = sender(throwsAt(1), { status: paid });
+      const error = (await s.lookup(HASH).catch((e: unknown) => e)) as TxOutcomeUnknownError;
+      expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+      expect(error.txHash).toBe(HASH);
+      expect(error.message).toContain(`${threw} before the node could be asked (${why})`);
+      expect(statusCalls).toHaveLength(0);
+    });
+  });
+
   it("does not turn a deadline longer than a timer can hold into 1 ms", async () => {
     // a timer longer than 2^31 - 1 ms fires after 1 ms; the send here answers after 20 ms
     const late = () =>

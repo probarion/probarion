@@ -93,8 +93,8 @@ export interface TxOutcome {
  * - It throws `TxRejectedError`: the node refused the signed transaction before running it (no
  *   allowance, a removed key, a bad signature, a nonce it would not accept). Nothing changed.
  * - It throws `TxSendFailed` (a `ProbarionError`): the transaction could not even be built and
- *   signed, or the caller's time left was too short to sign or send it (`sendTimeoutMs` as a
- *   function). Nothing was sent, so sending again is safe.
+ *   signed, or the caller's time left was too short to sign or send it, or could not be read
+ *   (`sendTimeoutMs` as a function). Nothing was sent, so sending again is safe.
  * - It throws `ConfigError`: the sender is not set up for this call.
  * - It throws `TxOutcomeUnknownError`: the transaction WAS sent and its outcome is not known. It
  *   may have run. The caller (the payment flow) must record the error's `txHash` and `signerId`
@@ -403,12 +403,26 @@ function balanceRefusal(error: Error): TxOutcome | null {
   return null;
 }
 
+/** Why a step may not start: the caller's time left was too short, or reading it threw (`cause`). */
+interface NoTime {
+  /** What happened, followed in a message by "before <the step>". */
+  readonly what: string;
+  /** In brackets after the step: the floor, or what reading the time threw. */
+  readonly detail: string;
+  readonly cause?: unknown;
+}
+
+const TOO_LITTLE_TIME: NoTime = {
+  what: "the time left ran out",
+  detail: `less than ${MIN_CALL_MS} ms`,
+};
+
 /**
  * Any other typed refusal: the node looked at the signed transaction and refused it before running anything.
- * `ranOut` says the sender stopped re-signing after an `InvalidNonce` because the caller's time ran out, not because
- * its retries did.
+ * `ranOut` says the sender stopped re-signing after an `InvalidNonce` because the caller's time ran out (or could not
+ * be read), not because its retries did.
  */
-function rejectionOf(tx: FunctionCallTx, error: Error, ranOut = false): TxRejectedError {
+function rejectionOf(tx: FunctionCallTx, error: Error, ranOut?: NoTime): TxRejectedError {
   const detail = messageOf(error);
   let kind = error.name.replace(/(?:ActionError|Error)$/, "") || error.name;
   let text = detail;
@@ -424,7 +438,7 @@ function rejectionOf(tx: FunctionCallTx, error: Error, ranOut = false): TxReject
   } else if (error instanceof InvalidNonceError) {
     kind = "InvalidNonce";
     text = ranOut
-      ? `the node refused the key's nonce, and the time left ran out before a fresh signature could be sent (less than ${MIN_CALL_MS} ms). (${detail})`
+      ? `the node refused the key's nonce, and ${ranOut.what} before a fresh signature could be sent (${ranOut.detail}). (${detail})`
       : `the node kept refusing the key's nonce after ${NONCE_RETRIES} fresh signatures. (${detail})`;
   }
   return new TxRejectedError(
@@ -447,10 +461,10 @@ export interface NearApiJsSenderOptions {
    * A function is read at the start of EVERY step, so a caller with a deadline can pass the time it has left (at most
    * the step's own cap). A step starts only when the answer is a finite number of at least `MIN_CALL_MS` (50 ms): with
    * less, a step could only time out, and a send that times out may still land. NaN or Infinity is never taken for no
-   * limit. A signing or a send that is not started throws `TxSendFailed` (nothing was sent), or, after an `InvalidNonce`
-   * the node confirmed (see the class), that `TxRejectedError`. A lookup that is not started throws
-   * `TxOutcomeUnknownError` with its hash. A fixed value is used as it is. A deadline longer than a timer holds (about
-   * 24.8 days) is cut to that.
+   * limit, and a function that throws counts as no time (the error names what it threw). A signing or a send that is
+   * not started throws `TxSendFailed` (nothing was sent), or, after an `InvalidNonce` the node confirmed (see the
+   * class), that `TxRejectedError`. A lookup that is not started throws `TxOutcomeUnknownError` with its hash. A fixed
+   * value is used as it is. A deadline longer than a timer holds (about 24.8 days) is cut to that.
    */
   sendTimeoutMs?: number | (() => number);
 }
@@ -473,11 +487,11 @@ export interface NearApiJsSenderOptions {
  * not final), the result is `TxOutcomeUnknownError` with the previous hash.
  *
  * With `sendTimeoutMs` as a function, no step starts with less than `MIN_CALL_MS` of the caller's
- * time left. A refused signing or send is `TxSendFailed` while nothing was sent yet. After an
- * `InvalidNonce` that the node confirmed (it does not know the transaction), it is that refusal,
- * as when the retries run out: a transaction was sent, so "nothing was sent" would be false, and
- * that answer of the node is what a fresh signature relies on too. A refused lookup leaves the
- * outcome unknown, with its hash.
+ * time left, nor when the function throws. A refused signing or send is `TxSendFailed` while
+ * nothing was sent yet. After an `InvalidNonce` that the node confirmed (it does not know the
+ * transaction), it is that refusal, as when the retries run out: a transaction was sent, so
+ * "nothing was sent" would be false, and that answer of the node is what a fresh signature relies
+ * on too. A refused lookup leaves the outcome unknown, with its hash.
  */
 export class NearApiJsSender implements TxSender {
   readonly accountId: string;
@@ -486,8 +500,8 @@ export class NearApiJsSender implements TxSender {
   readonly #signer: KeyPairSigner;
   readonly #rpcUrl: string | (() => string);
   readonly #createProvider: (url: string) => Provider;
-  /** The deadline of the next step, or null when the caller's time left is too short to start one. */
-  readonly #stepMs: () => number | null;
+  /** The deadline of the next step, or why none may start (the caller's time left is too short, or cannot be read). */
+  readonly #stepMs: () => number | NoTime;
 
   constructor(opts: NearApiJsSenderOptions) {
     this.accountId = opts.accountId;
@@ -510,10 +524,22 @@ export class NearApiJsSender implements TxSender {
     this.#stepMs =
       typeof timeout === "function"
         ? () => {
-            const ms = timeout();
+            let ms: number;
+            try {
+              ms = timeout();
+            } catch (error) {
+              // A time left that cannot be read is no time either. Thrown on as it is, the error would lose the
+              // hash of a transaction already sent (the lookup after an InvalidNonce), and before any send it would
+              // read as "maybe sent".
+              return {
+                what: "the time left could not be read",
+                detail: `sendTimeoutMs threw: ${messageOf(error)}`,
+                cause: error,
+              };
+            }
             // Below the floor a step could only time out (a timer can fire a little before the deadline), and a send
             // that times out may still land. NaN and the infinities are no time at all, never no limit.
-            return Number.isFinite(ms) && ms >= MIN_CALL_MS ? ms : null;
+            return Number.isFinite(ms) && ms >= MIN_CALL_MS ? ms : TOO_LITTLE_TIME;
           }
         : () => timeout;
   }
@@ -528,13 +554,13 @@ export class NearApiJsSender implements TxSender {
     let refused: InvalidNonceError | null = null;
     for (let attempt = 0; ; attempt++) {
       const signMs = this.#stepMs();
-      if (signMs === null) throw this.ranOut(tx, "signing", refused);
+      if (typeof signMs !== "number") throw this.ranOut(tx, "signing", refused, signMs);
       const provider = this.#provider();
       const signed = await this.sign(provider, tx, signMs);
       const txHash = hashOfSigned(signed);
       // Checked after signing, which took its time: a send that is not started leaves nothing of this signature out.
       const sendMs = this.#stepMs();
-      if (sendMs === null) throw this.ranOut(tx, "sending", refused);
+      if (typeof sendMs !== "number") throw this.ranOut(tx, "sending", refused, sendMs);
       let raw: unknown;
       try {
         raw = await withDeadline(
@@ -605,12 +631,13 @@ export class NearApiJsSender implements TxSender {
   ): Promise<{ known: true; raw: unknown } | { known: false }> {
     const ms = this.#stepMs();
     // A lookup is of a transaction that was sent: one that cannot start leaves its outcome unknown, never "not sent".
-    if (ms === null) {
+    if (typeof ms !== "number") {
       throw this.unknown(
         label,
         txHash,
         new Error(
-          `the time left ran out before the node could be asked (less than ${MIN_CALL_MS} ms); no lookup was made`,
+          `${ms.what} before the node could be asked (${ms.detail}); no lookup was made`,
+          ms.cause === undefined ? undefined : { cause: ms.cause },
         ),
       );
     }
@@ -659,19 +686,21 @@ export class NearApiJsSender implements TxSender {
   }
 
   /**
-   * A signing or a send not started for lack of the caller's time. Nothing of this signature left the process. With no
-   * transaction sent yet that is `TxSendFailed`. After the node refused the last one with `InvalidNonce` and said it does
-   * not know it (`refused`), it is that refusal, the error the retries end with too: nothing ran.
+   * A signing or a send not started for lack of the caller's time (`why`). Nothing of this signature left the process.
+   * With no transaction sent yet that is `TxSendFailed`. After the node refused the last one with `InvalidNonce` and said
+   * it does not know it (`refused`), it is that refusal, the error the retries end with too: nothing ran.
    */
   private ranOut(
     tx: FunctionCallTx,
     step: "signing" | "sending",
     refused: InvalidNonceError | null,
+    why: NoTime,
   ): ProbarionError {
-    if (refused !== null) return rejectionOf(tx, refused, true);
+    if (refused !== null) return rejectionOf(tx, refused, why);
     return new ProbarionError(
-      `${tx.methodName} transaction could not be sent (nothing was sent): the time left ran out before ${step} it (less than ${MIN_CALL_MS} ms)`,
+      `${tx.methodName} transaction could not be sent (nothing was sent): ${why.what} before ${step} it (${why.detail})`,
       "TxSendFailed",
+      why.cause === undefined ? undefined : { cause: redactedCopy(why.cause) },
     );
   }
 
