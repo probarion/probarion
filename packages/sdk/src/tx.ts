@@ -22,6 +22,7 @@ import {
   UnknownTransactionError,
   UnknownTransactionOrReceiptError,
 } from "near-api-js/rpc-errors";
+import { MIN_CALL_MS } from "./deadline.js";
 import {
   ConfigError,
   extractProbarionCode,
@@ -92,7 +93,8 @@ export interface TxOutcome {
  * - It throws `TxRejectedError`: the node refused the signed transaction before running it (no
  *   allowance, a removed key, a bad signature, a nonce it would not accept). Nothing changed.
  * - It throws `TxSendFailed` (a `ProbarionError`): the transaction could not even be built and
- *   signed. Nothing was sent, so sending again is safe.
+ *   signed, or the caller's time left was too short to sign or send it (`sendTimeoutMs` as a
+ *   function). Nothing was sent, so sending again is safe.
  * - It throws `ConfigError`: the sender is not set up for this call.
  * - It throws `TxOutcomeUnknownError`: the transaction WAS sent and its outcome is not known. It
  *   may have run. The caller (the payment flow) must record the error's `txHash` and `signerId`
@@ -327,11 +329,17 @@ class DeadlineError extends Error {
   override name = "DeadlineExceeded";
 }
 
-/** Reject after `ms`. The work itself cannot be cancelled; its late result or error is ignored. */
+/** The longest delay a timer holds (2^31 - 1 ms, about 24.8 days). Node.js fires a longer one after 1 ms. */
+const MAX_TIMER_MS = 2_147_483_647;
+
+/**
+ * Reject after `ms`, cut to `MAX_TIMER_MS`. The work itself cannot be cancelled; its late result or error is ignored.
+ */
 async function withDeadline<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  const wait = Math.min(ms, MAX_TIMER_MS);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new DeadlineError(`${what} timed out after ${ms} ms`)), ms);
+    timer = setTimeout(() => reject(new DeadlineError(`${what} timed out after ${wait} ms`)), wait);
   });
   try {
     return await Promise.race([work, deadline]);
@@ -395,8 +403,12 @@ function balanceRefusal(error: Error): TxOutcome | null {
   return null;
 }
 
-/** Any other typed refusal: the node looked at the signed transaction and refused it before running anything. */
-function rejectionOf(tx: FunctionCallTx, error: Error): TxRejectedError {
+/**
+ * Any other typed refusal: the node looked at the signed transaction and refused it before running anything.
+ * `ranOut` says the sender stopped re-signing after an `InvalidNonce` because the caller's time ran out, not because
+ * its retries did.
+ */
+function rejectionOf(tx: FunctionCallTx, error: Error, ranOut = false): TxRejectedError {
   const detail = messageOf(error);
   let kind = error.name.replace(/(?:ActionError|Error)$/, "") || error.name;
   let text = detail;
@@ -411,7 +423,9 @@ function rejectionOf(tx: FunctionCallTx, error: Error): TxRejectedError {
     text = `the ${keyRole(tx.methodName)} is not on the vault account (removed, or never added). (${detail})`;
   } else if (error instanceof InvalidNonceError) {
     kind = "InvalidNonce";
-    text = `the node kept refusing the key's nonce after ${NONCE_RETRIES} fresh signatures. (${detail})`;
+    text = ranOut
+      ? `the node refused the key's nonce, and the time left ran out before a fresh signature could be sent (less than ${MIN_CALL_MS} ms). (${detail})`
+      : `the node kept refusing the key's nonce after ${NONCE_RETRIES} fresh signatures. (${detail})`;
   }
   return new TxRejectedError(
     `${tx.methodName} transaction refused by the node before it ran (nothing changed): ${kind}: ${text}`,
@@ -431,7 +445,12 @@ export interface NearApiJsSenderOptions {
    * milliseconds, default 90 000. A send that runs out of time throws `TxOutcomeUnknownError`.
    *
    * A function is read at the start of EVERY step, so a caller with a deadline can pass the time it has left (at most
-   * the step's own cap). An answer that is not a positive number counts as the least time (1 ms), never as no limit.
+   * the step's own cap). A step starts only when the answer is a finite number of at least `MIN_CALL_MS` (50 ms): with
+   * less, a step could only time out, and a send that times out may still land. NaN or Infinity is never taken for no
+   * limit. A signing or a send that is not started throws `TxSendFailed` (nothing was sent), or, after an `InvalidNonce`
+   * the node confirmed (see the class), that `TxRejectedError`. A lookup that is not started throws
+   * `TxOutcomeUnknownError` with its hash. A fixed value is used as it is. A deadline longer than a timer holds (about
+   * 24.8 days) is cut to that.
    */
   sendTimeoutMs?: number | (() => number);
 }
@@ -452,6 +471,13 @@ export interface NearApiJsSenderOptions {
  * does not know the transaction it sent. If that transaction is final, its outcome is returned and
  * nothing new is signed. If the node cannot say (a transport error, a deadline, a result that is
  * not final), the result is `TxOutcomeUnknownError` with the previous hash.
+ *
+ * With `sendTimeoutMs` as a function, no step starts with less than `MIN_CALL_MS` of the caller's
+ * time left. A refused signing or send is `TxSendFailed` while nothing was sent yet. After an
+ * `InvalidNonce` that the node confirmed (it does not know the transaction), it is that refusal,
+ * as when the retries run out: a transaction was sent, so "nothing was sent" would be false, and
+ * that answer of the node is what a fresh signature relies on too. A refused lookup leaves the
+ * outcome unknown, with its hash.
  */
 export class NearApiJsSender implements TxSender {
   readonly accountId: string;
@@ -460,7 +486,8 @@ export class NearApiJsSender implements TxSender {
   readonly #signer: KeyPairSigner;
   readonly #rpcUrl: string | (() => string);
   readonly #createProvider: (url: string) => Provider;
-  readonly #sendTimeoutMs: () => number;
+  /** The deadline of the next step, or null when the caller's time left is too short to start one. */
+  readonly #stepMs: () => number | null;
 
   constructor(opts: NearApiJsSenderOptions) {
     this.accountId = opts.accountId;
@@ -480,11 +507,13 @@ export class NearApiJsSender implements TxSender {
     this.#signer = KeyPairSigner.fromSecretKey(opts.secretKey as KeyPairString);
     this.#rpcUrl = opts.rpcUrl;
     this.#createProvider = opts.createProvider ?? ((url) => new JsonRpcProvider({ url }));
-    this.#sendTimeoutMs =
+    this.#stepMs =
       typeof timeout === "function"
         ? () => {
             const ms = timeout();
-            return Number.isFinite(ms) && ms > 0 ? ms : 1;
+            // Below the floor a step could only time out (a timer can fire a little before the deadline), and a send
+            // that times out may still land. NaN and the infinities are no time at all, never no limit.
+            return Number.isFinite(ms) && ms >= MIN_CALL_MS ? ms : null;
           }
         : () => timeout;
   }
@@ -495,15 +524,22 @@ export class NearApiJsSender implements TxSender {
 
   async functionCall(tx: FunctionCallTx): Promise<TxOutcome> {
     const label = `${tx.methodName} transaction`;
+    // The node's InvalidNonce for the last transaction sent, once the node also said it does not know that transaction.
+    let refused: InvalidNonceError | null = null;
     for (let attempt = 0; ; attempt++) {
+      const signMs = this.#stepMs();
+      if (signMs === null) throw this.ranOut(tx, "signing", refused);
       const provider = this.#provider();
-      const signed = await this.sign(provider, tx);
+      const signed = await this.sign(provider, tx, signMs);
       const txHash = hashOfSigned(signed);
+      // Checked after signing, which took its time: a send that is not started leaves nothing of this signature out.
+      const sendMs = this.#stepMs();
+      if (sendMs === null) throw this.ranOut(tx, "sending", refused);
       let raw: unknown;
       try {
         raw = await withDeadline(
           provider.sendTransactionUntil(signed, "FINAL"),
-          this.#sendTimeoutMs(),
+          sendMs,
           `${tx.methodName} transaction ${txHash}`,
         );
       } catch (error) {
@@ -515,7 +551,10 @@ export class NearApiJsSender implements TxSender {
           // ask the same node about the transaction just sent before signing anything new.
           const landed = await this.settled(provider, label, txHash);
           if (landed !== null) return landed;
-          if (attempt < NONCE_RETRIES) continue;
+          if (attempt < NONCE_RETRIES) {
+            refused = error;
+            continue;
+          }
         }
         if (isTypedRefusal(error)) {
           const balance = balanceRefusal(error);
@@ -564,10 +603,21 @@ export class NearApiJsSender implements TxSender {
     label: string,
     txHash: string,
   ): Promise<{ known: true; raw: unknown } | { known: false }> {
+    const ms = this.#stepMs();
+    // A lookup is of a transaction that was sent: one that cannot start leaves its outcome unknown, never "not sent".
+    if (ms === null) {
+      throw this.unknown(
+        label,
+        txHash,
+        new Error(
+          `the time left ran out before the node could be asked (less than ${MIN_CALL_MS} ms); no lookup was made`,
+        ),
+      );
+    }
     try {
       const raw: unknown = await withDeadline(
         provider.viewTransactionStatus({ txHash, accountId: this.accountId, waitUntil: "FINAL" }),
-        this.#sendTimeoutMs(),
+        ms,
         `lookup of transaction ${txHash}`,
       );
       return { known: true, raw };
@@ -582,8 +632,12 @@ export class NearApiJsSender implements TxSender {
     }
   }
 
-  /** Build and sign. Nothing leaves the process here, so any failure is definite: `TxSendFailed`. */
-  private async sign(provider: Provider, tx: FunctionCallTx): Promise<SignedTransaction> {
+  /** Build and sign, within `ms`. Nothing leaves the process here, so any failure is definite: `TxSendFailed`. */
+  private async sign(
+    provider: Provider,
+    tx: FunctionCallTx,
+    ms: number,
+  ): Promise<SignedTransaction> {
     try {
       const account = new Account(this.accountId, provider, this.#signer);
       return await withDeadline(
@@ -592,7 +646,7 @@ export class NearApiJsSender implements TxSender {
           actions: [actions.functionCall(tx.methodName, tx.args, tx.gas, tx.deposit)],
           signer: this.#signer,
         }),
-        this.#sendTimeoutMs(),
+        ms,
         `signing the ${tx.methodName} transaction`,
       );
     } catch (error) {
@@ -602,6 +656,23 @@ export class NearApiJsSender implements TxSender {
         { cause: redactedCopy(error) },
       );
     }
+  }
+
+  /**
+   * A signing or a send not started for lack of the caller's time. Nothing of this signature left the process. With no
+   * transaction sent yet that is `TxSendFailed`. After the node refused the last one with `InvalidNonce` and said it does
+   * not know it (`refused`), it is that refusal, the error the retries end with too: nothing ran.
+   */
+  private ranOut(
+    tx: FunctionCallTx,
+    step: "signing" | "sending",
+    refused: InvalidNonceError | null,
+  ): ProbarionError {
+    if (refused !== null) return rejectionOf(tx, refused, true);
+    return new ProbarionError(
+      `${tx.methodName} transaction could not be sent (nothing was sent): the time left ran out before ${step} it (less than ${MIN_CALL_MS} ms)`,
+      "TxSendFailed",
+    );
   }
 
   private finish(label: string, txHash: string, raw: unknown): TxOutcome {

@@ -1,13 +1,21 @@
 // The options that let a caller pass "the time I have left" to the SDK (plan 04 Task 17, ruling W-T17-R2): an overall
 // `remainingMs` on the RPC client and on the NEAR AI proposer, a `sendTimeoutMs` that may be a function on the transaction
 // sender, and a `knownModel` that skips the catalog and the probe. Every default is unchanged for other callers.
-// No call starts with less than MIN_CALL_MS left: the tests of that floor answer `remainingMs` with fixed values, so they
-// never race the clock.
+// No call starts with less than MIN_CALL_MS left: the tests of that floor answer `remainingMs` (and a `sendTimeoutMs`
+// function) with fixed values, so they never race the clock.
 import { createServer, type Server } from "node:http";
 import { generateKeyPair, sha256Hex, utf8 } from "@probarion/core";
+import { InvalidNonceError, UnknownTransactionError } from "near-api-js/rpc-errors";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MIN_CALL_MS } from "../src/deadline.js";
-import { ConfigError, NearAiError, RpcError } from "../src/errors.js";
+import {
+  ConfigError,
+  NearAiError,
+  ProbarionError,
+  RpcError,
+  TxOutcomeUnknownError,
+  TxRejectedError,
+} from "../src/errors.js";
 import { NearAiProposer } from "../src/nearai.js";
 import { RpcClient } from "../src/rpc.js";
 import {
@@ -16,7 +24,7 @@ import {
   FAKE_PRIVATE_MODEL,
 } from "../src/testing/index.js";
 import { type FunctionCallTx, NearApiJsSender } from "../src/tx.js";
-import { fakeProvider } from "./helpers/fake-provider.js";
+import { type FakeProviderOptions, fakeProvider, txHashOf } from "./helpers/fake-provider.js";
 
 const API_KEY = ["sk", "live", "0123456789abcdefghijkl"].join("-");
 const VAULT = "acme.vaults.probarion.testnet";
@@ -193,51 +201,179 @@ describe("RpcClient remainingMs", () => {
 });
 
 describe("NearApiJsSender sendTimeoutMs as a function", () => {
-  function sender(sendTimeoutMs: number | (() => number), blockHangs = true) {
-    const fake = fakeProvider({ blockHangs });
-    return new NearApiJsSender({
+  /** A sender over a fake provider; by default the provider's block read never answers, so signing hangs. */
+  function sender(
+    sendTimeoutMs: number | (() => number),
+    options: FakeProviderOptions = { blockHangs: true },
+  ) {
+    const fake = fakeProvider(options);
+    const s = new NearApiJsSender({
       accountId: VAULT,
       secretKey: key.secretKey,
       rpcUrl: () => "https://rpc.test",
       createProvider: () => fake.provider,
       sendTimeoutMs,
     });
+    return { s, ...fake };
   }
+
+  /** A time left that answers `values` in turn, one per read (one read per step), and the last one from then on. */
+  const answers = (...values: number[]) => {
+    let read = 0;
+    return () => values[Math.min(read++, values.length - 1)] ?? Number.NaN;
+  };
+  const never = () => new Promise<never>(() => {});
+  const invalidNonce = () => new InvalidNonceError(9, 8, "", "");
+  const unknownToNode = (args: unknown) => {
+    throw new UnknownTransactionError(String((args as { txHash: string }).txHash));
+  };
+  const paid = () => ({ status: { SuccessValue: "" } });
+  const HASH = "8Ha8qkqA9xVgG4xjxUeBGbv5RJz5bQ7Nqp1s4i8wQ2Wd";
 
   it("reads the function at each step and uses what it answers", async () => {
     let reads = 0;
-    const s = sender(() => {
+    const { s } = sender(() => {
       reads += 1;
-      return 25;
+      return 60;
     });
     const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as Error;
     // the stuck signing step: nothing was sent, and the deadline named is the one the function gave
-    expect(error.message).toContain("timed out after 25 ms");
-    expect(reads).toBeGreaterThanOrEqual(1);
+    expect(error.message).toContain("timed out after 60 ms");
+    expect(reads).toBe(1);
   });
 
   it("follows a time that shrinks: the next step gets what is left", async () => {
-    let left = 2000;
-    const answers: number[] = [];
-    const s = sender(() => {
-      answers.push(left);
-      left = 30;
-      return left;
-    });
-    const started = Date.now();
-    await s.functionCall(spendTx).catch(() => undefined);
-    expect(Date.now() - started).toBeLessThan(1500);
-    expect(answers[0]).toBe(2000);
+    // signing answers at once; the send never does, so it ends at the deadline of the second read
+    const { s, sent } = sender(answers(2000, 60), { send: never });
+    const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as Error;
+    expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+    expect(error.message).toContain("timed out after 60 ms");
+    expect(sent).toHaveLength(1);
   });
 
-  it("treats an answer that is not a positive number as the least time, not as no limit", async () => {
-    for (const bad of [0, -5, Number.NaN, Number.NEGATIVE_INFINITY]) {
-      const s = sender(() => bad);
-      const started = Date.now();
-      const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as Error;
-      expect(error, String(bad)).toBeInstanceOf(Error);
-      expect(error.message, String(bad)).toMatch(/timed out after 1 ms/);
-      expect(Date.now() - started, String(bad)).toBeLessThan(1500);
+  it("starts no step, and asks the node nothing, with less than MIN_CALL_MS left or a time that is not a finite number", async () => {
+    for (const left of [
+      0,
+      -5,
+      Number.NaN,
+      Number.NEGATIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      1,
+      49,
+    ]) {
+      const { s, calls } = sender(() => left);
+      const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as ProbarionError;
+      // nothing was signed or sent: a definite failure, never an unknown outcome
+      expect(error, String(left)).toBeInstanceOf(ProbarionError);
+      expect(error, String(left)).not.toBeInstanceOf(TxOutcomeUnknownError);
+      expect(error.code, String(left)).toBe("TxSendFailed");
+      expect(error.message, String(left)).toBe(
+        `spend transaction could not be sent (nothing was sent): the time left ran out before signing it (less than ${MIN_CALL_MS} ms)`,
+      );
+      expect(calls, String(left)).toEqual([]);
+    }
+  });
+
+  it("starts a step with exactly MIN_CALL_MS left, and gives it that as its deadline", async () => {
+    const { s, calls } = sender(() => 50);
+    const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as ProbarionError;
+    expect(error.code).toBe("TxSendFailed");
+    expect(error.message).toContain("timed out after 50 ms");
+    expect(calls).toContain("viewBlock");
+  });
+
+  it("sends nothing when the time runs out after signing, and says nothing was sent", async () => {
+    for (const left of [49, 0, Number.NaN]) {
+      const { s, sent, calls } = sender(answers(2000, left), {});
+      const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as ProbarionError;
+      expect(error, String(left)).toBeInstanceOf(ProbarionError);
+      expect(error, String(left)).not.toBeInstanceOf(TxOutcomeUnknownError);
+      expect(error.code, String(left)).toBe("TxSendFailed");
+      expect(error.message, String(left)).toBe(
+        `spend transaction could not be sent (nothing was sent): the time left ran out before sending it (less than ${MIN_CALL_MS} ms)`,
+      );
+      expect(sent, String(left)).toHaveLength(0);
+      expect(calls, String(left)).not.toContain("sendTransactionUntil");
+    }
+  });
+
+  it("keeps the hash in a TxOutcomeUnknownError when a lookup has too little time, and asks the node nothing", async () => {
+    for (const left of [49, 0, Number.NaN]) {
+      const { s, statusCalls } = sender(() => left, { status: paid });
+      const error = (await s.lookup(HASH).catch((e: unknown) => e)) as TxOutcomeUnknownError;
+      expect(error, String(left)).toBeInstanceOf(TxOutcomeUnknownError);
+      expect(error.txHash, String(left)).toBe(HASH);
+      expect(error.message, String(left)).toContain(
+        `the time left ran out before the node could be asked (less than ${MIN_CALL_MS} ms)`,
+      );
+      expect(statusCalls, String(left)).toHaveLength(0);
+    }
+    // with MIN_CALL_MS left the lookup is made
+    const { s, statusCalls } = sender(() => 50, { status: paid });
+    expect((await s.lookup(HASH)).ok).toBe(true);
+    expect(statusCalls).toHaveLength(1);
+  });
+
+  describe("after the node refused a send with InvalidNonce", () => {
+    const refusing = { send: () => Promise.reject(invalidNonce()), status: unknownToNode };
+
+    it("keeps the outcome unknown, with the hash that was sent, when the lookup of it has too little time", async () => {
+      // signing, the send (refused), then 49 ms for the lookup of the transaction just sent
+      const { s, sent, statusCalls } = sender(answers(2000, 2000, 49), refusing);
+      const error = (await s
+        .functionCall(spendTx)
+        .catch((e: unknown) => e)) as TxOutcomeUnknownError;
+      expect(error).toBeInstanceOf(TxOutcomeUnknownError);
+      expect(sent).toHaveLength(1);
+      const signed = sent[0]?.signed;
+      if (signed === undefined) throw new Error("nothing sent");
+      expect(error.txHash).toBe(txHashOf(signed));
+      expect(statusCalls).toHaveLength(0);
+    });
+
+    // The node refused the nonce of the transaction sent and said it does not know it: the same proof the sender signs
+    // again on, and the one a refusal after the last retry rests on. So the call ends as that refusal (nothing ran), not as
+    // "nothing was sent": a transaction was sent.
+    it("ends as the node's InvalidNonce refusal when the time runs out before a fresh signature", async () => {
+      // signing, the send (refused), the lookup (unknown to the node), then 49 ms for the fresh signature
+      const { s, sent, calls } = sender(answers(2000, 2000, 2000, 49), refusing);
+      const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as TxRejectedError;
+      expect(error).toBeInstanceOf(TxRejectedError);
+      expect(error.kind).toBe("InvalidNonce");
+      expect(error.message).toMatch(
+        /refused by the node before it ran \(nothing changed\): InvalidNonce: /,
+      );
+      expect(error.message).toContain(
+        `the node refused the key's nonce, and the time left ran out before a fresh signature could be sent (less than ${MIN_CALL_MS} ms)`,
+      );
+      expect(error.message).not.toContain("nothing was sent");
+      expect(sent).toHaveLength(1);
+      expect(calls.filter((c) => c === "viewAccessKey")).toHaveLength(1);
+    });
+
+    it("ends the same way when the time runs out after the fresh signature, before its send", async () => {
+      const { s, sent, calls } = sender(answers(2000, 2000, 2000, 2000, 49), refusing);
+      const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as TxRejectedError;
+      expect(error).toBeInstanceOf(TxRejectedError);
+      expect(error.kind).toBe("InvalidNonce");
+      expect(error.message).toContain(
+        "the time left ran out before a fresh signature could be sent",
+      );
+      expect(sent).toHaveLength(1);
+      expect(calls.filter((c) => c === "viewAccessKey")).toHaveLength(2);
+    });
+  });
+
+  it("does not turn a deadline longer than a timer can hold into 1 ms", async () => {
+    // a timer longer than 2^31 - 1 ms fires after 1 ms; the send here answers after 20 ms
+    const late = () =>
+      new Promise((resolve) => setTimeout(() => resolve({ status: { SuccessValue: "" } }), 20));
+    for (const ms of [2 ** 31, 1e12]) {
+      for (const sendTimeoutMs of [ms, () => ms]) {
+        const { s, sent } = sender(sendTimeoutMs, { send: late });
+        expect((await s.functionCall(spendTx)).ok, String(ms)).toBe(true);
+        expect(sent).toHaveLength(1);
+      }
     }
   });
 
@@ -246,6 +382,14 @@ describe("NearApiJsSender sendTimeoutMs as a function", () => {
       expect(() => sender(bad)).toThrow(ConfigError);
     }
     expect(() => sender(25)).not.toThrow();
+  });
+
+  it("keeps a fixed timeout below MIN_CALL_MS as it is: the floor is for the time a caller has left", async () => {
+    const { s, calls } = sender(25);
+    const error = (await s.functionCall(spendTx).catch((e: unknown) => e)) as ProbarionError;
+    expect(error.code).toBe("TxSendFailed");
+    expect(error.message).toContain("timed out after 25 ms");
+    expect(calls).toContain("viewBlock");
   });
 });
 
