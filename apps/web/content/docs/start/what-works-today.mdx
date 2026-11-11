@@ -24,7 +24,7 @@ The status list leaves these parts out, among others. Each one follows one row o
 | [npm release 0.1.0](#npm-release-010) | Live |
 | [Test USDC on testnet](#test-usdc-on-testnet) | Preview |
 | [Browser extension, server half](#browser-extension-server-half) | Preview |
-| [Browser extension for Chrome](#browser-extension-for-chrome) | Live |
+| [Browser extension for Chrome](#browser-extension-for-chrome) | Preview |
 | [Testnet and mainnet from one deployment](#testnet-and-mainnet-from-one-deployment) | Preview |
 | [Owner alerts by Telegram and email](#owner-alerts-by-telegram-and-email) | Preview |
 | [Watcher](#watcher) | Preview |
@@ -66,7 +66,7 @@ Code: [`apps/web/src/lib/ext`](https://github.com/probarion/probarion/tree/main/
 
 ### Browser extension for Chrome
 
-Live. Version 0.1.0 is published: install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn). To build it from source instead, load it unpacked from `apps/extension`, as [its README](https://github.com/probarion/probarion/blob/main/apps/extension/README.md) says. It connects from the `/extension` page or with a one-time code, shows on its toolbar badge and in its popup what waits for you, and queues an invoice from selected text, the PDF in the tab, a linked PDF on the same site, or a file, through the server half above. It cannot pay, approve or sign: a queued invoice waits for the owner's wallet-signed Confirm in the console.
+Preview. Version 0.1.0 is published: install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn). No end-to-end run of it with a real wallet against this deployment is recorded yet, so it stays Preview, like the server half it calls. To build it from source instead, load it unpacked from `apps/extension`, as [its README](https://github.com/probarion/probarion/blob/main/apps/extension/README.md) says. It connects from the `/extension` page or with a one-time code, shows on its toolbar badge and in its popup what waits for you, and queues an invoice from selected text, the PDF in the tab, a linked PDF on the same site, or a file, through the server half above. It cannot pay, approve or sign: a queued invoice waits for the owner's wallet-signed Confirm in the console.
 
 Code: [`apps/extension`](https://github.com/probarion/probarion/tree/main/apps/extension)
 

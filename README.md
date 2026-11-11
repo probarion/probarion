@@ -657,7 +657,7 @@ the Windows run of that day:
   install near-cli-rs.
 
 The browser extension's tests, added after that count, need no server and no Chrome:
-`pnpm --filter @probarion/extension test` (250 tests). `pnpm --filter @probarion/extension build`
+`pnpm --filter @probarion/extension test` (251 tests). `pnpm --filter @probarion/extension build`
 writes the unpacked extension to `apps/extension/dist`; [its README](apps/extension/README.md) says
 how to load and try it.
 

@@ -31,7 +31,9 @@ export const STATUS_PAGE = {
   whatWorks: "What works today, and what does not",
 } as const;
 
-export const LAST_UPDATED = "2026-11-10";
+/** /terms and /privacy each carry their own date, so a change to one page's text does not move the other's. */
+export const TERMS_UPDATED = "2026-11-10";
+export const PRIVACY_UPDATED = "2026-11-11";
 
 /** The lede of /terms and /privacy (spec §13, Legal row). */
 export const LEGAL_STATUS =
@@ -151,7 +153,7 @@ export const TERMS_PAGE = {
   meta: { title: "Terms", description: "The plain-language terms of the Probarion beta." },
   eyebrow: "Terms",
   title: "Terms of use",
-  updated: `Last updated ${LAST_UPDATED}.`,
+  updated: `Last updated ${TERMS_UPDATED}.`,
   rules: [
     {
       title: "What Probarion is.",
@@ -218,7 +220,7 @@ export const PRIVACY_PAGE = {
   },
   eyebrow: "Privacy",
   title: "Privacy notice",
-  updated: `Last updated ${LAST_UPDATED}.`,
+  updated: `Last updated ${PRIVACY_UPDATED}.`,
   sections: [
     {
       id: "on-chain",

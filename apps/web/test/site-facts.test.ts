@@ -1596,6 +1596,7 @@ describe("the sign-in page", () => {
       ["apps", "web", "content", "docs", "build", "http-api.mdx"],
       ["apps", "web", "content", "docs", "operate", "architecture.mdx"],
       ["docs", "THREAT_MODEL.md"],
+      ["SECURITY.md"],
     ]) {
       const md = text(ROOT, ...doc);
       expect(md, doc.join("/")).toContain(listing);
@@ -1607,10 +1608,20 @@ describe("the sign-in page", () => {
     expect(row).toContain("**Shipped** on the Chrome Web Store as version 0.1.0");
     const today = text(ROOT, "apps", "web", "content", "docs", "start", "what-works-today.mdx");
     expect(today).toContain(
-      "| [Browser extension for Chrome](#browser-extension-for-chrome) | Live |",
+      "| [Browser extension for Chrome](#browser-extension-for-chrome) | Preview |",
     );
     expect(today).toContain(
-      "Live. Version 0.1.0 is published: install it from the [Chrome Web Store]",
+      "Preview. Version 0.1.0 is published: install it from the [Chrome Web Store]",
+    );
+    // Preview, as the docs define it: no end-to-end run with a real wallet is recorded, for it or the server half it calls.
+    expect(today).toContain(
+      "No end-to-end run of it with a real wallet against this deployment is recorded yet, so it stays Preview, like the server half it calls.",
+    );
+    expect(today).toContain(
+      "| [Browser extension, server half](#browser-extension-server-half) | Preview |",
+    );
+    expect(today).not.toContain(
+      "| [Browser extension for Chrome](#browser-extension-for-chrome) | Live |",
     );
     expect(text(ROOT, "docs", "RUNBOOK.md")).not.toContain("once the extension ships");
   });
