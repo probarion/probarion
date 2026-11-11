@@ -71,8 +71,20 @@ export function onlineDidNotRun(reason: string): string {
 }
 
 /**
+ * The online failure that says more about this computer than about the decision: NVIDIA's NRAS token was issued a
+ * moment ago by NVIDIA's clock, and @nearai/inference-sdk checks its `nbf` and `iat` with no tolerance, so a local clock
+ * a few seconds behind turns a fresh, valid token into "not_yet_valid".
+ */
+const CLOCK_BEHIND = /O1\/O2 failed at entry \d+: [^;]*\bnot_yet_valid\b/;
+
+/** The hint under a check e that failed online with `not_yet_valid`. It is a hint, not a result: e stays FAIL. */
+export const CLOCK_HINT =
+  "online hint: NVIDIA's token was not yet valid by this computer's clock, which may be a few seconds behind; sync the clock (on Windows: Settings, Time, Sync now) and run --online again";
+
+/**
  * The lines `--online` adds under the rows: a legend for what ran, or why O1 and O2 did not run. They are never a
- * result of their own: check e is the result, and a failed check e gets no legend.
+ * result of their own: check e is the result, and a failed check e gets no legend (only the clock hint, when O2's
+ * token was not yet valid by this computer's clock).
  */
 export function onlineLines(report: VerifyReport, opts: RenderOptions = {}): string[] {
   if (opts.online !== true) return [];
@@ -83,7 +95,7 @@ export function onlineLines(report: VerifyReport, opts: RenderOptions = {}): str
   if (e.detail.includes("online: unavailable")) {
     return [onlineDidNotRun("no online verifier: @nearai/inference-sdk is not available")];
   }
-  if (e.status === "fail") return [];
+  if (e.status === "fail") return CLOCK_BEHIND.test(e.detail) ? [CLOCK_HINT] : [];
   const ran = ONLINE_RAN.exec(e.detail);
   if (ran === null) return [onlineDidNotRun("check e does not report an online run")];
   if (Number(ran[1]) === 0) return [onlineDidNotRun("no attested decision in this ledger")];

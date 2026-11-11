@@ -200,6 +200,8 @@ The flags:
   - When O1 or O2 ran, the report adds an `online legend` line that says what each one checks. When
     there was nothing to check (no attested decision, or no GPU payload), it says that O1 and O2, or O2,
     did not run.
+  - When O2 fails because NVIDIA's token is `not_yet_valid` by this computer's clock (a few seconds behind
+    is enough), check e fails and the report adds an `online hint` line: sync the clock and run again.
 - `--snapshot <file>` writes the snapshot that was verified to a new file. It refuses a file that
   already exists, and the ledger file under any name (exit 64).
 - `--offline <file>` verifies such a snapshot as it is, with no network, so it refuses `--vault`,

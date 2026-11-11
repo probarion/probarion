@@ -3,6 +3,7 @@ import type { CheckResult, Snapshot, VerifyReport } from "@probarion/core";
 import { applyOnlineChecks, type OnlineAttestationVerifier } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import {
+  CLOCK_HINT,
   O1_LEGEND,
   O2_LEGEND,
   onlineDidNotRun,
@@ -285,6 +286,40 @@ describe("the --online lines", () => {
     const text = renderReport(r, { online: true });
     expect(text).not.toMatch(LEGEND);
     expect(text).not.toContain("did not run");
+  });
+
+  it("print the clock hint, and no legend, when O2 fails with not_yet_valid (a clock behind NVIDIA's)", async () => {
+    const early: OnlineAttestationVerifier = {
+      ...genuine,
+      verifyGpu: async () => {
+        throw new Error(
+          "[gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid",
+        );
+      },
+    };
+    const r = await online(ledgerOf(attested(true)), early);
+    expect(r.checks[4]).toMatchObject({
+      status: "fail",
+      detail: expect.stringContaining("not_yet_valid"),
+    });
+    expect(onlineLines(r, { online: true })).toEqual([CLOCK_HINT]);
+    expect(CLOCK_HINT).toMatch(/^online hint: .*clock.*run --online again$/);
+    const text = renderReport(r, { online: true });
+    expect(text).toContain(`\n${CLOCK_HINT}\n`);
+    expect(text).not.toMatch(LEGEND);
+    expect(text).toContain("RESULT: FAIL");
+  });
+
+  it("print no clock hint for another online failure", async () => {
+    const bad: OnlineAttestationVerifier = {
+      ...genuine,
+      verifyGpu: async () => {
+        throw new Error("[gpu.jwt_verification_failed] NVIDIA JWT verification failed: expired");
+      },
+    };
+    const r = await online(ledgerOf(attested(true)), bad);
+    expect(r.checks[4]?.status).toBe("fail");
+    expect(onlineLines(r, { online: true })).toEqual([]);
   });
 
   it("print no legend when check e failed offline, even if O1 and O2 then ran", async () => {
