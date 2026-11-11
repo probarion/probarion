@@ -1,5 +1,6 @@
 import "server-only";
 import { after } from "next/server";
+import { GRACE_AFTER_DEADLINE_MS } from "@/lib/alerts/dispatch";
 import { runAlerts } from "@/lib/alerts/server";
 import type { Network } from "@/lib/config";
 import { serviceDb } from "@/lib/db/clients";
@@ -18,19 +19,39 @@ export function watcherDeps(network: Network): WatchDeps {
   };
 }
 
-/** How long a kick may keep claiming alerts once its watch is over: it shares the function's time with the request. */
-const KICK_ALERTS_MS = 10_000;
+/**
+ * How long a kick may keep claiming alerts once its watch is over: it shares the function's time with the request. The
+ * console upload plans PAYABLES_TIME.afterResponseMs (lib/payables/budget.ts) for the whole kick, and it also passes
+ * `hardLimit`, so a late answer shortens this window instead of running past the function's end.
+ */
+export const KICK_ALERTS_MS = 10_000;
+
+export interface KickOptions {
+  /**
+   * Epoch milliseconds when the platform stops the function that kicks: its route's start plus its `maxDuration`, as
+   * the cron route counts its own (lib/alerts/dispatch.ts). The alerts are then claimed until KICK_ALERTS_MS after the
+   * watch or GRACE_AFTER_DEADLINE_MS before this, whichever comes first, and no send runs past it. Without it, the
+   * dispatch's own default: its deadline plus GRACE_AFTER_DEADLINE_MS, counted from the end of the watch.
+   */
+  hardLimit?: number;
+}
+
+/** When a kick that reaches its alerts at `now` stops claiming them. */
+export function kickAlertsDeadline(now: number, hardLimit?: number): number {
+  const own = now + KICK_ALERTS_MS;
+  return hardLimit === undefined ? own : Math.min(own, hardLimit - GRACE_AFTER_DEADLINE_MS);
+}
 
 /**
  * Watches one tenant as soon as the response in flight has been sent, so an app-driven change (a Payables cycle, a
  * Canary attempt) reaches `vault_events`, and the owner's alerts, within seconds instead of at the next scheduled run.
  * `network` is the tenant's own: the watch and the alerts are of that network only. The alerts are dispatched after the
  * watch, for every vault of the network and not only this one, whether or not the watch worked (what is already recorded
- * is worth sending), until 10 s have passed; the rest waits for the next run. Called from a route once it is sure to run
- * the cycle. It never throws and never fails the request: the watch and the alerts are best effort, and the scheduled run
- * (docs/ops/watcher.md) covers whatever they missed.
+ * is worth sending), until 10 s have passed, or earlier when `o.hardLimit` leaves less; the rest waits for the next
+ * run. Called from a route once it is sure to run the cycle. It never throws and never fails the request: the watch and
+ * the alerts are best effort, and the scheduled run (docs/ops/watcher.md) covers whatever they missed.
  */
-export function kickWatcher(tenantId: string, network: Network): void {
+export function kickWatcher(tenantId: string, network: Network, o: KickOptions = {}): void {
   try {
     after(async () => {
       try {
@@ -41,7 +62,9 @@ export function kickWatcher(tenantId: string, network: Network): void {
       // One dispatch for the whole network, not only this vault: it is a global job hung off a per-vault request, and it
       // is safe, because every alert is claimed before it is sent, so two dispatches never send one twice.
       // runAlerts does not throw; the catch is for the day somebody changes that.
-      await runAlerts(network, Date.now() + KICK_ALERTS_MS).catch(() => undefined);
+      await runAlerts(network, kickAlertsDeadline(Date.now(), o.hardLimit), o.hardLimit).catch(
+        () => undefined,
+      );
     });
   } catch (error) {
     // after() throws outside a request scope; the request itself must not fail because of it.
