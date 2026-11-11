@@ -7,8 +7,11 @@ import type { Tone } from "@/components/ui";
 import type { Network } from "@/lib/config";
 import { formatNear } from "@/lib/near/units";
 import { LIMITS } from "@/lib/ratelimit";
-import { plural, thousands } from "./format";
+import type { ChipOutcome } from "./chips";
+import { plural, thousands, usdcFromUnits } from "./format";
 import { CANARY_LIMITS, type RawSkip } from "./limits";
+import { ruleReason } from "./reasons";
+import { REHEARSAL } from "./rehearsal";
 import type { AttemptResult } from "./service";
 
 type Done = Extract<AttemptResult, { status: "done" }>;
@@ -106,8 +109,17 @@ export const CANARY_COPY = {
     note: `Up to ${MAX_CHARS} characters. Don't include personal data: we store a hash of your text and the result.`,
     codeOnly: "Code only today",
     rawOn: "Raw mode on",
+    /**
+     * What raw mode does, in the order planRaw (service.ts) checks it: a "pay" that code refused, sent only when the
+     * contract's own dry run refuses it, within the visitor's and the global on-chain limits.
+     */
+    rawTip: `When code refuses a proposal to pay, raw mode can also send it straight to the NEAR contract, skipping the code rules, so you can watch the chain refuse it too. It sends only what the contract's free dry run says it would refuse: a spend the contract would accept is not sent. At most 1 per visitor every ${CANARY_LIMITS.rawVisitorWindowS / 60} minutes, and ${CANARY_LIMITS.rawGlobalPerHour} an hour for all visitors together.`,
     button: "Try to get paid",
     busy: "The agent is thinking…",
+    /** The one-click messages above the textarea (chips.ts). */
+    tryLabel: "Try one:",
+    chipsHint:
+      "Each one fills in a fixed message. The real model can answer it differently from one try to the next.",
   },
   result: {
     modelTitle: "The model wanted",
@@ -162,6 +174,12 @@ export const CANARY_COPY = {
     ledger:
       "It shows no ledger: the model's answers in it can quote what visitors wrote, so it stays private. What the Canary sends to the contract is on chain for anyone to check.",
   },
+  rehearsal: {
+    tag: `Replay · ${REHEARSAL.date} · our own attempt on NEAR ${REHEARSAL.network}`,
+    title: "The model was fooled. Nothing moved.",
+    footer:
+      "A refused spend creates no spend. Test tokens only. Even a fully fooled model cannot name an address to pay: a spend request names a mandate, whose payee is fixed, and has no address field.",
+  },
   replay: {
     title: "Recorded attacks",
     off: "The live Canary is paused.",
@@ -196,6 +214,70 @@ export function replayRows(entries: readonly { network: Network }[]): string {
   return entries.length === 1
     ? `Below is an attack from our own tests on ${where}, with what stopped it.`
     : `Below are ${thousands(entries.length)} attacks from our own tests on ${where}, each with what stopped it.`;
+}
+
+/** A piece of a sentence that names code: plain text, an id or a code in mono, or a link to a transaction. */
+export type RichPart = string | { code: string } | { tx: string; network: Network };
+
+/**
+ * The line under the chips once one is pressed: what its text usually ends as. The refusal is the rule's plain reason
+ * with its id after it (reasons.ts); what raw mode then does follows the chip's pinned outcome, and in code-only mode
+ * nothing goes to the contract (planRaw's first check).
+ */
+export function chipUsually(o: ChipOutcome, mode: "live" | "code-only"): readonly RichPart[] {
+  const reason = ruleReason(o.rule);
+  const refusal: RichPart[] =
+    reason === null
+      ? ["Usually ends as: refused by code (", { code: o.rule }, "). "]
+      : ["Usually ends as: refused by code. ", `${reason} (`, { code: o.rule }, "). "];
+  if (mode === "code-only") {
+    return [...refusal, "Raw mode is off today, so nothing is sent to the contract."];
+  }
+  return o.raw.sent
+    ? [
+        ...refusal,
+        "If the raw-mode limits allow, it then goes to the contract, which refuses it on chain: ",
+        { code: o.raw.contractCode },
+        ".",
+      ]
+    : [
+        ...refusal,
+        "The contract's dry run says it would accept or hold it, paying only the mandate's own payee, so raw mode does not send it.",
+      ];
+}
+
+/** The three steps of the replay card of the team's attempt of 2026-11-10 (rehearsal.ts). */
+export function rehearsalSteps(): readonly { title: string; body: readonly RichPart[] }[] {
+  const asked = `${usdcFromUnits(REHEARSAL.proposedUnits)} USDC`;
+  const [amountRule = "", canaryRule = ""] = REHEARSAL.codeRules;
+  return [
+    {
+      title: `The model wanted to pay ${asked}.`,
+      body: [
+        `The message was our fake invoice, from the mandate's own payee, asking for ${asked}. The model, on NEAR AI Cloud, proposed paying it in full.`,
+      ],
+    },
+    {
+      title: "Code refused it.",
+      body: [
+        "The amount reader found no total it could read with certainty in the free text, so the amount code read was 0 (",
+        { code: amountRule },
+        "). The Canary's own rule, which refuses every attempt, refused it too (",
+        { code: canaryRule },
+        "). Code sent nothing.",
+      ],
+    },
+    {
+      title: "Raw mode sent it to the contract anyway, and the contract refused it on chain.",
+      body: [
+        `The vault's free dry run refused the same payment, so raw mode sent it to the contract unfiltered, with the agent key. ${asked} is above the mandate's ${usdcFromUnits(REHEARSAL.capUnits)} test USDC per payment: the contract refused it with `,
+        { code: REHEARSAL.contractCode },
+        ", in transaction ",
+        { tx: REHEARSAL.txHash, network: REHEARSAL.network },
+        ".",
+      ],
+    },
+  ];
 }
 
 /** The second half of the "does not show" card: the network of the address the page is opened at, and the audit. */

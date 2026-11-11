@@ -6,10 +6,12 @@ import type { Network } from "@/lib/config";
 import { LIMITS } from "@/lib/ratelimit";
 import { PLANNED_ROUTES } from "@/lib/routes";
 import { LINKS } from "@/lib/site/facts";
+import { CANARY_CHIPS } from "./chips";
 import {
   baseLine,
   CANARY_COPY,
   characterCount,
+  chipUsually,
   describeRaw,
   eyebrow,
   limitText,
@@ -18,8 +20,10 @@ import {
   type Part,
   RAW_SKIP_TEXT,
   REPLY_TEXT,
+  type RichPart,
   RULES_HEAD,
   refusedSub,
+  rehearsalSteps,
   replayRows,
   rulesCopy,
   runsOn,
@@ -30,6 +34,13 @@ import {
 } from "./copy";
 import { thousands } from "./format";
 import { CANARY_LIMITS, type RawSkip } from "./limits";
+import { RULE_REASONS, ruleReason } from "./reasons";
+
+/** The words of a sentence that names code: its text parts, without the ids, codes and hashes it shows in mono. */
+const words = (parts: readonly RichPart[]): string[] =>
+  parts.filter((p): p is string => typeof p === "string");
+const MODES = ["live", "code-only"] as const;
+const CHIP_LINES = CANARY_CHIPS.flatMap((c) => MODES.map((m) => chipUsually(c.usually, m)));
 
 const NETWORKS: Network[] = ["testnet", "mainnet"];
 
@@ -91,6 +102,10 @@ function allCopy(): string[] {
     limitText(60),
     limitText(125),
     ...rawCases.map((r) => describeRaw(r).text),
+    ...CANARY_CHIPS.map((c) => c.label),
+    ...CHIP_LINES.flatMap(words),
+    ...rehearsalSteps().flatMap((s) => [s.title, ...words(s.body)]),
+    ...Object.values(RULE_REASONS),
   ];
   for (const network of NETWORKS) {
     out.push(
@@ -128,6 +143,19 @@ describe("the words the Canary pages must not use", () => {
     expect(allCopy().filter((t) => t.includes("—"))).toEqual([]);
   });
 
+  it("uses no en dash either in the chips, their lines, the tooltip and the replay card", () => {
+    const added = [
+      ...CANARY_CHIPS.flatMap((c) => [c.label, c.text]),
+      ...CHIP_LINES.flatMap(words),
+      CANARY_COPY.form.rawTip,
+      CANARY_COPY.form.tryLabel,
+      CANARY_COPY.form.chipsHint,
+      ...strings(CANARY_COPY.rehearsal),
+      ...rehearsalSteps().flatMap((s) => [s.title, ...words(s.body)]),
+    ];
+    expect(added.filter((t) => /[\u2013\u2014]/.test(t))).toEqual([]);
+  });
+
   it("leaves those words out of the page's own source too", () => {
     const web = fileURLToPath(new URL("../../..", import.meta.url));
     const files = [
@@ -137,7 +165,10 @@ describe("the words the Canary pages must not use", () => {
         "AttemptResult",
         "CanaryForm",
         "Leaderboard",
+        "RawModeTip",
+        "RehearsalCard",
         "ReplayView",
+        "Rich",
         "StaticCards",
         "VaultCard",
       ].map((n) => join("src", "components", "canary", `${n}.tsx`)),
@@ -400,5 +431,75 @@ describe("the Freysa card", () => {
       expect(body).toContain(fact);
     }
     expect(body).toContain("it only proposes");
+  });
+});
+
+describe("the line under a pressed chip", () => {
+  const sent = {
+    rule: "mandate.over_per_payment",
+    raw: { sent: true, contractCode: "OverPerPayment" },
+  } as const;
+  const held = {
+    rule: "mandate.payee_mismatch",
+    raw: { sent: false, skipped: "contract_would_accept" },
+  } as const;
+
+  it("says the refusal in the rule's plain words with its id, then that the contract refuses the raw spend", () => {
+    expect(chipUsually(sent, "live")).toEqual([
+      "Usually ends as: refused by code. ",
+      `${ruleReason("mandate.over_per_payment")} (`,
+      { code: "mandate.over_per_payment" },
+      "). ",
+      "If the raw-mode limits allow, it then goes to the contract, which refuses it on chain: ",
+      { code: "OverPerPayment" },
+      ".",
+    ]);
+  });
+
+  it("says raw mode does not send what the dry run would accept, in the words of the skip it records", () => {
+    expect(words(chipUsually(held, "live")).join("")).toBe(
+      "Usually ends as: refused by code. The text names a payee the mandate does not pay (). The contract's dry run says it would accept or hold it, paying only the mandate's own payee, so raw mode does not send it.",
+    );
+    expect(RAW_SKIP_TEXT.contract_would_accept).toContain(
+      "would accept or hold this request, paying only the mandate's own payee, so raw mode did not send it",
+    );
+  });
+
+  it("says nothing goes to the contract in code-only mode, whatever the chip", () => {
+    for (const o of [sent, held]) {
+      expect(chipUsually(o, "code-only").at(-1)).toBe(
+        "Raw mode is off today, so nothing is sent to the contract.",
+      );
+      expect(chipUsually(o, "code-only")).not.toContainEqual({ code: "OverPerPayment" });
+    }
+  });
+
+  it("shows an id it has no words for alone", () => {
+    expect(chipUsually({ ...sent, rule: "custom.other" }, "code-only").slice(0, 3)).toEqual([
+      "Usually ends as: refused by code (",
+      { code: "custom.other" },
+      "). ",
+    ]);
+  });
+});
+
+describe("the replay card's words", () => {
+  it("say the amounts from its facts, 50 USDC asked and 1 test USDC a payment allowed, and name the transaction", () => {
+    const [model, code, contract] = rehearsalSteps();
+    expect(model?.title).toBe("The model wanted to pay 50 USDC.");
+    expect(code?.body).toContainEqual({ code: "invoice.amount_invalid" });
+    expect(code?.body).toContainEqual({ code: "custom.canary_no_autopay" });
+    expect(words(contract?.body ?? []).join("")).toContain(
+      "50 USDC is above the mandate's 1 test USDC per payment",
+    );
+    // The vault contract's own check refused it (PROBARION:OverPerPayment), not the network.
+    expect(contract?.title).toBe(
+      "Raw mode sent it to the contract anyway, and the contract refused it on chain.",
+    );
+    expect(contract?.body).toContainEqual({
+      tx: "6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH",
+      network: "testnet",
+    });
+    expect(CANARY_COPY.rehearsal.tag).toBe("Replay · 2026-11-10 · our own attempt on NEAR testnet");
   });
 });

@@ -206,6 +206,10 @@ describe("the live page", () => {
       "The vault, read from the chain",
       "Paid to an attacker: 0, by construction",
       "Your attempt",
+      "Try one:",
+      "Your message to the agent",
+      "Replay · 2026-11-10 · our own attempt on NEAR testnet",
+      "The model was fooled. Nothing moved.",
       "Scoreboard",
       "Latest attempts (UTC)",
       "Why this is not Freysa",
@@ -213,6 +217,22 @@ describe("the live page", () => {
     ].map((t) => text.indexOf(t));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it("shows the replay of 2026-11-10 under the form in live mode and in code-only mode, on both networks", async () => {
+    for (const CANARY_MODE of ["live", "code-only"]) {
+      for (const network of ["testnet", "mainnet"] as const) {
+        mocks.env.mockReturnValue(env({ CANARY_MODE }));
+        net.network = network;
+        const html = await page();
+        expect(html, `${CANARY_MODE} ${network}`).toContain(
+          'href="https://testnet.nearblocks.io/txns/6XuxN42dDWaboaqaiCuRGKCoA1UrypcDfvat48v6z8DH"',
+        );
+        expect(visible(html), `${CANARY_MODE} ${network}`).toContain(
+          "The model was fooled. Nothing moved.",
+        );
+      }
+    }
   });
 
   it("reads the vault from the chain: the balance, the vault's link and its only mandate", async () => {
@@ -304,7 +324,8 @@ describe("the live page", () => {
     const text = visible(html);
     expect(text).toContain("Public challenge · NEAR mainnet");
     expect(text).toContain("25.5 USDC");
-    expect(text).not.toContain("test USDC");
+    // The one test USDC is the replay card's: the cap of the testnet mandate its run of 2026-11-10 was under.
+    expect(text.replace("the mandate's 1 test USDC per payment", "")).not.toContain("test USDC");
     expect(text).not.toContain("Testnet: test tokens, no value");
     expect(html).toContain(`href="https://nearblocks.io/address/${VAULT}"`);
   });
@@ -492,19 +513,41 @@ describe("the replay states", () => {
     expect(logs.lines.filter((l) => l.includes("canary.page_env_unavailable"))).toHaveLength(1);
   });
 
-  it("shows the recorded attacks, then the two cards that hold whether or not the Canary is live", async () => {
+  it("shows the recorded attacks, the replay of 2026-11-10, then the two cards that hold whether or not the Canary is live", async () => {
     const { text } = await say({ CANARY_MODE: "replay" });
     const order = [
       "This is a replay of recorded attacks.",
       "Meanwhile: Break a signed record",
       "Recorded attacks",
       "Our smoke test: the agent key went straight to the contract",
+      "Replay · 2026-11-10 · our own attempt on NEAR testnet",
+      "The model was fooled. Nothing moved.",
       "Paid to an attacker: 0, by construction",
       "Why this is not Freysa",
     ].map((t) => text.indexOf(t));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(text).not.toContain("No recorded attacks yet.");
+  });
+
+  it("shows the replay of 2026-11-10 in every state of the replay, with no form beside it", async () => {
+    const states: [Record<string, unknown>, string][] = [
+      [{ CANARY_MODE: "off" }, "ready"],
+      [{ CANARY_MODE: "replay" }, "ready"],
+      [{ CANARY_VAULT_ID: null }, "ready"],
+      [{}, "closed"],
+      [{ CANARY_MODE: "live" }, "full"],
+    ];
+    for (const [over, ready] of states) {
+      mocks.ready.mockResolvedValue(ready);
+      const { html, text } = await say(over);
+      const what = `${JSON.stringify(over)} ${ready}`;
+      expect(text, what).toContain("The model was fooled. Nothing moved.");
+      expect(html, what).toContain("<code>invoice.amount_invalid</code>");
+      // no chips: they belong to the form
+      expect(html, what).not.toContain("<fieldset");
+      for (const t of NOT_HERE) expect(text, what).not.toContain(t);
+    }
   });
 
   it("offers what a visitor can do without the live Canary: the ledger test and the X account", async () => {

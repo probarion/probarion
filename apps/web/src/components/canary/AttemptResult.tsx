@@ -3,6 +3,7 @@ import { NextStep } from "@/components/site/NextStep";
 import { TxLink } from "@/components/ui";
 import { CANARY_COPY, describeRaw, tokenNoun } from "@/lib/canary/copy";
 import { usdcFromUnits } from "@/lib/canary/format";
+import { ruleReason } from "@/lib/canary/reasons";
 import type { AttemptResult } from "@/lib/canary/service";
 import type { Network } from "@/lib/config";
 import { NEXT_STEP } from "@/lib/site/next-step";
@@ -22,18 +23,26 @@ function proposalLine(p: NonNullable<Done["proposal"]>, network: Network): strin
   ].join(" · ");
 }
 
+/**
+ * A refusal says why in words, the rule's plain reason (reasons.ts), with the rule's id after it in mono: "The mandate
+ * has expired (mandate.expired)." A rule with no plain reason shows its id alone.
+ */
 function CodeColumn({ code }: { code: Done["code"] }) {
   if (code.status === "refused_by_code") {
+    const reason = code.rule === null ? null : ruleReason(code.rule);
     return (
-      <p>
-        <Chip tone="good">{COPY.refused}</Chip>
-        {code.rule ? (
-          <>
-            {" "}
+      <>
+        <p>
+          <Chip tone="good">{COPY.refused}</Chip>
+        </p>
+        {code.rule === null ? null : (
+          <p>
+            {reason === null ? null : `${reason} (`}
             <code>{code.rule}</code>
-          </>
-        ) : null}
-      </p>
+            {reason === null ? null : ")."}
+          </p>
+        )}
+      </>
     );
   }
   if (code.status === "held") {
