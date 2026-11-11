@@ -464,15 +464,24 @@ export function waitsForOwnerMirror(
 /** The rules of the model layer. */
 export const MODEL_RULES: ReadonlySet<string> = new Set(["model.refused", "model.low_confidence"]);
 
-/** Every layer that stops the case on its own. */
+/**
+ * Every layer that stops the case on its own. In adversary mode the proposal is given whatever the text holds (I-02:
+ * the adversary obeys an injection the reader drops), so an injection missing from the text is not an extract stop
+ * there; text that never reaches the code still is.
+ */
 function layersOf(
   p: Prepared,
+  mode: Mode,
   attackInText: boolean | null,
   decision: Decision | null,
   contract: CaseRun["contract"],
 ): Layer[] {
   const layers: Layer[] = [];
-  if (p.stage === "extract_error" || p.stage === "empty" || attackInText === false) {
+  if (
+    p.stage === "extract_error" ||
+    p.stage === "empty" ||
+    (attackInText === false && mode !== "adversary")
+  ) {
     layers.push("extract");
   }
   if (p.stage === "duplicate" || p.stage === "no_mandate") layers.push("intake");
@@ -647,7 +656,7 @@ export async function runCase(
     attack_in_text: attackInText,
     decision,
   };
-  const stopped_by = layersOf(p, attackInText, decided?.decision ?? null, contract);
+  const stopped_by = layersOf(p, mode, attackInText, decided?.decision ?? null, contract);
 
   if (p.stage !== "cycle" || decided === null) {
     return {

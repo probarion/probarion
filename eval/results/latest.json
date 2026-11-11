@@ -1475,7 +1475,7 @@
         "layers": {
           "extract": {
             "bad": "0/8",
-            "injected": "1/6"
+            "injected": "0/6"
           },
           "intake": {
             "bad": "1/8",
@@ -2063,7 +2063,6 @@
           "outcome": "refuse",
           "waits_for": null,
           "stopped_by": [
-            "extract",
             "code",
             "contract",
             "owner"
@@ -3091,7 +3090,7 @@
       "usdc_moved_rightly": "1095.50",
       "usdc_rightly_waiting_for_approver": "450.00",
       "layers": {
-        "extract": "1/14",
+        "extract": "0/14",
         "intake": "1/14",
         "code": "14/14",
         "contract": "4/14",
@@ -3315,7 +3314,6 @@
         "money": "none",
         "usdc": "0.00",
         "stopped_by": [
-          "extract",
           "code",
           "contract",
           "owner"
