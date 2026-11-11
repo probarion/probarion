@@ -554,6 +554,15 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The browser extension is on the Chrome Web Store as version 0.1.0
+  (https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn). The README
+  (Status row Shipped), the extension's README, the store pack, What works today, the HTTP API and
+  architecture docs, the threat model and `/privacy` say so and link the listing. What works today
+  keeps it at Preview, with the server half it calls, because no end-to-end run with a real wallet
+  against this deployment is recorded yet. The threat model covers the extension's own permissions
+  and storage, `SECURITY.md` lists `apps/extension` in scope, `/privacy` is dated 2026-11-11 (`/terms`
+  keeps 2026-11-10), and the Browser extension page (`/extension`) gains an Add to Chrome link.
+  Loading it unpacked stays the way to run it from source.
 - Docs: the text says the team is on Vercel Pro. The crons in `apps/web/vercel.json` still run once a
   day, by choice; Pro also accepts hourly or per-minute schedules, and the runbooks say what to change
   for those. A 90 s Canary attempt fits Pro with or without Fluid compute, which stays pinned on.
