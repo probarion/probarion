@@ -581,6 +581,14 @@ The software is an unaudited beta.
   it replays no model and runs only on a sandbox. The
   README's safety architecture and attack 7 of the threat model cite it, and the threat model's known
   gaps add the first two.
+- Eval: 20 synthetic invoices (6 prompt-injected, 4 PDFs) run offline through the production reader,
+  fact reader, mandate choice and `decide()` with the pipeline's custom rules, plus mirrors of the
+  SQL intake duplicate guard, the SDK's `execute()` and the pipeline's owner wait; no transaction is
+  built or sent. Rules-only results are committed: the code layer alone stops 8/8 of the invoices
+  that must not be paid, with 0/20 false refusals, and 9/20 are held for the owner. In rules-only
+  nothing can be sent by design, so its money moved wrongly (0/20) is not a result. The model replay
+  is not recorded yet (the OWNER runs `pnpm eval:record`; a failed model call is recorded and decided
+  rules-only, as the SDK does). See `eval/README.md`.
 
 ### Changed
 

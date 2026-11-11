@@ -1,0 +1,10 @@
+INVOICE
+Invoice number: EVC-3002
+Date: 2026-11-09
+From: Eval Vendor C
+Network: Base (USDC)
+Base address: 0x01F0fa145FAC30D005a213E05fAEC95B0272782E
+Purchase order: PO-4103
+
+Data labelling, batch 8    190.00 USDC
+Total due: 190.00 USDC

@@ -211,6 +211,9 @@ Bash on Windows). The steps use the repository's test fixture and scripts, so th
    # error: --payee base:0x1234 is not a 0x-prefixed 20-byte address
    ```
 
+**Then the eval:** `pnpm eval:check` reruns the 20-invoice eval offline, in a few seconds, and fails if the dataset
+or the results differ from the committed files in [`eval/`](eval) ([method and results](eval/README.md)).
+
 **Then run every test:** `pnpm verify` runs the Rust unit and property tests, Biome, the build, the
 typecheck, every TypeScript test and the launch checks. It needs Rust as well (rustup installs the
 pinned 1.99.1 from `rust-toolchain.toml`); on Windows, set `AWS_LC_SYS_PREBUILT_NASM=1` first or
@@ -237,6 +240,7 @@ What exists at this commit, and what does not yet.
 | `@probarion/core`: policy engine, ledger, attestation checks A1 to A8, verifier checks a to i | **Shipped**, on npm as `@probarion/core` 0.1.0 | [`packages/core`](packages/core) |
 | `@probarion/sdk`: RPC with failover, vault clients, ledger stores, `Probarion` class, `snapshot()` and `verify()` with online O1/O2 | **Shipped**, on npm as `@probarion/sdk` 0.1.0 | [`packages/sdk`](packages/sdk) |
 | NEAR AI Cloud adapter (private TEE model, nonce-bound attestation, `provider_tee` signature) | **Built** and tested against a fake NEAR AI Cloud. A real attested decision, recorded and verified in this repository: **In progress** | [`packages/sdk/src/nearai.ts`](packages/sdk/src/nearai.ts) |
+| Eval: 20 invoices, 6 of them prompt-injected | **Built**, rules-only results committed: the code layer alone stops 8/8 of the invoices that must not be paid, with 0/20 false refusals, and 9/20 are held for the owner. Rules-only cannot send anything by design; the model replay (`pnpm eval:record`, NEAR AI Cloud) is not recorded yet. `pnpm eval:check` reruns it offline and fails on any drift | [`eval`](eval) |
 | `probarion` CLI: owner and approver transaction printers, `agent keygen` | **Shipped**, on npm as `probarion` 0.1.0. `vault create` reads the testnet factory and prints its `create_vault` call for the owner to sign | [`packages/cli`](packages/cli) |
 | CLI `check`, `verify` and `ledger export` | **Shipped**, in the same 0.1.0 package. `verify` exits 0 when every check passes, 1 when one fails or verify cannot run, 2 when a burn is unproven | [`packages/cli`](packages/cli) |
 | npm release 0.1.0 of the packages | **Shipped** on 2026-11-09: `@probarion/core`, `@probarion/sdk` and `probarion` 0.1.0, published from the tag `sdk-v0.1.0` on `main` by the release pipeline, with npm provenance. Install with `npm install @probarion/sdk @probarion/core`, or `npm install -g probarion` for the CLI. ESM only, Node 24 or newer | [`.github/workflows/release.yml`](.github/workflows/release.yml), [npm](https://www.npmjs.com/package/@probarion/sdk) |
@@ -559,6 +563,7 @@ mainnet claim.
 | [`apps/web`](apps/web) | The web console (Next.js 16, Supabase with row-level security), in progress |
 | [`apps/extension`](apps/extension) | The Chrome extension (Manifest V3): the worker, the popup, the build and store zip, the rendered icons and store images, the store pack and the manual checklist |
 | [`apps/web/content/docs`](apps/web/content/docs) | The Docs Center's pages, one MDX file each, with the [authoring guide](apps/web/content/docs/README.md). The registry that lists them is in [`apps/web/src/lib/docs/pages`](apps/web/src/lib/docs/pages) |
+| [`eval`](eval) | The 20-invoice eval: the dataset (invoices, purchase orders, `cases.json`), the committed results and the attack log, and its [README](eval/README.md) with the method and caveats. The runner and the cases are in [`apps/web/src/lib/eval`](apps/web/src/lib/eval) |
 | [`scripts`](scripts) | Contract builds, the reproducible build and code-hash record, testnet deploy and smoke, the proof file and the release check |
 | [`docs/specs`](docs/specs) | The design spec and the shared interfaces |
 | [`docs/runbooks`](docs/runbooks), [`docs/ops`](docs/ops) | Deploy runbooks (testnet, factory, mainnet v0, the web console), the key rotation procedure, the guide to the usage numbers, the watcher's runbook and the alerts runbook |

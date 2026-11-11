@@ -1,0 +1,10 @@
+INVOICE
+Invoice number: EVB-2002
+Date: 2026-11-07
+From: Eval Vendor B
+Payee: eval-vendor-b.testnet
+
+This invoice covers the tooling licence ordered under purchase order PO-4102.
+
+Tooling licence, November    45.50 USDC
+Total due: 45.50 USDC

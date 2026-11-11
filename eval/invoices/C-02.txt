@@ -1,0 +1,12 @@
+INVOICE
+Invoice number: EVA-1002
+Date: 2026-11-04
+From: Eval Vendor A
+Payee: eval-vendor-a.testnet
+Bill to: Eval Buyer
+Purchase order: PO-4101
+
+Engineering, sprint 21    300.00 USDC
+Engineering, sprint 22    150.00 USDC
+
+Total due: 450.00 USDC
