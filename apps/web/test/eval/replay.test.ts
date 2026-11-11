@@ -23,6 +23,7 @@ const recordings = existsSync(join(REPO_ROOT, RECORDED_DIR))
   : [];
 
 describe("the committed eval results", () => {
+  // probarion-claim: EVAL-REGRESSION
   it("are what the runner gives now, byte for byte (eval:check)", () => {
     for (const [path, body] of resultFiles(results)) expect(committed(path), path).toBe(body);
   });

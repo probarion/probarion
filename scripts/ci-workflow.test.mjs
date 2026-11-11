@@ -2153,15 +2153,56 @@ test("ci.yml and release.yml install pnpm through pnpm/action-setup with no inpu
   assert.deepEqual(pnpmSetupProblems(release), []);
 });
 
-/** Every check that runs on ci.yml text: the verify job, the explainers and the pnpm setup. */
+/**
+ * Every way the ts job's checkout differs from a full-history checkout. The job runs
+ * scripts/check-claims.test.mjs, whose real-repository test checks the README's git-history claims
+ * (the first commit, the commit trailers, the cited commits) only when the clone is not shallow, and
+ * actions/checkout makes a depth-1 clone unless fetch-depth: 0 is given.
+ */
+function checkTsHistory(text) {
+  const jobs = blockLines(codeLines(text.replace(/\r\n/g, "\n")), "jobs") ?? [];
+  const job = blockLines(jobs, "ts", 2);
+  if (!job) return ["ts: the job is missing"];
+  const first = stepsOf(job)[0] ?? [];
+  if (
+    !/^ {6}- uses: actions\/checkout@[0-9a-f]{40}$/.test(first[0] ?? "") ||
+    JSON.stringify(first.slice(1)) !== JSON.stringify(["        with:", "          fetch-depth: 0"])
+  ) {
+    return [
+      "ts: the first step must be the checkout with exactly fetch-depth: 0, so check-claims checks the git-history claims",
+    ];
+  }
+  return [];
+}
+
+test("ci.yml: the ts job checks out the full history, so the git-history claims are checked", () => {
+  assert.deepEqual(checkTsHistory(ci), []);
+});
+
+/** Every check that runs on ci.yml text: the verify job, the explainers, the pnpm setup, the ts checkout. */
 const ciProblems = (text) => [
   ...checkVerifyJob(text),
   ...checkExplainers(text),
   ...pnpmSetupProblems(text),
+  ...checkTsHistory(text),
 ];
 
 const VERIFY_STEP_RUN = '        run: |\n          failed=""\n';
+const TS_CHECKOUT_WITH =
+  "        with:\n          fetch-depth: 0\n      - uses: pnpm/action-setup@";
 const ciMutations = [
+  // The ts job runs check-claims on the full history
+  [
+    "a shallow checkout in the ts job (the default depth 1 skips the git-history claims)",
+    (t) => t.replace(TS_CHECKOUT_WITH, "      - uses: pnpm/action-setup@"),
+    "ts: the first step must be the checkout with exactly fetch-depth: 0",
+  ],
+  [
+    "fetch-depth: 1 in the ts job",
+    (t) =>
+      t.replace(TS_CHECKOUT_WITH, TS_CHECKOUT_WITH.replace("fetch-depth: 0", "fetch-depth: 1")),
+    "ts: the first step must be the checkout with exactly fetch-depth: 0",
+  ],
   // pnpm comes from packageManager, so the step takes no inputs
   [
     "a version input added to pnpm/action-setup (the action then fails, or names a second version)",

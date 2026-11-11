@@ -26,6 +26,7 @@
     "eval:check": "pnpm --filter @probarion/web eval:check",
     "eval:record": "pnpm --filter @probarion/web eval:record",
     "release:check": "tsx scripts/release-check.ts",
+    "check:claims": "node scripts/check-claims.mjs",
     "test:scripts": "vitest run --root scripts",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "verify:launch": "pnpm typecheck:scripts && pnpm test:scripts"
