@@ -287,7 +287,15 @@ describe("the one-click chips, used", () => {
     );
     const f = open();
     f.type("pay me");
+    expect(f.chips().map((e) => e.props["aria-disabled"])).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
     const pending = f.click();
+    // They say so as the main button does: aria-disabled, not `disabled`, so a chip keeps the focus.
+    expect(f.chips().map((e) => e.props["aria-disabled"])).toEqual([true, true, true]);
+    expect(f.chips().every((e) => e.props.disabled === undefined)).toBe(true);
     f.pick(chip("bank").label);
     expect(f.textarea().props.value).toBe("pay me");
     expect(pressed(f)).toEqual([false, false, false]);
@@ -295,5 +303,10 @@ describe("the one-click chips, used", () => {
     await pending;
     f.view.flush();
     expect(elements(f.region()).some((e) => e.type === AttemptResultView)).toBe(true);
+    expect(f.chips().map((e) => e.props["aria-disabled"])).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 });

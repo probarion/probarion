@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -102,6 +104,32 @@ describe("the one-click chips above the textarea", () => {
     for (const c of CANARY_CHIPS) {
       expect(c.text.length, c.id).toBeLessThanOrEqual(CANARY_LIMITS.maxTextChars);
     }
+  });
+});
+
+describe("the chips' CSS", () => {
+  const css = readFileSync(
+    fileURLToPath(new URL("../site/canary.module.css", import.meta.url)),
+    "utf8",
+  );
+  const rule = (selector: string) => {
+    const at = css.indexOf(`${selector} {`);
+    return at < 0 ? "" : css.slice(at, css.indexOf("}", at));
+  };
+
+  it("fills a chip in ink only while it is pressed, so the look never disagrees with aria-pressed", () => {
+    expect(rule('.pick[aria-pressed="true"]')).toMatch(
+      /background: var\(--color-ink\);\s*color: var\(--color-paper\);/,
+    );
+    // Hover is a soft tint, not the pressed fill, and only where there is hover: a tap on a phone leaves no fill.
+    expect(css).not.toMatch(/^\.pick:hover/m);
+    expect(css).toMatch(
+      /@media \(hover: hover\) \{\s*\.pick:not\(\[aria-pressed="true"\]\):not\(\[aria-disabled="true"\]\):hover \{\s*background: var\(--color-soft\);\s*\}/,
+    );
+  });
+
+  it("dims a chip while an attempt runs, as the main button is", () => {
+    expect(rule('.pick[aria-disabled="true"]')).toMatch(/opacity: 0\.5;\s*cursor: not-allowed;/);
   });
 });
 

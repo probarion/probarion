@@ -178,10 +178,20 @@
   text-align: left;
   cursor: pointer;
 }
-.pick:hover,
+/* Only pressed is filled. Hover is a soft tint, and only where there is hover, so a tap leaves no fill behind. */
 .pick[aria-pressed="true"] {
   background: var(--color-ink);
   color: var(--color-paper);
+}
+@media (hover: hover) {
+  .pick:not([aria-pressed="true"]):not([aria-disabled="true"]):hover {
+    background: var(--color-soft);
+  }
+}
+/* While an attempt runs, a chip does nothing: it says so as the main button does, and keeps the focus. */
+.pick[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .usually {
   margin: 10px 0 18px;

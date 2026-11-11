@@ -61,7 +61,10 @@ export function CanaryForm({
     }
   }
 
-  /** A chip: its text in the textarea, and no answer to another text under it. Nothing while an attempt runs. */
+  /**
+   * A chip: its text in the textarea, and no answer to another text under it. Nothing while an attempt runs, and the
+   * chips then say so with aria-disabled, as the main button does.
+   */
   function pick(chipText: string) {
     if (running.current) return;
     setText(chipText);
@@ -82,6 +85,7 @@ export function CanaryForm({
             type="button"
             className={c.pick}
             aria-pressed={picked?.id === chip.id}
+            aria-disabled={busy ? true : undefined}
             onClick={() => pick(chip.text)}
           >
             {chip.label}

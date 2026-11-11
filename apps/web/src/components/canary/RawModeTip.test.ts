@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type El, elements, mount, textOf } from "../../../test/fixtures/mini-react";
 
 // The Raw mode pill and its tooltip: the markup as React renders it, then what the handlers do (run as a plain function
@@ -66,6 +66,53 @@ describe("the Raw mode pill", () => {
     expect(f.tip().props["data-state"]).toBe("open");
     f.call("onBlur");
     expect(f.tip().props["data-state"]).toBe("auto");
+  });
+});
+
+describe("Escape with the focus elsewhere (WCAG 1.4.13)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The form with a document that only dispatches events, since the tests run with no DOM. */
+  function withDocument() {
+    const doc = new EventTarget();
+    vi.stubGlobal("document", doc);
+    const f = open();
+    const wrap = () => elements(f.view.result).find((e) => "onPointerEnter" in e.props) as El;
+    const pointer = (name: "onPointerEnter" | "onPointerLeave") => {
+      (wrap().props[name] as () => void)();
+      f.view.flush();
+    };
+    const pressEscape = () => {
+      doc.dispatchEvent(Object.assign(new Event("keydown"), { key: "Escape" }));
+      f.view.flush();
+    };
+    return { ...f, pointer, pressEscape, state: () => f.tip().props["data-state"] };
+  }
+
+  it("hides a tooltip that hover alone shows, and hover can show it again once the pointer has left", () => {
+    const f = withDocument();
+    // Nothing shows and nothing listens before the pointer comes.
+    f.pressEscape();
+    expect(f.state()).toBe("auto");
+    f.pointer("onPointerEnter");
+    f.pressEscape();
+    expect(f.state()).toBe("closed");
+    f.pointer("onPointerLeave");
+    expect(f.state()).toBe("auto");
+    f.pointer("onPointerEnter");
+    expect(f.state()).toBe("auto");
+  });
+
+  it("hides a tooltip opened by a tap, and a tap's pointer leaving keeps it open until then", () => {
+    const f = withDocument();
+    f.pointer("onPointerEnter");
+    f.call("onClick");
+    f.pointer("onPointerLeave");
+    expect(f.state()).toBe("open");
+    f.pressEscape();
+    expect(f.state()).toBe("closed");
   });
 });
 
