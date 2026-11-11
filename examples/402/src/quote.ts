@@ -17,6 +17,43 @@ export interface Quote {
 
 export class QuoteError extends Error {}
 
+/** USDC smallest units as a quote writes them: a whole number above 0, with no leading zero. */
+export const UNITS_RE = /^[1-9][0-9]{0,30}$/;
+
+/**
+ * What the seller asks for one resource. The list price goes into the first quote. The floor is the least
+ * the seller takes for a counter: it stays on the seller's side, and no answer of the paywall carries it.
+ */
+export interface Pricing {
+  /** USDC smallest units. */
+  listUnits: string;
+  /** USDC smallest units, at most the list price. */
+  floorUnits: string;
+}
+
+/** Returns the pricing when both prices are units and the floor is not above the list price; throws otherwise. */
+export function checkPricing(p: Pricing): Pricing {
+  if (!UNITS_RE.test(p.listUnits) || !UNITS_RE.test(p.floorUnits)) {
+    throw new QuoteError("the list price and the floor must be USDC smallest units above 0");
+  }
+  if (BigInt(p.floorUnits) > BigInt(p.listUnits)) {
+    throw new QuoteError("the floor must not be above the list price");
+  }
+  return p;
+}
+
+export type CounterVerdict = "accept" | "below_floor" | "not_below_quote";
+
+/** The seller's answer to a counter: below the quoted amount and at or above the floor is a deal. */
+export function judgeCounter(
+  p: Pricing,
+  quotedUnits: string,
+  counterUnits: string,
+): CounterVerdict {
+  if (BigInt(counterUnits) >= BigInt(quotedUnits)) return "not_below_quote";
+  return BigInt(counterUnits) >= BigInt(p.floorUnits) ? "accept" : "below_floor";
+}
+
 export function quoteText(q: Quote): string {
   return [
     QUOTE_HEADER,
@@ -57,7 +94,7 @@ export function parseQuote(text: string): Quote {
   const account = payee.startsWith("near:") ? payee.slice("near:".length) : "";
   if (!isNearAccountId(account)) throw new QuoteError("the quote's payee is not near:<account>");
   const amount = get("amount");
-  if (!/^[1-9][0-9]{0,30}$/.test(amount)) throw new QuoteError("the quote's amount is not units");
+  if (!UNITS_RE.test(amount)) throw new QuoteError("the quote's amount is not units");
   const network = get("network");
   if (network !== "mainnet" && network !== "testnet") {
     throw new QuoteError("the quote's network is not mainnet or testnet");

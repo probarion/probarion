@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildPort, createServer } from "@probarion/mcp";
-import { InMemoryLedgerStore, RpcClient } from "@probarion/sdk";
+import { InMemoryLedgerStore, RpcClient, VaultClient } from "@probarion/sdk";
 import {
   createScenarioChain,
   type FakeRpcServer,
@@ -18,6 +18,7 @@ import {
 } from "@probarion/sdk/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type CallResult, fetchWithMandate } from "../src/agent.js";
+import { forecastData } from "../src/forecast.js";
 import { chainReader, startPaywall } from "../src/paywall.js";
 
 const NOW = new Date(Number(SCENARIO_NOW / 1_000_000n));
@@ -85,13 +86,14 @@ async function agentTools(): Promise<Client> {
   return client;
 }
 
-async function paywall(payee = SCENARIO_NEAR_PAYEE) {
+async function paywall(payee = SCENARIO_NEAR_PAYEE, price = { list: "10000", floor: "10000" }) {
   const p = await startPaywall({
     network: "testnet",
     payee,
-    priceUnits: "10000",
+    priceUnits: price.list,
+    floorUnits: price.floor,
     path: "/forecast",
-    data: (call) => ({ call, forecast_c: [31, 30, 29] }),
+    data: forecastData,
     reader: chainReader(new RpcClient({ urls: [rpc.url] }), "testnet"),
   });
   cleanup.push(p.close);
@@ -166,5 +168,43 @@ describe("pay per call under a mandate of 20 uses", () => {
       "spend_does_not_pay_this_quote",
     );
     expect(p.served()).toBe(1);
+  });
+});
+
+describe("a quote above the mandate's cap, on the test double chain", () => {
+  it("counters at the cap and pays the countered price to the mandate's payee", async () => {
+    const tools = await agentTools();
+    const p = await paywall(SCENARIO_NEAR_PAYEE, { list: "12000", floor: "9000" });
+    const r = await fetchWithMandate(p.url, tools);
+    expect(r).toMatchObject({
+      kind: "paid",
+      status: 200,
+      priceUsdc: "0.01",
+      deal: { countered: true, listUnits: "12000", priceUnits: "10000" },
+      dataCheck: { ok: true },
+    });
+    const spend = await new VaultClient(
+      SCENARIO_VAULT,
+      new RpcClient({ urls: [rpc.url] }),
+    ).getSpend(1);
+    expect(spend).toMatchObject({
+      status: "paid",
+      amount: "10000",
+      destination: { type: "near", account_id: SCENARIO_NEAR_PAYEE },
+    });
+    expect(rpc.chain.ftBalances[rpc.chain.config.usdc]?.[SCENARIO_NEAR_PAYEE]).toBe("10000");
+    expect(p.counters()).toBe(1);
+  });
+
+  it("walks away from a floor above the cap: no spend transaction, no money moved", async () => {
+    const tools = await agentTools();
+    const p = await paywall(SCENARIO_NEAR_PAYEE, { list: "50000", floor: "30000" });
+    expect(await fetchWithMandate(p.url, tools)).toMatchObject({
+      kind: "walked_away",
+      answer: { status: 409, reason: "below_floor" },
+    });
+    expect(spendTxs()).toBe(0);
+    expect(rpc.chain.mandates[0]).toMatchObject({ uses: 0, spent: "0", reserved: "0" });
+    expect(rpc.chain.ftBalances[rpc.chain.config.usdc]?.[SCENARIO_VAULT]).toBe("1000000");
   });
 });

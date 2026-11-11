@@ -14,6 +14,20 @@ The software is an unaudited beta.
 
 ### Added
 
+- `examples/402`: negotiation, receipts and a one-line demo. The paywall has a list price and a floor
+  (the least it takes, kept out of every answer), and `POST /counter` takes one counter per quote:
+  at or above the floor it answers with a new quote at the countered price, below it `409`. When a
+  quote is above the mandate's cap per payment, the agent counters once at that cap and pays the new
+  quote, or walks away without calling `request_spend`. The payee still comes from the mandate, and
+  the quote parser still refuses unknown lines. After a paid `200` the agent checks the data against
+  a schema and the `data_sha256` the seller states, and appends a line to `receipts.jsonl` (quotes,
+  list and paid price, spend, transaction, ledger seq, check, time); a failed check is recorded as
+  failed, and the money is not refunded. `pnpm --filter @probarion/example-402 run demo` runs a
+  negotiated sale with its payout, a walk-away and a refused call on the SDK's test double chain, with
+  no network and no keys, and prints its elapsed time (under a second here); with a vault and its
+  keys in the environment it runs the same calls on testnet. The 2026-11-09 testnet run predates
+  negotiation; the new flow has run on the test double chain only.
+
 - `/proof/<vault>` lists every decision of the ledger under the checks, newest first. For a decision
   made with model output it shows what the ledger records the TEE saw and signed, and what the code
   and the contract checked, with A1 to A7 run on the page's snapshot and a fixed line on what they
