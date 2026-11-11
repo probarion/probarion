@@ -54,9 +54,10 @@ curl -s https://probarion.xyz/samples/probarion-sample-po.txt | sha256sum
 curl -s https://rpc.testnet.near.org -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"query","params":{"request_type":"call_function","finality":"final","account_id":"canary.vaults.probarion.testnet","method_name":"get_mandate","args_base64":"eyJtYW5kYXRlX2lkIjoxfQ=="}}'
 ```
 
-The last answer's `result` is the mandate's JSON as a list of bytes; `eyJtYW5kYXRlX2lkIjoxfQ==` is
-`{"mandate_id":1}` in base64. The PO's own text allows more than the mandate (5 test USDC a payment, 20 in all, 5
-payments, for 30 days). The contract never reads the document: it enforces the mandate's own numbers.
+In the last answer, `result.result` (the `result` field inside the answer's `result`) is the mandate's JSON as a
+list of bytes; `eyJtYW5kYXRlX2lkIjoxfQ==` is `{"mandate_id":1}` in base64. The PO's own text allows more than the
+mandate (5 test USDC a payment, 20 in all, 5 payments, for 30 days). The contract never reads the document: it
+enforces the mandate's own numbers.
 
 ## The rehearsal
 
@@ -89,7 +90,7 @@ the vault is the signer of what they sign.
 | 277055837 | 10:34:49 | Owner | `create_vault` on `vaults.probarion.testnet`: name `canary`, approver `probarion-approver.testnet`, a 4 NEAR deposit | Success. The factory created the account, sent it the 4 NEAR, deployed the vault and ran `new`, and logged `vault_created` at version 1 | [`6eKVvgt6`](https://testnet.nearblocks.io/txns/6eKVvgt6DGhhVjErwgMyfVawyXFD8kkrhaK4L2tf6k4w) |
 | 277056081 | 10:37:15 | Owner | `set_ledger_key`: the ledger key above, with a 2 NEAR allowance | Success, `ledger_key_set` | [`71RchSM6`](https://testnet.nearblocks.io/txns/71RchSM68WQDsfLCY5UD275dYfNnXVYNpydt6rh9bW6k) |
 | 277056193 | 10:38:21 | Owner | `add_agent`: the agent key above, label `canary`, with a 3 NEAR allowance | Success, `agent_added` | [`J1UQAg6h`](https://testnet.nearblocks.io/txns/J1UQAg6h7DrTXx9rR9yDU1AtEnqkB1fgNp6dua6kEW9o) |
-| 277056323 | 10:39:35 | Owner | `create_mandate`: mandate 1 as above, with 0.05 NEAR for its storage | Success, returns 1, `mandate_created`. The vault also called `storage_deposit` on `usdc.probarion.testnet` for the payee, which was already registered, so the token refunded it | [`HWodfFhF`](https://testnet.nearblocks.io/txns/HWodfFhFHbqmT1MkjYmZYWWpTSCc2TPGyvZJmj35dJcA) |
+| 277056323 | 10:39:35 | Owner | `create_mandate`: mandate 1 as above, with 0.05 NEAR attached for its storage | Success, returns 1, `mandate_created`. The vault kept the 0.00418 NEAR the contract requires, 0.00293 NEAR for the mandate's storage and 0.00125 NEAR for the payee's USDC registration, and returned the other 0.04582 NEAR to the owner. It sent that 0.00125 NEAR with a `storage_deposit` call on `usdc.probarion.testnet` for the payee, which was already registered, so the token refunded it to the vault | [`HWodfFhF`](https://testnet.nearblocks.io/txns/HWodfFhFHbqmT1MkjYmZYWWpTSCc2TPGyvZJmj35dJcA) |
 | 277056460 | 10:40:57 | `probarion.testnet` | `mint` on `usdc.probarion.testnet`: 100 test USDC to the vault | Success, `ft_mint`. No transaction made a storage deposit for the vault itself: `test-ft`'s `mint` registers an account it does not hold yet ([source](../../../contracts/test-ft/src/lib.rs)) | [`8TmWJRTf`](https://testnet.nearblocks.io/txns/8TmWJRTftPe5K9GmHWxKeRTzhhRPHhLMaz81eRz3n5YU) |
 | 277056469 | 10:41:02 | `probarion.testnet` | A transfer of 2 NEAR to the vault | Success | [`6Can4tc5`](https://testnet.nearblocks.io/txns/6Can4tc5gM4YGdjTikx4buoCHeRGa1pesm1PcWjYRT14) |
 | 277057249 | 10:48:35 | Vault, ledger key | `anchor` seq 1, covering the ledger's first entry | Success, `ledger_anchored` | [`1nNcxL4Q`](https://testnet.nearblocks.io/txns/1nNcxL4QFKWyB7ErcMHfKJMWrTBaavgnyNdEQXUKhcg) |
