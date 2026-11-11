@@ -751,12 +751,14 @@ versions is merged into `main`.
    token in a file under `.keys/` at the root of the checkout you run this step from (git ignores that
    folder; a fresh clone from step 1 has none, so make it there), for example
    `.keys/mcp-registry-token.txt`. `mcp-publisher` reads the token from `MCP_GITHUB_TOKEN` when `--token`
-   is not given, which keeps it off the command line, and it uses the token byte for byte: the lines below
-   drop a byte order mark (PowerShell's `>` and `Out-File` write one) and line ends. In Git Bash:
+   is not given, which keeps it off the command line, and it uses the token byte for byte. Windows
+   PowerShell's `>` and `Out-File` write the file as UTF-16 with a byte order mark, and other editors may
+   add a UTF-8 one, so the Git Bash line keeps only the token's own characters (a classic `ghp_` or a
+   fine-grained `github_pat_` token uses only letters, digits and `_`). In Git Bash:
 
    ```bash
    cd packages/mcp
-   MCP_GITHUB_TOKEN="$(tr -d '\r\n\357\273\277' < ../../.keys/mcp-registry-token.txt)" mcp-publisher login github
+   MCP_GITHUB_TOKEN="$(tr -cd 'A-Za-z0-9_' < ../../.keys/mcp-registry-token.txt)" mcp-publisher login github
    mcp-publisher validate
    mcp-publisher publish
    mcp-publisher logout
@@ -764,7 +766,7 @@ versions is merged into `main`.
 
    In PowerShell, the login line is
    `$env:MCP_GITHUB_TOKEN = (Get-Content ..\..\.keys\mcp-registry-token.txt -Raw).Trim(); mcp-publisher login github; Remove-Item Env:MCP_GITHUB_TOKEN`
-   (`Get-Content` drops the byte order mark and `.Trim()` the line ends).
+   (`Get-Content` reads either byte order mark and drops it, and `.Trim()` drops the line ends).
    `publish` reads `server.json` in that folder and ends with
    `Server io.github.probarion/probarion version 0.1.1`. A version is published to the registry once and
    cannot be changed; the next release publishes a new one. `logout` clears the login `mcp-publisher`
