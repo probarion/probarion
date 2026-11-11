@@ -64,7 +64,7 @@ async function guarded(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 const NOTES: Readonly<Record<SpendOutcomeStatus, string>> = {
   paid: "Paid on NEAR to the mandate's payee.",
   burned:
-    "Sent across chains through NEAR Intents; the bridge releases the funds on the destination chain. Poll get_spend_status.",
+    "Sent across chains through NEAR Intents. The burn is final for the vault: never send this payment again, under this ref or a new one. The bridge releases the funds on the destination chain, and Probarion does not watch that release yet, so get_spend_status keeps saying burned: do not poll it. If the payee reports nothing after a while, tell the vault owner, with the spend_id, the destination and the tx_hash.",
   settled: "Settled on the destination chain.",
   held: "Held for a human approver: the amount is above the mandate's approval threshold. Poll get_spend_status with the spend_id; do not send it again.",
   refused_by_code:
@@ -220,7 +220,7 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
     {
       title: "Get a spend's status",
       description:
-        "Read a spend from the vault by id: held, pending, paid, burned (sent across chains, waiting for the bridge), failed, rejected or expired.",
+        "Read a spend from the vault by id: held, pending, paid, burned, failed, rejected or expired. burned is final for the vault and does not change: it was sent across chains through NEAR Intents, and Probarion does not watch the release on the destination chain yet, so do not poll a burned spend or send it again.",
       inputSchema: getSpendStatusInput,
       annotations: READ_ONLY,
     },

@@ -174,13 +174,14 @@ describe("probarion-mcp tools", () => {
     ["refused_by_code", /Do not retry with another amount or ref/],
     ["unconfirmed", /Do not send it again, least of all under a new ref/],
     ["held", /Held for a human approver/],
+    ["burned", /The burn is final for the vault: never send this payment again/],
   ])("request_spend explains a %s outcome", async (status, note) => {
     // A hold above the approval threshold has a spend on chain; no earlier spend sits under this ref.
     const out: SpendOutcome = {
       ...OUTCOME,
       status,
       txHash: null,
-      spendId: status === "held" ? 9 : null,
+      spendId: status === "held" || status === "burned" ? 9 : null,
     };
     const port = fakePort({
       requestSpend: vi.fn(async () => out),
@@ -266,6 +267,31 @@ describe("probarion-mcp tools", () => {
     const missing = await client.callTool({ name: "get_spend_status", arguments: { spend_id: 8 } });
     expect(isError(missing)).toBe(true);
     expect(textOf(missing)).toContain("spend 8 not found");
+    await close();
+  });
+
+  it("tells the agent not to poll a burned spend, since nothing changes it, and whom to tell", async () => {
+    // On testnet the release on the other chain never comes, and Probarion does not watch it on mainnet
+    // either: an agent told to poll would poll forever.
+    const port = fakePort({
+      requestSpend: vi.fn(async () => ({ ...OUTCOME, status: "burned" as const })),
+    });
+    const { client, close } = await connect(port);
+    const { tools } = await client.listTools();
+    const status = tools.find((t) => t.name === "get_spend_status")?.description ?? "";
+    expect(status).toContain("burned is final for the vault and does not change");
+    expect(status).toContain("do not poll a burned spend");
+    expect(status).not.toMatch(/waiting for the bridge/);
+    const body = jsonOf(
+      await client.callTool({ name: "request_spend", arguments: { ...spendArgs, reasoning: "x" } }),
+    );
+    expect(body.status).toBe("burned");
+    expect(body.note).toContain("Probarion does not watch that release yet");
+    expect(body.note).toContain("do not poll it");
+    expect(body.note).toContain(
+      "tell the vault owner, with the spend_id, the destination and the tx_hash",
+    );
+    expect(body.note).not.toMatch(/Poll get_spend_status/);
     await close();
   });
 
