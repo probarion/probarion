@@ -29,8 +29,9 @@ The software is an unaudited beta.
   `pnpm --filter @probarion/example-402 run demo` runs a walk-away, a negotiated sale with its payout
   and a refused call on the SDK's test double chain, with no network and no keys, even when keys are
   in the environment, and prints its elapsed time (about a second here); `run demo --testnet`, with a
-  vault and its keys in the environment, runs the same calls on testnet. The 2026-11-09 testnet run
-  predates negotiation; the new flow has run on the test double chain only.
+  vault and its keys in the environment, runs the same calls on testnet. On 2026-11-11 `run demo
+  --testnet` ran on `percall.vaults.probarion.testnet` (spend 21 paid 0.01 for a 0.012 list price); its
+  output, receipt, ledger, snapshot and verify report are in `docs/evidence/402-vault`.
 
 - `/proof/<vault>` lists every decision of the ledger under the checks, newest first. For a decision
   made with model output it shows what the ledger records the TEE saw and signed, and what the code

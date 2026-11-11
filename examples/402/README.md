@@ -144,9 +144,10 @@ ledger still show the payment.
 - A failed data check does not refund anything. The matching sha256 shows the data arrived as the seller
   hashed it, not that it is true. The receipts file is the agent's own unsigned record; the payment's record
   is the vault's signed ledger and the chain, which the receipt points to.
-- The testnet run of 2026-11-09 ([evidence](../../docs/evidence/402-vault)) predates negotiation and receipts:
-  it paid 20 calls at the list price of 0.01 and the 21st was refused. The new flow has run on the SDK's test
-  double chain only (`run demo` offline and the tests).
+- Two testnet runs are recorded ([evidence](../../docs/evidence/402-vault)). On 2026-11-09, before negotiation
+  and receipts, the agent paid 20 calls at the list price of 0.01 and the 21st was refused. On 2026-11-11,
+  `run demo --testnet` ran the three calls above: the walk-away, a sale countered from 0.012 to 0.01 and paid
+  (spend 21), and the refusal.
 
 ## Run it on testnet, call by call
 
