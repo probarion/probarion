@@ -1,7 +1,16 @@
 // Tests for scripts/check-claims.mjs: the helpers, a small fake repository with one defect at a
 // time, and the real repository (as checked out, then with one claim edited in memory).
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -43,6 +52,27 @@ test("githubSlug makes GitHub's heading anchors", () => {
     "agent-keys-allowance-nearly-used-up",
   );
   assert.equal(githubSlug("**Bold** [link](x.md)"), "bold-link");
+  // Underscore emphasis renders as plain text; underscores inside a word or in code stay.
+  assert.equal(githubSlug("_Italic_ heading"), "italic-heading");
+  assert.equal(githubSlug("__Bold__ and *it*"), "bold-and-it");
+  assert.equal(githubSlug("KEY_ENCRYPTION_SECRET rotation"), "key_encryption_secret-rotation");
+  assert.equal(githubSlug("The `__init__` hook"), "the-__init__-hook");
+});
+
+test("runs as a script through a symlinked or junction path too, not as a silent pass", () => {
+  const dir = mkdtempSync(join(tmpdir(), "check-claims-link-"));
+  try {
+    const link = join(dir, "scripts");
+    symlinkSync(join(ROOT, "scripts"), link, process.platform === "win32" ? "junction" : "dir");
+    const r = spawnSync(process.execPath, [join(link, "check-claims.mjs"), "--bogus"], {
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /unknown option --bogus/);
+  } finally {
+    // Removes the link, not what it points at.
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("parseMarkdown numbers duplicate headings like GitHub and skips fenced code", () => {
@@ -150,6 +180,7 @@ describe("a fake repository", () => {
     problems(
       await checkClaims({ root, overrides: readme === undefined ? {} : { "README.md": readme } }),
     );
+  const runWith = async (overrides) => problems(await checkClaims({ root, overrides }));
   const edit = (from, to) => {
     assert.ok(FIXTURE_README.includes(from), `the fixture has ${from}`);
     return FIXTURE_README.replace(from, to);
@@ -250,6 +281,7 @@ describe("a fake repository", () => {
     assert.deepEqual(
       await run(edit("as `v0.demo.testnet`", "as `v9.demo.testnet`")),
       [
+        "[accounts] testnet account v9.demo.testnet is not in contracts/deployments or docs/evidence",
         '[status] "Shipped on NEAR testnet" row cites no recorded testnet account, tx or evidence',
       ].map((m) => `README.md:12 ${m}`),
     );
@@ -259,6 +291,97 @@ describe("a fake repository", () => {
       ),
       ['README.md:14 [status] "Planned" row links a transaction'],
     );
+  });
+
+  test("a row on NEAR mainnet needs a mainnet record: testnet evidence is not one", async () => {
+    const evidence = {
+      "docs/evidence/demo/README.md": `# Demo\n\n[\`3DFV2thB\u2026\`](https://testnet.nearblocks.io/txns/${TX1})\n`,
+    };
+    const row = (marker) =>
+      edit("| Guide | **Built** |", `| Guide | **${marker}**, [evidence](docs/evidence/demo) |`);
+    assert.deepEqual(await runWith({ "README.md": row("Live on NEAR testnet"), ...evidence }), []);
+    assert.deepEqual(await runWith({ "README.md": row("Live on NEAR mainnet"), ...evidence }), [
+      'README.md:13 [status] "Live on NEAR mainnet" row cites no recorded mainnet account, tx or evidence',
+    ]);
+  });
+
+  test("a README that makes no mainnet claim has no Status row on NEAR mainnet", async () => {
+    const mainnet = {
+      "contracts/deployments/mainnet.json": JSON.stringify({
+        network: "mainnet",
+        accounts: { vault_v0: "v0.demo.near" },
+      }),
+    };
+    const readme = edit("| **Planned** |", "| **Live on NEAR mainnet** as `v0.demo.near` |");
+    assert.deepEqual(await runWith({ "README.md": readme, ...mainnet }), []);
+    const claimless = readme.replace(
+      "Run `pnpm verify`.",
+      "Run `pnpm verify`. This README makes no mainnet claim.",
+    );
+    assert.deepEqual(await runWith({ "README.md": claimless, ...mainnet }), [
+      'README.md:14 [facts] the README says it makes no mainnet claim, and its Status row is marked "Live on NEAR mainnet"',
+    ]);
+  });
+
+  test("an account in inline code must be recorded, like one in an explorer link", async () => {
+    assert.deepEqual(
+      await run(edit("The vault is [", "The approver is `approver.demo.testnet`. The vault is [")),
+      [
+        "README.md:25 [accounts] testnet account approver.demo.testnet is not in contracts/deployments or docs/evidence",
+      ],
+    );
+  });
+
+  test("a link text that names a repository path names its own target", async () => {
+    assert.deepEqual(
+      await run(edit("[`docs/guide.md`](docs/guide.md) |", "[`docs/guides.md`](docs/guide.md) |")),
+      ["README.md:13 [links] link text docs/guides.md names another path than docs/guide.md"],
+    );
+    assert.deepEqual(
+      await run(
+        edit("[`contracts/vault`](contracts/vault)", "[`contracts/vaults`](contracts/vault)"),
+      ),
+      ["README.md:12 [links] link text contracts/vaults names another path than contracts/vault"],
+    );
+  });
+
+  test("an anchor is matched after percent-decoding, as GitHub does", async () => {
+    const guide = "# Guide\n\n## Setup\n\nInstall it.\n\n## \u00dcber uns\n\n## _Italic_ heading\n";
+    const links =
+      "Run `pnpm verify`. See [a](docs/guide.md#%C3%BCber-uns), [b](docs/guide.md#\u00fcber-uns) and [c](docs/guide.md#italic-heading).";
+    assert.deepEqual(
+      await runWith({
+        "README.md": edit("Run `pnpm verify`.", links),
+        "docs/guide.md": guide,
+      }),
+      [],
+    );
+    assert.deepEqual(
+      await run(edit("Run `pnpm verify`.", "Run `pnpm verify`. See [a](docs/guide.md#%E0%A4%A).")),
+      ["README.md:19 [links] link docs/guide.md#%E0%A4%A is not a valid URL escape"],
+    );
+  });
+
+  test("evidence records a tx only where it says so, not a block hash or a cut hex digest", async () => {
+    const BLOCK = "8aceRZeBsVZ4URvpRotyhWMXdpAUzcKCeAm8oSu2ZEGG";
+    const HEX = "a77febaed98dd2b6923778a57a83d8293d1244e51bb0fcf6483bc65d233e19bf";
+    const HEX43 = HEX.slice(0, 43);
+    assert.ok(isHash32(BLOCK) && isHash32(HEX43), "both look like 32-byte base58 values");
+    const evidence = {
+      "docs/evidence/demo/ledger.jsonl": [
+        JSON.stringify({ note: `FullAccess at final block 276915992 ${BLOCK}` }),
+        JSON.stringify({ link: HEX }),
+        JSON.stringify({ contract: { code: null, tx_hash: UNRECORDED } }),
+      ].join("\n"),
+    };
+    const readme = edit(
+      "Run `pnpm verify`.",
+      `Run \`pnpm verify\`. Then ${UNRECORDED}, ${BLOCK} and [this](https://testnet.nearblocks.io/txns/${HEX43}).`,
+    );
+    assert.deepEqual(await runWith({ "README.md": readme, ...evidence }), [
+      `README.md:19 [hashes] testnet tx ${HEX43} is not recorded in contracts/deployments/testnet.json, docs/mainnet-proof.json or docs/evidence`,
+      `README.md:19 [hashes] ${BLOCK} is neither a recorded transaction nor a code hash in contracts/code-hashes.json`,
+    ]);
   });
 
   test("a path in code must exist, and a pnpm script must be in package.json", async () => {
@@ -426,16 +549,23 @@ describe("claim markers and link names", () => {
 const KNOWN_PROBLEMS = [
   // README "INV-2003" row: the approve tx 47VCARhw...NCJf is shown ending in FJf.
   "[hashes] link text 47VCARhw\u2026FJf does not match its hash 47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf",
+  // README Web console row: the trial vault is named, and no deployment record or evidence has it.
+  "[accounts] testnet account trial.vaults.probarion.testnet is not in contracts/deployments or docs/evidence",
   // Interfaces section 17 lists EVAL-REGRESSION; the eval lane adds its marker.
   '[facts] claim EVAL-REGRESSION has no "probarion-claim: EVAL-REGRESSION" marker in the code or its tests',
 ];
 const isKnown = (p) => KNOWN_PROBLEMS.some((k) => p.endsWith(k));
+const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 describe("the real repository", () => {
   let report;
   before(async () => {
     report = await checkClaims({ root: ROOT });
   });
+
+  const readme = readFileSync(join(ROOT, "README.md"), "utf8").replace(/\r\n/g, "\n");
+  const agents = readFileSync(join(ROOT, "AGENTS.md"), "utf8").replace(/\r\n/g, "\n");
+  const json = (path) => JSON.parse(readFileSync(join(ROOT, path), "utf8"));
 
   test("passes offline, but for the claims listed above for a fix where they are written", () => {
     assert.deepEqual(
@@ -444,7 +574,7 @@ describe("the real repository", () => {
     );
   });
 
-  test("covers every kind of check", () => {
+  test("covers every kind of check the README gives it something for", () => {
     for (const k of [
       "links",
       "anchors",
@@ -456,192 +586,378 @@ describe("the real repository", () => {
     ]) {
       assert.ok((report.counts.get(k) ?? 0) > 0, `no ${k} were checked`);
     }
-    const facts = [
-      "versions",
-      "npm versions",
-      "code hashes",
-      "keyless vaults",
-      "MCP tools",
-      "extension manifest",
-      "docs pages",
-      "threat model",
-      "factory mode",
-      "evidence",
-      "test sums",
-      "contents",
-      "mainnet record",
-      "claim markers",
-    ];
-    // A README rewording that a fact check no longer matches shows up here: update the check.
-    for (const f of facts)
+    // Each fact check, and a looser phrase that says the README still makes that kind of claim.
+    // A claim reworded so that its check no longer reads it fails here: update the check. A claim
+    // the README no longer makes (the mainnet sentence, once mainnet runs) needs no check.
+    const facts = {
+      versions: /\bnear-sdk \d|\bNode(?:\.js)? \d/,
+      "npm versions": /\bon npm as `|\b[Rr]elease \d+\.\d+\.\d+/,
+      "code hashes": /\bcode[ _]hash/i,
+      "keyless vaults": /no full-access key|no access keys/i,
+      "MCP tools": /\b(?:@probarion\/mcp|MCP server)\b[^\n]*\b\w+ tools\b/,
+      "extension manifest": /\bChrome \d+ or newer|\basks for \w+ permissions|\bitem `[a-p]{32}`/,
+      "docs pages": /\b[\w,]+ pages in \w+ sections\b/,
+      "threat model": /THREAT_MODEL\.md[^\n]*\(\w+\s+attacks|\(\w+\s+attacks/,
+      "factory mode": /\bserves \w+ versions?\b|\bglobal version\b|\bVersion \d+: the vault build/,
+      evidence: /`\d+ passed, \d+ failed, \d+ unproven`|\bledger entry \d+/,
+      "test sums": /\b[\d,]+ [A-Z]\w* tests: /,
+      contents: /^## Contents$/m,
+      "mainnet record": /makes no\s+mainnet claim|hold no transactions/,
+      "claim markers": /^/,
+    };
+    for (const [f, said] of Object.entries(facts)) {
+      if (!said.test(`${readme}\n${agents}`)) continue;
       assert.ok((report.facts.get(f) ?? 0) > 0, `fact check "${f}" matched nothing`);
+    }
     if (!report.counts.has("git facts skipped (no full git history)")) {
       assert.ok((report.facts.get("git history") ?? 0) > 0, "no git history fact was checked");
     }
   });
 
-  const readme = readFileSync(join(ROOT, "README.md"), "utf8").replace(/\r\n/g, "\n");
-  const json = (path) => JSON.parse(readFileSync(join(ROOT, path), "utf8"));
-
   /** Runs the checker with one change and returns the problems not already known. */
   const withChange = async (overrides) =>
     problems(await checkClaims({ root: ROOT, overrides })).filter((p) => !isKnown(p));
-  const readmeWith = (from, to) => {
-    assert.ok(readme.includes(from), `README.md has ${JSON.stringify(from)}`);
-    return { "README.md": readme.replace(from, to) };
+
+  // Each case finds today's claim by a pattern, not by its exact words, so a correct README update
+  // does not fail CI: when the README no longer makes the claim at all, the case is skipped.
+  const statusSection = (() => {
+    const s = readme.search(/^## Status$/m);
+    if (s < 0) return [0, 0];
+    const next = readme.slice(s + 1).search(/^## /m);
+    return [s, next < 0 ? readme.length : s + 1 + next];
+  })();
+  /** The README text from the heading above `at` to the next heading: a section of factEvidence. */
+  const sectionOf = (at) => {
+    const from = readme.lastIndexOf("\n#", at);
+    const next = readme.indexOf("\n#", at);
+    return readme.slice(Math.max(from, 0), next < 0 ? readme.length : next);
   };
+  const lineOf = (at) => readme.slice(readme.lastIndexOf("\n", at) + 1, readme.indexOf("\n", at));
+  /**
+   * The first match of `re` (one that `ok` accepts, in the Status section when `status`), with the
+   * span of its group `group`: the part a case changes.
+   */
+  const findClaim = (re, { status = false, ok = () => true, group = 1 } = {}) => {
+    const [from, to] = status ? statusSection : [0, readme.length];
+    const flags = [...new Set(`${re.flags}dg`)].join("");
+    for (const m of readme.slice(from, to).matchAll(new RegExp(re.source, flags))) {
+      const at = from + m.index;
+      if (!ok(m, at)) continue;
+      const [a, z] = m.indices[group];
+      return { m, at, start: from + a, end: from + z, value: m[group] };
+    }
+    return null;
+  };
+  // A case's `to` gives the new text of the matched group, and `expect` the problem it must cause;
+  // both get the hit: { value, m, at, to }.
+  const bumpLast = ({ value }) => value.replace(/\d+$/, (d) => String(Number(d) + 1));
+  const plusOne = ({ value }) => String(toNumber(value) + 1);
+  const isCount = (m) => !Number.isNaN(toNumber(m[1]));
+  const inVerifiedSection = (at) => /verify-[^)\s]*\.txt\)/.test(sectionOf(at));
+  const codeHashes = json("contracts/code-hashes.json").entries.map((e) => e.code_hash);
 
   const cases = [
-    [
-      "a toolchain version",
-      "near-sdk 5.29.1",
-      "near-sdk 5.30.1",
-      /near-sdk 5\.30\.1": contracts\/Cargo\.toml pins 5\.29\.1/,
-    ],
-    [
-      "a library version",
-      "`@hot-labs/near-connect` 0.11.4",
-      "`@hot-labs/near-connect` 0.12.0",
-      /apps\/web\/package\.json pins 0\.11\.4/,
-    ],
-    [
-      "an npm version",
-      "on npm as `@probarion/core` 0.1.0",
-      "on npm as `@probarion/core` 0.2.0",
-      /packages\/core\/package\.json is at/,
-    ],
-    [
-      "the MCP tool count",
-      "five tools (`list_mandates`",
-      "six tools (`list_mandates`",
-      /"six tools": packages\/mcp\/src\/server\.ts registers 5/,
-    ],
-    [
-      "the threat model's attacks",
-      "(eleven\nattacks",
-      "(twelve\nattacks",
-      /"twelve attacks": the Attacks table of docs\/THREAT_MODEL\.md has 11 rows/,
-    ],
-    [
-      "the docs page count",
-      "34 pages in six sections",
-      "35 pages in six sections",
-      /apps\/web\/content\/docs has \d+ \.mdx pages/,
-    ],
-    [
-      "the extension's Chrome version",
-      "Chrome 127 or newer",
-      "Chrome 120 or newer",
-      /sets minimum_chrome_version 127/,
-    ],
-    [
-      "a ledger entry",
-      "`mandate.payee_mismatch`, ledger entry 3",
-      "`mandate.payee_mismatch`, ledger entry 4",
-      /has entry 4 refused by mandate\.payee_mismatch/,
-    ],
-    [
-      "a verify output",
-      "printed `9 passed, 0 failed, 0 unproven`",
-      "printed `8 passed, 1 failed, 0 unproven`",
-      /"8 passed, 1 failed, 0 unproven" is in none of docs\/evidence\/demo-vault\/verify-2026-11-09\.txt/,
-    ],
-    [
-      "a check a verify output does not pass",
-      "It fails check c",
-      "It fails check f",
-      /check f is not FAIL/,
-    ],
-    [
-      "an anchor count",
-      "the chain's 4 anchors",
-      "the chain's 5 anchors",
-      /reports another anchor count/,
-    ],
-    [
-      "a code hash commit",
-      "recorded for commit `3bd8189`",
-      "recorded for commit `64ac3c0`",
-      /commit 64ac3c0: contracts\/code-hashes\.json records 6tbER/,
-    ],
-    [
-      "an account's code hash",
-      "# 6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR\n",
-      "# 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1\n",
-      /v0\.probarion\.testnet: the records give code hash 6tbER/,
-    ],
-    ["a status marker", "| **Planned**.", "| **Soon**.", /unknown status marker "Soon"/],
-    [
-      "a Where path",
-      "[`contracts/factory`](contracts/factory) |",
-      "[`contracts/factories`](contracts/factories) |",
-      /contracts\/factories is not a file of the repository/,
-    ],
-    [
-      "the shortened hash of a link",
-      "[`3DFV2thB\u2026Fy9cX`]",
-      "[`3DFV2thC\u2026Fy9cX`]",
-      /link text 3DFV2thC\u2026Fy9cX does not match/,
-    ],
-    [
-      "a pnpm package filter",
-      "pnpm --filter @probarion/example-402 run test",
-      "pnpm --filter @probarion/example-403 run test",
-      /--filter @probarion\/example-403: no workspace package/,
-    ],
-    [
-      "a chain.mjs command",
-      "chain.mjs key-count v0",
-      "chain.mjs keys v0",
-      /scripts\/testnet\/chain\.mjs has no command "keys"/,
-    ],
+    {
+      what: "a toolchain version",
+      re: /\bnear-sdk (\d+\.\d+\.\d+)/,
+      to: bumpLast,
+      expect: ({ to }) => new RegExp(`near-sdk ${esc(to)}": contracts/Cargo\\.toml pins`),
+    },
+    {
+      what: "a library version",
+      re: /`@hot-labs\/near-connect`\)? (\d+\.\d+\.\d+)/,
+      to: bumpLast,
+      expect: () => /apps\/web\/package\.json pins/,
+    },
+    {
+      what: "the reproducible-build image",
+      re: /\bsourcescan\/cargo-near:([\w.-]*\w)/,
+      to: () => "0.0.1-rust-1.0.0",
+      expect: () =>
+        /"sourcescan\/cargo-near:0\.0\.1-rust-1\.0\.0": contracts\/vault\/Cargo\.toml pins/,
+    },
+    {
+      what: "an npm version",
+      re: /\bon npm as `@probarion\/core` (\d+\.\d+\.\d+)/,
+      to: ({ value }) => `${Number(value.split(".")[0]) + 10}.0.0`,
+      expect: () => /packages\/core\/package\.json is at/,
+    },
+    {
+      what: "the MCP tool count",
+      re: /\b(\w+) tools \(`/,
+      ok: isCount,
+      to: plusOne,
+      expect: ({ to }) => new RegExp(`"${to} tools": packages/mcp/src/server\\.ts registers`),
+    },
+    {
+      what: "the threat model's attacks",
+      re: /\((\w+)\s+attacks\b/,
+      ok: isCount,
+      to: plusOne,
+      expect: ({ to }) =>
+        new RegExp(`"${to} attacks": the Attacks table of docs/THREAT_MODEL\\.md`),
+    },
+    {
+      what: "the docs page count",
+      re: /\b(\d+) pages in \w+ sections\b/,
+      to: plusOne,
+      expect: () => /apps\/web\/content\/docs has \d+ \.mdx pages/,
+    },
+    {
+      what: "the extension's Chrome version",
+      re: /\bChrome (\d+) or newer/,
+      to: plusOne,
+      expect: () => /sets minimum_chrome_version/,
+    },
+    {
+      what: "a ledger entry",
+      re: /\brule `[\w.]+`, ledger entry (\d+)/,
+      to: plusOne,
+      expect: ({ to }) => new RegExp(`has entry ${to} refused by`),
+    },
+    {
+      what: "a verify output",
+      re: /`(\d+) passed, \d+ failed, \d+ unproven`/,
+      to: ({ value }) => String(Number(value) + 100),
+      expect: () => /" is in none of docs\/evidence\//,
+    },
+    {
+      what: "a check a verify output passes or fails",
+      re: /\b(passes|fails) checks? [a-i](?: to [a-i])?\b/,
+      ok: (_m, at) => inVerifiedSection(at),
+      to: ({ value }) => (value === "passes" ? "fails" : "passes"),
+      expect: () => /check [a-i] is not (?:PASS|FAIL) in docs\/evidence\//,
+    },
+    {
+      what: "an anchor count",
+      re: /\b(?:the chain's|holds the|anchored the ledger) (\w+) (?:anchors|times)\b/,
+      ok: (m, at) => isCount(m) && inVerifiedSection(at),
+      to: plusOne,
+      expect: () => /reports another anchor count/,
+    },
+    {
+      what: "a code hash commit",
+      re: /\brecorded for commit `([0-9a-f]{7,40})`/,
+      ok: (_m, at) => /[1-9A-HJ-NP-Za-km-z]{43,44}/.test(lineOf(at)),
+      to: () => "fffffff",
+      expect: () => /commit fffffff: contracts\/code-hashes\.json records/,
+    },
+    {
+      what: "an account's code hash in a chain.mjs comment",
+      re: /chain\.mjs code-hash ([a-z\d_.-]+)\s+#\s*([1-9A-HJ-NP-Za-km-z]{43,44})/,
+      group: 2,
+      ok: (m) => codeHashes.some((h) => h !== m[2]),
+      to: ({ value }) => codeHashes.find((h) => h !== value),
+      expect: ({ value, m }) => new RegExp(`${esc(m[1])}: the records give code hash ${value}`),
+    },
+    {
+      what: "the code hash of the factory's vaults",
+      re: /\b[Vv]aults?\b[^.;|]*\bfactory\b[^.;|]*?code hash `([1-9A-HJ-NP-Za-km-z]{6,44})\u2026?`/,
+      ok: (m) => codeHashes.some((h) => !h.startsWith(m[1])),
+      to: ({ value }) => codeHashes.find((h) => !h.startsWith(value)).slice(0, value.length),
+      expect: () => /is said to run on the factory's vaults/,
+    },
+    {
+      what: "the number of factory versions",
+      re: /\bserves (\w+) versions?\b/,
+      ok: isCount,
+      to: plusOne,
+      expect: () => /serves \w+ versions?": contracts\/deployments\/testnet\.json records/,
+    },
+    {
+      what: "a factory version's index",
+      re: /\bVersion (\d+): the vault build `/,
+      to: ({ value }) => String(Number(value) + 100),
+      expect: () => /contracts\/deployments\/testnet\.json records no such version/,
+    },
+    {
+      what: "a global version said to be live",
+      re: /\b(global version (?:is |and a mainnet factory are )?not deployed|global version waits)/,
+      to: () => "global version is live",
+      expect: () => /"global version is live": contracts\/deployments\/testnet\.json records no/,
+    },
+    {
+      what: "a status marker",
+      re: /\| \*\*(Planned|Built|Shipped|In progress|Live)\*\*/,
+      status: true,
+      to: () => "Soon",
+      expect: () => /unknown status marker "Soon"/,
+    },
+    {
+      what: "a status row's network, on testnet evidence",
+      re: /\*\*(?:Live|Shipped|Built) on NEAR (testnet)\*\*/,
+      status: true,
+      ok: (_m, at) => lineOf(at).includes("](docs/evidence/"),
+      to: () => "mainnet",
+      expect: () => /row cites no recorded mainnet account, tx or evidence/,
+    },
+    {
+      what: "a Where path",
+      re: /\[(`([\w./-]+)`\]\(\2)\) \|$/m,
+      status: true,
+      to: ({ m }) => `\`${m[2]}-missing\`](${m[2]}-missing`,
+      expect: ({ m }) => new RegExp(`${esc(m[2])}-missing is not a file of the repository`),
+    },
+    {
+      what: "the path a link text names",
+      re: /\[`((?:contracts|packages|apps|docs)\/[\w./-]+)`\]\(\1\)/,
+      to: ({ value }) => `${value}-old`,
+      expect: ({ value, to }) =>
+        new RegExp(`link text ${esc(to)} names another path than ${esc(value)}`),
+    },
+    {
+      what: "an account in inline code",
+      re: /`((?:[a-z\d][a-z\d_-]*\.)+testnet)`/,
+      ok: (_m, at) => readme[at - 1] !== "[",
+      to: ({ value }) => `x${value}`,
+      expect: ({ to }) => new RegExp(`testnet account ${esc(to)} is not in contracts/deployments`),
+    },
+    {
+      what: "the shortened hash of a link",
+      re: /\[`([1-9A-HJ-NP-Za-km-z]{6,})\u2026([1-9A-HJ-NP-Za-km-z]*)`\]\(https:\/\/testnet\.nearblocks\.io\/txns\/([1-9A-HJ-NP-Za-km-z]{43,44})\)/,
+      ok: (m) => m[3].startsWith(m[1]) && m[3].endsWith(m[2]),
+      to: ({ value }) => value.slice(0, -1) + (value.endsWith("z") ? "y" : "z"),
+      expect: ({ to, m }) => new RegExp(`link text ${esc(to)}\u2026${esc(m[2])} does not match`),
+    },
+    {
+      what: "a pnpm package filter",
+      re: /\bpnpm --filter (@probarion\/[\w-]+)/,
+      to: ({ value }) => `${value}-missing`,
+      expect: ({ to }) => new RegExp(`--filter ${esc(to)}: no workspace package`),
+    },
+    {
+      what: "a script command",
+      re: /\bnode (scripts\/[\w./-]+\.mjs) ([a-z][\w-]*)/,
+      group: 2,
+      ok: (m) =>
+        new RegExp(`case "${m[2]}"|\\b(?:cmd|command) === "${m[2]}"`).test(
+          readFileSync(join(ROOT, m[1]), "utf8"),
+        ),
+      to: () => "no-such-command",
+      expect: ({ m }) => new RegExp(`${esc(m[1])} has no command "no-such-command"`),
+    },
   ];
-  for (const [what, from, to, expected] of cases) {
-    test(`fails when README.md misstates ${what}`, async () => {
-      const got = await withChange(readmeWith(from, to));
+  for (const c of cases) {
+    test(`fails when README.md misstates ${c.what}`, async (t) => {
+      const hit = findClaim(c.re, c);
+      if (!hit) {
+        t.skip(`README.md no longer states ${c.what}`);
+        return;
+      }
+      hit.to = c.to(hit);
+      const changed = readme.slice(0, hit.start) + hit.to + readme.slice(hit.end);
+      const expected = c.expect(hit);
+      const got = await withChange({ "README.md": changed });
       assert.ok(
         got.some((p) => expected.test(p)),
-        `expected ${expected} in:\n${got.join("\n")}`,
+        `${hit.value} -> ${hit.to}: expected ${expected} in:\n${got.join("\n")}`,
       );
     });
   }
 
-  test("fails when the records drop a transaction the README cites", async () => {
-    const testnet = json("contracts/deployments/testnet.json");
-    delete testnet.smoke.no_mandate_tx;
-    const got = await withChange({ "contracts/deployments/testnet.json": JSON.stringify(testnet) });
+  // The record cases change a copy of a record file, found by what it holds today.
+  const testnetJson = json("contracts/deployments/testnet.json");
+  /** Every file under a directory of the checkout, as one text. */
+  const treeText = (dir) =>
+    readdirSync(join(ROOT, dir), { withFileTypes: true })
+      .map((f) =>
+        f.isDirectory()
+          ? treeText(`${dir}/${f.name}`)
+          : readFileSync(join(ROOT, dir, f.name), "utf8"),
+      )
+      .join("\n");
+  const evidenceText = treeText("docs/evidence");
+
+  test("fails when the records drop a transaction the README cites", async (t) => {
+    // A tx key of testnet.json whose hash the README cites and no other record holds.
+    let hit = null;
+    const visit = (o, path) => {
+      for (const [k, v] of Object.entries(o ?? {})) {
+        if (hit) return;
+        if (v && typeof v === "object") visit(v, [...path, k]);
+        else if (
+          /(^|_)tx$/.test(k) &&
+          typeof v === "string" &&
+          readme.includes(v) &&
+          !evidenceText.includes(v) &&
+          !JSON.stringify(json("docs/mainnet-proof.json")).includes(v)
+        ) {
+          hit = { path: [...path, k], hash: v };
+        }
+      }
+    };
+    visit(testnetJson, []);
+    if (!hit) {
+      t.skip("README.md cites no tx that only contracts/deployments/testnet.json records");
+      return;
+    }
+    const copy = structuredClone(testnetJson);
+    const parent = hit.path.slice(0, -1).reduce((o, k) => o[k], copy);
+    delete parent[hit.path.at(-1)];
+    const got = await withChange({ "contracts/deployments/testnet.json": JSON.stringify(copy) });
     assert.ok(
-      got.some((p) => /testnet tx AkjyVPmb\w+ is not recorded/.test(p)),
+      got.some((p) => p.includes(`testnet tx ${hit.hash} is not recorded`)),
       got.join("\n"),
     );
   });
 
-  test("fails when a global factory version is recorded and the README says there is none", async () => {
-    const testnet = json("contracts/deployments/testnet.json");
-    testnet.factory.versions[0].mode = "global";
-    const got = await withChange({ "contracts/deployments/testnet.json": JSON.stringify(testnet) });
+  test("fails when a global factory version is recorded and the README says there is none", async (t) => {
+    if (
+      !/global version (?:is |and a mainnet factory are )?not deployed|The global version waits/.test(
+        readme,
+      )
+    ) {
+      t.skip("README.md no longer says the global version is not deployed");
+      return;
+    }
+    const copy = structuredClone(testnetJson);
+    if (!copy.factory?.versions?.length) {
+      t.skip("contracts/deployments/testnet.json records no factory version");
+      return;
+    }
+    copy.factory.versions[0].mode = "global";
+    const got = await withChange({ "contracts/deployments/testnet.json": JSON.stringify(copy) });
     assert.ok(
       got.some((p) => /records 1 version\(s\) not embedded/.test(p)),
       got.join("\n"),
     );
   });
 
-  test("fails when a mainnet transaction is recorded and the README says there is none", async () => {
+  test("fails when a mainnet transaction is recorded and the README says there is none", async (t) => {
+    if (!/hold no transactions|makes no\s+mainnet claim/.test(readme)) {
+      t.skip("README.md no longer says mainnet has no transactions");
+      return;
+    }
     const mainnet = json("contracts/deployments/mainnet.json");
-    mainnet.proof.first_near_payment_tx = UNRECORDED;
+    mainnet.check_claims_test_tx = UNRECORDED;
     const got = await withChange({ "contracts/deployments/mainnet.json": JSON.stringify(mainnet) });
     assert.ok(
-      got.some((p) => /says mainnet has no transactions, and 1 are recorded/.test(p)),
+      got.some((p) => /says mainnet has no transactions, and \d+ are recorded/.test(p)),
       got.join("\n"),
     );
   });
 
-  test("fails when a vault said to have no full-access key has no record of it", async () => {
-    const testnet = json("contracts/deployments/testnet.json");
-    testnet.vault_v0.locked = false;
-    const got = await withChange({ "contracts/deployments/testnet.json": JSON.stringify(testnet) });
+  test("fails when a vault said to have no full-access key has no record of it", async (t) => {
+    const v0 = testnetJson.accounts?.vault_v0;
+    const row = readme
+      .split("\n")
+      .find(
+        (l) =>
+          l.startsWith("|") && v0 && l.includes(v0) && /no full-access key|\blocked\b/i.test(l),
+      );
+    if (
+      testnetJson.vault_v0?.locked !== true ||
+      !row ||
+      evidenceText.includes(`Probarion verify: ${v0} `)
+    ) {
+      t.skip("README.md has no keyless claim that only contracts/deployments/testnet.json backs");
+      return;
+    }
+    const copy = structuredClone(testnetJson);
+    copy.vault_v0.locked = false;
+    const got = await withChange({ "contracts/deployments/testnet.json": JSON.stringify(copy) });
     assert.ok(
-      got.some((p) => /v0\.probarion\.testnet is said to be keyless/.test(p)),
+      got.some((p) => p.includes(`${v0} is said to be keyless`)),
       got.join("\n"),
     );
   });
@@ -665,6 +981,10 @@ describe("--online", () => {
 | What | Transaction | Result |
 | --- | --- | --- |
 | \`spend\` on mandate 999 | [\`AkjyVPmb\u2026\`](https://testnet.nearblocks.io/txns/${TX2}) | \`PROBARION:NoMandate\` |
+
+## Packages
+
+The SDK is on npm as \`@demo/sdk\` 0.1.0. The console runs at [probarion.xyz](https://probarion.xyz) on testnet.
 `;
   let root;
   before(() => {
@@ -679,6 +999,9 @@ describe("--online", () => {
         accounts: { vault_v0: "v0.demo.testnet" },
         smoke: { no_mandate_tx: TX2 },
       }),
+      "pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+      "packages/sdk/package.json": JSON.stringify({ name: "@demo/sdk", version: "0.1.0" }),
+      "CHANGELOG.md": "# Changelog\n\n## 0.1.0 - 2026-11-09\n",
     };
     for (const [path, text] of Object.entries(files)) {
       mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -714,6 +1037,12 @@ describe("--online", () => {
               }
             : null;
         return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }));
+      }
+      if (url.includes("/api/health")) {
+        return new Response(JSON.stringify({ ok: true, network: "testnet" }));
+      }
+      if (url.startsWith("https://registry.npmjs.org/")) {
+        return new Response(JSON.stringify({ versions: { "0.1.0": {} } }));
       }
       const live = listing === "live";
       const r = new Response(
@@ -763,8 +1092,36 @@ describe("--online", () => {
     const report = await checkClaims({ root, online: true, net: { fetchImpl: down } });
     assert.deepEqual(problems(report), []);
     assert.deepEqual(
-      report.unreachable.map((u) => u.split(":")[0]),
-      ["onlineTxs", "onlineHttp"],
+      report.unreachable.map((u) => u.split(": ")[0]),
+      [
+        `testnet tx ${TX2}`,
+        "https://probarion.xyz/api/health",
+        `Chrome Web Store item ${ITEM}`,
+        "npm @demo/sdk@0.1.0",
+      ],
+    );
+  });
+
+  test("one endpoint that does not answer skips only its own checks", async () => {
+    const asked = [];
+    const flaky = async (url, init) => {
+      asked.push({ method: init?.method ?? "GET", url });
+      if (init?.method === "POST" || url.includes("/api/health")) {
+        throw new TypeError("fetch failed");
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const report = await checkClaims({ root, online: true, net: { fetchImpl: flaky } });
+    // The tx lookup tried a second archival host, and the store and npm checks still ran.
+    assert.deepEqual(
+      asked.filter((a) => a.method === "POST").map((a) => new URL(a.url).host),
+      ["archival-rpc.testnet.fastnear.com", "archival-rpc.testnet.near.org"],
+    );
+    assert.ok(asked.some((a) => a.url === `https://chromewebstore.google.com/detail/${ITEM}`));
+    assert.deepEqual(problems(report), ["README.md:17 [online] npm has no @demo/sdk@0.1.0"]);
+    assert.deepEqual(
+      report.unreachable.map((u) => u.split(": ")[0]),
+      [`testnet tx ${TX2}`, "https://probarion.xyz/api/health"],
     );
   });
 });

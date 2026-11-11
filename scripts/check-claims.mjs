@@ -12,13 +12,14 @@
 //
 // Exit 0: every claim checked out. Exit 1: a claim does not match the repository (or, with --online,
 // the chain or a public endpoint); each one is printed as file:line [check] what is wrong. Exit 2: the
-// checker could not run, or with --online an endpoint did not answer, so a claim stayed unchecked.
+// checker could not run, or with --online an endpoint did not answer, so the checks that needed it
+// stayed unchecked (each is listed; the others still ran).
 //
 // Offline checks, over README.md and AGENTS.md (links also over SECURITY.md, CONTRIBUTING.md and the
 // Markdown files under docs/evidence):
 //   links     each relative link or image resolves to a file of the repository (git's file list, so
 //             case matters as on GitHub), each #anchor to a heading (GitHub's slug) and each #Lnn to a
-//             line the file has.
+//             line the file has. A link text that names a repository path names its target.
 //   paths     each repository path in inline code or a code block exists, each `pnpm` script and
 //             --filter package exists, each `node scripts/x.mjs <command>` names a command the script
 //             handles, and each `grep -n <text> <file>` finds its text.
@@ -26,12 +27,14 @@
 //             well-formed and recorded: a testnet tx in contracts/deployments/testnet.json,
 //             docs/mainnet-proof.json or docs/evidence/**, a mainnet tx in contracts/deployments/
 //             mainnet.json or docs/mainnet-proof.json, a code hash in contracts/code-hashes.json. A
-//             shortened hash must match its link or the one record it abbreviates.
-//   accounts  each account in an explorer link is a NEAR account id of that link's network and is
-//             recorded in the deployment records or the evidence.
+//             shortened hash must match its link or the one record it abbreviates. In the evidence, a
+//             value is a tx only in an explorer tx link, under a key such as "tx_hash", or after "tx".
+//   accounts  each account in an explorer link or in inline code is a NEAR account id (of that link's
+//             network) and is recorded in the deployment records or the evidence.
 //   status    each row of the README's Status table has a known marker in bold (Shipped, Built, In
-//             progress, Planned, Live, optionally "on NEAR testnet") and points at a path that exists;
-//             a row "on NEAR testnet" cites a recorded account, a transaction or an evidence file.
+//             progress, Planned, Live, optionally "on NEAR testnet|mainnet") and points at a path that
+//             exists; a row "on NEAR <network>" cites a recorded account, a transaction or an evidence
+//             file of that network, and no row is on mainnet while the README makes no mainnet claim.
 //   facts     numbers and versions the README states that the repository can derive: code hashes and
 //             their commits, npm and toolchain versions, the MCP tools, the extension's permissions,
 //             the docs page count, the threat model's attacks, the factory mode, the mainnet record,
@@ -41,20 +44,21 @@
 // --online (read-only, time-limited, one retry): the vaults and the factory the README names exist on
 // testnet with their recorded code hash and no full-access key; the README's own `chain.mjs` comments
 // still hold; each cited tx exists, has the expected signer and shows the outcome its row claims; the
-// global vault code is unpublished while the README says so; probarion.xyz/api/health answers ok on
+// global vault code is published exactly as the README says; probarion.xyz/api/health answers ok on
 // testnet; the Chrome Web Store item is live or not as the README says; npm has each version the
 // README says is on npm, and not the packages it says are not.
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const DEFAULT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLAIM_DOCS = ["README.md", "AGENTS.md"];
 const LINK_ONLY_DOCS = ["SECURITY.md", "CONTRIBUTING.md"];
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-const B58_RUN = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{43,44}(?![1-9A-HJ-NP-Za-km-z])/g;
+// A whole base58 word: not a run cut out of a longer hex or alphanumeric token at a 0, O, I or l.
+const B58_RUN = /(?<![0-9A-Za-z])[1-9A-HJ-NP-Za-km-z]{43,44}(?![0-9A-Za-z])/g;
 const NEAR_ACCOUNT_RE = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
 const ACCOUNT_TOKEN = /(?<![\w.-])(?:[a-z\d][a-z\d_-]*\.)+(?:testnet|near)(?![\w.-])/g;
 const EXPLORER_TX = [
@@ -104,13 +108,20 @@ export function base58Length(s) {
 export const isHash32 = (s) =>
   typeof s === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s) && base58Length(s) === 32;
 
+/** `_x_` and `__x__` emphasis around a word, not the underscores inside snake_case. */
+const UNDERSCORE_EMPHASIS = /(^|[^\p{L}\p{N}_])(__?)(?=\S)(.+?)(?<=\S)\2(?=[^\p{L}\p{N}_]|$)/gu;
+
 /** GitHub's anchor for a heading: rendered text, lower case, punctuation dropped, spaces to "-". */
 export function githubSlug(heading) {
+  // Code spans keep their text as written; emphasis outside them renders as plain text.
   const text = heading
     .replace(/<[^>]*>/g, "")
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/\*\*|\*/g, "");
+    .split(/(`[^`]*`)/)
+    .map((part, i) =>
+      i % 2 ? part.slice(1, -1) : part.replace(/\*\*|\*/g, "").replace(UNDERSCORE_EMPHASIS, "$1$3"),
+    )
+    .join("");
   return text
     .trim()
     .toLowerCase()
@@ -159,6 +170,21 @@ function tableCells(line) {
 
 /** The lines GitHub shows for a file: a final newline does not start another line. */
 const lineCount = (text) => text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+
+/** The clause of a text around [start, start + length): up to a ". ", "; ", "! ", "? " or table "|". */
+function clauseAround(text, start, length) {
+  const stop = /[.;!?](?=\s)|(?<!\\)\|/g;
+  let from = 0;
+  let to = text.length;
+  for (const m of text.matchAll(stop)) {
+    if (m.index < start) from = m.index + 1;
+    else if (m.index >= start + length) {
+      to = m.index;
+      break;
+    }
+  }
+  return text.slice(from, to);
+}
 
 const isDelimiterRow = (line) => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line);
 const stripTicks = (s) => s.replace(/`/g, "").trim();
@@ -422,6 +448,7 @@ export function loadRecords(repo) {
   const codeHashes = new Map();
   const accountCodeHash = new Map();
   const keyless = new Map();
+  const factoryVersionHashes = new Set();
   const note = (map, k, where) => {
     if (!map.has(k)) map.set(k, new Set());
     map.get(k).add(where);
@@ -461,6 +488,9 @@ export function loadRecords(repo) {
     };
     visitObjects(doc);
     const factory = doc.factory;
+    for (const v of factory?.versions ?? []) {
+      if (isHash32(v?.code_hash)) factoryVersionHashes.add(v.code_hash);
+    }
     for (const v of factory?.smoke_vaults ?? []) {
       const ver = (factory.versions ?? []).find((x) => x.index === v.version);
       if (ver && isHash32(ver.code_hash)) accountCodeHash.set(v.account, ver.code_hash);
@@ -485,12 +515,21 @@ export function loadRecords(repo) {
     if (!/\.(md|txt|json|jsonl)$/.test(file)) continue;
     const text = repo.read(file);
     const net = /mainnet/.test(file) ? "mainnet" : "testnet";
+    // Evidence also holds block hashes, key ids and hex digests: a value is a tx only where the
+    // file says so, in an explorer tx link, under a JSON key such as "tx_hash", or after "tx".
     for (const m of text.matchAll(B58_RUN)) {
       const h = m[0];
       if (!isHash32(h) || codeHashes.has(h)) continue;
-      if (/(ed25519|secp256k1):$/.test(text.slice(Math.max(0, m.index - 10), m.index))) continue;
-      const link = /(testnet\.)?nearblocks\.io\/txns?\/$/.exec(text.slice(m.index - 40, m.index));
-      note(tx[link ? (link[1] ? "testnet" : "mainnet") : net], h, file);
+      const before = text.slice(Math.max(0, m.index - 60), m.index);
+      const link =
+        /(?:(testnet\.)?nearblocks\.io\/txns?\/|explorer\.(testnet\.)?near\.org\/transactions\/)$/.exec(
+          before,
+        );
+      const named =
+        /"(?:\w+_)?(?:tx|txn|tx_hash|transaction|transaction_hash)"\s*:\s*"$/.test(before) ||
+        /\b(?:tx|txn|transaction)(?: hash)?:?\s+`?$/i.test(before);
+      if (link) note(tx[link[1] || link[2] ? "testnet" : "mainnet"], h, file);
+      else if (named) note(tx[net], h, file);
     }
     for (const m of text.matchAll(ACCOUNT_TOKEN)) noteAccount(m[0], file);
     if (file.endsWith(".md")) {
@@ -509,7 +548,23 @@ export function loadRecords(repo) {
       if (!keyless.has(header[1])) keyless.set(header[1], { zeroKeys: false, where: file });
     }
   }
-  return { tx, accounts, signerOf, codeHashes, accountCodeHash, keyless };
+  // The files that record a transaction on each network: evidence for a row of that network. An
+  // account name alone is not (the testnet evidence names `intents.near`, a mainnet account).
+  const filesOn = {};
+  for (const net of ["testnet", "mainnet"]) {
+    filesOn[net] = new Set();
+    for (const where of tx[net].values()) for (const f of where) filesOn[net].add(f);
+  }
+  return {
+    tx,
+    accounts,
+    signerOf,
+    codeHashes,
+    accountCodeHash,
+    keyless,
+    factoryVersionHashes,
+    filesOn,
+  };
 }
 
 /** The workspace packages: name -> { dir, json }. */
@@ -563,10 +618,12 @@ class Report {
 
 function resolveTarget(fromDoc, target) {
   const [beforeHash, ...rest] = target.split("#");
-  const anchor = rest.length ? rest.join("#") : undefined;
+  let anchor = rest.length ? rest.join("#") : undefined;
   let path = beforeHash.split("?")[0];
   try {
     path = decodeURIComponent(path);
+    // GitHub matches the anchor after decoding it, as it does a path (%C3%BC is one letter).
+    if (anchor) anchor = decodeURIComponent(anchor);
   } catch {
     return { error: "is not a valid URL escape" };
   }
@@ -600,13 +657,18 @@ function checkLinks(ctx, doc, model) {
         report.fail("links", doc, line, `link ${t}: ${r.path} is not a file of the repository`);
         continue;
       }
+      // A link text that names a repository path, existing or not, names its own target.
       const shown = stripTicks(link.text);
-      if (
-        /^[\w.-]+\/[\w./[\]-]+$/.test(shown) &&
-        shown !== r.path &&
-        (repo.isFile(shown) || repo.isDir(shown))
-      ) {
-        report.fail("links", doc, line, `link text ${shown} names another path than ${r.path}`);
+      if (/^[\w.-]+\/[\w./[\]-]+(?:#[\w-]*)?$/.test(shown)) {
+        const named = shown.split("#")[0].replace(/\/+$/, "");
+        const asLink = resolveTarget(doc, named);
+        const same = named === r.path || (!asLink.error && asLink.path === r.path);
+        const repoPath =
+          repo.isDir(named.split("/")[0]) ||
+          (!asLink.error && repo.isDir(posix.dirname(asLink.path)));
+        if (!same && repoPath) {
+          report.fail("links", doc, line, `link text ${shown} names another path than ${r.path}`);
+        }
       }
       checkLinkName(ctx, doc, line, link.text, r);
       if (r.anchor === undefined || r.anchor === "") continue;
@@ -806,6 +868,30 @@ function checkAccounts(ctx, doc, model) {
   const { report, records } = ctx;
   for (const b of model.blocks) {
     if (b.kind === "code") continue;
+    // An account named in inline code (an approver, a payee, a vault) is a recorded one; the text
+    // of an explorer link is checked against its link below.
+    const explorerTexts = new Set(
+      extractLinks(b.text)
+        .filter((l) => explorerAccount(l.target))
+        .map((l) => l.index + 1),
+    );
+    for (const s of codeSpans(b.text)) {
+      if (explorerTexts.has(s.index)) continue;
+      for (const m of s.code.matchAll(ACCOUNT_TOKEN)) {
+        const id = m[0];
+        const net = networkOfAccount(id);
+        report.count("accounts");
+        report.once("accounts", `${net}:${id}`);
+        if (!records.accounts[net].has(id)) {
+          report.fail(
+            "accounts",
+            doc,
+            lineAt(b, s.index),
+            `${net} account ${id} is not in contracts/deployments or docs/evidence`,
+          );
+        }
+      }
+    }
     for (const link of extractLinks(b.text)) {
       const a = explorerAccount(link.target);
       if (!a) continue;
@@ -893,11 +979,21 @@ function checkStatus(ctx, doc, model) {
       report.fail("status", doc, row.n, `"${marker[1]}" row points at no path of the repository`);
     }
     const links = extractLinks(row.text);
+    ctx.statusRows.push({ doc, line: row.n, marker: marker[1].trim(), network: mk[2] ?? null });
     if (mk[2]) {
       const net = mk[2];
+      // Evidence counts for the network it records something on: a testnet evidence folder is no
+      // proof of a row marked "on NEAR mainnet".
+      const evidenceOn = (l) => {
+        if (/^[a-z][a-z\d+.-]*:/i.test(l.target)) return false;
+        const r = resolveTarget(doc, l.target);
+        if (r.error || !/^docs\/(?:evidence(?:\/|$)|mainnet-proof\.json$)/.test(r.path))
+          return false;
+        return [...records.filesOn[net]].some((f) => f === r.path || f.startsWith(`${r.path}/`));
+      };
       const cites =
         links.some((l) => explorerTx(l.target)?.network === net) ||
-        links.some((l) => /docs\/evidence/.test(l.target)) ||
+        links.some(evidenceOn) ||
         [...row.text.matchAll(ACCOUNT_TOKEN)].some((m) => records.accounts[net].has(m[0]));
       if (!cites) {
         report.fail(
@@ -1099,6 +1195,12 @@ const VERSION_CLAIMS = [
     pin: /cargo-near-v(\d+\.\d+\.\d+)/,
   },
   {
+    // The reproducible-build image: the whole tag, as each crate's Cargo.toml pins it.
+    re: /\bsourcescan\/cargo-near:([\w.-]*\w)/g,
+    files: ["contracts/vault/Cargo.toml", "contracts/factory/Cargo.toml"],
+    pin: /^image\s*=\s*"sourcescan\/cargo-near:([^"]+)"/m,
+  },
+  {
     re: /\bgitleaks (\d+\.\d+\.\d+)/g,
     file: ".github/workflows/ci.yml",
     pin: /gitleaks:v(\d+\.\d+\.\d+)/,
@@ -1176,10 +1278,27 @@ function pinnedVersion(ctx, claim) {
 }
 
 function factVersions(ctx, doc, model) {
+  const { repo } = ctx;
   for (const b of model.blocks) {
     for (const claim of VERSION_CLAIMS) {
       for (const m of b.text.matchAll(claim.re)) {
         const v = m[1] ?? m[2];
+        if (claim.files) {
+          // Compared whole: "0.22.0-rust-1.99.1" is a tag, not a version with a leading part.
+          ctx.report.fact("versions");
+          for (const file of claim.files) {
+            const pinned = repo.isFile(file) ? claim.pin.exec(repo.read(file))?.[1] : undefined;
+            if (pinned !== v) {
+              ctx.report.fail(
+                "facts",
+                doc,
+                lineAt(b, m.index),
+                `"${m[0]}": ${file} ${pinned ? `pins ${pinned}` : "pins no such image"}`,
+              );
+            }
+          }
+          continue;
+        }
         const { where, spec } = pinnedVersion(ctx, claim);
         ctx.report.fact("versions");
         const ok = spec ? versionMatches(v, spec) : false;
@@ -1316,12 +1435,14 @@ function factCodeHashes(ctx, doc, model) {
       }
     }
     // c) a table row about one account: its "code hash" is the one recorded for that account
+    const byRowAccount = new Set();
     if (b.kind === "row") {
       const first = tableCells(b.text)[0] ?? "";
       const acct = /`((?:[a-z\d][a-z\d_-]*\.)+(?:testnet|near))`/.exec(first)?.[1];
       const recorded = acct && records.accountCodeHash.get(acct);
       if (recorded) {
         for (const m of b.text.matchAll(/code hash `([1-9A-HJ-NP-Za-km-z]{6,44})(\u2026)?`/gi)) {
+          byRowAccount.add(m.index);
           report.fact("code hashes");
           if (!recorded.startsWith(m[1])) {
             report.fail(
@@ -1331,6 +1452,41 @@ function factCodeHashes(ctx, doc, model) {
               `${acct}: the records give code hash ${recorded}, the row says ${m[1]}`,
             );
           }
+        }
+      }
+    }
+    // f) elsewhere, the clause around a "code hash `H`" says what runs it: the one account it names
+    // (the build recorded for that account), or the factory's vaults (a version the factory serves)
+    for (const m of b.text.matchAll(/code hash `([1-9A-HJ-NP-Za-km-z]{6,44})(\u2026)?`/gi)) {
+      if (byRowAccount.has(m.index)) continue;
+      const clause = clauseAround(b.text, m.index, m[0].length);
+      const accts = new Set(
+        [...clause.matchAll(ACCOUNT_TOKEN)]
+          .map((x) => x[0])
+          .filter((id) => records.accountCodeHash.has(id)),
+      );
+      if (accts.size === 1) {
+        const acct = [...accts][0];
+        const recorded = records.accountCodeHash.get(acct);
+        report.fact("code hashes");
+        if (!recorded.startsWith(m[1])) {
+          report.fail(
+            "facts",
+            doc,
+            lineAt(b, m.index),
+            `${acct}: the records give code hash ${recorded}, the text says ${m[1]}${m[2] ?? ""}`,
+          );
+        }
+      } else if (accts.size === 0 && /\bfactory\b/i.test(clause) && /\bvaults?\b/i.test(clause)) {
+        const served = [...records.factoryVersionHashes];
+        report.fact("code hashes");
+        if (!served.some((h) => h.startsWith(m[1]))) {
+          report.fail(
+            "facts",
+            doc,
+            lineAt(b, m.index),
+            `code hash ${m[1]}${m[2] ?? ""} is said to run on the factory's vaults; contracts/deployments records the factory serving ${served.join(", ") || "no version"}`,
+          );
         }
       }
     }
@@ -1599,6 +1755,17 @@ function factMainnet(ctx, doc, model) {
         "the README says it makes no mainnet claim, and links a mainnet transaction",
       );
     }
+    if (/makes no\s+mainnet claim/.test(b.text) && !ctx.mainnetRowsChecked) {
+      ctx.mainnetRowsChecked = true;
+      for (const row of ctx.statusRows.filter((r) => r.network === "mainnet")) {
+        report.fail(
+          "facts",
+          row.doc,
+          row.line,
+          `the README says it makes no mainnet claim, and its Status row is marked "${row.marker}"`,
+        );
+      }
+    }
   }
 }
 
@@ -1623,15 +1790,31 @@ function factFactoryMode(ctx, doc, model) {
         );
       }
     }
-    const one = /\bserves one version\b/.exec(b.text);
-    if (one) {
+    const isGlobal =
+      /\bglobal version (?:is |has been |was )?(?:now )?(?:live|deployed|published)\b/.exec(b.text);
+    if (isGlobal) {
       report.fact("factory mode");
-      if ((factory?.versions ?? []).length !== 1) {
+      ctx.globalClaimed = true;
+      if (!(factory?.versions ?? []).some((v) => v.mode === "global")) {
         report.fail(
           "facts",
           doc,
-          lineAt(b, one.index),
-          `"serves one version": contracts/deployments/testnet.json records ${(factory?.versions ?? []).length}`,
+          lineAt(b, isGlobal.index),
+          `"${isGlobal[0]}": contracts/deployments/testnet.json records no global version`,
+        );
+      }
+    }
+    for (const m of b.text.matchAll(/\bserves (\w+) versions?\b/g)) {
+      const n = toNumber(m[1]);
+      if (Number.isNaN(n)) continue;
+      report.fact("factory mode");
+      const recorded = (factory?.versions ?? []).length;
+      if (n !== recorded) {
+        report.fail(
+          "facts",
+          doc,
+          lineAt(b, m.index),
+          `"${m[0]}": contracts/deployments/testnet.json records ${recorded} version(s)`,
         );
       }
     }
@@ -2040,20 +2223,31 @@ const RPC = {
   mainnet: ["https://rpc.mainnet.fastnear.com", "https://rpc.mainnet.near.org"],
 };
 const ARCHIVAL = {
-  testnet: [
-    "https://archival-rpc.testnet.fastnear.com",
-    "https://archival-rpc.testnet.fastnear.com",
-  ],
-  mainnet: [
-    "https://archival-rpc.mainnet.fastnear.com",
-    "https://archival-rpc.mainnet.fastnear.com",
-  ],
+  testnet: ["https://archival-rpc.testnet.fastnear.com", "https://archival-rpc.testnet.near.org"],
+  mainnet: ["https://archival-rpc.mainnet.fastnear.com", "https://archival-rpc.mainnet.near.org"],
 };
 
 /** The time all online checks may take together; each request also has its own limit. */
 const ONLINE_BUDGET_MS = 150_000;
 
 class Unreachable extends Error {}
+
+/**
+ * Runs one online check. An endpoint that does not answer leaves this check unchecked (listed, and
+ * exit 2), and the next check still runs: one flaky host skips nothing else.
+ */
+async function attempt(ctx, what, fn) {
+  try {
+    await fn();
+    return true;
+  } catch (e) {
+    if (e instanceof Unreachable || e?.name === "TimeoutError") {
+      ctx.report.unreachable.push(`${what}: ${e.message}`);
+      return false;
+    }
+    throw e;
+  }
+}
 
 /** fetch with a time limit and one retry (on another host when given two). */
 async function fetchRetry(urls, init, { timeoutMs = 12000, fetchImpl = fetch, deadline } = {}) {
@@ -2119,147 +2313,171 @@ async function onlineAccounts(ctx) {
   );
   for (const [id, at] of named) {
     report.count("online accounts");
-    const { reply } = await rpcCall(ctx, RPC.testnet, "query", {
-      request_type: "view_account",
-      finality: "final",
-      account_id: id,
-    });
-    if (!reply.result) {
-      report.fail(
-        "online",
-        at.doc,
-        at.line,
-        `${id} does not exist on testnet (${reply.error?.cause?.name ?? "no result"})`,
-      );
-      continue;
-    }
-    const recorded = records.accountCodeHash.get(id);
-    const isVault = id !== "vaults.probarion.testnet";
-    if (recorded && reply.result.code_hash !== recorded) {
-      report.fail(
-        "online",
-        at.doc,
-        at.line,
-        `${id} runs code hash ${reply.result.code_hash}; the records say ${recorded}`,
-      );
-    } else if (!recorded && isVault && !vaultHashes.has(reply.result.code_hash)) {
-      report.fail(
-        "online",
-        at.doc,
-        at.line,
-        `${id} runs code hash ${reply.result.code_hash}, which is not a recorded vault build`,
-      );
-    }
-    if (isVault) {
-      const keys = await rpcCall(ctx, RPC.testnet, "query", {
-        request_type: "view_access_key_list",
-        finality: "final",
-        account_id: id,
-      });
-      const list = keys.reply.result?.keys ?? [];
-      const full = list.filter((k) => k.access_key?.permission === "FullAccess");
-      if (full.length)
-        report.fail(
-          "online",
-          at.doc,
-          at.line,
-          `vault ${id} has a full-access key: ${full[0].public_key}`,
-        );
-      const rec = records.keyless.get(id);
-      if (rec?.zeroKeys && list.length)
-        report.fail(
-          "online",
-          at.doc,
-          at.line,
-          `${id} is recorded with no access keys and has ${list.length}`,
-        );
-      for (const k of list) {
-        const p = k.access_key?.permission;
-        const methods = p?.FunctionCall?.method_names ?? [];
-        if (
-          p !== "FullAccess" &&
-          (p?.FunctionCall?.receiver_id !== id ||
-            methods.length !== 1 ||
-            !["spend", "anchor"].includes(methods[0]))
-        ) {
-          report.fail(
-            "online",
-            at.doc,
-            at.line,
-            `${id}: key ${k.public_key} is not a spend-only or anchor-only key on the vault`,
-          );
-        }
-      }
-    }
+    await attempt(ctx, `account ${id}`, () => onlineAccount(ctx, id, at, vaultHashes));
   }
   for (const c of ctx.chainComments) {
     report.count("online chain.mjs comments");
-    if (c.cmd === "code-hash") {
-      const { reply } = await rpcCall(ctx, RPC.testnet, "query", {
-        request_type: "view_account",
-        finality: "final",
-        account_id: c.account,
-      });
-      if (reply.result?.code_hash !== c.expect) {
-        report.fail(
-          "online",
-          c.doc,
-          c.line,
-          `chain.mjs code-hash ${c.account} prints ${reply.result?.code_hash ?? "an error"}, the comment says ${c.expect}`,
-        );
-      }
-      continue;
-    }
-    const { reply } = await rpcCall(ctx, RPC.testnet, "query", {
-      request_type: "view_access_key_list",
-      finality: "final",
-      account_id: c.account,
-    });
-    const keys = reply.result?.keys ?? [];
-    if (c.cmd === "full-access-keys") {
-      const full = keys.filter((k) => k.access_key?.permission === "FullAccess");
-      if (/empty|no full-access/.test(c.expect) && full.length) {
-        report.fail(
-          "online",
-          c.doc,
-          c.line,
-          `${c.account} has ${full.length} full-access key(s); the comment says none`,
-        );
-      }
-    } else {
-      const n = toNumber(/^(\w+)/.exec(c.expect)?.[1] ?? "");
-      if (!Number.isNaN(n) && keys.length !== n) {
-        report.fail(
-          "online",
-          c.doc,
-          c.line,
-          `${c.account} has ${keys.length} access key(s); the comment says ${n}`,
-        );
-      }
-    }
+    await attempt(ctx, `chain.mjs ${c.cmd} ${c.account}`, () => onlineChainComment(ctx, c));
   }
-  if (ctx.globalUnpublished) {
+  if (ctx.globalUnpublished || ctx.globalClaimed) {
     const factory = ctx.repo.json("contracts/deployments/testnet.json")?.factory;
     for (const v of factory?.versions ?? []) {
       report.count("online global code");
-      const { reply } = await rpcCall(ctx, RPC.testnet, "query", {
-        request_type: "view_global_contract_code",
-        finality: "final",
-        code_hash: v.code_hash,
-      });
-      if (reply.result) {
-        report.fail(
-          "online",
-          "README.md",
-          1,
-          `the README says the global version is not deployed, and ${v.code_hash} is published as global code on testnet`,
-        );
-      } else if (reply.error?.cause?.name !== "NO_GLOBAL_CONTRACT_CODE") {
-        throw new Unreachable(
-          `view_global_contract_code: ${JSON.stringify(reply.error).slice(0, 200)}`,
-        );
-      }
+      await attempt(ctx, `global code ${v.code_hash}`, () => onlineGlobalCode(ctx, v));
     }
+  }
+}
+
+async function onlineAccount(ctx, id, at, vaultHashes) {
+  const { report, records } = ctx;
+  const { reply } = await rpcCall(ctx, RPC.testnet, "query", {
+    request_type: "view_account",
+    finality: "final",
+    account_id: id,
+  });
+  if (!reply.result) {
+    report.fail(
+      "online",
+      at.doc,
+      at.line,
+      `${id} does not exist on testnet (${reply.error?.cause?.name ?? "no result"})`,
+    );
+    return;
+  }
+  const recorded = records.accountCodeHash.get(id);
+  const isVault = id !== "vaults.probarion.testnet";
+  if (recorded && reply.result.code_hash !== recorded) {
+    report.fail(
+      "online",
+      at.doc,
+      at.line,
+      `${id} runs code hash ${reply.result.code_hash}; the records say ${recorded}`,
+    );
+  } else if (!recorded && isVault && !vaultHashes.has(reply.result.code_hash)) {
+    report.fail(
+      "online",
+      at.doc,
+      at.line,
+      `${id} runs code hash ${reply.result.code_hash}, which is not a recorded vault build`,
+    );
+  }
+  if (!isVault) return;
+  const keys = await rpcCall(ctx, RPC.testnet, "query", {
+    request_type: "view_access_key_list",
+    finality: "final",
+    account_id: id,
+  });
+  const list = keys.reply.result?.keys ?? [];
+  const full = list.filter((k) => k.access_key?.permission === "FullAccess");
+  if (full.length)
+    report.fail(
+      "online",
+      at.doc,
+      at.line,
+      `vault ${id} has a full-access key: ${full[0].public_key}`,
+    );
+  const rec = records.keyless.get(id);
+  if (rec?.zeroKeys && list.length)
+    report.fail(
+      "online",
+      at.doc,
+      at.line,
+      `${id} is recorded with no access keys and has ${list.length}`,
+    );
+  for (const k of list) {
+    const p = k.access_key?.permission;
+    const methods = p?.FunctionCall?.method_names ?? [];
+    if (
+      p !== "FullAccess" &&
+      (p?.FunctionCall?.receiver_id !== id ||
+        methods.length !== 1 ||
+        !["spend", "anchor"].includes(methods[0]))
+    ) {
+      report.fail(
+        "online",
+        at.doc,
+        at.line,
+        `${id}: key ${k.public_key} is not a spend-only or anchor-only key on the vault`,
+      );
+    }
+  }
+}
+
+/** The README's own `chain.mjs code-hash|full-access-keys|key-count <account>  # <output>` lines. */
+async function onlineChainComment(ctx, c) {
+  const { report } = ctx;
+  if (c.cmd === "code-hash") {
+    const { reply } = await rpcCall(ctx, RPC.testnet, "query", {
+      request_type: "view_account",
+      finality: "final",
+      account_id: c.account,
+    });
+    if (reply.result?.code_hash !== c.expect) {
+      report.fail(
+        "online",
+        c.doc,
+        c.line,
+        `chain.mjs code-hash ${c.account} prints ${reply.result?.code_hash ?? "an error"}, the comment says ${c.expect}`,
+      );
+    }
+    return;
+  }
+  const { reply } = await rpcCall(ctx, RPC.testnet, "query", {
+    request_type: "view_access_key_list",
+    finality: "final",
+    account_id: c.account,
+  });
+  const keys = reply.result?.keys ?? [];
+  if (c.cmd === "full-access-keys") {
+    const full = keys.filter((k) => k.access_key?.permission === "FullAccess");
+    if (/empty|no full-access/.test(c.expect) && full.length) {
+      report.fail(
+        "online",
+        c.doc,
+        c.line,
+        `${c.account} has ${full.length} full-access key(s); the comment says none`,
+      );
+    }
+  } else {
+    const n = toNumber(/^(\w+)/.exec(c.expect)?.[1] ?? "");
+    if (!Number.isNaN(n) && keys.length !== n) {
+      report.fail(
+        "online",
+        c.doc,
+        c.line,
+        `${c.account} has ${keys.length} access key(s); the comment says ${n}`,
+      );
+    }
+  }
+}
+
+/** A factory version is published as global code exactly when the records say it is global. */
+async function onlineGlobalCode(ctx, v) {
+  const { reply } = await rpcCall(ctx, RPC.testnet, "query", {
+    request_type: "view_global_contract_code",
+    finality: "final",
+    code_hash: v.code_hash,
+  });
+  const published = Boolean(reply.result);
+  if (!published && reply.error?.cause?.name !== "NO_GLOBAL_CONTRACT_CODE") {
+    throw new Unreachable(
+      `view_global_contract_code: ${JSON.stringify(reply.error).slice(0, 200)}`,
+    );
+  }
+  if (published && ctx.globalUnpublished) {
+    ctx.report.fail(
+      "online",
+      "README.md",
+      1,
+      `the README says the global version is not deployed, and ${v.code_hash} is published as global code on testnet`,
+    );
+  } else if (!published && ctx.globalClaimed && v.mode === "global") {
+    ctx.report.fail(
+      "online",
+      "README.md",
+      1,
+      `the README says the global version is live, and ${v.code_hash} is not published as global code on testnet`,
+    );
   }
 }
 
@@ -2293,80 +2511,14 @@ async function onlineTxs(ctx) {
     seen.get(key).push(c);
   }
   const results = new Map();
+  const unreached = new Set();
   for (const [key, uses] of seen) {
     const { network, hash } = uses[0];
     report.count("online txs");
-    let sender = records.signerOf.get(hash);
-    let readmeSender = null;
-    for (const u of uses) {
-      if (!u.code) continue;
-      const doc = ctx.docs.find((d) => d.name === u.doc);
-      const fenceStart = doc.model.lines.find((l) => l.n === u.line)?.fenceStart;
-      const fence = doc.model.lines
-        .filter((l) => l.fenceStart === fenceStart)
-        .map((l) => l.text)
-        .join("\n");
-      readmeSender = /sender_account_id\\?":\\?"([a-z\d_.-]+)/.exec(fence)?.[1] ?? readmeSender;
-    }
-    sender = sender ?? readmeSender ?? (network === "testnet" ? "probarion.testnet" : "near");
-    const { reply, text } = await rpcCall(ctx, ARCHIVAL[network], "EXPERIMENTAL_tx_status", {
-      tx_hash: hash,
-      sender_account_id: sender,
-      wait_until: "NONE",
-    });
-    const at = uses[0];
-    const t = reply.result?.transaction;
-    if (!t || t.hash !== hash) {
-      report.fail(
-        "online",
-        at.doc,
-        at.line,
-        `${network} tx ${hash} was not found (${reply.error?.cause?.name ?? reply.error?.name ?? "no result"})`,
-      );
-      continue;
-    }
-    results.set(key, text);
-    const expect = records.signerOf.get(hash) ?? readmeSender;
-    const methods = (t.actions ?? []).map((a) => a.FunctionCall?.method_name).filter(Boolean);
-    if (expect && t.signer_id !== expect) {
-      report.fail(
-        "online",
-        at.doc,
-        at.line,
-        `tx ${hash} was signed by ${t.signer_id}, not ${expect}`,
-      );
-    } else if (methods.includes("spend") && t.signer_id !== t.receiver_id) {
-      report.fail(
-        "online",
-        at.doc,
-        at.line,
-        `spend ${hash} was signed by ${t.signer_id}, not by the vault's own agent key (${t.receiver_id})`,
-      );
-    } else if (!known.has(t.signer_id)) {
-      report.fail(
-        "online",
-        at.doc,
-        at.line,
-        `tx ${hash} was signed by ${t.signer_id}, an account the records do not name`,
-      );
-    }
-    // The README's own `tx <hash> | grep -o '<re>' | sort -u   # <expected>` lines.
-    for (const u of uses.filter((x) => x.code)) {
-      const g = /grep -o '([^']+)'.*#\s*(\S+)/.exec(u.block.text);
-      if (!g) continue;
-      report.count("online grep lines");
-      const found = [...new Set([...text.matchAll(new RegExp(g[1], "g"))].map((x) => x[0]))].sort();
-      if (found.length === 0) {
-        report.fail("online", u.doc, u.line, `grep -o '${g[1]}' finds nothing in tx ${hash}`);
-      } else if (new RegExp(`^(?:${g[1]})$`).test(g[2]) && found.join(" ") !== g[2]) {
-        report.fail(
-          "online",
-          u.doc,
-          u.line,
-          `grep -o '${g[1]}' prints ${found.join(" ")}; the comment says ${g[2]}`,
-        );
-      }
-    }
+    const ran = await attempt(ctx, `${network} tx ${hash}`, () =>
+      onlineTx(ctx, uses, { known, results, key }),
+    );
+    if (!ran) unreached.add(key);
   }
   // The outcome each "Transaction" table row claims.
   for (const doc of ctx.docs) {
@@ -2387,6 +2539,8 @@ async function onlineTxs(ctx) {
       const txs = extractLinks(b.text)
         .map((l) => explorerTx(l.target))
         .filter(Boolean);
+      // A row with a transaction that could not be read stays unchecked: that tx is listed.
+      if (txs.some((x) => unreached.has(`${x.network}:${x.hash}`))) continue;
       const texts = txs.map((x) => results.get(`${x.network}:${x.hash}`)).filter(Boolean);
       if (!texts.length) continue;
       for (const s of codeSpans(b.text)) {
@@ -2410,36 +2564,89 @@ async function onlineTxs(ctx) {
   }
 }
 
+/** One cited transaction: it exists, its signer is the recorded one, and the README's grep lines hold. */
+async function onlineTx(ctx, uses, { known, results, key }) {
+  const { report, records } = ctx;
+  const { network, hash } = uses[0];
+  let sender = records.signerOf.get(hash);
+  let readmeSender = null;
+  for (const u of uses) {
+    if (!u.code) continue;
+    const doc = ctx.docs.find((d) => d.name === u.doc);
+    const fenceStart = doc.model.lines.find((l) => l.n === u.line)?.fenceStart;
+    const fence = doc.model.lines
+      .filter((l) => l.fenceStart === fenceStart)
+      .map((l) => l.text)
+      .join("\n");
+    readmeSender = /sender_account_id\\?":\\?"([a-z\d_.-]+)/.exec(fence)?.[1] ?? readmeSender;
+  }
+  sender = sender ?? readmeSender ?? (network === "testnet" ? "probarion.testnet" : "near");
+  const { reply, text } = await rpcCall(ctx, ARCHIVAL[network], "EXPERIMENTAL_tx_status", {
+    tx_hash: hash,
+    sender_account_id: sender,
+    wait_until: "NONE",
+  });
+  const at = uses[0];
+  const t = reply.result?.transaction;
+  if (!t || t.hash !== hash) {
+    report.fail(
+      "online",
+      at.doc,
+      at.line,
+      `${network} tx ${hash} was not found (${reply.error?.cause?.name ?? reply.error?.name ?? "no result"})`,
+    );
+    return;
+  }
+  results.set(key, text);
+  const expect = records.signerOf.get(hash) ?? readmeSender;
+  const methods = (t.actions ?? []).map((a) => a.FunctionCall?.method_name).filter(Boolean);
+  if (expect && t.signer_id !== expect) {
+    report.fail(
+      "online",
+      at.doc,
+      at.line,
+      `tx ${hash} was signed by ${t.signer_id}, not ${expect}`,
+    );
+  } else if (methods.includes("spend") && t.signer_id !== t.receiver_id) {
+    report.fail(
+      "online",
+      at.doc,
+      at.line,
+      `spend ${hash} was signed by ${t.signer_id}, not by the vault's own agent key (${t.receiver_id})`,
+    );
+  } else if (!known.has(t.signer_id)) {
+    report.fail(
+      "online",
+      at.doc,
+      at.line,
+      `tx ${hash} was signed by ${t.signer_id}, an account the records do not name`,
+    );
+  }
+  // The README's own `tx <hash> | grep -o '<re>' | sort -u   # <expected>` lines.
+  for (const u of uses.filter((x) => x.code)) {
+    const g = /grep -o '([^']+)'.*#\s*(\S+)/.exec(u.block.text);
+    if (!g) continue;
+    report.count("online grep lines");
+    const found = [...new Set([...text.matchAll(new RegExp(g[1], "g"))].map((x) => x[0]))].sort();
+    if (found.length === 0) {
+      report.fail("online", u.doc, u.line, `grep -o '${g[1]}' finds nothing in tx ${hash}`);
+    } else if (new RegExp(`^(?:${g[1]})$`).test(g[2]) && found.join(" ") !== g[2]) {
+      report.fail(
+        "online",
+        u.doc,
+        u.line,
+        `grep -o '${g[1]}' prints ${found.join(" ")}; the comment says ${g[2]}`,
+      );
+    }
+  }
+}
+
 async function onlineHttp(ctx) {
   const { report } = ctx;
   const readme = ctx.docs.find((d) => d.name === "README.md");
   if (readme && /probarion\.xyz/.test(readme.text)) {
     report.count("online http");
-    const { res, text } = await fetchRetry("https://probarion.xyz/api/health", {}, ctx.net);
-    let body = null;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      // reported below
-    }
-    const wantTestnet = /run at\s+\[probarion\.xyz\]\(https:\/\/probarion\.xyz\) on testnet/.test(
-      readme.text.replace(/\n/g, " "),
-    );
-    if (res.status !== 200 || body?.ok !== true) {
-      report.fail(
-        "online",
-        "README.md",
-        1,
-        `https://probarion.xyz/api/health answered ${res.status} ${text.slice(0, 120)}`,
-      );
-    } else if (wantTestnet && body.network !== "testnet") {
-      report.fail(
-        "online",
-        "README.md",
-        1,
-        `probarion.xyz is said to run on testnet; /api/health says ${body.network}`,
-      );
-    }
+    await attempt(ctx, "https://probarion.xyz/api/health", () => onlineHealth(ctx, readme));
   }
   const src = ctx.repo.isFile("apps/extension/scripts/manifest.mjs")
     ? ctx.repo.read("apps/extension/scripts/manifest.mjs")
@@ -2447,60 +2654,110 @@ async function onlineHttp(ctx) {
   const description = /DESCRIPTION =\s*"([^"]{20,})/.exec(src)?.[1]?.slice(0, 40) ?? null;
   for (const item of ctx.storeItems) {
     report.count("online http");
-    const { res, text, url } = await fetchRetry(
-      `https://chromewebstore.google.com/detail/${item.id}`,
-      {},
-      ctx.net,
+    await attempt(ctx, `Chrome Web Store item ${item.id}`, () =>
+      onlineStoreItem(ctx, item, description),
     );
-    // The store answers 200 for any id; an item that is not public redirects to an "empty-title" page.
-    const live =
-      res.status === 200 &&
-      !/\/empty-title\//.test(res.url || url) &&
-      (!description || text.includes(description));
-    if (item.pending && live) {
-      report.fail(
-        "online",
-        item.doc,
-        item.line,
-        `the README says item ${item.id} is pending Chrome Web Store review, and its listing is live: ${res.url || url}`,
-      );
-    } else if (!item.pending && !live) {
-      report.fail(
-        "online",
-        item.doc,
-        item.line,
-        `Chrome Web Store item ${item.id} has no public listing`,
+  }
+  // One registry read per package; a package npm did not answer for leaves each of its claims
+  // unchecked.
+  const versions = new Map();
+  const npmVersions = (name) => {
+    if (!versions.has(name)) {
+      versions.set(
+        name,
+        fetchRetry(`https://registry.npmjs.org/${name.replace("/", "%2f")}`, {}, ctx.net).then(
+          ({ res, text }) => {
+            if (res.status === 404) return [];
+            try {
+              return Object.keys(JSON.parse(text).versions ?? {});
+            } catch {
+              throw new Unreachable(`npm answered something other than JSON for ${name}`);
+            }
+          },
+        ),
       );
     }
-  }
-  const npm = async (name) => {
-    const { res, text } = await fetchRetry(
-      `https://registry.npmjs.org/${name.replace("/", "%2f")}`,
-      {},
-      ctx.net,
-    );
-    if (res.status === 404) return [];
-    return Object.keys(JSON.parse(text).versions ?? {});
+    return versions.get(name);
   };
-  const cache = new Map();
   for (const c of ctx.npmClaims) {
     report.count("online npm");
-    if (!cache.has(c.name)) cache.set(c.name, await npm(c.name));
-    if (!cache.get(c.name).includes(c.version)) {
-      report.fail("online", c.doc, c.line, `npm has no ${c.name}@${c.version}`);
-    }
+    await attempt(ctx, `npm ${c.name}@${c.version}`, async () => {
+      if (!(await npmVersions(c.name)).includes(c.version)) {
+        report.fail("online", c.doc, c.line, `npm has no ${c.name}@${c.version}`);
+      }
+    });
   }
   for (const c of ctx.notOnNpm) {
     report.count("online npm");
-    if (!cache.has(c.name)) cache.set(c.name, await npm(c.name));
-    if (cache.get(c.name).length) {
-      report.fail(
-        "online",
-        c.doc,
-        c.line,
-        `the README says ${c.name} is not on npm yet; npm has ${cache.get(c.name).join(", ")}`,
-      );
-    }
+    await attempt(ctx, `npm ${c.name} (said not to be on npm)`, async () => {
+      const list = await npmVersions(c.name);
+      if (list.length) {
+        report.fail(
+          "online",
+          c.doc,
+          c.line,
+          `the README says ${c.name} is not on npm yet; npm has ${list.join(", ")}`,
+        );
+      }
+    });
+  }
+}
+
+async function onlineHealth(ctx, readme) {
+  const { report } = ctx;
+  const { res, text } = await fetchRetry("https://probarion.xyz/api/health", {}, ctx.net);
+  let body = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // reported below
+  }
+  const wantTestnet = /run at\s+\[probarion\.xyz\]\(https:\/\/probarion\.xyz\) on testnet/.test(
+    readme.text.replace(/\n/g, " "),
+  );
+  if (res.status !== 200 || body?.ok !== true) {
+    report.fail(
+      "online",
+      "README.md",
+      1,
+      `https://probarion.xyz/api/health answered ${res.status} ${text.slice(0, 120)}`,
+    );
+  } else if (wantTestnet && body.network !== "testnet") {
+    report.fail(
+      "online",
+      "README.md",
+      1,
+      `probarion.xyz is said to run on testnet; /api/health says ${body.network}`,
+    );
+  }
+}
+
+async function onlineStoreItem(ctx, item, description) {
+  const { report } = ctx;
+  const { res, text, url } = await fetchRetry(
+    `https://chromewebstore.google.com/detail/${item.id}`,
+    {},
+    ctx.net,
+  );
+  // The store answers 200 for any id; an item that is not public redirects to an "empty-title" page.
+  const live =
+    res.status === 200 &&
+    !/\/empty-title\//.test(res.url || url) &&
+    (!description || text.includes(description));
+  if (item.pending && live) {
+    report.fail(
+      "online",
+      item.doc,
+      item.line,
+      `the README says item ${item.id} is pending Chrome Web Store review, and its listing is live: ${res.url || url}`,
+    );
+  } else if (!item.pending && !live) {
+    report.fail(
+      "online",
+      item.doc,
+      item.line,
+      `Chrome Web Store item ${item.id} has no public listing`,
+    );
   }
 }
 
@@ -2532,7 +2789,10 @@ export async function checkClaims({
     npmClaims: [],
     notOnNpm: [],
     storeItems: [],
+    statusRows: [],
+    mainnetRowsChecked: false,
     globalUnpublished: false,
+    globalClaimed: false,
   };
   if (!repo.isFile("README.md")) {
     report.fail("links", "README.md", 1, "there is no README.md");
@@ -2563,17 +2823,8 @@ export async function checkClaims({
     factGit(ctx, name, model);
   }
   if (online) {
-    for (const step of [onlineAccounts, onlineTxs, onlineHttp]) {
-      try {
-        await step(ctx);
-      } catch (e) {
-        if (e instanceof Unreachable || e?.name === "TimeoutError" || e instanceof TypeError) {
-          report.unreachable.push(`${step.name}: ${e.message}`);
-        } else {
-          throw e;
-        }
-      }
-    }
+    // Each step catches an endpoint that does not answer per check (see attempt()).
+    for (const step of [onlineAccounts, onlineTxs, onlineHttp]) await step(ctx);
   }
   return report;
 }
@@ -2640,8 +2891,9 @@ export async function main(argv) {
     return 1;
   }
   if (report.unreachable.length) {
+    // Listed above as "unchecked [online]"; what did run found nothing wrong, and that is all.
     console.log(
-      `check-claims: ${report.unreachable.length} online check(s) could not run; the rest passed (${summary(report, online)})`,
+      `check-claims: ${report.unreachable.length} online check(s) could not run, listed above (${summary(report, online)}; ${mode})`,
     );
     return 2;
   }
@@ -2649,7 +2901,21 @@ export async function main(argv) {
   return 0;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+/**
+ * True when node runs this file, by any path to it: Node resolves a symlink or a junction in
+ * import.meta.url and not in process.argv[1], so a linked checkout must compare real paths.
+ */
+export function isMainModule(argv1, moduleUrl = import.meta.url) {
+  if (!argv1) return false;
+  try {
+    const same = (p) => (process.platform === "win32" ? p.toLowerCase() : p);
+    return same(realpathSync(argv1)) === same(realpathSync(fileURLToPath(moduleUrl)));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(process.argv[1])) {
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;
