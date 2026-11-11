@@ -607,8 +607,8 @@ npx probarion verify --offline docs/evidence/canary-vault/snapshot-2026-11-11.js
 
 ### NEAR mainnet, 2026-11-11
 
-`v0.probarion.near` is the first Probarion vault on NEAR mainnet, with real USDC. On 2026-11-11, between 12:51
-and 13:00 UTC, the owner ran the small demo path of
+`v0.probarion.near` is the first Probarion vault on NEAR mainnet, with real USDC. On 2026-11-11,
+between 12:51 and 13:00 UTC, the owner ran the small demo path of
 [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) in their own terminal and signed every
 transaction: the owner calls with near-cli-rs, the two spends with the agent key file, and the two
 transfers from their own wallet in Meteor. Claude signed nothing on mainnet. The amounts are small on
