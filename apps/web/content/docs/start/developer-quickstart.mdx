@@ -239,7 +239,7 @@ The SDK holds only two keys. The agent key can call `spend` and nothing else, th
 | Status | What happened | What to do |
 | --- | --- | --- |
 | `paid` | The vault paid the mandate's NEAR payee. | Record `spendId` and `txHash`. |
-| `burned` | The vault paid out through NEAR Intents to a Base or Solana payee. The release on the other chain is seen later, which is why `process()` never returns `settled`. On testnet the Intents contract is a test stand-in, so nothing reaches Base or Solana. | Record `spendId` and `txHash`. |
+| `burned` | The vault paid out through NEAR Intents to a Base or Solana payee. The bridge releases the funds on the other chain, and Probarion does not watch that release yet, which is why `process()` never returns `settled`. On testnet the Intents contract is a test stand-in, so nothing reaches Base or Solana. | Record `spendId` and `txHash`. `burned` is final for the vault: do not poll it for a change or send it again. |
 | `held`, `spendId` set | The amount is above the mandate's approval threshold, so the contract holds the spend. | One of the vault's approvers approves it before the hold expires, or rejects it. Once the hold has expired, anyone can call `expire_held` to release it. See [Holds and approvals](/docs/concepts/holds-and-approvals). |
 | `held`, `spendId` null | A code rule held it. `code` names the rule, for example `intents.balance_low`. | Nothing was sent and no call releases it. Change what caused the hold, then run the cycle again. |
 | `refused_by_code` | A code rule refused it. `code` is the first refusing rule id. Nothing was sent. | Fix what `code` names, then run the cycle again. |

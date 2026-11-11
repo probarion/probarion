@@ -17,7 +17,8 @@ describe("/privacy", () => {
     for (const fact of [
       "last four characters",
       "ten minutes",
-      "pending Chrome Web Store review",
+      "Install the Probarion extension for Chrome from the",
+      "You can also build it from <code>apps/extension</code> in Probarion&#x27;s repository and load it unpacked.",
       "with your own session for that site",
       "set to end and revoked",
       "its record is deleted the next time a code is made, for anyone",
@@ -27,6 +28,15 @@ describe("/privacy", () => {
     }
     // The sweep is the first statement of ext_code_create (migration 0013): it runs only when a code is made.
     expect(html).not.toContain("anyone asks for a code");
+  });
+
+  it("opens the browser extension's section with a link to its Chrome Web Store listing, which links back here", () => {
+    const section = html.slice(html.indexOf('<section id="browser-extension"'));
+    const first = section.slice(section.indexOf("<p"), section.indexOf("</p>") + 4);
+    expect(first).toContain(
+      'href="https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn" target="_blank" rel="noreferrer">Chrome Web Store',
+    );
+    expect(html).not.toMatch(/pending Chrome Web Store review|Until the store publishes it/);
   });
 
   it("says when it was last updated, above the first section", () => {

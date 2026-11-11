@@ -60,4 +60,27 @@ describe("the store pack", () => {
       expect(lines, path).toEqual([]);
     }
   });
+
+  it("offers the published listing first, and keeps the unpacked build as the way from source", () => {
+    // Item hhadnmnjdlamihjjoejphkimnbcfidmn, version 0.1.0, live on the Chrome Web Store when checked on 2026-11-11.
+    const listing =
+      "https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn";
+    const readme = read("README.md");
+    const install = readme.indexOf("## Install it");
+    const unpacked = readme.indexOf("## Load it unpacked");
+    expect(install).toBeGreaterThan(-1);
+    expect(unpacked).toBeGreaterThan(install);
+    expect(readme.slice(install, unpacked)).toContain(
+      `Install it from the [Chrome Web Store](${listing})`,
+    );
+    expect(readme.slice(unpacked)).toContain(
+      "choose **Load unpacked**, and pick `apps/extension/dist`",
+    );
+    expect(read("store/README.md")).toContain(listing);
+    for (const path of ["README.md", "store/README.md", "store/preview/connect.html"]) {
+      expect(read(path), path).not.toMatch(
+        /pending Chrome Web Store review|Until the store publishes it/,
+      );
+    }
+  });
 });

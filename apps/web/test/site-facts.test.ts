@@ -1567,19 +1567,63 @@ describe("the sign-in page", () => {
     expect(page).toContain("const safeNext = extensionNextPath(next) ?? consoleNext;");
   });
 
-  it("says on the Browser extension page that the extension is pending Chrome Web Store review", () => {
+  it("says on the Browser extension page that the extension is on the Chrome Web Store, with an Add to Chrome link", () => {
     const page = text(WEB, "src", "app", "extension", "page.tsx");
-    expect(page).toMatch(
-      /<Notice tone="info">\s*The Probarion extension for Chrome is pending Chrome Web Store review\. Until the store\s+publishes it, load it unpacked from apps\/extension in Probarion's repository\.\s*<\/Notice>/,
-    );
-    // Its intro puts what the extension does in the present tense, as /privacy does.
     const words = page.replace(/\s+/g, " ");
+    expect(words).toContain(
+      `<Notice tone="info"> <p> The Probarion extension for Chrome is on the Chrome Web Store. To build it from source instead, load it unpacked from apps/extension in Probarion's repository. </p> <p className="mt-3"> <ExternalLink className={buttonClass} href={LINKS.chromeWebStore}> Add to Chrome </ExternalLink> </p> </Notice>`,
+    );
+    expect(page).not.toMatch(/pending Chrome Web Store review|Until the store/);
+    // Its intro puts what the extension does in the present tense, as /privacy does.
     expect(words).toContain(
       "The extension sends invoices to wait for the owner's confirmation and shows what waits for you, but it can't pay or approve: an invoice it sends is paid only after the vault's owner confirms it in the console with their wallet.",
     );
     // An approver's connection can send invoices too, and only the vault's owner confirms (lib/payables/confirm.ts).
     expect(words).not.toContain("after you confirm it");
     expect(words).not.toContain("The extension will send");
+  });
+
+  it("links one Chrome Web Store listing wherever the extension is offered, and nothing says it still waits for review", () => {
+    // Version 0.1.0 of item hhadnmnjdlamihjjoejphkimnbcfidmn, live when checked on 2026-11-11.
+    const listing =
+      "https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn";
+    expect(LINKS.chromeWebStore).toBe(listing);
+    for (const doc of [
+      ["README.md"],
+      ["apps", "extension", "README.md"],
+      ["apps", "extension", "store", "README.md"],
+      ["apps", "web", "content", "docs", "start", "what-works-today.mdx"],
+      ["apps", "web", "content", "docs", "build", "http-api.mdx"],
+      ["apps", "web", "content", "docs", "operate", "architecture.mdx"],
+      ["docs", "THREAT_MODEL.md"],
+      ["SECURITY.md"],
+    ]) {
+      const md = text(ROOT, ...doc);
+      expect(md, doc.join("/")).toContain(listing);
+      expect(md, doc.join("/")).not.toMatch(
+        /pending Chrome Web Store review|Until the store publishes it|once the extension ships|updated when it ships/,
+      );
+    }
+    const row = README.split("\n").find((l) => l.startsWith("| Browser extension for Chrome |"));
+    expect(row).toContain("**Shipped** on the Chrome Web Store as version 0.1.0");
+    const today = text(ROOT, "apps", "web", "content", "docs", "start", "what-works-today.mdx");
+    expect(today).toContain(
+      "| [Browser extension for Chrome](#browser-extension-for-chrome) | Preview |",
+    );
+    expect(today).toContain(
+      "Preview. Version 0.1.0 is published: install it from the [Chrome Web Store]",
+    );
+    // Preview, as the docs define it: no end-to-end run with a real wallet is recorded, for it or the server half it calls.
+    expect(today).toContain(
+      "No end-to-end run of it with a real wallet against this deployment is recorded yet, so it stays Preview, like the server half it calls.",
+    );
+    expect(today).toContain(
+      "| [Browser extension, server half](#browser-extension-server-half) | Preview |",
+    );
+    expect(today).not.toContain(
+      "| [Browser extension for Chrome](#browser-extension-for-chrome) | Live |",
+    );
+    expect(text(ROOT, "docs", "RUNBOOK.md")).not.toContain("once the extension ships");
   });
 });
 

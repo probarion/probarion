@@ -14,6 +14,16 @@ The software is an unaudited beta.
 
 ### Added
 
+- `@probarion/mcp`: `probarion-mcp demo [--vault <id>]`, a read-only tour of the five tools against
+  the live testnet demo vault. It needs no key and signs and sends nothing. It shows the tools and
+  their fields, the live caps, the contract's `check_spend` answers (ok, held, `OverPerPayment`), an
+  injected `to` field refused by the schema, a paid spend, and verify on the public ledger. A frozen
+  vault is reported as a note (exit 0); an RPC that does not answer marks `list_mandates`,
+  `get_spend_status` and `verify` as failed, skips the dry runs, and prints the server log (exit 1).
+  Also `--version` and `--help`.
+- `@probarion/mcp`: `mcpName` `io.github.probarion/probarion` and keywords in package.json (still
+  0.1.0), and README setup for Claude Code, Codex CLI, Claude Desktop and Cursor, with the Windows
+  `cmd /c` forms.
 - A testnet record of the Canary, in `docs/evidence/canary-vault`: its accounts, its mandate, the
   2026-11-10 rehearsal whose raw spend the contract refused with `OverPerPayment`, and a live
   `verify` run with its snapshot. The run passes check f (no full-access key, only the ledger key and
@@ -75,7 +85,7 @@ The software is an unaudited beta.
     ed25519 secret key, and an RPC URL must be `https://` (`http://` only on this machine) with no
     user name or password; a problem is named by its variable, with no value. Errors and log lines pass
     through a filter that masks secret keys and cuts every URL to its origin.
-  - 91 tests, among them an end-to-end run over the SDK's fake chain and a stdio JSON-RPC session.
+  - 103 tests, among them an end-to-end run over the SDK's fake chain and a stdio JSON-RPC session.
 - The pay-per-call example in `examples/402` (a private workspace package, testnet only). An HTTP
   endpoint answers `402 Payment Required` with a quote: a price, a payee and a short text. An agent
   pays the text's sha256 through `@probarion/mcp` under a mandate, with `402:<quote id>` as the ref,
@@ -541,9 +551,32 @@ The software is an unaudited beta.
   it replays no model and runs only on a sandbox. The
   README's safety architecture and attack 7 of the threat model cite it, and the threat model's known
   gaps add the first two.
+- Eval: 20 synthetic invoices (6 prompt-injected, 4 PDFs) run offline through the production reader,
+  fact reader, mandate choice and `decide()` with the pipeline's custom rules, plus mirrors of the
+  SQL intake duplicate guard, the SDK's `execute()` and the pipeline's owner wait; no transaction is
+  built or sent. Rules-only results are committed: the code layer alone stops 8/8 of the invoices
+  that must not be paid, with 0/20 false refusals, and 9/20 are held for the owner. In rules-only
+  nothing can be sent by design, so its money moved wrongly (0/20) is not a result. The model replay
+  is not recorded yet (the OWNER runs `pnpm eval:record`; a failed model call is recorded and decided
+  rules-only, as the SDK does). See `eval/README.md`.
 
 ### Changed
 
+- The browser extension is on the Chrome Web Store as version 0.1.0
+  (https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn). The README
+  (Status row Shipped), the extension's README, the store pack, What works today, the HTTP API and
+  architecture docs, the threat model and `/privacy` say so and link the listing. What works today
+  keeps it at Preview, with the server half it calls, because no end-to-end run with a real wallet
+  against this deployment is recorded yet. The threat model covers the extension's own permissions
+  and storage, `SECURITY.md` lists `apps/extension` in scope, `/privacy` is dated 2026-11-11 (`/terms`
+  keeps 2026-11-10), and the Browser extension page (`/extension`) gains an Add to Chrome link.
+  Loading it unpacked stays the way to run it from source.
+- Docs: the text says the team is on Vercel Pro. The crons in `apps/web/vercel.json` still run once a
+  day, by choice; Pro also accepts hourly or per-minute schedules, and the runbooks say what to change
+  for those. A 90 s Canary attempt fits Pro with or without Fluid compute, which stays pinned on.
+- The Canary evidence (`docs/evidence/canary-vault/README.md`) names the mandate's purpose document,
+  the sample PO-1001, whose SHA-256 matches the `purpose_hash` read from the chain, and lists the
+  vault's 11 transactions from `create_vault` to the rehearsal, each confirmed by RPC.
 - The Canary is open on NEAR testnet at `/canary` on probarion.xyz, in live mode, since
   2026-11-10. Its vault is `canary.vaults.probarion.testnet`, with one mandate that pays
   `probarion-payee.testnet` at most 1 test USDC a payment and holds every spend. In the team's
@@ -765,6 +798,23 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- `@probarion/mcp`: the burned outcome no longer tells the agent to poll `get_spend_status`. A burn
+  is final for the vault: the agent must not resend it under any ref, and should tell the owner if
+  the payee reports nothing. On mainnet the bridge releases the funds and Probarion does not watch
+  that release yet; on testnet the note says intents-stub stands in for NEAR Intents and nothing
+  leaves NEAR. Spend outcomes, the developer quickstart, the glossary and the SDK README say the
+  same.
+- Console: a long account id (a 64-character implicit account, or a long named one) wraps inside the
+  confirmation dialog, such as "Create vault in my wallet", and in the mandate form, where it made the
+  dialog scroll sideways. The shared `ConfirmDialog` wraps its title, body and footnote anywhere.
+- SDK: `NearApiJsSender` with `sendTimeoutMs` as a function starts no step (signing, the send, a
+  status lookup) when the caller has less than 50 ms left or the function throws. Before, such an
+  answer became a 1 ms deadline and the transaction was still sent, so a spend could land while the
+  caller was told its outcome was unknown. A signing or send that does not start is `TxSendFailed`
+  (nothing was sent); after an `InvalidNonce` the node confirmed, it is that refusal; a lookup that
+  does not start keeps the outcome unknown, with its tx hash. The Canary counts the first case as
+  `no_time`. A deadline longer than a timer holds (about 24.8 days) is cut to that, where Node.js
+  fired it after 1 ms. New tests in `packages/sdk/test/deadline.test.ts` pin each case.
 - SDK: `RpcClient` and `NearAiProposer` do not start a call with less than 50 ms of the caller's
   `remainingMs` left, where they refused only at 0. A timer can fire about 1 ms before `Date.now()`
   reaches the deadline, so a call sent with what was left could only time out: a test in

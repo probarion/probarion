@@ -204,9 +204,10 @@ describe("vercel.json", () => {
     expect(VERCEL.regions?.length ?? 0).toBeGreaterThan(0);
   });
 
-  it("pins Fluid compute on, which a function over 60 s needs on the Hobby plan, and keeps every function to its 300 s", () => {
-    // Without Fluid compute the Hobby plan stops a function at 60 s and refuses to deploy a longer maxDuration; with it
-    // the limit is 300 s. /api/canary/attempt sets 90. The runbook tells the OWNER to leave the setting on.
+  it("pins Fluid compute on, and keeps every function to the 300 s that Vercel Pro allows with or without it", () => {
+    // On Vercel Pro, which the project's team is on, a function may run 300 s without Fluid compute and 800 s with it.
+    // The Hobby plan stops one at 60 s without it and 300 s with it, so with Fluid compute pinned on, 300 s deploys on
+    // either plan. /api/canary/attempt sets 90. The runbook tells the OWNER to leave the setting on.
     expect(VERCEL.fluid).toBe(true);
     const durations = walk(join(WEB, "src"))
       .filter(isSourceFile)
@@ -268,9 +269,11 @@ describe("vercel.json", () => {
     expect(cronProblems(WEB, VERCEL)).toEqual([]);
   });
 
-  it("runs the watcher and the usage numbers once a day, the most the Vercel Hobby plan accepts", () => {
-    // The Hobby plan rejects a more frequent schedule when it deploys. The per-minute watcher is a Supabase Cron job the
-    // OWNER turns on (docs/ops/watcher.md); a project on a paid plan changes these two lines and this test on purpose.
+  it("runs the watcher and the usage numbers once a day, the schedule the project chose", () => {
+    // Daily is a choice: Vercel Pro, which the project's team is on, also accepts an hourly or per-minute schedule. The
+    // per-minute watcher is a Supabase Cron job the OWNER turns on (docs/ops/watcher.md), and docs/ops/metrics.md says how
+    // to run the usage numbers hourly; a move to a more frequent Vercel schedule changes these two lines and this test on
+    // purpose.
     expect(VERCEL.crons).toEqual([
       { path: "/api/cron/watch", schedule: "0 0 * * *" },
       { path: "/api/cron/metrics", schedule: "10 0 * * *" },

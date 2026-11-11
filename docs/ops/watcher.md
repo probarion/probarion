@@ -23,7 +23,7 @@ The row for a spend also keeps the destination, the `ref`, the hold's end and th
 
 - **Right after a request the app drives itself**: a Payables invoice upload and a Canary attempt each ask the watcher to look at their own vault as soon as the response is sent. The owner's alerts for those events can leave within seconds.
 - **Every minute, once you turn on the Supabase schedule below.** Until then this does not happen.
-- **Otherwise once a day.** `apps/web/vercel.json` has the cron `0 0 * * *` (00:00 UTC), because the Vercel Hobby plan accepts nothing more frequent: it rejects a per-minute or hourly schedule when it deploys. A change on the chain that nobody drove through the app (an owner approving a held payment in the wallet, a spend an agent sent through the SDK) is therefore recorded at the next run that reaches its vault: within a minute with the Supabase schedule, within a day without it. That holds while every vault fits in one run (see below): a run starts no new vault 40 seconds in, and the vaults it left wait for the next run, which without the Supabase schedule is the next day.
+- **Otherwise once a day.** `apps/web/vercel.json` has the cron `0 0 * * *` (00:00 UTC). Daily is a choice: Vercel Pro, which the project's team is on, also accepts an hourly or per-minute schedule there, and the per-minute schedule this page sets out is the Supabase one below. A change on the chain that nobody drove through the app (an owner approving a held payment in the wallet, a spend an agent sent through the SDK) is therefore recorded at the next run that reaches its vault: within a minute with the Supabase schedule, within a day without it. That holds while every vault fits in one run (see below): a run starts no new vault 40 seconds in, and the vaults it left wait for the next run, which without the Supabase schedule is the next day.
 
 ## What one run does
 
@@ -68,7 +68,7 @@ Use Supabase Cron (`pg_cron`) with `pg_net`: it needs no Vercel plan. It is not 
 
 To stop it: `select cron.unschedule('probarion-watch');`. The daily Vercel cron stays and keeps recording.
 
-**Vercel Hobby usage.** A call a minute is about 43,200 function calls a month, most of each spent waiting on RPC answers. If the Vercel dashboard shows the usage quota tightening, make the job `*/5 * * * *` (re-run `cron.schedule` with the same name, which replaces it): alerts for chain-only changes are then up to five minutes late.
+**Vercel usage.** A call a minute is about 43,200 function calls a month, most of each spent waiting on RPC answers. If the Vercel dashboard shows the usage climbing toward what the team's Pro plan includes, make the job `*/5 * * * *` (re-run `cron.schedule` with the same name, which replaces it): alerts for chain-only changes are then up to five minutes late.
 
 ## Check that it works
 

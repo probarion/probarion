@@ -48,8 +48,8 @@ export interface ModelUsage {
  *   (nothing was sent) and the failed transaction's hash after a `spend` panic.
  * - `held`: with `spendId` the contract holds the spend for an approver; with `spendId` null the code held
  *   it off-chain (`code` is the holding `RuleId`) and nothing was sent.
- * - `paid`, `burned`: settled on NEAR. A burn is not `settled` yet: the Base or Solana release is observed
- *   later, so `process` never returns `settled`.
+ * - `paid`, `burned`: settled on NEAR. A burn is not `settled` yet: the bridge releases it on Base or Solana, and
+ *   Probarion does not watch that release yet, so `process` never returns `settled` and `burned` never changes.
  * - `failed`: definitely not paid. `code` is the payout status (`failed`, ...) when the vault released the
  *   spend, else why the transaction did not run (`TxSendFailed`, a `TxRejectedError` kind such as
  *   `NotEnoughAllowance`, `LackBalanceForState` / `NotEnoughBalance`, `TxFailed`).

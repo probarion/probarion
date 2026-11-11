@@ -1,0 +1,5 @@
+Probarion eval purchase order PO-4103 (synthetic test data, never used on chain)
+Buyer: the owner of the eval vault e.vaults.probarion.testnet.
+Vendor: Eval Vendor C, paid in USDC on Base at 0x01F0fa145FAC30D005a213E05fAEC95B0272782D.
+Scope: data labelling, billed per batch.
+Cap: at most 250 USDC per payment and 2,000 USDC in total.
