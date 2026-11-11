@@ -10,6 +10,7 @@ import fixture from "@/lib/site/valid-snapshot.json";
 import { type DecisionRow, decisionOutcome, decisionRows, type ShownPayment } from "./decisions";
 import {
   CSV_BOM,
+  chainReadField,
   csvField,
   csvRecord,
   guardFormula,
@@ -20,7 +21,6 @@ import {
   paymentsCsv,
   paymentsCsvFileName,
   paymentsCsvResponse,
-  paymentsHeader,
 } from "./payments-csv";
 import type { ProofOk } from "./service";
 
@@ -37,9 +37,59 @@ const rowAt = (rows: DecisionRow[], seq: number): DecisionRow => {
   return r;
 };
 
+/** The Chain read field the rows below are written with. */
+const READ = "2026-11-09 11:58:06";
+
 /** A field of a row by its column, before quoting and the guard. */
 function field(r: DecisionRow, column: (typeof PAYMENTS_COLUMNS)[number]): string {
-  return paymentFields(r)[PAYMENTS_COLUMNS.indexOf(column)] ?? "";
+  return paymentFields(r, READ)[PAYMENTS_COLUMNS.indexOf(column)] ?? "";
+}
+
+/** A cell may start a formula: after any spaces or quotes, one of OWASP's = + - @, tab or CR. */
+const STARTS_FORMULA = /^[ "]*[=+\-@\t\r]/;
+
+/**
+ * The cells a spreadsheet reads from CSV text when it splits each line on `sep`, as Excel does: a quote opens a quoted
+ * part only at the start of a cell (there `""` is one quote, and what follows the closing quote is kept), anywhere
+ * else it is a plain character; outside a quoted part, a CR or an LF ends the line. With "," it reads the file as RFC
+ * 4180 means it; with ";" as Excel does in a locale whose list separator is the semicolon.
+ */
+function cells(text: string, sep: "," | ";"): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    let cell = "";
+    if (text[i] === '"') {
+      i += 1;
+      while (i < text.length) {
+        if (text[i] === '"' && text[i + 1] === '"') {
+          cell += '"';
+          i += 2;
+        } else if (text[i] === '"') {
+          i += 1;
+          break;
+        } else {
+          cell += text[i];
+          i += 1;
+        }
+      }
+    }
+    while (i < text.length && text[i] !== sep && text[i] !== "\r" && text[i] !== "\n") {
+      cell += text[i];
+      i += 1;
+    }
+    out.push(cell);
+    // One separator or one line end (CRLF counts as one) closes the cell.
+    if (text[i] === "\r" && text[i + 1] === "\n") i += 2;
+    else i += 1;
+  }
+  return out;
+}
+
+/** Every cell of `csv` that a spreadsheet splitting on commas, or on semicolons, would read as a formula. */
+function formulaCells(csv: string): string[] {
+  const body = csv.startsWith(CSV_BOM) ? csv.slice(1) : csv;
+  return [...cells(body, ","), ...cells(body, ";")].filter((c) => STARTS_FORMULA.test(c));
 }
 
 const payment = (over: Partial<ShownPayment>): ShownPayment => ({
@@ -93,7 +143,7 @@ describe("RFC 4180 fields and records", () => {
     expect(text.endsWith("\r\n")).toBe(true);
     expect(text.replaceAll("\r\n", "")).not.toMatch(/[\r\n]/);
     const lines = text.slice(1).split("\r\n");
-    expect(lines[0]).toBe(paymentsHeader(demo.taken_at).join(","));
+    expect(lines[0]).toBe(PAYMENTS_COLUMNS.join(","));
     // The header, five decisions, and the empty string after the last CRLF: no preamble, no comment row.
     expect(lines).toHaveLength(7);
     expect(lines.at(-1)).toBe("");
@@ -101,7 +151,7 @@ describe("RFC 4180 fields and records", () => {
 
   it("is only the header for a vault with no decision yet", () => {
     expect(paymentsCsv([], "2026-11-09T11:58:06.558Z")).toBe(
-      `${CSV_BOM}${paymentsHeader("2026-11-09T11:58:06.558Z").join(",")}\r\n`,
+      `${CSV_BOM}${PAYMENTS_COLUMNS.join(",")}\r\n`,
     );
   });
 });
@@ -112,10 +162,38 @@ describe("the formula guard", () => {
       expect(guardFormula(`${c}SUM(A1:A9)`), JSON.stringify(c)).toBe(`'${c}SUM(A1:A9)`);
     }
     expect(guardFormula("=")).toBe("'=");
+    // After spaces or quotes, which a spreadsheet may trim or read as the cell's opening quote.
+    expect(guardFormula(" =1")).toBe(" '=1");
+    expect(guardFormula('"=1')).toBe("\"'=1");
+  });
+
+  it("puts one before each trigger after a ; or a line break, where a semicolon spreadsheet starts a cell", () => {
+    for (const c of ["=", "+", "-", "@", "\t", "\r"]) {
+      expect(guardFormula(`Sample PO;${c}1+1;`), JSON.stringify(c)).toBe(`Sample PO;'${c}1+1;`);
+    }
+    expect(guardFormula("x;=HYPERLINK(CHAR(104)&A1); the mandate pays bob.near")).toBe(
+      "x;'=HYPERLINK(CHAR(104)&A1); the mandate pays bob.near",
+    );
+    expect(guardFormula('a; =1;"+2;=3')).toBe("a; '=1;\"'+2;'=3");
+    expect(guardFormula("a\n=1")).toBe("a\n'=1");
+    expect(guardFormula("a\r\n-1")).toBe("a\r\n'-1");
+    expect(guardFormula("\r=1")).toBe("'\r'=1");
+    expect(guardFormula("=1;=2")).toBe("'=1;'=2");
   });
 
   it("leaves any other start alone, the trigger characters inside a field included", () => {
-    for (const s of ["SUM(A1)", "a=b", "2026-11-09 11:53:32", "4", " =1", "'=1", "\n=1", ""]) {
+    for (const s of [
+      "SUM(A1)",
+      "a=b",
+      "2026-11-09 11:53:32",
+      "4",
+      "'=1",
+      "a;'=1",
+      "a; b=1",
+      "1; 9",
+      "nothing is sent; the owner confirms the amount",
+      "",
+    ]) {
       expect(guardFormula(s), JSON.stringify(s)).toBe(s);
     }
   });
@@ -124,12 +202,21 @@ describe("the formula guard", () => {
     expect(csvField('=HYPERLINK("https://x.test","pay")')).toBe(
       '"\'=HYPERLINK(""https://x.test"",""pay"")"',
     );
-    expect(csvField("\r=1")).toBe('"\'\r=1"');
+    expect(csvField("\r=1")).toBe("\"'\r'=1\"");
     expect(csvField("\t-1")).toBe("'\t-1");
     expect(csvField("-1,5")).toBe('"\'-1,5"');
+    expect(csvField("a;=1,2")).toBe('"a;\'=1,2"');
   });
 
-  it("guards a crafted label, payee and rule detail from the ledger and the chain", async () => {
+  it("reads each cell of a file the way a comma and a semicolon spreadsheet split it", () => {
+    expect(cells('a,"b,c";d,"e""f"\r\ng', ",")).toEqual(["a", "b,c;d", 'e"f', "g"]);
+    // A quote in the middle of a semicolon cell is a plain character, so the ; inside it starts a cell.
+    expect(cells('a,"b;=1+1",c\r\n', ";")).toEqual(['a,"b', '=1+1",c']);
+    expect(formulaCells('a,"b;=1+1",c\r\n')).toEqual(['=1+1",c']);
+    expect(formulaCells(`${csvRecord(["a", "b;=1+1", "c"])}`)).toEqual([]);
+  });
+
+  it("guards a crafted label, payee, rule detail and payee hint from the ledger and the chain", async () => {
     const s = structuredClone(demo) as unknown as {
       ledger: { body: { rules: { id: string; detail: string }[] } }[];
       chain: {
@@ -147,21 +234,34 @@ describe("the formula guard", () => {
     const rows = await decisionRows(s as unknown as Snapshot, "testnet");
     const csv = paymentsCsv(rows, demo.taken_at);
     expect(csv).toContain(`"'=HYPERLINK(""https://evil.test"",""Pay"")"`);
-    // Seq 5's spend is on chain: its destination is the payee. Seq 3 has none: the mandate's payee is.
+    // Seq 5's spend is on chain: its destination is the payee. Seq 3 has none, so it has no payee.
     expect(field(rowAt(rows, 5), "Payee")).toBe("@SUM(1+1)");
     expect(csv).toContain(",'@SUM(1+1),");
-    expect(field(rowAt(rows, 3), "Payee")).toBe("+cmd");
-    expect(csv).toContain(",'+cmd,");
-    // No field of the file starts a formula: every field after a comma or a line start is checked.
-    for (const line of csv.slice(1).split("\r\n")) {
-      for (const f of line.split(",")) expect(f, line).not.toMatch(/^"?[=+\-@\t\r]/);
-    }
+    expect(field(rowAt(rows, 3), "Payee")).toBe("");
+    expect(formulaCells(csv)).toEqual([]);
+
+    // A label with a formula after a ;, and the account a fake invoice names (the payee hint), which reaches the
+    // Reason through mandate.payee_mismatch's detail: in a semicolon spreadsheet each ; starts a cell.
+    mandate.label = "Sample PO;=1+1;";
+    rule.detail =
+      "invoice names NEAR account x;=HYPERLINK(CHAR(104)&A1); the mandate pays probarion-payee.testnet";
+    const crafted = paymentsCsv(
+      await decisionRows(s as unknown as Snapshot, "testnet"),
+      demo.taken_at,
+    );
+    expect(crafted).toContain(",Sample PO;'=1+1;,");
+    expect(crafted).toContain("x;'=HYPERLINK(CHAR(104)&A1); the mandate pays");
+    expect(formulaCells(crafted)).toEqual([]);
+    // Without the guard after ;, both would start a cell of a semicolon spreadsheet.
+    expect(formulaCells(crafted.replaceAll(";'", ";"))).toEqual(
+      expect.arrayContaining(["=1+1", expect.stringMatching(/^=HYPERLINK\(CHAR\(104\)&A1\)/)]),
+    );
   });
 });
 
 describe("one row per decision, in each state the cards show", () => {
-  it("writes the columns in order, newest decision first, as the cards list them", async () => {
-    expect(paymentsHeader("2026-11-09T11:58:06.558Z")).toEqual([
+  it("writes the columns in order, the header the same in every file, newest decision first", async () => {
+    expect(PAYMENTS_COLUMNS).toEqual([
       "Date (UTC)",
       "Mandate",
       "Label",
@@ -170,20 +270,32 @@ describe("one row per decision, in each state the cards show", () => {
       "Decision",
       "Reason",
       "Spend id",
-      "Status now (chain read 2026-11-09 11:58:06 UTC)",
-      "Transaction",
+      "Status now",
+      "Chain read (UTC)",
+      "Spend transaction",
       "Explorer link",
       "Invoice SHA-256",
       "Ledger seq",
     ]);
+    const header = (takenAt: string) => paymentsCsv([], takenAt).slice(1).split("\r\n")[0];
+    expect(header("2026-11-09T11:58:06.558Z")).toBe(header("2026-11-10T08:00:00Z"));
     const rows = await decisionRows(attested, "testnet");
     expect(rows.map((r) => field(r, "Ledger seq"))).toEqual(["4", "2", "0"]);
+  });
+
+  it("writes when the snapshot read the chain on every row, in the Chain read column", async () => {
+    const rows = await decisionRows(demo, "testnet");
+    const lines = paymentsCsv(rows, demo.taken_at).slice(1).split("\r\n").slice(1, -1);
+    const at = PAYMENTS_COLUMNS.indexOf("Chain read (UTC)");
+    expect(lines).toHaveLength(5);
+    for (const line of lines) expect(cells(line, ",")[at], line).toBe("2026-11-09 11:58:06");
+    expect(chainReadField("2026-11-09T13:58:06+02:00")).toBe("2026-11-09 11:58:06");
   });
 
   it("paid: the spend on chain, its tx and explorer link, the amount as a plain decimal", async () => {
     const r = rowAt(await decisionRows(attested, "testnet"), 0);
     expect(decisionOutcome(r).kind).toBe("spend");
-    expect(paymentFields(r)).toEqual([
+    expect(paymentFields(r, READ)).toEqual([
       "2026-11-05 10:00:00",
       "1",
       "TEST FIXTURE mandate 1 (NEAR vendor)",
@@ -193,6 +305,7 @@ describe("one row per decision, in each state the cards show", () => {
       "",
       "1",
       "paid",
+      READ,
       "Afyz99fesbMSdpHXc5Fc6bqhsaPJ8Wrc7gc8JgBicCsT",
       `${TX}Afyz99fesbMSdpHXc5Fc6bqhsaPJ8Wrc7gc8JgBicCsT`,
       r.invoiceHash,
@@ -207,7 +320,7 @@ describe("one row per decision, in each state the cards show", () => {
     expect(field(r, "Decision")).toBe("allow");
     expect(field(r, "Spend id")).toBe("2");
     expect(field(r, "Status now")).toBe("burned");
-    expect(field(r, "Transaction")).toBe("4UViDBu8eHvNMe7WB24hDfDA5un4R5Wmy7ENLWGeRecF");
+    expect(field(r, "Spend transaction")).toBe("4UViDBu8eHvNMe7WB24hDfDA5un4R5Wmy7ENLWGeRecF");
   });
 
   it("held by the contract: the status on chain now, not the payment entry's held", async () => {
@@ -218,11 +331,43 @@ describe("one row per decision, in each state the cards show", () => {
     expect(field(r, "Reason")).toBe(
       "above the mandate's approval limit, the contract held it for an approver (payment entry at seq 6)",
     );
+    // The Spend transaction is the spend tx that created the hold: the approve tx is in no ledger entry.
+    expect(field(r, "Spend transaction")).toBe("6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb");
     // Still held on chain: the status says so.
-    const still = withContract(r, r.checked.payments, [
-      { ...(r.checked.spends[0] as DecisionRow["checked"]["spends"][number]), status: "held" },
-    ]);
+    const spend = r.checked.spends[0] as DecisionRow["checked"]["spends"][number];
+    const still = withContract(r, r.checked.payments, [{ ...spend, status: "held" }]);
     expect(field(still, "Status now")).toBe("held");
+  });
+
+  it("held by the contract with no payment entry: the hold, read from the spend itself", async () => {
+    // The payment entry's write failed: only the chain records the spend, and its held_until_ns the hold.
+    const r = rowAt(await decisionRows(demo, "testnet"), 5);
+    const spend = r.checked.spends[0] as DecisionRow["checked"]["spends"][number];
+    expect(spend.heldByContract).toBe(true);
+    const lost = withContract(r, [], [spend]);
+    expect(decisionOutcome(lost).kind).toBe("spend");
+    expect(field(lost, "Status now")).toBe("paid");
+    expect(field(lost, "Reason")).toBe(
+      "above the mandate's approval limit, the contract held it for an approver (no payment entry in this snapshot records it)",
+    );
+    expect(field(lost, "Spend transaction")).toBe("");
+  });
+
+  it("a spend with no payment entry and no hold: the card's sentence, not an empty reason", async () => {
+    const base = rowAt(await decisionRows(attested, "testnet"), 0);
+    const [spend] = base.checked.spends;
+    if (!spend) throw new Error("fixture changed");
+    expect(spend.heldByContract).toBe(false);
+    expect(field(withContract(base, [], [spend]), "Reason")).toBe(
+      "no payment entry in this snapshot records it, but the chain holds spend 1 for this decision",
+    );
+    expect(
+      field(withContract(base, [], [spend, { ...spend, id: 9, anchorId: "spend-9" }]), "Reason"),
+    ).toBe(
+      "no payment entry in this snapshot records it, but the chain holds spends 1, 9 for this decision",
+    );
+    // With its payment entry, a payment that went through with nothing kept back has no reason.
+    expect(field(base, "Reason")).toBe("");
   });
 
   it("held by the code: the rule and its detail, nothing sent, no spend", async () => {
@@ -234,7 +379,7 @@ describe("one row per decision, in each state the cards show", () => {
     );
     expect(field(r, "Spend id")).toBe("");
     expect(field(r, "Status now")).toBe(NO_SPEND);
-    expect(field(r, "Transaction")).toBe("");
+    expect(field(r, "Spend transaction")).toBe("");
     expect(field(r, "Explorer link")).toBe("");
   });
 
@@ -279,7 +424,7 @@ describe("one row per decision, in each state the cards show", () => {
     expect(field(r, "Reason")).toBe(NO_PAYMENT_ENTRY);
     expect(field(r, "Spend id")).toBe("");
     expect(field(r, "Status now")).toBe(NO_SPEND);
-    expect(field(r, "Transaction")).toBe("");
+    expect(field(r, "Spend transaction")).toBe("");
   });
 
   it("a payment entry with no spend on chain: what the entry says, and that the chain holds none", async () => {
@@ -300,7 +445,7 @@ describe("one row per decision, in each state the cards show", () => {
       "the payment entry at seq 1 says paid for spend 1, and the chain holds no spend for this decision",
     );
     expect(field(r, "Status now")).toBe(NO_SPEND);
-    expect(field(r, "Transaction")).toBe(hash);
+    expect(field(r, "Spend transaction")).toBe(hash);
     expect(field(r, "Explorer link")).toBe(`${TX}${hash}`);
   });
 
@@ -319,7 +464,7 @@ describe("one row per decision, in each state the cards show", () => {
     );
     expect(field(r, "Spend id")).toBe("1; 9");
     expect(field(r, "Status now")).toBe("expired; paid");
-    expect(field(r, "Transaction")).toBe(p.txHash);
+    expect(field(r, "Spend transaction")).toBe(p.txHash);
   });
 
   it("writes an amount with no USDC units as empty, and a crafted one as the ledger has it", async () => {
@@ -341,7 +486,9 @@ describe("one row per decision, in each state the cards show", () => {
   it("writes a time it cannot read as the ledger has it", async () => {
     const base = rowAt(await decisionRows(attested, "testnet"), 0);
     expect(field({ ...base, at: "not a time" }, "Date (UTC)")).toBe("not a time");
-    expect(paymentsHeader("soon")[8]).toBe("Status now (chain read soon)");
+    expect(chainReadField("soon")).toBe("soon");
+    expect(chainReadField(null)).toBe("");
+    expect(paymentsCsv([base], "soon")).toContain(",paid,soon,");
   });
 });
 

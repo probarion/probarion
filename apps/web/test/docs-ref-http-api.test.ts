@@ -14,7 +14,7 @@ import { HEALTH_CACHE_MS, HEALTH_TIMEOUT_MS } from "@/lib/health";
 import { clientIp } from "@/lib/http";
 import { MAX_INVOICE_BYTES } from "@/lib/payables/limits";
 import { ledgerFileName } from "@/lib/proof/ledger-file";
-import { paymentsCsv, paymentsCsvFileName } from "@/lib/proof/payments-csv";
+import { PAYMENTS_COLUMNS, paymentsCsv, paymentsCsvFileName } from "@/lib/proof/payments-csv";
 import { snapshotFileName } from "@/lib/proof/snapshot-file";
 import { LIMITS } from "@/lib/ratelimit";
 import { readMdx, WEB, walkFiles } from "./docs-helpers";
@@ -1244,5 +1244,20 @@ describe("the numbers on the HTTP API page", () => {
     const empty = paymentsCsv([], "2026-11-09T11:58:06Z");
     expect(empty.startsWith(`${String.fromCharCode(0xfeff)}Date (UTC),`)).toBe(true);
     expect(empty.endsWith("\r\n")).toBe(true);
+    // The page lists the file's columns as the module writes them, in order.
+    const columns = [...PAYMENTS_COLUMNS];
+    const last = columns.pop();
+    expect(page).toContain(`Its columns are ${columns.join(", ")} and ${last}.`);
+    expect(empty).toBe(`${String.fromCharCode(0xfeff)}${PAYMENTS_COLUMNS.join(",")}\r\n`);
+  });
+
+  it("names each proof file on the Errors row of the 404 the three answer", () => {
+    const row = HTTP_ERRORS.find((e) => e.status === 404 && e.code === "not_found");
+    expect(row?.where).toContain("Proof files (snapshot.json, ledger.jsonl, payments.csv)");
+    const files = readdirSync(join(PROOF, "[vault]"), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+    expect(files).toContain("payments.csv");
+    for (const name of files) expect(row?.where, name).toContain(name);
   });
 });

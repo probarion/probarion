@@ -16,11 +16,14 @@ export const maxDuration = 60;
 /**
  * The vault's payments as a CSV file, one row per decision of its ledger, newest first, joined to its payment entry
  * and to its spend's status on chain (lib/proof/payments-csv.ts), saved as <vault>-payments-<capture time>.csv. It
- * reads the same snapshot loadProof gives snapshot.json, with the same access rules (public, or a member of the
- * vault, on the network of this address), id validation and rate limit (`LIMITS.snapshot`, with its own bucket key,
- * as ledger.jsonl has), and the same decision rows the page's Decisions cards show. An id that is not a NEAR account
- * is a 404 before any database or RPC call. A limiter or load that throws is a 503, as a failed load is, and so are
- * decision rows that cannot be built.
+ * loads the proof as snapshot.json does, with the same loader, access rules (public, or a member of the vault, on the
+ * network of this address), id validation and rate limit (`LIMITS.snapshot`, with its own bucket key, as ledger.jsonl
+ * has), and builds its rows with the function that builds the page's Decisions cards (cachedDecisionRows). The
+ * snapshot is this route's own, as snapshot.json's is: it can be older or newer than the page's, since the page and
+ * this route run in separate runtimes with separate caches, so on a vault that acted in between the file can hold more
+ * rows, or other statuses, than the cards on screen. Its taken_at is in the file name and in the Chain read column, to
+ * compare with the page's "snapshot taken" line. An id that is not a NEAR account is a 404 before any database or RPC
+ * call. A limiter or load that throws is a 503, as a failed load is, and so are decision rows that cannot be built.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ vault: string }> }) {
   const { vault } = await params;

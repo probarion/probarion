@@ -175,6 +175,11 @@ export interface ShownSpend {
   amount: DecisionAmount;
   destination: string;
   mandateId: string;
+  /**
+   * True when the contract held the spend for an approver when it took it: its held_until_ns is set, which the
+   * contract does only for an amount above the mandate's approval_above, and which an approve or a reject leaves set.
+   */
+  heldByContract: boolean;
 }
 
 /** The mandate's caps as the chain holds them in this snapshot. */
@@ -717,6 +722,7 @@ function spendOf(sp: Record<string, unknown>): ShownSpend {
     amount: usdc(sp.amount),
     destination: payeeText(sp.destination),
     mandateId: idText(sp.mandate_id),
+    heldByContract: sp.held_until_ns !== null && sp.held_until_ns !== undefined,
   };
 }
 

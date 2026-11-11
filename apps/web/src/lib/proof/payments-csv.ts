@@ -4,49 +4,69 @@ import { safeText } from "./sanitize";
 import type { ProofOk } from "./service";
 
 // The vault's payments as a spreadsheet, served at /proof/<vault>/payments.csv. Pure: it reads the decision rows of
-// one snapshot (decisionRows, the rows the Decisions cards of /proof show) and writes text, with no database or RPC
-// call of its own.
+// one snapshot (decisionRows, the function that builds the Decisions cards of /proof) and writes text, with no
+// database or RPC call of its own.
 //
-// One row per decision entry of the ledger, newest first: the order of the Decisions cards, so row N of the file is
-// card N of the page. A payment entry is not a row of its own: it is joined to the decision it points back to
-// (refs.decision_body_hash), and the spend to the decision whose body_hash the chain binds it to (decision_hash). What
-// became of the decision (the Decision and Reason columns) is `decisionOutcome`, which the cards' summary line reads
-// too, so the file and the page cannot disagree.
+// One row per decision entry of the ledger, newest first: for the same snapshot, the rows are the cards in the order
+// the page lists them, built by the same code. The download takes its own snapshot, though (the route loads the proof
+// itself, as snapshot.json does), so it can be older or newer than the page's: the capture time in the file name and
+// in the Chain read column is the snapshot's taken_at, to compare with the page's "snapshot taken" line. A payment
+// entry is not a row of its own: it is joined to the decision it points back to (refs.decision_body_hash), and the
+// spend to the decision whose body_hash the chain binds it to (decision_hash). What became of the decision (the
+// Decision and Reason columns) is `decisionOutcome`, which the cards' summary line reads too, so the two cannot
+// disagree on one snapshot.
 //
 // Columns:
 // - Date (UTC): when the decision entry was written, "YYYY-MM-DD HH:MM:SS".
 // - Mandate, Label: the mandate id the entry names, and its label as the snapshot's chain data holds it.
-// - Payee: the destination of the spend the chain binds to the decision, else the mandate's payee on chain.
+// - Payee: the destination of the spend the chain binds to the decision. Empty when the chain holds none: nothing was
+//   sent, and the account an invoice named is not the mandate's (a refusal by mandate.payee_mismatch names both in
+//   the Reason).
 // - Amount (USDC): the entry's amount as a plain decimal with a dot and no thousands separator, such as 4 or 2.5.
 // - Decision: the code's verdict (allow, hold, refuse, unknown), or "refused by contract" when the contract refused
 //   the spend, as the card shows it (the card hides the code's allow next to a contract refusal).
 // - Reason: why it was held or refused: the rule and its detail, the contract's code, the contract's hold for an
-//   approver, or why no spend is on chain. Empty for a payment that went through with nothing kept back.
+//   approver, or why no spend is on chain; and a spend on chain that no payment entry records, as the card says it.
+//   Empty for a payment that went through with nothing kept back.
 // - Spend id, Status now: each spend the chain binds to the decision, and its status on chain ("no spend" when there
-//   is none). "Now" is when the snapshot read the chain: its taken_at, which the SDK stamps before it reads the chain,
-//   and which the column's header names. A spend whose payment entry says held can read paid here: an approver
-//   approved it on chain since, and no code writes an approval to the ledger.
-// - Transaction, Explorer link: the contract tx each payment entry of the decision records. It is the spend tx, so
-//   for a held spend that an approver paid later it is the tx that created the hold, not the approve tx.
+//   is none). "Now" is when the snapshot read the chain. A spend whose payment entry says held can read paid here: an
+//   approver approved it on chain since, and no code writes an approval to the ledger.
+// - Chain read (UTC): that time, the snapshot's taken_at, which the SDK stamps before it reads the chain. It is the
+//   same on every row, so that a row copied elsewhere keeps it, and the header row stays the same from one file to
+//   the next.
+// - Spend transaction, Explorer link: the contract tx each payment entry of the decision records, the one that sent
+//   the spend. For a spend the contract held and an approver paid later, it is the tx that created the hold, which
+//   moved no USDC; the approve tx is in no ledger entry, so it is not in the file.
 // - Invoice SHA-256: the entry's invoice_hash. Ledger seq: the entry's position in the ledger.
 //
 // The file is RFC 4180: a header row, then the rows, each ended by CRLF, after a UTF-8 BOM so that a spreadsheet reads
 // it as UTF-8. A field that holds a comma, a quote, a CR or an LF is quoted, its quotes doubled. Nothing comes before
 // the header: no comment or preamble row, which spreadsheets would read as data. The capture time is in the file name
-// and in the Status now header instead. Every field goes through the formula guard: one that starts with = + - @, a
-// tab or a CR gets a leading apostrophe, so a spreadsheet shows it as text instead of running it. Labels, rule details
-// and payees are set by the owner, the agent or the model, and a crafted ledger can put anything anywhere, so the
-// guard runs on every field, not only on those.
+// and in the Chain read column instead. Every field goes through the formula guard (`guardFormula`): an apostrophe
+// goes before any = + - @, tab or CR that starts a cell, so a spreadsheet shows it as text instead of running it.
+// Labels, rule details and payees are set by the owner, the agent, the model or the sender of an invoice, and a
+// crafted ledger can put anything anywhere, so the guard runs on every field, not only on those.
 
 /** The byte order mark that tells a spreadsheet the file is UTF-8. */
 export const CSV_BOM = String.fromCharCode(0xfeff);
 const CRLF = "\r\n";
-/** What a spreadsheet may read as the start of a formula (OWASP's list). */
-const FORMULA_START = /^[=+\-@\t\r]/;
+/**
+ * Where a spreadsheet may start a cell inside a field, and the spaces and quotes it may skip or trim there. Excel in a
+ * locale whose list separator is the semicolon (de-DE, fr-FR and many others) splits each line of a .csv on `;`, not
+ * on commas, and honours a quote only at the start of a cell, so each `;` of a field starts a cell, and so does each
+ * CR or LF (a quote in the middle of a cell does not keep it in the field). OWASP's CSV injection guidance names this
+ * separator case.
+ */
+const CELL_IN_FIELD = /([;\r\n][ "]*)(?=[=+\-@\t\r])/g;
+/** A field whose first cell, after any spaces or quotes, starts with what a spreadsheet may read as a formula. */
+const FORMULA_START = /^[ "]*[=+\-@\t\r]/;
 /** What makes RFC 4180 quote a field. */
 const NEEDS_QUOTES = /[",\r\n]/;
 
-/** The columns, in order. Status now's header also names the time the snapshot read the chain: see `paymentsHeader`. */
+/**
+ * The columns, in order: the header row, the same in every file. The time the snapshot read the chain is a column of
+ * its own (Chain read), not part of a header.
+ */
 export const PAYMENTS_COLUMNS = [
   "Date (UTC)",
   "Mandate",
@@ -57,7 +77,8 @@ export const PAYMENTS_COLUMNS = [
   "Reason",
   "Spend id",
   "Status now",
-  "Transaction",
+  "Chain read (UTC)",
+  "Spend transaction",
   "Explorer link",
   "Invoice SHA-256",
   "Ledger seq",
@@ -69,9 +90,17 @@ export const NO_SPEND = "no spend";
 export const NO_PAYMENT_ENTRY =
   "No payment entry in this snapshot records a spend for this decision";
 
-/** A field a spreadsheet would read as a formula, with a leading apostrophe; any other field as it is. */
+/**
+ * A field with an apostrophe before each = + - @, tab or CR that starts a cell (OWASP's list): at the start of the
+ * field, or after a `;`, CR or LF in it, each after any spaces or quotes there. A spreadsheet then shows that cell as
+ * text instead of running it, whether it splits the line on commas or on semicolons. Any other field as it is.
+ */
 export function guardFormula(field: string): string {
-  return FORMULA_START.test(field) ? `'${field}` : field;
+  const inner = field.replace(CELL_IN_FIELD, "$1'");
+  const start = FORMULA_START.exec(inner);
+  if (start === null) return inner;
+  const at = start[0].length - 1;
+  return `${inner.slice(0, at)}'${inner.slice(at)}`;
 }
 
 /** One field as RFC 4180 writes it, after the formula guard. */
@@ -92,11 +121,12 @@ function utcSeconds(at: unknown): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 19).replace("T", " ");
 }
 
-/** The header row: Status now names when the snapshot read the chain (its taken_at). */
-export function paymentsHeader(takenAt: unknown): string[] {
-  const read = utcSeconds(takenAt);
-  const when = read === null ? safeText(takenAt, 120) : `${read} UTC`;
-  return PAYMENTS_COLUMNS.map((c) => (c === "Status now" ? `Status now (chain read ${when})` : c));
+/**
+ * The Chain read field: the snapshot's taken_at as "YYYY-MM-DD HH:MM:SS", a text it cannot read as the snapshot has
+ * it, and "" when it is no text at all.
+ */
+export function chainReadField(takenAt: unknown): string {
+  return utcSeconds(takenAt) ?? (typeof takenAt === "string" ? safeText(takenAt, 120) : "");
 }
 
 /** USDC base units as a plain decimal; "" for no amount; the row's text for one that is not a USDC amount. */
@@ -143,29 +173,43 @@ function reasonField(r: DecisionRow, o: DecisionOutcome): string {
       if (rule !== null) {
         return `${r.verdict === "hold" ? "held" : "refused"} by ${rule.id}: ${rule.detail}`;
       }
-      // The contract holds a spend only when it is above the mandate's approval limit (CONTRACT_HOLD).
-      const held = r.checked.payments.find((p) => p.status === "held");
-      return held === undefined
-        ? ""
-        : `above the mandate's approval limit, the contract held it for an approver (payment entry at seq ${held.seq})`;
+      const { spends, payments } = r.checked;
+      // The contract holds a spend only when it is above the mandate's approval limit (CONTRACT_HOLD). Its
+      // held_until_ns stays set after an approve, and its payment entry, when one was written, says held.
+      const entry = payments.find((p) => p.status === "held");
+      if (entry !== undefined || spends.some((s) => s.heldByContract)) {
+        const recorded =
+          entry !== undefined
+            ? `payment entry at seq ${entry.seq}`
+            : "no payment entry in this snapshot records it";
+        return `above the mandate's approval limit, the contract held it for an approver (${recorded})`;
+      }
+      if (payments.length > 0) return "";
+      // The SDK writes a payment entry after each spend; when that write fails, only the chain records the spend.
+      const ids = spends.map((s) => s.id).join(", ");
+      return `no payment entry in this snapshot records it, but the chain holds ${spends.length === 1 ? "spend" : "spends"} ${ids} for this decision`;
     }
   }
 }
 
-/** The fields of one decision, in the order of PAYMENTS_COLUMNS, before quoting and the guard. */
-export function paymentFields(r: DecisionRow): string[] {
+/**
+ * The fields of one decision, in the order of PAYMENTS_COLUMNS, before quoting and the guard. `chainRead` is the
+ * snapshot's Chain read field (`chainReadField`), the same for every row of one file.
+ */
+export function paymentFields(r: DecisionRow, chainRead: string): string[] {
   const o = decisionOutcome(r);
   const { spends, payments, mandate } = r.checked;
   return [
     utcSeconds(r.at) ?? r.at,
     r.mandateId === null ? "" : String(r.mandateId),
     mandate?.label ?? "",
-    spends[0]?.destination ?? mandate?.payee ?? "",
+    spends[0]?.destination ?? "",
     amountField(r.amount),
     decisionField(r, o),
     reasonField(r, o),
     spends.map((s) => String(s.id)).join("; "),
     spends.length === 0 ? NO_SPEND : spends.map((s) => s.status).join("; "),
+    chainRead,
     unique(payments.map((p) => p.txHash)).join("; "),
     unique(payments.map((p) => p.txUrl)).join("; "),
     r.invoiceHash ?? "",
@@ -175,7 +219,8 @@ export function paymentFields(r: DecisionRow): string[] {
 
 /** The whole file: the BOM, the header row, then one row per decision in the order of `rows` (newest first). */
 export function paymentsCsv(rows: readonly DecisionRow[], takenAt: unknown): string {
-  return `${CSV_BOM}${csvRecord(paymentsHeader(takenAt))}${rows.map((r) => csvRecord(paymentFields(r))).join("")}`;
+  const chainRead = chainReadField(takenAt);
+  return `${CSV_BOM}${csvRecord(PAYMENTS_COLUMNS)}${rows.map((r) => csvRecord(paymentFields(r, chainRead))).join("")}`;
 }
 
 /**

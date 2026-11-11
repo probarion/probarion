@@ -70,5 +70,9 @@ ledger as the proof page served it after the run: seven entries, five decisions 
 [`payments-2026-11-09.csv`](payments-2026-11-09.csv) is that snapshot as the proof page's payments download
 (`/proof/<vault>/payments.csv`) writes it, for a spreadsheet: one row per decision, newest first, with its payment
 entry and its spend's status on chain when the snapshot read it. Spend 2 reads `paid` there, though its payment entry
-says `held`: the approver paid it on chain before the snapshot. `apps/web/test/demo-vault.test.ts` makes the file from
-the snapshot and fails when the committed copy differs by a byte.
+says `held`: the approver paid it on chain before the snapshot. Its Spend transaction is the spend tx that created the
+hold and moved no USDC; the approve tx that paid it, `approve_tx` in
+[`contracts/deployments/testnet.json`](../../../contracts/deployments/testnet.json), is in no ledger entry, so it is
+not in the file. The three decisions with no spend on chain have an empty Payee: nothing was sent.
+`apps/web/test/demo-vault.test.ts` makes the file from the snapshot and fails when the committed copy differs by a
+byte.

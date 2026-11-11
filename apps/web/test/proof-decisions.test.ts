@@ -529,6 +529,7 @@ describe("the summary row and the contract column, on crafted rows", () => {
             amount: { units: "2000000", text: "2 USDC" },
             destination: "vendor.testnet",
             mandateId: "1",
+            heldByContract: true,
           },
         ],
       },

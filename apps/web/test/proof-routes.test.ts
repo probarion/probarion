@@ -122,7 +122,7 @@ import { ProofLimited, ProofView } from "@/components/proof/ProofView";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { TamperPanel } from "@/components/site/TamperPanel";
 import { decisionRows } from "@/lib/proof/decisions";
-import { paymentsCsv } from "@/lib/proof/payments-csv";
+import { PAYMENTS_COLUMNS, paymentsCsv } from "@/lib/proof/payments-csv";
 import { SITE_NAV } from "@/lib/routes";
 
 /** True when the text still holds a right-to-left override, a line separator or a BEL. */
@@ -1094,8 +1094,9 @@ describe("/proof/[vault]/payments.csv", () => {
       paymentsCsv(await decisionRows(snapshot, snapshot.network), snapshot.taken_at),
     );
     const lines = body.split("\r\n");
-    expect(lines[0]).toContain("Status now (chain read 2026-11-08 12:00:00 UTC)");
-    expect(lines[1]).toContain(",paid,");
+    expect(lines[0]).toBe(`${String.fromCharCode(0xfeff)}${PAYMENTS_COLUMNS.join(",")}`);
+    // The snapshot's taken_at, the time in the file name, is each row's Chain read.
+    expect(lines[1]).toContain(",paid,2026-11-08 12:00:00,");
     expect(lines).toHaveLength(3);
     // Its own bucket key, under snapshot.json's limit.
     expect(h.limitCalls).toEqual(["payments:203.0.113.7"]);

@@ -49,7 +49,13 @@ const deployment = JSON.parse(
     ledger_key: string;
     anchors: number;
     evidence: string;
-    spends: { id: number; invoice: string; amount: string; spend_tx: string }[];
+    spends: {
+      id: number;
+      invoice: string;
+      amount: string;
+      spend_tx: string;
+      approve_tx?: string;
+    }[];
     refusals: { invoice: string; rule: string; ledger_seq: number }[];
     verify: { result: string; passed: number };
   };
@@ -171,23 +177,30 @@ describe("the testnet demo vault's payments CSV", () => {
       .split("\r\n")
       .filter((l) => l !== "");
     const [header, ...rows] = lines;
+    // The same header in every file: the time the snapshot read the chain is the Chain read column of each row.
     expect(header).toBe(
-      "Date (UTC),Mandate,Label,Payee,Amount (USDC),Decision,Reason,Spend id,Status now (chain read 2026-11-09 11:58:06 UTC),Transaction,Explorer link,Invoice SHA-256,Ledger seq",
+      "Date (UTC),Mandate,Label,Payee,Amount (USDC),Decision,Reason,Spend id,Status now,Chain read (UTC),Spend transaction,Explorer link,Invoice SHA-256,Ledger seq",
     );
     expect(rows.map((r) => r.split(",").at(-1))).toEqual(["5", "4", "3", "1", "0"]);
+    const read = "2026-11-09 11:58:06";
+    expect(snapshot.taken_at.startsWith(read.replace(" ", "T"))).toBe(true);
     const tx = (hash: string) => `${hash},https://testnet.nearblocks.io/txns/${hash}`;
-    // INV-2003: the payment entry says held; the chain says paid, after the approver's approve.
+    // INV-2003: the payment entry says held; the chain says paid, after the approver's approve. The Spend
+    // transaction is the spend tx that held it, not the approve tx, which no ledger entry records.
+    expect(demo.spends[1]?.approve_tx).toMatch(/^[1-9A-HJ-NP-Za-km-z]{43,44}$/);
+    expect(demo.spends[1]?.spend_tx).not.toBe(demo.spends[1]?.approve_tx);
     expect(rows[0]).toBe(
-      `2026-11-09 11:53:32,1,Sample PO-1001,probarion-payee.testnet,4,allow,"above the mandate's approval limit, the contract held it for an approver (payment entry at seq 6)",2,paid,${tx(demo.spends[1]?.spend_tx ?? "")},${sha256("invoice-INV-2003.txt")},5`,
+      `2026-11-09 11:53:32,1,Sample PO-1001,probarion-payee.testnet,4,allow,"above the mandate's approval limit, the contract held it for an approver (payment entry at seq 6)",2,paid,${read},${tx(demo.spends[1]?.spend_tx ?? "")},${sha256("invoice-INV-2003.txt")},5`,
     );
-    // INV-2002, the changed bank: refused by code, nothing sent.
-    // The reason holds a comma, so it is quoted.
+    expect(rows[0]).not.toContain(demo.spends[1]?.approve_tx ?? "approve_tx");
+    // INV-2002, the changed bank: refused by code, nothing sent, so no payee: the Reason names the account the
+    // invoice gave and the mandate's. The reason holds a comma, so it is quoted.
     expect(rows[2]).toBe(
-      `2026-11-09 11:49:20,1,Sample PO-1001,probarion-payee.testnet,2,refuse,"refused by mandate.payee_mismatch, nothing sent: invoice names NEAR account new-account.testnet; the mandate pays probarion-payee.testnet",,no spend,,,${sha256("invoice-INV-2002.txt")},3`,
+      `2026-11-09 11:49:20,1,Sample PO-1001,,2,refuse,"refused by mandate.payee_mismatch, nothing sent: invoice names NEAR account new-account.testnet; the mandate pays probarion-payee.testnet",,no spend,${read},,,${sha256("invoice-INV-2002.txt")},3`,
     );
     // INV-2001: paid by spend 1.
     expect(rows[3]).toBe(
-      `2026-11-09 11:47:27,1,Sample PO-1001,probarion-payee.testnet,2,allow,,1,paid,${tx(demo.spends[0]?.spend_tx ?? "")},${sha256("invoice-INV-2001.txt")},1`,
+      `2026-11-09 11:47:27,1,Sample PO-1001,probarion-payee.testnet,2,allow,,1,paid,${read},${tx(demo.spends[0]?.spend_tx ?? "")},${sha256("invoice-INV-2001.txt")},1`,
     );
   });
 });

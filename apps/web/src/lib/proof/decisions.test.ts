@@ -226,6 +226,7 @@ describe("decision rows on the committed fixture", () => {
         amount: { units: "40000000", text: "40 USDC" },
         destination: "base:0x1111111111111111111111111111111111111111",
         mandateId: "2",
+        heldByContract: false,
       },
     ]);
     expect(checked.mandate).toEqual({
@@ -496,6 +497,8 @@ describe("decision rows on the testnet demo vault's rules-only snapshot", () => 
         amount: { units: "4000000", text: "4 USDC" },
         destination: "probarion-payee.testnet",
         mandateId: "1",
+        // INV-2003: above the approval limit, so its held_until_ns stays set after the approve.
+        heldByContract: true,
       },
     ]);
     expect(r.checked.mandate).toEqual({
