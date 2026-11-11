@@ -20,7 +20,8 @@ The software is an unaudited beta.
   "Why it is different".
 - Known gaps (THREAT_MODEL, SECURITY, the MCP README): `verify` does not run the policy again, so a program that
   holds both the agent key and the ledger key can skip `decide()` and still pass, inside the mandate. Run
-  `@probarion/mcp` as another OS user or in a container when the agent host has a shell tool.
+  `@probarion/mcp` as another OS user or in a container when the agent host has a shell tool, and keep
+  `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY` out of a client config the agent can read.
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision

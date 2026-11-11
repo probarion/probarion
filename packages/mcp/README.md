@@ -81,7 +81,8 @@ Mode 0600 keeps out other users, not your own programs. An agent host that runs 
 read `keys.json`, and with both keys it can sign its own allowing decisions and spends without the server's
 `decide()`. The money still goes only to a mandate's payee, within its caps, but the ledger then records
 decisions the code did not make, and `verify` cannot tell. When the agent host has a shell tool, run the
-server as another OS user, or in a container the agent cannot read.
+server as another OS user, or in a container the agent cannot read. The same holds for keys given in
+`PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY`: keep them out of a client config the agent can read.
 
 ### 2. The owner adds the two public keys to the vault
 
