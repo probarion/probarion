@@ -58,7 +58,7 @@ export const RESOURCES: readonly DocPage[] = [
       "apps/web/src/app/api/topup/faucet/route.ts",
       "contracts/intents-stub/src/lib.rs",
     ],
-    reviewed: "2026-11-09",
+    reviewed: "2026-11-11",
     phase: 1,
     locale: "en",
   },

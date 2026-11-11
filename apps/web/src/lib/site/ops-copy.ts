@@ -241,7 +241,7 @@ export const PRIVACY_PAGE = {
       title: "Invoices",
       paragraphs: [
         "The file of an invoice you upload is encrypted before it is stored. The facts read from it, such as the amount and its references, and its file name are stored with it, not encrypted. With zero-retention on, the invoice's record keeps only its hashes and the outcome, and, for an invoice that asked for your Confirm, its amount: not the file, its text, its other facts or its name. The signed ledger still records the amount, any PO reference the model was shown, and the model's answer, which may quote details of the invoice.",
-        "When the payables agent runs, the invoice text goes to a private model on NEAR AI Cloud. No attested decision has been recorded and verified in the repository yet.",
+        "When the payables agent runs, the invoice text goes to a private model on NEAR AI Cloud. The attested decisions recorded in the repository so far are two of the Canary's, on testnet, checked offline only; none is the payables agent's.",
       ],
     },
     {

@@ -406,7 +406,7 @@ export const JOURNEY = {
       n: 2,
       title: "A private model proposes, if there is one",
       body: "It runs in a TEE on NEAR AI Cloud. Its attestation is bound by a nonce to one position in one vault's ledger. It only gives advice: it cannot widen a mandate.",
-      tag: "Adapter built. First live attested run in progress.",
+      tag: "On testnet, the Canary's published ledger holds two attested decisions that pass A1 to A7 offline. The online quote check is not recorded yet.",
       panelLabel: "What the proposal is bound to",
       panel: [
         { note: "What the proposal is bound to" },
@@ -757,7 +757,12 @@ export const STATUS = {
     },
     { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.0 on npm", tone: "live" },
     { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
-    { id: "attested-model-run", row: "Live attested model run", pill: "In progress", tone: "work" },
+    {
+      id: "attested-model-run",
+      row: "Live attested model run",
+      pill: "Recorded on testnet, checked offline",
+      tone: "work",
+    },
     { id: "canary", row: "Canary public challenge", pill: "Live on testnet", tone: "live" },
     { id: "mcp-server", row: "MCP server", pill: "Tried on testnet, not on npm", tone: "work" },
     { id: "mainnet-vault", row: "Mainnet vault", pill: "Planned", tone: "plan" },

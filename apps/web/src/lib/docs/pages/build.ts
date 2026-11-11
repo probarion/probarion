@@ -289,7 +289,7 @@ export const BUILD: readonly DocPage[] = [
       "apps/web/vitest.config.ts",
       "biome.json",
     ],
-    reviewed: "2026-11-09",
+    reviewed: "2026-11-11",
     phase: 2,
     locale: "en",
   },

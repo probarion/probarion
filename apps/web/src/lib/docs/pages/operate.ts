@@ -86,7 +86,7 @@ export const OPERATE: readonly DocPage[] = [
       "apps/web/content/docs/trust/reproducible-builds.mdx",
       "packages/mcp/src/server.ts",
     ],
-    reviewed: "2026-11-10",
+    reviewed: "2026-11-11",
     phase: 2,
     locale: "en",
   },

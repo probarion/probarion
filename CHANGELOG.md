@@ -14,6 +14,21 @@ The software is an unaudited beta.
 
 ### Added
 
+- The Canary's signed ledger, published as evidence in `docs/evidence/canary-vault`:
+  `ledger-2026-11-10.jsonl`, the vault's whole ledger as it stood on 2026-11-11, which the owner
+  exported read-only: 5 entries from the team's own three attempts of 2026-11-10 and no visitor's.
+  Beside it are `snapshot-2026-11-11.json`, the snapshot a live `verify` with that ledger wrote, and
+  the run's output, `verify-2026-11-11.txt`, which passes checks a to i. Check e finds 2 decisions by
+  NEAR AI Cloud's `z-ai/glm-5.3-flash` that are attested and signed and pass A1 to A7 offline. The
+  online checks O1 and O2 are not recorded for them yet, the TEE measurement is not pinned, and A8
+  was not run, since the ledger holds no invoice text. The folder's README lists the 5 entries, with
+  what the model proposed and what the code and the contract did, says what check e shows and what
+  it does not, and gives the offline command and the live one, which check c stops passing once the
+  Canary anchors an entry the file does not have. The README, SECURITY.md, the threat model, the
+  privacy page, the home page's status row and model step, and the docs pages that said no real
+  attested decision was recorded now say this and link the evidence; the status row "Live attested
+  model run" reads "Recorded on testnet, checked offline". `apps/web/test/canary-vault.test.ts` runs
+  the checks on the committed snapshot and holds the README's table to the ledger.
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision

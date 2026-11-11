@@ -470,11 +470,20 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(fields).toEqual([...SPEND_REQUEST_FIELDS]);
   });
 
-  it("that the model run is still in progress", () => {
-    expect(JOURNEY.steps[1].tag).toBe("Adapter built. First live attested run in progress.");
+  it("that the model run is recorded on testnet and checked offline only", () => {
+    expect(JOURNEY.steps[1].tag).toBe(
+      "On testnet, the Canary's published ledger holds two attested decisions that pass A1 to A7 offline. The online quote check is not recorded yet.",
+    );
     const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
     expect(row).toContain("**Built**");
-    expect(row).toContain("**In progress**");
+    expect(row).toContain("**Recorded on NEAR testnet**");
+    expect(row).toContain("pass A1 to A7 offline");
+    expect(row).toContain("The online checks O1 and O2 are not recorded for them yet");
+    expect(row).not.toContain("there is none yet");
+    // The two decisions are the Canary's, in the ledger the team published (test/canary-vault.test.ts).
+    expect(row).toContain(
+      "docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11",
+    );
   });
 
   it("that no third party has audited the code", () => {
@@ -608,8 +617,17 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Live attested model run",
-      pill: "In progress",
-      readme: [{ start: "NEAR AI Cloud adapter", says: ["**In progress**"] }],
+      pill: "Recorded on testnet, checked offline",
+      readme: [
+        {
+          start: "NEAR AI Cloud adapter",
+          says: [
+            "**Recorded on NEAR testnet**",
+            "pass A1 to A7 offline",
+            "not recorded for them yet",
+          ],
+        },
+      ],
     },
     {
       row: "MCP server",
@@ -825,7 +843,7 @@ describe("the status list", () => {
       {
         id: "attested-model-run",
         row: "Live attested model run",
-        pill: "In progress",
+        pill: "Recorded on testnet, checked offline",
         tone: "work",
       },
       { id: "canary", row: "Canary public challenge", pill: "Live on testnet", tone: "live" },
@@ -1802,7 +1820,8 @@ describe("colours", () => {
 });
 
 describe("who can check the record (audit P1-12)", () => {
-  // A ledger is private until its owner publishes it (the Canary's never is), and a root is anchored only once the
+  // A ledger is private until its owner publishes it (the app never publishes the Canary's; the team published the
+  // entries of its own attempts in docs/evidence/canary-vault), and a root is anchored only once the
   // vault has a ledger key. So "anyone can verify" is true only of a published ledger, or of what is on chain.
   const CLAIM = /\banyone\b[^.!?]{0,40}?\b(?:re-?)?(?:check|verif)\w*/i;
   const SCOPED = /publish|public|on chain/i;
