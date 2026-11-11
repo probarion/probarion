@@ -3,6 +3,7 @@ import type { CheckResult, Snapshot, VerifyReport } from "@probarion/core";
 import { applyOnlineChecks, type OnlineAttestationVerifier } from "@probarion/sdk";
 import { describe, expect, it } from "vitest";
 import {
+  CLOCK_HINT,
   O1_LEGEND,
   O2_LEGEND,
   onlineDidNotRun,
@@ -285,6 +286,73 @@ describe("the --online lines", () => {
     const text = renderReport(r, { online: true });
     expect(text).not.toMatch(LEGEND);
     expect(text).not.toContain("did not run");
+  });
+
+  it("print the clock hint, and no legend, when O2 fails with not_yet_valid (a clock behind NVIDIA's)", async () => {
+    const early: OnlineAttestationVerifier = {
+      ...genuine,
+      verifyGpu: async () => {
+        throw new Error(
+          "[gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid",
+        );
+      },
+    };
+    const r = await online(ledgerOf(attested(true)), early);
+    expect(r.checks[4]).toMatchObject({
+      status: "fail",
+      detail: expect.stringContaining("not_yet_valid"),
+    });
+    expect(onlineLines(r, { online: true })).toEqual([CLOCK_HINT]);
+    expect(CLOCK_HINT).toMatch(/^online hint: .*clock.*run --online again$/);
+    const text = renderReport(r, { online: true });
+    expect(text).toContain(`\n${CLOCK_HINT}\n`);
+    expect(text).not.toMatch(LEGEND);
+    expect(text).toContain("RESULT: FAIL");
+  });
+
+  it("print no clock hint for another online failure", async () => {
+    const bad: OnlineAttestationVerifier = {
+      ...genuine,
+      verifyGpu: async () => {
+        throw new Error("[gpu.jwt_verification_failed] NVIDIA JWT verification failed: expired");
+      },
+    };
+    const r = await online(ledgerOf(attested(true)), bad);
+    expect(r.checks[4]?.status).toBe("fail");
+    expect(onlineLines(r, { online: true })).toEqual([]);
+  });
+
+  it("print no clock hint when only text from the ledger (a decided_by, a vault name) says not_yet_valid", async () => {
+    const sdkText =
+      "O1/O2 failed at entry 0: [gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid";
+    const crafted = (detail: string): VerifyReport => {
+      const base = report({ e: "fail" });
+      base.checks[4] = { ...(base.checks[4] as CheckResult), detail };
+      return base;
+    };
+    const expired: OnlineAttestationVerifier = {
+      ...genuine,
+      verifyGpu: async () => {
+        throw new Error("[gpu.jwt_verification_failed] NVIDIA JWT verification failed: expired");
+      },
+    };
+    for (const offline of [
+      `entry 0 is a decision whose decided_by is ${sdkText}`,
+      `entry 0 names vault online: ${sdkText}; x, not acme.vaults.probarion.testnet: its attestation nonce would bind the wrong vault`,
+    ]) {
+      // O1 and O2 pass: the offline failure, with the ledger's text, comes first.
+      const passed = await online(ledgerOf(attested(true)), genuine, crafted(offline));
+      expect(passed.checks[4]?.detail).toContain("not_yet_valid");
+      expect(onlineLines(passed, { online: true })).toEqual([]);
+      // O2 fails for another reason: the SDK's failure comes first, the ledger's text after "offline:".
+      const failed = await online(ledgerOf(attested(true)), expired, crafted(offline));
+      expect(failed.checks[4]?.detail).toMatch(
+        /^online: O1\/O2 failed at entry 0: .*expired; offline: /,
+      );
+      expect(failed.checks[4]?.detail).toContain("not_yet_valid");
+      expect(onlineLines(failed, { online: true })).toEqual([]);
+      expect(renderReport(failed, { online: true })).not.toContain("online hint");
+    }
   });
 
   it("print no legend when check e failed offline, even if O1 and O2 then ran", async () => {

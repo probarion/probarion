@@ -47,6 +47,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CliIo } from "../src/io.js";
 import { runCli } from "../src/program.js";
+import { CLOCK_HINT } from "../src/report.js";
 import { NOW, tempDir, testIo } from "./helpers.js";
 
 const FIXTURE = fileURLToPath(
@@ -993,6 +994,60 @@ describe("probarion verify against a vault", () => {
     );
     expect(JSON.parse(json.out)).toMatchObject({ ok: true });
     expect(json.err).toContain("online: O1 and O2 did not run (no online verifier was given)");
+  });
+
+  it("--online when NVIDIA's token is not yet valid: check e fails (exit 1), and the clock hint goes to stderr, with --json too", async () => {
+    const fake = createFakeNearAi({
+      respond: () =>
+        JSON.stringify({
+          action: "pay",
+          mandate_id: 1,
+          amount: "25000000",
+          payee_hint: { near_account: SCENARIO_NEAR_PAYEE },
+          reasoning: "TEST DOUBLE",
+          confidence: 0.9,
+        }),
+    });
+    const pb = agentSdk({
+      model: { provider: "near-ai-cloud", apiKey: NEARAI_KEY },
+      deps: {
+        proposer: new NearAiProposer({
+          apiKey: NEARAI_KEY,
+          baseUrl: FAKE_NEARAI_BASE_URL,
+          fetch: fake.fetch,
+          now: () => NOW,
+          sleep: async () => {},
+        }),
+      },
+    });
+    expect((await payNear(pb)).status).toBe("paid");
+    // The fake sends no GPU payload, so the SDK's not_yet_valid error is thrown at the quote here: the SDK reports a
+    // throw from O1 or O2 the same way ("O1/O2 failed at entry N: <message>").
+    const early: OnlineAttestationVerifier = {
+      verifyQuote: async () => {
+        throw new Error(
+          "[gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid",
+        );
+      },
+      verifyGpu: async () => {},
+    };
+    const deps = { verifyDeps: { onlineVerifier: early, txIndex: null } };
+
+    const text = await cli([...live(), "--online"], {}, deps);
+    expect(text.code).toBe(1);
+    expect(text.out).toMatch(
+      /^e {2}attestations +FAIL +online: O1\/O2 failed at entry 0: .*not_yet_valid/m,
+    );
+    expect(text.out).toContain(`\n${CLOCK_HINT}\n`);
+    expect(text.out).not.toContain("online legend");
+    expect(text.err).toBe(`warning: ${CLOCK_HINT}\n`);
+
+    const json = await cli([...live(), "--online", "--json"], {}, deps);
+    expect(json.code).toBe(1);
+    expect(JSON.parse(json.out)).toMatchObject({ ok: false });
+    expect(json.out).not.toContain("online hint");
+    expect(json.err.match(/^warning: online hint: /gm)).toHaveLength(1);
+    expect(json.err).toBe(`warning: ${CLOCK_HINT}\n`);
   });
 
   it("--online on a ledger with no attested decision: O1 and O2 did not run, and no legend (exit 0)", async () => {

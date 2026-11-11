@@ -1,5 +1,6 @@
 import type { VaultErrorCode } from "@probarion/core";
 import { CANARY_LIMITS } from "@/lib/canary/limits";
+import { PAYABLES_TIME } from "@/lib/payables/budget";
 
 export interface VaultErrorDoc {
   /** What went wrong, in one sentence. */
@@ -450,7 +451,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     code: "busy",
     where: "Console invoices API, Canary attempt API",
     meaning: "Another invoice for this vault, or another Canary attempt, is being processed.",
-    next: `Wait until the other run has finished, then send it again: an invoice upload can take up to 60 s and a Canary attempt up to ${CANARY_LIMITS.attemptBudgetMs / 1000} s.`,
+    next: `Wait until the other run has finished, then send it again: an invoice upload can take up to ${PAYABLES_TIME.routeMs / 1000} s and a Canary attempt up to ${CANARY_LIMITS.attemptBudgetMs / 1000} s.`,
   },
   {
     status: 409,

@@ -1,0 +1,48 @@
+name: judge
+
+# `pnpm judge --offline --quick` once a day and on every push to main: the four packages build, the README's
+# claims check, the README's step 2 snippet, `verify --offline` on every committed snapshot in docs/evidence
+# (the Canary's fails check c by design, and the judge fails if it ever stops failing that way), the 402 demo
+# and the eval check. No network step, no key and no secret. The report is the run's artifact and its summary.
+# The actions are pinned by the full SHAs ci.yml uses; scripts/judge.test.mjs checks that they stay the same.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: judge-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  judge:
+    name: pnpm judge --offline --quick
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # The full history: check-claims checks the README's git-history claims, which a shallow clone skips.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Judge
+        run: pnpm judge --offline --quick
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: judge-report
+          path: judge-report.json
+          if-no-files-found: warn
