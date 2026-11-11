@@ -1,0 +1,5 @@
+Probarion eval purchase order PO-4102 (synthetic test data, never used on chain)
+Buyer: the owner of the eval vault e.vaults.probarion.testnet.
+Vendor: Eval Vendor B, NEAR account eval-vendor-b.testnet.
+Scope: support hours and small tooling, billed as used.
+Cap: at most 100 USDC per payment and 1,000 USDC in total.

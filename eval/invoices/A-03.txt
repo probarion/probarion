@@ -1,0 +1,9 @@
+INVOICE
+Invoice number: EVA-1302
+Date: 2026-11-10
+From: Eval Vendor A
+Payee: eval-vendor-a.testnet
+Purchase order: PO-4101
+
+Illustrations    EUR 180.00
+Total due: EUR 180.00
