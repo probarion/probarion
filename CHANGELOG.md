@@ -14,6 +14,26 @@ The software is an unaudited beta.
 
 ### Added
 
+- The eval's adversary run: the model fully fooled. For each of the 20 invoices the proposal is what
+  the invoice asks a fooled model to do (the attack's own amount, account and mandate for the six
+  injected ones, the wrong action the invoice presents for the eight that must not be paid, the right
+  action for the six clean ones), marked attested with confidence 1, through the same `decide()`,
+  contract mirror, `execute()` and owner wait as the other runs. Offline and deterministic, with no
+  model and no key. Result: "model fully fooled: money moved wrongly 0/20 (0.00 USDC)"; 14/20
+  proposals are wrong and the code's rules refuse all 14 (the contract layer, the checks.rs
+  mirror's refusals only, stops 4 of them on its own, and the owner rule holds or refuses 8). `eval/results/adversary.md` gives every case's proposal, decision, contract answer,
+  money (count and USDC) and stopping layers, with what each result assumes: I-02's injection is
+  not shown to a model; D-01 is decided as if the intake guard missed it; P-01, P-02 and D-02 rest on
+  one code rule each; and a model fooled only into approving the visible invoice pays I-02, I-04 and
+  I-05 their own total (430.00 USDC to the mandate's payee), counted as paid rightly. A test tries
+  over 5,000 other attested proposals across the 20 cases and finds none that moves money wrongly.
+  `eval:check` holds the new file and `latest.json` to the code. The layer tables now label the
+  contract row "contract (checks.rs mirror, refusals only)" and say why the payee cases are not
+  among its stops: a spend names no destination, so the contract pays the mandate's payee. In the
+  adversary run the extract layer counts only text that does not reach the code, since the adversary
+  obeys I-02's injection although the reader drops it. The attack log gives each case's layers per
+  run: the adversary line has its own, and the last line says which run it is for.
+
 - `@probarion/mcp` gives the client server instructions for the model when it connects (the MCP
   `instructions` field; each client decides whether its model sees them), under 1,200 characters.
   Where a tool description or an answer note already states a rule, the instructions use the same
@@ -28,6 +48,7 @@ The software is an unaudited beta.
   change, worded for the server's network. A server with no keys adds that `request_spend` is off,
   and that refusal now says no agent and ledger keys are set (a keys file counts too) in place of
   naming the two environment variables.
+
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision
