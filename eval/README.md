@@ -176,8 +176,9 @@ NEAR AI Cloud about each of the 19 cases that reach the model step (D-01 stops a
 A1 to A8 before it writes `eval/recorded/<id>.json`, never writes or prints the key, and sends no NEAR transaction.
 An answer that fails a check gets no file. A model call that fails is written as a failed call, which the replay
 decides rules-only; if it was a network error, record that case again. The recorder exits 1 in either case. To
-record some cases again, run the same command with `pnpm eval:record -- --only I-01,I-02` in place of
-`pnpm eval:record`.
+record some cases again, run the same command with `pnpm eval:record -- --only 'I-01,I-02'` in place of
+`pnpm eval:record`. Keep the quotes around the ids: without them PowerShell turns `I-01,I-02` into a list and
+passes `I-01 I-02`, which the recorder refuses as an unknown case before it calls NEAR AI.
 
 Afterwards, send Claude only the word "done": nothing secret is needed, because the recorded files are written
 under `eval/recorded/`. Claude then runs `pnpm eval` (offline) to write the results with the model replay, and
