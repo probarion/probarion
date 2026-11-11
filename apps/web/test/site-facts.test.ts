@@ -578,13 +578,15 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       ],
     },
     {
-      row: "Web console: Freeze, approving in the console, USDC top-up",
+      row: "Web console: Freeze, approving in the console, USDC top-up, Agent (MCP) tab",
       pill: "Built, not tried yet",
       readme: [
         {
           start: "Web console",
           says: [
             "The other console actions, such as Freeze, approving from the console and the Top-up tab's USDC transfer, have not been tried yet",
+            "The Agent (MCP) tab connects the owner's own AI agent",
+            "asks before a new ledger key replaces one. Built, not tried yet.",
           ],
         },
       ],
@@ -808,7 +810,7 @@ describe("the status list", () => {
       },
       {
         id: "web-console-not-tried",
-        row: "Web console: Freeze, approving in the console, USDC top-up",
+        row: "Web console: Freeze, approving in the console, USDC top-up, Agent (MCP) tab",
         pill: "Built, not tried yet",
         tone: "work",
       },

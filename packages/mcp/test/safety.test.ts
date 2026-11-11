@@ -68,7 +68,12 @@ describe("no MCP tool accepts an address or changes a mandate", () => {
     const forbidden =
       /\b(create_mandate|revoke_mandate|add_agent|remove_agent|set_ledger_key|withdraw_intents|unfreeze|skipPreflight)\b|\.(freeze|withdraw|approve|reject)\(/;
     for (const f of readdirSync(dir)) {
-      expect(forbidden.test(readFileSync(join(dir, f), "utf8")), f).toBe(false);
+      // status prints this probarion CLI command for the owner to run in their own wallet: a word in a sentence, no call.
+      const text = readFileSync(join(dir, f), "utf8").replaceAll(
+        "signs the transaction that probarion vault unfreeze --vault",
+        "",
+      );
+      expect(forbidden.test(text), f).toBe(false);
     }
   });
 });

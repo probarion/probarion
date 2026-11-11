@@ -24,11 +24,19 @@ describe("route registry", () => {
     expect(VAULT_TABS.map((t) => t.label)).toEqual([
       "Overview",
       "Keys",
+      "Agent (MCP)",
       "Mandates",
       "Top-up",
       "Payables",
       "Alerts",
     ]);
+  });
+
+  it("puts the Agent (MCP) tab right after Keys, the other way to the same keys, and marks only it as new", () => {
+    const paths = VAULT_TABS.map((t) => t.path);
+    expect(paths.indexOf("/agent")).toBe(paths.indexOf("/keys") + 1);
+    expect(VAULT_TABS.filter((t) => t.isNew).map((t) => t.path)).toEqual(["/agent"]);
+    expect(isBuilt("/console/[vault]/agent")).toBe(true);
   });
 });
 

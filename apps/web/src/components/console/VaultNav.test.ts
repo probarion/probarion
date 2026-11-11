@@ -52,6 +52,24 @@ describe("VaultNav", () => {
     expect(current(render())).toEqual(["Payables"]);
   });
 
+  it("links the Agent (MCP) tab after Keys, marks it open on its page, and its new badge is not read out", () => {
+    const html = render();
+    const keys = html.indexOf(`href="${BASE}/keys"`);
+    const agent = html.indexOf(`href="${BASE}/agent"`);
+    const mandates = html.indexOf(`href="${BASE}/mandates"`);
+    expect(keys).toBeGreaterThan(-1);
+    expect(agent).toBeGreaterThan(keys);
+    expect(mandates).toBeGreaterThan(agent);
+    expect(html).toMatch(
+      /Agent \(MCP\)<span aria-hidden="true"[^>]*text-gold-ink[^>]*>new<\/span>/,
+    );
+    expect([...html.matchAll(/>new<\/span>/g)]).toHaveLength(1);
+    h.path = `${BASE}/agent`;
+    expect(current(render())).toEqual(["Agent (MCP)new"]);
+    h.path = `${BASE}/keys`;
+    expect(current(render())).toEqual(["Keys"]);
+  });
+
   it("marks no tab on a page that is not one of them, and never the proof page link", () => {
     h.path = "/console";
     expect(current(render())).toEqual([]);

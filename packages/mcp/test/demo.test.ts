@@ -55,6 +55,8 @@ async function payOnce(): Promise<string> {
     rpcUrls: [rpc.url],
     archivalRpcUrls: null,
     agentPublicKey: TEST_KEYS.agent.publicKey,
+    ledgerPublicKey: TEST_KEYS.ledger.publicKey,
+    keysSource: "env",
     ledgerPath: path,
     readOnly: false,
   };

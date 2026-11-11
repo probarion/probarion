@@ -11,6 +11,7 @@ const BASE = `/console/${VAULT}`;
 const NEW: ChecklistInput = {
   network: "testnet",
   keys: { ok: true, value: { agent: false, ledger: false } },
+  selfHeld: { ok: true, value: false },
   usdc: { ok: true, value: "0" },
   intentsBase: { ok: false, kind: "not_allowed" },
   mandates: { ok: true, value: { counts: {}, total: 0 } },
@@ -54,9 +55,9 @@ describe("FirstPaymentChecklist", () => {
   });
 
   it("links every undone step to its tab, and the next one as the ink pill", () => {
-    const all = links(render());
+    const keysDone = { ...NEW, keys: { ok: true, value: { agent: true, ledger: true } } } as const;
+    const all = links(render(keysDone));
     expect(all.map((l) => [l.href, l.text])).toEqual([
-      [`${BASE}/keys`, "Go to Keys"],
       [`${BASE}/topup`, "Go to Top-up"],
       [`${BASE}/mandates`, "Go to Mandates"],
       [`${BASE}/payables`, "Go to Payables"],
@@ -66,6 +67,23 @@ describe("FirstPaymentChecklist", () => {
       expect(l.cls).toContain("underline");
       expect(l.cls).not.toContain("bg-ink");
     }
+  });
+
+  it("offers the keys step two ways, each a plain link to its tab: hosted Payables or your own agent", () => {
+    const all = links(render());
+    expect(all.map((l) => [l.href, l.text])).toEqual([
+      [`${BASE}/keys`, "Go to Keys"],
+      [`${BASE}/agent`, "Connect agent"],
+      [`${BASE}/topup`, "Go to Top-up"],
+      [`${BASE}/mandates`, "Go to Mandates"],
+      [`${BASE}/payables`, "Go to Payables"],
+    ]);
+    for (const l of all) expect(l.cls).not.toContain("bg-ink");
+    const li = items(render())[1] ?? "";
+    expect(li).toContain("Pick who pays from this vault. A vault has one ledger");
+    expect(li).toContain("Probarion&#x27;s hosted Payables");
+    expect(li).toContain("Your own AI agent (MCP)");
+    expect(li).toContain("The keys stay on your machine.");
   });
 
   it("gives a done step no link", () => {
