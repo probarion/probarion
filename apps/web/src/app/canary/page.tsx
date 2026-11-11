@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CanaryForm } from "@/components/canary/CanaryForm";
 import { LatestAttempts, Scoreboard } from "@/components/canary/Leaderboard";
+import { RehearsalCard } from "@/components/canary/RehearsalCard";
 import { ReplayView } from "@/components/canary/ReplayView";
 import { ByConstructionCard, ReplayCards, SideCards } from "@/components/canary/StaticCards";
 import { VaultCard } from "@/components/canary/VaultCard";
@@ -82,7 +83,10 @@ function Header({ network, via }: { network: Network; via: CanaryVia | null }) {
   );
 }
 
-/** The replay: the banner that says why, what a visitor can do instead, the team's recorded attacks and two cards. */
+/**
+ * The replay: the banner that says why, what a visitor can do instead, the team's recorded attacks, the replay of the
+ * team's attempt of 2026-11-10 and two cards.
+ */
 function Replay({
   network,
   banner,
@@ -96,6 +100,7 @@ function Replay({
     <div className={`${s.site} ${s.wrap} ${c.page}`}>
       <Header network={network} via={via} />
       <ReplayView banner={banner} />
+      <RehearsalCard />
       <ReplayCards />
     </div>
   );
@@ -109,7 +114,8 @@ function Replay({
  * form that those checks would refuse. It never fails for want of settings, and it shows no ledger (the Canary's is
  * private). It is the Canary of the network of the address it
  * was opened at: that network's vault, chain and board. A link of ours names its source in the address (`?via=x`), and
- * the form sends it with each attempt; any other value is no source.
+ * the form sends it with each attempt; any other value is no source. Both the live page and the replay show the replay
+ * of the team's attempt on testnet of 2026-11-10 (RehearsalCard): under the form, or under the recorded attacks.
  */
 export default async function CanaryPage({
   searchParams,
@@ -149,6 +155,7 @@ export default async function CanaryPage({
         <h2 className={c.cardTitle}>{CANARY_COPY.form.title}</h2>
         <CanaryForm network={view.network} mode={view.mode} via={via} />
       </section>
+      <RehearsalCard />
       <Scoreboard board={board} />
       <LatestAttempts feed={feed} network={view.network} />
       <SideCards network={view.network} />

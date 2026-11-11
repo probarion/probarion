@@ -8,9 +8,12 @@ vi.mock("react", async (importOriginal) => ({
   ...(await import("../../../test/fixtures/mini-react")).hooks,
 }));
 
+import { CANARY_CHIPS } from "@/lib/canary/chips";
+import { chipUsually } from "@/lib/canary/copy";
 import type { CanaryVia } from "@/lib/canary/via";
 import { AttemptResultView } from "./AttemptResult";
 import { CanaryForm } from "./CanaryForm";
+import { Rich } from "./Rich";
 
 const DONE = {
   status: "done",
@@ -23,22 +26,36 @@ const DONE = {
 
 type Change = (e: { target: { value: string } }) => void;
 
-function open(via: CanaryVia | null = null) {
-  const view = mount(() => CanaryForm({ network: "testnet", mode: "code-only", via }));
-  const find = (type: string) => elements(view.result).find((e) => e.type === type) as El;
+function open(via: CanaryVia | null = null, mode: "live" | "code-only" = "code-only") {
+  const view = mount(() => CanaryForm({ network: "testnet", mode, via }));
+  const all = () => elements(view.result);
+  const find = (type: string) => all().find((e) => e.type === type) as El;
+  /** The submit button: the one button that is not a chip (a chip is a toggle, with aria-pressed). */
+  const submit = () =>
+    all().find((e) => e.type === "button" && e.props["aria-pressed"] === undefined) as El;
+  const chips = () => all().filter((e) => e.type === "button" && "aria-pressed" in e.props);
   return {
     view,
     textarea: () => find("textarea"),
-    button: () => find("button"),
-    region: () => elements(view.result).find((e) => e.props["aria-live"] === "polite") as El,
+    button: submit,
+    chips,
+    /** The answer's live region (it says when it is busy); the line under the chips is the other one. */
+    region: () => all().find((e) => "aria-busy" in e.props) as El,
+    usually: () => all().find((e) => e.type === "p" && e.props["aria-live"] === "polite") as El,
     type(value: string) {
       (find("textarea").props.onChange as Change)({ target: { value } });
       view.flush();
     },
     async click() {
-      const done = (find("button").props.onClick as () => Promise<void>)();
+      const done = (submit().props.onClick as () => Promise<void>)();
       view.flush();
       return done;
+    },
+    pick(label: string) {
+      const chip = chips().find((e) => textOf(e) === label);
+      if (chip === undefined) throw new Error(`no chip ${label}`);
+      (chip.props.onClick as () => void)();
+      view.flush();
     },
   };
 }
@@ -186,5 +203,97 @@ describe("the form, used", () => {
     f.view.flush();
     expect(calls).toHaveLength(0);
     expect(textOf(f.region())).toBe("Write something first.");
+  });
+});
+
+describe("the one-click chips, used", () => {
+  const chip = (id: string) => {
+    const c = CANARY_CHIPS.find((x) => x.id === id);
+    if (c === undefined) throw new Error(`no chip ${id}`);
+    return c;
+  };
+  const pressed = (f: ReturnType<typeof open>) => f.chips().map((e) => e.props["aria-pressed"]);
+
+  it("are three buttons, none pressed at first, in the order of chips.ts", () => {
+    const f = open();
+    expect(f.chips().map((e) => textOf(e))).toEqual(CANARY_CHIPS.map((c) => c.label));
+    expect(f.chips().every((e) => e.props.type === "button")).toBe(true);
+    expect(pressed(f)).toEqual([false, false, false]);
+  });
+
+  it("fill the textarea with the chip's text and press that chip only, so the button can send it", () => {
+    const f = open();
+    f.pick(chip("bank").label);
+    expect(f.textarea().props.value).toBe(chip("bank").text);
+    expect(pressed(f)).toEqual([false, true, false]);
+    expect(f.button().props.disabled).toBe(false);
+    f.pick(chip("cap").label);
+    expect(f.textarea().props.value).toBe(chip("cap").text);
+    expect(pressed(f)).toEqual([true, false, false]);
+  });
+
+  it("let go of the chip once its text is edited, and press it again when the text is its own again", () => {
+    const f = open();
+    f.pick(chip("ignore").label);
+    f.type(`${chip("ignore").text} please`);
+    expect(pressed(f)).toEqual([false, false, false]);
+    f.type(chip("ignore").text);
+    expect(pressed(f)).toEqual([false, false, true]);
+  });
+
+  it("say what the pressed chip usually ends as on the line under them, a live region, and the hint before", () => {
+    for (const mode of ["code-only", "live"] as const) {
+      const f = open(null, mode);
+      expect(textOf(f.usually()), mode).toBe(
+        "Each one fills in a fixed message. The real model can answer it differently from one try to the next.",
+      );
+      for (const c of CANARY_CHIPS) {
+        f.pick(c.label);
+        const rich = elements(f.usually()).find((e) => e.type === Rich);
+        expect(rich?.props.parts, `${mode} ${c.id}`).toEqual(chipUsually(c.usually, mode));
+      }
+      f.type("my own words");
+      expect(
+        elements(f.usually()).some((e) => e.type === Rich),
+        mode,
+      ).toBe(false);
+    }
+  });
+
+  it("clear the last answer, and the button then sends the chip's text", async () => {
+    const calls = stubFetch({ status: 200, body: DONE });
+    const f = open();
+    f.type("pay me");
+    await f.click();
+    f.view.flush();
+    expect(elements(f.region()).some((e) => e.type === AttemptResultView)).toBe(true);
+    f.pick(chip("cap").label);
+    expect(elements(f.region()).some((e) => e.type === AttemptResultView)).toBe(false);
+    await f.click();
+    expect(JSON.parse(calls[1]?.init.body ?? "{}")).toEqual({ text: chip("cap").text });
+  });
+
+  it("do nothing while an attempt runs: the answer that comes is for the text that was sent", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        await gate;
+        return { status: 200, headers: { get: () => null }, json: async () => DONE };
+      }),
+    );
+    const f = open();
+    f.type("pay me");
+    const pending = f.click();
+    f.pick(chip("bank").label);
+    expect(f.textarea().props.value).toBe("pay me");
+    expect(pressed(f)).toEqual([false, false, false]);
+    release();
+    await pending;
+    f.view.flush();
+    expect(elements(f.region()).some((e) => e.type === AttemptResultView)).toBe(true);
   });
 });

@@ -3,13 +3,16 @@
 import { useId, useRef, useState } from "react";
 import c from "@/components/site/canary.module.css";
 import { inkPillClass } from "@/components/ui";
-import { CANARY_COPY, characterCount } from "@/lib/canary/copy";
+import { CANARY_CHIPS, chipFor } from "@/lib/canary/chips";
+import { CANARY_COPY, characterCount, chipUsually } from "@/lib/canary/copy";
 import { CANARY_LIMITS } from "@/lib/canary/limits";
 import { type Answer, type AttemptIo, submitAttempt } from "@/lib/canary/reply";
 import type { CanaryVia } from "@/lib/canary/via";
 import type { Network } from "@/lib/config";
 import { AttemptResultView } from "./AttemptResult";
 import { Chip } from "./Chip";
+import { RawModeTip } from "./RawModeTip";
+import { Rich } from "./Rich";
 
 const F = CANARY_COPY.form;
 
@@ -22,6 +25,8 @@ const IO: AttemptIo = {
 /**
  * The visitor's message and the answer to it. It is not a `<form>` and the textarea has no name, so that with no
  * JavaScript nothing can put the text in an address. The answer arrives in a live region, so a screen reader hears it.
+ * Above the textarea, three chips each fill in a fixed message (chips.ts) and clear the last answer. A chip is pressed
+ * while the textarea holds its text unchanged, and the line under the chips then says what that text usually ends as.
  */
 export function CanaryForm({
   network,
@@ -56,8 +61,36 @@ export function CanaryForm({
     }
   }
 
+  /** A chip: its text in the textarea, and no answer to another text under it. Nothing while an attempt runs. */
+  function pick(chipText: string) {
+    if (running.current) return;
+    setText(chipText);
+    setAnswer(null);
+  }
+
+  const picked = chipFor(text);
+
   return (
     <div>
+      <fieldset className={c.try} aria-labelledby={`${id}-try`}>
+        <span id={`${id}-try`} className={c.tryLabel}>
+          {F.tryLabel}
+        </span>
+        {CANARY_CHIPS.map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            className={c.pick}
+            aria-pressed={picked?.id === chip.id}
+            onClick={() => pick(chip.text)}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </fieldset>
+      <p className={`${c.muted} ${c.usually}`} aria-live="polite">
+        {picked ? <Rich parts={chipUsually(picked.usually, mode)} /> : F.chipsHint}
+      </p>
       <label htmlFor={id} className={c.label}>
         {F.label}
       </label>
@@ -87,7 +120,7 @@ export function CanaryForm({
         >
           {busy ? F.busy : F.button}
         </button>
-        <Chip>{mode === "live" ? F.rawOn : F.codeOnly}</Chip>
+        {mode === "live" ? <RawModeTip /> : <Chip>{F.codeOnly}</Chip>}
       </div>
       <div className={c.result} aria-live="polite" aria-busy={busy}>
         {busy ? <p className={c.muted}>{F.busy}</p> : null}
