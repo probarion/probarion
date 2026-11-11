@@ -14,6 +14,25 @@ The software is an unaudited beta.
 
 ### Added
 
+- `@probarion/mcp`: `probarion-mcp init`, a keys file, and `probarion-mcp status`, so the agent's keys
+  stay on the user's machine and an MCP client's config needs only `PROBARION_VAULT_ID`.
+  `init --vault <id> [--keys-file <path>]` makes the agent key and the ledger key and writes them to
+  `~/.probarion/<vault>/keys.json` (format `probarion-mcp-keys/1`, mode 0600, opened with `wx` so an
+  existing file is kept: a second run checks it and prints the same public keys). It prints only the two
+  public keys, the console's Agent (MCP) tab on testnet, and the `probarion agent add` and
+  `probarion ledger set-key` lines, with the CLI's Windows and git warnings. The server and `status` take
+  their keys from both `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY`, else the file
+  `PROBARION_KEYS_FILE` names (which must exist), else the default keys file, else run read-only. One key
+  from the environment with the other from a file is refused, and the server's first line on stderr names
+  the source. A keys file must be for this vault and its network, with each secret key matching its public
+  key and two different keys; a problem names the file and the field, with no value from the file. The
+  vault id is checked as a NEAR account id before it goes into a path. `status` only reads, and prints ok,
+  not yet or fail for the keys, the vault (not frozen), the agent key (a function-call key limited to
+  `spend`, with allowance left), the ledger key (the vault's, limited to `anchor`), an active mandate
+  bound to the agent key, the vault's USDC, and the local ledger against the latest anchor (the
+  single-writer check, run dry), with the next step when not ready. Exit code 0 when ready, 1 when not, 2
+  for a configuration error. The README's set-up is now init, the owner's two keys, status, and the
+  client's config; keys in the client's config stay as the fallback.
 - `@probarion/mcp`: `probarion-mcp demo [--vault <id>]`, a read-only tour of the five tools against
   the live testnet demo vault. It needs no key and signs and sends nothing. It shows the tools and
   their fields, the live caps, the contract's `check_spend` answers (ok, held, `OverPerPayment`), an

@@ -10,6 +10,9 @@ import type { McpConfig } from "./config.js";
 import { withSingleWriterGuard } from "./guard.js";
 import type { ProbarionPort } from "./port.js";
 
+/** What `buildPort` reads of the config: all of it but where the keys came from and the ledger key's public half. */
+export type PortConfig = Omit<McpConfig, "keysSource" | "ledgerPublicKey">;
+
 /**
  * The port over a `Probarion` instance, guarded so that a spend from a second ledger file is refused. The
  * MCP client decides; this server makes no model call of its own (`model: null`), so its spends are
@@ -17,7 +20,7 @@ import type { ProbarionPort } from "./port.js";
  * here: every RPC URL it uses is one `loadConfig` checked.
  */
 export function buildPort(
-  cfg: McpConfig,
+  cfg: PortConfig,
   deps: ProbarionDeps = {},
   ledger: LedgerStore = new FileLedgerStore(cfg.ledgerPath),
 ): ProbarionPort {

@@ -40,6 +40,8 @@ function cfg(over: Partial<McpConfig> = {}): McpConfig {
     rpcUrls: [server.url],
     archivalRpcUrls: null,
     agentPublicKey: TEST_KEYS.agent.publicKey,
+    ledgerPublicKey: TEST_KEYS.ledger.publicKey,
+    keysSource: "env",
     ledgerPath: join(tmpdir(), "probarion-mcp-unused", "ledger.jsonl"),
     readOnly: false,
     ...over,

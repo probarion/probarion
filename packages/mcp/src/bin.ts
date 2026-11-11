@@ -7,7 +7,7 @@ import { safeMessage } from "./server.js";
 const args = process.argv.slice(2);
 
 if (args.length > 0) {
-  // A command for a person (--version, --help, demo). The exit code is set, not forced, so the transcript
+  // A command for a person (init, status, demo, --version, --help). The exit code is set, not forced, so the transcript
   // is written out in full before the process ends.
   runCommand(args, { env: process.env, out: process.stdout, err: process.stderr })
     .then((code) => {
