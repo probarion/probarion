@@ -14,6 +14,25 @@ The software is an unaudited beta.
 
 ### Added
 
+- `pnpm judge` (`scripts/judge.mjs`): one read-only command for a screener or a judge, run after
+  `pnpm install --frozen-lockfile`. It builds the four packages, then runs steps 0 and 2 to 6 of the
+  README's 5-minute evaluation, the eval check and the per-package tests of core, sdk, cli, mcp and
+  `examples/402`. The claims check runs offline and online; the README's step 2 and step 4 snippets and
+  its step 6 commands run as written, and their output is compared with the README's; `verify --offline`
+  runs on every committed snapshot in `docs/evidence`; the demo vault, `v0.probarion.testnet` and the
+  Canary are verified live, read-only, and the demo vault's live ledger must start with the committed
+  one; the MCP demo and the 402 demo run. Each step quotes the README line it proves, found again at
+  run time, and prints one row: PASS, EXPECTED-FAIL (the Canary's private ledger fails check c, and
+  `v0.probarion.testnet` fails d and h, as the README says; any other result there is a FAIL), SKIPPED
+  with the reason and the command, or FAIL. It exits 0 only when no step failed and writes
+  `judge-report.json` (gitignored): the claim, README line, command, result, expectation, time and
+  detail of each step, with the commit, Node and OS. `--offline` makes no network call, `--quick` skips
+  the tests and `--json` prints the report. Child processes get no `PROBARION_*` variable and no other
+  variable named like a secret. AGENTS.md and the README's 5-minute section start with it, and
+  `.github/workflows/judge.yml` runs `pnpm judge --offline --quick` daily and on pushes to `main`, with
+  read-only permissions and the actions pinned at the SHAs of `ci.yml`. The web console's tests and the
+  Rust tests are listed as known skips with their commands.
+
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision
