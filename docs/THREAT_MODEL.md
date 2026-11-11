@@ -336,6 +336,17 @@ token, with the reach of a stolen token above.
   (spent plus reserved) and the vault's daily backstop, and pays only the mandate's payee; a key that
   several mandates name can pay under whichever one lets the payment through. A mandate with
   `approval_above` set to 0 holds every spend, and small `max_uses` and `max_total` bound the split.
+- **The ledger records what its key signed, not that `decide()` ran.** `verify` checks each entry's
+  signature and link, the anchors, and that every spend is bound to a decision that allowed it; it does
+  not run the policy again (`packages/core/src/verify.ts:386`). A program that holds both the agent key
+  and the ledger key can write an allowing decision and send its spend without `decide()`, and `verify`
+  passes. The vault still bounds the money: only the mandate's payee, within its caps and the daily
+  backstop. `@probarion/mcp` keeps both keys in one file, `~/.probarion/<vault>/keys.json` (mode 0600
+  outside Windows; on Windows, its folder's permissions), which every program that runs as the same OS
+  user can read, an agent host with a shell tool among them. The server can also take both keys from
+  `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY`, usually set in the MCP client's config. To keep
+  the ledger the server's own record, run the MCP server as another OS user, or in a container whose
+  files the agent cannot read, and keep those two variables out of any config the agent can read.
 - **No Content-Security-Policy yet.** An XSS in the console has no second wall in the browser. Row 11
   still holds, because a script cannot attach a deposit, but it could show the owner a false page,
   start a wallet prompt, or mint a 30-day extension token or a pairing code through the `/extension`

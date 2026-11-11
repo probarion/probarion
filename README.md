@@ -17,7 +17,7 @@
 
 **[Live site](https://probarion.xyz)** · **[Docs](https://probarion.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[NEAR tech](#near-technology-used-and-how)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
 
-<sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts · NEAR AI Cloud private models · TypeScript SDK and CLI on npm</sub>
+<sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts (a testnet stand-in so far) · NEAR AI Cloud private models · TypeScript SDK and CLI on npm</sub>
 
 </div>
 
@@ -344,6 +344,18 @@ request that starts a server instance, reaches Sentry without a request id.
   reproducible, their code hashes are recorded, and two public RPC calls show that a vault has no
   full-access key and which code it runs.
 
+Next to other ways of bounding an agent's payments (sources read on 2026-11-11; the
+[full comparison](docs/comparison-2026-11.md) has every cell, its source and what Probarion lacks):
+
+| | Probarion | NEAR Agent API | x402 exact on NEAR | AP2 |
+| --- | --- | --- | --- | --- |
+| Who picks the payee | The owner, in the mandate; `spend` has no address | The agent, from the policy's destination list | The seller, per request (`payTo`) | The agent, among the mandate's allowed merchants |
+| Where limits hold | The vault contract, on chain, after code rules | The API service, and the agent's wallet on chain (per its docs) | No limits in the spec | The merchant, credential provider and network |
+| Budget per period | A vault-wide daily backstop only | Per asset, hourly to monthly, plus a USD budget | Out of scope | A total budget and a recurrence |
+| Refusals on record | Signed, hash-linked, anchored on chain | A refusal before an action is admitted leaves no operation; a timelocked one released over a limit ends FAILED | Out of scope | Signed receipts, rejections included |
+
+Probarion has no per-mandate budget per period, no USD budget, no timelock, no webhooks and no gas relayer.
+
 ## NEAR technology used, and how
 
 | NEAR technology | How Probarion uses it | Where |
@@ -468,7 +480,11 @@ cross-chain burn does not leave NEAR. The smoke run exercised the contract alone
 with the agent key directly, without the SDK, a model or a ledger, so this vault has no ledger key
 and no anchors yet. For the same reason, `verify --vault v0.probarion.testnet` prints `RESULT: FAIL`
 today: check d finds spends with no decision in the ledger, and check h finds no burn event without
-the burn's tx hash. The [demo vault](#near-testnet-demo-vault-2026-11-09) below passes all nine checks.
+the burn's tx hash. Check d stops at the first such spend and names it (spend 1; spend 2 has none
+either). Its FAIL is what `verify` is for: an agent key used without Probarion moved money. Check h's
+FAIL is not about that: no ledger entry and no `--burn-tx` names the burn's transaction. This vault
+also runs the build from before the `set_ledger_key` fix (see Status).
+The [demo vault](#near-testnet-demo-vault-2026-11-09) below passes all nine checks.
 
 | Account | Role |
 | --- | --- |

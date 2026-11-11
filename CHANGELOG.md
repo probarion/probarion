@@ -30,6 +30,15 @@ The software is an unaudited beta.
   `@probarion/mcp` README says the server is on npm once release 0.1.1 is published and runs from a
   clone until npm has it. The README's Status table has a row for 0.1.1, In progress.
 
+- `docs/comparison-2026-11.md`: how Probarion compares with NEAR's Agent API, the x402 exact scheme on NEAR, AP2
+  and plain caps, cell by cell with the sources read on 2026-11-11, and what Probarion does not have (a budget per
+  period per mandate, a USD budget, a timelock, webhooks, a gas relayer). The README has a four-row summary under
+  "Why it is different".
+- Known gaps (THREAT_MODEL, SECURITY, the MCP README): `verify` does not run the policy again, so a program that
+  holds both the agent key and the ledger key can skip `decide()` and still pass, inside the mandate. Run
+  `@probarion/mcp` as another OS user or in a container when the agent host has a shell tool, and keep
+  `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY` out of a client config the agent can read.
+
 - The Canary's signed ledger, published as evidence in `docs/evidence/canary-vault`:
   `ledger-2026-11-10.jsonl`, the vault's whole ledger as it stood on 2026-11-11, which the owner
   exported read-only: 5 entries from the team's own three attempts of 2026-11-10 and no visitor's.
