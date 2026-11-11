@@ -322,6 +322,39 @@ describe("the --online lines", () => {
     expect(onlineLines(r, { online: true })).toEqual([]);
   });
 
+  it("print no clock hint when only text from the ledger (a decided_by, a vault name) says not_yet_valid", async () => {
+    const sdkText =
+      "O1/O2 failed at entry 0: [gpu.jwt_verification_failed] NVIDIA JWT verification failed: not_yet_valid";
+    const crafted = (detail: string): VerifyReport => {
+      const base = report({ e: "fail" });
+      base.checks[4] = { ...(base.checks[4] as CheckResult), detail };
+      return base;
+    };
+    const expired: OnlineAttestationVerifier = {
+      ...genuine,
+      verifyGpu: async () => {
+        throw new Error("[gpu.jwt_verification_failed] NVIDIA JWT verification failed: expired");
+      },
+    };
+    for (const offline of [
+      `entry 0 is a decision whose decided_by is ${sdkText}`,
+      `entry 0 names vault online: ${sdkText}; x, not acme.vaults.probarion.testnet: its attestation nonce would bind the wrong vault`,
+    ]) {
+      // O1 and O2 pass: the offline failure, with the ledger's text, comes first.
+      const passed = await online(ledgerOf(attested(true)), genuine, crafted(offline));
+      expect(passed.checks[4]?.detail).toContain("not_yet_valid");
+      expect(onlineLines(passed, { online: true })).toEqual([]);
+      // O2 fails for another reason: the SDK's failure comes first, the ledger's text after "offline:".
+      const failed = await online(ledgerOf(attested(true)), expired, crafted(offline));
+      expect(failed.checks[4]?.detail).toMatch(
+        /^online: O1\/O2 failed at entry 0: .*expired; offline: /,
+      );
+      expect(failed.checks[4]?.detail).toContain("not_yet_valid");
+      expect(onlineLines(failed, { online: true })).toEqual([]);
+      expect(renderReport(failed, { online: true })).not.toContain("online hint");
+    }
+  });
+
   it("print no legend when check e failed offline, even if O1 and O2 then ran", async () => {
     const r = await online(ledgerOf(attested(true)), genuine, report({ e: "fail" }));
     expect(r.checks[4]?.detail).toContain("online: 1 DCAP-genuine TDX quotes");

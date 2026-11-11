@@ -202,6 +202,8 @@ The flags:
     did not run.
   - When O2 fails because NVIDIA's token is `not_yet_valid` by this computer's clock (a few seconds behind
     is enough), check e fails and the report adds an `online hint` line: sync the clock and run again.
+    The line also goes to stderr as `warning: online hint: ...`; with `--json`, stderr is the only place it
+    appears.
 - `--snapshot <file>` writes the snapshot that was verified to a new file. It refuses a file that
   already exists, and the ledger file under any name (exit 64).
 - `--offline <file>` verifies such a snapshot as it is, with no network, so it refuses `--vault`,
