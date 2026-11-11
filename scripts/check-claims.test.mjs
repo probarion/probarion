@@ -545,15 +545,9 @@ describe("claim markers and link names", () => {
 // The real repository
 
 // Claims that are wrong today, each to be fixed where it is written (not here). The test allows
-// these and nothing else, so the fix can land in any order: once it has, delete the entry.
-const KNOWN_PROBLEMS = [
-  // README "INV-2003" row: the approve tx 47VCARhw...NCJf is shown ending in FJf.
-  "[hashes] link text 47VCARhw\u2026FJf does not match its hash 47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf",
-  // README Web console row: the trial vault is named, and no deployment record or evidence has it.
-  "[accounts] testnet account trial.vaults.probarion.testnet is not in contracts/deployments or docs/evidence",
-  // Interfaces section 17 lists EVAL-REGRESSION; the eval lane adds its marker.
-  '[facts] claim EVAL-REGRESSION has no "probarion-claim: EVAL-REGRESSION" marker in the code or its tests',
-];
+// these and nothing else, so the fix can land in any order: once it has, delete the entry. Empty:
+// every claim the checker reads checks out.
+const KNOWN_PROBLEMS = [];
 const isKnown = (p) => KNOWN_PROBLEMS.some((k) => p.endsWith(k));
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -567,7 +561,7 @@ describe("the real repository", () => {
   const agents = readFileSync(join(ROOT, "AGENTS.md"), "utf8").replace(/\r\n/g, "\n");
   const json = (path) => JSON.parse(readFileSync(join(ROOT, path), "utf8"));
 
-  test("passes offline, but for the claims listed above for a fix where they are written", () => {
+  test("passes offline, but for any claim KNOWN_PROBLEMS lists for a fix where it is written", () => {
     assert.deepEqual(
       problems(report).filter((p) => !isKnown(p)),
       [],

@@ -80,7 +80,8 @@ signs nothing and pays nothing. If no RPC host answers, the page shows the answe
   verifier from `@probarion/core` runs in your browser on the signed test fixture of step 2 below,
   fails on the edited entry and names entry 2 as the first broken one. Nothing leaves the page.
 - Open [Evaluate in 5 minutes](https://probarion.xyz/docs/start/evaluate-in-5-minutes) in the docs.
-  It walks the steps below except step 5, the MCP demo, with each command and the output to expect.
+  It walks the steps below except step 0, the claims check, and step 5, the MCP demo, with each
+  command and the output to expect.
 - On any docs page, press Ctrl K (⌘K on a Mac), type `NoMandate` and press Enter. You land on that
   code's row in the error catalog: what it means, which call raises it and what to do next.
 - Add `.md` to a docs address, for example
@@ -91,8 +92,36 @@ signs nothing and pays nothing. If no RPC host answers, the page shows the answe
 **Then in a terminal**, with Node.js 24, pnpm 10 and a bash-compatible shell (Linux, macOS, or Git
 Bash on Windows). The steps use the repository's test fixture and scripts, so they run from a clone:
 
+0. **Check this README against the repository.** Before you install anything, one script with no
+   dependencies reads this README and `AGENTS.md` and checks what the repository can confirm: each
+   link and anchor resolves, each transaction hash and account is in the deployment records or the
+   evidence, each Status row has a known marker and points at a path that exists, each path, script
+   and command it names exists, and the versions, counts and other facts it knows match the code
+   (the code hashes, the npm versions, the MCP tools and the docs page count, among others). It
+   checks claims, not code: it does not prove that the code works. The steps below and the tests do.
+
+   ```bash
+   git clone https://github.com/probarion/probarion.git
+   cd probarion
+   node scripts/check-claims.mjs
+   ```
+
+   On 2026-11-11, at this commit, its last line was:
+
+   ```text
+   check-claims: ok. 279 links (38 anchors), 11 tx hashes, 18 accounts, 28 status rows, 86 paths and commands, 149 facts (offline)
+   ```
+
+   It exits 0 when every claim matches, 1 when one does not (each printed as
+   `file:line [check] what is wrong`), and 2 when it cannot run. `node scripts/check-claims.mjs --online`
+   adds read-only checks of the chain, the site, the store and npm: the vaults the README names run a
+   recorded build with no full-access key, each cited testnet transaction has the signer and the
+   outcome its row says, the site's health route answers ok, the Chrome Web Store item is live, and
+   npm has each version the README says it has. It signs and sends nothing; when an endpoint does not
+   answer, it exits 2 and lists the checks that could not run.
+
 1. **Install and build.** About three and a half minutes on a first install here (2 min 42 s to
-   install, 34 s to build).
+   install, 34 s to build). After step 0 you are in the clone already: run the last two lines.
 
    ```bash
    git clone https://github.com/probarion/probarion.git
@@ -479,7 +508,7 @@ is public. The invoices, the ledger, the snapshot, the verifier's output and eve
 | INV-2001: 2 test USDC to the mandate's payee | Paid as spend 1 | [`HFyW61UZ…dQp1`](https://testnet.nearblocks.io/txns/HFyW61UZXfwpqhgqWq9bXnRXaYiEnpk4WPUHDAEydQp1) |
 | INV-2001 again | Refused on upload as a duplicate. Nothing was decided or sent | None |
 | INV-2002: "we changed banks", 2 test USDC to `new-account.testnet` | Refused by code, rule `mandate.payee_mismatch`, ledger entry 3. Nothing was sent | None |
-| INV-2003: 4 test USDC, above the mandate's approval limit of 3 | Held as spend 2, then approved by `probarion-approver.testnet` from its own key, and paid | [`6oDNZEUB…2Tb`](https://testnet.nearblocks.io/txns/6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb), [`47VCARhw…FJf`](https://testnet.nearblocks.io/txns/47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf) |
+| INV-2003: 4 test USDC, above the mandate's approval limit of 3 | Held as spend 2, then approved by `probarion-approver.testnet` from its own key, and paid | [`6oDNZEUB…2Tb`](https://testnet.nearblocks.io/txns/6oDNZEUBWMSZxLq2ANXMhWNxzii3irVAcqoXf7eHy2Tb), [`47VCARhw…NCJf`](https://testnet.nearblocks.io/txns/47VCARhwsG2B7xbaFDS3f6nZdqR2gnQvBMofcP9FNCJf) |
 
 To verify it live, download the ledger file from [its proof page](https://probarion.xyz/proof/demo.vaults.probarion.testnet)
 and run, with Node 24 or later:
@@ -564,7 +593,7 @@ mainnet claim.
 | [`apps/extension`](apps/extension) | The Chrome extension (Manifest V3): the worker, the popup, the build and store zip, the rendered icons and store images, the store pack and the manual checklist |
 | [`apps/web/content/docs`](apps/web/content/docs) | The Docs Center's pages, one MDX file each, with the [authoring guide](apps/web/content/docs/README.md). The registry that lists them is in [`apps/web/src/lib/docs/pages`](apps/web/src/lib/docs/pages) |
 | [`eval`](eval) | The 20-invoice eval: the dataset (invoices, purchase orders, `cases.json`), the committed results and the attack log, and its [README](eval/README.md) with the method and caveats. The runner and the cases are in [`apps/web/src/lib/eval`](apps/web/src/lib/eval) |
-| [`scripts`](scripts) | Contract builds, the reproducible build and code-hash record, testnet deploy and smoke, the proof file and the release check |
+| [`scripts`](scripts) | Contract builds, the reproducible build and code-hash record, testnet deploy and smoke, the proof file, the release check, and [`check-claims.mjs`](scripts/check-claims.mjs), which checks this README's claims against the repository (step 0 above) |
 | [`docs/specs`](docs/specs) | The design spec and the shared interfaces |
 | [`docs/runbooks`](docs/runbooks), [`docs/ops`](docs/ops) | Deploy runbooks (testnet, factory, mainnet v0, the web console), the key rotation procedure, the guide to the usage numbers, the watcher's runbook and the alerts runbook |
 | [`docs/evidence`](docs/evidence) | The purchase order and invoices prepared for the planned mainnet v0 run, and the records of the testnet runs ([`demo-vault`](docs/evidence/demo-vault), [`402-vault`](docs/evidence/402-vault), [`canary-vault`](docs/evidence/canary-vault)) |
