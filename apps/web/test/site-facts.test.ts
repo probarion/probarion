@@ -580,7 +580,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       readme: [{ start: "Reproducible builds", says: ["**Shipped**"] }],
     },
     {
-      row: "Web console: vault, keys, faucet, mandate, Payables, proof page",
+      row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
       pill: "Tried on testnet",
       readme: [
         {
@@ -588,20 +588,26 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
           says: [
             "**In progress**",
             "went further with a real wallet: Create a vault, the agent and ledger keys, the faucet, a mandate, four Payables invoices and a public proof page",
+            "On 2026-11-11 more of the console was tried with the owner's real wallet (Meteor, on testnet; Claude drove the console and the owner signed): Freeze and Unfreeze on the demo vault, and on `trial.vaults.probarion.testnet` the Top-up tab's USDC transfer on NEAR, the Agent (MCP) tab and approving two held spends on the console's approval page ([evidence](docs/evidence/trial-vault/README.md))",
+            "asks before a new ledger key replaces one. The Agent (MCP) tab's paste-and-sign path was tried on testnet on 2026-11-11",
+            "that run does not show the withholding or the Keys tab's ask",
           ],
+        },
+        {
+          start: "Phone approval page",
+          says: ["the owner approved two held spends", "Its use on a phone is not confirmed"],
         },
       ],
     },
     {
-      row: "Web console: Freeze, approving in the console, USDC top-up, Agent (MCP) tab",
+      row: "Web console: Reject, revoke, withdraw, key removal, email alerts, Base top-up",
       pill: "Built, not tried yet",
       readme: [
         {
           start: "Web console",
           says: [
-            "The other console actions, such as Freeze, approving from the console and the Top-up tab's USDC transfer, have not been tried yet",
-            "The Agent (MCP) tab connects the owner's own AI agent",
-            "asks before a new ledger key replaces one. Built, not tried yet.",
+            "The 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet",
+            "Reject on a held spend, revoking a mandate, Withdraw, removing an agent key and adding an email alert have not been tried with a real wallet yet",
           ],
         },
       ],
@@ -638,15 +644,17 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "MCP server",
-      pill: "Tried on testnet, 0.1.1 on npm",
+      pill: "0.1.1 on npm, run by a real MCP client on testnet",
       readme: [
         {
           start: "MCP server",
           says: [
-            "**Built**",
-            "testnet",
+            "**Shipped**",
+            "run by a real MCP client on NEAR testnet",
             "on npm as `@probarion/mcp` 0.1.1",
             "the official MCP registry lists it as `io.github.probarion/probarion`",
+            "the decisions are rules-only",
+            "([evidence](docs/evidence/trial-vault/README.md))",
           ],
         },
       ],
@@ -850,13 +858,13 @@ describe("the status list", () => {
       { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
       {
         id: "web-console",
-        row: "Web console: vault, keys, faucet, mandate, Payables, proof page",
+        row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
         pill: "Tried on testnet",
         tone: "live",
       },
       {
         id: "web-console-not-tried",
-        row: "Web console: Freeze, approving in the console, USDC top-up, Agent (MCP) tab",
+        row: "Web console: Reject, revoke, withdraw, key removal, email alerts, Base top-up",
         pill: "Built, not tried yet",
         tone: "work",
       },
@@ -878,8 +886,8 @@ describe("the status list", () => {
       {
         id: "mcp-server",
         row: "MCP server",
-        pill: "Tried on testnet, 0.1.1 on npm",
-        tone: "work",
+        pill: "0.1.1 on npm, run by a real MCP client on testnet",
+        tone: "live",
       },
       {
         id: "mainnet-vault",
@@ -1113,11 +1121,16 @@ describe("the problem, the comparison and the integrate section", () => {
 
   it("gives the console card the pill of what was tried on testnet, and names only that (audit P1-10)", () => {
     const card = INTEGRATE.cards.find((c) => c.title === "Web console");
-    expect(card?.status).toBe("Web console: vault, keys, faucet, mandate, Payables, proof page");
+    expect(card?.status).toBe(
+      "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
+    );
+    expect(STATUS.rows.find((r) => r.row === card?.status)?.id).toBe("web-console");
     expect(card?.body).toBe(
       "Create a vault, its keys and mandates, pay invoices with Payables and publish a proof page. Sign in with a NEAR wallet.",
     );
-    expect(card?.body).not.toMatch(/approve|freeze|top-up/i);
+    // The console actions not tried yet (Reject, revoking a mandate, Withdraw, removing a key, email alerts, the Base
+    // top-up through 1Click) are not on the card.
+    expect(card?.body).not.toMatch(/reject|revok|withdraw|remov|email|base|1click/i);
   });
 
   it("says of the agent's key only what the owner check says: every owner method refuses any other caller", () => {

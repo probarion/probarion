@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import Home from "@/app/page";
 import { explorerTxUrl } from "@/lib/config";
-import { CONSOLE_ROUTE, CONSOLE_SHOTS, STATUS } from "@/lib/site/facts";
+import { CONSOLE_ROUTE, CONSOLE_SHOTS } from "@/lib/site/facts";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(WEB, "..", "..");
@@ -78,9 +78,10 @@ describe("the console screenshots on the landing (audit P1-23)", () => {
     expect(shot("invoice").link).toBeUndefined();
   });
 
-  it("says the approver approved from their own key, since approving in the console is not tried yet", () => {
-    const notTried = STATUS.rows.find((r) => r.id === "web-console-not-tried");
-    expect(notTried?.row).toContain("approving in the console");
+  it("says the approver approved from their own key, as on 2026-11-09, the day of the shots", () => {
+    // Approving in the console was first tried on 2026-11-11, on another vault: these shots show the demo vault,
+    // whose approver approved with near-cli.
+    for (const s of CONSOLE_SHOTS.shots) expect(s.meta).toContain("2026-11-09");
     expect(shot("paid").body).toContain("from their own key");
     for (const s of CONSOLE_SHOTS.shots) {
       expect(`${s.title} ${s.body} ${s.alt}`).not.toMatch(/approved in the console/i);

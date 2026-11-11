@@ -1,0 +1,5 @@
+Invoice INV-3001
+Probarion MCP try: test USDC, no value.
+Payee: probarion-payee.testnet
+Purchase order: PO-1001
+Total due: 0.50 USDC

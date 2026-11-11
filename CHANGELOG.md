@@ -15,6 +15,37 @@ The software is an unaudited beta.
 
 ### Added
 
+- The owner run of 2026-11-11 on testnet, from the console at probarion.xyz with a real wallet
+  (Meteor): Claude drove the console in the owner's browser and the owner signed each wallet prompt,
+  recorded in `docs/evidence/trial-vault/README.md`. On the demo vault the owner froze and unfroze the
+  vault from the console. On `trial.vaults.probarion.testnet` the owner sent 5 test USDC from the
+  Top-up tab (the USDC transfer on NEAR; the Base top-up through 1Click was not tried), added the two
+  keys that `npx -y @probarion/mcp@0.1.1 init` made, from the Agent (MCP) tab, and signed mandate 1
+  (at most 3 test USDC a payment and 5 in all, held above 1). A real MCP client, Claude Code run
+  headless, then started `@probarion/mcp` 0.1.1 from npm with only `PROBARION_VAULT_ID` set: spend 1
+  paid 0.50 test USDC, spends 2 (2.00) and 3 (1.50) were held, and the owner approved both on the
+  console's approval page, where each paid. The prompt gave the tool arguments, so the client read no
+  invoice, and the decisions are rules-only. A Telegram chat linked from the Alerts tab got real bot
+  messages, "Approval needed" for spend 3 and "Paid" for spend 2; no email was sent. Spend 1's
+  payment and spend 2's hold got no message: the watcher had recorded them before the chat was
+  linked, and alerts do not send events from before, so spend 3 was sent after the link to make one
+  fire. The screenshots of the approvals are from a desktop browser, so a phone is not confirmed. The
+  server's `verify` and a live `npx -y probarion@0.1.1 verify` passed checks a to i
+  (`9 passed, 0 failed, 0 unproven`). The same day two invoices went through the
+  demo vault's Payables with an attested model, `z-ai/glm-5.3-flash`, and code refused both with
+  `mandate.payee_mismatch`, sending nothing: INV-2006 (ledger entry 10) by a false positive that PR
+  #116 fixed, and its retry INV-2007 (entry 11) because the model's payee hint named
+  `acme-cloud.near`, which is in neither the invoice nor the prompt. So the Payables agent has not
+  yet paid on its own with an attested model. A live `verify` of that ledger passed checks a to i,
+  and with `--online` both decisions passed O1 and O2; `docs/evidence/demo-vault/` holds the
+  ledger, the snapshot, both outputs and the two invoices. The trial vault's evidence folder holds
+  the run's ledger, snapshot, offline verify output and invoices and the client's tool calls;
+  `docs/mainnet-proof.json` records the run's 14 testnet transactions. The README's Status rows for
+  the web console, the MCP server (now Shipped), the watcher, the Telegram alerts and the approval
+  page, the landing page's status list (the console's tried row adds the NEAR USDC top-up, the Agent
+  (MCP) tab, Freeze and approvals, its other row now names Reject, revoking a mandate, Withdraw,
+  removing a key, email alerts and the Base top-up through 1Click, and the MCP server row is Live) and the docs say what was tried.
+
 - The first Probarion vault on NEAR mainnet, `v0.probarion.near`, ran on 2026-11-11 between 12:51 and
   13:00 UTC: the 2026-11 demo path of `docs/runbooks/mainnet-v0.md`, with real USDC and small amounts.
   The owner signed every transaction in their own terminal and in Meteor, and Claude signed nothing.

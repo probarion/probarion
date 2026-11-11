@@ -1,0 +1,16 @@
+Probarion verify: trial.vaults.probarion.testnet (testnet)
+entries 6, anchors 3, generated 2026-11-11T17:54:33.584Z
+snapshot taken 2026-11-11T17:52:51.587Z: its chain data is the file's and was not read from the chain again
+
+a  ledger-signatures      PASS      6 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+b  hash-links             PASS      6 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      3 anchors match the ledger; 0 entries after the last anchored count (6) are not chain-attested
+d  spends-have-decisions  PASS      3 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount)
+e  attestations           PASS      0 attested decisions pass A1–A7; quote not verified offline (run --online for O1; re-take the snapshot live with --online); A8 not run (the request is not checked against the invoice); rules-only or unattested (reported, not failed): seq 0, 2, 4
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES); it is the code of factory version 1
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      0 burned spends: no burn to pair
+i  factory-version        PASS      created by vaults.probarion.testnet at version 1
+
+9 passed, 0 failed, 0 unproven
+RESULT: PASS

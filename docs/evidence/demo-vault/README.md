@@ -76,3 +76,55 @@ hold and moved no USDC; the approve tx that paid it, `approve_tx` in
 not in the file. The three decisions with no spend on chain have an empty Payee: nothing was sent.
 `apps/web/test/demo-vault.test.ts` makes the file from the snapshot and fails when the committed copy differs by a
 byte.
+
+## 2026-11-11: freeze, unfreeze and two attested decisions
+
+During the owner run recorded in [the trial vault's record](../trial-vault/README.md), the owner froze this vault
+from the console's Freeze button and unfroze it again, both signed in Meteor. `get_config` read `frozen: false`
+afterwards.
+
+| Time (UTC) | What | Transaction |
+| --- | --- | --- |
+| 17:13:50 | The owner freezes the vault from the console | [`E2DjWAHD…`](https://testnet.nearblocks.io/txns/E2DjWAHDwm11ARDw3gzd3iofhLv7CjRarDmoLFVj2aV3) |
+| 17:14:19 | The owner unfreezes it (1 yoctoNEAR) | [`3ASttDax…`](https://testnet.nearblocks.io/txns/3ASttDaxksgoTRiwixoQUS39MZpmTA62zQrZHF19vYz7) |
+
+The same day two invoices went through Payables here with an attested NEAR AI model, `z-ai/glm-5.3-flash`, and the
+code refused both. No transaction was sent, and mandate 1 kept its uses. So the Payables agent has not yet paid an
+invoice on its own with an attested model.
+
+| Ledger entry | Invoice | What the model answered | Why the code refused |
+| --- | --- | --- | --- |
+| 10, at 17:09:53 | [`invoice-INV-2006.txt`](invoice-INV-2006.txt): 2.00 test USDC to the mandate's payee | Pay, with a payee hint that named the mandate's own payee, `probarion-payee.testnet`, next to the chain `base` and no address (the proposal schema lets the chain be only `base` or `solana`) | `mandate.payee_mismatch`, a false positive: the rule read the chain alone as another destination. [PR #116](https://github.com/probarion/probarion/pull/116) fixed the rule, and it was live on probarion.xyz by 18:23 UTC |
+| 11, at 18:24:14 | [`invoice-INV-2007.txt`](invoice-INV-2007.txt): the same invoice with a new number, since INV-2006 was now a duplicate | Pay 2.00 USDC with confidence 0.95, with reasoning that says the invoice's payee matches the mandate's. But its payee hint named `acme-cloud.near` and the name "Acme Cloud Services", which are in neither the invoice nor the prompt, with the chain `solana`, one of the two chains the schema allows | `mandate.payee_mismatch`: the code compares the model's payee hint with the mandate's payee, so a payee the model made up is refused like an invoice that names another payee |
+
+Each invoice's sha256 is the `invoice_hash` of its ledger entry. The proof page shows both decisions, with the
+model's answer and its attestation:
+[entry 10](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-10) and
+[entry 11](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-11).
+
+### Check it again
+
+[`ledger-2026-11-11.jsonl`](ledger-2026-11-11.jsonl) is the ledger as the proof page served it after entry 11:
+twelve entries. Entries 10 and 11 hold each model response in full, the inputs of each request with the invoice text only as its sha256, the sha256 of the whole request, and the attestation evidence.
+Entries 7 to 9 are an invoice from the evening of 2026-11-09 that this record does not otherwise cover: 4 test USDC,
+sha256 `366f44db…`, refused while the owner had not confirmed it, then confirmed and held as spend 3, which the
+chain shows paid.
+
+[`verify-2026-11-11.txt`](verify-2026-11-11.txt) is a live run of release 0.1.1 from npm with that ledger, at
+18:51 UTC, which read the chain itself: checks a to i pass, and check e finds 2 attested decisions that pass A1 to
+A7. [`verify-online-2026-11-11.txt`](verify-online-2026-11-11.txt) is the same run with `--online`, a minute
+later: for both decisions, Intel DCAP finds a genuine TDX quote bound to the request (O1), and NVIDIA NRAS verifies a
+GPU payload bound to the request nonce (O2). The TEE measurement is not pinned, so O1 does not show which image the
+TD runs, and A8, which would check the request against the invoice, was not run. With the committed ledger, the
+commands are:
+
+```bash
+npx probarion verify --network testnet --vault demo.vaults.probarion.testnet --ledger docs/evidence/demo-vault/ledger-2026-11-11.jsonl
+npx probarion verify --network testnet --vault demo.vaults.probarion.testnet --ledger docs/evidence/demo-vault/ledger-2026-11-11.jsonl --online
+```
+
+The first run wrote [`snapshot-2026-11-11.json`](snapshot-2026-11-11.json), which checks offline:
+
+```bash
+npx probarion verify --offline docs/evidence/demo-vault/snapshot-2026-11-11.json
+```
