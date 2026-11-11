@@ -98,6 +98,8 @@ export interface PackageManifest {
   name?: string;
   version?: string;
   private?: boolean;
+  /** The server's name in the official MCP registry, which compares it with server.json's `name`. */
+  mcpName?: string;
   main?: string;
   types?: string;
   typings?: string;
@@ -214,6 +216,8 @@ export interface Release {
   cliVersionProblem: string | null;
   /** CHANGELOG.md and the README.md of every published package, by path relative to the root. */
   docs: Map<string, string>;
+  /** `packages/mcp/server.json`: null when there is none, `invalid` when it is not JSON. */
+  serverJson: { parsed: unknown } | { invalid: string } | null;
 }
 
 /**
@@ -229,6 +233,71 @@ export function checkDocs(docs: ReadonlyMap<string, string>): string[] {
       if (line.includes(RELEASE_NOTE)) {
         problems.push(`${path} still has an open release note: ${line.trim().slice(0, 160)}`);
       }
+    }
+  }
+  return problems;
+}
+
+// ---------- the MCP registry entry ----------
+
+/**
+ * The entry `mcp-publisher publish` sends to the official MCP registry. The OWNER runs it in packages/mcp once npm
+ * has the release, so it is read from the repository: it is not in the tarball, which holds only dist/, README.md,
+ * LICENSE and package.json (checkTarball).
+ */
+export const SERVER_JSON = "packages/mcp/server.json";
+
+/** The registry schema the entry follows, as its `$schema` names it. */
+export const SERVER_SCHEMA =
+  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json";
+
+/**
+ * What a release changes in `packages/mcp/server.json`, checked against the package's manifest and the tag's version.
+ * The registry lists an npm package only when the package's `mcpName` is the entry's `name`, keeps a version as it
+ * was first published, and takes a description of at most 100 characters. So the entry names the schema, the
+ * package's `mcpName`, this release's version (at the top and on its one npm package) and the package itself.
+ * scripts/test/release-manifests.test.ts pins the rest of the entry to the code (its environment variables).
+ */
+export function checkServerJson(
+  server: unknown,
+  manifest: PackageManifest,
+  version: string,
+): string[] {
+  if (!isRecord(server)) return ["is not a JSON object"];
+  const problems: string[] = [];
+  if (server.$schema !== SERVER_SCHEMA) problems.push(`$schema must be ${SERVER_SCHEMA}`);
+  if (typeof manifest.mcpName !== "string" || manifest.mcpName === "") {
+    problems.push(`${manifest.name} has no "mcpName" in package.json, which the registry checks`);
+  } else if (server.name !== manifest.mcpName) {
+    problems.push(
+      `name is ${JSON.stringify(server.name)}, but the "mcpName" of ${manifest.name} is ${JSON.stringify(manifest.mcpName)}`,
+    );
+  }
+  const description = server.description;
+  if (typeof description !== "string" || description.length === 0 || description.length > 100) {
+    problems.push(
+      `description must be 1 to 100 characters, the registry's limit (it is ${typeof description === "string" ? `${description.length} characters` : "missing"})`,
+    );
+  }
+  if (server.version !== version) {
+    problems.push(`version is ${JSON.stringify(server.version)}, the tag says ${version}`);
+  }
+  const npm = (Array.isArray(server.packages) ? server.packages : []).filter(
+    (p): p is Record<string, unknown> => isRecord(p) && p.registryType === "npm",
+  );
+  if (npm.length !== 1) {
+    problems.push(`packages must hold one npm package, it holds ${npm.length}`);
+  }
+  for (const p of npm) {
+    if (p.identifier !== manifest.name) {
+      problems.push(
+        `the npm package is ${JSON.stringify(p.identifier)}, expected ${JSON.stringify(manifest.name)}`,
+      );
+    }
+    if (p.version !== version) {
+      problems.push(
+        `the npm package's version is ${JSON.stringify(p.version)}, the tag says ${version}`,
+      );
     }
   }
   return problems;
@@ -264,7 +333,16 @@ export async function loadRelease(root: string): Promise<Release> {
     cliSource !== null && cliVersion === null
       ? 'packages/cli/src/version.ts exists but has no CLI_VERSION = "<version>", so the cli version cannot be checked against the tag'
       : null;
-  return { packages, manifests, changelog, cliVersion, cliVersionProblem, docs };
+  const serverFile = join(root, SERVER_JSON);
+  let serverJson: Release["serverJson"] = null;
+  if (existsSync(serverFile)) {
+    try {
+      serverJson = { parsed: JSON.parse(await readFile(serverFile, "utf8")) as unknown };
+    } catch (error) {
+      serverJson = { invalid: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  return { packages, manifests, changelog, cliVersion, cliVersionProblem, docs, serverJson };
 }
 
 // ---------- tarballs ----------
@@ -352,7 +430,8 @@ function escapeRegExp(value: string): string {
  * that did not get packed is the typical break); the files are `dist/`, README.md, LICENSE and
  * package.json and nothing else; no source maps (they would name a `src/` that is not shipped); a
  * bin script has its shebang; no `workspace:` specifier is left and a sibling package is pinned to
- * this release.
+ * this release. server.json, the MCP registry entry, is one of the files refused: the registry reads it from the
+ * repository (SERVER_JSON).
  */
 export function checkTarball(input: {
   info: PackageInfo;
@@ -623,6 +702,22 @@ export async function main(
       problems.push(...checkManifest(manifest, info.dir).map((p) => `${info.name}: ${p}`));
   }
   problems.push(...checkDocs(release.docs));
+  const tagVersion = TAG_RE.exec(args.tag)?.[1];
+  // A tag that is not sdk-v<semver> is reported by checkRelease; the entry's version is checked against a good one.
+  if (release.serverJson !== null && tagVersion !== undefined) {
+    const mcp = release.manifests.get("packages/mcp");
+    if ("invalid" in release.serverJson) {
+      problems.push(`${SERVER_JSON} is not valid JSON (${release.serverJson.invalid})`);
+    } else if (mcp === undefined) {
+      problems.push(`${SERVER_JSON} exists, but packages/mcp/package.json does not`);
+    } else {
+      problems.push(
+        ...checkServerJson(release.serverJson.parsed, mcp, tagVersion).map(
+          (p) => `${SERVER_JSON}: ${p}`,
+        ),
+      );
+    }
+  }
   let packed = "";
   if (args.pack) {
     // Packing does not depend on the tag, so a version or changelog problem is reported together with the tarball ones.

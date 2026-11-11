@@ -3,7 +3,14 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { checkManifest, loadRelease, PUBLISHED_DIRS } from "../release-check.js";
+import {
+  checkManifest,
+  checkServerJson,
+  loadRelease,
+  PUBLISHED_DIRS,
+  SERVER_JSON,
+  SERVER_SCHEMA,
+} from "../release-check.js";
 
 // The published packages as they are in this repository: the shape the release check demands of
 // them, the source-map policy, the license files and the clean build.
@@ -89,6 +96,164 @@ describe("the published packages", () => {
   it("have a root `release:check` script, which the workflow uses", () => {
     const scripts = (json("package.json") as { scripts: Record<string, string> }).scripts;
     expect(scripts["release:check"]).toBe("tsx scripts/release-check.ts");
+  });
+});
+
+// ---------- packages/mcp/server.json, the entry for the official MCP registry ----------
+//
+// The OWNER publishes it with `mcp-publisher publish` from packages/mcp once npm has the release (docs/RUNBOOK.md,
+// Releasing the npm packages). The registry lists it only when the npm package's mcpName is its name, and keeps a
+// version as it was first published, so a mistake here cannot be fixed under the same version. The keys allowed
+// are those of the 2025-12-11 schema (ServerDetail, Package and KeyValueInput).
+
+interface ServerEntry {
+  $schema: string;
+  name: string;
+  title?: string;
+  description: string;
+  version: string;
+  repository: { url: string; source: string; subfolder?: string };
+  websiteUrl?: string;
+  packages: {
+    registryType: string;
+    registryBaseUrl?: string;
+    identifier: string;
+    version: string;
+    transport: { type: string };
+    environmentVariables: {
+      name: string;
+      description: string;
+      isRequired?: boolean;
+      isSecret?: boolean;
+      format?: string;
+      choices?: string[];
+    }[];
+  }[];
+}
+
+const SERVER_KEYS = [
+  "$schema",
+  "_meta",
+  "description",
+  "icons",
+  "name",
+  "packages",
+  "remotes",
+  "repository",
+  "title",
+  "version",
+  "websiteUrl",
+];
+const PACKAGE_KEYS = [
+  "environmentVariables",
+  "fileSha256",
+  "identifier",
+  "packageArguments",
+  "registryBaseUrl",
+  "registryType",
+  "runtimeArguments",
+  "runtimeHint",
+  "transport",
+  "version",
+];
+const INPUT_KEYS = [
+  "choices",
+  "default",
+  "description",
+  "format",
+  "isRequired",
+  "isSecret",
+  "name",
+  "placeholder",
+  "value",
+  "variables",
+];
+
+describe("packages/mcp/server.json, the MCP registry entry", () => {
+  const server = json(SERVER_JSON) as unknown as ServerEntry;
+  const mcp = json("packages/mcp/package.json") as unknown as {
+    name: string;
+    version: string;
+    mcpName: string;
+    files: string[];
+  };
+  const npm = server.packages.find((p) => p.registryType === "npm");
+  const listed = (npm?.environmentVariables ?? []).map((v) => v.name);
+  /** The variables the settings come from: every envValue(env, "X") and urlList(env, "X") in config.ts. */
+  const readVars = [
+    ...new Set(
+      [
+        ...read("packages/mcp/src/config.ts").matchAll(
+          /(?:envValue|urlList)\(\s*env,\s*"([A-Z][A-Z0-9_]*)"/g,
+        ),
+      ].map((m) => m[1] ?? ""),
+    ),
+  ];
+
+  it("passes the release check's rules at the package's own version", () => {
+    expect(checkServerJson(server, mcp, mcp.version)).toEqual([]);
+    expect(server.$schema).toBe(SERVER_SCHEMA);
+    expect(server.version).toBe(mcp.version);
+    expect(npm?.version).toBe(mcp.version);
+    expect(npm?.identifier).toBe(mcp.name);
+  });
+
+  it("is named by the package's mcpName, in the probarion GitHub organization's namespace", () => {
+    expect(server.name).toBe(mcp.mcpName);
+    expect(server.name).toMatch(/^io\.github\.probarion\/[a-zA-Z0-9._-]+$/);
+    expect(server.repository).toEqual({
+      url: "https://github.com/probarion/probarion",
+      source: "github",
+      subfolder: "packages/mcp",
+    });
+    expect(existsSync(join(root, server.repository.subfolder ?? "", "package.json"))).toBe(true);
+  });
+
+  it("keeps the description and the title within the registry's 100 characters", () => {
+    expect(server.description.length).toBeGreaterThan(0);
+    expect(server.description.length).toBeLessThanOrEqual(100);
+    expect((server.title ?? "").length).toBeLessThanOrEqual(100);
+  });
+
+  it("lists exactly the environment variables the server reads (packages/mcp/src/config.ts)", () => {
+    expect(readVars.length).toBeGreaterThanOrEqual(8);
+    expect([...listed].sort()).toEqual([...readVars].sort());
+    expect(new Set(listed).size).toBe(listed.length);
+  });
+
+  it("marks only the vault id as required and only the two secret keys as secret", () => {
+    const vars = npm?.environmentVariables ?? [];
+    expect(vars.filter((v) => v.isRequired === true).map((v) => v.name)).toEqual([
+      "PROBARION_VAULT_ID",
+    ]);
+    expect(vars.filter((v) => v.isSecret === true).map((v) => v.name)).toEqual([
+      "PROBARION_AGENT_KEY",
+      "PROBARION_LEDGER_KEY",
+    ]);
+    expect(vars.find((v) => v.name === "NEAR_NETWORK")?.choices).toEqual(["mainnet", "testnet"]);
+    for (const v of vars) expect(v.description.length, v.name).toBeGreaterThan(0);
+  });
+
+  it("names each of them in the package README's settings table", () => {
+    const readme = read("packages/mcp/README.md");
+    for (const name of listed) expect(readme, name).toContain(`| \`${name}\` |`);
+  });
+
+  it("uses only keys of the 2025-12-11 schema, with one npm package over stdio", () => {
+    for (const key of Object.keys(server)) expect(SERVER_KEYS, key).toContain(key);
+    expect(server.packages).toHaveLength(1);
+    for (const p of server.packages) {
+      for (const key of Object.keys(p)) expect(PACKAGE_KEYS, key).toContain(key);
+      expect(p.transport).toEqual({ type: "stdio" });
+      expect(p.registryBaseUrl ?? "https://registry.npmjs.org").toBe("https://registry.npmjs.org");
+      for (const v of p.environmentVariables) {
+        for (const key of Object.keys(v)) expect(INPUT_KEYS, `${v.name}.${key}`).toContain(key);
+      }
+    }
+  });
+
+  it("is not in the tarball: the registry reads it from the repository", () => {
+    expect(mcp.files).toEqual(["dist", "README.md"]);
   });
 });
 
