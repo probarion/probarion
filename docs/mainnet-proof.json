@@ -103,9 +103,24 @@
       "signer_id": "probarion.near",
       "spend_id": null,
       "what": "Mandate 1: NEAR payee, at most 1 USDC per payment, 2 USDC total"
+    },
+    "v0_usdc_float": {
+      "amount_usdc": "3.00",
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "HQQe3aTrhq4gAZZ9RcCiNNfnfUcBnK7Sbm6hHHsnWMBC",
+      "kind": "other",
+      "network": "mainnet",
+      "receiver_id": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "recorded_at": "2026-11-11T14:23:50.681Z",
+      "signed_by": "approver",
+      "signer_id": "probarion-duong.near",
+      "spend_id": null,
+      "what": "The owner's Meteor wallet, the vault's approver, sent 3 native USDC to the vault (ft_transfer)"
     }
   },
-  "updated_at": "2026-11-11T13:09:49.021Z",
+  "updated_at": "2026-11-11T14:23:50.681Z",
   "v": 1,
   "verify": {},
   "versions": {}

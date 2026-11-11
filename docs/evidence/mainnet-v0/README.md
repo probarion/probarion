@@ -1,7 +1,7 @@
 # The mainnet v0 vault, 2026-11-11
 
-`v0.probarion.near` is the first Probarion vault on NEAR mainnet, with real USDC. On 2026-11-11, between 12:52 and
-13:00 UTC, the owner ran the 2026-11 demo path of [`docs/runbooks/mainnet-v0.md`](../../runbooks/mainnet-v0.md) in
+`v0.probarion.near` is the first Probarion vault on NEAR mainnet, with real USDC. On 2026-11-11, between 12:51 and
+13:00 UTC (block times), the owner ran the 2026-11 demo path of [`docs/runbooks/mainnet-v0.md`](../../runbooks/mainnet-v0.md) in
 their own terminal. The owner signed every transaction: the owner calls with near-cli-rs, the two spends with the
 agent key file, and the two transfers from their own wallet in Meteor. Claude signed nothing on mainnet. The amounts
 are small on purpose, because the contract is unaudited.
@@ -89,22 +89,28 @@ near contract call-function as-read-only v0.probarion.near list_spends json-args
 near contract call-function as-read-only v0.probarion.near get_mandate json-args '{"mandate_id":1}' network-config mainnet now
 ```
 
-[`verify-2026-11-11.txt`](verify-2026-11-11.txt) is the output of a live, read-only run of the repository's CLI at
-2026-11-11T13:19Z, built from this repository. It read the chain itself and printed
+[`verify-2026-11-11.txt`](verify-2026-11-11.txt) is the standard output of a live, read-only run of the repository's
+CLI at 2026-11-11T13:19Z, built from this repository, with `--snapshot`. It read the chain itself and printed
 `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`: checks a to h pass, and check i skips, because this
 vault has no factory. The ledger is empty, so checks a to c pass on nothing, and check d passes because spend 1's
-decision hash is one of the documented pre-ledger hashes. From a clone, after `pnpm install` and `pnpm build`:
+decision hash is one of the documented pre-ledger hashes. The command, from a clone, after `pnpm install` and
+`pnpm build`:
 
 ```bash
-node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --evidence docs/evidence --proof docs/mainnet-proof.json
+node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --evidence docs/evidence --proof docs/mainnet-proof.json \
+  --snapshot docs/evidence/mainnet-v0/snapshot-2026-11-11.json
 ```
 
-That run wrote [`snapshot-2026-11-11.json`](snapshot-2026-11-11.json), the chain data it read. Offline, with no
+That run wrote [`snapshot-2026-11-11.json`](snapshot-2026-11-11.json), the chain data it read. `--snapshot` refuses a
+file that exists, so to run it again, give a new path or leave the flag out. Without it the run prints the same
+counts, and its check d line also names the local folder of the `v0-decision-*.json` files. Offline, with no
 network, the verifier checks that file against itself:
 
 ```bash
 node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/snapshot-2026-11-11.json
 ```
 
-The transactions are also recorded in [`docs/mainnet-proof.json`](../../mainnet-proof.json) and
-[`contracts/deployments/mainnet.json`](../../../contracts/deployments/mainnet.json).
+[`contracts/deployments/mainnet.json`](../../../contracts/deployments/mainnet.json) records the nine transactions of
+the vault, from its creation to the refusal. [`docs/mainnet-proof.json`](../../mainnet-proof.json) records the seven
+the root README cites: the deploy, the lock, the USDC float, the agent key, mandate 1, spend 1 and the refusal. The
+two transactions of the runbook's section 0.4, the funder and `probarion.near`, are recorded only in this README.

@@ -607,7 +607,7 @@ npx probarion verify --offline docs/evidence/canary-vault/snapshot-2026-11-11.js
 
 ### NEAR mainnet, 2026-11-11
 
-`v0.probarion.near` is the first vault on NEAR mainnet, with real USDC. On 2026-11-11, between 12:52
+`v0.probarion.near` is the first vault on NEAR mainnet, with real USDC. On 2026-11-11, between 12:51
 and 13:00 UTC, the owner ran the small demo path of
 [`docs/runbooks/mainnet-v0.md`](docs/runbooks/mainnet-v0.md) in their own terminal and signed every
 transaction: the owner calls with near-cli-rs, the two spends with the agent key file, and the two
@@ -634,7 +634,7 @@ After the run the vault holds 2 USDC, and mandate 1 has 1 USDC and 1 payment lef
 of the run, with what each hash on chain is the sha256 of, is in
 [`docs/evidence/mainnet-v0`](docs/evidence/mainnet-v0). The deployment record is
 [`contracts/deployments/mainnet.json`](contracts/deployments/mainnet.json), and
-[`docs/mainnet-proof.json`](docs/mainnet-proof.json) records the transactions this README cites.
+[`docs/mainnet-proof.json`](docs/mainnet-proof.json) records the seven transactions this README cites.
 
 Check it yourself. Each transaction opens on nearblocks, and an archival node gives the same
 transactions with no key:
@@ -653,8 +653,10 @@ and `--proof` give it the repository's documented decisions and recorded transac
 node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --evidence docs/evidence --proof docs/mainnet-proof.json
 ```
 
-On 2026-11-11 that run printed `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`
-([output](docs/evidence/mainnet-v0/verify-2026-11-11.txt)). Checks a to h pass and check i skips,
+On 2026-11-11 that run, with `--snapshot docs/evidence/mainnet-v0/snapshot-2026-11-11.json`
+added, printed `8 passed, 0 failed, 0 unproven, 1 skipped` and `RESULT: PASS`
+([output](docs/evidence/mainnet-v0/verify-2026-11-11.txt)). Without `--snapshot`, check d also
+names the local folder of the decision files. Checks a to h pass and check i skips,
 because the vault has no factory. The ledger is empty, so checks a to c pass on nothing. Check d
 passes because spend 1's decision is pre-ledger: its `decision_hash` is the sha256 of
 [`docs/evidence/v0-decision-m001.json`](docs/evidence/v0-decision-m001.json), a decision document in

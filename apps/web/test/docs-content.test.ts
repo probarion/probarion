@@ -213,6 +213,25 @@ describe("copy rules", () => {
       "The proof page, the security page and the console's CLI fallback need none of this: they print `npx probarion` commands.",
     );
   });
+
+  it("call no mainnet vault planned once contracts/deployments/mainnet.json records its deploy", () => {
+    const record = JSON.parse(
+      readFileSync(join(ROOT, "contracts", "deployments", "mainnet.json"), "utf8"),
+    ) as { vault_v0?: { deploy_tx?: string | null } };
+    // Before the deploy these words were true. The sweep of 2026-11-11 missed four of them.
+    if (!record.vault_v0?.deploy_tx) return;
+    const stale =
+      /mainnet vault is planned|mainnet, which is planned|mainnet is planned|a mainnet vault is planned|only testnet has a live vault|only NEAR testnet has a vault|the only network Probarion runs on|no mainnet vault/i;
+    const found: string[] = [];
+    for (const p of PAGES) {
+      const fields = [p.title, p.nav, p.description, p.lede, readMdx(p.path)];
+      for (const field of fields) {
+        const m = field ? stale.exec(field) : null;
+        if (m) found.push(`${fileOf(p.path)}: ${m[0]}`);
+      }
+    }
+    expect(found).toEqual([]);
+  });
 });
 
 // --- CLI commands and code fences ----------------------------------------------------------------

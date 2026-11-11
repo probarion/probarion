@@ -12,7 +12,7 @@
 //
 // It writes judge-report.json at the repository root (gitignored) and exits 0 only when no step failed.
 //
-//   pnpm judge              every step: offline, live read-only testnet reads, and the package tests
+//   pnpm judge              every step: offline, live read-only reads of testnet and mainnet, the package tests
 //   pnpm judge --offline    no network at all: the live steps are SKIPPED
 //   pnpm judge --quick      without the package tests
 //   pnpm judge --json       the report as JSON on stdout, the table on stderr
@@ -56,7 +56,7 @@ Builds the four packages and runs each check README.md asks a reader to run, eac
 line it proves. One row per step: PASS, EXPECTED-FAIL (fails by design, exactly as the README says),
 SKIPPED (with the reason) or FAIL. Writes ${REPORT_FILE} at the repository root.
 
-  --offline   no network at all: the live read-only testnet steps are SKIPPED
+  --offline   no network at all: the live read-only steps (testnet and mainnet) are SKIPPED
   --quick     skip the package test suites (about 4 of the 6 minutes a full run takes here)
   --json      print the report as JSON on stdout and the table on stderr; for clean JSON run
               \`node scripts/judge.mjs --json\` or \`pnpm -s judge --json\`
@@ -559,7 +559,13 @@ export const LIVE_VAULTS = {
       "run without the ledger: c fails on an empty ledger, and d passing shows no spend was ever created",
   },
   demo: { exit: 0, checks: ALL_PASS },
+  // The mainnet vault has no ledger: its one spend's decision is pre-ledger, so d passes on the documented
+  // hash, and i skips because no factory made it.
+  mainnetV0: { exit: 0, checks: { ...ALL_PASS, i: "skip" } },
 };
+
+/** The repository's evidence for the mainnet vault: its pre-ledger decisions and its recorded transactions. */
+const MAINNET_V0_EVIDENCE = ["--evidence", "docs/evidence", "--proof", "docs/mainnet-proof.json"];
 
 const statusCounts = (checks) => {
   const counts = new Map();
@@ -767,15 +773,25 @@ function readmeSnippetStep({ id, kind, marker, title, expectedNote, imports }) {
   };
 }
 
-/** A live verify of a vault, read-only, with the ledger at `ledgerPath` (a missing file is an empty ledger). */
-async function liveVerify(ctx, vault, ledgerPath, expect) {
+/**
+ * A live verify of a vault, read-only, with the ledger at `ledgerPath` (a missing file is an empty ledger), on
+ * `network`, with `extra` arguments such as the mainnet vault's `--evidence` and `--proof`.
+ */
+async function liveVerify(
+  ctx,
+  vault,
+  ledgerPath,
+  expect,
+  { network = "testnet", extra = [] } = {},
+) {
   const run = await verifyRun(ctx, [
     "--network",
-    "testnet",
+    network,
     "--vault",
     vault,
     "--ledger",
     ledgerPath,
+    ...extra,
   ]);
   if (run.report === null && (run.timedOut || looksLikeNetworkError(run.stderr))) {
     return {
@@ -1078,6 +1094,27 @@ export function planSteps(root = ROOT) {
           "canary.vaults.probarion.testnet",
           join(ctx.tmp, "no-ledger.jsonl"),
           LIVE_VAULTS.canary,
+        ),
+    },
+    {
+      id: "live-verify-mainnet-v0",
+      kind: "live",
+      needs: "build",
+      title:
+        "live verify of the mainnet vault v0.probarion.near passes a to h, i skips (no factory)",
+      ref: {
+        file: "README.md",
+        quote: "node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near",
+      },
+      expected: "PASS",
+      command: `node ${CLI} verify --network mainnet --vault v0.probarion.near --ledger <tmp>/no-ledger.jsonl ${MAINNET_V0_EVIDENCE.join(" ")} --json`,
+      run: (ctx) =>
+        liveVerify(
+          ctx,
+          "v0.probarion.near",
+          join(ctx.tmp, "no-ledger.jsonl"),
+          LIVE_VAULTS.mainnetV0,
+          { network: "mainnet", extra: MAINNET_V0_EVIDENCE },
         ),
     },
     {

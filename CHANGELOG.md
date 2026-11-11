@@ -15,7 +15,7 @@ The software is an unaudited beta.
 
 ### Added
 
-- The first mainnet vault, `v0.probarion.near`, ran on 2026-11-11 between 12:52 and 13:00 UTC: the
+- The first mainnet vault, `v0.probarion.near`, ran on 2026-11-11 between 12:51 and 13:00 UTC: the
   2026-11 demo path of `docs/runbooks/mainnet-v0.md`, with real USDC and small amounts. The owner
   signed every transaction in their own terminal and in Meteor, and Claude signed nothing. The owner
   created `probarion.near`, then the vault, deployed the CI wasm of commit `64ac3c0` (code hash
@@ -27,12 +27,13 @@ The software is an unaudited beta.
   no mainnet factory is deployed. Step 6 (the Intents top-up), the Base mandate and step 10 (the
   first Base payout) did not run: spike S1 is unproven, so no Base payout has run on mainnet. The
   spend's decision is pre-ledger, the sha256 of `docs/evidence/v0-decision-m001.json`, with no signed
-  ledger and no attestation. `contracts/deployments/mainnet.json` and `docs/mainnet-proof.json`
-  record the transactions, `AGENTS.md` lists the two mainnet accounts, and
+  ledger and no attestation. `contracts/deployments/mainnet.json` records the vault's transactions,
+  `docs/mainnet-proof.json` the seven the README cites, and `AGENTS.md` the two mainnet accounts.
   `docs/evidence/mainnet-v0` holds the run's README, the output of a read-only `verify` of the vault
   on mainnet (`8 passed, 0 failed, 0 unproven, 1 skipped`, `RESULT: PASS`: checks a to h pass, and
   check i skips because there is no factory) and the snapshot it wrote, which `pnpm judge` verifies
-  offline. The README's Status row is Live on NEAR mainnet, its mainnet section gives the run and how
+  offline. `pnpm judge` also verifies the vault live, read-only, with the repository's evidence, and
+  `check-claims --online` re-reads its code hash and access keys on mainnet. The README's Status row is Live on NEAR mainnet, its mainnet section gives the run and how
   to check it, and the docs, the landing page's status list, SECURITY.md, the threat model and the
   runbooks say what ran and what did not. The console and the proof pages still serve testnet only.
 

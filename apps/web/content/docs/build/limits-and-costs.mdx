@@ -86,7 +86,7 @@ An agent key and the ledger key sign as the vault account, so the gas they burn 
 
 ### Cross-chain payouts
 
-Probarion adds no fee to a payout to a Base or Solana payee: the vault sends `ft_withdraw` the spend's amount, and its code computes no bridge or token fee. On testnet the stand-in for NEAR Intents, `intents-stub.probarion.testnet`, takes no fee. A fee that NEAR Intents or its bridge may take on mainnet is not modelled in this code, and this page does not cover it. The mainnet vault is Planned.
+Probarion adds no fee to a payout to a Base or Solana payee: the vault sends `ft_withdraw` the spend's amount, and its code computes no bridge or token fee. On testnet the stand-in for NEAR Intents, `intents-stub.probarion.testnet`, takes no fee. A fee that NEAR Intents or its bridge may take on mainnet is not modelled in this code, and this page does not cover it. No Base or Solana payout has run on mainnet, because spike S1 is unproven. The one mainnet vault, `v0.probarion.near`, has paid only a NEAR payee.
 
 ### Top-ups through 1Click
 

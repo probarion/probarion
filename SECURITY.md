@@ -18,6 +18,7 @@ withdrawing Base POA USDC to a Base address on mainnet, is unproven
 | The `dev` branch, where work lands, and `main` | Yes. A fix lands on `dev` first |
 | The npm packages `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` | The latest release, 0.1.1 (published 2026-11-11). A fix ships as a new version |
 | The testnet vault `v0.probarion.testnet` | A test deployment. A vault has no upgrade method, so a fix ships as a new vault |
+| The mainnet vault `v0.probarion.near` (2026-11-11, standalone, locked) | Yes. A vault has no upgrade method, so a fix ships as a new vault. Its owner can freeze it and withdraw its USDC ([runbook](docs/runbooks/mainnet-v0.md#if-anything-looks-wrong)) |
 
 ## Reporting a vulnerability
 
