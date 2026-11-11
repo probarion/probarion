@@ -197,8 +197,10 @@ eleven attacks do not name.
   over-cap proposal (claim `CANARY-RAW`).
 - One on-chain attempt per visitor every 10 minutes and 30 an hour in total
   (`apps/web/src/lib/canary/limits.ts:13-14`).
-- The Canary's ledger cannot be made public: a database constraint forbids it
-  (`apps/web/supabase/migrations/20261108000008_canary.sql:29`).
+- The app cannot make the Canary's ledger public: a database constraint forbids it
+  (`apps/web/supabase/migrations/20261108000008_canary.sql:29`). The team published the 5 entries of
+  its own attempts of 2026-11-10, which hold no visitor's text, as evidence
+  ([evidence](evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)).
 
 **Database.** Row-level security is on for every table, the anonymous role holds no table privilege,
 and every security-definer function pins its `search_path` (claim `RLS`). The service-role client

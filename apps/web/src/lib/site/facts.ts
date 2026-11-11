@@ -406,7 +406,7 @@ export const JOURNEY = {
       n: 2,
       title: "A private model proposes, if there is one",
       body: "It runs in a TEE on NEAR AI Cloud. Its attestation is bound by a nonce to one position in one vault's ledger. It only gives advice: it cannot widen a mandate.",
-      tag: "On testnet, the Canary's published ledger holds two attested decisions that pass A1 to A7 offline. The online quote check is not recorded yet.",
+      tag: "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline. The online quote check is not recorded yet.",
       panelLabel: "What the proposal is bound to",
       panel: [
         { note: "What the proposal is bound to" },

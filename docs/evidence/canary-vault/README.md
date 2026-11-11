@@ -61,14 +61,14 @@ enforces the mandate's own numbers.
 
 ## The rehearsal
 
-On 2026-11-10 the team sent the Canary a fake invoice from `probarion-payee.testnet` that asked for 50 USDC "under
-the canary mandate". The model proposed `pay`, amount `50000000` (50 USDC), mandate 1. The code rules refused it
-with `invoice.amount_invalid`: the amount reader found no total it could read with certainty in the free text, and
-without an amount the cap rules (`mandate.over_per_payment` and the others) do not run. The Canary's own rule,
-which refuses every attempt, would have refused it too. The vault's free dry run (`check_spend`) refused the same
-payment, so the Canary sent it to the contract unfiltered, with the agent key. A raw spend writes a decision entry
-of its own to the Canary's ledger, with verdict allow and the one rule `custom.raw_mode`, which skips the code rules,
-so the transaction's `decision_hash` (`95234d98…`) is that entry's hash, not the refused decision's. In the ledger
+On 2026-11-10 the team sent the Canary a fake invoice from `probarion-payee.testnet` that asked for 50 USDC "under the
+canary mandate". The model proposed `pay`, amount `50000000` (50 USDC), mandate 1. The code rules refused it with
+`invoice.amount_invalid`: the amount reader found no total it could read with certainty in the free text, and without
+an amount the cap rules (`mandate.over_per_payment` and the others) do not run. The Canary's own rule, which refuses
+every attempt, refused it too (`custom.canary_no_autopay`). The vault's free dry run (`check_spend`) refused the same
+payment, so the Canary sent it to the contract unfiltered, with the agent key. A raw spend writes a decision entry of
+its own to the Canary's ledger, with verdict allow and the one rule `custom.raw_mode`, which skips the code rules, so
+the transaction's `decision_hash` (`95234d98…`) is that entry's hash, not the refused decision's. In the ledger
 published below, the refused decision is seq 2 and the raw-mode decision seq 3. The contract refused it on chain:
 
 | Time (UTC) | What | Transaction |
@@ -194,13 +194,13 @@ words of [SECURITY.md](../../../SECURITY.md#what-is-not-proven-yet), offline A1 
 response and the recorded proposal agree, and that the attestation report is bound to the ledger position. One by
 one, as the [interfaces spec](../../specs/2026-10-21-probarion-interfaces.md) defines them:
 
-- A1: the text the provider's TEE key signed is the one core's `formatProviderTeeText` builds from the model, the
+- A1: the text the signature covers is the one core's `formatProviderTeeText` builds from the model, the
   request's `request_sha256` and the response's `response_sha256`.
 - A2: the ECDSA (EIP-191) signature over that text recovers to the signing address the evidence names,
   `0x3b753b4406613c5e70ae640508632b600424fa0c`.
 - A3: the attestation report names the same signing address.
 - A4: the first 32 bytes of the report data hold that address.
-- A5: the last 32 bytes of the report data are the request's nonce.
+- A5: the last 32 bytes of the report data, and the report's `request_nonce`, are the evidence's nonce.
 - A6: that nonce recomputes from the entry's ledger position: its `prev_link`, `invoice_hash`, `mandate_id` and
   `seq`, and the vault's account id.
 - A7: the response body hashes to `response_sha256`, its `id` is the `chat_id`, and the proposal in it is the
@@ -211,17 +211,20 @@ they do not show yet:
 
 - **The quote is not verified online.** The online checks are not recorded for this ledger yet: O1 verifies the TDX
   quote through Intel DCAP, and O2 checks the NVIDIA GPU evidence through NRAS. Offline, check e says
-  `quote not verified offline`.
+  `quote not verified offline`, so nothing here shows yet that the signing key is held in a genuine TEE.
 - **The TEE measurement is not pinned (O1b, deferred).** Even online, neither check pins the measurements of NEAR
   AI's published image, so `quote_verified` stays false and nothing here shows which image the TEE runs.
-- **A8 was not run.** A8 rebuilds the request from the invoice text and checks that it is the one the model signed.
+- **A8 was not run.** A8 rebuilds the request from the invoice text and checks that it is the one the signature covers.
   The ledger holds no invoice text, so check e says `A8 not run`, and A1 to A7 alone do not show that the model was
-  sent the standard request for this invoice.
+  sent the standard request for this invoice at this ledger position: A5 and A6 bind the attestation report, not
+  the chat.
 - **Seq 0 and 3 are rules-only.** Check e reports them and does not fail them.
 - **The Canary's model is meant to be fooled.** It is a small model given a deliberately gullible prompt:
   `CANARY_SYSTEM_PROMPT_V1` at seq 1 and `CANARY_SYSTEM_PROMPT` at seq 2 (`apps/web/src/lib/canary/prompt.ts`, the
-  two prompts byte for byte). The attestation ties each answer to the TEE key that signed it, not to a good
-  judgement: both answers proposed paying 50 USDC, and code and the contract refused.
+  two prompts byte for byte). The attestation ties each answer to the key that signed it, the signing address of A2,
+  not to a good judgement: both answers proposed paying the invoice's 50 USDC (seq 1 wrote the amount as `"50"`,
+  which in smallest units is 0.00005 USDC). Code refused both, and the contract refused the raw spend of the second
+  attempt (seq 3 and 4).
 
 ### Run it
 

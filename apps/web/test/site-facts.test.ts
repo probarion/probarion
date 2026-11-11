@@ -472,7 +472,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
 
   it("that the model run is recorded on testnet and checked offline only", () => {
     expect(JOURNEY.steps[1].tag).toBe(
-      "On testnet, the Canary's published ledger holds two attested decisions that pass A1 to A7 offline. The online quote check is not recorded yet.",
+      "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline. The online quote check is not recorded yet.",
     );
     const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
     expect(row).toContain("**Built**");

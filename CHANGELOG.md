@@ -28,7 +28,8 @@ The software is an unaudited beta.
   privacy page, the home page's status row and model step, and the docs pages that said no real
   attested decision was recorded now say this and link the evidence; the status row "Live attested
   model run" reads "Recorded on testnet, checked offline". `apps/web/test/canary-vault.test.ts` runs
-  the checks on the committed snapshot and holds the README's table to the ledger.
+  the checks on the committed snapshot, holds the README's table to the ledger cell by cell, and pins
+  what SECURITY.md, the threat model, the privacy page and the rehearsal's rows say about it.
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision

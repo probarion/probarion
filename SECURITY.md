@@ -167,9 +167,9 @@ snapshot of the ledger and the chain:
 - **Real attested decisions are checked offline only.** The NEAR AI Cloud adapter is tested against
   a fake NEAR AI Cloud. On testnet, the Canary's ledger of 2026-11-10, published on 2026-11-11
   ([evidence](docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)), holds 2
-  real decisions by a NEAR AI Cloud model that are attested and signed and pass A1 to A7 offline. The online checks O1 and O2 are not recorded for them yet, and A8 was not run, since the
-  ledger holds no invoice text. The Canary's model is a small model given a deliberately gullible
-  prompt.
+  real decisions by a NEAR AI Cloud model that are attested and signed and pass A1 to A7 offline.
+  The online checks O1 and O2 are not recorded for them yet, and A8 was not run, since the ledger
+  holds no invoice text. The Canary's model is a small model given a deliberately gullible prompt.
 
 The full design is in [`docs/specs/2026-10-21-probarion-design.md`](docs/specs/2026-10-21-probarion-design.md)
 (§7, §10, §11 and §12), and the exact checks are in

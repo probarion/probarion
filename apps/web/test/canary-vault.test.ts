@@ -2,13 +2,14 @@
 // site say it holds two real attested decisions, so it has to hold up on its own. The verifier runs on the committed
 // snapshot, the ledger file is the snapshot's, and the folder README's table is held to the ledger, row by row.
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runChecks, type Snapshot } from "@probarion/core";
 import { describe, expect, it } from "vitest";
 import { CANARY_SYSTEM_PROMPT, CANARY_SYSTEM_PROMPT_V1 } from "@/lib/canary/prompt";
 import { decisionRows } from "@/lib/proof/decisions";
+import { PRIVACY_PAGE } from "@/lib/site/ops-copy";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 const EVIDENCE = join(ROOT, "docs", "evidence", "canary-vault");
@@ -66,6 +67,11 @@ const snapshot = JSON.parse(bytes(SNAPSHOT).toString("utf8")) as Snapshot & {
   chain: { anchors: { seq: number; count: number; root: string }[]; spends: unknown[] };
 };
 const readme = readFileSync(join(EVIDENCE, "README.md"), "utf8");
+/** Markdown with every run of whitespace, line breaks included, as one space: a rewrap changes no claim. */
+const flat = (text: string) => text.replace(/\s+/g, " ");
+/** Every backticked rule id in a cell, such as `invoice.amount_invalid`, in order. */
+const ruleIds = (cell: string | undefined) =>
+  [...(cell ?? "").matchAll(/`([a-z]+\.[a-z_]+)`/g)].map((m) => m[1] ?? "");
 
 /** The text of the README under `## <heading>`, up to the next `## ` heading. */
 function section(text: string, heading: string): string {
@@ -238,6 +244,84 @@ describe("verify on the Canary's committed snapshot", () => {
   });
 });
 
+describe("the rehearsal, as the ledger has it", () => {
+  // Seq 2 is the rehearsal's refused decision. Both rules that refused it ran, so no sentence says one "would have".
+  const refused = at(2)
+    .rules.filter((r) => r.outcome === "refuse")
+    .map((r) => r.id);
+
+  it("names both rules that refused it in the folder README", () => {
+    expect(refused).toEqual(["invoice.amount_invalid", "custom.canary_no_autopay"]);
+    const rehearsal = flat(section(readme, "## The rehearsal"));
+    for (const id of refused) expect(rehearsal).toContain(`\`${id}\``);
+    expect(rehearsal).toContain(
+      "The Canary's own rule, which refuses every attempt, refused it too (`custom.canary_no_autopay`).",
+    );
+    expect(readme).not.toContain("would have refused");
+  });
+
+  it("names both rules that refused it in the root README's Canary row", () => {
+    const root = readFileSync(join(ROOT, "README.md"), "utf8");
+    const row = root
+      .split("\n")
+      .find((l) => l.startsWith('| "50 USDC under the canary mandate" |'));
+    expect(row).toContain("Refused by code, ledger entry 2:");
+    for (const id of refused) expect(row).toContain(`\`${id}\``);
+    expect(row).not.toContain("would have refused");
+  });
+});
+
+describe("what SECURITY.md, the privacy page and the threat model say about the Canary's ledger", () => {
+  it("SECURITY.md: real attested decisions are checked offline only, O1 and O2 not recorded", () => {
+    const security = flat(readFileSync(join(ROOT, "SECURITY.md"), "utf8"));
+    expect(security).toContain("- **Real attested decisions are checked offline only.**");
+    expect(security).toContain("pass A1 to A7 offline.");
+    expect(security).toContain("The online checks O1 and O2 are not recorded for them yet");
+    expect(security).toContain(
+      "(docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)",
+    );
+    expect(security).not.toContain("No recorded real decision yet");
+  });
+
+  it("the privacy page: two of the Canary's, checked offline only, none the payables agent's", () => {
+    const invoices = PRIVACY_PAGE.sections.find((s) => s.id === "invoices");
+    const said = flat((invoices?.paragraphs ?? []).join(" "));
+    expect(said).toContain(
+      "The attested decisions recorded in the repository so far are two of the Canary's, on testnet, checked offline only; none is the payables agent's.",
+    );
+    expect(said).not.toMatch(/no attested decision|none recorded/i);
+  });
+
+  it("the threat model: the app keeps the Canary's ledger private, and the team published its own entries", () => {
+    const threat = flat(readFileSync(join(ROOT, "docs", "THREAT_MODEL.md"), "utf8"));
+    expect(threat).toContain(
+      "The app cannot make the Canary's ledger public: a database constraint forbids it",
+    );
+    expect(threat).toContain(
+      "The team published the 5 entries of its own attempts of 2026-11-10, which hold no visitor's text, as evidence",
+    );
+    expect(threat).not.toContain("The Canary's ledger cannot be made public");
+  });
+
+  it("no page calls the whole of the Canary's ledger published: only the entries of 2026-11-10 are", () => {
+    const docs = join(ROOT, "apps", "web", "content", "docs");
+    const pages = readdirSync(docs, { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".mdx"))
+      .map((f) => join(docs, f));
+    const files = [
+      join(ROOT, "README.md"),
+      join(ROOT, "SECURITY.md"),
+      join(ROOT, "docs", "THREAT_MODEL.md"),
+      join(ROOT, "apps", "web", "src", "lib", "site", "facts.ts"),
+      ...pages,
+    ];
+    expect(pages.length).toBeGreaterThan(30);
+    for (const f of files) {
+      expect(flat(readFileSync(f, "utf8")), f).not.toMatch(/Canary's published ledger/i);
+    }
+  });
+});
+
 describe("the folder README's account of the ledger", () => {
   const text = section(readme, SECTION);
   // The section has one table, the entries.
@@ -259,18 +343,28 @@ describe("the folder README's account of the ledger", () => {
         true,
       );
       if (b.evidence !== null) expect(decidedBy).toContain(`\`${b.evidence.model}\``);
-      // What the model proposed: its amount as written, or nothing.
+      // A decision whose model step gave no answer names that rule; no other row names it.
+      if (b.rules.some((r) => r.id === "model.unavailable"))
+        expect(decidedBy).toContain("(`model.unavailable`)");
+      else expect(decidedBy).not.toContain("model.unavailable");
+      // What the model proposed: its action, its amount as written and its mandate, or nothing.
       if (b.proposal === null) expect(["Nothing", "None"]).toContain(proposed);
-      else if (b.evidence !== null) expect(proposed).toContain(`amount \`"${b.proposal.amount}"\``);
-      else expect(proposed).toBe(`The proposal of seq ${seq - 1}, recorded again`);
-      // What the code did: every rule that refused, or the one rule of an allow, by its id.
+      else if (b.evidence !== null) {
+        const p = b.proposal;
+        expect(proposed?.startsWith(`\`${p.action}\`, amount \`"${p.amount}"\``)).toBe(true);
+        const mandates = [...(proposed ?? "").matchAll(/\bmandate (\d+)/g)].map((m) =>
+          Number(m[1]),
+        );
+        expect(mandates).toEqual([p.mandate_id]);
+      } else expect(proposed).toBe(`The proposal of seq ${seq - 1}, recorded again`);
+      // What the code did: exactly the rules that refused, or the one rule of an allow, by their ids.
       if (b.verdict === "refuse") expect(code?.startsWith("Refused")).toBe(true);
       if (b.verdict === "allow") expect(code?.startsWith("Allowed")).toBe(true);
       const named =
         b.verdict === "allow" || b.kind === "payment"
           ? b.rules
           : b.rules.filter((r) => r.outcome === "refuse");
-      for (const r of named) expect(code).toContain(`\`${r.id}\``);
+      expect(ruleIds(code)).toEqual(named.map((r) => r.id));
       // What the contract did, and the transaction: only the raw spend and its decision reached the contract.
       const bound = entries.find((p) => p.body.refs?.decision_body_hash === entry.body_hash)?.body;
       const sent = b.contract ?? bound?.contract ?? null;
@@ -297,9 +391,33 @@ describe("the folder README's account of the ledger", () => {
     expect(text).toContain("The online checks are not recorded for this ledger yet");
     expect(text).toContain("check e says `A8 not run`");
     expect(text).toContain("deliberately gullible prompt");
-    expect(readFileSync(join(ROOT, "SECURITY.md"), "utf8")).toContain(
-      'Probarion says "attested and signed", not "proven to run a\n  given model image"',
+    expect(flat(readFileSync(join(ROOT, "SECURITY.md"), "utf8"))).toContain(
+      'Probarion says "attested and signed", not "proven to run a given model image"',
     );
+  });
+
+  it("claims no more for the two answers than A1 to A7 show offline", () => {
+    const said = flat(text);
+    // Offline, nothing shows that the signing key is a TEE's: that is O1, online, not recorded here.
+    expect(said).not.toMatch(/TEE key|TEE's key/);
+    expect(said).toContain(
+      "- A1: the text the signature covers is the one core's `formatProviderTeeText` builds",
+    );
+    expect(said).toContain("nothing here shows yet that the signing key is held in a genuine TEE");
+    expect(said).toContain("The attestation ties each answer to the key that signed it");
+    // A5 compares the report with the evidence's nonce; whether the chat carried it is A8's question.
+    expect(said).toContain(
+      "- A5: the last 32 bytes of the report data, and the report's `request_nonce`, are the evidence's nonce.",
+    );
+    expect(said).toContain(
+      "the standard request for this invoice at this ledger position: A5 and A6 bind the attestation report, not the chat",
+    );
+    // Seq 1 wrote "50", which is not 50 USDC, and only the second attempt's raw spend reached the contract.
+    expect(said).toContain('seq 1 wrote the amount as `"50"`');
+    expect(said).toContain(
+      "the contract refused the raw spend of the second attempt (seq 3 and 4)",
+    );
+    expect(said).not.toContain("and code and the contract refused");
   });
 
   it("gives the offline command, which keeps working, and the live one, which check c ends by design", () => {
