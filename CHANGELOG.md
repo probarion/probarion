@@ -19,13 +19,16 @@ The software is an unaudited beta.
 - Release 0.1.1 is prepared, and not published: `@probarion/core`, `@probarion/sdk`, `probarion` and
   `@probarion/mcp` are at 0.1.1, with a `## 0.1.1` section below. `packages/mcp/server.json` is the
   server's entry for the official MCP registry, `io.github.probarion/probarion` (schema 2025-12-11).
-  `pnpm release:check` checks it against the tag and the package's `mcpName`, the tarball rule keeps it
-  out of the npm package, and `scripts/test/release-manifests.test.ts` pins its environment variables
-  to the ones `packages/mcp/src/config.ts` reads. `docs/RUNBOOK.md` has the OWNER's release steps: the
+  `pnpm release:check` checks it against the tag and the package's `mcpName`, with `--pack` also
+  against the `mcpName` in the packed `@probarion/mcp` manifest (the one the registry reads from npm),
+  the tarball rule keeps it out of the npm package, and `scripts/test/release-manifests.test.ts` pins
+  its environment variables to the ones `packages/mcp/src/config.ts` reads, with an absolute path for
+  each file setting. `docs/RUNBOOK.md` has the OWNER's release steps: the
   annotated tag on `main`, the `npm-release` approval, the npm checks, then `mcp-publisher` with a token
   that can read the organization role, since the registry's device login cannot publish to an
-  organization namespace yet. The `@probarion/mcp` README says the server is on npm from release 0.1.1
-  and runs from a clone until npm has it. The README's Status table has a row for 0.1.1, In progress.
+  organization namespace yet, and how to finish a publish that stops at `@probarion/mcp`. The
+  `@probarion/mcp` README says the server is on npm once release 0.1.1 is published and runs from a
+  clone until npm has it. The README's Status table has a row for 0.1.1, In progress.
 
 - The Canary's signed ledger, published as evidence in `docs/evidence/canary-vault`:
   `ledger-2026-11-10.jsonl`, the vault's whole ledger as it stood on 2026-11-11, which the owner
@@ -255,8 +258,8 @@ The software is an unaudited beta.
   vault is reported as a note (exit 0); an RPC that does not answer marks `list_mandates`,
   `get_spend_status` and `verify` as failed, skips the dry runs, and prints the server log (exit 1).
   Also `--version` and `--help`.
-- `@probarion/mcp`: `mcpName` `io.github.probarion/probarion` and keywords in package.json (still
-  0.1.0), and README setup for Claude Code, Codex CLI, Claude Desktop and Cursor, with the Windows
+- `@probarion/mcp`: `mcpName` `io.github.probarion/probarion` and keywords in package.json (at
+  0.1.0 then), and README setup for Claude Code, Codex CLI, Claude Desktop and Cursor, with the Windows
   `cmd /c` forms.
 - A testnet record of the Canary, in `docs/evidence/canary-vault`: its accounts, its mandate, the
   2026-11-10 rehearsal whose raw spend the contract refused with `OverPerPayment`, and a live
@@ -1325,9 +1328,9 @@ The software is an unaudited beta.
 
 ### Added
 
-- `@probarion/mcp`, an MCP server that gives an AI agent a Probarion vault to pay from, over stdio, as the command `probarion-mcp`; this is its first release on npm. Five tools: `list_mandates` (payee, caps, what is left, uses left, approval threshold, expiry), `check_spend` (the vault's free `check_spend` view), `request_spend`, `get_spend_status` and `verify`. No tool takes an address, every input rejects fields it does not know, and amounts go in as USDC decimal strings. No tool creates, changes or removes a mandate, a key or the vault's settings. The server holds the vault's `spend`-only agent key and `anchor`-only ledger key, and no owner key; without the two keys it runs read-only and `request_spend` is off.
+- `@probarion/mcp`, an MCP server that gives an AI agent a Probarion vault to pay from, over stdio, as the command `probarion-mcp`; this is its first release on npm. Five tools: `list_mandates` (payee, caps, what is left, uses left, approval threshold, expiry), `check_spend` (the vault's free `check_spend` view), `request_spend`, `get_spend_status` and `verify`. No tool takes an address, every input rejects fields it does not know, and amounts go in as USDC decimal strings. No tool creates, changes or removes a mandate, a key or the vault's settings. The server holds the vault's `spend`-only agent key and `anchor`-only ledger key, and no owner key; without the two keys it runs read-only and `request_spend` is off. Error messages and log lines pass through a filter that masks secret keys and cuts every URL to its origin. The package is also a library: `createServer` builds the server on any `ProbarionPort`, `buildPort` is the port over `@probarion/sdk`, and `main` is what the binary runs.
 - `@probarion/mcp`: `request_spend` names a mandate by id and runs `decide()` from `@probarion/core` and the vault's `spend`, signs the decision into the vault's ledger and anchors it. The MCP client's reasoning is stored as an unattested proposal prefixed `mcp:`, so `verify` reports these decisions as rules-only. A second request with the same ref pays nothing; it is refused and names the vault's spend under that ref (`earlier_spend`). Before each payment the server checks that its ledger file holds every entry the vault's latest anchor covers, with the same root, and otherwise stops with `LEDGER_FORK_RISK`; and that its own ledger key signed every entry after that anchor, and otherwise stops with `LEDGER_KEY_MISMATCH`. Either way it sends nothing.
-- `@probarion/mcp`: `probarion-mcp init --vault <id> [--keys-file <path>]` makes the agent key and the ledger key on the user's machine, writes them to `~/.probarion/<vault>/keys.json` (mode 0600 outside Windows) and prints only the two public keys; `probarion-mcp status` checks, read-only, that the vault is ready for them (exit code 0 when ready, 1 when not, 2 for a configuration error); `probarion-mcp demo [--vault <id>]` is a read-only tour of the five tools against the live testnet demo vault, with no key; and `--version` and `--help`. The server and `status` take their keys from both `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY`, else the file `PROBARION_KEYS_FILE` names, else the default keys file, else run read-only, so an MCP client's config needs only `PROBARION_VAULT_ID`. The other settings are `NEAR_NETWORK`, `NEAR_RPC_URLS`, `NEAR_ARCHIVAL_RPC_URLS` and `PROBARION_LEDGER_PATH`; a problem is named by its variable, or by the keys file and its field, with no value.
+- `@probarion/mcp`: `probarion-mcp init --vault <id> [--keys-file <path>]` makes the agent key and the ledger key on the user's machine, writes them to `~/.probarion/<vault>/keys.json` (mode 0600 outside Windows) and prints only the two public keys, with the owner's `probarion agent add` and `probarion ledger set-key` lines; `probarion-mcp status` checks, read-only, that the vault is ready for them (exit code 0 when ready, 1 when not, 2 for a configuration error); on testnet, `init` and `status` also link the console's Agent (MCP) tab, where the owner can paste the two keys instead (`status` offers it for the ledger key only on a vault with no anchor yet); `probarion-mcp demo [--vault <id>]` is a read-only tour of the five tools against the live testnet demo vault, with no key; and `--version` and `--help`. The server and `status` take their keys from both `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY`, else the file `PROBARION_KEYS_FILE` names, else the default keys file, else run read-only, so an MCP client's config needs only `PROBARION_VAULT_ID`. The other settings are `NEAR_NETWORK`, `NEAR_RPC_URLS`, `NEAR_ARCHIVAL_RPC_URLS` and `PROBARION_LEDGER_PATH`; a problem is named by its variable, or by the keys file and its field, with no value.
 - `@probarion/mcp`: when a client connects, the server gives it instructions for the model (the MCP `instructions` field; each client decides whether its model sees them), under 1,200 characters: whom it can pay, `check_spend` first when unsure, and what to do with a held, unconfirmed, refused or burned spend. A burned spend is final for the vault, in the words for the server's network.
 - `@probarion/mcp`: `mcpName` `io.github.probarion/probarion` in package.json, and `packages/mcp/server.json`, its entry for the official MCP registry, which the OWNER publishes with `mcp-publisher` once npm has the package. `server.json` is not in the tarball.
 

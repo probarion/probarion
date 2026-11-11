@@ -6,10 +6,9 @@ signed for its key: no tool takes an address, and the vault contract pays the ma
 
 **Unaudited beta.** Testnet first; use small amounts. MIT licensed.
 
-**On npm from release 0.1.1.** Release 0.1.1 is the first that puts `@probarion/mcp` on npm. Before
-npm has it, the server runs only from a clone of the repository, as Set it up below shows; every `npx` line
-below is marked *after the 0.1.1 release* and works once npm has that release.
-`npm view @probarion/mcp version` says whether it does.
+**On npm once release 0.1.1 is published.** Until npm has it (`npm view @probarion/mcp version` says
+whether it does), the server runs only from a clone of the repository, as Set it up below shows; every
+`npx` line below is marked *after the 0.1.1 release* and works once npm has that release.
 
 ## The five tools
 
