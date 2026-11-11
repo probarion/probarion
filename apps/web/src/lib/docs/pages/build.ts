@@ -57,7 +57,7 @@ export const BUILD: readonly DocPage[] = [
       "packages/mcp/server.json",
       "packages/mcp/README.md",
     ],
-    reviewed: "2026-11-09",
+    reviewed: "2026-11-12",
     phase: 1,
     locale: "en",
   },
