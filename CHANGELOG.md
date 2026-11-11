@@ -102,6 +102,8 @@ The software is an unaudited beta.
   - "Check these keys" runs from a form, so Enter works, moves the focus to the first field with an
     error, and says its result in a status region. Before anything is pasted, step 3 shows the keys
     the chain already has, as step 6 does.
+  - `probarion-mcp init` and `status` link the tab on testnet. `status` offers it for the ledger key
+    only on a vault with no anchor yet; otherwise it gives the `probarion ledger set-key` transaction.
 - The Keys tab lists the keys on the vault that Probarion did not make, under "On the vault, held
   outside Probarion", with their allowance and Remove for an agent key. When the vault's ledger key
   is one of them, "Generate ledger key and set it in my wallet" shows a red notice and asks in a
