@@ -16,6 +16,7 @@ import { isNearAccountId } from "@probarion/core";
 import { envValue } from "@probarion/sdk";
 import { safeMessage, TOOL_NAMES } from "./server.js";
 import { formatUsdc, parseUsdc } from "./units.js";
+import { argumentShown } from "./words.js";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -180,7 +181,7 @@ function parseArgs(args: readonly string[]): Arguments | { problem: string } | "
     } else if (a.startsWith("--vault=")) {
       vault = a.slice("--vault=".length);
     } else {
-      return { problem: `unknown argument ${JSON.stringify(a).slice(0, 60)}` };
+      return { problem: `unknown argument ${argumentShown(a, i + 1)}` };
     }
   }
   if (!isNearAccountId(vault)) return { problem: "--vault must be a NEAR account id" };

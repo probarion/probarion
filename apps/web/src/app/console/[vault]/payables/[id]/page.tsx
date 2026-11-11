@@ -35,6 +35,7 @@ import {
   usdcFixed,
 } from "@/lib/payables/view";
 import { loadWaitingView, type WaitingView } from "@/lib/payables/waiting";
+import { proofAuditHref } from "@/lib/proof/audit-link";
 import { CLI_ON_NPM, EVIDENCE_CLONE, needsEvidenceClone } from "@/lib/proof/cli";
 import { safeText } from "@/lib/proof/sanitize";
 import { chainCommand } from "@/lib/proof/view";
@@ -305,6 +306,8 @@ export default async function InvoiceCyclePage({
   const confirmationInLedger =
     entries !== null && ledgerHoldsConfirmation(entries, inv.invoice_hash, inv.confirm_signature);
   const m = waiting?.mandate ?? null;
+  // Only a public proof page shows the decision to whoever is given the link.
+  const audit = member.proof_public && outcome ? proofAuditHref(vault, entries, outcome) : null;
 
   return (
     <div>
@@ -431,6 +434,17 @@ export default async function InvoiceCyclePage({
         </Notice>
       )}
 
+      {audit ? (
+        <p className="mt-4 text-sm">
+          Audit link:{" "}
+          <RouteLink route="/proof/[vault]" href={audit} className="mono break-all underline">
+            {audit}
+          </RouteLink>
+          . It opens this decision&apos;s card on the vault&apos;s public proof page: its rules,
+          what the contract did and, for a decision made with model output, checks A1 to A7. Anyone
+          with the link can open it.
+        </p>
+      ) : null}
       <p className="mt-4 text-sm">
         Check it yourself: the{" "}
         <RouteLink route="/proof/[vault]" href={`/proof/${encodeURIComponent(vault)}`}>
