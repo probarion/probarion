@@ -6,7 +6,10 @@ signed for its key: no tool takes an address, and the vault contract pays the ma
 
 **Unaudited beta.** Testnet first; use small amounts. MIT licensed.
 
-<!-- TODO(release): this package is not on npm yet. When it is, replace the clone steps with the npx command. -->
+**Not on npm yet.** Today the server runs from a clone of the repository, as Set it up below shows.
+Every `npx` line below is marked *after the 0.1.1 release*, and none of them works before that release.
+
+<!-- TODO(release): at the 0.1.1 release, drop the "Not on npm yet" paragraph and the "after the 0.1.1 release" marks, and lead each client with its npx line. -->
 
 ## The five tools
 
@@ -15,7 +18,7 @@ signed for its key: no tool takes an address, and the vault contract pays the ma
 | `list_mandates` | The vault's mandates: payee, cap per payment, total cap and what is left, uses left, approval threshold, expiry and the agent key each is bound to, beside this server's own | No |
 | `check_spend` | Asks the vault contract (`check_spend`, a free view) whether it would pay this amount under this mandate | No |
 | `request_spend` | Pays under a mandate: Probarion's rules (`decide()` in `@probarion/core`) decide, the contract's `spend` checks again and pays the mandate's payee, and the decision goes into the vault's signed ledger. A second request with the same ref pays nothing: it is refused, and names the vault's spend under that ref as `earlier_spend` | Yes, `spend` with the agent key |
-| `get_spend_status` | Reads a spend by id: held, pending, paid, burned, failed, rejected or expired | No |
+| `get_spend_status` | Reads a spend by id: held, pending, paid, burned, failed, rejected or expired. `burned` is final for the vault: Probarion does not watch the release on the other chain yet (on testnet nothing leaves NEAR), so do not poll a burned spend or send it again | No |
 | `verify` | Runs Probarion's verifier on the vault and the ledger file at `PROBARION_LEDGER_PATH`: ledger signatures, hash links, anchors, a decision behind every spend, keys, code | No |
 
 Amounts go in as USDC decimal strings (`"0.01"`, `"25.50"`). Every input rejects fields it does not know, so
@@ -57,27 +60,105 @@ settings from its environment:
 | `NEAR_ARCHIVAL_RPC_URLS` | No | The archival RPC URLs `verify` reads old transactions from, with the same rules |
 | `PROBARION_LEDGER_PATH` | No | The ledger file. Default `~/.probarion/<vault>/ledger.jsonl` |
 
+`node packages/mcp/dist/bin.js --help` lists the commands and `--version` prints the version. With no
+argument, the binary is the MCP server and writes only JSON-RPC to stdout.
+
 The owner makes the keys and the mandates with the
 [`probarion` CLI](https://github.com/probarion/probarion/tree/main/packages/cli): `agent keygen` once for each
 key, `agent add` for the agent key, `ledger set-key` for the ledger key, and `mandate create`. The CLI prints
 each owner transaction for the owner's wallet to sign.
 
+## Try it: the read-only demo
+
+One command, with no key and no wallet, run in the clone's folder once it is built:
+
+```sh
+node packages/mcp/dist/bin.js demo
+```
+
+After the 0.1.1 release: `npx -y @probarion/mcp@0.1.1 demo`.
+
+The demo starts the MCP server over stdio with no key in its environment, against the public testnet vault
+`demo.vaults.probarion.testnet` (`--vault <id>` picks another testnet vault). Each step prints what it
+expects and what came back:
+
+1. `tools/list`: the five tools, and that no input field names a recipient.
+2. `list_mandates`: the mandate's payee, caps, uses and expiry, read live from the vault contract.
+3. `check_spend`, the contract's free dry run, at three amounts taken from those caps: one it pays, one it
+   holds for an approver, and one over the per-payment cap that it refuses with `OverPerPayment`.
+4. `request_spend` with an injected `"to"` field, refused by the input schema before the tool runs.
+5. `get_spend_status` on a paid spend.
+6. `verify` on the vault's signed ledger, downloaded from its public
+   [proof page](https://probarion.xyz/proof/demo.vaults.probarion.testnet). When the download fails, the
+   step says so and is skipped.
+
+Nothing is signed or sent: the server has no key, and every step is a read, a dry run or a refusal. The
+numbers it prints are read live, so they change as the vault is used. When the mandate's uses are used up or
+it has expired, the demo says so, shows the contract refusing, and still exits 0. It exits 1 when a step
+does not answer as expected.
+
+## Add it to an MCP client
+
+The lines below give the server the public demo vault in read-only mode, which needs no key. To let the
+agent pay, use your own vault and add `PROBARION_AGENT_KEY` and `PROBARION_LEDGER_KEY` beside
+`PROBARION_VAULT_ID`. Use the full path of your clone in place of `/path/to/probarion`. If a client cannot
+find `node`, give its full path (`which node`, or `where node` on Windows).
+
+On Windows, `npx` is a batch file that most clients cannot start directly: run it through `cmd /c`, as the
+Windows lines show. `node` needs no `cmd /c`. The first `npx` run downloads the package and its
+dependencies, which can outlast a client's start-up timeout; after the 0.1.1 release,
+`npm install -g @probarion/mcp@0.1.1` once and then the command `probarion-mcp` avoids that. On Windows the
+global `probarion-mcp` is a batch file too, so the command there is `cmd /c probarion-mcp`.
+
 ### Claude Code
 
-From the clone's folder (on Windows, give the full path to `bin.js`):
+From a clone:
 
 ```sh
 claude mcp add probarion \
-  -e PROBARION_VAULT_ID=acme.vaults.probarion.testnet \
-  -e PROBARION_AGENT_KEY=ed25519:... \
-  -e PROBARION_LEDGER_KEY=ed25519:... \
-  -- node "$PWD/packages/mcp/dist/bin.js"
+  -e PROBARION_VAULT_ID=demo.vaults.probarion.testnet \
+  -- node /path/to/probarion/packages/mcp/dist/bin.js
 ```
 
-### Claude Desktop and other MCP clients
+After the 0.1.1 release:
 
-Add this to the client's MCP config (`claude_desktop_config.json` for Claude Desktop), with the full path
-of your clone:
+```sh
+claude mcp add probarion -e PROBARION_VAULT_ID=demo.vaults.probarion.testnet -- npx -y @probarion/mcp@0.1.1
+```
+
+On Windows, after the 0.1.1 release:
+
+```sh
+claude mcp add probarion -e PROBARION_VAULT_ID=demo.vaults.probarion.testnet -- cmd /c npx -y @probarion/mcp@0.1.1
+```
+
+### Codex CLI
+
+From a clone:
+
+```sh
+codex mcp add probarion \
+  --env PROBARION_VAULT_ID=demo.vaults.probarion.testnet \
+  -- node /path/to/probarion/packages/mcp/dist/bin.js
+```
+
+Or in `~/.codex/config.toml` (on Windows, write the path with forward slashes, e.g.
+`C:/path/to/probarion/packages/mcp/dist/bin.js`):
+
+```toml
+[mcp_servers.probarion]
+command = "node"
+args = ["/path/to/probarion/packages/mcp/dist/bin.js"]
+env = { PROBARION_VAULT_ID = "demo.vaults.probarion.testnet" }
+```
+
+After the 0.1.1 release, `command = "npx"` and `args = ["-y", "@probarion/mcp@0.1.1"]`; on Windows,
+`command = "cmd"` and `args = ["/c", "npx", "-y", "@probarion/mcp@0.1.1"]`.
+
+### Claude Desktop
+
+Add this to `claude_desktop_config.json` (on macOS in `~/Library/Application Support/Claude/`, on Windows
+in `%APPDATA%\Claude\`), then restart Claude Desktop. From a clone:
 
 ```json
 {
@@ -86,17 +167,26 @@ of your clone:
       "command": "node",
       "args": ["/path/to/probarion/packages/mcp/dist/bin.js"],
       "env": {
-        "PROBARION_VAULT_ID": "acme.vaults.probarion.testnet",
-        "PROBARION_AGENT_KEY": "ed25519:...",
-        "PROBARION_LEDGER_KEY": "ed25519:..."
+        "PROBARION_VAULT_ID": "demo.vaults.probarion.testnet"
       }
     }
   }
 }
 ```
 
-The keys sit in that file in plain text, so keep it private, and give the server a vault that holds only what
-the agent may spend.
+After the 0.1.1 release, `"command": "npx"` and `"args": ["-y", "@probarion/mcp@0.1.1"]`; on Windows,
+`"command": "cmd"` and `"args": ["/c", "npx", "-y", "@probarion/mcp@0.1.1"]`. In JSON, a Windows path
+needs its backslashes doubled, or forward slashes.
+
+### Cursor
+
+Put the same `mcpServers` block as for Claude Desktop in `.cursor/mcp.json` in your project, or in
+`~/.cursor/mcp.json` for every project. The npx and Windows forms are the same too.
+
+### Keys in a config file
+
+With keys, the `env` block holds them in plain text, so keep that file private, and give the server a vault
+that holds only what the agent may spend.
 
 ## One ledger per vault
 

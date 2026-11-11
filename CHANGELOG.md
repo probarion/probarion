@@ -38,6 +38,16 @@ The software is an unaudited beta.
 - The overview's "Your first agent payment" card offers its keys step two ways, hosted Payables on
   Keys or your own AI agent on Agent (MCP), and ticks it when the chain shows an agent key and a
   ledger key that the console did not make.
+- `@probarion/mcp`: `probarion-mcp demo [--vault <id>]`, a read-only tour of the five tools against
+  the live testnet demo vault. It needs no key and signs and sends nothing. It shows the tools and
+  their fields, the live caps, the contract's `check_spend` answers (ok, held, `OverPerPayment`), an
+  injected `to` field refused by the schema, a paid spend, and verify on the public ledger. A frozen
+  vault is reported as a note (exit 0); an RPC that does not answer marks `list_mandates`,
+  `get_spend_status` and `verify` as failed, skips the dry runs, and prints the server log (exit 1).
+  Also `--version` and `--help`.
+- `@probarion/mcp`: `mcpName` `io.github.probarion/probarion` and keywords in package.json (still
+  0.1.0), and README setup for Claude Code, Codex CLI, Claude Desktop and Cursor, with the Windows
+  `cmd /c` forms.
 - A testnet record of the Canary, in `docs/evidence/canary-vault`: its accounts, its mandate, the
   2026-11-10 rehearsal whose raw spend the contract refused with `OverPerPayment`, and a live
   `verify` run with its snapshot. The run passes check f (no full-access key, only the ledger key and
@@ -99,7 +109,7 @@ The software is an unaudited beta.
     ed25519 secret key, and an RPC URL must be `https://` (`http://` only on this machine) with no
     user name or password; a problem is named by its variable, with no value. Errors and log lines pass
     through a filter that masks secret keys and cuts every URL to its origin.
-  - 91 tests, among them an end-to-end run over the SDK's fake chain and a stdio JSON-RPC session.
+  - 103 tests, among them an end-to-end run over the SDK's fake chain and a stdio JSON-RPC session.
 - The pay-per-call example in `examples/402` (a private workspace package, testnet only). An HTTP
   endpoint answers `402 Payment Required` with a quote: a price, a payee and a short text. An agent
   pays the text's sha256 through `@probarion/mcp` under a mandate, with `402:<quote id>` as the ref,
@@ -565,6 +575,14 @@ The software is an unaudited beta.
   it replays no model and runs only on a sandbox. The
   README's safety architecture and attack 7 of the threat model cite it, and the threat model's known
   gaps add the first two.
+- Eval: 20 synthetic invoices (6 prompt-injected, 4 PDFs) run offline through the production reader,
+  fact reader, mandate choice and `decide()` with the pipeline's custom rules, plus mirrors of the
+  SQL intake duplicate guard, the SDK's `execute()` and the pipeline's owner wait; no transaction is
+  built or sent. Rules-only results are committed: the code layer alone stops 8/8 of the invoices
+  that must not be paid, with 0/20 false refusals, and 9/20 are held for the owner. In rules-only
+  nothing can be sent by design, so its money moved wrongly (0/20) is not a result. The model replay
+  is not recorded yet (the OWNER runs `pnpm eval:record`; a failed model call is recorded and decided
+  rules-only, as the SDK does). See `eval/README.md`.
 
 ### Changed
 
@@ -804,6 +822,12 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- `@probarion/mcp`: the burned outcome no longer tells the agent to poll `get_spend_status`. A burn
+  is final for the vault: the agent must not resend it under any ref, and should tell the owner if
+  the payee reports nothing. On mainnet the bridge releases the funds and Probarion does not watch
+  that release yet; on testnet the note says intents-stub stands in for NEAR Intents and nothing
+  leaves NEAR. Spend outcomes, the developer quickstart, the glossary and the SDK README say the
+  same.
 - Console: a long account id (a 64-character implicit account, or a long named one) wraps inside the
   confirmation dialog, such as "Create vault in my wallet", and in the mandate form, where it made the
   dialog scroll sideways. The shared `ConfirmDialog` wraps its title, body and footnote anywhere.

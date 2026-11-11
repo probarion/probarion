@@ -83,8 +83,9 @@ console.log(outcome.status, outcome.code, outcome.spendId, outcome.txHash);
   With `spendId` null, a code rule held it (`code` names the rule) and nothing was sent; there is no
   approval to give for a code hold.
 - `paid`: paid on NEAR.
-- `burned`: paid out through NEAR Intents for Base or Solana. The release on the other chain is
-  observed later, so `process` does not return `settled`.
+- `burned`: paid out through NEAR Intents for Base or Solana. The bridge releases the funds on the
+  other chain, and Probarion does not watch that release yet, so `process` does not return `settled`.
+  `burned` is final for the vault: do not poll it for a change or send it again.
 - `failed`: definitely not paid.
 - `unconfirmed`: a `spend` was sent and may have paid. Find out on the chain whether it did before
   anything else, and do not send it again under a new `ref`. The contract has no lookup by `ref`:

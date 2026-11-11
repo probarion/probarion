@@ -45,7 +45,7 @@ export type SpendOutcomeStatus =
 | Status | `spendId` | `code` | `txHash` | Money moved | Next action |
 | --- | --- | --- | --- | --- | --- |
 | `paid` | The spend's id | `null` | The spend transaction, or null when found by ref | Yes: USDC to the mandate's NEAR payee | Record `spendId` and `txHash`. |
-| `burned` | The spend's id | `null` | The spend transaction, or null when found by ref | Yes: out of the vault through NEAR Intents, for a Base or Solana payee | Record `spendId` and `txHash`. The release on the other chain comes later. |
+| `burned` | The spend's id | `null` | The spend transaction, or null when found by ref | Yes: out of the vault through NEAR Intents, for a Base or Solana payee | Record `spendId` and `txHash`. Never send it again, under the same ref or a new one: the burn is final for the vault. See [Paid, burned and settled](#paid-burned-and-settled). |
 | `held`, contract hold | The spend's id | `null` | The spend transaction, or null when found by ref | No. The amount is reserved. | An approver approves or rejects it. See [Contract hold](#contract-hold). |
 | `held`, code hold | `null` | The first rule that held | `null` | No. Nothing was sent. | Change what caused the hold, then run the cycle again. See [Code hold](#code-hold). |
 | `refused_by_code` | `null` | The first rule that refused | `null` | No. Nothing was sent. | Fix what `code` names, then run the cycle again. For `invoice.duplicate`, read the rule's detail first. See [Refused by code](#refused-by-code). |
@@ -289,8 +289,10 @@ The code rules cannot see everything. `decide()` has no list of the vault's agen
 ## Paid, burned and settled
 
 - **`paid`.** The vault sent USDC to the mandate's NEAR payee with `ft_transfer`, and its callback settled the spend. Final.
-- **`burned`.** The mandate pays a Base or Solana address. The vault called `ft_withdraw` on NEAR Intents with the memo `WITHDRAW_TO:` followed by the payee's address, and the release on the other chain is observed later. The vault counts any withdrawal result other than an error or "0" as burned, because value may have left the vault. The payment entry records a settlement with the chain, a `tx_hash` of null and the spend transaction as `burn_tx_hash`, which is null too when the spend was found by its ref.
+- **`burned`.** The mandate pays a Base or Solana address. The vault called `ft_withdraw` on NEAR Intents with the memo `WITHDRAW_TO:` followed by the payee's address, and the bridge releases the funds on the other chain. The vault counts any withdrawal result other than an error or "0" as burned, because value may have left the vault. The payment entry records a settlement with the chain, a `tx_hash` of null and the spend transaction as `burn_tx_hash`, which is null too when the spend was found by its ref.
 - **`settled`.** The type member for that later release. `process()` never returns it.
+
+A burn is final for the vault, and its status stays `burned`. Probarion does not watch the release on the other chain yet, so nothing in the vault or the ledger changes when the funds arrive, and polling `probarion.spends.get(spendId)` for a change never ends. Never send the payment again, under the same ref or a new one. If the payee reports nothing after a while, tell the vault owner, with the destination and the spend transaction.
 
 `txHash` is null on a `paid`, `burned` or `failed` outcome with a `spendId`, or on a contract hold, in one case: the vault answered `DuplicateRef` or `DuplicateInvoice` to a re-signed copy, and the SDK found this decision's own spend by its ref. A re-signed copy comes from the SDK's sender after `InvalidNonce`: it signs the same spend again only once the node says it does not know the first copy. If that first copy landed anyway, the vault answers the new copy with a duplicate code. The transaction that landed the spend is then unknown to the SDK, and the payment entry records the answered transaction as `contract.tx_hash`. The SDK's outcome tests pin this for `paid`, `burned` and `failed`. For a contract hold, it follows from the SDK's code; no test shows it yet.
 

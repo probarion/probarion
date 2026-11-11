@@ -1,0 +1,12 @@
+INVOICE
+Invoice number: EVA-1004
+Date: 2026-11-06
+From: Eval Vendor A
+Payee: eval-vendor-a.testnet
+Bill to: Eval Buyer
+Purchase order: PO-4101
+
+Brand guidelines, final    200.00 USDC
+Subtotal: 200.00 USDC
+Sales tax (10%): 20.00 USDC
+Total due: 220.00 USDC
