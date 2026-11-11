@@ -80,14 +80,26 @@ const BURNED: Readonly<Record<Network, { note: string; status: string }>> = {
   },
 };
 
+/** The burn rule as get_spend_status and the server's instructions state it. */
+const burnedRule = (network: Network): string =>
+  `burned is final for the vault and does not change: ${BURNED[network].status}, so do not poll a burned spend or send it again.`;
+
+// Sentences that a tool's text and the server's instructions share, so the two cannot drift.
+const ONLY_PAYEES =
+  "you cannot pay anyone who is not the payee of an active mandate bound to this server's key";
+const NO_RECIPIENT =
+  "There is no recipient parameter: the vault pays the mandate's payee and nobody else.";
+const PAYS_ONCE = "Each ref and each invoice_hash pays at most once";
+const NO_WORKAROUND = "Do not retry with another amount or ref to get around it.";
+const READ_ONLY_OFF =
+  "request_spend is off: this server runs read-only because no agent and ledger keys are set.";
+
 const NOTES: Readonly<Record<Exclude<SpendOutcomeStatus, "burned">, string>> = {
   paid: "Paid on NEAR to the mandate's payee.",
   settled: "Settled on the destination chain.",
   held: "Held for a human approver: the amount is above the mandate's approval threshold. Poll get_spend_status with the spend_id; do not send it again.",
-  refused_by_code:
-    "Refused by Probarion's rules before any transaction; the refusal is in the vault's signed ledger. Do not retry with another amount or ref to get around it.",
-  refused_by_contract:
-    "Refused by the vault contract. Do not retry with another amount or ref to get around it.",
+  refused_by_code: `Refused by Probarion's rules before any transaction; the refusal is in the vault's signed ledger. ${NO_WORKAROUND}`,
+  refused_by_contract: `Refused by the vault contract. ${NO_WORKAROUND}`,
   failed: "Not paid. Tell the vault owner.",
   unconfirmed:
     "The spend was sent and may have paid. Do not send it again, least of all under a new ref: check get_spend_status (with a spend_id) or ask the vault owner.",
@@ -96,6 +108,22 @@ const NOTES: Readonly<Record<Exclude<SpendOutcomeStatus, "burned">, string>> = {
 /** A hold with no spend on chain is Probarion's own (see code): nothing was sent and no approver sees it. */
 const HELD_OFF_CHAIN =
   "Held by Probarion's rules (see code; intents.balance_low means the vault's NEAR Intents balance is too low for this payee). Nothing was sent and nothing waits for an approver; the same ref can be retried once the cause is fixed.";
+
+/**
+ * The server's instructions, which an MCP client gives the model when it connects. Each rule is the sentence a
+ * tool description or an answer's note already uses; the burn rule depends on the network, and the read-only
+ * line shows only on a server with no keys. A hold with no spend_id is left to its note.
+ */
+export function serverInstructions(info: Pick<ServerInfo, "network" | "readOnly">): string {
+  return [
+    `Start with list_mandates: ${ONLY_PAYEES}. ${NO_RECIPIENT} When unsure, call check_spend first: it sends no transaction. ${PAYS_ONCE}. Follow the note in each request_spend answer.`,
+    `held with a spend_id: ${NOTES.held}`,
+    `unconfirmed: ${NOTES.unconfirmed}`,
+    `refused_by_code or refused_by_contract: the refusal is final for that request. ${NO_WORKAROUND}`,
+    burnedRule(info.network),
+    ...(info.readOnly ? [READ_ONLY_OFF] : []),
+  ].join("\n");
+}
 
 /** The note for an outcome: a hold with no spend_id is not the approval-threshold hold. */
 function noteFor(out: SpendOutcome, network: Network): string {
@@ -118,15 +146,17 @@ const READ_ONLY = {
 } as const;
 
 export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
-  const server = new McpServer({ name: "probarion", version: info.version });
+  const server = new McpServer(
+    { name: "probarion", version: info.version },
+    { instructions: serverInstructions(info) },
+  );
   const explorer = NETWORKS[info.network].explorerTx;
 
   server.registerTool(
     "list_mandates",
     {
       title: "List mandates",
-      description:
-        "List the spending mandates of this Probarion vault: for each, the payee, the per-payment cap, the total cap and what is left of it, the uses left, the approval threshold, the expiry and the agent key it is bound to (agent_key at the top is this server's). The vault owner signs mandates; you cannot create or change one, and you cannot pay anyone who is not the payee of an active mandate bound to this server's key.",
+      description: `List the spending mandates of this Probarion vault: for each, the payee, the per-payment cap, the total cap and what is left of it, the uses left, the approval threshold, the expiry and the agent key it is bound to (agent_key at the top is this server's). The vault owner signs mandates; you cannot create or change one, and ${ONLY_PAYEES}.`,
       inputSchema: listMandatesInput,
       annotations: READ_ONLY,
     },
@@ -174,8 +204,7 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
     "request_spend",
     {
       title: "Pay under a mandate",
-      description:
-        "Ask the vault to pay an invoice under a mandate. There is no recipient parameter: the vault pays the mandate's payee and nobody else. Probarion's rules and then the contract check the mandate's caps, uses and expiry; a payment above the approval threshold waits for a human approver. Each ref and each invoice_hash pays at most once: a second request with the same ref does not pay again, it is refused, and when the vault already holds a spend under that ref the answer names it as earlier_spend. Every request, refusals included, is stored in the vault's signed ledger with your reasoning.",
+      description: `Ask the vault to pay an invoice under a mandate. ${NO_RECIPIENT} Probarion's rules and then the contract check the mandate's caps, uses and expiry; a payment above the approval threshold waits for a human approver. ${PAYS_ONCE}: a second request with the same ref does not pay again, it is refused, and when the vault already holds a spend under that ref the answer names it as earlier_spend. Every request, refusals included, is stored in the vault's signed ledger with your reasoning.`,
       inputSchema: requestSpendInput,
       annotations: {
         readOnlyHint: false,
@@ -186,11 +215,7 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
     },
     async (args) =>
       guarded(async () => {
-        if (info.readOnly) {
-          return fail(
-            "request_spend is off: this server runs read-only because PROBARION_AGENT_KEY and PROBARION_LEDGER_KEY are not set.",
-          );
-        }
+        if (info.readOnly) return fail(READ_ONLY_OFF);
         const amount = parseUsdc(args.amount);
         const proposal: ModelProposal = {
           action: "pay",
@@ -237,7 +262,7 @@ export function createServer(port: ProbarionPort, info: ServerInfo): McpServer {
     "get_spend_status",
     {
       title: "Get a spend's status",
-      description: `Read a spend from the vault by id: held, pending, paid, burned, failed, rejected or expired. burned is final for the vault and does not change: ${BURNED[info.network].status}, so do not poll a burned spend or send it again.`,
+      description: `Read a spend from the vault by id: held, pending, paid, burned, failed, rejected or expired. ${burnedRule(info.network)}`,
       inputSchema: getSpendStatusInput,
       annotations: READ_ONLY,
     },

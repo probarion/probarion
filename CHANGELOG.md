@@ -14,6 +14,15 @@ The software is an unaudited beta.
 
 ### Added
 
+- `@probarion/mcp` gives the model server instructions when a client connects (the MCP `instructions`
+  field), under 1,200 characters and built from the same sentences as its tool descriptions and
+  answer notes, so the two cannot drift: only the payee of an active mandate bound to the server's
+  key can be paid, with no recipient parameter; `check_spend` first when unsure; each ref and each
+  invoice hash pays at most once; poll a `held` spend and do not send it again; an `unconfirmed`
+  spend may have paid, so do not resend it under a new ref; a refusal is final for that request;
+  `burned` is final for the vault and does not change, worded for the server's network. A server
+  with no keys adds that `request_spend` is off, and that refusal now says no agent and ledger keys
+  are set (a keys file counts too) in place of naming the two environment variables.
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision
