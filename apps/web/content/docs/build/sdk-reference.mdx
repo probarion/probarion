@@ -6,7 +6,7 @@
 npm install @probarion/sdk @probarion/core
 ```
 
-The SDK's examples import from both packages, so install both. Release 0.1.1 is on npm. It is ESM only and needs Node 24 or newer. [Install the packages](/docs/build/install) covers a build from a clone, the import path of each entry point and the environment variables. The SDK takes `"testnet"` or `"mainnet"`, but only NEAR testnet has a vault today, and the mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+The SDK's examples import from both packages, so install both. Release 0.1.1 is on npm. It is ESM only and needs Node 24 or newer. [Install the packages](/docs/build/install) covers a build from a clone, the import path of each entry point and the environment variables. The SDK takes `"testnet"` or `"mainnet"`. The vaults run on NEAR testnet today, and one small vault, `v0.probarion.near`, runs on mainnet: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
 
 ## How to read the tables
 
@@ -81,7 +81,7 @@ With `model: { provider: "near-ai-cloud", apiKey }`, `Probarion` makes a `NearAi
 
 ## Snapshot and proof
 
-`snapshot()` and `verify()` use these, so you need them directly only to build a snapshot or a check of your own. A few concern only the mainnet vault `v0.probarion.near`, which is Planned: the code names it in advance as the only vault whose spends may predate the signed ledger. [Verifier checks a to i](/docs/trust/verifier-checks) says what each check proves, and [Verify a vault yourself](/docs/trust/verify-a-vault) runs the verifier on a live vault.
+`snapshot()` and `verify()` use these, so you need them directly only to build a snapshot or a check of your own. A few concern only the mainnet vault `v0.probarion.near`, deployed on 2026-11-11 with no ledger: the code names it as the only vault whose spends may predate the signed ledger. [Verifier checks a to i](/docs/trust/verifier-checks) says what each check proves, and [Verify a vault yourself](/docs/trust/verify-a-vault) runs the verifier on a live vault.
 
 <RefTable id="sdk-proof" />
 

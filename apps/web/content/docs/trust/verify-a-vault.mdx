@@ -158,7 +158,7 @@ RESULT: UNPROVEN (no check failed; what the UNPROVEN rows name is not proven)
 | --- | --- | --- |
 | `approver_tx` | An approver paid out a held spend. Its burn is in the approver's transaction, which your ledger does not record. | Pass `--burn-tx` or `--proof`. |
 | `not_recorded` | The spend is bound to its decision, but no payment entry names its transaction. | Pass `--burn-tx` or `--proof`. |
-| `pre_ledger_no_tx` | A spend of the mainnet vault `v0.probarion.near` (planned) from before its ledger, with no transaction supplied. | Pass `--burn-tx` or `--proof`. |
+| `pre_ledger_no_tx` | A spend of the mainnet vault `v0.probarion.near` from before its ledger, with no transaction supplied. | Pass `--burn-tx` or `--proof`. |
 | `tx_unavailable` | The transaction could not be read right now: no node gave a definite answer, for example because the archival node was unreachable. | Run it again, or add `--archival-rpc`. |
 
 In the check e row of step 1, `A8 not run` is expected from the CLI: `verify` never passes invoice texts. A8 runs only when invoice texts are supplied: through the SDK's `verify({ invoiceTexts })`, or through `runChecks` from `@probarion/core` with `invoiceTexts`.

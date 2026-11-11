@@ -138,7 +138,7 @@ The `verify` check, the one check a branch rule requires, passes only when every
 - **A local build.** `pnpm contracts:build` runs `cargo near build non-reproducible-wasm` outside Docker, and adds `--no-abi` in a Windows shell such as Git Bash. It is for tests and testnet runs. Its hash matches no row, and the repository never records one.
 - **Comparing hex with base58.** `sha256sum` prints the sha256 in hex. NEAR reports the same sha256 in base58. `node scripts/code-hash.mjs hash <wasm>` prints the base58 form, and the build info next to the wasm holds both, as `code_hash` and `sha256`.
 - **A vault on a global contract.** Such an account has no code of its own: `view_account` reports the all-zero hash, `11111111111111111111111111111111`, as its `code_hash`, and the code's hash as `global_contract_hash`. `chain.mjs code-hash` prints `code_hash` only. The SDK, and so the verifier, reads `global_contract_hash` first.
-- **Looking on mainnet.** No vault or factory is deployed on mainnet yet, so there is no mainnet account to compare with. [Testnet and mainnet](/docs/start/testnet-and-mainnet) has the status.
+- **Looking on mainnet.** One vault is deployed there, `v0.probarion.near`. Its code hash is `3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1`, the same recorded build the testnet factory's vaults run. Run `chain.mjs code-hash` with `RPC=https://rpc.mainnet.fastnear.com` to read it. No factory is deployed on mainnet. [Testnet and mainnet](/docs/start/testnet-and-mainnet) has the status.
 
 ## Related pages
 

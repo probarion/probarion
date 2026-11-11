@@ -38,7 +38,8 @@ export type OwnerMethod = keyof typeof METHOD_DEPOSIT;
  *   and its callback; §5 says at least 130).
  * - `create_vault`: docs/runbooks/factory.md §1-§2 attaches 300 Tgas in both modes.
  * - `storage_deposit` and `ft_transfer` are signed by the owner on the USDC contract, not on the
- *   vault: docs/runbooks/mainnet-v0.md §4-§5 attach 30 Tgas to both.
+ *   vault: docs/runbooks/mainnet-v0.md section 4 (`storage_deposit`) and the recovery `ft_transfer` under
+ *   "If anything looks wrong" attach 30 Tgas to both.
  */
 export const GAS = {
   add_agent: 30,

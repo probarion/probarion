@@ -6,10 +6,14 @@ owner's vault when Probarion is the cause. **Unaudited beta.**
 - **Scope.** One Vercel project, one deployment and one Supabase database serve both NEAR networks. The
   address a request is opened at decides its network
   ([both networks in one project](runbooks/web-deploy.md#35-both-networks-in-one-project)). Only testnet
-  is live today: the mainnet factory is not deployed (`contracts/deployments/mainnet.json`), so no mainnet
-  vault exists yet. The vaults Probarion runs are, per network, the team vaults (`TEAM_VAULT_IDS_<NET>`),
-  the demo vault of `/proof` (`PROBARION_VAULT_ID_<NET>`) and the Canary (`CANARY_VAULT_ID_<NET>`), plus
-  the test deployments in `contracts/deployments/testnet.json`.
+  is served today: the mainnet factory is not deployed (`contracts/deployments/mainnet.json`), so the
+  console cannot create or open a mainnet vault. The vaults Probarion runs are, per network, the team
+  vaults (`TEAM_VAULT_IDS_<NET>`), the demo vault of `/proof` (`PROBARION_VAULT_ID_<NET>`) and the
+  Canary (`CANARY_VAULT_ID_<NET>`), plus the test deployments in `contracts/deployments/testnet.json`
+  and, on mainnet, the standalone vault `v0.probarion.near` of 2026-11-11, which holds a small amount of
+  real USDC. Its owner, `probarion.near`, signs its owner calls with near-cli-rs: the freeze, revoke,
+  remove-agent and withdraw commands are at the end of
+  [`runbooks/mainnet-v0.md`](runbooks/mainnet-v0.md#if-anything-looks-wrong).
 - **On call:** the OWNER. Claude investigates, drafts posts and messages, and prepares commands. It never
   signs a transaction, deploys, changes a setting or sends a message.
 - **OWNER SIGNS** marks every transaction here that changes a vault. The vault's owner signs it, in a

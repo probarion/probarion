@@ -237,7 +237,7 @@ In a clone, a package of the clone's pnpm workspace that depends on the SDK also
 `NEAR_RPC_URLS` and `NEAR_ARCHIVAL_RPC_URLS` replace the RPCs of whichever network you pass, and `.env.example` sets both to testnet URLs. With those values, a run with `--network mainnet` still talks to testnet RPCs, since nothing in the packages checks which chain an RPC serves. This follows from the code; no test shows it yet. Unset both, or set mainnet URLs, before a mainnet run. `.env.example` also sets `PROBARION_FACTORY_ID` and `PROBARION_VAULT_ID` to testnet accounts, which the CLI uses on any network: with them, `vault create` targets the testnet factory and the other commands default to the testnet vault. Unset them too, or set mainnet values. The `_MAINNET` and `_TESTNET` names in `.env.example` are for the web app only: the SDK and the CLI read the unsuffixed names.
 </Callout>
 
-Only NEAR testnet is live today, and the mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+NEAR testnet is live today. On mainnet one small vault runs, `v0.probarion.near`, and no mainnet factory is deployed: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
 
 ## Common mistakes
 

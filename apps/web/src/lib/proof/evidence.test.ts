@@ -9,7 +9,7 @@ const H2 = "ab".repeat(32);
 const FILE = fileURLToPath(new URL("../../../content/proof-evidence.json", import.meta.url));
 
 describe("content/proof-evidence.json (R5)", () => {
-  it("is committed as {} until mainnet v0 exists, and parses", () => {
+  it("is committed as {} until the OWNER fills the mainnet v0 entry (docs/runbooks/web-deploy.md section 8), and parses", () => {
     const raw: unknown = JSON.parse(readFileSync(FILE, "utf8"));
     expect(raw).toEqual({});
     expect(parseProofEvidence(raw).size).toBe(0);

@@ -115,11 +115,14 @@ function fakeExec(calls, overrides = {}) {
         return answer(s.expect.exit, JSON.stringify(report(s.expect, was)));
       }
       const vault = args[args.indexOf("--vault") + 1];
-      const expect = vault.startsWith("v0.")
-        ? LIVE_VAULTS.v0
-        : vault.startsWith("canary.")
-          ? LIVE_VAULTS.canary
-          : LIVE_VAULTS.demo;
+      const expect =
+        vault === "v0.probarion.near"
+          ? LIVE_VAULTS.mainnetV0
+          : vault.startsWith("v0.")
+            ? LIVE_VAULTS.v0
+            : vault.startsWith("canary.")
+              ? LIVE_VAULTS.canary
+              : LIVE_VAULTS.demo;
       return answer(expect.exit, JSON.stringify(report(expect)));
     }
     if (args[1] === "mandate") {
@@ -737,11 +740,25 @@ describe("safety", () => {
   test("the live verifies read the chain with an empty or downloaded ledger, and send nothing", async () => {
     const r = await judge([]);
     const live = r.calls.filter((c) => c.args.includes("--network"));
-    assert.equal(live.length, 3);
+    assert.equal(live.length, 4);
+    const at = (c, flag) => c.args[c.args.indexOf(flag) + 1];
     for (const c of live) {
-      assert.equal(c.args[c.args.indexOf("--network") + 1], "testnet");
       assert.ok(c.args.includes("--ledger"));
+      assert.equal(c.args[1], "verify");
     }
+    // Three testnet vaults, and the one mainnet vault with the repository's evidence and records.
+    assert.deepEqual(
+      live.map((c) => `${at(c, "--network")} ${at(c, "--vault")}`),
+      [
+        "testnet demo.vaults.probarion.testnet",
+        "testnet v0.probarion.testnet",
+        "testnet canary.vaults.probarion.testnet",
+        "mainnet v0.probarion.near",
+      ],
+    );
+    const mainnet = live[3];
+    assert.equal(at(mainnet, "--evidence"), "docs/evidence");
+    assert.equal(at(mainnet, "--proof"), "docs/mainnet-proof.json");
   });
 });
 

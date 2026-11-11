@@ -5,8 +5,11 @@ it. This page says how to report one, what is in scope, and what the code does a
 today.
 
 **Unaudited beta.** No third party has audited the contracts or the packages. Today the vault runs on
-NEAR testnet only, with test tokens. A mainnet vault with small amounts is planned, and its owner signs
-every transaction that creates, funds or configures it.
+NEAR testnet with test tokens. Since 2026-11-11 one mainnet vault, `v0.probarion.near`, holds a small
+amount of real USDC. Its owner signed every transaction that created, funded or configured it, and
+it has made one NEAR payment and one refusal. No Base payout has run on mainnet: spike S1, a contract
+withdrawing Base POA USDC to a Base address on mainnet, is unproven
+([the run](README.md#near-mainnet-2026-11-11)).
 
 ## Supported versions
 
@@ -15,6 +18,7 @@ every transaction that creates, funds or configures it.
 | The `dev` branch, where work lands, and `main` | Yes. A fix lands on `dev` first |
 | The npm packages `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` | The latest release, 0.1.1 (published 2026-11-11). A fix ships as a new version |
 | The testnet vault `v0.probarion.testnet` | A test deployment. A vault has no upgrade method, so a fix ships as a new vault |
+| The mainnet vault `v0.probarion.near` (2026-11-11, standalone, locked) | Yes. A vault has no upgrade method, so a fix ships as a new vault. Its owner can freeze it and withdraw its USDC ([runbook](docs/runbooks/mainnet-v0.md#if-anything-looks-wrong)) |
 
 ## Reporting a vulnerability
 

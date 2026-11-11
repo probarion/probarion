@@ -116,7 +116,7 @@ On testnet, `intents-stub.probarion.testnet` stands in for NEAR Intents, and tes
 
 ### A vault with no factory
 
-A vault records as its factory the account that called its `new`, unless that was the vault account itself. A vault that deployed and initialized itself has no factory, and check i skips it. A vault initialized by any other account names that account, and check i fails unless it is the network's canonical factory: `vaults.probarion.testnet`, or on mainnet `vaults.probarion.near`, which is not deployed yet. The mainnet vault is Planned: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
+A vault records as its factory the account that called its `new`, unless that was the vault account itself. A vault that deployed and initialized itself has no factory, and check i skips it. A vault initialized by any other account names that account, and check i fails unless it is the network's canonical factory: `vaults.probarion.testnet`, or on mainnet `vaults.probarion.near`, which is not deployed yet. The mainnet vault `v0.probarion.near` deployed and initialized itself, so check i skips it: see [Testnet and mainnet](/docs/start/testnet-and-mainnet).
 
 ## Online checks O1 and O2
 

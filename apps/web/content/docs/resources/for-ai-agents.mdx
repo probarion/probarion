@@ -1,4 +1,4 @@
-Every docs page is also served as plain Markdown, at its own path plus `.md`. At the site root, [`/llms.txt`](/llms.txt) lists every page and [`/llms-full.txt`](/llms-full.txt) holds them all, and both give the rules on this page right after a one-line summary. Only NEAR testnet is live, and the mainnet vault is Planned.
+Every docs page is also served as plain Markdown, at its own path plus `.md`. At the site root, [`/llms.txt`](/llms.txt) lists every page and [`/llms-full.txt`](/llms-full.txt) holds them all, and both give the rules on this page right after a one-line summary. NEAR testnet is live. On mainnet one small vault is live, with no factory and no Base payout yet.
 
 ## Read these docs as Markdown
 
@@ -101,7 +101,7 @@ These rules sit right after the summary at the top of `/llms.txt` and `/llms-ful
 | Rule | Read |
 | --- | --- |
 | Status words | [What works today](/docs/start/what-works-today): the status list in Live, Preview and Planned |
-| Testnet only | [Testnet and mainnet](/docs/start/testnet-and-mainnet) |
+| Testnet, and one small mainnet vault | [Testnet and mainnet](/docs/start/testnet-and-mainnet) |
 | The packages are on npm | [Install the packages](/docs/build/install) |
 | The agent key calls only `spend` | [The agent key](/docs/concepts/vaults-roles-and-keys#the-agent-key), and [who signs what](#who-signs-what) below |
 | No payee field | [What the agent sends](/docs/concepts/why-spend-has-no-payee#what-the-agent-sends) |
@@ -182,7 +182,7 @@ To check a vault's record without any key, see [Verify a vault](/docs/trust/veri
 | Part | Status | Use instead |
 | --- | --- | --- |
 | [MCP server](/docs/start/what-works-today#mcp-server), `@probarion/mcp` | Preview: tried on testnet, on npm at 0.1.1 | Run it with `npx -y @probarion/mcp@0.1.1`, or build it from a clone, as [its README](https://github.com/probarion/probarion/tree/main/packages/mcp) says, or use the SDK in your agent's own process |
-| [Mainnet vault](/docs/start/what-works-today#mainnet-vault) | Planned | A vault on NEAR testnet, with test tokens |
+| [Mainnet vault](/docs/start/what-works-today#mainnet-vault) | Live for one small vault, `v0.probarion.near`: no Base payout has run on mainnet, and no mainnet factory is deployed | A vault on NEAR testnet, with test tokens |
 
 There is no public HTTP API for agents, and none is on the status list. The console's routes serve the console: its invoice upload, for one, takes only a same-origin request from a signed-in owner or approver of the vault. The HTTP codes on the errors page belong to the hosted app's routes, such as the console, sign-in and top-up, and none of them is an agent API: see [who calls these routes](/docs/build/errors#who-calls-these-routes).
 

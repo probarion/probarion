@@ -182,7 +182,7 @@ describe("gas table (R13)", () => {
       withdraw: 100,
       withdraw_intents: 150,
       create_vault: 300,
-      // Token calls the owner signs directly: mainnet-v0.md §4-§5 attach 30 Tgas to both.
+      // Token calls the owner signs directly: mainnet-v0.md section 4 and its recovery ft_transfer attach 30 Tgas.
       storage_deposit: 30,
       ft_transfer: 30,
     });

@@ -1120,12 +1120,15 @@ describe("the deployed contracts on the page", () => {
     expect(page).toContain("no global version");
   });
 
-  it("calls mainnet Planned while contracts/deployments/mainnet.json records no deploy", () => {
-    expect(mainnet.vault_v0.code_hash, "a mainnet vault is recorded: update the page").toBeNull();
+  it("gives the recorded mainnet vault's code hash, and says the mainnet factory is not deployed while its record has no deploy", () => {
+    expect(mainnet.vault_v0.deploy_tx, "the mainnet v0 run is recorded").not.toBeNull();
+    expect(mainnet.vault_v0.code_hash).toBe("3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1");
     expect(mainnet.factory.deploy_tx, "a mainnet factory is recorded: update the page").toBeNull();
-    expect(page).toContain(`\`${mainnet.vault_v0.account_id}\``);
+    expect(page).toContain(`\`${mainnet.vault_v0.account_id}\`, deployed and locked on 2026-11-11`);
+    expect(page).toContain(`code hash \`${mainnet.vault_v0.code_hash}\``);
     expect(page).toContain(`\`${mainnet.factory.account_id}\``);
-    expect(page).toMatch(/Mainnet is Planned/);
+    expect(page).toContain("the factory is not deployed");
+    expect(page).not.toMatch(/Mainnet is Planned/);
   });
 
   it("names the workspace's other contract crates as testnet stand-ins", () => {

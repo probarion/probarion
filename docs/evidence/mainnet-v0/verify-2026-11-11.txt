@@ -1,0 +1,15 @@
+Probarion verify: v0.probarion.near (mainnet)
+entries 0, anchors 0, generated 2026-11-11T13:19:16.640Z
+
+a  ledger-signatures      PASS      ledger is empty
+b  hash-links             PASS      0 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      no anchors and an empty ledger
+d  spends-have-decisions  PASS      no spend is bound to a ledger decision; 1 spend has a decision_hash listed as pre-ledger by the snapshot (exempt: at most one spend per listed hash)
+e  attestations           PASS      0 attested decisions pass A1–A7; quote not verified offline (run --online for O1); A8 not run (the request is not checked against the invoice)
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES)
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      0 burned spends: no burn to pair
+i  factory-version        SKIP      not a factory vault
+
+8 passed, 0 failed, 0 unproven, 1 skipped
+RESULT: PASS

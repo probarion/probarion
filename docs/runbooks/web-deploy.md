@@ -240,7 +240,7 @@ Give each one a `--what` line in plain words, for example "First vault created t
 
 ## 8. Later: the proof page's evidence file, after mainnet v0
 
-`/proof` reads no file at runtime (Vercel has no `docs/` then). What the CLI takes from `docs/evidence` and `docs/mainnet-proof.json` comes instead from one committed file, `apps/web/content/proof-evidence.json`. It ships as `{}`: there is no mainnet v0 yet. A malformed file is never ignored: every proof page then shows "No result: the checks did not run" until it is fixed (`apps/web/src/lib/proof/evidence.test.ts` checks the committed file).
+`/proof` reads no file at runtime (Vercel has no `docs/` then). What the CLI takes from `docs/evidence` and `docs/mainnet-proof.json` comes instead from one committed file, `apps/web/content/proof-evidence.json`. It still ships as `{}`. The mainnet v0 run of 2026-11-11 is recorded in the repository (`docs/evidence/mainnet-v0`, `docs/mainnet-proof.json`), and its entry here is not filled yet: that is the OWNER step below. No mainnet address is served, so no proof page shows that vault today. A malformed file is never ignored: every proof page then shows "No result: the checks did not run" until it is fixed (`apps/web/src/lib/proof/evidence.test.ts` checks the committed file).
 
 Shape, one entry per vault, keyed by `"<network>:<vault>"`; both fields are optional:
 
@@ -253,7 +253,7 @@ Shape, one entry per vault, keyed by `"<network>:<vault>"`; both fields are opti
 }
 ```
 
-- [ ] **OWNER** (after the mainnet v0 Day-4 spends are recorded): fill the `mainnet:v0.probarion.near` entry, in its own commit.
+- [ ] **OWNER** (the mainnet v0 spends were recorded on 2026-11-11, so this step is open; do it before a mainnet address is served): fill the `mainnet:v0.probarion.near` entry, in its own commit.
   - `preLedgerDecisionHashes`: from the repository root, after `pnpm install && pnpm build`, run `node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --evidence docs/evidence --snapshot v0-snapshot.json` and copy the snapshot's `pre_ledger_decision_hashes` list. These are the sha256 of the `docs/evidence/v0-decision-*.json` files. The SDK applies them to `v0.probarion.near` on mainnet only; an entry for any other vault has no effect on check (d).
   - `burnTxHints`: from `docs/mainnet-proof.json`, every entry in `txs` with `network` `mainnet`, `receiver_id` the vault, a `spend_id`, and an `expect` other than `failure`. Add `{ "hash": <its hash>, "signer": <its signer_id> }` under its `spend_id`. This is the list the CLI builds from `--proof docs/mainnet-proof.json`.
   - Then run `pnpm --filter @probarion/web test src/lib/proof` and deploy. The page's checks (d) and (h) should then match what `node packages/cli/dist/bin.js verify --network mainnet --vault v0.probarion.near --evidence docs/evidence --proof docs/mainnet-proof.json --ledger <the vault's ledger as JSONL>` reports (or `npx probarion …` with the same flags, from the repository root).

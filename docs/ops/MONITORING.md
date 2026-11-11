@@ -119,7 +119,9 @@ X from [@probarionhq](https://x.com/probarionhq) are the status page, and nothin
 
   > Unaudited beta. Probarion runs on NEAR testnet today, with test tokens. It is non-custodial: vault owners can freeze and withdraw with their own keys, for example with near-cli-rs, even when this site is down.
 
-  Change it when mainnet goes live, in the same change that says so elsewhere.
+  Change it when the site serves a mainnet address, in the same change that says so elsewhere. The one mainnet
+  vault, `v0.probarion.near` (2026-11-11), has no page on the site, which serves testnet only, so the announcement
+  stays as it is.
 - **Links:** the security policy,
   <https://github.com/probarion/probarion/blob/main/SECURITY.md>, and support by a direct message to
   [@probarionhq](https://x.com/probarionhq) on X. No email address, until the OWNER has confirmed that the inbox

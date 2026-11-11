@@ -1,0 +1,98 @@
+{
+  "v": 1,
+  "vault": "v0.probarion.near",
+  "network": "mainnet",
+  "taken_at": "2026-11-11T13:19:15.348Z",
+  "ledger": [],
+  "chain": {
+    "access_keys": [
+      {
+        "public_key": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+        "permission": {
+          "receiver_id": "v0.probarion.near",
+          "method_names": [
+            "spend"
+          ],
+          "allowance": "249066583675465400000000"
+        }
+      }
+    ],
+    "code_hash": "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1",
+    "config": {
+      "owner": "probarion.near",
+      "approvers": [
+        "probarion-duong.near"
+      ],
+      "usdc": "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+      "intents": "intents.near",
+      "allowed_assets": [
+        "base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+        "sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"
+      ],
+      "daily_backstop": "500000000",
+      "held_ttl_ns": "259200000000000",
+      "frozen": false,
+      "factory": null,
+      "version": "0.1.0",
+      "ledger_key": null
+    },
+    "anchors": [],
+    "spends": [
+      {
+        "id": 1,
+        "mandate_id": 1,
+        "amount": "1000000",
+        "invoice_hash": "292f7c324bca6da815e237596e678efd82cb9ddf9b40024b42e39a402762d459",
+        "ref": "INV-M001",
+        "decision_hash": "d00e8ccc7a99a23a7f56d22d68aa69c7050330ac61e5c88c74bf013d188fb4f1",
+        "agent_pk": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+        "destination": {
+          "type": "near",
+          "account_id": "probarion-duong.near"
+        },
+        "status": "paid",
+        "created_at_ns": "1794401972309432942",
+        "held_until_ns": null,
+        "memo": null
+      }
+    ],
+    "intents_public_keys": [],
+    "intents_predecessor_auth": true,
+    "factory_version": null,
+    "factory_versions": [],
+    "mandates": [
+      {
+        "id": 1,
+        "payee": {
+          "type": "near",
+          "account_id": "probarion-duong.near"
+        },
+        "purpose_hash": "3bc57742e1153e0cf14254077ee4fe96569836fa0f49dbdc8bb74ba7cea7c4db",
+        "max_per_payment": "1000000",
+        "max_total": "2000000",
+        "spent": "1000000",
+        "reserved": "0",
+        "max_uses": 2,
+        "uses": 1,
+        "expires_at_ns": "1801353600000000000",
+        "approval_above": "1000000",
+        "agent_pk": "ed25519:GADeVCXtgcxS3E5JrcVpEWTuZiNMJ4gu17iyuEgyCycd",
+        "label": "v0 near payee",
+        "status": "active",
+        "created_at_ns": "1794401931771650229"
+      }
+    ],
+    "burns": []
+  },
+  "expected_code_hashes": [
+    "6tbERLAXWjaVKbSNzaivRDh7H9kCcjtmV1qGrgz7entR",
+    "54Ne1r9g2Smf2Qtrt9VznmPpEAAHzvK4hbQSJ9voQmuD",
+    "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1"
+  ],
+  "pre_ledger_decision_hashes": [
+    "64eaf4203ca06a1bf20c76bd235df60be3640c3a15b85e632f8c8c86ef4a1672",
+    "5cadc59418b90e510ab73e0d73614aee5391d7122bd7c8d58e0cd99b82b3fd11",
+    "d00e8ccc7a99a23a7f56d22d68aa69c7050330ac61e5c88c74bf013d188fb4f1",
+    "aa8a907f0666ab97fe78e8d9e6b77ed4572db5ed7132a6a6776325d4c0bc6dd0"
+  ]
+}

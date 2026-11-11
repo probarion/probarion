@@ -205,7 +205,8 @@ function standIn(name: string, flag: string | undefined, setKey: string | undefi
 }
 
 function commandSubstitution(cmd: string): string {
-  if (/^node scripts\/code-hash\.mjs hash\b/.test(cmd)) return CODE_HASH;
+  // mainnet-v0.md calls `node.exe`: an interactive Git Bash aliases a bare `node` to winpty.
+  if (/^node(?:\.exe)? scripts\/code-hash\.mjs hash\b/.test(cmd)) return CODE_HASH;
   throw new Error(`no stand-in for the command substitution $(${cmd})`);
 }
 

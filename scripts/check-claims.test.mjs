@@ -988,14 +988,15 @@ describe("the real repository", () => {
     );
   });
 
-  test("fails when a mainnet transaction is recorded and the README says there is none", async (t) => {
-    if (!/hold no transactions|makes no\s+mainnet claim/.test(readme)) {
-      t.skip("README.md no longer says mainnet has no transactions");
-      return;
-    }
+  test("fails when a mainnet transaction is recorded and the README says there is none", async () => {
     const mainnet = json("contracts/deployments/mainnet.json");
     mainnet.check_claims_test_tx = UNRECORDED;
-    const got = await withChange({ "contracts/deployments/mainnet.json": JSON.stringify(mainnet) });
+    const change = { "contracts/deployments/mainnet.json": JSON.stringify(mainnet) };
+    // Since the mainnet v0 run of 2026-11-11 the README makes no such claim, so the case adds one.
+    if (!/hold no transactions|makes no\s+mainnet claim/.test(readme)) {
+      change["README.md"] = `${readme}\nThe mainnet records hold no transactions yet.\n`;
+    }
+    const got = await withChange(change);
     assert.ok(
       got.some((p) => /says mainnet has no transactions, and \d+ are recorded/.test(p)),
       got.join("\n"),
@@ -1188,5 +1189,107 @@ The SDK is on npm as \`@demo/sdk\` 0.1.0. The console runs at [probarion.xyz](ht
       report.unreachable.map((u) => u.split(": ")[0]),
       [`testnet tx ${TX2}`, "https://probarion.xyz/api/health"],
     );
+  });
+});
+
+describe("--online, a mainnet vault", () => {
+  const HASH = "3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1";
+  const README = `# X
+
+One vault runs on mainnet: \`v0.probarion.near\`.
+
+## Status
+
+| Part | Status | Where |
+| --- | --- | --- |
+| Vault | **Built** | [\`contracts/deployments/mainnet.json\`](contracts/deployments/mainnet.json) |
+`;
+  const roots = [];
+  /** A fake repository whose mainnet record gives the vault `codeHash` (null: not deployed yet). */
+  const fixture = (codeHash) => {
+    const root = mkdtempSync(join(tmpdir(), "check-claims-mainnet-"));
+    roots.push(root);
+    const files = {
+      "README.md": README,
+      "contracts/deployments/mainnet.json": JSON.stringify({
+        network: "mainnet",
+        vault_v0: { account_id: "v0.probarion.near", code_hash: codeHash },
+      }),
+      "contracts/code-hashes.json": JSON.stringify({
+        entries: [{ crate: "probarion-vault", version: "0.1.0", code_hash: HASH }],
+      }),
+    };
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), text);
+    }
+    return root;
+  };
+  after(() => {
+    for (const r of roots) rmSync(r, { recursive: true, force: true });
+  });
+
+  /** A fake mainnet RPC: the vault runs `code` and holds `keys`; `asked` collects each host and request. */
+  const network = (asked, { code = HASH, keys } = {}) => {
+    const list = keys ?? [
+      {
+        public_key: "ed25519:Agent",
+        access_key: {
+          permission: {
+            FunctionCall: { receiver_id: "v0.probarion.near", method_names: ["spend"] },
+          },
+        },
+      },
+    ];
+    return async (url, init) => {
+      if (init?.method !== "POST") return new Response("not found", { status: 404 });
+      const { params } = JSON.parse(init.body);
+      asked.push(`${new URL(url).host} ${params.request_type}`);
+      const result =
+        params.request_type === "view_account"
+          ? { code_hash: code }
+          : params.request_type === "view_access_key_list"
+            ? { keys: list }
+            : null;
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }));
+    };
+  };
+  const run = async (root, opts) => {
+    const asked = [];
+    const report = await checkClaims({
+      root,
+      online: true,
+      net: { fetchImpl: network(asked, opts) },
+    });
+    return { got: problems(report), asked, unreachable: report.unreachable };
+  };
+
+  test("re-reads a recorded mainnet vault on a mainnet RPC, and passes when it is as recorded", async () => {
+    assert.deepEqual(await run(fixture(HASH)), {
+      got: [],
+      asked: [
+        "rpc.mainnet.fastnear.com view_account",
+        "rpc.mainnet.fastnear.com view_access_key_list",
+      ],
+      unreachable: [],
+    });
+  });
+
+  test("reports a full-access key on the mainnet vault", async () => {
+    const keys = [{ public_key: "ed25519:Owner", access_key: { permission: "FullAccess" } }];
+    assert.deepEqual((await run(fixture(HASH), { keys })).got, [
+      "README.md:3 [online] vault v0.probarion.near has a full-access key: ed25519:Owner",
+    ]);
+  });
+
+  test("reports a mainnet vault that runs a code hash other than the recorded one", async () => {
+    const code = "4715d4nbYn6cq981nmLU5y8efCoX2w3SbgW8PPq4Vsr1";
+    assert.deepEqual((await run(fixture(HASH), { code })).got, [
+      `README.md:3 [online] v0.probarion.near runs code hash ${code}; the records say ${HASH}`,
+    ]);
+  });
+
+  test("does not read a mainnet vault whose record gives no code hash yet", async () => {
+    assert.deepEqual((await run(fixture(null))).asked, []);
   });
 });
