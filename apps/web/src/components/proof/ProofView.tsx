@@ -22,6 +22,7 @@ import {
   EVIDENCE_CLONE,
   needsEvidenceClone,
 } from "@/lib/proof/cli";
+import type { DecisionRow } from "@/lib/proof/decisions";
 import { ledgerFileName } from "@/lib/proof/ledger-file";
 import { safeText } from "@/lib/proof/sanitize";
 import type { ProofErrorReason, ProofOk } from "@/lib/proof/service";
@@ -43,9 +44,12 @@ import {
   unprovenRows,
 } from "@/lib/proof/view";
 import { NEXT_STEP } from "@/lib/site/next-step";
+import { OpenLinkedDecision } from "./DecisionLinks";
+import { DecisionPanel } from "./DecisionPanel";
 
 // The public proof page, as a server component with no data access of its own: page.tsx loads the result and
-// hands it here. The result comes first, then the checks, the burns and the steps to verify it yourself.
+// hands it here, with the snapshot's decision rows. The result comes first, then the checks, each decision, the burns
+// and the steps to verify it yourself.
 
 const KIND_LABEL: Readonly<Record<TenantKind, string>> = {
   team: "Team vault",
@@ -100,7 +104,7 @@ function Evidence({ links }: { links: readonly ProofLink[] }) {
           </li>
         ) : (
           <li key={l.href}>
-            {l.href.startsWith("/") ? (
+            {l.href.startsWith("/") || l.href.startsWith("#") ? (
               <a className={link} href={l.href}>
                 {l.label}
               </a>
@@ -413,8 +417,99 @@ function AttestationLine({ modelDecisions }: { modelDecisions: number }) {
   );
 }
 
-/** A vault's live checks a-i, with explorer links, its burns, the offline steps and the next step (the console). */
-export function ProofView({ result }: { result: ProofOk }) {
+/** How many decisions show before "Show N older decisions": the 402 vault already holds 21. */
+export const DECISIONS_SHOWN = 20;
+
+/**
+ * On a screen 1100 px or wider the Decisions card leaves the page's 768 px column for 1040 px, so that each of its
+ * three columns gets about 300 px (the approved mockup). Below that it keeps the column; below 768 px they stack.
+ */
+const WIDE = "min-[1100px]:ml-[calc((100%_-_1040px)/2)] min-[1100px]:w-[1040px]";
+
+/**
+ * Every decision of the ledger, newest first (G7), each a <details> with its audit anchors (G4). Only the newest
+ * decision made with model output starts open. Past DECISIONS_SHOWN the older ones wait in a second <details>, so
+ * every anchor stays on the page; a small client part opens the card a link points at.
+ */
+export function Decisions({
+  vault,
+  network,
+  rows,
+}: {
+  vault: string;
+  network: Network;
+  rows: readonly DecisionRow[] | null;
+}) {
+  const open = rows?.find((r) => r.decidedBy === "model+rules" && r.signed !== null)?.seq;
+  const card = (r: DecisionRow) => (
+    <DecisionPanel key={r.id} row={r} vault={vault} network={network} open={r.seq === open} />
+  );
+  const shown = rows?.slice(0, DECISIONS_SHOWN) ?? [];
+  const older = rows?.slice(DECISIONS_SHOWN) ?? [];
+  const withModel = rows?.filter((r) => r.decidedBy === "model+rules").length ?? 0;
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  return (
+    <section className={`${section} ${WIDE}`} id="decisions" aria-labelledby="decisions-title">
+      <h2 id="decisions-title" className={sectionTitle}>
+        Decisions
+      </h2>
+      <p className={`mt-1 text-sm ${muted}`}>
+        Every decision in this vault&apos;s ledger, newest first. For a decision made with model
+        output: what the TEE saw, what it signed, and what the code and the contract checked. Its
+        checks A1 to A7 ran on this snapshot, with the code of{" "}
+        <code>probarion verify --offline</code>.
+      </p>
+      {rows === null ? (
+        <p className="mt-3 text-sm text-ink/80">
+          The decisions could not be listed from this snapshot. The checks above still ran on it.
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="mt-3 text-sm text-ink/80">No decision is in this vault&apos;s ledger yet.</p>
+      ) : (
+        <>
+          <p className={`mt-3 text-xs ${muted}`} data-decisions={rows.length}>
+            {plural(rows.length, "decision", "decisions")} · {withModel} made with model output
+            {older.length > 0 ? ` · showing the ${shown.length} newest` : null}
+          </p>
+          <ol className="mt-3 grid gap-3">{shown.map(card)}</ol>
+          {older.length > 0 ? (
+            <details className="group/older mt-4" data-older={older.length}>
+              <summary
+                className={`flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-2 text-xs ${muted} [&::-webkit-details-marker]:hidden`}
+              >
+                <span className={linePillClass}>
+                  <span className="group-open/older:hidden">
+                    Show {plural(older.length, "older decision", "older decisions")}
+                  </span>
+                  <span className="hidden group-open/older:inline">
+                    Hide the {plural(older.length, "older decision", "older decisions")}
+                  </span>
+                </span>
+                <span>
+                  seq {older[0]?.seq} to seq {older[older.length - 1]?.seq}
+                </span>
+              </summary>
+              <ol className="mt-3 grid gap-3">{older.map(card)}</ol>
+            </details>
+          ) : null}
+        </>
+      )}
+      <OpenLinkedDecision />
+    </section>
+  );
+}
+
+/**
+ * A vault's live checks a-i, with explorer links, each decision of its ledger, its burns, the offline steps and the
+ * next step (the console). `decisions` is `decisionRows` of the same snapshot, or null when they could not be built.
+ */
+export function ProofView({
+  result,
+  decisions,
+}: {
+  result: ProofOk;
+  decisions: readonly DecisionRow[] | null;
+}) {
   const { vault, network, report, snapshot } = result;
   const rows = proofRows(report, snapshot, network);
   const burns = burnRows(snapshot, network);
@@ -469,6 +564,7 @@ export function ProofView({ result }: { result: ProofOk }) {
         <AttestationLine modelDecisions={modelDecisionCount(snapshot)} />
       </section>
 
+      <Decisions vault={vault} network={network} rows={decisions} />
       <Burns burns={burns} />
       <VerifyYourself vault={vault} network={network} takenAt={takenAt} />
       <NextStep step={NEXT_STEP.proof} className="mt-6 text-sm text-ink/80" linkClassName={link} />

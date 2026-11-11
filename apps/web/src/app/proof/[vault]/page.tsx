@@ -8,8 +8,9 @@ import { serviceDb } from "@/lib/db/clients";
 import { clientIp } from "@/lib/http";
 import { log } from "@/lib/log";
 import { softRequestNetwork } from "@/lib/network";
+import { type DecisionRow, decisionRows } from "@/lib/proof/decisions";
 import { proofDeps } from "@/lib/proof/deps";
-import { loadProof, type ProofResult } from "@/lib/proof/service";
+import { loadProof, type ProofOk, type ProofResult } from "@/lib/proof/service";
 import { LIMITS, takeToken } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
@@ -64,5 +65,21 @@ export default async function ProofPage({ params }: Props) {
   if (r.status === "error") {
     return <ProofUnavailable vault={r.vault} network={r.network} reason={r.reason} />;
   }
-  return <ProofView result={r} />;
+  return <ProofView result={r} decisions={await readDecisions(r)} />;
+}
+
+/**
+ * Each decision of the snapshot the checks ran on, with A1 to A7 per entry. `decisionRows` never throws on a crafted
+ * ledger; should it fail all the same, the page still shows the checks and says the decisions could not be listed.
+ */
+async function readDecisions(r: ProofOk): Promise<DecisionRow[] | null> {
+  try {
+    return await decisionRows(r.snapshot, r.network);
+  } catch (error) {
+    log.warn("proof.decisions_unavailable", {
+      vault: r.vault,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }

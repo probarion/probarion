@@ -102,7 +102,7 @@ import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
 import ProofPage, { generateMetadata } from "@/app/proof/[vault]/page";
 import { GET } from "@/app/proof/[vault]/snapshot.json/route";
 import ProofIndex from "@/app/proof/page";
-import { ProofLimited } from "@/components/proof/ProofView";
+import { ProofLimited, ProofView } from "@/components/proof/ProofView";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { TamperPanel } from "@/components/site/TamperPanel";
 import { SITE_NAV } from "@/lib/routes";
@@ -388,6 +388,27 @@ describe("/proof/[vault]", () => {
     );
     expect(out).toContain(`href="/proof/${snapshot.vault}/ledger.jsonl"`);
     if (!CLI_ON_NPM) expect(t).not.toContain("npx probarion");
+  });
+
+  it("lists each decision of the checked snapshot under the checks, with its audit anchors (G7, G4)", async () => {
+    const { snapshot, out } = await served("ok", "testnet");
+    const t = text(out);
+    expect(out).toContain('id="decisions"');
+    // The one decision, by its seq, and the spend the chain binds to it.
+    expect(out).toContain('id="seq-0"');
+    expect(out).toContain('id="spend-1"');
+    expect(out).toMatch(/<a[^>]*href="#spend-1"[^>]*>Copy audit link<\/a>/);
+    expect(out).toMatch(/<a[^>]*href="#decisions"[^>]*>Each decision, below<\/a>/);
+    expect(t).toContain("1 decision · 0 made with model output");
+    expect(t).toContain("No model was used.");
+    expect(t.indexOf("Decisions Every decision")).toBeGreaterThan(t.indexOf("Checks These are"));
+    // The page hands ProofView the rows of the very snapshot the checks ran on.
+    clearProofCache();
+    const [view] = elementsOf(await page(snapshot.vault), ProofView);
+    if (!view) throw new Error("the page did not render ProofView");
+    expect((view.props as { decisions: unknown }).decisions).toMatchObject([
+      { id: "seq-0", spendIds: ["spend-1"] },
+    ]);
   });
 
   it("promises no identity between the page and the download: it gives the full time to compare", async () => {

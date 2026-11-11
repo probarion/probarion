@@ -98,6 +98,8 @@ The last line builds the CLI together with `@probarion/core` and `@probarion/sdk
 
 3. **Verify the files of a vault's proof page.** Each vault registered in the console has a proof page at `/proof/<vault>`. Signed in to the console with your wallet as a member of the vault, such as its owner, you can open it now: the page reads "Proof, visible to members only". For anyone else it answers page not found until the vault's owner makes it public: on the vault's Overview tab in the console, `/console/<vault>`, the owner ticks "Public proof page" in the Settings card and clicks "Save settings". The page then reads "Public proof" for every visitor. Either way it offers the same two files for this verifier, and you can check them in two ways.
 
+   Under its checks, the page also lists each decision of the vault's ledger, newest first, with its rules and what the contract did, and, for a decision made with model output, what the ledger records the TEE saw and signed with checks A1 to A7 run on that snapshot (the TDX quote is not verified there: that needs `--online`); each card has an audit link, `#seq-<N>` or `#spend-<N>`, that opens it.
+
    First, offline: **Download snapshot.json** saves `probarion-<vault>-snapshot.json`, a snapshot of the vault's ledger and chain data taken when you click or shortly before. Put it in the `probarion` folder and run:
 
    ```bash

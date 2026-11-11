@@ -101,7 +101,8 @@ describe("proof rows", () => {
     expect(by.c?.firstBrokenSeq).toBe(2);
     expect(by.a?.firstBrokenSeq).toBeUndefined();
     expect(hrefs(rows, "d")).toContain(`https://nearblocks.io/txns/${PAY}`);
-    expect(hrefs(rows, "e")).toEqual(["https://docs.near.ai/cloud/verification"]);
+    expect(hrefs(rows, "e")).toEqual(["#decisions", "https://docs.near.ai/cloud/verification"]);
+    expect(by.e?.links[0]?.label).toBe("Each decision, below");
     expect(hrefs(rows, "f")).toEqual([`https://nearblocks.io/address/${V}`]);
     expect(hrefs(rows, "g")).toEqual(["https://nearblocks.io/address/intents.near"]);
     expect(hrefs(rows, "h")).toContain(`https://nearblocks.io/txns/${BURN}`);
@@ -487,7 +488,10 @@ describe("proof rows: labels and odd input", () => {
     const by = byId(proofRows(report, snap, "mainnet"));
     expect(by.a?.links[0]?.label).toBe("Vault account and keys");
     expect(by.b?.links[0]?.label).toBe("snapshot.json");
-    expect(by.e?.links[0]?.label).toBe("How NEAR AI Cloud attestation works");
+    expect(by.e?.links.map((l) => l.label)).toEqual([
+      "Each decision, below",
+      "How NEAR AI Cloud attestation works",
+    ]);
     expect(by.g?.links[0]?.label).toBe("intents.near");
     expect(by.i?.links[0]?.label).toBe("vaults.probarion.near");
   });
