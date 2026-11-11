@@ -658,7 +658,7 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
     );
     // The offline command checks a to i and A1 to A7; it does not run O1 and O2 again.
     expect(said).toContain(
-      "To run checks a to i and A1 to A7 offline, from a clone of the repository (O1 and O2 need a live run with `--online`): ```bash npx probarion verify --offline docs/evidence/canary-vault/snapshot-2026-11-11.json ```",
+      "To run checks a to i and A1 to A7 offline, from a clone of the repository (the CLI runs O1 and O2 only in a live run with `--online`): ```bash npx probarion verify --offline docs/evidence/canary-vault/snapshot-2026-11-11.json ```",
     );
     expect(said).not.toContain("To check it offline, from a clone of the repository:");
     expect(said).not.toContain("With it, a live `verify` passes checks a to i");

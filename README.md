@@ -575,7 +575,7 @@ this does not show which model image ran, and A8 was not run
 ([what that shows](docs/evidence/canary-vault/README.md#the-signed-ledger-published-2026-11-11)). A live run with
 this file stops passing check c once the Canary anchors a newer entry, such as a visitor's attempt; the offline
 command below, on the snapshot that run wrote, keeps passing. To run checks a to i and A1 to A7 offline, from a
-clone of the repository (O1 and O2 need a live run with `--online`):
+clone of the repository (the CLI runs O1 and O2 only in a live run with `--online`):
 
 ```bash
 npx probarion verify --offline docs/evidence/canary-vault/snapshot-2026-11-11.json
