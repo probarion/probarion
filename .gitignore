@@ -20,3 +20,4 @@ probarion-tx/
 test-results/
 playwright-report/
 examples/402/receipts*.jsonl
+judge-report.json

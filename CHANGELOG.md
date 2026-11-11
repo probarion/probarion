@@ -41,6 +41,68 @@ The software is an unaudited beta.
   checks on the committed snapshot, holds the README's table to the ledger cell by cell, pins the
   online run's output, and pins what the README, SECURITY.md, the threat model, the privacy page, the
   docs pages, this entry and the rehearsal's rows say about it.
+
+- `pnpm judge` (`scripts/judge.mjs`): one read-only command for a screener or a judge, run after
+  `pnpm install --frozen-lockfile`. It builds the four packages, then runs steps 0 and 2 to 6 of the
+  README's 5-minute evaluation, the eval check and the per-package tests of core, sdk, cli, mcp and
+  `examples/402`. The claims check runs offline and online; the README's step 2 and step 4 snippets and
+  its step 6 commands run as written, and their output is compared with the README's; `verify --offline`
+  runs on every committed snapshot in `docs/evidence`; the demo vault, `v0.probarion.testnet` and the
+  Canary are verified live, read-only, and the demo vault's live ledger must start with the committed
+  one; the MCP demo and the 402 demo run. Each step quotes the README line it proves, found again at
+  run time, and prints one row: PASS, EXPECTED-FAIL (the Canary's private ledger fails check c, and
+  `v0.probarion.testnet` fails d and h, as the README says; any other result there is a FAIL), SKIPPED
+  with the reason and the command, or FAIL. It exits 0 only when no step failed and writes
+  `judge-report.json` (gitignored): the claim, README line, command, result, expectation, time and
+  detail of each step, with the commit, Node and OS. `--offline` makes no network call, `--quick` skips
+  the tests and `--json` prints the report. SKIPPED is only for a step not run here (the flags, the
+  network down, a timeout, 429 or 5xx); a definite wrong answer, such as the proof page answering 404 or
+  the MCP demo skipping its verify for that reason, is a FAIL, and the MCP demo row passes only when its
+  6 steps answer as expected or with a note. The package rows give the README's dated test count next to
+  today's, and the `examples/402` row checks that every test of `test/pay-per-call.test.ts` passed.
+  Child processes get no `PROBARION_*` variable and no other variable named like a secret, the MCP demo
+  runs with an empty home folder so its server finds no keys file, and a README snippet that names a key
+  (or, in an offline step, reaches the network) is refused before it runs. AGENTS.md and the README's
+  5-minute section start with it, and
+  `.github/workflows/judge.yml` runs `pnpm judge --offline --quick` daily and on pushes to `main`, with
+  read-only permissions and the actions pinned at the SHAs of `ci.yml`. The web console's tests and the
+  Rust tests are listed as known skips with their commands.
+
+- The eval's adversary run: the model fully fooled. For each of the 20 invoices the proposal is what
+  the invoice asks a fooled model to do (the attack's own amount, account and mandate for the six
+  injected ones, the wrong action the invoice presents for the eight that must not be paid, the right
+  action for the six clean ones), marked attested with confidence 1, through the same `decide()`,
+  contract mirror, `execute()` and owner wait as the other runs. Offline and deterministic, with no
+  model and no key. Result: "model fully fooled: money moved wrongly 0/20 (0.00 USDC)"; 14/20
+  proposals are wrong and the code's rules refuse all 14 (the contract layer, the checks.rs
+  mirror's refusals only, stops 4 of them on its own, and the owner rule holds or refuses 8). `eval/results/adversary.md` gives every case's proposal, decision, contract answer,
+  money (count and USDC) and stopping layers, with what each result assumes: I-02's injection is
+  not shown to a model; D-01 is decided as if the intake guard missed it; P-01, P-02 and D-02 rest on
+  one code rule each; and a model fooled only into approving the visible invoice pays I-02, I-04 and
+  I-05 their own total (430.00 USDC to the mandate's payee), counted as paid rightly. A test tries
+  over 5,000 other attested proposals across the 20 cases and finds none that moves money wrongly.
+  `eval:check` holds the new file and `latest.json` to the code. The layer tables now label the
+  contract row "contract (checks.rs mirror, refusals only)" and say why the payee cases are not
+  among its stops: a spend names no destination, so the contract pays the mandate's payee. In the
+  adversary run the extract layer counts only text that does not reach the code, since the adversary
+  obeys I-02's injection although the reader drops it. The attack log gives each case's layers per
+  run: the adversary line has its own, and the last line says which run it is for.
+
+- `@probarion/mcp` gives the client server instructions for the model when it connects (the MCP
+  `instructions` field; each client decides whether its model sees them), under 1,200 characters.
+  Where a tool description or an answer note already states a rule, the instructions use the same
+  sentence from a shared constant, and a test compares them, so those rules cannot drift; a few
+  words of their own orient the model. The rules: only the payee of an active mandate bound to the
+  server's key can be paid, with no recipient parameter; `check_spend` first when unsure, since it
+  sends no transaction (its description now says so in those words); each ref and each invoice
+  hash pays at most once; poll a `held` spend until it leaves held or its `held_until` passes,
+  after which the contract approves no hold, and do not send it again (the `request_spend` note
+  for a hold now says the same); an `unconfirmed` spend may have paid, so do not resend it under a
+  new ref; a refusal is final for that request; `burned` is final for the vault and does not
+  change, worded for the server's network. A server with no keys adds that `request_spend` is off,
+  and that refusal now says no agent and ledger keys are set (a keys file counts too) in place of
+  naming the two environment variables.
+
 - `/proof/<vault>/payments.csv`: the vault's decisions as a spreadsheet, linked as "Download payments
   (CSV)" next to the snapshot download. One row per decision, newest first: date (UTC), mandate and
   label, the payee of the spend on chain (empty when nothing was sent), amount in USDC, the decision
@@ -721,6 +783,11 @@ The software is an unaudited beta.
 
 ### Changed
 
+- `probarion verify --online`: when check e fails because NVIDIA's NRAS token is `not_yet_valid` by this computer's
+  clock (a clock a few seconds behind is enough, since `@nearai/inference-sdk` allows no tolerance), the report adds an
+  `online hint:` line that says to sync the clock and run again, and prints it on stderr as a warning (with
+  `--json`, only there). Check e still fails; the hint is not a result. Only the SDK's own failure message at the
+  start of check e's detail adds it, so text from a ledger cannot.
 - The grey text on `/proof/<vault>` (the decision cards, each check's detail, the model note and the
   limits line under A1 to A7) uses the mute token, 7:1 or more on paper.
 - The browser extension is on the Chrome Web Store as version 0.1.0
@@ -958,6 +1025,31 @@ The software is an unaudited beta.
   the /docs HTTP error table gains the Extension API rows.
 
 ### Fixed
+
+- Console: an invoice upload keeps to one time budget counted from the request's start
+  (`apps/web/src/lib/payables/budget.ts`). The NEAR AI calls share 40 s from the first one, each
+  capped by what is left, and they end by 50 s from the start whatever the start took, so a slow
+  model decides rules-only and the invoice waits for the owner with nothing sent. The chain reads
+  before the first transaction stop at 60 s. A read refused there sends nothing: a context read or
+  the `check_spend` dry run stops the upload as an `error` that a new upload runs again, a refused
+  POA balance read holds the decision on `intents.balance_low`, and a refused anchor read leaves
+  the anchor to the next cycle. From the first transaction on, nothing changes: the send keeps the
+  SDK's own timing. Before, the SDK's defaults (90 s for the chat alone) could outlast the route's
+  60 s, and a function stopped mid-cycle left the row in `processing`, which blocks a new upload, with
+  no time left for the watcher kick. The route's `maxDuration` goes from 60 s to 90 s, planned as
+  10 s for the start, 40 s for the model, 10 s for the decision and its dry run, 10 s for the send,
+  the anchor and the row, and 20 s for the watcher kick after the answer. The kick now gets the
+  function's end (the route's start plus 90 s), so after a late answer (a slow send) it claims fewer
+  alerts instead of starting a send that the platform cuts off. The tenant lease goes from 90 s to
+  120 s, 30 s longer than the route; the route's 90 s stays under the 2 minutes after which the
+  alerts' SQL takes a sending alert back. No migration and no new setting. Tests pin the sums, the
+  lease against the route, and the route against the SQL; the budget and the kick's end counted from
+  the route's start, past a slow session and mandates read; a late answer that shortens the kick's
+  alerts, on a fake clock; and, with the real SDK on PGlite, a 70 s model held for the owner with
+  nothing sent. At the route, with a stubbed cycle, the kick is asked for before the cycle runs. The
+  RUNBOOK's "Invoice stuck in processing" covers an upload or an owner's Confirm left there: how to
+  read the row's ref, look its spend up on chain, and tell from the last decision whether a spend
+  can still land.
 
 - `@probarion/mcp`: the burned outcome no longer tells the agent to poll `get_spend_status`. A burn
   is final for the vault: the agent must not resend it under any ref, and should tell the owner if

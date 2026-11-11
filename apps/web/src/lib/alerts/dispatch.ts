@@ -57,8 +57,8 @@ export interface DispatchResult {
 /** The least time a send may start with before the hard limit, and the margin it leaves for the mark. */
 const MIN_LEFT_MS = 3_000;
 const MARGIN_MS = 2_000;
-/** How long after the deadline the function lives, when the caller does not say. */
-const GRACE_AFTER_DEADLINE_MS = 5_000;
+/** How long after the deadline the function lives, when the caller does not say (the watcher kick does not). */
+export const GRACE_AFTER_DEADLINE_MS = 5_000;
 
 async function sendWithin(send: () => Promise<SendResult>, ms: number): Promise<SendResult> {
   let timer: ReturnType<typeof setTimeout> | undefined;

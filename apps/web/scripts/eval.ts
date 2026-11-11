@@ -2,10 +2,11 @@
  * The 20-invoice eval, offline. Nothing is sent and no key is read.
  *
  *   pnpm --filter @probarion/web eval:generate   writes the dataset under eval/ from src/lib/eval/cases.ts
- *   pnpm --filter @probarion/web eval            runs both runs and writes eval/results
+ *   pnpm --filter @probarion/web eval            runs every run and writes eval/results
  *   pnpm --filter @probarion/web eval:check      reruns everything and fails if a committed file differs
  *
- * The model replay runs once eval/recorded holds answers (the OWNER records them with eval:record).
+ * The model replay runs once eval/recorded holds answers (the OWNER records them with eval:record). The adversary
+ * run (the model fully fooled, src/lib/eval/adversary.ts) needs no answer and runs every time.
  */
 import { datasetFiles, driftedFiles, REPO_ROOT, writeFiles } from "../src/lib/eval/dataset";
 import { buildResults, resultFiles } from "../src/lib/eval/report";

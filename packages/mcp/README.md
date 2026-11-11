@@ -25,6 +25,16 @@ Amounts go in as USDC decimal strings (`"0.01"`, `"25.50"`). Every input rejects
 a prompt-injected `"to": "0xBAD"` is refused before anything runs. No tool creates, changes or removes a
 mandate, a key or the vault's settings: those are the owner's, signed in the owner's wallet.
 
+When a client connects, the server also gives it instructions for the model (the MCP `instructions` field;
+each client decides whether its model sees them), under 1,200 characters. Where a tool description or an
+answer's note already states a rule, the instructions use the same sentence, and a few words of their own
+orient the model: only the payee of an active mandate bound to this server's key can be paid; `check_spend`
+first when unsure, since it sends no transaction; each ref and each invoice hash pays at most once; a `held`
+spend is polled with `get_spend_status` until it leaves held or its `held_until` passes (the contract
+approves no hold after that), not sent again; an `unconfirmed` spend may have paid, so it is not sent again
+under a new ref; a refusal is final for that request; and `burned` is final for the vault, in the words for
+the server's network. A server with no keys adds that `request_spend` is off.
+
 ## What the agent's keys can do
 
 The server holds two function-call keys of the vault and no owner key:
