@@ -357,7 +357,8 @@ const VISITOR = "AAAAAAAAAAAAAAAAAAAAAA"; // 22 base64url characters: what the r
 describe("POST /api/canary/attempt", () => {
   it("lets the tenant lease outlast the route's longest run, with a margin", () => {
     expect(maxDuration + 30).toBeLessThanOrEqual(CANARY_LIMITS.leaseSeconds);
-    // the Canary's own lease, still longer than PROCESS_LEASE_SECONDS, the lease of Payables' upload (also 90 s)
+    // the Canary's own lease, still longer than PROCESS_LEASE_SECONDS (120 s), the lease of Payables' upload, whose
+    // route also stops at 90 s
     expect(CANARY_LIMITS.leaseSeconds).toBe(130);
     expect(CANARY_LIMITS.leaseSeconds).toBeGreaterThan(PROCESS_LEASE_SECONDS);
   });

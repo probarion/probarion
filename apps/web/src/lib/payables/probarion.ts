@@ -45,8 +45,11 @@ export interface PayablesProbarionTest {
  *   PAYABLES_NEARAI_TIMEOUTS_MS cap, no more than what `budget.modelMs` says is left. A model that runs out decides
  *   rules-only, so the invoice waits for the owner and nothing is sent.
  * - The chain: an RPC client like the SDK's own (the network's list, the SDK's per-try timeout and rounds), whose reads
- *   stop at `budget.chainMs`. A read refused for lack of time throws before any transaction, and the pipeline records the
- *   invoice as `error`, which a new upload may run again.
+ *   stop at `budget.chainMs`. A read refused for lack of time comes before any transaction, so nothing is sent, and it
+ *   ends the cycle one of three ways. A context read (the config, the mandates, the spends) or the `check_spend` dry run
+ *   throws, and the pipeline records the invoice as `error`, which a new upload may run again. The POA balance read of
+ *   an Intents payee is caught by the SDK, and the decision holds on `intents.balance_low`. An anchor's read is caught by
+ *   the SDK too, and the cycle ends without an anchor (the next cycle anchors the tail).
  * - The senders: the SDK's own NearApiJsSender, built as the SDK builds it, each wrapped by `announcing`. The first
  *   transaction of either key (the spend, or the anchor of a decision that sends no spend) lifts the read limit, so from
  *   the first transaction on nothing runs differently from the SDK's defaults: the send timing is not touched.

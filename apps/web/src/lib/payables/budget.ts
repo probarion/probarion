@@ -6,6 +6,11 @@
 // decision to be written and checked, the chain reads before the first transaction stop at `sendByMs`, and what comes
 // from the first transaction on runs with the SDK's own timing, unchanged: a send that may have landed is never cut off
 // by this code. budget.test.ts adds the parts up.
+//
+// Caps and plans: `modelBudgetMs`, the model's end `afterModelMs` before `sendByMs`, and `sendByMs` are enforced
+// (payablesBudget, read by the SDK's clients). `beforeModelMs`, `sendAndCloseMs`, `afterResponseMs` and `kickWatchMs`
+// are planning figures that nothing enforces. What keeps the watcher kick inside `routeMs` is the function's end, which
+// the route passes it (lib/watcher/server.ts, KickOptions.hardLimit): after a late answer it claims fewer alerts.
 
 /** The parts of the route's time, in milliseconds from its start. */
 export const PAYABLES_TIME = {
@@ -30,22 +35,25 @@ export const PAYABLES_TIME = {
   afterModelMs: 10_000,
   /**
    * From the route's start: no chain read starts after this until a transaction is under way (the RPC client refuses
-   * it, and the SDK then stops the cycle before anything is sent). The sum of the three parts above.
+   * it, so nothing is sent; lib/payables/probarion.ts says how each refused read ends the cycle). The sum of the three
+   * parts above.
    */
   sendByMs: 60_000,
   /**
    * From the first transaction on, at the SDK's own timing: the spend, its ledger entry, the anchor transaction, the
-   * invoice row and the response. A few seconds each on NEAR. A send that hangs longer is not cut short (it may land), and
-   * a function stopped then leaves the row `processing` (docs/RUNBOOK.md, "Invoice stuck in processing").
+   * invoice row and the response. A few seconds each on NEAR. A plan, not a cap: a send that hangs longer is not cut short
+   * (it may land), and a function stopped then leaves the row `processing` (docs/RUNBOOK.md, "Invoice stuck in
+   * processing").
    */
   sendAndCloseMs: 10_000,
   /**
-   * What the function has left once it has answered, for the watcher kick (lib/watcher/server.ts): one tenant's watch,
-   * then the alerts it claims for KICK_ALERTS_MS and the grace after that deadline (lib/alerts/dispatch.ts).
-   * server.test.ts checks the kick against it.
+   * What the function has left once it has answered on time, for the watcher kick (lib/watcher/server.ts): one tenant's
+   * watch, then the alerts it claims for KICK_ALERTS_MS and the grace after that deadline (lib/alerts/dispatch.ts). A
+   * plan, which server.test.ts adds up: when the answer is later, the kick's hard limit (the route's start plus
+   * `routeMs`) shortens its claims instead.
    */
   afterResponseMs: 20_000,
-  /** One tenant's watch inside the kick: a handful of chain and database reads. */
+  /** One tenant's watch inside the kick: a handful of chain and database reads. A plan: the watch has no cap. */
   kickWatchMs: 5_000,
 } as const;
 

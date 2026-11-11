@@ -37,11 +37,16 @@ const h = vi.hoisted(() => ({
   networks: [] as string[],
   /** The time budget the route gave each Probarion it made. */
   budgets: [] as PayablesBudget[],
+  /** What the route told each kick about its function's end. */
+  kickOptions: [] as unknown[],
+  /** Runs inside the session check, the route's first step after its start (a test moves the clock there). */
+  onAuth: null as null | (() => void),
 }));
 
 vi.mock("@/lib/auth/guard", () => ({
   memberForApi: async (_vault: string, roles: unknown) => {
     h.roles.push(roles);
+    h.onAuth?.();
     return h.auth ?? { session: { accountId: "acme.near" }, member: h.member };
   },
 }));
@@ -59,8 +64,9 @@ vi.mock("@/lib/near/server", () => ({
   },
 }));
 vi.mock("@/lib/watcher/server", () => ({
-  kickWatcher: (tenant: string, network: string) => {
+  kickWatcher: (tenant: string, network: string, o?: unknown) => {
     h.networks.push(`kick:${network}`);
+    h.kickOptions.push(o);
     return h.kicks.push(tenant);
   },
 }));
@@ -159,6 +165,8 @@ beforeEach(async () => {
   h.rules = [];
   h.failDb = null;
   h.kicks = [];
+  h.kickOptions = [];
+  h.onAuth = null;
   h.mandates = async (_v, from) => (from === 0 ? [mandate(1, agentPk)] : []);
   h.process = async () => PAID;
 });
@@ -267,67 +275,67 @@ describe("POST /api/console/[vault]/invoices", () => {
       expect(aged.map((s) => s.file)).toEqual([]);
     });
 
-    it("counts the cycle's deadline from the route's start", async () => {
-      const before = Date.now();
-      let left = Number.NaN;
-      h.process = async () => {
-        left = h.budgets[0]?.chainMs() ?? Number.NaN;
-        return PAID;
-      };
-      expect((await post(invoiceForm({ text: fresh() }))).status).toBe(200);
-      expect(h.budgets).toHaveLength(1);
-      expect(left).toBeLessThanOrEqual(PAYABLES_TIME.sendByMs);
-      expect(left).toBeGreaterThan(PAYABLES_TIME.sendByMs - (Date.now() - before) - 100);
-    });
-
-    // The route's half of a model that takes 70 s: the SDK (test/db/payables-time.test.ts runs it) cuts the model off at
-    // the time the budget grants it and decides rules-only, which holds the invoice for the owner. The route answers with
-    // the time the watcher kick needs still left, and the kick was asked for before the cycle ran.
-    it("answers a cycle whose model takes 70 s within the budget, waiting for the owner, with the kick asked for", async () => {
+    // The budget and the kick's end are counted at the top of POST, before the session, the form, the PDF and the
+    // vault's mandates. A budget started any later (in the makeProbarion callback, say) would let a slow start push the
+    // 60 s send-by point past the route's 90 s. Here the clock moves only inside the session check (7 s) and the
+    // mandates read (18 s), both before the SDK instance is made.
+    it("counts the cycle's deadlines and the kick's end from the route's start, before the slow steps", async () => {
       // An hour back: PGlite reads the same clock, so the row this test writes stays older than the next tests' rows.
       const T0 = Date.now() - 3_600_000;
       vi.useFakeTimers({ toFake: ["Date"] });
       try {
         vi.setSystemTime(T0);
-        let kicksAtCycle = -1;
-        let granted = Number.NaN;
-        h.process = async () => {
-          kicksAtCycle = h.kicks.length;
-          const budget = h.budgets.at(-1);
-          if (budget === undefined) throw new Error("no budget");
-          vi.setSystemTime(T0 + PAYABLES_TIME.beforeModelMs); // the start, as planned
-          granted = budget.modelMs();
-          vi.setSystemTime(Date.now() + Math.min(70_000, granted)); // cut off at what it was granted
-          // the decision's write and the dry run before the first transaction still have their time
-          expect(budget.chainMs()).toBeGreaterThanOrEqual(PAYABLES_TIME.afterModelMs);
-          return {
-            ...PAID,
-            status: "held",
-            spendId: null,
-            txHash: null,
-            code: OWNER_CONFIRMS_RULE,
-          };
+        h.onAuth = () => vi.setSystemTime(Date.now() + 7_000);
+        const mandates = h.mandates;
+        h.mandates = async (v, from, limit) => {
+          if (from === 0) vi.setSystemTime(Date.now() + 18_000);
+          return mandates(v, from, limit);
         };
-        const r = await post(invoiceForm({ text: fresh() }));
-        const elapsed = Date.now() - T0;
-        expect(r.status).toBe(200);
-        const out = await body(r);
-        expect(out).toMatchObject({
-          status: "awaiting_owner",
-          notice: expect.stringMatching(/^Nothing was sent/),
-        });
-        expect(granted).toBe(PAYABLES_TIME.modelBudgetMs);
-        expect(kicksAtCycle).toBe(1);
-        expect(h.kicks).toEqual([h.member.tenant_id]);
-        expect(elapsed).toBeLessThanOrEqual(PAYABLES_TIME.sendByMs - PAYABLES_TIME.afterModelMs);
-        expect(PAYABLES_TIME.routeMs - elapsed).toBeGreaterThanOrEqual(
-          PAYABLES_TIME.sendAndCloseMs + PAYABLES_TIME.afterResponseMs,
-        );
-        const row = await getInvoice(h.db, h.member.tenant_id, String(out.invoiceId));
-        expect(row?.status).toBe("awaiting_owner");
+        let chain = Number.NaN;
+        let model = Number.NaN;
+        h.process = async () => {
+          const budget = h.budgets[0];
+          if (budget === undefined) throw new Error("no budget");
+          expect(Date.now()).toBe(T0 + 25_000);
+          chain = budget.chainMs();
+          model = budget.modelMs();
+          return PAID;
+        };
+        expect((await post(invoiceForm({ text: fresh() }))).status).toBe(200);
+        expect(h.budgets).toHaveLength(1);
+        // 60 s from T0, not from T0 + 25 s
+        expect(chain).toBe(PAYABLES_TIME.sendByMs - 25_000);
+        // the model's calls end afterModelMs before that, whatever the start took: 25 s, not 40 s
+        expect(model).toBe(PAYABLES_TIME.sendByMs - PAYABLES_TIME.afterModelMs - 25_000);
+        // and the kick sends nothing past T0 + 90 s
+        expect(h.kickOptions).toEqual([{ hardLimit: T0 + PAYABLES_TIME.routeMs }]);
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    // The route's wiring for a cycle the SDK holds for the owner (test/db/payables-time.test.ts runs the real SDK with
+    // a 70 s model and shows that hold; here the cycle is a stub): the kick is asked for before the cycle runs, the
+    // route's budget is the one the SDK instance gets, and the hold is answered as waiting for the owner.
+    it("asks for the kick before the cycle, gives the SDK the route's budget, and answers a hold as waiting for the owner", async () => {
+      let kicksAtCycle = -1;
+      h.process = async () => {
+        kicksAtCycle = h.kicks.length;
+        return { ...PAID, status: "held", spendId: null, txHash: null, code: OWNER_CONFIRMS_RULE };
+      };
+      const r = await post(invoiceForm({ text: fresh() }));
+      expect(r.status).toBe(200);
+      const out = await body(r);
+      expect(out).toMatchObject({
+        status: "awaiting_owner",
+        notice: expect.stringMatching(/^Nothing was sent/),
+      });
+      expect(kicksAtCycle).toBe(1);
+      expect(h.kicks).toEqual([h.member.tenant_id]);
+      expect(h.budgets).toHaveLength(1);
+      expect(h.budgets[0]?.chainMs()).toBeLessThanOrEqual(PAYABLES_TIME.sendByMs);
+      const row = await getInvoice(h.db, h.member.tenant_id, String(out.invoiceId));
+      expect(row?.status).toBe("awaiting_owner");
     });
   });
 

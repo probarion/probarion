@@ -47,7 +47,7 @@ const checkTone = (o: ShownRule["outcome"]): Tone =>
   o === "refuse" ? "bad" : o === "pass" ? "good" : "warn";
 /**
  * Confirm runs the whole payment cycle (check_spend, spend, anchor) in its server action, under the tenant's process
- * lease (PROCESS_LEASE_SECONDS, 90 s), which outlasts this with a 30 s margin; payables-confirm.test.ts checks it.
+ * lease (PROCESS_LEASE_SECONDS, 120 s), which outlasts this by at least 30 s; payables-confirm.test.ts checks it.
  */
 export const maxDuration = 60;
 
