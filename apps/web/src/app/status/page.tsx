@@ -6,10 +6,16 @@ import { brandCardClass, ExternalLink, linePillClass, PANEL_TONES } from "@/comp
 import type { Probe } from "@/lib/health";
 import { type HealthReport, healthReport } from "@/lib/health-server";
 import { log } from "@/lib/log";
-import { softRequestNetwork } from "@/lib/network";
+import { canonicalUrl, softRequestNetwork } from "@/lib/network";
 import { STATUS_PAGE as P } from "@/lib/site/ops-copy";
 
-export const metadata: Metadata = { title: P.meta.title, description: P.meta.description };
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: P.meta.title,
+    description: P.meta.description,
+    alternates: { canonical: await canonicalUrl("/status") },
+  };
+}
 export const dynamic = "force-dynamic";
 
 function ProbeRow({ probe }: { probe: Probe }) {
@@ -43,7 +49,7 @@ export default async function StatusPage() {
     log.error("status.report_failed", { network, error });
   }
   return (
-    <div className={`${s.site} ${s.wrap} ${c.page}`}>
+    <div className={`${s.site} ${s.wrap} ${c.page} ${c.reading}`}>
       <p className={s.eyebrow}>{P.eyebrow}</p>
       <h1 className={c.title}>{P.title}</h1>
       <p className={c.lede}>{P.lede(network)}</p>

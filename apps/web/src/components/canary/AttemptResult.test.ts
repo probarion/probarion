@@ -66,6 +66,16 @@ describe("the three columns of an answer", () => {
     );
   });
 
+  it("says the model's time ran out when that is why no proposal came back", () => {
+    const text = visible(render(done({ proposal: null, modelOutOfTime: true })));
+    expect(text).toContain(
+      "No proposal: the model's time ran out (at most 55 seconds) before its answer came back. Code decided without it.",
+    );
+    expect(text).not.toContain("No proposal came back from the model.");
+    // a proposal that came back is shown, whatever the flag says
+    expect(visible(render(done({ modelOutOfTime: true })))).toContain("pay · 1.5 test USDC");
+  });
+
   it("prints what the model wrote as text, never as markup", () => {
     const html = render(
       done({

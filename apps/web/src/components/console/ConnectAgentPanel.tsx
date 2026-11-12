@@ -147,7 +147,7 @@ function StepCard({
       className="mb-6 min-w-0 rounded-3xl border border-line bg-surface p-5 sm:p-7"
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-        <h2 id={id} className="text-[22px] font-light tracking-tight">
+        <h2 id={id} className="text-2xl font-light tracking-tight">
           {step !== null ? <span className={eyebrow}>Step {step} of 6</span> : null}
           {title}
         </h2>

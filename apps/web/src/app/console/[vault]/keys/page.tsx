@@ -145,7 +145,7 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
         <RouteLink
           route="/console/[vault]/agent"
           href={`/console/${encodeURIComponent(vault)}/agent`}
-          className="text-sm text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink"
+          className="text-sm text-ink underline decoration-ink/60 underline-offset-2 hover:decoration-ink"
         >
           See Agent (MCP)
         </RouteLink>
@@ -184,42 +184,44 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
         {view.keys.length === 0 ? (
           <p className={`text-sm ${muted}`}>No keys yet.</p>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-line">
-                <th>Purpose</th>
-                <th>Public key</th>
-                <th>Label</th>
-                <th>Status</th>
-                <th>Allowance left</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {view.keys.map((k) => (
-                <tr key={k.id} className="border-b border-line align-top last:border-0">
-                  <td>{k.purpose}</td>
-                  <td className="mono text-xs break-all">{k.public_key}</td>
-                  <td>{k.label}</td>
-                  <td>
-                    <Badge tone={STATUS_TONE[k.status]}>{k.status}</Badge>
-                    {k.stuck ? (
-                      <p className="mt-1 text-xs text-bad">
-                        Stuck: this key {stuckText(k.purpose, view.vaultCode)}
-                      </p>
-                    ) : null}
-                    {k.discardedOnChain ? (
-                      <p className="mt-1 text-xs text-wait">
-                        Discarded, but on chain: this key {DISCARDED_ON_CHAIN_TEXT[k.purpose]}
-                      </p>
-                    ) : null}
-                  </td>
-                  <td>{allowanceText(k.allowance)}</td>
-                  <td>{ownerButtons(k)}</td>
+          <div className="relative overflow-x-auto">
+            <table className="w-full text-left text-sm [&_td]:pr-4 [&_th]:pr-4 [&_th]:pb-2 [&_th]:whitespace-nowrap">
+              <thead>
+                <tr className="border-b border-line">
+                  <th>Purpose</th>
+                  <th>Public key</th>
+                  <th>Label</th>
+                  <th>Status</th>
+                  <th>Allowance left</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {view.keys.map((k) => (
+                  <tr key={k.id} className="border-b border-line align-top last:border-0">
+                    <td>{k.purpose}</td>
+                    <td className="mono text-xs break-all">{k.public_key}</td>
+                    <td>{k.label}</td>
+                    <td>
+                      <Badge tone={STATUS_TONE[k.status]}>{k.status}</Badge>
+                      {k.stuck ? (
+                        <p className="mt-1 text-xs text-bad">
+                          Stuck: this key {stuckText(k.purpose, view.vaultCode)}
+                        </p>
+                      ) : null}
+                      {k.discardedOnChain ? (
+                        <p className="mt-1 text-xs text-wait">
+                          Discarded, but on chain: this key {DISCARDED_ON_CHAIN_TEXT[k.purpose]}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td>{allowanceText(k.allowance)}</td>
+                    <td>{ownerButtons(k)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
         <p className={`mt-2 text-xs ${muted}`}>
           Payables signs each payment with the agent key its mandate is bound to, so a mandate keeps
@@ -233,31 +235,33 @@ export default async function KeysPage({ params }: { params: Promise<{ vault: st
             These keys are on the vault but Probarion did not make them: your own agent holds their
             secrets. Probarion&apos;s hosted Payables never signs with them.
           </p>
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-line">
-                <th>Purpose</th>
-                <th>Public key</th>
-                <th>Label</th>
-                <th>Allowance left</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {view.outside.map((k) => (
-                <tr
-                  key={`${k.purpose}:${k.public_key}`}
-                  className="border-b border-line align-top last:border-0"
-                >
-                  <td>{k.purpose}</td>
-                  <td className="mono text-xs break-all">{k.public_key}</td>
-                  <td>{k.label}</td>
-                  <td>{allowanceText(k.allowance)}</td>
-                  <td>{outsideButtons(k)}</td>
+          <div className="relative overflow-x-auto">
+            <table className="w-full text-left text-sm [&_td]:pr-4 [&_th]:pr-4 [&_th]:pb-2 [&_th]:whitespace-nowrap">
+              <thead>
+                <tr className="border-b border-line">
+                  <th>Purpose</th>
+                  <th>Public key</th>
+                  <th>Label</th>
+                  <th>Allowance left</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {view.outside.map((k) => (
+                  <tr
+                    key={`${k.purpose}:${k.public_key}`}
+                    className="border-b border-line align-top last:border-0"
+                  >
+                    <td>{k.purpose}</td>
+                    <td className="mono text-xs break-all">{k.public_key}</td>
+                    <td>{k.label}</td>
+                    <td>{allowanceText(k.allowance)}</td>
+                    <td>{outsideButtons(k)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       ) : view.outside === null ? (
         <Notice tone="warn">

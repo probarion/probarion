@@ -183,7 +183,7 @@ export default async function MandatesPage({ params }: { params: Promise<{ vault
             No mandates yet. An agent cannot pay anyone without one.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-left text-sm [&_td]:pr-4 [&_th]:pr-4 [&_th]:pb-2 [&_th]:whitespace-nowrap">
               <thead>
                 <tr className="border-b border-line">

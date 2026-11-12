@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   checkSpendArgs,
@@ -280,7 +281,10 @@ export function LiveCheckClient({
         </label>
         {injected === undefined ? null : (
           <p className={s.injected}>
-            <b>{copy.injectedLead}</b> "{injected}" {copy.injectedTail}
+            <b>{copy.injectedLead}</b> "{injected}" {copy.injectedTail} {copy.injectedCanary}{" "}
+            <Link className={s.link} href={copy.injectedCanaryLink.href}>
+              {copy.injectedCanaryLink.label} <span aria-hidden="true">→</span>
+            </Link>
           </p>
         )}
       </div>
@@ -290,7 +294,12 @@ export function LiveCheckClient({
         <p className={s.liveHint}>
           {hintText(shown, copy, LIVE_VAULT, (iso) => new Date(iso).toLocaleTimeString())}
         </p>
-        <div aria-live="polite">
+        {/* While a request is out, the region is busy and its last sentence is dimmed: it is not the answer yet. */}
+        <div
+          aria-live="polite"
+          aria-busy={shown.kind === "loading"}
+          className={shown.kind === "loading" ? s.liveBusy : undefined}
+        >
           <p className={`${s.liveVerdict} ${verdictClass}`}>{verdictText(shown, copy)}</p>
           <p id="live-why" className={s.liveWhy}>
             {sentenceText(shown, copy, codes, injectedIds)}

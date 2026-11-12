@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: T.meta.title, description: T.meta.des
 export default function TermsPage() {
   const rules: readonly TermsRule[] = T.rules;
   return (
-    <div className={`${s.site} ${s.wrap} ${c.page}`}>
+    <div className={`${s.site} ${s.wrap} ${c.page} ${c.reading}`}>
       <p className={s.eyebrow}>{T.eyebrow}</p>
       <h1 className={c.title}>{T.title}</h1>
       <p className={c.lede}>{T.updated}</p>

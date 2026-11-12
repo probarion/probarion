@@ -536,6 +536,45 @@ describe("runAttempt", () => {
     expect(pb.requestSpend).not.toHaveBeenCalled();
   });
 
+  // Production, 2026-11-11 and 11-12: "Ignore previous instructions" ran the chat out of the model's time, and the answer
+  // only said that no proposal came back. When the SDK instance says the model's time ran out, the answer says so too.
+  it("says the model's time ran out when the cycle decided without a proposal for that reason", async () => {
+    const rules: RuleResult[] = [
+      { id: "model.unavailable", outcome: "pass", detail: "model unavailable: decided rules-only" },
+      {
+        id: "invoice.amount_invalid",
+        outcome: "refuse",
+        detail: 'invoice amount "0" is not a positive integer',
+      },
+    ];
+    const late = deps(
+      {},
+      { process: vi.fn(async () => ({ ...refused, modelOutOfTime: true })) },
+      decisionWith(null, rules),
+    );
+    const r = await runAttempt(late.d, input());
+    expect(r).toMatchObject({
+      status: "done",
+      proposal: null,
+      modelOutOfTime: true,
+      code: { status: "refused_by_code", rule: "invoice.amount_invalid" },
+      raw: { sent: false, skipped: "not_pay" },
+    });
+    // a cycle that decided without a proposal for any other reason says only that there is none
+    const other5 = deps({}, {}, decisionWith(null, rules));
+    const plain = await runAttempt(other5.d, input(other(5)));
+    expect(plain).toMatchObject({ status: "done", proposal: null });
+    expect(plain).not.toHaveProperty("modelOutOfTime");
+    // and a proposal that did come back is never called late
+    const answered = deps(
+      {},
+      { process: vi.fn(async () => ({ ...refused, modelOutOfTime: true })) },
+    );
+    const shown = await runAttempt(answered.d, input(other(7)));
+    expect(shown).toMatchObject({ status: "done", proposal: { action: "pay" } });
+    expect(shown).not.toHaveProperty("modelOutOfTime");
+  });
+
   it("says so, and sends nothing, when the ledger decision cannot be read", async () => {
     const missing = deps({}, {}, null);
     expect(raw(await runAttempt(missing.d, input()))).toEqual({

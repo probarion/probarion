@@ -1,4 +1,4 @@
-# The testnet trial vault and a real MCP client, 2026-11-11
+# The testnet trial vault: a real MCP client, 2026-11-11, and a console try, 2026-11-12
 
 `trial.vaults.probarion.testnet` is a vault the owner created through the testnet factory from the web console at
 [probarion.xyz](https://probarion.xyz), signed in with Meteor, on 2026-11-05. On 2026-11-11, from 17:15 to 17:50
@@ -10,6 +10,10 @@ ledger key, both held by the MCP server on the owner's machine.
 
 The same session also froze and unfroze the demo vault from the console: that is in the
 [demo vault's record](../demo-vault/README.md#2026-11-11-freeze-unfreeze-and-attested-decisions).
+
+On 2026-11-12 the owner tried more of the console on this vault, in the same way: Reject on the approval page,
+revoking a mandate, adding and then removing an agent key on the Keys tab, and Withdraw all. That run is in
+[its own section](#2026-11-12-reject-revoke-a-spare-agent-key-and-withdraw-all), after the record of 2026-11-11.
 
 Test tokens only: `usdc.probarion.testnet` is `test-ft` acting as USDC, and has no value.
 
@@ -150,4 +154,137 @@ the snapshot: `sha256sum docs/evidence/trial-vault/invoice-INV-300*.txt docs/evi
 - **No Base top-up.** Only the USDC transfer on NEAR from the owner's wallet was tried. The Base top-up through
   1Click was not, since testnet has no 1Click.
 - **No email.** The Telegram messages were real. No email alert has been sent.
+- **Test tokens.** Nothing here moved real money.
+
+## 2026-11-12: Reject, revoke, a spare agent key and Withdraw all
+
+From 03:29 to 03:36 UTC the owner tried more of the console on this vault, at [probarion.xyz](https://probarion.xyz)
+(`main` at `fdcb702`), signed in with Meteor. Claude drove the console in the owner's Chrome, and the owner signed
+six wallet prompts in Meteor: `create_mandate`, `reject`, `revoke_mandate`, `add_agent`, `remove_agent` and
+`withdraw`. The held spend came from the same real MCP client as on 2026-11-11.
+
+Before the run the vault held 1 test USDC. Mandate 1 had spent 4 of its 5 USDC and 3 of its 5 uses, with a 1 USDC
+approval limit. The vault's keys were the agent key `mcp-claude` and the ledger key above, and its ledger had 6
+entries, 3 anchors and 3 spends, all paid.
+
+1. **Mandate 2.** On the Mandates tab the owner signed mandate 2, "Console try". It pays `probarion-payee.testnet`
+   at most 2 USDC a payment and 2 in all, 1 payment, until 2026-11-30 23:59:59 UTC, holds a payment above 0.5 USDC
+   for an approver, and is bound to `mcp-claude`. Its purpose hash is mandate 1's, the sha256 of the demo vault's
+   [`po-PO-1001.txt`](../demo-vault/po-PO-1001.txt). The wallet attached 0.05 NEAR for its storage.
+2. **The held spend.** Claude Code 2.1.289, run headless (`claude -p ... --mcp-config mcp.json --strict-mcp-config`)
+   with the model `claude-fable-5-1`, started the server as `cmd /c npx -y @probarion/mcp@0.1.1`, with only
+   `PROBARION_VAULT_ID=trial.vaults.probarion.testnet` set. The run is named `hold4`. Its prompt asked for
+   `list_mandates`, then `request_spend` on mandate 2 for 1.00 USDC, with the sha256 of
+   [`invoice-INV-3004.txt`](invoice-INV-3004.txt), the ref `console-try:INV-3004` and a reasoning text, and asked the
+   client not to poll `get_spend_status`. So the prompt gave every tool argument, and the client did not read the
+   invoice. The server's rules allowed the spend: ledger entry 6 records `allow`, decided by `rules-only`, with the
+   reasoning text recorded unattested under the prefix `mcp:`. The agent key sent spend 4, and the vault held it,
+   because 1 USDC is above mandate 2's `approval_above` of 0.5 USDC. The hold ends on 2026-11-15 at 03:30 UTC. Entry 7
+   records the spend as `held`, and the ledger key anchored all 8 entries. The tool answered `held`, with spend 4 and
+   ledger entry 7. [`mcp-client-2026-11-12.jsonl`](mcp-client-2026-11-12.jsonl) holds the run's init line and its two
+   tool calls and their results, in the format of the 2026-11-11 file, and nothing else of the transcript.
+3. **Reject.** The approval page, `/console/trial.vaults.probarion.testnet/approve/4`, showed "Held for approval",
+   "Why held: 1 USDC is above the mandate's approval threshold of 0.5 USDC.", the hold's end (2026-11-15 03:30 UTC)
+   and two buttons, "Approve 1 USDC" and "Reject". Claude clicked Reject. The page asked "Reject spend #4? Nothing is
+   paid, and its reservation goes back to the mandate.", and the owner signed `reject` (1 yoctoNEAR). The vault
+   logged `spend_rejected`, by the owner. The page then read "Rejected" and "Nothing to approve: the chain no longer
+   holds spend #4 for an approver.", and mandate 2 was back to 0 of 1 uses, with its 2 USDC left.
+4. **Revoke.** On the Mandates tab Claude clicked Revoke on mandate 2. The page's confirm named
+   `Revoke mandate #2 "Console try"`, and the owner signed `revoke_mandate` (1 yoctoNEAR). The vault logged
+   `mandate_revoked`. The tab then showed mandate 2 as `revoked`, with no Revoke button, and mandate 1 as active.
+5. **A spare agent key, added and removed.** On the Keys tab, "Generate agent key and add it in my wallet" had
+   Probarion's server make an agent key and keep its secret encrypted, as for any key the Keys tab makes. The owner
+   signed `add_agent` for `ed25519:5bA5PSyzmmkR7bfjivoW2Ar2voGtHNfqhBBeEWjovtCg`, with a gas allowance of 1 NEAR
+   (1 yoctoNEAR attached). Its label is `payablesconsole-try-spare`: the label field already held `payables`, and
+   Claude typed `console-try-spare` after it. The tab then listed the key as active, with its 1 NEAR allowance. Then
+   Remove on that key's row: the confirm said "Remove this agent key from the vault? Payables stops using it at
+   once." It does not name the key; the line under the button says "You sign: Remove agent key ed25519:5bA5PSyz…".
+   The owner signed `remove_agent`, the vault logged `agent_removed`, and the tab showed the key as removed.
+   `mcp-claude` and the ledger key were not touched.
+6. **Withdraw all.** On the Overview Claude clicked "Withdraw all 1 USDC to my wallet" and confirmed in the page, and
+   the owner signed `withdraw` for 1000000, that is 1 test USDC (1 yoctoNEAR attached). The vault logged `withdrawn`
+   to the owner and sent the USDC with `ft_transfer`, memo `probarion:withdraw`. The Overview then showed 0 USDC on
+   NEAR.
+
+### Transactions of 2026-11-12
+
+| Time (UTC) | What | Transaction |
+| --- | --- | --- |
+| 2026-11-12 03:29:32 | Mandates tab: the owner signs mandate 2, "Console try" | [`D5SrM1GT…`](https://testnet.nearblocks.io/txns/D5SrM1GTgtgkQ9V7xXCbB1cSWxNUwxJU8PPQ1bPWGg8Y) |
+| 03:30:31 | Spend 4, INV-3004, held (1.00) | [`Hr3E5bNY…`](https://testnet.nearblocks.io/txns/Hr3E5bNYeVi6QyXJjkDo4XapbBs5L3rotG5gXZShVwHu) |
+| 03:30:35 | Anchor 4, 8 entries | [`8aVdFZjb…`](https://testnet.nearblocks.io/txns/8aVdFZjbuxYxVpvtZ9ZEAz5ftqG8ZP5aoCPiSDtcR8yA) |
+| 03:32:56 | The owner rejects spend 4 on the approval page; nothing is paid | [`hFfPWT9y…`](https://testnet.nearblocks.io/txns/hFfPWT9ynSUVSBAnPRLJ5CDFvvbWSr8YLgXsuRbwM6p) |
+| 03:33:34 | Mandates tab: the owner revokes mandate 2 | [`BZARsMaH…`](https://testnet.nearblocks.io/txns/BZARsMaHxd4XrCQ7Juax2PpdWHEe2HstJ3BML3U4PDfU) |
+| 03:34:30 | Keys tab: the owner adds the spare agent key | [`2sys85o4…`](https://testnet.nearblocks.io/txns/2sys85o4oDVuxksUTDt2Vd8krwTdvFbuVXDLSqX55CkL) |
+| 03:35:02 | Keys tab: the owner removes the spare agent key | [`DK1N71XT…`](https://testnet.nearblocks.io/txns/DK1N71XTfX3dxHzyefaMtu1ze86ifjnnL55RWVoJQ2yN) |
+| 03:35:53 | Overview: Withdraw all sends the vault's 1 test USDC to the owner | [`67jzpvU7…`](https://testnet.nearblocks.io/txns/67jzpvU7U1SYs99WAyKwbXrtGq84mZPcpNV3qnL2cLQn) |
+
+The times are block times (the rows after the first are 2026-11-12). The spend was signed by the vault's
+`spend`-only agent key `mcp-claude`, the anchor by its `anchor`-only ledger key, and the other six by the owner.
+[`docs/mainnet-proof.json`](../../mainnet-proof.json) records each of these transactions too, among its testnet
+entries `trial_*`. The reject, the revoke, the two key changes and the withdraw are on chain only: no code writes an
+owner's or an approver's action to the ledger, so the ledger's payment entry for spend 4 (entry 7) still says
+`held`, and the chain says `rejected`.
+
+### After the run
+
+The vault's views, read at about 03:37 UTC:
+
+- **USDC:** 0.
+- **Spends:** 4 in all. Spends 1, 2 and 3 are paid, and spend 4 is rejected.
+- **Mandate 1, "MCP try":** active, 4 of its 5 USDC spent, 3 of its 5 uses, nothing reserved.
+- **Mandate 2, "Console try":** revoked, with nothing spent, used or reserved.
+- **Keys:** the agent key `mcp-claude` is the vault's only agent key, and the ledger key is unchanged.
+- **Freeze:** not frozen.
+
+Mandate 1 still has 1 USDC and 2 uses left, but the vault holds no USDC, so a payment under it fails until the owner
+adds funds.
+
+### Check it again
+
+After the run, at 03:37:51 UTC, release 0.1.1 from npm read the chain with the 8-entry ledger:
+`npx -y probarion@0.1.1 verify --network testnet --vault trial.vaults.probarion.testnet --ledger ledger-2026-11-12.jsonl --snapshot snapshot-2026-11-12.json`.
+It printed `9 passed, 0 failed, 0 unproven` and `RESULT: PASS`, with 8 entries and 4 anchors. Check c found no
+entry after the last anchored count of 8. Check d found 4 spends on chain, each bound to its own allow or hold
+decision, so it still binds spend 4, which the vault held, to the `allow` decision of entry 6. Check e reported the
+four decisions (seq 0, 2, 4 and 6) as rules-only, which it does not fail. Check f found no full-access key: every
+access key is the ledger key or a `spend`-only agent key. That run wrote [`snapshot-2026-11-12.json`](snapshot-2026-11-12.json), with the chain data
+it read at 03:37:49 UTC. [`verify-2026-11-12.txt`](verify-2026-11-12.txt) is the verifier on that file, offline:
+the same nine checks pass. Offline, with no network:
+
+```bash
+npx probarion verify --offline docs/evidence/trial-vault/snapshot-2026-11-12.json
+```
+
+[`ledger-2026-11-12.jsonl`](ledger-2026-11-12.jsonl) is the vault's ledger after the run: 8 entries, 4 decisions and
+4 payment results, signed by the ledger key above. Its first 6 entries are `ledger-2026-11-11.jsonl`, exactly. It
+holds public keys, hashes and decisions, and no secret. To read the chain again:
+
+```bash
+npx probarion verify --network testnet --vault trial.vaults.probarion.testnet --ledger docs/evidence/trial-vault/ledger-2026-11-12.jsonl
+```
+
+The offline command on `snapshot-2026-11-11.json` keeps passing. By the verifier's code, a live run with
+`ledger-2026-11-11.jsonl` would now fail check c, as [Check it](#check-it) warns: anchor 4 covers 8 entries, and
+that file holds 6. This record does not include such a run. The invoice's sha256 is the `invoice_hash` of entries 6 and 7 and of spend 4:
+`sha256sum docs/evidence/trial-vault/invoice-INV-3004.txt`.
+
+### What the 2026-11-12 run does not show
+
+- **No email.** No email alert has been sent. That needs `RESEND_API_KEY` and a verified domain in production.
+- **No Base top-up.** The Base top-up through 1Click is mainnet only, and it has not been tried with a live quote;
+  testnet has no 1Click.
+- **No phone.** Every console step of this run, and of 2026-11-11, was in a desktop browser.
+- **One person.** The owner is also on the vault's approver list, so the owner rejected a spend of their own agent.
+  `probarion-approver.testnet` signed nothing.
+- **No attested model.** The MCP path decided with the code's rules only, and this vault has no attested model. The
+  prompt gave every tool argument, so the client did not read the invoice.
+- **Telegram not checked.** This record does not check whether the bot sent a message for spend 4.
+- **No ledger key change.** Only an agent key was added and removed. Removing or replacing the ledger key was not
+  tried, so the Keys tab's ask before a new ledger key replaces one is not shown.
+- **A key that sent nothing.** The spare agent key sent no spend before it was removed, so this does not show a held
+  spend outliving the removal of its key.
+- **Withdraw all only.** The withdraw was Withdraw all, the console's only withdraw button, with the whole 1 test
+  USDC.
+- **Freeze elsewhere.** Freeze and Unfreeze were tried on the demo vault on 2026-11-11, not on this vault.
 - **Test tokens.** Nothing here moved real money.

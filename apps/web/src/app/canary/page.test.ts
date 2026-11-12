@@ -33,7 +33,10 @@ vi.mock("@/components/canary/CanaryForm", async (importOriginal) => {
   };
 });
 vi.mock("@/lib/env", () => ({ getEnv: mocks.env }));
-vi.mock("@/lib/network", () => ({ softRequestNetwork: async () => net.network }));
+vi.mock("@/lib/network", () => ({
+  softRequestNetwork: async () => net.network,
+  canonicalUrl: async (path: string) => `https://${net.network}.probarion.test${path}`,
+}));
 vi.mock("@/lib/canary/board-data", () => ({ loadBoard: mocks.board, loadFeed: mocks.feed }));
 vi.mock("@/lib/canary/ready", () => ({ loadReadiness: mocks.ready }));
 vi.mock("@/lib/near/server", () => ({
@@ -55,7 +58,7 @@ vi.mock("@/lib/near/server", () => ({
 
 import { parseBoard, parseFeed } from "@/lib/canary/board";
 import { LINKS } from "@/lib/site/facts";
-import CanaryPage, { dynamic, metadata } from "./page";
+import CanaryPage, { dynamic, generateMetadata } from "./page";
 
 const logs = quietLogs();
 
@@ -168,12 +171,22 @@ const touchedTheChain = () =>
   ].some((m) => m.mock.calls.length > 0);
 
 describe("the page's settings", () => {
-  it("reads the chain and the database on every request, and describes the page as the owner asked", () => {
+  it("reads the chain and the database on every request, and describes the page as the owner asked", async () => {
     expect(dynamic).toBe("force-dynamic");
+    const metadata = await generateMetadata();
     expect(metadata.title).toBe("Canary");
     expect(metadata.description).toBe(
       "Try to make an AI agent pay you. Code rules and a NEAR contract decide.",
     );
+  });
+
+  it("names itself, without ?via=, at the address of the request's own network", async () => {
+    for (const network of ["testnet", "mainnet"] as const) {
+      net.network = network;
+      expect((await generateMetadata()).alternates?.canonical).toBe(
+        `https://${network}.probarion.test/canary`,
+      );
+    }
   });
 });
 

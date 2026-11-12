@@ -120,7 +120,7 @@ A vault records as its factory the account that called its `new`, unless that wa
 
 ## Online checks O1 and O2
 
-O1 checks each attested decision's TDX quote through Intel DCAP, and requires debug off, a TCB status of `UpToDate`, `OutOfDate` or `TDRelaunchAdvised`, and report data equal to the evidence's. When there is an NVIDIA GPU payload, O2 checks that it carries the request's nonce, then has NVIDIA NRAS verify it. Neither pins the measurement of NEAR AI's published image yet, so the attestation result's `quote_verified` stays false (check e's online detail says so) and O1 does not show which image the TEE runs. Both need `--online` and the optional package `@nearai/inference-sdk`.
+O1 checks each attested decision's TDX quote through Intel DCAP, and requires debug off, a TCB status of `UpToDate`, `OutOfDate` or `TDRelaunchAdvised`, and report data equal to the evidence's. When there is an NVIDIA GPU payload, O2 checks that it carries the request's nonce, then has NVIDIA NRAS verify it. Neither pins the measurement of NEAR AI's published image yet, so the attestation result's `quote_verified` stays false (check e's online detail says so) and O1 does not show which image the TEE runs. On 2026-11-12 no pin was found that could show it: NEAR AI's quote measures the VM's operating system and its management harness, and the model stack starts after boot, and no measurement register records its images ([the finding](https://github.com/probarion/probarion/blob/main/docs/measurement-pin-2026-11.md)). Both need `--online` and the optional package `@nearai/inference-sdk`.
 
 ```bash
 node packages/cli/dist/bin.js --network testnet verify --vault <vault> --online

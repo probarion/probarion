@@ -149,19 +149,24 @@ export function verdictWord(a: Answer, copy: Pick<LiveCopy, "verdictPay" | "verd
 
 export type Tone = "pay" | "hold" | "refuse" | "none";
 
-/** The answer panel's headline for a state. A text that is not an amount has its own title. */
+/**
+ * The answer panel's headline for a state. A text that is not an amount has its own title. While a request is out,
+ * the headline says so: the previous verdict would read as the answer to the new request.
+ */
 export function verdictText(
   shown: Shown,
   copy: Pick<LiveCopy, "verdictPay" | "verdictHold" | "noAnswer" | "notAmountTitle" | "waiting">,
 ): string {
   if (shown.kind === "failed" && shown.reason === "badAmount") return copy.notAmountTitle;
+  if (shown.kind === "loading") return copy.waiting;
   const a = lastAnswer(shown);
-  if (a === null) return shown.kind === "loading" ? copy.waiting : copy.noAnswer;
+  if (a === null) return copy.noAnswer;
   return verdictWord(a, copy);
 }
 
 export function verdictTone(shown: Shown): Tone {
   if (shown.kind === "failed" && shown.reason === "badAmount") return "none";
+  if (shown.kind === "loading") return "none";
   const a = lastAnswer(shown);
   if (a === null) return "none";
   if (!a.verdict.ok) return "refuse";

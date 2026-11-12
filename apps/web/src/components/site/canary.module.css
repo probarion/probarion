@@ -20,9 +20,9 @@
 }
 .lede {
   margin-top: 16px;
-  max-width: 40em;
+  max-width: var(--container-measure);
   font-size: clamp(17px, 1.65vw, 19px);
-  line-height: 1.42;
+  line-height: 1.5;
 }
 .pills {
   display: flex;
@@ -44,10 +44,10 @@
   color: var(--color-wait);
 }
 
-/* Cards */
+/* Cards. The light weight only at 24px and up, where it is large text. */
 .cardTitle {
   font-weight: 300;
-  font-size: clamp(22px, 2.6vw, 30px);
+  font-size: clamp(24px, 2.6vw, 30px);
   line-height: 1.1;
   letter-spacing: -0.025em;
   margin-bottom: 14px;
@@ -56,8 +56,10 @@
   color: var(--color-mute);
   font-size: 15px;
 }
+/* 1em above: 2.5em or more from the top of the paragraph's last line to the top of this one's first (WCAG 1.4.8). */
 .line {
-  margin-top: 10px;
+  margin-top: 1em;
+  max-width: var(--container-measure);
   overflow-wrap: anywhere;
 }
 .balance {
@@ -70,6 +72,7 @@
 }
 .balance small {
   font-size: 0.45em;
+  font-weight: 400;
   letter-spacing: 0;
   color: var(--color-mute);
 }
@@ -108,7 +111,7 @@
   font-family: var(--font-mono);
   /* 16px, so that a phone does not zoom in on focus. */
   font-size: 16px;
-  line-height: 1.45;
+  line-height: 1.5;
   resize: vertical;
 }
 .textarea::placeholder {
@@ -190,7 +193,7 @@
 }
 /* While an attempt runs, a chip does nothing: it says so as the main button does, and keeps the focus. */
 .pick[aria-disabled="true"] {
-  opacity: 0.5;
+  opacity: 0.65;
   cursor: not-allowed;
 }
 .usually {
@@ -230,7 +233,7 @@
   height: 18px;
   border: 1px solid currentColor;
   border-radius: 50%;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
 }
 .tip {
@@ -247,7 +250,7 @@
   color: var(--color-paper);
   font-size: 13.5px;
   font-weight: 400;
-  line-height: 1.45;
+  line-height: 1.5;
   text-align: left;
 }
 /* The gap above the tooltip counts as over it, so the pointer can move onto it without it closing. */
@@ -277,9 +280,10 @@
   }
 }
 /* Empty text is `disabled`. An attempt that is running is only aria-disabled, so that the button keeps the focus. */
+/* Dimmed, and still legible: about 6:1 for the ink pill's label (5.97:1 over a white card). */
 .button:disabled,
 .button[aria-disabled="true"] {
-  opacity: 0.5;
+  opacity: 0.65;
   cursor: not-allowed;
 }
 .result {
@@ -324,7 +328,10 @@
 .column p {
   margin: 0;
 }
-.column p + p,
+/* From the top of a paragraph's last line to the top of the next one's first: 2.5em or more (WCAG 1.4.8). */
+.column p + p {
+  margin-top: 1em;
+}
 .column p + div {
   margin-top: 8px;
 }
@@ -392,6 +399,7 @@
 }
 .tileValue small {
   font-size: 0.4em;
+  font-weight: 400;
   letter-spacing: 0;
   color: var(--color-mute);
 }
@@ -414,11 +422,19 @@
   color: var(--color-mute);
 }
 
-/* Tables */
+/* Tables. Positioned, so that a link's or a cell's absolutely positioned screen-reader text stays inside the scroller. */
 .scroll {
+  position: relative;
   overflow-x: auto;
   min-width: 0;
   margin-top: 16px;
+  /*
+   * 6px of room each side, taken back by the margin: the first and last columns have no outer padding, and the
+   * scroller would cut the focus ring of a link there (WCAG 2.4.13). A link scrolled into view stops 6px in.
+   */
+  margin-inline: -6px;
+  padding-inline: 6px;
+  scroll-padding-inline: 6px;
 }
 .scroll:focus-visible {
   outline: 2px solid var(--color-gold-small);
@@ -474,6 +490,7 @@
 
 /* The replay's banner */
 .banner {
+  max-width: var(--container-measure);
   margin-bottom: 24px;
   padding: 14px 18px;
   border-radius: 16px;
@@ -486,6 +503,7 @@
 }
 /* What a visitor can do while the live Canary is not shown: just under the banner, aligned with its text. */
 .meanwhile {
+  max-width: var(--container-measure);
   margin: -12px 0 24px;
   padding: 0 18px;
   font-size: 15px;
@@ -502,10 +520,10 @@
   color: var(--color-mute);
 }
 .steps {
-  max-width: 46em;
+  max-width: var(--container-measure);
   padding-left: 1.4em;
   display: grid;
-  gap: 12px;
+  gap: 1em;
   font-size: 16px;
   list-style: decimal;
   overflow-wrap: anywhere;
@@ -517,7 +535,7 @@
 /* The rules */
 .rules {
   margin-top: 28px;
-  max-width: 44em;
+  max-width: var(--container-measure);
   padding-left: 1.4em;
   display: grid;
   gap: 18px;
@@ -532,6 +550,19 @@
   text-underline-offset: 3px;
   overflow-wrap: anywhere;
 }
+/*
+ * The pages that are mostly reading (Privacy, Terms, Security, Status, the Canary rules): a paragraph or a list runs to
+ * the reading measure, 80 characters or fewer, and a paragraph break leaves 2.5em or more from the top of one line to
+ * the top of the next (WCAG 1.4.8), a 14px line under a 17px one or a 19px lede included. Cards and tables keep their
+ * width.
+ */
+.reading :where(p, ul, ol) {
+  max-width: var(--container-measure);
+}
+.reading :where(p + p) {
+  margin-top: 1.2em;
+}
+/* After the reading rules, which have the same specificity, so that its own margin holds. */
 .back {
   margin-top: 36px;
 }

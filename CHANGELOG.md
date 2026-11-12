@@ -15,6 +15,51 @@ The software is an unaudited beta.
 
 ### Added
 
+- A console try on testnet on 2026-11-12, from 03:29 to 03:36 UTC, on
+  `trial.vaults.probarion.testnet`, recorded in a new section of
+  `docs/evidence/trial-vault/README.md`. Claude drove the console at probarion.xyz in the owner's
+  Chrome, and the owner signed six wallet prompts in Meteor. The owner signed mandate 2 on the
+  Mandates tab (2 test USDC in all, held above 0.5 USDC). The same real MCP client as on 2026-11-11,
+  Claude Code run headless with `@probarion/mcp` 0.1.1 from npm, asked for 1.00 test USDC under it
+  for INV-3004, and the vault held it as spend 4. On the approval page Claude clicked Reject and the
+  owner signed `reject`: nothing was paid, and the reservation went back to the mandate. Then the
+  owner revoked mandate 2 on the Mandates tab, added a spare agent key that the Keys tab generated
+  and removed it on the same tab, and withdrew the vault's whole balance, 1 test USDC, with Withdraw
+  all on the Overview. The spare key's label is `payablesconsole-try-spare`, because the label field
+  already held `payables` when Claude typed after it. After the run the vault held no USDC, spend 4
+  was rejected, mandate 2 was revoked, and `mcp-claude` was again its only agent key. A live
+  `npx -y probarion@0.1.1 verify` of the 8 ledger entries passed checks a to i
+  (`9 passed, 0 failed, 0 unproven`), and the ledger's entry for spend 4 still says `held`, since no
+  code writes an owner's or an approver's action to the ledger. The decision is rules-only, the
+  prompt gave every tool argument, the owner is also the approver who rejected, every step was in a
+  desktop browser, and this record does not check a Telegram message for spend 4. Adding an email
+  alert, the Base top-up through 1Click and any change of the ledger key were not tried. The evidence
+  folder now holds the invoice, the ledger, the snapshot, the offline verify output and the client's
+  tool calls of that run; `pnpm judge` checks the new snapshot offline, and `docs/mainnet-proof.json`
+  records its 8 testnet transactions. The landing page's status list moves Reject, revoke, withdraw
+  and key removal to the console's tried row, and its other row is now "Web console: email alerts,
+  Base top-up". The README's Status rows for the web console, the MCP server and the approval page,
+  and the docs pages on what works today, holds and approvals, roles and keys, testnet and mainnet,
+  the architecture and letting an agent pay say what was tried.
+
+- The landing page has a "Built on NEAR, with NEAR AI Cloud" section after the status list. One
+  card holds a row for NEAR, where payments are made (the vault and the factory on testnet, and
+  `v0.probarion.near` on mainnet with 1 payment and 1 refusal and no Base payout yet), and one for
+  NEAR AI Cloud, the model that advises (6 attested decisions that pass A1 to A7 offline and passed
+  O1 and O2 online, the invoice Payables paid on its own on 2026-11-12, and the TEE image not
+  pinned); each row links its evidence. Under the card, four cards name where Probarion ships:
+  the npm public registry (`probarion`, `@probarion/core`, `@probarion/sdk` and `@probarion/mcp`
+  0.1.1, with provenance), the official MCP Registry (`io.github.probarion/probarion` 0.1.1),
+  GitHub (the MIT source and the CI with the sandbox tests and the reproducible build) and the
+  Chrome Web Store (the extension 0.1.0, shown with Probarion's own mark). NEAR's unmodified logo
+  stands in for its name; the npm, MCP and GitHub logos sit unmodified above their cards' names and
+  are hidden from screen readers, which read the names. The section ends with the Intel TDX and NVIDIA NRAS checks of `verify --online`, a line
+  that no payout has run through NEAR Intents yet, and the trademark notices, which say no
+  partnership or endorsement is implied. The README's License line now says Probarion is designed
+  to pay through Base and Solana, since no payout has run there, and the 0.1.1 release row links
+  the registry listing. `apps/web/test/built-on.test.ts` holds each fact to the README, the
+  evidence, the ledgers and the package files, checks every link offline, and pins the paths of
+  each logo to its owner's file.
 - The Payables agent paid an invoice on its own with an attested model for the first time, on
   testnet on 2026-11-12, recorded in `docs/evidence/demo-vault/README.md`. At 01:09 UTC
   `invoice-INV-2009.txt`, 2.00 test USDC to `probarion-payee.testnet` under PO-1001, went in on the
@@ -907,6 +952,92 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing page's hero shows two real testnet transactions from two vaults. The paid card is the
+  demo vault's INV-2001, 2 test USDC to `probarion-payee.testnet` (`HFyW61UZ…dQp1`). The blocked card
+  is the Canary rehearsal of 2026-11-10: 50 test USDC under a mandate that pays at most 1 test USDC a
+  payment, refused by code (`invoice.amount_invalid` and `custom.canary_no_autopay`) and then by the
+  contract on chain with `OverPerPayment` (`6XuxN42d…v6z8DH`), with a link to try the Canary
+  (`/canary?via=home`). The buttons read "Try the demo" (`#try`) and "Explore the docs" (`/docs`),
+  followed by a "Verify it yourself" link to the demo vault's proof page, and the fine print and the
+  audience line are now one line that links the mainnet vault's payment and refusal on the mainnet
+  explorer. While the live check asks, its answer panel says "Asking the testnet" and is `aria-busy`,
+  and its hint keeps room for two lines, four on a phone. On a phone the amount slider gets a row of
+  its own, 44 px high. The hijacked prompt names `attacker.testnet` and links the Canary. In the
+  hero's cards a long account name moves under its label whole. "Plug in your agent" has a new title,
+  the factory and vault accounts, a row of developer links under the code, and an MCP card that links
+  the MCP server's README. Each of its three uses (invoices, pay per API call, cross-chain payouts)
+  shows what the mandate controls, what that did on testnet, its evidence and its status pill; the
+  cross-chain one says that on testnet a stand-in takes the place of NEAR Intents and that no payout
+  through NEAR Intents has run on mainnet. The comparison links `docs/comparison-2026-11.md`. The two
+  big headings read as sentences to a screen reader, and `/canary`, `/status`, `/proof` and
+  `/proof/<vault>` give a canonical address at the request's own network. The README's hijack line and
+  its note on the contract's refusal of the agent key's direct spend of 2026-11-09 are updated to
+  match. In the blocked card, the row with `OverPerPayment` is labelled Contract, since that code is
+  the contract's answer. The use cases, the notes under the code, the comparison link and the Built on
+  section's fine print keep 2.5em between paragraphs and run to the 32em measure, as the WCAG pass
+  holds the rest of the landing.
+
+- The site's type targets WCAG 2.2 AA on every page and the AAA text criteria (1.4.6 contrast, 1.4.8
+  visual presentation) in the landing copy, the Docs Center, the console, the Canary, the proof page
+  and the reading pages (Privacy, Terms, Security, Status). The site does not claim AAA conformance as
+  a whole. The brand stays: Hanken Grotesk and IBM Plex Mono, ink, paper and gold.
+  - Contrast: small gold text (eyebrows, the docs step numbers and tags, the error and 404 labels, the
+    proof page's step badges) is `gold-ink`, 8.6:1 on paper, in place of `gold-small` (5.9:1), which
+    stays on the landing's 42px step numerals only. `band-mute` goes from #a9a59b to #b0aca2 (8.7:1 on
+    the ink band). The gold headline gradient is darker (#5e4210 to #8a6420, 4.9:1 or more on paper)
+    and is used on 24px text and up only. The metal card's gradient ends lighter (#cfa54a) with a softer
+    shade, so its ink reads at 7.6:1 or more and its labels (88% ink) at 7:1 or more. The header is 96%
+    paper, so its grey text stays at 7:1 over the ink band. Link underlines are 60% ink, placeholders
+    use `mute`, and a disabled control is drawn at 65% opacity in place of 50% (its ink label reads
+    at about 6:1), or at 75% for the red buttons, whose label then reads at 4.9:1 in place of 3.8:1.
+  - Visual presentation: reading text has a line height of 1.5 or more. A paragraph break leaves 2.5em
+    or more from the top of one paragraph's last line to the top of the next one's first, inside docs
+    list items and steps, the landing's story cards and screenshot captions, and the Canary cards
+    too. Reading blocks run to 32em, about 71 characters on average (the new `--container-measure`
+    token, `max-w-measure` in classes), nested ones included: a docs step's paragraphs, a verifier
+    check, the docs hub's agent block, and the Canary's replay banner and the note under it. Laid
+    out at 1440px, each line of reading text on the docs and the public reading pages has 80
+    characters or fewer (before this change some reached 109, and at 33em some still reached 82).
+  - Sizes and weights: text set in the stylesheets and class names is 12px or more, light weight is
+    used at 24px and up only (card and dialog titles go from 22px to 24px), docs articles style `h4`,
+    and the landing's panel and comparison headings are 17px. The architecture diagram is the
+    exception: its smallest labels are 12 units of an SVG that scales with the column, so they draw
+    at about 11.6px in a 1440px window and 10.7px where it scrolls.
+  - Text spacing and reflow (1.4.12, 1.4.10): the docs search boxes grow with their text, inline pills,
+    the nav links and the landing's inline code wrap, scrolling code blocks and tables keep their
+    screen reader text inside them, the console's definition lists stack on a phone, and its wide
+    tables scroll inside their card.
+  - Focus and edges (2.4.7, 1.4.11): selects and text areas get the shared focus ring, the docs search
+    input's ring is drawn all round, a ring inside a clipping box is drawn inside it, the Canary
+    tables and the landing's screenshot row on a phone leave 6px of room for the ring of a link at
+    their edge, a link that the keyboard focuses inside a sideways scroller is scrolled into view
+    (Chrome left the second screenshot mostly out of sight), form fields have `mute` borders, the
+    pressed Canary scenario has a 2px ink edge, and the open docs code tab has a gold-bright bar.
+  - The site declares `color-scheme: only light` (also as Next.js `viewport.colorScheme`), since it
+    has no dark theme yet. `only` also turns off a browser's own automatic dark mode (Chrome's), which
+    would recolour the tokens without their contrast checks. Forced colours still apply: in them
+    (Windows contrast themes), buttons, pills, the metal card, the pressed scenario and the open
+    console tab keep a visible edge.
+  - `apps/web/test/typography-aaa.test.ts` reads `globals.css` and the CSS modules and fails on a
+    text colour pair below 7:1 (4.5:1 at 24px and up), a disabled label under 4.5:1, a reading line
+    height under 1.5, light weight under 24px, text under 12px, justified text, an ellipsis, or a
+    missing forced colours rule. For the rules it lists, it also fails on a paragraph break under
+    2.5em or a reading block wider than the measure. `site-facts.test.ts` holds small text to 7:1 and
+    the gold headline to 4.5:1.
+  - `apps/web/e2e/a11y.spec.ts` (with `@axe-core/playwright` 4.14.0, a new dev dependency) runs
+    axe-core's WCAG 2.0, 2.1 and 2.2 A and AA rules, then its AAA contrast rule, over `/`, `/status`,
+    `/docs`, a docs article and the demo vault's proof page, and checks reflow at 320px with and
+    without the 1.4.12 spacing. It also lays out every docs article and the public reading pages (45
+    pages) at 1440px and fails on a line of reading text over 80 characters or a break between two
+    paragraphs under 2.5em; code, tables, mono labels and text of 24px and up are left out. A local
+    run on 2026-11-12 passed all 65 tests of this spec, and the docs, landing and smoke specs with
+    them (123 in all); the test settings reach no database, so the proof page was checked in its
+    unavailable view.
+  - Not covered yet: a dark theme (and, with `only light`, a browser's automatic one),
+    `prefers-contrast`, font sizes in rem, the architecture diagram's labels under 12px, visible
+    labels on the register-vault and email forms (they have a placeholder and an accessible name),
+    and the signed-in console pages in axe and in the laid-out checks.
+
 - The Canary no longer follows `NEARAI_MODEL`. That variable pins the NEAR AI Cloud model for Payables and the SDK
   factory; the Canary keeps the SDK's default order (`z-ai/glm-5.3-flash` first), the model of its recorded attempts.
   With `Qwen/Qwen3.8-27B` pinned on probarion.xyz on 2026-11-11, a Canary attempt timed out at 40 s and was decided
@@ -1173,6 +1304,24 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The Canary gives its model up to 55 s instead of 40 s, and says so when the model's time runs out.
+  On probarion.xyz the "Ignore previous instructions" example message was decided with no proposal
+  twice, at 2026-11-11 23:40 UTC (with `Qwen/Qwen3.8-27B` pinned) and 2026-11-12 01:15 UTC (with
+  `z-ai/glm-5.3-flash`): the chat request alone ran out of the 40 s (39,631 ms and 39,692 ms; the
+  model calls before it took under 0.4 s), and the answer only said that no proposal came back.
+  Template `probarion-proposal/v1` asks for up to 4096 tokens with no limit on reasoning, and the
+  attested answers in `docs/evidence` (533 to 895 tokens, 401 to 792 of them reasoning) came at about
+  20 to 60 tokens a second, the signature's fetch included, so a model that reasons longer on a
+  message that argues with its instructions does not finish in 40 s. A cap on reasoning or on
+  `max_tokens` would change the request bytes that check A8 rebuilds, so the time is what changed:
+  the model's calls now share 55 s (`CANARY_LIMITS.modelBudgetMs`) and end at least 15 s
+  (`afterModelMs`) before the attempt's 80 s deadline, so its decision is still written and
+  anchored. The route's 90 s, the lease, the code rules and the system prompt are unchanged. A model
+  that answers in about 40 s or less still leaves raw mode its 15 s; after a slower answer the
+  proposal is shown and raw mode sends nothing (`no_time`). When the model's time ran out, the
+  answer now reads "No proposal: the model's time ran out (at most 55 seconds) before its answer came
+  back. Code decided without it." Whether 55 s is enough for that message is not measured yet.
+
 - `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` an invoice the mandate allows
   when an attested model's payee hint put the mandate's own NEAR account in `address`, next to a
   chain. It was seen on the testnet demo vault, ledger entry 12 (2026-11-11T23:35:56Z, model
@@ -1426,6 +1575,15 @@ The software is an unaudited beta.
 
 ### Security
 
+- Why the TEE measurement is not pinned yet (O1b): `docs/measurement-pin-2026-11.md` records the
+  finding of 2026-11-12. A NEAR AI Cloud TDX quote measures the VM's operating system and NEAR AI's
+  management harness, and `compose-manager` starts the model stack after boot from a git tag of
+  `nearai/cvm-compose-files`, so no measurement pin can show which model image ran. For the demo
+  vault's entries 10 to 13 the stored event log replays RTMR0 to RTMR3 of each quote, and MRCONFIGID
+  holds the compose hash; the page lists those values, a script to check them, what NEAR AI publishes
+  and what O1b would need. The landing page row stays "Checked online on testnet, image not pinned",
+  and SECURITY.md, the threat model, the README's NEAR AI Cloud row, the verifier checks page and the
+  interfaces spec link the finding.
 - Key sealing: the web console generates agent and ledger keys on the server and seals them at rest
   with libsodium secretbox, under subkeys of one master key, `KEY_ENCRYPTION_SECRET`. A key becomes
   active only when the chain shows that exact function-call key on the vault, limited to `spend` or

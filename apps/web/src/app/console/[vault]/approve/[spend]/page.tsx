@@ -46,11 +46,11 @@ const second = "text-ink/75";
 /** A paragraph: 14px with a 24px line. */
 const para = "text-sm leading-6";
 const textLink =
-  "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink";
+  "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/60 underline-offset-2 hover:decoration-ink";
 /** The invoices the page looks through for this spend's, the most `invoice_list` gives: a held spend is recent. */
 const RECENT_INVOICES = 200;
 
-/** Callouts in AAA colours: the console's Notice tones read at 5.4:1 (amber) and 5.9:1 (red). */
+/** Callouts in AAA colours: gold-ink on the wait tint reads at 7.9:1, and ink on the red tint at 16:1 or more. */
 const CALLOUT = {
   info: "border border-line bg-paper text-ink",
   warn: "border border-gold-deep/30 bg-wait-bg text-gold-ink",

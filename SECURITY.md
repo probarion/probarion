@@ -164,7 +164,10 @@ snapshot of the ledger and the chain:
   ledger position. The online check O1 verifies the TDX quote through Intel DCAP, and O2 checks the
   NVIDIA payload through NRAS. Neither pins the measurements of NEAR AI's published image yet, so
   `quote_verified` stays false and Probarion says "attested and signed", not "proven to run a
-  given model image".
+  given model image". On 2026-11-12 no pin was found that could show it: the quote measures the
+  VM's operating system and NEAR AI's management harness, and the model stack starts after boot,
+  from a git tag, and no measurement register records its images
+  ([why, and what O1b would need](docs/measurement-pin-2026-11.md)).
 - **A8 needs the invoice text.** The ledger stores no invoice text, so only an auditor who holds the
   invoices can show that the model saw the standard request for that invoice. A8 does not show that
   an invoice is authentic.

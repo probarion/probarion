@@ -13,7 +13,7 @@ export function SignInButton({ next = "/console" }: { next?: string }) {
     <div>
       <button
         type="button"
-        className={`${inkPillClass} disabled:opacity-50`}
+        className={`${inkPillClass} disabled:opacity-65`}
         disabled={!ready || busy}
         onClick={async () => {
           setBusy(true);

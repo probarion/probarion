@@ -1,3 +1,4 @@
+import { BuiltOn } from "@/components/site/BuiltOn";
 import { Compare } from "@/components/site/Compare";
 import { ConsoleShots } from "@/components/site/ConsoleShots";
 import { Hero, Problem } from "@/components/site/Hero";
@@ -23,6 +24,7 @@ export default function Home() {
       <LedgerTest />
       <ChainList />
       <StatusList />
+      <BuiltOn />
       <Closing />
     </div>
   );
