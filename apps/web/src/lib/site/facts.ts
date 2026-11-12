@@ -739,13 +739,13 @@ export const STATUS = {
     { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
     {
       id: "web-console",
-      row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
+      row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, Reject, revoke, withdraw, key removal, proof page",
       pill: "Tried on testnet",
       tone: "live",
     },
     {
       id: "web-console-not-tried",
-      row: "Web console: Reject, revoke, withdraw, key removal, email alerts, Base top-up",
+      row: "Web console: email alerts, Base top-up",
       pill: "Built, not tried yet",
       tone: "work",
     },
@@ -902,7 +902,7 @@ export const INTEGRATE = {
       title: "Web console",
       body: "Create a vault, its keys and mandates, pay invoices with Payables and publish a proof page. Sign in with a NEAR wallet.",
       status:
-        "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
+        "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, Reject, revoke, withdraw, key removal, proof page",
       link: { route: CONSOLE_ROUTE, label: "Open console" },
     },
     {
