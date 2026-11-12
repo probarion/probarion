@@ -9,7 +9,9 @@ import { dirname, join, resolve } from "node:path";
 import { after, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  A8_RUN,
   ALL_PASS,
+  a8Passes,
   CHECK_IDS,
   childEnv,
   compareCommitted,
@@ -23,6 +25,7 @@ import {
   ledgerPrefix,
   locate,
   looksLikeNetworkError,
+  matchA8,
   matchVerify,
   parseArgs,
   parseVerifyText,
@@ -69,6 +72,33 @@ const answer = (code, stdout, stderr = "") => ({
   ms: 1,
 });
 
+/**
+ * The A8 run's report as the CLI prints it with --json: check e's detail, and the invoice files with the attested
+ * decisions A8 checks them against (`seqs`), plus one file that matches no entry.
+ */
+function a8Report({
+  detail = `5 attested decisions pass A1–A7; ${a8Passes(A8_RUN.seqs)}`,
+  seqs = A8_RUN.seqs,
+} = {}) {
+  const r = report({ exit: 0, checks: ALL_PASS }, parseVerifyText(read(A8_RUN.committed)));
+  r.checks = r.checks.map((c) => (c.id === "e" ? { ...c, detail } : c));
+  r.invoices = [
+    ...seqs.map((seq) => ({
+      file: `docs/evidence/demo-vault/invoice-${seq}.txt`,
+      sha256: "0".repeat(64),
+      seqs: [seq],
+      a8_seqs: [seq],
+    })),
+    {
+      file: "docs/evidence/demo-vault/po-PO-1001.txt",
+      sha256: "1".repeat(64),
+      seqs: [],
+      a8_seqs: [],
+    },
+  ];
+  return r;
+}
+
 // The marks vitest prints before a test: passed, skipped, todo, failed.
 const [OK, SKIP, TODO, FAILED] = [0x2713, 0x2193, 0x25a1, 0xd7].map((c) => String.fromCharCode(c));
 
@@ -106,6 +136,9 @@ function fakeExec(calls, overrides = {}) {
     if (args[0] === "--input-type=module") {
       const ex = examples.find((e) => e.script === args[2]);
       return ex ? answer(0, `${ex.output.join("\n")}\n`) : answer(1, "", "unknown snippet\n");
+    }
+    if (args.includes("verify") && args.includes("--invoices")) {
+      return answer(0, JSON.stringify(a8Report()));
     }
     if (args.includes("verify")) {
       const offline = args[args.indexOf("--offline") + 1];
@@ -822,6 +855,106 @@ describe("matchVerify", () => {
       CHECK_IDS.filter((id) => LIVE_VAULTS.canary.checks[id] === "fail"),
       ["c"],
     );
+  });
+});
+
+describe("A8 with the committed invoices", () => {
+  const run = (code, rep) => ({ code, report: rep, stderr: "", timedOut: false });
+
+  test("the run: PASS when check e says A8 passes on the 5 attested decisions, the same as the committed run", async () => {
+    const got = row(await judge(["--offline", "--quick"]), A8_RUN.id);
+    assert.equal(got.result, "PASS", got.detail);
+    // An offline step: --offline runs it, with no network.
+    assert.equal(planSteps(ROOT).find((s) => s.id === A8_RUN.id)?.kind, "offline");
+    assert.match(
+      got.detail,
+      /A8 \(request binding and mandate match\) passes for 5 of 5 attested decisions \(seq 10, 11, 12, 13, 15\), from 6 invoice files read; same as the committed run in docs\/evidence\/demo-vault\/verify-a8-2026-11-12\.txt$/,
+    );
+    assert.equal(
+      got.command,
+      "node packages/cli/dist/bin.js verify --offline docs/evidence/demo-vault/snapshot-2026-11-12-video.json --invoices docs/evidence/demo-vault --json",
+    );
+    assert.equal(got.readme_ref.file, "docs/evidence/demo-vault/README.md");
+    assert.ok(got.readme_ref.line > 0);
+  });
+
+  test("the run FAILs when A8 does not run, passes on fewer decisions, or check e fails", async () => {
+    const fewer = `5 attested decisions pass A1–A7; A8 (request binding and mandate match) passes for 4 of 5 attested decisions (seq 10, 11, 12, 13); A8 not run for seq 15 (no invoice text supplied for invoice_hash ${"0".repeat(64)})`;
+    const failing = a8Report({
+      detail: "entry 15 fails A8: the request rebuilt from request_inputs",
+    });
+    failing.ok = false;
+    failing.checks = failing.checks.map((c) => (c.id === "e" ? { ...c, status: "fail" } : c));
+    const cases = [
+      [
+        answer(
+          0,
+          JSON.stringify(
+            a8Report({ detail: "A8 not run (the request is not checked against the invoice)" }),
+          ),
+        ),
+        /check e does not say "A8 \(request binding/,
+      ],
+      [answer(0, JSON.stringify(a8Report({ detail: fewer }))), /check e does not say/],
+      [
+        answer(1, JSON.stringify(failing)),
+        /check e is fail, expected pass; exit code 1, expected 0/,
+      ],
+      [
+        answer(1, "", "error: --invoices docs/evidence/demo-vault holds no .txt file\n"),
+        /verify printed no report \(exit 1\): error: --invoices/,
+      ],
+    ];
+    for (const [got, why] of cases) {
+      const r = await judge(["--offline", "--quick"], { overrides: { "--invoices": () => got } });
+      assert.equal(row(r, A8_RUN.id).result, "FAIL");
+      assert.match(row(r, A8_RUN.id).detail, why);
+      assert.equal(r.code, 1);
+    }
+  });
+
+  test("the run FAILs when the committed run is missing or says another result", async () => {
+    const edited = (rel, from, to) => (r) => (r === rel ? read(r).replace(from, to) : read(r));
+    const cases = [
+      [
+        edited(A8_RUN.committed, "entries 17, anchors 12", "entries 15, anchors 11"),
+        /entries 17, anchors 12 now; entries 15, anchors 11 in the committed run/,
+      ],
+      [
+        edited(A8_RUN.committed, "passes for 5 of 5", "passes for 4 of 5"),
+        /the committed run does not say "A8 \(request binding/,
+      ],
+      [(r) => (r === A8_RUN.committed ? null : read(r)), /verify-a8-2026-11-12\.txt is missing/],
+    ];
+    for (const [readFile, why] of cases) {
+      const r = await judge(["--offline", "--quick"], { readFile });
+      assert.equal(row(r, A8_RUN.id).result, "FAIL");
+      assert.match(row(r, A8_RUN.id).detail, why);
+    }
+  });
+
+  test("matchA8: the invoice files A8 checks must be those of exactly the attested decisions", () => {
+    assert.equal(matchA8(run(0, a8Report()), A8_RUN.seqs).result, "PASS");
+    const short = a8Report();
+    short.invoices = short.invoices.filter((f) => !f.a8_seqs.includes(15));
+    assert.deepEqual(matchA8(run(0, short), A8_RUN.seqs), {
+      result: "FAIL",
+      detail: "the invoice files A8 checks are for seq 10, 11, 12, 13, not seq 10, 11, 12, 13, 15",
+    });
+    const none = a8Report();
+    delete none.invoices;
+    assert.match(matchA8(run(0, none), A8_RUN.seqs).detail, /are for seq none, not seq 10/);
+  });
+
+  test("the committed run is an offline A8 run on the filmed snapshot, its command on the first line", () => {
+    const text = read(A8_RUN.committed);
+    assert.equal(
+      text.split("\n")[0],
+      `$ node packages/cli/dist/bin.js verify --offline ${A8_RUN.snapshot} --invoices ${A8_RUN.invoices}`,
+    );
+    assert.deepEqual(parseVerifyText(text), { checks: ALL_PASS, entries: 17, anchors: 12 });
+    assert.ok(text.includes(a8Passes(A8_RUN.seqs)));
+    assert.ok(text.includes("\nRESULT: PASS\n"));
   });
 });
 

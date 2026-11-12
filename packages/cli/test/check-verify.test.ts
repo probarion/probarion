@@ -4,15 +4,17 @@
 // verify exits 0 when every check passes, 1 when any check fails (a fail always wins), 2 when nothing fails but a
 // check is unproven, and 64 on a usage error. check exits 0 when the vault would accept, 1 when it would refuse,
 // and 64 on a usage error.
-import { link, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  computeNonce,
   extractReportDataFromQuote,
   isNearTxHash,
   KNOWN_VAULT_CODE_HASHES,
   type MandateView,
   NETWORKS,
+  type ProposalRequestInputs,
   type Snapshot,
   type SpendView,
   sha256Hex,
@@ -1163,6 +1165,264 @@ describe("probarion verify against a vault", () => {
     }
     expect(r.out).toContain("--archival-rpc");
     expect(r.out).toContain("--evidence");
+    expect(r.out).toContain("--invoice <file>");
+    expect(r.out).toContain("--invoices <dir>");
+    expect(r.out).toContain("--invoice and --invoices add A8 to check e, live or with --offline");
+  });
+});
+
+// ---------- A8 with the invoices the reader holds (--invoice, --invoices) ----------
+
+const CORE_FIXTURES = fileURLToPath(new URL("../../core/test/fixtures/", import.meta.url));
+const DEMO_VAULT = fileURLToPath(new URL("../../../docs/evidence/demo-vault/", import.meta.url));
+const DEMO_SNAPSHOT = join(DEMO_VAULT, "snapshot-2026-11-12-video.json");
+const DEMO_ATTESTED = ["2006", "2007", "2008", "2009", "2010"].map((n) =>
+  join(DEMO_VAULT, `invoice-INV-${n}.txt`),
+);
+const a8Passes = (n: number, seqs: string) =>
+  `A8 (request binding and mandate match) passes for ${n} of ${n} attested decisions (seq ${seqs})`;
+
+/** A folder `held` in the test dir with copies of the core fixture's invoice texts and two other files. */
+async function heldInvoices(): Promise<void> {
+  await mkdir(join(dir, "held"));
+  for (const f of ["invoice-a.txt", "invoice-b.txt", "invoice-injected.txt"]) {
+    await copyFile(join(CORE_FIXTURES, f), join(dir, "held", f));
+  }
+  await writeFile(join(dir, "held", "notes.txt"), "TEST: not an invoice of this vault\n");
+  await writeFile(
+    join(dir, "held", "readme.md"),
+    "TEST: not read, the name does not end in .txt\n",
+  );
+}
+
+/** The model's answer of the fake NEAR AI: pay 25 USDC under mandate 1 to its payee. */
+const PAY_NEAR = JSON.stringify({
+  action: "pay",
+  mandate_id: 1,
+  amount: "25000000",
+  payee_hint: { near_account: SCENARIO_NEAR_PAYEE },
+  reasoning: "TEST DOUBLE",
+  confidence: 0.9,
+});
+
+function fakeProposer(): NearAiProposer {
+  const fake = createFakeNearAi({ respond: () => PAY_NEAR });
+  return new NearAiProposer({
+    apiKey: NEARAI_KEY,
+    baseUrl: FAKE_NEARAI_BASE_URL,
+    fetch: fake.fetch,
+    now: () => NOW,
+    sleep: async () => {},
+  });
+}
+
+describe("probarion verify --invoice and --invoices (A8)", () => {
+  it("runs A8 offline on the TEST FIXTURE snapshot: both attested decisions pass, and the files A8 does not check are listed (exit 0)", async () => {
+    await heldInvoices();
+    const r = await cli(["verify", "--offline", FIXTURE, "--invoices", "held"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(
+      /^e {2}attestations +PASS .*A8 \(request binding and mandate match\) passes for 2 of 2 attested decisions \(seq 0, 2\)/m,
+    );
+    expect(r.out).not.toContain("A8 not run");
+    expect(r.out).toContain(
+      "\ninvoices: 4 files read; A8 checks 2 of them against the attested decisions with their sha256 (check e gives the result): held/invoice-a.txt (seq 0), held/invoice-b.txt (seq 2)\n",
+    );
+    const notAttested =
+      "invoices: 1 file matches only ledger entries that are not attested decisions, so A8 does not check it: held/invoice-injected.txt (seq 4)";
+    const unmatched =
+      "invoices: 1 file matches no ledger entry (its sha256 is no entry's invoice_hash), so A8 does not check it: held/notes.txt";
+    expect(r.out).toContain(`\n${notAttested}\n${unmatched}\n9 passed, 0 failed, 0 unproven\n`);
+    expect(r.out).not.toContain("readme.md");
+    expect(r.out).toMatch(/\nRESULT: PASS\n$/);
+    expect(r.err).toBe(`warning: ${notAttested}\nwarning: ${unmatched}\n`);
+    expect(server.methods).toEqual([]);
+
+    // --json: each file by name and sha256, with the entries it matches; no invoice text.
+    const json = await cli(["verify", "--offline", FIXTURE, "--invoices", "held", "--json"]);
+    expect(json.code).toBe(0);
+    const text = (f: string) => readFile(join(CORE_FIXTURES, f), "utf8");
+    const hash = async (f: string) => sha256Hex(await text(f));
+    expect(JSON.parse(json.out).invoices).toEqual([
+      {
+        file: "held/invoice-a.txt",
+        sha256: await hash("invoice-a.txt"),
+        seqs: [0, 1],
+        a8_seqs: [0],
+      },
+      {
+        file: "held/invoice-b.txt",
+        sha256: await hash("invoice-b.txt"),
+        seqs: [2, 3],
+        a8_seqs: [2],
+      },
+      {
+        file: "held/invoice-injected.txt",
+        sha256: await hash("invoice-injected.txt"),
+        seqs: [4],
+        a8_seqs: [],
+      },
+      {
+        file: "held/notes.txt",
+        sha256: sha256Hex("TEST: not an invoice of this vault\n"),
+        seqs: [],
+        a8_seqs: [],
+      },
+    ]);
+    for (const f of ["invoice-a.txt", "invoice-b.txt"]) {
+      const first = (await text(f)).split("\n")[0] ?? "";
+      expect(first.length).toBeGreaterThan(10);
+      expect(json.out).not.toContain(first);
+      expect(r.out).not.toContain(first);
+    }
+  });
+
+  it("passes A8 on the demo vault's five attested decisions, with the invoices committed beside its snapshot", async () => {
+    const args = DEMO_ATTESTED.flatMap((f) => ["--invoice", f]);
+    const r = await cli(["verify", "--offline", DEMO_SNAPSHOT, ...args]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("entries 17, anchors 12");
+    expect(r.out).toMatch(/^e {2}attestations +PASS .*5 attested decisions pass A1–A7/m);
+    expect(r.out).toContain(a8Passes(5, "10, 11, 12, 13, 15"));
+    expect(r.out).toContain("invoices: 5 files read; A8 checks 5 of them");
+    expect(r.out).toContain("9 passed, 0 failed, 0 unproven");
+    expect(r.err).toBe("");
+  });
+
+  it("lists an edited copy of an invoice as matching no ledger entry: A8 does not run for its decision, and the run does not fail (exit 0)", async () => {
+    const original = await readFile(join(CORE_FIXTURES, "invoice-a.txt"), "utf8");
+    await writeFile(join(dir, "edited.txt"), original.replace("25.00", "52.00"));
+    const r = await cli(["verify", "--offline", FIXTURE, "--invoice", "edited.txt"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(
+      "A8 (request binding and mandate match) passes for 0 of 2 attested decisions; A8 not run for seq 0 (no invoice text supplied for invoice_hash",
+    );
+    expect(r.out).toContain(
+      "\ninvoices: 1 file read; none is the invoice of an attested decision, so A8 checks none\n",
+    );
+    expect(r.err).toBe(
+      "warning: invoices: 1 file matches no ledger entry (its sha256 is no entry's invoice_hash), so A8 does not check it: edited.txt\n",
+    );
+  });
+
+  it("runs A8 on a live verify, and writes no invoice text into the --snapshot it saves", async () => {
+    const pb = agentSdk({
+      model: { provider: "near-ai-cloud", apiKey: NEARAI_KEY },
+      deps: { proposer: fakeProposer() },
+    });
+    expect((await payNear(pb)).status).toBe("paid");
+    const text = "Invoice INV-1 for PO-1001";
+    await writeFile(join(dir, "INV-1.txt"), text);
+    const r = await cli([...live(), "--invoice", "INV-1.txt", "--snapshot", "snap.json"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(a8Passes(1, "0"));
+    expect(r.out).toContain(
+      "\ninvoices: 1 file read; A8 checks it against the attested decisions with its sha256 (check e gives the result): INV-1.txt (seq 0)\n",
+    );
+    expect(r.out).toContain("RESULT: PASS");
+    const saved = await readFile(join(dir, "snap.json"), "utf8");
+    expect(saved).toContain(sha256Hex(text));
+    expect(saved).not.toContain(text);
+    expect(r.out).not.toContain(text);
+    // The same ledger without the invoice: A8 is not run.
+    const without = await cli(live());
+    expect(without.code).toBe(0);
+    expect(without.out).toContain("A8 not run (the request is not checked against the invoice)");
+    expect(without.out).not.toMatch(/^invoices:/m);
+  });
+
+  it("fails check e (exit 1) when the model was sent another text than the invoice the ledger names, which the reader holds", async () => {
+    // A writer with both keys asks the model about a tampered invoice, then records the request as if it had been
+    // about the honest one, whose hash goes into the ledger and the spend. A1 to A7 and the text-free part of A8
+    // pass, so the SDK writes the decision as attested; only the honest invoice's text shows the request was another.
+    const honest = "Invoice INV-7 for PO-1001\nTotal due: 25.00 USDC\n";
+    const tampered = `${honest}TEST: an instruction the honest invoice does not hold\n`;
+    const invoiceHash = sha256Hex(honest);
+    const mandate = server.chain.mandates.find((m) => m.id === 1);
+    if (mandate === undefined) throw new Error("scenario mandate 1 missing");
+    const nonce = computeNonce({
+      vault: SCENARIO_VAULT,
+      prev_link: ZERO_HEX32,
+      invoice_hash: invoiceHash,
+      mandate_id: 1,
+      seq: 0,
+    });
+    const asked = await fakeProposer().propose({
+      invoiceText: tampered,
+      mandates: [mandate],
+      nonce,
+      facts: {
+        invoice_hash: sha256Hex(tampered),
+        amount: "25000000",
+        po_ref: "PO-1001",
+        purpose_hash: SCENARIO_PURPOSE_NEAR,
+        payee_hint: null,
+      },
+    });
+    const inputs = asked.evidence.request_inputs as ProposalRequestInputs;
+    const facts = inputs.facts;
+    if (facts === null) throw new Error("no facts in request_inputs");
+    asked.evidence.request_inputs = {
+      ...inputs,
+      invoice_text_sha256: invoiceHash,
+      facts: { ...facts, invoice_hash: invoiceHash },
+    };
+    const outcome = await agentSdk().requestSpend({
+      mandateId: 1,
+      amount: "25000000",
+      invoiceHash,
+      ref: "INV-7",
+      proposal: asked.proposal,
+      evidence: asked.evidence,
+    });
+    expect(outcome.status).toBe("paid");
+
+    // Without the invoice, the decision passes as attested: nothing in the ledger shows the switch.
+    const without = await cli(live());
+    expect(without.code).toBe(0);
+    expect(without.out).toContain("1 attested decisions pass A1–A7");
+
+    await writeFile(join(dir, "INV-7.txt"), honest);
+    const r = await cli([...live(), "--invoice", "INV-7.txt"]);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(
+      /^e {2}attestations +FAIL +entry 0 fails A8: the request rebuilt from request_inputs, the invoice text and the nonce hashes to [0-9a-f]{64}, not to request_sha256 [0-9a-f]{64}: the chat was not asked with exactly these inputs \[first broken seq 0\]$/m,
+    );
+    expect(r.out).toContain("invoices: 1 file read; A8 checks it");
+    expect(r.out).toContain("RESULT: FAIL (first broken seq 0)");
+
+    // The text the model was sent is not the ledger's invoice: it matches no entry, so it cannot pass A8 either.
+    await writeFile(join(dir, "sent.txt"), tampered);
+    const sent = await cli([...live(), "--invoice", "sent.txt"]);
+    expect(sent.code).toBe(0);
+    expect(sent.out).toContain("A8 not run for seq 0");
+    expect(sent.err).toContain("matches no ledger entry");
+  });
+
+  it("exits 64 for an --invoice or --invoices it cannot use, before it reads the snapshot or the chain", async () => {
+    await mkdir(join(dir, "empty"));
+    await mkdir(join(dir, "no-txt"));
+    await writeFile(join(dir, "no-txt", "invoice.md"), "TEST\n");
+    await writeFile(join(dir, "latin1.txt"), Buffer.from([0x49, 0x4e, 0x56, 0xe9, 0x0a]));
+    const cases: [string[], string][] = [
+      [["--invoice", "missing.txt"], "error: --invoice missing.txt is not a readable file"],
+      [["--invoice", "empty"], "error: --invoice empty is not a readable file"],
+      [["--invoice", " "], "error: --invoice needs a file"],
+      [["--invoices", "missing"], "error: --invoices missing is not a readable directory"],
+      [["--invoices", "empty"], "error: --invoices empty holds no .txt file"],
+      [["--invoices", "no-txt"], "error: --invoices no-txt holds no .txt file"],
+      [["--invoice", "latin1.txt"], "error: --invoice latin1.txt is not UTF-8 text"],
+    ];
+    for (const [flags, message] of cases) {
+      const offline = await cli(["verify", "--offline", "not-there.json", ...flags]);
+      expect(offline.code, flags.join(" ")).toBe(64);
+      expect(offline.err, flags.join(" ")).toContain(message);
+      expect(offline.out).toBe("");
+      const liveRun = await cli([...live(), ...flags]);
+      expect(liveRun.code, flags.join(" ")).toBe(64);
+      expect(liveRun.err, flags.join(" ")).toContain(message);
+    }
+    expect(server.methods).toEqual([]);
   });
 });
 

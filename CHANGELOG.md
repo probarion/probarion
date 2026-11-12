@@ -15,6 +15,23 @@ The software is an unaudited beta.
 
 ### Added
 
+- `probarion verify --invoice <file>` (repeatable) and `--invoices <dir>` (every `.txt` file of a
+  folder) run A8 with invoice texts the auditor holds, live or with `--offline`, in the CLI built from
+  this repository; release 0.1.1 on npm does not have them. The CLI reads each file on the auditor's
+  computer, keys it by the sha256 of its bytes, and uses it for A8 only: it is not sent, not written
+  to `--snapshot` and not printed (`--json` adds an `invoices` list with each file's sha256 and the
+  ledger entries it matches). A file that matches no attested decision is listed under the rows and
+  on stderr, and does not fail the run. A file or folder that cannot be read, a folder with no `.txt`
+  file, or a file that is not UTF-8 text is a usage error (exit 64). On 2026-11-12 the offline run on
+  the demo vault's snapshot of 10:28:54 UTC with `--invoices docs/evidence/demo-vault` passed checks a
+  to i, and check e found that A8 passes on all five attested decisions, entries 10 to 13 and 15
+  (`docs/evidence/demo-vault/verify-a8-2026-11-12.txt`). A live run with `--online` 36 seconds later
+  passed checks a to i, A8 on the same five, and O1 and O2 on all five, entry 15 among them
+  (`verify-online-a8-2026-11-12.txt`). The TEE measurement is not pinned, so this does not show which
+  model image ran. `docs/evidence/demo-vault/README.md` adds a dated section, `pnpm judge` adds the
+  offline step `verify-demo-a8`, which runs that command and compares it with the committed output,
+  and the docs, `SECURITY.md` and the README say that A8 passed on the demo vault's five and was not
+  run on the Canary's two.
 - The demo video is posted on X, in the build's demo post of 2026-11-12:
   <https://x.com/probarionhq/status/2120882499689836651>. It is a 1:57 cut recorded on the live product,
   on NEAR testnet with test USDC. The README links it from its top row of links and from the filmed run

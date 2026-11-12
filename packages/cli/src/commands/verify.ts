@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   isNearAccountId,
   isNearTxHash,
+  type LedgerEntry,
   runChecks,
   type Snapshot,
   type VerifyReport,
@@ -30,10 +31,18 @@ import {
   writeNewFile,
 } from "../context.js";
 import { asUsage, CliError, UsageError, usageExitCodes } from "../errors.js";
+import {
+  type InvoiceFile,
+  invoiceTexts,
+  matchInvoices,
+  readInvoiceFiles,
+  recordingLedger,
+} from "../invoices.js";
 import type { CliIo } from "../io.js";
 import { displayPath } from "../owner-tx.js";
 import { NEAR_ACCOUNT_RE } from "../payee.js";
 import {
+  invoiceNotes,
   onlineLines,
   printable,
   type RenderOptions,
@@ -52,6 +61,8 @@ type VerifyOpts = GlobalOpts & {
   archivalRpc?: string;
   burnTx?: string[];
   proof?: string;
+  invoice?: string[];
+  invoices?: string[];
 };
 
 /** A burn tx hint in the SDK's object form (`BurnTxHint`): the tx hash, and its signer when that is known. */
@@ -62,14 +73,27 @@ Exit codes:
   0   every check passes
   1   a check fails (a fail always wins over unproven), or verify could not run (error: on stderr, no RESULT line)
   2   no check fails, but at least one is unproven: each UNPROVEN row names the spends and what to supply
-  64  usage error: a missing, malformed or conflicting flag
+  64  usage error: a missing, malformed or conflicting flag, an --invoices folder that cannot be read or holds
+      no .txt file, or an invoice file that cannot be read or is not UTF-8 text
 
 --offline verifies a saved snapshot as it is, with no network at all, so it refuses the flags that shape a
 snapshot: --vault, --ledger, --evidence, --burn-tx, --proof, --archival-rpc, --online, --rpc and --network.
 Without --proof, verify reads no evidence file, not even a docs/mainnet-proof.json in the working directory.
+
+--invoice and --invoices add A8 to check e, live or with --offline: for each attested decision whose
+invoice_hash is the sha256 of a file you give, the request the model signed must be the standard request
+rebuilt from that text, the recorded inputs and the ledger nonce, and the mandates it was shown must be the
+vault's. The ledger holds only invoice hashes, so this is how someone who holds an invoice shows that the
+model was sent exactly that invoice. The files are read on this computer and used for A8 only: their text
+is not sent, not written to --snapshot and not printed (--json lists each file's sha256). A file whose
+sha256 is in no attested decision is listed under the rows and does not fail the run; an edited copy of an
+invoice has another sha256, so it matches no ledger entry.
 `;
 
 const MAX_SPEND_ID = Number.MAX_SAFE_INTEGER;
+
+/** A repeatable option's values, in the order given. */
+const collect = (value: string, previous: string[] | undefined) => [...(previous ?? []), value];
 
 /** `<spend_id>=<tx hash>[@<signer>]`, as `--burn-tx` takes it. Anything else is a usage error (exit 64). */
 export function parseBurnTx(value: string): { spendId: number; hint: Hint } {
@@ -213,11 +237,21 @@ export function registerVerify(program: Command, io: CliIo): void {
     .option(
       "--burn-tx <spend_id=hash[@signer]>",
       "a tx that holds a spend's burn, for example an approver's approve tx; repeatable",
-      (value: string, previous: string[] | undefined) => [...(previous ?? []), value],
+      collect,
     )
     .option(
       "--proof <file>",
       "an evidence file (docs/mainnet-proof.json format) whose txs of this vault are burn tx hints",
+    )
+    .option(
+      "--invoice <file>",
+      "an invoice text you hold (UTF-8): A8 checks it against the attested decisions whose invoice_hash is its sha256; repeatable",
+      collect,
+    )
+    .option(
+      "--invoices <dir>",
+      "every .txt file in <dir> (not its subfolders) as an --invoice; repeatable",
+      collect,
     )
     .addHelpText("after", VERIFY_HELP);
 
@@ -257,6 +291,7 @@ export function registerVerify(program: Command, io: CliIo): void {
         o.snapshot === undefined
           ? undefined
           : await snapshotTarget(io, o.snapshot, ledgerFile(undefined, io.env, io.cwd));
+      const invoices = await invoiceFiles(io, o);
       let text: string;
       try {
         text = await readFile(resolve(io.cwd, file), "utf8");
@@ -265,8 +300,19 @@ export function registerVerify(program: Command, io: CliIo): void {
       }
       const snapshot = parseSnapshot(text, file);
       if (target !== undefined) await saveSnapshot(target, o.snapshot ?? "", snapshot);
-      const report = await runChecks(snapshot, { now: io.now() });
-      print(io, o, report, { offline: { takenAt: snapshotTime(snapshot.taken_at) ?? null } });
+      const report = await runChecks(snapshot, {
+        now: io.now(),
+        ...(invoices === undefined ? {} : { invoiceTexts: invoiceTexts(invoices) }),
+      });
+      const offline = { takenAt: snapshotTime(snapshot.taken_at) ?? null };
+      print(
+        io,
+        o,
+        report,
+        invoices === undefined
+          ? { offline }
+          : { offline, invoices: matchInvoices(invoices, snapshot.ledger) },
+      );
       return;
     }
 
@@ -299,6 +345,7 @@ export function registerVerify(program: Command, io: CliIo): void {
       o.snapshot === undefined
         ? undefined
         : await snapshotTarget(io, o.snapshot, parsed.ledgerPath);
+    const invoices = await invoiceFiles(io, o);
 
     const hints = parsed.hints;
     if (o.proof !== undefined) {
@@ -358,26 +405,43 @@ export function registerVerify(program: Command, io: CliIo): void {
             : "@nearai/inference-sdk could not be loaded; probarion installs it as an optional dependency, and it declares Node 24.22.1 or newer";
       }
     }
+    // The invoice files are matched against the ledger the SDK read for this verify, not a second read of the file.
+    const ledger = recordingLedger(new FileLedgerStore(parsed.ledgerPath));
     const pb = new Probarion(
       {
         network: parsed.network,
         vault: parsed.vault,
         model: null,
-        ledger: new FileLedgerStore(parsed.ledgerPath),
+        ledger: ledger.ledger,
       },
       deps,
     );
+    // The texts go to A8 only: the snapshot holds the ledger and the chain data, never an invoice text.
+    const texts = invoices === undefined ? {} : { invoiceTexts: invoiceTexts(invoices) };
     let report: VerifyReport;
+    let entries: readonly LedgerEntry[];
     if (o.snapshot === undefined) {
       // One gather, and the SDK's notes on what it could not look up stay in the details.
-      report = await pb.verify({ online });
+      report = await pb.verify({ online, ...texts });
+      entries = ledger.read();
     } else {
       const snapshot = await pb.snapshot({ online });
       await saveSnapshot(target ?? resolve(io.cwd, o.snapshot), o.snapshot, snapshot);
-      report = await pb.verify({ snapshot, online });
+      report = await pb.verify({ snapshot, online, ...texts });
+      entries = snapshot.ledger;
     }
-    print(io, o, report, onlineNotRun === undefined ? { online } : { online, onlineNotRun });
+    const opts: RenderOptions = onlineNotRun === undefined ? { online } : { online, onlineNotRun };
+    if (invoices !== undefined) opts.invoices = matchInvoices(invoices, entries);
+    print(io, o, report, opts);
   });
+}
+
+/** The files of --invoice and --invoices, read before any network read; undefined when neither is given. */
+async function invoiceFiles(io: CliIo, o: VerifyOpts): Promise<InvoiceFile[] | undefined> {
+  const files = o.invoice ?? [];
+  const dirs = o.invoices ?? [];
+  if (files.length === 0 && dirs.length === 0) return undefined;
+  return readInvoiceFiles(io.cwd, files, dirs);
 }
 
 /** Written with "wx": a file that appeared after the check is refused too, never replaced. */
@@ -386,12 +450,31 @@ async function saveSnapshot(path: string, given: string, snapshot: Snapshot): Pr
 }
 
 function print(io: CliIo, o: VerifyOpts, report: VerifyReport, opts: RenderOptions): void {
-  io.out(o.json === true ? `${JSON.stringify(report, null, 2)}\n` : renderReport(report, opts));
+  if (o.json === true) {
+    // The invoice files by name and sha256, with the entries they match: never their text.
+    const json =
+      opts.invoices === undefined
+        ? report
+        : {
+            ...report,
+            invoices: opts.invoices.map((m) => ({
+              file: m.file,
+              sha256: m.sha256,
+              seqs: m.seqs,
+              a8_seqs: m.a8Seqs,
+            })),
+          };
+    io.out(`${JSON.stringify(json, null, 2)}\n`);
+  } else {
+    io.out(renderReport(report, opts));
+  }
   // Every "did not run" line of --online (no verifier, nothing to check, no GPU payload) and the clock hint
   // ("online hint: ...", O2's token not yet valid by this computer's clock) also go to stderr, with --json too,
-  // where stderr is the only place they appear; the legend stays in the report.
+  // where stderr is the only place they appear; the legend stays in the report. So do the invoice files that
+  // A8 does not check.
   for (const line of onlineLines(report, opts)) {
     if (!line.startsWith("online legend")) io.err(`warning: ${printable(line)}\n`);
   }
+  for (const line of invoiceNotes(opts.invoices)) io.err(`warning: ${printable(line)}\n`);
   io.setExitCode(verifyExitCode(report));
 }

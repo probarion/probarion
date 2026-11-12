@@ -695,22 +695,80 @@ export function parseVerifyText(text) {
   };
 }
 
-/** How an offline report differs from the committed live run that wrote its snapshot; empty when it does not. */
-export function compareCommitted(report, text) {
+/**
+ * How an offline report differs from the committed live run that wrote its snapshot; empty when it does not.
+ * `labels` names the two runs in the differences, by default this run "offline" and the committed one "live".
+ */
+export function compareCommitted(report, text, labels = { now: "offline", was: "live" }) {
   const was = parseVerifyText(text);
   const diffs = [];
   if (Object.keys(was.checks).length === 0) return ["the committed output lists no checks"];
   for (const c of report.checks ?? []) {
     if (was.checks[c.id] !== c.status) {
-      diffs.push(`check ${c.id} is ${c.status} offline, ${was.checks[c.id] ?? "missing"} live`);
+      diffs.push(
+        `check ${c.id} is ${c.status} ${labels.now}, ${was.checks[c.id] ?? "missing"} ${labels.was}`,
+      );
     }
   }
   if (was.entries !== report.entries || was.anchors !== report.anchors) {
     diffs.push(
-      `entries ${report.entries}, anchors ${report.anchors} offline; entries ${was.entries}, anchors ${was.anchors} live`,
+      `entries ${report.entries}, anchors ${report.anchors} ${labels.now}; entries ${was.entries}, anchors ${was.anchors} ${labels.was}`,
     );
   }
   return diffs;
+}
+
+/**
+ * A8 on the demo vault's filmed snapshot with the invoices committed beside it. The ledger holds each invoice only
+ * as its sha256, so A8 runs only when the texts are given; with them it must pass on the five attested decisions.
+ * `committed` is the run the evidence README records (an offline run too, its command on the first line).
+ */
+export const A8_RUN = {
+  id: "verify-demo-a8",
+  snapshot: "docs/evidence/demo-vault/snapshot-2026-11-12-video.json",
+  invoices: "docs/evidence/demo-vault",
+  committed: "docs/evidence/demo-vault/verify-a8-2026-11-12.txt",
+  seqs: [10, 11, 12, 13, 15],
+  title:
+    "verify --offline with the committed invoices: A8 passes on the demo vault's 5 attested decisions",
+  ref: {
+    file: "docs/evidence/demo-vault/README.md",
+    quote: "check e finds that A8 passes on all five attested decisions, entries 10 to 13 and 15",
+  },
+};
+
+/** What check e says when A8, with the mandate match, passes on every one of the attested decisions `seqs`. */
+export const a8Passes = (seqs) =>
+  `A8 (request binding and mandate match) passes for ${seqs.length} of ${seqs.length} attested decisions (seq ${seqs.join(", ")})`;
+
+/**
+ * What the A8 run means: PASS when checks a to i pass, check e says A8 passes on exactly the attested decisions
+ * `seqs`, and the invoice files the CLI lists as checked by A8 are those decisions' (--json `invoices[].a8_seqs`).
+ */
+export function matchA8(run, seqs) {
+  const verdict = matchVerify({ exit: 0, checks: ALL_PASS }, run);
+  if (verdict.result === "FAIL") return verdict;
+  const e = run.report.checks.find((c) => c.id === "e");
+  const want = a8Passes(seqs);
+  if (!String(e?.detail ?? "").includes(want)) {
+    return {
+      result: "FAIL",
+      detail: `check e does not say "${want}": ${oneLine(e?.detail, 200)}`,
+    };
+  }
+  const files = Array.isArray(run.report.invoices) ? run.report.invoices : [];
+  const used = files.flatMap((f) => (Array.isArray(f?.a8_seqs) ? f.a8_seqs : []));
+  const sorted = [...used].sort((x, y) => x - y);
+  if (sorted.join(",") !== seqs.join(",")) {
+    return {
+      result: "FAIL",
+      detail: `the invoice files A8 checks are for seq ${sorted.join(", ") || "none"}, not seq ${seqs.join(", ")}`,
+    };
+  }
+  return {
+    result: "PASS",
+    detail: `${verdict.detail}; ${want}, from ${files.length} invoice files read`,
+  };
 }
 
 /** The committed snapshots under docs/evidence (snapshot-*.json), as repository paths. */
@@ -786,6 +844,40 @@ function snapshotStep(s) {
         };
       }
       return { ...verdict, detail: `${verdict.detail}; same as the live run in ${s.committed}` };
+    },
+  };
+}
+
+/** A8 with the committed invoices on a committed snapshot, and the same result as the committed run. */
+function a8Step(a) {
+  return {
+    id: a.id,
+    kind: "offline",
+    needs: "build",
+    title: a.title,
+    ref: a.ref,
+    expected: "PASS",
+    command: `node ${CLI} verify --offline ${a.snapshot} --invoices ${a.invoices} --json`,
+    run: async (ctx) => {
+      const run = await verifyRun(ctx, ["--offline", a.snapshot, "--invoices", a.invoices]);
+      const verdict = matchA8(run, a.seqs);
+      if (verdict.result === "FAIL") return verdict;
+      const text = ctx.readFile(a.committed);
+      if (text === null) return { result: "FAIL", detail: `${a.committed} is missing` };
+      const diffs = compareCommitted(run.report, text, { now: "now", was: "in the committed run" });
+      if (!plain(text).includes(a8Passes(a.seqs))) {
+        diffs.push(`the committed run does not say "${a8Passes(a.seqs)}"`);
+      }
+      if (diffs.length > 0) {
+        return {
+          result: "FAIL",
+          detail: `the result differs from the committed run ${a.committed}: ${diffs.join("; ")}`,
+        };
+      }
+      return {
+        ...verdict,
+        detail: `${verdict.detail}; same as the committed run in ${a.committed}`,
+      };
     },
   };
 }
@@ -1000,6 +1092,7 @@ export function planSteps(root = ROOT) {
       imports: SNIPPET_IMPORTS["readme-step-2-tamper"],
     }),
     ...snapshotPlan(root).map(snapshotStep),
+    a8Step(A8_RUN),
     {
       id: "readme-step-6-owner-tx",
       kind: "offline",
