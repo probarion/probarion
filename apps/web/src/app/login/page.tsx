@@ -25,7 +25,7 @@ export default async function LoginPage({
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-ink">Console</p>
           <h1 className="mt-3 text-3xl font-light tracking-tight">Sign in with your NEAR wallet</h1>
           <SignInIntro network={network} />
-          <p className="mt-3 mb-6 text-mute">
+          <p className="mt-4 mb-6 text-mute">
             Your wallet signs a message (NEP-413). This is not a transaction: it moves no funds and
             adds no keys. Pick your wallet from the list.
           </p>

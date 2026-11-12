@@ -7,7 +7,7 @@ import { usdcFixed } from "@/lib/payables/view";
 // string here was made safe by buildCycleView (lib/payables/view.ts); this component only lays it out.
 
 const muted = "text-ink/75";
-const link = "text-ink underline decoration-ink/30 hover:decoration-ink";
+const link = "text-ink underline decoration-ink/60 hover:decoration-ink";
 
 const ruleTone = (o: string): Tone =>
   o === "pass" ? "good" : o === "hold" ? "warn" : o === "refuse" ? "bad" : "neutral";

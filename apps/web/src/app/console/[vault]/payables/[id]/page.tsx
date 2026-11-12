@@ -68,8 +68,8 @@ function PayeeRows({ base, w }: { base: string; w: WaitingView }) {
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+    <div className="relative overflow-x-auto">
+      <table className="w-full text-left text-sm [&_td]:pr-4 [&_th]:pr-4 [&_th]:pb-2 [&_th]:whitespace-nowrap">
         <thead>
           <tr className="border-b border-ink/10">
             <th>Uploaded</th>
@@ -173,7 +173,7 @@ function Waiting({
 
       <h3 className="mt-4 mb-1 text-sm font-semibold">The mandate, as the chain shows it</h3>
       {m ? (
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
+        <dl className="grid grid-cols-1 gap-y-1 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-6 [&>dd]:wrap-anywhere max-sm:[&>dd]:mb-1 max-sm:[&>dt]:text-mute">
           <dt>Mandate</dt>
           <dd>
             #{m.id} {m.label} · {m.status}
