@@ -15,6 +15,33 @@ The software is an unaudited beta.
 
 ### Added
 
+- A console try on testnet on 2026-11-12, from 03:29 to 03:36 UTC, on
+  `trial.vaults.probarion.testnet`, recorded in a new section of
+  `docs/evidence/trial-vault/README.md`. Claude drove the console at probarion.xyz in the owner's
+  Chrome, and the owner signed six wallet prompts in Meteor. The owner signed mandate 2 on the
+  Mandates tab (2 test USDC in all, held above 0.5 USDC). The same real MCP client as on 2026-11-11,
+  Claude Code run headless with `@probarion/mcp` 0.1.1 from npm, asked for 1.00 test USDC under it
+  for INV-3004, and the vault held it as spend 4. On the approval page Claude clicked Reject and the
+  owner signed `reject`: nothing was paid, and the reservation went back to the mandate. Then the
+  owner revoked mandate 2 on the Mandates tab, added a spare agent key that the Keys tab generated
+  and removed it on the same tab, and withdrew the vault's whole balance, 1 test USDC, with Withdraw
+  all on the Overview. The spare key's label is `payablesconsole-try-spare`, because the label field
+  already held `payables` when Claude typed after it. After the run the vault held no USDC, spend 4
+  was rejected, mandate 2 was revoked, and `mcp-claude` was again its only agent key. A live
+  `npx -y probarion@0.1.1 verify` of the 8 ledger entries passed checks a to i
+  (`9 passed, 0 failed, 0 unproven`), and the ledger's entry for spend 4 still says `held`, since no
+  code writes an owner's or an approver's action to the ledger. The decision is rules-only, the
+  prompt gave every tool argument, the owner is also the approver who rejected, every step was in a
+  desktop browser, and this record does not check a Telegram message for spend 4. Adding an email
+  alert, the Base top-up through 1Click and any change of the ledger key were not tried. The evidence
+  folder now holds the invoice, the ledger, the snapshot, the offline verify output and the client's
+  tool calls of that run; `pnpm judge` checks the new snapshot offline, and `docs/mainnet-proof.json`
+  records its 8 testnet transactions. The landing page's status list moves Reject, revoke, withdraw
+  and key removal to the console's tried row, and its other row is now "Web console: email alerts,
+  Base top-up". The README's Status rows for the web console, the MCP server and the approval page,
+  and the docs pages on what works today, holds and approvals, roles and keys, testnet and mainnet,
+  the architecture and letting an agent pay say what was tried.
+
 - The Payables agent paid an invoice on its own with an attested model for the first time, on
   testnet on 2026-11-12, recorded in `docs/evidence/demo-vault/README.md`. At 01:09 UTC
   `invoice-INV-2009.txt`, 2.00 test USDC to `probarion-payee.testnet` under PO-1001, went in on the
