@@ -1109,6 +1109,26 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` an invoice the mandate allows
+  when an attested model's payee hint put the mandate's own NEAR account in `address`, next to a
+  chain. It was seen on the testnet demo vault, ledger entry 12 (2026-11-11T23:35:56Z, model
+  `Qwen/Qwen3.8-27B`): the invoice named `probarion-payee.testnet` for 2.00 USDC under PO-1001, the
+  model proposed to pay with the hint `address` and `name` set to `probarion-payee.testnet` and
+  `chain` set to `base`, and the rule refused with "invoice names base address
+  probarion-payee.testnet; the mandate pays NEAR account probarion-payee.testnet". The v1 proposal
+  schema has no NEAR value in its chain enum and no account field but `near_account`, so a model can
+  put a NEAR account in `address`. For a NEAR payee, `payeeHintContradiction` in
+  `packages/core/src/policy.ts` now takes the mandate's own account, in `near_account` or in
+  `address` and whatever the chain, as naming no other payee, except an account that is also a Base
+  or Solana address, such as an ETH-implicit `0x` account, which in `address` still refuses. A hint
+  still contradicts when either field holds any other value, compared exactly so another letter
+  case refuses, or when it names a chain with no account and no address. The rule for a Base or
+  Solana payee is unchanged, and so are the schema and the system prompt of `probarion-proposal/v1`.
+  `verify` does not re-run the policy, so ledger entries already written are unaffected. Tests cover
+  the entry 12 hint, the contradictions next to it, and accounts that are also a Base or Solana
+  address. The /docs pages "Why spend has no payee" and "Policy rules" say the same, and the line
+  citations of `docs/THREAT_MODEL.md` follow the code.
+
 - `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` when an attested model's payee
   hint named the mandate's NEAR account plus a chain with no address, so the SDK and the console's
   Payables refused a payment the mandate allows. It was first seen on the testnet demo vault on
@@ -1116,12 +1136,14 @@ The software is an unaudited beta.
   model filled one next to the NEAR account, and `payeeHintContradiction` in
   `packages/core/src/policy.ts` took the chain alone for an external destination. For a NEAR payee,
   a chain next to the mandate's own NEAR account, with no address, now names no other destination. A
-  hint still contradicts when it names another NEAR account, an address that is not blank, or a
+  hint still contradicted when it named another NEAR account, an address that is not blank, or a
   chain with no NEAR account, and that last refusal now names the chain rather than
-  `address (none)`. The vault pays the mandate's payee either way, and `verify` does not re-run the
-  policy, so ledger entries already written are unaffected. Tests cover both hint shapes from the
-  model and the contradictions next to them. The /docs pages "Why spend has no payee" and "Policy
-  rules" say the same.
+  `address (none)`. (The entry above, for ledger entry 12, then also took the mandate's own account
+  in `address`: an address contradicts when it differs from that account or is also a Base or
+  Solana address, and a chain only when neither field is given.) The vault pays the mandate's payee
+  either way, and `verify` does not re-run the policy, so ledger entries already written are
+  unaffected. Tests cover both hint shapes from the model and the contradictions next to them. The
+  /docs pages "Why spend has no payee" and "Policy rules" said the same then.
 
 - Console: an invoice upload keeps to one time budget counted from the request's start
   (`apps/web/src/lib/payables/budget.ts`). The NEAR AI calls share 40 s from the first one, each

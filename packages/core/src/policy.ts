@@ -1,3 +1,4 @@
+import { isEvmAddress, isSolanaAddress } from "./formats.js";
 import { isHex32, utf8 } from "./hex.js";
 import type {
   CustomRule,
@@ -106,16 +107,23 @@ export function payeeHintContradiction(hint: PayeeHint | null, payee: Payee): st
   const near = hint.near_account?.trim() ?? "";
   const address = hint.address?.trim() ?? "";
   const chain = hint.chain;
+  // The v1 proposal schema has no NEAR value in its chain enum and no account field but
+  // near_account, so a model may put the mandate's own NEAR account in near_account or in address,
+  // next to base or solana. That account names no other payee, in either field and whatever the
+  // chain, so only a value that differs from it (compared exactly) contradicts. An account that is
+  // also a valid Base or Solana address (an ETH-implicit 0x and 40 hex account, for example) names
+  // that address too, so given as an address it still contradicts. A chain alone, with no account
+  // or address, still contradicts.
   if (payee.type === "near") {
     if (near !== "" && near !== payee.account_id) {
       return `invoice names NEAR account ${near}; the mandate pays ${payee.account_id}`;
     }
-    if (address !== "") {
+    const ownAccount =
+      address === payee.account_id && !isEvmAddress(address) && !isSolanaAddress(address);
+    if (address !== "" && !ownAccount) {
       return `invoice names ${chain ?? "an external"} address ${address}; the mandate pays NEAR account ${payee.account_id}`;
     }
-    // The proposal schema's chain enum has no NEAR value, so a model may fill one next to the
-    // mandate's own NEAR account, which names no other destination. A chain alone still contradicts.
-    if (chain !== undefined && near === "") {
+    if (chain !== undefined && near === "" && address === "") {
       return `invoice names chain ${chain}; the mandate pays NEAR account ${payee.account_id}`;
     }
     return null;
