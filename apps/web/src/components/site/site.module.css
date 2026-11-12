@@ -1496,6 +1496,14 @@ a.netPill:hover {
   max-width: 52em;
 }
 /* Every caveat the landing used to repeat, said once (audit P1-10). The beta strip links here. */
+/* A footnote to the status list, not a chapter: the heading of the integrations it is built on stays small. */
+.boTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
 .gapsTitle {
   margin: 28px 0 8px;
   font-size: 17px;
@@ -1508,6 +1516,200 @@ a.netPill:hover {
   max-width: 52em;
 }
 .gaps li + li {
+  margin-top: 8px;
+}
+
+/*
+ * Built on: one card with a row for NEAR and one for NEAR AI Cloud (what it is to Probarion, what it does, the
+ * evidence), then the four places Probarion ships through, then the notices. Every third-party logo is its owner's
+ * file in its own colour, never stretched: NEAR's stands in for its name, with clear space above and below it, and
+ * the npm, MCP and GitHub logos sit on a row of their own above the names of their cards.
+ */
+.boCard {
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+/*
+ * The evidence column keeps at least 232px, room for its longest link on one line ("Entry 13 on the proof page", about
+ * 218px in 13px mono), so that no link wraps on a desktop. A fixed floor, not one sized to the links, keeps the two
+ * rows' columns lined up.
+ */
+.boRow {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) minmax(232px, 3fr);
+  gap: 18px clamp(20px, 3vw, 44px);
+  padding: clamp(22px, 2.6vw, 34px);
+  align-items: start;
+}
+.boRow + .boRow {
+  border-top: 1px solid var(--color-line);
+}
+.boWho,
+.boWhat {
+  min-width: 0;
+}
+.boLabel {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-ink);
+}
+/* As tall as NEAR's logo, so that the logo and the name set in text start their rows at the same height. */
+.boName {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  margin-top: 16px;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+.nearLogo {
+  display: block;
+  width: 98px;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1440 / 351;
+}
+.boDomain {
+  display: inline-block;
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-mute);
+}
+.boBody {
+  max-width: 34em;
+  font-size: 16px;
+}
+.boChecks {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 15px;
+}
+.boFact {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.boCheck {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 0.2em;
+  fill: none;
+  stroke: var(--color-gold-small);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.boNote {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.boLinks {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+  min-width: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.boLinks a {
+  overflow-wrap: anywhere;
+}
+.shipsTitle {
+  margin: 40px 0 14px;
+  font-size: 17px;
+  font-weight: 500;
+}
+.ships {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.ship {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  padding: 20px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+/* The tag sits under the name, so that a narrow card of the four never pushes it onto a line of its own. */
+.shipHead {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.shipName {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+/*
+ * The logo row is as tall on every card, so that the names below line up. Each logo keeps its file's aspect ratio
+ * and colour. npm's wordmark is a solid block, so it is set a little smaller to look the same size; the MCP logo
+ * carries its name in small letters, so it is set a little larger.
+ */
+.shipLogo {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  color: var(--color-ink);
+}
+.shipLogo svg {
+  display: block;
+  max-width: 100%;
+  height: 26px;
+  width: auto;
+}
+.shipLogo .npmLogo {
+  height: 22px;
+  aspect-ratio: 780 / 250;
+}
+.shipLogo .mcpLogo {
+  height: 28px;
+  aspect-ratio: 1338 / 195;
+}
+.shipLogo .githubMark {
+  aspect-ratio: 1;
+  fill: currentColor;
+}
+.shipTag {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+.shipBody {
+  flex: 1;
+  font-size: 14.5px;
+  color: var(--color-mute);
+}
+.shipGo {
+  color: var(--color-ink);
+}
+/* The notices, small and to the right, where a footnote sits. */
+.boFine {
+  max-width: 60em;
+  margin: 28px 0 0 auto;
+  text-align: right;
+  font-size: 13px;
+  color: var(--color-mute);
+}
+.boFine p + p {
   margin-top: 8px;
 }
 
@@ -1713,6 +1915,23 @@ a.netPill:hover {
     display: block;
   }
 }
+/*
+ * Built on: below 1101px the evidence column is too narrow for its links, so they move under the checks, and the
+ * four cards go two by two.
+ */
+@media (max-width: 1100px) {
+  .boRow {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+  .boLinks {
+    grid-column: 2;
+    justify-items: start;
+    text-align: left;
+  }
+  .ships {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (max-width: 960px) {
   .liveGrid {
     grid-template-columns: 1fr;
@@ -1784,6 +2003,23 @@ a.netPill:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/*
+ * Built on, from 961px: the sentence beside the heading sits on the heading's last line, at the right. Section heads
+ * wrap, and this heading and sentence are too wide for one line, so without this the sentence would sit under the
+ * heading at the left. Balanced, so that its last line is not one word. At 960px and below the two stack.
+ */
+@media (min-width: 961px) {
+  .boHead {
+    flex-wrap: nowrap;
+    align-items: baseline;
+  }
+  .boHead > p {
+    max-width: 44em;
+    font-size: 15px;
+    text-align: right;
+    text-wrap: balance;
+  }
+}
 /* The narrowest two-column cards: the longest status line would wrap below the title and move the buttons. */
 @media (min-width: 961px) and (max-width: 1100px) {
   .sheetHead {
@@ -1796,6 +2032,21 @@ a.netPill:hover {
   .wrap {
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .boRow {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 20px 18px;
+  }
+  .boLinks {
+    grid-column: auto;
+  }
+  .boFine {
+    margin-left: 0;
+    text-align: left;
+  }
+  /* Built on: the four cards stack. */
+  .ships {
+    grid-template-columns: minmax(0, 1fr);
   }
   .scenarios {
     grid-template-columns: 1fr;
@@ -1900,6 +2151,22 @@ a.netPill:hover {
   .gold {
     background: none;
     color: CanvasText;
+  }
+  /* NEAR's black logo and the gold check marks would fade on a dark Canvas: both take the forced text colour. */
+  .nearLogo {
+    fill: currentColor;
+  }
+  .boCheck {
+    stroke: currentColor;
+  }
+  /* The npm and MCP logos keep their own black, so on a dark Canvas each sits on a white plate. */
+  .shipLogo .npmLogo,
+  .shipLogo .mcpLogo {
+    forced-color-adjust: none;
+    box-sizing: content-box;
+    padding: 2px 4px;
+    border-radius: 4px;
+    background: var(--color-surface);
   }
   /* Forced colours drop the box-shadow that marks a pressed button. */
   .act[aria-pressed="true"] {
