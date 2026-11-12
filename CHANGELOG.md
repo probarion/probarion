@@ -848,6 +848,11 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The Canary no longer follows `NEARAI_MODEL`. That variable pins the NEAR AI Cloud model for Payables and the SDK
+  factory; the Canary keeps the SDK's default order (`z-ai/glm-5.3-flash` first), the model of its recorded attempts.
+  With `Qwen/Qwen3.8-27B` pinned on probarion.xyz on 2026-11-11, a Canary attempt timed out at 40 s and was decided
+  rules-only. The deploy runbook says so in the `NEARAI_MODEL` row.
+
 - Release 0.1.1 is on npm: `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` 0.1.1
   were published on 2026-11-11 from the tag `sdk-v0.1.1`, and the official MCP registry lists the server
   as `io.github.probarion/probarion`. What the repository says about npm now matches. The README says so
