@@ -9,7 +9,7 @@ approvals. The spends were signed by the vault's own `spend`-only agent key and 
 ledger key, both held by the MCP server on the owner's machine.
 
 The same session also froze and unfroze the demo vault from the console: that is in the
-[demo vault's record](../demo-vault/README.md#2026-11-11-freeze-unfreeze-and-two-attested-decisions).
+[demo vault's record](../demo-vault/README.md#2026-11-11-freeze-unfreeze-and-attested-decisions).
 
 Test tokens only: `usdc.probarion.testnet` is `test-ft` acting as USDC, and has no value.
 
@@ -137,9 +137,9 @@ the snapshot: `sha256sum docs/evidence/trial-vault/invoice-INV-300*.txt docs/evi
 
 - **No attested model.** The MCP path has no attested model: each decision is rules-only. The `reasoning` text of
   each `request_spend`, which the prompt also gave word for word, is recorded in the ledger unattested (the server
-  adds the prefix `mcp:`), and the code decided. The demo vault's two decisions with an attested NEAR AI model,
+  adds the prefix `mcp:`), and the code decided. The demo vault's three decisions with an attested NEAR AI model,
   made by Payables the same day, paid nothing
-  ([their record](../demo-vault/README.md#2026-11-11-freeze-unfreeze-and-two-attested-decisions)).
+  ([their record](../demo-vault/README.md#2026-11-11-freeze-unfreeze-and-attested-decisions)).
 - **No invoice reading.** The prompt gave each `request_spend` its mandate id, amount, invoice hash, ref and
   reasoning text. The client did not read the invoices, so this shows the MCP server, the ledger and the vault at
   work, and not an agent judging an invoice.

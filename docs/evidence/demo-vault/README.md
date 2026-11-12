@@ -77,7 +77,7 @@ not in the file. The three decisions with no spend on chain have an empty Payee:
 `apps/web/test/demo-vault.test.ts` makes the file from the snapshot and fails when the committed copy differs by a
 byte.
 
-## 2026-11-11: freeze, unfreeze and two attested decisions
+## 2026-11-11: freeze, unfreeze and attested decisions
 
 During the owner run recorded in [the trial vault's record](../trial-vault/README.md), the owner froze this vault
 from the console's Freeze button and unfroze it again, both signed in Meteor. `get_config` read `frozen: false`
@@ -88,33 +88,45 @@ afterwards.
 | 17:13:50 | The owner freezes the vault from the console | [`E2DjWAHD…`](https://testnet.nearblocks.io/txns/E2DjWAHDwm11ARDw3gzd3iofhLv7CjRarDmoLFVj2aV3) |
 | 17:14:19 | The owner unfreezes it (1 yoctoNEAR) | [`3ASttDax…`](https://testnet.nearblocks.io/txns/3ASttDaxksgoTRiwixoQUS39MZpmTA62zQrZHF19vYz7) |
 
-The same day two invoices went through Payables here with an attested NEAR AI model, `z-ai/glm-5.3-flash`, and the
-code refused both. No transaction was sent, and mandate 1 kept its uses. So the Payables agent has not yet paid an
-invoice on its own with an attested model.
+The same day three invoices went through Payables here with an attested NEAR AI model, and the code refused all
+three. No transaction was sent, and mandate 1 kept its uses. So the Payables agent has not yet paid an invoice on its
+own with an attested model. Entries 10 and 11 used `z-ai/glm-5.3-flash`, the SDK's first choice. For entry 12 the
+site's model was pinned to `Qwen/Qwen3.8-27B` with `NEARAI_MODEL`.
 
 | Ledger entry | Invoice | What the model answered | Why the code refused |
 | --- | --- | --- | --- |
 | 10, at 17:09:53 | [`invoice-INV-2006.txt`](invoice-INV-2006.txt): 2.00 test USDC to the mandate's payee | Pay, with a payee hint that named the mandate's own payee, `probarion-payee.testnet`, next to the chain `base` and no address (the proposal schema lets the chain be only `base` or `solana`) | `mandate.payee_mismatch`, a false positive: the rule read the chain alone as another destination. [PR #116](https://github.com/probarion/probarion/pull/116) fixed the rule, and it was live on probarion.xyz by 18:23 UTC |
 | 11, at 18:24:14 | [`invoice-INV-2007.txt`](invoice-INV-2007.txt): the same invoice with a new number, since INV-2006 was now a duplicate | Pay 2.00 USDC with confidence 0.95, with reasoning that says the invoice's payee matches the mandate's. But its payee hint named `acme-cloud.near` and the name "Acme Cloud Services", which are in neither the invoice nor the prompt, with the chain `solana`, one of the two chains the schema allows | `mandate.payee_mismatch`: the code compares the model's payee hint with the mandate's payee, so a payee the model made up is refused like an invoice that names another payee |
+| 12, at 23:35:56 | [`invoice-INV-2008.txt`](invoice-INV-2008.txt): the same invoice with a new number | Pay 2.00 USDC with confidence 0.98. Its reasoning, which says it did not know the schema, drafted the payee as the NEAR account `probarion-payee.testnet` with the chain `near`. Its JSON answer, which must match the schema, put that account in `address` next to the chain `base` | `mandate.payee_mismatch`, a false positive: the rule read the mandate's own account in `address` as another destination. Every other rule passed |
 
-Each invoice's sha256 is the `invoice_hash` of its ledger entry. The proof page shows both decisions, with the
+Entries 10 and 12 come from one gap in the proposal schema of template v1: it has no NEAR chain, and no field for a
+NEAR account but `near_account`, so a model may name the mandate's own NEAR account next to a chain from the schema, or
+in `address`. [PR #120](https://github.com/probarion/probarion/pull/120) lets the rule take that account in either
+field as the mandate's payee, unless it is also a Base or Solana address. Entry 11 is a correct refusal: the account it
+names is not the mandate's.
+
+Each invoice's sha256 is the `invoice_hash` of its ledger entry. The proof page shows the three decisions, with the
 model's answer and its attestation:
-[entry 10](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-10) and
-[entry 11](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-11).
+[entry 10](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-10),
+[entry 11](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-11) and
+[entry 12](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-12).
 
 ### Check it again
 
-[`ledger-2026-11-11.jsonl`](ledger-2026-11-11.jsonl) is the ledger as the proof page served it after entry 11:
-twelve entries. Entries 10 and 11 hold each model response in full, the inputs of each request with the invoice text only as its sha256, the sha256 of the whole request, and the attestation evidence.
-Entries 7 to 9 are an invoice from the evening of 2026-11-09 that this record does not otherwise cover: 4 test USDC,
-sha256 `366f44db…`, refused while the owner had not confirmed it, then confirmed and held as spend 3, which the
+[`ledger-2026-11-11.jsonl`](ledger-2026-11-11.jsonl) is the ledger as the proof page served it after entry 12:
+thirteen entries. Entries 10 to 12 hold each model response in full, the inputs of each request with the invoice text
+only as its sha256, the sha256 of the whole request, and the attestation evidence. Entries 7 to 9 are an invoice from
+the evening of 2026-11-09, `invoice-INV-2004.txt` in the console, that this record does not otherwise cover: 4 test
+USDC, sha256 `366f44db…`, refused while the owner had not confirmed it, then confirmed and held as spend 3, which the
 chain shows paid.
 
 [`verify-2026-11-11.txt`](verify-2026-11-11.txt) is a live run of release 0.1.1 from npm with that ledger, at
-18:51 UTC, which read the chain itself: checks a to i pass, and check e finds 2 attested decisions that pass A1 to
-A7. [`verify-online-2026-11-11.txt`](verify-online-2026-11-11.txt) is the same run with `--online`, a minute
-later: for both decisions, Intel DCAP finds a genuine TDX quote bound to the request (O1), and NVIDIA NRAS verifies a
-GPU payload bound to the request nonce (O2). The TEE measurement is not pinned, so O1 does not show which image the
+23:44 UTC, which read the chain itself: checks a to i pass, and check e finds 3 attested decisions that pass A1 to
+A7. [`verify-online-2026-11-11.txt`](verify-online-2026-11-11.txt) is an earlier run with `--online`, at 18:52 UTC,
+on the ledger as it was then, the first twelve entries of this file: for entries 10 and 11, Intel DCAP finds a genuine
+TDX quote bound to the request (O1), and NVIDIA NRAS verifies a GPU payload bound to the request nonce (O2). An online
+run after entry 12, at 23:45 UTC, failed four times because Intel's quote collateral could not be fetched
+(`quote.collateral_unavailable`), so O1 and O2 are not recorded for entry 12. The TEE measurement is not pinned, so O1 does not show which image the
 TD runs, and A8, which would check the request against the invoice, was not run. With the committed ledger, the
 commands are:
 

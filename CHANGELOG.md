@@ -31,15 +31,19 @@ The software is an unaudited beta.
   linked, and alerts do not send events from before, so spend 3 was sent after the link to make one
   fire. The screenshots of the approvals are from a desktop browser, so a phone is not confirmed. The
   server's `verify` and a live `npx -y probarion@0.1.1 verify` passed checks a to i
-  (`9 passed, 0 failed, 0 unproven`). The same day two invoices went through the
-  demo vault's Payables with an attested model, `z-ai/glm-5.3-flash`, and code refused both with
-  `mandate.payee_mismatch`, sending nothing: INV-2006 (ledger entry 10) by a false positive that PR
-  #116 fixed, and its retry INV-2007 (entry 11) because the model's payee hint named
-  `acme-cloud.near`, which is in neither the invoice nor the prompt. So the Payables agent has not
+  (`9 passed, 0 failed, 0 unproven`). The same day three invoices went through the
+  demo vault's Payables with an attested model, and code refused all three with
+  `mandate.payee_mismatch`, sending nothing: INV-2006 (ledger entry 10, `z-ai/glm-5.3-flash`) by a
+  false positive that PR #116 fixed; its retry INV-2007 (entry 11, the same model) because the
+  model's payee hint named `acme-cloud.near`, which is in neither the invoice nor the prompt; and
+  INV-2008 (entry 12, with `NEARAI_MODEL` set to `Qwen/Qwen3.8-27B`) by a false positive again: the
+  model put the mandate's own account in `address` next to the chain `base`, since the proposal
+  schema has no NEAR chain (PR #120 fixes the rule for that case). So the Payables agent has not
   yet paid on its own with an attested model. A live `verify` of that ledger passed checks a to i,
-  and with `--online` both decisions passed O1 and O2; `docs/evidence/demo-vault/` holds the
-  ledger, the snapshot, both outputs and the two invoices. The trial vault's evidence folder holds
-  the run's ledger, snapshot, offline verify output and invoices and the client's tool calls;
+  and with `--online` entries 10 and 11 passed O1 and O2 (a later online run could not fetch
+  Intel's quote collateral); `docs/evidence/demo-vault/` holds the ledger, the snapshot, both
+  outputs and the three invoices. The trial vault's evidence folder holds the run's ledger,
+  snapshot, offline verify output and invoices and the client's tool calls;
   `docs/mainnet-proof.json` records the run's 14 testnet transactions. The README's Status rows for
   the web console, the MCP server (now Shipped), the watcher, the Telegram alerts and the approval
   page, the landing page's status list (the console's tried row adds the NEAR USDC top-up, the Agent

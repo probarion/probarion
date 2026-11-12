@@ -486,11 +486,11 @@ export const SNAPSHOTS = [
     id: "verify-demo-snapshot-1111",
     file: "docs/evidence/demo-vault/snapshot-2026-11-11.json",
     committed: "docs/evidence/demo-vault/verify-2026-11-11.txt",
-    title: "verify --offline: demo vault snapshot with two attested decisions passes a to i",
+    title: "verify --offline: demo vault snapshot with three attested decisions passes a to i",
     ref: {
       file: "docs/evidence/demo-vault/README.md",
       quote:
-        "which read the chain itself: checks a to i pass, and check e finds 2 attested decisions",
+        "which read the chain itself: checks a to i pass, and check e finds 3 attested decisions",
     },
     expect: { exit: 0, checks: ALL_PASS },
   },
