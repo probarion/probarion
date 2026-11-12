@@ -7,7 +7,7 @@ import type { Network } from "@/lib/config";
 import { serviceDb } from "@/lib/db/clients";
 import { clientIp } from "@/lib/http";
 import { log } from "@/lib/log";
-import { softRequestNetwork } from "@/lib/network";
+import { canonicalUrl, softRequestNetwork } from "@/lib/network";
 import { fullCardSeq } from "@/lib/proof/audit-link";
 import { cachedDecisionRows } from "@/lib/proof/decision-cache";
 import type { DecisionRow } from "@/lib/proof/decisions";
@@ -24,9 +24,14 @@ type Props = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
+/** A vault's page names itself at this address's network (lib/network canonicalUrl), without `?seq=`. */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { vault } = await params;
-  return { title: isNearAccountId(vault) ? `Proof · ${vault}` : "Proof" };
+  if (!isNearAccountId(vault)) return { title: "Proof" };
+  return {
+    title: `Proof · ${vault}`,
+    alternates: { canonical: await canonicalUrl(`/proof/${vault}`) },
+  };
 }
 
 /**

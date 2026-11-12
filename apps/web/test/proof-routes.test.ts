@@ -16,6 +16,7 @@ import {
 import { ProofEvidenceError } from "@/lib/proof/evidence";
 import { clearProofCache, type ProofDeps } from "@/lib/proof/service";
 import { elementsOf } from "./fixtures/elements";
+import { MAINNET_ORIGIN, TESTNET_ORIGIN } from "./fixtures/networks";
 import { noServiceDb, type ProofState, proofSnapshot, publicDbFor, txHash } from "./fixtures/proof";
 
 const h = vi.hoisted(() => ({
@@ -117,7 +118,7 @@ import { GET as GET_LEDGER } from "@/app/proof/[vault]/ledger.jsonl/route";
 import ProofPage, { generateMetadata } from "@/app/proof/[vault]/page";
 import { GET as GET_PAYMENTS } from "@/app/proof/[vault]/payments.csv/route";
 import { GET } from "@/app/proof/[vault]/snapshot.json/route";
-import ProofIndex from "@/app/proof/page";
+import ProofIndex, { generateMetadata as proofIndexMetadata } from "@/app/proof/page";
 import { ProofLimited, ProofView } from "@/components/proof/ProofView";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { TamperPanel } from "@/components/site/TamperPanel";
@@ -725,6 +726,14 @@ describe("/proof/[vault]", () => {
     );
     expect((await generateMetadata(params("<script>"))).title).toBe("Proof");
   });
+
+  it("names a vault's page at the address of the request's network, and gives an invalid one no canonical", async () => {
+    // The settings of this file serve one network, mainnet by default: every request is for it.
+    expect((await generateMetadata(params("acme.vaults.probarion.near"))).alternates).toEqual({
+      canonical: `${MAINNET_ORIGIN}/proof/acme.vaults.probarion.near`,
+    });
+    expect((await generateMetadata(params("<script>"))).alternates).toBeUndefined();
+  });
 });
 
 describe("/proof/[vault]/snapshot.json", () => {
@@ -803,6 +812,16 @@ describe("/proof/[vault]/snapshot.json", () => {
 });
 
 describe("/proof", () => {
+  it("names itself at the address of the request's network", async () => {
+    expect((await proofIndexMetadata()).alternates).toEqual({
+      canonical: `${MAINNET_ORIGIN}/proof`,
+    });
+    h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: null };
+    expect((await proofIndexMetadata()).alternates).toEqual({
+      canonical: `${TESTNET_ORIGIN}/proof`,
+    });
+  });
+
   it("sends a visitor to the demo vault when its proof page is public", async () => {
     h.env = { NEAR_NETWORK: "testnet", PROBARION_VAULT_ID: "demo.vaults.probarion.testnet" };
     h.publicVault = { vault_id: "demo.vaults.probarion.testnet", network: "testnet" };

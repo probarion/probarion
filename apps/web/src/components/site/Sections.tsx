@@ -79,8 +79,7 @@ export function Closing() {
     <section className={s.close}>
       <div className={s.wrap}>
         <h2 className={s.closeTitle}>
-          <span>{CLOSING.line1}</span>
-          <span className={s.gold}>{CLOSING.line2}</span>
+          <span>{CLOSING.line1}</span> <span className={s.gold}>{CLOSING.line2}</span>
         </h2>
         <p className={s.closeNote}>{CLOSING.sub}</p>
         <p className={s.closeNote}>

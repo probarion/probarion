@@ -20,12 +20,16 @@ import type { Network } from "@/lib/config";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
 import { chainConsts, getReader } from "@/lib/near/server";
-import { softRequestNetwork } from "@/lib/network";
+import { canonicalUrl, softRequestNetwork } from "@/lib/network";
 
-export const metadata: Metadata = {
-  title: "Canary",
-  description: "Try to make an AI agent pay you. Code rules and a NEAR contract decide.",
-};
+/** The canonical drops `?via=`, and names the address of the request's own network (lib/network canonicalUrl). */
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: "Canary",
+    description: "Try to make an AI agent pay you. Code rules and a NEAR contract decide.",
+    alternates: { canonical: await canonicalUrl("/canary") },
+  };
+}
 // The vault is read from the chain on every request; the scoreboard and the feed have their own cache (board-data.ts).
 export const dynamic = "force-dynamic";
 

@@ -77,13 +77,46 @@ export function Integrate() {
             {INTEGRATE.statusesLink.label}
           </RouteLink>
         </p>
-        <div className={s.who}>
-          {INTEGRATE.who.map((w) => (
-            <div key={w.title}>
-              <b>{w.title}</b>
-              <span>{w.body}</span>
-            </div>
+        <p className={s.codeNote}>
+          <Rich text={INTEGRATE.addresses} />
+        </p>
+        <ul className={s.devLinks} aria-label={INTEGRATE.devLinksLabel}>
+          {INTEGRATE.devLinks.map((l) => (
+            <li key={l.label}>
+              {"route" in l ? (
+                <RouteLink route={l.route} className={s.link}>
+                  {l.label}
+                </RouteLink>
+              ) : (
+                <ExternalLink className={s.link} href={l.href}>
+                  {l.label}
+                </ExternalLink>
+              )}
+            </li>
           ))}
+        </ul>
+        <div className={s.who}>
+          {INTEGRATE.who.map((w) => {
+            const st = statusOf(w.status);
+            return (
+              <div key={w.title}>
+                <b>{w.title}</b>
+                <span className={s.whoBody}>
+                  <Rich text={w.body} />
+                </span>
+                <p className={s.whoControl}>
+                  <strong>{w.control}</strong> <span aria-hidden="true">→</span>
+                  <span className="sr-only">:</span> <Rich text={w.outcome} />
+                </p>
+                <p className={s.whoProof}>
+                  <span className={`${s.pill} ${TONE[st.tone]}`}>{st.pill}</span>
+                  <ExternalLink className={s.link} href={w.evidence.url}>
+                    {w.evidence.label}
+                  </ExternalLink>
+                </p>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

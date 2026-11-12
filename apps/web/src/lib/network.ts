@@ -76,6 +76,15 @@ export async function softRequestOrigin(): Promise<string> {
   }
 }
 
+/**
+ * A page's canonical address: the origin of the request's own network, then the path (no query). Built per request,
+ * because `metadataBase` is one origin and would point a page of the other network's address at it. For pages that
+ * render per request only: a static page would bake one origin in for both addresses.
+ */
+export async function canonicalUrl(path: string): Promise<string> {
+  return `${await softRequestOrigin()}${path}`;
+}
+
 /** Where a network is served (`https://host`), or null when this site does not serve it. */
 export function originFor(network: Network, env: Pick<Env, "networks"> = getEnv()): string | null {
   return env.networks[network].origin;

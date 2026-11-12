@@ -1,3 +1,4 @@
+import { ExternalLink } from "@/components/ui";
 import { COMPARE, type StatusTone, statusOf } from "@/lib/site/facts";
 import { Rich } from "./Rich";
 import s from "./site.module.css";
@@ -62,6 +63,11 @@ export function Compare() {
             })}
           </tbody>
         </table>
+        <p className={s.compareMore}>
+          <ExternalLink className={s.link} href={COMPARE.more.href}>
+            {COMPARE.more.label} <span aria-hidden="true">→</span>
+          </ExternalLink>
+        </p>
       </div>
     </section>
   );
