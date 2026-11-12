@@ -170,7 +170,11 @@ snapshot of the ledger and the chain:
   ([why, and what O1b would need](docs/measurement-pin-2026-11.md)).
 - **A8 needs the invoice text.** The ledger stores no invoice text, so only an auditor who holds the
   invoices can show that the model saw the standard request for that invoice. A8 does not show that
-  an invoice is authentic.
+  an invoice is authentic. The CLI built from this repository runs A8 with `--invoice <file>` or
+  `--invoices <dir>`, live or with `--offline`; release 0.1.1 on npm does not have these flags.
+  A8 accepts only the standard system prompt unless the auditor adds another with
+  `--system-prompt <file>`: the ledger shows each prompt, but which prompts are acceptable is the
+  auditor's choice.
 - **Entries after the last anchor** are checked against the ledger key only; no anchor pins them yet.
 - **Historical mandate state.** A mandate's `remaining` and `status` at decision time need archival
   chain state, so `verify` reports a difference there as a note.
@@ -191,8 +195,10 @@ snapshot of the ledger and the chain:
   of them, and the vault paid both invoices, 2.00 test USDC each
   ([evidence of the second](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)).
   The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not
-  run, since the ledger holds no invoice text. The Canary's model is a small model given a
-  deliberately gullible prompt.
+  run on the Canary's 2, since the ledger holds no invoice text; on the demo vault's 5 it passed on
+  2026-11-12, with the invoices committed in the repository
+  ([output](docs/evidence/demo-vault/verify-a8-2026-11-12.txt)). The Canary's model is a small
+  model given a deliberately gullible prompt.
 
 The full design is in [`docs/specs/2026-10-21-probarion-design.md`](docs/specs/2026-10-21-probarion-design.md)
 (§7, §10, §11 and §12), and the exact checks are in
