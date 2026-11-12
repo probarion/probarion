@@ -13,8 +13,8 @@ import {
 } from "@/lib/tee/recheck";
 
 // /proof's live TEE check: one card after the decisions, the same on every vault's page. The browser draws the nonce,
-// sends it and nothing else, and re-checks the two bindings itself (lib/tee/recheck.ts). It checks the TEE that serves
-// the model now; it reads nothing of the vault, and nothing on the decision cards reads it.
+// sends it with no cookie and no Referer, and re-checks the two bindings itself (lib/tee/recheck.ts). It checks the TEE
+// that serves the model now; it reads nothing of the vault, and nothing on the decision cards reads it.
 
 const MEASUREMENT_PIN = `${REPO_URL}/blob/main/docs/measurement-pin-2026-11.md`;
 
@@ -69,6 +69,10 @@ function Facts({ check }: { check: Extract<BrowserCheck, { ok: true }> }) {
       </dd>
       <dt className={muted}>Model</dt>
       <dd className="font-mono wrap-anywhere">{answer.model ?? "none answered"}</dd>
+      <dt className={muted}>Attestations</dt>
+      <dd>
+        {answer.attestations.length} of {answer.attestations_total} checked
+      </dd>
       <dt className={muted}>Signer</dt>
       <dd className="font-mono wrap-anywhere">{list((a) => a.signing_address)}</dd>
       <dt className={muted}>TCB status</dt>
@@ -125,8 +129,8 @@ export function TeeResult({ check }: { check: Extract<BrowserCheck, { ok: true }
 }
 
 /**
- * The card. `model` is the model the site is set to use (NEARAI_MODEL), or null when it is not set and the server picks
- * the first preferred model that answers; the answer names the model that was checked.
+ * The card. `model` is the model the site is set to use (NEARAI_MODEL), or null when it is not set and the server asks
+ * the SDK's preferred private models until one answers; the answer names the model that was checked.
  */
 export function TeeCheckPanel({ model }: { model: string | null }) {
   const [busy, setBusy] = useState(false);
@@ -156,11 +160,15 @@ export function TeeCheckPanel({ model }: { model: string | null }) {
       </h2>
       <p className={`mt-1 text-sm ${muted}`}>
         This checks the TEE that serves{" "}
-        {model === null ? "the model Payables uses" : <code className="text-ink">{model}</code>}{" "}
+        {model === null ? (
+          "a private model on NEAR AI Cloud (the first of the SDK's preferred models that answers)"
+        ) : (
+          <code className="text-ink">{model}</code>
+        )}{" "}
         right now, with a random nonce your browser draws. It does not re-check the decisions above.
       </p>
       <p className={`mt-1 text-sm ${muted}`}>
-        Only the nonce is sent: nothing you typed or uploaded.
+        Your browser sends the nonce, with no cookie, and nothing you typed or uploaded.
       </p>
       <div className="mt-4">
         <button type="button" className={buttonClass} onClick={run} disabled={busy}>

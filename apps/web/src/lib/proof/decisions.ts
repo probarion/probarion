@@ -271,7 +271,7 @@ export const INPUTS_BINDING_NOTE =
  * TEE or the quote was verified.
  */
 export const DECISION_LIMITS =
-  "A1 to A7 run offline on this snapshot: they show that the signature, the signed response, the recorded proposal and the attestation report agree with each other and with this ledger position. The TDX quote is not verified here: O1 (Intel DCAP) and O2 (NVIDIA NRAS) run only with verify --online, which needs the optional package @nearai/inference-sdk on Node 24.22.1 or later. The measurement is not pinned, so even O1 does not show which image the TEE runs. A8 needs the invoice text, which the ledger never stores. Without A8, the request inputs a row shows (the system prompt, the facts and the mandates) are only the ledger's record: A1 to A7 do not tie them to the signed request.";
+  "A1 to A7 run offline on this snapshot: they show that the signature, the signed response, the recorded proposal and the attestation report agree with each other and with this ledger position. These decisions' TDX quotes are not verified here: for them, O1 (Intel DCAP) and O2 (NVIDIA NRAS) run only with verify --online, which needs the optional package @nearai/inference-sdk on Node 24.22.1 or later. The measurement is not pinned, so even O1 does not show which image the TEE runs. A8 needs the invoice text, which the ledger never stores. Without A8, the request inputs a row shows (the system prompt, the facts and the mandates) are only the ledger's record: A1 to A7 do not tie them to the signed request.";
 
 /** The command that runs O1 and O2 on a vault: the page's chain command with `--online`. */
 export function onlineCommand(network: Network, vault: string): string {

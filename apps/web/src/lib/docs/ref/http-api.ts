@@ -256,8 +256,8 @@ export const TABLES: readonly RefTable[] = [
         who: "Public",
         body: "None. Query: `nonce`, 64 lowercase hex characters, which the visitor's browser draws",
         success:
-          "`200` with `{ nonce, model, checked_at, elapsed_ms, checks, attestations }`. Each of the checks `nonce`, `signer`, `o1` and `o2` is `pass`, `fail` or `unavailable`, with a detail. Each attestation holds `signing_address`, `request_nonce`, `report_data`, `tcb_status` and `gpu`, and nothing else of NEAR AI's report.",
-        errors: "`400 invalid_input`, `429 rate_limited`, `503 unavailable`",
+          "`200` with `{ nonce, model, checked_at, elapsed_ms, checks, attestations, attestations_total }`. Each of the checks `nonce`, `signer`, `o1` and `o2` is `pass`, `fail` or `unavailable`, with a detail. Each attestation holds `signing_address`, `request_nonce`, `report_data`, `tcb_status` and `gpu`, and nothing else of NEAR AI's report. `attestations_total` is how many model attestations the report holds, of which the first four at most are checked.",
+        errors: "`403 bad_origin`, `400 invalid_input`, `429 rate_limited`, `503 unavailable`",
         limit: limit("teeCheck", "in all"),
       },
     },

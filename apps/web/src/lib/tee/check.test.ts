@@ -12,7 +12,7 @@ import {
   TEE_MODEL,
   verificationError,
 } from "../../../test/fixtures/tee";
-import { checkTee, type TeeCheckDeps, teeCheckModels } from "./check";
+import { checkTee, keepLoaded, type TeeCheckDeps, teeCheckModels } from "./check";
 import { MAX_ATTESTATIONS, MAX_REPORT_BYTES } from "./limits";
 import type { TeeCheckResult, TeeStatus } from "./recheck";
 
@@ -50,6 +50,7 @@ describe("checkTee: the pass path", () => {
         gpu: "pass",
       },
     ]);
+    expect(r.attestations_total).toBe(1);
     expect(detail(r, "o1")).toContain("TCB status UpToDate");
     expect(verifier.quotes).toHaveLength(1);
     expect(verifier.gpus).toHaveLength(1);
@@ -71,7 +72,15 @@ describe("checkTee: the pass path", () => {
   it("passes on the named values and nothing else of the report: no quote, no GPU payload, no event log", async () => {
     const r = await setup().run();
     expect(Object.keys(r).sort()).toEqual(
-      ["attestations", "checked_at", "checks", "elapsed_ms", "model", "nonce"].sort(),
+      [
+        "attestations",
+        "attestations_total",
+        "checked_at",
+        "checks",
+        "elapsed_ms",
+        "model",
+        "nonce",
+      ].sort(),
     );
     const text = JSON.stringify(r);
     for (const absent of [
@@ -234,6 +243,55 @@ describe("checkTee: a verifier that cannot run gives unavailable, never a pass o
   });
 });
 
+describe("keepLoaded: the verifier is kept once it loads, and a failed load is tried again", () => {
+  it("tries again after a load that gave null or threw, then keeps the verifier", async () => {
+    const v = fakeVerifier();
+    const results: (() => Promise<typeof v | null>)[] = [
+      async () => null,
+      async () => {
+        throw new Error("EMFILE: too many open files");
+      },
+      async () => v,
+    ];
+    let calls = 0;
+    const load = keepLoaded(() => {
+      const next = results[Math.min(calls, results.length - 1)];
+      calls++;
+      return next ? next() : Promise.resolve(null);
+    });
+    expect(await load()).toBeNull();
+    expect(await load()).toBeNull();
+    expect(await load()).toBe(v);
+    expect(await load()).toBe(v);
+    expect(calls).toBe(3);
+  });
+
+  it("shares one load between calls made while it runs", async () => {
+    let calls = 0;
+    const load = keepLoaded(async () => {
+      calls++;
+      return fakeVerifier();
+    });
+    const [a, b] = await Promise.all([load(), load()]);
+    expect(a).toBe(b);
+    expect(calls).toBe(1);
+  });
+
+  it("gives O1 and O2 on the next check after a first load that failed", async () => {
+    let first = true;
+    const v = fakeVerifier();
+    const loadVerifier = keepLoaded(async () => {
+      if (first) {
+        first = false;
+        return null;
+      }
+      return v;
+    });
+    expect(statuses(await setup({ loadVerifier }).run()).o1).toBe("unavailable");
+    expect(statuses(await setup({ loadVerifier }).run())).toMatchObject({ o1: "pass", o2: "pass" });
+  });
+});
+
 describe("checkTee: NEAR AI that fails or is slow gives unavailable on every check", () => {
   const allUnavailable = {
     nonce: "unavailable",
@@ -308,7 +366,7 @@ describe("checkTee: which model and how many attestations", () => {
     expect(statuses(r).nonce).toBe("pass");
   });
 
-  it("checks at most MAX_ATTESTATIONS attestations, each one, and names a failing one by its signer", async () => {
+  it("checks at most MAX_ATTESTATIONS attestations, says how many the report held, and names a failing one by its signer", async () => {
     const { run, server, verifier } = setup();
     const signers = Array.from(
       { length: MAX_ATTESTATIONS + 2 },
@@ -323,7 +381,23 @@ describe("checkTee: which model and how many attestations", () => {
     expect(verifier.quotes).toHaveLength(MAX_ATTESTATIONS);
     expect(statuses(r)).toMatchObject({ nonce: "fail", signer: "pass", o1: "pass" });
     expect(detail(r, "nonce")).toBe(`${signers[1]}: report_data[32..64] is not this nonce`);
-    expect(detail(r, "signer")).toContain(`for all ${MAX_ATTESTATIONS} attestations`);
+    expect(r.attestations_total).toBe(MAX_ATTESTATIONS + 2);
+    const covered = `for the first ${MAX_ATTESTATIONS} of ${MAX_ATTESTATIONS + 2} attestations`;
+    expect(detail(r, "signer")).toContain(covered);
+    expect(detail(r, "o1")).toContain(covered);
+    expect(detail(r, "o1")).not.toContain("for all");
+  });
+
+  it("says for all of them when the report holds no more than MAX_ATTESTATIONS", async () => {
+    const { run, server } = setup();
+    server.reply = () => [
+      fakeAttestation(NONCE, { signer: `0x${"1".repeat(40)}` }),
+      fakeAttestation(NONCE, { signer: `0x${"2".repeat(40)}` }),
+    ];
+    const r = await run();
+    expect(r.attestations_total).toBe(2);
+    expect(detail(r, "signer")).toContain("for all 2 attestations");
+    expect(detail(r, "o2")).toContain("for all 2 attestations");
   });
 
   it("asks NEARAI_MODEL alone when it is set, else the SDK's preferred private models in order", () => {

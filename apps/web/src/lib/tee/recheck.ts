@@ -36,7 +36,10 @@ export interface TeeCheckResult {
   checked_at: string;
   elapsed_ms: number;
   checks: TeeCheckRow[];
+  /** The model attestations checked: the report's first MAX_ATTESTATIONS (lib/tee/limits.ts). */
   attestations: TeeAttestationValues[];
+  /** How many model attestations the report holds: more than `attestations` when some were left out. */
+  attestations_total: number;
 }
 
 /** 32 bytes as 64 lowercase hex: the only nonce the route takes. */
@@ -75,11 +78,21 @@ export function signerProblem(a: TeeAttestationValues): string | null {
   return null;
 }
 
-/** One check over every attestation: pass when each passes, else the first problem, named by its signer when several. */
+/** What a pass over `n` of the report's `total` attestations covered: "", ", for all 3 attestations", or ", for the first 4 of 6 attestations". */
+export function coverage(n: number, total: number): string {
+  if (total > n) return `, for the first ${n} of ${total} attestations`;
+  return n === 1 ? "" : `, for all ${n} attestations`;
+}
+
+/**
+ * One check over the attestations checked: pass when each passes, else the first problem, named by its signer when
+ * several. `total` is how many the report holds, when some were left out.
+ */
 export function bindingRow(
   id: "nonce" | "signer",
   attestations: readonly TeeAttestationValues[],
   why: (a: TeeAttestationValues) => string | null,
+  total = attestations.length,
 ): TeeCheckRow {
   if (attestations.length === 0) {
     return { id, status: "unavailable", detail: "no model attestation to check" };
@@ -95,8 +108,28 @@ export function bindingRow(
     id === "nonce"
       ? "report_data[32..64] and request_nonce equal this nonce"
       : "report_data[0..32] is the zero-padded signing address";
-  const n = attestations.length;
-  return { id, status: "pass", detail: n === 1 ? pass : `${pass}, for all ${n} attestations` };
+  return { id, status: "pass", detail: `${pass}${coverage(attestations.length, total)}` };
+}
+
+const RANK: Readonly<Record<TeeStatus, number>> = { pass: 0, unavailable: 1, fail: 2 };
+
+/**
+ * This browser's verdict on a binding, held against the server's: a fail on either side fails, then unavailable, and a
+ * pass needs both. So a browser with an older bundle cannot turn a stricter server's fail into a pass. When the two
+ * differ, both details are kept.
+ */
+export function worseOf(server: TeeCheckRow | undefined, browser: TeeCheckRow): TeeCheckRow {
+  const s: TeeCheckRow = server ?? {
+    id: browser.id,
+    status: "unavailable",
+    detail: "the server sent no result for this check",
+  };
+  if (s.status === browser.status) return browser;
+  return {
+    id: browser.id,
+    status: RANK[s.status] > RANK[browser.status] ? s.status : browser.status,
+    detail: `this browser: ${browser.detail}; the server: ${s.detail}`,
+  };
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -133,6 +166,7 @@ export function readTeeAnswer(json: unknown): TeeCheckResult | null {
   }
   const attestations = json.attestations.map(attestationOf);
   if (attestations.some((a) => a === null)) return null;
+  const total = json.attestations_total;
   return {
     nonce: typeof json.nonce === "string" ? json.nonce : "",
     model: typeof json.model === "string" ? json.model : null,
@@ -140,16 +174,22 @@ export function readTeeAnswer(json: unknown): TeeCheckResult | null {
     elapsed_ms: typeof json.elapsed_ms === "number" ? json.elapsed_ms : 0,
     checks,
     attestations: attestations as TeeAttestationValues[],
+    attestations_total:
+      typeof total === "number" && Number.isInteger(total) && total >= attestations.length
+        ? total
+        : attestations.length,
   };
 }
 
 /**
- * The checks as the panel shows them: the two bindings as this browser re-checked them with its own `nonce` (whatever
- * the server said about them), then O1 and O2 as the server ran them. An answer for another nonce fails both bindings.
+ * The checks as the panel shows them: the two bindings as this browser re-checked them with its own `nonce`, held
+ * against the server's verdicts (worseOf), then O1 and O2 as the server ran them. An answer for another nonce fails
+ * both bindings.
  */
 export function recheckInBrowser(answer: TeeCheckResult, nonce: string): TeeCheckRow[] {
+  const said = (id: TeeCheckId) => answer.checks.find((c) => c.id === id);
   const server = (id: "o1" | "o2"): TeeCheckRow =>
-    answer.checks.find((c) => c.id === id) ?? {
+    said(id) ?? {
       id,
       status: "unavailable",
       detail: "the server sent no result for this check",
@@ -163,9 +203,13 @@ export function recheckInBrowser(answer: TeeCheckResult, nonce: string): TeeChec
       server("o2"),
     ];
   }
+  const total = answer.attestations_total;
   return [
-    bindingRow("nonce", answer.attestations, (a) => nonceProblem(a, nonce)),
-    bindingRow("signer", answer.attestations, signerProblem),
+    worseOf(
+      said("nonce"),
+      bindingRow("nonce", answer.attestations, (a) => nonceProblem(a, nonce), total),
+    ),
+    worseOf(said("signer"), bindingRow("signer", answer.attestations, signerProblem, total)),
     server("o1"),
     server("o2"),
   ];
@@ -190,7 +234,8 @@ export interface BrowserCheckDeps {
 
 /**
  * What the panel's button does: draw a nonce, ask the route, read the answer as untrusted JSON and re-check the bindings
- * with the nonce drawn here. Only the nonce is sent. Never throws.
+ * with the nonce drawn here. The request carries the nonce, and no cookie and no Referer: the session cookie and the
+ * proof page's address are not sent. Never throws.
  */
 export async function checkFromBrowser(deps: BrowserCheckDeps): Promise<BrowserCheck> {
   const nonce = drawNonce(deps.random);
@@ -199,6 +244,8 @@ export async function checkFromBrowser(deps: BrowserCheckDeps): Promise<BrowserC
   try {
     res = await deps.fetch(`/api/tee/check?nonce=${nonce}`, {
       cache: "no-store",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
       headers: { accept: "application/json" },
     });
   } catch {

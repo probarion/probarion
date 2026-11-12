@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { NONCE, OTHER_NONCE, SIGNER } from "../../../test/fixtures/tee";
 import {
   allPass,
+  bindingRow,
   checkFromBrowser,
   drawNonce,
   isTeeNonce,
@@ -11,6 +12,7 @@ import {
   signerProblem,
   type TeeAttestationValues,
   type TeeCheckResult,
+  worseOf,
 } from "./recheck";
 
 const bound = (nonce = NONCE, signer = SIGNER): TeeAttestationValues => ({
@@ -34,6 +36,7 @@ function answer(over: Partial<TeeCheckResult> = {}): TeeCheckResult {
       detail: `server ${id}`,
     })),
     attestations: [bound()],
+    attestations_total: 1,
     ...over,
   };
 }
@@ -117,17 +120,89 @@ describe("recheckInBrowser", () => {
     expect(allPass(rows)).toBe(false);
   });
 
-  it("checks every attestation and names the one that fails", () => {
+  it("checks every attestation and names the one that fails, next to what the server said", () => {
     const other = "0x1111111111111111111111111111111111111111";
     const rows = recheckInBrowser(
-      answer({ attestations: [bound(), bound(OTHER_NONCE, other)] }),
+      answer({ attestations: [bound(), bound(OTHER_NONCE, other)], attestations_total: 2 }),
       NONCE,
     );
     expect(rows[0]).toEqual({
       id: "nonce",
       status: "fail",
-      detail: `${other}: report_data[32..64] is not this nonce`,
+      detail: `this browser: ${other}: report_data[32..64] is not this nonce; the server: server nonce`,
     });
+  });
+
+  it("keeps the server's fail when the values look bound here, so an older bundle cannot turn it into a pass", () => {
+    const failing = answer({
+      checks: [
+        { id: "nonce", status: "fail", detail: "server: a stricter binding failed" },
+        { id: "signer", status: "fail", detail: "server: the gateway binding failed" },
+        { id: "o1", status: "pass", detail: "server o1" },
+        { id: "o2", status: "pass", detail: "server o2" },
+      ],
+    });
+    const rows = recheckInBrowser(failing, NONCE);
+    expect(status(rows)).toEqual({ nonce: "fail", signer: "fail", o1: "pass", o2: "pass" });
+    expect(rows[0]?.detail).toBe(
+      "this browser: report_data[32..64] and request_nonce equal this nonce; the server: server: a stricter binding failed",
+    );
+    expect(allPass(rows)).toBe(false);
+  });
+
+  it("holds a binding at the worse of the two verdicts: fail, then unavailable, and a pass needs both", () => {
+    const row = (s: "pass" | "fail" | "unavailable") => ({
+      id: "nonce" as const,
+      status: s,
+      detail: s,
+    });
+    const cases: [string | undefined, string, string][] = [
+      ["pass", "pass", "pass"],
+      ["fail", "pass", "fail"],
+      ["pass", "fail", "fail"],
+      ["unavailable", "pass", "unavailable"],
+      ["pass", "unavailable", "unavailable"],
+      ["unavailable", "fail", "fail"],
+      ["fail", "unavailable", "fail"],
+      [undefined, "pass", "unavailable"],
+    ];
+    for (const [server, browser, want] of cases) {
+      const got = worseOf(
+        server === undefined ? undefined : row(server as "pass"),
+        row(browser as "pass"),
+      );
+      expect(got.status, `${server} + ${browser}`).toBe(want);
+    }
+    expect(worseOf(undefined, row("pass")).detail).toContain("the server sent no result");
+  });
+
+  it("says when a pass covered only the first attestations of the report", () => {
+    const four = [1, 2, 3, 4].map((i) => bound(NONCE, `0x${String(i).repeat(40)}`));
+    expect(bindingRow("signer", four, signerProblem, 6).detail).toBe(
+      "report_data[0..32] is the zero-padded signing address, for the first 4 of 6 attestations",
+    );
+    expect(bindingRow("signer", four, signerProblem).detail).toContain("for all 4 attestations");
+    expect(bindingRow("signer", [bound()], signerProblem).detail).toBe(
+      "report_data[0..32] is the zero-padded signing address",
+    );
+    const rows = recheckInBrowser(
+      answer({
+        attestations: four,
+        attestations_total: 6,
+        checks: answer().checks.map((c) =>
+          c.id === "nonce" || c.id === "signer"
+            ? bindingRow(
+                c.id,
+                four,
+                c.id === "nonce" ? (a) => nonceProblem(a, NONCE) : signerProblem,
+                6,
+              )
+            : c,
+        ),
+      }),
+      NONCE,
+    );
+    expect(rows[0]?.detail).toContain("for the first 4 of 6 attestations");
   });
 
   it("does not take a missing O1 or O2 row for a pass", () => {
@@ -144,7 +219,18 @@ describe("readTeeAnswer reads the route's answer as untrusted JSON", () => {
       attestations: [{ ...bound(), intel_quote: "04" }],
     });
     expect(read?.attestations[0]).toEqual(bound());
+    expect(read?.attestations_total).toBe(1);
     expect(read).not.toHaveProperty("extra");
+  });
+
+  it("reads attestations_total as a whole number no smaller than the attestations sent, else their count", () => {
+    expect(readTeeAnswer({ ...answer(), attestations_total: 6 })?.attestations_total).toBe(6);
+    for (const bad of [undefined, 0, -1, 1.5, "6", null]) {
+      expect(
+        readTeeAnswer({ ...answer(), attestations_total: bad })?.attestations_total,
+        String(bad),
+      ).toBe(1);
+    }
   });
 
   it("refuses what is not an answer", () => {
@@ -190,6 +276,9 @@ describe("checkFromBrowser", () => {
     expect(sent[0]?.url).toBe(`/api/tee/check?nonce=${NONCE}`);
     expect(sent[0]?.init?.method ?? "GET").toBe("GET");
     expect(sent[0]?.init?.body).toBeUndefined();
+    // No session cookie and no Referer (the proof page's address) go with it.
+    expect(sent[0]?.init?.credentials).toBe("omit");
+    expect(sent[0]?.init?.referrerPolicy).toBe("no-referrer");
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.nonce).toBe(NONCE);

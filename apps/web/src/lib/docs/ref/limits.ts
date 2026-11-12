@@ -714,12 +714,12 @@ const CONSOLE: RefTable = {
     row("limits-console-max_report_bytes", {
       name: "`MAX_REPORT_BYTES`",
       value: bytes(MAX_REPORT_BYTES),
-      what: "The most of NEAR AI's attestation report the proof page's live TEE check (`GET /api/tee/check`) reads. A larger report is not read, and each of its checks is `unavailable`",
+      what: "The most of NEAR AI's attestation report the proof page's live TEE check (`GET /api/tee/check`) reads. A larger report is not read: the next preferred model is asked when `NEARAI_MODEL` is unset, else each check is `unavailable`",
     }),
     row("limits-console-max_attestations", {
       name: "`MAX_ATTESTATIONS`",
       value: thousands(MAX_ATTESTATIONS),
-      what: "The model attestations of one report that the live TEE check checks. Any past them are not checked",
+      what: "The model attestations of one report that the live TEE check checks, the first ones. Any past them are not checked: the answer's `attestations_total` counts them, and a pass says it covered the first of them only",
     }),
   ],
 };

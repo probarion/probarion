@@ -13,6 +13,7 @@ import type { Network } from "@/lib/config";
 import { decisionRows } from "@/lib/proof/decisions";
 import type { ProofOk } from "@/lib/proof/service";
 import fixture from "@/lib/site/valid-snapshot.json";
+import { REPORT_TIMEOUT_MS, TEE_CHECK_BUDGET_MS } from "@/lib/tee/limits";
 import { recheckInBrowser, type TeeCheckResult } from "@/lib/tee/recheck";
 import { importsOf, resolveLocal, toPosix } from "./deploy-scan";
 import { NONCE, SIGNER } from "./fixtures/tee";
@@ -82,10 +83,14 @@ describe("/proof's live TEE check card", () => {
     expect(t).toContain("This checks the TEE that serves Qwen/Qwen3.8-27B right now");
     expect(t).toContain("with a random nonce your browser draws");
     expect(t).toContain("It does not re-check the decisions above.");
-    expect(t).toContain("Only the nonce is sent: nothing you typed or uploaded.");
+    expect(t).toContain(
+      "Your browser sends the nonce, with no cookie, and nothing you typed or uploaded.",
+    );
     expect(t).not.toMatch(/\bverified\b|\bpass(ed)?\b/);
     const unset = text(card(await page(attested, null)));
-    expect(unset).toContain("This checks the TEE that serves the model Payables uses right now");
+    expect(unset).toContain(
+      "This checks the TEE that serves a private model on NEAR AI Cloud (the first of the SDK's preferred models that answers) right now",
+    );
   });
 
   it("shows a run's rows, the measurement as a named non-check linked to its write-up, and the values", () => {
@@ -109,6 +114,7 @@ describe("/proof's live TEE check card", () => {
           gpu: "unavailable",
         },
       ],
+      attestations_total: 1,
     };
     const check = {
       ok: true as const,
@@ -139,6 +145,7 @@ describe("/proof's live TEE check card", () => {
       "not verified here",
       "2026-11-12 16:13:13 UTC",
       "5.0 s",
+      "1 of 1 checked",
     ]) {
       expect(t, value).toContain(value);
     }
@@ -158,6 +165,14 @@ describe("/proof's live TEE check card", () => {
     expect(out).toMatch(/<button type="button"[^>]*>Check the TEE now<\/button>/);
     expect(out).not.toContain("data-tee-check");
     expect(out).toContain('aria-live="polite"');
+  });
+});
+
+describe("the HTTP API page's numbers for the TEE check", () => {
+  it("give the report's timeout and the whole check's budget as lib/tee/limits.ts sets them", () => {
+    const page = readFileSync(join(WEB, "content", "docs", "build", "http-api.mdx"), "utf8");
+    expect(page).toContain(`NEAR AI does not answer within ${REPORT_TIMEOUT_MS / 1000} seconds`);
+    expect(page).toContain(`within the check's ${TEE_CHECK_BUDGET_MS / 1000} seconds`);
   });
 });
 

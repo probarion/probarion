@@ -18,6 +18,7 @@ import {
 } from "./limits";
 import {
   bindingRow,
+  coverage,
   nonceProblem,
   signerProblem,
   type TeeAttestationValues,
@@ -27,8 +28,9 @@ import {
 } from "./recheck";
 
 // The live TEE check behind /proof's "Check the TEE now" (GET /api/tee/check). With the visitor's fresh nonce it asks
-// NEAR AI Cloud for the attestation report of the model Payables uses (the public report endpoint: no API key is sent),
-// then checks the model attestations in it:
+// NEAR AI Cloud for the attestation report of NEARAI_MODEL, the model Payables is set to use, or, when that is unset,
+// of the first of the SDK's preferred private models that answers (the public report endpoint: no API key is sent),
+// then checks the model attestations in it, MAX_ATTESTATIONS at most:
 //
 // - nonce: report_data[32..64] and request_nonce are the visitor's nonce (core's A5, on a nonce nobody chose before);
 // - signer: report_data[0..32] is the zero-padded signing address (core's A4);
@@ -61,17 +63,37 @@ export function teeCheckModels(configured: string | null | undefined): readonly 
   return model ? [model] : PREFERRED_PRIVATE_MODELS;
 }
 
-let verifier: Promise<OnlineAttestationVerifier | null> | null = null;
+type VerifierLoader = () => Promise<OnlineAttestationVerifier | null>;
+
+/**
+ * `load`, run once and its verifier kept, but only once it loads: a load that gives null or throws (a busy file system,
+ * say) is tried again on the next call, so one bad moment does not leave O1 and O2 off for the instance's life.
+ */
+export function keepLoaded(load: VerifierLoader): VerifierLoader {
+  let kept: Promise<OnlineAttestationVerifier | null> | null = null;
+  return () => {
+    kept ??= load().then(
+      (v) => {
+        if (v === null) kept = null;
+        return v;
+      },
+      () => {
+        kept = null;
+        return null;
+      },
+    );
+    return kept;
+  };
+}
 
 /**
  * O1 and O2's verifier from @nearai/inference-sdk, loaded once per server instance; null when it cannot be loaded. The
  * specifier is written out, so Next's file tracing ships the package (and @phala/dcap-qvl) with the route: the SDK's own
  * default loader imports a variable name, which tracing cannot follow.
  */
-export function loadTeeVerifier(): Promise<OnlineAttestationVerifier | null> {
-  verifier ??= loadDefaultOnlineVerifier(() => import("@nearai/inference-sdk"));
-  return verifier;
-}
+export const loadTeeVerifier: VerifierLoader = keepLoaded(() =>
+  loadDefaultOnlineVerifier(() => import("@nearai/inference-sdk")),
+);
 
 export interface TeeCheckDeps {
   fetch?: typeof fetch;
@@ -224,8 +246,15 @@ async function runO2(
   }
 }
 
-/** One row over several attestations: a fail wins, then unavailable; with one attestation, its own detail. */
-function fold(id: "o1" | "o2", results: readonly (One & { signer: string })[]): TeeCheckRow {
+/**
+ * One row over the attestations checked: a fail wins, then unavailable; with one attestation, its own detail. `total`
+ * is how many the report holds.
+ */
+function fold(
+  id: "o1" | "o2",
+  results: readonly (One & { signer: string })[],
+  total: number,
+): TeeCheckRow {
   if (results.length === 0)
     return { id, status: "unavailable", detail: "no model attestation to check" };
   const named = (r: One & { signer: string }) =>
@@ -235,12 +264,7 @@ function fold(id: "o1" | "o2", results: readonly (One & { signer: string })[]): 
     results.find((r) => r.status === "unavailable") ??
     null;
   if (worst !== null) return { id, status: worst.status, detail: named(worst) };
-  const first = results[0];
-  const detail =
-    results.length === 1 && first
-      ? first.detail
-      : `${results[0]?.detail}, for all ${results.length} attestations`;
-  return { id, status: "pass", detail };
+  return { id, status: "pass", detail: `${results[0]?.detail}${coverage(results.length, total)}` };
 }
 
 /**
@@ -262,6 +286,7 @@ export async function checkTee(
     model: string | null,
     checks: TeeCheckRow[],
     attestations: TeeAttestationValues[],
+    total: number,
   ): TeeCheckResult => ({
     nonce,
     model,
@@ -269,6 +294,7 @@ export async function checkTee(
     elapsed_ms: Math.max(0, now() - started),
     checks,
     attestations,
+    attestations_total: total,
   });
   const allUnavailable = (detail: string): TeeCheckRow[] =>
     (["nonce", "signer", "o1", "o2"] as const).map((id) => ({ id, status: "unavailable", detail }));
@@ -278,6 +304,7 @@ export async function checkTee(
 
   let model: string | null = null;
   let reports: RawModelReport[] = [];
+  let total = 0;
   let reason = "no model to ask";
   for (const m of models) {
     if (left() < 1000) {
@@ -298,12 +325,14 @@ export async function checkTee(
     }
     if (read.reports.length > 0) {
       model = m;
+      total = read.reports.length;
+      // Each one costs an Intel and an NVIDIA call: the rest are counted in attestations_total, and each pass says so.
       reports = read.reports.slice(0, MAX_ATTESTATIONS);
       break;
     }
     reason = `NEAR AI's report for ${m} holds no model attestation`;
   }
-  if (model === null) return result(null, allUnavailable(short(reason)), []);
+  if (model === null) return result(null, allUnavailable(short(reason)), [], 0);
 
   const values: TeeAttestationValues[] = reports.map((r) => ({
     signing_address: r.signing_address,
@@ -313,8 +342,8 @@ export async function checkTee(
     gpu: r.nvidia_payload === null ? "none" : "unavailable",
   }));
   const checks: TeeCheckRow[] = [
-    bindingRow("nonce", values, (a) => nonceProblem(a, nonce)),
-    bindingRow("signer", values, signerProblem),
+    bindingRow("nonce", values, (a) => nonceProblem(a, nonce), total),
+    bindingRow("signer", values, signerProblem, total),
   ];
 
   const v = await within(() => loading, Math.max(1, left())).catch(() => null);
@@ -338,6 +367,6 @@ export async function checkTee(
   });
   const signed = <T extends One>(list: readonly T[]) =>
     list.map((r, i) => ({ ...r, signer: values[i]?.signing_address ?? "" }));
-  checks.push(fold("o1", signed(o1)), fold("o2", signed(o2)));
-  return result(model, checks, values);
+  checks.push(fold("o1", signed(o1), total), fold("o2", signed(o2), total));
+  return result(model, checks, values, total);
 }

@@ -102,6 +102,37 @@ describe("GET /api/tee/check", () => {
     expect(server.calls).toEqual([]);
   });
 
+  it("answers 403 bad_origin to a call another site's page makes in a browser, and takes no token", async () => {
+    for (const site of ["cross-site", "same-site", "something-new"]) {
+      const r = await GET(
+        new Request(`http://localhost:3100/api/tee/check?nonce=${NONCE}`, {
+          headers: { "sec-fetch-site": site },
+        }),
+      );
+      expect(r.status, site).toBe(403);
+      expect(r.headers.get("cache-control"), site).toBe("no-store");
+      expect(await r.json(), site).toEqual({ error: "bad_origin" });
+    }
+    expect(h.rpcs).toEqual([]);
+    expect(h.checks).toEqual([]);
+    expect(server.calls).toEqual([]);
+  });
+
+  it("runs for the proof page's own call, an address typed in, and a client that names no site", async () => {
+    const cases: Record<string, string>[] = [
+      { "sec-fetch-site": "same-origin" },
+      { "sec-fetch-site": "none" },
+      {},
+    ];
+    for (const headers of cases) {
+      const r = await GET(
+        new Request(`http://localhost:3100/api/tee/check?nonce=${NONCE}`, { headers }),
+      );
+      expect(r.status, JSON.stringify(headers)).toBe(200);
+    }
+    expect(h.rpcs).toHaveLength(3);
+  });
+
   it("answers 200 with the checks, no-store, for the nonce asked, against NEARAI_MODEL", async () => {
     const r = await get(`?nonce=${NONCE}`);
     expect(r.status).toBe(200);
