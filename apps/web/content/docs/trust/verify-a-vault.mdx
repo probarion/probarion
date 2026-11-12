@@ -100,6 +100,8 @@ The last line builds the CLI together with `@probarion/core` and `@probarion/sdk
 
    Under its checks, the page also lists each decision of the vault's ledger, newest first, with its rules and what the contract did, and, for a decision made with model output, what the ledger records the TEE saw and signed with checks A1 to A7 run on that snapshot (the TDX quote is not verified there: that needs `--online`); each card has an audit link, `#seq-<N>` or `#spend-<N>`, that opens it.
 
+   After the decisions, **Check the TEE now** checks the TEE that serves a private model on NEAR AI Cloud right now: `NEARAI_MODEL`, the model Payables is set to use, or, when it is unset, the first of the SDK's preferred private models that answers. Your browser draws a random nonce and sends it with no cookie, and nothing you typed or uploaded. The card shows whether the TDX quote's report data binds that nonce and the signing address, checked again in your browser, and the results of O1 (Intel DCAP on the TDX quote) and O2 (NVIDIA NRAS on the GPU evidence), which the server runs with the same verifier and policy as `--online`. A check that cannot run reads "not run", never a pass: an Intel or NVIDIA outage, which fails `--online`, reads "not run" here, and so does O2 for a report with no GPU evidence, which `--online` skips. It does not check the decisions above again, and the TEE measurement is not pinned: [why](https://github.com/probarion/probarion/blob/main/docs/measurement-pin-2026-11.md).
+
    First, offline: **Download snapshot.json** saves `probarion-<vault>-snapshot.json`, a snapshot of the vault's ledger and chain data taken when you click or shortly before. Put it in the `probarion` folder and run:
 
    ```bash

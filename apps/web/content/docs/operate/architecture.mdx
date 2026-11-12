@@ -55,6 +55,7 @@ The console, its API routes and the watcher are one Next.js app, `apps/web`, dep
   - `/api/ext`: the server half of the browser extension. A connection reads what waits for you and queues an invoice for the owner's Confirm; it cannot pay, approve or confirm.
   - `/api/alerts` and `/api/telegram`: the email confirm and stop links, and the Telegram bot's `/start` and `/stop`.
   - `/api/canary`: one attempt at the Canary, the public challenge, which is Live on testnet.
+  - `/api/tee`: the proof page's live TEE check, which checks NEAR AI's attestation for a nonce the visitor's browser draws.
   - `/api/cron`: the watcher and the daily usage numbers.
   - `/api/health`: the deployment's settings, one RPC provider, and NEAR AI Cloud's model list.
 
@@ -89,6 +90,7 @@ The hosted app talks to a few more services that the diagram leaves out:
 - **1Click**, for the mainnet top-up only, with `ONECLICK_JWT`.
 - **Sentry**, for error reports, off until `SENTRY_DSN` is set. Before an event leaves the server or the browser, the shared scrubber removes the user, cookies, headers, bodies and query strings.
 - **Better Stack**, which gets a heartbeat after each healthy scheduled watcher run, once `BETTERSTACK_HEARTBEAT_URL` is set.
+- **Intel PCS and NVIDIA NRAS**, for the proof page's live TEE check (`/api/tee`). The server asks NEAR AI Cloud's public attestation report with no API key, whether or not `NEARAI_API_KEY` is set, then asks Intel's PCS (`api.trustedservices.intel.com`) for the collateral that checks the report's TDX quote, and sends the report's GPU evidence to NVIDIA NRAS (`nras.attestation.nvidia.com`).
 - **Vercel**, which hosts the app and runs its two daily jobs.
 
 ## Where to go next

@@ -5,6 +5,7 @@ import { notFound, unstable_rethrow } from "next/navigation";
 import { ProofLimited, ProofUnavailable, ProofView } from "@/components/proof/ProofView";
 import type { Network } from "@/lib/config";
 import { serviceDb } from "@/lib/db/clients";
+import { getEnv } from "@/lib/env";
 import { clientIp } from "@/lib/http";
 import { log } from "@/lib/log";
 import { canonicalUrl, softRequestNetwork } from "@/lib/network";
@@ -81,8 +82,18 @@ export default async function ProofPage({ params, searchParams }: Props) {
       result={r}
       decisions={await readDecisions(r)}
       fullSeq={fullCardSeq((await searchParams)?.seq)}
+      teeModel={teeModel()}
     />
   );
+}
+
+/** The model the live TEE check asks first (NEARAI_MODEL), or null when it is not set or the settings cannot be read. */
+function teeModel(): string | null {
+  try {
+    return getEnv().NEARAI_MODEL;
+  } catch {
+    return null;
+  }
 }
 
 /**
