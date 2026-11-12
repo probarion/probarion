@@ -17,6 +17,23 @@
 .prose > * + * {
   margin-top: 1.1em;
 }
+/*
+ * Reading text runs to 80 characters a line or fewer (WCAG 1.4.8), nested text too: the paragraphs and lists inside a
+ * list item or a step, a verifier check's paragraphs, the hub's ink block for agents and the page head's audience
+ * line. Code frames, tables and the flow strip keep the column's full width.
+ */
+.prose > :is(p, ul, ol, blockquote),
+.check > p,
+.calloutBody > :is(p, ul, ol),
+.agents > :is(p, ul),
+.meta > span,
+.prose li > :is(p, ul, ol) {
+  max-width: var(--container-measure);
+}
+/* A step of a tight list holds its text itself, so the step is capped, its 44px number gutter added. */
+.steps ol > li:not(:has(> :is(figure, pre, div, table))) {
+  max-width: calc(var(--container-measure) + 44px);
+}
 .prose h2 {
   margin-top: 2.2em;
   font-size: 27px;
@@ -30,6 +47,13 @@
   line-height: 1.35;
   font-weight: 600;
 }
+/* The changelog's version headings: under h3 in size, and bold, so they do not read as body text. */
+.prose h4 {
+  margin-top: 1.6em;
+  font-size: 16.5px;
+  line-height: 1.4;
+  font-weight: 600;
+}
 .prose ul {
   padding-left: 1.4em;
   list-style: disc;
@@ -40,6 +64,13 @@
 }
 .prose li + li {
   margin-top: 0.35em;
+}
+/*
+ * Paragraphs and lists inside one list item or step: 2.5em or more from the top of one's last line to the top of the
+ * next one's first (WCAG 1.4.8), as between the column's own paragraphs. Code frames and callouts keep their margins.
+ */
+.prose li > :is(p, ul, ol) + :is(p, ul, ol) {
+  margin-top: 0.8em;
 }
 .prose strong {
   font-weight: 600;
@@ -59,7 +90,7 @@
 .link {
   color: var(--color-gold-ink);
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--color-gold-deep) 55%, transparent);
+  text-decoration-color: var(--color-gold-deep);
   text-underline-offset: 3px;
 }
 .link:hover {
@@ -116,6 +147,7 @@
   color: var(--color-band-fg);
 }
 .pre {
+  position: relative;
   margin: 0;
   padding: 16px;
   overflow-x: auto;
@@ -209,9 +241,11 @@
 .tab:hover {
   color: var(--color-band-fg);
 }
+/* The fill alone is 1.2:1 against the head, so a gold bar marks the open tab as well (WCAG 1.4.11): 12.6:1. */
 .tab[aria-selected="true"] {
   background: var(--color-code-active);
   color: var(--color-band-fg);
+  box-shadow: inset 0 -2px 0 var(--color-gold-bright);
 }
 .tabLabel {
   margin-bottom: 6px;
@@ -239,8 +273,9 @@
 .calloutTitle {
   font-weight: 600;
 }
+/* From the top of a paragraph's last line to the top of the next one's first: 2.5em or more (WCAG 1.4.8). */
 .calloutBody > * + * {
-  margin-top: 0.6em;
+  margin-top: 0.9em;
 }
 .calloutFooter {
   font-size: 14px;
@@ -301,7 +336,7 @@
   border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .flow ol {
   display: grid;
@@ -332,15 +367,16 @@
   display: block;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .flow strong {
   display: block;
   margin-top: 4px;
 }
 
-/* Tables */
+/* Tables. Positioned, so that a link's absolutely positioned screen-reader text stays inside the scroller. */
 .tableWrap {
+  position: relative;
   margin: 1.4em 0;
   overflow-x: auto;
   border: 1px solid var(--color-line);
@@ -358,12 +394,16 @@
   padding: 10px 14px;
   border-bottom: 1px solid var(--color-line);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-align: left;
   text-transform: uppercase;
   color: var(--color-mute);
+}
+/* Code in a column head keeps the head's size, not 0.88 of it. */
+.tableWrap th code {
+  font-size: 1em;
 }
 .tableWrap td {
   padding: 10px 14px;
@@ -424,7 +464,7 @@
   margin-top: 1.6em;
 }
 .check > * + * {
-  margin-top: 0.5em;
+  margin-top: 0.8em;
 }
 .rules {
   padding-left: 1.4em;
@@ -457,11 +497,11 @@ ol.rules > li + li {
   border: 1px solid var(--color-line);
   border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .tabs {
   min-width: 0;
@@ -490,19 +530,18 @@ ol.rules > li + li {
   align-items: center;
   gap: 10px;
   min-width: 0;
-  height: 38px;
+  min-height: 38px;
   margin-left: auto;
-  padding: 0 8px 0 14px;
+  padding: 6px 8px 6px 14px;
   border: 1px solid var(--color-line);
   border-radius: 10px;
   background: var(--color-surface);
   font-size: 14px;
   color: var(--color-mute);
 }
+/* The label wraps, never clips: a narrow bar or wider text spacing (WCAG 1.4.12) makes the box taller, not shorter. */
 .searchTrigger span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
 }
 .kbd {
   padding: 2px 6px;
@@ -510,7 +549,7 @@ ol.rules > li + li {
   border-radius: 6px;
   background: var(--color-paper);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--color-mute);
 }
 .drawer {
@@ -590,7 +629,7 @@ ol.rules > li + li {
 .tocTitle {
   margin-bottom: 6px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -648,6 +687,11 @@ ol.rules > li + li {
   margin-right: 6px;
   opacity: 0.5;
 }
+/* The one link in the trail is underlined, as the crumbs around it are the same colour. */
+.crumbs a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .crumbs a:hover {
   color: var(--color-ink);
   text-decoration: underline;
@@ -666,6 +710,7 @@ ol.rules > li + li {
 }
 .lede {
   margin-top: 14px;
+  max-width: var(--container-measure);
   font-size: 19px;
   line-height: 1.55;
   color: var(--color-mute);
@@ -745,10 +790,11 @@ ol.rules > li + li {
   font-size: 13px;
   color: var(--color-mute);
 }
+/* 8px between rows: each file link's 24px target clears the next row's (WCAG 2.5.8). */
 .source ul {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: 8px 14px;
   margin-top: 6px;
 }
 section.source code {
@@ -808,7 +854,7 @@ section.source code {
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .heroTitle {
   margin-top: 10px;
@@ -819,6 +865,7 @@ section.source code {
 }
 .heroLede {
   margin-top: 14px;
+  max-width: var(--container-measure);
   font-size: 19px;
   line-height: 1.55;
   color: var(--color-mute);
@@ -881,8 +928,8 @@ section.source code {
   gap: 12px;
   min-width: 0;
   max-width: 640px;
-  height: 56px;
-  padding: 0 12px 0 18px;
+  min-height: 56px;
+  padding: 6px 12px 6px 18px;
   border: 1px solid var(--color-line);
   border-radius: 14px;
   background: var(--color-surface);
@@ -893,9 +940,6 @@ section.source code {
 .bigSearch span {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 /* The text gives way on a phone, never the key cap: shrunk, it would wrap "Ctrl K" in two. */
 .bigSearch .kbd {
@@ -994,11 +1038,11 @@ section.source code {
 .hub .who {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .hub .doorTitle,
 .hub .cardTitle {
@@ -1073,6 +1117,7 @@ section.source code {
   letter-spacing: -0.02em;
 }
 .hub > h2 + p {
+  max-width: var(--container-measure);
   margin-top: 8px;
   font-size: 15px;
   color: var(--color-mute);
@@ -1106,7 +1151,7 @@ section.source code {
   border: 0;
   background: none;
   font-size: 12.5px;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .agents {
   padding: 24px;
@@ -1115,7 +1160,7 @@ section.source code {
   color: var(--color-band-mute);
 }
 .agents > * + * {
-  margin-top: 10px;
+  margin-top: 0.8em;
 }
 .hub .agentsEyebrow {
   font-family: var(--font-mono);
@@ -1131,6 +1176,8 @@ section.source code {
 }
 .hub .agentsLinks a {
   color: var(--color-gold-bright);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .hub .agents :not(pre) > code {
   padding: 0;
@@ -1208,13 +1255,11 @@ section.source code {
   font-size: 17px;
   color: var(--color-ink);
 }
-/*
- * The input's own focus, never the Close button's: a gold rule under the box. The transparent
- * outline shows only in forced colours, which drop the box-shadow.
- */
+/* The input's own focus, never the Close button's: a full gold ring inside the box (WCAG 2.4.13). */
 .searchInput:focus-visible {
-  outline: 2px solid transparent;
-  box-shadow: inset 0 -2px 0 var(--color-gold-small);
+  outline: 2px solid var(--color-gold-small);
+  outline-offset: -2px;
+  border-radius: 8px;
 }
 .searchInput::placeholder {
   color: var(--color-mute);
@@ -1270,7 +1315,7 @@ section.source code {
 .searchGroup {
   margin: 10px 10px 4px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -1304,9 +1349,10 @@ section.source code {
   color: var(--color-mute);
   overflow-wrap: anywhere;
 }
+/* 600, the heaviest weight the layout loads, so the browser does not fake a bold. */
 .searchOption mark {
   background: none;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-gold-ink);
 }
 .searchHint,
@@ -1512,6 +1558,11 @@ section.source code {
     forced-color-adjust: none;
     background: CanvasText;
   }
+  /* So does the dot of a status chip, which would leave a gap before its word. */
+  .chipDot {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
 }
 
 /* The architecture diagram (ArchitectureDiagram.tsx): an inline SVG that scales with the column. */
@@ -1530,6 +1581,7 @@ section.source code {
 }
 /* Below 640px the labels would shrink past reading size, so the diagram scrolls instead. */
 .archScroll {
+  position: relative;
   overflow-x: auto;
 }
 .archScroll:focus-visible {

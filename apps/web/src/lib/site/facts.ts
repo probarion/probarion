@@ -54,6 +54,14 @@ export const LINKS = {
   /** The browser extension's Chrome Web Store listing, item hhadnmnjdlamihjjoejphkimnbcfidmn. */
   chromeWebStore:
     "https://chromewebstore.google.com/detail/probarion/hhadnmnjdlamihjjoejphkimnbcfidmn",
+  /** The SDK's npm page. npmjs.com answers a script with a bot check, so the tests only read this address. */
+  npmSdk: "https://www.npmjs.com/package/@probarion/sdk",
+  /** The official MCP Registry, searched for the server's name: its page shows only this server. */
+  mcpRegistry: "https://registry.modelcontextprotocol.io/?q=io.github.probarion/probarion",
+  nearOrg: "https://near.org",
+  nearAiCloud: "https://cloud.near.ai",
+  /** The online check of the demo vault's four attested decisions, 2026-11-12. */
+  demoVerifyOnline: blob("docs/evidence/demo-vault/verify-online-2026-11-12.txt"),
 } as const;
 
 // --- metadata -------------------------------------------------------------------------------------
@@ -777,13 +785,13 @@ export const STATUS = {
     { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
     {
       id: "web-console",
-      row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
+      row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, Reject, revoke, withdraw, key removal, proof page",
       pill: "Tried on testnet",
       tone: "live",
     },
     {
       id: "web-console-not-tried",
-      row: "Web console: Reject, revoke, withdraw, key removal, email alerts, Base top-up",
+      row: "Web console: email alerts, Base top-up",
       pill: "Built, not tried yet",
       tone: "work",
     },
@@ -835,6 +843,130 @@ export function statusOf(row: StatusRow["row"]): StatusRow {
   if (found === undefined) throw new Error(`no status row ${row}`);
   return found;
 }
+
+// --- built on -------------------------------------------------------------------------------------
+
+/** The testnet demo vault's proof page. Its decision cards carry id="seq-N" (lib/proof/decisions.ts). */
+const DEMO_PROOF = "/proof/demo.vaults.probarion.testnet";
+
+export interface BuiltOnRow {
+  id: string;
+  /** Above the name, in small capitals: what it is to Probarion. */
+  label: string;
+  /** The name. For NEAR it is the accessible name of NEAR's own logo, which reads "near" and stands in for it. */
+  name: string;
+  /** "near-logo": NEAR's unmodified logo (components/site/NearLogo.tsx). "text": the name in the site's font. */
+  mark: "near-logo" | "text";
+  domain: string;
+  href: string;
+  body: string;
+  /** Facts that hold today, each with a check mark. */
+  checks: readonly string[];
+  /** What does not hold yet, said under the checks with no mark. */
+  note: string;
+  /** The evidence: a path of this site opens in this tab, a full URL in a new one. */
+  links: readonly { label: string; href: string }[];
+}
+
+export interface ShipCard {
+  id: string;
+  name: string;
+  /** In small capitals, at the right of the card's head. */
+  tag: string;
+  /** The logo above the name: its owner's own file (components/site/ShipLogos.tsx), or Probarion's mark. */
+  icon: "npm" | "mcp" | "github" | "probarion";
+  body: string;
+  link: { label: string; href: string };
+}
+
+/**
+ * After the status list: what Probarion is built on, each with its evidence, and where it ships. NEAR's logo stands in
+ * for its name; NEAR AI Cloud is named in text; the npm, MCP and GitHub logos sit above the names of their cards. The
+ * trademark line starts with the README's License line (test/built-on.test.ts holds the two together).
+ */
+export const BUILT_ON = {
+  id: "built-on",
+  title: "Built on NEAR, with NEAR AI Cloud",
+  sub: "Where each payment is made, and the optional model that can advise it. No partnership or endorsement is implied.",
+  rows: [
+    {
+      id: "near",
+      label: "Where payments are made",
+      name: "NEAR Protocol",
+      mark: "near-logo",
+      domain: "near.org",
+      href: LINKS.nearOrg,
+      body: "Each vault is a NEAR contract that holds its USDC and checks every payment against the owner's mandate.",
+      checks: [
+        "The vault and the factory run on NEAR testnet",
+        "One small vault on mainnet since 2026-11-11, `v0.probarion.near`",
+        "On mainnet: 1 payment and 1 refusal, both on chain",
+      ],
+      note: "No Base payout has run yet.",
+      links: [
+        { label: "Testnet proof page", href: DEMO_PROOF },
+        { label: "The mainnet vault", href: "/docs/start/testnet-and-mainnet#the-mainnet-vault" },
+      ],
+    },
+    {
+      id: "near-ai-cloud",
+      label: "The model that advises",
+      name: "NEAR AI Cloud",
+      mark: "text",
+      domain: "cloud.near.ai",
+      href: LINKS.nearAiCloud,
+      body: "An optional private model, run in a TEE, reads the invoice and proposes. Code decides, and the contract has the last word.",
+      checks: [
+        "6 attested decisions on testnet: 2 on the Canary, 4 by Payables",
+        "All 6 pass A1 to A7 offline, and passed O1 and O2 online",
+        "On 2026-11-12 Payables paid one invoice on its own with it: 2 test USDC",
+      ],
+      note: "The TEE image is not pinned yet, so this does not show which model image ran.",
+      links: [
+        { label: "Entry 13 on the proof page", href: `${DEMO_PROOF}#seq-13` },
+        { label: "Online check, 2026-11-12", href: LINKS.demoVerifyOnline },
+      ],
+    },
+  ] satisfies readonly BuiltOnRow[],
+  shipsTitle: "Ships through",
+  ships: [
+    {
+      id: "npm",
+      name: "npm public registry",
+      tag: "Packages",
+      icon: "npm",
+      body: "`probarion`, `@probarion/core`, `@probarion/sdk` and `@probarion/mcp` 0.1.1, with npm provenance.",
+      link: { label: "@probarion/sdk on npm", href: LINKS.npmSdk },
+    },
+    {
+      id: "mcp-registry",
+      name: "Official MCP Registry",
+      tag: "MCP server",
+      icon: "mcp",
+      body: "Lists `io.github.probarion/probarion` 0.1.1, the server in `@probarion/mcp`.",
+      link: { label: "The MCP Registry entry", href: LINKS.mcpRegistry },
+    },
+    {
+      id: "github",
+      name: "GitHub",
+      tag: "Source and CI",
+      icon: "github",
+      body: "The MIT source, and the CI that runs the sandbox tests and the reproducible build.",
+      link: { label: "probarion/probarion on GitHub", href: LINKS.github },
+    },
+    {
+      id: "chrome-web-store",
+      name: "Probarion extension",
+      tag: "Chrome extension",
+      icon: "probarion",
+      body: "Version 0.1.0 queues invoices from your browser. It cannot pay or approve.",
+      link: { label: "The Chrome Web Store listing", href: LINKS.chromeWebStore },
+    },
+  ] satisfies readonly ShipCard[],
+  also: "Also used: Intel TDX and NVIDIA NRAS attestation, which `verify --online` checks (O1 and O2). NEAR Intents payouts are built and tested against a testnet stand-in; none has run through NEAR Intents yet.",
+  trademark:
+    "NEAR, NEAR Intents, NEAR AI Cloud, USDC, Base and Solana are trademarks of their respective owners. They are named to say what Probarion is built on or is designed to pay through, not to imply an endorsement. npm is a registered trademark of npm, Inc. Model Context Protocol and MCP are trademarks of LF Projects, LLC. GitHub and the Invertocat logo are trademarks of GitHub, Inc. Chrome and Chrome Web Store are trademarks of Google LLC. Intel is a trademark of Intel Corporation or its subsidiaries. NVIDIA is a trademark of NVIDIA Corporation.",
+} as const;
 
 // --- why not just a spending limit ----------------------------------------------------------------
 
@@ -946,7 +1078,7 @@ export const INTEGRATE = {
       title: "Web console",
       body: "Create a vault, its keys and mandates, pay invoices with Payables and publish a proof page. Sign in with a NEAR wallet.",
       status:
-        "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
+        "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, Reject, revoke, withdraw, key removal, proof page",
       link: { route: CONSOLE_ROUTE, label: "Open console" },
     },
     {

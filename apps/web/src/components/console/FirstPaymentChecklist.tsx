@@ -4,7 +4,7 @@ import type { Checklist, ChecklistStep } from "@/lib/console/checklist";
 
 const MARKER = "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-medium";
 const textLink =
-  "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink";
+  "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/60 underline-offset-2 hover:decoration-ink";
 
 /** What a screen reader hears before each step; the marker beside it is only for the eye. */
 function spoken(step: ChecklistStep, next: boolean): string {

@@ -715,7 +715,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       readme: [{ start: "Reproducible builds", says: ["**Shipped**"] }],
     },
     {
-      row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
+      row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, Reject, revoke, withdraw, key removal, proof page",
       pill: "Tried on testnet",
       readme: [
         {
@@ -724,26 +724,36 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
             "**In progress**",
             "went further with a real wallet: Create a vault, the agent and ledger keys, the faucet, a mandate, four Payables invoices and a public proof page",
             "On 2026-11-11 more of the console was tried with the owner's real wallet (Meteor, on testnet; Claude drove the console and the owner signed): Freeze and Unfreeze on the demo vault, and on `trial.vaults.probarion.testnet` the Top-up tab's USDC transfer on NEAR, the Agent (MCP) tab and approving two held spends on the console's approval page ([evidence](docs/evidence/trial-vault/README.md))",
+            "On 2026-11-12, on the same vault and in the same way, the owner rejected a held spend on the approval page, revoked a mandate on the Mandates tab, added a spare agent key on the Keys tab and then removed it there, and withdrew the vault's whole balance, 1 test USDC, with Withdraw all on the Overview ([evidence](docs/evidence/trial-vault/README.md#2026-11-12-reject-revoke-a-spare-agent-key-and-withdraw-all))",
             "asks before a new ledger key replaces one. The Agent (MCP) tab's paste-and-sign path was tried on testnet on 2026-11-11",
             "that run does not show the withholding or the Keys tab's ask",
+            "the run of 2026-11-12 added and removed only an agent key, so it does not show the ask either",
           ],
         },
         {
           start: "Phone approval page",
-          says: ["the owner approved two held spends", "Its use on a phone is not confirmed"],
+          says: [
+            "the owner approved two held spends",
+            "On 2026-11-12 the owner rejected held spend 4 of the same vault on this page, and nothing was paid",
+            "Its use on a phone is not confirmed",
+          ],
         },
       ],
     },
     {
-      row: "Web console: Reject, revoke, withdraw, key removal, email alerts, Base top-up",
+      row: "Web console: email alerts, Base top-up",
       pill: "Built, not tried yet",
       readme: [
         {
           start: "Web console",
           says: [
             "The 1Click top-up of the vault's Base USDC inside NEAR Intents is mainnet only and has not been tried with a live quote yet",
-            "Reject on a held spend, revoking a mandate, Withdraw, removing an agent key and adding an email alert have not been tried with a real wallet yet",
+            "Adding an email alert has not been tried with a real wallet yet",
           ],
+        },
+        {
+          start: "Owner alerts by Telegram and email",
+          says: ["No email has been sent yet"],
         },
       ],
     },
@@ -1004,13 +1014,13 @@ describe("the status list", () => {
       { id: "vault-factory", row: "Vault factory", pill: "On testnet", tone: "live" },
       {
         id: "web-console",
-        row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
+        row: "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, Reject, revoke, withdraw, key removal, proof page",
         pill: "Tried on testnet",
         tone: "live",
       },
       {
         id: "web-console-not-tried",
-        row: "Web console: Reject, revoke, withdraw, key removal, email alerts, Base top-up",
+        row: "Web console: email alerts, Base top-up",
         pill: "Built, not tried yet",
         tone: "work",
       },
@@ -1370,14 +1380,14 @@ describe("the problem, the comparison and the integrate section", () => {
   it("gives the console card the pill of what was tried on testnet, and names only that (audit P1-10)", () => {
     const card = INTEGRATE.cards.find((c) => c.title === "Web console");
     expect(card?.status).toBe(
-      "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, proof page",
+      "Web console: vault, keys, faucet, NEAR USDC top-up, mandate, Payables, Agent (MCP) tab, Freeze, approvals, Reject, revoke, withdraw, key removal, proof page",
     );
     expect(STATUS.rows.find((r) => r.row === card?.status)?.id).toBe("web-console");
     expect(card?.body).toBe(
       "Create a vault, its keys and mandates, pay invoices with Payables and publish a proof page. Sign in with a NEAR wallet.",
     );
-    // The console actions not tried yet (Reject, revoking a mandate, Withdraw, removing a key, email alerts, the Base
-    // top-up through 1Click) are not on the card.
+    // The console actions not tried yet (email alerts, the Base top-up through 1Click) are not on the card. Reject,
+    // revoking a mandate, Withdraw and removing a key were tried on 2026-11-12, and the card body does not name them either.
     expect(card?.body).not.toMatch(/reject|revok|withdraw|remov|email|base|1click/i);
   });
 
@@ -1678,6 +1688,7 @@ describe("the rendered landing page", () => {
       "verify",
       "chain",
       "status",
+      "built-on",
     ];
     const at = ids.map((id) => html.indexOf(`id="${id}"`));
     for (const [i, pos] of at.entries()) expect(pos, ids[i]).toBeGreaterThan(-1);
@@ -2232,12 +2243,11 @@ describe("colours", () => {
     return (hi + 0.05) / (lo + 0.05);
   };
 
-  it("keep small text at WCAG AA on the surfaces it sits on", () => {
+  it("keep small text at WCAG AAA (7:1) on the surfaces it sits on; gold-small is for large text and rings only", () => {
     const pairs: [string, string][] = [
       ["ink", "paper"],
       ["mute", "paper"],
       ["mute", "surface"],
-      ["gold-small", "paper"],
       ["ok", "ok-bg"],
       ["ok", "surface"],
       ["bad", "bad-bg"],
@@ -2260,11 +2270,11 @@ describe("colours", () => {
       ["gold-bright", "band"],
     ];
     for (const [fg, bg] of pairs) {
-      expect(contrast(token(fg), token(bg)), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(token(fg), token(bg)), `${fg} on ${bg}`).toBeGreaterThanOrEqual(7);
     }
   });
 
-  it("keep the gold headline at 3:1 on paper, all along its gradient", () => {
+  it("keep the gold headline at 4.5:1 on paper (WCAG AAA for large text), all along its gradient", () => {
     const gradient = /--gradient-gold-text:\s*linear-gradient\(([^;]+)\);/.exec(css)?.[1] ?? "";
     const stops = [...gradient.matchAll(/(#[0-9a-f]{6})\s+(\d+)%/gi)].map((m) => m[1] ?? "");
     expect(stops.length).toBeGreaterThan(1);
@@ -2278,7 +2288,7 @@ describe("colours", () => {
     for (const [i, stop] of stops.slice(1).entries()) {
       for (let t = 0; t <= 1; t += 0.01) {
         const colour = mix(stops[i] ?? stop, stop, t);
-        expect(contrast(colour, token("paper")), colour).toBeGreaterThanOrEqual(3);
+        expect(contrast(colour, token("paper")), colour).toBeGreaterThanOrEqual(4.5);
       }
     }
   });

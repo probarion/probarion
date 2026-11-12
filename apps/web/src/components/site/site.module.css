@@ -8,9 +8,11 @@
   font-size: 17px;
   line-height: 1.55;
 }
+/* An identifier wider than a 320px column (WCAG 1.4.10), or than one with the 1.4.12 spacing, breaks inside itself. */
 .site code {
   font-family: var(--font-mono);
   font-size: 0.86em;
+  overflow-wrap: anywhere;
 }
 .wrap {
   width: 100%;
@@ -79,7 +81,8 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  background: color-mix(in srgb, var(--color-paper) 88%, transparent);
+  /* 96% paper: over the ink band the nav's mute text still reads at 7.4:1 (WCAG AAA), and the blur stays frosted. */
+  background: color-mix(in srgb, var(--color-paper) 96%, transparent);
   backdrop-filter: blur(12px);
 }
 .nav {
@@ -103,15 +106,18 @@
   display: block;
   flex: none;
 }
+/* A link never breaks, but the row may: with wider letter and word spacing (WCAG 1.4.12) it wraps, not overflows. */
 .navLinks {
   display: flex;
-  gap: 26px;
+  flex-wrap: wrap;
+  gap: 4px 26px;
+  min-width: 0;
   font-size: 15px;
   margin-left: 20px;
-  white-space: nowrap;
 }
 .navLinks a {
   color: var(--color-mute);
+  white-space: nowrap;
 }
 .navLinks a:hover {
   color: var(--color-ink);
@@ -240,7 +246,7 @@ a.netPill:hover {
   gap: 4px;
   font-size: 15px;
   font-weight: 500;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -278,7 +284,7 @@ a.netPill:hover {
 }
 .lede {
   font-size: clamp(19px, 1.65vw, 23px);
-  line-height: 1.42;
+  line-height: 1.5;
   max-width: 30em;
   font-weight: 400;
   letter-spacing: -0.008em;
@@ -333,7 +339,7 @@ a.netPill:hover {
 }
 .metal {
   --c-fg: var(--color-ink);
-  --c-mute: color-mix(in srgb, var(--color-ink) 82%, transparent);
+  --c-mute: color-mix(in srgb, var(--color-ink) 88%, transparent);
   --c-line: color-mix(in srgb, var(--color-ink) 20%, transparent);
   color: var(--c-fg);
   background: var(--gradient-metal);
@@ -435,6 +441,7 @@ a.netPill:hover {
 }
 .duelNote {
   grid-column: 1 / -1;
+  max-width: var(--container-measure);
   font-size: 14px;
   color: var(--color-mute);
   padding-inline: 4px;
@@ -467,7 +474,7 @@ a.netPill:hover {
 .numbers p {
   margin-top: 12px;
   font-size: 15px;
-  line-height: 1.42;
+  line-height: 1.5;
   color: var(--color-mute);
   max-width: 19em;
 }
@@ -519,11 +526,12 @@ a.netPill:hover {
   min-width: 0;
 }
 .livePanel h3 {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
 }
 .liveHint {
   margin: 4px 0 18px;
+  max-width: var(--container-measure);
   font-size: 13.5px;
   color: var(--color-mute);
   overflow-wrap: anywhere;
@@ -556,10 +564,12 @@ a.netPill:hover {
   font-size: 12.5px;
   color: var(--color-mute);
 }
+/* A 2px ink border (1px less padding, so nothing moves), which forced colours keep, as they do not keep a shadow. */
 .scenario[aria-pressed="true"] {
+  padding: 11px 13px;
+  border-width: 2px;
   border-color: var(--color-ink);
   background: var(--color-surface);
-  box-shadow: inset 0 0 0 1px var(--color-ink);
 }
 .field {
   display: grid;
@@ -574,12 +584,13 @@ a.netPill:hover {
 .field > label {
   color: var(--color-mute);
 }
+/* The mute edge of every other field: 8.7:1 on the white panel, where a field's boundary needs 3:1 (WCAG 1.4.11). */
 .field select,
 .field input:not([type="range"]) {
   font: inherit;
   font-size: 16px;
   padding: 8px 10px;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-mute);
   border-radius: 10px;
   background: var(--color-paper);
   color: var(--color-ink);
@@ -683,6 +694,7 @@ a.netPill:hover {
   cursor: pointer;
 }
 .liveRequest {
+  position: relative;
   border: 1px solid var(--color-band-line);
   border-radius: 12px;
   overflow-x: auto;
@@ -747,7 +759,7 @@ a.netPill:hover {
   border-color: var(--color-ink);
 }
 .vsCol h3 {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   margin-bottom: 16px;
 }
@@ -869,8 +881,14 @@ a.netPill:hover {
   align-items: center;
   gap: 4px 8px;
 }
+/* Every sideways scroller is positioned, so absolutely positioned screen-reader text inside stays inside it. */
 .codeBody {
+  position: relative;
   overflow-x: auto;
+}
+/* The box clips what is outside it, so the scroller's ring is drawn inside. */
+.codeBody:focus-visible {
+  outline-offset: -3px;
 }
 .codeBody pre {
   padding: 18px 20px;
@@ -880,6 +898,7 @@ a.netPill:hover {
 }
 .codeNote {
   margin-top: 12px;
+  max-width: var(--container-measure);
   font-size: 14px;
   color: var(--color-mute);
 }
@@ -902,9 +921,10 @@ a.netPill:hover {
 .whoBody {
   color: var(--color-mute);
 }
+/* 14px over 14px text: with the 1.55 line, 2.55em from one paragraph's last line to the next one's first (WCAG 1.4.8). */
 .whoControl,
 .whoProof {
-  margin-top: 10px;
+  margin-top: 14px;
   font-size: 14px;
 }
 .whoProof {
@@ -972,7 +992,7 @@ a.netPill:hover {
   display: block;
   font-size: 12px;
   font-weight: 500;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .tryIt {
   display: inline-block;
@@ -997,8 +1017,9 @@ a.netPill:hover {
   color: var(--color-mute);
 }
 .storyIntro {
-  margin-top: 12px;
-  max-width: 46em;
+  /* 2.5em of its own text or more from the top of the caption's line to the top of its first (WCAG 1.4.8). */
+  margin-top: 20px;
+  max-width: var(--container-measure);
   font-size: 16px;
 }
 .storyGrid {
@@ -1030,11 +1051,16 @@ a.netPill:hover {
   font-size: 17px;
 }
 .storyCard p {
+  max-width: var(--container-measure);
   font-size: 15px;
   overflow-wrap: anywhere;
 }
 .storyAsks {
   color: var(--color-mute);
+}
+/* With the card's 8px gap, 15px between its two paragraphs: 2.5em or more from line top to line top (WCAG 1.4.8). */
+.storyAsks + p {
+  margin-top: 7px;
 }
 .storyLinks {
   display: flex;
@@ -1044,6 +1070,7 @@ a.netPill:hover {
 }
 .storyProof {
   margin-top: 18px;
+  max-width: var(--container-measure);
   font-size: 15px;
   color: var(--color-mute);
 }
@@ -1059,6 +1086,7 @@ a.netPill:hover {
   font-family: var(--font-mono);
   font-size: 13.5px;
   line-height: 1.75;
+  position: relative;
   overflow-x: auto;
   min-width: 0;
 }
@@ -1115,6 +1143,10 @@ a.netPill:hover {
   border-radius: 14px;
   background: var(--color-surface);
 }
+/* The row scrolls on a phone and clips what is outside it, so the ring is drawn inside the shot. */
+.shotImage:focus-visible {
+  outline-offset: -3px;
+}
 .shotImage img {
   display: block;
   width: 100%;
@@ -1129,7 +1161,9 @@ a.netPill:hover {
   font-size: 15px;
   overflow-wrap: anywhere;
 }
+/* The meta line under a caption: 2.5em or more of the caption's text from line top to line top (WCAG 1.4.8). */
 .shot .shotMeta {
+  margin-top: 15px;
   font-size: 13px;
   color: var(--color-mute);
 }
@@ -1138,6 +1172,7 @@ a.netPill:hover {
 }
 .shotProof {
   margin-top: 22px;
+  max-width: var(--container-measure);
   font-size: 15px;
   color: var(--color-mute);
 }
@@ -1171,6 +1206,7 @@ a.netPill:hover {
   border-radius: 20px;
   padding: clamp(20px, 2.4vw, 32px);
   min-width: 0;
+  position: relative;
   overflow-x: auto;
 }
 .structField {
@@ -1185,7 +1221,7 @@ a.netPill:hover {
 }
 .structNote {
   color: var(--color-band-mute);
-  font-size: 0.78em;
+  font-size: max(12px, 0.78em);
   text-decoration: none;
   display: inline-block;
   margin-left: 0.8em;
@@ -1230,8 +1266,13 @@ a.netPill:hover {
   font-weight: 500;
 }
 .scroll {
+  position: relative;
   overflow-x: auto;
   min-width: 0;
+}
+/* The sheet clips what is outside it, so the table's ring is drawn inside. */
+.scroll:focus-visible {
+  outline-offset: -3px;
 }
 .table {
   width: 100%;
@@ -1350,8 +1391,9 @@ a.netPill:hover {
   background: transparent;
   color: var(--color-ink);
 }
+/* Dimmed, and still legible: about 6:1 for the ink pill's label (5.97:1 over a white card). */
 .act[aria-disabled="true"] {
-  opacity: 0.5;
+  opacity: 0.65;
   cursor: not-allowed;
   transform: none;
 }
@@ -1408,7 +1450,7 @@ a.netPill:hover {
 .checkHint {
   grid-column: 2 / -1;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
   color: var(--color-mute);
 }
 .why {
@@ -1442,6 +1484,7 @@ a.netPill:hover {
 }
 .detail p {
   margin-top: 8px;
+  max-width: var(--container-measure);
   color: var(--color-mute);
 }
 .detail ul {
@@ -1458,6 +1501,7 @@ a.netPill:hover {
   align-items: baseline;
 }
 .sheetNote {
+  max-width: var(--container-measure);
   padding: 0 20px 18px;
   font-size: 14px;
   color: var(--color-mute);
@@ -1539,19 +1583,30 @@ a.netPill:hover {
   background: var(--color-plan-bg);
   color: var(--color-plan);
 }
-/* A pill inside running text or a card: it moves to the next line whole, never splits across two. */
+/*
+ * A pill inside running text or a card: inline-block, so a short one moves to the next line whole. A long one wraps
+ * inside itself rather than run past a narrow column (WCAG 1.4.10 at 320px, and at 200% zoom).
+ */
 .pillInline {
   display: inline-block;
-  max-width: none;
-  white-space: nowrap;
+  max-width: 100%;
+  white-space: normal;
 }
 .statusNote {
   margin-top: 28px;
   font-size: 15px;
   color: var(--color-mute);
-  max-width: 52em;
+  max-width: var(--container-measure);
 }
 /* Every caveat the landing used to repeat, said once (audit P1-10). The beta strip links here. */
+/* A footnote to the status list, not a chapter: the heading of the integrations it is built on stays small. */
+.boTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
 .gapsTitle {
   margin: 28px 0 8px;
   font-size: 17px;
@@ -1561,9 +1616,203 @@ a.netPill:hover {
   margin: 0;
   padding-left: 20px;
   font-size: 15px;
-  max-width: 52em;
+  max-width: var(--container-measure);
 }
 .gaps li + li {
+  margin-top: 1em;
+}
+
+/*
+ * Built on: one card with a row for NEAR and one for NEAR AI Cloud (what it is to Probarion, what it does, the
+ * evidence), then the four places Probarion ships through, then the notices. Every third-party logo is its owner's
+ * file in its own colour, never stretched: NEAR's stands in for its name, with clear space above and below it, and
+ * the npm, MCP and GitHub logos sit on a row of their own above the names of their cards.
+ */
+.boCard {
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+/*
+ * The evidence column keeps at least 232px, room for its longest link on one line ("Entry 13 on the proof page", about
+ * 218px in 13px mono), so that no link wraps on a desktop. A fixed floor, not one sized to the links, keeps the two
+ * rows' columns lined up.
+ */
+.boRow {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) minmax(232px, 3fr);
+  gap: 18px clamp(20px, 3vw, 44px);
+  padding: clamp(22px, 2.6vw, 34px);
+  align-items: start;
+}
+.boRow + .boRow {
+  border-top: 1px solid var(--color-line);
+}
+.boWho,
+.boWhat {
+  min-width: 0;
+}
+.boLabel {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-ink);
+}
+/* As tall as NEAR's logo, so that the logo and the name set in text start their rows at the same height. */
+.boName {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  margin-top: 16px;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+.nearLogo {
+  display: block;
+  width: 98px;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1440 / 351;
+}
+.boDomain {
+  display: inline-block;
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-mute);
+}
+.boBody {
+  max-width: 34em;
+  font-size: 16px;
+}
+.boChecks {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 15px;
+}
+.boFact {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.boCheck {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 0.2em;
+  fill: none;
+  stroke: var(--color-gold-small);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.boNote {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.boLinks {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+  min-width: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.boLinks a {
+  overflow-wrap: anywhere;
+}
+.shipsTitle {
+  margin: 40px 0 14px;
+  font-size: 17px;
+  font-weight: 500;
+}
+.ships {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.ship {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  padding: 20px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+/* The tag sits under the name, so that a narrow card of the four never pushes it onto a line of its own. */
+.shipHead {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.shipName {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+/*
+ * The logo row is as tall on every card, so that the names below line up. Each logo keeps its file's aspect ratio
+ * and colour. npm's wordmark is a solid block, so it is set a little smaller to look the same size; the MCP logo
+ * carries its name in small letters, so it is set a little larger.
+ */
+.shipLogo {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  color: var(--color-ink);
+}
+.shipLogo svg {
+  display: block;
+  max-width: 100%;
+  height: 26px;
+  width: auto;
+}
+.shipLogo .npmLogo {
+  height: 22px;
+  aspect-ratio: 780 / 250;
+}
+.shipLogo .mcpLogo {
+  height: 28px;
+  aspect-ratio: 1338 / 195;
+}
+.shipLogo .githubMark {
+  aspect-ratio: 1;
+  fill: currentColor;
+}
+.shipTag {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+.shipBody {
+  flex: 1;
+  font-size: 14.5px;
+  color: var(--color-mute);
+}
+.shipGo {
+  color: var(--color-ink);
+}
+/* The notices, small and to the right, where a footnote sits. */
+.boFine {
+  max-width: 60em;
+  margin: 28px 0 0 auto;
+  text-align: right;
+  font-size: 13px;
+  color: var(--color-mute);
+}
+.boFine p + p {
   margin-top: 8px;
 }
 
@@ -1584,11 +1833,16 @@ a.netPill:hover {
 }
 .closeNote {
   margin-top: 20px;
+  max-width: var(--container-measure);
   color: var(--color-mute);
 }
 
 .closeNote code {
   white-space: nowrap;
+}
+/* The vault id after the flag breaks inside itself where a 320px column with the 1.4.12 spacing cannot hold it (WCAG 1.4.10). */
+.closeNote code ~ code {
+  white-space: normal;
 }
 /* After the two ways out to the evaluation and the spec, the way into the product. */
 .closeNext {
@@ -1609,8 +1863,8 @@ a.netPill:hover {
   gap: 32px;
 }
 .foot h2 {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--color-ink);
   margin-bottom: 10px;
 }
@@ -1626,7 +1880,7 @@ a.netPill:hover {
   text-decoration: underline;
 }
 .footNote {
-  margin-top: 8px;
+  margin-top: 1em;
 }
 
 /* /proof with no vault: the site's full wrap, so that its left edge matches the header and the footer. */
@@ -1638,7 +1892,7 @@ a.netPill:hover {
   font-weight: 500;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .proofTitle {
   margin-top: 10px;
@@ -1650,13 +1904,13 @@ a.netPill:hover {
 }
 .proofIntro {
   margin-top: 16px;
-  max-width: 38em;
+  max-width: var(--container-measure);
   font-size: clamp(17px, 1.65vw, 19px);
-  line-height: 1.42;
+  line-height: 1.5;
 }
 .proofMuted {
   margin-top: 12px;
-  max-width: 38em;
+  max-width: var(--container-measure);
   color: var(--color-mute);
   font-size: 15px;
 }
@@ -1710,7 +1964,7 @@ a.netPill:hover {
 .proofTamperIntro {
   margin-top: 10px;
   margin-bottom: 24px;
-  max-width: 38em;
+  max-width: var(--container-measure);
   color: var(--color-mute);
   font-size: 15px;
 }
@@ -1758,6 +2012,10 @@ a.netPill:hover {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     padding-bottom: 8px;
+    /* 6px of room each side, taken back by the margin, so the row does not cut a caption link's focus ring. */
+    margin-inline: -6px;
+    padding-inline: 6px;
+    scroll-padding-inline: 6px;
   }
   .shot {
     scroll-snap-align: start;
@@ -1767,6 +2025,23 @@ a.netPill:hover {
   }
   .betaNarrow {
     display: block;
+  }
+}
+/*
+ * Built on: below 1101px the evidence column is too narrow for its links, so they move under the checks, and the
+ * four cards go two by two.
+ */
+@media (max-width: 1100px) {
+  .boRow {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+  .boLinks {
+    grid-column: 2;
+    justify-items: start;
+    text-align: left;
+  }
+  .ships {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 960px) {
@@ -1843,6 +2118,23 @@ a.netPill:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/*
+ * Built on, from 961px: the sentence beside the heading sits on the heading's last line, at the right. Section heads
+ * wrap, and this heading and sentence are too wide for one line, so without this the sentence would sit under the
+ * heading at the left. Balanced, so that its last line is not one word. At 960px and below the two stack.
+ */
+@media (min-width: 961px) {
+  .boHead {
+    flex-wrap: nowrap;
+    align-items: baseline;
+  }
+  .boHead > p {
+    max-width: 44em;
+    font-size: 15px;
+    text-align: right;
+    text-wrap: balance;
+  }
+}
 /* The narrowest two-column cards: the longest status line would wrap below the title and move the buttons. */
 @media (min-width: 961px) and (max-width: 1100px) {
   .sheetHead {
@@ -1855,6 +2147,21 @@ a.netPill:hover {
   .wrap {
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .boRow {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 20px 18px;
+  }
+  .boLinks {
+    grid-column: auto;
+  }
+  .boFine {
+    margin-left: 0;
+    text-align: left;
+  }
+  /* Built on: the four cards stack. */
+  .ships {
+    grid-template-columns: minmax(0, 1fr);
   }
   .scenarios {
     grid-template-columns: 1fr;
@@ -1990,8 +2297,38 @@ a.netPill:hover {
     background: none;
     color: CanvasText;
   }
+  /* NEAR's black logo and the gold check marks would fade on a dark Canvas: both take the forced text colour. */
+  .nearLogo {
+    fill: currentColor;
+  }
+  .boCheck {
+    stroke: currentColor;
+  }
+  /* The npm and MCP logos keep their own black, so on a dark Canvas each sits on a white plate. */
+  .shipLogo .npmLogo,
+  .shipLogo .mcpLogo {
+    forced-color-adjust: none;
+    box-sizing: content-box;
+    padding: 2px 4px;
+    border-radius: 4px;
+    background: var(--color-surface);
+  }
   /* Forced colours drop the box-shadow that marks a pressed button. */
   .act[aria-pressed="true"] {
     text-decoration: underline;
+  }
+  /* The chosen scenario keeps its 2px border, in the selection colour of the system. */
+  .scenario[aria-pressed="true"] {
+    border-color: Highlight;
+  }
+  /* A fill is dropped, so the current network, the paid card and the pills get an edge instead. */
+  .netPillCurrent,
+  .pill,
+  .state,
+  .payeeLock {
+    border: 1px solid CanvasText;
+  }
+  .metal {
+    border: 1px solid transparent;
   }
 }

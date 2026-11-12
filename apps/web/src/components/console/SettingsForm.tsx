@@ -61,7 +61,7 @@ export function SettingsForm({
         <p className="mb-2 text-xs text-mute">
           The approvers are read from the vault&apos;s on-chain config when it is registered.
         </p>
-        <button className="text-sm underline disabled:opacity-50" type="submit" disabled={syncing}>
+        <button className="text-sm underline disabled:opacity-65" type="submit" disabled={syncing}>
           {syncing ? "Reading the chain…" : "Re-sync approvers from the chain"}
         </button>
         <Result state={synced} />

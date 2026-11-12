@@ -9,7 +9,7 @@ export interface SampleNote {
 
 /** The look of a plain text link in the offer: 44px tall, as the kit's buttons are. */
 export const sampleLinkClass =
-  "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink";
+  "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/60 underline-offset-2 hover:decoration-ink";
 
 /**
  * "Trying it out?": a testnet form's offer to fill itself from the sample kit (site audit P1-8). The button is the

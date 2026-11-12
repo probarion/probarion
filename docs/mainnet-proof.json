@@ -164,6 +164,21 @@
       "spend_id": null,
       "what": "The MCP server anchored the trial vault's ledger after spend 3 (anchor 3, 6 entries)"
     },
+    "trial_anchor_4": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "8aVdFZjbuxYxVpvtZ9ZEAz5ftqG8ZP5aoCPiSDtcR8yA",
+      "kind": "anchor",
+      "network": "testnet",
+      "receiver_id": "trial.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T03:59:46.071Z",
+      "signed_by": "ledger_key",
+      "signer_id": "trial.vaults.probarion.testnet",
+      "spend_id": null,
+      "what": "The MCP server anchored the trial vault's ledger after spend 4 (anchor 4, 8 entries)"
+    },
     "trial_approve_spend_2": {
       "amount_usdc": "2.00",
       "base_tx": null,
@@ -208,6 +223,21 @@
       "signer_id": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
       "spend_id": null,
       "what": "Agent (MCP) tab: the owner set the MCP server's anchor-only ledger key"
+    },
+    "trial_mandate_console_try": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "D5SrM1GTgtgkQ9V7xXCbB1cSWxNUwxJU8PPQ1bPWGg8Y",
+      "kind": "mandate_created",
+      "network": "testnet",
+      "receiver_id": "trial.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T03:59:43.633Z",
+      "signed_by": "owner",
+      "signer_id": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+      "spend_id": null,
+      "what": "Mandates tab: the owner signed mandate 2, Console try: pays probarion-payee.testnet, at most 2 test USDC a payment and 2 in all, 1 use, holds above 0.5"
     },
     "trial_mandate_mcp": {
       "amount_usdc": null,
@@ -269,6 +299,81 @@
       "spend_id": 3,
       "what": "MCP request_spend, INV-3003: spend 3 of 1.50 test USDC held, above the mandate's 1 USDC approval limit"
     },
+    "trial_mcp_spend_4": {
+      "amount_usdc": "1.00",
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "Hr3E5bNYeVi6QyXJjkDo4XapbBs5L3rotG5gXZShVwHu",
+      "kind": "mcp_spend",
+      "network": "testnet",
+      "receiver_id": "trial.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T03:59:44.865Z",
+      "signed_by": "agent_key",
+      "signer_id": "trial.vaults.probarion.testnet",
+      "spend_id": 4,
+      "what": "MCP request_spend, INV-3004: spend 4 of 1.00 test USDC held, above mandate 2's 0.5 USDC approval limit"
+    },
+    "trial_reject_spend_4": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "hFfPWT9ynSUVSBAnPRLJ5CDFvvbWSr8YLgXsuRbwM6p",
+      "kind": "rejected",
+      "network": "testnet",
+      "receiver_id": "trial.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T03:59:47.293Z",
+      "signed_by": "owner",
+      "signer_id": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+      "spend_id": 4,
+      "what": "The owner, an approver of the trial vault, rejected held spend 4 on the console's approval page; nothing was paid"
+    },
+    "trial_revoke_mandate_2": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "BZARsMaHxd4XrCQ7Juax2PpdWHEe2HstJ3BML3U4PDfU",
+      "kind": "other",
+      "network": "testnet",
+      "receiver_id": "trial.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T03:59:48.507Z",
+      "signed_by": "owner",
+      "signer_id": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+      "spend_id": null,
+      "what": "Mandates tab: the owner revoked mandate 2, Console try (revoke_mandate)"
+    },
+    "trial_spare_agent_added": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "2sys85o4oDVuxksUTDt2Vd8krwTdvFbuVXDLSqX55CkL",
+      "kind": "agent_added",
+      "network": "testnet",
+      "receiver_id": "trial.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T03:59:49.709Z",
+      "signed_by": "owner",
+      "signer_id": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+      "spend_id": null,
+      "what": "Keys tab: the owner added a spare agent key that the tab generated, label payablesconsole-try-spare"
+    },
+    "trial_spare_agent_removed": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "DK1N71XTfX3dxHzyefaMtu1ze86ifjnnL55RWVoJQ2yN",
+      "kind": "other",
+      "network": "testnet",
+      "receiver_id": "trial.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T03:59:50.925Z",
+      "signed_by": "owner",
+      "signer_id": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+      "spend_id": null,
+      "what": "Keys tab: the owner removed the spare agent key (remove_agent)"
+    },
     "trial_usdc_topup": {
       "amount_usdc": "5.00",
       "base_tx": null,
@@ -283,6 +388,21 @@
       "signer_id": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
       "spend_id": null,
       "what": "The console's Top-up tab: the owner's wallet registered the trial vault on test USDC and sent it 5 test USDC (storage_deposit, ft_transfer)"
+    },
+    "trial_withdraw": {
+      "amount_usdc": "1.00",
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "67jzpvU7U1SYs99WAyKwbXrtGq84mZPcpNV3qnL2cLQn",
+      "kind": "withdraw",
+      "network": "testnet",
+      "receiver_id": "trial.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T03:59:52.160Z",
+      "signed_by": "owner",
+      "signer_id": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
+      "spend_id": null,
+      "what": "Overview: Withdraw all sent the trial vault's whole balance, 1 test USDC, to the owner"
     },
     "v0_agent_added": {
       "amount_usdc": null,
@@ -360,7 +480,7 @@
       "what": "The owner's Meteor wallet, the vault's approver, sent 3 native USDC to the vault (ft_transfer)"
     }
   },
-  "updated_at": "2026-11-12T01:26:44.306Z",
+  "updated_at": "2026-11-12T03:59:52.160Z",
   "v": 1,
   "verify": {},
   "versions": {}

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import { BetaStrip } from "@/components/site/BetaStrip";
@@ -43,6 +43,10 @@ export const metadata: Metadata = {
     images: [OG_IMAGE],
   },
 };
+
+// One light scheme (globals.css): "only light" asks a browser not to darken the page on its own. Next keeps its default
+// width=device-width, initial-scale=1, so zoom stays free.
+export const viewport: Viewport = { colorScheme: "only light" };
 
 // The wallet context lives on the routes that sign (/console and /login). A page that only reads loads no wallet code.
 export default function RootLayout({ children }: { children: ReactNode }) {

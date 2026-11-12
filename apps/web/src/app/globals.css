@@ -7,7 +7,8 @@
  * the metallic gold of the coin and hero.
  *
  * Text colours are held to WCAG AAA: mute and each status colour read at 7:1 or more on paper, on a white card and on
- * their own pale background (test/console-kit.test.ts).
+ * their own pale background (test/console-kit.test.ts). test/typography-aaa.test.ts holds every text colour the CSS
+ * modules pair with a ground to 7:1 (4.5:1 for large text), so small gold text is gold-ink, never gold-small.
  *
  * `static`: every token below reaches :root, whether or not a utility class uses it, because the site's CSS module
  * reads them as plain variables. Consumers use these names, not literal colours.
@@ -48,7 +49,8 @@
   /* The ink band and the refused card. */
   --color-band: #0b0b0c;
   --color-band-fg: #f7f6f3;
-  --color-band-mute: #a9a59b;
+  /* 8.7:1 on the band and 7.4:1 on the active code tab. */
+  --color-band-mute: #b0aca2;
   --color-band-line: #2b2a27;
   --color-band-bad: #f29a8c;
   --color-band-bad-bg: #3a1712;
@@ -59,16 +61,30 @@
   --color-gold-light: #f8e2a0;
   --color-gold-mid: #d4a640;
 
-  --gradient-gold-text: linear-gradient(96deg, #5e4210 0%, #a57a26 38%, #b38527 62%, #6f5016 100%);
-  /* The dark corner stays at 0.28 alpha so that ink text on the card keeps 4.5:1 (WCAG AA) wherever it sits. */
+  /* Large display text only: every point of the sweep reads at 4.9:1 or more on paper (WCAG AAA for large text). */
+  --gradient-gold-text: linear-gradient(96deg, #5e4210 0%, #86621f 38%, #8a6420 62%, #6f5016 100%);
+  /*
+   * The paid card. Its small text is ink, so the end stop and the dark corner stay light enough for ink to keep 7:1
+   * (WCAG AAA) wherever the text sits, the darkest corner included.
+   */
   --gradient-metal:
     radial-gradient(90% 70% at 18% 12%, rgb(255 240 194 / 0.8), rgb(255 240 194 / 0) 62%),
-    radial-gradient(80% 60% at 92% 96%, rgb(94 66 16 / 0.28), rgb(94 66 16 / 0) 70%),
-    linear-gradient(135deg, #b98e33 0%, #efcb6b 34%, #f8e2a0 50%, #d4a640 68%, #b38527 100%);
+    radial-gradient(80% 60% at 92% 96%, rgb(94 66 16 / 0.1), rgb(94 66 16 / 0) 70%),
+    linear-gradient(135deg, #b98e33 0%, #efcb6b 34%, #f8e2a0 50%, #d4a640 68%, #cfa54a 100%);
+  /*
+   * The widest a block of reading text runs. WCAG 1.4.8 asks for 80 characters a line or fewer: 32em averages about 71
+   * characters of Hanken Grotesk, so a line of narrow letters and short words stays at 80 or under too (at 33em some
+   * reached 82). e2e/a11y.spec.ts counts the laid-out lines.
+   */
+  --container-measure: 32em;
 }
 
+/*
+ * The site has one, light, scheme. "only" also asks a browser not to darken it on its own (Chrome's auto dark theme),
+ * which would recolour the tokens without their contrast checks. app/layout.tsx says the same in the viewport meta.
+ */
 :root {
-  color-scheme: light;
+  color-scheme: only light;
 }
 
 /* The sticky header's height: a skip link, an anchor or a section jump lands clear of it. */
@@ -84,10 +100,15 @@ html {
 
 @layer base {
   /* Zero specificity, so a pill keeps its own radius. On dark surfaces the site's CSS module changes the colour. */
-  :where(a, button, summary, input, [tabindex]):focus-visible {
+  :where(a, button, summary, input, select, textarea, [tabindex]):focus-visible {
     outline: 2px solid var(--color-gold-small);
     outline-offset: 3px;
     border-radius: 6px;
+  }
+  /* A placeholder is an example, in mute (8.7:1 on a white field), not the half-transparent default (3.7:1). */
+  ::placeholder {
+    color: var(--color-mute);
+    opacity: 1;
   }
 }
 
