@@ -155,7 +155,7 @@ export const HERO = {
   fineprint:
     "Testnet today, and one small vault on mainnet. You need no account to read the chain or run the verifier.",
   audience:
-    "For teams whose AI agent pays supplier invoices (Payables, in progress), and for developers who want to give an agent money without the keys.",
+    "For teams whose AI agent pays supplier invoices (Payables, live on testnet), and for developers who want to give an agent money without the keys.",
   paid: {
     aria: "A payment the contract allowed",
     mandate: "Mandate 1",
@@ -406,7 +406,7 @@ export const JOURNEY = {
       n: 2,
       title: "A private model proposes, if there is one",
       body: "It runs in a TEE on NEAR AI Cloud. Its attestation is bound by a nonce to one position in one vault's ledger. It only gives advice: it cannot widen a mandate.",
-      tag: "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run.",
+      tag: "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The testnet demo vault's ledger holds four more, by Payables, which pass A1 to A7 offline and, on 2026-11-12, O1 and O2 online; that day the code allowed the fourth, and the vault paid that invoice, 2.00 test USDC. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run.",
       panelLabel: "What the proposal is bound to",
       panel: [
         { note: "What the proposal is bound to" },
@@ -756,7 +756,7 @@ export const STATUS = {
       tone: "live",
     },
     { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.1 on npm", tone: "live" },
-    { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
+    { id: "payables-agent", row: "Payables agent", pill: "Live on testnet", tone: "live" },
     {
       id: "attested-model-run",
       row: "Live attested model run",

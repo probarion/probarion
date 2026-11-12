@@ -472,7 +472,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
 
   it("that the model run is recorded on testnet, checked offline and online, with the measurement not pinned", () => {
     expect(JOURNEY.steps[1].tag).toBe(
-      "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run.",
+      "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The testnet demo vault's ledger holds four more, by Payables, which pass A1 to A7 offline and, on 2026-11-12, O1 and O2 online; that day the code allowed the fourth, and the vault paid that invoice, 2.00 test USDC. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run.",
     );
     expect(JOURNEY.steps[1].tag).not.toMatch(/not recorded/);
     const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
@@ -624,8 +624,18 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     },
     {
       row: "Payables agent",
-      pill: "In progress",
-      readme: [{ start: "Payables, the reference agent", says: ["**In progress**"] }],
+      pill: "Live on testnet",
+      readme: [
+        {
+          start: "Payables, the reference agent",
+          says: [
+            "**Live on NEAR testnet**",
+            "On 2026-11-12 it paid an invoice on its own with an attested model for the first time",
+            "That is one invoice, with test tokens; Payables has not run on mainnet",
+            "until the reconcile job is built",
+          ],
+        },
+      ],
     },
     {
       row: "Live attested model run",
@@ -637,6 +647,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
             "**Recorded on NEAR testnet**",
             "pass A1 to A7 offline",
             "the online checks O1 and O2",
+            "all four of the demo vault's attested decisions passed O1 and O2",
             "The TEE measurement is not pinned",
           ],
         },
@@ -875,7 +886,7 @@ describe("the status list", () => {
         tone: "live",
       },
       { id: "sdk-and-cli", row: "TypeScript SDK and CLI", pill: "0.1.1 on npm", tone: "live" },
-      { id: "payables-agent", row: "Payables agent", pill: "In progress", tone: "work" },
+      { id: "payables-agent", row: "Payables agent", pill: "Live on testnet", tone: "live" },
       {
         id: "attested-model-run",
         row: "Live attested model run",
@@ -1939,7 +1950,7 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
 
   it("says who it is for under the buttons, after the fine print, with the Payables status the status list has", () => {
     expect(HERO.audience).toBe(
-      "For teams whose AI agent pays supplier invoices (Payables, in progress), and for developers who want to give an agent money without the keys.",
+      "For teams whose AI agent pays supplier invoices (Payables, live on testnet), and for developers who want to give an agent money without the keys.",
     );
     const payables = STATUS.rows.find((r) => r.row === "Payables agent");
     expect(HERO.audience).toContain(`(Payables, ${payables?.pill.toLowerCase()})`);
