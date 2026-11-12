@@ -34,6 +34,29 @@ The software is an unaudited beta.
   offline step `verify-demo-a8`, which runs that command and compares it with the committed output,
   and the docs, `SECURITY.md` and the README say that A8 passed on the demo vault's five and was not
   run on the Canary's two.
+- The proof page checks the TEE live: a "Check the TEE now" card after the decisions, the same on
+  every vault's page. The visitor's browser draws a 32-byte nonce and sends it, with no cookie and
+  no `Referer`, to a new route, `GET /api/tee/check`; nothing the visitor typed or uploaded goes
+  with it. The route asks NEAR AI Cloud's public attestation report for that nonce, with no API
+  key, for `NEARAI_MODEL`, the model Payables is set to use, or, when it is unset, for the SDK's
+  preferred private models in order until one answers. It checks up to four model attestations in
+  the report, and says how many the report holds: the nonce in `report_data[32..64]` and
+  `request_nonce`, the signing address in `report_data[0..32]`, O1 (Intel DCAP on the TDX quote,
+  held to the SDK's policy) and O2 (the GPU payload carries the nonce, and NVIDIA NRAS verifies
+  it). The browser checks both bindings again with its own nonce, and the card shows the worse of
+  its verdict and the server's. A check that cannot run in time (12 seconds for NEAR AI's report,
+  24 in all) is `unavailable`, not a pass or a fail. The card checks the TEE that serves the model
+  now, not the decisions above it, which keep their checks A1 to A7, and the TEE measurement is
+  not pinned. The route passes on five values per attestation, and their count, and nothing else
+  of the report (about 290 KB). Its rate limit, `teeCheck`, is one counter of 30 a minute for all
+  visitors together, so it stores nothing about a visitor, and a call that another site's page
+  makes in a browser (`Sec-Fetch-Site`) answers `403 bad_origin` without spending it.
+  `@nearai/inference-sdk` 0.2.1, until now an optional dependency of the CLI and an optional peer
+  of the SDK, is a dependency of the web app, loaded by a literal import so the build traces it,
+  with `@phala/dcap-qvl`, into the route. On 2026-11-12 a local production build of this change
+  answered three calls for `Qwen/Qwen3.8-27B` with all four checks passed, in 1.8 to 10.1
+  seconds, and a cross-site call with `403 bad_origin`, recorded in
+  `docs/evidence/tee-check/route-2026-11-12.json`.
 - The demo video is posted on X, in the build's demo post of 2026-11-12:
   <https://x.com/probarionhq/status/2120882499689836651>. It is a 1:57 cut recorded on the live product,
   on NEAR testnet with test USDC. The README links it from its top row of links and from the filmed run

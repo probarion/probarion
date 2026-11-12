@@ -587,7 +587,7 @@ describe("what a decision row never does", () => {
       DECISION_LIMITS,
     ].join("\n");
     expect(text).not.toMatch(/TEE[- ]verified|verified by the TEE|quote (is|was) verified/i);
-    expect(DECISION_LIMITS).toContain("The TDX quote is not verified here");
+    expect(DECISION_LIMITS).toContain("These decisions' TDX quotes are not verified here");
     expect(DECISION_LIMITS).toContain("verify --online");
     expect(DECISION_LIMITS).toContain("The measurement is not pinned");
     expect(DECISION_LIMITS).toContain("A8 needs the invoice text");

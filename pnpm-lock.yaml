@@ -50,6 +50,9 @@ importers:
       '@mdx-js/loader':
         specifier: 3.1.1
         version: 3.1.1
+      '@nearai/inference-sdk':
+        specifier: 0.2.1
+        version: 0.2.1(typescript@5.9.3)(ws@8.21.0)(zod@4.6.7)
       '@next/mdx':
         specifier: 16.4.3
         version: 16.4.3(@mdx-js/loader@3.1.1)

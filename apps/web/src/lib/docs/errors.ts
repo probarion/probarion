@@ -319,7 +319,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 400,
     code: "invalid_input",
-    where: "Console invoices API, Canary attempt API, Extension API, Top-up API",
+    where: "Console invoices API, Canary attempt API, Extension API, Top-up API, TEE check API",
     meaning:
       "The request body or query is malformed: a field is missing or has the wrong type, or the body is not the JSON or form the route reads.",
     next: "Send the fields the route expects, in the shape its `detail` names when there is one.",
@@ -402,9 +402,9 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
   {
     status: 403,
     code: "bad_origin",
-    where: "Sign-in API, Console invoices API, Canary attempt API, Top-up API",
+    where: "Sign-in API, Console invoices API, Canary attempt API, Top-up API, TEE check API",
     meaning:
-      "The request's Origin header is missing, or is not the address the request came in at.",
+      "The request's Origin header is missing, or is not the address the request came in at. For the TEE check, the browser said in Sec-Fetch-Site that another site's page made the call.",
     next: "Send the request from a Probarion page at this address.",
   },
   {
@@ -595,7 +595,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     status: 429,
     code: "rate_limited",
     where:
-      "Sign-in API, Console invoices API, Canary attempt API, Top-up API, Extension API, proof files, alert confirm link, Telegram webhook",
+      "Sign-in API, Console invoices API, Canary attempt API, Top-up API, Extension API, TEE check API, proof files, alert confirm link, Telegram webhook",
     meaning:
       "Too many requests in the route's window; the answer carries `Retry-After` and the detail `Try again in N s`.",
     next: "Wait the seconds in the `Retry-After` header before you send the request again.",
@@ -685,7 +685,7 @@ export const HTTP_ERRORS: readonly HttpErrorDoc[] = [
     status: 503,
     code: "unavailable",
     where:
-      "Sign-in API, Console invoices API, Canary attempt API, Top-up API, Extension API, proof files, alert links, cron routes, Telegram webhook",
+      "Sign-in API, Console invoices API, Canary attempt API, Top-up API, Extension API, TEE check API, proof files, alert links, cron routes, Telegram webhook",
     meaning:
       "Something the route depends on failed (the database, a server key, a setting or the chain), and the route answers this instead of an unhandled error.",
     next: "Try again in a moment, and quote the request id from the detail when you report it.",

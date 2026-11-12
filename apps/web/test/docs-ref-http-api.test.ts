@@ -759,6 +759,7 @@ const GROUPS: Record<string, string> = {
   ext: "http-api-extension",
   topup: "http-api-topup",
   canary: "http-api-canary",
+  tee: "http-api-tee",
   health: "http-api-health",
   cron: "http-api-cron",
   telegram: "http-api-telegram",

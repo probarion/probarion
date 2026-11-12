@@ -37,6 +37,7 @@ import {
 } from "@/lib/near/tx";
 import { MAX_INVOICE_BYTES } from "@/lib/payables/limits";
 import { LIMITS } from "@/lib/ratelimit";
+import { MAX_ATTESTATIONS, MAX_REPORT_BYTES } from "@/lib/tee/limits";
 import { MAX_TOPUP_UNITS, MIN_TOPUP_UNITS } from "@/lib/topup/amount";
 import { MIN_LEFT_MS } from "@/lib/topup/block";
 import type { RefColumn, RefRow, RefTable } from "./types";
@@ -710,6 +711,16 @@ const CONSOLE: RefTable = {
       value: thousands(MAX_ROWS),
       what: "The invoices waiting for the owner, and the held payments, that the extension's inbox lists for each vault. Its counts include every one",
     }),
+    row("limits-console-max_report_bytes", {
+      name: "`MAX_REPORT_BYTES`",
+      value: bytes(MAX_REPORT_BYTES),
+      what: "The most of NEAR AI's attestation report the proof page's live TEE check (`GET /api/tee/check`) reads. A larger report is not read: the next preferred model is asked when `NEARAI_MODEL` is unset, else each check is `unavailable`",
+    }),
+    row("limits-console-max_attestations", {
+      name: "`MAX_ATTESTATIONS`",
+      value: thousands(MAX_ATTESTATIONS),
+      what: "The model attestations of one report that the live TEE check checks, the first ones. Any past them are not checked: the answer's `attestations_total` counts them, and a pass says it covered the first of them only",
+    }),
   ],
 };
 
@@ -795,6 +806,10 @@ const RATE_SCOPE: Readonly<Record<keyof typeof LIMITS, { per: string; where: str
   faucetTries: {
     per: "Signed-in account",
     where: "`POST /api/topup/faucet`: each press of the faucet button, before the chain is read",
+  },
+  teeCheck: {
+    per: "All visitors together",
+    where: "`GET /api/tee/check`, the proof page's live TEE check",
   },
 };
 
