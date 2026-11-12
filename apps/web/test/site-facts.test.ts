@@ -566,7 +566,9 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(HERO.refused.code).toBe(REHEARSAL.contractCode);
     expect(HERO.refused.code).toBe(CONTRACT_REFUSAL_CODE);
     expect(HERO.refused.big).toBe(`${Number(REHEARSAL.proposedUnits) / 1_000_000} test USDC`);
-    expect(HERO.refused.limit).toBe(`${Number(REHEARSAL.capUnits) / 1_000_000} USDC a payment`);
+    expect(HERO.refused.limit).toBe(
+      `${Number(REHEARSAL.capUnits) / 1_000_000} test USDC a payment`,
+    );
     expect(HERO.refused.label).toContain(REHEARSAL.date);
     expect(HERO.refused.paid).toBe("Nothing");
     expect(canary).toContain(`\`${HERO.refused.vault}\` is the Canary's vault`);
@@ -582,8 +584,13 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
       "so the Canary sent it to the contract unfiltered, with the agent key",
     );
     expect(HERO.note).toContain(
-      "our own fake invoice fooled the model into proposing 50 USDC, and code refused it",
+      "our own fake invoice fooled the model into proposing 50 test USDC. Code refused it: it found no amount it could read with certainty, and the Canary's own rule refuses every attempt.",
     );
+    expect(canary).toContain(
+      "`invoice.amount_invalid`: the amount reader found no total it could read with certainty",
+    );
+    expect(canary).toContain("The Canary's own rule, which refuses");
+    expect(canary).toContain("every attempt, refused it too (`custom.canary_no_autopay`)");
     expect(HERO.note).toContain(
       "sent it to the contract unfiltered, on purpose, and the contract refused it",
     );
@@ -1595,7 +1602,7 @@ describe("the problem, the comparison and the integrate section", () => {
     const evidence = text(ROOT, "docs", "evidence", "402-vault", "README.md");
     expect(w.evidence.url).toBe(`${LINKS.github}/blob/main/docs/evidence/402-vault/README.md`);
     // The run the label names, by the example and its date: the MCP server pill before it is of a later release.
-    expect(w.evidence.label).toBe("The 402 example's run on testnet, 2026-11-09");
+    expect(w.evidence.label).toBe("The 402 example's own agent on testnet, 2026-11-09");
     expect(evidence).toContain("# The 402 example on testnet, 2026-11-09");
     expect(evidence).toContain(
       "[`agent-run-2026-11-09.txt`](agent-run-2026-11-09.txt) is what the agent printed.",
@@ -1628,7 +1635,9 @@ describe("the problem, the comparison and the integrate section", () => {
     expect(w.outcome).toContain("`WITHDRAW_TO:0x1111…1111`");
     expect(w.outcome).toContain("burned 1 test USDC");
     // The caveat: a stand-in on testnet, and no payout on mainnet.
-    expect(w.body).toContain("On testnet the vault burns into a stand-in and nothing leaves NEAR.");
+    expect(w.body).toContain(
+      "On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR.",
+    );
     expect(prose).toContain(
       "On testnet, `intents-stub.probarion.testnet` stands in for `intents.near`, so the burn is recorded and nothing leaves NEAR.",
     );

@@ -823,6 +823,7 @@ a.netPill:hover {
 }
 
 .compareMore {
+  max-width: var(--container-measure);
   margin-top: 18px;
   font-size: 15px;
 }
@@ -897,7 +898,8 @@ a.netPill:hover {
   line-height: 1.65;
 }
 .codeNote {
-  margin-top: 12px;
+  /* 14px over 14px text: 2.55em between two notes with the 1.55 line (WCAG 1.4.8). */
+  margin-top: 14px;
   max-width: var(--container-measure);
   font-size: 14px;
   color: var(--color-mute);
@@ -1806,14 +1808,16 @@ a.netPill:hover {
 }
 /* The notices, small and to the right, where a footnote sits. */
 .boFine {
-  max-width: 60em;
+  /* Reading text: about 71 characters a line, as the measure holds the rest of the page (WCAG 1.4.8). */
+  max-width: var(--container-measure);
   margin: 28px 0 0 auto;
   text-align: right;
   font-size: 13px;
   color: var(--color-mute);
 }
 .boFine p + p {
-  margin-top: 8px;
+  /* 13px over 13px text: 2.55em with the 1.55 line (WCAG 1.4.8). */
+  margin-top: 13px;
 }
 
 /* Closing */

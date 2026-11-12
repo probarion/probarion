@@ -211,13 +211,13 @@ export const HERO = {
     state: "Blocked",
     big: "50 test USDC",
     vault: "canary.vaults.probarion.testnet",
-    limit: "1 USDC a payment",
+    limit: "1 test USDC a payment",
     code: "OverPerPayment",
     paid: "Nothing",
     tx: tx(REHEARSAL.txHash, "6XuxN42d…v6z8DH"),
     tryIt: { label: "Try to make it pay you", href: withVia("/canary", "home") },
   },
-  note: "Real transactions on NEAR testnet, with test tokens, each sent by its vault's agent key. On the Canary our own fake invoice fooled the model into proposing 50 USDC, and code refused it. The Canary then sent it to the contract unfiltered, on purpose, and the contract refused it.",
+  note: "Real transactions on NEAR testnet, with test tokens, each sent by its vault's agent key. On the Canary our own fake invoice fooled the model into proposing 50 test USDC. Code refused it: it found no amount it could read with certainty, and the Canary's own rule refuses every attempt. The Canary then sent it to the contract unfiltered, on purpose, and the contract refused it.",
 } as const;
 
 export const PROBLEM = {
@@ -1137,14 +1137,14 @@ export const INTEGRATE = {
       outcome:
         "20 calls paid, 0.01 test USDC each. The 21st was refused by code with `mandate.uses_exhausted`, before any transaction.",
       evidence: {
-        label: "The 402 example's run on testnet, 2026-11-09",
+        label: "The 402 example's own agent on testnet, 2026-11-09",
         url: blob("docs/evidence/402-vault/README.md"),
       },
       status: "MCP server",
     },
     {
       title: "Cross-chain payouts",
-      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate. On testnet the vault burns into a stand-in and nothing leaves NEAR. No payout through NEAR Intents has run on mainnet yet.",
+      body: "Pay a Base or Solana address through NEAR Intents, with the address fixed by the mandate. On testnet a stand-in contract takes the place of NEAR Intents, so the burn is recorded and nothing leaves NEAR. No payout through NEAR Intents has run on mainnet yet.",
       control: "Address fixed by the mandate",
       outcome:
         "On testnet the vault built the memo `WITHDRAW_TO:0x1111…1111` from the mandate and burned 1 test USDC.",
