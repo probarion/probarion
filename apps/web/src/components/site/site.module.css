@@ -8,9 +8,11 @@
   font-size: 17px;
   line-height: 1.55;
 }
+/* An identifier wider than a 320px column (WCAG 1.4.10), or than one with the 1.4.12 spacing, breaks inside itself. */
 .site code {
   font-family: var(--font-mono);
   font-size: 0.86em;
+  overflow-wrap: anywhere;
 }
 .wrap {
   width: 100%;
@@ -79,7 +81,8 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  background: color-mix(in srgb, var(--color-paper) 88%, transparent);
+  /* 96% paper: over the ink band the nav's mute text still reads at 7.4:1 (WCAG AAA), and the blur stays frosted. */
+  background: color-mix(in srgb, var(--color-paper) 96%, transparent);
   backdrop-filter: blur(12px);
 }
 .nav {
@@ -103,15 +106,18 @@
   display: block;
   flex: none;
 }
+/* A link never breaks, but the row may: with wider letter and word spacing (WCAG 1.4.12) it wraps, not overflows. */
 .navLinks {
   display: flex;
-  gap: 26px;
+  flex-wrap: wrap;
+  gap: 4px 26px;
+  min-width: 0;
   font-size: 15px;
   margin-left: 20px;
-  white-space: nowrap;
 }
 .navLinks a {
   color: var(--color-mute);
+  white-space: nowrap;
 }
 .navLinks a:hover {
   color: var(--color-ink);
@@ -240,7 +246,7 @@ a.netPill:hover {
   gap: 4px;
   font-size: 15px;
   font-weight: 500;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -278,7 +284,7 @@ a.netPill:hover {
 }
 .lede {
   font-size: clamp(19px, 1.65vw, 23px);
-  line-height: 1.42;
+  line-height: 1.5;
   max-width: 30em;
   font-weight: 400;
   letter-spacing: -0.008em;
@@ -295,8 +301,9 @@ a.netPill:hover {
   color: var(--color-mute);
   max-width: 34em;
 }
+/* From the top of a paragraph's last line to the top of the next one's first: 2.5em or more (WCAG 1.4.8). */
 .audience {
-  margin-top: 10px;
+  margin-top: 1em;
 }
 
 .duel {
@@ -326,7 +333,7 @@ a.netPill:hover {
 }
 .metal {
   --c-fg: var(--color-ink);
-  --c-mute: color-mix(in srgb, var(--color-ink) 82%, transparent);
+  --c-mute: color-mix(in srgb, var(--color-ink) 88%, transparent);
   --c-line: color-mix(in srgb, var(--color-ink) 20%, transparent);
   color: var(--c-fg);
   background: var(--gradient-metal);
@@ -420,6 +427,7 @@ a.netPill:hover {
 }
 .duelNote {
   grid-column: 1 / -1;
+  max-width: var(--container-measure);
   font-size: 14px;
   color: var(--color-mute);
   padding-inline: 4px;
@@ -452,7 +460,7 @@ a.netPill:hover {
 .numbers p {
   margin-top: 12px;
   font-size: 15px;
-  line-height: 1.42;
+  line-height: 1.5;
   color: var(--color-mute);
   max-width: 19em;
 }
@@ -504,11 +512,12 @@ a.netPill:hover {
   min-width: 0;
 }
 .livePanel h3 {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
 }
 .liveHint {
   margin: 4px 0 18px;
+  max-width: var(--container-measure);
   font-size: 13.5px;
   color: var(--color-mute);
   overflow-wrap: anywhere;
@@ -541,10 +550,12 @@ a.netPill:hover {
   font-size: 12.5px;
   color: var(--color-mute);
 }
+/* A 2px ink border (1px less padding, so nothing moves), which forced colours keep, as they do not keep a shadow. */
 .scenario[aria-pressed="true"] {
+  padding: 11px 13px;
+  border-width: 2px;
   border-color: var(--color-ink);
   background: var(--color-surface);
-  box-shadow: inset 0 0 0 1px var(--color-ink);
 }
 .field {
   display: grid;
@@ -559,12 +570,13 @@ a.netPill:hover {
 .field > label {
   color: var(--color-mute);
 }
+/* The mute edge of every other field: 8.7:1 on the white panel, where a field's boundary needs 3:1 (WCAG 1.4.11). */
 .field select,
 .field input:not([type="range"]) {
   font: inherit;
   font-size: 16px;
   padding: 8px 10px;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-mute);
   border-radius: 10px;
   background: var(--color-paper);
   color: var(--color-ink);
@@ -661,6 +673,7 @@ a.netPill:hover {
   cursor: pointer;
 }
 .liveRequest {
+  position: relative;
   border: 1px solid var(--color-band-line);
   border-radius: 12px;
   overflow-x: auto;
@@ -725,7 +738,7 @@ a.netPill:hover {
   border-color: var(--color-ink);
 }
 .vsCol h3 {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   margin-bottom: 16px;
 }
@@ -842,8 +855,14 @@ a.netPill:hover {
   align-items: center;
   gap: 4px 8px;
 }
+/* Every sideways scroller is positioned, so absolutely positioned screen-reader text inside stays inside it. */
 .codeBody {
+  position: relative;
   overflow-x: auto;
+}
+/* The box clips what is outside it, so the scroller's ring is drawn inside. */
+.codeBody:focus-visible {
+  outline-offset: -3px;
 }
 .codeBody pre {
   padding: 18px 20px;
@@ -853,6 +872,7 @@ a.netPill:hover {
 }
 .codeNote {
   margin-top: 12px;
+  max-width: var(--container-measure);
   font-size: 14px;
   color: var(--color-mute);
 }
@@ -916,7 +936,7 @@ a.netPill:hover {
   display: block;
   font-size: 12px;
   font-weight: 500;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .tryIt {
   display: inline-block;
@@ -941,8 +961,9 @@ a.netPill:hover {
   color: var(--color-mute);
 }
 .storyIntro {
-  margin-top: 12px;
-  max-width: 46em;
+  /* 2.5em of its own text or more from the top of the caption's line to the top of its first (WCAG 1.4.8). */
+  margin-top: 20px;
+  max-width: var(--container-measure);
   font-size: 16px;
 }
 .storyGrid {
@@ -974,11 +995,16 @@ a.netPill:hover {
   font-size: 17px;
 }
 .storyCard p {
+  max-width: var(--container-measure);
   font-size: 15px;
   overflow-wrap: anywhere;
 }
 .storyAsks {
   color: var(--color-mute);
+}
+/* With the card's 8px gap, 15px between its two paragraphs: 2.5em or more from line top to line top (WCAG 1.4.8). */
+.storyAsks + p {
+  margin-top: 7px;
 }
 .storyLinks {
   display: flex;
@@ -988,6 +1014,7 @@ a.netPill:hover {
 }
 .storyProof {
   margin-top: 18px;
+  max-width: var(--container-measure);
   font-size: 15px;
   color: var(--color-mute);
 }
@@ -1003,6 +1030,7 @@ a.netPill:hover {
   font-family: var(--font-mono);
   font-size: 13.5px;
   line-height: 1.75;
+  position: relative;
   overflow-x: auto;
   min-width: 0;
 }
@@ -1059,6 +1087,10 @@ a.netPill:hover {
   border-radius: 14px;
   background: var(--color-surface);
 }
+/* The row scrolls on a phone and clips what is outside it, so the ring is drawn inside the shot. */
+.shotImage:focus-visible {
+  outline-offset: -3px;
+}
 .shotImage img {
   display: block;
   width: 100%;
@@ -1073,7 +1105,9 @@ a.netPill:hover {
   font-size: 15px;
   overflow-wrap: anywhere;
 }
+/* The meta line under a caption: 2.5em or more of the caption's text from line top to line top (WCAG 1.4.8). */
 .shot .shotMeta {
+  margin-top: 15px;
   font-size: 13px;
   color: var(--color-mute);
 }
@@ -1082,6 +1116,7 @@ a.netPill:hover {
 }
 .shotProof {
   margin-top: 22px;
+  max-width: var(--container-measure);
   font-size: 15px;
   color: var(--color-mute);
 }
@@ -1115,6 +1150,7 @@ a.netPill:hover {
   border-radius: 20px;
   padding: clamp(20px, 2.4vw, 32px);
   min-width: 0;
+  position: relative;
   overflow-x: auto;
 }
 .structField {
@@ -1129,7 +1165,7 @@ a.netPill:hover {
 }
 .structNote {
   color: var(--color-band-mute);
-  font-size: 0.78em;
+  font-size: max(12px, 0.78em);
   text-decoration: none;
   display: inline-block;
   margin-left: 0.8em;
@@ -1174,8 +1210,13 @@ a.netPill:hover {
   font-weight: 500;
 }
 .scroll {
+  position: relative;
   overflow-x: auto;
   min-width: 0;
+}
+/* The sheet clips what is outside it, so the table's ring is drawn inside. */
+.scroll:focus-visible {
+  outline-offset: -3px;
 }
 .table {
   width: 100%;
@@ -1294,8 +1335,9 @@ a.netPill:hover {
   background: transparent;
   color: var(--color-ink);
 }
+/* Dimmed, and still legible: about 6:1 for the ink pill's label (5.97:1 over a white card). */
 .act[aria-disabled="true"] {
-  opacity: 0.5;
+  opacity: 0.65;
   cursor: not-allowed;
   transform: none;
 }
@@ -1352,7 +1394,7 @@ a.netPill:hover {
 .checkHint {
   grid-column: 2 / -1;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
   color: var(--color-mute);
 }
 .why {
@@ -1386,6 +1428,7 @@ a.netPill:hover {
 }
 .detail p {
   margin-top: 8px;
+  max-width: var(--container-measure);
   color: var(--color-mute);
 }
 .detail ul {
@@ -1402,6 +1445,7 @@ a.netPill:hover {
   align-items: baseline;
 }
 .sheetNote {
+  max-width: var(--container-measure);
   padding: 0 20px 18px;
   font-size: 14px;
   color: var(--color-mute);
@@ -1483,17 +1527,20 @@ a.netPill:hover {
   background: var(--color-plan-bg);
   color: var(--color-plan);
 }
-/* A pill inside running text or a card: it moves to the next line whole, never splits across two. */
+/*
+ * A pill inside running text or a card: inline-block, so a short one moves to the next line whole. A long one wraps
+ * inside itself rather than run past a narrow column (WCAG 1.4.10 at 320px, and at 200% zoom).
+ */
 .pillInline {
   display: inline-block;
-  max-width: none;
-  white-space: nowrap;
+  max-width: 100%;
+  white-space: normal;
 }
 .statusNote {
   margin-top: 28px;
   font-size: 15px;
   color: var(--color-mute);
-  max-width: 52em;
+  max-width: var(--container-measure);
 }
 /* Every caveat the landing used to repeat, said once (audit P1-10). The beta strip links here. */
 /* A footnote to the status list, not a chapter: the heading of the integrations it is built on stays small. */
@@ -1513,10 +1560,10 @@ a.netPill:hover {
   margin: 0;
   padding-left: 20px;
   font-size: 15px;
-  max-width: 52em;
+  max-width: var(--container-measure);
 }
 .gaps li + li {
-  margin-top: 8px;
+  margin-top: 1em;
 }
 
 /*
@@ -1730,11 +1777,16 @@ a.netPill:hover {
 }
 .closeNote {
   margin-top: 20px;
+  max-width: var(--container-measure);
   color: var(--color-mute);
 }
 
 .closeNote code {
   white-space: nowrap;
+}
+/* The vault id after the flag breaks inside itself where a 320px column with the 1.4.12 spacing cannot hold it (WCAG 1.4.10). */
+.closeNote code ~ code {
+  white-space: normal;
 }
 /* After the two ways out to the evaluation and the spec, the way into the product. */
 .closeNext {
@@ -1755,8 +1807,8 @@ a.netPill:hover {
   gap: 32px;
 }
 .foot h2 {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--color-ink);
   margin-bottom: 10px;
 }
@@ -1772,7 +1824,7 @@ a.netPill:hover {
   text-decoration: underline;
 }
 .footNote {
-  margin-top: 8px;
+  margin-top: 1em;
 }
 
 /* /proof with no vault: the site's full wrap, so that its left edge matches the header and the footer. */
@@ -1784,7 +1836,7 @@ a.netPill:hover {
   font-weight: 500;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--color-gold-small);
+  color: var(--color-gold-ink);
 }
 .proofTitle {
   margin-top: 10px;
@@ -1796,13 +1848,13 @@ a.netPill:hover {
 }
 .proofIntro {
   margin-top: 16px;
-  max-width: 38em;
+  max-width: var(--container-measure);
   font-size: clamp(17px, 1.65vw, 19px);
-  line-height: 1.42;
+  line-height: 1.5;
 }
 .proofMuted {
   margin-top: 12px;
-  max-width: 38em;
+  max-width: var(--container-measure);
   color: var(--color-mute);
   font-size: 15px;
 }
@@ -1856,7 +1908,7 @@ a.netPill:hover {
 .proofTamperIntro {
   margin-top: 10px;
   margin-bottom: 24px;
-  max-width: 38em;
+  max-width: var(--container-measure);
   color: var(--color-mute);
   font-size: 15px;
 }
@@ -1904,6 +1956,10 @@ a.netPill:hover {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     padding-bottom: 8px;
+    /* 6px of room each side, taken back by the margin, so the row does not cut a caption link's focus ring. */
+    margin-inline: -6px;
+    padding-inline: 6px;
+    scroll-padding-inline: 6px;
   }
   .shot {
     scroll-snap-align: start;
@@ -2171,5 +2227,19 @@ a.netPill:hover {
   /* Forced colours drop the box-shadow that marks a pressed button. */
   .act[aria-pressed="true"] {
     text-decoration: underline;
+  }
+  /* The chosen scenario keeps its 2px border, in the selection colour of the system. */
+  .scenario[aria-pressed="true"] {
+    border-color: Highlight;
+  }
+  /* A fill is dropped, so the current network, the paid card and the pills get an edge instead. */
+  .netPillCurrent,
+  .pill,
+  .state,
+  .payeeLock {
+    border: 1px solid CanvasText;
+  }
+  .metal {
+    border: 1px solid transparent;
   }
 }

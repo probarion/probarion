@@ -105,8 +105,8 @@ export default async function PayablesPage({ params }: { params: Promise<{ vault
         {invoices.length === 0 ? (
           <p className={`text-sm ${muted}`}>No invoices yet.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <div className="relative overflow-x-auto">
+            <table className="w-full text-left text-sm [&_td]:pr-4 [&_th]:pr-4 [&_th]:pb-2 [&_th]:whitespace-nowrap">
               <thead>
                 <tr className="border-b border-ink/10">
                   <th>When</th>

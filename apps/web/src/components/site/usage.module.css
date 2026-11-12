@@ -54,10 +54,11 @@ table.usage tbody tr:last-child th {
   color: var(--color-mute);
 }
 
+/* A sentence that wraps on a phone: light only at 24px and up, and a reading line height (WCAG 1.4.8). */
 .counts {
   font-weight: 300;
-  font-size: clamp(20px, 2.6vw, 26px);
-  line-height: 1.25;
+  font-size: clamp(24px, 2.6vw, 26px);
+  line-height: 1.5;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -70,10 +71,11 @@ table.usage tbody tr:last-child th {
 }
 
 /* How each number is counted */
+/* One paragraph each: a 1em gap keeps 2.5em from line top to line top across a break (WCAG 1.4.8). */
 .defs {
   display: grid;
-  gap: 12px;
-  max-width: 48em;
+  gap: 1em;
+  max-width: var(--container-measure);
   padding-left: 1.3em;
   list-style: disc;
   font-size: 16px;

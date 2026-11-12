@@ -38,13 +38,13 @@ export const ATTESTATION_MEANINGS: Readonly<Record<string, string>> = {
 /** How many rules a card lists before "The other N rules": every rule that did not pass, then passes up to this. */
 const RULES_UP_FRONT = 5;
 
-const link = "text-ink underline decoration-ink/30 hover:decoration-ink";
+const link = "text-ink underline decoration-ink/60 hover:decoration-ink";
 /** The site's grey for small text: 7:1 or more on paper and on a white card (globals.css). */
 const muted = "text-mute";
 const codeBlock =
   "mt-1.5 block rounded-2xl bg-ink px-3 py-2 font-mono text-xs text-paper wrap-anywhere";
 const moreSummary =
-  "w-max cursor-pointer text-xs underline decoration-ink/30 underline-offset-2 hover:decoration-ink";
+  "w-max cursor-pointer text-xs underline decoration-ink/60 underline-offset-2 hover:decoration-ink";
 
 const VERDICT_TONE: Readonly<Record<DecisionVerdict, Tone>> = {
   allow: "good",
@@ -238,7 +238,7 @@ function Column({
       <h3 id={id} className="flex items-start gap-2 text-sm leading-snug font-semibold text-ink">
         <span
           aria-hidden="true"
-          className="-mt-px inline-grid h-[22px] w-[22px] flex-none place-items-center rounded-full border border-gold-small text-xs font-semibold text-gold-small"
+          className="-mt-px inline-grid h-[22px] w-[22px] flex-none place-items-center rounded-full border border-gold-small text-xs font-semibold text-gold-ink"
         >
           {step}
         </span>

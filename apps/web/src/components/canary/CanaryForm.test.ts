@@ -129,7 +129,7 @@ describe("the chips' CSS", () => {
   });
 
   it("dims a chip while an attempt runs, as the main button is", () => {
-    expect(rule('.pick[aria-disabled="true"]')).toMatch(/opacity: 0\.5;\s*cursor: not-allowed;/);
+    expect(rule('.pick[aria-disabled="true"]')).toMatch(/opacity: 0\.65;\s*cursor: not-allowed;/);
   });
 });
 

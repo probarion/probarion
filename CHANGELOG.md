@@ -952,6 +952,67 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The site's type targets WCAG 2.2 AA on every page and the AAA text criteria (1.4.6 contrast, 1.4.8
+  visual presentation) in the landing copy, the Docs Center, the console, the Canary, the proof page
+  and the reading pages (Privacy, Terms, Security, Status). The site does not claim AAA conformance as
+  a whole. The brand stays: Hanken Grotesk and IBM Plex Mono, ink, paper and gold.
+  - Contrast: small gold text (eyebrows, the docs step numbers and tags, the error and 404 labels, the
+    proof page's step badges) is `gold-ink`, 8.6:1 on paper, in place of `gold-small` (5.9:1), which
+    stays on the landing's 42px step numerals only. `band-mute` goes from #a9a59b to #b0aca2 (8.7:1 on
+    the ink band). The gold headline gradient is darker (#5e4210 to #8a6420, 4.9:1 or more on paper)
+    and is used on 24px text and up only. The metal card's gradient ends lighter (#cfa54a) with a softer
+    shade, so its ink reads at 7.6:1 or more and its labels (88% ink) at 7:1 or more. The header is 96%
+    paper, so its grey text stays at 7:1 over the ink band. Link underlines are 60% ink, placeholders
+    use `mute`, and a disabled control is drawn at 65% opacity in place of 50% (its ink label reads
+    at about 6:1), or at 75% for the red buttons, whose label then reads at 4.9:1 in place of 3.8:1.
+  - Visual presentation: reading text has a line height of 1.5 or more. A paragraph break leaves 2.5em
+    or more from the top of one paragraph's last line to the top of the next one's first, inside docs
+    list items and steps, the landing's story cards and screenshot captions, and the Canary cards
+    too. Reading blocks run to 32em, about 71 characters on average (the new `--container-measure`
+    token, `max-w-measure` in classes), nested ones included: a docs step's paragraphs, a verifier
+    check, the docs hub's agent block, and the Canary's replay banner and the note under it. Laid
+    out at 1440px, each line of reading text on the docs and the public reading pages has 80
+    characters or fewer (before this change some reached 109, and at 33em some still reached 82).
+  - Sizes and weights: text set in the stylesheets and class names is 12px or more, light weight is
+    used at 24px and up only (card and dialog titles go from 22px to 24px), docs articles style `h4`,
+    and the landing's panel and comparison headings are 17px. The architecture diagram is the
+    exception: its smallest labels are 12 units of an SVG that scales with the column, so they draw
+    at about 11.6px in a 1440px window and 10.7px where it scrolls.
+  - Text spacing and reflow (1.4.12, 1.4.10): the docs search boxes grow with their text, inline pills,
+    the nav links and the landing's inline code wrap, scrolling code blocks and tables keep their
+    screen reader text inside them, the console's definition lists stack on a phone, and its wide
+    tables scroll inside their card.
+  - Focus and edges (2.4.7, 1.4.11): selects and text areas get the shared focus ring, the docs search
+    input's ring is drawn all round, a ring inside a clipping box is drawn inside it, the Canary
+    tables and the landing's screenshot row on a phone leave 6px of room for the ring of a link at
+    their edge, a link that the keyboard focuses inside a sideways scroller is scrolled into view
+    (Chrome left the second screenshot mostly out of sight), form fields have `mute` borders, the
+    pressed Canary scenario has a 2px ink edge, and the open docs code tab has a gold-bright bar.
+  - The site declares `color-scheme: only light` (also as Next.js `viewport.colorScheme`), since it
+    has no dark theme yet. `only` also turns off a browser's own automatic dark mode (Chrome's), which
+    would recolour the tokens without their contrast checks. Forced colours still apply: in them
+    (Windows contrast themes), buttons, pills, the metal card, the pressed scenario and the open
+    console tab keep a visible edge.
+  - `apps/web/test/typography-aaa.test.ts` reads `globals.css` and the CSS modules and fails on a
+    text colour pair below 7:1 (4.5:1 at 24px and up), a disabled label under 4.5:1, a reading line
+    height under 1.5, light weight under 24px, text under 12px, justified text, an ellipsis, or a
+    missing forced colours rule. For the rules it lists, it also fails on a paragraph break under
+    2.5em or a reading block wider than the measure. `site-facts.test.ts` holds small text to 7:1 and
+    the gold headline to 4.5:1.
+  - `apps/web/e2e/a11y.spec.ts` (with `@axe-core/playwright` 4.14.0, a new dev dependency) runs
+    axe-core's WCAG 2.0, 2.1 and 2.2 A and AA rules, then its AAA contrast rule, over `/`, `/status`,
+    `/docs`, a docs article and the demo vault's proof page, and checks reflow at 320px with and
+    without the 1.4.12 spacing. It also lays out every docs article and the public reading pages (45
+    pages) at 1440px and fails on a line of reading text over 80 characters or a break between two
+    paragraphs under 2.5em; code, tables, mono labels and text of 24px and up are left out. A local
+    run on 2026-11-12 passed all 65 tests of this spec, and the docs, landing and smoke specs with
+    them (123 in all); the test settings reach no database, so the proof page was checked in its
+    unavailable view.
+  - Not covered yet: a dark theme (and, with `only light`, a browser's automatic one),
+    `prefers-contrast`, font sizes in rem, the architecture diagram's labels under 12px, visible
+    labels on the register-vault and email forms (they have a placeholder and an accessible name),
+    and the signed-in console pages in axe and in the laid-out checks.
+
 - The Canary no longer follows `NEARAI_MODEL`. That variable pins the NEAR AI Cloud model for Payables and the SDK
   factory; the Canary keeps the SDK's default order (`z-ai/glm-5.3-flash` first), the model of its recorded attempts.
   With `Qwen/Qwen3.8-27B` pinned on probarion.xyz on 2026-11-11, a Canary attempt timed out at 40 s and was decided

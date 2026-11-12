@@ -231,7 +231,7 @@ export function PilotsCard({ pilots, names }: { pilots: SegmentCounts; names: re
 export function Unavailable() {
   return (
     <section className={brandCardClass}>
-      <p>{UNAVAILABLE}</p>
+      <p className="max-w-measure">{UNAVAILABLE}</p>
     </section>
   );
 }

@@ -22,15 +22,19 @@ const ring =
   "focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-gold-small";
 /** A field: 16px text, 44px tall, and the landing page's mute edge, which reads at 3:1 on a white card. */
 export const inputClass = `w-full min-h-11 rounded-xl border border-mute bg-surface px-3 py-2 text-base text-ink ${ring}`;
-const button = `inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors disabled:opacity-50 ${ring}`;
-/** The main button: an ink pill. */
-export const buttonClass = `${button} bg-ink text-paper hover:bg-ink/85`;
+const pillButton = `inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors ${ring}`;
+// A disabled control is exempt from WCAG 1.4.3, and its label still reads at 4.5:1 or more. Ink dims to 65% (about
+// 6:1: the ink pill's label is 5.97:1 over a white card). Red dims to 75% (4.89:1): at 65% it would be 3.8:1.
+const button = `${pillButton} disabled:opacity-65`;
+const redButton = `${pillButton} disabled:opacity-75`;
+/** The main button: an ink pill. Its transparent edge shows in forced colours, which drop the fill. */
+export const buttonClass = `${button} border border-transparent bg-ink text-paper hover:bg-ink/85`;
 /** A second choice beside the main one, such as a dialog's Cancel: an ink outline. */
 export const lineButtonClass = `${button} border border-ink/15 bg-surface text-ink hover:bg-ink/5`;
 /** The action button of a confirm dialog for something that cannot be taken back. */
-export const dangerButtonClass = `${button} bg-bad text-white hover:bg-bad/90`;
+export const dangerButtonClass = `${redButton} border border-transparent bg-bad text-white hover:bg-bad/90`;
 /** A button for something that cannot be taken back, beside other actions (Reject next to Approve): a red outline. */
-export const dangerLineButtonClass = `${button} border border-bad/45 bg-surface text-bad hover:bg-bad-bg`;
+export const dangerLineButtonClass = `${redButton} border border-bad/45 bg-surface text-bad hover:bg-bad-bg`;
 
 /**
  * A wallet button's look follows its confirm dialog: the red outline when the dialog says it cannot be undone. `wide`
@@ -45,7 +49,7 @@ export function actionButtonClass(confirmTone?: DangerTone, wide?: boolean): str
 // (green passed, amber not proven or no result, red failed). The colours are the tokens in app/globals.css.
 const pill =
   "inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-colors";
-export const inkPillClass = `${pill} bg-ink text-paper hover:bg-ink/85`;
+export const inkPillClass = `${pill} border border-transparent bg-ink text-paper hover:bg-ink/85`;
 export const linePillClass = `${pill} border border-ink/15 text-ink hover:bg-ink/5`;
 export const brandCardClass = "mb-6 rounded-3xl border border-ink/10 bg-white p-5 sm:p-7";
 export type PanelTone = "good" | "warn" | "bad";
@@ -86,6 +90,10 @@ export function Badge({ tone = "neutral", children }: { tone?: Tone; children: R
   );
 }
 
+/**
+ * A paragraph in a card runs to the reading measure (80 characters or fewer, WCAG 1.4.8); tables and forms keep the card
+ * width. The title is light only because it is 24px, large text.
+ */
 export function Card({
   title,
   actions,
@@ -96,9 +104,9 @@ export function Card({
   children: ReactNode;
 }) {
   return (
-    <section className="mb-6 rounded-3xl border border-line bg-surface p-5 sm:p-7">
+    <section className="mb-6 rounded-3xl border border-line bg-surface p-5 sm:p-7 [&_p]:max-w-measure">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-[22px] font-light tracking-tight">{title}</h2>
+        <h2 className="text-2xl font-light tracking-tight">{title}</h2>
         {actions}
       </div>
       {children}
@@ -108,7 +116,9 @@ export function Card({
 
 export function Notice({ tone = "info", children }: { tone?: Tone; children: ReactNode }) {
   return (
-    <div className={`mb-4 rounded-2xl px-4 py-3 text-sm ${TONE_CLASSES[tone]}`}>{children}</div>
+    <div className={`mb-4 rounded-2xl px-4 py-3 text-sm ${TONE_CLASSES[tone]}`}>
+      <div className="max-w-measure">{children}</div>
+    </div>
   );
 }
 
@@ -160,7 +170,7 @@ export function Field({
 }
 
 const explorerLinkClass =
-  "mono text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink";
+  "mono text-ink underline decoration-ink/60 underline-offset-2 hover:decoration-ink";
 const short = (s: string) => (s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-6)}` : s);
 
 export function TxLink({

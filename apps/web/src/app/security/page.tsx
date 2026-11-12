@@ -17,7 +17,7 @@ const CODE_BLOCK =
 /** The security summary. SECURITY.md is the policy; this page says the same in short and links it. Static. */
 export default function SecurityPage() {
   return (
-    <div className={`${s.site} ${s.wrap} ${c.page}`}>
+    <div className={`${s.site} ${s.wrap} ${c.page} ${c.reading}`}>
       <p className={s.eyebrow}>{P.eyebrow}</p>
       <h1 className={c.title}>{P.title}</h1>
       <p className={c.lede}>{P.lede}</p>
@@ -50,7 +50,7 @@ export default function SecurityPage() {
       <section className={brandCardClass}>
         <h2 className={H2}>{P.breach.title}</h2>
         <p className="mb-3">{P.breach.lede}</p>
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr>

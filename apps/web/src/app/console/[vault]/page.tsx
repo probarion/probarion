@@ -50,7 +50,7 @@ export const maxDuration = 60;
 
 const muted = "text-mute";
 const textLink =
-  "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink";
+  "inline-flex min-h-11 items-center text-sm text-ink underline decoration-ink/60 underline-offset-2 hover:decoration-ink";
 function hours(ns: string): string {
   const h = Number(BigInt(ns)) / 3_600_000_000_000;
   return `${Number.isInteger(h) ? h : h.toFixed(2)} h`;
@@ -111,7 +111,7 @@ function VaultCard({
       title="Vault"
       actions={config.frozen ? <Badge tone="bad">Frozen</Badge> : <Badge tone="good">Active</Badge>}
     >
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
+      <dl className="grid grid-cols-1 gap-y-1 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-6 [&>dd]:wrap-anywhere max-sm:[&>dd]:mb-1 max-sm:[&>dt]:text-mute">
         <dt>Owner</dt>
         <dd>
           <AccountLink network={network} account={config.owner} />
@@ -358,7 +358,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
           />
 
           <Card title="Balances">
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+            <dl className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-6 [&>dd]:wrap-anywhere max-sm:[&>dd]:mb-1 max-sm:[&>dt]:text-mute">
               <dt>{config.usdc === consts.usdc ? "USDC on NEAR" : "Token on NEAR"}</dt>
               <dd>
                 <Figure read={o.usdc} fmt={amount} />
@@ -417,7 +417,7 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
           {heldFirst ? null : heldCard}
 
           <Card title="Mandates and spends">
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
+            <dl className="grid grid-cols-1 gap-y-1 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-6 [&>dd]:wrap-anywhere max-sm:[&>dd]:mb-1 max-sm:[&>dt]:text-mute">
               <dt>Mandates</dt>
               <dd>
                 <Figure
@@ -451,33 +451,35 @@ export default async function VaultPage({ params }: { params: Promise<{ vault: s
             ) : o.spends.value.recent.length === 0 ? (
               <p className={`text-sm ${muted}`}>No spends yet.</p>
             ) : (
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-line">
-                    <th>#</th>
-                    <th>Amount</th>
-                    <th>Status</th>
-                    <th>To</th>
-                    <th>Ref</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {o.spends.value.recent.map((s) => {
-                    const v = spendStatusView(s.status);
-                    return (
-                      <tr key={s.id} className="border-b border-line last:border-0">
-                        <td>{s.id}</td>
-                        <td>{amount(s.amount)}</td>
-                        <td>
-                          <Badge tone={v.tone}>{v.label}</Badge>
-                        </td>
-                        <td className="mono break-all">{payeeText(s.destination)}</td>
-                        <td className="mono break-all">{s.ref}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="relative overflow-x-auto">
+                <table className="w-full text-left text-sm [&_td]:pr-4 [&_th]:pr-4 [&_th]:pb-2 [&_th]:whitespace-nowrap">
+                  <thead>
+                    <tr className="border-b border-line">
+                      <th>#</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>To</th>
+                      <th>Ref</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {o.spends.value.recent.map((s) => {
+                      const v = spendStatusView(s.status);
+                      return (
+                        <tr key={s.id} className="border-b border-line last:border-0">
+                          <td>{s.id}</td>
+                          <td>{amount(s.amount)}</td>
+                          <td>
+                            <Badge tone={v.tone}>{v.label}</Badge>
+                          </td>
+                          <td className="mono break-all">{payeeText(s.destination)}</td>
+                          <td className="mono break-all">{s.ref}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Card>
         </>

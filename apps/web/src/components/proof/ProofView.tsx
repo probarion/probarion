@@ -80,9 +80,11 @@ const BURN_STATUS: Readonly<Record<BurnRow["status"], { tone: Tone; label: strin
   unknown: { tone: "neutral", label: "unknown" },
 };
 
-const link = "text-ink underline decoration-ink/30 hover:decoration-ink";
+// The underline is the only cue (link and text are both dark), so it reads at 5:1 on white.
+const link = "text-ink underline decoration-ink/60 hover:decoration-ink";
 const section = brandCardClass;
-const sectionTitle = "text-lg font-light tracking-tight text-ink sm:text-xl";
+// Under 24px, so the regular weight, not the light one the large headings use.
+const sectionTitle = "text-lg font-normal tracking-tight text-ink sm:text-xl";
 /** The site's grey for small text: 7:1 or more on paper and on a white card (globals.css). */
 const muted = "text-mute";
 const codeBlock =
@@ -278,9 +280,7 @@ function Header({
       <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-gold-ink">
         {eyebrow}
       </p>
-      <h1 className="font-mono text-2xl font-light tracking-tight text-ink break-all sm:text-3xl">
-        {vault}
-      </h1>
+      <h1 className="font-mono text-2xl tracking-tight text-ink break-all sm:text-3xl">{vault}</h1>
       {children}
     </header>
   );
@@ -544,7 +544,7 @@ export function ProofView({
   // In full, exactly as the verifier prints it ("snapshot taken <taken_at>"), so the two can be compared.
   const takenAt = safeText(snapshot.taken_at);
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-3xl [&_p]:max-w-measure">
       <Header
         vault={vault}
         eyebrow={result.audience === "public" ? "Public proof" : "Proof, visible to members only"}
@@ -558,7 +558,7 @@ export function ProofView({
 
       <Panel state={state} title={HEADLINE_TEXT[state]}>
         <p className="mt-3 text-sm">{headlineNote(report)}</p>
-        <p className="mt-2 text-xs opacity-75">
+        <p className="mt-2 text-xs">
           Checked {when(report.generated_at)} · snapshot taken {takenAt}
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
@@ -638,7 +638,7 @@ export function ProofUnavailable({
   reason: ProofErrorReason;
 }) {
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-3xl [&_p]:max-w-measure">
       <Header vault={vault} eyebrow="Proof" />
       <Panel state="error" title="No result: the checks did not run">
         <p className="mt-3 text-sm">{unavailableText(reason, vault)}</p>
@@ -666,7 +666,7 @@ function ChainCommand({ vault, network }: { vault: string; network: Network }) {
 /** The visitor's address made too many proof requests: nothing was read. */
 export function ProofLimited({ vault, network }: { vault: string; network: Network }) {
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-3xl [&_p]:max-w-measure">
       <Header vault={vault} eyebrow="Proof" />
       <Notice tone="warn">
         Too many proof requests from your address. Wait a minute and reload this page.

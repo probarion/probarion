@@ -17,7 +17,7 @@ export function PublicCard({
   return (
     <Container>
       <div className="mx-auto my-6 max-w-lg rounded-3xl border border-line bg-surface p-6 sm:my-10 sm:p-8">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-small">{eyebrow}</p>
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-ink">{eyebrow}</p>
         <h1 className="mt-3 text-3xl font-light tracking-tight">{title}</h1>
         {children}
       </div>
