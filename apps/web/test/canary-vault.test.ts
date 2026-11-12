@@ -513,11 +513,11 @@ describe("what SECURITY.md, the privacy page and the threat model say about the 
     expect(security).not.toMatch(/O1 and O2 are not recorded/);
   });
 
-  it("the privacy page: two of the Canary's and four of the payables agent's, checked offline and online, each dated", () => {
+  it("the privacy page: two of the Canary's and five of the payables agent's, checked offline and online, each dated", () => {
     const invoices = PRIVACY_PAGE.sections.find((s) => s.id === "invoices");
     const said = flat((invoices?.paragraphs ?? []).join(" "));
     expect(said).toContain(
-      "The attested decisions recorded in the repository so far are all on testnet: two of the Canary's, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, and four of the payables agent's on the demo vault, which pass A1 to A7 offline and, on 2026-11-12, O1 and O2 online. The TEE measurement is not pinned, and A8 was not run.",
+      "The attested decisions recorded in the repository so far are all on testnet: two of the Canary's, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, and five of the payables agent's on the demo vault, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. The TEE measurement is not pinned, and A8 was not run.",
     );
     expect(said).not.toContain("offline and O1 and O2 online");
     expect(said).not.toContain("checked offline only");

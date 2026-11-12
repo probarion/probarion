@@ -507,6 +507,19 @@ export const SNAPSHOTS = [
     expect: { exit: 0, checks: ALL_PASS },
   },
   {
+    // No `committed`: this snapshot is the proof page's download, which no live run wrote, and
+    // verify-2026-11-12-video.txt beside it is the offline run on it.
+    id: "verify-demo-snapshot-1112-video",
+    file: "docs/evidence/demo-vault/snapshot-2026-11-12-video.json",
+    title:
+      "verify --offline: demo vault snapshot with five attested decisions, two of them paid, passes a to i",
+    ref: {
+      file: "docs/evidence/demo-vault/README.md",
+      quote: "and check e finds 5 attested decisions that pass A1 to A7",
+    },
+    expect: { exit: 0, checks: ALL_PASS },
+  },
+  {
     id: "verify-402-snapshot-1109",
     file: "docs/evidence/402-vault/snapshot-2026-11-09.json",
     committed: "docs/evidence/402-vault/verify-2026-11-09.txt",
@@ -1102,7 +1115,7 @@ export function planSteps(root = ROOT) {
         const v = await liveVerify(ctx, DEMO_VAULT, path, LIVE_VAULTS.demo);
         if (v.result !== "PASS") return v;
         // The newest committed ledger: each older file of this vault is a prefix of it.
-        const committed = "docs/evidence/demo-vault/ledger-2026-11-12.jsonl";
+        const committed = "docs/evidence/demo-vault/ledger-2026-11-12-video.jsonl";
         const prefix = ledgerPrefix(ctx.readFile(committed) ?? "", got.text);
         if (!prefix.ok)
           return { result: "FAIL", detail: `${v.detail}; but ${committed}: ${prefix.detail}` };
