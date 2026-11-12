@@ -1045,8 +1045,7 @@ The software is an unaudited beta.
   measurement is not pinned. "How to evaluate Probarion in 5 minutes" now opens with a table of the
   five tracks this entry was submitted to (AI Security & Defense, Real-World Money, Agent Economy,
   Autonomous Business, Privacy & Private AI), with one thing to do and one to see for each, and adds a
-  browser step: press "Check the TEE now" on the demo vault's proof page once it is deployed
-  (probarion.xyz did not serve it at 17:46 UTC on 2026-11-12).
+  browser step: press "Check the TEE now" on the demo vault's proof page.
   The README's NEAR AI Cloud rows, its demo vault section and `SECURITY.md` add that the live run at
   16:13 UTC on 2026-11-12 passed O1 and O2 on all five attested decisions, entry 15 included, and the
   README's libraries table lists `@nearai/inference-sdk` 0.2.1 for the web console.
