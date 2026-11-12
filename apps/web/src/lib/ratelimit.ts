@@ -61,6 +61,11 @@ export const LIMITS = {
   faucetGlobal: [50, 86_400],
   /** Presses of the faucet button per signed-in account, before the chain is read: bounds the reads it causes. */
   faucetTries: [10, 600],
+  /**
+   * The proof page's live TEE check (app/api/tee/check), all visitors together: each check asks NEAR AI, Intel and NVIDIA,
+   * so this bounds the calls the site makes to them. One bucket, so no visitor's address is stored.
+   */
+  teeCheck: [30, 60],
 } as const satisfies Record<string, readonly [number, number]>;
 
 /**

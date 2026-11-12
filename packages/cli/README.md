@@ -92,6 +92,7 @@ probarion verify --vault <vault>
 probarion verify --vault <vault> --snapshot snapshot.json   # also saves the snapshot it verified
 probarion verify --offline snapshot.json                    # checks a saved snapshot, with no network
 probarion verify --vault <vault> --online                   # adds O1 and O2 to check e
+probarion verify --offline snapshot.json --invoices <dir>   # adds A8 to check e (not in 0.1.1)
 probarion verify --vault <vault> --burn-tx 2=<tx hash>@<approver account>
 probarion verify --vault <vault> --proof evidence.json
 probarion ledger export --out ledger-copy.jsonl
@@ -154,7 +155,7 @@ factory version (i). It prints one row per check with what it found, then the co
 | 0 | every check passes |
 | 1 | a check fails (a fail always wins over unproven), or verify could not run (`error:` on stderr, no `RESULT` line) |
 | 2 | no check fails, but at least one is unproven |
-| 64 | usage error: a missing, malformed or conflicting flag |
+| 64 | usage error: a missing, malformed or conflicting flag, an `--invoice`, `--system-prompt` file or `--invoices` folder that cannot be read, a folder with no `.txt` file, or an invoice or prompt file that is not UTF-8 text |
 
 **UNPROVEN** is not a pass. It means that verify could not look at what a check needs. Today only
 check h can be unproven: a payout's burn is in a transaction that verify did not read. The row lists
@@ -204,6 +205,25 @@ The flags:
     is enough), check e fails and the report adds an `online hint` line: sync the clock and run again.
     The line also goes to stderr as `warning: online hint: ...`; with `--json`, stderr is the only place it
     appears.
+- `--invoice <file>` and `--invoices <dir>` are in the CLI built from this repository; release 0.1.1
+  on npm does not have them. A build from this repository also reports version 0.1.1 until the next
+  release: `probarion verify --help` lists `--invoices` when the build has it. Each names invoice
+  texts you hold: `--invoice` one file (it can be repeated), `--invoices` every `.txt` file of a
+  folder, not its subfolders. With them, check e also runs A8 on each attested decision whose
+  `invoice_hash` is the sha256 of a file's bytes: it rebuilds the request the model was sent from
+  that text and checks its hash. They work live and with `--offline`. verify reads the files on
+  this computer and uses them for A8 only: it sends them nowhere, does not write them to
+  `--snapshot`, and prints file names, not their text (`--json` adds an `invoices` list with each
+  file's sha256 and the ledger entries it matches). A file that matches no attested decision is
+  listed under the rows and on stderr, and does not fail the run; an edited copy of an invoice has
+  another sha256, so it is one of these. A file that cannot be read or is not UTF-8 text, or a folder
+  with no `.txt` file, exits 64.
+- `--system-prompt <file>` (repeatable, with `--invoice` or `--invoices`, and like them not in
+  0.1.1) adds a system prompt that A8 accepts. Without it A8 accepts only the standard prompt
+  (`PROPOSAL_SYSTEM_PROMPT`), so a decision made under another prompt, for example an agent's
+  `model.systemPrompt` such as the Canary's persona, fails A8. The file must hold the prompt's exact
+  text: a trailing newline is part of it. The ledger shows each prompt in
+  `request_inputs.system_prompt`, but A8 accepts only the standard prompt and the ones you give.
 - `--snapshot <file>` writes the snapshot that was verified to a new file. It refuses a file that
   already exists, and the ledger file under any name (exit 64).
 - `--offline <file>` verifies such a snapshot as it is, with no network, so it refuses `--vault`,

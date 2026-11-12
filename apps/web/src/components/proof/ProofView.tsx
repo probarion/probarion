@@ -46,10 +46,11 @@ import {
 import { NEXT_STEP } from "@/lib/site/next-step";
 import { OpenLinkedDecision } from "./DecisionLinks";
 import { DecisionLine, DecisionPanel } from "./DecisionPanel";
+import { TeeCheckPanel } from "./TeeCheckPanel";
 
 // The public proof page, as a server component with no data access of its own: page.tsx loads the result and
-// hands it here, with the snapshot's decision rows. The result comes first, then the checks, each decision, the burns
-// and the steps to verify it yourself.
+// hands it here, with the snapshot's decision rows. The result comes first, then the checks, each decision, the live
+// TEE check (the same on every vault's page), the burns and the steps to verify it yourself.
 
 const KIND_LABEL: Readonly<Record<TenantKind, string>> = {
   team: "Team vault",
@@ -525,16 +526,19 @@ export function Decisions({
 /**
  * A vault's live checks a-i, with explorer links, each decision of its ledger, its burns, the offline steps and the
  * next step (the console). `decisions` is `decisionRows` of the same snapshot, or null when they could not be built;
- * `fullSeq` is the older decision whose full card the address asks for (?seq=N), if any.
+ * `fullSeq` is the older decision whose full card the address asks for (?seq=N), if any; `teeModel` is the model the
+ * live TEE check asks first (NEARAI_MODEL), or null.
  */
 export function ProofView({
   result,
   decisions,
   fullSeq = null,
+  teeModel = null,
 }: {
   result: ProofOk;
   decisions: readonly DecisionRow[] | null;
   fullSeq?: number | null;
+  teeModel?: string | null;
 }) {
   const { vault, network, report, snapshot } = result;
   const rows = proofRows(report, snapshot, network);
@@ -595,6 +599,7 @@ export function ProofView({
       </section>
 
       <Decisions vault={vault} network={network} rows={decisions} fullSeq={fullSeq} />
+      <TeeCheckPanel model={teeModel} />
       <Burns burns={burns} />
       <VerifyYourself vault={vault} network={network} takenAt={takenAt} />
       <NextStep step={NEXT_STEP.proof} className="mt-6 text-sm text-ink/80" linkClassName={link} />

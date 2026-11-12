@@ -1,0 +1,172 @@
+{
+  "what": "Four calls to GET /api/tee/check on a local production build (next build, then next start) of the change that adds the proof page's live TEE check, on 2026-11-12.",
+  "how": [
+    "The build ran with test settings only: NEARAI_MODEL=Qwen/Qwen3.8-27B, and a local test double of Supabase that answered the route's one rate-limit call (rate_limit_take, bucket tee:check) with allowed.",
+    "Each call drew a fresh 32-byte nonce with node:crypto randomBytes. The first three sent Sec-Fetch-Site: same-origin, as the proof page's browser does; the fourth sent cross-site, as another site's page would.",
+    "NEAR AI Cloud's public attestation report, Intel PCS and NVIDIA NRAS were the real services. No API key was sent.",
+    "round_trip_ms is the time the caller waited; body.elapsed_ms is the server's own time for the check."
+  ],
+  "results": "The three same-origin calls answered 200 for Qwen/Qwen3.8-27B with all four checks pass (nonce, signer, O1, O2). The cross-site call answered 403 bad_origin, and the test double logged no rate-limit call for it.",
+  "route": "GET /api/tee/check",
+  "base": "http://localhost:3217",
+  "started_at": "2026-11-12T16:57:26.793Z",
+  "calls": [
+    {
+      "sec_fetch_site": "same-origin",
+      "nonce": "7f40236eda1943b33b85f228d97172c68950208fa0f0c30bdcf9c391ad2d87db",
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      },
+      "round_trip_ms": 10190,
+      "body": {
+        "nonce": "7f40236eda1943b33b85f228d97172c68950208fa0f0c30bdcf9c391ad2d87db",
+        "model": "Qwen/Qwen3.8-27B",
+        "checked_at": "2026-11-12T16:57:36.974Z",
+        "elapsed_ms": 10066,
+        "checks": [
+          {
+            "id": "nonce",
+            "status": "pass",
+            "detail": "report_data[32..64] and request_nonce equal this nonce"
+          },
+          {
+            "id": "signer",
+            "status": "pass",
+            "detail": "report_data[0..32] is the zero-padded signing address"
+          },
+          {
+            "id": "o1",
+            "status": "pass",
+            "detail": "Intel DCAP verified the TDX quote: debug off, TCB status UpToDate, report data matches"
+          },
+          {
+            "id": "o2",
+            "status": "pass",
+            "detail": "the GPU payload carries this nonce, and NVIDIA NRAS verified it"
+          }
+        ],
+        "attestations": [
+          {
+            "signing_address": "0x835ab53d20294ef795906dff21ae4c045336aa26",
+            "request_nonce": "7f40236eda1943b33b85f228d97172c68950208fa0f0c30bdcf9c391ad2d87db",
+            "report_data": "835ab53d20294ef795906dff21ae4c045336aa260000000000000000000000007f40236eda1943b33b85f228d97172c68950208fa0f0c30bdcf9c391ad2d87db",
+            "tcb_status": "UpToDate",
+            "gpu": "pass"
+          }
+        ],
+        "attestations_total": 1
+      }
+    },
+    {
+      "sec_fetch_site": "same-origin",
+      "nonce": "2e3bbf7cb1beb3398ac1f50f256b3feb6a514cd09d245b4294b417569bcc2946",
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      },
+      "round_trip_ms": 2333,
+      "body": {
+        "nonce": "2e3bbf7cb1beb3398ac1f50f256b3feb6a514cd09d245b4294b417569bcc2946",
+        "model": "Qwen/Qwen3.8-27B",
+        "checked_at": "2026-11-12T16:57:39.317Z",
+        "elapsed_ms": 2315,
+        "checks": [
+          {
+            "id": "nonce",
+            "status": "pass",
+            "detail": "report_data[32..64] and request_nonce equal this nonce"
+          },
+          {
+            "id": "signer",
+            "status": "pass",
+            "detail": "report_data[0..32] is the zero-padded signing address"
+          },
+          {
+            "id": "o1",
+            "status": "pass",
+            "detail": "Intel DCAP verified the TDX quote: debug off, TCB status UpToDate, report data matches"
+          },
+          {
+            "id": "o2",
+            "status": "pass",
+            "detail": "the GPU payload carries this nonce, and NVIDIA NRAS verified it"
+          }
+        ],
+        "attestations": [
+          {
+            "signing_address": "0x835ab53d20294ef795906dff21ae4c045336aa26",
+            "request_nonce": "2e3bbf7cb1beb3398ac1f50f256b3feb6a514cd09d245b4294b417569bcc2946",
+            "report_data": "835ab53d20294ef795906dff21ae4c045336aa260000000000000000000000002e3bbf7cb1beb3398ac1f50f256b3feb6a514cd09d245b4294b417569bcc2946",
+            "tcb_status": "UpToDate",
+            "gpu": "pass"
+          }
+        ],
+        "attestations_total": 1
+      }
+    },
+    {
+      "sec_fetch_site": "same-origin",
+      "nonce": "bec0bb52563e0780ed0ef9adbefbec13407e5d12cb994adf713f1475906d060f",
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      },
+      "round_trip_ms": 1783,
+      "body": {
+        "nonce": "bec0bb52563e0780ed0ef9adbefbec13407e5d12cb994adf713f1475906d060f",
+        "model": "Qwen/Qwen3.8-27B",
+        "checked_at": "2026-11-12T16:57:41.101Z",
+        "elapsed_ms": 1773,
+        "checks": [
+          {
+            "id": "nonce",
+            "status": "pass",
+            "detail": "report_data[32..64] and request_nonce equal this nonce"
+          },
+          {
+            "id": "signer",
+            "status": "pass",
+            "detail": "report_data[0..32] is the zero-padded signing address"
+          },
+          {
+            "id": "o1",
+            "status": "pass",
+            "detail": "Intel DCAP verified the TDX quote: debug off, TCB status UpToDate, report data matches"
+          },
+          {
+            "id": "o2",
+            "status": "pass",
+            "detail": "the GPU payload carries this nonce, and NVIDIA NRAS verified it"
+          }
+        ],
+        "attestations": [
+          {
+            "signing_address": "0x835ab53d20294ef795906dff21ae4c045336aa26",
+            "request_nonce": "bec0bb52563e0780ed0ef9adbefbec13407e5d12cb994adf713f1475906d060f",
+            "report_data": "835ab53d20294ef795906dff21ae4c045336aa26000000000000000000000000bec0bb52563e0780ed0ef9adbefbec13407e5d12cb994adf713f1475906d060f",
+            "tcb_status": "UpToDate",
+            "gpu": "pass"
+          }
+        ],
+        "attestations_total": 1
+      }
+    },
+    {
+      "sec_fetch_site": "cross-site",
+      "nonce": "59b0c03b0bc823e2f2271acf2a092f36e5b79e548b5f878d1787915be66e30ec",
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      },
+      "round_trip_ms": 7,
+      "body": {
+        "error": "bad_origin"
+      }
+    }
+  ]
+}

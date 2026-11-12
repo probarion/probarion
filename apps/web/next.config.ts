@@ -11,8 +11,16 @@ import { publicRoutingVars } from "./src/lib/site/network";
 const routing = publicRoutingVars(process.env);
 
 export const nextConfig: NextConfig = {
-  // Native/wasm packages stay outside the server bundle (Verify on first use #4, #5).
-  serverExternalPackages: ["pdf-parse", "@napi-rs/canvas", "libsodium-wrappers", "libsodium"],
+  // Native/wasm packages stay outside the server bundle (Verify on first use #4, #5). @nearai/inference-sdk (O1 and O2
+  // of the TEE check, lib/tee/check.ts) is loaded from node_modules as it ships; file tracing copies it, and
+  // @phala/dcap-qvl with it, into the route's output.
+  serverExternalPackages: [
+    "pdf-parse",
+    "@napi-rs/canvas",
+    "libsodium-wrappers",
+    "libsodium",
+    "@nearai/inference-sdk",
+  ],
   transpilePackages: ["@probarion/core", "@probarion/sdk"],
   // `next build` typechecks with tsconfig.build.json, which leaves out tests; `pnpm typecheck`
   // uses tsconfig.json and still checks them. Tests never gate a deploy.

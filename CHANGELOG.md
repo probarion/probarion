@@ -15,6 +15,48 @@ The software is an unaudited beta.
 
 ### Added
 
+- `probarion verify --invoice <file>` (repeatable) and `--invoices <dir>` (every `.txt` file of a
+  folder) run A8 with invoice texts the auditor holds, live or with `--offline`, in the CLI built from
+  this repository; release 0.1.1 on npm does not have them. The CLI reads each file on the auditor's
+  computer, keys it by the sha256 of its bytes, and uses it for A8 only: it is not sent, not written
+  to `--snapshot` and not printed (`--json` adds an `invoices` list with each file's sha256 and the
+  ledger entries it matches). A file that matches no attested decision is listed under the rows and
+  on stderr, and does not fail the run. A file or folder that cannot be read, a folder with no `.txt`
+  file, or a file that is not UTF-8 text is a usage error (exit 64). `--system-prompt <file>`
+  (repeatable) adds a system prompt A8 accepts besides the standard one, for a decision made under an
+  agent's own `model.systemPrompt`. On 2026-11-12 the offline run on
+  the demo vault's snapshot of 10:28:54 UTC with `--invoices docs/evidence/demo-vault` passed checks a
+  to i, and check e found that A8 passes on all five attested decisions, entries 10 to 13 and 15
+  (`docs/evidence/demo-vault/verify-a8-2026-11-12.txt`). A live run with `--online` 26 seconds later
+  passed checks a to i, A8 on the same five, and O1 and O2 on all five, entry 15 among them
+  (`verify-online-a8-2026-11-12.txt`). The TEE measurement is not pinned, so this does not show which
+  model image ran. `docs/evidence/demo-vault/README.md` adds a dated section, `pnpm judge` adds the
+  offline step `verify-demo-a8`, which runs that command and compares it with the committed output,
+  and the docs, `SECURITY.md` and the README say that A8 passed on the demo vault's five and was not
+  run on the Canary's two.
+- The proof page checks the TEE live: a "Check the TEE now" card after the decisions, the same on
+  every vault's page. The visitor's browser draws a 32-byte nonce and sends it, with no cookie and
+  no `Referer`, to a new route, `GET /api/tee/check`; nothing the visitor typed or uploaded goes
+  with it. The route asks NEAR AI Cloud's public attestation report for that nonce, with no API
+  key, for `NEARAI_MODEL`, the model Payables is set to use, or, when it is unset, for the SDK's
+  preferred private models in order until one answers. It checks up to four model attestations in
+  the report, and says how many the report holds: the nonce in `report_data[32..64]` and
+  `request_nonce`, the signing address in `report_data[0..32]`, O1 (Intel DCAP on the TDX quote,
+  held to the SDK's policy) and O2 (the GPU payload carries the nonce, and NVIDIA NRAS verifies
+  it). The browser checks both bindings again with its own nonce, and the card shows the worse of
+  its verdict and the server's. A check that cannot run in time (12 seconds for NEAR AI's report,
+  24 in all) is `unavailable`, not a pass or a fail. The card checks the TEE that serves the model
+  now, not the decisions above it, which keep their checks A1 to A7, and the TEE measurement is
+  not pinned. The route passes on five values per attestation, and their count, and nothing else
+  of the report (about 290 KB). Its rate limit, `teeCheck`, is one counter of 30 a minute for all
+  visitors together, so it stores nothing about a visitor, and a call that another site's page
+  makes in a browser (`Sec-Fetch-Site`) answers `403 bad_origin` without spending it.
+  `@nearai/inference-sdk` 0.2.1, until now an optional dependency of the CLI and an optional peer
+  of the SDK, is a dependency of the web app, loaded by a literal import so the build traces it,
+  with `@phala/dcap-qvl`, into the route. On 2026-11-12 a local production build of this change
+  answered three calls for `Qwen/Qwen3.8-27B` with all four checks passed, in 1.8 to 10.1
+  seconds, and a cross-site call with `403 bad_origin`, recorded in
+  `docs/evidence/tee-check/route-2026-11-12.json`.
 - The demo video is posted on X, in the build's demo post of 2026-11-12:
   <https://x.com/probarionhq/status/2120882499689836651>. It is a 1:57 cut recorded on the live product,
   on NEAR testnet with test USDC. The README links it from its top row of links and from the filmed run
@@ -987,6 +1029,26 @@ The software is an unaudited beta.
   rules-only, as the SDK does). See `eval/README.md`.
 
 ### Changed
+
+- The README has a "Privacy & Private AI" section after "NEAR technology used, and how", linked from
+  the top row of links, from Contents and from a line under the tagline. It says what the TEE
+  protects and what it does not, maps the track's example asks (an OpenAI-compatible call, a
+  TEE-hosted model chosen from the models endpoint, a nonce, a Verified panel, keeping data off the
+  server, sample documents) to the code that does each, and says what the hosted console keeps: each
+  invoice file sealed, its file name and facts not encrypted, or with zero-retention only its hashes
+  and the outcome, and the vault's signed ledger either way. It shows selective disclosure: an auditor
+  who holds the invoice texts runs `verify --invoices`, and A8 passed on the demo vault's five
+  attested decisions. It lists the known limits plainly: the signed ledger keeps the model's whole
+  answer, the invoice reaches the model before the attestation checks run, the hosted server reads
+  invoices in plain text, the request is not encrypted end to end and the NEAR AI gateway's
+  attestation is not checked, invoice hashes have no salt (the Canary's raw spends aside), and the TEE
+  measurement is not pinned. "How to evaluate Probarion in 5 minutes" now opens with a table of the
+  five tracks this entry was submitted to (AI Security & Defense, Real-World Money, Agent Economy,
+  Autonomous Business, Privacy & Private AI), with one thing to do and one to see for each, and adds a
+  browser step: press "Check the TEE now" on the demo vault's proof page.
+  The README's NEAR AI Cloud rows, its demo vault section and `SECURITY.md` add that the live run at
+  16:13 UTC on 2026-11-12 passed O1 and O2 on all five attested decisions, entry 15 included, and the
+  README's libraries table lists `@nearai/inference-sdk` 0.2.1 for the web console.
 
 - The landing page's hero shows two real testnet transactions from two vaults. The paid card is the
   demo vault's INV-2001, 2 test USDC to `probarion-payee.testnet` (`HFyW61UZ…dQp1`). The blocked card

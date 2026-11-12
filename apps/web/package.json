@@ -24,6 +24,7 @@
     "@defuse-protocol/one-click-sdk-typescript": "0.1.26",
     "@hot-labs/near-connect": "0.11.4",
     "@mdx-js/loader": "3.1.1",
+    "@nearai/inference-sdk": "0.2.1",
     "@next/mdx": "16.4.3",
     "@probarion/core": "workspace:*",
     "@probarion/sdk": "workspace:*",

@@ -4,6 +4,7 @@ import {
   type UnprovenBurn,
   type VerifyReport,
 } from "@probarion/core";
+import type { InvoiceMatch } from "./invoices.js";
 
 /** What a report comes to, and the exit code of `probarion verify` for it. */
 export type VerifyOutcome = "pass" | "fail" | "unproven";
@@ -49,6 +50,8 @@ export interface RenderOptions {
   online?: boolean;
   /** Why O1 and O2 did not run, when the caller knows it (no online verifier could be loaded). */
   onlineNotRun?: string;
+  /** The files `--invoice` and `--invoices` read for A8, each with the ledger entries it matches. */
+  invoices?: readonly InvoiceMatch[];
 }
 
 /**
@@ -112,6 +115,74 @@ export function onlineLines(report: VerifyReport, opts: RenderOptions = {}): str
   ];
 }
 
+const seqList = (seqs: readonly number[]) => `seq ${seqs.join(", ")}`;
+
+/** "1 file matches ... it" or "2 files match ... them". */
+function files(n: number, one: string, many: string): string {
+  return n === 1 ? `1 file ${one}` : `${n} files ${many}`;
+}
+
+/**
+ * The files A8 does not check, each line a note, never a result: files that match only entries that are not
+ * attested decisions, and files that match no ledger entry. Neither fails the run; check e is the result.
+ */
+export function invoiceNotes(matches: readonly InvoiceMatch[] | undefined): string[] {
+  if (matches === undefined) return [];
+  const lines: string[] = [];
+  const notAttested = matches.filter((m) => m.attestedSeqs.length === 0 && m.seqs.length > 0);
+  if (notAttested.length > 0) {
+    const list = notAttested.map((m) => `${m.file} (${seqList(m.seqs)})`).join(", ");
+    lines.push(
+      `invoices: ${files(
+        notAttested.length,
+        "matches only ledger entries that are not attested decisions, so A8 does not check it",
+        "match only ledger entries that are not attested decisions, so A8 does not check them",
+      )}: ${list}`,
+    );
+  }
+  const unmatched = matches.filter((m) => m.seqs.length === 0);
+  if (unmatched.length > 0) {
+    lines.push(
+      `invoices: ${files(
+        unmatched.length,
+        "matches no ledger entry (its sha256 is no entry's invoice_hash), so A8 does not check it",
+        "match no ledger entry (their sha256 is no entry's invoice_hash), so A8 does not check them",
+      )}: ${unmatched.map((m) => m.file).join(", ")}`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * The lines `--invoice` and `--invoices` add under the rows: which files A8 checks against which attested
+ * decisions, then the notes on the files it does not check. Check e gives A8's result. Check e stops at its first
+ * broken seq, so when it does not pass, the head line names the files' decisions without saying A8 checked them.
+ */
+export function invoiceLines(
+  matches: readonly InvoiceMatch[] | undefined,
+  e?: CheckResult,
+): string[] {
+  if (matches === undefined) return [];
+  const checked = matches.filter((m) => m.attestedSeqs.length > 0);
+  const read = `invoices: ${files(matches.length, "read", "read")}`;
+  const which = checked.map((m) => `${m.file} (${seqList(m.attestedSeqs)})`).join(", ");
+  let head: string;
+  if (checked.length === 0) {
+    head = `${read}; none is the invoice of an attested decision, so A8 checks none`;
+  } else if (e?.status !== "pass") {
+    let are: string;
+    if (matches.length === 1) are = "it is the invoice of an attested decision";
+    else if (checked.length === 1) are = "1 of them is the invoice of an attested decision";
+    else are = `${checked.length} of them are the invoices of attested decisions`;
+    head = `${read}; ${are}: ${which}; check e did not pass, so this run does not show that A8 passes on these decisions (check e's row gives the result)`;
+  } else if (matches.length === 1) {
+    head = `${read}; A8 checks it against the attested decisions with its sha256 (check e gives the result): ${which}`;
+  } else {
+    head = `${read}; A8 checks ${checked.length} of them against the attested decisions with their sha256 (check e gives the result): ${which}`;
+  }
+  return [head, ...invoiceNotes(matches)];
+}
+
 const STATUS_WIDTH = "UNPROVEN".length;
 const OFFLINE_O1 = "(run --online for O1)";
 
@@ -173,7 +244,8 @@ function shownDetail(check: CheckResult, opts: RenderOptions): string {
 
 /**
  * The human report: one row per check (PASS, FAIL, UNPROVEN or SKIP, with its detail), the unproven spends with
- * their reason and a hint under the row that could not prove them, what `--online` ran, a count line and the result.
+ * their reason and a hint under the row that could not prove them, what `--online` ran, which invoice files A8
+ * checks, a count line and the result.
  */
 export function renderReport(report: VerifyReport, opts: RenderOptions = {}): string {
   const lines = [
@@ -202,7 +274,14 @@ export function renderReport(report: VerifyReport, opts: RenderOptions = {}): st
     );
     if (check.status === "unproven") lines.push(...unprovenLines(report, check, opts));
   }
-  lines.push("", ...onlineLines(report, opts));
+  lines.push(
+    "",
+    ...onlineLines(report, opts),
+    ...invoiceLines(
+      opts.invoices,
+      checks.find((c) => c.id === "e"),
+    ),
+  );
   const skipped = count.skip > 0 ? `, ${count.skip} skipped` : "";
   lines.push(`${count.pass} passed, ${count.fail} failed, ${count.unproven} unproven${skipped}`);
   const outcome = verifyOutcome(report);
