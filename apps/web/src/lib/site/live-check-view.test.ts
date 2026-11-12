@@ -143,8 +143,17 @@ describe("what the answer panel shows, by kind of state", () => {
     const s = loading(normal);
     expect(sentence(s)).toContain("2 USDC would go to");
     expect(sentence(s)).not.toContain("50 USDC");
-    expect(verdictText(s, copy)).toBe("Would pay");
     expect(hintText(s, copy, "v0.x", time)).toBe("Asking v0.x…");
+  });
+
+  it("while asking, the headline says it is asking, in no verdict's tone, whatever was answered before", () => {
+    // The previous verdict would read as the answer to the request that is out (the panel is also aria-busy then).
+    for (const previous of [normal, hijack, held, null]) {
+      const s: Shown = { kind: "loading", previous };
+      expect(verdictText(s, copy)).toBe(copy.waiting);
+      expect(verdictTone(s)).toBe("none");
+    }
+    expect(copy.waiting).toBe("Asking the testnet");
   });
 
   it("a recorded fallback says so and keeps the recorded request", () => {

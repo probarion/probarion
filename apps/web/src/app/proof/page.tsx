@@ -8,11 +8,13 @@ import { inkPillClass } from "@/components/ui";
 import { publicDb } from "@/lib/db/clients";
 import { getEnv } from "@/lib/env";
 import { log } from "@/lib/log";
-import { requestNetwork } from "@/lib/network";
+import { canonicalUrl, requestNetwork } from "@/lib/network";
 import { publicDemoTarget } from "@/lib/proof/service";
 import { PROOF_INDEX, TAMPER_COPY } from "@/lib/site/facts";
 
-export const metadata: Metadata = { title: "Proof" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: "Proof", alternates: { canonical: await canonicalUrl("/proof") } };
+}
 export const dynamic = "force-dynamic";
 
 type Props = { searchParams?: Promise<{ vault?: string | string[] }> };

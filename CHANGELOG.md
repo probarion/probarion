@@ -907,6 +907,27 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The landing page's hero shows two real testnet transactions from two vaults. The paid card is the
+  demo vault's INV-2001, 2 test USDC to `probarion-payee.testnet` (`HFyW61UZ…dQp1`, whose receipts
+  log `spend_submitted`, `ft_transfer` and `spend_paid`). The blocked card is the Canary rehearsal
+  of 2026-11-10: 50 test USDC under a mandate that pays at most 1 USDC a payment, refused by code and
+  then on chain with `OverPerPayment` (`6XuxN42d…v6z8DH`), with a link to try the Canary
+  (`/canary?via=home`). The buttons read "Try the demo" (`#try`) and "Explore the docs" (`/docs`),
+  followed by a "Verify it yourself" link to the demo vault's proof page, and the fine print and the
+  audience line are now one line that links the mainnet vault's payment and refusal on the mainnet
+  explorer. While the live check asks, its answer panel says "Asking the testnet" and is
+  `aria-busy`, and its hint keeps room for two lines, four on a phone. On a phone the amount slider
+  gets a row of its own, 44 px high. The hijacked prompt names `attacker.testnet` and links the
+  Canary. In the hero's cards a long account name moves under its label whole. "Plug in your agent"
+  has a new title, the factory and vault accounts, a row of developer links under the code, and an
+  MCP card that links the MCP server's README. Each of its three uses (invoices, pay per API call,
+  cross-chain payouts) shows what the mandate controls, what that did on testnet, its evidence and
+  its status pill; the cross-chain one says that testnet burns into a stand-in and that no payout
+  through NEAR Intents has run on mainnet. The comparison links `docs/comparison-2026-11.md`. The two big headings
+  read as sentences to a screen reader, and `/canary`, `/status`, `/proof` and `/proof/<vault>` give
+  a canonical address at the request's own network. The README's hijack line and its note on the
+  contract's refusal of the agent key's direct spend of 2026-11-09 follow. In the blocked card, the
+  row with `OverPerPayment` is labelled Contract, since that code is the contract's answer.
 - The Canary no longer follows `NEARAI_MODEL`. That variable pins the NEAR AI Cloud model for Payables and the SDK
   factory; the Canary keeps the SDK's default order (`z-ai/glm-5.3-flash` first), the model of its recorded attempts.
   With `Qwen/Qwen3.8-27B` pinned on probarion.xyz on 2026-11-11, a Canary attempt timed out at 40 s and was decided

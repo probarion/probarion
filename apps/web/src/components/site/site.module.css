@@ -289,14 +289,21 @@ a.netPill:hover {
   gap: 12px;
   margin-top: 28px;
 }
+/* The hero's light third link: text, not a button, with a touch target as tall as a button's. */
+.ctaLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding-inline: 4px;
+  font-size: 15px;
+  font-weight: 500;
+}
 .fineprint {
   margin-top: 22px;
   font-size: 14px;
   color: var(--color-mute);
   max-width: 34em;
-}
-.audience {
-  margin-top: 10px;
 }
 
 .duel {
@@ -394,10 +401,12 @@ a.netPill:hover {
   gap: 0;
   font-size: 14px;
 }
+/* A value too long for the row moves under its label whole, so an account name is not split in a word. */
 .rows > div {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 14px;
+  gap: 2px 14px;
   padding-block: 9px;
   border-top: 1px solid var(--c-line);
 }
@@ -411,12 +420,18 @@ a.netPill:hover {
   flex: none;
 }
 .rows dd {
+  margin-left: auto;
   text-align: right;
   overflow-wrap: anywhere;
 }
 .cardHash {
   font-family: var(--font-mono);
   font-size: 13px;
+}
+.cardLink {
+  align-self: flex-start;
+  font-size: 14px;
+  font-weight: 500;
 }
 .duelNote {
   grid-column: 1 / -1;
@@ -621,6 +636,8 @@ a.netPill:hover {
 }
 .liveAnswer .liveHint {
   color: var(--color-band-mute);
+  /* Two lines kept free: the hint switches between "Asking" and the answer's source, so the verdict does not move. */
+  min-height: 3.1em;
 }
 .liveAnswer :focus-visible {
   outline-color: var(--color-band-fg);
@@ -649,6 +666,11 @@ a.netPill:hover {
   font-size: 16px;
   min-height: 50px;
   margin-bottom: 18px;
+}
+/* While a request is out, the region is aria-busy and still shows the last answer's sentence: it is dimmed. */
+.liveBusy .liveVerdict,
+.liveBusy .liveWhy {
+  color: var(--color-band-mute);
 }
 .liveRetry {
   margin-bottom: 14px;
@@ -788,6 +810,11 @@ a.netPill:hover {
   color: var(--color-mute);
 }
 
+.compareMore {
+  margin-top: 18px;
+  font-size: 15px;
+}
+
 /* Integrate */
 .ways {
   display: grid;
@@ -872,8 +899,37 @@ a.netPill:hover {
   font-weight: 600;
   margin-bottom: 4px;
 }
-.who span {
+.whoBody {
   color: var(--color-mute);
+}
+.whoControl,
+.whoProof {
+  margin-top: 10px;
+  font-size: 14px;
+}
+.whoProof {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+/* A long status pill wraps inside itself rather than run past a narrow card. */
+.whoProof > span {
+  max-width: 100%;
+}
+/* Under the code: the docs pages and the example a developer opens next. */
+.devLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.devLinks a {
+  display: inline-block;
+  padding-block: 3px;
 }
 
 /* Journey */
@@ -1723,6 +1779,9 @@ a.netPill:hover {
   .ways {
     grid-template-columns: 1fr 1fr;
   }
+  .who {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .compareHead {
     display: none;
   }
@@ -1807,6 +1866,36 @@ a.netPill:hover {
   .field {
     grid-template-columns: minmax(0, 1fr);
     gap: 6px;
+  }
+  /* The slider gets a row of its own, as wide as the panel, with a 44px touch height. */
+  .amountRow {
+    flex-wrap: wrap;
+  }
+  .amountRow input[type="range"] {
+    flex-basis: 100%;
+    height: 44px;
+  }
+  /* Four lines kept free here: at 320px to 390px the answer's source, with its raw answer, takes four. */
+  .liveAnswer .liveHint {
+    min-height: 6.2em;
+  }
+  /*
+   * The hero's two buttons and its light link keep one row on a phone: the buttons are smaller, and the link takes
+   * the rest of the row, its label on two short lines if it must. Where even that does not fit, it moves below.
+   */
+  .cta {
+    gap: 8px;
+  }
+  .cta .big {
+    padding: 12px;
+    font-size: 14px;
+  }
+  .ctaLink {
+    display: block;
+    flex: 1 1 0;
+    align-self: center;
+    padding-inline: 0;
+    font-size: 14px;
   }
   .duel {
     grid-template-columns: minmax(0, 1fr);

@@ -159,6 +159,34 @@ describe("requestNetwork and softRequestNetwork", () => {
       expect(await softRequestNetwork(), String(host)).toBe(await requestNetwork());
     }
   });
+
+  // A canonical link names the page at the address of its own network: never the other network's (metadataBase is one
+  // origin), and a preview or deployment URL names the default network's address.
+  it("builds a page's canonical address from the origin of the request's own network", async () => {
+    const { canonicalUrl } = await load(SERVED);
+    request.host = "mainnet.probarion.xyz";
+    expect(await canonicalUrl("/status")).toBe(`${MAINNET}/status`);
+    request.host = "probarion.xyz";
+    expect(await canonicalUrl("/status")).toBe(`${TESTNET}/status`);
+    for (const host of ["preview.vercel.app", null]) {
+      request.host = host;
+      expect(await canonicalUrl("/canary"), String(host)).toBe(`${TESTNET}/canary`);
+    }
+  });
+
+  it("keeps the canonical on the request's network when the settings cannot be read", async () => {
+    const { canonicalUrl } = await load({
+      ...SERVED,
+      KEY_ENCRYPTION_SECRET: "not-a-key",
+      NEXT_PUBLIC_DEFAULT_NETWORK: "testnet",
+      NEXT_PUBLIC_ORIGIN_MAINNET: MAINNET,
+      NEXT_PUBLIC_ORIGIN_TESTNET: TESTNET,
+    });
+    request.host = "mainnet.probarion.xyz";
+    expect(await canonicalUrl("/proof")).toBe(`${MAINNET}/proof`);
+    request.host = "probarion.xyz";
+    expect(await canonicalUrl("/proof")).toBe(`${TESTNET}/proof`);
+  });
 });
 
 // W-NET-R4 (fix round 1): the network of a request and the CSRF check read one host, so a request cannot pass the origin check

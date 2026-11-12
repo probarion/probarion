@@ -7,11 +7,14 @@ const mocks = vi.hoisted(() => ({
   report: vi.fn(),
   network: { value: "testnet" as "mainnet" | "testnet" },
 }));
-vi.mock("@/lib/network", () => ({ softRequestNetwork: async () => mocks.network.value }));
+vi.mock("@/lib/network", () => ({
+  softRequestNetwork: async () => mocks.network.value,
+  canonicalUrl: async (path: string) => `https://${mocks.network.value}.probarion.test${path}`,
+}));
 vi.mock("@/lib/health-server", () => ({ healthReport: mocks.report }));
 
 import { PLANNED_ROUTES } from "@/lib/routes";
-import StatusPage, { dynamic, metadata } from "./page";
+import StatusPage, { dynamic, generateMetadata } from "./page";
 
 const logs = quietLogs();
 
@@ -46,10 +49,19 @@ beforeEach(() => {
 });
 
 describe("/status", () => {
-  it("is rendered per request and is built", () => {
+  it("is rendered per request and is built", async () => {
     expect(dynamic).toBe("force-dynamic");
-    expect(metadata.title).toBe("Status");
+    expect((await generateMetadata()).title).toBe("Status");
     expect(PLANNED_ROUTES).not.toContain("/status");
+  });
+
+  it("names itself at the address of the request's own network", async () => {
+    for (const network of ["testnet", "mainnet"] as const) {
+      mocks.network.value = network;
+      expect((await generateMetadata()).alternates?.canonical).toBe(
+        `https://${network}.probarion.test/status`,
+      );
+    }
   });
 
   it("shows the probes of the address's network only", async () => {
