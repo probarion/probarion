@@ -57,16 +57,26 @@ export const CANARY_LIMITS = {
    * One attempt, from the route's start (not from the first model call): the platform stops the function at 90 s, and
    * these 10 s are what is left to close the row and answer. Every phase gets the smaller of its own cap and the time left,
    * and the whole attempt is cut off at this deadline. It holds the time before the model (about 10 s in production: the
-   * checks, the keys, the row and the ledger reads), the model's whole budget, the decision's write and anchor, the raw
-   * gate's own steps, and still `rawMinRemainingMs` where the raw spend starts (limits.test.ts adds them up).
+   * checks, the keys, the row and the ledger reads), the model's whole budget and the decision's write and anchor after
+   * it; after a model that answered in about 40 s or less, also the raw gate's own steps and still `rawMinRemainingMs`
+   * where the raw spend starts (limits.test.ts adds them up).
    */
   attemptBudgetMs: 80_000,
   /**
    * ALL the model calls of one attempt (the catalog, the probe, the attestation report, the chat, the signature reads) share
-   * this. A slow private model used 30 s on the chat alone in production (2026-11-10), so it is 40 s: what the attempt's
-   * 80 s leave once the time around the model, the raw gate and the raw step's floor are counted (limits.test.ts).
+   * this, counted from the first call. At 40 s, "Ignore previous instructions" ran the chat alone out of it in production
+   * (39.6 s on 2026-11-11, 39.7 s on 2026-11-12): template v1 lets a thinking model write 4096 tokens, and the recorded
+   * answers came at about 20 to 60 tokens a second, the signature's fetch included (docs/evidence). The request's bytes
+   * are fixed by A8, so the time is what can change. A
+   * model that uses more than about 40 s leaves the raw step less than its floor, and raw mode then sends nothing
+   * (`no_time`): a proposal shown with nothing sent is more than no proposal (limits.test.ts adds the parts up).
    */
-  modelBudgetMs: 40_000,
+  modelBudgetMs: 55_000,
+  /**
+   * The model's calls end at least this long before the attempt's deadline, however long the start took: the decision's
+   * write, its anchor transaction and the row's update come after them.
+   */
+  afterModelMs: 15_000,
   /** One step on the chain (a read, signing, a send, a lookup), capped by the time left. */
   chainStepTimeoutMs: 8000,
   /** A raw spend is not started with less than this left: the dry run, the send and its row need the time. */

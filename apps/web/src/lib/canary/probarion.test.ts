@@ -1,6 +1,13 @@
 import { generateKeyPair, type MandateView } from "@probarion/core";
-import { NearAiProposer, NearApiJsSender, RpcClient, RpcError } from "@probarion/sdk";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  NearAiError,
+  NearAiProposer,
+  NearApiJsSender,
+  type ProposeInput,
+  RpcClient,
+  RpcError,
+} from "@probarion/sdk";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { DecryptError } from "@/lib/crypto/sodium";
 import type { Db } from "@/lib/db/port";
 import { KeyMismatchError } from "@/lib/keys/service";
@@ -17,6 +24,8 @@ const h = vi.hoisted(() => ({
   made: [] as { network: string; opts: Record<string, unknown>; deps: Record<string, unknown> }[],
   rules: [] as unknown[],
   processThrows: false,
+  /** Run inside the fake cycle with its deps, as the SDK's model step would use them. */
+  inCycle: null as ((deps: Record<string, unknown>) => Promise<void>) | null,
 }));
 
 vi.mock("@/lib/env", () => ({ getEnv: () => h.env }));
@@ -43,6 +52,7 @@ vi.mock("@/lib/sdk/factory", () => ({
       rules: { add: (rule: unknown) => h.rules.push(rule) },
       process: async () => {
         if (h.processThrows) throw new Error("the cycle failed");
+        await h.inCycle?.(deps);
         return { status: "refused_by_code" };
       },
       checkSpend: async () => ({ ok: false, code: "NoMandate", would_hold: false }),
@@ -92,6 +102,7 @@ beforeEach(() => {
   h.made = [];
   h.rules = [];
   h.processThrows = false;
+  h.inCycle = null;
   resetCanaryModelCache();
 });
 afterEach(() => {
@@ -131,7 +142,7 @@ describe("makeCanaryProbarion", () => {
     expect(CANARY_NEARAI_TIMEOUTS_MS).toEqual({
       catalog: 6000,
       report: 6000,
-      chat: 40_000,
+      chat: 55_000,
       signature: 6000,
     });
     // each phase's own cap: the shared model budget and the attempt's deadline (below) are what bound their sum
@@ -218,23 +229,92 @@ describe("makeCanaryProbarion with the attempt's time", () => {
     expect(error.message).toMatch(/time left/);
   });
 
-  it("gives the proposer no more than the model budget or the time left, counted from its first call", async () => {
+  it("gives the proposer no more than the model budget, and stops it afterModelMs before the attempt's deadline", async () => {
     expect(CANARY_LIMITS.chainStepTimeoutMs).toBe(8000);
-    expect(CANARY_LIMITS.modelBudgetMs).toBe(40_000);
+    expect(CANARY_LIMITS.modelBudgetMs).toBe(55_000);
+    expect(CANARY_LIMITS.afterModelMs).toBe(15_000);
     vi.useFakeTimers({ toFake: ["Date"] });
     await build();
     const proposer = h.made[0]?.deps.proposer as unknown as { opts: { remainingMs: () => number } };
     const remaining = proposer.opts.remainingMs;
-    // ALL model calls of one attempt share 40 s, counted from the first call
-    expect(remaining()).toBe(40_000);
+    // ALL model calls of one attempt share 55 s, counted from the first call
+    expect(remaining()).toBe(55_000);
     vi.advanceTimersByTime(12_000);
     left -= 12_000;
-    expect(remaining()).toBe(28_000);
-    // and never more than the attempt has left
-    left = 5000;
+    expect(remaining()).toBe(43_000);
+    // and they end 15 s before the attempt does, so the decision is still written and anchored
+    left = 20_000;
     expect(remaining()).toBe(5000);
-    left = 0;
+    left = 15_000;
     expect(remaining()).toBeLessThanOrEqual(0);
+  });
+
+  // Production, 2026-11-11 and 11-12: the chat ran out of the model's time and the visitor saw only that no proposal came
+  // back. The cycle's outcome now says when the model's time was used up, so the answer can say so (copy.ts).
+  describe("says when the model's time ran out", () => {
+    // the SDK's own propose, replaced in each test by what that test's model does
+    let propose: MockInstance<NearAiProposer["propose"]> | null = null;
+    afterEach(() => {
+      propose?.mockRestore();
+      propose = null;
+    });
+    /** Runs one cycle whose model step makes `propose` do `work` and, as the SDK does, decides rules-only if it throws. */
+    const runWith = async (work: (proposer: NearAiProposer) => Promise<never>) => {
+      propose = vi.spyOn(NearAiProposer.prototype, "propose").mockImplementation(function (
+        this: NearAiProposer,
+      ) {
+        return work(this);
+      });
+      h.inCycle = async (deps) => {
+        const proposer = deps.proposer as NearAiProposer;
+        await proposer.propose({} as ProposeInput).catch(() => undefined);
+      };
+      const pb = await build();
+      return pb?.process(cycle);
+    };
+    /** The model's own clock, as the SDK reads it before each call. */
+    const modelLeft = (p: NearAiProposer) =>
+      (p as unknown as { opts: { remainingMs: () => number } }).opts.remainingMs();
+
+    it("when the chat timed out at the end of the model's 55 s", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const out = await runWith(async (p) => {
+        modelLeft(p); // the first call starts the model's clock
+        vi.advanceTimersByTime(CANARY_LIMITS.modelBudgetMs);
+        throw new NearAiError("POST /chat/completions: timed out after 55000 ms (request)");
+      });
+      expect(out).toMatchObject({ status: "refused_by_code", modelOutOfTime: true });
+    });
+
+    it("when the attempt's own time, less the decision's 15 s, was what ran out", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const out = await runWith(async (p) => {
+        modelLeft(p);
+        vi.advanceTimersByTime(20_000);
+        left = CANARY_LIMITS.afterModelMs + 30;
+        throw new NearAiError("POST /chat/completions: timed out after 19970 ms (request)");
+      });
+      expect(out).toMatchObject({ modelOutOfTime: true });
+    });
+
+    it("not when the model failed with its time still left", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const out = await runWith(async (p) => {
+        modelLeft(p);
+        vi.advanceTimersByTime(6000);
+        throw new NearAiError("GET /attestation/report: timed out after 6000 ms (request)");
+      });
+      expect(out).toEqual({ status: "refused_by_code" });
+    });
+
+    it("not when the model answered", async () => {
+      propose = vi.spyOn(NearAiProposer.prototype, "propose").mockResolvedValue({} as never);
+      h.inCycle = async (deps) => {
+        await (deps.proposer as NearAiProposer).propose({} as ProposeInput);
+      };
+      const pb = await build();
+      expect(await pb?.process(cycle)).toEqual({ status: "refused_by_code" });
+    });
   });
 
   it("keeps the NEAR AI caps next to the shared budget", async () => {

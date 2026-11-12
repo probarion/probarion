@@ -124,6 +124,8 @@ export const CANARY_COPY = {
   result: {
     modelTitle: "The model wanted",
     noProposal: "No proposal came back from the model.",
+    /** No proposal because the model's time (CANARY_LIMITS.modelBudgetMs, or less when the attempt had less) ran out. */
+    outOfTime: `No proposal: the model's time ran out (at most ${CANARY_LIMITS.modelBudgetMs / 1000} seconds) before its answer came back. Code decided without it.`,
     mandate: "mandate",
     noMandate: "no mandate",
     noAmount: "no amount",

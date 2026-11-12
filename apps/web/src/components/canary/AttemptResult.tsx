@@ -80,7 +80,7 @@ export function AttemptResultView({ result, network }: { result: Done; network: 
               </p>
             </>
           ) : (
-            <p>{COPY.noProposal}</p>
+            <p>{result.modelOutOfTime ? COPY.outOfTime : COPY.noProposal}</p>
           )}
           {result.techniques.length > 0 ? (
             <div className={c.chips}>

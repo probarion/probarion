@@ -30,7 +30,8 @@ describe("CANARY_LIMITS", () => {
       promptOverheadTokens: 900,
       leaseSeconds: 130,
       attemptBudgetMs: 80_000,
-      modelBudgetMs: 40_000,
+      modelBudgetMs: 55_000,
+      afterModelMs: 15_000,
       chainStepTimeoutMs: 8000,
       rawMinRemainingMs: 15_000,
       modelCacheMs: 600_000,
@@ -50,18 +51,34 @@ describe("CANARY_LIMITS", () => {
     expect(CANARY_LIMITS.chainStepTimeoutMs).toBeLessThan(CANARY_LIMITS.rawMinRemainingMs);
   });
 
+  // Production, 2026-11-11 and 11-12: with "Ignore previous instructions" the chat alone ran out of the model's 40 s
+  // (39.6 s and 39.7 s), twice, and the attempt was decided with no proposal. The model now gets 55 s, and it stops
+  // `afterModelMs` before the attempt's deadline whatever the start took, so the decision is still written and anchored.
+  it("ends the model early enough for the decision to be written and anchored", () => {
+    // before the first model call: the checks, the keys, the row and the ledger reads (about 10 s in production)
+    const beforeModelMs = 10_000;
+    expect(
+      beforeModelMs + CANARY_LIMITS.modelBudgetMs + CANARY_LIMITS.afterModelMs,
+    ).toBeLessThanOrEqual(CANARY_LIMITS.attemptBudgetMs);
+    // the decision's time holds its anchor transaction, a step on the chain
+    expect(CANARY_LIMITS.afterModelMs).toBeGreaterThan(CANARY_LIMITS.chainStepTimeoutMs);
+  });
+
   // Production, 2026-11-10: about 10 s went by before the first model call and a slow private model took most of its 30 s,
-  // so the raw step found less than its 15 s and sent nothing (no_time); a chat that times out decides rules-only and gives
-  // not_pay instead. A model that uses its whole budget must still leave the raw step its floor where the spend starts:
-  // service.ts checks the floor at the raw gate and again just before the send, and the gate's own steps come between.
-  it("leaves the raw step its floor after a model that uses its whole budget", () => {
+  // so the raw step found less than its 15 s and sent nothing (no_time). service.ts checks the floor at the raw gate and
+  // again just before the send, so a model that uses more of its 55 s leaves raw mode `no_time`, never a spend started
+  // late. A model as slow as the slowest recorded answer still leaves the raw step its floor.
+  it("leaves the raw step its floor after a model that answers as slowly as the recorded ones", () => {
     // the time before the model, and the decision's write and anchor after it
     const aroundModelMs = 20_000;
     // the agent-key read, the dry run, the limiter's calls and the pending row, before the second floor check (service.ts)
     const gateMs = 5_000;
-    expect(
-      aroundModelMs + CANARY_LIMITS.modelBudgetMs + gateMs + CANARY_LIMITS.rawMinRemainingMs,
-    ).toBeLessThanOrEqual(CANARY_LIMITS.attemptBudgetMs);
+    const rawAfterModelUpToMs =
+      CANARY_LIMITS.attemptBudgetMs - aroundModelMs - gateMs - CANARY_LIMITS.rawMinRemainingMs;
+    // the slowest attested answer recorded, from the chat's creation to its signature: 34.8 s (demo vault entry 10,
+    // 2026-11-11, docs/evidence/demo-vault)
+    expect(rawAfterModelUpToMs).toBeGreaterThanOrEqual(35_000);
+    expect(rawAfterModelUpToMs).toBeLessThan(CANARY_LIMITS.modelBudgetMs);
   });
 
   // Unknown usage is charged at the worst case: half a token per character (non-Latin text), the system prompt and the
