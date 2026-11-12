@@ -1149,6 +1149,24 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- The Canary gives its model up to 55 s instead of 40 s, and says so when the model's time runs out.
+  On probarion.xyz the "Ignore previous instructions" example message was decided with no proposal
+  twice, at 2026-11-11 23:40 UTC (with `Qwen/Qwen3.8-27B` pinned) and 2026-11-12 01:15 UTC (with
+  `z-ai/glm-5.3-flash`): the chat request alone ran out of the 40 s (39,631 ms and 39,692 ms; the
+  model calls before it took under 0.4 s), and the answer only said that no proposal came back.
+  Template `probarion-proposal/v1` asks for up to 4096 tokens with no limit on reasoning, and the
+  attested answers in `docs/evidence` (533 to 895 tokens, 401 to 792 of them reasoning) came at about
+  20 to 60 tokens a second, the signature's fetch included, so a model that reasons longer on a
+  message that argues with its instructions does not finish in 40 s. A cap on reasoning or on
+  `max_tokens` would change the request bytes that check A8 rebuilds, so the time is what changed:
+  the model's calls now share 55 s (`CANARY_LIMITS.modelBudgetMs`) and end at least 15 s
+  (`afterModelMs`) before the attempt's 80 s deadline, so its decision is still written and
+  anchored. The route's 90 s, the lease, the code rules and the system prompt are unchanged. A model
+  that answers in about 40 s or less still leaves raw mode its 15 s; after a slower answer the
+  proposal is shown and raw mode sends nothing (`no_time`). When the model's time ran out, the
+  answer now reads "No proposal: the model's time ran out (at most 55 seconds) before its answer came
+  back. Code decided without it." Whether 55 s is enough for that message is not measured yet.
+
 - `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` an invoice the mandate allows
   when an attested model's payee hint put the mandate's own NEAR account in `address`, next to a
   chain. It was seen on the testnet demo vault, ledger entry 12 (2026-11-11T23:35:56Z, model

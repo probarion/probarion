@@ -1,6 +1,14 @@
 import "server-only";
 import type { MandateView } from "@probarion/core";
-import { NearAiProposer, NearApiJsSender, type ProbarionDeps, RpcClient } from "@probarion/sdk";
+import {
+  NearAiProposer,
+  type NearAiProposerOptions,
+  NearApiJsSender,
+  type ProbarionDeps,
+  type ProposeInput,
+  type ProposeResult,
+  RpcClient,
+} from "@probarion/sdk";
 import type { Network } from "@/lib/config";
 import type { Db } from "@/lib/db/port";
 import { getEnv } from "@/lib/env";
@@ -16,15 +24,47 @@ import type { CanaryProbarion } from "./service";
 /**
  * How long each NEAR AI call may take, by itself. The SDK's own limits (chat 90 s, 10 s, 15 s and 15 s) let one cycle
  * outlive the route's 90 s. These are each phase's own cap: with the attempt's time (below) every call also gets no more
- * than what is left, and all of them together no more than `CANARY_LIMITS.modelBudgetMs` (40 s). The chat may use all of
- * it: a slow private model timed out at 30 s in production.
+ * than what is left, and all of them together no more than `CANARY_LIMITS.modelBudgetMs` (55 s). The chat may use all of
+ * it: it ran out of 40 s in production (limits.ts).
  */
 export const CANARY_NEARAI_TIMEOUTS_MS = {
   catalog: 6000,
   report: 6000,
-  chat: 40_000,
+  chat: CANARY_LIMITS.modelBudgetMs,
   signature: 6000,
 } as const;
+
+/**
+ * A proposal that failed with less than this much of the model's time left ran out of it. The chat's timeout is what was
+ * left, so it fires at about 0; a signature back-off is not waited out when it would leave too little (at most 0.85 s
+ * with the Canary's two retries).
+ */
+const OUT_OF_TIME_MS = 1000;
+
+/**
+ * The Canary's NEAR AI proposer: the SDK's, which also remembers whether its last proposal failed because the model's
+ * time ran out. The SDK then decides rules-only, as for any failure, and the attempt's answer says why there is no
+ * proposal (copy.ts).
+ */
+class CanaryProposer extends NearAiProposer {
+  ranOutOfTime = false;
+  private readonly modelLeft: () => number;
+
+  constructor(opts: NearAiProposerOptions, modelLeft: () => number) {
+    super(opts);
+    this.modelLeft = modelLeft;
+  }
+
+  override async propose(input: ProposeInput): Promise<ProposeResult> {
+    this.ranOutOfTime = false;
+    try {
+      return await super.propose(input);
+    } catch (error) {
+      this.ranOutOfTime = this.modelLeft() < OUT_OF_TIME_MS;
+      throw error;
+    }
+  }
+}
 
 /** The time one attempt has left (the service's clock): given to the chain client, the senders and the model calls. */
 export interface CanaryBudget {
@@ -57,11 +97,11 @@ function cachedModel(): string | undefined {
 function canaryProposer(
   budget: CanaryBudget | undefined,
   known: string | undefined,
-): NearAiProposer | null {
+): CanaryProposer | null {
   const env = getEnv();
   if (!env.NEARAI_API_KEY) return null;
-  // ALL the model calls of one attempt share `modelBudgetMs`, counted from the first call, and never more than the attempt
-  // has left.
+  // ALL the model calls of one attempt share `modelBudgetMs`, counted from the first call, and they end `afterModelMs`
+  // before the attempt does, so its decision is still written and anchored.
   let startedAt: number | null = null;
   const remainingMs =
     budget === undefined
@@ -70,18 +110,21 @@ function canaryProposer(
           startedAt ??= Date.now();
           return Math.min(
             CANARY_LIMITS.modelBudgetMs - (Date.now() - startedAt),
-            budget.remainingMs(),
+            budget.remainingMs() - CANARY_LIMITS.afterModelMs,
           );
         };
-  return new NearAiProposer({
-    apiKey: env.NEARAI_API_KEY,
-    ...(known === undefined ? {} : { knownModel: known }),
-    systemPrompt: CANARY_SYSTEM_PROMPT,
-    timeoutMs: CANARY_NEARAI_TIMEOUTS_MS,
-    // the SDK waits for the signature with back-off between tries (0.4 s, 0.8 s, ...): two tries are enough here
-    signatureRetries: 2,
-    ...(remainingMs === undefined ? {} : { remainingMs }),
-  });
+  return new CanaryProposer(
+    {
+      apiKey: env.NEARAI_API_KEY,
+      ...(known === undefined ? {} : { knownModel: known }),
+      systemPrompt: CANARY_SYSTEM_PROMPT,
+      timeoutMs: CANARY_NEARAI_TIMEOUTS_MS,
+      // the SDK waits for the signature with back-off between tries (0.4 s, 0.8 s, ...): two tries are enough here
+      signatureRetries: 2,
+      ...(remainingMs === undefined ? {} : { remainingMs }),
+    },
+    remainingMs ?? (() => Number.POSITIVE_INFINITY),
+  );
 }
 
 /**
@@ -94,7 +137,8 @@ function canaryProposer(
  *
  * `budget` is the time the attempt has left. Given, every phase shares it: the chain client stops when it is over, the two
  * senders take the smaller of `chainStepTimeoutMs` and what is left for each step, and the proposer's calls share
- * `modelBudgetMs`. Without it the SDK's own defaults apply (tests that do not care). `deps` is for tests (an offline
+ * `modelBudgetMs` and end `afterModelMs` before it. A cycle whose model ran out of that time says so in its outcome
+ * (`modelOutOfTime`). Without it the SDK's own defaults apply (tests that do not care). `deps` is for tests (an offline
  * proposer, a fixed clock); a `proposer` given there replaces the NEAR AI one.
  *
  * `tenant.network` is the Canary vault's own network: its chain, its RPC list.
@@ -172,11 +216,12 @@ export async function makeCanaryProbarion(
   pb.rules.add(canaryNoAutopay);
   if (!own) return pb;
   // What the proposer resolved itself while the cycle ran (even if the cycle then failed) is kept for the next attempts.
-  const mine = proposer as NearAiProposer;
+  const mine = proposer as CanaryProposer;
   return {
     process: async (i) => {
       try {
-        return await pb.process(i);
+        const outcome = await pb.process(i);
+        return mine.ranOutOfTime ? { ...outcome, modelOutOfTime: true } : outcome;
       } finally {
         const model = mine.resolvedModel;
         if (known === undefined && model !== null) knownModel = { model, at: Date.now() };

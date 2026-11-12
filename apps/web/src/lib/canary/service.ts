@@ -38,7 +38,12 @@ import type { CanaryVia } from "./via";
 
 /** What the cycle needs from the SDK's `Probarion` (and what tests fake). */
 export interface CanaryProbarion {
-  process(i: { text: string; facts: InvoiceFacts; ref: string }): Promise<SpendOutcome>;
+  /** `modelOutOfTime`: the model's time ran out before its answer came back, so the cycle decided rules-only. */
+  process(i: {
+    text: string;
+    facts: InvoiceFacts;
+    ref: string;
+  }): Promise<SpendOutcome & { modelOutOfTime?: boolean }>;
   /** The contract's free dry run of `spend`: no gas, no ledger entry. `ok` means the contract would accept it. */
   checkSpend(i: {
     mandateId: number;
@@ -117,6 +122,8 @@ export type AttemptResult =
         amount: string | null;
         reasoning: string;
       } | null;
+      /** Set (true) only when there is no proposal because the model's time ran out before its answer came back. */
+      modelOutOfTime?: boolean;
       code: { status: SpendOutcomeStatus; rule: string | null; txHash: string | null };
       raw:
         | { sent: false; skipped: RawSkip }
@@ -647,7 +654,7 @@ async function cycle(
     return rejected("failed");
   };
 
-  let outcome: SpendOutcome;
+  let outcome: Awaited<ReturnType<CanaryProbarion["process"]>>;
   try {
     outcome = await bounded(
       () => pb.process({ text, facts, ref }),
@@ -669,6 +676,8 @@ async function cycle(
 
   const decision = await readDecision(deps, outcome.decisionHash, at);
   const proposal = decision?.body.proposal ?? null;
+  // Why there is no proposal, when it is that the model's time ran out: the answer says so instead of only "none".
+  const modelOutOfTime = proposal === null && outcome.modelOutOfTime === true;
   const rule = stoppingRule(decision);
   const usage = outcome.modelUsage ?? null;
   const code = {
@@ -733,6 +742,7 @@ async function cycle(
     code: outcome.status,
     raw: step.raw.sent,
     contract_code: step.fields.contract_code,
+    model_out_of_time: modelOutOfTime,
   });
   return {
     status: "done",
@@ -746,6 +756,7 @@ async function cycle(
           reasoning: proposal.reasoning,
         }
       : null,
+    ...(modelOutOfTime ? { modelOutOfTime: true } : {}),
     code: { status: outcome.status, rule, txHash: outcome.txHash },
     raw: step.raw,
   };
