@@ -129,7 +129,7 @@ function files(n: number, one: string, many: string): string {
 export function invoiceNotes(matches: readonly InvoiceMatch[] | undefined): string[] {
   if (matches === undefined) return [];
   const lines: string[] = [];
-  const notAttested = matches.filter((m) => m.a8Seqs.length === 0 && m.seqs.length > 0);
+  const notAttested = matches.filter((m) => m.attestedSeqs.length === 0 && m.seqs.length > 0);
   if (notAttested.length > 0) {
     const list = notAttested.map((m) => `${m.file} (${seqList(m.seqs)})`).join(", ");
     lines.push(
@@ -155,16 +155,26 @@ export function invoiceNotes(matches: readonly InvoiceMatch[] | undefined): stri
 
 /**
  * The lines `--invoice` and `--invoices` add under the rows: which files A8 checks against which attested
- * decisions, then the notes on the files it does not check. Check e gives A8's result.
+ * decisions, then the notes on the files it does not check. Check e gives A8's result. Check e stops at its first
+ * broken seq, so when it does not pass, the head line names the files' decisions without saying A8 checked them.
  */
-export function invoiceLines(matches: readonly InvoiceMatch[] | undefined): string[] {
+export function invoiceLines(
+  matches: readonly InvoiceMatch[] | undefined,
+  e?: CheckResult,
+): string[] {
   if (matches === undefined) return [];
-  const checked = matches.filter((m) => m.a8Seqs.length > 0);
+  const checked = matches.filter((m) => m.attestedSeqs.length > 0);
   const read = `invoices: ${files(matches.length, "read", "read")}`;
-  const which = checked.map((m) => `${m.file} (${seqList(m.a8Seqs)})`).join(", ");
+  const which = checked.map((m) => `${m.file} (${seqList(m.attestedSeqs)})`).join(", ");
   let head: string;
   if (checked.length === 0) {
     head = `${read}; none is the invoice of an attested decision, so A8 checks none`;
+  } else if (e?.status !== "pass") {
+    let are: string;
+    if (matches.length === 1) are = "it is the invoice of an attested decision";
+    else if (checked.length === 1) are = "1 of them is the invoice of an attested decision";
+    else are = `${checked.length} of them are the invoices of attested decisions`;
+    head = `${read}; ${are}: ${which}; check e did not pass, so this run does not show that A8 passes on these decisions (check e's row gives the result)`;
   } else if (matches.length === 1) {
     head = `${read}; A8 checks it against the attested decisions with its sha256 (check e gives the result): ${which}`;
   } else {
@@ -264,7 +274,14 @@ export function renderReport(report: VerifyReport, opts: RenderOptions = {}): st
     );
     if (check.status === "unproven") lines.push(...unprovenLines(report, check, opts));
   }
-  lines.push("", ...onlineLines(report, opts), ...invoiceLines(opts.invoices));
+  lines.push(
+    "",
+    ...onlineLines(report, opts),
+    ...invoiceLines(
+      opts.invoices,
+      checks.find((c) => c.id === "e"),
+    ),
+  );
   const skipped = count.skip > 0 ? `, ${count.skip} skipped` : "";
   lines.push(`${count.pass} passed, ${count.fail} failed, ${count.unproven} unproven${skipped}`);
   const outcome = verifyOutcome(report);

@@ -743,7 +743,8 @@ export const a8Passes = (seqs) =>
 
 /**
  * What the A8 run means: PASS when checks a to i pass, check e says A8 passes on exactly the attested decisions
- * `seqs`, and the invoice files the CLI lists as checked by A8 are those decisions' (--json `invoices[].a8_seqs`).
+ * `seqs`, and the invoice files are those decisions' (--json `invoices[].attested_seqs`, the attested decisions each
+ * file is the invoice of; with every check passing, check e ran A8 on each of them).
  */
 export function matchA8(run, seqs) {
   const verdict = matchVerify({ exit: 0, checks: ALL_PASS }, run);
@@ -757,7 +758,7 @@ export function matchA8(run, seqs) {
     };
   }
   const files = Array.isArray(run.report.invoices) ? run.report.invoices : [];
-  const used = files.flatMap((f) => (Array.isArray(f?.a8_seqs) ? f.a8_seqs : []));
+  const used = files.flatMap((f) => (Array.isArray(f?.attested_seqs) ? f.attested_seqs : []));
   const sorted = [...used].sort((x, y) => x - y);
   if (sorted.join(",") !== seqs.join(",")) {
     return {

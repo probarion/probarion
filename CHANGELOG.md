@@ -22,10 +22,12 @@ The software is an unaudited beta.
   to `--snapshot` and not printed (`--json` adds an `invoices` list with each file's sha256 and the
   ledger entries it matches). A file that matches no attested decision is listed under the rows and
   on stderr, and does not fail the run. A file or folder that cannot be read, a folder with no `.txt`
-  file, or a file that is not UTF-8 text is a usage error (exit 64). On 2026-11-12 the offline run on
+  file, or a file that is not UTF-8 text is a usage error (exit 64). `--system-prompt <file>`
+  (repeatable) adds a system prompt A8 accepts besides the standard one, for a decision made under an
+  agent's own `model.systemPrompt`. On 2026-11-12 the offline run on
   the demo vault's snapshot of 10:28:54 UTC with `--invoices docs/evidence/demo-vault` passed checks a
   to i, and check e found that A8 passes on all five attested decisions, entries 10 to 13 and 15
-  (`docs/evidence/demo-vault/verify-a8-2026-11-12.txt`). A live run with `--online` 36 seconds later
+  (`docs/evidence/demo-vault/verify-a8-2026-11-12.txt`). A live run with `--online` 26 seconds later
   passed checks a to i, A8 on the same five, and O1 and O2 on all five, entry 15 among them
   (`verify-online-a8-2026-11-12.txt`). The TEE measurement is not pinned, so this does not show which
   model image ran. `docs/evidence/demo-vault/README.md` adds a dated section, `pnpm judge` adds the

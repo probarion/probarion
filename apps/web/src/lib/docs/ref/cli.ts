@@ -310,8 +310,9 @@ export const TABLES: readonly RefTable[] = [
             "`--proof <file>`",
             "`--invoice <file>` (repeatable)",
             "`--invoices <dir>` (repeatable)",
+            "`--system-prompt <file>` (repeatable)",
           ].join(", "),
-          does: "Runs checks a to i on the vault's chain state and its ledger file, and prints one row per check, the counts and a `RESULT` line, or the report as JSON with `--json`. `--offline` verifies a saved snapshot with no network, and refuses every option that would shape one. `--snapshot` saves the snapshot it verified to a new file. `--online` adds O1 and O2 and FastNEAR's tx index. `--burn-tx`, `--proof` and `--archival-rpc` help check h find a burn. `--evidence` is read for `v0.probarion.near` on mainnet only. `--invoice` and `--invoices` (every `.txt` file of a folder) add A8 to check e, live or with `--offline`: invoice texts you hold, read on your machine and matched to the ledger by sha256; release 0.1.1 on npm does not have these two.",
+          does: "Runs checks a to i on the vault's chain state and its ledger file, and prints one row per check, the counts and a `RESULT` line, or the report as JSON with `--json`. `--offline` verifies a saved snapshot with no network, and refuses every option that would shape one. `--snapshot` saves the snapshot it verified to a new file. `--online` adds O1 and O2 and FastNEAR's tx index. `--burn-tx`, `--proof` and `--archival-rpc` help check h find a burn. `--evidence` is read for `v0.probarion.near` on mainnet only. `--invoice` and `--invoices` (every `.txt` file of a folder) add A8 to check e, live or with `--offline`: invoice texts you hold, read on your machine and matched to the ledger by sha256. A8 accepts the standard system prompt; `--system-prompt` adds another one, the prompt's exact text, for a decision made under it. Release 0.1.1 on npm does not have these three.",
           signs: "Nothing: read-only.",
         },
       },
@@ -383,7 +384,7 @@ export const TABLES: readonly RefTable[] = [
           check:
             "A usage error: a missing, malformed or conflicting flag, an `--invoice` file that is not UTF-8 text, or a `PROBARION_AGENT_KEY` that is not an ed25519 secret key.",
           verify:
-            "A usage error: a missing, malformed or conflicting flag, a `--snapshot` file that exists or is the ledger, an `--offline` snapshot whose `vault`, `network` or `taken_at` is malformed, an `--invoices` folder that cannot be read or holds no `.txt` file, or an invoice file that cannot be read or is not UTF-8 text.",
+            "A usage error: a missing, malformed or conflicting flag, a `--snapshot` file that exists or is the ledger, an `--offline` snapshot whose `vault`, `network` or `taken_at` is malformed, an `--invoices` folder that cannot be read or holds no `.txt` file, or an invoice or `--system-prompt` file that cannot be read or is not UTF-8 text.",
           other: "None",
         },
       },

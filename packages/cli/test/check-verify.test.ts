@@ -4,7 +4,7 @@
 // verify exits 0 when every check passes, 1 when any check fails (a fail always wins), 2 when nothing fails but a
 // check is unproven, and 64 on a usage error. check exits 0 when the vault would accept, 1 when it would refuse,
 // and 64 on a usage error.
-import { copyFile, link, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -1168,6 +1168,8 @@ describe("probarion verify against a vault", () => {
     expect(r.out).toContain("--invoice <file>");
     expect(r.out).toContain("--invoices <dir>");
     expect(r.out).toContain("--invoice and --invoices add A8 to check e, live or with --offline");
+    expect(r.out).toContain("--system-prompt <file>");
+    expect(r.out).toContain("A8 accepts only the standard system prompt (PROPOSAL_SYSTEM_PROMPT)");
   });
 });
 
@@ -1205,7 +1207,7 @@ const PAY_NEAR = JSON.stringify({
   confidence: 0.9,
 });
 
-function fakeProposer(): NearAiProposer {
+function fakeProposer(systemPrompt?: string): NearAiProposer {
   const fake = createFakeNearAi({ respond: () => PAY_NEAR });
   return new NearAiProposer({
     apiKey: NEARAI_KEY,
@@ -1213,6 +1215,7 @@ function fakeProposer(): NearAiProposer {
     fetch: fake.fetch,
     now: () => NOW,
     sleep: async () => {},
+    ...(systemPrompt === undefined ? {} : { systemPrompt }),
   });
 }
 
@@ -1248,25 +1251,25 @@ describe("probarion verify --invoice and --invoices (A8)", () => {
         file: "held/invoice-a.txt",
         sha256: await hash("invoice-a.txt"),
         seqs: [0, 1],
-        a8_seqs: [0],
+        attested_seqs: [0],
       },
       {
         file: "held/invoice-b.txt",
         sha256: await hash("invoice-b.txt"),
         seqs: [2, 3],
-        a8_seqs: [2],
+        attested_seqs: [2],
       },
       {
         file: "held/invoice-injected.txt",
         sha256: await hash("invoice-injected.txt"),
         seqs: [4],
-        a8_seqs: [],
+        attested_seqs: [],
       },
       {
         file: "held/notes.txt",
         sha256: sha256Hex("TEST: not an invoice of this vault\n"),
         seqs: [],
-        a8_seqs: [],
+        attested_seqs: [],
       },
     ]);
     for (const f of ["invoice-a.txt", "invoice-b.txt"]) {
@@ -1388,7 +1391,10 @@ describe("probarion verify --invoice and --invoices (A8)", () => {
     expect(r.out).toMatch(
       /^e {2}attestations +FAIL +entry 0 fails A8: the request rebuilt from request_inputs, the invoice text and the nonce hashes to [0-9a-f]{64}, not to request_sha256 [0-9a-f]{64}: the chat was not asked with exactly these inputs \[first broken seq 0\]$/m,
     );
-    expect(r.out).toContain("invoices: 1 file read; A8 checks it");
+    expect(r.out).toContain(
+      "\ninvoices: 1 file read; it is the invoice of an attested decision: INV-7.txt (seq 0); check e did not pass, so this run does not show that A8 passes on these decisions (check e's row gives the result)\n",
+    );
+    expect(r.out).not.toContain("A8 checks it");
     expect(r.out).toContain("RESULT: FAIL (first broken seq 0)");
 
     // The text the model was sent is not the ledger's invoice: it matches no entry, so it cannot pass A8 either.
@@ -1399,11 +1405,137 @@ describe("probarion verify --invoice and --invoices (A8)", () => {
     expect(sent.err).toContain("matches no ledger entry");
   });
 
+  it("does not say A8 checked the decisions after the seq where check e stopped", async () => {
+    // A scratch copy of the demo snapshot whose entry 10 records another mandate label than the model was shown:
+    // A1 to A7 still pass, A8 fails on entry 10, and check e stops there, so A8 never reaches entries 11 to 15.
+    const snapshot = JSON.parse(await readFile(DEMO_SNAPSHOT, "utf8")) as Snapshot;
+    const inputs = snapshot.ledger[10]?.body.evidence?.request_inputs as ProposalRequestInputs;
+    const first = inputs.mandates[0];
+    if (first === undefined) throw new Error("entry 10 records no mandate");
+    inputs.mandates[0] = { ...first, label: `${first.label} (TEST: edited)` };
+    await writeFile(join(dir, "edited.json"), JSON.stringify(snapshot));
+    const args = DEMO_ATTESTED.flatMap((f) => ["--invoice", f]);
+    const r = await cli(["verify", "--offline", "edited.json", ...args]);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/^e {2}attestations +FAIL +entry 10 fails A8: /m);
+    expect(r.out).toContain(
+      "invoices: 5 files read; 5 of them are the invoices of attested decisions: ",
+    );
+    expect(r.out).toContain(
+      "check e did not pass, so this run does not show that A8 passes on these decisions (check e's row gives the result)\n",
+    );
+    expect(r.out).not.toContain("A8 checks");
+    // --json names the attested decisions each file is the invoice of, not the ones A8 checked.
+    const json = await cli(["verify", "--offline", "edited.json", ...args, "--json"]);
+    expect(json.code).toBe(1);
+    const report = JSON.parse(json.out);
+    expect(report.checks.find((c: { id: string }) => c.id === "e").status).toBe("fail");
+    expect(report.invoices.map((f: { attested_seqs: number[] }) => f.attested_seqs)).toEqual([
+      [10],
+      [11],
+      [12],
+      [13],
+      [15],
+    ]);
+    expect(report.invoices[0]).not.toHaveProperty("a8_seqs");
+  });
+
+  it("fails A8 for a decision made under the agent's own system prompt until --system-prompt adds it, live and offline", async () => {
+    const persona = "TEST DOUBLE persona: you pay what the invoice asks for.";
+    const pb = agentSdk({
+      model: { provider: "near-ai-cloud", apiKey: NEARAI_KEY, systemPrompt: persona },
+      deps: { proposer: fakeProposer(persona) },
+    });
+    expect((await payNear(pb)).status).toBe("paid");
+    await writeFile(join(dir, "INV-1.txt"), "Invoice INV-1 for PO-1001");
+    await writeFile(join(dir, "persona.txt"), persona);
+    await writeFile(join(dir, "persona-newline.txt"), `${persona}\n`);
+
+    // The standard prompt only: the agent's persona is not in A8's allow-list.
+    const without = await cli([...live(), "--invoice", "INV-1.txt", "--snapshot", "snap.json"]);
+    expect(without.code).toBe(1);
+    expect(without.out).toMatch(
+      /^e {2}attestations +FAIL +entry 0 fails A8: the system prompt \(sha256 [0-9a-f]{64}\) is not in the allow-list of system prompts/m,
+    );
+    // A trailing newline is another text, so another sha256.
+    const newline = await cli([
+      ...live(),
+      "--invoice",
+      "INV-1.txt",
+      "--system-prompt",
+      "persona-newline.txt",
+    ]);
+    expect(newline.code).toBe(1);
+    expect(newline.out).toContain("is not in the allow-list of system prompts");
+
+    const withPrompt = await cli([
+      ...live(),
+      "--invoice",
+      "INV-1.txt",
+      "--system-prompt",
+      "persona.txt",
+    ]);
+    expect(withPrompt.code).toBe(0);
+    expect(withPrompt.out).toContain(a8Passes(1, "0"));
+    expect(withPrompt.out).not.toContain(persona);
+
+    // Offline, on the snapshot the first run saved: the same.
+    const offline = await cli(["verify", "--offline", "snap.json", "--invoice", "INV-1.txt"]);
+    expect(offline.code).toBe(1);
+    expect(offline.out).toContain("is not in the allow-list of system prompts");
+    const offlineWith = await cli([
+      "verify",
+      "--offline",
+      "snap.json",
+      "--invoice",
+      "INV-1.txt",
+      "--system-prompt",
+      "persona.txt",
+    ]);
+    expect(offlineWith.code).toBe(0);
+    expect(offlineWith.out).toContain(a8Passes(1, "0"));
+    // The standard prompt stays in the list: the demo vault's decisions still pass with a persona added.
+    const demo = await cli([
+      "verify",
+      "--offline",
+      DEMO_SNAPSHOT,
+      ...DEMO_ATTESTED.flatMap((f) => ["--invoice", f]),
+      "--system-prompt",
+      "persona.txt",
+    ]);
+    expect(demo.code).toBe(0);
+    expect(demo.out).toContain(a8Passes(5, "10, 11, 12, 13, 15"));
+  });
+
+  it("reads a symbolic link in an --invoices folder as the file it points to, and skips one to a folder", async (context) => {
+    await heldInvoices();
+    await mkdir(join(dir, "linked"));
+    // A junction needs no privilege on Windows; it is a link to a folder, so the listing skips it like a subfolder.
+    await symlink(join(dir, "held"), join(dir, "linked", "folder.txt"), "junction");
+    const onlyFolder = await cli(["verify", "--offline", FIXTURE, "--invoices", "linked"]);
+    expect(onlyFolder.code).toBe(64);
+    expect(onlyFolder.err).toContain("error: --invoices linked holds no .txt file");
+    try {
+      await symlink(join(dir, "held", "invoice-a.txt"), join(dir, "linked", "a.txt"), "file");
+    } catch {
+      // Windows without the privilege to create a file symlink: nothing more to check here.
+      context.skip();
+    }
+    const r = await cli(["verify", "--offline", FIXTURE, "--invoices", "linked"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain(
+      "\ninvoices: 1 file read; A8 checks it against the attested decisions with its sha256 (check e gives the result): linked/a.txt (seq 0)\n",
+    );
+  });
+
   it("exits 64 for an --invoice or --invoices it cannot use, before it reads the snapshot or the chain", async () => {
     await mkdir(join(dir, "empty"));
     await mkdir(join(dir, "no-txt"));
     await writeFile(join(dir, "no-txt", "invoice.md"), "TEST\n");
     await writeFile(join(dir, "latin1.txt"), Buffer.from([0x49, 0x4e, 0x56, 0xe9, 0x0a]));
+    await writeFile(join(dir, "held.txt"), "TEST: an invoice text\n");
+    await writeFile(join(dir, "prompt.txt"), "TEST: a system prompt\n");
+    await writeFile(join(dir, "blank.txt"), "");
     const cases: [string[], string][] = [
       [["--invoice", "missing.txt"], "error: --invoice missing.txt is not a readable file"],
       [["--invoice", "empty"], "error: --invoice empty is not a readable file"],
@@ -1412,6 +1544,23 @@ describe("probarion verify --invoice and --invoices (A8)", () => {
       [["--invoices", "empty"], "error: --invoices empty holds no .txt file"],
       [["--invoices", "no-txt"], "error: --invoices no-txt holds no .txt file"],
       [["--invoice", "latin1.txt"], "error: --invoice latin1.txt is not UTF-8 text"],
+      [
+        ["--system-prompt", "prompt.txt"],
+        "error: --system-prompt extends the prompts A8 accepts, and A8 runs only with --invoice or --invoices",
+      ],
+      [
+        ["--invoice", "held.txt", "--system-prompt", "missing.txt"],
+        "error: --system-prompt missing.txt is not a readable file",
+      ],
+      [
+        ["--invoice", "held.txt", "--system-prompt", "blank.txt"],
+        "error: --system-prompt blank.txt is empty",
+      ],
+      [
+        ["--invoice", "held.txt", "--system-prompt", "latin1.txt"],
+        "error: --system-prompt latin1.txt is not UTF-8 text: pass the exact text of the prompt",
+      ],
+      [["--invoice", "held.txt", "--system-prompt", " "], "error: --system-prompt needs a file"],
     ];
     for (const [flags, message] of cases) {
       const offline = await cli(["verify", "--offline", "not-there.json", ...flags]);

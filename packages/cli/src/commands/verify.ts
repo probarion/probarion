@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   isNearAccountId,
   isNearTxHash,
+  type KnownSystemPrompt,
   type LedgerEntry,
   runChecks,
   type Snapshot,
@@ -36,6 +37,7 @@ import {
   invoiceTexts,
   matchInvoices,
   readInvoiceFiles,
+  readSystemPrompts,
   recordingLedger,
 } from "../invoices.js";
 import type { CliIo } from "../io.js";
@@ -63,6 +65,7 @@ type VerifyOpts = GlobalOpts & {
   proof?: string;
   invoice?: string[];
   invoices?: string[];
+  systemPrompt?: string[];
 };
 
 /** A burn tx hint in the SDK's object form (`BurnTxHint`): the tx hash, and its signer when that is known. */
@@ -74,7 +77,7 @@ Exit codes:
   1   a check fails (a fail always wins over unproven), or verify could not run (error: on stderr, no RESULT line)
   2   no check fails, but at least one is unproven: each UNPROVEN row names the spends and what to supply
   64  usage error: a missing, malformed or conflicting flag, an --invoices folder that cannot be read or holds
-      no .txt file, or an invoice file that cannot be read or is not UTF-8 text
+      no .txt file, or an invoice or --system-prompt file that cannot be read or is not UTF-8 text
 
 --offline verifies a saved snapshot as it is, with no network at all, so it refuses the flags that shape a
 snapshot: --vault, --ledger, --evidence, --burn-tx, --proof, --archival-rpc, --online, --rpc and --network.
@@ -88,6 +91,12 @@ model was sent exactly that invoice. The files are read on this computer and use
 is not sent, not written to --snapshot and not printed (--json lists each file's sha256). A file whose
 sha256 is in no attested decision is listed under the rows and does not fail the run; an edited copy of an
 invoice has another sha256, so it matches no ledger entry.
+
+A8 accepts only the standard system prompt (PROPOSAL_SYSTEM_PROMPT) unless you add others: a decision made
+under another prompt, for example an agent's model.systemPrompt such as the Canary's persona, fails A8 until
+you pass that prompt's exact text with --system-prompt <file> (repeatable; a trailing newline is part of the
+text). The ledger shows each prompt in request_inputs.system_prompt, but A8 does not take the ledger's word
+for which prompts are acceptable: you choose them.
 `;
 
 const MAX_SPEND_ID = Number.MAX_SAFE_INTEGER;
@@ -253,6 +262,11 @@ export function registerVerify(program: Command, io: CliIo): void {
       "every .txt file in <dir> (not its subfolders) as an --invoice; repeatable",
       collect,
     )
+    .option(
+      "--system-prompt <file>",
+      "a system prompt A8 also accepts, besides the standard one: the prompt's exact text (UTF-8); repeatable, with --invoice or --invoices",
+      collect,
+    )
     .addHelpText("after", VERIFY_HELP);
 
   usageExitCodes(verify).action(async (_options: unknown, command: Command) => {
@@ -291,7 +305,8 @@ export function registerVerify(program: Command, io: CliIo): void {
         o.snapshot === undefined
           ? undefined
           : await snapshotTarget(io, o.snapshot, ledgerFile(undefined, io.env, io.cwd));
-      const invoices = await invoiceFiles(io, o);
+      const a8 = await a8Inputs(io, o);
+      const invoices = a8?.files;
       let text: string;
       try {
         text = await readFile(resolve(io.cwd, file), "utf8");
@@ -302,7 +317,9 @@ export function registerVerify(program: Command, io: CliIo): void {
       if (target !== undefined) await saveSnapshot(target, o.snapshot ?? "", snapshot);
       const report = await runChecks(snapshot, {
         now: io.now(),
-        ...(invoices === undefined ? {} : { invoiceTexts: invoiceTexts(invoices) }),
+        ...(a8 === undefined
+          ? {}
+          : { invoiceTexts: invoiceTexts(a8.files), systemPrompts: a8.prompts }),
       });
       const offline = { takenAt: snapshotTime(snapshot.taken_at) ?? null };
       print(
@@ -345,7 +362,8 @@ export function registerVerify(program: Command, io: CliIo): void {
       o.snapshot === undefined
         ? undefined
         : await snapshotTarget(io, o.snapshot, parsed.ledgerPath);
-    const invoices = await invoiceFiles(io, o);
+    const a8 = await a8Inputs(io, o);
+    const invoices = a8?.files;
 
     const hints = parsed.hints;
     if (o.proof !== undefined) {
@@ -417,7 +435,8 @@ export function registerVerify(program: Command, io: CliIo): void {
       deps,
     );
     // The texts go to A8 only: the snapshot holds the ledger and the chain data, never an invoice text.
-    const texts = invoices === undefined ? {} : { invoiceTexts: invoiceTexts(invoices) };
+    const texts =
+      a8 === undefined ? {} : { invoiceTexts: invoiceTexts(a8.files), systemPrompts: a8.prompts };
     let report: VerifyReport;
     let entries: readonly LedgerEntry[];
     if (o.snapshot === undefined) {
@@ -436,12 +455,29 @@ export function registerVerify(program: Command, io: CliIo): void {
   });
 }
 
-/** The files of --invoice and --invoices, read before any network read; undefined when neither is given. */
-async function invoiceFiles(io: CliIo, o: VerifyOpts): Promise<InvoiceFile[] | undefined> {
+/**
+ * The files of --invoice and --invoices, and the prompts of --system-prompt, read before any network read; undefined
+ * when no invoice is given. --system-prompt only extends A8's allow-list, so without an invoice it is a usage error.
+ */
+async function a8Inputs(
+  io: CliIo,
+  o: VerifyOpts,
+): Promise<{ files: InvoiceFile[]; prompts: KnownSystemPrompt[] } | undefined> {
   const files = o.invoice ?? [];
   const dirs = o.invoices ?? [];
-  if (files.length === 0 && dirs.length === 0) return undefined;
-  return readInvoiceFiles(io.cwd, files, dirs);
+  const prompts = o.systemPrompt ?? [];
+  if (files.length === 0 && dirs.length === 0) {
+    if (prompts.length > 0) {
+      throw new UsageError(
+        "--system-prompt extends the prompts A8 accepts, and A8 runs only with --invoice or --invoices: pass one of them too",
+      );
+    }
+    return undefined;
+  }
+  return {
+    files: await readInvoiceFiles(io.cwd, files, dirs),
+    prompts: await readSystemPrompts(io.cwd, prompts),
+  };
 }
 
 /** Written with "wx": a file that appeared after the check is refused too, never replaced. */
@@ -461,7 +497,7 @@ function print(io: CliIo, o: VerifyOpts, report: VerifyReport, opts: RenderOptio
               file: m.file,
               sha256: m.sha256,
               seqs: m.seqs,
-              a8_seqs: m.a8Seqs,
+              attested_seqs: m.attestedSeqs,
             })),
           };
     io.out(`${JSON.stringify(json, null, 2)}\n`);

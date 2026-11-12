@@ -285,7 +285,7 @@ decisions, entries 10 to 13 and 15, each against the file whose sha256 is its `i
 results), and the PO and the earlier verify outputs match no ledger entry. The report lists both groups, and neither
 fails the run. A run now also reads the output files committed with it, and lists them as matching no entry too.
 
-[`verify-online-a8-2026-11-12.txt`](verify-online-a8-2026-11-12.txt) is a live run of the same CLI 36 seconds later,
+[`verify-online-a8-2026-11-12.txt`](verify-online-a8-2026-11-12.txt) is a live run of the same CLI 26 seconds later,
 on Node.js 24.22.2, with [the ledger of the filmed run](ledger-2026-11-12-video.jsonl), `--online` and this folder. It
 read the chain itself: checks a to i pass, check c finds 12 anchors and no entry after the last anchored count of 17,
 and check e finds 5 attested decisions that pass A1 to A7 and A8. For all five, entry 15 among them, Intel DCAP finds a
@@ -294,7 +294,7 @@ The TEE measurement is not pinned, so this does not show which model image ran. 
 invoice texts in the standard request; it does not show that an invoice is authentic. Check e also notes that mandate
 1's `remaining` and `status` now differ from what the model was shown, because the vault has paid since then: the values
 at decision time need archival state, so these are notes, not failures. From a clone of the repository, after
-`pnpm install` and `pnpm --filter ./packages/* run build`:
+`pnpm install` and `pnpm --filter "./packages/*" run build`:
 
 ```bash
 node packages/cli/dist/bin.js verify --offline docs/evidence/demo-vault/snapshot-2026-11-12-video.json --invoices docs/evidence/demo-vault

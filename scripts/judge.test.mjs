@@ -87,13 +87,13 @@ function a8Report({
       file: `docs/evidence/demo-vault/invoice-${seq}.txt`,
       sha256: "0".repeat(64),
       seqs: [seq],
-      a8_seqs: [seq],
+      attested_seqs: [seq],
     })),
     {
       file: "docs/evidence/demo-vault/po-PO-1001.txt",
       sha256: "1".repeat(64),
       seqs: [],
-      a8_seqs: [],
+      attested_seqs: [],
     },
   ];
   return r;
@@ -936,7 +936,7 @@ describe("A8 with the committed invoices", () => {
   test("matchA8: the invoice files A8 checks must be those of exactly the attested decisions", () => {
     assert.equal(matchA8(run(0, a8Report()), A8_RUN.seqs).result, "PASS");
     const short = a8Report();
-    short.invoices = short.invoices.filter((f) => !f.a8_seqs.includes(15));
+    short.invoices = short.invoices.filter((f) => !f.attested_seqs.includes(15));
     assert.deepEqual(matchA8(run(0, short), A8_RUN.seqs), {
       result: "FAIL",
       detail: "the invoice files A8 checks are for seq 10, 11, 12, 13, not seq 10, 11, 12, 13, 15",

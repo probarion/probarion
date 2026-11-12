@@ -1,7 +1,12 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { resolve } from "node:path";
-import { type LedgerEntry, sha256Hex } from "@probarion/core";
+import { join, resolve } from "node:path";
+import {
+  type KnownSystemPrompt,
+  knownSystemPrompt,
+  type LedgerEntry,
+  sha256Hex,
+} from "@probarion/core";
 import type { LedgerStore } from "@probarion/sdk";
 import { UsageError } from "./errors.js";
 
@@ -23,19 +28,27 @@ export interface InvoiceMatch {
   sha256: string;
   /** Every ledger entry with this invoice_hash. */
   seqs: number[];
-  /** Of those, the attested decisions (evidence, not rules-only): the ones A8 checks against this file. */
-  a8Seqs: number[];
+  /**
+   * Of those, the attested decisions (evidence, not rules-only): the ones this file is the invoice of. Check e runs
+   * A8 on each of them when it passes; it stops at its first broken seq, so when it fails A8 may not reach them.
+   */
+  attestedSeqs: number[];
 }
 
 /** `--invoices <dir>` reads the files of the folder whose name ends in .txt, not its subfolders. */
 const INVOICE_FILE = /\.txt$/i;
 
 /**
- * The text of one invoice file, which must be UTF-8: A8 hashes the text, so it must re-encode to exactly the bytes
- * that were read. A BOM stays in the text, as the SDK's `hashInvoice` keeps it. Unreadable or not UTF-8 text is a
- * usage error (exit 64), before any network read.
+ * The text of one invoice or system prompt file, which must be UTF-8: A8 hashes the text, so it must re-encode to
+ * exactly the bytes that were read. A BOM stays in the text, as the SDK's `hashInvoice` keeps it. Unreadable or not
+ * UTF-8 text is a usage error (exit 64), before any network read; `hint` says what to pass instead.
  */
-async function readInvoice(path: string, label: string, file: string): Promise<InvoiceFile> {
+async function readText(
+  path: string,
+  label: string,
+  file: string,
+  hint = "pass the extracted invoice text, the text the model was shown",
+): Promise<InvoiceFile> {
   let bytes: Uint8Array;
   try {
     if (!(await stat(path)).isFile()) throw new Error("not a file");
@@ -47,9 +60,7 @@ async function readInvoice(path: string, label: string, file: string): Promise<I
   try {
     text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
-    throw new UsageError(
-      `${label} is not UTF-8 text: pass the extracted invoice text, the text the model was shown`,
-    );
+    throw new UsageError(`${label} is not UTF-8 text: ${hint}`);
   }
   return { file, sha256: sha256Hex(bytes), text };
 }
@@ -69,7 +80,7 @@ export async function readInvoiceFiles(
   const add = async (path: string, label: string, file: string) => {
     if (seen.has(path)) return;
     seen.add(path);
-    out.push(await readInvoice(path, label, file));
+    out.push(await readText(path, label, file));
   };
   for (const given of files) {
     if (given.trim() === "") throw new UsageError("--invoice needs a file");
@@ -84,10 +95,16 @@ export async function readInvoiceFiles(
     } catch {
       throw new UsageError(`--invoices ${given} is not a readable directory`);
     }
-    const names = entries
-      .filter((e) => e.isFile() && INVOICE_FILE.test(e.name))
-      .map((e) => e.name)
-      .sort();
+    // A symbolic link counts as the file it points to; one to a folder is skipped like a subfolder, and a broken
+    // one is read, so that it is a usage error rather than a file left out without a word.
+    const names: string[] = [];
+    for (const e of entries) {
+      if (!INVOICE_FILE.test(e.name)) continue;
+      if (e.isFile() || (e.isSymbolicLink() && !(await isFolder(join(dir, e.name))))) {
+        names.push(e.name);
+      }
+    }
+    names.sort();
     if (names.length === 0) throw new UsageError(`--invoices ${given} holds no .txt file`);
     // Shown as given plus "/<name>", the same on every platform.
     const prefix = given.replace(/[\\/]+$/, "");
@@ -98,31 +115,62 @@ export async function readInvoiceFiles(
   return out;
 }
 
+async function isFolder(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The system prompts `--system-prompt` names, for A8's allow-list, each by the file as given. A8 accepts the
+ * standard prompt (`PROPOSAL_SYSTEM_PROMPT`) without them; these extend the list, never replace it. Each file must be
+ * the prompt's exact text, so a missing, unreadable, empty or not UTF-8 file is a usage error (exit 64).
+ */
+export async function readSystemPrompts(
+  cwd: string,
+  files: readonly string[],
+): Promise<KnownSystemPrompt[]> {
+  const out: KnownSystemPrompt[] = [];
+  for (const given of files) {
+    if (given.trim() === "") throw new UsageError("--system-prompt needs a file");
+    const label = `--system-prompt ${given}`;
+    const prompt = await readText(
+      resolve(cwd, given),
+      label,
+      given,
+      "pass the exact text of the prompt",
+    );
+    if (prompt.text === "") throw new UsageError(`${label} is empty`);
+    out.push(knownSystemPrompt(given, prompt.text));
+  }
+  return out;
+}
+
 /** The texts by sha256, as `runChecks` and the SDK's `verify` take `invoiceTexts`. Equal bytes give one entry. */
 export function invoiceTexts(files: readonly InvoiceFile[]): Map<string, string> {
   return new Map(files.map((f) => [f.sha256, f.text]));
 }
 
-/** Each file with the ledger entries whose invoice_hash is its sha256, and which of them A8 checks. */
+/** Each file with the ledger entries whose invoice_hash is its sha256, and which of them are attested decisions. */
 export function matchInvoices(
   files: readonly InvoiceFile[],
   ledger: readonly LedgerEntry[],
 ): InvoiceMatch[] {
   return files.map((f) => {
     const seqs: number[] = [];
-    const a8Seqs: number[] = [];
+    const attestedSeqs: number[] = [];
     ledger.forEach((entry, i) => {
       const body = entry?.body;
       if (body?.invoice_hash !== f.sha256) return;
       seqs.push(i);
+      // As check e counts them: evidence, and not decided by the rules alone.
       const attested =
-        body.kind === "decision" &&
-        body.evidence !== null &&
-        body.evidence !== undefined &&
-        body.decided_by !== "rules-only";
-      if (attested) a8Seqs.push(i);
+        body.evidence !== null && body.evidence !== undefined && body.decided_by !== "rules-only";
+      if (attested) attestedSeqs.push(i);
     });
-    return { file: f.file, sha256: f.sha256, seqs, a8Seqs };
+    return { file: f.file, sha256: f.sha256, seqs, attestedSeqs };
   });
 }
 
