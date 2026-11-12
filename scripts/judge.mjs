@@ -495,6 +495,18 @@ export const SNAPSHOTS = [
     expect: { exit: 0, checks: ALL_PASS },
   },
   {
+    id: "verify-demo-snapshot-1112",
+    file: "docs/evidence/demo-vault/snapshot-2026-11-12.json",
+    committed: "docs/evidence/demo-vault/verify-2026-11-12.txt",
+    title:
+      "verify --offline: demo vault snapshot with four attested decisions, one of them paid, passes a to i",
+    ref: {
+      file: "docs/evidence/demo-vault/README.md",
+      quote: "and check e finds 4 attested decisions that pass A1 to A7",
+    },
+    expect: { exit: 0, checks: ALL_PASS },
+  },
+  {
     id: "verify-402-snapshot-1109",
     file: "docs/evidence/402-vault/snapshot-2026-11-09.json",
     committed: "docs/evidence/402-vault/verify-2026-11-09.txt",
@@ -1076,7 +1088,8 @@ export function planSteps(root = ROOT) {
         writeFileSync(path, got.text);
         const v = await liveVerify(ctx, DEMO_VAULT, path, LIVE_VAULTS.demo);
         if (v.result !== "PASS") return v;
-        const committed = "docs/evidence/demo-vault/ledger-2026-11-09.jsonl";
+        // The newest committed ledger: each older file of this vault is a prefix of it.
+        const committed = "docs/evidence/demo-vault/ledger-2026-11-12.jsonl";
         const prefix = ledgerPrefix(ctx.readFile(committed) ?? "", got.text);
         if (!prefix.ok)
           return { result: "FAIL", detail: `${v.detail}; but ${committed}: ${prefix.detail}` };

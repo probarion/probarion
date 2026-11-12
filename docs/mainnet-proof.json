@@ -14,6 +14,21 @@
     "code_hashes.vault_v0": "scripts/build-reproducible.sh vault; RPC view_account code_hash of v0.probarion.near"
   },
   "txs": {
+    "demo_anchor_11": {
+      "amount_usdc": null,
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "CWjStzJd9T7Qfwp1LEELx62NQTwvjrU1Y2a8kSeNYkjW",
+      "kind": "anchor",
+      "network": "testnet",
+      "receiver_id": "demo.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T01:26:44.306Z",
+      "signed_by": "ledger_key",
+      "signer_id": "demo.vaults.probarion.testnet",
+      "spend_id": null,
+      "what": "Payables anchored the demo vault's ledger after spend 4 (anchor 11, 15 entries)"
+    },
     "demo_freeze": {
       "amount_usdc": null,
       "base_tx": null,
@@ -28,6 +43,21 @@
       "signer_id": "35008ecd0f274c7af302e0ecbcfe39211231069c3953cdb228ff5eca1399242b",
       "spend_id": null,
       "what": "The owner froze the demo vault from the console's Freeze button, signed in Meteor"
+    },
+    "demo_payables_spend_4": {
+      "amount_usdc": "2.00",
+      "base_tx": null,
+      "error_code": null,
+      "expect": "success",
+      "hash": "EA7MbLtsRjQUBbycfNyh6u1ieLNU5WXtyGy2K8eiPBuU",
+      "kind": "near_payment",
+      "network": "testnet",
+      "receiver_id": "demo.vaults.probarion.testnet",
+      "recorded_at": "2026-11-12T01:26:43.057Z",
+      "signed_by": "agent_key",
+      "signer_id": "demo.vaults.probarion.testnet",
+      "spend_id": 4,
+      "what": "Payables paid INV-2009 on its own after an attested NEAR AI model (Qwen/Qwen3.8-27B) proposed it, ledger entry 13: spend 4 paid 2.00 test USDC to probarion-payee.testnet"
     },
     "demo_unfreeze": {
       "amount_usdc": null,
@@ -330,7 +360,7 @@
       "what": "The owner's Meteor wallet, the vault's approver, sent 3 native USDC to the vault (ft_transfer)"
     }
   },
-  "updated_at": "2026-11-11T18:06:45.120Z",
+  "updated_at": "2026-11-12T01:26:44.306Z",
   "v": 1,
   "verify": {},
   "versions": {}

@@ -277,7 +277,7 @@ const ADDED_RULES: RefTable = {
       cells: {
         rule: "`custom.invoice_number_duplicate`",
         effect: "Refuse",
-        by: "Payables (Preview), as the first custom rule of the cycle, before `custom.owner_confirms_without_model`",
+        by: "Payables (Live on testnet), as the first custom rule of the cycle, before `custom.owner_confirms_without_model`",
         when: "Another invoice to the same payee has the same invoice number, and it may have paid or may still pay: it is processing, sent and not yet confirmed, waiting for the owner, or decided as paid, burned, settled, held on chain with a spend, or refused because its own text was already paid or may still pay (`invoice.duplicate` or `ledger.unresolved` in its decision, or the contract's `DuplicateInvoice` or `DuplicateRef`). The texts differ: the same text is refused at intake as a duplicate, with no cycle. The detail names the earlier invoice by its invoice hash, not by its number, and names one that may have paid before one that waits for the owner. When a built-in rule of `decide()` refuses first, the outcome's code is that rule's, and the refusal is final like any other.",
         todo: 'Nothing was sent. Look at the earlier invoice the detail names. If it waits for the owner, upload this one again once the owner rejects it in the console, and any other invoice with this number that waits for them: it runs on the same row and ref. If the console shows this invoice as "Outcome unknown: do not resend", its refusal could not be written, and the number stays blocked whatever happens to the earlier invoice. Otherwise the number stays blocked while that invoice may still pay, and a paid invoice is not paid again, even when an agent paid its text outside the console and the console refused it as already paid. The console does not yet free the number of an invoice held on chain, sent and not confirmed, or with an unknown outcome when its spend fails, is rejected or expires.',
       },
@@ -287,7 +287,7 @@ const ADDED_RULES: RefTable = {
       cells: {
         rule: "`custom.owner_confirms_without_model`",
         effect: "Hold or refuse",
-        by: "Payables, the console's reference agent (Preview), on every cycle but the owner's confirmed one",
+        by: "Payables, the console's reference agent (Live on testnet), on every cycle but the owner's confirmed one",
         when: "No attested model stated the amount the code read: no proposal, one that is not attested, or a model amount that is null or differs. It holds, or refuses when the amount is above the mandate's `approval_above` or cannot be compared, since a hold would then send the spend for approval.",
         todo: "The vault's owner confirms the amount in the console, on the invoice's \"Waiting for you\" card.",
       },
@@ -297,7 +297,7 @@ const ADDED_RULES: RefTable = {
       cells: {
         rule: "`custom.owner_confirmed`",
         effect: "Refuse",
-        by: "Payables (Preview), in the cycle that runs after the owner confirms",
+        by: "Payables (Live on testnet), in the cycle that runs after the owner confirms",
         when: "The decision does not pay exactly what the owner signed for: another amount, invoice hash, mandate or payee, or no mandate. When it passes, its detail holds the owner's whole signed confirmation.",
         todo: "Nothing was sent. Compare the confirmed amount, invoice and mandate with the decision's.",
       },

@@ -15,6 +15,30 @@ The software is an unaudited beta.
 
 ### Added
 
+- The Payables agent paid an invoice on its own with an attested model for the first time, on
+  testnet on 2026-11-12, recorded in `docs/evidence/demo-vault/README.md`. At 01:09 UTC
+  `invoice-INV-2009.txt`, 2.00 test USDC to `probarion-payee.testnet` under PO-1001, went in on the
+  demo vault's Payables page, signed in as the owner; Claude drove the console in the owner's
+  browser, and no wallet signature was needed. With `NEARAI_MODEL` set to `Qwen/Qwen3.8-27B`, the
+  model proposed paying it (confidence 0.98) with the payee in `near_account` and no chain or
+  address, every code rule passed, and ledger entry 13 records `allow`, decided by `model+rules`.
+  The agent key sent spend 4, which paid 2.00 test USDC to the mandate's payee, entry 14 records it
+  paid, and the ledger key anchored all 15 entries. Mandate 1 has now spent 12 of its 20 test USDC
+  and has 1 of its 5 uses left. That payee hint did not depend on PR #120: the rule took that shape
+  as the mandate's payee before the fix too. The payee hint differed in each of entries 10 to 13, by
+  two models (`z-ai/glm-5.3-flash` for 10 and 11, `Qwen/Qwen3.8-27B` for 12 and 13). A live `verify`
+  with release 0.1.1 of the 15 entries passed checks a to i (`9 passed, 0 failed, 0 unproven`), and
+  check e found 4 attested decisions that pass A1 to A7; with `--online` all four passed O1 and O2.
+  The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not
+  run. It is one invoice with test tokens, Payables has not run on mainnet, and its reconcile job is
+  still not built. `docs/evidence/demo-vault/` holds the invoice, the ledger, the snapshot and both
+  outputs, `pnpm judge` checks the snapshot offline, and `docs/mainnet-proof.json` records the spend
+  and the anchor. The README's Status row for Payables is now Live on NEAR testnet, the landing
+  page's status list shows it as "Live on testnet", and the NEAR AI Cloud rows, the demo vault's
+  section, SECURITY.md, the threat model, the comparison page, the privacy page and the docs say
+  what ran; the docs pages that said no run of `process()` was recorded now name this one.
+  `pnpm judge` checks that the live ledger starts with `ledger-2026-11-12.jsonl`.
+
 - The owner run of 2026-11-11 on testnet, from the console at probarion.xyz with a real wallet
   (Meteor): Claude drove the console in the owner's browser and the owner signed each wallet prompt,
   recorded in `docs/evidence/trial-vault/README.md`. On the demo vault the owner froze and unfroze the
@@ -38,11 +62,11 @@ The software is an unaudited beta.
   model's payee hint named `acme-cloud.near`, which is in neither the invoice nor the prompt; and
   INV-2008 (entry 12, with `NEARAI_MODEL` set to `Qwen/Qwen3.8-27B`) by a false positive again: the
   model put the mandate's own account in `address` next to the chain `base`, since the proposal
-  schema has no NEAR chain (PR #120 fixes the rule for that case). So the Payables agent has not
-  yet paid on its own with an attested model. A live `verify` of that ledger passed checks a to i,
-  and with `--online` entries 10 and 11 passed O1 and O2 (a later online run could not fetch
-  Intel's quote collateral); `docs/evidence/demo-vault/` holds the ledger, the snapshot, both
-  outputs and the three invoices. The trial vault's evidence folder holds the run's ledger,
+  schema has no NEAR chain (PR #120 fixes the rule for that case). So on 2026-11-11 the Payables
+  agent had not yet paid on its own with an attested model. A live `verify` of that ledger passed
+  checks a to i, and with `--online` entries 10 and 11 passed O1 and O2 (a later online run could
+  not fetch Intel's quote collateral); `docs/evidence/demo-vault/` holds the ledger, the snapshot,
+  both outputs and the three invoices. The trial vault's evidence folder holds the run's ledger,
   snapshot, offline verify output and invoices and the client's tool calls;
   `docs/mainnet-proof.json` records the run's 14 testnet transactions. The README's Status rows for
   the web console, the MCP server (now Shipped), the watcher, the Telegram alerts and the approval

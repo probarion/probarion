@@ -181,9 +181,13 @@ snapshot of the ledger and the chain:
   ([output](docs/evidence/canary-vault/verify-online-2026-11-11.txt)): each TDX quote is a genuine
   Intel TDX quote (Intel DCAP, debug off, an accepted TCB status, which can be `OutOfDate`) whose
   report data holds the signing address and the entry's nonce, and NVIDIA NRAS verified each GPU
-  payload. The TEE measurement is not pinned, so this does not show which model
-  image ran, and A8 was not run, since the ledger holds no invoice text. The Canary's model is a
-  small model given a deliberately gullible prompt.
+  payload. The demo vault's ledger holds 4 more, made by Payables, which pass A1 to A7 offline and,
+  on 2026-11-12, O1 and O2 online
+  ([evidence](docs/evidence/demo-vault/README.md#2026-11-12-payables-pays-on-its-own-with-an-attested-model),
+  [output](docs/evidence/demo-vault/verify-online-2026-11-12.txt)); the code allowed the last of
+  them, and the vault paid that invoice, 2.00 test USDC. The TEE measurement is not pinned, so this
+  does not show which model image ran, and A8 was not run, since the ledger holds no invoice text.
+  The Canary's model is a small model given a deliberately gullible prompt.
 
 The full design is in [`docs/specs/2026-10-21-probarion-design.md`](docs/specs/2026-10-21-probarion-design.md)
 (§7, §10, §11 and §12), and the exact checks are in

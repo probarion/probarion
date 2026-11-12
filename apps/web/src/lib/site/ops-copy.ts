@@ -33,7 +33,7 @@ export const STATUS_PAGE = {
 
 /** /terms and /privacy each carry their own date, so a change to one page's text does not move the other's. */
 export const TERMS_UPDATED = "2026-11-10";
-export const PRIVACY_UPDATED = "2026-11-11";
+export const PRIVACY_UPDATED = "2026-11-12";
 
 /** The lede of /terms and /privacy (spec §13, Legal row). */
 export const LEGAL_STATUS =
@@ -241,7 +241,7 @@ export const PRIVACY_PAGE = {
       title: "Invoices",
       paragraphs: [
         "The file of an invoice you upload is encrypted before it is stored. The facts read from it, such as the amount and its references, and its file name are stored with it, not encrypted. With zero-retention on, the invoice's record keeps only its hashes and the outcome, and, for an invoice that asked for your Confirm, its amount: not the file, its text, its other facts or its name. The signed ledger still records the amount, any PO reference the model was shown, and the model's answer, which may quote details of the invoice.",
-        "When the payables agent runs, the invoice text goes to a private model on NEAR AI Cloud. The attested decisions recorded in the repository so far are two of the Canary's, on testnet, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, with the TEE measurement not pinned and A8 not run; none is the payables agent's.",
+        "When the payables agent runs, the invoice text goes to a private model on NEAR AI Cloud. The attested decisions recorded in the repository so far are all on testnet: two of the Canary's, which pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online, and four of the payables agent's on the demo vault, which pass A1 to A7 offline and, on 2026-11-12, O1 and O2 online. The TEE measurement is not pinned, and A8 was not run.",
       ],
     },
     {
