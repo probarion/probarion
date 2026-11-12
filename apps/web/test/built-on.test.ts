@@ -142,7 +142,11 @@ describe("the built-on section", () => {
     for (const row of BUILT_ON.rows) expect(new URL(row.href).hostname, row.id).toBe(row.domain);
     expect(BUILT_ON.rows.map((r) => r.links.map((l) => l.href))).toEqual([
       ["/proof/demo.vaults.probarion.testnet", "/docs/start/testnet-and-mainnet#the-mainnet-vault"],
-      ["/proof/demo.vaults.probarion.testnet#seq-13", LINKS.demoVerifyOnline],
+      [
+        "/proof/demo.vaults.probarion.testnet#seq-13",
+        "/proof/demo.vaults.probarion.testnet#seq-15",
+        LINKS.demoVerifyOnline,
+      ],
     ]);
     expect(BUILT_ON.shipsTitle).toBe("Ships through");
     expect(
@@ -264,15 +268,15 @@ describe("the built-on facts", () => {
     ).toContain("## The mainnet vault");
   });
 
-  it("NEAR AI Cloud: 6 attested decisions that pass A1 to A7 and O1 and O2, one paid invoice, and the image not pinned", () => {
+  it("NEAR AI Cloud: 7 published attested decisions that pass A1 to A7, 6 of them O1 and O2, two paid invoices, and the image not pinned", () => {
     const [, ai] = BUILT_ON.rows;
     expect(ai.body).toBe(
       "An optional private model, run in a TEE, reads the invoice and proposes. Code decides, and the contract has the last word.",
     );
     expect(ai.checks).toEqual([
-      "6 attested decisions on testnet: 2 on the Canary, 4 by Payables",
-      "All 6 pass A1 to A7 offline, and passed O1 and O2 online",
-      "On 2026-11-12 Payables paid one invoice on its own with it: 2 test USDC",
+      "7 published attested decisions on testnet: 2 on the Canary, 5 by Payables",
+      "All 7 pass A1 to A7 offline, and 6 passed O1 and O2 online",
+      "On 2026-11-12 Payables paid two invoices on its own with it: 2 test USDC each",
     ]);
     const row = readmeRow("NEAR AI Cloud adapter");
     expect(row).toContain(
@@ -280,10 +284,15 @@ describe("the built-on facts", () => {
     );
     expect(row).toContain("pass A1 to A7 offline and, on 2026-11-11, the online checks O1 and O2");
     expect(row).toContain(
-      "The demo vault's ledger holds 4 more, made by Payables, which pass A1 to A7",
+      "The demo vault's ledger holds 5 more, made by Payables, which pass A1 to A7",
     );
-    expect(row).toContain("all four of the demo vault's attested decisions passed O1 and O2");
+    expect(row).toContain(
+      "the four attested decisions the demo vault held then, entries 10 to 13, passed O1 and O2",
+    );
     expect(row).toContain("the vault paid 2.00 test USDC as spend 4");
+    expect(row).toContain(
+      "later that day the same happened for INV-2010, which the vault paid as spend 5",
+    );
     expect(row).toContain(
       "The TEE measurement is not pinned, so this does not show which model image ran",
     );
@@ -291,7 +300,7 @@ describe("the built-on facts", () => {
       "The TEE image is not pinned yet, so this does not show which model image ran.",
     );
     expect(statusOf("Live attested model run").pill).toContain("image not pinned");
-    // The ledgers themselves: 2 attested decisions on the Canary, 4 on the demo vault, the last of them allowed.
+    // The ledgers themselves: 2 attested decisions on the Canary, 5 on the demo vault, the last two of them allowed.
     const attested = (entries: ReturnType<typeof jsonl>) =>
       entries.filter(
         (e) => e.body.kind === "decision" && e.body.evidence?.provider === "near-ai-cloud",
@@ -299,13 +308,21 @@ describe("the built-on facts", () => {
     expect(
       attested(jsonl(ROOT, "docs", "evidence", "canary-vault", "ledger-2026-11-10.jsonl")),
     ).toHaveLength(2);
-    const demo = jsonl(ROOT, "docs", "evidence", "demo-vault", "ledger-2026-11-12.jsonl");
-    expect(attested(demo).map((e) => e.body.seq)).toEqual([10, 11, 12, 13]);
-    const paid = demo.find((e) => e.body.seq === 13)?.body;
-    expect(paid).toMatchObject({ kind: "decision", verdict: "allow", decided_by: "model+rules" });
-    expect(demo.find((e) => e.body.seq === 14)?.body.kind).toBe("payment");
+    const demo = jsonl(ROOT, "docs", "evidence", "demo-vault", "ledger-2026-11-12-video.jsonl");
+    expect(attested(demo).map((e) => e.body.seq)).toEqual([10, 11, 12, 13, 15]);
+    for (const [decision, payment] of [
+      [13, 14],
+      [15, 16],
+    ]) {
+      const paid = demo.find((e) => e.body.seq === decision)?.body;
+      expect(paid).toMatchObject({ kind: "decision", verdict: "allow", decided_by: "model+rules" });
+      expect(demo.find((e) => e.body.seq === payment)?.body.kind).toBe("payment");
+    }
     const evidence = text(ROOT, "docs", "evidence", "demo-vault", "README.md");
     expect(evidence).toContain("## 2026-11-12: Payables pays on its own with an attested model");
+    expect(evidence).toContain(
+      "## 2026-11-12, filmed: a second invoice paid on its own, freeze and unfreeze",
+    );
     expect(text(ROOT, "docs", "evidence", "demo-vault", "verify-online-2026-11-12.txt")).toContain(
       "4 GPU payloads bound to the request nonce and verified by NRAS (O2)",
     );
@@ -596,7 +613,7 @@ describe("the built-on marks", () => {
 describe("the built-on links and landmarks", () => {
   it("links only to pages, anchors and repository files that exist, and to https addresses elsewhere", () => {
     const links = hrefs(section());
-    expect(links.length).toBe(10);
+    expect(links.length).toBe(11);
     for (const href of links) {
       if (href.startsWith("/")) expect(linkProblem(href, ""), href).toBeNull();
       else {
@@ -604,12 +621,15 @@ describe("the built-on links and landmarks", () => {
         expect(linkProblem(href, ""), href).toBeNull();
       }
     }
-    // The proof page gives each decision card id="seq-N", and entry 13 is the decision of the payment of 2026-11-12.
-    expect(seqAnchorId(13)).toBe("seq-13");
-    expect(links).toContain(`/proof/demo.vaults.probarion.testnet#${seqAnchorId(13)}`);
-    expect(text(ROOT, "docs", "evidence", "demo-vault", "README.md")).toContain(
-      "[entry 13](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-13)",
-    );
+    // The proof page gives each decision card id="seq-N". Entries 13 and 15 are the decisions of the two payments
+    // of 2026-11-12.
+    for (const seq of [13, 15]) {
+      expect(seqAnchorId(seq)).toBe(`seq-${seq}`);
+      expect(links).toContain(`/proof/demo.vaults.probarion.testnet#${seqAnchorId(seq)}`);
+      expect(text(ROOT, "docs", "evidence", "demo-vault", "README.md")).toContain(
+        `[entry ${seq}](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-${seq})`,
+      );
+    }
     // The docs anchor is the slug of the heading.
     expect(new GithubSlugger().slug("The mainnet vault")).toBe("the-mainnet-vault");
   });
