@@ -82,7 +82,7 @@ byte.
 During the owner run recorded in [the trial vault's record](../trial-vault/README.md), the owner froze this vault
 from the console's Freeze button and unfroze it again, both signed in Meteor. `get_config` read `frozen: false`
 afterwards. The owner did both again on 2026-11-12,
-[below](#2026-11-12-filmed-a-second-paid-invoice-freeze-and-unfreeze).
+[below](#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze).
 
 | Time (UTC) | What | Transaction |
 | --- | --- | --- |
@@ -161,7 +161,7 @@ depend on #120. A model's answer is not the same from run to run. For invoices t
 chain `solana` in entry 11, and `Qwen/Qwen3.8-27B` put the mandate's account in `address` next to `base` in entry 12
 and in `near_account` alone in entry 13.
 
-This is one invoice, on testnet, with test tokens that have no value. Payables has not run on mainnet. The invoice's
+That was one invoice, on testnet, with test tokens that have no value. Payables has not run on mainnet. The invoice's
 sha256 is the `invoice_hash` of entry 13 and of spend 4. The proof page shows the decision, with the model's answer
 and its attestation: [entry 13](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-13).
 
@@ -196,7 +196,7 @@ since the decision of spend 5 is entry 15. For a live run, use the ledger of
 npx probarion verify --offline docs/evidence/demo-vault/snapshot-2026-11-12.json
 ```
 
-## 2026-11-12, filmed: a second paid invoice, freeze and unfreeze
+## 2026-11-12, filmed: a second invoice paid on its own, freeze and unfreeze
 
 At 09:52 UTC [`invoice-INV-2010.txt`](invoice-INV-2010.txt), a copy of INV-2009 with a new number and no other change,
 went in with [`po-PO-1001.txt`](po-PO-1001.txt) on this vault's Payables page, in the console signed in as the owner,
@@ -207,7 +207,7 @@ vault's agent key signs spends. The console's page for the invoice read "Decided
 
 | Ledger entries | Invoice | What the model answered | What the code and the contract did |
 | --- | --- | --- | --- |
-| 15, at 09:52:10, and 16, at 09:52:40 | [`invoice-INV-2010.txt`](invoice-INV-2010.txt): 2.00 test USDC to the mandate's payee, the same invoice with a new number | `Qwen/Qwen3.8-27B` proposed paying 2.00 USDC under mandate 1 with confidence 0.98, with a payee hint that put the mandate's own payee, `probarion-payee.testnet`, in `address` and as the name, next to the chain `base`. Its reasoning says the invoice's payee matches the mandate's, the amount is within `max_per_payment` and what is left, and the PO and purpose hashes match | Every rule passed, and entry 15 records `allow`, decided by `model+rules`; the payee rule's detail reads "destination is the mandate payee near:probarion-payee.testnet". The agent key sent spend 5 at 09:52:36 ([`3YEGw5Qd…`](https://testnet.nearblocks.io/txns/3YEGw5Qdp9RbnR5LXFbAKXWPPhgiz7hf6vdDapfXvEE4), block 277346837), and the contract paid 2.00 test USDC to `probarion-payee.testnet` (`ft_transfer` with the memo `probarion:5`). Entry 16 records spend 5 as paid. At 09:52:44 the ledger key anchored all 17 entries ([`3n99Suaq…`](https://testnet.nearblocks.io/txns/3n99Suaq6scqcr9KLXKdmuiJiaEU5er4WzqQZYmb3WGn), anchor 12, block 277346850) |
+| 15, at 09:52:10, and 16, at 09:52:40 | [`invoice-INV-2010.txt`](invoice-INV-2010.txt): 2.00 test USDC to the mandate's payee, the same invoice with a new number | `Qwen/Qwen3.8-27B` proposed paying 2.00 test USDC under mandate 1 with confidence 0.98, with a payee hint that put the mandate's own payee, `probarion-payee.testnet`, in `address` and as the name, next to the chain `base`. Its reasoning says the invoice's payee matches the mandate's, the amount is within `max_per_payment` and what is left, and the PO and purpose hashes match | Every rule passed, and entry 15 records `allow`, decided by `model+rules`; the payee rule's detail reads "destination is the mandate payee near:probarion-payee.testnet". The agent key sent spend 5 at 09:52:36 ([`3YEGw5Qd…`](https://testnet.nearblocks.io/txns/3YEGw5Qdp9RbnR5LXFbAKXWPPhgiz7hf6vdDapfXvEE4), block 277346837), and the contract paid 2.00 test USDC to `probarion-payee.testnet` (`ft_transfer` with the memo `probarion:5`). Entry 16 records spend 5 as paid. At 09:52:44 the ledger key anchored all 17 entries ([`3n99Suaq…`](https://testnet.nearblocks.io/txns/3n99Suaq6scqcr9KLXKdmuiJiaEU5er4WzqQZYmb3WGn), anchor 12, block 277346850) |
 
 After the payment the chain read spend 5 as paid to `probarion-payee.testnet`. Mandate 1 had spent 14 of its 20 test
 USDC and used all 5 of its payments, with nothing reserved, so its status reads `exhausted`. The vault held 11 test

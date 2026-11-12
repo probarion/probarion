@@ -189,7 +189,7 @@ snapshot of the ledger and the chain:
   ([evidence](docs/evidence/demo-vault/README.md#2026-11-12-payables-pays-on-its-own-with-an-attested-model),
   [output](docs/evidence/demo-vault/verify-online-2026-11-12.txt)). The code allowed the last two
   of them, and the vault paid both invoices, 2.00 test USDC each
-  ([evidence of the second](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-paid-invoice-freeze-and-unfreeze)).
+  ([evidence of the second](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)).
   The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not
   run, since the ledger holds no invoice text. The Canary's model is a small model given a
   deliberately gullible prompt.

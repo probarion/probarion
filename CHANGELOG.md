@@ -38,11 +38,13 @@ The software is an unaudited beta.
   checks the new snapshot offline (`verify-demo-snapshot-1112-video`) and now checks that the live
   ledger starts with `ledger-2026-11-12-video.jsonl`; `docs/mainnet-proof.json` records the spend,
   the anchor, the freeze and the unfreeze as testnet transactions. The landing page's NEAR AI Cloud
-  row now gives 7 attested decisions on testnet (2 on the Canary, 5 by Payables), 6 of which passed
-  O1 and O2 online, and two invoices paid. The README's Status rows for the NEAR AI Cloud adapter,
-  Payables and the web console, its NEAR AI Cloud row and demo vault section, SECURITY.md, the
-  threat model, the comparison page, the privacy page and the docs pages that named one paid
-  invoice say what ran.
+  row now gives 7 published attested decisions on testnet (2 on the Canary, 5 by Payables), 6 of
+  which passed O1 and O2 online, and two invoices paid, and links entries 13 and 15 on the proof
+  page. The README's Status rows for the NEAR AI Cloud adapter, Payables and the web console, its
+  NEAR AI Cloud row and demo vault section, SECURITY.md, the threat model, the comparison page, the
+  privacy page and the docs pages that named one paid invoice say what ran. The README's step 5
+  adds that mandate 1, the demo vault's one mandate, has had no uses left since 09:52 UTC, so the
+  contract refuses the MCP demo's three dry runs.
 
 - A console try on testnet on 2026-11-12, from 03:29 to 03:36 UTC, on
   `trial.vaults.probarion.testnet`, recorded in a new section of
@@ -76,19 +78,20 @@ The software is an unaudited beta.
   `v0.probarion.near` on mainnet with 1 payment and 1 refusal and no Base payout yet), and one for
   NEAR AI Cloud, the model that advises (7 attested decisions that pass A1 to A7 offline, 6 of
   which passed O1 and O2 online, the two invoices Payables paid on its own on 2026-11-12, and the
-  TEE image not pinned); each row links its evidence. Under the card, four cards name where Probarion ships:
-  the npm public registry (`probarion`, `@probarion/core`, `@probarion/sdk` and `@probarion/mcp`
-  0.1.1, with provenance), the official MCP Registry (`io.github.probarion/probarion` 0.1.1),
-  GitHub (the MIT source and the CI with the sandbox tests and the reproducible build) and the
-  Chrome Web Store (the extension 0.1.0, shown with Probarion's own mark). NEAR's unmodified logo
-  stands in for its name; the npm, MCP and GitHub logos sit unmodified above their cards' names and
-  are hidden from screen readers, which read the names. The section ends with the Intel TDX and NVIDIA NRAS checks of `verify --online`, a line
-  that no payout has run through NEAR Intents yet, and the trademark notices, which say no
-  partnership or endorsement is implied. The README's License line now says Probarion is designed
-  to pay through Base and Solana, since no payout has run there, and the 0.1.1 release row links
-  the registry listing. `apps/web/test/built-on.test.ts` holds each fact to the README, the
-  evidence, the ledgers and the package files, checks every link offline, and pins the paths of
-  each logo to its owner's file.
+  TEE image not pinned); each row links its evidence. Under the card, four cards name where
+  Probarion ships: the npm public registry (`probarion`, `@probarion/core`, `@probarion/sdk` and
+  `@probarion/mcp` 0.1.1, with provenance), the official MCP Registry
+  (`io.github.probarion/probarion` 0.1.1), GitHub (the MIT source and the CI with the sandbox tests
+  and the reproducible build) and the Chrome Web Store (the extension 0.1.0, shown with Probarion's
+  own mark). NEAR's unmodified logo stands in for its name; the npm, MCP and GitHub logos sit
+  unmodified above their cards' names and are hidden from screen readers, which read the names. The
+  section ends with the Intel TDX and NVIDIA NRAS checks of `verify --online`, a line that no
+  payout has run through NEAR Intents yet, and the trademark notices, which say no partnership or
+  endorsement is implied. The README's License line now says Probarion is designed to pay through
+  Base and Solana, since no payout has run there, and the 0.1.1 release row links the registry
+  listing. `apps/web/test/built-on.test.ts` holds each fact to the README, the evidence, the
+  ledgers and the package files, checks every link offline, and pins the paths of each logo to its
+  owner's file.
 - The Payables agent paid an invoice on its own with an attested model for the first time, on
   testnet on 2026-11-12, recorded in `docs/evidence/demo-vault/README.md`. At 01:09 UTC
   `invoice-INV-2009.txt`, 2.00 test USDC to `probarion-payee.testnet` under PO-1001, went in on the

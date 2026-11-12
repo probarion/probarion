@@ -287,6 +287,6 @@ that file holds 6. This record does not include such a run. The invoice's sha256
 - **Withdraw all only.** The withdraw was Withdraw all, the console's only withdraw button, with the whole 1 test
   USDC.
 - **Freeze elsewhere.** Freeze and Unfreeze were tried on the demo vault on 2026-11-11 and again on 2026-11-12
-  ([its record](../demo-vault/README.md#2026-11-12-filmed-a-second-paid-invoice-freeze-and-unfreeze)), not on this
-  vault.
+  ([its record](../demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)),
+  not on this vault.
 - **Test tokens.** Nothing here moved real money.

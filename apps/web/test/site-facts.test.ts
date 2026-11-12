@@ -782,7 +782,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
           start: "Payables, the reference agent",
           says: [
             "**Live on NEAR testnet**",
-            "On 2026-11-12 it paid an invoice on its own with an attested model for the first time",
+            "On 2026-11-12 it paid an invoice on its own with an attested model: NEAR AI Cloud's",
             "Those are two invoices, with test tokens; Payables has not run on mainnet",
             "until the reconcile job is built",
           ],
