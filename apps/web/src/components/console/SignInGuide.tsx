@@ -11,7 +11,7 @@ import type { Network } from "@/lib/config";
  */
 export const TESTNET_VAULT_DEPOSIT_NEAR = 3.3;
 
-const link = "text-ink underline decoration-ink/30 hover:decoration-ink";
+const link = "text-ink underline decoration-ink/60 hover:decoration-ink";
 
 /** What signing in is for, and the account and deposit it takes on this network. */
 export function SignInIntro({ network }: { network: Network }) {
@@ -22,7 +22,7 @@ export function SignInIntro({ network }: { network: Network }) {
         your agent a key that can only call <code>spend</code>. A vault&apos;s approvers sign in
         here too, to approve or reject a held payment.
       </p>
-      <p className="mt-3 text-mute">
+      <p className="mt-4 text-mute">
         {network === "testnet"
           ? `You need a NEAR testnet account, such as name.testnet. Creating a vault later takes about ${TESTNET_VAULT_DEPOSIT_NEAR} test NEAR, which stays in the vault for its storage and gas and cannot be withdrawn.`
           : "You need a NEAR mainnet account. Vaults cannot be created on mainnet yet: its factory is not deployed."}
@@ -42,7 +42,7 @@ export function JustLooking() {
         </RouteLink>{" "}
         <span className="whitespace-nowrap">(no wallet needed)</span>
       </p>
-      <p className="mt-3">
+      <p className="mt-4">
         <RouteLink route="/terms" className={link}>
           Terms
         </RouteLink>{" "}

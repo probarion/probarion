@@ -18,8 +18,10 @@ export function isCurrentTab(pathname: string | null, base: string, path: string
 // Each tab is a 44px target, all at one weight so switching tabs moves nothing. The open one is ink with an ink
 // underline, drawn over the nav's hairline; the others are muted. One row: on a phone it scrolls sideways.
 const tab = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap border-b-2 px-2";
-const openTab = `${tab} border-ink text-ink`;
-const otherTab = `${tab} border-transparent text-mute hover:text-ink`;
+// Forced colours drop the colours and show a transparent border: the open tab takes the selection colour, the others
+// the page colour, so only the open one is underlined there too.
+const openTab = `${tab} border-ink text-ink forced-colors:border-[Highlight]`;
+const otherTab = `${tab} border-transparent text-mute hover:text-ink forced-colors:border-[Canvas]`;
 
 // A tab whose page is not built yet (see PLANNED_ROUTES) is left out until it lands.
 export function VaultNav({ vault }: { vault: string }) {
@@ -45,7 +47,7 @@ export function VaultNav({ vault }: { vault: string }) {
             {isNew ? (
               <span
                 aria-hidden="true"
-                className="ml-1 text-[10px] font-semibold tracking-[.08em] text-gold-ink uppercase"
+                className="ml-1 text-xs font-semibold tracking-[.08em] text-gold-ink uppercase"
               >
                 new
               </span>

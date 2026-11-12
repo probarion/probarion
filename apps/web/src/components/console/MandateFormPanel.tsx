@@ -353,7 +353,7 @@ export function MandateFormPanel(props: {
           className="mb-3 rounded-2xl border border-line bg-paper p-4 text-sm"
         >
           <h3 className="mb-2 font-semibold">You are about to create</h3>
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1">
+          <dl className="grid grid-cols-1 gap-y-1 sm:grid-cols-[max-content_1fr] sm:gap-x-6 [&>dd]:wrap-anywhere max-sm:[&>dd]:mb-1 max-sm:[&>dt]:text-mute">
             <dt>Name</dt>
             <dd>{check.input.label}</dd>
             <dt>Pays</dt>

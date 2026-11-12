@@ -27,7 +27,7 @@ export function TelegramConnect({ connect }: { connect: () => Promise<TelegramSt
         <p className="mt-3 text-sm">
           Open{" "}
           <ExternalLink
-            className="mono text-ink underline decoration-ink/30 break-all"
+            className="mono text-ink underline decoration-ink/60 break-all"
             href={state.link}
           >
             {state.link.replace("https://", "")}

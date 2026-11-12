@@ -43,7 +43,7 @@ export default async function StatusPage() {
     log.error("status.report_failed", { network, error });
   }
   return (
-    <div className={`${s.site} ${s.wrap} ${c.page}`}>
+    <div className={`${s.site} ${s.wrap} ${c.page} ${c.reading}`}>
       <p className={s.eyebrow}>{P.eyebrow}</p>
       <h1 className={c.title}>{P.title}</h1>
       <p className={c.lede}>{P.lede(network)}</p>

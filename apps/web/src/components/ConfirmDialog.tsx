@@ -93,7 +93,7 @@ export function ConfirmDialog({
         ) : null}
         {/* An account id has no spaces to break at: a 64-character implicit one, or a long name, wraps anywhere
             in the title, the body and the footnote instead of pushing the dialog sideways. */}
-        <h2 id={`${id}-title`} className="text-[22px] font-light tracking-tight wrap-anywhere">
+        <h2 id={`${id}-title`} className="text-2xl font-light tracking-tight wrap-anywhere">
           {options.title}
         </h2>
         <p id={`${id}-body`} className="mt-2 whitespace-pre-line text-sm text-ink/80 wrap-anywhere">

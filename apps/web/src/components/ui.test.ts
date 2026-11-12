@@ -146,7 +146,11 @@ describe("the console kit", () => {
           "focus-visible:outline-gold-small",
         ]),
       );
-      expect(classes(cls), name).toContain("disabled:opacity-50");
+      // Red dims less than ink, so a disabled red label still reads at 4.5:1 (typography-aaa.test.ts).
+      const dimmed = classes(cls).filter((c) => c.startsWith("disabled:opacity-"));
+      expect(dimmed, name).toEqual([
+        name.startsWith("danger") ? "disabled:opacity-75" : "disabled:opacity-65",
+      ]);
       expect(cls, name).not.toMatch(/focus-visible:outline-(?:ink|bad)\b/);
     }
   });
@@ -213,7 +217,7 @@ describe("the console kit", () => {
     );
   });
 
-  it("a card is a hairline panel with a large radius, and its title is light and large", () => {
+  it("a card is a hairline panel with a large radius, and its title is light only at 24px, large text", () => {
     const html = renderToStaticMarkup(
       createElement(Card, { title: "Held for approval" } as ComponentProps<typeof Card>, "x"),
     );
@@ -221,7 +225,7 @@ describe("the console kit", () => {
       expect.arrayContaining(["rounded-3xl", "border", "border-line", "bg-surface"]),
     );
     expect(classes(attr(html, "h2", "class") ?? "")).toEqual(
-      expect.arrayContaining(["text-[22px]", "font-light"]),
+      expect.arrayContaining(["text-2xl", "font-light"]),
     );
   });
 

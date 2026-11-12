@@ -35,6 +35,14 @@ export function ScrollRegion({
       className={className}
       aria-label={label}
       tabIndex={scrolls ? 0 : undefined}
+      onFocus={(event) => {
+        // Chrome leaves a focused element where it is while any part of it shows, so a link mostly outside the panel
+        // would keep most of its focus ring out of sight. A keyboard focus brings it in; a click does not, so the panel
+        // does not move under the pointer.
+        const target = event.target;
+        if (target !== event.currentTarget && target.matches(":focus-visible"))
+          target.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }}
     >
       {children}
     </section>

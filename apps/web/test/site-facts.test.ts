@@ -1812,12 +1812,11 @@ describe("colours", () => {
     return (hi + 0.05) / (lo + 0.05);
   };
 
-  it("keep small text at WCAG AA on the surfaces it sits on", () => {
+  it("keep small text at WCAG AAA (7:1) on the surfaces it sits on; gold-small is for large text and rings only", () => {
     const pairs: [string, string][] = [
       ["ink", "paper"],
       ["mute", "paper"],
       ["mute", "surface"],
-      ["gold-small", "paper"],
       ["ok", "ok-bg"],
       ["ok", "surface"],
       ["bad", "bad-bg"],
@@ -1840,11 +1839,11 @@ describe("colours", () => {
       ["gold-bright", "band"],
     ];
     for (const [fg, bg] of pairs) {
-      expect(contrast(token(fg), token(bg)), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(token(fg), token(bg)), `${fg} on ${bg}`).toBeGreaterThanOrEqual(7);
     }
   });
 
-  it("keep the gold headline at 3:1 on paper, all along its gradient", () => {
+  it("keep the gold headline at 4.5:1 on paper (WCAG AAA for large text), all along its gradient", () => {
     const gradient = /--gradient-gold-text:\s*linear-gradient\(([^;]+)\);/.exec(css)?.[1] ?? "";
     const stops = [...gradient.matchAll(/(#[0-9a-f]{6})\s+(\d+)%/gi)].map((m) => m[1] ?? "");
     expect(stops.length).toBeGreaterThan(1);
@@ -1858,7 +1857,7 @@ describe("colours", () => {
     for (const [i, stop] of stops.slice(1).entries()) {
       for (let t = 0; t <= 1; t += 0.01) {
         const colour = mix(stops[i] ?? stop, stop, t);
-        expect(contrast(colour, token("paper")), colour).toBeGreaterThanOrEqual(3);
+        expect(contrast(colour, token("paper")), colour).toBeGreaterThanOrEqual(4.5);
       }
     }
   });

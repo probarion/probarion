@@ -50,7 +50,7 @@ export default async function CanaryRules({
   const via = parseVia((await searchParams).via);
   const rules = rulesCopy(await softRequestNetwork(), LINKS);
   return (
-    <div className={`${s.site} ${s.wrap} ${c.page}`}>
+    <div className={`${s.site} ${s.wrap} ${c.page} ${c.reading}`}>
       <p className={s.eyebrow}>{RULES_HEAD.eyebrow}</p>
       <h1 className={c.title}>{RULES_HEAD.title}</h1>
       <ol className={c.rules}>
