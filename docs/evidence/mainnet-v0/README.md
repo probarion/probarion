@@ -112,5 +112,6 @@ node packages/cli/dist/bin.js verify --offline docs/evidence/mainnet-v0/snapshot
 
 [`contracts/deployments/mainnet.json`](../../../contracts/deployments/mainnet.json) records the nine transactions of
 the vault, from its creation to the refusal. [`docs/mainnet-proof.json`](../../mainnet-proof.json) records the seven
-the root README cites: the deploy, the lock, the USDC float, the agent key, mandate 1, spend 1 and the refusal. The
-two transactions of the runbook's section 0.4, the funder and `probarion.near`, are recorded only in this README.
+mainnet ones the root README cites (its other entries are testnet): the deploy, the lock, the USDC float, the agent
+key, mandate 1, spend 1 and the refusal. The two transactions of the runbook's section 0.4, the funder and
+`probarion.near`, are recorded only in this README.

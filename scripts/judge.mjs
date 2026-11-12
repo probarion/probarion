@@ -483,6 +483,18 @@ export const SNAPSHOTS = [
     expect: { exit: 0, checks: ALL_PASS },
   },
   {
+    id: "verify-demo-snapshot-1111",
+    file: "docs/evidence/demo-vault/snapshot-2026-11-11.json",
+    committed: "docs/evidence/demo-vault/verify-2026-11-11.txt",
+    title: "verify --offline: demo vault snapshot with three attested decisions passes a to i",
+    ref: {
+      file: "docs/evidence/demo-vault/README.md",
+      quote:
+        "which read the chain itself: checks a to i pass, and check e finds 3 attested decisions",
+    },
+    expect: { exit: 0, checks: ALL_PASS },
+  },
+  {
     id: "verify-402-snapshot-1109",
     file: "docs/evidence/402-vault/snapshot-2026-11-09.json",
     committed: "docs/evidence/402-vault/verify-2026-11-09.txt",
@@ -526,6 +538,18 @@ export const SNAPSHOTS = [
     ref: {
       file: "README.md",
       quote: "With it, a live `verify` on 2026-11-11 passed checks a to i",
+    },
+    expect: { exit: 0, checks: ALL_PASS },
+  },
+  {
+    // No `committed`: the live run that wrote this snapshot was not kept, and verify-2026-11-11.txt beside it is the
+    // offline run on the snapshot, not a live one.
+    id: "verify-trial-vault-snapshot",
+    file: "docs/evidence/trial-vault/snapshot-2026-11-11.json",
+    title: "verify --offline: trial vault snapshot (a real MCP client) passes a to i",
+    ref: {
+      file: "docs/evidence/trial-vault/README.md",
+      quote: "npx probarion verify --offline docs/evidence/trial-vault/snapshot-2026-11-11.json",
     },
     expect: { exit: 0, checks: ALL_PASS },
   },
