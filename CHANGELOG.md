@@ -15,6 +15,24 @@ The software is an unaudited beta.
 
 ### Added
 
+- The proof page checks the TEE live: a "Check the TEE now" card after the decisions, the same on
+  every vault's page. The visitor's browser draws a 32-byte nonce and sends only that to a new
+  route, `GET /api/tee/check`. The route asks NEAR AI Cloud's public attestation report for it,
+  with no API key, for the model Payables uses (`NEARAI_MODEL`, else the SDK's preferred private
+  models), and checks each model attestation in it: the nonce in `report_data[32..64]` and
+  `request_nonce`, the signing address in `report_data[0..32]`, O1 (Intel DCAP on the TDX quote,
+  held to the SDK's policy) and O2 (the GPU payload carries the nonce, and NVIDIA NRAS verifies
+  it). The browser checks both bindings again with its own nonce. A check that cannot run within
+  24 seconds is `unavailable`, not a pass or a fail. The card checks the TEE that serves the model
+  now, not the decisions above it, which keep their checks A1 to A7, and the TEE measurement is
+  not pinned. The route passes on five values per attestation and nothing else of the report
+  (about 290 KB), and its rate limit, `teeCheck`, is one counter of 30 a minute for all visitors
+  together, so it stores nothing about a visitor. `@nearai/inference-sdk` 0.2.1, until now only
+  the SDK's optional peer, is a dependency of the web app, loaded by a literal import so the
+  build traces it, with `@phala/dcap-qvl`, into the route. On 2026-11-12 a local production build
+  of this change ran the route against `Qwen/Qwen3.8-27B` three times, and O1 and O2 ran live:
+  all four checks passed each time, in 1.8 to 5.0 seconds.
+
 - The demo video is posted on X, in the build's demo post of 2026-11-12:
   <https://x.com/probarionhq/status/2120882499689836651>. It is a 1:57 cut recorded on the live product,
   on NEAR testnet with test USDC. The README links it from its top row of links and from the filmed run

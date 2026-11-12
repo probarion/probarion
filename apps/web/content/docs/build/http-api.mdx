@@ -1,4 +1,4 @@
-There is no public agent HTTP API. The routes under `/api` serve the hosted site and its console: sign-in, Payables, the browser extension, top-up, the Canary, health checks, scheduled jobs, Telegram and the alert links. The last table covers the three files a vault's proof page offers, under `/proof` instead. An agent pays from its own process through the SDK, which sends `spend` to the vault on NEAR with the agent's own key. See [Let an agent pay](/docs/build/let-an-agent-pay).
+There is no public agent HTTP API. The routes under `/api` serve the hosted site and its console: sign-in, Payables, the browser extension, top-up, the Canary, the proof page's TEE check, health checks, scheduled jobs, Telegram and the alert links. The last table covers the three files a vault's proof page offers, under `/proof` instead. An agent pays from its own process through the SDK, which sends `spend` to the vault on NEAR with the agent's own key. See [Let an agent pay](/docs/build/let-an-agent-pay).
 
 ## How to read the tables
 
@@ -87,6 +87,12 @@ On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your
 `POST /api/canary/attempt` is the public Canary challenge, which is Live on testnet. Mainnet has no Canary vault, so the route answers `503 not_ready` there. A visitor's text goes to a deliberately gullible model, then through the SDK's `process()` as an invoice does: `code` is what the code rules and the vault decided. `raw` says whether a payment the code refused was also sent to the vault unfiltered, which happens only when the vault's free dry run says it would refuse it too. An attempt is stored as hashes and labels, never as the visitor's text, and a visitor is told apart by a keyed hash of the `pb_canary` cookie and of the IP address. `429 budget` carries a `Retry-After` with the seconds until that limit is over.
 
 <RefTable id="http-api-canary" />
+
+## TEE check
+
+`GET /api/tee/check` is the live TEE check on a vault's proof page. The visitor's browser draws a nonce of 32 random bytes and sends it as `?nonce=`, and nothing else. The server asks NEAR AI Cloud's public attestation report, with no API key, for that nonce and the model Payables uses (`NEARAI_MODEL`, else the SDK's preferred private models). On each model attestation of the report, four at most, it checks that `report_data[32..64]` and `request_nonce` are the nonce, that `report_data[0..32]` is the signing address, O1 (Intel DCAP on the TDX quote) and O2 (NVIDIA NRAS on the GPU evidence). A check that cannot run, because NEAR AI, Intel or NVIDIA does not answer within 24 seconds or the verifier does not load, is `unavailable`, not `pass` or `fail`. The answer carries the few values of the report the browser needs to check both bindings again with its own nonce. The check reads the TEE that serves the model now, not any past decision, and the TEE measurement is not pinned. Its rate limit is one counter for all visitors together, so it stores nothing about a visitor.
+
+<RefTable id="http-api-tee" />
 
 ## Health
 
