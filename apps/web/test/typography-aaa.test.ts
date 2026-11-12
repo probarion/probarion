@@ -433,8 +433,11 @@ describe("text contrast at WCAG AAA (1.4.6), from the tokens and the CSS modules
 
 // --- Visual presentation (1.4.8), sizes and weights ------------------------------------------------------------------
 
-/** Selectors that set a tight line for one line of text, not a block: the logo, a button's label, a one-glyph mark. */
-const TIGHT_LINE_OK = new Set([".brand", ".scenario", ".pick", ".tipMark"]);
+/**
+ * Selectors that set a tight line for one line of text, not a block: the logo, a button's label, a one-glyph mark, and
+ * `.boName`, the Built on section's `h3` ("NEAR AI Cloud"), set as tall as NEAR's logo beside it.
+ */
+const TIGHT_LINE_OK = new Set([".brand", ".scenario", ".pick", ".tipMark", ".boName"]);
 const HEADING = /(?:^|[\s>+~])h[1-6]\b|title|Title|\.h[12]\b/;
 
 describe("reading text (WCAG 1.4.8, sizes and weights)", () => {
