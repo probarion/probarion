@@ -303,6 +303,7 @@ export const CONCEPTS: readonly DocPage[] = [
       "docs/evidence/mainnet-v0/verify-2026-11-11.txt",
       "docs/evidence/demo-vault/README.md",
       "docs/evidence/demo-vault/verify-2026-11-12.txt",
+      "docs/evidence/demo-vault/verify-2026-11-12-video.txt",
     ],
     reviewed: "2026-11-12",
     phase: 1,

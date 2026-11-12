@@ -487,7 +487,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
 
   it("that the model run is recorded on testnet, checked offline and online, with the measurement not pinned", () => {
     expect(JOURNEY.steps[1].tag).toBe(
-      "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The testnet demo vault's ledger holds four more, by Payables, which pass A1 to A7 offline and, on 2026-11-12, O1 and O2 online; that day the code allowed the fourth, and the vault paid that invoice, 2.00 test USDC. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run.",
+      "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The testnet demo vault's ledger holds five more, by Payables, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. That day the code allowed the fourth and the fifth, and the vault paid each invoice, 2.00 test USDC. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run.",
     );
     expect(JOURNEY.steps[1].tag).not.toMatch(/not recorded/);
     const row = README.split("\n").find((l) => l.startsWith("| NEAR AI Cloud adapter"));
@@ -783,7 +783,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
           says: [
             "**Live on NEAR testnet**",
             "On 2026-11-12 it paid an invoice on its own with an attested model for the first time",
-            "That is one invoice, with test tokens; Payables has not run on mainnet",
+            "Those are two invoices, with test tokens; Payables has not run on mainnet",
             "until the reconcile job is built",
           ],
         },
@@ -799,7 +799,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
             "**Recorded on NEAR testnet**",
             "pass A1 to A7 offline",
             "the online checks O1 and O2",
-            "all four of the demo vault's attested decisions passed O1 and O2",
+            "the four attested decisions the demo vault held then, entries 10 to 13, passed O1 and O2",
             "The TEE measurement is not pinned",
           ],
         },

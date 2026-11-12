@@ -15,6 +15,35 @@ The software is an unaudited beta.
 
 ### Added
 
+- Payables paid a second invoice on its own with an attested model, on testnet on 2026-11-12 at
+  09:52 UTC, in a run filmed for the demo video, recorded in a new section of
+  `docs/evidence/demo-vault/README.md`. `invoice-INV-2010.txt` (2.00 test USDC under PO-1001) went
+  in on the demo vault's Payables page, signed in as the owner, while probarion.xyz ran `main` as
+  promoted by PR #130. `Qwen/Qwen3.8-27B` proposed paying it (confidence 0.98) with the mandate's
+  account in `address` next to the chain `base`, the shape entry 12 was refused for on 2026-11-11.
+  PR #120 takes that shape as the mandate's payee, so every code rule passed, and ledger entry 15
+  records `allow`, decided by `model+rules`. The agent key sent spend 5, which paid 2.00 test USDC
+  to `probarion-payee.testnet`, entry 16 records it paid, and anchor 12 covers all 17 entries.
+  Mandate 1 is now exhausted (5 of 5 uses, 14 of its 20 test USDC), and the vault held 11 test
+  USDC after the run. At 10:05 UTC the owner froze and unfroze the vault from the console, signed
+  in Meteor (the unfreeze with 1 yoctoNEAR), a second dated record after the one of 2026-11-11;
+  `get_config` read `frozen: false` after. The proof page's snapshot of 10:28:54 UTC passes checks
+  a to i offline with the repository's CLI (`9 passed, 0 failed, 0 unproven`): check d finds 5
+  spends on chain, each bound to its own decision, and check e finds 5 attested decisions that pass
+  A1 to A7. The online run of 2026-11-12 was at 01:10 UTC, before entry 15, so its O1 and O2 cover
+  entries 10 to 13. The TEE measurement is not pinned, so this does not show which model image ran,
+  and A8 was not run. Those are two invoices with test tokens, and Payables has not run on mainnet.
+  `docs/evidence/demo-vault/` adds the invoice, the ledger of 17 entries
+  (`ledger-2026-11-12-video.jsonl`), the snapshot and the offline verify output; `pnpm judge`
+  checks the new snapshot offline (`verify-demo-snapshot-1112-video`) and now checks that the live
+  ledger starts with `ledger-2026-11-12-video.jsonl`; `docs/mainnet-proof.json` records the spend,
+  the anchor, the freeze and the unfreeze as testnet transactions. The landing page's NEAR AI Cloud
+  row now gives 7 attested decisions on testnet (2 on the Canary, 5 by Payables), 6 of which passed
+  O1 and O2 online, and two invoices paid. The README's Status rows for the NEAR AI Cloud adapter,
+  Payables and the web console, its NEAR AI Cloud row and demo vault section, SECURITY.md, the
+  threat model, the comparison page, the privacy page and the docs pages that named one paid
+  invoice say what ran.
+
 - A console try on testnet on 2026-11-12, from 03:29 to 03:36 UTC, on
   `trial.vaults.probarion.testnet`, recorded in a new section of
   `docs/evidence/trial-vault/README.md`. Claude drove the console at probarion.xyz in the owner's
@@ -45,9 +74,9 @@ The software is an unaudited beta.
 - The landing page has a "Built on NEAR, with NEAR AI Cloud" section after the status list. One
   card holds a row for NEAR, where payments are made (the vault and the factory on testnet, and
   `v0.probarion.near` on mainnet with 1 payment and 1 refusal and no Base payout yet), and one for
-  NEAR AI Cloud, the model that advises (6 attested decisions that pass A1 to A7 offline and passed
-  O1 and O2 online, the invoice Payables paid on its own on 2026-11-12, and the TEE image not
-  pinned); each row links its evidence. Under the card, four cards name where Probarion ships:
+  NEAR AI Cloud, the model that advises (7 attested decisions that pass A1 to A7 offline, 6 of
+  which passed O1 and O2 online, the two invoices Payables paid on its own on 2026-11-12, and the
+  TEE image not pinned); each row links its evidence. Under the card, four cards name where Probarion ships:
   the npm public registry (`probarion`, `@probarion/core`, `@probarion/sdk` and `@probarion/mcp`
   0.1.1, with provenance), the official MCP Registry (`io.github.probarion/probarion` 0.1.1),
   GitHub (the MIT source and the CI with the sandbox tests and the reproducible build) and the
@@ -68,8 +97,8 @@ The software is an unaudited beta.
   model proposed paying it (confidence 0.98) with the payee in `near_account` and no chain or
   address, every code rule passed, and ledger entry 13 records `allow`, decided by `model+rules`.
   The agent key sent spend 4, which paid 2.00 test USDC to the mandate's payee, entry 14 records it
-  paid, and the ledger key anchored all 15 entries. Mandate 1 has now spent 12 of its 20 test USDC
-  and has 1 of its 5 uses left. That payee hint did not depend on PR #120: the rule took that shape
+  paid, and the ledger key anchored all 15 entries. Mandate 1 had then spent 12 of its 20 test USDC
+  and had 1 of its 5 uses left. That payee hint did not depend on PR #120: the rule took that shape
   as the mandate's payee before the fix too. The payee hint differed in each of entries 10 to 13, by
   two models (`z-ai/glm-5.3-flash` for 10 and 11, `Qwen/Qwen3.8-27B` for 12 and 13). A live `verify`
   with release 0.1.1 of the 15 entries passed checks a to i (`9 passed, 0 failed, 0 unproven`), and
@@ -82,7 +111,7 @@ The software is an unaudited beta.
   page's status list shows it as "Live on testnet", and the NEAR AI Cloud rows, the demo vault's
   section, SECURITY.md, the threat model, the comparison page, the privacy page and the docs say
   what ran; the docs pages that said no run of `process()` was recorded now name this one.
-  `pnpm judge` checks that the live ledger starts with `ledger-2026-11-12.jsonl`.
+  `pnpm judge` then checked that the live ledger started with `ledger-2026-11-12.jsonl`.
 
 - The owner run of 2026-11-11 on testnet, from the console at probarion.xyz with a real wallet
   (Meteor): Claude drove the console in the owner's browser and the owner signed each wallet prompt,

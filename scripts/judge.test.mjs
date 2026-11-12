@@ -159,7 +159,7 @@ function fakeExec(calls, overrides = {}) {
   };
 }
 
-const committedLedger = read("docs/evidence/demo-vault/ledger-2026-11-12.jsonl");
+const committedLedger = read("docs/evidence/demo-vault/ledger-2026-11-12-video.jsonl");
 
 /**
  * RPC answers ok, the proof page serves the committed ledger. `fail` makes every request fail; `ledger` is what
@@ -322,7 +322,7 @@ describe("a run", () => {
     });
     assert.match(
       row(r, "live-verify-demo-vault").detail,
-      /its first 15 entries are the committed ledger's, link for link \(docs\/evidence\/demo-vault\/ledger-2026-11-12\.jsonl\)/,
+      /its first 17 entries are the committed ledger's, link for link \(docs\/evidence\/demo-vault\/ledger-2026-11-12-video\.jsonl\)/,
     );
   });
 
@@ -850,7 +850,7 @@ describe("the committed live runs", () => {
     assert.equal(ledgerPrefix(committedLedger, `${committedLedger}${lines[0]}\n`).ok, true);
     assert.match(
       ledgerPrefix(committedLedger, lines.slice(0, 3).join("\n")).detail,
-      /has 3 entries, fewer than the committed 15/,
+      /has 3 entries, fewer than the committed 17/,
     );
     const edited = [...lines];
     edited[2] = edited[2].replace(/"link":"[0-9a-f]/, '"link":"z');

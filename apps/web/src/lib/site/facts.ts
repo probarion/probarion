@@ -452,7 +452,7 @@ export const JOURNEY = {
       n: 2,
       title: "A private model proposes, if there is one",
       body: "It runs in a TEE on NEAR AI Cloud. Its attestation is bound by a nonce to one position in one vault's ledger. It only gives advice: it cannot widen a mandate.",
-      tag: "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The testnet demo vault's ledger holds four more, by Payables, which pass A1 to A7 offline and, on 2026-11-12, O1 and O2 online; that day the code allowed the fourth, and the vault paid that invoice, 2.00 test USDC. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run.",
+      tag: "On testnet, the Canary's ledger of 2026-11-10, published in the repository, holds two attested decisions that pass A1 to A7 offline and, on 2026-11-11, O1 and O2 online. The testnet demo vault's ledger holds five more, by Payables, which pass A1 to A7 offline; four of them, entries 10 to 13, also passed O1 and O2 online on 2026-11-12. That day the code allowed the fourth and the fifth, and the vault paid each invoice, 2.00 test USDC. The TEE measurement is not pinned, so this does not show which model image ran, and A8 was not run.",
       panelLabel: "What the proposal is bound to",
       panel: [
         { note: "What the proposal is bound to" },
@@ -917,9 +917,9 @@ export const BUILT_ON = {
       href: LINKS.nearAiCloud,
       body: "An optional private model, run in a TEE, reads the invoice and proposes. Code decides, and the contract has the last word.",
       checks: [
-        "6 attested decisions on testnet: 2 on the Canary, 4 by Payables",
-        "All 6 pass A1 to A7 offline, and passed O1 and O2 online",
-        "On 2026-11-12 Payables paid one invoice on its own with it: 2 test USDC",
+        "7 attested decisions on testnet: 2 on the Canary, 5 by Payables",
+        "All 7 pass A1 to A7 offline, and 6 passed O1 and O2 online",
+        "On 2026-11-12 Payables paid two invoices on its own with it: 2 test USDC each",
       ],
       note: "The TEE image is not pinned yet, so this does not show which model image ran.",
       links: [

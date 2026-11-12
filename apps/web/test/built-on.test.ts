@@ -264,15 +264,15 @@ describe("the built-on facts", () => {
     ).toContain("## The mainnet vault");
   });
 
-  it("NEAR AI Cloud: 6 attested decisions that pass A1 to A7 and O1 and O2, one paid invoice, and the image not pinned", () => {
+  it("NEAR AI Cloud: 7 attested decisions that pass A1 to A7, 6 of them O1 and O2, two paid invoices, and the image not pinned", () => {
     const [, ai] = BUILT_ON.rows;
     expect(ai.body).toBe(
       "An optional private model, run in a TEE, reads the invoice and proposes. Code decides, and the contract has the last word.",
     );
     expect(ai.checks).toEqual([
-      "6 attested decisions on testnet: 2 on the Canary, 4 by Payables",
-      "All 6 pass A1 to A7 offline, and passed O1 and O2 online",
-      "On 2026-11-12 Payables paid one invoice on its own with it: 2 test USDC",
+      "7 attested decisions on testnet: 2 on the Canary, 5 by Payables",
+      "All 7 pass A1 to A7 offline, and 6 passed O1 and O2 online",
+      "On 2026-11-12 Payables paid two invoices on its own with it: 2 test USDC each",
     ]);
     const row = readmeRow("NEAR AI Cloud adapter");
     expect(row).toContain(
@@ -280,10 +280,15 @@ describe("the built-on facts", () => {
     );
     expect(row).toContain("pass A1 to A7 offline and, on 2026-11-11, the online checks O1 and O2");
     expect(row).toContain(
-      "The demo vault's ledger holds 4 more, made by Payables, which pass A1 to A7",
+      "The demo vault's ledger holds 5 more, made by Payables, which pass A1 to A7",
     );
-    expect(row).toContain("all four of the demo vault's attested decisions passed O1 and O2");
+    expect(row).toContain(
+      "the four attested decisions the demo vault held then, entries 10 to 13, passed O1 and O2",
+    );
     expect(row).toContain("the vault paid 2.00 test USDC as spend 4");
+    expect(row).toContain(
+      "later that day the same happened for INV-2010, which the vault paid as spend 5",
+    );
     expect(row).toContain(
       "The TEE measurement is not pinned, so this does not show which model image ran",
     );
@@ -291,7 +296,7 @@ describe("the built-on facts", () => {
       "The TEE image is not pinned yet, so this does not show which model image ran.",
     );
     expect(statusOf("Live attested model run").pill).toContain("image not pinned");
-    // The ledgers themselves: 2 attested decisions on the Canary, 4 on the demo vault, the last of them allowed.
+    // The ledgers themselves: 2 attested decisions on the Canary, 5 on the demo vault, the last two of them allowed.
     const attested = (entries: ReturnType<typeof jsonl>) =>
       entries.filter(
         (e) => e.body.kind === "decision" && e.body.evidence?.provider === "near-ai-cloud",
@@ -299,13 +304,19 @@ describe("the built-on facts", () => {
     expect(
       attested(jsonl(ROOT, "docs", "evidence", "canary-vault", "ledger-2026-11-10.jsonl")),
     ).toHaveLength(2);
-    const demo = jsonl(ROOT, "docs", "evidence", "demo-vault", "ledger-2026-11-12.jsonl");
-    expect(attested(demo).map((e) => e.body.seq)).toEqual([10, 11, 12, 13]);
-    const paid = demo.find((e) => e.body.seq === 13)?.body;
-    expect(paid).toMatchObject({ kind: "decision", verdict: "allow", decided_by: "model+rules" });
-    expect(demo.find((e) => e.body.seq === 14)?.body.kind).toBe("payment");
+    const demo = jsonl(ROOT, "docs", "evidence", "demo-vault", "ledger-2026-11-12-video.jsonl");
+    expect(attested(demo).map((e) => e.body.seq)).toEqual([10, 11, 12, 13, 15]);
+    for (const [decision, payment] of [
+      [13, 14],
+      [15, 16],
+    ]) {
+      const paid = demo.find((e) => e.body.seq === decision)?.body;
+      expect(paid).toMatchObject({ kind: "decision", verdict: "allow", decided_by: "model+rules" });
+      expect(demo.find((e) => e.body.seq === payment)?.body.kind).toBe("payment");
+    }
     const evidence = text(ROOT, "docs", "evidence", "demo-vault", "README.md");
     expect(evidence).toContain("## 2026-11-12: Payables pays on its own with an attested model");
+    expect(evidence).toContain("## 2026-11-12, filmed: a second paid invoice, freeze and unfreeze");
     expect(text(ROOT, "docs", "evidence", "demo-vault", "verify-online-2026-11-12.txt")).toContain(
       "4 GPU payloads bound to the request nonce and verified by NRAS (O2)",
     );
