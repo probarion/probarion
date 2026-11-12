@@ -15,6 +15,10 @@ The software is an unaudited beta.
 
 ### Added
 
+- The demo video is posted on X, in the build's demo post of 2026-11-12:
+  <https://x.com/probarionhq/status/2120882499689836651>. It is a 1:57 cut recorded on the live product,
+  on NEAR testnet with test USDC. The README links it from its top row of links and from the filmed run
+  in "On-chain proof", and `docs/evidence/demo-vault/README.md` links it from the section on that run.
 - Payables paid a second invoice on its own with an attested model, on testnet on 2026-11-12 at
   09:52 UTC, in a run filmed for the demo video, recorded in a new section of
   `docs/evidence/demo-vault/README.md`. `invoice-INV-2010.txt` (2.00 test USDC under PO-1001) went
