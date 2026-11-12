@@ -566,6 +566,19 @@ export const SNAPSHOTS = [
     expect: { exit: 0, checks: ALL_PASS },
   },
   {
+    // No `committed` either: verify-2026-11-12.txt beside this snapshot is the offline run on it, and the live run
+    // that wrote it was not kept.
+    id: "verify-trial-vault-snapshot-1112",
+    file: "docs/evidence/trial-vault/snapshot-2026-11-12.json",
+    title:
+      "verify --offline: trial vault snapshot after the console try (spend 4 rejected) passes a to i",
+    ref: {
+      file: "docs/evidence/trial-vault/README.md",
+      quote: "npx probarion verify --offline docs/evidence/trial-vault/snapshot-2026-11-12.json",
+    },
+    expect: { exit: 0, checks: ALL_PASS },
+  },
+  {
     id: "verify-mainnet-v0-snapshot",
     file: "docs/evidence/mainnet-v0/snapshot-2026-11-11.json",
     committed: "docs/evidence/mainnet-v0/verify-2026-11-11.txt",
