@@ -15,6 +15,24 @@ The software is an unaudited beta.
 
 ### Added
 
+- The landing page has a "Built on NEAR, with NEAR AI Cloud" section after the status list. One
+  card holds a row for NEAR, where payments are made (the vault and the factory on testnet, and
+  `v0.probarion.near` on mainnet with 1 payment and 1 refusal and no Base payout yet), and one for
+  NEAR AI Cloud, the model that advises (6 attested decisions that pass A1 to A7 offline and passed
+  O1 and O2 online, the invoice Payables paid on its own on 2026-11-12, and the TEE image not
+  pinned); each row links its evidence. Under the card, four cards name where Probarion ships:
+  the npm public registry (`probarion`, `@probarion/core`, `@probarion/sdk` and `@probarion/mcp`
+  0.1.1, with provenance), the official MCP Registry (`io.github.probarion/probarion` 0.1.1),
+  GitHub (the MIT source and the CI with the sandbox tests and the reproducible build) and the
+  Chrome Web Store (the extension 0.1.0, shown with Probarion's own mark). NEAR's unmodified logo
+  stands in for its name; the npm, MCP and GitHub logos sit unmodified above their cards' names and
+  are hidden from screen readers, which read the names. The section ends with the Intel TDX and NVIDIA NRAS checks of `verify --online`, a line
+  that no payout has run through NEAR Intents yet, and the trademark notices, which say no
+  partnership or endorsement is implied. The README's License line now says Probarion is designed
+  to pay through Base and Solana, since no payout has run there, and the 0.1.1 release row links
+  the registry listing. `apps/web/test/built-on.test.ts` holds each fact to the README, the
+  evidence, the ledgers and the package files, checks every link offline, and pins the paths of
+  each logo to its owner's file.
 - The Payables agent paid an invoice on its own with an attested model for the first time, on
   testnet on 2026-11-12, recorded in `docs/evidence/demo-vault/README.md`. At 01:09 UTC
   `invoice-INV-2009.txt`, 2.00 test USDC to `probarion-payee.testnet` under PO-1001, went in on the
