@@ -89,9 +89,10 @@ afterwards.
 | 17:14:19 | The owner unfreezes it (1 yoctoNEAR) | [`3ASttDax…`](https://testnet.nearblocks.io/txns/3ASttDaxksgoTRiwixoQUS39MZpmTA62zQrZHF19vYz7) |
 
 The same day three invoices went through Payables here with an attested NEAR AI model, and the code refused all
-three. No transaction was sent, and mandate 1 kept its uses. So the Payables agent has not yet paid an invoice on its
-own with an attested model. Entries 10 and 11 used `z-ai/glm-5.3-flash`, the SDK's first choice. For entry 12 the
-site's model was pinned to `Qwen/Qwen3.8-27B` with `NEARAI_MODEL`.
+three. No transaction was sent, and mandate 1 kept its uses. So that day the Payables agent had not yet paid an invoice
+on its own with an attested model; it did on 2026-11-12,
+[below](#2026-11-12-payables-pays-on-its-own-with-an-attested-model). Entries 10 and 11 used `z-ai/glm-5.3-flash`,
+the SDK's first choice. For entry 12 the site's model was pinned to `Qwen/Qwen3.8-27B` with `NEARAI_MODEL`.
 
 | Ledger entry | Invoice | What the model answered | Why the code refused |
 | --- | --- | --- | --- |
@@ -111,14 +112,14 @@ model's answer and its attestation:
 [entry 11](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-11) and
 [entry 12](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-12).
 
-### Check it again
+### The files of 2026-11-11
 
 [`ledger-2026-11-11.jsonl`](ledger-2026-11-11.jsonl) is the ledger as the proof page served it after entry 12:
 thirteen entries. Entries 10 to 12 hold each model response in full, the inputs of each request with the invoice text
 only as its sha256, the sha256 of the whole request, and the attestation evidence. Entries 7 to 9 are an invoice from
 the evening of 2026-11-09, `invoice-INV-2004.txt` in the console, that this record does not otherwise cover: 4 test
 USDC, sha256 `366f44db…`, refused while the owner had not confirmed it, then confirmed and held as spend 3, which the
-chain shows paid.
+chain shows paid. The ledger of 2026-11-12, [below](#check-it-again), starts with these thirteen entries, unchanged.
 
 [`verify-2026-11-11.txt`](verify-2026-11-11.txt) is a live run of release 0.1.1 from npm with that ledger, at
 23:44 UTC, which read the chain itself: checks a to i pass, and check e finds 3 attested decisions that pass A1 to
@@ -126,17 +127,66 @@ A7. [`verify-online-2026-11-11.txt`](verify-online-2026-11-11.txt) is an earlier
 on the ledger as it was then, the first twelve entries of this file: for entries 10 and 11, Intel DCAP finds a genuine
 TDX quote bound to the request (O1), and NVIDIA NRAS verifies a GPU payload bound to the request nonce (O2). An online
 run after entry 12, at 23:45 UTC, failed four times because Intel's quote collateral could not be fetched
-(`quote.collateral_unavailable`), so O1 and O2 are not recorded for entry 12. The TEE measurement is not pinned, so O1 does not show which image the
-TD runs, and A8, which would check the request against the invoice, was not run. With the committed ledger, the
-commands are:
-
-```bash
-npx probarion verify --network testnet --vault demo.vaults.probarion.testnet --ledger docs/evidence/demo-vault/ledger-2026-11-11.jsonl
-npx probarion verify --network testnet --vault demo.vaults.probarion.testnet --ledger docs/evidence/demo-vault/ledger-2026-11-11.jsonl --online
-```
-
-The first run wrote [`snapshot-2026-11-11.json`](snapshot-2026-11-11.json), which checks offline:
+(`quote.collateral_unavailable`), so that day O1 and O2 were not recorded for entry 12. The online run of 2026-11-12
+records them. The live run of 2026-11-11 wrote [`snapshot-2026-11-11.json`](snapshot-2026-11-11.json), which still
+checks offline:
 
 ```bash
 npx probarion verify --offline docs/evidence/demo-vault/snapshot-2026-11-11.json
+```
+
+A live run reads the chain as it is now, so run it with the newest ledger, as in [Check it again](#check-it-again).
+
+## 2026-11-12: Payables pays on its own with an attested model
+
+At 01:09 UTC [`invoice-INV-2009.txt`](invoice-INV-2009.txt), a copy of INV-2008 with only the number changed, went in
+with [`po-PO-1001.txt`](po-PO-1001.txt) on this vault's Payables page, in the console signed in as the owner. Claude
+drove the console in the owner's browser. probarion.xyz ran `main` as promoted by
+[PR #121](https://github.com/probarion/probarion/pull/121), and `NEARAI_MODEL` was still `Qwen/Qwen3.8-27B`. No wallet
+signature was needed: the vault's agent key signs spends. The console's row for the invoice reads "Paid on NEAR".
+
+| Ledger entries | Invoice | What the model answered | What the code and the contract did |
+| --- | --- | --- | --- |
+| 13, at 01:09:12, and 14, at 01:09:28 | [`invoice-INV-2009.txt`](invoice-INV-2009.txt): 2.00 test USDC to the mandate's payee, the same invoice with a new number | Pay 2.00 USDC under mandate 1 with confidence 0.98, with a payee hint that put the mandate's own payee, `probarion-payee.testnet`, in `near_account` and as the name, with no chain and no address. Its reasoning says the payee matches the mandate's, the amount is within `max_per_payment` and what is left, and the purpose hash matches | Every rule passed, and entry 13 records `allow`, decided by `model+rules`. The agent key sent spend 4 at 01:09:25 ([`EA7MbLts…`](https://testnet.nearblocks.io/txns/EA7MbLtsRjQUBbycfNyh6u1ieLNU5WXtyGy2K8eiPBuU)), and the contract paid 2.00 test USDC to `probarion-payee.testnet` (`ft_transfer` with the memo `probarion:4`). Entry 14 records spend 4 as paid. At 01:09:32 the ledger key anchored all 15 entries ([`CWjStzJd…`](https://testnet.nearblocks.io/txns/CWjStzJd9T7Qfwp1LEELx62NQTwvjrU1Y2a8kSeNYkjW)) |
+
+After the payment, `get_spend` read spend 4 as paid to `probarion-payee.testnet`. Mandate 1 had spent 12 of its 20
+test USDC and used 4 of its 5 payments, so one is left, with nothing reserved. The vault held 13 test USDC.
+
+The payee hint of entry 13 named the account in `near_account`, with no chain and no address. The rule took that shape
+as the mandate's payee before [PR #120](https://github.com/probarion/probarion/pull/120) too, so this payment did not
+depend on #120. A model's answer is not the same from run to run. For invoices that differ only in their number,
+`z-ai/glm-5.3-flash` gave the mandate's account next to the chain `base` in entry 10, then another account with the
+chain `solana` in entry 11, and `Qwen/Qwen3.8-27B` put the mandate's account in `address` next to `base` in entry 12
+and in `near_account` alone in entry 13.
+
+This is one invoice, on testnet, with test tokens that have no value. Payables has not run on mainnet. The invoice's
+sha256 is the `invoice_hash` of entry 13 and of spend 4. The proof page shows the decision, with the model's answer
+and its attestation: [entry 13](https://probarion.xyz/proof/demo.vaults.probarion.testnet#seq-13).
+
+### Check it again
+
+[`ledger-2026-11-12.jsonl`](ledger-2026-11-12.jsonl) is the vault's ledger after entry 14: fifteen entries, the first
+thirteen of them the file of 2026-11-11. Entries 10 to 13 hold each model response in full, the inputs of each request
+with the invoice text only as its sha256, the sha256 of the whole request, and the attestation evidence.
+
+[`verify-2026-11-12.txt`](verify-2026-11-12.txt) is a live run of release 0.1.1 from npm with that ledger, at
+01:10 UTC, which read the chain itself: checks a to i pass (`9 passed, 0 failed, 0 unproven`), check c finds 11
+anchors and no entry after the last anchored count of 15, check d finds 4 spends on chain, each bound to its own
+decision, and check e finds 4 attested decisions that pass A1 to A7.
+[`verify-online-2026-11-12.txt`](verify-online-2026-11-12.txt) is a second live run with that ledger and `--online`,
+14 seconds later: for all four attested decisions, entries 10 to 13, Intel DCAP finds a genuine TDX quote bound to
+the request (O1), and NVIDIA NRAS verifies a GPU payload bound to the request nonce (O2). The TEE measurement is not
+pinned, so O1 does not show which image the TD runs, and A8, which would check the request against the invoice, was
+not run. With the committed ledger, the commands are:
+
+```bash
+npx probarion verify --network testnet --vault demo.vaults.probarion.testnet --ledger docs/evidence/demo-vault/ledger-2026-11-12.jsonl
+npx probarion verify --network testnet --vault demo.vaults.probarion.testnet --ledger docs/evidence/demo-vault/ledger-2026-11-12.jsonl --online
+```
+
+Once the vault anchors entries this file does not hold, a live run with it can stop passing check c. The first run
+wrote [`snapshot-2026-11-12.json`](snapshot-2026-11-12.json), which keeps checking offline:
+
+```bash
+npx probarion verify --offline docs/evidence/demo-vault/snapshot-2026-11-12.json
 ```

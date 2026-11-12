@@ -33,7 +33,7 @@ The session is a stateless signed cookie that lasts 12 hours. `POST /api/auth/lo
 
 ## Console
 
-`POST /api/console/:vault/invoices` runs one Payables cycle on an invoice, for the vault's owner or an approver. Payables is Preview. The console finds the mandate whose purpose document the upload carries, then runs the SDK's `process()` on the invoice text. `outcome` is that cycle's `SpendOutcome`, which [Spend outcomes](/docs/build/spend-outcomes) explains. When `status` is `unconfirmed`, the payment was sent and its confirmation is pending: do not upload the invoice again.
+`POST /api/console/:vault/invoices` runs one Payables cycle on an invoice, for the vault's owner or an approver. Payables is Live on testnet. The console finds the mandate whose purpose document the upload carries, then runs the SDK's `process()` on the invoice text. `outcome` is that cycle's `SpendOutcome`, which [Spend outcomes](/docs/build/spend-outcomes) explains. When `status` is `unconfirmed`, the payment was sent and its confirmation is pending: do not upload the invoice again.
 
 <Callout kind="note" title="Who signs a hosted payment">
 
