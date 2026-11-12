@@ -15,6 +15,41 @@ The software is an unaudited beta.
 
 ### Added
 
+- The owner run of 2026-11-11 on testnet, from the console at probarion.xyz with a real wallet
+  (Meteor): Claude drove the console in the owner's browser and the owner signed each wallet prompt,
+  recorded in `docs/evidence/trial-vault/README.md`. On the demo vault the owner froze and unfroze the
+  vault from the console. On `trial.vaults.probarion.testnet` the owner sent 5 test USDC from the
+  Top-up tab (the USDC transfer on NEAR; the Base top-up through 1Click was not tried), added the two
+  keys that `npx -y @probarion/mcp@0.1.1 init` made, from the Agent (MCP) tab, and signed mandate 1
+  (at most 3 test USDC a payment and 5 in all, held above 1). A real MCP client, Claude Code run
+  headless, then started `@probarion/mcp` 0.1.1 from npm with only `PROBARION_VAULT_ID` set: spend 1
+  paid 0.50 test USDC, spends 2 (2.00) and 3 (1.50) were held, and the owner approved both on the
+  console's approval page, where each paid. The prompt gave the tool arguments, so the client read no
+  invoice, and the decisions are rules-only. A Telegram chat linked from the Alerts tab got real bot
+  messages, "Approval needed" for spend 3 and "Paid" for spend 2; no email was sent. Spend 1's
+  payment and spend 2's hold got no message: the watcher had recorded them before the chat was
+  linked, and alerts do not send events from before, so spend 3 was sent after the link to make one
+  fire. The screenshots of the approvals are from a desktop browser, so a phone is not confirmed. The
+  server's `verify` and a live `npx -y probarion@0.1.1 verify` passed checks a to i
+  (`9 passed, 0 failed, 0 unproven`). The same day three invoices went through the
+  demo vault's Payables with an attested model, and code refused all three with
+  `mandate.payee_mismatch`, sending nothing: INV-2006 (ledger entry 10, `z-ai/glm-5.3-flash`) by a
+  false positive that PR #116 fixed; its retry INV-2007 (entry 11, the same model) because the
+  model's payee hint named `acme-cloud.near`, which is in neither the invoice nor the prompt; and
+  INV-2008 (entry 12, with `NEARAI_MODEL` set to `Qwen/Qwen3.8-27B`) by a false positive again: the
+  model put the mandate's own account in `address` next to the chain `base`, since the proposal
+  schema has no NEAR chain (PR #120 fixes the rule for that case). So the Payables agent has not
+  yet paid on its own with an attested model. A live `verify` of that ledger passed checks a to i,
+  and with `--online` entries 10 and 11 passed O1 and O2 (a later online run could not fetch
+  Intel's quote collateral); `docs/evidence/demo-vault/` holds the ledger, the snapshot, both
+  outputs and the three invoices. The trial vault's evidence folder holds the run's ledger,
+  snapshot, offline verify output and invoices and the client's tool calls;
+  `docs/mainnet-proof.json` records the run's 14 testnet transactions. The README's Status rows for
+  the web console, the MCP server (now Shipped), the watcher, the Telegram alerts and the approval
+  page, the landing page's status list (the console's tried row adds the NEAR USDC top-up, the Agent
+  (MCP) tab, Freeze and approvals, its other row now names Reject, revoking a mandate, Withdraw,
+  removing a key, email alerts and the Base top-up through 1Click, and the MCP server row is Live) and the docs say what was tried.
+
 - The first Probarion vault on NEAR mainnet, `v0.probarion.near`, ran on 2026-11-11 between 12:51 and
   13:00 UTC: the 2026-11 demo path of `docs/runbooks/mainnet-v0.md`, with real USDC and small amounts.
   The owner signed every transaction in their own terminal and in Meteor, and Claude signed nothing.
@@ -848,6 +883,11 @@ The software is an unaudited beta.
 
 ### Changed
 
+- The Canary no longer follows `NEARAI_MODEL`. That variable pins the NEAR AI Cloud model for Payables and the SDK
+  factory; the Canary keeps the SDK's default order (`z-ai/glm-5.3-flash` first), the model of its recorded attempts.
+  With `Qwen/Qwen3.8-27B` pinned on probarion.xyz on 2026-11-11, a Canary attempt timed out at 40 s and was decided
+  rules-only. The deploy runbook says so in the `NEARAI_MODEL` row.
+
 - Release 0.1.1 is on npm: `@probarion/core`, `@probarion/sdk`, `probarion` and `@probarion/mcp` 0.1.1
   were published on 2026-11-11 from the tag `sdk-v0.1.1`, and the official MCP registry lists the server
   as `io.github.probarion/probarion`. What the repository says about npm now matches. The README says so
@@ -1109,6 +1149,26 @@ The software is an unaudited beta.
 
 ### Fixed
 
+- `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` an invoice the mandate allows
+  when an attested model's payee hint put the mandate's own NEAR account in `address`, next to a
+  chain. It was seen on the testnet demo vault, ledger entry 12 (2026-11-11T23:35:56Z, model
+  `Qwen/Qwen3.8-27B`): the invoice named `probarion-payee.testnet` for 2.00 USDC under PO-1001, the
+  model proposed to pay with the hint `address` and `name` set to `probarion-payee.testnet` and
+  `chain` set to `base`, and the rule refused with "invoice names base address
+  probarion-payee.testnet; the mandate pays NEAR account probarion-payee.testnet". The v1 proposal
+  schema has no NEAR value in its chain enum and no account field but `near_account`, so a model can
+  put a NEAR account in `address`. For a NEAR payee, `payeeHintContradiction` in
+  `packages/core/src/policy.ts` now takes the mandate's own account, in `near_account` or in
+  `address` and whatever the chain, as naming no other payee, except an account that is also a Base
+  or Solana address, such as an ETH-implicit `0x` account, which in `address` still refuses. A hint
+  still contradicts when either field holds any other value, compared exactly so another letter
+  case refuses, or when it names a chain with no account and no address. The rule for a Base or
+  Solana payee is unchanged, and so are the schema and the system prompt of `probarion-proposal/v1`.
+  `verify` does not re-run the policy, so ledger entries already written are unaffected. Tests cover
+  the entry 12 hint, the contradictions next to it, and accounts that are also a Base or Solana
+  address. The /docs pages "Why spend has no payee" and "Policy rules" say the same, and the line
+  citations of `docs/THREAT_MODEL.md` follow the code.
+
 - `@probarion/core`: `decide()` refused as `mandate.payee_mismatch` when an attested model's payee
   hint named the mandate's NEAR account plus a chain with no address, so the SDK and the console's
   Payables refused a payment the mandate allows. It was first seen on the testnet demo vault on
@@ -1116,12 +1176,14 @@ The software is an unaudited beta.
   model filled one next to the NEAR account, and `payeeHintContradiction` in
   `packages/core/src/policy.ts` took the chain alone for an external destination. For a NEAR payee,
   a chain next to the mandate's own NEAR account, with no address, now names no other destination. A
-  hint still contradicts when it names another NEAR account, an address that is not blank, or a
+  hint still contradicted when it named another NEAR account, an address that is not blank, or a
   chain with no NEAR account, and that last refusal now names the chain rather than
-  `address (none)`. The vault pays the mandate's payee either way, and `verify` does not re-run the
-  policy, so ledger entries already written are unaffected. Tests cover both hint shapes from the
-  model and the contradictions next to them. The /docs pages "Why spend has no payee" and "Policy
-  rules" say the same.
+  `address (none)`. (The entry above, for ledger entry 12, then also took the mandate's own account
+  in `address`: an address contradicts when it differs from that account or is also a Base or
+  Solana address, and a chain only when neither field is given.) The vault pays the mandate's payee
+  either way, and `verify` does not re-run the policy, so ledger entries already written are
+  unaffected. Tests cover both hint shapes from the model and the contradictions next to them. The
+  /docs pages "Why spend has no payee" and "Policy rules" said the same then.
 
 - Console: an invoice upload keeps to one time budget counted from the request's start
   (`apps/web/src/lib/payables/budget.ts`). The NEAR AI calls share 40 s from the first one, each

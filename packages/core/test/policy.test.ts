@@ -469,6 +469,99 @@ const cases: Case[] = [
     verdict: "refuse",
     rule: ["mandate.payee_mismatch", "refuse"],
   },
+  // Testnet demo vault, ledger entry 12 (Qwen/Qwen3.8-27B): the v1 schema has no NEAR chain and no
+  // account field but near_account, so the model put the mandate's NEAR account in address, next to base.
+  {
+    name: "model hint names the mandate's NEAR account as the address, next to chain base",
+    input: () =>
+      input({
+        mandates: [mandate({ payee: { type: "near", account_id: "probarion-payee.testnet" } })],
+        invoice: baseInvoice({ amount: "2000000", payee_hint: null }),
+        proposal: {
+          action: "pay",
+          mandate_id: 1,
+          amount: "2000000",
+          payee_hint: {
+            address: "probarion-payee.testnet",
+            name: "probarion-payee.testnet",
+            chain: "base",
+          },
+          reasoning: "Invoice matches PO-1001.",
+          confidence: 0.98,
+        },
+      }),
+    verdict: "allow",
+    rule: ["mandate.payee_mismatch", "pass"],
+  },
+  {
+    name: "invoice hint names the mandate's NEAR account as the address, next to chain solana",
+    input: () =>
+      input({
+        invoice: baseInvoice({ payee_hint: { chain: "solana", address: "vendor.testnet" } }),
+      }),
+    verdict: "allow",
+    rule: ["mandate.payee_mismatch", "pass"],
+  },
+  {
+    name: "model hint names another NEAR account as the address, next to chain base",
+    input: () =>
+      input({
+        proposal: proposal({ payee_hint: { chain: "base", address: "attacker.testnet" } }),
+      }),
+    verdict: "refuse",
+    rule: ["mandate.payee_mismatch", "refuse"],
+  },
+  {
+    name: "model hint names the mandate's NEAR account plus another account as the address",
+    input: () =>
+      input({
+        proposal: proposal({
+          payee_hint: {
+            near_account: "vendor.testnet",
+            chain: "base",
+            address: "attacker.testnet",
+          },
+        }),
+      }),
+    verdict: "refuse",
+    rule: ["mandate.payee_mismatch", "refuse"],
+  },
+  {
+    name: "model hint names another NEAR account plus the mandate's account as the address",
+    input: () =>
+      input({
+        proposal: proposal({
+          payee_hint: {
+            near_account: "attacker.testnet",
+            chain: "base",
+            address: "vendor.testnet",
+          },
+        }),
+      }),
+    verdict: "refuse",
+    rule: ["mandate.payee_mismatch", "refuse"],
+  },
+  {
+    name: "model hint names the mandate's NEAR account as the address in another letter case",
+    input: () =>
+      input({
+        proposal: proposal({ payee_hint: { chain: "base", address: "Vendor.testnet" } }),
+      }),
+    verdict: "refuse",
+    rule: ["mandate.payee_mismatch", "refuse"],
+  },
+  // An ETH-implicit NEAR account (0x and 40 hex) is also a Base address, so as an address it
+  // still names a Base payout.
+  {
+    name: "invoice hint names the mandate's ETH-implicit NEAR account as a base address",
+    input: () =>
+      input({
+        mandates: [mandate({ payee: { type: "near", account_id: `0x${"ab".repeat(20)}` } })],
+        invoice: baseInvoice({ payee_hint: { chain: "base", address: `0x${"ab".repeat(20)}` } }),
+      }),
+    verdict: "refuse",
+    rule: ["mandate.payee_mismatch", "refuse"],
+  },
   {
     name: "payee name alone never contradicts",
     input: () => input({ invoice: baseInvoice({ payee_hint: { name: "Totally Different Ltd" } }) }),
@@ -1354,6 +1447,92 @@ describe("helpers", () => {
     expect(
       payeeHintContradiction({ near_account: "vendor.testnet" }, BASE_MANDATE.payee),
     ).toContain("NEAR account");
+  });
+
+  it("takes the mandate's own NEAR account in near_account or address, whatever the chain", () => {
+    // Demo vault ledger entry 12 (Qwen/Qwen3.8-27B, attested), refused before this rule.
+    const own = mandate({ payee: { type: "near", account_id: "probarion-payee.testnet" } }).payee;
+    const entry12 = {
+      address: "probarion-payee.testnet",
+      name: "probarion-payee.testnet",
+      chain: "base",
+    } as const;
+    expect(payeeHintContradiction(entry12, own)).toBeNull();
+    expect(
+      payeeHintContradiction({ chain: "solana", address: " vendor.testnet " }, mandate().payee),
+    ).toBeNull();
+    expect(
+      payeeHintContradiction(
+        { near_account: "vendor.testnet", chain: "base", address: "vendor.testnet" },
+        mandate().payee,
+      ),
+    ).toBeNull();
+    expect(payeeHintContradiction({ address: "vendor.testnet" }, mandate().payee)).toBeNull();
+    // Any other value in either field still contradicts.
+    expect(
+      payeeHintContradiction({ chain: "base", address: "attacker.testnet" }, mandate().payee),
+    ).toBe(
+      "invoice names base address attacker.testnet; the mandate pays NEAR account vendor.testnet",
+    );
+    expect(payeeHintContradiction({ chain: "base", address: BASE_ADDRESS }, own)).toBe(
+      `invoice names base address ${BASE_ADDRESS}; the mandate pays NEAR account probarion-payee.testnet`,
+    );
+    expect(
+      payeeHintContradiction(
+        { near_account: "vendor.testnet", address: "attacker.testnet" },
+        mandate().payee,
+      ),
+    ).toBe(
+      "invoice names an external address attacker.testnet; the mandate pays NEAR account vendor.testnet",
+    );
+    expect(
+      payeeHintContradiction(
+        { near_account: "attacker.testnet", chain: "base", address: "vendor.testnet" },
+        mandate().payee,
+      ),
+    ).toBe("invoice names NEAR account attacker.testnet; the mandate pays vendor.testnet");
+    // Compared exactly: another letter case is another value.
+    expect(payeeHintContradiction({ ...entry12, address: "Probarion-Payee.testnet" }, own)).toBe(
+      "invoice names base address Probarion-Payee.testnet; the mandate pays NEAR account probarion-payee.testnet",
+    );
+    // An account that is also a Base or Solana address names that address too.
+    const ethImplicit = `0x${"ab".repeat(20)}`;
+    expect(
+      payeeHintContradiction(
+        { chain: "base", address: ethImplicit },
+        { type: "near", account_id: ethImplicit },
+      ),
+    ).toBe(
+      `invoice names base address ${ethImplicit}; the mandate pays NEAR account ${ethImplicit}`,
+    );
+    const solanaShaped = "abcdefghijkmnpqrstuvwxyz23456789";
+    expect(
+      payeeHintContradiction(
+        { chain: "solana", address: solanaShaped },
+        { type: "near", account_id: solanaShaped },
+      ),
+    ).toBe(
+      `invoice names solana address ${solanaShaped}; the mandate pays NEAR account ${solanaShaped}`,
+    );
+    // A 64 hex implicit account is too long for a Solana address, so it is taken as the account.
+    const hexImplicit = "ab".repeat(32);
+    expect(
+      payeeHintContradiction(
+        { chain: "solana", address: hexImplicit },
+        { type: "near", account_id: hexImplicit },
+      ),
+    ).toBeNull();
+    // A chain alone, with no account and no address, still contradicts.
+    expect(payeeHintContradiction({ chain: "solana" }, own)).toBe(
+      "invoice names chain solana; the mandate pays NEAR account probarion-payee.testnet",
+    );
+    expect(
+      payeeHintContradiction({ name: "probarion-payee.testnet", chain: "base" }, own),
+    ).toContain("chain base");
+    // A Base or Solana mandate is compared as before: a NEAR account string as the address refuses.
+    expect(
+      payeeHintContradiction({ chain: "base", address: "vendor.testnet" }, BASE_MANDATE.payee),
+    ).toBe(`invoice names address vendor.testnet; the mandate pays ${BASE_ADDRESS}`);
   });
 
   it("describes payees", () => {

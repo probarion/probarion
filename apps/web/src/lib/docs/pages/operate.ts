@@ -87,6 +87,7 @@ export const OPERATE: readonly DocPage[] = [
       "packages/mcp/src/server.ts",
       "docs/evidence/canary-vault/README.md",
       "docs/evidence/canary-vault/verify-online-2026-11-11.txt",
+      "docs/evidence/trial-vault/README.md",
     ],
     reviewed: "2026-11-11",
     phase: 2,

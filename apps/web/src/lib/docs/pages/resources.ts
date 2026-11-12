@@ -128,6 +128,7 @@ export const RESOURCES: readonly DocPage[] = [
       "packages/mcp/src/server.ts",
       "contracts/deployments/mainnet.json",
       "docs/evidence/mainnet-v0/README.md",
+      "docs/evidence/trial-vault/README.md",
     ],
     reviewed: "2026-11-11",
     phase: 1,

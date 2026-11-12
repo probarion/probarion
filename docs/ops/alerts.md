@@ -1,6 +1,6 @@
 # Owner alerts (Telegram and email)
 
-OWNER only, for the setup. A vault's owners and approvers can get a message on Telegram or by email when the watcher (`docs/ops/watcher.md`) records something on their vault. The page for it is `/console/<vault>/alerts`. This page says what is sent, when, how it is kept to one message per event, how to set up the two providers, how a person stops alerts, and how to try it. **Not tried here:** a real bot and real Resend sending. Every test runs against a fake provider, so the steps under "Set up" and "Try it" are unchecked until you run them.
+OWNER only, for the setup. A vault's owners and approvers can get a message on Telegram or by email when the watcher (`docs/ops/watcher.md`) records something on their vault. The page for it is `/console/<vault>/alerts`. This page says what is sent, when, how it is kept to one message per event, how to set up the two providers, how a person stops alerts, and how to try it. **Tried for Telegram on 2026-11-11:** the OWNER made a bot, set `TELEGRAM_BOT_TOKEN` in Vercel Production, registered the webhook with `pnpm --filter @probarion/web telegram-webhook` and linked a chat to `trial.vaults.probarion.testnet` from its Alerts tab, and the bot sent real "Approval needed" and "Paid" messages ([the record](../evidence/trial-vault/README.md)). **Not tried here:** real Resend sending. Every test runs against a fake provider, so the email steps under "Set up" and "Try it", and the Telegram `/stop` of step 4, are unchecked until you run them.
 
 ## What is sent
 

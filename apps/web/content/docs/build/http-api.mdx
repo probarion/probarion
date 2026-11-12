@@ -78,7 +78,7 @@ The owner signs the deposit transaction that `POST /api/topup/quote` returns, in
 
 </Callout>
 
-On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your wallet signs nothing: the team's mint-only key signs the mint. The faucet is Preview: it is built and tested, and its button has not yet been tried on the site with a real vault. It works once a UTC day per vault, within daily caps per account and for all vaults together. Those day counters start again at midnight UTC, and a `429` from one of them gives the seconds until then as its `Retry-After`. Each press also counts against a press limit per account, before any read of the chain, and that limit's `429` gives the end of its own window instead. A refusal from the checks that run before the day counters does not use up the vault's day.
+On testnet, `POST /api/topup/faucet` mints 25 test USDC into the vault, and your wallet signs nothing: the team's mint-only key signs the mint. The faucet is Preview: it is built and tested, and its key is set on probarion.xyz; on 2026-11-09 its button minted 25 test USDC into the testnet demo vault, `demo.vaults.probarion.testnet`. It works once a UTC day per vault, within daily caps per account and for all vaults together. Those day counters start again at midnight UTC, and a `429` from one of them gives the seconds until then as its `Retry-After`. Each press also counts against a press limit per account, before any read of the chain, and that limit's `429` gives the end of its own window instead. A refusal from the checks that run before the day counters does not use up the vault's day.
 
 <RefTable id="http-api-topup" />
 
@@ -130,7 +130,7 @@ A spreadsheet may read a cell that starts with `=`, `+`, `-`, `@`, a tab or a ca
 
 ## What these tables do not cover
 
-- An agent API or a webhook to your server. An agent pays through the SDK ([SDK reference](/docs/build/sdk-reference)), or through the MCP server `@probarion/mcp`, which is Preview: it runs beside the agent and speaks MCP over stdio, so it adds no route here. Probarion calls no URL of yours: alerts go out by email and Telegram.
+- An agent API or a webhook to your server. An agent pays through the SDK ([SDK reference](/docs/build/sdk-reference)), or through the MCP server `@probarion/mcp`, which is Live: it runs beside the agent and speaks MCP over stdio, so it adds no route here. Probarion calls no URL of yours: alerts go out by email and Telegram.
 - What the console's screens and the Browser extension page do besides the routes above. That runs as Next.js server actions under `apps/web/src/app/console` and `apps/web/src/app/extension`, not as routes under `/api`.
 - The other public files outside `/api`: the docs' own `/docs/<page>.md` twins, `/llms.txt`, `/llms-full.txt` and `/docs/search-index.json`.
 

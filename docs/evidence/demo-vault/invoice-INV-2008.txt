@@ -1,0 +1,5 @@
+Invoice INV-2008
+Probarion demo invoice: test USDC, no value.
+Payee: probarion-payee.testnet
+Purchase order: PO-1001
+Total due: 2.00 USDC
