@@ -1268,6 +1268,7 @@ describe("the rendered landing page", () => {
       "verify",
       "chain",
       "status",
+      "built-on",
     ];
     const at = ids.map((id) => html.indexOf(`id="${id}"`));
     for (const [i, pos] of at.entries()) expect(pos, ids[i]).toBeGreaterThan(-1);
