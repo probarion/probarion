@@ -265,3 +265,41 @@ npx probarion verify --network testnet --vault demo.vaults.probarion.testnet --l
 
 The second command reads the chain as it is now, so once the vault anchors entries this file does not hold, it can stop
 passing check c. With `--online` it also runs O1 and O2.
+
+## 2026-11-12: A8 with the invoices in this folder
+
+The ledger holds each invoice only as its sha256, so A1 to A7 and the online checks O1 and O2 do not show what text the
+model was sent. A8 does, for someone who holds the invoice: it rebuilds the request from the invoice text, the inputs
+the entry records and the ledger nonce, checks that it hashes to the request the model signed, and checks that the
+mandates the model was shown are the vault's. `probarion verify` takes the texts with `--invoice <file>` or
+`--invoices <dir>` (every `.txt` file of the folder), in the CLI built from this repository; release 0.1.1 on npm does
+not have these flags. The files are read on the computer that runs verify and used for A8 only: the report names each
+file, and `--json` adds its sha256, but not its text.
+
+[`verify-a8-2026-11-12.txt`](verify-a8-2026-11-12.txt) is the offline run on
+[`snapshot-2026-11-12-video.json`](snapshot-2026-11-12-video.json) with this folder, its command on the first line:
+checks a to i pass (`9 passed, 0 failed, 0 unproven`), and check e finds that A8 passes on all five attested
+decisions, entries 10 to 13 and 15, each against the file whose sha256 is its `invoice_hash`
+([`invoice-INV-2006.txt`](invoice-INV-2006.txt) to [`invoice-INV-2010.txt`](invoice-INV-2010.txt)). The run read 15
+`.txt` files. INV-2001 to INV-2003 match only entries that are not attested decisions (rules-only decisions and payment
+results), and the PO and the earlier verify outputs match no ledger entry. The report lists both groups, and neither
+fails the run. A run now also reads the output files committed with it, and lists them as matching no entry too.
+
+[`verify-online-a8-2026-11-12.txt`](verify-online-a8-2026-11-12.txt) is a live run of the same CLI 26 seconds later,
+on Node.js 24.22.2, with [the ledger of the filmed run](ledger-2026-11-12-video.jsonl), `--online` and this folder. It
+read the chain itself: checks a to i pass, check c finds 12 anchors and no entry after the last anchored count of 17,
+and check e finds 5 attested decisions that pass A1 to A7 and A8. For all five, entry 15 among them, Intel DCAP finds a
+genuine TDX quote bound to the request (O1), and NVIDIA NRAS verifies a GPU payload bound to the request nonce (O2).
+The TEE measurement is not pinned, so this does not show which model image ran. A8 shows that the model was sent these
+invoice texts in the standard request; it does not show that an invoice is authentic. Check e also notes that mandate
+1's `remaining` and `status` now differ from what the model was shown, because the vault has paid since then: the values
+at decision time need archival state, so these are notes, not failures. From a clone of the repository, after
+`pnpm install` and `pnpm --filter "./packages/*" run build`:
+
+```bash
+node packages/cli/dist/bin.js verify --offline docs/evidence/demo-vault/snapshot-2026-11-12-video.json --invoices docs/evidence/demo-vault
+node packages/cli/dist/bin.js verify --network testnet --vault demo.vaults.probarion.testnet --ledger docs/evidence/demo-vault/ledger-2026-11-12-video.jsonl --online --invoices docs/evidence/demo-vault
+```
+
+The second command reads the chain as it is now, so once the vault anchors entries the ledger file does not hold, it
+can stop passing check c. The online checks need Node.js 24.22.1 or newer, which `@nearai/inference-sdk` declares.

@@ -1,0 +1,20 @@
+$ node packages/cli/dist/bin.js verify --offline docs/evidence/demo-vault/snapshot-2026-11-12-video.json --invoices docs/evidence/demo-vault
+Probarion verify: demo.vaults.probarion.testnet (testnet)
+entries 17, anchors 12, generated 2026-11-12T16:12:41.764Z
+snapshot taken 2026-11-12T10:28:54.496Z: its chain data is the file's and was not read from the chain again
+
+a  ledger-signatures      PASS      17 entries: each body_hash recomputes from its body and carries a valid signature by the ledger key the chain names for its range (1 ledger key(s) named by the anchors and the vault config); check b also verifies every link and the chain
+b  hash-links             PASS      17 entries: every body_hash and link recomputes, chained from the zero link
+c  anchors                PASS      12 anchors match the ledger; 0 entries after the last anchored count (17) are not chain-attested
+d  spends-have-decisions  PASS      5 on-chain spends, each bound to its own allow or hold decision (same invoice, mandate and amount)
+e  attestations           PASS      5 attested decisions pass A1–A7; quote not verified offline (run --online for O1; re-take the snapshot live with --online); A8 (request binding and mandate match) passes for 5 of 5 attested decisions (seq 10, 11, 12, 13, 15); notes (not failures): mandate 1 (seq 10): the model was shown remaining 10000000 and status active; the chain now holds 6000000 and exhausted (the values at decision time need archival state); mandate 1 (seq 11): the model was shown remaining 10000000 and status active; the chain now holds 6000000 and exhausted (the values at decision time need archival state); mandate 1 (seq 12): the model was shown remaining 10000000 and status active; the chain now holds 6000000 and exhausted (the values at decision time need archival state); mandate 1 (seq 13): the model was shown remaining 10000000 and status active; the chain now holds 6000000 and exhausted (the values at decision time need archival state); mandate 1 (seq 15): the model was shown remaining 8000000 and status active; the chain now holds 6000000 and exhausted (the values at decision time need archival state); rules-only or unattested (reported, not failed): seq 0, 1, 3, 4, 5, 7, 8
+f  vault-locked           PASS      no FullAccess key; every access key is the ledger key or a spend-only agent key on the vault; code_hash 3cQXYDvfGLRMveCVAHmh1exiuZKDXWqD8cUhqdEs9MF1 is a recorded reproducible build (KNOWN_VAULT_CODE_HASHES); it is the code of factory version 1
+g  intents-keys           PASS      no intents public keys; predecessor auth enabled
+h  burn-memos             PASS      0 burned spends: no burn to pair
+i  factory-version        PASS      created by vaults.probarion.testnet at version 1
+
+invoices: 15 files read; A8 checks 5 of them against the attested decisions with their sha256 (check e gives the result): docs/evidence/demo-vault/invoice-INV-2006.txt (seq 10), docs/evidence/demo-vault/invoice-INV-2007.txt (seq 11), docs/evidence/demo-vault/invoice-INV-2008.txt (seq 12), docs/evidence/demo-vault/invoice-INV-2009.txt (seq 13), docs/evidence/demo-vault/invoice-INV-2010.txt (seq 15)
+invoices: 3 files match only ledger entries that are not attested decisions, so A8 does not check them: docs/evidence/demo-vault/invoice-INV-2001.txt (seq 0, 1, 2), docs/evidence/demo-vault/invoice-INV-2002.txt (seq 3), docs/evidence/demo-vault/invoice-INV-2003.txt (seq 4, 5, 6)
+invoices: 7 files match no ledger entry (their sha256 is no entry's invoice_hash), so A8 does not check them: docs/evidence/demo-vault/po-PO-1001.txt, docs/evidence/demo-vault/verify-2026-11-09.txt, docs/evidence/demo-vault/verify-2026-11-11.txt, docs/evidence/demo-vault/verify-2026-11-12-video.txt, docs/evidence/demo-vault/verify-2026-11-12.txt, docs/evidence/demo-vault/verify-online-2026-11-11.txt, docs/evidence/demo-vault/verify-online-2026-11-12.txt
+9 passed, 0 failed, 0 unproven
+RESULT: PASS
