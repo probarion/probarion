@@ -1032,17 +1032,21 @@ The software is an unaudited beta.
 
 - The README has a "Privacy & Private AI" section after "NEAR technology used, and how", linked from
   the top row of links, from Contents and from a line under the tagline. It says what the TEE
-  protects and what it does not, maps the track's example asks (an OpenAI-compatible call, an attested
-  model, a nonce, a Verified panel, keeping data off the server, sample documents) to the code that
-  does each, and shows selective disclosure: an auditor who holds the invoices runs
-  `verify --invoices`, and A8 passed on the demo vault's five attested decisions. It lists the known
-  limits plainly: the signed ledger keeps the model's whole answer, the invoice reaches the model
-  before the attestation checks run, the hosted server reads invoices in plain text, the request is
-  not encrypted end to end and the NEAR AI gateway's attestation is not checked, invoice hashes have
-  no salt, and the TEE measurement is not pinned. "How to evaluate Probarion in 5 minutes" now opens
-  with a table of the five tracks this entry was submitted to (AI Security & Defense, Real-World
-  Money, Agent Economy, Autonomous Business, Privacy & Private AI), with one thing to do and one to
-  see for each, and adds a browser step: press "Check the TEE now" on the demo vault's proof page.
+  protects and what it does not, maps the track's example asks (an OpenAI-compatible call, a
+  TEE-hosted model chosen from the models endpoint, a nonce, a Verified panel, keeping data off the
+  server, sample documents) to the code that does each, and says what the hosted console keeps: each
+  invoice file sealed, its file name and facts not encrypted, or with zero-retention only its hashes
+  and the outcome, and the vault's signed ledger either way. It shows selective disclosure: an auditor
+  who holds the invoice texts runs `verify --invoices`, and A8 passed on the demo vault's five
+  attested decisions. It lists the known limits plainly: the signed ledger keeps the model's whole
+  answer, the invoice reaches the model before the attestation checks run, the hosted server reads
+  invoices in plain text, the request is not encrypted end to end and the NEAR AI gateway's
+  attestation is not checked, invoice hashes have no salt (the Canary's raw spends aside), and the TEE
+  measurement is not pinned. "How to evaluate Probarion in 5 minutes" now opens with a table of the
+  five tracks this entry was submitted to (AI Security & Defense, Real-World Money, Agent Economy,
+  Autonomous Business, Privacy & Private AI), with one thing to do and one to see for each, and adds a
+  browser step: press "Check the TEE now" on the demo vault's proof page once it is deployed
+  (probarion.xyz did not serve it at 17:46 UTC on 2026-11-12).
   The README's NEAR AI Cloud rows, its demo vault section and `SECURITY.md` add that the live run at
   16:13 UTC on 2026-11-12 passed O1 and O2 on all five attested decisions, entry 15 included, and the
   README's libraries table lists `@nearai/inference-sdk` 0.2.1 for the web console.
