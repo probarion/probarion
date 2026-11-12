@@ -1444,6 +1444,15 @@ The software is an unaudited beta.
 
 ### Security
 
+- Why the TEE measurement is not pinned yet (O1b): `docs/measurement-pin-2026-11.md` records the
+  finding of 2026-11-12. A NEAR AI Cloud TDX quote measures the VM's operating system and NEAR AI's
+  management harness, and `compose-manager` starts the model stack after boot from a git tag of
+  `nearai/cvm-compose-files`, so no measurement pin can show which model image ran. For the demo
+  vault's entries 10 to 13 the stored event log replays RTMR0 to RTMR3 of each quote, and MRCONFIGID
+  holds the compose hash; the page lists those values, a script to check them, what NEAR AI publishes
+  and what O1b would need. The landing page row stays "Checked online on testnet, image not pinned",
+  and SECURITY.md, the threat model, the README's NEAR AI Cloud row, the verifier checks page and the
+  interfaces spec link the finding.
 - Key sealing: the web console generates agent and ledger keys on the server and seals them at rest
   with libsodium secretbox, under subkeys of one master key, `KEY_ENCRYPTION_SECRET`. A key becomes
   active only when the chain shows that exact function-call key on the vault, limited to `spend` or
