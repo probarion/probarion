@@ -56,7 +56,11 @@ The software is an unaudited beta.
   with `@phala/dcap-qvl`, into the route. On 2026-11-12 a local production build of this change
   answered three calls for `Qwen/Qwen3.8-27B` with all four checks passed, in 1.8 to 10.1
   seconds, and a cross-site call with `403 bad_origin`, recorded in
-  `docs/evidence/tee-check/route-2026-11-12.json`.
+  `docs/evidence/tee-check/route-2026-11-12.json`. After the promote of 2026-11-12 (#138, main
+  b3baa82), probarion.xyz did the same: its first call at 18:39 UTC, the card in a browser at
+  18:40 UTC and three scripted calls at 18:42 UTC (1.4 to 1.6 seconds) passed all four, and a
+  cross-site call answered `403 bad_origin`, recorded in
+  `docs/evidence/tee-check/live-2026-11-12.json`.
 - The demo video is posted on X, in the build's demo post of 2026-11-12:
   <https://x.com/probarionhq/status/2120882499689836651>. It is a 1:57 cut recorded on the live product,
   on NEAR testnet with test USDC. The README links it from its top row of links and from the filmed run
