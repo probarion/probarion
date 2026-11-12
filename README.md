@@ -15,7 +15,7 @@
 <a href="#how-to-evaluate-probarion-in-5-minutes"><img src="docs/assets/readme/verify-a-ledger.png" alt="Verify a ledger: checks a to i, offline" height="48"></a>
 <a href="https://x.com/probarionhq"><img src="docs/assets/readme/follow-the-build.png" alt="Follow the build: @probarionhq on X" height="48"></a>
 
-**[Live site](https://probarion.xyz)** · **[Docs](https://probarion.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[NEAR tech](#near-technology-used-and-how)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
+**[Live site](https://probarion.xyz)** · **[Demo video](https://x.com/probarionhq/status/2120882499689836651)** · **[Docs](https://probarion.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-probarion-in-5-minutes)** · **[What is shipped](#status)** · **[NEAR tech](#near-technology-used-and-how)** · **[Testnet proof](#on-chain-proof)** · **[Design spec](docs/specs/2026-10-21-probarion-design.md)** · **[Interfaces](docs/specs/2026-10-21-probarion-interfaces.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[@probarionhq](https://x.com/probarionhq)**
 
 <sub>Built for the NEAR Hackathon 2026 · Rust contracts on NEAR (near-sdk 5.29.1) · NEAR Intents payouts (a testnet stand-in so far) · NEAR AI Cloud private models · TypeScript SDK, CLI and MCP server on npm</sub>
 
@@ -585,7 +585,7 @@ on mainnet. To check that run offline:
 npx probarion verify --offline docs/evidence/demo-vault/snapshot-2026-11-12.json
 ```
 
-Later on 2026-11-12, in a run filmed for the demo video, Payables paid INV-2010 here the same way
+Later on 2026-11-12, in a run filmed for the [demo video](https://x.com/probarionhq/status/2120882499689836651), Payables paid INV-2010 here the same way
 ([the record](docs/evidence/demo-vault/README.md#2026-11-12-filmed-a-second-invoice-paid-on-its-own-freeze-and-unfreeze)).
 `Qwen/Qwen3.8-27B` proposed paying it (ledger entry 15), every code rule passed, and the agent key sent spend 5, which
 paid 2.00 test USDC ([`3YEGw5Qd…`](https://testnet.nearblocks.io/txns/3YEGw5Qdp9RbnR5LXFbAKXWPPhgiz7hf6vdDapfXvEE4)).

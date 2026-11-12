@@ -200,7 +200,7 @@ npx probarion verify --offline docs/evidence/demo-vault/snapshot-2026-11-12.json
 
 At 09:52 UTC [`invoice-INV-2010.txt`](invoice-INV-2010.txt), a copy of INV-2009 with a new number and no other change,
 went in with [`po-PO-1001.txt`](po-PO-1001.txt) on this vault's Payables page, in the console signed in as the owner,
-in a run filmed for the demo video. probarion.xyz ran `main` as promoted by
+in a run filmed for the [demo video](https://x.com/probarionhq/status/2120882499689836651). probarion.xyz ran `main` as promoted by
 [PR #130](https://github.com/probarion/probarion/pull/130), which holds
 [PR #120](https://github.com/probarion/probarion/pull/120). No wallet signature was needed for the payment: the
 vault's agent key signs spends. The console's page for the invoice read "Decided: Paid on NEAR."
