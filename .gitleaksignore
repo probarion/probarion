@@ -22,3 +22,6 @@ c471b5c02822d82d429a22759a074ff730480966:apps/web/src/lib/sentry-scrub.test.ts:g
 # Public data, not a secret: spend 3's "baseToken" in the landing's recorded mainnet payouts is the same USDC token
 # contract on Base (0x833589fcd6edb6e08f4c7c32d4f71b54bda02913); in 1662689.
 1662689caa9f4058f94edd25e7a89ce415114214:apps/web/src/lib/site/mainnet-payout-recorded.json:generic-api-key:512
+# Public data, not a secret: the same "ledger key ed25519:..." line of docs/mainnet-proof.json, in the site's byte copy
+# that the no-clone mainnet verify downloads (apps/web/public/samples/mainnet), recorded in d275ff0.
+d275ff0839f9e1493d45834d2437e7eb8d12654a:apps/web/public/samples/mainnet/mainnet-proof.json:generic-api-key:620
