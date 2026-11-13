@@ -205,7 +205,7 @@
 }
 
 .rows,
-.parts,
+.partList,
 .ev,
 .untriedList,
 .gaps {
@@ -382,6 +382,45 @@
   padding-left: var(--st-indent);
   min-width: 0;
 }
+/* The tried parts fold under one line that names them; the line is the fold's only control. */
+.foldSummary {
+  display: block;
+  cursor: pointer;
+  padding-block: 12px 14px;
+  padding-left: var(--st-indent);
+  font-size: 15px;
+  line-height: 1.5;
+  max-width: var(--container-measure);
+}
+.foldSummary::-webkit-details-marker {
+  display: none;
+}
+.foldSummary:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.foldLead {
+  color: var(--color-ink);
+}
+.foldHint {
+  color: var(--color-ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+.foldHint::after {
+  content: " \2193";
+}
+.fold[open] .foldHint::after {
+  content: " \2191";
+}
+.foldSummary:hover .foldHint {
+  text-decoration-thickness: 2px;
+}
+/* After the fold, the first part left to try gets the same rule as one part after another. */
+.fold + .partList > .part:first-child::before,
 /* The rule between two parts starts after the hairline's indent. */
 .part + .part::before {
   content: "";

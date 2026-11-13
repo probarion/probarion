@@ -391,6 +391,28 @@ describe("the status board's rows", () => {
     for (const u of left) expect(names, u.area).toContain(u.area);
   });
 
+  it("folds the console's tried parts under a line that names them, and always shows what is left to try", () => {
+    const html = board();
+    const parts = ITEMS.find((i) => i.id === "web-console")?.parts ?? [];
+    const tried = parts.filter((p) => p.untried === undefined);
+    const left = parts.filter((p) => p.untried !== undefined);
+    expect(tried.length).toBeGreaterThan(0);
+    expect(left.length).toBeGreaterThan(0);
+    const fold = html.match(/<details[^>]*>([\s\S]*?)<\/details>/)?.[1] ?? "";
+    expect(html.match(/<details/g)).toHaveLength(1);
+    expect(html).not.toMatch(/<details[^>]*\sopen/);
+    const summary = visibleText(fold.match(/<summary[^>]*>([\s\S]*?)<\/summary>/)?.[1] ?? "");
+    for (const p of tried) {
+      expect(fold, p.id).toContain(`id="${p.id}"`);
+      expect(summary, p.id).toContain(p.name);
+    }
+    expect(summary).toContain(STATUS_BOARD.partsFold.hint);
+    for (const p of left) {
+      expect(fold, p.id).not.toContain(`id="${p.id}"`);
+      expect(html, p.id).toContain(`id="${p.id}"`);
+    }
+  });
+
   it("dates the board by the day of JUDGES.md's Not yet list", () => {
     expect(SOURCES.judges).toContain(`## Not yet, as of ${STATUS_AS_OF}`);
     expect(STATUS_BOARD.eyebrow).toBe(`Status as of ${STATUS_AS_OF}`);

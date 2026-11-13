@@ -257,14 +257,44 @@ function Row({ item }: { item: BoardItem }) {
         )}
       </p>
       <Evidence list={item.evidence} />
-      {item.parts === undefined ? null : (
-        <ul className={b.parts} aria-label={`Parts of the ${item.name.toLowerCase()}`} {...LIST}>
-          {item.parts.map((p) => (
+      {item.parts === undefined ? null : <RowParts name={item.name} parts={item.parts} />}
+    </li>
+  );
+}
+
+/**
+ * A row's parts. The ones tried for real fold under a line that names them, so the row stays short to scan and each
+ * part's record is one click away (a link to a part's id opens the fold). What is left to try always shows.
+ */
+function RowParts({ name, parts }: { name: string; parts: readonly BoardPart[] }) {
+  const tried = parts.filter((p) => p.untried === undefined);
+  const left = parts.filter((p) => p.untried !== undefined);
+  const label = `Parts of the ${name.toLowerCase()}`;
+  return (
+    <div className={b.parts}>
+      {tried.length === 0 ? null : (
+        <details className={b.fold}>
+          <summary className={b.foldSummary}>
+            <span className={b.foldLead}>
+              {STATUS_BOARD.partsFold.lead.replace("{names}", tried.map((p) => p.name).join(", "))}
+            </span>{" "}
+            <span className={b.foldHint}>{STATUS_BOARD.partsFold.hint}</span>
+          </summary>
+          <ul className={b.partList} aria-label={`${label}, tried`} {...LIST}>
+            {tried.map((p) => (
+              <Part key={p.id} part={p} />
+            ))}
+          </ul>
+        </details>
+      )}
+      {left.length === 0 ? null : (
+        <ul className={b.partList} aria-label={`${label}, left to try`} {...LIST}>
+          {left.map((p) => (
             <Part key={p.id} part={p} />
           ))}
         </ul>
       )}
-    </li>
+    </div>
   );
 }
 

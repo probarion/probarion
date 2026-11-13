@@ -1214,6 +1214,11 @@ export const STATUS_BOARD = {
   evidenceLabel: "Evidence",
   marksLabel: "Status",
   limitLabel: "Not yet",
+  /** The line the tried parts of a row (the web console's) fold under; {names} lists them. */
+  partsFold: {
+    lead: "Tried for real, part by part: {names}.",
+    hint: "Show each part's record",
+  },
   /** Said after a status pill elsewhere on the page, which links its row here. */
   pillSuffix: ", see its status row",
   groups: [
