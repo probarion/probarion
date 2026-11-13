@@ -11,7 +11,10 @@ const recorded = JSON.parse(
 };
 const HOSTS = ["https://rpc.testnet.fastnear.com/**", "https://rpc.testnet.near.org/**"];
 
-/** Answers each view from the recorded file: check_spend by the scenario its arguments match. */
+/**
+ * Answers each view from the recorded file: check_spend by the scenario its arguments match. The hijacked prompt sends
+ * the normal invoice's request, so it gets the normal answer; only the inflated invoice asks above the limit.
+ */
 function answer(route: Route) {
   const body = JSON.parse(route.request().postData() ?? "{}");
   const args = JSON.parse(Buffer.from(body.params.args_base64, "base64").toString());
@@ -26,7 +29,7 @@ function answer(route: Route) {
       : mandate_id === 999
         ? "nomandate"
         : Number(amount) > 5_000_000
-          ? "hijack"
+          ? "inflated"
           : "normal";
     value = recorded.answers[id]?.value;
   }
@@ -50,19 +53,21 @@ test("each scenario shows the contract's answer", async ({ page }) => {
   await expect(page.getByText(/Answer from /)).toBeVisible();
   // Scoped to #try: the ledger test has its own live region further down. The region holds the verdict, then its sentence.
   const verdict = page.locator('#try [aria-live="polite"] p').first();
-  await expect(verdict).toHaveText("Would pay");
+  await expect(verdict).toHaveText("Allow");
   for (const [name, word] of [
-    ["A hijacked prompt", "OverPerPayment"],
-    ["A made-up mandate", "NoMandate"],
-    ["Someone else's key", "NotAgent"],
-    ["A normal invoice", "Would pay"],
+    ["A hijacked prompt", "Allow. The attacker gets 0."],
+    ["An inflated invoice", "Block: OverPerPayment"],
+    ["A made-up mandate", "Block: NoMandate"],
+    ["Someone else's key", "Block: NotAgent"],
+    ["A normal invoice", "Allow"],
   ] as const) {
     await page.getByRole("button", { name: new RegExp(name) }).click();
     await expect(verdict).toHaveText(word);
   }
-  await expect(page.getByText("never to the address in the prompt")).toHaveCount(0);
+  // The hijack's allow says why the attacker gets nothing; the normal invoice's, the same request, does not.
+  await expect(page.getByText(/no field for the attacker's address/)).toHaveCount(0);
   await page.getByRole("button", { name: /A hijacked prompt/ }).click();
-  await expect(page.getByText(/never to the address in the prompt/)).toBeVisible();
+  await expect(page.getByText(/no field for the attacker's address/)).toBeVisible();
 });
 
 test("a typed amount that is not one sends nothing and says so", async ({ page }) => {
@@ -106,8 +111,8 @@ for (const width of [320, 390, 1440]) {
       expect(sw).toBe(cw);
     };
 
-    await page.getByRole("button", { name: /A hijacked prompt/ }).click();
-    await expect(verdict).toHaveText("OverPerPayment");
+    await page.getByRole("button", { name: /An inflated invoice/ }).click();
+    await expect(verdict).toHaveText("Block: OverPerPayment");
     await noSideScroll();
 
     // Mandate 2 pays a Base address: its payee is the long 0x... one. Wait for its own answer, then measure again.
@@ -115,7 +120,47 @@ for (const width of [320, 390, 1440]) {
     await expect(
       page.getByRole("heading", { name: /Mandate 2, as the chain has it/ }),
     ).toBeVisible();
-    await expect(verdict).toHaveText("OverPerPayment");
+    await expect(verdict).toHaveText("Block: OverPerPayment");
     await noSideScroll();
   });
 }
+
+// The #mainnet question goes to one mainnet host. Its answers here are the chain's of 2026-11-13 (1 USDC ok, 2 USDC
+// OverPerPayment); a host that does not answer gives "could not read the chain", never a verdict.
+test("the mainnet question sends one request a click, and names no verdict when the chain cannot be read", async ({
+  page,
+}) => {
+  let calls = 0;
+  let down = false;
+  await page.route("https://rpc.mainnet.fastnear.com/**", (route) => {
+    calls++;
+    if (down) return route.abort();
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    const args = JSON.parse(Buffer.from(body.params.args_base64, "base64").toString());
+    const value =
+      Number(args.request.amount) <= 1_000_000
+        ? { ok: true, code: null, would_hold: false }
+        : { ok: false, code: "OverPerPayment", would_hold: false };
+    return route.fulfill({
+      json: {
+        jsonrpc: "2.0",
+        id: 1,
+        result: { result: [...Buffer.from(JSON.stringify(value))], logs: [], block_height: 1 },
+      },
+    });
+  });
+  await page.goto("/#mainnet");
+  const ask = page.locator('section[aria-labelledby="mainnet-ask-title"]');
+  const headline = ask.locator('[aria-live="polite"] p').first();
+  await ask.getByRole("button", { name: "1 USDC" }).click();
+  await expect(headline).toHaveText("Allow");
+  expect(calls).toBe(1);
+  await ask.getByRole("button", { name: "2 USDC" }).click();
+  await expect(headline).toHaveText("Block: OverPerPayment");
+  expect(calls).toBe(2);
+  down = true;
+  await ask.getByRole("button", { name: "1 USDC" }).click();
+  await expect(headline).toHaveText("Could not read the chain, try again.");
+  expect(calls).toBe(3);
+  await expect(ask.getByText(/^(Allow|Block)/)).toHaveCount(0);
+});

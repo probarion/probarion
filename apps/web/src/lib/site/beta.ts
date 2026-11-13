@@ -19,10 +19,17 @@ export function betaStrip(network: Network | null) {
     /** The start of `first` the strip sets in bold. */
     bold: network === null ? first : "Unaudited beta",
     first,
-    /** On testnet only: the mainnet vault, a link after `first`. Its label is a sentence; the strip adds the period. */
+    /**
+     * On testnet only: the mainnet vault. `label` is a sentence the strip ends with a period: a link after `first` on a
+     * wide screen, and plain text in a phone's summary, which holds no link. The opened strip links `open` instead.
+     */
     mainnet:
       network === "testnet"
-        ? { label: "One small mainnet vault holds real USDC", href: "/#mainnet" }
+        ? {
+            label: "One small mainnet vault holds real USDC",
+            open: "See the mainnet vault",
+            href: "/#mainnet",
+          }
         : null,
     custody: "Non-custodial: Probarion holds no owner key.",
     gaps: { label: "Known gaps", href: "/#known-gaps" },

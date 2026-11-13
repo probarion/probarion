@@ -78,8 +78,6 @@ export const LINKS = {
   mainnetVerifyOnline: blob("docs/evidence/mainnet-v0/s2-2026-11-13/verify-online-2026-11-13.txt"),
   /** The demo video on X, the README's "Demo video": a 1:57 cut recorded on the live product. */
   demoVideo: "https://x.com/probarionhq/status/2120882499689836651",
-  /** A new issue from the repository's pilot template (.github/ISSUE_TEMPLATE/pilot.yml). */
-  pilot: `${REPO_URL}/issues/new?template=pilot.yml`,
 } as const;
 
 // --- metadata -------------------------------------------------------------------------------------
@@ -154,7 +152,6 @@ export const FOOTER = {
     { href: LINKS.interfaces, label: "Interfaces" },
     { href: LINKS.security, label: "SECURITY.md" },
     { href: LINKS.changelog, label: "Changelog" },
-    { href: LINKS.pilot, label: "Run a pilot" },
   ],
   follow: [{ href: LINKS.x, label: "@probarionhq on X" }],
 } as const;
@@ -251,21 +248,22 @@ export const HERO = {
   /** A line under the buttons: the demo video on X, which leaves the site. */
   demo: { label: "Watch the 2-min demo", href: LINKS.demoVideo },
   /**
-   * Under the buttons, ahead of the audience line: what runs where, then the mainnet vault's payment and refusal of
-   * 2026-11-11 (MAINNET_TX), one row each, in the README's words, dated so that two rows do not read as the vault's
-   * whole record. `after` points to its two Base payouts of 2026-11-13 in the mainnet section (#mainnet), which tells each
-   * one with its transactions and its checks.
+   * After the hero's cards (on a phone, under them), ahead of the audience line: since when the mainnet vault runs, then
+   * its payment and the team's own refusal test of 2026-11-11 (MAINNET_TX), one row each, in the README's words, dated so
+   * that two rows do not read as the vault's whole record. `after` points to its two Base payouts of 2026-11-13 in the
+   * mainnet section (#mainnet), then says what runs on testnet.
    */
   mainnet: {
-    lead: "Testnet today.",
-    intro: " On NEAR mainnet, one small vault, `v0.probarion.near`, with real USDC, on 2026-11-11:",
-    /** The list's name, read without "Testnet today." */
+    lead: "On NEAR mainnet since 2026-11-11.",
+    intro:
+      " One small vault, `v0.probarion.near`, with real USDC. Its payment under mandate 1, and our own test of a mandate that does not exist, on 2026-11-11:",
+    /** The list's name, read on its own. */
     listLabel: "Mainnet transactions of v0.probarion.near, 2026-11-11",
     txLabel: "Mainnet transaction",
     after: [
-      "On 2026-11-13 it also made ",
+      "On 2026-11-13 it made ",
       { label: "two test payouts to the owner's own Base address", href: "#mainnet" },
-      ".",
+      ". The console, the live check and the Canary run on NEAR testnet, with test tokens.",
     ] satisfies readonly CopyPart[],
     rows: [
       {
@@ -277,7 +275,7 @@ export const HERO = {
       {
         tone: "refused",
         state: "Blocked",
-        what: "Mandate 999 does not exist: `NoMandate`",
+        what: "Our test spend on mandate 999, which does not exist: `NoMandate`",
         tx: MAINNET_TX.refusal,
       },
     ],
@@ -317,14 +315,14 @@ export const HERO = {
       items: [
         "An attested model proposed it.",
         "Code rules allowed it.",
-        "The contract paid the mandate's Base payee: {amount} USDC burned on NEAR, {received} arrived on Base. The agent sent no address.",
+        "The contract paid the mandate's Base payee: {amount} USDC burned on NEAR, {received} arrived on Base, and the POA bridge kept {fee} as its fee. The agent sent no address.",
       ],
     },
     /** After the steps: the online check of the model's TEE evidence (O1 Intel TDX, O2 NVIDIA NRAS), and its limit. */
     tee: [
       "Its TEE evidence was ",
       { label: "checked against Intel and NVIDIA", href: LINKS.mainnetVerifyOnline },
-      " on 2026-11-13. Image not pinned.",
+      " on 2026-11-13. The TEE image is not pinned, so this does not show which model image ran.",
     ] satisfies readonly CopyPart[],
   },
   /** The team's own attempt on the Canary (lib/canary/rehearsal.ts): code refused it, then raw mode sent it anyway. */
@@ -459,9 +457,9 @@ export const LIVE_CHECK = {
       "Inside the mandate. {amount} USDC would be paid to the payee the owner signed, whatever the prompt said.",
     held: "Inside the mandate, but above its approval limit: the payment would wait for a person to approve it.",
     injectedPaid:
-      "{amount} USDC would go only to {payee}, the mandate's payee. The attacker's address had no field to go in, so the attacker gets 0.",
+      "{amount} USDC would go only to {payee}, the mandate's payee: the request has no field for the attacker's address.",
     injectedPaidUnknownPayee:
-      "{amount} USDC would go only to the payee the owner signed. The attacker's address had no field to go in, so the attacker gets 0.",
+      "{amount} USDC would go only to the payee the owner signed: the request has no field for the attacker's address.",
     hijackTail:
       "At {max} USDC or less it would still go to {payee}, never to the address in the prompt.",
     unknownCode: "The contract refused it with {code}.",
@@ -1385,7 +1383,7 @@ export const MAINNET_PAYOUT = {
  */
 export const MAINNET_ASK = {
   title: "Ask the mainnet contract",
-  lede: "Mandate 1 of `v0.probarion.near` pays `probarion-duong.near`, the owner's own NEAR account, at most 1 USDC a payment. Pick an amount: this page sends it to the vault's `check_spend` view on NEAR mainnet, from your browser, and shows the contract's answer word for word.",
+  lede: "Mandate 1 of `v0.probarion.near` pays `probarion-duong.near`, the owner's own NEAR account, at most 1 USDC a payment. Pick an amount: this page sends it to the vault's `check_spend` view on NEAR mainnet, from your browser, and shows the contract's answer word for word. `check_spend` is the same check `spend` runs before it pays.",
   amountsLabel: "Amount the agent asks for",
   /** A button's label: {amount} is one of ASK_AMOUNTS. */
   amount: "{amount} USDC",
@@ -1407,20 +1405,58 @@ export const MAINNET_ASK = {
   unknownCode: LIVE_CHECK.copy.unknownCode,
 } as const;
 
+/** Where the site serves the mainnet vault's ledger and the files verify reads beside it (apps/web/public/samples/mainnet). */
+export const SAMPLES_MAINNET = "https://probarion.xyz/samples/mainnet";
+
 /**
- * The no-clone verify of the mainnet vault, beside the question above: one command per line, each with a copy button,
- * that downloads the vault's ledger from this site and checks it against NEAR mainnet. The landing shows the block only
- * once `lines` holds commands.
- * TODO(F02): lane F02 hands over the final block (probarion.xyz URLs, checked to print `RESULT: PASS` in Bash and
- * PowerShell, docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt). Put its lines here and its note in `note`.
+ * The no-clone verify of the mainnet vault, under the question above: the same commands for Bash and for Windows
+ * PowerShell 5.1, each block with its copy button. They download the vault's ledger and the two files verify reads beside
+ * it from this site, then check them against NEAR mainnet with `npx probarion@0.1.1`. The blocks are the README's, as
+ * recorded in docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt (there against a local copy of the same files).
+ * PowerShell calls curl.exe and npx.cmd: in 5.1, curl is another command, and a Restricted policy blocks npx.ps1.
  */
 export const MAINNET_VERIFY = {
   title: "Verify the vault yourself",
-  note: "In an empty folder, with Node 24 or later. In Windows PowerShell 5.1, type curl.exe for curl.",
+  intro:
+    "In an empty folder, with Node 24: these commands download the vault's signed ledger, its recorded transactions and spend 1's decision from this site, then check them against NEAR mainnet. Verify reads the chain with read-only RPC requests and signs nothing.",
+  /** The files the blocks download, under SAMPLES_MAINNET. */
+  files: ["ledger.jsonl", "mainnet-proof.json", "evidence/v0-decision-m001.json"],
+  blocks: [
+    {
+      shell: "Bash",
+      label: "Bash: Linux, macOS or Git Bash",
+      lines: [
+        "mkdir -p probarion-mainnet && cd probarion-mainnet",
+        `B=${SAMPLES_MAINNET}`,
+        'curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \\',
+        '  -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"',
+        "npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \\",
+        "  --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
+      ],
+    },
+    {
+      shell: "PowerShell",
+      label: "Windows PowerShell 5.1",
+      lines: [
+        "mkdir -Force probarion-mainnet | Out-Null",
+        "cd probarion-mainnet",
+        `$B = "${SAMPLES_MAINNET}"`,
+        'curl.exe -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"',
+        "npx.cmd -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
+      ],
+    },
+  ],
+  /** A copy button's visible label; `copyLabel` names it for a screen reader, starting with the same word. */
   copy: "Copy",
-  /** The copy button's name for a screen reader: {n} is the line's number. */
-  copyLabel: "Copy line {n}",
-  lines: [] as readonly string[],
+  copyLabel: "Copy the {shell} commands",
+  expected:
+    "Expected: checks a to h PASS, i SKIP (not a factory vault), then `RESULT: PASS`, in about 20 seconds once the package is cached. Check e says A8 not run: version 0.1.1 has no `--invoice`.",
+  caveat:
+    "Without `--online`, check e does not verify the TEE quotes (O1 and O2), and the TEE measurement is not pinned.",
+  evidence: {
+    label: "Recorded runs in Git Bash and PowerShell 5.1, 2026-11-13 UTC",
+    href: blob("docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt"),
+  },
 } as const;
 
 // --- the console screenshots ----------------------------------------------------------------------

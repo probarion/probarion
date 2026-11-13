@@ -1047,11 +1047,11 @@ a.netPill:hover {
   }
 }
 /*
- * With both networks served the bar also carries the switch, and the links fit beside it only once the page has its full
- * width (.wrap's 1320px, plus room for a scrollbar). Below that they move into the phone menu, as they do below 1241px.
- * With one network there is no switch, and the bar is unchanged.
+ * With both networks served the bar also carries the switch, and the eight links do not fit beside it even at .wrap's
+ * full 1320px, so at every width they stay in the phone menu, as they do below 1241px. With one network there is no
+ * switch, and the bar is unchanged.
  */
-@media (min-width: 1241px) and (max-width: 1360px) {
+@media (min-width: 1241px) {
   .nav:has(> .netSwitch) {
     gap: 12px;
   }

@@ -30,7 +30,7 @@
   text-wrap: pretty;
 }
 
-/* --- What the agent tries: four scenarios, then four fields on one label column ------------------------------- */
+/* --- What the agent tries: five scenarios, then four fields on one label column ------------------------------- */
 
 .scenarios {
   display: grid;
@@ -40,6 +40,10 @@
   margin: 18px 0 0;
   padding: 0;
   border: 0;
+}
+/* An odd last scenario takes the whole row, so no cell is left empty beside it. */
+.scenario:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 /* A column from the top, so that a title sits level with its neighbour's when one sub-line wraps. */
 .scenario {

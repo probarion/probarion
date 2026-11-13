@@ -1,8 +1,9 @@
 /*
  * The hero (Hero.tsx): the headline, the lede and its buttons, the demo video's link, then the mainnet record and the
- * audience line; beside them the caption and the two cards, the steps of each under it. The cards' own look (.card,
- * .metal, .obsidian, .rows, .state) stays in site.module.css; this module lays the section out and lines the two cards
- * up. Every colour is a token from app/globals.css, and nothing moves on scroll.
+ * audience line; beside them the caption and the two cards, the steps of each under it. On one column (960px and below)
+ * the cards come right after the buttons, and the record after the cards. The cards' own look (.card, .metal, .obsidian,
+ * .rows, .state) stays in site.module.css; this module lays the section out and lines the two cards up. Every colour is
+ * a token from app/globals.css, and nothing moves on scroll.
  */
 
 /*
@@ -12,12 +13,26 @@
 .hero {
   padding-block: clamp(24px, 3.2vw, 44px) var(--space-section);
 }
+/*
+ * Two columns: the lede over the record on the left, the cards on the right across both rows. The lede's row takes its
+ * own height and the record's row the rest, so the record starts right under the lede, as one column would put it.
+ */
 .heroGrid {
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: clamp(32px, 5vw, 72px);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "lead duel" "record duel";
+  column-gap: clamp(32px, 5vw, 72px);
   margin-top: clamp(28px, 3vw, 44px);
   align-items: start;
+}
+.leadCol {
+  grid-area: lead;
+  min-width: 0;
+}
+.recordCol {
+  grid-area: record;
+  min-width: 0;
 }
 
 /*
@@ -119,6 +134,7 @@
  * rows (subgrid), so the labels, the amounts, the rows and the links line up, and each card's steps sit under it.
  */
 .duel {
+  grid-area: duel;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
@@ -235,6 +251,9 @@
 @media (max-width: 960px) {
   .heroGrid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: "lead" "duel" "record";
+    row-gap: clamp(32px, 5vw, 72px);
   }
 }
 @media (max-width: 620px) {

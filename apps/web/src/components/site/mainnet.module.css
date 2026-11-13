@@ -1092,7 +1092,9 @@
   color: var(--color-band-mute);
   overflow-wrap: anywhere;
 }
+/* Two classes and an element: the raw answer keeps the line's 13px, never .site code's 0.86em (11.2px). */
 .ask .askSource code {
+  font-size: 1em;
   color: var(--color-band-fg);
 }
 .askRetry {
@@ -1121,7 +1123,10 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
-/* The no-clone verify: one command a line, each with its copy button. */
+/*
+ * The no-clone verify: a block for each shell on the ink ground, its name and copy button over the commands. The lines
+ * wrap rather than scroll, so the block needs no keyboard focus to be read; the copy keeps each line whole.
+ */
 .askVerify {
   grid-column: 1 / -1;
   min-width: 0;
@@ -1131,27 +1136,41 @@
   font-size: 20px;
   line-height: 1.3;
 }
-.askLines {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-}
-.askLine {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.askBlock {
   min-width: 0;
-  padding: 10px 14px;
+  margin-top: 14px;
   border-radius: 12px;
   background: var(--color-band);
   color: var(--color-band-fg);
+}
+.askBlockHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--color-band-line);
   font-size: 14px;
   line-height: 1.5;
+  color: var(--color-band-mute);
 }
-.ask .askLine code {
-  flex: 1;
-  min-width: 0;
+.askCode {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+/* Two classes and an element, as above: the commands keep the block's 13px. */
+.ask .askCode code {
+  font-size: 1em;
+}
+/* On the ink ground the page's gold focus ring is faint (about 3:1), so it takes the ground's own ink, as .stone does. */
+.askAnswer :focus-visible,
+.askBlock :focus-visible {
+  outline-color: var(--color-band-fg);
 }
 .askCopy {
   appearance: none;

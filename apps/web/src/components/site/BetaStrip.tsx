@@ -9,7 +9,8 @@ import { useBrowserNetwork } from "./useBrowserNetwork";
  * What the strip says for a network, or only what is true on both while `network` is null (the server render and the
  * first paint: the network is named once the address bar has been read). Wide screens get one row; a phone gets the
  * first sentence, which opens to the rest with no JavaScript (audit P1-10). CSS shows one of the two. On testnet the
- * mainnet vault's link follows the first sentence on a wide screen, and opens the rest on a phone: a summary holds no link.
+ * mainnet vault's sentence follows the first one: a link on a wide screen, and text in a phone's summary (a summary holds
+ * no link), whose opened part starts with the link.
  */
 export function BetaStripView({ network }: { network: Network | null }) {
   const copy = betaStrip(network);
@@ -19,11 +20,12 @@ export function BetaStripView({ network }: { network: Network | null }) {
       {copy.first.slice(copy.bold.length)}
     </>
   );
-  const mainnet =
-    copy.mainnet === null ? null : (
+  const vault = copy.mainnet;
+  const mainnet = (label: string) =>
+    vault === null ? null : (
       <>
-        <a className={s.betaLink} href={copy.mainnet.href}>
-          {copy.mainnet.label}
+        <a className={s.betaLink} href={vault.href}>
+          {label}
         </a>
         .
       </>
@@ -41,14 +43,17 @@ export function BetaStripView({ network }: { network: Network | null }) {
       <div className={`${s.wrap} ${s.betaRow} ${s.betaWide}`}>
         <span>
           {first}
-          {mainnet === null ? null : <> {mainnet}</>}
+          {vault === null ? null : <> {mainnet(vault.label)}</>}
         </span>
         <span>{rest}</span>
       </div>
       <details className={`${s.wrap} ${s.betaNarrow}`}>
-        <summary>{first}</summary>
+        <summary>
+          {first}
+          {vault === null ? null : ` ${vault.label}.`}
+        </summary>
         <p>
-          {mainnet === null ? null : <>{mainnet} </>}
+          {vault === null ? null : <>{mainnet(vault.open)} </>}
           {rest}
         </p>
       </details>

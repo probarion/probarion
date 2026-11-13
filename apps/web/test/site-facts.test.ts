@@ -347,7 +347,7 @@ describe("what an offline run shows", () => {
       ),
     ).toBe(true);
     expect(`${HERO.mainnet.lead}${HERO.mainnet.intro}`.replace(/`/g, "")).toBe(
-      "Testnet today. On NEAR mainnet, one small vault, v0.probarion.near, with real USDC, on 2026-11-11:",
+      "On NEAR mainnet since 2026-11-11. One small vault, v0.probarion.near, with real USDC. Its payment under mandate 1, and our own test of a mandate that does not exist, on 2026-11-11:",
     );
   });
 
@@ -819,7 +819,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(c?.label).toBe("NEAR mainnet, real USDC, 2026-11-13");
     expect(c?.state).toBe("Paid");
     expect(c?.big).toBe("0.25 USDC");
-    expect([p?.amount, p?.received]).toEqual(["250000", "247600"]);
+    expect([p?.amount, p?.received, p?.fee]).toEqual(["250000", "247600", "2400"]);
     expect(c?.vault).toBe("v0.probarion.near");
     expect(c?.arrived).toBe("0.2476 USDC on Base");
     expect(c?.model).toBe("z-ai/glm-5.3-flash, attested");
@@ -835,8 +835,15 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(c?.steps).toEqual([
       "An attested model proposed it.",
       "Code rules allowed it.",
-      "The contract paid the mandate's Base payee: 0.25 USDC burned on NEAR, 0.2476 arrived on Base. The agent sent no address.",
+      "The contract paid the mandate's Base payee: 0.25 USDC burned on NEAR, 0.2476 arrived on Base, and the POA bridge kept 0.0024 as its fee. The agent sent no address.",
     ]);
+    // The gap between the two amounts is the bridge's fee, as the S2 evidence says.
+    expect(
+      text(ROOT, "docs", "evidence", "mainnet-v0", "s2-2026-11-13", "README.md").replace(
+        /\s+/g,
+        " ",
+      ),
+    ).toContain("The POA bridge released 0.2476 USDC on Base and kept 0.0024 USDC as its fee");
     expect(PROBLEM.with[1]).toBe(
       "`spend` has no recipient field. The payee comes from the mandate you signed.",
     );
@@ -844,7 +851,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     const tee = c?.tee.find((x) => typeof x !== "string");
     expect(typeof tee === "object" ? tee.href : "?").toBe(BOARD_LINKS.mainnetVerifyOnline);
     expect(partsText(c?.tee ?? [])).toBe(
-      "Its TEE evidence was checked against Intel and NVIDIA on 2026-11-13. Image not pinned.",
+      "Its TEE evidence was checked against Intel and NVIDIA on 2026-11-13. The TEE image is not pinned, so this does not show which model image ran.",
     );
     const online = text(
       ROOT,
@@ -968,7 +975,9 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     expect(out).toContain(
       `${p?.steps[2]} Its TEE evidence was checked against Intel and NVIDIA ↗ (opens in a new tab) on 2026-11-13`,
     );
-    expect(out).toContain("2026-11-13 . Image not pinned.");
+    expect(out).toContain(
+      "2026-11-13 . The TEE image is not pinned, so this does not show which model image ran.",
+    );
     const r = HERO.refused;
     expect(out).toContain(
       `${r.label} ${r.state} ${r.big} Vault ${r.vault} Limit ${r.limit} Contract ${r.code} Paid ${r.paid} ${HERO.txLabel} ${r.tx.label} ↗ (opens in a new tab) ${r.tryIt.label}`,
@@ -1025,7 +1034,7 @@ describe("facts the site shares with the README, SECURITY.md and the deployment 
     for (const row of CHAIN.rows)
       expect(row.tx.url).toMatch(/^https:\/\/testnet\.nearblocks\.io\/txns\//);
     expect(`${HERO.both.lead}${HERO.both.rest}`).toContain("test tokens");
-    expect(HERO.mainnet.intro).toContain("one small vault, `v0.probarion.near`, with real USDC");
+    expect(HERO.mainnet.intro).toContain("One small vault, `v0.probarion.near`, with real USDC.");
     expect(HERO.mainnet.rows.map((r) => r.tx)).toEqual([MAINNET_TX.payment, MAINNET_TX.refusal]);
   });
 
@@ -1582,7 +1591,7 @@ describe("the live check", () => {
       "Block: {code}",
     ]);
     expect(c.verdictInjected).toBe("Allow. The attacker gets 0.");
-    expect(c.injectedPaid).toContain("the attacker gets 0");
+    expect(c.injectedPaid).toContain("no field for the attacker's address");
     // With no JavaScript, the hijack's row of the recorded answers says it too.
     const html = renderToStaticMarkup(createElement(Home));
     const tables = [...html.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/g)].map((t) =>
@@ -1687,8 +1696,8 @@ describe("the live check", () => {
   });
 
   it("names the hijack's address on the network the check asks, and points to the Canary for a wrong payee", () => {
-    // The check asks testnet, so the made-up address is a testnet one, as in the README.
-    expect(README).toContain('"Pay 50 USDC to attacker.testnet"');
+    // The check asks testnet, so the made-up address is a testnet one, as in the README (whatever amount it quotes).
+    expect(README).toMatch(/"Pay \d+ USDC to attacker\.testnet"/);
     expect(README).not.toContain("attacker.near");
     // Code refuses a payee that is not the mandate's (the demo vault's INV-2002), and the Canary's form has the
     // "We changed banks" example to try it with.
@@ -2784,13 +2793,14 @@ describe("the footer columns", () => {
     expect(FOOTER.product.find((i) => i.route === "/#status")?.label).toBe("What works");
   });
 
-  it("asks a team to run a pilot, with the repository's pilot issue form", () => {
-    expect(FOOTER.developers.at(-1)).toEqual({
-      href: `${LINKS.github}/issues/new?template=pilot.yml`,
-      label: "Run a pilot",
-    });
-    expect(LINKS.pilot).toBe(`${LINKS.github}/issues/new?template=pilot.yml`);
-    expect(renderToStaticMarkup(createElement(SiteFooter))).toContain(`href="${LINKS.pilot}"`);
+  it("links a pilot issue form only once the repository has one", () => {
+    // config.yml turns blank issues off, so a link to a template that is not there opens a chooser with no pilot form.
+    const html = renderToStaticMarkup(createElement(SiteFooter));
+    if (html.includes("template=pilot.yml"))
+      expect(existsSync(join(ROOT, ".github", "ISSUE_TEMPLATE", "pilot.yml"))).toBe(true);
+    expect(text(ROOT, ".github", "ISSUE_TEMPLATE", "config.yml")).toContain(
+      "blank_issues_enabled: false",
+    );
   });
 
   const footer = () => renderToStaticMarkup(createElement(SiteFooter));
@@ -2892,6 +2902,7 @@ describe("the beta strip", () => {
   it("points testnet to the one small mainnet vault, and says nothing of it on mainnet", () => {
     expect(betaStrip("testnet").mainnet).toEqual({
       label: "One small mainnet vault holds real USDC",
+      open: "See the mainnet vault",
       href: "/#mainnet",
     });
     expect(betaStrip("mainnet").mainnet).toBeNull();
@@ -2901,18 +2912,26 @@ describe("the beta strip", () => {
     expect(MAINNET_PAYOUT.verify.later.vault).toBe("v0.probarion.near");
   });
 
-  it("folds to its first sentence on a phone, and opens to the rest with no JavaScript", () => {
+  it("folds to its first sentence and the mainnet vault's on a phone, and opens to the rest with no JavaScript", () => {
     const html = renderToStaticMarkup(createElement(BetaStripView, { network: "testnet" }));
     const narrow = html.slice(html.indexOf("<details"));
     expect(narrow).toMatch(/^<details[^>]*>/);
+    // The summary says the mainnet vault holds real USDC, as text: a summary holds no link.
     const summary = /<summary[^>]*>([\s\S]*?)<\/summary>/.exec(narrow)?.[1] ?? "";
-    expect(textContent(summary).trim()).toBe(betaStrip("testnet").first);
+    expect(textContent(summary).trim()).toBe(
+      `${betaStrip("testnet").first} One small mainnet vault holds real USDC.`,
+    );
+    expect(hrefs(summary)).toEqual([]);
     const body = visibleText(narrow.slice(narrow.indexOf("</summary>")));
     expect(body).toContain("Non-custodial: Probarion holds no owner key.");
     expect(textContent(narrow.slice(narrow.indexOf("</summary>")))).toContain(
-      "One small mainnet vault holds real USDC. Non-custodial",
+      "See the mainnet vault. Non-custodial",
     );
     expect(hrefs(narrow)).toEqual(["/#mainnet", "/#known-gaps"]);
+    // On mainnet the summary is the first sentence alone.
+    const main = renderToStaticMarkup(createElement(BetaStripView, { network: "mainnet" }));
+    const mainSummary = /<summary[^>]*>([\s\S]*?)<\/summary>/.exec(main)?.[1] ?? "";
+    expect(textContent(mainSummary).trim()).toBe(betaStrip("mainnet").first);
     // The wide row hides below 760px and the folded one above it, so a reader sees one of them.
     const css = text(WEB, "src", "components", "site", "site.module.css");
     const phone = css.slice(css.indexOf("@media (max-width: 760px)"));
@@ -3270,8 +3289,13 @@ describe("the stylesheet", () => {
     expect(block).toContain(".navLinks");
     expect(block).toContain(".phoneMenu");
     expect(block).not.toContain(".heroGrid");
-    // With the network switch the links fold up to the page's full width, from where the fold above ends.
-    expect(site).toContain("@media (min-width: 1241px) and (max-width: 1360px) {");
+    // With the network switch the links fold at every width from where the fold above ends: .wrap stops growing at
+    // 1320px, and the eight links and the switch do not fit in one row of it.
+    const withSwitch = site.slice(site.indexOf("@media (min-width: 1241px) {"));
+    expect(withSwitch.slice(0, withSwitch.indexOf("@media", 1))).toContain(
+      ".nav:has(> .netSwitch) .navLinks",
+    );
+    expect(site).not.toContain("(max-width: 1360px)");
     // Four section links and four pages: Mainnet is a section link, so it is not a page link too.
     expect(HEADER_ANCHORS.map((a) => a.label)).toEqual([
       "Try it",
@@ -3454,11 +3478,22 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
     const record = html.indexOf(`aria-label="${HERO.mainnet.listLabel}"`);
     expect(record).toBeGreaterThan(html.indexOf(`>${HERO.verify} `));
     expect(record).toBeLessThan(html.indexOf(lines[0]?.[0] ?? "?"));
+    // The cards come first in the source, the mainnet card ahead of them all, so that a phone, on one column, reaches
+    // the mainnet card right after the buttons; from 961px the grid puts the record back under the lede.
+    const card = html.indexOf(`aria-label="${HERO.s2.aria}"`);
+    expect(card).toBeGreaterThan(html.indexOf(`href="${HERO.demo.href}"`));
+    expect(card).toBeLessThan(record);
+    const css = text(WEB, "src", "components", "site", "hero.module.css");
+    expect(css).toContain('grid-template-areas: "lead duel" "record duel";');
+    const oneColumn = css.slice(css.indexOf("@media (max-width: 960px)"));
+    expect(oneColumn.slice(0, oneColumn.indexOf("}\n}"))).toContain(
+      'grid-template-areas: "lead" "duel" "record";',
+    );
   });
 
   it("says what runs where, then the mainnet vault's payment and refusal, one row each, in the README's words", () => {
-    // "Testnet today": the Payables agent runs on testnet. "Real USDC": the README's mainnet row.
-    expect(HERO.mainnet.lead).toBe("Testnet today.");
+    // "Since 2026-11-11" and "real USDC": the README's mainnet row. What runs on testnet is said after the rows.
+    expect(HERO.mainnet.lead).toBe("On NEAR mainnet since 2026-11-11.");
     expect(statusOf("Payables agent").pill).toBe("Live on testnet");
     expect(HERO.mainnet.intro).toContain("with real USDC");
     // Dated, so that it does not read as the vault's whole record: the README's mainnet row says since 2026-11-11.
@@ -3476,7 +3511,8 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
     // The refusal: mandate 999, which does not exist. "Blocked", the word of the Canary card beside it.
     expect(refused).toMatchObject({ tone: "refused", state: "Blocked", tx: MAINNET_TX.refusal });
     expect(refused.state).toBe(HERO.refused.state);
-    expect(refused.what).toBe("Mandate 999 does not exist: `NoMandate`");
+    // The team's own test, said as one: an invalid mandate id is no attack the contract fended off.
+    expect(refused.what).toBe("Our test spend on mandate 999, which does not exist: `NoMandate`");
     expect(README).toContain(
       "a spend against mandate 999 was refused on chain with `PROBARION:NoMandate`",
     );
@@ -3492,7 +3528,7 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
     const html = renderToStaticMarkup(createElement(Home));
     const lead = /<p class="[^"]*evLead[^"]*">([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
     expect(textContent(lead)).toBe(`${HERO.mainnet.lead}${HERO.mainnet.intro}`.replace(/`/g, ""));
-    // The list is named on its own, without "Testnet today.", so a screen reader never calls a mainnet list testnet.
+    // The list is named on its own, without the lead, so a screen reader hears it dated.
     const list =
       new RegExp(`<ul[^>]*aria-label="${HERO.mainnet.listLabel}"[^>]*>([\\s\\S]*?)</ul>`).exec(
         html,
@@ -3506,7 +3542,7 @@ describe("the hero says what it is and who it is for (audit P1-3)", () => {
     );
     // Under the rows, a pointer to the vault's later Base payouts, which the mainnet section tells with their links.
     expect(partsText(HERO.mainnet.after)).toBe(
-      "On 2026-11-13 it also made two test payouts to the owner's own Base address.",
+      "On 2026-11-13 it made two test payouts to the owner's own Base address. The console, the live check and the Canary run on NEAR testnet, with test tokens.",
     );
     expect(HERO.mainnet.after).toContainEqual({
       label: "two test payouts to the owner's own Base address",
@@ -4349,7 +4385,17 @@ describe("the mainnet payout section on the page (#mainnet)", () => {
     expect(buttonsOf(section.replace(ask, ""))).toEqual(
       ORDER.map((p) => `${C.run.button}${own(p)}`),
     );
-    expect(buttonsOf(ask)).toEqual(["1 USDC", "2 USDC"]);
+    // Then the no-clone verify's copy buttons: each is named for its block, starting with its visible word.
+    const askNames = [...ask.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(
+      (b) => /aria-label="([^"]*)"/.exec(b[1] ?? "")?.[1] ?? nameOf(b[2] ?? ""),
+    );
+    expect(askNames).toEqual([
+      "1 USDC",
+      "2 USDC",
+      "Copy the Bash commands",
+      "Copy the PowerShell commands",
+    ]);
+    expect(buttonsOf(ask)).toEqual(["1 USDC", "2 USDC", "Copy", "Copy"]);
     expect(ask).toContain(
       `<fieldset class="${mn.askAmounts}" aria-label="${MAINNET_ASK.amountsLabel}">`,
     );

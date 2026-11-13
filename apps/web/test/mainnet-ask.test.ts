@@ -1,23 +1,28 @@
-// The #mainnet section's question to the mainnet contract (lib/site/mainnet-ask.ts, MainnetAsk.tsx) and the dated line
-// of the later online run under S2's verify. A click sends one view and names a verdict only from the contract's
-// answer; the mandate's facts are held to the committed snapshot, the later run's to its output file.
-import { readFileSync } from "node:fs";
+// The #mainnet section's question to the mainnet contract (lib/site/mainnet-ask.ts, MainnetAsk.tsx), the no-clone verify
+// under it, the hero's link that starts a payout's check there, and the dated line of the later online run under S2's
+// verify. A click sends one view and names a verdict only from the contract's answer; the mandate's facts are held to the
+// committed snapshot, the later run's to its output file.
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MainnetAsk, MainnetVerifyBlock } from "@/components/site/MainnetAsk";
+import { MainnetPayout } from "@/components/site/MainnetPayout";
 import { explorerAccountUrl } from "@/lib/config";
 import {
   BOARD_LINKS,
+  HERO,
   LINKS,
   LIVE_CHECK,
   MAINNET_ASK,
   MAINNET_PAYOUT,
   MAINNET_VERIFY,
+  SAMPLES_MAINNET,
   STATUS,
 } from "@/lib/site/facts";
+import { heroMainnet } from "@/lib/site/hero-mainnet";
 import {
   ASK_AGENT_PK,
   ASK_AMOUNTS,
@@ -32,8 +37,9 @@ import {
   askSentence,
   askSource,
 } from "@/lib/site/mainnet-ask";
-import { PAYOUTS } from "@/lib/site/mainnet-payout-data";
-import { verifyView } from "@/lib/site/mainnet-payout-section";
+import { PAYOUTS, RECORDED_RUNS } from "@/lib/site/mainnet-payout-data";
+import { newestFirst, verifyView } from "@/lib/site/mainnet-payout-section";
+import { onMainnetRead, requestMainnetRead } from "@/lib/site/mainnet-read";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const text = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf8");
@@ -238,7 +244,8 @@ describe("what the question shows, by state", () => {
     const html = renderToStaticMarkup(createElement(MainnetAsk));
     expect(html).toMatch(/<div class="[^"]*askPanel[^"]*" hidden="">/);
     expect(html).toContain(`aria-label="${MAINNET_ASK.amountsLabel}"`);
-    expect([...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1])).toEqual([
+    const amounts = /<fieldset[^>]*>([\s\S]*?)<\/fieldset>/.exec(html)?.[1] ?? "";
+    expect([...amounts.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1])).toEqual([
       "1 USDC",
       "2 USDC",
     ]);
@@ -250,31 +257,126 @@ describe("what the question shows, by state", () => {
 
   it("keeps the copy rules: no dash, no absolute claim, no test tokens", () => {
     const strings: string[] = Object.values(MAINNET_ASK);
-    for (const s of [...strings, MAINNET_VERIFY.title, MAINNET_VERIFY.note]) {
+    const V = MAINNET_VERIFY;
+    const verify = [V.title, V.intro, V.expected, V.caveat, V.evidence.label];
+    for (const s of [...strings, ...verify, ...V.blocks.map((b) => b.label)]) {
       expect(s, s).not.toMatch(new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`));
-      expect(s, s).not.toMatch(/\b(first|only|unhackable|never)\b/i);
+      // "read-only" is a plain fact, not an absolute claim.
+      expect(s, s).not.toMatch(/\b(first|unhackable|never)\b|(?<!read-)\bonly\b/i);
       expect(s, s).not.toMatch(/test USDC|test tokens?/i);
     }
   });
 });
 
+/** Markup text as a browser shows it: the entities React writes, decoded. */
+const decoded = (html: string) =>
+  html
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+
 describe("the no-clone verify block", () => {
-  it("renders nothing until lane F02's lines are in", () => {
-    expect(MAINNET_VERIFY.lines).toEqual([]);
-    expect(renderToStaticMarkup(createElement(MainnetVerifyBlock))).toBe("");
-    expect(renderToStaticMarkup(createElement(MainnetAsk))).not.toContain(MAINNET_VERIFY.title);
+  const html = renderToStaticMarkup(createElement(MainnetVerifyBlock));
+  const [bash, ps] = MAINNET_VERIFY.blocks;
+  const served = join(ROOT, "apps", "web", "public", "samples", "mainnet");
+  const evidence = join(ROOT, "docs", "evidence", "mainnet-v0", "no-clone-verify-2026-11-14.txt");
+
+  it("shows the Bash block, then the PowerShell one, each with one copy button named for its shell", () => {
+    const blocks = [...html.matchAll(/<pre[^>]*><code>([\s\S]*?)<\/code><\/pre>/g)].map((m) =>
+      decoded(m[1] ?? ""),
+    );
+    expect(blocks).toEqual([bash?.lines.join("\n"), ps?.lines.join("\n")]);
+    expect(html).toContain('aria-label="Copy the Bash commands"');
+    expect(html).toContain('aria-label="Copy the PowerShell commands"');
+    expect(renderToStaticMarkup(createElement(MainnetAsk))).toContain(MAINNET_VERIFY.title);
   });
 
-  it("gives each line its own copy button, named by its number", () => {
-    const lines = ["mkdir v0 && cd v0", "npx probarion verify v0.probarion.near"];
-    const html = renderToStaticMarkup(createElement(MainnetVerifyBlock, { lines }));
-    expect(html).toContain(MAINNET_VERIFY.title);
-    expect([...html.matchAll(/<code>([^<]*)<\/code>/g)].map((m) => m[1])).toEqual([
-      "mkdir v0 &amp;&amp; cd v0",
-      "npx probarion verify v0.probarion.near",
+  it("downloads the three files verify reads from this site, then runs probarion 0.1.1 on mainnet", () => {
+    expect(SAMPLES_MAINNET).toBe("https://probarion.xyz/samples/mainnet");
+    expect(bash?.lines).toEqual([
+      "mkdir -p probarion-mainnet && cd probarion-mainnet",
+      "B=https://probarion.xyz/samples/mainnet",
+      'curl -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" \\',
+      '  -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"',
+      "npx -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near \\",
+      "  --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
     ]);
-    expect(html).toContain('aria-label="Copy line 1"');
-    expect(html).toContain('aria-label="Copy line 2"');
+    // PowerShell 5.1: curl.exe (curl is another command there), npx.cmd (a Restricted policy blocks npx.ps1), no &&.
+    expect(ps?.lines).toEqual([
+      "mkdir -Force probarion-mainnet | Out-Null",
+      "cd probarion-mainnet",
+      '$B = "https://probarion.xyz/samples/mainnet"',
+      'curl.exe -fsS --create-dirs -o ledger.jsonl "$B/ledger.jsonl" -o mainnet-proof.json "$B/mainnet-proof.json" -o evidence/v0-decision-m001.json "$B/evidence/v0-decision-m001.json"',
+      "npx.cmd -y probarion@0.1.1 verify --network mainnet --vault v0.probarion.near --ledger ledger.jsonl --evidence evidence --proof mainnet-proof.json",
+    ]);
+    for (const b of MAINNET_VERIFY.blocks) {
+      const all = b.lines.join(" ");
+      for (const file of MAINNET_VERIFY.files) expect(all).toContain(`-o ${file} "$B/${file}"`);
+      // 0.1.1 has no --invoice, and the block runs offline: what it does not check is said under it.
+      expect(all).not.toContain("--invoice");
+      expect(all).not.toContain("--online");
+    }
+    expect(MAINNET_VERIFY.expected).toContain("A8 not run");
+    expect(MAINNET_VERIFY.caveat).toBe(
+      "Without `--online`, check e does not verify the TEE quotes (O1 and O2), and the TEE measurement is not pinned.",
+    );
+    expect(MAINNET_VERIFY.evidence.href).toBe(
+      `${LINKS.github}/blob/main/docs/evidence/mainnet-v0/no-clone-verify-2026-11-14.txt`,
+    );
+  });
+
+  // The served copies and their recorded runs come in with the samples (apps/web/public/samples/mainnet). Until they are
+  // in this checkout there is nothing to hold the block to, and vitest reports this test as skipped.
+  it.runIf(existsSync(served))("matches the served files and the recorded runs", () => {
+    for (const file of MAINNET_VERIFY.files)
+      expect(existsSync(join(served, ...file.split("/"))), file).toBe(true);
+    const runs = readFileSync(evidence, "utf8");
+    // Every line but the one that names the host: the runs fetched the same bytes from a local copy.
+    for (const b of MAINNET_VERIFY.blocks)
+      for (const line of b.lines.filter((l) => !l.includes(SAMPLES_MAINNET)))
+        expect(runs, line).toContain(line.trim());
+    expect(runs).toMatch(/i\s+factory-version\s+SKIP\s+not a factory vault/);
+    expect(runs).toContain("8 passed, 0 failed, 0 unproven, 1 skipped");
+    expect(runs).toContain("RESULT: PASS");
+    expect(runs).toContain("A8 not run");
+    expect(runs).toContain("2026-11-13T19:02:25Z Git Bash");
+    expect(runs).toContain("Windows PowerShell 5.1");
+  });
+});
+
+describe("the hero's Read the chain now", () => {
+  it("asks only the stone of its payout to read, until that stone stops listening", () => {
+    vi.stubGlobal("window", new EventTarget());
+    try {
+      const runs: string[] = [];
+      const stop3 = onMainnetRead("spend-3", () => runs.push("spend-3"));
+      const stop2 = onMainnetRead("spend-2", () => runs.push("spend-2"));
+      requestMainnetRead("spend-3");
+      expect(runs).toEqual(["spend-3"]);
+      stop3();
+      requestMainnetRead("spend-3");
+      expect(runs).toEqual(["spend-3"]);
+      requestMainnetRead("spend-2");
+      expect(runs).toEqual(["spend-3", "spend-2"]);
+      stop2();
+      requestMainnetRead("spend-2");
+      expect(runs).toEqual(["spend-3", "spend-2"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("names the payout #mainnet shows first and open, with its own check", () => {
+    const id = heroMainnet()?.payoutId;
+    expect(id).toBe("spend-3");
+    // The newest run is the open one: a folded payout's check would run out of sight.
+    expect(newestFirst(RECORDED_RUNS)[0]?.payout.id).toBe(id);
+    const html = renderToStaticMarkup(createElement(MainnetPayout));
+    expect(html).toMatch(/^<section[^>]*id="mainnet"/);
+    expect(html).toContain(`id="${id}-title"`);
+    expect(HERO.s2.read.href).toBe("#mainnet");
   });
 });
 

@@ -185,8 +185,13 @@ export function Hero() {
         <h1 className={s.h1}>
           <span>{HERO.line1}</span> <span className={s.gold}>{HERO.line2}</span>
         </h1>
+        {/*
+         * Three parts: the lede and its links, the cards, then the mainnet record and the audience line. The record is
+         * last in the source, so that a phone reaches the mainnet card right after the buttons; from 961px it sits under
+         * the lede, beside the cards (hero.module.css).
+         */}
         <div className={h.heroGrid}>
-          <div>
+          <div className={h.leadCol}>
             <p className={s.lede}>{HERO.lede}</p>
             <div className={s.cta}>
               <a className={`${s.btn} ${s.solid} ${s.big}`} href="#try">
@@ -201,10 +206,6 @@ export function Hero() {
             </div>
             <p className={h.demo}>
               <Away href={HERO.demo.href} label={HERO.demo.label} />
-            </p>
-            <MainnetRecord />
-            <p className={s.fineprint}>
-              <Parts parts={HERO.fineprint} />
             </p>
           </div>
           {/* The caption is first in the source and above both cards at every width; each card's steps sit under it. */}
@@ -221,6 +222,12 @@ export function Hero() {
                 <li key={step}>{step}</li>
               ))}
             </ol>
+          </div>
+          <div className={h.recordCol}>
+            <MainnetRecord />
+            <p className={s.fineprint}>
+              <Parts parts={HERO.fineprint} />
+            </p>
           </div>
         </div>
       </div>

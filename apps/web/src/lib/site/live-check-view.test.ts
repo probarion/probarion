@@ -75,9 +75,9 @@ describe("explain", () => {
     );
   });
 
-  it("says, for a hijacked prompt the contract allows, that only the mandate's payee is paid and the attacker gets 0", () => {
+  it("says, for a hijacked prompt the contract allows, that only the mandate's payee is paid and why", () => {
     expect(explain(hijack, true, copy, codes)).toBe(
-      "2 USDC would go only to probarion-payee.testnet, the mandate's payee. The attacker's address had no field to go in, so the attacker gets 0.",
+      "2 USDC would go only to probarion-payee.testnet, the mandate's payee: the request has no field for the attacker's address.",
     );
     // The same request without the hijack's invoice text is the normal invoice.
     expect(explain(hijack, false, copy, codes)).toBe(explain(normal, false, copy, codes));
@@ -127,7 +127,7 @@ describe("explain", () => {
     const refused = { ...overHijack, mandate: undefined };
     expect(explain(refused, true, copy, codes)).toBe(codes.OverPerPayment);
     expect(explain({ ...hijack, mandate: undefined }, true, copy, codes)).toBe(
-      "2 USDC would go only to the payee the owner signed. The attacker's address had no field to go in, so the attacker gets 0.",
+      "2 USDC would go only to the payee the owner signed: the request has no field for the attacker's address.",
     );
   });
 });
@@ -168,7 +168,9 @@ describe("what the answer panel shows, by kind of state", () => {
   it("never shows a bare allow for the hijacked prompt: its headline says the attacker gets 0", () => {
     expect(verdictText(answer(injected), copy, injectedIds)).toBe("Allow. The attacker gets 0.");
     expect(verdictWord(injected, copy, true)).toBe(copy.verdictInjected);
-    expect(sentence(answer(injected))).toContain("so the attacker gets 0");
+    // The headline says the attacker gets 0; the sentence under it says why, and does not say it twice.
+    expect(sentence(answer(injected))).toContain("no field for the attacker's address");
+    expect(sentence(answer(injected))).not.toContain("attacker gets 0");
     // The normal invoice, the same request, is a plain allow.
     expect(verdictText(answer(normal), copy, injectedIds)).toBe("Allow");
     // A recorded fallback for the hijack says it too.

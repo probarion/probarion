@@ -47,6 +47,7 @@ export function heroMainnet(payouts: readonly Payout[] = PAYOUTS): HeroMainnetVi
     date: p.date,
     amount: usdc(p.amount),
     received: usdc(p.received),
+    fee: usdc(p.fee),
     payee: shortAddr(p.payee),
     model: proposedBy(p) ?? "",
   };

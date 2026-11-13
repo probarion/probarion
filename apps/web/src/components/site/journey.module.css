@@ -68,7 +68,9 @@
   column-gap: 16px;
   white-space: nowrap;
 }
+/* A note in the panel's own sans, kept under 80 characters a line (WCAG 1.4.8) in the wide panel. */
 .panelNote {
+  max-width: 36em;
   padding-bottom: 6px;
   font-family: var(--font-sans);
   font-size: 13px;

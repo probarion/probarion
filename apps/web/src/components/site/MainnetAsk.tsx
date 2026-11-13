@@ -8,43 +8,48 @@ import m from "./mainnet.module.css";
 import { Away } from "./parts";
 import { Rich } from "./Rich";
 
-/** The lists say their role out loud (as in BuiltOn.tsx): Tailwind's preflight sets list-style: none. */
-const LIST = { role: "list" } as const;
-
 /**
- * The no-clone verify of the vault: one command per line, each with its copy button (hidden until the script runs).
- * Nothing renders while `lines` is empty.
+ * The no-clone verify of the vault: the Bash block, then the PowerShell one, each with a copy button (hidden until the
+ * script runs) that copies the whole block. The lines wrap, so no block scrolls sideways; the copy keeps them as they are.
+ * Then, in one paragraph, what the run prints, what it does not check and where its recorded runs are.
  */
-export function MainnetVerifyBlock({
-  lines = MAINNET_VERIFY.lines,
-}: {
-  lines?: readonly string[];
-}) {
-  if (lines.length === 0) return null;
+export function MainnetVerifyBlock() {
+  const V = MAINNET_VERIFY;
   return (
     <div className={m.askVerify}>
-      <h4 className={m.askVerifyTitle}>{MAINNET_VERIFY.title}</h4>
-      <p className={m.askNote}>{MAINNET_VERIFY.note}</p>
-      <ol className={m.askLines} {...LIST}>
-        {lines.map((line, i) => (
-          <li key={line} className={m.askLine}>
-            <code>{line}</code>
-            <CopyButton
-              text={line}
-              label={MAINNET_VERIFY.copy}
-              ariaLabel={fill(MAINNET_VERIFY.copyLabel, { n: i + 1 })}
-              className={m.askCopy}
-            />
-          </li>
-        ))}
-      </ol>
+      <h4 className={m.askVerifyTitle}>{V.title}</h4>
+      <p className={m.askNote}>{V.intro}</p>
+      {V.blocks.map((b) => {
+        const code = b.lines.join("\n");
+        return (
+          <div key={b.shell} className={m.askBlock}>
+            <div className={m.askBlockHead}>
+              <span>{b.label}</span>
+              <CopyButton
+                text={code}
+                label={V.copy}
+                ariaLabel={fill(V.copyLabel, { shell: b.shell })}
+                className={m.askCopy}
+              />
+            </div>
+            <pre className={m.askCode}>
+              <code>{code}</code>
+            </pre>
+          </div>
+        );
+      })}
+      <p className={m.askNote}>
+        <Rich text={V.expected} /> <Rich text={V.caveat} />{" "}
+        <Away href={V.evidence.href} label={V.evidence.label} />
+      </p>
     </div>
   );
 }
 
 /**
  * The visitor's own question to the mainnet vault: two amounts, one `check_spend` view a click, the contract's answer.
- * With no JavaScript a line says why there is no answer, and the vault's explorer page stays one link away.
+ * With no JavaScript a line says why there is no answer, and the vault's explorer page stays one link away. The no-clone
+ * verify of the same vault follows.
  */
 export function MainnetAsk() {
   return (

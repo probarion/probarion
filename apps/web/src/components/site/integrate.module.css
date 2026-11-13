@@ -64,12 +64,13 @@
 /* --- Part 2: the code, its reference, the docs ----------------------------------------------------------------- */
 
 /*
- * The code on the left, as wide as its longest line needs (91 characters of 13.5px mono and the padding, 777px); the
- * rail on the right gives up to 60px before the code gives any. Under 1200px the two stack.
+ * The code on the left, as wide as its longest line needs (91 characters of 13.5px mono and the padding, 777px), and
+ * the rail on the right. Under 1260px the two stack: a rail under 352px leaves the longest account and its arrow (about
+ * 248px of 13.5px mono) no room beside its term, and the link ran past the page edge at 1200 to 1215px.
  */
 .dev {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(300px, calc(100% - 840px), 360px);
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 40px;
   align-items: start;
 }
@@ -274,7 +275,7 @@
 /* --- Narrower screens ------------------------------------------------------------------------------------------ */
 
 /* The code takes the full width; the rail's two parts sit side by side under it, and the docs in two columns. */
-@media (max-width: 1199px) {
+@media (max-width: 1259px) {
   .dev {
     grid-template-columns: minmax(0, 1fr);
     gap: 32px;
