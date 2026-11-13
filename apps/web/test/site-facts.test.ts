@@ -1114,7 +1114,13 @@ describe("the status list", () => {
     expect(out.indexOf(STATUS.gaps.title)).toBeGreaterThan(
       out.indexOf("checked against the repository"),
     );
-    expect(section.match(/<li/g)).toHaveLength(2);
+    // The gaps close the section: every row comes before them, and their lists hold the gap items only.
+    const gapsAt = section.indexOf(`id="${STATUS.gaps.id}"`);
+    for (const { id } of STATUS.rows)
+      expect(section.indexOf(`id="${id}"`), id).toBeLessThan(gapsAt);
+    expect(section.slice(gapsAt).match(/<li/g)).toHaveLength(
+      STATUS.gaps.lists.reduce((n, l) => n + l.items.length, 0),
+    );
     expect(betaStrip("testnet").gaps).toEqual({ label: "Known gaps", href: `/#${STATUS.gaps.id}` });
   });
 

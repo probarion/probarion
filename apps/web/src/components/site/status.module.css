@@ -1,0 +1,556 @@
+/*
+ * The status section (components/site/StatusBoard.tsx): a key, four groups of rows on one set of columns, two notes
+ * and the known gaps. Each row has two marks, proof (always) and use (where it applies), each a shape and a word: colour
+ * only repeats them. Mobile first: one column in reading order; from 700px a row's name and marks share a line and
+ * where and evidence sit side by side; from 1280px four columns line up across every group and every part. The site's
+ * tokens only; no motion. test/typography-aaa.test.ts reads this file with the other modules.
+ */
+
+.board {
+  /* The four desktop columns: the part, its marks, where it runs, its evidence. */
+  --st-cols: minmax(0, 4fr) 204px minmax(0, 3fr) minmax(0, 3.8fr);
+  --st-gap: clamp(20px, 2.4vw, 34px);
+  /* The marks: the proof mark's own column, then the use mark. */
+  --st-marks: 112px auto;
+  /* The console's parts sit this far in, beside a hairline. */
+  --st-indent: 18px;
+  /* An evidence line's kind label, in small capitals. */
+  --st-kind: 72px;
+}
+
+/* --- Marks ---------------------------------------------------------------------------------------------------- */
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14.5px;
+  white-space: nowrap;
+  color: var(--color-ink);
+}
+.glyph {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.mVerified,
+.mPart,
+.mUntried {
+  font-weight: 600;
+}
+.mRunning,
+.mReleased {
+  font-weight: 500;
+}
+.mVerified .glyph,
+.mRunning .glyph {
+  color: var(--color-ok);
+}
+.mPart .glyph,
+.mUntried .glyph {
+  color: var(--color-wait);
+}
+.mReleased .glyph {
+  color: var(--color-ink);
+}
+/* The one word set in gold: what was not tried yet, so a glance down the proof column stops on it. */
+.mUntried {
+  color: var(--color-wait);
+}
+
+.marks {
+  display: grid;
+  grid-template-columns: var(--st-marks);
+  column-gap: 10px;
+  align-content: start;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* --- The key: what each mark means, and which rows hold each proof mark ---------------------------------------- */
+
+.key {
+  display: grid;
+  gap: 22px;
+  padding-block: 20px 22px;
+  border-block: 1px solid var(--color-line);
+  margin-bottom: clamp(40px, 5vw, 64px);
+}
+.keyGroup {
+  min-width: 0;
+}
+.keyLabel {
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-ink);
+}
+.keyLabel span {
+  margin-left: 10px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-mute);
+}
+.keyList {
+  margin: 0;
+}
+.keyRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px 24px;
+  padding-block: 10px;
+  border-top: 1px solid var(--color-line);
+}
+.keyRow:first-child {
+  border-top: 0;
+}
+.keyRow dd {
+  margin: 0;
+}
+.keyMeans {
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.keyWhich {
+  font-size: 15.5px;
+  color: var(--color-ink);
+}
+
+/* --- A group: its title line, which on a wide screen also names the columns, then its rows ---------------------- */
+
+.group + .group {
+  margin-top: clamp(44px, 5vw, 64px);
+}
+.groupHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: var(--st-gap);
+  align-items: end;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-ink);
+}
+.groupName {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 16px;
+  min-width: 0;
+}
+.groupTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.groupName p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-mute);
+}
+.colLabel {
+  display: none;
+  padding-bottom: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+
+.rows,
+.parts,
+.ev,
+.untriedList,
+.gaps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* --- A row, in reading order on a phone ------------------------------------------------------------------------ */
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "title" "marks" "what" "limit" "where" "ev" "parts";
+  column-gap: var(--st-gap);
+  padding-block: 18px 20px;
+  border-top: 1px solid var(--color-line);
+  min-width: 0;
+}
+.row:first-child {
+  border-top: 0;
+}
+.rowTitle {
+  grid-area: title;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.008em;
+}
+.row > .marks {
+  grid-area: marks;
+}
+.what {
+  grid-area: what;
+  margin: 6px 0 0;
+  font-size: 15.5px;
+  color: var(--color-mute);
+  max-width: var(--container-measure);
+}
+.limit {
+  grid-area: limit;
+  margin: 8px 0 0;
+  font-size: 15px;
+  color: var(--color-mute);
+  max-width: var(--container-measure);
+}
+.limitLabel {
+  margin-right: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-ink);
+}
+.where {
+  grid-area: where;
+  margin: 12px 0 0;
+  font-size: 15px;
+  min-width: 0;
+}
+.whereDetail {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-mute);
+  overflow-wrap: anywhere;
+}
+/* The detail is already mono: code inside it keeps the detail's size, not .site code's smaller one. */
+.where .whereDetail code {
+  font-size: 1em;
+}
+
+/* --- Evidence: what kind of record, then the link to it, then its amount or result --------------------------- */
+
+.ev {
+  grid-area: ev;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  margin-top: 12px;
+  min-width: 0;
+}
+.ev li {
+  display: grid;
+  grid-template-columns: var(--st-kind) minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: baseline;
+}
+.evKind {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-mute);
+}
+/* Mainnet and Base hold real USDC: ink and bold, so a judge finds them at a glance. */
+.evReal {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.evBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  min-width: 0;
+}
+.evLink {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--color-ink) 45%, transparent);
+  overflow-wrap: anywhere;
+}
+.evLink:hover {
+  text-decoration-color: currentColor;
+}
+.evNote {
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.evNone {
+  grid-area: ev;
+  margin: 12px 0 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-mute);
+}
+
+/* --- The parts of a row (the web console): indented beside a hairline, on the row's columns -------------------- */
+
+.parts {
+  grid-area: parts;
+  position: relative;
+  margin-top: 16px;
+}
+.parts::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 14px;
+  width: 1px;
+  background: var(--color-line);
+}
+.part {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title marks" "tried tried" "what what" "untried untried" "ev ev";
+  column-gap: var(--st-gap);
+  padding-block: 12px 14px;
+  padding-left: var(--st-indent);
+  min-width: 0;
+}
+/* The rule between two parts starts after the hairline's indent. */
+.part + .part {
+  background:
+    linear-gradient(var(--color-line), var(--color-line)) var(--st-indent) 0 /
+    calc(100% - var(--st-indent)) 1px no-repeat;
+}
+.partTitle {
+  grid-area: title;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.part > .marks {
+  grid-area: marks;
+  margin-top: 1px;
+  grid-template-columns: auto;
+}
+.tried {
+  grid-area: tried;
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.part .what {
+  margin-top: 4px;
+  font-size: 15px;
+}
+.untriedList {
+  grid-area: untried;
+  display: grid;
+  gap: 1em;
+  font-size: 15px;
+  margin-top: 8px;
+  max-width: var(--container-measure);
+}
+.untriedList li {
+  color: var(--color-ink);
+}
+.untriedArea {
+  font-weight: 600;
+}
+.untriedWhy {
+  color: var(--color-mute);
+}
+.part .ev,
+.part .evNone {
+  margin-top: 8px;
+}
+
+/* --- What else is built, and what the tests check, above the gaps ---------------------------------------------- */
+
+.note {
+  margin: 36px 0 0;
+  font-size: 15px;
+  color: var(--color-mute);
+  max-width: var(--container-measure);
+}
+.note + .note {
+  margin-top: 1em;
+}
+
+/* --- Known gaps: three short lists, closing the section ------------------------------------------------------- */
+
+.gapsBlock {
+  margin-top: clamp(48px, 6vw, 80px);
+  padding-top: 20px;
+  border-top: 1px solid var(--color-ink);
+}
+.gapsHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin-bottom: 22px;
+}
+.gapsTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.gapsHead p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-mute);
+  max-width: var(--container-measure);
+}
+.gapCols {
+  display: grid;
+  gap: 28px var(--st-gap);
+}
+.gapCol {
+  min-width: 0;
+}
+.gapTitle {
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-gold-ink);
+}
+.gaps {
+  font-size: 15px;
+  max-width: var(--container-measure);
+}
+.gaps li + li {
+  margin-top: 1em;
+}
+.gapLead {
+  font-weight: 600;
+}
+
+/* --- From 700px: a row's name and marks share a line, and where and evidence sit side by side ----------------- */
+
+@media (min-width: 700px) {
+  .keyRow {
+    grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1.25fr);
+    align-items: baseline;
+  }
+  .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "title marks" "what what" "limit limit" "where ev" "parts parts";
+  }
+  .row > .marks {
+    margin-top: 2px;
+  }
+  /* A part spans the row, so its columns start where the row's do; only its first column steps in. */
+  .part {
+    padding-left: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "title marks" "tried ev" "what ev" "untried ev";
+    grid-template-rows: auto auto auto 1fr;
+  }
+  .partTitle,
+  .tried,
+  .part .what,
+  .untriedList {
+    padding-left: var(--st-indent);
+  }
+  .part > .marks {
+    grid-template-columns: var(--st-marks);
+  }
+  .part .ev,
+  .part .evNone {
+    margin-top: 2px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .gapCols {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* --- From 1280px: four columns that line up across every group and every part ---------------------------------- */
+
+@media (min-width: 1280px) {
+  .key {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    column-gap: var(--st-gap);
+  }
+  .keyRow {
+    grid-template-columns: 136px minmax(0, 1fr);
+  }
+  .keyWhich {
+    grid-column: 2;
+  }
+  .groupHead {
+    grid-template-columns: var(--st-cols);
+  }
+  .colLabel {
+    display: block;
+  }
+  .colMarks {
+    display: grid;
+    grid-template-columns: var(--st-marks);
+    column-gap: 10px;
+  }
+  .row {
+    grid-template-columns: var(--st-cols);
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas:
+      "title marks where ev"
+      "what marks where ev"
+      "limit marks where ev"
+      "parts parts parts parts";
+  }
+  .row > .marks,
+  .where,
+  .ev,
+  .evNone {
+    margin-top: 3px;
+  }
+  .part {
+    grid-template-columns: var(--st-cols);
+    grid-template-rows: auto auto auto 1fr;
+    grid-template-areas:
+      "title marks . ev"
+      "tried marks . ev"
+      "what marks . ev"
+      "untried untried untried ev";
+  }
+  .part .ev,
+  .part .evNone {
+    margin-top: 2px;
+  }
+}
+
+@media (forced-colors: active) {
+  .glyph {
+    color: CanvasText;
+  }
+  .groupHead,
+  .gapsBlock {
+    border-color: CanvasText;
+  }
+}
