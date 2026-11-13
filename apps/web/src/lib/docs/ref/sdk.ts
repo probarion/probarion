@@ -425,9 +425,51 @@ const CHAIN: readonly Export[] = [
     "None",
   ],
   [
+    "isUnknownAccountError",
+    "function",
+    "True when an error is the node's answer that an account does not exist, in either answer form.",
+    "None",
+  ],
+  [
     "toTxStatusResult",
     "function",
     "Reads a `tx` RPC result as a `TxStatusResult`. A malformed answer throws `RpcMalformedError`.",
+    "None",
+  ],
+  [
+    "readPayeeSignals",
+    "function",
+    "Reads what `assessPayee` (`@probarion/core`) needs about one payee: a NEAR account at the final block and at a block about 7 days back, a Base address's code and nonce on mainnet, and a vault's mandates and spends when one is given. Solana is not read. Read-only; a failed read leaves its signal `unknown`. `@probarion/sdk/payee` exports it, `readKnownPayees`, the four `PAYEE_` constants and its two types on their own, without the root entry, which loads `node:fs`, so a browser page can import them. In this repository, not in npm 0.1.1.",
+    "None",
+  ],
+  [
+    "readKnownPayees",
+    "function",
+    "A vault's payees: each mandate's payee with its mandate ids, and how many spends to each were paid out. It throws when a read fails or a row is malformed, and when the vault has 2000 or more mandates or spends.",
+    "None",
+  ],
+  [
+    "PAYEE_ARCHIVAL_RPC_URLS",
+    "constant",
+    "FastNEAR's archival node per network, for the payee check's read about 7 days back.",
+    "None",
+  ],
+  [
+    "PAYEE_BASE_RPC_URLS",
+    "constant",
+    "Base JSON-RPC per network for the payee check: `https://mainnet.base.org` on mainnet, `null` on testnet, which leaves a Base payee unread.",
+    "None",
+  ],
+  [
+    "PAYEE_SIGNALS_TIMEOUT_MS",
+    "constant",
+    "3000: the milliseconds each payee-check request may take. Each endpoint gets one more try.",
+    "None",
+  ],
+  [
+    "PAYEE_SIGNALS_BUDGET_MS",
+    "constant",
+    "15000: the milliseconds all of a payee check's reads may take together. A read still waiting then is `unknown`.",
     "None",
   ],
   [
@@ -481,6 +523,18 @@ const CHAIN: readonly Export[] = [
     "NearApiJsSenderOptions",
     "type",
     "The options of `new NearApiJsSender()`: `accountId`, `secretKey`, `rpcUrl`, `createProvider` and `sendTimeoutMs`, 90 s per step by default.",
+    "None",
+  ],
+  [
+    "ReadPayeeSignalsInput",
+    "type",
+    "The first argument of `readPayeeSignals()`: `network`, `payee` and an optional `vault`.",
+    "None",
+  ],
+  [
+    "ReadPayeeSignalsOptions",
+    "type",
+    "The options of `readPayeeSignals()`: `rpcUrls`, `archivalRpcUrls`, `baseRpcUrl`, `fetch`, `timeoutMs`, `budgetMs` and `now`.",
     "None",
   ],
 ];
@@ -634,8 +688,8 @@ const CHAIN_MEMBERS: readonly (readonly [
   ],
   [
     "RpcClient",
-    "viewAccount(accountId)",
-    "The account's balance, locked balance, code hash, global contract hash and storage use.",
+    "viewAccount(accountId, blockId?)",
+    "The account's balance, locked balance, code hash, global contract hash and storage use, at the final block or, on an archival node, at `blockId`.",
     "None",
   ],
   [

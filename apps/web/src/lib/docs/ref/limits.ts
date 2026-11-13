@@ -6,6 +6,8 @@ import {
   MAX_PAGE_LIMIT,
   MAX_RESPONSE_BODY_BYTES,
   PAGE_SIZE,
+  PAYEE_SIGNALS_BUDGET_MS,
+  PAYEE_SIGNALS_TIMEOUT_MS,
   SPEND_GAS,
   UNKNOWN_SETTLE_MS,
 } from "@probarion/sdk";
@@ -902,6 +904,18 @@ const SDK: RefTable = {
       from: "`@probarion/sdk`",
       value: millis(UNKNOWN_SETTLE_MS),
       what: "How long code refuses an invoice whose spend has an unknown outcome, unless the chain shows the spend sooner",
+    }),
+    row("limits-sdk-payee_signals_timeout_ms", {
+      name: "`PAYEE_SIGNALS_TIMEOUT_MS`",
+      from: "`@probarion/sdk`",
+      value: millis(PAYEE_SIGNALS_TIMEOUT_MS),
+      what: "How long each read of a payee check may take. Each endpoint gets one more try",
+    }),
+    row("limits-sdk-payee_signals_budget_ms", {
+      name: "`PAYEE_SIGNALS_BUDGET_MS`",
+      from: "`@probarion/sdk`",
+      value: millis(PAYEE_SIGNALS_BUDGET_MS),
+      what: "How long all of a payee check's reads may take together. A read still waiting then is unknown, which warns",
     }),
   ],
 };
