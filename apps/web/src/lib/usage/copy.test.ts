@@ -99,7 +99,7 @@ describe("the header, as the owner approved it", () => {
   it("has the title and the lede word for word", () => {
     expect(USAGE_COPY.head.title).toBe("Usage, counted apart");
     expect(USAGE_COPY.head.lede).toBe(
-      "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so nothing here comes from the team paying itself. Every payment is on chain.",
+      "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so the team paying itself adds no volume to them. Every payment is on chain.",
     );
   });
 
@@ -214,7 +214,7 @@ describe("how each number is counted", () => {
     for (const n of NETWORKS) {
       const s = sentences(n);
       expect(s).toContain(
-        "These are counts, not dollar volumes. Amounts are not added up, so nothing here comes from the team paying itself.",
+        "These are counts, not dollar volumes. Amounts are not added up, so the team paying itself adds no volume to them.",
       );
       expect(
         s.some((x) =>
@@ -259,15 +259,17 @@ describe("how each number is counted", () => {
 
   it("says which network the page counts, and that the other one is counted apart", () => {
     expect(networkSentence("testnet")).toBe(
-      "This page counts NEAR testnet only, with test tokens. Activity on the other NEAR network is counted apart and is not added in.",
+      "The live counts are for NEAR testnet only, with test tokens. Activity on the other NEAR network is counted apart and is not added in.",
     );
     expect(networkSentence("mainnet")).toBe(
-      "This page counts NEAR mainnet only. Activity on the other NEAR network is counted apart and is not added in.",
+      "The live counts are for NEAR mainnet only. Activity on the other NEAR network is counted apart and is not added in.",
     );
     for (const n of NETWORKS) expect(sentences(n)).toContain(networkSentence(n));
   });
 
-  it("does not mention mainnet in a testnet build", () => {
+  // A testnet page also shows the mainnet record and what it costs, from the committed evidence: their words are in
+  // components/usage/MainnetSections.tsx, and MainnetSections.test.ts holds them.
+  it("keeps mainnet out of the counts' copy of a testnet build", () => {
     expect(allCopy().length).toBeGreaterThan(20);
     const testnet = [
       eyebrow("testnet"),

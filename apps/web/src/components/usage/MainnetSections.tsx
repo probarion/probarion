@@ -1,8 +1,10 @@
+import { Fragment, type ReactNode } from "react";
 import c from "@/components/site/canary.module.css";
 import { ScrollRegion } from "@/components/site/ScrollRegion";
 import u from "@/components/site/usage.module.css";
-import { brandCardClass, ExternalLink, TxLink } from "@/components/ui";
+import { brandCardClass, ExternalLink } from "@/components/ui";
 import { thousands, utcMinute } from "@/lib/canary/format";
+import { explorerTxUrl } from "@/lib/config";
 import {
   BRIDGE_FEES,
   GAS,
@@ -41,12 +43,11 @@ export const MAINNET_COPY = {
     decisionsSub: (paid: number, refused: number) =>
       `${thousands(paid)} led to a payment, ${thousands(refused)} were false refusals`,
   },
+  /** Two columns, so that a phone shows each transaction: the day and the transactions sit in the row's header. */
   table: {
     label: "Mainnet payments and refusals",
-    day: "Day (UTC)",
-    what: "What",
+    what: "What (UTC day)",
     amount: "Amount",
-    txs: "Transactions",
   },
   /** A sentence around a link: the text before it, the link's own words, and the text after it. */
   attested: [
@@ -55,10 +56,12 @@ export const MAINNET_COPY = {
     "passed O1 (Intel TDX) and O2 (NVIDIA NRAS). The TEE measurement is not pinned, so this does not show which model image ran.",
   ],
   falseRefusals: [
-    "The refusals were false: on 2026-11-13 both models proposed the right amount and Base address, and a payee rule that was too strict for a Base payee refused them. Nothing was sent, and PR #142 changed the rule after the run (see",
+    "The two refused decisions were false: on 2026-11-13 both models proposed the right amount and Base address, and a payee rule that was too strict for a Base payee refused them. Nothing was sent, and PR #142 changed the rule after the run (see",
     "the S1 record",
     ").",
   ],
+  /** Before the anchor transactions of the refused decisions. */
+  anchored: "Each is a signed entry in the vault's ledger, anchored on chain:",
   source: (updated: string) => [
     "From",
     "docs/mainnet-proof.json",
@@ -69,15 +72,19 @@ export const MAINNET_COPY = {
 export const COSTS_COPY = {
   title: "What it costs",
   lede: "Each figure links the record it comes from. Nothing is converted to dollars.",
-  table: { label: "What a spend costs", cost: "Cost", amount: "Amount", evidence: "Evidence" },
+  /** Two columns, so that a phone shows each link: a figure links its file, or its files follow it. */
+  table: { label: "What a spend costs", cost: "Cost", amount: "Amount" },
   gasLabel: (row: MainnetRow) =>
     row.kind === "refused_on_chain"
       ? "Gas, a spend refused on chain"
       : `Gas, spend ${row.spendId} (${row.kind === "base_payout" ? "a payout to Base" : "a payment on NEAR"})`,
-  gasAmount: (g: GasCost) => `${g.near} NEAR (${g.tgas} Tgas)`,
-  bridge: "Bridge fee, each payout to Base",
-  bridgeAmount: (usdc: string, payouts: number) =>
-    `${usdc} USDC (${payouts === 1 ? "1 payout" : `${thousands(payouts)} payouts`})`,
+  gasNear: (g: GasCost) => `${g.near} NEAR`,
+  gasTgas: (g: GasCost) => `(${g.tgas} Tgas)`,
+  bridge: (payouts: number) =>
+    payouts === 1
+      ? "Bridge fee, the payout to Base"
+      : `Bridge fee, each of ${thousands(payouts)} payouts to Base`,
+  bridgeAmount: (usdc: string) => `${usdc} USDC`,
   probarion: "Probarion fee",
   probarionAmount: "none: the contract has no fee path",
   deposit: "Vault deposit, testnet",
@@ -87,15 +94,25 @@ export const COSTS_COPY = {
   feeNote:
     "The contract takes no fee: a spend moves the full amount toward the mandate's payee and pays no one else. On a payout to Base, the POA bridge keeps its fee from that amount when it releases the USDC on Base.",
   depositNote: (minDeposit: string) =>
-    `The deposit is what the console asks to create a vault on testnet: the factory's ${minDeposit} NEAR min_deposit plus its estimate of the storage for the vault's copy of the code. It stays in the vault. There is no mainnet figure: the mainnet factory is not deployed.`,
+    `The deposit is what the console asks to create a vault on testnet: the factory's ${minDeposit} NEAR min_deposit plus the console's estimate of the storage for the vault's copy of the code. It stays in the vault. There is no mainnet figure: the mainnet factory is not deployed.`,
 } as const;
 
 const T = MAINNET_COPY.table;
 const K = COSTS_COPY.table;
 
 const short = (s: string) => (s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-6)}` : s);
+/** Kept on one line, so that a short hash does not break at its ellipsis. */
 const explorerLink =
-  "mono text-ink underline decoration-ink/60 underline-offset-2 hover:decoration-ink";
+  "mono whitespace-nowrap text-ink underline decoration-ink/60 underline-offset-2 hover:decoration-ink";
+
+/** A transaction on an explorer, in a new tab, named by its short form. */
+function Explorer({ href, hash }: { href: string; hash: string }) {
+  return (
+    <ExternalLink className={explorerLink} href={href}>
+      {short(hash)}
+    </ExternalLink>
+  );
+}
 
 /** A repository file, opened on GitHub, named by its last part. */
 function Source({ path, label }: { path: string; label?: string }) {
@@ -135,16 +152,25 @@ function what(row: MainnetRow): string {
   return `Spend ${row.spendId}, ${where}. ${decided(row)}`.trim();
 }
 
-function amount(row: MainnetRow): string {
-  if (row.amount === null) return "none";
-  return row.arrived === null
-    ? `${row.amount} USDC`
-    : `${row.amount} USDC sent, ${row.arrived} arrived`;
+/** What the row moved: nothing for a refusal, whatever amount it asked for. To Base, also what arrived after the fee. */
+function amount(row: MainnetRow): ReactNode {
+  if (row.kind === "refused_on_chain" || row.amount === null) return "none";
+  if (row.arrived === null) return `${row.amount} USDC`;
+  return (
+    <>
+      {row.amount} USDC sent,
+      <br />
+      {row.arrived} USDC arrived
+    </>
+  );
 }
 
 /** The mainnet vault's payments, refusals on chain and attested decisions, each with its transactions. */
 export function MainnetRecordCard({ record = MAINNET_RECORD }: { record?: MainnetRecord }) {
   const C = MAINNET_COPY;
+  const anchors = record.decisions.flatMap((d) =>
+    d.verdict === "refuse" && d.anchorTx !== null ? [d.anchorTx] : [],
+  );
   return (
     <section id="mainnet" className={brandCardClass}>
       <p className={c.tag}>{C.tag}</p>
@@ -167,35 +193,35 @@ export function MainnetRecordCard({ record = MAINNET_RECORD }: { record?: Mainne
         <table className={`${c.table} ${u.usage}`}>
           <thead>
             <tr>
-              <th scope="col">{T.day}</th>
               <th scope="col">{T.what}</th>
               <th scope="col">{T.amount}</th>
-              <th scope="col">{T.txs}</th>
             </tr>
           </thead>
           <tbody>
             {record.rows.map((row) => (
               <tr key={row.key}>
-                <td>{row.day}</td>
-                <th scope="row">{what(row)}</th>
-                <td>{amount(row)}</td>
-                <td>
-                  NEAR <TxLink network="mainnet" hash={row.nearTx} />
+                <th scope="row">
+                  <span className={c.quiet}>{row.day}</span>
+                  <br />
+                  {what(row)}
+                  <br />
+                  <span className="whitespace-nowrap">
+                    NEAR <Explorer href={explorerTxUrl("mainnet", row.nearTx)} hash={row.nearTx} />
+                  </span>
                   {row.baseTx === null ? null : (
                     <>
                       <br />
-                      Base{" "}
-                      <a
-                        className={explorerLink}
-                        href={`https://basescan.org/tx/${row.baseTx}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {short(row.baseTx)}
-                      </a>
+                      <span className="whitespace-nowrap">
+                        Base{" "}
+                        <Explorer
+                          href={`https://basescan.org/tx/${row.baseTx}`}
+                          hash={row.baseTx}
+                        />
+                      </span>
                     </>
                   )}
-                </td>
+                </th>
+                <td>{amount(row)}</td>
               </tr>
             ))}
           </tbody>
@@ -207,6 +233,19 @@ export function MainnetRecordCard({ record = MAINNET_RECORD }: { record?: Mainne
       {record.decisionsRefused > 0 ? (
         <p className={c.line}>
           <Linked parts={C.falseRefusals} path={SOURCES.s1FalseRefusals} />
+          {anchors.length > 0 ? (
+            <>
+              {" "}
+              {C.anchored}{" "}
+              {anchors.map((hash, i) => (
+                <Fragment key={hash}>
+                  {i === 0 ? null : i === anchors.length - 1 ? " and " : ", "}
+                  <Explorer href={explorerTxUrl("mainnet", hash)} hash={hash} />
+                </Fragment>
+              ))}
+              .
+            </>
+          ) : null}
         </p>
       ) : null}
       <p className={c.fresh}>
@@ -238,24 +277,25 @@ export function CostsCard({
             <tr>
               <th scope="col">{K.cost}</th>
               <th scope="col">{K.amount}</th>
-              <th scope="col">{K.evidence}</th>
             </tr>
           </thead>
           <tbody>
             {gas.map((g) => (
               <tr key={g.row.key}>
                 <th scope="row">{C.gasLabel(g.row)}</th>
-                <td>{C.gasAmount(g)}</td>
                 <td>
-                  <Source path={g.source} />
+                  <Source path={g.source} label={C.gasNear(g)} />
+                  <br />
+                  {C.gasTgas(g)}
                 </td>
               </tr>
             ))}
             {fees.map((f) => (
               <tr key={f.usdc}>
-                <th scope="row">{C.bridge}</th>
-                <td>{C.bridgeAmount(f.usdc, f.payouts)}</td>
+                <th scope="row">{C.bridge(f.payouts)}</th>
                 <td>
+                  {C.bridgeAmount(f.usdc)}
+                  <br />
                   <Source path={SOURCES.poaS1} label="S1 poa-status.json" />
                   <br />
                   <Source path={SOURCES.poaS2} label="S2 poa-status.json" />
@@ -264,16 +304,19 @@ export function CostsCard({
             ))}
             <tr>
               <th scope="row">{C.probarion}</th>
-              <td className={c.wide}>{C.probarionAmount}</td>
               <td>
-                <Source path={SOURCES.spend} />
+                {/* A sentence, so it may wrap, where the table's other cells keep each line whole. */}
+                <span className="whitespace-normal">
+                  <Source path={SOURCES.spend} label={C.probarionAmount} />
+                </span>
               </td>
             </tr>
             {deposit === null ? null : (
               <tr>
                 <th scope="row">{C.deposit}</th>
-                <td>{C.depositAmount(deposit.near)}</td>
                 <td>
+                  {C.depositAmount(deposit.near)}
+                  <br />
                   <Source path={SOURCES.testnetFactory} />
                   <br />
                   <Source path={SOURCES.runway} />

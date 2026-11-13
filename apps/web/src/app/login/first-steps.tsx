@@ -19,7 +19,10 @@ export const DEMO_VIDEO = "https://x.com/probarionhq/status/2120882499689836651"
 
 const link = "text-ink underline decoration-ink/60 hover:decoration-ink";
 
-/** On testnet, under what signing in takes: where to create an account, and where to get test NEAR for it. */
+/**
+ * On testnet, under what signing in takes: where to create an account, and where to get test NEAR for it. Meteor's web
+ * app serves both networks, so the line says to switch it to testnet.
+ */
 export function NoAccountYet({ network }: { network: Network }) {
   if (network !== "testnet") return null;
   return (
@@ -28,7 +31,7 @@ export function NoAccountYet({ network }: { network: Network }) {
       <ExternalLink className={link} href={METEOR_WEB}>
         Create one in Meteor Wallet
       </ExternalLink>{" "}
-      <span aria-hidden="true">·</span>{" "}
+      (switch it to testnet) <span aria-hidden="true">·</span>{" "}
       <ExternalLink className={link} href={NEAR_FAUCET}>
         get test NEAR
       </ExternalLink>

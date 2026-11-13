@@ -1,7 +1,8 @@
-// Every word of the public Usage page, in one module so that its test can hold the copy to the words the page must not
-// use: no promise (a guarantee, "never"), no em dash in a sentence, none of the Canary challenge's words. The counting
-// rules it states are the ones in the spec's honesty rules for metrics (§14.5), and migration 0009 is where each one is
-// carried out. It reaches no server-only module.
+// Every word of the public Usage page's counts, in one module so that its test can hold the copy to the words the page
+// must not use: no promise (a guarantee, "never"), no em dash in a sentence, none of the Canary challenge's words. The
+// counting rules it states are the ones in the spec's honesty rules for metrics (§14.5), and migration 0009 is where each
+// one is carried out. It reaches no server-only module. The words of the two cards read from the committed evidence (the
+// mainnet record and what it costs) live in components/usage/MainnetSections.tsx, and MainnetSections.test.ts holds them.
 
 import { thousands, utcMinute } from "@/lib/canary/format";
 import type { Network } from "@/lib/config";
@@ -20,7 +21,7 @@ export const USAGE_COPY = {
   },
   head: {
     title: "Usage, counted apart",
-    lede: "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so nothing here comes from the team paying itself. Every payment is on chain.",
+    lede: "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so the team paying itself adds no volume to them. Every payment is on chain.",
     definitions: "Definitions",
     canary: "Canary",
     testnetPill: "Testnet: test tokens, no value",
@@ -89,9 +90,12 @@ export const priceLine = (price: { model: string; source: string }): string =>
 export const pilotsLine = (c: SegmentCounts): string =>
   `External ${thousands(c.external)} · Team ${thousands(c.team)} · Canary ${thousands(c.canary)}`;
 
-/** Which network the page counts. The other one is named by what it is, so that a testnet page does not talk of mainnet. */
+/**
+ * Which network the live counts are for. The other one is named by what it is, so that a testnet page's counts do not
+ * talk of mainnet. The mainnet record above them is not a live count, and says itself that it is not added in.
+ */
 export const networkSentence = (network: Network): string =>
-  `This page counts NEAR ${network} only${network === "testnet" ? ", with test tokens" : ""}. Activity on the other NEAR network is counted apart and is not added in.`;
+  `The live counts are for NEAR ${network} only${network === "testnet" ? ", with test tokens" : ""}. Activity on the other NEAR network is counted apart and is not added in.`;
 
 /** One entry of "How each number is counted": a sentence, with the name of the figure first where it is about one row. */
 export interface Definition {
@@ -111,7 +115,7 @@ export function definitions(network: Network): readonly Definition[] {
       text: "In the Canary column, vaults, mandates, payments and held spends are the Canary vault's own on-chain events. Refusals, attempts and model decisions come from the attempts instead, because the Canary's ledger is private.",
     },
     {
-      text: "These are counts, not dollar volumes. Amounts are not added up, so nothing here comes from the team paying itself.",
+      text: "These are counts, not dollar volumes. Amounts are not added up, so the team paying itself adds no volume to them.",
     },
     {
       lead: "External owners:",

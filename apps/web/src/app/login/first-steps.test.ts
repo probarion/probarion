@@ -30,7 +30,7 @@ describe("no testnet account yet", () => {
   it("on testnet, says where to create one and where to get test NEAR, each in a new tab", () => {
     const h = noAccount("testnet");
     expect(text(h)).toBe(
-      "No testnet account? Create one in Meteor Wallet (opens in a new tab) · get test NEAR (opens in a new tab)",
+      "No testnet account? Create one in Meteor Wallet (opens in a new tab) (switch it to testnet) · get test NEAR (opens in a new tab)",
     );
     expect(anchors(h)).toEqual([
       { href: METEOR_WEB, newTab: true, words: "Create one in Meteor Wallet (opens in a new tab)" },
@@ -40,6 +40,16 @@ describe("no testnet account yet", () => {
 
   it("says nothing on mainnet, where a testnet account does not help", () => {
     expect(noAccount("mainnet")).toBe("");
+  });
+
+  it("names the wallet here and not in page.tsx, whose words hold on both networks", () => {
+    // test/site-facts.test.ts keeps every wallet name out of page.tsx, because the list depends on the network. The one
+    // name the page shows is in this file, behind the testnet check.
+    expect(source("./page.tsx")).not.toMatch(/Meteor|HOT Wallet|Nightly|Ledger/);
+    const steps = source("./first-steps.tsx");
+    const gate = steps.indexOf('if (network !== "testnet") return null;');
+    expect(gate).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(steps.indexOf("Create one in Meteor Wallet"));
   });
 
   it("names a wallet the testnet list offers, at the address the list gives it", () => {

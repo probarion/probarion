@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GAS, MAINNET_RECORD } from "./evidence";
+import { GAS, MAINNET_RECORD, type MainnetRow, repoFile } from "./evidence";
 import { COSTS_COPY, CostsCard, MAINNET_COPY, MainnetRecordCard } from "./MainnetSections";
 
 // The two cards of /usage that come from the committed evidence (evidence.test.ts holds the figures to the files).
@@ -18,6 +18,11 @@ const visible = (h: string) =>
     .replace(/\s+/g, " ")
     .trim();
 const hrefs = (h: string) => [...h.matchAll(/\shref="([^"]*)"/g)].map((m) => m[1] ?? "");
+const anchors = (h: string) =>
+  [...h.matchAll(/<a\b[^>]*\shref="([^"]*)"[^>]*>(.*?)<\/a>/gs)].map((m) => ({
+    href: m[1] ?? "",
+    words: visible(m[2] ?? ""),
+  }));
 const rows = (h: string) =>
   [...h.matchAll(/<tr>(.*?)<\/tr>/gs)].map((m) =>
     [...(m[1] ?? "").matchAll(/<t[dh][^>]*>(.*?)<\/t[dh]>/gs)].map((c) => visible(c[1] ?? "")),
@@ -37,49 +42,85 @@ describe("the mainnet record card", () => {
   });
 
   it("leads with the counts: payments, refusals on chain and attested decisions", () => {
+    // From the record, so that a refusal added to docs/mainnet-proof.json later does not break this test.
+    const r = MAINNET_RECORD;
     const t = visible(record);
-    expect(t).toContain("Payments 3 2 of them to Base");
-    expect(t).toContain("Refused on chain 1 no USDC moved");
-    expect(t).toContain("Attested decisions 3 1 led to a payment, 2 were false refusals");
+    expect(t).toContain(`Payments ${r.payments} ${r.basePayouts} of them to Base`);
+    expect(t).toContain(`Refused on chain ${r.refusedOnChain} no USDC moved`);
+    expect(t).toContain(
+      `Attested decisions ${r.decisions.length} ${r.decisionsPaid} led to a payment, ${r.decisionsRefused} were false refusals`,
+    );
   });
 
-  it("has a row for each payment and refusal, with what arrived on Base and both transactions", () => {
+  it("has a row for each payment and refusal, with its day, its transactions and what arrived on Base", () => {
     const body = rows(record).slice(1);
-    expect(body).toEqual([
+    expect(body).toHaveLength(MAINNET_RECORD.rows.length);
+    // The rows of 2026-11-11 and 2026-11-13, oldest first. A later row comes after them.
+    expect(body.slice(0, 4)).toEqual([
       [
-        "2026-11-11",
-        "Spend 1, a payment on NEAR. Made before the vault's signed ledger began.",
+        "2026-11-11 Spend 1, a payment on NEAR. Made before the vault's signed ledger began. NEAR 22oqhg…A56ieE (opens in a new tab)",
         "1.00 USDC",
-        "NEAR 22oqhg…A56ieE",
       ],
       [
-        "2026-11-11",
-        "Refused on chain with NoMandate: the spend named a mandate that does not exist. No USDC moved.",
+        "2026-11-11 Refused on chain with NoMandate: the spend named a mandate that does not exist. No USDC moved. NEAR 2Dabq4…6AtwYh (opens in a new tab)",
         "none",
-        "NEAR 2Dabq4…6AtwYh",
       ],
       [
-        "2026-11-13",
-        "Spend 2, a payout to Base through NEAR Intents. Decided by the code rules alone.",
-        "1.00 USDC sent, 0.9976 arrived",
-        "NEAR BdN7oB…RbrSQ9 Base 0xc2df…e1ea71",
+        "2026-11-13 Spend 2, a payout to Base through NEAR Intents. Decided by the code rules alone. NEAR BdN7oB…RbrSQ9 (opens in a new tab) Base 0xc2df…e1ea71 (opens in a new tab)",
+        "1.00 USDC sent, 0.9976 USDC arrived",
       ],
       [
-        "2026-11-13",
-        "Spend 3, a payout to Base through NEAR Intents. Decided by an attested model (z-ai/glm-5.3-flash) and the code rules.",
-        "0.25 USDC sent, 0.2476 arrived",
-        "NEAR 5amtgb…sX9NGH Base 0xc6c4…547ab7",
+        "2026-11-13 Spend 3, a payout to Base through NEAR Intents. Decided by an attested model (z-ai/glm-5.3-flash) and the code rules. NEAR 5amtgb…sX9NGH (opens in a new tab) Base 0xc6c4…547ab7 (opens in a new tab)",
+        "0.25 USDC sent, 0.2476 USDC arrived",
       ],
     ]);
-    // The row's description is its header, so each figure is tied to it.
+    // The row's description is its header, so each figure is tied to it. The table has two columns, so that a phone
+    // shows the transactions with no sideways scroll.
     expect([...record.matchAll(/<th scope="row"/g)]).toHaveLength(MAINNET_RECORD.rows.length);
+    expect(rows(record)[0]).toEqual(["What (UTC day)", "Amount"]);
   });
 
-  it("links each NEAR transaction on mainnet's explorer and each Base one on Basescan", () => {
+  it("shows no amount for a refusal on chain, even one that recorded the amount it asked for", () => {
+    const refused = MAINNET_RECORD.rows.find((r) => r.kind === "refused_on_chain");
+    expect(refused).toBeDefined();
+    const asked: MainnetRow = {
+      ...(refused as MainnetRow),
+      key: "refused_over_cap",
+      amount: "50.00",
+      errorCode: "OverPerPayment",
+    };
+    const h = html(
+      createElement(MainnetRecordCard, { record: { ...MAINNET_RECORD, rows: [asked] } }),
+    );
+    const row = rows(h)[1];
+    expect(row?.[1]).toBe("none");
+    expect(row?.[0]).toContain(
+      "Refused on chain with OverPerPayment: the amount was above the mandate's cap per payment. No USDC moved.",
+    );
+    expect(visible(h)).not.toContain("50.00");
+  });
+
+  it("links each NEAR transaction on mainnet's explorer and each Base one on Basescan, each saying it opens a new tab", () => {
     const links = hrefs(record);
     for (const r of MAINNET_RECORD.rows) {
       expect(links).toContain(`https://nearblocks.io/txns/${r.nearTx}`);
       if (r.baseTx) expect(links).toContain(`https://basescan.org/tx/${r.baseTx}`);
+    }
+    const explorers = anchors(record).filter((a) => /nearblocks\.io|basescan\.org/.test(a.href));
+    expect(explorers.length).toBeGreaterThan(MAINNET_RECORD.rows.length);
+    for (const a of explorers) expect(a.words, a.href).toMatch(/ \(opens in a new tab\)$/);
+  });
+
+  it("links the anchor transaction of each refused decision", () => {
+    const refused = MAINNET_RECORD.decisions.filter((d) => d.verdict === "refuse");
+    expect(refused).toHaveLength(MAINNET_RECORD.decisionsRefused);
+    expect(refused.length).toBeGreaterThan(0);
+    expect(visible(record)).toContain(
+      "Each is a signed entry in the vault's ledger, anchored on chain:",
+    );
+    for (const d of refused) {
+      expect(d.anchorTx).not.toBeNull();
+      expect(hrefs(record)).toContain(`https://nearblocks.io/txns/${d.anchorTx}`);
     }
   });
 
@@ -89,7 +130,7 @@ describe("the mainnet record card", () => {
       "verify passed A1 to A8 on all of them, and on 2026-11-13 the online check (opens in a new tab) passed O1 (Intel TDX) and O2 (NVIDIA NRAS). The TEE measurement is not pinned, so this does not show which model image ran.",
     );
     expect(t).toContain(
-      "The refusals were false: on 2026-11-13 both models proposed the right amount and Base address, and a payee rule that was too strict for a Base payee refused them. Nothing was sent, and PR #142 changed the rule after the run (see the S1 record (opens in a new tab) ).",
+      "The two refused decisions were false: on 2026-11-13 both models proposed the right amount and Base address, and a payee rule that was too strict for a Base payee refused them. Nothing was sent, and PR #142 changed the rule after the run (see the S1 record (opens in a new tab) ).",
     );
     expect(t).toContain(
       "From docs/mainnet-proof.json (opens in a new tab) , updated 2026-11-13 13:10 UTC, as of the page's build. It is not added into the counts below.",
@@ -128,41 +169,35 @@ describe("the costs card", () => {
     expect(visible(costs)).not.toContain("$");
   });
 
-  it("has each figure with its evidence file", () => {
-    const body = rows(costs).slice(1);
-    expect(body).toEqual([
+  it("has each figure with its evidence, in two columns, so that a phone shows every link", () => {
+    expect(rows(costs)[0]).toEqual(["Cost", "Amount"]);
+    expect(rows(costs).slice(1)).toEqual([
+      ["Gas, spend 1 (a payment on NEAR)", "0.000769 NEAR (opens in a new tab) (8.3546 Tgas)"],
+      ["Gas, a spend refused on chain", "0.000165 NEAR (opens in a new tab) (1.8723 Tgas)"],
+      ["Gas, spend 2 (a payout to Base)", "0.001423 NEAR (opens in a new tab) (15.3479 Tgas)"],
+      ["Gas, spend 3 (a payout to Base)", "0.001424 NEAR (opens in a new tab) (15.3563 Tgas)"],
       [
-        "Gas, spend 1 (a payment on NEAR)",
-        "0.000769 NEAR (8.3546 Tgas)",
-        "gas-2026-11-13.json (opens in a new tab)",
+        "Bridge fee, each of 2 payouts to Base",
+        "0.0024 USDC S1 poa-status.json (opens in a new tab) S2 poa-status.json (opens in a new tab)",
       ],
-      [
-        "Gas, a spend refused on chain",
-        "0.000165 NEAR (1.8723 Tgas)",
-        "gas-2026-11-13.json (opens in a new tab)",
-      ],
-      [
-        "Gas, spend 2 (a payout to Base)",
-        "0.001423 NEAR (15.3479 Tgas)",
-        "gas-spend-2.json (opens in a new tab)",
-      ],
-      [
-        "Gas, spend 3 (a payout to Base)",
-        "0.001424 NEAR (15.3563 Tgas)",
-        "gas-spend-3.json (opens in a new tab)",
-      ],
-      [
-        "Bridge fee, each payout to Base",
-        "0.0024 USDC (2 payouts)",
-        "S1 poa-status.json (opens in a new tab) S2 poa-status.json (opens in a new tab)",
-      ],
-      ["Probarion fee", "none: the contract has no fee path", "spend.rs (opens in a new tab)"],
+      ["Probarion fee", "none: the contract has no fee path (opens in a new tab)"],
       [
         "Vault deposit, testnet",
-        "3.23352 test NEAR",
-        "testnet.json (opens in a new tab) runway.ts (opens in a new tab)",
+        "3.23352 test NEAR testnet.json (opens in a new tab) runway.ts (opens in a new tab)",
       ],
     ]);
+    // A gas figure is the link to the reading it comes from, and "none" links the contract's spend.
+    const links = anchors(costs);
+    for (const g of GAS) {
+      expect(links).toContainEqual({
+        href: repoFile(g.source),
+        words: `${g.near} NEAR (opens in a new tab)`,
+      });
+    }
+    expect(links).toContainEqual({
+      href: repoFile("contracts/vault/src/spend.rs"),
+      words: "none: the contract has no fee path (opens in a new tab)",
+    });
   });
 
   it("says what the gas covers and leaves out, whose the fee is, and why there is no mainnet deposit", () => {
@@ -170,7 +205,7 @@ describe("the costs card", () => {
     expect(t).toContain(COSTS_COPY.gasNote("2026-11-13"));
     expect(t).toContain(COSTS_COPY.feeNote);
     expect(t).toContain(
-      "the factory's 0.5 NEAR min_deposit plus its estimate of the storage for the vault's copy of the code. It stays in the vault. There is no mainnet figure: the mainnet factory is not deployed.",
+      "the factory's 0.5 NEAR min_deposit plus the console's estimate of the storage for the vault's copy of the code. It stays in the vault. There is no mainnet figure: the mainnet factory is not deployed.",
     );
   });
 

@@ -119,7 +119,7 @@ describe("the page with its numbers", () => {
     const t = visible(await page());
     expect(t).not.toContain("Testnet: test tokens");
     expect(t).not.toContain("test tokens");
-    expect(t).toContain("This page counts NEAR mainnet only.");
+    expect(t).toContain("The live counts are for NEAR mainnet only.");
   });
 
   it("has the tiles, the table with +N for the week, the unit costs and the pilots", async () => {

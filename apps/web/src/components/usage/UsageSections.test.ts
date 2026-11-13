@@ -71,7 +71,7 @@ describe("the header", () => {
     expect(visible(h)).toContain("Usage · NEAR mainnet");
     expect(h).toMatch(/<h1[^>]*>Usage, counted apart<\/h1>/);
     expect(visible(h)).toContain(
-      "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so nothing here comes from the team paying itself. Every payment is on chain.",
+      "Team vaults, external owners and Canary participants are counted separately. These are counts, not dollar volumes, so the team paying itself adds no volume to them. Every payment is on chain.",
     );
   });
 
@@ -389,9 +389,9 @@ describe("the definitions", () => {
   });
 
   it("says which network the page counts", () => {
-    expect(visible(h)).toContain("This page counts NEAR testnet only, with test tokens.");
+    expect(visible(h)).toContain("The live counts are for NEAR testnet only, with test tokens.");
     expect(visible(html(createElement(Definitions, { network: "mainnet" })))).toContain(
-      "This page counts NEAR mainnet only.",
+      "The live counts are for NEAR mainnet only.",
     );
   });
 });
